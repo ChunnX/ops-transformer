@@ -54,6 +54,8 @@ constexpr int64_t SYS_WORKSPACE_SIZE = 16777216;
 constexpr uint32_t MATMUL_BASE_M = 128;
 constexpr uint32_t MATMUL_BASE_K = 128;
 constexpr uint32_t MATMUL_BASE_N = 128;
+// fp32 输入时单元素为 4B，baseK 收敛到 64，保证 L0A/L0B(64KB) 不越界
+constexpr uint32_t MATMUL_FP32_BASE_K = 64;
 
 constexpr uint32_t STAGE_ONE_TWO = 2;
 constexpr uint32_t STAGE_ONE_THREE = 3;
@@ -129,30 +131,55 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     int64_t dv = tilingData_.dv;
     int64_t dk = tilingData_.dk;
     int64_t s = tilingData_.maxGroupLength;
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s;     // gCumExp (FP32)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kCumDecay (BF16)
-    if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv; // vInner (FP32)
-        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;  // vInnerBf16 (BF16, for stage3)
-    } else {
-        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // vInner (BF16)
-    }
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // qPrime (BF16)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // attnInter (BF16, arch22 compat)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kg (BF16)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * c;  // qkt (BF16)
-    if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // stateBf16Wk (BF16, arch35)
-    } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-        tilingData_.interWorkspaceSz +=
-            sizeHigh * tilingData_.b * nv * dv * dk; // highState_ (arch22: kernel unconditionally advances offset)
-    }
-    tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
 
-    // stage1 临时变量空间
-    tilingData_.stageWorkspaceSz =
-        sizeLow * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
-    tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
+    if (tilingData_.stateIsFp32 && socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+        // ===== A2/A3 aggressive 全 fp32 路径: stage1 中间结果均为 fp32, bf16 影子按 sizeHigh 预留 =====
+        // host 只统计 workspace 总量; kernel 用 sizeof(low/highType) 自行排布各 buffer 偏移,
+        // 此处统一按 sizeHigh(4B) 预留, 保证 host 总量 >= kernel 实际用量(bf16 影子实占 2B < 4B)。
+        int64_t b = tilingData_.b;
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s;                                   // gCumExp
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kCumDecay
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // vInner
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // qPrime
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // attnInter
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kg
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s * c;                               // qkt
+        tilingData_.interWorkspaceSz += sizeHigh * b * nv * dv * dk;                         // highState
+        tilingData_.interWorkspaceSz += sizeHigh * nv * dv * dk;                            // bf16State (state 的 bf16 影子)
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                             // bf16VNew (v_new 的 bf16 影子)
+        tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask
+
+        // stage1 临时变量空间 (fp32 中间结果)
+        tilingData_.stageWorkspaceSz =
+            sizeHigh * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
+        tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
+    } else {
+        // ===== bf16 路径 / A5 保守 fp32 路径 (保持原有 workspace 统计) =====
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s;     // gCumExp (FP32)
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kCumDecay (BF16)
+        if (tilingData_.stateIsFp32) {
+            tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv; // vInner (FP32)
+            tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;  // vInnerBf16 (BF16, for stage3)
+        } else {
+            tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // vInner (BF16)
+        }
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // qPrime (BF16)
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // attnInter (BF16, arch22 compat)
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kg (BF16)
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * c;  // qkt (BF16)
+        if (tilingData_.stateIsFp32) {
+            tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // stateBf16Wk (BF16, arch35)
+        } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+            tilingData_.interWorkspaceSz +=
+                sizeHigh * tilingData_.b * nv * dv * dk; // highState_ (arch22: kernel unconditionally advances offset)
+        }
+        tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
+
+        // stage1 临时变量空间
+        tilingData_.stageWorkspaceSz =
+            sizeLow * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
+        tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
+    }
 
     PrintTilingData();
     return ge::GRAPH_SUCCESS;
@@ -198,32 +225,96 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     tilingData_.matmulTilingFp32.stepM = 1;
     tilingData_.matmulTilingFp32.stepN = 1;
 
-    // ========== MT_FP32C: BF16 -> BF16 -> FP32 (for FP32 state path) ==========
+    // ========== FP32 state 路径专用 matmul tiling ==========
     if (tilingData_.stateIsFp32) {
-        matmul_tiling::MultiCoreMatmulTiling mmFp32C;
-        mmFp32C.SetBufferSpace(l1Size, l0CSize, ubSize);
-        mmFp32C.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                         matmul_tiling::DataType::DT_BFLOAT16, true);
-        mmFp32C.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                         matmul_tiling::DataType::DT_BFLOAT16, true);
-        mmFp32C.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                         matmul_tiling::DataType::DT_FLOAT);
-        mmFp32C.SetBias(false);
-        mmFp32C.SetDim(1);
-        mmFp32C.SetShape(baseM, baseN, baseK);
-        mmFp32C.SetOrgShape(baseM, baseN, baseK);
-        mmFp32C.SetFixSplit(baseM, baseN, baseK);
-        if (mmFp32C.GetTiling(tilingData_.matmulTilingFp32C) == -1) {
-            OP_LOGE(context_->GetNodeName(), "CGDR: Get Tiling Fp32C Failed!");
-            return ge::GRAPH_FAILED;
+        if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+            // A5 (arch35) 保守路径: bf16,bf16 -> fp32 (matmulTilingFp32C)
+            matmul_tiling::MultiCoreMatmulTiling mmFp32C;
+            mmFp32C.SetBufferSpace(l1Size, l0CSize, ubSize);
+            mmFp32C.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                             matmul_tiling::DataType::DT_BFLOAT16, true);
+            mmFp32C.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                             matmul_tiling::DataType::DT_BFLOAT16, true);
+            mmFp32C.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                             matmul_tiling::DataType::DT_FLOAT);
+            mmFp32C.SetBias(false);
+            mmFp32C.SetDim(1);
+            mmFp32C.SetShape(baseM, baseN, baseK);
+            mmFp32C.SetOrgShape(baseM, baseN, baseK);
+            mmFp32C.SetFixSplit(baseM, baseN, baseK);
+            if (mmFp32C.GetTiling(tilingData_.matmulTilingFp32C) == -1) {
+                OP_LOGE(context_->GetNodeName(), "CGDR: Get Tiling Fp32C Failed!");
+                return ge::GRAPH_FAILED;
+            }
+            tilingData_.matmulTilingFp32C.dbL0C = 1;
+            tilingData_.matmulTilingFp32C.stepKa = 1;
+            tilingData_.matmulTilingFp32C.stepKb = 1;
+            tilingData_.matmulTilingFp32C.depthA1 = 1;
+            tilingData_.matmulTilingFp32C.depthB1 = 1;
+            tilingData_.matmulTilingFp32C.stepM = 1;
+            tilingData_.matmulTilingFp32C.stepN = 1;
+        } else {
+            // A2/A3 (arch22) aggressive 全 fp32 路径: stage1 三段 + stage2 专用
+            // 公共 matmul tiling 流程: 固定单核单缓冲(depth=1, step=1, dbL0C=1),
+            // 通过 baseM/baseN/baseK 控制 L0A/L0B/L0C/L1 占用, 避免 fp32 输入越界。
+            //   fp32: L0A=baseM*baseK*4, L0B=baseK*baseN*4, L0C=baseM*baseN*4(累加器恒为fp32)
+            auto buildTiling = [&](matmul_tiling::DataType aType, bool aTrans,
+                                  matmul_tiling::DataType bType, bool bTrans,
+                                  matmul_tiling::DataType cType,
+                                  uint32_t bm, uint32_t bn, uint32_t bk,
+                                  AscendC::tiling::TCubeTiling &out) -> bool {
+                matmul_tiling::MultiCoreMatmulTiling mmTiling;
+                mmTiling.SetBufferSpace(l1Size, l0CSize, ubSize);
+                mmTiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, aType, aTrans);
+                mmTiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bType, bTrans);
+                mmTiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, cType);
+                mmTiling.SetBias(false);
+                mmTiling.SetDim(1);
+                mmTiling.SetShape(bm, bn, bk);
+                mmTiling.SetOrgShape(bm, bn, bk);
+                mmTiling.SetFixSplit(bm, bn, bk);
+                if (mmTiling.GetTiling(out) == -1) {
+                    OP_LOGE(context_->GetNodeName(), "CGDR: Get Tiling Failed!");
+                    return false;
+                }
+                out.dbL0C = 1;
+                out.stepKa = 1;
+                out.stepKb = 1;
+                out.depthA1 = 1;
+                out.depthB1 = 1;
+                out.stepM = 1;
+                out.stepN = 1;
+                return true;
+            };
+            // stage1 kk / qk: bf16,bf16 -> fp32
+            if (!buildTiling(matmul_tiling::DataType::DT_BFLOAT16, true,
+                             matmul_tiling::DataType::DT_BFLOAT16, true,
+                             matmul_tiling::DataType::DT_FLOAT,
+                             baseM, baseN, baseK, tilingData_.matmulTilingBf16ToFp32)) {
+                return ge::GRAPH_FAILED;
+            }
+            // stage1 求逆 / attn@v_beta: fp32,fp32 -> fp32
+            if (!buildTiling(matmul_tiling::DataType::DT_FLOAT, false,
+                             matmul_tiling::DataType::DT_FLOAT, false,
+                             matmul_tiling::DataType::DT_FLOAT,
+                             baseM, baseN, MATMUL_FP32_BASE_K, tilingData_.matmulTilingFp32ToFp32)) {
+                return ge::GRAPH_FAILED;
+            }
+            // stage1 attn@k_cumdecay: fp32,fp32 -> bf16
+            if (!buildTiling(matmul_tiling::DataType::DT_FLOAT, false,
+                             matmul_tiling::DataType::DT_FLOAT, false,
+                             matmul_tiling::DataType::DT_BFLOAT16,
+                             baseM, baseN, MATMUL_FP32_BASE_K, tilingData_.matmulTilingFp32ToBf16)) {
+                return ge::GRAPH_FAILED;
+            }
+            // stage2 专用: bf16 A/B -> float C
+            if (!buildTiling(matmul_tiling::DataType::DT_BFLOAT16, true,
+                             matmul_tiling::DataType::DT_BFLOAT16, true,
+                             matmul_tiling::DataType::DT_FLOAT,
+                             baseM, baseN, baseK, tilingData_.matmulTilingStage2)) {
+                return ge::GRAPH_FAILED;
+            }
         }
-        tilingData_.matmulTilingFp32C.dbL0C = 1;
-        tilingData_.matmulTilingFp32C.stepKa = 1;
-        tilingData_.matmulTilingFp32C.stepKb = 1;
-        tilingData_.matmulTilingFp32C.depthA1 = 1;
-        tilingData_.matmulTilingFp32C.depthB1 = 1;
-        tilingData_.matmulTilingFp32C.stepM = 1;
-        tilingData_.matmulTilingFp32C.stepN = 1;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -357,10 +448,6 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
     OP_CHECK_IF(stateDtype != ge::DT_BF16 && stateDtype != ge::DT_FLOAT,
                 OP_LOGE(context_->GetNodeName(), "initial_state dtype should be bfloat16 or float32"),
                 return ge::GRAPH_FAILED);
-    if (stateDtype == ge::DT_FLOAT && socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-        OP_LOGE(context_->GetNodeName(), "FP32 initial_state is only supported on Ascend950");
-        return ge::GRAPH_FAILED;
-    }
     tilingData_.stateIsFp32 = (stateDtype == ge::DT_FLOAT) ? 1 : 0;
 
     auto actualSeqLengthsDtype = context_->GetInputDesc(ACTUAL_SEQ_LENGTHS_INDEX)->GetDataType();
