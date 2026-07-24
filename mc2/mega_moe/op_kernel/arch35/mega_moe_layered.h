@@ -1200,8 +1200,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRe
                 continue;
             }
             int32_t tokenIndex = tripleTensor_[copyIdx * INT32_PER_256B].GetValue(TOKEN_ID);
-            uint32_t flagIndex = static_cast<uint32_t>(tokenIndex);
-            if (relayFlagTensor_.GetValue(flagIndex) != uint64_t(1)) {
+            if (relayFlagTensor_.GetValue(tokenIndex) != uint64_t(1)) {
                 continue;
             }
 
