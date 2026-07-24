@@ -237,24 +237,24 @@ __simd_vf__ inline void vfComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t *invS
     MaskReg maskAllB32 = CreateMask<float, MaskPattern::ALL>();
 
     for (uint16_t i = 0; i < vfLoopNum; i++) {
-        uint32_t curXOffset = static_cast<uint32_t>(i) * vlForT * 2;
-        uint32_t curXElemNum = (xElemNum > curXOffset) ? (xElemNum - curXOffset) : 0;
-        curXElemNum = (curXElemNum > vlForT * 2) ? (vlForT * 2) : curXElemNum;
-        uint32_t xQuant0ElemNum = curXElemNum;
-        xQuant0ElemNum = (xQuant0ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant0ElemNum;
-        uint32_t xQuant1ElemNum = (curXElemNum > OUT_ELE_NUM_ONE_BLK) ?
-            (curXElemNum - OUT_ELE_NUM_ONE_BLK) : 0;
-        xQuant1ElemNum = (xQuant1ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant1ElemNum;
-        uint32_t xQuant2ElemNum = (curXElemNum > OUT_ELE_NUM_ONE_BLK * 2) ?
-            (curXElemNum - OUT_ELE_NUM_ONE_BLK * 2) : 0;
-        xQuant2ElemNum = (xQuant2ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant2ElemNum;
-        uint32_t xQuant3ElemNum = (curXElemNum > OUT_ELE_NUM_ONE_BLK * 3) ?
-            (curXElemNum - OUT_ELE_NUM_ONE_BLK * 3) : 0;
-        xQuant3ElemNum = (xQuant3ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant3ElemNum;
-        maskXQuant0B32 = UpdateMask<float>(xQuant0ElemNum);
-        maskXQuant1B32 = UpdateMask<float>(xQuant1ElemNum);
-        maskXQuant2B32 = UpdateMask<float>(xQuant2ElemNum);
-        maskXQuant3B32 = UpdateMask<float>(xQuant3ElemNum);
+        // uint32_t curXOffset = static_cast<uint32_t>(i) * vlForT * 2;
+        // uint32_t curXElemNum = (xElemNum > curXOffset) ? (xElemNum - curXOffset) : 0;
+        // curXElemNum = (curXElemNum > vlForT * 2) ? (vlForT * 2) : curXElemNum;
+        // uint32_t xQuant0ElemNum = curXElemNum;
+        // xQuant0ElemNum = (xQuant0ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant0ElemNum;
+        // uint32_t xQuant1ElemNum = (curXElemNum > OUT_ELE_NUM_ONE_BLK) ?
+        //     (curXElemNum - OUT_ELE_NUM_ONE_BLK) : 0;
+        // xQuant1ElemNum = (xQuant1ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant1ElemNum;
+        // uint32_t xQuant2ElemNum = (curXElemNum > OUT_ELE_NUM_ONE_BLK * 2) ?
+        //     (curXElemNum - OUT_ELE_NUM_ONE_BLK * 2) : 0;
+        // xQuant2ElemNum = (xQuant2ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant2ElemNum;
+        // uint32_t xQuant3ElemNum = (curXElemNum > OUT_ELE_NUM_ONE_BLK * 3) ?
+        //     (curXElemNum - OUT_ELE_NUM_ONE_BLK * 3) : 0;
+        // xQuant3ElemNum = (xQuant3ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant3ElemNum;
+        maskXQuant0B32 = UpdateMask<float>(xElemNum);
+        maskXQuant1B32 = UpdateMask<float>(xElemNum);
+        maskXQuant2B32 = UpdateMask<float>(xElemNum);
+        maskXQuant3B32 = UpdateMask<float>(xElemNum);
 
         // 拷入待量化的x：x0存放偶数位的值，x1存放奇数位的值，双搬共拷入vlForT*2个元素
         DataCopy<T, PostLiteral::POST_MODE_UPDATE, LoadDist::DIST_DINTLV_B16>(x0, x1, xAddr, vlForT * 2);
