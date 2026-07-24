@@ -18,6 +18,8 @@ VECTOR_BASEG = 32
 VECTOR_BASEN = 256
 
 GATHER_CHUNK_SIZE = 16
+V2_SCATTER_BATCH = 16
+V2_TARGET_BATCHES_PER_AIV = 8
 
 # One physical core owns a complete (B, S1 tile) task.  These constants mirror
 # the original service split: V0 publishes separate gathered Key and KeyIndex
@@ -128,9 +130,28 @@ class TaskSchedule:
     tasks_per_core: int
 
 
-def _make_task_schedule(B: int, S1: int, launch_core_num: int) -> TaskSchedule:
-    task_count = B * ceil_div(S1, BLOCK_M)
-    active_cores = min(max(task_count, 1), max(launch_core_num, 1))
+def _make_task_schedule(
+    B: int,
+    S1: int,
+    S2: int,
+    K: int,
+    hardware_core_num: int,
+) -> TaskSchedule:
+    task_count = B * S1
+    hardware_core_num = max(hardware_core_num, 1)
+    main_core_need = min(max(task_count, 1), hardware_core_num)
+
+    scatter_batches = ceil_div(K, V2_SCATTER_BATCH)
+    finalize_batches = ceil_div(B * S2, V2_SCATTER_BATCH)
+    v2_batches = max(scatter_batches, finalize_batches)
+    v2_core_need = ceil_div(
+        v2_batches,
+        2 * V2_TARGET_BATCHES_PER_AIV,
+    )
+    active_cores = min(
+        hardware_core_num,
+        max(main_core_need, v2_core_need, 1),
+    )
     return TaskSchedule(
         task_count=task_count,
         launch_core_num=active_cores,
@@ -262,7 +283,7 @@ def tilelang_grad_kl_loss_single_kernel(
     total_aiv_num = launch_core_num * 2
     # The official 16 KiB scatter UB is split equally between ping and pong:
     # 16 rows * 128 fp32 values * 4 bytes = 8 KiB per slot.
-    v2_scatter_batch = 16
+    v2_scatter_batch = V2_SCATTER_BATCH
     v2_total_batches = K // v2_scatter_batch
     v2_base_batches_per_core = v2_total_batches // launch_core_num
     v2_tail_batch_cores = v2_total_batches % launch_core_num
@@ -3253,7 +3274,15 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         # Matrix and vector stages share one fixed 128-row K tile.  Core
         # parallelism is owned by complete (B, S1) tasks, not K tiles.
-        core_count = _get_aicore_count()
+        hardware_core_count = _get_aicore_count()
+        schedule = _make_task_schedule(
+            B,
+            S1,
+            S2_pad,
+            K,
+            hardware_core_count,
+        )
+        core_count = schedule.launch_core_num
         block_n = N_SPLIT
         n_num_ws = K // block_n
         v2_k_padded = K
