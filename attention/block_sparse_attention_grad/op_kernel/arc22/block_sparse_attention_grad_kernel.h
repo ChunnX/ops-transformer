@@ -426,6 +426,10 @@ namespace BSA {
 
             AscendC::SyncAll<false>();
 
+            // deter: 等 AIV 清零 slot 完成(用跨核 flag, SyncAll 是 per-type 不跨 AIC↔AIV)
+            if (deter) {
+                AscendC::CrossCoreWaitFlag(DETER_V2C); // 用 DETER_V2C 做 AIV→AIC 清零完成信号
+            }
             SetFlag();
             uint32_t vec2CubeFlag = 0;
             for (uint32_t i = 0; i < taskLength; i++) {
@@ -713,9 +717,8 @@ namespace BSA {
                     AscendC::DataCopy(gDvDeterVec[off], zeroUb, chunk);
                 }
                 AscendC::PipeBarrier<PIPE_ALL>();
+                AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(DETER_V2C); // 通知 AIC: slot 清零完成(用 DETER_V2C, 不复用 CUBE2VEC)
             }
-
-            // Initialize global tensors
             AscendC::GlobalTensor<bool> gBlcokSpaseMask;
             gBlcokSpaseMask.SetGlobalBuffer((__gm__ bool *)params.blockSparseMask);
             AscendC::GlobalTensor<int64_t> gActualQseqlen;
@@ -860,10 +863,13 @@ namespace BSA {
                                 }
                                 deterRoundCntVec++;
                                 AscendC::SyncAll<false>(); // ① 等 cube 写完本轮私有 tile
-                                VecDeterReduceOneRound(gDkShared, gDvShared,
-                                                       (__gm__ float*)(params.workspace + tilingData->dkDeterGmOffset),
-                                                       (__gm__ float*)(params.workspace + tilingData->dvDeterGmOffset),
-                                                       deterInfoGm, deterLaunchedAic, deterSlotElem, subBlockIdx, coreIdx, dkSlotSize, dvSlotSize);
+                                // 只有 coreIdx==0 的 AIV 跑聚合(避免多 AIV 对重复写共享 gDk/gDv)
+                                if (coreIdx == 0) {
+                                    VecDeterReduceOneRound(gDkShared, gDvShared,
+                                                           (__gm__ float*)(params.workspace + tilingData->dkDeterGmOffset),
+                                                           (__gm__ float*)(params.workspace + tilingData->dvDeterGmOffset),
+                                                           deterInfoGm, deterLaunchedAic, deterSlotElem, subBlockIdx, coreIdx, dkSlotSize, dvSlotSize);
+                                }
                                 AscendC::SyncAll<false>(); // ② 通知 cube 可写下一轮
                             }
 
@@ -890,10 +896,12 @@ namespace BSA {
                     }
                     deterRoundCntVec++;
                     AscendC::SyncAll<false>();
-                    VecDeterReduceOneRound(gDkShared, gDvShared,
-                                           (__gm__ float*)(params.workspace + tilingData->dkDeterGmOffset),
-                                           (__gm__ float*)(params.workspace + tilingData->dvDeterGmOffset),
-                                           deterInfoGm, deterLaunchedAic, deterSlotElem, subBlockIdx, coreIdx, dkSlotSize, dvSlotSize);
+                    if (coreIdx == 0) {
+                        VecDeterReduceOneRound(gDkShared, gDvShared,
+                                               (__gm__ float*)(params.workspace + tilingData->dkDeterGmOffset),
+                                               (__gm__ float*)(params.workspace + tilingData->dvDeterGmOffset),
+                                               deterInfoGm, deterLaunchedAic, deterSlotElem, subBlockIdx, coreIdx, dkSlotSize, dvSlotSize);
+                    }
                     AscendC::SyncAll<false>();
                 }
             }
