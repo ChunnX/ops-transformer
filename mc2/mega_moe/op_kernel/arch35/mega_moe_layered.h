@@ -215,7 +215,7 @@ private:
     LocalTensor<int32_t> validTopkIndexTensor_;
     LocalTensor<int32_t> cumsumInfoTensor_;
     LocalTensor<ActivationType> copyTmpTensors_[DISPATCH_BUFFER_NUM]; // 6-buffer 软流水：占满 EVENT_ID0..EVENT_ID5。
-    LocalTensor<uint64_t> relayFlagTensor_; // 完整 [bs][32B] relay flag 快照，复用 copyTmp 起始地址。
+    LocalTensor<uint64_t> relayFlagTensor_; // 完整 [bs] relay flag 快照，复用 copyTmp 起始地址。
     LocalTensor<int32_t> relayReceivedTensor_; // 当前 chunk 每个 copyIdx 的接收状态。
     LocalTensor<int32_t> tripleTensor_;
     LocalTensor<bfloat16_t> xInTensor1_;
@@ -344,7 +344,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
         static_cast<uint64_t>(workspaceTokenScaleBytes) + static_cast<uint64_t>(ALIGN_32),
         static_cast<uint64_t>(ALIGN_512));
     sendWorkspaceServerBytes_ = static_cast<uint64_t>(ALIGN_32) + static_cast<uint64_t>(m_) * sendWorkspaceRecordBytes_;
-    uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * static_cast<uint64_t>(ALIGN_32);
+    uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
     dispatchL2ScratchBytes_ =
         Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<uint64_t>(ALIGN_512));
 }
@@ -380,7 +380,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
             static_cast<int64_t>(ALIGN_32));
         uint32_t copyTmpBytes = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * tokenScaleSize;
-        uint32_t relayFlagBytes = m_ * static_cast<uint32_t>(ALIGN_32);
+        uint32_t relayFlagBytes = m_ * sizeof(uint64_t);
         uint32_t relayReceivedBytes = Ops::Base::CeilAlign(
             static_cast<uint32_t>(DISPATCH_WAVE_TILE_M * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
         uint32_t relayAndCopyTmpBytes = (relayFlagBytes > copyTmpBytes ? relayFlagBytes : copyTmpBytes) +
@@ -448,7 +448,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             TPosition::VECCALC, copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
             COPY_TMP_BUFFER_SIZE / sizeof(ActivationType));
     }
-    uint32_t relayFlagTensorSize = m_ * static_cast<uint32_t>(ALIGN_32);
+    uint32_t relayFlagTensorSize = m_ * sizeof(uint64_t);
     relayFlagTensor_ = LocalTensor<uint64_t>(TPosition::VECCALC, copyTmpBaseAddr,
                                              relayFlagTensorSize / sizeof(uint64_t));
     uint32_t relayReceivedTensorAddr =
@@ -760,7 +760,7 @@ __aicore__ inline uint64_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::RelayFlagOff
                                                                                     uint32_t tokenId)
 {
     return (static_cast<uint64_t>(sourceServer) * static_cast<uint64_t>(m_) + tokenId) *
-           static_cast<uint64_t>(ALIGN_32);
+           sizeof(uint64_t);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -796,7 +796,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetDispatchSta
     uint32_t relayFlagNum = serverNum_ * m_;
     for (uint32_t idx = aivCoreIdx_; idx < relayFlagNum; idx += blockAivNum_) {
         __gm__ uint64_t *readyFlag = reinterpret_cast<__gm__ uint64_t *>(
-            params_.peermemInfo.dispatchFlagPtr + static_cast<uint64_t>(idx) * static_cast<uint64_t>(ALIGN_32));
+            params_.peermemInfo.dispatchFlagPtr + static_cast<uint64_t>(idx) * sizeof(uint64_t));
         WriteGmByPassDCache(readyFlag, uint64_t(0));
     }
 }
@@ -1176,7 +1176,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRe
     Duplicate<int32_t>(relayReceivedTensor_, 0, static_cast<int32_t>(DISPATCH_WAVE_TILE_M));
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
 
-    uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * static_cast<uint64_t>(ALIGN_32);
+    uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
     uint32_t flagElementNum = static_cast<uint32_t>(flagSnapshotBytes / sizeof(uint64_t));
     GM_ADDR scratchAddr = params_.workspaceInfo.dispatchL2CommPtr +
                           static_cast<uint64_t>(blockIdx_) * dispatchL2ScratchBytes_;
@@ -1199,8 +1199,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRe
                 continue;
             }
             int32_t tokenIndex = tripleTensor_[copyIdx * INT32_PER_256B].GetValue(TOKEN_ID);
-            uint32_t flagIndex = static_cast<uint32_t>(tokenIndex) * static_cast<uint32_t>(ALIGN_32) /
-                                 sizeof(uint64_t);
+            uint32_t flagIndex = static_cast<uint32_t>(tokenIndex);
             if (relayFlagTensor_.GetValue(flagIndex) != uint64_t(1)) {
                 continue;
             }

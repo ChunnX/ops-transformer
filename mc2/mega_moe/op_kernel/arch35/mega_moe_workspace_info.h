@@ -246,7 +246,8 @@ struct WorkspaceInfo {
                                                   static_cast<int64_t>(ALIGN_512));
 
             dispatchL2CommPtr = base + workspaceSize;
-            int64_t flagSnapshotBytes = static_cast<int64_t>(tilingData->bs) * static_cast<int64_t>(ALIGN_32);
+            int64_t flagSnapshotBytes =
+                static_cast<int64_t>(tilingData->bs) * static_cast<int64_t>(sizeof(uint64_t));
             int64_t dispatchL2ScratchBytes =
                 Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<int64_t>(ALIGN_512));
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * dispatchL2ScratchBytes;

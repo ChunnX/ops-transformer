@@ -46,7 +46,7 @@ struct PeermemInfo {
     GM_ADDR maskRecvPtr;        // 源卡算好的 send-mask 接收区, 布局 [localExpert][srcRank]
     GM_ADDR quantTokenScalePtr; // 量化结果，包括data+scale
     GM_ADDR dispatchRecivePtr;  // dispatch 一级通信数据区，仅保存 token + scale
-    GM_ADDR dispatchFlagPtr;    // dispatch ready flag 区，布局 [sourceServer][tokenId][32B]
+    GM_ADDR dispatchFlagPtr;    // dispatch ready flag 区，布局 [sourceServer][tokenId] uint64_t
     GM_ADDR combineSendPtr;
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1,
@@ -91,7 +91,7 @@ struct PeermemInfo {
                                            (int64_t)ALIGN_512);
             dispatchFlagPtr = base + offset;
             offset += Ops::Base::CeilAlign(
-                static_cast<int64_t>(serverNum) * tilingData->bs * static_cast<int64_t>(ALIGN_32),
+                static_cast<int64_t>(serverNum) * tilingData->bs * static_cast<int64_t>(sizeof(uint64_t)),
                 static_cast<int64_t>(ALIGN_512));
         }
         combineSendPtr = base + offset;
