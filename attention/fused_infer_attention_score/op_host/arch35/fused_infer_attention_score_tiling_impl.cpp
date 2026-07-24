@@ -1243,7 +1243,7 @@ void FusedInferAttentionScoreTilingImpl::ApplySinnerSouterOverrides(const FiaTil
     }
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         sOuterFactor_ = SOUTER_64;
-        sInnerFactor_ = SINNER_512;
+        sInnerFactor_ = (fiaInfo.vHeadDim == DSIZE_256) ? SINNER_256 : SINNER_512;
     }
 }
 
