@@ -383,7 +383,9 @@ public:
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
             }
         } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-            for (uint16_t i = 0; i < 2; i++) {
+            constexpr uint16_t pScaleSingleCopyBytes = 8 * 32;
+            constexpr uint16_t singleCopyCount = (pScaleDataLen >= 2 * pScaleSingleCopyBytes) ? 2 : 1;
+            for (uint16_t i = 0; i < singleCopyCount; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * s2BaseSizeCur], pScaleSubLoop0Tensor, {1, 8, 0, 0});
             }
         }
