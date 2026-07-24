@@ -1651,7 +1651,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
             actualShape.c_str(),
             ("In FP8 GQA fullquant scenario, "
-             "the shape of value_antiquant_scale should be " + expectedShape + " (N layout).").c_str());
+             "the shape of value_antiquant_scale should be " + expectedShape + " (N layout)").c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -2098,8 +2098,8 @@ ge::graphStatus DequantChecker::CheckDSizeFullquant(const FiaTilingInfo &fiaInfo
             return ge::GRAPH_FAILED;
         }
     } else if (enableQKPerTokenHeadVPerHead_) {
-        std::string dimValues = "query and key headDim=" + std::to_string(fiaInfo.qkHeadDim) +
-                                ", value headDim=" + std::to_string(fiaInfo.vHeadDim);
+        std::string dimValues = "qkheadDim=" + std::to_string(fiaInfo.qkHeadDim) + ", " +
+                                "vheadDim=" + std::to_string(fiaInfo.vHeadDim);
         OP_CHECK_IF(
             (fiaInfo.qkHeadDim != NUM_128 || fiaInfo.vHeadDim != NUM_128),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "query, key or value",
