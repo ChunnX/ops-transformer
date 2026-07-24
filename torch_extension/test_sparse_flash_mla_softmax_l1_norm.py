@@ -310,7 +310,7 @@ def run_test_case(params):
     mask_mode = int(params.get("mask_mode", 0))
     cmp_ratio = int(params.get("cmp_ratio", 1))
     softmax_scale = float(params.get("softmax_scale", SCALE))
-    core_num = 32
+    core_num = 36
 
     K = params.get("sparse_size")
     if K is not None: K = int(K)
@@ -386,7 +386,7 @@ def run_test_case(params):
                 cmp_residual_k=cmp_residual_k_dev,
                 topk_length=topk_length_dev,
                 metadata=metadata_dev,
-                scale_value=softmax_scale,
+                softmax_scale=softmax_scale,
                 max_seqlen_k=S2,
                 cmp_ratio=cmp_ratio,
                 mask_mode=mask_mode,
@@ -443,7 +443,7 @@ def run_test_case(params):
                 cmp_residual_k=cmp_residual_k_dev,
                 topk_length=topk_length_dev,
                 metadata=metadata_dev,
-                scale_value=softmax_scale,
+                softmax_scale=softmax_scale,
                 max_seqlen_k=gen_s2 if not is_sparse else 0,
                 cmp_ratio=cmp_ratio,
                 mask_mode=mask_mode,
@@ -499,7 +499,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info("SparseFlashMlaSoftmaxL1Norm Merged Tests V2")
 
-    excel_path = r"/npu/d00483431/code/ops-transformer/torch_extension/sparse_flash_mla_softmax_l1_norm_fuzz_gate.xlsx"
+    excel_path = r"/home/daiyuwen/code/ops-transformer/torch_extension/sparse_flash_mla_softmax_l1_norm_fuzz_gate.xlsx"
     test_cases = load_excel_params(excel_path)
 
     results = []

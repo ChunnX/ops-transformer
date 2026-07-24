@@ -156,14 +156,14 @@ at::Tensor sparse_flash_mla_softmax_l1_norm(
         const c10::OptionalDeviceGuard device_guard(local_device);
         const at::Tensor &sparse_indices_value = sparse_indices.value_or(at::Tensor());
         if (sparse_indices_value.defined()) {
-            softmax_l1_norm = at::zeros(sparse_indices_value.sizes(), query.options().dtype(at::kFloat));
+            softmax_l1_norm = at::empty(sparse_indices_value.sizes(), query.options().dtype(at::kFloat));
         } else {
             if (layout_q_str == "BSND") {
-                softmax_l1_norm = at::zeros(
+                softmax_l1_norm = at::empty(
                     {query.size(DIM_0), s1, 1, s2},
                     query.options().dtype(at::kFloat));
             } else {
-                softmax_l1_norm = at::zeros(
+                softmax_l1_norm = at::empty(
                     {s1, 1, max_seqlen_k},
                     query.options().dtype(at::kFloat));
             }
