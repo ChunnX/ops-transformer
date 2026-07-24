@@ -1832,53 +1832,86 @@ public:
         }
     }
 
-    // 把后半区 kOutLocal1[0..halfDk)(在 ubFactor/2，32B 对齐)用非对齐向量存(StoreUnAlign)搬到
-    // kOutLocal[halfDk..dk) 的空档，使整行 [0,dk) 连续。StoreUnAlign 按对齐块写、把跨界残余缓存进
-    // UnalignReg，循环后 StoreUnAlignPost 刷尾——这才是非对齐 UB 存的正确指令(DIST_PACK_B32 会 VEC_ERROR)。
-    // NZ dk1 为奇数(dk/2 非 dk0 对齐)：DataCopyPad 的 UB 端起址必须 32B 对齐，而后半区(backLocal)在 UB 的
-    // ubFactor/2、按 dk/2 分半区写出时后半偏移不落分形块边界。分两步：
-    //   ① 用非对齐向量存(LoadAlign→StoreUnAlign)把 backLocal[0..halfDk) 紧凑到 frontLocal[halfDk..dk) 空档，
-    //      使整行 [0,dk) 连续(frontLocal[0] 天然 32B 对齐)。VF 计算是解包布局、与 vstus 不兼容，故这里用
-    //      原始对齐载入 LoadAlign(非解包)配 StoreUnAlign，无需 cast——不能直接塞进 VF 的解包链路。
-    //   ② 单发 dk1 个 dk0 分形块整行写出到 cache。
+    // NZ dk1 为奇数(dk/2 非 dk0 对齐)的 scatter，泛化到任意大 dk / 多 tile（去掉整行拼接的单 tile 约束）。
+    // 关键：cache 一行由 dk1 个「独立的 dk0 分形子块」组成（子块 i 存 dims[i*dk0,(i+1)*dk0)，按 blockSize*dk0
+    // 跨步），并不需要一整行连续搬出——逐子块写即可。奇 dk1 时 dk/2 = m*dk0 + r（r=dk0/2, m=halfDk/dk0），
+    //   · 前半区 dims[0,dk/2)：0..m-1 是满 dk0 子块（源天然 32B 对齐，直接写）；末尾 r 个是「跨界子块 m」的前半。
+    //   · 后半区 dims[dk/2,dk)：整体相对子块网格错位 r。每个 back 网格块 g 拆两半 r：
+    //       first-half（源 backLocal[g*dk0]，32B 对齐）→ 写 cache 子块(m+g) 的 [r,dk0)；
+    //       second-half（源 backLocal[g*dk0+r]，错位 r 非对齐）→ 需重排：用 LoadAlign→StoreUnAlign 把整个 back
+    //       切片右移 r 存进空闲 scratch（scratch[r+i]=backLocal[i]），则 second-half 源变 scratch[(g+1)*dk0]（对齐）。
+    //     两半分别落 GM 的两个 half（互不相交），无需在 UB 里拼块，因此天然无跨 tile 携带。
+    //   · 跨界子块 m：前半 r 来自前半区末尾（本 tile 若含），后半 r 来自 back 网格块 0 的 first-half（tile0）。
+    //   · 末子块 2m(=dk1-1)：[0,r) 由 back 末网格块的 second-half 写，[r,dk0) 由 back 末尾 r（dims[dk-r,dk)）写。
+    // 每 tile 只处理本 tile 覆盖的 [base,base+width)（per-half）：base=ubFactor*ubIdx/2（dk0 对齐），
+    // width=per-half tile 宽。跨界前半 / back 末尾 r 仅在最后一个 tile（base+width==halfDk）出现。
+    // scratch 复用 frontLocal[ubFactor] 之后的空闲尾部（三种 out/quant buffer 布局下都有 >= ubFactor 个空闲元素）。
     // T=T_KV(非量化 kOutLocal) 或 T_K_CACHE(量化 kQuantLocal)；rowBase 为该 token 行首(列0)的 cache GM 偏移。
-    // 依赖单 tile(ubFactorDkLoopCountCeil==1，ubIdx==0)，且 ubFactor>=2*dk：空档不覆盖 back 源。
     template <typename T>
-    __aicore__ inline void ScatterKNzWholeRow(const LocalTensor<T>& frontLocal, const LocalTensor<T>& backLocal,
-                                              int64_t rowBase)
+    __aicore__ inline void ScatterKNzOddDk1(const LocalTensor<T>& frontLocal, const LocalTensor<T>& backLocal,
+                                            int64_t rowBase, int64_t base, int64_t width)
     {
         int64_t halfDk = tilingData_->dk / CONST_TWO;
-        int64_t dk1 = tilingData_->dk / dk0;
-        // ① 紧凑后半区成连续整行。主 VL 循环 + 无条件尾 VL(VF 惯例，不用 if)：本路径 halfDk 非 dk0 整数倍，
-        //    而 VL_FP32 是 dk0 整数倍 ⟹ halfDk 必非 VL_FP32 整数倍 ⟹ tailWidth 恒 > 0，无需判空。
-        __local_mem__ T* src = (__local_mem__ T*)backLocal.GetPhyAddr();
-        __local_mem__ T* dst = (__local_mem__ T*)frontLocal.GetPhyAddr() + halfDk;
-        uint16_t repeatFloor = static_cast<uint16_t>(halfDk / VL_FP32);
-        uint32_t tailWidth = static_cast<uint32_t>(halfDk - static_cast<int64_t>(repeatFloor) * VL_FP32);
+        int64_t r = dk0 / CONST_TWO;
+        int64_t m = halfDk / dk0;                       // 跨界子块下标；halfDk = m*dk0 + r
+        int64_t baseBlk = base / dk0;                   // 本 tile 前半区首个子块下标
+        int64_t fullEndDim = (base + width < m * dk0) ? (base + width) : (m * dk0);
+        int64_t numFull = (fullEndDim - base) / dk0;    // 本 tile 满 dk0 子块数（前/后半一致）
+        bool isLastTile = (base + width == halfDk);
+        int64_t blkStride = tilingData_->blockSize * dk0;       // 子块间元素跨步
+        int64_t elemSize = static_cast<int64_t>(sizeof(T));
+
+        // ① 把 back 切片右移 r 重排进 scratch：scratch[r+i]=backLocal[i]（LoadAlign 对齐读 + StoreUnAlign 非对齐写，
+        //    这是非对齐 UB 存的正确指令；DIST_PACK_B32 会 VEC_ERROR）。主 VL 循环 + 无条件尾 VL(VF 惯例，不用 if)：
+        //    width 恒 >= r > 0，取 repeatFloor=(width-1)/VL_FP32 使尾宽 tailW 恒落 [1,VL_FP32]（width 为 VL_FP32
+        //    整数倍时尾块吃满一整 VL），故尾块无需判空。
+        LocalTensor<T> scratch = frontLocal[this->ubFactor];
+        __local_mem__ T* srcPtr = (__local_mem__ T*)backLocal.GetPhyAddr();
+        __local_mem__ T* dstPtr = (__local_mem__ T*)scratch.GetPhyAddr() + r;   // 非对齐 dst，StoreUnAlign 允许
+        uint16_t repeatFloor = static_cast<uint16_t>((width - 1) / VL_FP32);
+        uint32_t tailW = static_cast<uint32_t>(width - static_cast<int64_t>(repeatFloor) * VL_FP32);
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<T> reg;
             AscendC::MicroAPI::UnalignReg ureg;
             for (uint16_t j = 0; j < repeatFloor; j++) {
                 AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                    reg, src, static_cast<int32_t>(VL_FP32));
-                AscendC::MicroAPI::StoreUnAlign(dst, reg, ureg, static_cast<uint32_t>(VL_FP32));
+                    reg, srcPtr, static_cast<int32_t>(VL_FP32));
+                AscendC::MicroAPI::StoreUnAlign(dstPtr, reg, ureg, static_cast<uint32_t>(VL_FP32));
             }
             AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                reg, src, static_cast<int32_t>(tailWidth));
-            AscendC::MicroAPI::StoreUnAlign(dst, reg, ureg, tailWidth);
-            AscendC::MicroAPI::StoreUnAlignPost(dst, ureg, static_cast<int32_t>(0));
+                reg, srcPtr, static_cast<int32_t>(tailW));
+            AscendC::MicroAPI::StoreUnAlign(dstPtr, reg, ureg, tailW);
+            AscendC::MicroAPI::StoreUnAlignPost(dstPtr, ureg, static_cast<int32_t>(0));
         }
-        // ② 单发整行分形写出(V→MTE3 同步后)
         event_t evtVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(evtVToMTE3);
         WaitFlag<HardEvent::V_MTE3>(evtVToMTE3);
-        AscendC::DataCopyExtParams rowParams;
-        rowParams.blockCount = static_cast<uint16_t>(dk1);
-        rowParams.blockLen = static_cast<uint32_t>(dk0 * sizeof(T));
-        rowParams.srcStride = 0;
-        rowParams.dstStride = static_cast<uint32_t>((tilingData_->blockSize - 1) * dk0 * sizeof(T));
-        AscendC::DataCopyPad(this->kCacheGm[rowBase], frontLocal, rowParams);
+
+        // 逐子块 blockCount=1 写（与对齐路径同款，避免非对齐/strided 歧义）
+        AscendC::DataCopyExtParams p;
+        p.blockCount = 1;
+        p.srcStride = 0;
+        p.dstStride = 0;
+        // ② 前半区满子块：frontLocal[i*dk0] → cache 子块(baseBlk+i)
+        p.blockLen = static_cast<uint32_t>(dk0 * elemSize);
+        for (int64_t i = 0; i < numFull; i++) {
+            AscendC::DataCopyPad(this->kCacheGm[rowBase + (baseBlk + i) * blkStride], frontLocal[i * dk0], p);
+        }
+        // ③④ back 两半 r：first-half（backLocal[g*dk0] 对齐）→ 子块(m+baseBlk+g) 的 [r,dk0)（g=0/tile0 即跨界子块 m 后半）；
+        //    second-half（scratch[(g+1)*dk0] 右移重排后对齐）→ 子块(m+baseBlk+g+1) 的 [0,r)。两半落 GM 不同 half。
+        p.blockLen = static_cast<uint32_t>(r * elemSize);
+        for (int64_t g = 0; g < numFull; g++) {
+            AscendC::DataCopyPad(this->kCacheGm[rowBase + (m + baseBlk + g) * blkStride + r], backLocal[g * dk0], p);
+            AscendC::DataCopyPad(this->kCacheGm[rowBase + (m + baseBlk + g + 1) * blkStride], scratch[(g + 1) * dk0],
+                                 p);
+        }
+        // ⑤ 最后一个 tile：跨界子块 m 前半 r（frontLocal 前半区末尾，对齐）+ 末子块 2m 尾 r（backLocal 后半区末尾，对齐）
+        if (isLastTile) {
+            AscendC::DataCopyPad(this->kCacheGm[rowBase + m * blkStride], frontLocal[m * dk0 - base], p);
+            AscendC::DataCopyPad(this->kCacheGm[rowBase + (CONST_TWO * m) * blkStride + r],
+                                 backLocal[m * dk0 - base], p);
+        }
     }
 
     __aicore__ inline void ScatterUpdateK(int64_t rowIdx, int64_t ubIdx, int64_t tmpFactor)
@@ -1922,14 +1955,17 @@ public:
             } else if (tilingData_->cacheMode == PA_NZ_CACHE_MODE) {
                 batchIdx = kCacheIdx / tilingData_->blockSize;
                 int64_t blockOffset = kCacheIdx % tilingData_->blockSize;
-                // dk1 奇数(dk/2 非 dk0 对齐)：紧凑整行 + 单发分形写；单 tile 保证 ubIdx==0。量化写 kQuantLocal、非量化写 kOutLocal
+                // dk1 奇数(dk/2 非 dk0 对齐)：逐 dk0 子块写 + back 半区右移 r 重排；泛化到任意 dk / 多 tile。
+                // base=本 tile 前半区偏移(dk0 对齐)，width=per-half tile 宽(即入参 tmpFactor)。量化写 kQuantLocal、非量化写 kOutLocal
                 if ((tilingData_->dk / CONST_TWO) % dk0 != 0) {
                     int64_t rowBase = batchIdx * tilingData_->dk * tilingData_->blockSize + blockOffset * dk0;
+                    int64_t base = this->ubFactor * ubIdx / CONST_TWO;
                     if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                                  IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
-                        ScatterKNzWholeRow<T_K_CACHE>(kQuantLocal, kQuantLocal1, rowBase);
+                                  IsSameType<T_K_CACHE, fp8_e5m2_t>::value ||
+                                  IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+                        ScatterKNzOddDk1<T_K_CACHE>(kQuantLocal, kQuantLocal1, rowBase, base, tmpFactor);
                     } else {
-                        ScatterKNzWholeRow<T_KV>(kOutLocal, kOutLocal1, rowBase);
+                        ScatterKNzOddDk1<T_KV>(kOutLocal, kOutLocal1, rowBase, base, tmpFactor);
                     }
                     return;
                 }
@@ -1992,14 +2028,16 @@ public:
             } else {
                 int64_t blockOffset = kCacheIdx / tilingData_->blockSize;
                 int64_t rowOffset = seqIdx % tilingData_->blockSize;
-                // dk1 奇数：紧凑整行 + 单发分形写(PA_BLK_NZ 行首 = blockOffset*dk*blockSize + rowOffset*dk0)
+                // dk1 奇数：逐 dk0 子块写 + back 半区右移 r 重排(PA_BLK_NZ 行首 = blockOffset*dk*blockSize + rowOffset*dk0)
                 if ((tilingData_->dk / CONST_TWO) % dk0 != 0) {
                     int64_t rowBase = blockOffset * tilingData_->dk * tilingData_->blockSize + rowOffset * dk0;
+                    int64_t base = this->ubFactor * ubIdx / CONST_TWO;
                     if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                                  IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
-                        ScatterKNzWholeRow<T_K_CACHE>(kQuantLocal, kQuantLocal1, rowBase);
+                                  IsSameType<T_K_CACHE, fp8_e5m2_t>::value ||
+                                  IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+                        ScatterKNzOddDk1<T_K_CACHE>(kQuantLocal, kQuantLocal1, rowBase, base, tmpFactor);
                     } else {
-                        ScatterKNzWholeRow<T_KV>(kOutLocal, kOutLocal1, rowBase);
+                        ScatterKNzOddDk1<T_KV>(kOutLocal, kOutLocal1, rowBase, base, tmpFactor);
                     }
                     return;
                 }
