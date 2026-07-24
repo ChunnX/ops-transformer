@@ -38,16 +38,7 @@ const aclTensor *StemOamPrepVarlenQ(
     L0_DFX(StemOamPrepVarlenQ, q, qSeqLens, cuSeqLensQ, qScale, stemBlockSize, stemStride);
 
     auto qSeqLensTensor = executor->ConvertToTensor(qSeqLens, DataType::DT_INT64);
-    auto mutableQSeqLens = const_cast<aclTensor *>(qSeqLensTensor);
-    mutableQSeqLens->SetStorageFormat(Format::FORMAT_ND);
-    mutableQSeqLens->SetViewFormat(Format::FORMAT_ND);
-    mutableQSeqLens->SetOriginalFormat(Format::FORMAT_ND);
-
     auto cuSeqLensQTensor = executor->ConvertToTensor(cuSeqLensQ, DataType::DT_INT64);
-    auto mutableCuSeqLensQ = const_cast<aclTensor *>(cuSeqLensQTensor);
-    mutableCuSeqLensQ->SetStorageFormat(Format::FORMAT_ND);
-    mutableCuSeqLensQ->SetViewFormat(Format::FORMAT_ND);
-    mutableCuSeqLensQ->SetOriginalFormat(Format::FORMAT_ND);
 
     auto qFlatTensor = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
 
