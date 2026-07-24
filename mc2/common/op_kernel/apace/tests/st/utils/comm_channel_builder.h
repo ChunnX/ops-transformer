@@ -23,6 +23,7 @@
 #include "hccl/hccl.h"
 #include "hccl/hccl_res.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
+#include "apace/kernel/quant_matmul_all_to_all/matmul_all_to_all_tiling_data.h"
 
 constexpr uint8_t BUILDER_COMM_ENGINE_AIV = 4;
 constexpr uint32_t BUILDER_CHANNEL_NOTIFY_NUM = 3U;
@@ -34,13 +35,12 @@ enum class ChannelMode {
     UBMEM
 };
 
+template <ChannelMode DataChannelMode = ChannelMode::URMA,
+          ChannelMode BarrierChannelMode = ChannelMode::UBMEM,
+          bool NeedBarrier = true>
 class CommChannelBuilder {
 public:
-    explicit CommChannelBuilder(HcclComm comm) : comm_(comm)
-    {
-        HcclGetRankId(comm_, &rankId_);
-        HcclGetRankSize(comm_, &rankNum_);
-    }
+    explicit CommChannelBuilder(HcclComm comm) : comm_(comm) {}
 
     /*!
      * \brief 获取 rankId
@@ -81,20 +81,23 @@ public:
     }
 
     /*!
-     * \brief 由 HCCL engine 申请 device 内存并拷贝 context，返回 device 地址
-     * \param [in] hostCtx     host 端 context 指针
-     * \param [in] ctxSize     context 大小
-     * \param [in] ctxTag      引擎标签（同一 tag 可复用已创建的 context）
-     * \param [in] needBarrier 是否在 context 之后多申请 2M 并注册为 ubmem commBufferAddr
-     * \param [in] ubmemCtx    ubmem context 指针（needBarrier=true 时不能为空）
+     * \brief 由 HCCL engine 申请 device 内存，建立 data/barrier channel 并拷贝 context，返回 device 地址
+     * \param [in] hostCtx  host 端 CommContext 指针，内部填充 udmaCtx/ubmemCtx 字段
+     * \param [in] ctxTag   引擎标签（同一 tag 可复用已创建的 context）
      * \return device 端 context 地址，失败返回 nullptr
+     *
+     * \note HcclEngineCtxGet 命中已存在 context 时直接复用，跳过建链与字段填充；
+     *       rankId/rankSize 赋值及 channel 建立仅在新建路径中执行。
+     *       调用方应在本函数返回后对 rank 间做一次 barrier，确保所有 channel 握手完成。
      */
-    void* CreateDeviceContext(void* hostCtx, uint64_t ctxSize, const char* ctxTag,
-                              bool needBarrier = false,
-                              Apace::AivComm::CommUbmemContext* ubmemCtx = nullptr)
+    void* CreateDeviceContext(CommContext* hostCtx, const char* ctxTag)
     {
         constexpr uint64_t BARRIER_BUF_SIZE = 2UL * 1024 * 1024;
-        uint64_t totalSize = needBarrier ? ctxSize + BARRIER_BUF_SIZE : ctxSize;
+        uint64_t ctxSize = sizeof(CommContext);
+        uint64_t totalSize = NeedBarrier ? ctxSize + BARRIER_BUF_SIZE : ctxSize;
+
+        auto* udmaCtx = &hostCtx->udmaCtx;
+        auto* ubmemCtx = &hostCtx->ubmemCtx;
 
         void* devCtx = nullptr;
         CommEngine engine = static_cast<CommEngine>(BUILDER_COMM_ENGINE_AIV);
@@ -107,7 +110,24 @@ public:
             return nullptr;
         }
 
-        if (needBarrier && ubmemCtx != nullptr) {
+        if (HcclGetRankId(comm_, &rankId_) != HCCL_SUCCESS) {
+            return nullptr;
+        }
+        if (HcclGetRankSize(comm_, &rankNum_) != HCCL_SUCCESS) {
+            return nullptr;
+        }
+
+        udmaCtx->rankId = rankId_;
+        udmaCtx->rankSize = rankNum_;
+        std::string dataBufTag = std::string(ctxTag) + "dataBuf";
+        if (!AllocRegAndBuildChannels(DataChannelMode, dataBufTag.c_str(),
+                                      udmaCtx->channelHandles, udmaCtx->commBufferAddrs)) {
+            return nullptr;
+        }
+
+        if constexpr (NeedBarrier) {
+            ubmemCtx->rankId = rankId_;
+            ubmemCtx->rankSize = rankNum_;
             void* barrierBuf = reinterpret_cast<void*>(
                 reinterpret_cast<uintptr_t>(devCtx) + ctxSize);
             CommMem regMem = {};
@@ -120,8 +140,11 @@ public:
                 return nullptr;
             }
             ubmemCtx->commBufferAddrs[ubmemCtx->rankId] = reinterpret_cast<uint64_t>(barrierBuf);
-            if (!BuildChannels(ChannelMode::UBMEM, false,
-                               CommProtocol::COMM_PROTOCOL_UB_MEM, memHandle, syncBufTag.c_str(),
+            if (!BuildChannels(BarrierChannelMode, false,
+                               (BarrierChannelMode == ChannelMode::URMA)
+                                   ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP
+                                   : ::CommProtocol::COMM_PROTOCOL_UB_MEM,
+                               memHandle, syncBufTag.c_str(),
                                nullptr, ubmemCtx->commBufferAddrs)) {
                 return nullptr;
             }

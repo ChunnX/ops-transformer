@@ -31,9 +31,6 @@
 #include "../../utils/comm_channel_builder.h"
 #include "../../utils/root_info_exchanger.h"
 
-using CommUdmaContext = Apace::AivComm::CommUdmaContext;
-using CommUbmemContext = Apace::AivComm::CommUbmemContext;
-
 static constexpr int32_t BENCHMARK_ITERATIONS = 10;
 static constexpr uint32_t PING_PONG_BUF_NUM = 4;
 static constexpr uint32_t CHANNEL_NOTIFY_NUM = 3U;
@@ -179,32 +176,18 @@ int RunMatmulAllToAll(int rankNum, int rankId, int m, int k, int n,
 
   CommChannelBuilder builder(comm);
   CommContext hostCtx = {};
-  CommUdmaContext* udmaCtx = &hostCtx.udmaCtx;
-  CommUbmemContext* ubmemCtx = &hostCtx.ubmemCtx;
-  udmaCtx->rankId = builder.GetRankId();
-  udmaCtx->rankSize = builder.GetRankSize();
-  ubmemCtx->rankId = builder.GetRankId();
-  ubmemCtx->rankSize = builder.GetRankSize();
 
   const char *ctxTag = "quant_matmul_all_to_all";
-  std::string dataBufTag = std::string(ctxTag) + "dataBuf";
 
-  if (!builder.AllocRegAndBuildChannels(
-      ChannelMode::URMA, dataBufTag.c_str(),
-      udmaCtx->channelHandles, udmaCtx->commBufferAddrs)) {
-    ERROR_LOG("rank %d AllocRegAndBuildChannels shareBuf failed", rankId);
+  CommContext *devContext = reinterpret_cast<CommContext *>(
+      builder.CreateDeviceContext(&hostCtx, ctxTag));
+  if (devContext == nullptr) {
+    ERROR_LOG("rank %d CreateDeviceContext failed", rankId);
     return -1;
   }
 
   exchanger.Barrier();
   exchanger.Close();
-
-  CommContext *devContext = reinterpret_cast<CommContext *>(
-      builder.CreateDeviceContext(&hostCtx, sizeof(CommContext), ctxTag, true, ubmemCtx));
-  if (devContext == nullptr) {
-    ERROR_LOG("rank %d CreateDeviceContext failed", rankId);
-    return -1;
-  }
 
   QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
 
