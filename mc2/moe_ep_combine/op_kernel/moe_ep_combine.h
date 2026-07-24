@@ -367,45 +367,35 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssign
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpertToToken()
 {
-    if (actualA_ == 0 || epWorldSize_ == 0 || aivNum_ == 0) {
+        if (actualA_ == 0 || epWorldSize_ == 0 || aivNum_ == 0) {
         return;
     }
-    uint32_t activeAivNum = aivNum_;
-    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
-    if (activeAivNum > maxChannelAivNum) {
-        activeAivNum = maxChannelAivNum;
-    }
-    if (aivId_ >= activeAivNum) {
+    if (aivId_ >= aivNum_) {
         return;
     }
 
-    bool groupByRank = activeAivNum >= epWorldSize_;
-    uint32_t targetRank = epWorldSize_;
-    uint32_t coreIndexInGroup = 0;
-    uint32_t groupSize = 1;
-    if (groupByRank) {
-        GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
-        if (targetRank >= epWorldSize_ || groupSize == 0) {
-            return;
-        }
+    // 按所有token分核发送
+    uint32_t startTokenId, endTokenId, tokenPerAiv;
+    SplitToCore(actualA_, aivNum_, startTokenId, endTokenId, tokenPerAiv);
+    if (startTokenId >= endTokenId) {
+        return;
     }
-    // The cores assigned to one rank use different channels and scan disjoint metadata tiles.
-    uint32_t channelIndex = groupByRank ? (coreIndexInGroup % channelsPerRank_) : 0;
+
+    uint32_t channelIndex = aivId_ % channelsPerRank_;
     Duplicate<uint32_t>(statusTensor_, (uint32_t)1, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
 
-    uint32_t metaTileTokens = (actualA_ < META_TILE_TOKEN_MAX) ? actualA_ : META_TILE_TOKEN_MAX;
+    uint32_t remainTokens = endTokenId - startTokenId;
+    uint32_t metaTileTokens = (remainTokens < META_TILE_TOKEN_MAX) ? remainTokens : META_TILE_TOKEN_MAX;
     uint32_t metaChunkBytes = Ceil(metaTileTokens * metaBytesPerToken, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(metadataBuf_, metaChunkBytes);
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
     const DataCopyPadExtParams<int32_t> metaPadParams{false, 0U, 0U, 0U};
 
-    // Cores in one rank group scan disjoint metadata tiles. Across the group every metadata row is covered once.
-    uint64_t chunkStart = groupByRank ? static_cast<uint64_t>(coreIndexInGroup) * metaTileTokens : 0;
-    uint64_t chunkStride = groupByRank ? static_cast<uint64_t>(groupSize) * metaTileTokens : metaTileTokens;
-    for (; chunkStart < actualA_; chunkStart += chunkStride) {
-        uint64_t chunkEnd = (chunkStart + metaTileTokens > actualA_) ? actualA_ : (chunkStart + metaTileTokens);
+        // 按token分核，每个核只遍历自己负责的token范围 [startTokenId, endTokenId)
+    for (uint64_t chunkStart = startTokenId; chunkStart < endTokenId; chunkStart += metaTileTokens) {
+        uint64_t chunkEnd = (chunkStart + metaTileTokens > endTokenId) ? endTokenId : (chunkStart + metaTileTokens);
         uint32_t curChunkTokens = static_cast<uint32_t>(chunkEnd - chunkStart);
 
         DataCopyExtParams metaCopyParams{1U, curChunkTokens * metaBytesPerToken, 0U, 0U, 0U};
@@ -417,14 +407,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             int32_t src_rank = metadataLocal.GetValue(i * RECV_META_FIELDS + 0);
             int32_t src_token_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
             int32_t src_topK_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
-            if (src_rank < 0 || src_rank >= static_cast<int32_t>(epWorldSize_)) {
-                continue;
-            }
-            if (groupByRank) {
-                if (src_rank != static_cast<int32_t>(targetRank)) {
-                    continue;
-                }
-            } else if (static_cast<uint32_t>(src_rank) % activeAivNum != aivId_) {
+                        if (src_rank < 0 || src_rank >= static_cast<int32_t>(epWorldSize_)) {
                 continue;
             }
             uint64_t slotOffset = (static_cast<uint64_t>(src_token_idx) * topK_ + src_topK_idx) * perSlotBytes_;
@@ -451,20 +434,14 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖 metadataLocal
     }
 
-    // 按 channel 统一 drain：所有 token 批量发送完成后，再等待通信完成
-    if (groupByRank) {
-        if (targetRank != rankId_) {
-            uint64_t commHandle = GetCommHandle(targetRank, channelIndex);
-            hcomm_.Drain(commHandle);
+    // 发完所有token后统一drain
+    PipeBarrier<PIPE_ALL>();
+    for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
+        if (rank == rankId_) {
+            continue;
         }
-    } else {
-        for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
-            if (rank == rankId_ || rank % activeAivNum != aivId_) {
-                continue;
-            }
-            uint64_t commHandle = GetCommHandle(rank, 0);
-            hcomm_.Drain(commHandle);
-        }
+        uint64_t commHandle = GetCommHandle(rank, channelIndex);
+        hcomm_.Drain(commHandle);
     }
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
