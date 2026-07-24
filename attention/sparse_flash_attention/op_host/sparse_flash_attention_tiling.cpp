@@ -2146,30 +2146,28 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
     }
 
     bool keyNonContiguous = false;
-    size_t checkStartIdx = (kvLayout_ == SFALayout::PA_BSND) ? 1 : 0;
-
     if (!keyStrides_.empty() && keyShape_.GetDimNum() > 0) {
-        std::vector<uint64_t> keyExpectedStrides;
         if (kvLayout_ == SFALayout::PA_BSND || kvLayout_ == SFALayout::BSND) {
+            std::vector<uint64_t> keyExpectedStrides;
             uint64_t dim1 = static_cast<uint64_t>(keyShape_.GetDim(1));
             uint64_t dim2 = static_cast<uint64_t>(keyShape_.GetDim(2));
             uint64_t dim3 = static_cast<uint64_t>(keyShape_.GetDim(3));
             keyExpectedStrides = {dim1 * dim2 * dim3, dim2 * dim3, dim3, 1};
-        } else if (kvLayout_ == SFALayout::TND) {
-            uint64_t dim1 = static_cast<uint64_t>(keyShape_.GetDim(1));
-            uint64_t dim2 = static_cast<uint64_t>(keyShape_.GetDim(2));
-            keyExpectedStrides = {dim1 * dim2, dim2, 1};
-        }
-        OP_CHECK_IF(keyStrides_.size() != keyExpectedStrides.size(),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key strideVec size",
-                std::to_string(keyStrides_.size()).c_str(),
-                "not match kvLayout expect len" + std::to_string(keyExpectedStrides.size())),
-                return ge::GRAPH_FAILED);
-        for (size_t i = checkStartIdx; i < keyExpectedStrides.size(); ++i) {
-            if (i < keyStrides_.size() && keyStrides_[i] != keyExpectedStrides[i]) {
-                keyNonContiguous = true;
-                break;
+            OP_CHECK_IF(keyStrides_.size() != keyExpectedStrides.size(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key strides size",
+                    std::to_string(keyStrides_.size()).c_str(),
+                    "not match kvLayout expect len" + std::to_string(keyExpectedStrides.size())),
+                    return ge::GRAPH_FAILED);
+            for (size_t i = 1; i < keyExpectedStrides.size(); ++i) {
+                if (i < keyStrides_.size() && keyStrides_[i] != keyExpectedStrides[i]) {
+                    keyNonContiguous = true;
+                    break;
+                }
             }
+        } else {
+            uint64_t totalElements = keyStrides_[0] * static_cast<uint64_t>(keyShape_.GetDim(0));
+            uint64_t shapeSize = context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize();
+            keyNonContiguous = (shapeSize != totalElements);
         }
     }
 
