@@ -97,9 +97,9 @@ if _TORCHAIR_AVAILABLE:
         q_seq_lens: List[int],
         cu_seq_lens_q: List[int],
         *,
-        q_scale: Optional[Tensor] = None,
-        stem_block_size: int = 128,
-        stem_stride: int = 16,
+        qscale: Optional[Tensor] = None,
+        stemBlockSize: int = 128,
+        stemStride: int = 16,
         meta_outputs: TensorSpec = None,
     ):
         """GE converter for stem_oam_prep_varlen_q.
@@ -112,9 +112,9 @@ if _TORCHAIR_AVAILABLE:
             q=q,
             qSeqLens=q_seq_lens,
             cuSeqLensQ=cu_seq_lens_q,
-            qScale=q_scale,
-            stemBlockSize=stem_block_size,
-            stemStride=stem_stride,
+            qScale=qscale,
+            stemBlockSize=stemBlockSize,
+            stemStride=stemStride,
         )
 else:
 
