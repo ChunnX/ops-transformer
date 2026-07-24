@@ -608,6 +608,13 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[1])
 
                 T.wait_flag("mte2", "mte1", 5)
+                # For the current single 128-column QueryIndex block, the
+                # left operand is invariant over every K tile in C1-SY.
+                # Multi-block shapes retain the original per-d_idx load.
+                if d_num_query_index == 1:
+                    T.wait_flag("m", "mte1", 1)
+                    T.copy(c1_qi_l1, c1_qi_l0a)
+                    T.set_flag("m", "mte1", 1)
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
                     if k_outer % 2 == 0:
                         T.wait_cross_flag(V0_TO_C1_SY_FLAGS[0])
@@ -627,11 +634,12 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "mte1", 1)
                             T.wait_flag("m", "mte1", 1)
                             T.wait_flag("mte2", "mte1", 1)
-                            T.copy(
-                                c1_qi_l1[0:Nidx1,
-                                         d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT],
-                                c1_qi_l0a,
-                            )
+                            if d_num_query_index != 1:
+                                T.copy(
+                                    c1_qi_l1[0:Nidx1,
+                                             d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT],
+                                    c1_qi_l0a,
+                                )
                             T.copy(c1_ki_l1, c1_ki_l0b, transpose=True)
                             T.set_flag("mte1", "mte2", 1)
                             T.set_flag("mte1", "m", 1)

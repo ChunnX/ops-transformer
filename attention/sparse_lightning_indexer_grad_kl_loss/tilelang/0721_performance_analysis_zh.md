@@ -174,6 +174,7 @@ V2 不是当前 shape 的主 Cube 关键路径，但仍有端到端开销差异�
 | C1 Key/Rope 单槽预取 | 保留 | C++ 确认 MTE1 消费后 MTE2 refill，是小而安全的基线收益。 |
 | C1-SY 或 C2 单槽预取 | 持平或变慢 | 控制开销无法突破单 L0/Cube 依赖，已回退。 |
 | V1 按分支等待 C1 | 有效但很小 | 不死锁、精度安全，profile 约减少 5 us，可保留。 |
+| C1-SY QueryIndex 常驻 L0A | 正在验证 | QueryIndex 对当前 shape 的全部 16 个 K tile 不变；将 16 次 L1->L0A 装载收敛为一次。算术、MMA/FIX 顺序和跨核标志不变，预期仅有小收益。 |
 
 ## 不应重试
 
@@ -221,7 +222,18 @@ broadcast、cast、reduction、store。32x128 路径或真正独立 UB 双缓冲
 减少指令数，但必须先以独立最小用例证明当前 TileLang 向量 intrinsic 支持
 4096 元素路径，且生成 UB offset 不会不安全别名。在此之前它只是研究方向。
 
-### 优先级 4：Cube 改善后再处理 V2
+### 优先级 4：C1-SY 不变左操作数常驻 L0A（当前实验）
+
+当前 shape 的 DQueryIndex=128，因此 C1-SY 的 QueryIndex 只有一个 64x128
+块，并对 16 个 K tile 完全不变。原实现每个 K tile 都从 L1 重载一次 L0A；
+当前实验仅在 C1-SY 前预载一次，循环内只更新 KeyIndex 的 L0B。该改动不增加
+buffer、不改变 MMA 累加或 FIX 顺序，也不改变 V0/C1、C1/V1 的跨核协议。
+
+它的理论上限只是消除 15 次 16 KiB L1->L0A 搬运及相应 MTE1 调度，不足以追平
+官方；它是低风险微优化，必须由生成 C++ 和重复中位数验证。若生成 C++ 未将
+L0A copy 移出 C1-SY K 循环、精度变化或中位数无收益，则立即回退。
+
+### 优先级 5：Cube 改善后再处理 V2
 
 只有 Cube 流水有真实改善后，才重新按端到端时间 profile V2。不能只为了
 减少 SyncAll 移动 scatter；确定性 ownership 模型比推测的 barrier 节省重要。
@@ -240,4 +252,3 @@ broadcast、cast、reduction、store。32x128 路径或真正独立 UB 双缓冲
 一个性能补丁只有同时满足以下条件才能接受：精度边界不变、生成 C++ 符合预期
 协议、profile 关键路径缩短、重复中位数改善超过噪声、不增加 kernel，且不
 修改 tilelang-ascend。
-
