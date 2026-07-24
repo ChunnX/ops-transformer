@@ -27,7 +27,10 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #if ((defined(__CCE_AICORE__) && (__CCE_AICORE__ == 310)) && !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3113))
-  #if defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8
+  // A8W8(INT8×INT8) 与 A4W4(INT4×INT4, cube 侧 int4->int8 后按 int8×int8 计算) 的 L0C 累加器均为 int32;
+  // 其余场景保持 float。
+  #if defined(ORIG_DTYPE_X) && defined(DT_INT8) && defined(DT_INT4) && defined(ORIG_DTYPE_WEIGHT) && \
+      (ORIG_DTYPE_X == DT_INT8 || (ORIG_DTYPE_X == DT_INT4 && ORIG_DTYPE_WEIGHT == DT_INT4))
       #define DTYPE_L0C_LOCAL int32_t
   #else
       #define DTYPE_L0C_LOCAL float
