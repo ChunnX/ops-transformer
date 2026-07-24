@@ -79,7 +79,8 @@ public:
     static constexpr LI_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
 
     using SCORE_T = typename QLIV2T::scoreType;
-
+    using SCALE_T = typename QLIV2T::scaleType;
+    
     QLIV2Matmul<QLIV2T> matmulService;
     QLIV2Vector<QLIV2T> vectorService;
 

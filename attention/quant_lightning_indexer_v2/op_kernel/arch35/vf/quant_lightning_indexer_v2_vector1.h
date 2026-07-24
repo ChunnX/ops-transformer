@@ -993,6 +993,7 @@ __simd_vf__ void MulWeightAndReduceSumPerTensor2VF(__ubuf__ uint16_t* out0, __ub
     MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(out1, regOut[1], maskAllB16);
 }
 
+<typename W_T>
 __aicore__ inline void MulWeightAndReduceSumPerTensor2(
     const LocalTensor<uint16_t> &out_,   // out    [2, S2Base]     [128   ]
     uint32_t outStride,
