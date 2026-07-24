@@ -963,13 +963,13 @@ CMP_EXTERN_C ge::graphStatus TilingCompressorGrad(gert::TilingContext *context)
         OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to CompressorGrad context");
         return ge::GRAPH_FAILED;
     }
-    CompressorGradTiling compressorTiling(&compressorGradContext);
+    CompressorGradTiling compressorGradTiling(&compressorGradContext);
     CompressorGradTilingData *tilingData = context->GetTilingData<CompressorGradTilingData>();
     OP_CHECK_IF(tilingData == nullptr, OPS_REPORT_VECTOR_INNER_ERR(compressorGradContext.opName, "TilingData is nullptr."),
                 return ge::GRAPH_FAILED);
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     context->SetScheduleMode(BATCH_MODE_SCHEDULE);
-    if (compressorTiling.RunBigKernelTiling(tilingData) != ge::GRAPH_SUCCESS) {
+    if (compressorGradTiling.RunBigKernelTiling(tilingData) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     context->SetTilingKey(compressorGradContext.tilingKey);

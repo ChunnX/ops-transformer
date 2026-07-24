@@ -328,7 +328,7 @@ private:
     uint32_t coreNum_ = 0;
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
     size_t libapiSize_ = 0;
     size_t workspaceSize_ = 0;
     uint8_t coff = 1;
