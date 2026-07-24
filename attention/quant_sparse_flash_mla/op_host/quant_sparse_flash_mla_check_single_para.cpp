@@ -505,10 +505,6 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaOriSparseIndices() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaCuSeqLensOriKv() const
 {
-    if (perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
-        perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        return ge::GRAPH_SUCCESS;
-    }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && kvLayout_ == QSMLALayout::TND &&
                     opParamInfo_.cuSeqLensOriKv.tensor == nullptr,
                 OP_LOGE(opName_, "cuSeqLensOriKv is required when oriKv is provided and kvLayout is TND."),

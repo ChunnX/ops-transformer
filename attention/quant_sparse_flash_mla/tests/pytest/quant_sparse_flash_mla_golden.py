@@ -466,8 +466,6 @@ class GeneralizedSFAQuant:
                     t_start : t_start + cur_seqused, :
                 ]
             return new_tensor, [B, 1, max_s1, 1]
-        else:
-            return tensor, shape
 
     def trans_bnsd_to_target_layout(
         self, tensor, layout, cu_seqlens_q=None, seqused_q=None
@@ -649,6 +647,7 @@ def get_max_adjacent_diff(cu_seqlens_q):
 
 def gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode,
                             topk_length_override=None):
+    # TODO 同步mqsmla 修改
     if sparse_indices_mode is None:
         sparse_indices_mode = "full"
     if sparse_indices_mode not in ["full", "random"]:
@@ -705,6 +704,7 @@ def gen_sparse_indices_tnd(
     cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_ori_kv, mask_mode, sparse_indices_mode, kv_topk_mode,
     topk_length_override=None
 ):
+    # TODO 同步mqsmla 修改
     if sparse_indices_mode is None:
         sparse_indices_mode = "full"
     if sparse_indices_mode not in ["full", "random"]:
@@ -1313,8 +1313,10 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
 
     # ORI_SPARSE/ORI_CMP_SPARSE: seqused (actualLength) not passed to op, determined by sparse_indices and topkLength
     no_actual_length = template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
-    op_seqused_ori_kv = None if no_actual_length else seqused_ori_kv
-    op_seqused_cmp_kv = None if no_actual_length else seqused_cmp_kv
+    seqused_ori_kv = None if no_actual_length else seqused_ori_kv
+    seqused_cmp_kv = None if no_actual_length else seqused_cmp_kv
+    cu_seqlens_ori_kv = cu_seqlens_ori_kv if layout_kv == "TND" else None
+    cu_seqlens_cmp_kv = cu_seqlens_cmp_kv if layout_kv == "TND" else None
 
     input_data = {
         "Testcase_Name": Testcase_Name,
@@ -1361,8 +1363,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "seqused_q": seqused_q,
             "cu_seqlens_ori_kv": cu_seqlens_ori_kv,
             "cu_seqlens_cmp_kv": cu_seqlens_cmp_kv,
-            "seqused_ori_kv": op_seqused_ori_kv,
-            "seqused_cmp_kv": op_seqused_cmp_kv,
+            "seqused_ori_kv": seqused_ori_kv,
+            "seqused_cmp_kv": seqused_ori_kv,
             "cmp_residual_kv": cmp_residual_kv,
             "sinks": sinks,
             "q_descale": q_descale,
