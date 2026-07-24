@@ -176,7 +176,8 @@ V2 不是当前 shape 的主 Cube 关键路径，但仍有端到端开销差异�
 | V1 按分支等待 C1 | 有效但很小 | 不死锁、精度安全，profile 约减少 5 us，可保留。 |
 | C1-SY QueryIndex 常驻 L0A | 已保留，收益未量化 | C++ 已确认将 16 次 L1->L0A 装载收敛为一次；精度保持基线。五轮整体中位数约 0.488 ms，未证明稳定加速，但也无回归。 |
 | C2 dKey QueryIndex 常驻 L0B | 已回退 | C++ 与精度正确，但一次预载形成 C2 MTE1 前导，未与首轮 reluGrad/KeyIndex GM->L1 重叠；性能波动扩大且无稳定中位数收益。 |
-| V0 P/SY 两阶段 gather | 当前实验 | 对齐官方 `ProcessVector0`：先写 Key+Rope 并逐块发布 P flag，再写 KeyIndex 并发布 SY flag，消除 C1-P 对 KeyIndex gather 的无关等待。 |
+| V0 P/SY 两阶段 gather | 已回退 | C++ 完全按预期先发布 P、后处理 KeyIndex，但五轮中位数为 0.474-0.510 ms，无稳定收益且扩大端到端波动。 |
+| C1-P 精确物理双缓冲 | 当前实验 | P scope 使用两套独立的 128x128 L1/L0A/L0B/L0C；SY 转入后续 scope 复用 L0 容量，避免 parent slice 与物理越界。 |
 
 ## 不应重试
 
@@ -217,7 +218,25 @@ V0 生产下一槽。
 还必须确认新增跨核 flag 不会抵消节省的气泡。先审计官方 V0/C1 flag cadence，
 不能只按可视化时间线猜测实现。
 
-### 当前实验：V0 P/SY 两阶段 gather
+### 当前实验：C1-P 精确物理双缓冲
+
+当前 C1-P 只有一个 128x128 Key L1、L0A、L0B 和 FP32 L0C。MTE1 必须等当前
+MMA 归还同一 L0A/L0B 后才能装入下一 128-column operand，这正是 profile 中
+C/V WAIT_FLAG 的主要来源。官方 `SLITMatmulService` 则按 d 维轮转两套 L1、
+L0A/L0B，按 K inner 轮转两套 L0C。
+
+本实验不使用父分配切片。P scope 分别分配两套精确 `128x128` L1 Key、L0A、
+L0B 和 `128x128 fp32` L0C；偶数/奇数 d_idx 分别使用 slot 0/1，并在 MTE1
+消费当前 slot 后向另一个 L1 slot 预取下一 operand。偶数/奇数 k_inner 使用
+独立 L0C，允许上一输出的 FIX 与下一 K tile 的 MMA 重叠。
+
+L0A/L0B/L0C 容量无法同时容纳 P 的双槽和 SY 的独立精确形状，因此 C1 被拆为
+顺序 P scope 与 SY scope。P 在离开前 drain event 0/1；SY 只在后续 scope 分配
+原有 64x128/128x128/64x128 buffer，允许 codegen 回收 P 地址。生成 C++ 必须同时
+证明两套 P L0 地址彼此不重叠、MMA/FIX 模板仍为 128x128、且 SY 地址来自已结束
+的 P lifetime。任何容量、offset 或 event 审计失败都必须立即回退。
+
+### 已回退：V0 P/SY 两阶段 gather
 
 官方 `ProcessVector0` 并不在同一稀疏行中同时 gather 三种数据。它先遍历全部
 K outer block，gather `Key` 与 `KeyRope` 到 P workspace，并在每个 block 完成后
@@ -233,6 +252,18 @@ UB 槽和 `MTE3_MTE2` event 0/1：P 阶段只读写 Key/KeyRope 并只发布 P f
 首个 P flag 之前；全部 KeyIndex copy 必须位于 P 阶段之后且 SY flag 之前；不得
 出现逐 sparse-row 的运行时 phase 分支。该改动不触碰 MMA、归约、输出和 workspace
 ABI，预期只缩短 V0 到 C1-P 的依赖前缀；收益应以重复中位数和 profile 为准。
+
+结果表明 codegen 和数值均正确：P flag 0/1 位于所有 KeyIndex GM->UB 之前，
+SY flag 2/3 位于其后，精度保持基线。但五轮 TileLang 中位数为
+0.510/0.474/0.494/0.491/0.495 ms，整体中位数约 0.491 ms；官方对应
+0.286/0.296/0.312/0.273/0.301 ms。它没有相对于 0721 基线证明可重复收益，
+因此回退。
+
+原因不是 C1-P 仍在等待 KeyIndex，而是该等待只位于第一个 1024-key block 的
+起点。C1-P 必须完成两个 outer block 才能发布给 V1；拆开的 KeyIndex gather
+随后与 C1-P 的 GM->L1 搬运并发，不能缩短单槽 C1 的 16 次 MMA/FIX 串行关键
+路径，反而可能增加 GM 竞争和测量离散度。官方的两阶段顺序依赖其自身的 gather
+批量 DMA 和 C1 真正的 L0/L0C ping-pong，不能单独移植为 0721 的性能突破。
 
 ### 优先级 3：减少 V1 backward 的真实工作
 

@@ -302,11 +302,11 @@ def tilelang_grad_kl_loss_single_kernel(
         task_slot,
         vector_id,
     ):
-        """Gather one task using the official P-then-SY publication order.
+        """Gather one task with the same subblock ownership as MergeKv.
 
-        Each AIV owns one contiguous half of a 1024-row K tile.  Key/Rope are
-        gathered and published to C1-P first; KeyIndex is gathered afterwards
-        for C1-SY, so P never waits on an unrelated stream.
+        Both AIVs gather all three streams. Each AIV owns one contiguous half
+        of the current 1024-row K tile, then both publish the same mode-2
+        readiness flags consumed by C1.
         """
         with T.Scope("V"):
             v0_key_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
@@ -332,9 +332,6 @@ def tilelang_grad_kl_loss_single_kernel(
 
             T.set_flag("mte3", "mte2", 0)
             T.set_flag("mte3", "mte2", 1)
-            # Phase P mirrors ProcessVector0's first MergeKv pass.  Keep the
-            # Key/KeyRope ping-pong DMA independent from KeyIndex so C1-P can
-            # consume each completed outer block immediately.
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
                     outer_start = k_outer * S2_WORKSPACE
@@ -348,10 +345,12 @@ def tilelang_grad_kl_loss_single_kernel(
                         sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
                         if sparse_idx >= 0:
                             T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                            T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
                             if d_rope > 0:
                                 T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
                         if sparse_idx < 0:
                             T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
+                            T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
                             if d_rope > 0:
                                 T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
                     T.set_flag("mte2", "mte3", 0)
@@ -367,10 +366,12 @@ def tilelang_grad_kl_loss_single_kernel(
                                 sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
                                 if sparse_idx >= 0:
                                     T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[nxt, lane, 0:DQuery])
+                                    T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
                                     if d_rope > 0:
                                         T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
                                 if sparse_idx < 0:
                                     T.copy(v0_zero_key, v0_key_ub[nxt, lane, 0:DQuery])
+                                    T.copy(v0_zero_ki, v0_ki_ub[nxt, lane, 0:DQueryIndex])
                                     if d_rope > 0:
                                         T.copy(v0_zero_rope, v0_rope_ub[nxt, lane, 0:d_rope])
                             T.set_flag("mte2", "mte3", nxt)
@@ -379,62 +380,21 @@ def tilelang_grad_kl_loss_single_kernel(
                         cur_start = aiv_start + chunk_id * GATHER_CHUNK_SIZE
                         T.copy(v0_key_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
                                GatherKey_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
+                        T.copy(v0_ki_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
+                               GatherKeyIndex_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
                         if d_rope > 0:
                             T.copy(v0_rope_ub[cur, 0:GATHER_CHUNK_SIZE, 0:d_rope],
                                    GatherKeyRope_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
                         T.set_flag("mte3", "mte2", cur)
 
-                    # A mode-2 AIC wait joins the same P flag from both AIVs.
+                    # A mode-2 AIC wait joins the same flag from both AIVs.
+                    # Publish both readiness flags after each AIV finishes its
+                    # half, so C1 cannot observe either workspace prematurely.
                     if k_outer % 2 == 0:
                         T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[0])
-                    else:
-                        T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[1])
-
-            # Phase SY is a separate static pass, matching the official
-            # KeyIndex-only MergeKv loop.  It reuses the same event protocol
-            # after the P phase has released both ping-pong slots.
-            for s1_id in T.serial(s1_begin_task, s1_end_task):
-                for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
-                    outer_start = k_outer * S2_WORKSPACE
-                    rows_per_aiv = S2_WORKSPACE // 2
-                    aiv_start = outer_start + vector_id * rows_per_aiv
-                    gather_chunks = rows_per_aiv // GATHER_CHUNK_SIZE
-
-                    T.wait_flag("mte3", "mte2", 0)
-                    for lane in T.serial(GATHER_CHUNK_SIZE):
-                        k_id = aiv_start + lane
-                        sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
-                        if sparse_idx >= 0:
-                            T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
-                        if sparse_idx < 0:
-                            T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
-                    T.set_flag("mte2", "mte3", 0)
-
-                    for chunk_id in T.serial(gather_chunks):
-                        cur = chunk_id % 2
-                        nxt = (chunk_id + 1) % 2
-                        if chunk_id + 1 < gather_chunks:
-                            next_start = aiv_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
-                            T.wait_flag("mte3", "mte2", nxt)
-                            for lane in T.serial(GATHER_CHUNK_SIZE):
-                                k_id = next_start + lane
-                                sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
-                                if sparse_idx >= 0:
-                                    T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
-                                if sparse_idx < 0:
-                                    T.copy(v0_zero_ki, v0_ki_ub[nxt, lane, 0:DQueryIndex])
-                            T.set_flag("mte2", "mte3", nxt)
-
-                        T.wait_flag("mte2", "mte3", cur)
-                        cur_start = aiv_start + chunk_id * GATHER_CHUNK_SIZE
-                        T.copy(v0_ki_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
-                               GatherKeyIndex_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
-                        T.set_flag("mte3", "mte2", cur)
-
-                    # A mode-2 AIC wait joins the same SY flag from both AIVs.
-                    if k_outer % 2 == 0:
                         T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[0])
                     else:
+                        T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[1])
                         T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[1])
 
             T.wait_flag("mte3", "mte2", 0)
@@ -455,12 +415,11 @@ def tilelang_grad_kl_loss_single_kernel(
         s1_end_task,
         task_slot,
     ):
-        """Compute P and SY with explicit L1/L0/MMA/FIX ownership."""
+        """Compute P and SY with exact physical Cube ping-pong buffers."""
         with T.Scope("C"):
-            # Query is invariant across all K tiles of this task. Keep each
-            # K_SPLIT slice in a physically exact L1 allocation: a slice of a
-            # 128x512 parent lowers as a 128x512 L1->L0A descriptor even when
-            # the logical copy is only 128x128.
+            # P uses two independently allocated, physically exact slots.
+            # Keeping SY in the following C scope lets the allocator reuse L0
+            # capacity after both P slots are drained.
             c1_query_chunk_0_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
             c1_query_chunk_1_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
             c1_query_chunk_2_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
@@ -468,15 +427,14 @@ def tilelang_grad_kl_loss_single_kernel(
             c1_query_rope_cache_l1 = T.alloc_L1(
                 (N1, max(d_rope, 1)), input_dtype
             )
-            c1_key_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
-            c1_q_l0a = T.alloc_L0A((N1, K_SPLIT), input_dtype)
-            c1_key_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
-            c1_p_l0c = T.alloc_L0C((N1, N_SPLIT), calc_dtype)
-            c1_qi_l1 = T.alloc_L1((Nidx1, K_SPLIT), input_dtype)
-            c1_ki_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
-            c1_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
-            c1_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
-            c1_sy_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
+            c1_key_l1_ping = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
+            c1_key_l1_pong = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
+            c1_q_l0a_ping = T.alloc_L0A((N1, K_SPLIT), input_dtype)
+            c1_q_l0a_pong = T.alloc_L0A((N1, K_SPLIT), input_dtype)
+            c1_key_l0b_ping = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
+            c1_key_l0b_pong = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
+            c1_p_l0c_ping = T.alloc_L0C((N1, N_SPLIT), calc_dtype)
+            c1_p_l0c_pong = T.alloc_L0C((N1, N_SPLIT), calc_dtype)
 
             T.set_flag("mte1", "mte2", 0)
             T.set_flag("m", "mte1", 0)
@@ -512,12 +470,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_flag("mte2", "mte1", 4)
                 T.wait_flag("mte2", "mte1", 4)
 
-                T.copy(
-                    QueryIndex[bz_task, s1_id, 0:Nidx1, 0:DQueryIndex],
-                    c1_qi_l1,
-                )
-                T.set_flag("mte2", "mte1", 5)
-
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
                     if k_outer % 2 == 0:
                         T.wait_cross_flag(V0_TO_C1_P_FLAGS[0])
@@ -526,127 +478,203 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
                         k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
-                        # Preload the first query-dimension Key tile.  Once
-                        # MTE1 has consumed a tile into L0B, the same L1 slot
-                        # is immediately refilled while Cube executes MMA.
+                        # Slot 0 owns the first 128-column Key tile.  L1,
+                        # L0A/L0B use d_idx parity; L0C uses K-tile parity.
                         T.wait_flag("mte1", "mte2", 0)
                         T.copy(
                             GatherKey_ws[bz_task, s1_id,
                                          k_start:k_start + N_SPLIT,
                                          0:K_SPLIT],
-                            c1_key_l1,
+                            c1_key_l1_ping,
                         )
                         T.set_flag("mte2", "mte1", 0)
 
                         for d_idx in T.serial(d_num_query):
-                            T.wait_flag("m", "mte1", 0)
-                            T.wait_flag("mte2", "mte1", 0)
-                            if d_idx == 0:
-                                T.copy(c1_query_chunk_0_l1, c1_q_l0a)
-                            if d_idx == 1:
-                                T.copy(c1_query_chunk_1_l1, c1_q_l0a)
-                            if d_idx == 2:
-                                T.copy(c1_query_chunk_2_l1, c1_q_l0a)
-                            if d_idx == 3:
-                                T.copy(c1_query_chunk_3_l1, c1_q_l0a)
-                            T.copy(c1_key_l1, c1_key_l0b, transpose=True)
-                            T.set_flag("mte1", "mte2", 0)
-                            T.set_flag("mte1", "m", 0)
+                            if d_idx % 2 == 0:
+                                T.wait_flag("m", "mte1", 0)
+                                T.wait_flag("mte2", "mte1", 0)
+                                if d_idx == 0:
+                                    T.copy(c1_query_chunk_0_l1, c1_q_l0a_ping)
+                                if d_idx == 2:
+                                    T.copy(c1_query_chunk_2_l1, c1_q_l0a_ping)
+                                T.copy(c1_key_l1_ping, c1_key_l0b_ping, transpose=True)
+                                T.set_flag("mte1", "mte2", 0)
+                                T.set_flag("mte1", "m", 0)
 
-                            # MTE1 no longer reads c1_key_l1.  Refill it with
-                            # the next P tile, or the first Rope tile, before
-                            # waiting for the current Cube operation.
-                            if d_idx + 1 < d_num_query:
-                                T.wait_flag("mte1", "mte2", 0)
-                                T.copy(
-                                    GatherKey_ws[
-                                        bz_task,
-                                        s1_id,
-                                        k_start:k_start + N_SPLIT,
-                                        (d_idx + 1) * K_SPLIT:
-                                        (d_idx + 2) * K_SPLIT,
-                                    ],
-                                    c1_key_l1,
-                                )
-                                T.set_flag("mte2", "mte1", 0)
-                            if d_idx + 1 >= d_num_query:
-                                if d_num_rope > 0:
+                                if d_idx + 1 < d_num_query:
+                                    T.wait_flag("mte1", "mte2", 1)
+                                    T.copy(
+                                        GatherKey_ws[bz_task, s1_id,
+                                                     k_start:k_start + N_SPLIT,
+                                                     (d_idx + 1) * K_SPLIT:
+                                                     (d_idx + 2) * K_SPLIT],
+                                        c1_key_l1_pong,
+                                    )
+                                    T.set_flag("mte2", "mte1", 1)
+                                if d_idx + 1 >= d_num_query:
+                                    if d_num_rope > 0:
+                                        T.wait_flag("mte1", "mte2", 1)
+                                        T.copy(
+                                            GatherKeyRope_ws[bz_task, s1_id,
+                                                              k_start:k_start + N_SPLIT,
+                                                              0:K_SPLIT],
+                                            c1_key_l1_pong,
+                                        )
+                                        T.set_flag("mte2", "mte1", 1)
+
+                                T.wait_flag("mte1", "m", 0)
+                                if k_inner % 2 == 0:
+                                    T.wait_flag("fix", "m", 0)
+                                    T.mma(c1_q_l0a_ping, c1_key_l0b_ping, c1_p_l0c_ping, init=(d_idx == 0))
+                                else:
+                                    T.wait_flag("fix", "m", 1)
+                                    T.mma(c1_q_l0a_ping, c1_key_l0b_ping, c1_p_l0c_pong, init=(d_idx == 0))
+                                T.set_flag("m", "mte1", 0)
+                                if d_idx + 1 < d_num_query or d_num_rope > 0:
+                                    if k_inner % 2 == 0:
+                                        T.set_flag("fix", "m", 0)
+                                    else:
+                                        T.set_flag("fix", "m", 1)
+
+                            if d_idx % 2 == 1:
+                                T.wait_flag("m", "mte1", 1)
+                                T.wait_flag("mte2", "mte1", 1)
+                                if d_idx == 1:
+                                    T.copy(c1_query_chunk_1_l1, c1_q_l0a_pong)
+                                if d_idx == 3:
+                                    T.copy(c1_query_chunk_3_l1, c1_q_l0a_pong)
+                                T.copy(c1_key_l1_pong, c1_key_l0b_pong, transpose=True)
+                                T.set_flag("mte1", "mte2", 1)
+                                T.set_flag("mte1", "m", 1)
+
+                                if d_idx + 1 < d_num_query:
                                     T.wait_flag("mte1", "mte2", 0)
                                     T.copy(
-                                        GatherKeyRope_ws[
-                                            bz_task,
-                                            s1_id,
-                                            k_start:k_start + N_SPLIT,
-                                            0:K_SPLIT,
-                                        ],
-                                        c1_key_l1,
+                                        GatherKey_ws[bz_task, s1_id,
+                                                     k_start:k_start + N_SPLIT,
+                                                     (d_idx + 1) * K_SPLIT:
+                                                     (d_idx + 2) * K_SPLIT],
+                                        c1_key_l1_ping,
                                     )
                                     T.set_flag("mte2", "mte1", 0)
+                                if d_idx + 1 >= d_num_query:
+                                    if d_num_rope > 0:
+                                        T.wait_flag("mte1", "mte2", 0)
+                                        T.copy(
+                                            GatherKeyRope_ws[bz_task, s1_id,
+                                                              k_start:k_start + N_SPLIT,
+                                                              0:K_SPLIT],
+                                            c1_key_l1_ping,
+                                        )
+                                        T.set_flag("mte2", "mte1", 0)
 
-                            T.wait_flag("mte1", "m", 0)
-                            T.wait_flag("fix", "m", 0)
-                            T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=(d_idx == 0))
-                            T.set_flag("m", "mte1", 0)
-                            if d_idx + 1 < d_num_query or d_num_rope > 0:
-                                T.set_flag("fix", "m", 0)
+                                T.wait_flag("mte1", "m", 1)
+                                if k_inner % 2 == 0:
+                                    T.wait_flag("fix", "m", 0)
+                                    T.mma(c1_q_l0a_pong, c1_key_l0b_pong, c1_p_l0c_ping, init=(d_idx == 0))
+                                else:
+                                    T.wait_flag("fix", "m", 1)
+                                    T.mma(c1_q_l0a_pong, c1_key_l0b_pong, c1_p_l0c_pong, init=(d_idx == 0))
+                                T.set_flag("m", "mte1", 1)
+                                if d_idx + 1 < d_num_query or d_num_rope > 0:
+                                    if k_inner % 2 == 0:
+                                        T.set_flag("fix", "m", 0)
+                                    else:
+                                        T.set_flag("fix", "m", 1)
 
                         for rope_idx in T.serial(d_num_rope):
-                            T.wait_flag("m", "mte1", 0)
-                            T.wait_flag("mte2", "mte1", 0)
-                            T.copy(
-                                c1_query_rope_cache_l1[
-                                    0:N1,
-                                    rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT,
-                                ],
-                                c1_q_l0a,
-                            )
-                            T.copy(c1_key_l1, c1_key_l0b, transpose=True)
-                            T.set_flag("mte1", "mte2", 0)
-                            T.set_flag("mte1", "m", 0)
+                            stage_idx = d_num_query + rope_idx
+                            if stage_idx % 2 == 0:
+                                T.wait_flag("m", "mte1", 0)
+                                T.wait_flag("mte2", "mte1", 0)
+                                T.copy(c1_query_rope_cache_l1[0:N1, rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT], c1_q_l0a_ping)
+                                T.copy(c1_key_l1_ping, c1_key_l0b_ping, transpose=True)
+                                T.set_flag("mte1", "mte2", 0)
+                                T.set_flag("mte1", "m", 0)
+                                if rope_idx + 1 < d_num_rope:
+                                    T.wait_flag("mte1", "mte2", 1)
+                                    T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                           (rope_idx + 1) * K_SPLIT:(rope_idx + 2) * K_SPLIT], c1_key_l1_pong)
+                                    T.set_flag("mte2", "mte1", 1)
+                                T.wait_flag("mte1", "m", 0)
+                                if k_inner % 2 == 0:
+                                    T.wait_flag("fix", "m", 0)
+                                    T.mma(c1_q_l0a_ping, c1_key_l0b_ping, c1_p_l0c_ping, init=False)
+                                else:
+                                    T.wait_flag("fix", "m", 1)
+                                    T.mma(c1_q_l0a_ping, c1_key_l0b_ping, c1_p_l0c_pong, init=False)
+                                T.set_flag("m", "mte1", 0)
+                                if rope_idx + 1 < d_num_rope:
+                                    if k_inner % 2 == 0:
+                                        T.set_flag("fix", "m", 0)
+                                    else:
+                                        T.set_flag("fix", "m", 1)
 
-                            if rope_idx + 1 < d_num_rope:
-                                T.wait_flag("mte1", "mte2", 0)
-                                T.copy(
-                                    GatherKeyRope_ws[
-                                        bz_task,
-                                        s1_id,
-                                        k_start:k_start + N_SPLIT,
-                                        (rope_idx + 1) * K_SPLIT:
-                                        (rope_idx + 2) * K_SPLIT,
-                                    ],
-                                    c1_key_l1,
-                                )
-                                T.set_flag("mte2", "mte1", 0)
+                            if stage_idx % 2 == 1:
+                                T.wait_flag("m", "mte1", 1)
+                                T.wait_flag("mte2", "mte1", 1)
+                                T.copy(c1_query_rope_cache_l1[0:N1, rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT], c1_q_l0a_pong)
+                                T.copy(c1_key_l1_pong, c1_key_l0b_pong, transpose=True)
+                                T.set_flag("mte1", "mte2", 1)
+                                T.set_flag("mte1", "m", 1)
+                                if rope_idx + 1 < d_num_rope:
+                                    T.wait_flag("mte1", "mte2", 0)
+                                    T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                           (rope_idx + 1) * K_SPLIT:(rope_idx + 2) * K_SPLIT], c1_key_l1_ping)
+                                    T.set_flag("mte2", "mte1", 0)
+                                T.wait_flag("mte1", "m", 1)
+                                if k_inner % 2 == 0:
+                                    T.wait_flag("fix", "m", 0)
+                                    T.mma(c1_q_l0a_pong, c1_key_l0b_pong, c1_p_l0c_ping, init=False)
+                                else:
+                                    T.wait_flag("fix", "m", 1)
+                                    T.mma(c1_q_l0a_pong, c1_key_l0b_pong, c1_p_l0c_pong, init=False)
+                                T.set_flag("m", "mte1", 1)
+                                if rope_idx + 1 < d_num_rope:
+                                    if k_inner % 2 == 0:
+                                        T.set_flag("fix", "m", 0)
+                                    else:
+                                        T.set_flag("fix", "m", 1)
 
-                            T.wait_flag("mte1", "m", 0)
-                            T.wait_flag("fix", "m", 0)
-                            T.mma(
-                                c1_q_l0a,
-                                c1_key_l0b,
-                                c1_p_l0c,
-                                init=False,
-                            )
-                            T.set_flag("m", "mte1", 0)
-                            if rope_idx + 1 < d_num_rope:
-                                T.set_flag("fix", "m", 0)
-
-                        T.set_flag("m", "fix", 0)
-                        T.wait_flag("m", "fix", 0)
-                        T.copy(
-                            c1_p_l0c,
-                            bmm1Res[bz_task, s1_id, 0:N1,
-                                    k_start:k_start + N_SPLIT],
-                        )
-                        T.set_flag("fix", "m", 0)
+                        if k_inner % 2 == 0:
+                            T.set_flag("m", "fix", 0)
+                            T.wait_flag("m", "fix", 0)
+                            T.copy(c1_p_l0c_ping, bmm1Res[bz_task, s1_id, 0:N1,
+                                                           k_start:k_start + N_SPLIT])
+                            T.set_flag("fix", "m", 0)
+                        else:
+                            T.set_flag("m", "fix", 1)
+                            T.wait_flag("m", "fix", 1)
+                            T.copy(c1_p_l0c_pong, bmm1Res[bz_task, s1_id, 0:N1,
+                                                           k_start:k_start + N_SPLIT])
+                            T.set_flag("fix", "m", 1)
 
                 T.wait_flag("mte1", "mte2", 0)
+                T.wait_flag("mte1", "mte2", 1)
                 T.wait_flag("m", "mte1", 0)
+                T.wait_flag("m", "mte1", 1)
                 T.wait_flag("fix", "m", 0)
+                T.wait_flag("fix", "m", 1)
                 if task_slot == 0:
                     T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[0])
                 else:
                     T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[1])
 
+        with T.Scope("C"):
+            # This scope begins after P has drained both slots, so these exact
+            # SY shapes can reuse the same physical L0 capacity.
+            c1_qi_l1 = T.alloc_L1((Nidx1, K_SPLIT), input_dtype)
+            c1_ki_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
+            c1_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
+            c1_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
+            c1_sy_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
+
+            T.set_flag("mte1", "mte2", 1)
+            T.set_flag("m", "mte1", 1)
+            T.set_flag("fix", "m", 1)
+            for s1_id in T.serial(s1_begin_task, s1_end_task):
+                T.copy(QueryIndex[bz_task, s1_id, 0:Nidx1, 0:DQueryIndex], c1_qi_l1)
+                T.set_flag("mte2", "mte1", 5)
                 T.wait_flag("mte2", "mte1", 5)
                 # For the current single 128-column QueryIndex block, the
                 # left operand is invariant over every K tile in C1-SY.
