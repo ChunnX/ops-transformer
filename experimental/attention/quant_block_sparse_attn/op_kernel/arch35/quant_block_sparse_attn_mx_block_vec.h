@@ -230,14 +230,14 @@ public:
                 FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, false, HAS_ATTEN, S2_SPLIT>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb,
                     pScaleSubLoopTensor, ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign / 2U, s2CalcSize, static_cast<MM_T>(constInfo.scaleValue),
+                    runInfo.actSingleLoopS2SizeAlign >> 1, s2CalcSize, static_cast<MM_T>(constInfo.scaleValue),
                     descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F, preLoopMaxUb, preLoopSumUb,
                     firstLoopSumUb, subLoop);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, true, HAS_ATTEN, S2_SPLIT>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb,
                     pScaleSubLoopTensor, ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign / 2U, s2CalcSize, static_cast<MM_T>(constInfo.scaleValue),
+                    runInfo.actSingleLoopS2SizeAlign >> 1, s2CalcSize, static_cast<MM_T>(constInfo.scaleValue),
                     descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F, preLoopMaxUb, preLoopSumUb,
                     firstLoopSumUb, subLoop);
             }
@@ -461,7 +461,7 @@ private:
         pScaleSubLoop0Que_.template EnQue(pScaleSubLoopTensor);
         pScaleSubLoop0Que_.template DeQue<SCALE_T>();
         constexpr uint64_t pScaleDataLen = (M_BASE >> 1U) * S2_SPLIT / MX_SCALE_GROUP;
-        constexpr uint16_t pScaleDstStride = S2_SPLIT / MX_SCALE_GROUP / 2U - 1U;
+        constexpr uint16_t pScaleDstStride = (S2_SPLIT / MX_SCALE_GROUP >> 1) - 1U;
         const uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if (subLoop % 2U == 1U) {
             for (uint16_t i = 0U; i < 4U; ++i) {
@@ -491,7 +491,7 @@ private:
                 dstOffset += S2_SPLIT * actVec0Align32;
             }
             uint32_t srcOffset = i * (65U << 5);
-            DataCopy(pL1Tensor[dstOffset], stage1CastTensor[srcOffset], {4, S2_SPLIT / 4U, S2_SPLIT / 4U + 2U, 0});
+            DataCopy(pL1Tensor[dstOffset], stage1CastTensor[srcOffset], {4, S2_SPLIT >> 2, (S2_SPLIT >> 2) + 2U, 0});
         }
     }
 

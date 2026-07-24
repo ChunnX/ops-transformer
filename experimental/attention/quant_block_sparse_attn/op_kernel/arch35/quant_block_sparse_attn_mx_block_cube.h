@@ -428,7 +428,7 @@ private:
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = AlignUp32(runInfo.actMSize);
         fixpipeParams.mSize = (s2RealSize + 7U) >> 3 << 3;
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15U) / 16U) * 16U;
+        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15U) >> 4) * 16U;
         fixpipeParams.dstStride = 64U;
         fixpipeParams.dualDstCtl = 2;
         fixpipeParams.params.ndNum = 1;
@@ -444,7 +444,7 @@ private:
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (constInfo.dSizeV + 7U) >> 3 << 3;
         fixpipeParams.mSize = M_BASE;
-        fixpipeParams.srcStride = ((M_BASE + 15U) / 16U) * 16U;
+        fixpipeParams.srcStride = ((M_BASE + 15U) >> 4) * 16U;
         fixpipeParams.dstStride = (DV_BASE + 15U) >> 4 << 4;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
@@ -461,7 +461,7 @@ private:
             return;
         }
         InitConstValueParams<half> initConstValueParams;
-        initConstValueParams.repeatTimes = AlignUp64(curN) / 32U;
+        initConstValueParams.repeatTimes = AlignUp64(curN) >> 5;
         initConstValueParams.blockNum = curPadK - realK;
         initConstValueParams.dstGap = realK;
         initConstValueParams.initValue = 0;

@@ -105,9 +105,9 @@ __aicore__ inline void DataCopyGmScaleDNToL1(LocalTensor<L1Type>& l1Tensor, Glob
 {
     Dn2NzParams dn2nzPara;
     dn2nzPara.dnNum = 1;
-    dn2nzPara.nValue = col / 2;
+    dn2nzPara.nValue = col >> 1;
     dn2nzPara.dValue = rowAct;
-    dn2nzPara.srcDValue = colStride / 2;
+    dn2nzPara.srcDValue = colStride >> 1;
     dn2nzPara.dstNzC0Stride = dn2nzPara.nValue;
     dn2nzPara.dstNzNStride = 1;
     dn2nzPara.srcDnMatrixStride = 0;
@@ -224,9 +224,9 @@ __aicore__ inline void MxCopyScaleToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor
     Nd2NzParams gm2L1Nd2NzParams;
     gm2L1Nd2NzParams.ndNum = 1;
     gm2L1Nd2NzParams.nValue = nValue;
-    gm2L1Nd2NzParams.dValue = dValue / 2;
+    gm2L1Nd2NzParams.dValue = dValue >> 1;
     gm2L1Nd2NzParams.srcNdMatrixStride = 0;
-    gm2L1Nd2NzParams.srcDValue = srcDValue / 2;
+    gm2L1Nd2NzParams.srcDValue = srcDValue >> 1;
     gm2L1Nd2NzParams.dstNzC0Stride = dstNzC0Stride;
     gm2L1Nd2NzParams.dstNzNStride = 1;
     gm2L1Nd2NzParams.dstNzMatrixStride = gm2L1Nd2NzParams.nValue;
@@ -248,11 +248,11 @@ __aicore__ inline void MxCopyScaleToL1Dn2Nz(const LocalTensor<INPUT_T> &l1Tensor
     // 被 MX LoadData 消费时，scale layout 与数据 layout 对齐。
     Dn2NzParams gm2L1Dn2NzParams;
     gm2L1Dn2NzParams.dnNum = 1;
-    gm2L1Dn2NzParams.nValue = nValue / 2;
+    gm2L1Dn2NzParams.nValue = nValue >> 1;
     gm2L1Dn2NzParams.dValue = dValue;
     gm2L1Dn2NzParams.srcDnMatrixStride = 0;
-    gm2L1Dn2NzParams.srcDValue = srcDValue / 2;
-    gm2L1Dn2NzParams.dstNzC0Stride = nValue / 2;
+    gm2L1Dn2NzParams.srcDValue = srcDValue >> 1;
+    gm2L1Dn2NzParams.dstNzC0Stride = nValue >> 1;
     gm2L1Dn2NzParams.dstNzNStride = 1;
     gm2L1Dn2NzParams.dstNzMatrixStride = gm2L1Dn2NzParams.nValue;
 
