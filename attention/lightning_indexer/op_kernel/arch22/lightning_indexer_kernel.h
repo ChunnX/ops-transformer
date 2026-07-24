@@ -608,7 +608,12 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Process()
             DataCopyPad(scoreB16Gm[off], initTensor, DataCopyExtParams{
                 static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * len), 0, 0, 0});
         }
-        PipeBarrier<PIPE_ALL>();
+        // Wait for all MTE3 writes to complete before proceeding
+        event_t eM3V = static_cast<event_t>(pipe->FetchEventID(HardEvent::MTE3_V));
+        SetFlag<HardEvent::MTE3_V>(eM3V);
+        WaitFlag<HardEvent::MTE3_V>(eM3V);
+        pipe->ReleaseEventID<HardEvent::MTE3_V>(eM3V);
+        pipe->ReleaseEventID<HardEvent::V_MTE3>(eVM);
         SyncAll();
     } else {
         SyncAll();
