@@ -177,7 +177,7 @@ V2 不是当前 shape 的主 Cube 关键路径，但仍有端到端开销差异�
 | C1-SY QueryIndex 常驻 L0A | 已保留，收益未量化 | C++ 已确认将 16 次 L1->L0A 装载收敛为一次；精度保持基线。五轮整体中位数约 0.488 ms，未证明稳定加速，但也无回归。 |
 | C2 dKey QueryIndex 常驻 L0B | 已回退 | C++ 与精度正确，但一次预载形成 C2 MTE1 前导，未与首轮 reluGrad/KeyIndex GM->L1 重叠；性能波动扩大且无稳定中位数收益。 |
 | V0 P/SY 两阶段 gather | 已回退 | C++ 完全按预期先发布 P、后处理 KeyIndex，但五轮中位数为 0.474-0.510 ms，无稳定收益且扩大端到端波动。 |
-| C1-P 精确物理双缓冲 | 当前实验 | P scope 使用两套独立的 128x128 L1/L0A/L0B/L0C；SY 转入后续 scope 复用 L0 容量，避免 parent slice 与物理越界。 |
+| C1-P 精确物理双缓冲 | 已回退 | C++ 物理 shape/offset 正确且 `PIPE_M` barrier 已生成，但仍触发 L0C read/write conflict；当前手写 `T.mma` event 模型不能安全复现官方 ownership。 |
 
 ## 不应重试
 
@@ -218,7 +218,7 @@ V0 生产下一槽。
 还必须确认新增跨核 flag 不会抵消节省的气泡。先审计官方 V0/C1 flag cadence，
 不能只按可视化时间线猜测实现。
 
-### 当前实验：C1-P 精确物理双缓冲
+### 已回退：C1-P 精确物理双缓冲
 
 当前 C1-P 只有一个 128x128 Key L1、L0A、L0B 和 FP32 L0C。MTE1 必须等当前
 MMA 归还同一 L0A/L0B 后才能装入下一 128-column operand，这正是 profile 中
@@ -236,13 +236,14 @@ L0A/L0B/L0C 容量无法同时容纳 P 的双槽和 SY 的独立精确形状，�
 证明两套 P L0 地址彼此不重叠、MMA/FIX 模板仍为 128x128、且 SY 地址来自已结束
 的 P lifetime。任何容量、offset 或 event 审计失败都必须立即回退。
 
-首次运行已确认两套 P L0C 位于 offset 0 和 65536，物理布局和 MMA/FIX 模板均
-正确，但设备报告 `L0C read/write conflict`。根因是 L0A/L0B 双槽让后续 MMA 更早
-发射，而中间 d tile 对同一 L0C 的累加没有显式完成边；仅凭 `FIX_M` token 不能
-证明前一 Cube 写已完成。修复是在每次仍需向同一 L0C 累加的 MMA 后插入
-`T.pipe_barrier("m")`，再归还 `FIX_M`。该屏障只约束 M pipe 的 L0C 写完成，保留
-不同 L0A/L0B 槽上的物理隔离；修复后仍须重新审计 C++ 的 `PipeBarrier<PIPE_M>`
-位置、精度和性能。
+两次运行均确认 P L0C 位于 offset 0 和 65536，L0A/L0B 也完全独立，MMA/FIX
+模板为正确的 128x128；因此容量、shape 和 parent-slice 均不是根因。第二次 C++
+还确认每个中间 P MMA 后都生成了 `PipeBarrier<PIPE_M>`，但设备仍报告相同的
+`L0C read/write conflict`。这证明问题不再是 M pipe 内的可见性，而是当前手写
+`T.mma` 路径无法表达官方 L0C ping-pong 所需的完整硬件 ownership 协议。继续添加
+barrier 或复用 event 只是在同一未建模边界上试错，已回退到精度验证过的单槽 C1。
+双槽源码保留为未调用实验宏和 C++ 证据，但主流程不再进入该路径；在不修改
+tilelang-ascend 的约束下，此方向应视为不可安全移植。
 
 ### 已回退：V0 P/SY 两阶段 gather
 

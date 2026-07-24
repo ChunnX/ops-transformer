@@ -401,7 +401,7 @@ def tilelang_grad_kl_loss_single_kernel(
             T.wait_flag("mte3", "mte2", 1)
 
     @T.macro
-    def cube1_task(
+    def cube1_task_l0c_double_experimental(
         Query,
         QueryRope,
         QueryIndex,
@@ -738,6 +738,353 @@ def tilelang_grad_kl_loss_single_kernel(
                                     k_start:k_start + N_SPLIT],
                             enable_relu=True,
                         )
+                        T.set_flag("fix", "m", 1)
+
+                T.wait_flag("mte1", "mte2", 1)
+                T.wait_flag("m", "mte1", 1)
+                T.wait_flag("fix", "m", 1)
+                if task_slot == 0:
+                    T.set_cross_flag("FIX", C1_TO_V1_SY_FLAGS[0])
+                else:
+                    T.set_cross_flag("FIX", C1_TO_V1_SY_FLAGS[1])
+
+    @T.macro
+    def cube1_task_physical_db_experiment(
+        Query,
+        QueryRope,
+        QueryIndex,
+        GatherKey_ws,
+        GatherKeyRope_ws,
+        GatherKeyIndex_ws,
+        bmm1Res,
+        bmm2Res,
+        bz_task,
+        s1_begin_task,
+        s1_end_task,
+        task_slot,
+    ):
+        """Precision-proven single-slot C1 pipeline."""
+        with T.Scope("C"):
+            c1_query_chunk_0_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_chunk_1_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_chunk_2_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_chunk_3_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_rope_cache_l1 = T.alloc_L1((N1, max(d_rope, 1)), input_dtype)
+            c1_key_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
+            c1_q_l0a = T.alloc_L0A((N1, K_SPLIT), input_dtype)
+            c1_key_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
+            c1_p_l0c = T.alloc_L0C((N1, N_SPLIT), calc_dtype)
+            c1_qi_l1 = T.alloc_L1((Nidx1, K_SPLIT), input_dtype)
+            c1_ki_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
+            c1_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
+            c1_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
+            c1_sy_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
+
+            T.set_flag("mte1", "mte2", 0)
+            T.set_flag("m", "mte1", 0)
+            T.set_flag("fix", "m", 0)
+            T.set_flag("mte1", "mte2", 1)
+            T.set_flag("m", "mte1", 1)
+            T.set_flag("fix", "m", 1)
+
+            for s1_id in T.serial(s1_begin_task, s1_end_task):
+                T.copy(Query[bz_task, s1_id, 0:N1, 0:K_SPLIT], c1_query_chunk_0_l1)
+                T.copy(Query[bz_task, s1_id, 0:N1, K_SPLIT:2 * K_SPLIT], c1_query_chunk_1_l1)
+                T.copy(Query[bz_task, s1_id, 0:N1, 2 * K_SPLIT:3 * K_SPLIT], c1_query_chunk_2_l1)
+                T.copy(Query[bz_task, s1_id, 0:N1, 3 * K_SPLIT:4 * K_SPLIT], c1_query_chunk_3_l1)
+                if d_rope > 0:
+                    T.copy(QueryRope[bz_task, s1_id, 0:N1, 0:d_rope], c1_query_rope_cache_l1[0:N1, 0:d_rope])
+                T.set_flag("mte2", "mte1", 4)
+                T.wait_flag("mte2", "mte1", 4)
+
+                T.copy(QueryIndex[bz_task, s1_id, 0:Nidx1, 0:DQueryIndex], c1_qi_l1)
+                T.set_flag("mte2", "mte1", 5)
+
+                for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
+                    if k_outer % 2 == 0:
+                        T.wait_cross_flag(V0_TO_C1_P_FLAGS[0])
+                    else:
+                        T.wait_cross_flag(V0_TO_C1_P_FLAGS[1])
+
+                    for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
+                        k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
+                        T.wait_flag("mte1", "mte2", 0)
+                        T.copy(GatherKey_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, 0:K_SPLIT], c1_key_l1)
+                        T.set_flag("mte2", "mte1", 0)
+
+                        for d_idx in T.serial(d_num_query):
+                            T.wait_flag("m", "mte1", 0)
+                            T.wait_flag("mte2", "mte1", 0)
+                            if d_idx == 0:
+                                T.copy(c1_query_chunk_0_l1, c1_q_l0a)
+                            if d_idx == 1:
+                                T.copy(c1_query_chunk_1_l1, c1_q_l0a)
+                            if d_idx == 2:
+                                T.copy(c1_query_chunk_2_l1, c1_q_l0a)
+                            if d_idx == 3:
+                                T.copy(c1_query_chunk_3_l1, c1_q_l0a)
+                            T.copy(c1_key_l1, c1_key_l0b, transpose=True)
+                            T.set_flag("mte1", "mte2", 0)
+                            T.set_flag("mte1", "m", 0)
+
+                            if d_idx + 1 < d_num_query:
+                                T.wait_flag("mte1", "mte2", 0)
+                                T.copy(GatherKey_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                    (d_idx + 1) * K_SPLIT:(d_idx + 2) * K_SPLIT], c1_key_l1)
+                                T.set_flag("mte2", "mte1", 0)
+                            if d_idx + 1 >= d_num_query:
+                                if d_num_rope > 0:
+                                    T.wait_flag("mte1", "mte2", 0)
+                                    T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, 0:K_SPLIT], c1_key_l1)
+                                    T.set_flag("mte2", "mte1", 0)
+
+                            T.wait_flag("mte1", "m", 0)
+                            T.wait_flag("fix", "m", 0)
+                            T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=(d_idx == 0))
+                            T.set_flag("m", "mte1", 0)
+                            if d_idx + 1 < d_num_query or d_num_rope > 0:
+                                T.set_flag("fix", "m", 0)
+
+                        for rope_idx in T.serial(d_num_rope):
+                            T.wait_flag("m", "mte1", 0)
+                            T.wait_flag("mte2", "mte1", 0)
+                            T.copy(c1_query_rope_cache_l1[0:N1, rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT], c1_q_l0a)
+                            T.copy(c1_key_l1, c1_key_l0b, transpose=True)
+                            T.set_flag("mte1", "mte2", 0)
+                            T.set_flag("mte1", "m", 0)
+
+                            if rope_idx + 1 < d_num_rope:
+                                T.wait_flag("mte1", "mte2", 0)
+                                T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                       (rope_idx + 1) * K_SPLIT:(rope_idx + 2) * K_SPLIT], c1_key_l1)
+                                T.set_flag("mte2", "mte1", 0)
+
+                            T.wait_flag("mte1", "m", 0)
+                            T.wait_flag("fix", "m", 0)
+                            T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=False)
+                            T.set_flag("m", "mte1", 0)
+                            if rope_idx + 1 < d_num_rope:
+                                T.set_flag("fix", "m", 0)
+
+                        T.set_flag("m", "fix", 0)
+                        T.wait_flag("m", "fix", 0)
+                        T.copy(c1_p_l0c, bmm1Res[bz_task, s1_id, 0:N1, k_start:k_start + N_SPLIT])
+                        T.set_flag("fix", "m", 0)
+
+                T.wait_flag("mte1", "mte2", 0)
+                T.wait_flag("m", "mte1", 0)
+                T.wait_flag("fix", "m", 0)
+                if task_slot == 0:
+                    T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[0])
+                else:
+                    T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[1])
+
+                T.wait_flag("mte2", "mte1", 5)
+                if d_num_query_index == 1:
+                    T.wait_flag("m", "mte1", 1)
+                    T.copy(c1_qi_l1, c1_qi_l0a)
+                    T.set_flag("m", "mte1", 1)
+                for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
+                    if k_outer % 2 == 0:
+                        T.wait_cross_flag(V0_TO_C1_SY_FLAGS[0])
+                    else:
+                        T.wait_cross_flag(V0_TO_C1_SY_FLAGS[1])
+
+                    for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
+                        k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
+                        for d_idx in T.serial(d_num_query_index):
+                            T.wait_flag("mte1", "mte2", 1)
+                            T.copy(GatherKeyIndex_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                     d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_ki_l1)
+                            T.set_flag("mte2", "mte1", 1)
+                            T.wait_flag("m", "mte1", 1)
+                            T.wait_flag("mte2", "mte1", 1)
+                            if d_num_query_index != 1:
+                                T.copy(c1_qi_l1[0:Nidx1, d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_qi_l0a)
+                            T.copy(c1_ki_l1, c1_ki_l0b, transpose=True)
+                            T.set_flag("mte1", "mte2", 1)
+                            T.set_flag("mte1", "m", 1)
+
+                            T.wait_flag("mte1", "m", 1)
+                            T.wait_flag("fix", "m", 1)
+                            T.mma(c1_qi_l0a, c1_ki_l0b, c1_sy_l0c, init=(d_idx == 0))
+                            T.set_flag("m", "mte1", 1)
+                            if d_idx + 1 < d_num_query_index:
+                                T.set_flag("fix", "m", 1)
+                        T.set_flag("m", "fix", 1)
+                        T.wait_flag("m", "fix", 1)
+                        T.copy(c1_sy_l0c, bmm2Res[bz_task, s1_id, 0:Nidx1,
+                                                  k_start:k_start + N_SPLIT], enable_relu=True)
+                        T.set_flag("fix", "m", 1)
+
+                T.wait_flag("mte1", "mte2", 1)
+                T.wait_flag("m", "mte1", 1)
+                T.wait_flag("fix", "m", 1)
+                if task_slot == 0:
+                    T.set_cross_flag("FIX", C1_TO_V1_SY_FLAGS[0])
+                else:
+                    T.set_cross_flag("FIX", C1_TO_V1_SY_FLAGS[1])
+
+    @T.macro
+    def cube1_task(
+        Query,
+        QueryRope,
+        QueryIndex,
+        GatherKey_ws,
+        GatherKeyRope_ws,
+        GatherKeyIndex_ws,
+        bmm1Res,
+        bmm2Res,
+        bz_task,
+        s1_begin_task,
+        s1_end_task,
+        task_slot,
+    ):
+        """Precision-proven single-slot C1 baseline."""
+        with T.Scope("C"):
+            c1_query_chunk_0_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_chunk_1_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_chunk_2_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_chunk_3_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_rope_cache_l1 = T.alloc_L1((N1, max(d_rope, 1)), input_dtype)
+            c1_key_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
+            c1_q_l0a = T.alloc_L0A((N1, K_SPLIT), input_dtype)
+            c1_key_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
+            c1_p_l0c = T.alloc_L0C((N1, N_SPLIT), calc_dtype)
+            c1_qi_l1 = T.alloc_L1((Nidx1, K_SPLIT), input_dtype)
+            c1_ki_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
+            c1_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
+            c1_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
+            c1_sy_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
+
+            T.set_flag("mte1", "mte2", 0)
+            T.set_flag("m", "mte1", 0)
+            T.set_flag("fix", "m", 0)
+            T.set_flag("mte1", "mte2", 1)
+            T.set_flag("m", "mte1", 1)
+            T.set_flag("fix", "m", 1)
+
+            for s1_id in T.serial(s1_begin_task, s1_end_task):
+                T.copy(Query[bz_task, s1_id, 0:N1, 0:K_SPLIT], c1_query_chunk_0_l1)
+                T.copy(Query[bz_task, s1_id, 0:N1, K_SPLIT:2 * K_SPLIT], c1_query_chunk_1_l1)
+                T.copy(Query[bz_task, s1_id, 0:N1, 2 * K_SPLIT:3 * K_SPLIT], c1_query_chunk_2_l1)
+                T.copy(Query[bz_task, s1_id, 0:N1, 3 * K_SPLIT:4 * K_SPLIT], c1_query_chunk_3_l1)
+                if d_rope > 0:
+                    T.copy(QueryRope[bz_task, s1_id, 0:N1, 0:d_rope], c1_query_rope_cache_l1[0:N1, 0:d_rope])
+                T.set_flag("mte2", "mte1", 4)
+                T.wait_flag("mte2", "mte1", 4)
+
+                T.copy(QueryIndex[bz_task, s1_id, 0:Nidx1, 0:DQueryIndex], c1_qi_l1)
+                T.set_flag("mte2", "mte1", 5)
+
+                for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
+                    if k_outer % 2 == 0:
+                        T.wait_cross_flag(V0_TO_C1_P_FLAGS[0])
+                    else:
+                        T.wait_cross_flag(V0_TO_C1_P_FLAGS[1])
+                    for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
+                        k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
+                        T.wait_flag("mte1", "mte2", 0)
+                        T.copy(GatherKey_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, 0:K_SPLIT], c1_key_l1)
+                        T.set_flag("mte2", "mte1", 0)
+
+                        for d_idx in T.serial(d_num_query):
+                            T.wait_flag("m", "mte1", 0)
+                            T.wait_flag("mte2", "mte1", 0)
+                            if d_idx == 0:
+                                T.copy(c1_query_chunk_0_l1, c1_q_l0a)
+                            if d_idx == 1:
+                                T.copy(c1_query_chunk_1_l1, c1_q_l0a)
+                            if d_idx == 2:
+                                T.copy(c1_query_chunk_2_l1, c1_q_l0a)
+                            if d_idx == 3:
+                                T.copy(c1_query_chunk_3_l1, c1_q_l0a)
+                            T.copy(c1_key_l1, c1_key_l0b, transpose=True)
+                            T.set_flag("mte1", "mte2", 0)
+                            T.set_flag("mte1", "m", 0)
+                            if d_idx + 1 < d_num_query:
+                                T.wait_flag("mte1", "mte2", 0)
+                                T.copy(GatherKey_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                    (d_idx + 1) * K_SPLIT:(d_idx + 2) * K_SPLIT], c1_key_l1)
+                                T.set_flag("mte2", "mte1", 0)
+                            if d_idx + 1 >= d_num_query:
+                                if d_num_rope > 0:
+                                    T.wait_flag("mte1", "mte2", 0)
+                                    T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, 0:K_SPLIT], c1_key_l1)
+                                    T.set_flag("mte2", "mte1", 0)
+                            T.wait_flag("mte1", "m", 0)
+                            T.wait_flag("fix", "m", 0)
+                            T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=(d_idx == 0))
+                            T.set_flag("m", "mte1", 0)
+                            if d_idx + 1 < d_num_query or d_num_rope > 0:
+                                T.set_flag("fix", "m", 0)
+
+                        for rope_idx in T.serial(d_num_rope):
+                            T.wait_flag("m", "mte1", 0)
+                            T.wait_flag("mte2", "mte1", 0)
+                            T.copy(c1_query_rope_cache_l1[0:N1, rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT], c1_q_l0a)
+                            T.copy(c1_key_l1, c1_key_l0b, transpose=True)
+                            T.set_flag("mte1", "mte2", 0)
+                            T.set_flag("mte1", "m", 0)
+                            if rope_idx + 1 < d_num_rope:
+                                T.wait_flag("mte1", "mte2", 0)
+                                T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                       (rope_idx + 1) * K_SPLIT:(rope_idx + 2) * K_SPLIT], c1_key_l1)
+                                T.set_flag("mte2", "mte1", 0)
+                            T.wait_flag("mte1", "m", 0)
+                            T.wait_flag("fix", "m", 0)
+                            T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=False)
+                            T.set_flag("m", "mte1", 0)
+                            if rope_idx + 1 < d_num_rope:
+                                T.set_flag("fix", "m", 0)
+
+                        T.set_flag("m", "fix", 0)
+                        T.wait_flag("m", "fix", 0)
+                        T.copy(c1_p_l0c, bmm1Res[bz_task, s1_id, 0:N1, k_start:k_start + N_SPLIT])
+                        T.set_flag("fix", "m", 0)
+
+                T.wait_flag("mte1", "mte2", 0)
+                T.wait_flag("m", "mte1", 0)
+                T.wait_flag("fix", "m", 0)
+                if task_slot == 0:
+                    T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[0])
+                else:
+                    T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[1])
+
+                T.wait_flag("mte2", "mte1", 5)
+                if d_num_query_index == 1:
+                    T.wait_flag("m", "mte1", 1)
+                    T.copy(c1_qi_l1, c1_qi_l0a)
+                    T.set_flag("m", "mte1", 1)
+                for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
+                    if k_outer % 2 == 0:
+                        T.wait_cross_flag(V0_TO_C1_SY_FLAGS[0])
+                    else:
+                        T.wait_cross_flag(V0_TO_C1_SY_FLAGS[1])
+                    for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
+                        k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
+                        for d_idx in T.serial(d_num_query_index):
+                            T.wait_flag("mte1", "mte2", 1)
+                            T.copy(GatherKeyIndex_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                      d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_ki_l1)
+                            T.set_flag("mte2", "mte1", 1)
+                            T.wait_flag("m", "mte1", 1)
+                            T.wait_flag("mte2", "mte1", 1)
+                            if d_num_query_index != 1:
+                                T.copy(c1_qi_l1[0:Nidx1, d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_qi_l0a)
+                            T.copy(c1_ki_l1, c1_ki_l0b, transpose=True)
+                            T.set_flag("mte1", "mte2", 1)
+                            T.set_flag("mte1", "m", 1)
+                            T.wait_flag("mte1", "m", 1)
+                            T.wait_flag("fix", "m", 1)
+                            T.mma(c1_qi_l0a, c1_ki_l0b, c1_sy_l0c, init=(d_idx == 0))
+                            T.set_flag("m", "mte1", 1)
+                            if d_idx + 1 < d_num_query_index:
+                                T.set_flag("fix", "m", 1)
+                        T.set_flag("m", "fix", 1)
+                        T.wait_flag("m", "fix", 1)
+                        T.copy(c1_sy_l0c, bmm2Res[bz_task, s1_id, 0:Nidx1,
+                                                  k_start:k_start + N_SPLIT], enable_relu=True)
                         T.set_flag("fix", "m", 1)
 
                 T.wait_flag("mte1", "mte2", 1)
