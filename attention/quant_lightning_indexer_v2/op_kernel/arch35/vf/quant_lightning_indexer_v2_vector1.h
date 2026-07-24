@@ -993,26 +993,25 @@ __simd_vf__ void MulWeightAndReduceSumPerTensor2VF(__ubuf__ uint16_t* out0, __ub
     MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(out1, regOut[1], maskAllB16);
 }
 
-<typename W_T>
 __aicore__ inline void MulWeightAndReduceSumPerTensor2(
     const LocalTensor<uint16_t> &out_,   // out    [2, S2Base]     [128   ]
     uint32_t outStride,
     const LocalTensor<float> &qk_,       // q*k^t  [2, G, S2Base]  [64 128]
     uint32_t qkVLStride,
     uint32_t qkStride,
-    const LocalTensor<W_T> &weight_,   // w      [2, G]          [64    ]
+    const LocalTensor<float> &weight_,   // w      [2, G]          [64    ]
     uint32_t weightStride,
     const LocalTensor<float> &weightTemp_,
     const float kScaleValue,             // kScale scalar
     const float qScaleValue,             // qScale scalar for batch 0和1
     const int gSize)                     // G 64
 {
-    __ubuf__ W_T* weight0 = (__ubuf__ W_T*)weight_.GetPhyAddr();
+    __ubuf__ float* weight0 = (__ubuf__ float*)weight_.GetPhyAddr();
     __ubuf__ float* weightTemp = (__ubuf__ float*)weightTemp_.GetPhyAddr();
     __ubuf__ float* qk0 = (__ubuf__ float*)qk_.GetPhyAddr();
     __ubuf__ uint16_t* out0 = (__ubuf__ uint16_t*)out_.GetPhyAddr();
 
-    __ubuf__ W_T* weight1 = weight0 + weightStride;
+    __ubuf__ float* weight1 = weight0 + weightStride;
     __ubuf__ float* qk1 = qk0 + qkStride;
     __ubuf__ uint16_t* out1 = out0 + outStride;
 
@@ -1026,9 +1025,9 @@ __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(const LocalTensor<SCO
                                                   const LocalTensor<QK_T> &qk_,       // q*k^t  [G, S2Base]  [64 128]
                                                   uint32_t qkVLStride,
                                                   uint32_t qkStride,
-                                                  const LocalTensor<float> &weight_,   // w      [G]          [64    ]
+                                                  const LocalTensor<W_T> &weight_,   // w      [G]          [64    ]
                                                   uint32_t weightStride,
-                                                  const LocalTensor<W_T> &weightTemp_,
+                                                  const LocalTensor<float> &weightTemp_,
                                                   const float kScaleValue,
                                                   const float qScaleValue,
                                                   const int gSize,

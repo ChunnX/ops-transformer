@@ -77,10 +77,9 @@ public:
     static constexpr bool PAGE_ATTENTION = QLIV2T::pageAttention;
     static constexpr LI_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
     static constexpr LI_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
-
+    using W_T = typename QLIV2T::weightType;
     using SCORE_T = typename QLIV2T::scoreType;
     using SCALE_T = typename QLIV2T::scaleType;
-    
     QLIV2Matmul<QLIV2T> matmulService;
     QLIV2Vector<QLIV2T> vectorService;
 
@@ -120,9 +119,9 @@ protected:
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
-    GlobalTensor<float> weightsGm;
-    GlobalTensor<float> qScaleGm;
-    GlobalTensor<float> kScaleGm;
+    GlobalTensor<W_T> weightsGm;
+    GlobalTensor<SCALE_T> qScaleGm;
+    GlobalTensor<SCALE_T> kScaleGm;
     GlobalTensor<uint32_t> metadataGm;
 
     GlobalTensor<int32_t> indiceOutGm;
