@@ -359,7 +359,6 @@ public:
     int64_t vOffsetType_ = 0;
 
     int64_t GetCacheBlockElemNum(const ge::DataType cacheDtype) const;
-    bool CheckNzHalfDkAligned();
 
 protected:
     bool IsCapable() override;
