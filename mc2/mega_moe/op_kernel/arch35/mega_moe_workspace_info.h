@@ -132,8 +132,6 @@ struct WorkspaceInfo {
     GM_ADDR dispatchCursorPtr{nullptr};    // dispatch cnt for each expert
     GM_ADDR dispatchDonePtr{nullptr};      // dispatch done
     GM_ADDR dispatchL2CommPtr{nullptr};    // dispatch l2 communication workspace
-    GM_ADDR combineCommNotifyPtr{nullptr}; // 合并发送通知临时GM
-    GM_ADDR combineCommDataPtr{nullptr};   // combine communication workspace
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -248,25 +246,6 @@ struct WorkspaceInfo {
             workspaceSize +=
                 Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum) * 6 * static_cast<int64_t>(recordBytes),
                                      static_cast<int64_t>(ALIGN_512));
-
-            combineCommDataPtr = base + workspaceSize;
-            int64_t maxDataLengthPerBlock = Ops::Base::CeilAlign(
-                static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(uint32_t) / 2), (int64_t)ALIGN_32);
-            // 每个 token 含数据+三元组(32B)
-            int64_t maxDataSizePerToken =
-                Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)MegaMoeImpl::L1_TILE_N) *
-                (ALIGN_32 + maxDataLengthPerBlock);
-            int64_t maxDataSize = Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs) * maxDataSizePerToken *
-                                                           static_cast<int64_t>(tilingData->expertPerRank) *
-                                                           static_cast<int64_t>(tilingData->epWorldSize),
-                                                       (int64_t)ALIGN_512);
-            workspaceSize += maxDataSize;
-
-            combineCommNotifyPtr = base + workspaceSize;
-            // 每个 expert 分配一个 int32 通知
-            uint32_t maxNotifySize =
-                Ops::Base::CeilAlign((int64_t)(tilingData->epWorldSize * sizeof(int32_t)), (int64_t)ALIGN_512);
-            workspaceSize += maxNotifySize;
         }
 
         // Shared expert workspace buffers
