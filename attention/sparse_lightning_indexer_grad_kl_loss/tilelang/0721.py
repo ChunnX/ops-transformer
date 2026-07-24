@@ -1511,6 +1511,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     )
                     T.set_flag("mte2", "v", 3)
                     T.wait_flag("mte2", "v", 3)
+                    # P/SY are now resident in their n_block UB caches.  Give
+                    # MTE2 ownership back before the first 64-column BMM2
+                    # refill; each inner tile keeps the original token cycle.
+                    T.set_flag("v", "mte2", 3)
                     for bw_col_id in T.serial(bw_col_count):
                         bw_col_start = (
                             n_idx * n_block + bw_col_id * bw_col_block
