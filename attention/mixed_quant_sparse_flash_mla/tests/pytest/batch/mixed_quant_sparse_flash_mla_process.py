@@ -21,6 +21,26 @@ import math
 import cann_ops_transformer
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
+from analyze_metadata_result import analyze_and_store
+
+
+def _analyze_metadata_coverage(metadata, params):
+    if os.environ.get("MQSMLA_ANALYZE_METADATA", "1") == "0":
+        return
+    output_path = os.environ.get("MQSMLA_METADATA_COVERAGE_FILE", "metadata_coverage.csv")
+    try:
+        report = analyze_and_store(metadata, params, output_path)
+        matched = [
+            str(index)
+            for index, result in enumerate(report["conditions"].values(), start=1)
+            if result["matched"]
+        ]
+        print(f"metadata coverage: case={report['case']} matched={','.join(matched) or 'none'} "
+              f"output={output_path}")
+    except Exception as error:
+        if os.environ.get("MQSMLA_METADATA_ANALYSIS_STRICT", "0") == "1":
+            raise
+        print(f"metadata coverage analysis failed: case={params.get('Testcase_Name')} error={error}")
 
 class Network(torch.nn.Module):
     def __init__(self):
@@ -121,6 +141,7 @@ def test_mqsmla_quant_process_graph(test_data, device_id=0):
 
     torch.npu.synchronize()
     metadata.npu()
+    _analyze_metadata_coverage(metadata, params)
 
     print("mixed_quant_sparse_flash_mla...")
     npu_result = npu_mode(
@@ -199,6 +220,7 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
                                 )
     torch.npu.synchronize()
     metadata.npu()
+    _analyze_metadata_coverage(metadata, params)
     print("mixed_quant_sparse_flash_mla...")
     npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,

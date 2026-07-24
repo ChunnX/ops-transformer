@@ -710,33 +710,71 @@ TEST_PARAMS["N2"] = {
     "S1EQS2": [False],
 }
 
-TEST_PARAMS["CSA_33"] = {
-    "Testcase_Name": ["CSA_33"],
+# TEST_PARAMS["CSA_33"] = {
+#     "Testcase_Name": ["CSA_33"],
+#     "layout_q": ["BSND"],
+#     "layout_kv": ["PA_BBND"],
+#     "q_type": [torch.bfloat16],
+#     "ori_kv_type": [torch.float8_e4m3fn],
+#     "cmp_kv_type": [torch.float8_e4m3fn],
+#     "B": [33],
+#     "S1": [1],
+#     "S2": [262144],
+#     "N1": [64],
+#     "N2": [1],
+#     "D": [512],
+#     "K": [512],
+#     "block_num1": [None],
+#     "block_num2": [None],
+#     "block_size1": [128],
+#     "block_size2": [128],
+#     "seqused_q": [None],
+#     "cu_seqlens_q": [None],
+#     "seqused_ori_kv": [[262144]],
+#     "seqused_cmp_kv": [[2048]],
+#     "cu_seqlens_ori_kv": [None],
+#     "cu_seqlens_cmp_kv": [None],
+#     "cmp_residual_kv": [None],
+#     "softmax_scale": [0.04419417],
+#     "cmp_ratio": [128],
+#     "ori_mask_mode": [4],
+#     "cmp_mask_mode": [3],
+#     "ori_win_left": [127],
+#     "ori_win_right": [0],
+#     "quant_mode": [1],
+#     "tile_size": [64],
+#     "rope_head_dim": [64],
+#     "template_run_mode": ["CSA"],
+#     "actlen_mode": ["full"],
+#     "S1EQS2": [False],
+# }
+TEST_PARAMS["testest"] = {
+    "Testcase_Name": ["testest"],
     "layout_q": ["BSND"],
     "layout_kv": ["PA_BBND"],
     "q_type": [torch.bfloat16],
     "ori_kv_type": [torch.float8_e4m3fn],
     "cmp_kv_type": [torch.float8_e4m3fn],
-    "B": [33],
+    "B": [1],
     "S1": [1],
-    "S2": [262144],
+    "S2": [512],
     "N1": [64],
     "N2": [1],
     "D": [512],
-    "K": [512],
+    "K": [0],
     "block_num1": [None],
     "block_num2": [None],
     "block_size1": [128],
     "block_size2": [128],
     "seqused_q": [None],
     "cu_seqlens_q": [None],
-    "seqused_ori_kv": [[262144]],
-    "seqused_cmp_kv": [[2048]],
+    "seqused_ori_kv": [None],
+    "seqused_cmp_kv": [None],
     "cu_seqlens_ori_kv": [None],
     "cu_seqlens_cmp_kv": [None],
     "cmp_residual_kv": [None],
     "softmax_scale": [0.04419417],
-    "cmp_ratio": [128],
+    "cmp_ratio": [4],
     "ori_mask_mode": [4],
     "cmp_mask_mode": [3],
     "ori_win_left": [127],
@@ -744,12 +782,144 @@ TEST_PARAMS["CSA_33"] = {
     "quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CSA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
-ENABLED_PARAMS = [TEST_PARAMS["single_batch_full_cores_with_blocks"]]
-# ENABLED_PARAMS = [
-#     TEST_PARAMS["1_core_has_2_reduce"],
-# ]
-# ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
+
+def _prefix_sums(lengths):
+    values = [0]
+    for length in lengths:
+        values.append(values[-1] + length)
+    return values
+
+
+def _register_coverage_case(name, mode, layout_q, layout_kv, n1, q_lengths,
+                            kv_lengths, cmp_ratio=4, topk=0, block_size=128):
+    """Register one deterministic case without creating a cartesian product."""
+    batch_size = len(q_lengths)
+    if len(kv_lengths) != batch_size:
+        raise ValueError(f"{name}: q_lengths and kv_lengths must have the same size")
+
+    has_cmp = mode != "SWA"
+    ratio = cmp_ratio if has_cmp else 1
+    cmp_lengths = [length // ratio for length in kv_lengths] if has_cmp else None
+    cmp_cu_seqlens = ([value // ratio for value in _prefix_sums(kv_lengths)]
+                      if has_cmp else None)
+    cmp_residual = [length % ratio for length in kv_lengths] if has_cmp else None
+
+    TEST_PARAMS[name] = {
+        "Testcase_Name": [name],
+        "layout_q": [layout_q],
+        "layout_kv": [layout_kv],
+        "q_type": [torch.bfloat16],
+        "ori_kv_type": [torch.float8_e4m3fn],
+        "cmp_kv_type": [torch.float8_e4m3fn],
+        "B": [batch_size],
+        "S1": [max(q_lengths)],
+        "S2": [max(kv_lengths)],
+        "N1": [n1],
+        "N2": [1],
+        "D": [512],
+        "K": [topk if mode == "CSA" else 0],
+        "block_num1": [None],
+        "block_num2": [None],
+        "block_size1": [block_size],
+        "block_size2": [block_size],
+        "seqused_q": [q_lengths],
+        "cu_seqlens_q": [_prefix_sums(q_lengths)],
+        "seqused_ori_kv": [kv_lengths],
+        "seqused_cmp_kv": [cmp_lengths],
+        "cu_seqlens_ori_kv": [_prefix_sums(kv_lengths)],
+        "cu_seqlens_cmp_kv": [cmp_cu_seqlens],
+        "cmp_residual_kv": [cmp_residual],
+        "softmax_scale": [0.04419417],
+        "cmp_ratio": [ratio],
+        "ori_mask_mode": [4],
+        "cmp_mask_mode": [3 if has_cmp else 0],
+        "ori_win_left": [127],
+        "ori_win_right": [0],
+        "quant_mode": [1],
+        "tile_size": [64],
+        "rope_head_dim": [64],
+        "template_run_mode": [mode],
+        "actlen_mode": ["full"],
+        "S1EQS2": [False],
+    }
+
+
+# 96 pairwise-style cases: 24 per requested layout pair and 8 per mode/layout.
+_COVERAGE_LAYOUTS = (
+    ("BSND", "PA_BBND", "bsnd_pa"),
+    ("TND", "PA_BBND", "tnd_pa"),
+    ("TND", "TND", "tnd_tnd"),
+    ("BSND", "BSND", "bsnd_bsnd"),
+)
+_COVERAGE_MODES = ("SWA", "HCA", "CSA")
+_COVERAGE_N1 = (2, 4, 8, 16, 32, 64, 128)
+_COVERAGE_BATCH = (1, 1, 2, 3, 5, 8)
+_COVERAGE_S1 = (1, 2, 3, 4)
+_COVERAGE_S2 = (256, 384, 512, 640, 768, 1024, 1280, 1536)
+_COVERAGE_TAIL = (1, 7, 31, 65)
+_COVERAGE_CASE_NAMES = []
+
+for layout_index, (layout_q, layout_kv, layout_tag) in enumerate(_COVERAGE_LAYOUTS):
+    for local_index in range(24):
+        mode = _COVERAGE_MODES[local_index % len(_COVERAGE_MODES)]
+        n1 = _COVERAGE_N1[(layout_index * 3 + local_index) % len(_COVERAGE_N1)]
+        batch_size = _COVERAGE_BATCH[(layout_index + local_index) % len(_COVERAGE_BATCH)]
+        max_q = _COVERAGE_S1[(layout_index + local_index // 2) % len(_COVERAGE_S1)]
+        base_s2 = _COVERAGE_S2[(layout_index * 2 + local_index // 3) % len(_COVERAGE_S2)]
+        has_tail = (local_index // 3) % 2 == 1
+        max_kv = base_s2 + (_COVERAGE_TAIL[(layout_index + local_index) % 4] if has_tail else 0)
+
+        q_lengths = [max(1, max_q - (1 if batch_index % 3 == 2 else 0))
+                     for batch_index in range(batch_size)]
+        if has_tail:
+            kv_lengths = [max(128, max_kv - batch_index * 3)
+                          for batch_index in range(batch_size)]
+        else:
+            kv_lengths = [max(128, max_kv - 128 * (batch_index % 3))
+                          for batch_index in range(batch_size)]
+
+        case_name = f"cov100_{layout_tag}_{mode.lower()}_{local_index:02d}"
+        _register_coverage_case(
+            case_name, mode, layout_q, layout_kv, n1, q_lengths, kv_lengths,
+            cmp_ratio=4,
+            topk=(512, 1024)[local_index % 2],
+        )
+        _COVERAGE_CASE_NAMES.append(case_name)
+
+
+# Four targeted schedules complement the pairwise cases.  The 15920-token row
+# has 33 reduction blocks (1 ori + 32 cmp), while the 33-batch shapes exercise
+# core-boundary rows where local and cross-core reductions coexist.
+_COVERAGE_TARGETS = (
+    ("cov100_target_two_cores_cross_only", "HCA", "BSND", "PA_BBND", 64,
+     [1], [512], 4),
+    ("cov100_target_33_blocks", "HCA", "BSND", "PA_BBND", 64,
+     [1], [15920], 4),
+    ("cov100_target_local_cross_mix", "HCA", "BSND", "PA_BBND", 64,
+     [1] * 33, [256] + [1024] * 31 + [512], 4),
+    ("cov100_target_local_cross_mix_shifted", "HCA", "BSND", "PA_BBND", 64,
+     [1] * 33, [1024] * 3 + [256] + [1024] * 28 + [512], 4),
+)
+
+for name, mode, layout_q, layout_kv, n1, q_lengths, kv_lengths, ratio in _COVERAGE_TARGETS:
+    _register_coverage_case(
+        name, mode, layout_q, layout_kv, n1, q_lengths, kv_lengths,
+        cmp_ratio=ratio,
+    )
+    _COVERAGE_CASE_NAMES.append(name)
+
+assert len(_COVERAGE_CASE_NAMES) == 100
+
+# Keep cases that are supported by the currently compiled HCA/CSA PA/TND keys
+# first.  A missing optional key then cannot poison metadata collection for the
+# rest of the suite during bring-up of a newly compiled package.
+_COVERAGE_CASE_NAMES.sort(key=lambda name: (
+    TEST_PARAMS[name]["template_run_mode"][0] == "SWA",
+    TEST_PARAMS[name]["layout_kv"][0] == "BSND",
+    name,
+))
+ENABLED_PARAMS = [TEST_PARAMS[name] for name in _COVERAGE_CASE_NAMES]
