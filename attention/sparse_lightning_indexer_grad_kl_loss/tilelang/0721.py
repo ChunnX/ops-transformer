@@ -239,10 +239,8 @@ def tilelang_grad_kl_loss_single_kernel(
     p_row_chunk_count = ceil_div(N1, p_rows_per_chunk)
     p_cols_per_chunk = min(n_block, 64)
     p_col_chunk_count = ceil_div(n_block, p_cols_per_chunk)
-    # Process one complete C1/C2 K tile per V1 backward iteration.  The
-    # 32x128 single slot keeps the proven ownership protocol while removing
-    # the second 64-column sub-iteration.
-    bw_col_block = min(n_block, 128)
+    # Keep V1 backward within the precision-proven 32x64 physical tile.
+    bw_col_block = min(n_block, 64)
     assert n_block % bw_col_block == 0
     bw_col_count = n_block // bw_col_block
     s1_tile_num = ceil_div(S1, s1_block)
@@ -1425,9 +1423,6 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_weight_2d = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
-            v1_bw_ones = T.alloc_ub(
-                (rows_per_aiv, bw_col_block), calc_dtype
-            )
             v1_bw_p = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_sy = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_diff = T.alloc_ub(bw_col_block, calc_dtype)
@@ -1438,7 +1433,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
             v1_bw_mask = T.alloc_ub(
-                (rows_per_aiv, bw_col_block), calc_dtype
+                rows_per_aiv * bw_col_block // 8, "uint8"
             )
             v1_bw_rg = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
@@ -1482,7 +1477,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 )
 
                 T.tile.fill(v1_bw_weight_2d, 1.0)
-                T.tile.fill(v1_bw_ones, 1.0)
                 T.pipe_barrier("v")
                 T.tile.row_expand_mul_experiment(
                     v1_bw_weight_2d,
@@ -1533,17 +1527,12 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_bw_diff,
                         )
 
-                        # mask ~= (bmm2 > 0), evaluated from the post-ReLU C1
-                        # result using the precision-proven approximation.
-                        T.tile.mul(
+                        T.tile.compare(
                             v1_bw_mask,
                             v1_bw_bmm2,
-                            -10000.0,
+                            0.0,
+                            "GT",
                         )
-                        T.pipe_barrier("v")
-                        T.tile.exp(v1_bw_mask, v1_bw_mask)
-                        T.pipe_barrier("v")
-                        T.tile.sub(v1_bw_mask, v1_bw_ones, v1_bw_mask)
                         T.pipe_barrier("v")
 
                         T.tile.mul(
@@ -1552,11 +1541,17 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_bw_diff_2d,
                         )
                         T.pipe_barrier("v")
-                        T.tile.mul(v1_bw_rg, v1_bw_rg, v1_bw_mask)
+                        T.tile.select(
+                            v1_bw_rg,
+                            v1_bw_mask,
+                            v1_bw_rg,
+                            0.0,
+                            "VSEL_TENSOR_SCALAR_MODE",
+                        )
                         T.pipe_barrier("v")
 
-                        # dWeight consumes the complete unweighted K tile and
-                        # accumulates once per 128-column iteration.
+                        # dWeight consumes the unweighted diff tile and is
+                        # accumulated across both 64-column subtiles.
                         T.tile.mul(
                             v1_bw_bmm2,
                             v1_bw_bmm2,
