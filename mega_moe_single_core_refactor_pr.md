@@ -55,17 +55,18 @@ flowchart TD
     A["SendAndQuantBuffInit"] --> B["QuantProcessInRankOneCore"]
     B --> C["SendMaskCalOneCore"]
     C --> D["ResetFlagListOneCore"]
-    D --> E["共享专家输入及 GMM1（可选）"]
-    E --> F["CrossRankSyncInWorldSize"]
-    F --> G["DispatchGmm1SwigluOneCore"]
-    G --> H["ExpertTokenNumCopyOut"]
-    H --> I["原有 GMM2 + Combine 循环"]
-    I --> J["共享专家 GMM2（可选）"]
-    J --> K["Cross-rank sync + Unpermute"]
+    D --> E["SharedExpertCopyInputOneCore（可选）"]
+    E --> F["SharedExpertGmm1SwigluOneCore（可选）"]
+    F --> G["CrossRankSyncInWorldSize"]
+    G --> H["DispatchGmm1SwigluOneCore"]
+    H --> I["ExpertTokenNumCopyOut"]
+    I --> J["原有 GMM2 + Combine 循环"]
+    J --> K["共享专家 GMM2（可选）"]
+    K --> L["Cross-rank sync + Unpermute"]
 ```
 
 与重构前相比，算子的阶段顺序没有改变。变化主要是 `Process` 不再直接展开 Dispatch 前处理和
-Dispatch/GMM1/SwiGLU 的内部细节，而是组装上下文后调用对应模块。
+共享专家 GMM1/SwiGLU、Dispatch/GMM1/SwiGLU 的内部细节，而是组装上下文后调用对应模块。
 
 ## 核心设计
 
@@ -191,11 +192,13 @@ GMM 输出处理。
 | `single_core_context.h` | AIV 逻辑 job、拓扑、Token shape 和通用切分函数 | 属于所有单核模块共享的调用契约，不绑定某一种计算或通信实现 |
 | `mega_moe_single_core.h` | 单核模块兼容聚合头文件 | 作为统一 include 入口放在根目录，向调用方汇总各子目录接口 |
 | `aiv_compute/quant_process.h` | 本卡 Token 量化 | 核心工作是 AIV Vector 量化计算和双 buffer 流水 |
+| `aiv_compute/shared_expert_prepare.h` | 将共享专家输入的交错 data/scale 拆分为连续布局 | 仅由一个逻辑 AIV job 完成本地数据重排，不涉及 MIX block 协作 |
 | `aiv_compute/group_matmul_compute.h` | GMM 的 AIV prologue、SwiGLU/量化和 Combine 后处理 | 内容均为 GMM 流水中由 AIV 执行的计算角色 |
 | `aiv_comm/send_mask.h` | 按专家生成 bitmap/count 并写入目标 Rank window | 结果用于跨 Rank Dispatch，主要职责是通信数据准备和 window 写入 |
 | `aiv_comm/workspace_reset.h` | Dispatch flag 和 GMM2 Combine counter 清零 | 维护跨阶段同步状态，属于通信/同步基础逻辑 |
 | `aiv_comm/token_dispatch.h` | SendCnt、Mask 扫描、Token/Scale/Triple 搬运和 Dispatch 通知 | 负责从远端 window 收集数据、写入 Dispatch workspace 并通知 GMM1 |
 | `block/dispatch_gmm1_swiglu.h` | 单 MIX block 的 Dispatch/GMM1/SwiGLU 总流水 | 需要同时调度同一 block 内 AIC、AIV0 和 AIV1，不能归入纯 AIV 目录 |
+| `block/shared_expert_gmm1_swiglu.h` | 单 MIX block 的共享专家 GMM1/SwiGLU 流水 | 共享专家不需要 Dispatch，但 GMM1/SwiGLU 仍要求同 block 的 AIC 和 AIV 协作 |
 | `block/group_matmul_compute.h` | Generic 和 A8W4 路径的 AIC MMAD | 内容是 MIX block 中 AIC/Cube 侧的核心矩阵计算 |
 | `epilogue/group_matmul_epilogue.h` | 按核类型和 GMM policy 分发 AIC/AIV 实现 | 位于公共 GMM 骨架与具体核实现之间，是计算出口处的分派层 |
 | `epilogue/block_epilogue_swiglu_mx_quant.h` | SwiGLU + MX 量化 epilogue | 定义 GMM 输出后的融合后处理算子，职责属于 epilogue |
@@ -235,6 +238,30 @@ Mask 和 count 在源卡一次生成，接收卡的 Dispatch 可直接读取 cou
 
 `ResetGmm2CombineSyncCountersOneCore` 是其内部辅助函数，负责清零当前逻辑 AIV job 分到的
 Combine counter 区间。
+
+## 共享专家 GMM1/SwiGLU 前半段
+
+### `SharedExpertCopyInputOneCore`
+
+原型来源为 `MegaMoe::SharedExpertCopyInput`。该函数使用 `AivJobContext` 对本卡 Token 分工，将量化
+阶段产生的 `[data | scale]` 交错布局拆分到共享专家使用的连续 data 和 scale workspace。
+
+调用算子可以自行选择参与该阶段的物理 AIV，并映射成连续逻辑 job。函数复用量化阶段已经申请的
+双 buffer Scratch，不重新申请或复制 UB。
+
+### `SharedExpertGmm1SwigluOneCore`
+
+原型来源为 `MegaMoe::ProcessSharedExpertGmm1`。该函数使用 `BlockJobContext` 表示一个逻辑 MIX
+block job，并在函数内部遍历共享专家：
+
+1. 共享专家输入 data/scale 对所有 shared expert 保持不变。
+2. 按 `sharedExpertIdx` 计算 Weight1、Weight1 scale 和 A8W4 GMM1 中间结果地址。
+3. 按 `sharedExpertIdx` 计算 SwiGLU data/scale 输出偏移并更新 epilogue 地址。
+4. 根据 A8W8、A8W4、A4W4/NZ 模式调用对应的单 block GMM1/SwiGLU 路径。
+5. 所有共享专家完成后调用 `EndSync` 收尾 Cube/Vector 同步。
+
+共享专家不经过 SendMask、SendCnt 和 Dispatch，因此该函数不需要 `BlockWorkspaceContext` 或
+Dispatch flag；但同一个逻辑 block job 的 AIC、AIV0、AIV1 仍必须来自同一个物理 MIX block。
 
 ## Dispatch/GMM1/SwiGLU 单 block 流水
 
@@ -346,9 +373,9 @@ SwiGLU 量化输出类型进行必要提升。该策略没有在本 PR 中改变
 - `AivGmm1PostGeneric`、`AivGmm1PostA8W4` 承载 GMM1 的 SwiGLU/量化。
 - `AivGmm2PostGeneric`、`AivGmm2PostA8W4` 承载无量化 Combine 路径的 AIV 后处理。
 
-GMM1 新增可显式传入 `BlockJobContext` 的入口，供单 block 流水调用。GMM1 原有不带 Context
-的重载继续供共享专家路径使用，并在函数内部按当前物理 block 构造兼容 Context；GMM2 也继续
-保留现有的物理 block 调用入口。
+GMM1 新增可显式传入 `BlockJobContext` 的入口，路由专家和共享专家的单 block 流水均使用该入口。
+原有不带 Context 的重载继续供尚未迁移的兼容路径使用，并在函数内部按当前物理 block 构造
+Context；GMM2 也继续保留现有的物理 block 调用入口。
 
 GMM1 和 GMM2 的 `startBlockIdx` 在语义上是独立调度状态。当前 MegaMoe 两阶段均全核运行，因此
 GMM2 可以从 GMM1 已归一化的游标继续；接口没有假设未来部分核场景下二者必须使用相同 block 数。
@@ -384,6 +411,10 @@ Producer 和 consumer 使用同一个 per-expert counter base 及同一套 slot 
 | `MegaMoe::SendMaskCal` | `SendMaskCalOneCore` |
 | `MegaMoe::ResetFlagList` | `ResetFlagListOneCore` |
 | `MegaMoe::ResetGmm2CombineSyncCounters` | `ResetGmm2CombineSyncCountersOneCore` |
+| `MegaMoe::SharedExpertCopyInput` | `SharedExpertCopyInputOneCore` |
+| `MegaMoe::ProcessSharedExpertGmm1` | `SharedExpertGmm1SwigluOneCore` |
+| 共享专家 GMM1 的 `UpdateSharedGlobalBuffer` 分支 | `UpdateSharedExpertGmm1GlobalBuffer` |
+| `GroupMatmulWithSwigluQuant<true>` | `RunSharedExpertGmm1SwigluStageOneCore` |
 | `MegaMoe::DispatchBuffInit` | `InitDispatchGmm1SwigluBuffers` |
 | `MegaMoe::SendCntCal` | `SendCntCalOneCore` |
 | `MegaMoe::CopyGMToGMPerToken` | `FetchDispatchTokenAndMeta`、`StoreDispatchTokenAndMeta`、`CopyDispatchTokensOneCore` |
@@ -397,8 +428,8 @@ Producer 和 consumer 使用同一个 per-expert counter base 及同一套 slot 
 | Generic GMM AIV 后处理 | `AivGmm1PostGeneric`、`AivGmm2PostGeneric` |
 | A8W4 prologue 和 AIV 后处理 | `AivPrologueA8W4`、`AivGmm1PostA8W4`、`AivGmm2PostA8W4` |
 
-最新清理提交删除了 `mega_moe.h` 中已经没有调用方的旧成员声明、旧实现和专属成员状态。GMM2、
-Combine、共享专家、Cross-rank sync、Unpermute 等仍在使用的原实现没有删除。
+最新清理删除了 `mega_moe.h` 中已经被模块替代的旧成员声明和实现。共享专家 GMM2、Combine、
+Cross-rank sync、Unpermute 等仍在使用的原实现没有删除。
 
 ## 兼容性与功能影响
 
@@ -406,7 +437,7 @@ Combine、共享专家、Cross-rank sync、Unpermute 等仍在使用的原实现
 - A8W8、A8W4、A4W4 计算路径继续保留。
 - Combine 非量化和量化路径继续保留。
 - 大 BS Combine 动态同步槽位继续保留。
-- 共享专家 GMM1/GMM2 和输入/输出处理继续保留。
+- 共享专家输入重排和 GMM1/SwiGLU 改为逻辑 job 模块，共享专家 GMM2 和输出处理继续保留。
 - Layered/URMA 路径继续保留并适配动态 Combine counter。
 - `expertCapacityPerRank` 与 `expertPerRank` 分离，前者表示权重/workspace 容量，后者表示本次实际参与
   路由计算的专家数，避免共享专家或预留专家槽位被错误加入路由循环。
@@ -414,10 +445,10 @@ Combine、共享专家、Cross-rank sync、Unpermute 等仍在使用的原实现
 
 ## 代码变更范围
 
-相对大 BS Combine 基线提交，本 PR 当前涉及 15 个文件，累计约为：
+相对当前上游基线提交，本 PR 当前涉及 18 个文件，累计约为：
 
 ```text
-2009 insertions(+), 1445 deletions(-)
+2800 insertions(+), 1581 deletions(-)
 ```
 
 功能重构提交负责新增模块和接入新流水；后续清理提交删除被替代的旧实现。删除代码量较大主要来自

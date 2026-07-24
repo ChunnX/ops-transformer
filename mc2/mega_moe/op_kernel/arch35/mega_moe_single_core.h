@@ -15,9 +15,11 @@
 // function in the subdirectories below.
 #include "single_core_context.h"
 #include "aiv_compute/quant_process.h"
+#include "aiv_compute/shared_expert_prepare.h"
 #include "aiv_comm/workspace_reset.h"
 #include "aiv_comm/send_mask.h"
 #include "aiv_comm/token_dispatch.h"
 #include "block/dispatch_gmm1_swiglu.h"
+#include "block/shared_expert_gmm1_swiglu.h"
 
 #endif // MEGA_MOE_SINGLE_CORE_H
