@@ -928,29 +928,86 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.set_flag("mte3", "mte2", 0)
                 T.wait_flag("mte3", "mte2", 0)
 
-                # FP32 dKey accumulator -> output after all atomic scatters.
-                dk_fp32_ub = T.alloc_ub((1, DQueryIndex), calc_dtype)
-                dk_out_ub = T.alloc_ub((1, DQueryIndex), input_dtype)
-                dk_item_count = B * S2 * Nidx2
-                dk_iters_per_aiv = ceil_div(dk_item_count, total_aiv_num)
-                T.set_flag("mte3", "mte2", 1)
-                for dk_iter in T.serial(dk_iters_per_aiv):
-                    dk_item = dk_iter * total_aiv_num + aiv_id
-                    if dk_item < dk_item_count:
-                        dk_bz = dk_item // (S2 * Nidx2)
-                        dk_local = dk_item % (S2 * Nidx2)
-                        dk_s2 = dk_local // Nidx2
-                        dk_nidx = dk_local % Nidx2
-                        T.wait_flag("mte3", "mte2", 1)
-                        T.copy(dKeyIndex[dk_bz, dk_s2, dk_nidx:dk_nidx + 1, 0:DQueryIndex], dk_fp32_ub)
-                        T.set_flag("mte2", "v", 1)
-                        T.wait_flag("mte2", "v", 1)
-                        T.tile.cast(dk_out_ub, dk_fp32_ub, "CAST_RINT", DQueryIndex)
-                        T.set_flag("v", "mte3", 1)
-                        T.wait_flag("v", "mte3", 1)
-                        T.copy(dk_out_ub, dKeyIndexOut[dk_bz, dk_s2, dk_nidx:dk_nidx + 1, 0:DQueryIndex])
-                        T.set_flag("mte3", "mte2", 1)
-                T.wait_flag("mte3", "mte2", 1)
+                # Match the arch22 Vector2 finalizer: partition contiguous dKey
+                # rows across AIVs and convert up to 64 rows per ping/pong slot.
+                # PTO requires every cast operand to have a continuous physical
+                # allocation, so the two slots are independent 2D UB buffers.
+                dk_batch_rows = 64
+                dk_fp32_ping_ub = T.alloc_ub((dk_batch_rows, DQueryIndex), calc_dtype)
+                dk_fp32_pong_ub = T.alloc_ub((dk_batch_rows, DQueryIndex), calc_dtype)
+                dk_out_ping_ub = T.alloc_ub((dk_batch_rows, DQueryIndex), input_dtype)
+                dk_out_pong_ub = T.alloc_ub((dk_batch_rows, DQueryIndex), input_dtype)
+                # Process every BSND batch independently.  This preserves a
+                # contiguous [S2, D] DMA region and cannot skip rows when an
+                # AIV's logical partition would otherwise cross a batch edge.
+                dk_batch_item_count = S2 * Nidx2
+                dk_rows_per_aiv = ceil_div(dk_batch_item_count, total_aiv_num)
+                dk_start = T.min(aiv_id * dk_rows_per_aiv, dk_batch_item_count)
+                dk_end = T.min(dk_start + dk_rows_per_aiv, dk_batch_item_count)
+                dk_batch_count = ceil_div(dk_rows_per_aiv, dk_batch_rows)
+
+                # V_MTE2 releases a completed input slot for the next GM refill.
+                # MTE3_V releases a completed output slot for the next cast.
+                T.set_flag("v", "mte2", 5)
+                T.set_flag("v", "mte2", 6)
+                T.set_flag("mte3", "v", 5)
+                T.set_flag("mte3", "v", 6)
+                for dk_bz in T.serial(B):
+                    for dk_batch_iter in T.serial(dk_batch_count):
+                        dk_slot = dk_batch_iter % 2
+                        dk_row = dk_start + dk_batch_iter * dk_batch_rows
+                        if dk_row < dk_end:
+                            dk_s2 = dk_row // Nidx2
+                            # Nidx2 is one for the supported MQA contract, so
+                            # each copied [rows, D] region is physically contiguous.
+                            dk_count = T.min(dk_batch_rows, dk_end - dk_row)
+                            T.wait_flag("v", "mte2", dk_slot + 5)
+                            if dk_slot == 0:
+                                T.copy(
+                                    dKeyIndex[dk_bz, dk_s2:dk_s2 + dk_count, 0, 0:DQueryIndex],
+                                    dk_fp32_ping_ub[0:dk_count, 0:DQueryIndex],
+                                )
+                            if dk_slot == 1:
+                                T.copy(
+                                    dKeyIndex[dk_bz, dk_s2:dk_s2 + dk_count, 0, 0:DQueryIndex],
+                                    dk_fp32_pong_ub[0:dk_count, 0:DQueryIndex],
+                                )
+                            T.set_flag("mte2", "v", dk_slot + 5)
+                            T.wait_flag("mte2", "v", dk_slot + 5)
+
+                            T.wait_flag("mte3", "v", dk_slot + 5)
+                            if dk_slot == 0:
+                                T.tile.cast(
+                                    dk_out_ping_ub[0:dk_count, 0:DQueryIndex],
+                                    dk_fp32_ping_ub[0:dk_count, 0:DQueryIndex],
+                                    "CAST_RINT",
+                                    dk_count * DQueryIndex,
+                                )
+                            if dk_slot == 1:
+                                T.tile.cast(
+                                    dk_out_pong_ub[0:dk_count, 0:DQueryIndex],
+                                    dk_fp32_pong_ub[0:dk_count, 0:DQueryIndex],
+                                    "CAST_RINT",
+                                    dk_count * DQueryIndex,
+                                )
+                            T.set_flag("v", "mte2", dk_slot + 5)
+                            T.set_flag("v", "mte3", dk_slot + 5)
+                            T.wait_flag("v", "mte3", dk_slot + 5)
+                            if dk_slot == 0:
+                                T.copy(
+                                    dk_out_ping_ub[0:dk_count, 0:DQueryIndex],
+                                    dKeyIndexOut[dk_bz, dk_s2:dk_s2 + dk_count, 0, 0:DQueryIndex],
+                                )
+                            if dk_slot == 1:
+                                T.copy(
+                                    dk_out_pong_ub[0:dk_count, 0:DQueryIndex],
+                                    dKeyIndexOut[dk_bz, dk_s2:dk_s2 + dk_count, 0, 0:DQueryIndex],
+                                )
+                            T.set_flag("mte3", "v", dk_slot + 5)
+                T.wait_flag("v", "mte2", 5)
+                T.wait_flag("v", "mte2", 6)
+                T.wait_flag("mte3", "v", 5)
+                T.wait_flag("mte3", "v", 6)
 
                 # Sum one contiguous [K-block, Nidx1] dWeight row at a time.
                 # This avoids a strided GM->UB column DMA for each output.
