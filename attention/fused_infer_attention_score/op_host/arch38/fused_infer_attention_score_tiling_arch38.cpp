@@ -545,7 +545,7 @@ static ge::graphStatus ConvertContextToParamsPFA(gert::TilingContext *context,
 
     auto convertQuantRet = ConvertQuantOptionalInputs(context, contextKeyParams);
     if (convertQuantRet != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Error occured while convert quant related tilingContext to PFA context!");
+        OP_LOGE(context->GetNodeName(), "Error occurred while convert quant related tilingContext to PFA context!");
         return convertQuantRet;
     }
 
