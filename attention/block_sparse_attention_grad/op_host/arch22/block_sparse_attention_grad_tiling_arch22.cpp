@@ -485,26 +485,35 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
 
     workSpaceSize_ = libapiSize_ + sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_;
 
-    // deterministic: deter 缓冲追加到末尾(保持原始 libapi+data 布局不变, 避免破坏 CANN libapi)
+    // 方案B: per-core slot(共享区域) + final + runInfo
     if (deterministic_) {
         constexpr uint64_t DETER_CORE_INFO_NUM = 8;
         constexpr uint64_t WORKSPACE_ALIGN = 256;
-        constexpr uint64_t DETER_SLOTS = 1;
-        uint64_t perTile = CeilDiv(static_cast<uint64_t>(BASIC_BLOCK_SIZE) * headDim_ * sizeof(float), WORKSPACE_ALIGN) * WORKSPACE_ALIGN;
-        perCoreDkTileSize_ = perTile;
-        dkDeterGmSize_ = static_cast<uint64_t>(aicNum_) * DETER_SLOTS * perTile;
-        dvDeterGmSize_ = dkDeterGmSize_;
-        deterCoreInfoGmSize_ = static_cast<uint64_t>(aicNum_) * DETER_SLOTS * DETER_CORE_INFO_NUM * sizeof(int64_t);
-        // deter 紧跟 data 区末尾(data 在 offset 0, 与 libapi 虚拟区重叠; deter 必须在 backed 区)
+        constexpr uint64_t GAP = 262144; // 256KB gap 防 sftmgGm 溢出
+
+        dkSlotSize_ = dKOutSize_;
+        dvSlotSize_ = dVOutSize_;
+        uint64_t dkSlotsTotal = static_cast<uint64_t>(aicNum_) * dkSlotSize_;
+        uint64_t dvSlotsTotal = static_cast<uint64_t>(aicNum_) * dvSlotSize_;
+
+        // runInfo (WriteGmByPassDCache 用, 不需 slot)
+        perCoreDkTileSize_ = BASIC_BLOCK_SIZE * headDim_ * sizeof(float); // 保留兼容
+        dkDeterGmSize_ = dkSlotsTotal; // 复用字段
+        dvDeterGmSize_ = dvSlotsTotal;
+        deterCoreInfoGmSize_ = static_cast<uint64_t>(aicNum_) * DETER_CORE_INFO_NUM * sizeof(int32_t);
+
+        // 布局: data + GAP + dkSlots + dvSlots + dkFinal + dvFinal + runInfo
         uint64_t dataEnd = sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_;
-        uint64_t base = (dataEnd + WORKSPACE_ALIGN - 1) / WORKSPACE_ALIGN * WORKSPACE_ALIGN;
-        dkDeterGmOffset_ = base;
-        base += dkDeterGmSize_;
-        dvDeterGmOffset_ = base;
-        base += dvDeterGmSize_;
-        deterCoreInfoGmOffset_ = base;
-        base += deterCoreInfoGmSize_;
-        workSpaceSize_ = base;
+        uint64_t base = (dataEnd + GAP + WORKSPACE_ALIGN - 1) / WORKSPACE_ALIGN * WORKSPACE_ALIGN;
+        dkSlotOffset_ = base;           base += dkSlotsTotal;
+        dvSlotOffset_ = base;           base += dvSlotsTotal;
+        dkFinalOffset_ = base;          base += dKOutSize_;
+        dvFinalOffset_ = base;          base += dVOutSize_;
+        deterCoreInfoGmOffset_ = base;  base += deterCoreInfoGmSize_;
+        // 兼容旧字段
+        dkDeterGmOffset_ = dkSlotOffset_;
+        dvDeterGmOffset_ = dvSlotOffset_;
+        workSpaceSize_ = libapiSize_ + base;
     }
 
     context->GetWorkspaceSizes(1)[0] = workSpaceSize_;
@@ -572,6 +581,13 @@ ge::graphStatus BSAGradTiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_dkDeterGmOffset(dkDeterGmOffset_);
     tilingData_->set_dvDeterGmOffset(dvDeterGmOffset_);
     tilingData_->set_deterCoreInfoGmOffset(deterCoreInfoGmOffset_);
+    // 方案B 新增字段
+    tilingData_->set_dkSlotOffset(dkSlotOffset_);
+    tilingData_->set_dvSlotOffset(dvSlotOffset_);
+    tilingData_->set_dkFinalOffset(dkFinalOffset_);
+    tilingData_->set_dvFinalOffset(dvFinalOffset_);
+    tilingData_->set_dkSlotSize(dkSlotSize_);
+    tilingData_->set_dvSlotSize(dvSlotSize_);
     return ge::GRAPH_SUCCESS;
 }
 

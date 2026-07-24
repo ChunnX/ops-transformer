@@ -342,6 +342,12 @@ namespace BSA {
             uint64_t dkDeterGmOffset = tilingData->dkDeterGmOffset;
             uint64_t dvDeterGmOffset = tilingData->dvDeterGmOffset;
             uint64_t deterCoreInfoGmOffset = tilingData->deterCoreInfoGmOffset;
+            uint64_t dkSlotOffset = tilingData->dkSlotOffset;
+            uint64_t dvSlotOffset = tilingData->dvSlotOffset;
+            uint64_t dkFinalOffset = tilingData->dkFinalOffset;
+            uint64_t dvFinalOffset = tilingData->dvFinalOffset;
+            uint64_t dkSlotSize = tilingData->dkSlotSize;
+            uint64_t dvSlotSize = tilingData->dvSlotSize;
 
             if (groupSize == 0 || blockShapeX == 0 || blockShapeY == 0) {
                 return;
@@ -383,8 +389,8 @@ namespace BSA {
             AscendC::GlobalTensor<float> gDkDeter;
             AscendC::GlobalTensor<float> gDvDeter;
             if (deter) {
-                gDkDeter.SetGlobalBuffer((__gm__ float *)(params.workspace + dkDeterGmOffset));
-                gDvDeter.SetGlobalBuffer((__gm__ float *)(params.workspace + dvDeterGmOffset));
+                gDkDeter.SetGlobalBuffer((__gm__ float *)(params.workspace + dkSlotOffset));
+                gDvDeter.SetGlobalBuffer((__gm__ float *)(params.workspace + dvSlotOffset));
             }
             // 单 slot 偏移(元素数): coreIdx * perTile(元素)
             uint64_t deterSlotElem = perCoreDkTileSize / sizeof(float);
@@ -509,7 +515,7 @@ namespace BSA {
 
                                 blockMmad3(gP[preTaskInfo.sOffset],
                                     gDout[preTaskInfo.qOffset],
-                                    deter ? gDvDeter[deterDkOff] : gDv[preTaskInfo.kvOffset],
+                                    deter ? gDvDeter[coreIdx * (dvSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDv[preTaskInfo.kvOffset],
                                     layoutA3,
                                     layoutB3,
                                     layoutC3,
@@ -518,7 +524,7 @@ namespace BSA {
 
                                 blockMmad3(gDs[preTaskInfo.sOffset],
                                     gQ[preTaskInfo.qOffset],
-                                    deter ? gDkDeter[deterDkOff] : gDk[preTaskInfo.kvOffset],
+                                    deter ? gDkDeter[coreIdx * (dkSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDk[preTaskInfo.kvOffset],
                                     layoutA3,
                                     layoutB3,
                                     layoutC3,
@@ -580,7 +586,7 @@ namespace BSA {
                     mmadFlag);
                 blockMmad3(gP[preTaskInfo.sOffset],
                     gDout[preTaskInfo.qOffset],
-                    deter ? gDvDeter[deterDkOff] : gDv[preTaskInfo.kvOffset],
+                    deter ? gDvDeter[coreIdx * (dvSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDv[preTaskInfo.kvOffset],
                     layoutA3,
                     layoutB3,
                     layoutC3,
@@ -588,7 +594,7 @@ namespace BSA {
                     mmadFlag);
                 blockMmad3(gDs[preTaskInfo.sOffset],
                     gQ[preTaskInfo.qOffset],
-                    deter ? gDkDeter[deterDkOff] : gDk[preTaskInfo.kvOffset],
+                    deter ? gDkDeter[coreIdx * (dkSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDk[preTaskInfo.kvOffset],
                     layoutA3,
                     layoutB3,
                     layoutC3,
@@ -628,7 +634,7 @@ namespace BSA {
             AscendC::WaitEvent(CUBE2POST);
             AscendC::SyncAll<true>();
 
-            // post
+            // post (deter 模式下 VecPost 读 final)
             VecPost(params);
         }
 
@@ -670,6 +676,12 @@ namespace BSA {
             uint32_t deterLaunchedAic = (tilingData->usedVecCoreNum + 1) / 2; // 实际启动的 AIC 核数=blockDim
             uint64_t perCoreDkTileSize = tilingData->perCoreDkTileSize;
             uint64_t deterSlotElem = perCoreDkTileSize / sizeof(float);
+            uint64_t dkSlotOffset = tilingData->dkSlotOffset;
+            uint64_t dvSlotOffset = tilingData->dvSlotOffset;
+            uint64_t dkFinalOffset = tilingData->dkFinalOffset;
+            uint64_t dvFinalOffset = tilingData->dvFinalOffset;
+            uint64_t dkSlotSize = tilingData->dkSlotSize;
+            uint64_t dvSlotSize = tilingData->dvSlotSize;
             uint32_t deterRoundCntVec = 0;
             AscendC::GlobalTensor<float> gDkShared;
             AscendC::GlobalTensor<float> gDvShared;
@@ -678,20 +690,26 @@ namespace BSA {
             AscendC::GlobalTensor<int32_t> gDeterCoreInfoVec;
             __gm__ int32_t* deterInfoGm = nullptr; // deter runInfo GM 指针(WriteGmByPassDCache 用)
             if (deter) {
+                // 方案B: slots 在共享区域, final 是最终结果
+                gDkDeterVec.SetGlobalBuffer((__gm__ float *)(params.workspace + dkSlotOffset));
+                gDvDeterVec.SetGlobalBuffer((__gm__ float *)(params.workspace + dvSlotOffset));
                 gDkShared.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize));
                 gDvShared.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
-                gDkDeterVec.SetGlobalBuffer((__gm__ float *)(params.workspace + tilingData->dkDeterGmOffset));
-                gDvDeterVec.SetGlobalBuffer((__gm__ float *)(params.workspace + tilingData->dvDeterGmOffset));
                 gDeterCoreInfoVec.SetGlobalBuffer((__gm__ int32_t *)(params.workspace + tilingData->deterCoreInfoGmOffset));
                 deterInfoGm = (__gm__ int32_t *)(params.workspace + tilingData->deterCoreInfoGmOffset);
-                // 清零私有缓冲(isAtomicAdd=true 写未清零缓冲 = garbage+value)
+                // 清零 slots + final (cube 用 isAtomicAdd=true 写 slots, 需清零)
                 AscendC::LocalTensor<float> zeroUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET);
                 AscendC::Duplicate(zeroUb, 0.0f, DETER_AG_UB_FLOATS);
                 AscendC::PipeBarrier<PIPE_ALL>();
                 uint64_t totalDk = tilingData->dkDeterGmSize / sizeof(float);
+                uint64_t totalDv = tilingData->dvDeterGmSize / sizeof(float);
                 for (uint64_t off = 0; off < totalDk; off += DETER_AG_UB_FLOATS) {
                     uint32_t chunk = (totalDk - off > DETER_AG_UB_FLOATS) ? DETER_AG_UB_FLOATS : (uint32_t)(totalDk - off);
                     AscendC::DataCopy(gDkDeterVec[off], zeroUb, chunk);
+                }
+                AscendC::PipeBarrier<PIPE_ALL>();
+                for (uint64_t off = 0; off < totalDv; off += DETER_AG_UB_FLOATS) {
+                    uint32_t chunk = (totalDv - off > DETER_AG_UB_FLOATS) ? DETER_AG_UB_FLOATS : (uint32_t)(totalDv - off);
                     AscendC::DataCopy(gDvDeterVec[off], zeroUb, chunk);
                 }
                 AscendC::PipeBarrier<PIPE_ALL>();
@@ -845,7 +863,7 @@ namespace BSA {
                                 VecDeterReduceOneRound(gDkShared, gDvShared,
                                                        (__gm__ float*)(params.workspace + tilingData->dkDeterGmOffset),
                                                        (__gm__ float*)(params.workspace + tilingData->dvDeterGmOffset),
-                                                       deterInfoGm, deterLaunchedAic, deterSlotElem, subBlockIdx, coreIdx);
+                                                       deterInfoGm, deterLaunchedAic, deterSlotElem, subBlockIdx, coreIdx, dkSlotSize, dvSlotSize);
                                 AscendC::SyncAll<false>(); // ② 通知 cube 可写下一轮
                             }
 
@@ -875,7 +893,7 @@ namespace BSA {
                     VecDeterReduceOneRound(gDkShared, gDvShared,
                                            (__gm__ float*)(params.workspace + tilingData->dkDeterGmOffset),
                                            (__gm__ float*)(params.workspace + tilingData->dvDeterGmOffset),
-                                           deterInfoGm, deterLaunchedAic, deterSlotElem, subBlockIdx, coreIdx);
+                                           deterInfoGm, deterLaunchedAic, deterSlotElem, subBlockIdx, coreIdx, dkSlotSize, dvSlotSize);
                     AscendC::SyncAll<false>();
                 }
             }
@@ -887,13 +905,19 @@ namespace BSA {
         void VecDeterReduceOneRound(AscendC::GlobalTensor<float>& gDkShared, AscendC::GlobalTensor<float>& gDvShared,
                                     __gm__ float* dkDeterGm, __gm__ float* dvDeterGm,
                                     __gm__ int32_t* infoGm,
-                                    uint32_t aicNum, uint64_t slotElem, uint32_t subBlockIdx, uint32_t coreIdx)
+                                    uint32_t aicNum, uint64_t slotElem, uint32_t subBlockIdx, uint32_t coreIdx,
+                                    uint64_t dkSlotSize, uint64_t dvSlotSize)
         {
             AscendC::GlobalTensor<float> gDkDeter;
             gDkDeter.SetGlobalBuffer(dkDeterGm);
             AscendC::GlobalTensor<float> gDvDeter;
             gDvDeter.SetGlobalBuffer(dvDeterGm);
-            AscendC::LocalTensor<float> agUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET);
+            // 方案B: 读 slots[aicIdx] → UB Add → 覆写 final (不用 SetAtomicAdd)
+            constexpr uint32_t RMW_CHUNK = 1024;
+            AscendC::LocalTensor<float> slotUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET);
+            AscendC::LocalTensor<float> sumUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET + RMW_CHUNK * sizeof(float));
+            uint64_t dkSlotElem = dkSlotSize / sizeof(float);
+            uint64_t dvSlotElem = dvSlotSize / sizeof(float);
             for (uint32_t aicIdx = 0; aicIdx < aicNum; aicIdx++) {
                 uint64_t infoOff = aicIdx * DETER_CORE_INFO_NUM;
                 int32_t valid = AscendC::ReadGmByPassDCache<int32_t>(infoGm + infoOff + 3);
@@ -901,43 +925,59 @@ namespace BSA {
                 int32_t globKvOff = AscendC::ReadGmByPassDCache<int32_t>(infoGm + infoOff + 0);
                 int32_t curKvSize = AscendC::ReadGmByPassDCache<int32_t>(infoGm + infoOff + 1);
                 int32_t hd = AscendC::ReadGmByPassDCache<int32_t>(infoGm + infoOff + 2);
-                // bounds check: 防止 runInfo 错误导致 OOB
                 if (curKvSize <= 0 || curKvSize > 256 || hd <= 0 || hd > 256 || globKvOff < 0) { continue; }
                 int64_t half = curKvSize / 2;
                 int64_t rowStart = subBlockIdx * half;
                 int64_t rowNum = (subBlockIdx == 0) ? half : (curKvSize - half);
                 if (rowNum <= 0 || hd <= 0) { continue; }
                 int64_t totalElem = rowNum * hd;
-                uint64_t srcOff = aicIdx * slotElem + rowStart * hd;
-                uint64_t dstOff = globKvOff + rowStart * hd;
                 uint32_t copyN = static_cast<uint32_t>(totalElem);
 
-                // dK: GM(私有) -> UB(分块) -> 原子加到 GM(共享), 每块 DETER_AG_UB_FLOATS
+                // dK: Read-Modify-Write
+                uint64_t slotOff = aicIdx * dkSlotElem + globKvOff + rowStart * hd;
+                uint64_t finalOff = globKvOff + rowStart * hd;
                 uint32_t remaining = copyN;
                 uint32_t off = 0;
                 while (remaining > 0) {
-                    uint32_t chunk = (remaining > DETER_AG_UB_FLOATS) ? DETER_AG_UB_FLOATS : remaining;
-                    AscendC::DataCopy(agUb, gDkDeter[srcOff + off], chunk);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    AscendC::SetAtomicAdd<float>();
-                    AscendC::DataCopy(gDkShared[dstOff + off], agUb, chunk);
-                    AscendC::SetAtomicNone();
-                    AscendC::PipeBarrier<PIPE_ALL>();
+                    uint32_t chunk = (remaining > RMW_CHUNK) ? RMW_CHUNK : remaining;
+                    if (aicIdx == 0) {
+                        AscendC::DataCopy(sumUb, gDkDeter[slotOff + off], chunk);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                        AscendC::DataCopy(gDkShared[finalOff + off], sumUb, chunk);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                    } else {
+                        AscendC::DataCopy(sumUb, gDkShared[finalOff + off], chunk);
+                        AscendC::DataCopy(slotUb, gDkDeter[slotOff + off], chunk);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                        AscendC::Add(sumUb, sumUb, slotUb, chunk);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                        AscendC::DataCopy(gDkShared[finalOff + off], sumUb, chunk);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                    }
                     remaining -= chunk;
                     off += chunk;
                 }
 
-                // dV: 同上分块
+                // dV: 同上
+                slotOff = aicIdx * dvSlotElem + globKvOff + rowStart * hd;
                 remaining = copyN;
                 off = 0;
                 while (remaining > 0) {
-                    uint32_t chunk = (remaining > DETER_AG_UB_FLOATS) ? DETER_AG_UB_FLOATS : remaining;
-                    AscendC::DataCopy(agUb, gDvDeter[srcOff + off], chunk);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    AscendC::SetAtomicAdd<float>();
-                    AscendC::DataCopy(gDvShared[dstOff + off], agUb, chunk);
-                    AscendC::SetAtomicNone();
-                    AscendC::PipeBarrier<PIPE_ALL>();
+                    uint32_t chunk = (remaining > RMW_CHUNK) ? RMW_CHUNK : remaining;
+                    if (aicIdx == 0) {
+                        AscendC::DataCopy(sumUb, gDvDeter[slotOff + off], chunk);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                        AscendC::DataCopy(gDvShared[finalOff + off], sumUb, chunk);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                    } else {
+                        AscendC::DataCopy(sumUb, gDvShared[finalOff + off], chunk);
+                        AscendC::DataCopy(slotUb, gDvDeter[slotOff + off], chunk);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                        AscendC::Add(sumUb, sumUb, slotUb, chunk);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                        AscendC::DataCopy(gDvShared[finalOff + off], sumUb, chunk);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                    }
                     remaining -= chunk;
                     off += chunk;
                 }
