@@ -148,8 +148,7 @@ static ge::graphStatus LightningIndexerKlLossTilingFunc(gert::TilingContext* con
 
     auto attrs = context->GetAttrs();
     float eps = *attrs->GetFloat(0);
-    bool deterministic =  *attrs->GetBool(1) || (context->GetDeterministic() == 1);
-
+    bool deterministic = context->GetDeterministic() == 1;
     // UB 统一按 fp32 划分
     int64_t fp32Size = sizeof(float);
     int64_t KAligned = (D + 7) / 8 * 8;

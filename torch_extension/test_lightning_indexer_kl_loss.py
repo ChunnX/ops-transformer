@@ -70,7 +70,7 @@ def _gen_data(shape, dtype=torch.float32):
 
 
 def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
-             max_diff_hd=0.1, check_fn=None, zero_target=False, zero_index_probs=False):
+             max_diff_hd=0.1, check_fn=None, zero_target=False, zero_index_probs=False, deterministic=False):
     """Run a single test case.
 
     Args:
@@ -97,6 +97,8 @@ def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
     if (Y < 0).any():
         raise ValueError("index_probs 不是有效的概率分布")
     ref = lightning_indexer_kl_loss_ref(y.float(), Y.float(), eps=eps)
+    if deterministic:
+        torch.use_deterministic_algorithms(True)
     npu_out = lightning_indexer_kl_loss(y.npu(), Y.npu(), eps=eps)
 
     if check_fn is not None:
@@ -106,6 +108,7 @@ def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
     # print(f"====={part}")
     # part = lightning_indexer_kl_loss_ref(y.float()[133:266,:], Y.float()[133:266,:], eps=eps)
     # print(f"====={part}")
+    # print(f"{lightning_indexer_kl_loss(y.npu(), Y.npu(), eps=eps).cpu()}")
     return data_compare(npu_out.cpu().to(torch.float32).detach().numpy(), ref.to(torch.float32).detach().numpy(), diff_thd=diff_thd, max_diff_hd=max_diff_hd)
 
 
@@ -130,12 +133,13 @@ def _check_zero_index_probs(npu_out, y_cpu, Y_cpu):
 # Test registry
 # ---------------------------------------------------------------------------
 TESTS = [
-    # ("basic_2d: (B, D) float32",         (8, 22),           None),
+    # ("big basic_2d: (B, D) float32",         (88888, 2332),           {"deterministic": True}),
+    # ("basic_2d: (B, D) float32",         (8888, 2332),           None),
     # ("basic_3d: (B, H, D) float32",      (4, 10, 333),       {"eps": 0.5}),
     # ("fp16: (B, H, D) float16",          (4, 2, 4444),       {"dtype": torch.float16, "diff_thd": 0.001}),
-    # ("bf16: (B, H, D) bfloat16",         (40, 264, 10),       {"eps": 0.5,"dtype": torch.bfloat16, "diff_thd": 0.005}),
-    ("custom_eps: eps=1e-6",             (8000, 1888),         {"eps": 1e-6}),
-    # ("large_d: (B, H, 512) float32",     (20, 45, 8192),        None),
+    ("bf16: (B, H, D) bfloat16",         (40, 264, 10),       {"eps": 0.5,"dtype": torch.bfloat16, "diff_thd": 0.005}),
+    # ("custom_eps: eps=1e-6",             (4000, 1),         {"eps": 1e-6}),
+    # ("large_d: (B, H, 512) float32",     (2125, 45, 8192),        None),
     # ("edge: zero target_score",          (2, 4, 128),        {"zero_target": True}),
     # ("edge: zero index_probs",           (2, 4, 128),          {"zero_index_probs": True}),
 ]
@@ -146,20 +150,21 @@ TESTS = [
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     torch_npu.npu.set_device(6)
-
     passed = 0
     failed = 0
     failedList = []
-    for name, shape, kwargs in TESTS:
-        ok, _, _= run_test(name, shape, **(kwargs or {}))
-        if ok == "Pass":
-            passed += 1
-        else:
-            failed += 1
-            failedList.append(name)
+    while failed == 0:
+        for name, shape, kwargs in TESTS:
+            ok, _, _= run_test(name, shape, **(kwargs or {}))
+            if ok == "Pass":
+                passed += 1
+            else:
+                failed += 1
+                failedList.append(name)
 
-    print(f"\n{'='*50}")
-    print(f"Results: {passed}/{len(TESTS)} passed, {failed} failed")
-    print(failedList)
-    if failed:
-        sys.exit(1)
+        print(f"\n{'='*50}")
+        print(f"Results: {passed}/{len(TESTS)} passed, {failed} failed")
+        print(failedList)
+        if failed:
+            sys.exit(1)
+        break

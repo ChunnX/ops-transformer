@@ -43,7 +43,7 @@ public:
 
 private:
     // 纯 MTE2 搬运
-    __aicore__ inline void CopyIn(uint32_t tileElems, uint32_t rowOffset, uint32_t curTileLen);
+    __aicore__ inline void CopyIn(uint32_t rowOffset, uint32_t curTileLen);
     // 纯 Vector 计算（含 setflag/waitflag）
     __aicore__ inline void Compute(uint32_t tileElems, uint32_t curTileLen);
     // 纯 MTE3 搬运累加
@@ -69,6 +69,10 @@ private:
     // half 版本：指向 float buffer 后半段的 half 原始数据
     LocalTensor<T> ubHalfTarget;
     LocalTensor<T> ubHalfIndexProbs;
+
+    DataCopyExtParams copyParams;
+    DataCopyPadExtParams<T> padParams;
+
 
     // Y 和 y 独立流水线 EventID
     int32_t eventMTE2YToV_;  // MTE2 → Vector: Y 搬运完成
@@ -154,6 +158,16 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Init(GM_ADDR 
     eventVToMTE2y_ = static_cast<int32_t>(pipePtr->AllocEventID<HardEvent::V_MTE2>());
     eventVToMTE3_ = static_cast<int32_t>(pipePtr->AllocEventID<HardEvent::V_MTE3>());
     eventMTE3ToV_ = static_cast<int32_t>(pipePtr->AllocEventID<HardEvent::MTE3_V>());
+
+    copyParams.blockLen = K_ * sizeof(float);
+    copyParams.srcStride = 0;
+    copyParams.dstStride = 0;
+    copyParams.rsv = 0;
+
+    padParams.isPad = true;
+    padParams.leftPadding = 0;
+    padParams.rightPadding = KAligned_ - K_;
+    padParams.paddingValue = 0;
 }
 
 /* ---------- InitWorkspaceDet: 初始化 deterministic workspace ---------- */
@@ -175,52 +189,37 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::InitHalfBufs(
     ubHalfTarget = tmpBuf_.GetWithOffset<T>(tileElemsAligned, halfOff);
     ubHalfIndexProbs = tmpBuf_.GetWithOffset<T>(tileElemsAligned,
                                                 floatDword + halfOff);
+    copyParams.blockLen = K_ * sizeof(T);
+    copyParams.dstStride = (KAligned_ * 2 - halfKAligned_) / HALF_BLOCK_SIZE;
+    padParams.rightPadding = halfKAligned_ - K_;
+
 }
 
 template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::CopyIn(uint32_t tileElems, uint32_t rowOffset, uint32_t curTileLen)
+__aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::CopyIn(uint32_t rowOffset, uint32_t curTileLen)
 {
+    uint64_t offset = rowOffset * K_;
+    // printf("CopyIn\n");
+    copyParams.blockCount = curTileLen;
     if constexpr (std::is_same_v<T, float>) {
-        DataCopyExtParams copyParams;
-        copyParams.blockCount = curTileLen;
-        copyParams.blockLen = K_ * sizeof(float);
-        copyParams.srcStride = 0;
-        copyParams.dstStride = 0;
-        copyParams.rsv = 0;
-
-        DataCopyPadExtParams<float> padParams;
-        padParams.isPad = true;
-        padParams.leftPadding = 0;
-        padParams.rightPadding = KAligned_ - K_;
-        padParams.paddingValue = 0;
+        // printf("%u %u %u %u\n", rowOffset, K_, rowOffset* K_, inputGMIndexProbs.GetSize());
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
-        DataCopyPad(ubIndexProbsIn, inputGMIndexProbs[rowOffset * K_], copyParams, padParams);
+        // printf("1111 curTileLen %u\n", curTileLen);
+        DataCopyPad(ubIndexProbsIn, inputGMIndexProbs[offset], copyParams, padParams);
+        // printf("111\n");
         SetFlag<HardEvent::MTE2_V>(eventMTE2YToV_);
 
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
-        DataCopyPad(ubTargetScoreIn, inputGMTargetScore[rowOffset * K_], copyParams, padParams);
+        DataCopyPad(ubTargetScoreIn, inputGMTargetScore[offset], copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(eventMTE2yToV_);
     }
     else {
-        DataCopyExtParams copyParams;
-        copyParams.blockCount = curTileLen;
-        copyParams.blockLen = K_ * sizeof(T);
-        copyParams.srcStride = 0;
-        copyParams.dstStride = (KAligned_ * 2 - halfKAligned_) / HALF_BLOCK_SIZE;
-        copyParams.rsv = 0;
-
-        DataCopyPadExtParams<T> padParams;
-        padParams.isPad = true;
-        padParams.leftPadding = 0;
-        padParams.rightPadding = halfKAligned_ - K_;
-        padParams.paddingValue = 0;
-
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
-        DataCopyPad(ubHalfIndexProbs, inputGMIndexProbs[rowOffset * K_], copyParams, padParams);
+        DataCopyPad(ubHalfIndexProbs, inputGMIndexProbs[offset], copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(eventMTE2YToV_);
 
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
-        DataCopyPad(ubHalfTarget, inputGMTargetScore[rowOffset * K_], copyParams, padParams);
+        DataCopyPad(ubHalfTarget, inputGMTargetScore[offset], copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(eventMTE2yToV_);  
     }
 }
@@ -283,18 +282,14 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Compute(uint3
     if (remain && repeat) {
         repeat = curTileLen / FLOAT_VECTOR_SIZE;
         remain = curTileLen % FLOAT_VECTOR_SIZE;
-        if (repeat) {
-            Add(ubReduceSum[reduceOff], ubReduceSum[reduceOff], ubLogP, FLOAT_VECTOR_SIZE, repeat, {1, 1, 1, 8, 8, 8});
-        }
+        Add(ubReduceSum[reduceOff], ubReduceSum[reduceOff], ubLogP, FLOAT_VECTOR_SIZE, repeat, {1, 1, 1, 8, 8, 8});
         if (remain) {
             Add(ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], ubLogP[repeat * FLOAT_VECTOR_SIZE], remain, 1, {1, 1, 1, 8, 8, 8});
         }
     }
     repeat = curTileLen / FLOAT_VECTOR_SIZE;
     remain = curTileLen % FLOAT_VECTOR_SIZE;
-    if (repeat > 0) {
-        Adds(ubReduceSum[reduceOff], ubReduceSum[reduceOff], eps_, FLOAT_VECTOR_SIZE, repeat, {1, 1, 8, 8});
-    }
+    Adds(ubReduceSum[reduceOff], ubReduceSum[reduceOff], eps_, FLOAT_VECTOR_SIZE, repeat, {1, 1, 8, 8});
     if (remain) {
         Adds(ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], eps_, remain, 1, {1, 1, 8, 8});
     }
@@ -325,8 +320,8 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Compute(uint3
     Ln(ubLogP, ubLogP, tileElems);
     Sub(ubLogP, ubLogP, ubLogY, tileElems);
     Mul(ubLogP, ubLogP, ubTargetScoreIn, tileElems);
-
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
+
     WaitFlag<HardEvent::MTE3_V>(eventMTE3ToV_);
     Duplicate(ubOut, (float)0, 8);
     repeat = tileElems / FLOAT_VECTOR_SIZE;
@@ -367,21 +362,21 @@ template <typename T, bool isDeterministic>
 __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Process()
 {
     uint32_t tileId, rowOffset, curTileLen, tileElems;
-    tileId = blockIdx_;
+    rowOffset = blockIdx_ * tileLength_;
+    uint32_t step = coreNum_ * tileLength_;
     // 预置所有 flag，使第一轮各 WaitFlag 直接通过
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
     SetFlag<HardEvent::MTE3_V>(eventMTE3ToV_);
     for (int b = 0; b < blocksPerCore_; b++) {
-        rowOffset = tileId * tileLength_;
         curTileLen = (rowOffset + tileLength_ <= totalLength_)
                          ? tileLength_
                          : (totalLength_ - rowOffset);
+        CopyIn(rowOffset, curTileLen);
         tileElems = curTileLen * KAligned_;
-        CopyIn(tileElems, rowOffset, curTileLen);
         Compute(tileElems, curTileLen);
         CopyOut();
-        tileId += coreNum_;
+        rowOffset += step;
     }
 
     WaitFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
