@@ -49,7 +49,7 @@ public:
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
     using ElementGroupMax = typename EpilogueComputePScale::ElementGroupMax;
-    using ElementPScale = typename EpilogueComputePScale::ElementPScale;
+    using ElementPScale = typename EpilogueComputePScale::ElementScale;
     using ElementLocalGlobalMax = typename EpilogueCopyGlobalMaxUbToL1::ElementLocalGlobalMax;
 
     using LayoutQ = layout::RowMajor;
@@ -166,15 +166,16 @@ public:
         }
         AscendC::SyncAll<false>();
 
+        // tla define
+        auto ubOTmpLayoutTla = tla::MakeLayout(
+            tla::MakeShape(embed_ + 1, CeilDiv(delay20TaskInfo.qsActBaseTile, 128u) * 128),
+            tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
+        auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor, ubOTmpLayoutTla, Arch::PositionUB{});
+
  #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
         BlockMmadPV blockMmadPV(resource);
-
-        //  auto ubOTmpLayoutTla = tla::MakeLayout(
-        tla::MakeShape(embed_ + 1, CeilDiv(delay20TaskInfo.qsActBaseTile, 128u) * 128),
-        tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
-        auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor, ubOTmpLayoutTla, Arch::PositionUB{});
  #endif	 
  #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
