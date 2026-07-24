@@ -50,6 +50,15 @@ namespace Mc2Kernel {
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Aclnn;
+
+// 原子定序优化：每专家独立原子计数器放在 statusSpaceGm_ 状态区（HCCL 初始化已置0，
+// 且 dispatch 状态协议不触碰该偏移），故无需显式置零。
+// PINGPONG 双缓冲：相邻两轮 dispatch（dataState_ 0/1 翻转半区）分别用 880KB / 890KB 两块计数器区，
+// 每轮结束前由 core0 把“下一轮”那块 reset 为 0，从而无需额外置零时机即可保证每轮起始为 0。
+constexpr uint64_t EXPERT_COUNTERS_OFFSET = 880UL * 1024UL;            // dataState_ == 0 时的计数器区偏移
+constexpr uint64_t EXPERT_COUNTERS_PINGPONG_OFFSET = 890UL * 1024UL;   // dataState_ == 1 时的计数器区偏移
+// 每个计数器占 UB_ALIGN(32B)，保证 AtomicAdd 的 GM 地址 32 字节对齐
+constexpr uint32_t COUNTER_STRIDE = UB_ALIGN / sizeof(uint32_t);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 constexpr CumSumConfig SET_EXPERT_TOKEN_NUMS_CUMSUM_CONFIG{true, false, false,
                                                            CumSumAlgorithm::CUMSUM_ALGORITHM_LINEBYLINE};
@@ -84,12 +93,8 @@ private:
     __aicore__ inline void SendToMoeExpert();
     __aicore__ inline void AlltoAllDispatch();
     __aicore__ inline void LocalWindowCopy();
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    __aicore__ inline void SetExpertTokenNumsA5();
-    __aicore__ inline void SetExpertPrefixSumA5(uint32_t localExpertNum);
-#else
     __aicore__ inline void SetExpertTokenNums();
-#endif
+    __aicore__ inline void ResetNextRoundCounters(); // PINGPONG：core0 把下一轮计数器区 reset 为 0
     __aicore__ inline void TokenActiveMaskCal();
     __aicore__ inline void ExpertActiveMaskCal();
     __aicore__ inline void WaitDispatchClearStatus();
@@ -101,15 +106,10 @@ private:
     __aicore__ inline void SetStatus();
     __aicore__ inline void BufferInit();
     __aicore__ inline void WaitDispatch();
-    __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
-    __aicore__ inline void GetCumSumA5(LocalTensor<int32_t> &outLocal);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront = true);
     __aicore__ inline void FillTriple(LocalTensor<XOutType> &xOutTensor, uint32_t tokenIndex, uint32_t k);
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
-    __aicore__ inline void SyncCntOnCore(LocalTensor<float> &gatherMaskOutTensor,
-                                         LocalTensor<uint32_t> &gatherTmpTensor,
-                                         LocalTensor<float> &statusSumOutTensor);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     __aicore__ inline void WaitStatusA5(LocalTensor<float> &statusSumOutTensor);
 #else
@@ -142,6 +142,12 @@ private:
         return iter1AlignEnd;
     }
 
+    // 按 dataState_ 取计数器区在 statusSpaceGm_ 内的偏移：0 -> 880KB, 1 -> 890KB（原子定序 PINGPONG）
+    __aicore__ inline uint64_t ExpertCountersRegionOffset(uint32_t dataState)
+    {
+        return (dataState == 0U) ? EXPERT_COUNTERS_OFFSET : EXPERT_COUNTERS_PINGPONG_OFFSET;
+    }
+
     TPipe *tpipe_{nullptr};
     GlobalTensor<XInType> xGMTensor_;
     GlobalTensor<int32_t> expertIdsGMTensor_;
@@ -157,6 +163,7 @@ private:
     GlobalTensor<uint32_t> selfDataStatusGMTensor_;
     GlobalTensor<uint32_t> selfhcclDataStatusTensor_;
     GlobalTensor<int32_t> sendCountsGlobal_;
+    GlobalTensor<uint32_t> expertCountersGMTensor_; // 原子定序：每专家独立计数器（statusSpaceGm_ + EXPERT_COUNTERS_OFFSET）
 
     LocalTensor<XOutType> xTmpTensor_;
     LocalTensor<float> floatLocalTemp_;
@@ -212,6 +219,8 @@ private:
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 非量化使用，量化场景接收也可使用
     TQue<QuePosition::VECIN, 1> xInQueue_;                        // 量化使用，量化前的输入
     TQue<QuePosition::VECOUT, 1> xOutQueue_;                      // 量化使用，量化后的输出
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tripleQueue_; // LocalWindowCopy 搬入 与 SetExpertTokenNums 密排重排 复用
+    uint32_t tripleDataSize_{0};                                       // tripleQueue_ 每块大小（BufferInit 中按剩余 UB 计算）
 
     GM_ADDR expandXOutGM_;
     GM_ADDR expandIdxOutGM_;
@@ -247,6 +256,8 @@ private:
     uint32_t hAlignWinSize_{0};
     uint32_t hAlignWinCnt_{0};
     uint32_t hOutAlignUbSize_{0};
+    uint32_t stagingTokenBytes_{0}; // 原子定序：单个完整 Token 暂存字节 = hOutAlignUbSize_
+    uint32_t counterRegionSize_{0}; // 原子定序：一块计数器区大小（reset 用，按 UB 对齐）
     uint32_t hAlignSize_{0};
     uint32_t hScaleIdxSize_{0};
     uint32_t expertScaleAlign_{0};
@@ -256,8 +267,6 @@ private:
     uint32_t startExpertId_;
     uint32_t endExpertId_;
     uint32_t sendExpertNum_;
-    uint32_t totalCnt_;
-    uint32_t lastCore_{0};
     uint32_t dataState_{0};
     uint32_t axisBsAlignSize_{0};
     uint32_t totalUsedUB_{0};
@@ -277,7 +286,6 @@ private:
     uint64_t totalWinSizeEp_{0};
     uint32_t totalUbSize_{0};
     uint32_t expertTokenNumsType_{1};
-    uint32_t preCnt_{0};
     uint32_t stateOffset_{0};
     uint32_t recStatusNumPerCore_{0};
     int32_t expertIdsCnt_{0};
@@ -480,6 +488,18 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     OOMCheckAddrRange<XOutType>((__gm__ XOutType *)(winDouble.GetPhyAddr()), totalWinSizeEp_);
 #endif
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float *)(statusSpaceGm_));
+
+    // 原子定序：每专家独立原子计数器（statusSpaceGm_ 状态区）。PINGPONG 双缓冲：
+    // dataState_ 0/1 分别用 880KB / 890KB 两块计数器区，每轮结束前把“下一轮”那块 reset 为 0，
+    // 从而无需额外置零时机即可保证每轮起始计数器为 0。
+    stagingTokenBytes_ = hOutAlignUbSize_; // 单个完整 Token 暂存字节
+    uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
+    counterRegionSize_ = Ceil(localExpertNum * COUNTER_STRIDE * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    expertCountersGMTensor_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+    expertCountersGMTensor_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ uint32_t *>((__gm__ uint8_t *)(statusSpaceGm_) +
+                                            ExpertCountersRegionOffset(dataState_)),
+        localExpertNum * COUNTER_STRIDE);
 
     expertIdsCnt_ = axisBS_ * axisK_;
     uint32_t hFp32Size = axisH_ * sizeof(float);
@@ -1043,52 +1063,6 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetS
 }
 
 template <TemplateDispatchV2TypeClass>
-__aicore__ inline void
-MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SyncCntOnCore(LocalTensor<float> &gatherMaskOutTensor,
-                                                                   LocalTensor<uint32_t> &gatherTmpTensor,
-                                                                   LocalTensor<float> &statusSumOutTensor)
-{
-    gatherTmpTensor.SetValue(0, STATUS_BLOCK_COUNT_SEL_PATTERN); // 源操作数每个datablock取下标为1的元素
-    uint32_t mask = 2; // 源操作数每个datablock只需要处理两个元素
-    SyncFunc<AscendC::HardEvent::S_V>();
-
-    // 将当前核对应的专家recv cnt收集到gatherMaskOutTensor
-    uint64_t rsvdCnt = 0;
-    GatherMask(gatherMaskOutTensor, statusFp32Tensor_, gatherTmpTensor, true, mask,
-               {1, (uint16_t)recStatusNumPerCore_, 1, 0}, rsvdCnt);
-    PipeBarrier<PIPE_V>();
-
-    // 对当前核对应的专家recv cnt求和
-    uint32_t recStatusNumPerCoreInner = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) // 对inner要求32对齐
-                                        * UB_ALIGN / sizeof(float);
-    SumParams sumParams{1, recStatusNumPerCoreInner, recStatusNumPerCore_};
-    Sum(statusSumOutTensor, gatherMaskOutTensor, sumParams);
-    SyncFunc<AscendC::HardEvent::V_S>();
-    int32_t sumOfRecvCnt = statusSumOutTensor.ReinterpretCast<int32_t>().GetValue(0);
-
-    // 把当前核的所有专家的recv cnt之和写到workspace
-    uint32_t coreOffset = WORKSPACE_ELEMENT_OFFSET * aivNum_;
-    GM_ADDR wAddr = (__gm__ uint8_t *)(recvCntWorkspaceGM_) + coreOffset * aivId_; // 写workspace需要按照512字节对齐
-    GlobalTensor<int32_t> sumTensor;
-    sumTensor.SetGlobalBuffer((__gm__ int32_t *)wAddr);
-    uint16_t workCoreNum = MIN(recvWinBlockNum_, aivNum_);
-    // 每个核把sumOfRecvCnt重复写workCoreNum份
-    LocalTensor<int32_t> sumCoreTensor = sumCoreBuf_.Get<int32_t>();
-    // 仅处理每个datablock的首元素（对应maskArray[0]的bit0）。操作数为32bit情况下，maskArray只有第0个元素有效
-    // 每个元素占4字节，每个32字节处理8份，mask中每8个bit的填充第1位
-    uint64_t maskArray[2] = {0x0101010101010101, 0};
-    // 每个核一个datablock，总共需要处理workCoreNum个核。每个repeat总共256字节，可以处理8个datablock
-    uint8_t repeatTimes = (workCoreNum + 7) / 8;
-    // 1代表单个repeat内不同的datablock连续，没有跳过
-    // 8代表不同repeat的首元素间隔8个datablock
-    Duplicate<int32_t>(sumCoreTensor, sumOfRecvCnt, maskArray, repeatTimes, 1, 8);
-    DataCopyParams sumIntriParams{static_cast<uint16_t>(workCoreNum), 1, 0, 15};
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(sumTensor, sumCoreTensor, sumIntriParams);
-    PipeBarrier<PIPE_ALL>();
-}
-
-template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::BufferInit()
 {
     tpipe_->Reset();
@@ -1112,19 +1086,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
 #endif
     tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize); // recStatusNumPerCore_32对齐后大小  * 32B
     totalUsedUB_ += gatherMaskOutSize;
-    tpipe_->InitBuffer(sumCoreBuf_, aivNum_ * UB_ALIGN); // 48 * 32B
-    totalUsedUB_ += aivNum_ * UB_ALIGN;
-    tpipe_->InitBuffer(sumLocalBuf_, aivNum_ * UB_ALIGN); // 48 * 32B
-    totalUsedUB_ += aivNum_ * UB_ALIGN;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    // reduceSum计算所需的Tensor空间
-    int32_t reduceSumWorkNeedSize = ReduceSumWorkNeedSize(moeExpertNumPerRank_ * epWorldSize_);
-    tpipe_->InitBuffer(sumContinueBuf_, reduceSumWorkNeedSize * sizeof(float));
-    totalUsedUB_ += reduceSumWorkNeedSize * sizeof(float);
-#else
-    tpipe_->InitBuffer(sumContinueBuf_, aivNum_ * sizeof(float)); // 48 * 4B
-    totalUsedUB_ += aivNum_ * sizeof(float);
-#endif
+    // 原子定序后 SyncCntOnCore/GetCumSum 已删除，sumCoreBuf_/sumLocalBuf_/sumContinueBuf_ 不再申请
     tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 3); // 96B
     totalUsedUB_ += UB_ALIGN * 3;
     tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hOutAlignUbSize_); // 7k*2 + 32 + 12
@@ -1154,6 +1116,14 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     tpipe_->InitBuffer(workLocalBuf_, workLocalBufSize);
     totalUsedUB_ += workLocalBufSize;
 #endif
+    // tripleQueue_ 占用剩余 UB（不计入 totalUsedUB_，与 host 侧 CheckUBSize 口径一致）。
+    // LocalWindowCopy（窗口搬入）与 SetExpertTokenNums（密排重排）分阶段复用同一队列；Process 中二者之间
+    // 有 PipeBarrier<PIPE_ALL>，后一阶段复用时上一阶段的 MTE3 已排空。
+    uint32_t leftUBSize = ((totalUbSize_ - totalUsedUB_) / UB_ALIGN) * UB_ALIGN;
+    // 预留 UB_ALIGN(32B) 给 RunPosRecord 的 runPosBuf：它在 LocalWindowCopy（晚于 BufferInit）中 InitBuffer，
+    // tripleQueue_ 作为成员在此处先占剩余 UB，须为其预留，否则 runPosBuf 的 InitBuffer 会因无可用 UB 而失败。
+    tripleDataSize_ = (leftUBSize > UB_ALIGN) ? ((leftUBSize - UB_ALIGN) / BUFFER_NUM) : 0U;
+    tpipe_->InitBuffer(tripleQueue_, BUFFER_NUM, tripleDataSize_);
 }
 
 template <TemplateDispatchV2TypeClass>
@@ -1283,13 +1253,10 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Wait
     endExpertId_ = startExpertId_ + recStatusNumPerCore_;
     sendExpertNum_ = recStatusNumPerCore_;
     if (unlikely(startStatusIndex_ >= rscvStatusNum_)) {
-        SyncAll<true>();
         return;
     }
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
     LocalTensor<float> gatherMaskOutTensor = gatherMaskOutBuf_.Get<float>();
-    LocalTensor<uint32_t> gatherTmpTensor = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
-    gatherTmpTensor.SetValue(0, 1);
 #endif
     LocalTensor<float> statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
@@ -1303,74 +1270,14 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Wait
 #endif
     // 清状态
     WaitDispatchClearStatus();
-
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    // A5不需要考虑避免同地址访问, 跳过SyncCntOnCore
-#else
-    // 核间同步token cnt
-    SyncCntOnCore(gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
-#endif
-    SyncAll<true>();
-}
-
-template <TemplateDispatchV2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::GetCumSumA5(LocalTensor<int32_t> &outLocal)
-{
-    // 不支持allgather场景，只需要拷贝totalCount个核的recv cnt
-    uint16_t copySumNum = startStatusIndex_;
-
-    // copySumNum为0表示不执行搬运，该接口被视为NOP(空操作)
-    DataCopyParams statusCopyParams{static_cast<uint16_t>(copySumNum), 1, 0, 0};
-    LocalTensor<float> statusTensorFp32 = statusBuf_.Get<float>();
-    DataCopy(statusTensorFp32, windowInstatusFp32Tensor_, statusCopyParams);
-    LocalTensor<float> recvCntSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
-    LocalTensor<float> sharedTmpTensor = sumContinueBuf_.Get<float>();
-    uint32_t mask = 2;
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    ReduceSum(recvCntSumOutTensor, statusTensorFp32, sharedTmpTensor, mask, startStatusIndex_, 1);
-    SyncFunc<AscendC::HardEvent::V_S>();
-    // 最终输出outLocal第0个元素是当前核前面所有核recv cnt总和
-    outLocal.SetValue(0, recvCntSumOutTensor.ReinterpretCast<int32_t>().GetValue(0));
-}
-
-template <TemplateDispatchV2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::GetCumSum(LocalTensor<int32_t> &outLocal,
-                                                                                      uint32_t totalCount)
-{
-    // 获取workspace中每个核的recvcnt
-    GM_ADDR wAddr = (__gm__ uint8_t *)(recvCntWorkspaceGM_) + WORKSPACE_ELEMENT_OFFSET * aivId_;
-    GlobalTensor<int32_t> sumTensor;
-    sumTensor.SetGlobalBuffer((__gm__ int32_t *)wAddr);
-
-    // 不支持allgather场景，只需要拷贝totalCount个核的recv cnt
-    uint16_t copySumNum = totalCount;
-    uint16_t copyStride = 16 * aivNum_ - 1;
-    DataCopyParams sumIntriParams{static_cast<uint16_t>(copySumNum), 1, copyStride, 0};
-    LocalTensor<int32_t> sumLocalTensor = sumLocalBuf_.Get<int32_t>();
-    DataCopy(sumLocalTensor, sumTensor, sumIntriParams);
-    LocalTensor<uint32_t> gatherSumPattern = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
-    gatherSumPattern.SetValue(0, 1);
-    uint32_t mask = 1;
-    uint64_t rsvdCnt = 0;
-    LocalTensor<int32_t> sumContinueTensor = sumContinueBuf_.Get<int32_t>();
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    SyncFunc<AscendC::HardEvent::S_V>();
-    GatherMask(sumContinueTensor, sumLocalTensor, gatherSumPattern, true, mask, {1, copySumNum, 1, 0}, rsvdCnt);
-    // height, width(按照32字节对齐padding后总元素个数), nNum，结果矩阵第一列为对应行的求和结果
-    uint32_t innerSumParams = (copySumNum * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN / sizeof(float);
-    LocalTensor<float> recvCntSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
-    PipeBarrier<PIPE_V>();
-    LocalTensor<float> tmpFp32 = sumContinueTensor.ReinterpretCast<float>();
-    SumParams sumParams{1, innerSumParams, totalCount};
-    Sum(recvCntSumOutTensor, tmpFp32, sumParams);
-    SyncFunc<AscendC::HardEvent::V_S>();
-    // 最终输出outLocal第0个元素是当前核前面所有核recv cnt总和
-    outLocal.SetValue(0, recvCntSumOutTensor.ReinterpretCast<int32_t>().GetValue(0));
+    // 原子定序：不再需要 SyncCntOnCore + SyncAll 的跨核前缀和同步，
+    // 核间定序由 LocalWindowCopy 中的 AtomicAdd 完成，Process 在 LocalWindowCopy 后统一 SyncAll。
 }
 
 template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::RunPosRecord()
 {
+    return;
     TBuf<> runPosBuf;
     tpipe_->InitBuffer(runPosBuf, UB_ALIGN);
     DataCopyParams dataStateParams{1U, sizeof(uint32_t), 0U, 0U};
@@ -1384,47 +1291,38 @@ template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::LocalWindowCopy()
 {
     RunPosRecord(); // 维测打点
-    LocalTensor<int32_t> outCountLocal, xTmpTensorInt;
-    LocalTensor<float> xTmpTensorFloat;
     if (startExpertId_ >= rscvStatusNum_) {
         return;
     } // 分核已与前面的waitDispatch里保持一致return;
 
-    outCountLocal = gatherMaskOutBuf_.Get<int32_t>();
-    if (aivId_ != 0) {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        GetCumSumA5(outCountLocal);
-#else
-        GetCumSum(outCountLocal, aivId_);
-#endif
-    } else {
-        outCountLocal.SetValue(0, 0);
-    }
+    statusTensor_ = waitStatusBuf_.Get<int32_t>();
 
-    // hOutElemCount为expandXOutGlobal申请每个token的GM Buffer空间大小
-    uint32_t index = 0, beginIdx = outCountLocal.GetValue(0), hOutElemCount = hOutSize_ / sizeof(XOutType);
-    preCnt_ = beginIdx, statusTensor_ = waitStatusBuf_.Get<int32_t>();
-    DataCopyPadParams padParams = {false, 0U, 0U, 0U};
-    DataCopyExtParams dataCopyExpandIdxParams{1U, sizeof(int32_t) * EXPAND_IDX_INFO, 0U, 0U, 0U};
-    DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
-
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tripleQueue; // 用于搬运接收到的数据
-    uint32_t leftUBSize = ((totalUbSize_ - totalUsedUB_) / UB_ALIGN) * UB_ALIGN;
-    uint32_t dataSize = leftUBSize / BUFFER_NUM;
-    tpipe_->InitBuffer(tripleQueue, BUFFER_NUM, dataSize);
-
-    uint32_t countPerDataSize = dataSize / hOutAlignUbSize_;
+    // tripleQueue_ 为成员变量，已在 BufferInit 中按剩余 UB 申请；此处仅取每块可容纳的 token 数用于分块搬运。
+    uint32_t countPerDataSize = tripleDataSize_ / hOutAlignUbSize_;
     for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
         uint32_t i = (index - startExpertId_), winOffset = index;
         uint32_t count = statusTensor_.GetValue(i * 8 + 1);
-        outCountLocal.SetValue(i, beginIdx + count);
         if ((!isShareExpertRankFlag_) &&
             (moeExpertNumPerRank_ > 1)) { // moe专家卡且一卡多专家场景 转换成数据区的排布偏移
             winOffset = index % epWorldSize_ * moeExpertNumPerRank_ + index / epWorldSize_;
         }
+
+        // 原子定序：按目标专家原子累加 count，返回值 expertOffset 即本窗口块在该专家区内的起始槽位。
+        // baseSlot = targetExpertId*globalBS_ + expertOffset：专家0(targetExpertId==0，含单专家)时退化为
+        // expertOffset（== 最终输出槽，直写 expandXOut 头部）；专家>0 时为分段暂存槽（前面有未填满
+        // globalBS_ 的空洞，需 SetExpertTokenNums 密排重排）。
+        uint32_t targetExpertId = 0;
+        if (!isShareExpertRankFlag_ && moeExpertNumPerRank_ > 1) {
+            targetExpertId = index / epWorldSize_;
+        }
+        uint32_t expertOffset = AtomicAdd<uint32_t>(
+            reinterpret_cast<__gm__ uint32_t *>(expertCountersGMTensor_.GetPhyAddr(targetExpertId * COUNTER_STRIDE)),
+            count);
+        bool directWrite = (targetExpertId == 0);
+        uint32_t baseSlot = targetExpertId * globalBS_ + expertOffset;
+
         GM_ADDR wAddr = (__gm__ uint8_t *)(windowGM_) + winOffset * expertPerSizeOnWin_;
-        GlobalTensor<XOutType> tokGlobal, expandXOutGlobal;
-        GlobalTensor<float> expertScaleInGlobal, expandScalesOutGlobal;
+        GlobalTensor<XOutType> tokGlobal;
         tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
 
         uint32_t loopTimes = Ceil(count, countPerDataSize);
@@ -1437,183 +1335,194 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
             uint16_t copyBlockLen = static_cast<uint16_t>(hOutAlignUbSize_ / UB_ALIGN);
             uint16_t srcStrideTokGlobal = static_cast<uint16_t>((hAlignWinSize_ - hOutAlignUbSize_) / UB_ALIGN);
             DataCopyParams dataCopyParamsTokGlobal{blockCount, copyBlockLen, srcStrideTokGlobal, 0U};
-            LocalTensor<XOutType> tripleLocal = tripleQueue.AllocTensor<XOutType>();
+            LocalTensor<XOutType> tripleLocal = tripleQueue_.AllocTensor<XOutType>();
             DataCopy(tripleLocal, tokGlobal, dataCopyParamsTokGlobal);
-            tripleQueue.EnQue(tripleLocal);
-            tripleLocal = tripleQueue.DeQue<XOutType>();
+            tripleQueue_.EnQue(tripleLocal);
+            tripleLocal = tripleQueue_.DeQue<XOutType>();
 
-            expandXOutGlobal.SetGlobalBuffer(
-                (__gm__ XOutType *)(expandXOutGM_ + (beginIdx + tokenCopiedNumThisExpert) * hOutSize_));
-            uint32_t srcStrideExpandX = (hOutAlignUbSize_ - hOutSize_) / UB_ALIGN;
-            DataCopyExtParams dataCopyParamsExpandX{blockCount, hOutSize_, srcStrideExpandX, 0U, 0U};
-            DataCopyPad(expandXOutGlobal, tripleLocal, dataCopyParamsExpandX);
+            if (directWrite) {
+                // 专家0 直写最终输出（恢复移植前基础 fan-out，baseSlot 取代原 beginIdx）
+                GlobalTensor<XOutType> expandXOutGlobal;
+                GlobalTensor<float> expertScaleInGlobal, expandScalesOutGlobal;
+                LocalTensor<float> xTmpTensorFloat;
+                expandXOutGlobal.SetGlobalBuffer(
+                    (__gm__ XOutType *)(expandXOutGM_ + (uint64_t)(baseSlot + tokenCopiedNumThisExpert) * hOutSize_));
+                uint32_t srcStrideExpandX = (hOutAlignUbSize_ - hOutSize_) / UB_ALIGN;
+                DataCopyExtParams dataCopyParamsExpandX{blockCount, hOutSize_, srcStrideExpandX, 0U, 0U};
+                DataCopyPad(expandXOutGlobal, tripleLocal, dataCopyParamsExpandX);
 
-            uint32_t srcStrideScales = (hOutAlignUbSize_ - scaleOutBytes_) / UB_ALIGN;
-            DataCopyExtParams dataCopyParamsScales{blockCount, scaleOutBytes_, srcStrideScales, 0U, 0U};
-            quantInst_.CopyScalesToOut(beginIdx + tokenCopiedNumThisExpert, scaleOutBytes_, tripleLocal,
-                                       dataCopyParamsScales);
+                uint32_t srcStrideScales = (hOutAlignUbSize_ - scaleOutBytes_) / UB_ALIGN;
+                DataCopyExtParams dataCopyParamsScales{blockCount, scaleOutBytes_, srcStrideScales, 0U, 0U};
+                quantInst_.CopyScalesToOut(baseSlot + tokenCopiedNumThisExpert, scaleOutBytes_, tripleLocal,
+                                           dataCopyParamsScales);
 
-            LocalTensor<int32_t> tripleLocalInt32 = tripleLocal.template ReinterpretCast<int32_t>();
-            uint32_t expandIdxSize = EXPAND_IDX_INFO * static_cast<uint32_t>(sizeof(int32_t));
-            uint32_t srcStrideExpandIdx = (hOutAlignUbSize_ - expandIdxSize) / UB_ALIGN;
-            DataCopyExtParams dataCopyParamsExpandIdx{blockCount, expandIdxSize, srcStrideExpandIdx, 0U, 0U};
-            DataCopyPad(expandIdxGMTensor_[(beginIdx + tokenCopiedNumThisExpert) * EXPAND_IDX_INFO],
-                        tripleLocalInt32[tokenQuantAlign_], dataCopyParamsExpandIdx);
+                LocalTensor<int32_t> tripleLocalInt32 = tripleLocal.template ReinterpretCast<int32_t>();
+                uint32_t expandIdxSize = EXPAND_IDX_INFO * static_cast<uint32_t>(sizeof(int32_t));
+                uint32_t srcStrideExpandIdx = (hOutAlignUbSize_ - expandIdxSize) / UB_ALIGN;
+                DataCopyExtParams dataCopyExpandIdx{blockCount, expandIdxSize, srcStrideExpandIdx, 0U, 0U};
+                DataCopyPad(expandIdxGMTensor_[(baseSlot + tokenCopiedNumThisExpert) * EXPAND_IDX_INFO],
+                            tripleLocalInt32[tokenQuantAlign_], dataCopyExpandIdx);
 
-            if (hasExpertScalesFlag_) {
-                xTmpTensorFloat = tripleLocal.template ReinterpretCast<float>();
-                expertScaleInGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(
-                    wAddr + tokenCopiedNumThisExpert * hAlignWinSize_ + expertScaleAlign_ * sizeof(float)));
-                expandScalesOutGlobal.SetGlobalBuffer(
-                    (__gm__ float*)(expandScalesOutGM_) + beginIdx + tokenCopiedNumThisExpert);
-                DataCopyExtParams expertScaleCopyInParams{
-                    blockCount, static_cast<uint32_t>(sizeof(float)),
-                    static_cast<uint32_t>(hAlignWinSize_ - sizeof(float)), 0U, 0U};
-                DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0.0f};
-                DataCopyExtParams expertScaleCopyOutParams{
-                    blockCount, static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U};
-                SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-                DataCopyPad(xTmpTensorFloat, expertScaleInGlobal, expertScaleCopyInParams, expertScalePadParams);
-                SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-                DataCopyPad(expandScalesOutGlobal, xTmpTensorFloat, expertScaleCopyOutParams);
+                if (hasExpertScalesFlag_) {
+                    xTmpTensorFloat = tripleLocal.template ReinterpretCast<float>();
+                    expertScaleInGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(
+                        wAddr + tokenCopiedNumThisExpert * hAlignWinSize_ + expertScaleAlign_ * sizeof(float)));
+                    expandScalesOutGlobal.SetGlobalBuffer(
+                        (__gm__ float *)(expandScalesOutGM_) + baseSlot + tokenCopiedNumThisExpert);
+                    DataCopyExtParams expertScaleCopyInParams{
+                        blockCount, static_cast<uint32_t>(sizeof(float)),
+                        static_cast<uint32_t>(hAlignWinSize_ - sizeof(float)), 0U, 0U};
+                    DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0.0f};
+                    DataCopyExtParams expertScaleCopyOutParams{
+                        blockCount, static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U};
+                    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+                    DataCopyPad(xTmpTensorFloat, expertScaleInGlobal, expertScaleCopyInParams, expertScalePadParams);
+                    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+                    DataCopyPad(expandScalesOutGlobal, xTmpTensorFloat, expertScaleCopyOutParams);
+                }
+            } else {
+                // 专家>0：完整 Token（data + 量化scales + expandIdx + 专家scale）整体暂存到 workspace，
+                // 密排与分项输出交由 SetExpertTokenNums 重排阶段完成。
+                GlobalTensor<uint8_t> stagingGM;
+                stagingGM.SetGlobalBuffer((__gm__ uint8_t *)(recvCntWorkspaceGM_) +
+                                          (uint64_t)(baseSlot + tokenCopiedNumThisExpert) * stagingTokenBytes_);
+                DataCopyExtParams stagingParams{blockCount, stagingTokenBytes_, 0U, 0U, 0U};
+                DataCopyPad(stagingGM, tripleLocal.template ReinterpretCast<uint8_t>(), stagingParams);
             }
-            tripleQueue.FreeTensor(tripleLocal);
+
+            tripleQueue_.FreeTensor(tripleLocal);
         }
-        beginIdx += count;
     }
-    totalCnt_ = beginIdx;
-    lastCore_ = MIN(rscvStatusNum_, aivNum_) - 1;
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopyPad(sendCountsGlobal_[startExpertId_], outCountLocal, dataCopyOutParams);
 }
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-template <TemplateDispatchV2TypeClass>
-__aicore__ inline void
-MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertPrefixSumA5(uint32_t localExpertNum)
-{
-    bool useCumSum = (epWorldSize_ >= UB_ALIGN / sizeof(float));
-    DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)), 0U, 0U,
-                                                0U};
-    LocalTensor<int32_t> expertTokenNumInt32Tensor = expertTokenNumTensor_.ReinterpretCast<int32_t>();
-    if (!useCumSum) {
-        SyncFunc<AscendC::HardEvent::V_S>();
-        int64_t expertTokenNumCumsum = 0;
-        for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
-            int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumInt32Tensor.GetValue(localExpertIdx));
-            expertTokenNumCumsum += expertTokenNum;
-            expertTokenNumsLocalTensor_.SetValue(localExpertIdx, expertTokenNumCumsum);
-        }
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor_, expertTokenNumsCopyParams);
-        return;
-    }
-
-    uint32_t cumsumInner = Ceil(localExpertNum * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
-    CumSumInfo cumsumInfo{1U, cumsumInner};
-    LocalTensor<float> expertTokenNumCumsumTensor = expertCountTensor_;
-    LocalTensor<float> cumsumLastRowTensor = scalarBuf_.Get<float>();
-    LocalTensor<uint8_t> cumsumTmpTensor = statusBuf_.Get<uint8_t>();
-    PipeBarrier<PIPE_V>();
-    CumSum<float, SET_EXPERT_TOKEN_NUMS_CUMSUM_CONFIG>(expertTokenNumCumsumTensor, cumsumLastRowTensor,
-                                                       expertTokenNumTensor_, cumsumTmpTensor, cumsumInfo);
-    PipeBarrier<PIPE_V>();
-    Cast(expertTokenNumsLocalTensor_, expertTokenNumCumsumTensor.ReinterpretCast<int32_t>(), RoundMode::CAST_NONE,
-         localExpertNum);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor_, expertTokenNumsCopyParams);
-}
-
-template <TemplateDispatchV2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNumsA5()
-{
-    if (aivId_ != FIRST_CORE) {
-        return;
-    }
-
-    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-
-    uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
-    uint32_t localStatusSectionNum = localExpertNum * epWorldSize_;
-    expertCountTensor_ = gatherMaskOutBuf_.Get<float>();
-    DataCopyPadExtParams<float> countCopyPadParams{false, 0U, 0U, 0.0f};
-    DataCopyExtParams countCopyParams{static_cast<uint16_t>(localStatusSectionNum), sizeof(float),
-                                      STATE_OFFSET - sizeof(float), 0U, 0U};
-    DataCopyPad<float, PaddingMode::Compact>(expertCountTensor_,
-                                             windowInstatusFp32Tensor_[STATUS_BLOCK_COUNT_FIELD_OFFSET],
-                                             countCopyParams, countCopyPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-
-    expertTokenNumTensor_ = statusBuf_.Get<float>();
-    if ((expertTokenNumsType_ == 0) && (epWorldSize_ >= UB_ALIGN / sizeof(float))) {
-        expertTokenNumTensor_ = tokenNumBuf_.Get<float>();
-    }
-    uint32_t expertCountShape[] = {localExpertNum, epWorldSize_};
-    ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(expertTokenNumTensor_, expertCountTensor_, expertCountShape,
-                                                         false);
-
-    expertTokenNumsLocalTensor_ = tokenNumBuf_.Get<int64_t>();
-    DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)), 0U, 0U,
-                                                0U};
-    LocalTensor<int32_t> expertTokenNumInt32Tensor = expertTokenNumTensor_.ReinterpretCast<int32_t>();
-    if (expertTokenNumsType_ != 0) {
-        PipeBarrier<PIPE_V>();
-        Cast(expertTokenNumsLocalTensor_, expertTokenNumInt32Tensor, RoundMode::CAST_NONE, localExpertNum);
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor_, expertTokenNumsCopyParams);
-        return;
-    }
-
-    SetExpertPrefixSumA5(localExpertNum);
-}
-#else
-// 更新tokenNumsOut tensor
+// 原子定序：更新 expertTokenNumsOut + Token 密排重排。计数来源为每专家原子计数器，多核并行（按专家切分）。
 template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNums()
 {
-    if (aivId_ != FIRST_CORE) {
+    uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
+    // 多核并行：每核处理 [startExpertIdx, endExpertIdx)
+    uint32_t expertNumPerCore = (localExpertNum + aivNum_ - 1) / aivNum_;
+    uint32_t startExpertIdx = aivId_ * expertNumPerCore;
+    uint32_t endExpertIdx = MIN(startExpertIdx + expertNumPerCore, localExpertNum);
+    if (startExpertIdx >= localExpertNum) {
         return;
     }
 
-    uint32_t localExpertNum;
-    if (isShareExpertRankFlag_) {
-        localExpertNum = 1U;
-    } else {
-        localExpertNum = moeExpertNumPerRank_;
+    // 读全部专家计数器到 UB（计数器在 statusSpaceGm_ 内 32B 对齐连续布局，整段拷贝后按 COUNTER_STRIDE 取值）
+    // 可见性由 Process 中 SetExpertTokenNums 之前的 PipeBarrier<PIPE_ALL>()（排空本核 MTE3）+ SyncAll<true>()
+    // （跨核栅栏）保证，无需在此额外 MTE3_MTE2 同步。
+    LocalTensor<uint32_t> countersLocal = statusBuf_.Get<uint32_t>();
+    DataCopyExtParams countersCopyParams{1U, localExpertNum * UB_ALIGN, 0U, 0U, 0U};
+    DataCopyPadExtParams<uint32_t> countersPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(countersLocal, expertCountersGMTensor_, countersCopyParams, countersPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+    // 计算本核起始专家之前的 token 总数（前缀和）
+    uint32_t runningSum = 0;
+    for (uint32_t e = 0; e < startExpertIdx; e++) {
+        runningSum += countersLocal.GetValue(e * COUNTER_STRIDE);
     }
-    uint16_t localStatusSectionNum = static_cast<uint16_t>(localExpertNum * epWorldSize_);
-    DataCopyParams allStatusCopyParams{localStatusSectionNum, 1,
-                                       static_cast<uint16_t>((stateOffset_ - UB_ALIGN) / UB_ALIGN), 0};
-    LocalTensor<float> allStatusTensorFp32 = statusBuf_.Get<float>();
-    DataCopy(allStatusTensorFp32, windowInstatusFp32Tensor_, allStatusCopyParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    int64_t expertTokenNumCumsum = 0;
-    LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
-    LocalTensor<float> expertTokenNumTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), 0);
-    LocalTensor<float> workLocalTensor = workLocalBuf_.Get<float>();
 
-    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
-        LocalTensor<float> expertStatusTensor = statusBuf_.GetWithOffset<float>(
-            epWorldSize_ * UB_ALIGN / static_cast<uint32_t>(sizeof(float)), localExpertIdx * epWorldSize_ * UB_ALIGN);
-        uint32_t mask = 2;
-        SyncFunc<AscendC::HardEvent::S_V>();
-        ReduceSum(expertTokenNumTensor, expertStatusTensor, workLocalTensor, mask, epWorldSize_, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
+    expertTokenNumsLocalTensor_ = tokenNumBuf_.Get<int64_t>();
+    DataCopyExtParams expertTokenNumsCopyParams{1U, sizeof(int64_t), 0U, 0U, 0U};
+    DataCopyExtParams dataCopyExpandXParams{1U, hOutSize_, 0U, 0U, 0U};
+    DataCopyExtParams dataCopyExpandIdxParams{1U, sizeof(int32_t) * EXPAND_IDX_INFO, 0U, 0U, 0U};
+    DataCopyExtParams expertScaleCopyOutParams{1U, static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U};
+    DataCopyExtParams stagingReadParams{1U, stagingTokenBytes_, 0U, 0U, 0U};
+    // 复用成员 tripleQueue_（BufferInit 中已按剩余 UB 申请）。双缓冲：下一 token 的 GM→UB(MTE2) 与当前
+    // token 的 UB→GM(MTE3) 重叠。LocalWindowCopy 与本函数在 Process 中被 PipeBarrier<PIPE_ALL> 隔开，
+    // 复用时上一阶段的 MTE3 已排空。
+    GlobalTensor<XOutType> expandXOutGlobal;
+    GlobalTensor<float> expandScalesOutGlobal;
 
-        int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumTensor.ReinterpretCast<int32_t>().GetValue(0));
-        expertTokenNumCumsum += expertTokenNum;
-        if (expertTokenNumsType_ == 0) {
-            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNumCumsum);
-        } else {
-            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNum);
+    for (uint32_t myExpertIdx = startExpertIdx; myExpertIdx < endExpertIdx; myExpertIdx++) {
+        uint32_t globalOffset = runningSum;
+        uint32_t expertTokenCount = countersLocal.GetValue(myExpertIdx * COUNTER_STRIDE);
+        runningSum += expertTokenCount;
+
+        // (a) expertTokenNumsOut：保持现有语义（0=cumsum，1=count），各核按专家写各自表项
+        int64_t expertTokenNumsVal = (expertTokenNumsType_ == 0)
+            ? static_cast<int64_t>(globalOffset + expertTokenCount)
+            : static_cast<int64_t>(expertTokenCount);
+        expertTokenNumsLocalTensor_.SetValue(0, expertTokenNumsVal);
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopyPad(expertTokenNumsOutGMTensor_[myExpertIdx], expertTokenNumsLocalTensor_, expertTokenNumsCopyParams);
+
+        // (b) 最后一个专家：sendCountsGlobal_ 最后一元素记录本 rank Token 总数（combine 仅读该元素）
+        if (myExpertIdx == localExpertNum - 1) {
+            LocalTensor<int32_t> sendCntLocal = scalarBuf_.Get<int32_t>();
+            sendCntLocal.SetValue(0, static_cast<int32_t>(runningSum));
+            SyncFunc<AscendC::HardEvent::S_MTE3>();
+            DataCopyExtParams sendCntCopyParams{1U, sizeof(int32_t), 0U, 0U, 0U};
+            DataCopyPad(sendCountsGlobal_[rscvStatusNum_ - 1], sendCntLocal, sendCntCopyParams);
+        }
+
+        if (expertTokenCount == 0) {
+            continue;
+        }
+
+        // 专家0 已在 LocalWindowCopy 直写就位（输出头部天然密排、无空泡），无需重排
+        if (myExpertIdx == 0) {
+            continue;
+        }
+
+        // (c) Token 密排重排：暂存区 → 最终输出（expandXOut / dynamicScales / expandIdx / expandScales）
+        uint32_t srcPosition = myExpertIdx * globalBS_;
+        for (uint32_t j = 0; j < expertTokenCount; j++) {
+            GlobalTensor<uint8_t> stagingGM;
+            stagingGM.SetGlobalBuffer((__gm__ uint8_t *)(recvCntWorkspaceGM_) +
+                                      (uint64_t)(srcPosition + j) * stagingTokenBytes_);
+            DataCopyPadExtParams<uint8_t> relayReadPadParams{false, 0U, 0U, 0U};
+
+            // Alloc 一块中转 UB，搬入完整 Token（MTE2）；EnQue/DeQue 由队列保证 MTE2 完成后再 MTE3 写出。
+            LocalTensor<XOutType> relayTokX = tripleQueue_.AllocTensor<XOutType>();
+            LocalTensor<uint8_t> relayTokU8 = relayTokX.template ReinterpretCast<uint8_t>();
+            DataCopyPad(relayTokU8, stagingGM, stagingReadParams, relayReadPadParams); // GM→UB（读完整 Token，MTE2）
+            tripleQueue_.EnQue(relayTokX);
+            relayTokX = tripleQueue_.DeQue<XOutType>();
+            LocalTensor<int32_t> relayTokI32 = relayTokX.template ReinterpretCast<int32_t>();
+            LocalTensor<float> relayTokF = relayTokX.template ReinterpretCast<float>();
+
+            uint32_t dstTokenIdx = globalOffset + j;
+            // data → expandXOut
+            expandXOutGlobal.SetGlobalBuffer((__gm__ XOutType *)(expandXOutGM_ + (uint64_t)dstTokenIdx * hOutSize_));
+            DataCopyPad(expandXOutGlobal, relayTokX, dataCopyExpandXParams);
+            // 量化 scales → dynamicScalesOut（CopyScalesToOut 内部按量化模式取 scale 偏移）
+            quantInst_.CopyScalesToOut(dstTokenIdx, scaleOutBytes_, relayTokX, scaleOutParams_);
+            // expandIdx 三元组
+            DataCopyPad(expandIdxGMTensor_[dstTokenIdx * EXPAND_IDX_INFO], relayTokI32[tokenQuantAlign_],
+                        dataCopyExpandIdxParams);
+            // 专家 scale → expandScalesOut
+            if (hasExpertScalesFlag_) {
+                expandScalesOutGlobal.SetGlobalBuffer((__gm__ float *)(expandScalesOutGM_) + dstTokenIdx);
+                DataCopyPad(expandScalesOutGlobal, relayTokF[expertScaleAlign_], expertScaleCopyOutParams);
+            }
+            tripleQueue_.FreeTensor(relayTokX); // 队列记录 MTE3 完成事件，下一轮 Alloc 复用前确保写完
         }
     }
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)), 0U, 0U,
-                                                0U};
-    DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
 }
-#endif
+
+// PINGPONG：core0 在 LocalWindowCopy 之后、SyncAll 之前，把“下一轮”（1-dataState_）计数器区整体 reset 为 0，
+// 供下一次 dispatch（dataState_ 翻转后）使用。本轮用的是 dataState_ 区，互不干扰。
+// 写直达 GM（L2 关闭），与 AtomicAdd 的访问一致，避免下一轮读到 L2 残留。
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::ResetNextRoundCounters()
+{
+    // 仅由最后一个核执行 reset（任意单核即可；选末核 aivId_==aivNum_-1，与各核 LocalWindowCopy 收尾更好重叠）。
+    // aivNum_ 为 tiling 常量、各核（含空闲核）同值，故该判定稳健地选中唯一核。
+    if (aivId_ != aivNum_ - 1) {
+        return;
+    }
+    LocalTensor<uint32_t> zeroLocal = statusBuf_.Get<uint32_t>();
+    Duplicate<uint32_t>(zeroLocal, 0, counterRegionSize_ / sizeof(uint32_t));
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    GlobalTensor<uint32_t> nextCountersGM;
+    nextCountersGM.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+    nextCountersGM.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(
+        (__gm__ uint8_t *)(statusSpaceGm_) + ExpertCountersRegionOffset(1U - dataState_)));
+    DataCopyExtParams zeroCopyParams{1U, counterRegionSize_, 0U, 0U, 0U};
+    DataCopyPad(nextCountersGM, zeroLocal, zeroCopyParams);
+}
 
 template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Process()
@@ -1623,11 +1532,10 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         SetStatus();
         WaitDispatch();
         LocalWindowCopy();
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        SetExpertTokenNumsA5();
-#else
+        ResetNextRoundCounters(); // PINGPONG：core0 把下一轮计数器区 reset 为 0
+        PipeBarrier<PIPE_ALL>(); // 排空本核所有流水线（含 reset 对 statusBuf_ 的 MTE3 读），避免与 SetExpertTokenNums 复用 statusBuf_ 的 WAR
+        SyncAll<true>(); // 原子定序：确保所有核完成 AtomicAdd 累加与暂存写入，计数器/暂存数据全局可见后再重排
         SetExpertTokenNums();
-#endif
     }
 }
 } // namespace Mc2Kernel
