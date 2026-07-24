@@ -10,7 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 """
-  python3 gen_csv_case_store.py [--paramset fia_fullquant_mxfp8_paramset_func_rdv]
+  python3 gen_csv_case_store.py [--paramset quant_flash_attn_paramset_func_rdv]
                                 [--output qfa_mxfp8.csv]
 """
 
@@ -104,7 +104,7 @@ def case_to_csv_row(case):
 
 def main():
     parser = argparse.ArgumentParser(description="paramset → TTK e2e CSV")
-    parser.add_argument("--paramset", default="fia_fullquant_mxfp8_paramset_func_rdv",
+    parser.add_argument("--paramset", default="quant_flash_attn_paramset_func_rdv",
                         help="paramset 模块名(不含.py)")
     parser.add_argument("--output", default="qfa_mxfp8.csv",
                         help="输出 CSV 路径")
@@ -117,7 +117,7 @@ def main():
     if hasattr(paramset_mod, "CASES") and paramset_mod.CASES is not None:
         cases = paramset_mod.CASES
     elif hasattr(paramset_mod, "TEST_PARAMS"):
-        from fia_fullquant_mxfp8_paramset_common import expand_paramset_to_cases
+        from quant_flash_attn_paramset_common import expand_paramset_to_cases
         cases = expand_paramset_to_cases(paramset_mod.TEST_PARAMS)
     else:
         raise ValueError(f"paramset module '{args.paramset}' has neither CASES nor TEST_PARAMS")
