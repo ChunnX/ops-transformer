@@ -139,7 +139,7 @@ class GeneralizedSFAQuant:
         s2_base_size = 128
 
         for i_B in range(B):
-            print(f"i_B = {i_B}/{B}")
+            print(f"i_B = {i_B + 1}/{B}")
             cur_act_q = act_q[i_B]
             cur_ori_act_kv = seqused_ori_kv[i_B]
             cur_cmp_act_kv = seqused_cmp_kv[i_B] if seqused_cmp_kv is not None else 0
@@ -1099,6 +1099,10 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     return test_data
     '''
 
+    torch.manual_seed(0)
+    np.random.seed(0)
+    random.seed(0)
+
     Testcase_Name = params['Testcase_Name']
     layout_q = params['layout_q']
     layout_kv = params['layout_kv']
@@ -1188,8 +1192,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     cmp_quant_param_range_right = cmp_kv_datarange[1] / FP8_DATA_RANGE_RIGHT
 
     # generate sinks tensor
-    sinks = torch.tensor(np.random.uniform(q_datarange[0]/10, q_datarange[1]/10, (N1))).to(torch.float)
-
+    # sinks = torch.tensor(np.random.uniform(q_datarange[0]/10, q_datarange[1]/10, (N1))).to(torch.float)
+    sinks = torch.full((N1,), float('-inf')).to(torch.float)
     # generate ori_kv tensor
     if quant_mode == 1:
         ori_k_bnsd, ori_k_in_pa_shape, ori_block_table = gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim,

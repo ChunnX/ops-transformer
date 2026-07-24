@@ -72,9 +72,10 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
     int64_t firstFdDataWorkspaceIdx = 0;
-    bool isS2Split = false;
+    bool isCrossCoreSplit = false;
     int64_t s2SplitIdx = 0;
     bool isFirstS2SplitCore = true;
+    int64_t baseBlockNumInTile = 1; // s2方向一个规约块有几个基本块
 };
 
 #define COMMON_RUN_INFO \
@@ -116,7 +117,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
     bool    isCmp; \
-    bool    isS2Split = false; \
+    bool    isCrossCoreSplit = false; \
     int64_t s2SplitIdx = 0; \
     bool    isFirstS2SplitCore = true; \
 
@@ -130,6 +131,10 @@ struct RunInfo {
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
     int64_t firstFdDataWorkspaceIdx = 0;
+    bool isFirstBase;
+    bool isLastBase;
+    bool needReduce;
+    int64_t reduceBlockId;
 };
 
 #define COMMON_CONST_INFO \
