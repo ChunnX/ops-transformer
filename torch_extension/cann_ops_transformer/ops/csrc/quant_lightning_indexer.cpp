@@ -45,10 +45,8 @@ inline void FixQLIV2AclDtypes(int64_t quantMode, TensorWrapper &queryWrapper, Te
                               TensorWrapper &queryScaleWrapper, TensorWrapper &keyScaleWrapper)
 {
     if (quantMode == 4) {
-        TORCH_CHECK(queryWrapper.tensor_.scalar_type() == at::kByte,
-            "When quant_mode is 4, query must be hifp8 type");
-        TORCH_CHECK(keyWrapper.tensor_.scalar_type() == at::kByte,
-            "When quant_mode is 4, key must be hifp8 type");
+        TORCH_CHECK(queryWrapper.tensor_.scalar_type() == at::kByte, "When quant_mode is 4, query must be hifp8 type");
+        TORCH_CHECK(keyWrapper.tensor_.scalar_type() == at::kByte, "When quant_mode is 4, key must be hifp8 type");
         queryWrapper.dtype = ACL_HIFLOAT8;
         keyWrapper.dtype = ACL_HIFLOAT8;
         return;
@@ -56,25 +54,27 @@ inline void FixQLIV2AclDtypes(int64_t quantMode, TensorWrapper &queryWrapper, Te
 
     if (quantMode == 5) {
         TORCH_CHECK(IsFp4CompatibleTensor(queryWrapper.tensor_),
-            "When quant_mode is 5, query must be torch.float4_e2m1fn_x2 or packed torch.uint8");
+                    "When quant_mode is 5, query must be torch.float4_e2m1fn_x2 or packed torch.uint8");
         TORCH_CHECK(IsFp4CompatibleTensor(keyWrapper.tensor_),
-            "When quant_mode is 5, key must be torch.float4_e2m1fn_x2 or packed torch.uint8");
+                    "When quant_mode is 5, key must be torch.float4_e2m1fn_x2 or packed torch.uint8");
         queryWrapper.dtype = ACL_FLOAT4_E2M1;
         keyWrapper.dtype = ACL_FLOAT4_E2M1;
     }
 
     if (IsMxQuantMode(quantMode)) {
         TORCH_CHECK(IsE8M0Tensor(queryScaleWrapper.tensor_),
-            "When quant_mode is 3 or 5, query_dequant_scale must be torch.float8_e8m0fnu");
+                    "When quant_mode is 3 or 5, query_dequant_scale must be torch.float8_e8m0fnu");
         TORCH_CHECK(IsE8M0Tensor(keyScaleWrapper.tensor_),
-            "When quant_mode is 3 or 5, key_dequant_scale must be torch.float8_e8m0fnu");
+                    "When quant_mode is 3 or 5, key_dequant_scale must be torch.float8_e8m0fnu");
         // Cube loads E8M0 scales in two-byte groups through a bfloat16_t view.
         TORCH_CHECK(queryScaleWrapper.tensor_.storage_offset() % E8M0_SCALE_PACK_NUM == 0,
-            "When quant_mode is 3 or 5, query_dequant_scale storage offset must satisfy 2-element E8M0 packing "
-            "alignment, but got ", queryScaleWrapper.tensor_.storage_offset());
+                    "When quant_mode is 3 or 5, query_dequant_scale storage offset must satisfy 2-element E8M0 packing "
+                    "alignment, but got ",
+                    queryScaleWrapper.tensor_.storage_offset());
         TORCH_CHECK(keyScaleWrapper.tensor_.storage_offset() % E8M0_SCALE_PACK_NUM == 0,
-            "When quant_mode is 3 or 5, key_dequant_scale storage offset must satisfy 2-element E8M0 packing "
-            "alignment, but got ", keyScaleWrapper.tensor_.storage_offset());
+                    "When quant_mode is 3 or 5, key_dequant_scale storage offset must satisfy 2-element E8M0 packing "
+                    "alignment, but got ",
+                    keyScaleWrapper.tensor_.storage_offset());
         queryScaleWrapper.dtype = ACL_FLOAT8_E8M0;
         keyScaleWrapper.dtype = ACL_FLOAT8_E8M0;
     }
@@ -200,8 +200,8 @@ QuantLightningIndexer(const at::Tensor &query, const at::Tensor &key, const at::
 
     ACLNN_CMD(aclnnQuantLightningIndexerV2, queryWrapper, keyWrapper, weights, queryScaleWrapper, keyScaleWrapper,
               cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blockTable, outputIdxOffset, metadata, topk,
-              quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode, cmpRatio, returnValue,
-              sparseIndicesOut, sparseValuesOut);
+              quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode, cmpRatio, returnValue, sparseIndicesOut,
+              sparseValuesOut);
 
     return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
 }
