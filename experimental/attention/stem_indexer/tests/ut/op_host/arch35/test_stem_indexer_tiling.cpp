@@ -38,8 +38,8 @@ constexpr int64_t INVALID_TOPK_SCORE_PRECISION = 3;
 
 struct StemIndexerCompileInfo {};
 
-std::vector<TensorDesc> MakeValidInputs(int64_t batch = 2, int64_t qHeads = 32, int64_t kvHeads = 4,
-                                        int64_t maxQb = 8, int64_t maxKb = 16, int64_t flattenDim = 2048)
+std::vector<TensorDesc> MakeValidInputs(int64_t batch = 2, int64_t qHeads = 32, int64_t kvHeads = 4, int64_t maxQb = 8,
+                                        int64_t maxKb = 16, int64_t flattenDim = 2048)
 {
     return {
         {{{batch, qHeads, maxQb, flattenDim}, {batch, qHeads, maxQb, flattenDim}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -52,8 +52,7 @@ std::vector<TensorDesc> MakeValidInputs(int64_t batch = 2, int64_t qHeads = 32, 
     };
 }
 
-std::vector<TensorDesc> MakeValidOutputs(int64_t batch = 2, int64_t qHeads = 32, int64_t maxQb = 8,
-                                         int64_t maxKb = 16)
+std::vector<TensorDesc> MakeValidOutputs(int64_t batch = 2, int64_t qHeads = 32, int64_t maxQb = 8, int64_t maxKb = 16)
 {
     return {
         {{{batch, qHeads, maxQb, maxKb}, {batch, qHeads, maxQb, maxKb}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -78,8 +77,7 @@ std::vector<OpAttr> MakeValidAttrs(bool causal = true, int64_t topkScorePrecisio
     };
 }
 
-gert::TilingContextPara BuildTilingPara(const std::vector<TensorDesc> &inputs,
-                                        const std::vector<TensorDesc> &outputs,
+gert::TilingContextPara BuildTilingPara(const std::vector<TensorDesc> &inputs, const std::vector<TensorDesc> &outputs,
                                         const std::vector<OpAttr> &attrs)
 {
     static StemIndexerCompileInfo compileInfo;
@@ -108,8 +106,7 @@ TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_basic)
 TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_causal_false_q64_kv8)
 {
     ExpectTilingResult(
-        BuildTilingPara(MakeValidInputs(1, 64, 8, 4, 32), MakeValidOutputs(1, 64, 4, 32), MakeValidAttrs(false)),
-        true);
+        BuildTilingPara(MakeValidInputs(1, 64, 8, 4, 32), MakeValidOutputs(1, 64, 4, 32), MakeValidAttrs(false)), true);
 }
 
 TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_topk_score_uint16)

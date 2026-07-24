@@ -1,11 +1,16 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or
+ * modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
+ *
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS
+ * SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT
+ * NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 /*!
@@ -45,7 +50,7 @@ public:
     static constexpr uint64_t L0_BUF_NUM = 2;
 
     static constexpr uint32_t KEY_MTE1_MTE2_EVENT = EVENT_ID0;
-    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID3;         // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
+    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID3; // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
     static constexpr uint32_t M_MTE1_EVENT = EVENT_ID3;
 
     static constexpr uint32_t MTE2_MTE1_EVENT = EVENT_ID2;
@@ -78,20 +83,18 @@ public:
 protected:
     __aicore__ inline void Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
                                 uint64_t s2L0RealSize, const SICommon::RunInfo &runInfo);
-    __aicore__ inline void ComuteL0c(uint64_t s1gOffset, uint64_t s2Offset, uint64_t kGmOffset,
-                                    uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
-                                    const SICommon::RunInfo &runInfo);
-    __aicore__ inline void LoadKeyToL0b(uint64_t s2L0Offset, uint64_t s2L1RealSize,
-                                       uint64_t s2L0RealSize, uint64_t kL1Offset,
-                                       const SICommon::RunInfo &runInfo);
-    __aicore__ inline void LoadQueryToL0a(uint64_t s1gL0Offset, uint64_t s1gL1RealSize,
-                                          uint64_t s1gL0RealSize, uint64_t kL1Offset, const SICommon::RunInfo &runInfo);
+    __aicore__ inline void ComuteL0c(uint64_t s1gOffset, uint64_t s2Offset, uint64_t kGmOffset, uint64_t s1gL0RealSize,
+                                     uint64_t s2L0RealSize, const SICommon::RunInfo &runInfo);
+    __aicore__ inline void LoadKeyToL0b(uint64_t s2L0Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
+                                        uint64_t kL1Offset, const SICommon::RunInfo &runInfo);
+    __aicore__ inline void LoadQueryToL0a(uint64_t s1gL0Offset, uint64_t s1gL1RealSize, uint64_t s1gL0RealSize,
+                                          uint64_t kL1Offset, const SICommon::RunInfo &runInfo);
     __aicore__ inline void CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, uint64_t l1RowOffset,
                                                  uint64_t l1RowAlign, uint64_t gmOffset, uint64_t nValue);
-    __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset,
-                                     uint64_t kGmOffset, const SICommon::RunInfo &runInfo);
-    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset,
-                                   uint64_t kGmOffset, const SICommon::RunInfo &runInfo);
+    __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, uint64_t kGmOffset,
+                                      const SICommon::RunInfo &runInfo);
+    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset,
+                                    const SICommon::RunInfo &runInfo);
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
     GlobalTensor<Q_T> queryGm_;
@@ -133,8 +136,7 @@ template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
 {
     // 大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
-    pipe->InitBuffer(
-        bufUB_, 2 * ((constInfo_.mBaseSize + 1U) >> 1U) * constInfo_.s2BaseSize * sizeof(QK_T));
+    pipe->InitBuffer(bufUB_, 2 * ((constInfo_.mBaseSize + 1U) >> 1U) * constInfo_.s2BaseSize * sizeof(QK_T));
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1 * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -151,18 +153,19 @@ __aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename SIT>
-__aicore__ inline void
-SIMatmul<SIT>::InitMm1GlobalTensor(const GlobalTensor<Q_T> &queryGm, const GlobalTensor<K_T> &keyGm)
+__aicore__ inline void SIMatmul<SIT>::InitMm1GlobalTensor(const GlobalTensor<Q_T> &queryGm,
+                                                          const GlobalTensor<K_T> &keyGm)
 {
     queryGm_ = queryGm;
     keyGm_ = keyGm;
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInfo) {
+__aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInfo)
+{
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + (runInfo.loop & 1U));
-    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
-        SICommon::CROSS_VC_EVENT + (runInfo.loop & 1U) + SICommon::AIV0_AIV1_OFFSET);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + (runInfo.loop & 1U) +
+                                                         SICommon::AIV0_AIV1_OFFSET);
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
     uint64_t kProcessSize = constInfo_.headDim;
@@ -180,11 +183,10 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
             WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += M_BASIC_BLOCK_L1) {
                 uint64_t s1gL1RealSize =
-                s1gGmOffset + M_BASIC_BLOCK_L1 > s1gProcessSize ? s1gProcessSize - s1gGmOffset : M_BASIC_BLOCK_L1;
+                    s1gGmOffset + M_BASIC_BLOCK_L1 > s1gProcessSize ? s1gProcessSize - s1gGmOffset : M_BASIC_BLOCK_L1;
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryBufIdx_ = kGmOffset / D_BASIC_BLOCK_L1;
-                    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT +
-                                                   (queryBufIdx_ & (QUERY_BUF_NUM - 1U)));
+                    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + (queryBufIdx_ & (QUERY_BUF_NUM - 1U)));
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, kGmOffset, runInfo);
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
@@ -196,10 +198,9 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                         s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
                     for (uint64_t kL1Offset = 0; kL1Offset < D_BASIC_BLOCK_L1; kL1Offset += D_BASIC_BLOCK_L0) {
                         for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1RealSize; s1gL1Offset += M_BASIC_BLOCK_L0) {
-                            uint64_t s1gL0RealSize =
-                                s1gL1Offset + M_BASIC_BLOCK_L0 > s1gL1RealSize
-                                    ? s1gL1RealSize - s1gL1Offset
-                                    : M_BASIC_BLOCK_L0;
+                            uint64_t s1gL0RealSize = s1gL1Offset + M_BASIC_BLOCK_L0 > s1gL1RealSize ?
+                                                         s1gL1RealSize - s1gL1Offset :
+                                                         M_BASIC_BLOCK_L0;
                             WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + (l0BufIdx_ & (L0_BUF_NUM - 1U)));
                             LoadQueryToL0a(s1gL1Offset, s1gL1RealSize, s1gL0RealSize, kL1Offset, runInfo);
                             LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, kL1Offset, runInfo);
@@ -207,16 +208,15 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                             SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
                             WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
 
-                            ComuteL0c(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset,
-                                      kGmOffset + kL1Offset, s1gL0RealSize, s2L0RealSize, runInfo);
+                            ComuteL0c(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, kGmOffset + kL1Offset,
+                                      s1gL0RealSize, s2L0RealSize, runInfo);
                             SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + (l0BufIdx_ & (L0_BUF_NUM - 1U)));
                             l0BufIdx_++;
                         }
                     }
                 }
                 if (s2GmOffset + S2_BASIC_BLOCK_L1 >= s2ProcessSize && runInfo.isLastS2InnerLoop) {
-                    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT +
-                                                  (queryBufIdx_ & (QUERY_BUF_NUM - 1U)));
+                    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + (queryBufIdx_ & (QUERY_BUF_NUM - 1U)));
                 }
             }
             SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
@@ -227,14 +227,13 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + (l0cBufIdx_ & (L0_BUF_NUM - 1U)));
     l0cBufIdx_++;
     CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + (runInfo.loop & 1U));
-    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
-        SICommon::CROSS_CV_EVENT + (runInfo.loop & 1U) + SICommon::AIV0_AIV1_OFFSET);
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + (runInfo.loop & 1U) +
+                                                        SICommon::AIV0_AIV1_OFFSET);
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(
-    uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset,
-    const SICommon::RunInfo &runInfo)
+__aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset,
+                                               const SICommon::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -287,8 +286,8 @@ __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_
         uint64_t globalGIdx = logicalMStart / runInfo.actS1Size;
         uint64_t globalS1Idx = logicalMStart % runInfo.actS1Size;
         uint64_t copyRows = Min(logicalMEnd - logicalMStart, static_cast<uint64_t>(runInfo.actS1Size) - globalS1Idx);
-        uint64_t gmOffset = queryBaseOffset +
-                            (globalGIdx * constInfo_.qSeqSize + globalS1Idx) * constInfo_.headDim + kGmOffset;
+        uint64_t gmOffset =
+            queryBaseOffset + (globalGIdx * constInfo_.qSeqSize + globalS1Idx) * constInfo_.headDim + kGmOffset;
         CopyQuerySegmentNd2Nz(queryL1Base, copiedRows, l1RowAlign, gmOffset, copyRows);
         logicalMStart += copyRows;
         copiedRows += copyRows;
@@ -296,9 +295,9 @@ __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(
-    uint64_t s1gL1Offset, uint64_t s1gL1RealSize, uint64_t s1gL0RealSize,
-    uint64_t kL1Offset, const SICommon::RunInfo &runInfo)
+__aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
+                                                     uint64_t s1gL0RealSize, uint64_t kL1Offset,
+                                                     const SICommon::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
@@ -314,9 +313,8 @@ __aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(
-    uint64_t s2L1Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
-    uint64_t kL1Offset, const SICommon::RunInfo &runInfo)
+__aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
+                                                   uint64_t kL1Offset, const SICommon::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = CeilDiv(s2L1Offset, BLOCK_CUBE);
@@ -332,9 +330,9 @@ __aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::ComuteL0c(
-    uint64_t s1gOffset, uint64_t s2Offset, uint64_t kGmOffset,
-    uint64_t s1gL0RealSize, uint64_t s2L0RealSize, const SICommon::RunInfo &runInfo)
+__aicore__ inline void SIMatmul<SIT>::ComuteL0c(uint64_t s1gOffset, uint64_t s2Offset, uint64_t kGmOffset,
+                                                uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
+                                                const SICommon::RunInfo &runInfo)
 {
     MmadParams mmadParams;
     mmadParams.m = CeilAlign(s1gL0RealSize, BLOCK_CUBE);
@@ -368,8 +366,7 @@ __aicore__ inline void SIMatmul<SIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOf
     uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 32B对齐
     fixpipeParams.nSize = nSize;
     fixpipeParams.mSize = mSize;
-    fixpipeParams.srcStride =
-        ((fixpipeParams.mSize + BLOCK_CUBE - 1U) / BLOCK_CUBE) * BLOCK_CUBE;
+    fixpipeParams.srcStride = ((fixpipeParams.mSize + BLOCK_CUBE - 1U) / BLOCK_CUBE) * BLOCK_CUBE;
     fixpipeParams.dstStride = constInfo_.s2BaseSize;
     fixpipeParams.dualDstCtl = 1;
     fixpipeParams.params.ndNum = 1;
