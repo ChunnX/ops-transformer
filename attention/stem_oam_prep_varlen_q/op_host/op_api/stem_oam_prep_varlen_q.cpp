@@ -49,15 +49,10 @@ const aclTensor *StemOamPrepVarlenQ(
     mutableCuSeqLensQ->SetViewFormat(Format::FORMAT_ND);
     mutableCuSeqLensQ->SetOriginalFormat(Format::FORMAT_ND);
 
-    const aclTensor *qScaleTensor = qScale;
-    if (qScaleTensor == nullptr) {
-        qScaleTensor = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-
     auto qFlatTensor = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
 
     auto ret = INFER_SHAPE(StemOamPrepVarlenQ,
-                           OP_INPUT(q, qSeqLensTensor, cuSeqLensQTensor, qScaleTensor),
+                           OP_INPUT(q, qSeqLensTensor, cuSeqLensQTensor, qScale),
                            OP_OUTPUT(qFlatTensor),
                            OP_ATTR(stemBlockSize, stemStride));
     if (ret != ACLNN_SUCCESS) {
@@ -67,7 +62,7 @@ const aclTensor *StemOamPrepVarlenQ(
 
     ADD_TO_LAUNCHER_LIST_AICORE(
         StemOamPrepVarlenQ,
-        OP_INPUT(q, qSeqLensTensor, cuSeqLensQTensor, qScaleTensor),
+        OP_INPUT(q, qSeqLensTensor, cuSeqLensQTensor, qScale),
         OP_OUTPUT(qFlatTensor),
         OP_ATTR(stemBlockSize, stemStride));
 
