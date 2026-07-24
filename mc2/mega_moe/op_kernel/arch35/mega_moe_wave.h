@@ -2480,6 +2480,9 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2GmWaves(const DispatchBuffe
                         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(combineAddrInfo, combineState);
                         uint32_t mExpert = static_cast<uint32_t>(Get<M_VALUE>(combineState.problemShape));
                         MegaMoeImpl::TokenRange owned = GetCombineNoQuantOwnedRange(mExpert);
+                        if (owned.count != 0U) {
+                            WaitGmm2NoQuantReady(expertIdx);
+                        }
                         uint32_t processed = 0U;
                         while (processed < owned.count) {
                             uint32_t chunkCount = owned.count - processed < COMBINE_TRIPLE_TOKEN_CAPACITY ?
@@ -2489,9 +2492,6 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2GmWaves(const DispatchBuffe
                                                              owned.start + processed,
                                                          chunkCount, 0U);
                             SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-                            if (processed == 0U) {
-                                WaitGmm2NoQuantReady(expertIdx);
-                            }
                             WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                             ProcessCombineNoQuantGm(combineAddrInfo.gmm2OutGlobal, owned.start + processed, chunkCount,
                                                     0U, rowSequence);
