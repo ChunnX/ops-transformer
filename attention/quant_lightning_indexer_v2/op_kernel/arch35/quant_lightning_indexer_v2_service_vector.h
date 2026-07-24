@@ -51,8 +51,8 @@ public:
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
                                                     GlobalTensor<SCORE_T> ldScoreGm,
                                                     GlobalTensor<int32_t> ldIndexGm);
-    __aicore__ inline void InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
-                                              GlobalTensor<float> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
+    __aicore__ inline void InitVecInputTensor(GlobalTensor<W_T> weightsGm, GlobalTensor<SCALE_T> qScaleGm,
+                                              GlobalTensor<SCALE_T> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<int32_t> blockTableGm, GlobalTensor<bfloat16_t> valueOutGm,
                                               GlobalTensor<int32_t> outputIdxOffsetGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
@@ -178,7 +178,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
         2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>(); // weight
     pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
-    weightTempUB_ = weightTempBuf_.Get<W_T>();
+    weightTempUB_ = weightTempBuf_.Get<float>();
     // 大小：2(开dB) * 128 * 4 = 1KB
     pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
     kScaleUB_ = kScaleBuf_.Get<SCALE_T>(); // kScale
@@ -213,7 +213,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 
     // 刷-1
-    Duplicate(kScaleUB_, float(0), 2 * s2BaseSize_ * 16);
+    Duplicate(kScaleUB_, (SCALE_T)(0), 2 * s2BaseSize_ * 16);
 }
 
 template <typename QLIV2T>
@@ -255,7 +255,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitParams(const struct QLIV2Common:
 }
 
 template <typename QLIV2T>
-__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<float> weightsGm,
+__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<W_T> weightsGm,
                                                                GlobalTensor<SCALE_T> qScaleGm,
                                                                GlobalTensor<SCALE_T> kScaleGm,
                                                                GlobalTensor<int32_t> indiceOutGm,
@@ -455,7 +455,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
         if (constInfo_.quantMode != 4) {
             // qScaleGm  -->  qScaleUB_
-            DataCopyPadExtParams<float> padQScaleParams{false, 0, 0, 0};
+            DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
             DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
                         qScaleGm[weightGmOffset], qwDataCopyExtParams, padQScaleParams);
         }
