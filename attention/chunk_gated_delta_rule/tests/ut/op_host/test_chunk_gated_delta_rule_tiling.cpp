@@ -112,6 +112,60 @@ TEST_F(ChunkGatedDeltaRuleTilingTest, BasicWithGamma)
     EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
 }
 
+// ============================================================================
+// 1.1 FP32 initial_state 路径 (aggressive A2/A3): 验证 tilingKey == FP32_STATE(1)
+//     镜像 BasicWithGamma 的 shape, 仅把 initialState / finalState 改为 FP32,
+//     走 arch22 aggressive 全 fp32 路径 (faker 默认 socVersion=Ascend910B, 非 950):
+//       - AnalyzeDtype: stateIsFp32=1
+//       - DoOpTiling: stateIsFp32 && socVersion_!=ASCEND950 -> 11 个 sizeHigh 缓冲
+//       - DoMatmulTiling: 4 个 buildTiling (bf16->fp32 / fp32->fp32 / fp32->bf16 / stage2)
+//       - DoLibApiTiling: tilingKey_ = FP32_STATE (1)
+// ============================================================================
+TEST_F(ChunkGatedDeltaRuleTilingTest, BasicWithGamma_Fp32State)
+{
+    optiling::ChunkGatedDeltaRuleCompileInfo compileinfo = {48, 196608};
+
+    uint32_t bs = 2;
+    uint32_t seqLen = 100;
+    uint32_t t = bs * seqLen;
+    uint32_t nk = 4;
+    uint32_t nv = 8; // nv = 2 * nk, 符合约束
+    uint32_t dk = 128;
+    uint32_t dv = 128;
+
+    gert::StorageShape queryShape = {{t, nk, dk}, {t, nk, dk}};
+    gert::StorageShape keyShape = {{t, nk, dk}, {t, nk, dk}};
+    gert::StorageShape valueShape = {{t, nv, dv}, {t, nv, dv}};
+    gert::StorageShape betaShape = {{t, nv}, {t, nv}};
+    gert::StorageShape stateShape = {{bs, nv, dv, dk}, {bs, nv, dv, dk}};
+    gert::StorageShape seqLengthsShape = {{bs}, {bs}};
+    gert::StorageShape gShape = {{t, nv}, {t, nv}};
+
+    gert::TilingContextPara tilingContextPara("ChunkGatedDeltaRule",
+                                              {
+                                                  {queryShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {keyShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {valueShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {betaShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{t, nv, dv}, {t, nv, dv}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{bs, nv, dv, dk}, {bs, nv, dv, dk}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                              },
+                                              &compileinfo);
+
+    int64_t expectTilingKey = 1UL; // TILING_KEY_CGDR_FP32_STATE
+    TilingInfo tilingInfo;
+    EXPECT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
 TEST_F(ChunkGatedDeltaRuleTilingTest, BasicWithoutGamma)
 {
     optiling::ChunkGatedDeltaRuleCompileInfo compileinfo = {48, 196608};

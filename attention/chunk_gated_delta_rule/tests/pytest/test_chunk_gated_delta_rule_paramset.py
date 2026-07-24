@@ -42,8 +42,23 @@ TEST_PARAMS = {
         "has_g": [True],
         "is_contiguous": [True],
     },
+    # float32 initial_state 路径冒烟用例：A2/A3 走 aggressive float 逻辑，A5 走 conservative float 逻辑
+    "Testcase2": {
+        "_name": ["Testcase2"],
+        "B": [1],
+        "seqlen": [64],
+        "nk": [4],
+        "nv": [4],
+        "dk": [128],
+        "dv": [128],
+        "chunk_size": [64],
+        "data_type": [torch.bfloat16],
+        "state_data_type": [torch.float32],
+        "has_g": [True],
+        "is_contiguous": [True],
+    },
 }
 # 注意单个用例组内的用例尽量不要超过32
-FIRST_CASE = [TEST_PARAMS["Testcase0"], TEST_PARAMS["Testcase1"]]
+FIRST_CASE = [TEST_PARAMS["Testcase0"], TEST_PARAMS["Testcase1"], TEST_PARAMS["Testcase2"]]
 # 按需选择要启用的测试参数（例如默认启用所有), 按需增加需要的case即可
 ENABLED_PARAMS = FIRST_CASE
