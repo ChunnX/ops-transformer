@@ -425,7 +425,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                 "cu_seqlens_q",
-                op::ToString(dataType).GetString(),
+                ToString(dataType).GetString(),
                 "The dtype of cu_seqlens_q must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -444,7 +444,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                 "seqused_q",
-                op::ToString(dataType).GetString(),
+                ToString(dataType).GetString(),
                 "The dtype of seqused_q must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -466,7 +466,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                     "cu_seqlens_ori_kv",
-                    op::ToString(dataType).GetString(),
+                    ToString(dataType).GetString(),
                     "The dtype of cu_seqlens_ori_kv must be int32.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -486,7 +486,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                     "seqused_ori_kv",
-                    op::ToString(dataType).GetString(),
+                    ToString(dataType).GetString(),
                     "The dtype of seqused_ori_kv must be int32.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -519,7 +519,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                     "ori_topk_length",
-                    op::ToString(dataType).GetString(),
+                    ToString(dataType).GetString(),
                     "The dtype of ori_topk_length must be int32.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -542,7 +542,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                     "cu_seqlens_cmp_kv",
-                    op::ToString(dataType).GetString(),
+                    ToString(dataType).GetString(),
                     "The dtype of cu_seqlens_cmp_kv must be int32.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -562,7 +562,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                     "seqused_cmp_kv",
-                    op::ToString(dataType).GetString(),
+                    ToString(dataType).GetString(),
                     "The dtype of seqused_cmp_kv must be int32.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -582,7 +582,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                     "cmp_residual_kv",
-                    op::ToString(dataType).GetString(),
+                    ToString(dataType).GetString(),
                     "The dtype of cmp_residual_kv must be int32.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -615,7 +615,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                     "cmp_topk_length",
-                    op::ToString(dataType).GetString(),
+                    ToString(dataType).GetString(),
                     "The dtype of cmp_topk_length must be int32.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -641,7 +641,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
         dataType = GetDataTypeSmlag(metadata);
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SMLAG_ACLNN_OP_NAME, "metadata",
-                op::ToString(dataType).GetString(),
+                ToString(dataType).GetString(),
                 "The dtype of metadata must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }

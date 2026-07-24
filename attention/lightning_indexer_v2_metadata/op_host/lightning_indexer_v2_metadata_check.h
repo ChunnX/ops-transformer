@@ -355,7 +355,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(LI_V2_ACLNN_OP_NAME,
                 "cu_seqlens_q",
-                op::ToString(dataType).GetString(),
+                ToString(dataType).GetString(),
                 "The dtype of cu_seqlens_q must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -372,7 +372,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(LI_V2_ACLNN_OP_NAME,
                 "cu_seqlens_k",
-                op::ToString(dataType).GetString(),
+                ToString(dataType).GetString(),
                 "The dtype of cu_seqlens_k must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -389,7 +389,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(LI_V2_ACLNN_OP_NAME,
                 "seqused_q",
-                op::ToString(dataType).GetString(),
+                ToString(dataType).GetString(),
                 "The dtype of seqused_q must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -406,7 +406,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(LI_V2_ACLNN_OP_NAME,
                 "seqused_k",
-                op::ToString(dataType).GetString(),
+                ToString(dataType).GetString(),
                 "The dtype of seqused_k must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -424,7 +424,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(LI_V2_ACLNN_OP_NAME,
                 "cmp_residual_k",
-                op::ToString(dataType).GetString(),
+                ToString(dataType).GetString(),
                 "The dtype of cmp_residual_k must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -441,7 +441,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(LI_V2_ACLNN_OP_NAME,
                 "metadata",
-                op::ToString(dataType).GetString(),
+                ToString(dataType).GetString(),
                 "The dtype of metadata must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
