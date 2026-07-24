@@ -401,6 +401,19 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             Duplicate<float>(reduceOutInner, -1.0e30f, s2BaseSize_);
             PipeBarrier<PIPE_V>();
             {
+                uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
+                uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
+                // DEBUG: scalar GM write to bypass DataCopyPad
+                event_t eVS2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+                SetFlag<HardEvent::V_S>(eVS2);
+                WaitFlag<HardEvent::V_S>(eVS2);
+                for (int32_t i = 0; i < s2BaseSize_; i++) {
+                    scoreB16Gm.SetValue(scoreOffset + i, -1.0e30f);
+                }
+                event_t eSV2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+                SetFlag<HardEvent::S_V>(eSV2);
+                WaitFlag<HardEvent::S_V>(eSV2);
+            }
                 PipeBarrier<PIPE_V>();
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
                 uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
