@@ -181,7 +181,11 @@ struct ConstInfo {
     uint32_t mCurGroupIdx = 0;
 
     // shape及参数
-    uint32_t batchSize = 0;
+    // Batch upper bound that participates in projection/compression work after
+    // invalid or inactive tail batches are trimmed in kernel init.
+    uint32_t projectionBatchSize = 0;
+    uint32_t xCacheUpdateBatchSize = 0;
+    uint32_t xCacheReadSize = 0;
     uint32_t hSize = 0;
     uint32_t sSize = 0;
     uint32_t headDim = 0;
@@ -190,6 +194,7 @@ struct ConstInfo {
     float normEps = 1e-6;
     float reciprocalD = 0;
     uint64_t stateCacheStrideDim0 = 0;
+    uint32_t xCacheSize = 0;
 
     uint32_t curGroupIdx = 0;
     uint32_t tailGroupIdx = 0;
@@ -376,10 +381,10 @@ __aicore__ inline constexpr T RepeatElementNum()
     return REPEAT_BLOCK_BYTE / sizeof(T);
 }
 // BLOCK和REPEAT的FP32元素数
-inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float); // 8
+inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);         // 8
 inline constexpr uint32_t FP16_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(bfloat16_t);    // 16
 inline constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float); // 64
-inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK; // 8
+inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK;          // 8
 inline constexpr uint32_t REPEAT_MAX_NUM = 255;
 inline constexpr uint32_t BRCB_NUM = 8;
 inline constexpr uint32_t MAX_R = 256;
