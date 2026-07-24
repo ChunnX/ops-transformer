@@ -12,14 +12,238 @@
 
 """Pytest-backed CPU golden adapter for SparseFlashAttention."""
 
+import faulthandler
 import importlib.util
+import os
+import platform
+import subprocess
 import sys
+import threading
+import time
+import traceback
 from pathlib import Path
 
 import torch
 
 
 PYTEST_GOLDEN_MODULE = None
+
+_DIAGNOSTIC_ENV = "SFA_TTK_IMPORT_DEBUG"
+_PREFLIGHT_ENV = "SFA_TTK_IMPORT_PREFLIGHT"
+_DIAGNOSTIC_PREFIX = "[SFA-TTK-DIAG]"
+_DIAGNOSTIC_FILE_NAME = "ttk-sfa-import-diagnostic.log"
+_DIAGNOSTIC_ENV_KEYS = (
+    "ASCEND_HOME_PATH",
+    "ASCEND_OPP_PATH",
+    "ASCEND_VISIBLE_DEVICES",
+    "ASCEND_DEVICE_ID",
+    "CONDA_PREFIX",
+    "LD_LIBRARY_PATH",
+    "LD_PRELOAD",
+    "PYTHONFAULTHANDLER",
+    "PYTHONPATH",
+    "SFA_TTK_IMPORT_PREFLIGHT",
+    "TORCH_DEVICE_BACKEND_AUTOLOAD",
+)
+_DIAGNOSTIC_LOG_FILE = None
+
+
+def _diagnostic_enabled():
+    value = os.environ.get(_DIAGNOSTIC_ENV, "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _preflight_enabled():
+    if not _diagnostic_enabled():
+        return False
+    value = os.environ.get(_PREFLIGHT_ENV, "1")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _diagnostic_value(value, limit=2048):
+    text = repr(value)
+    if len(text) > limit:
+        return f"{text[:limit]}...<truncated>"
+    return text
+
+
+def _diagnostic_file():
+    global _DIAGNOSTIC_LOG_FILE
+    if not _diagnostic_enabled():
+        return None
+    if _DIAGNOSTIC_LOG_FILE is not None:
+        return _DIAGNOSTIC_LOG_FILE
+    path = Path.cwd() / _DIAGNOSTIC_FILE_NAME
+    try:
+        _DIAGNOSTIC_LOG_FILE = path.open("a", encoding="utf-8", buffering=1)
+    except OSError as exc:
+        print(
+            f"{_DIAGNOSTIC_PREFIX} cannot open diagnostic file {path}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+    return _DIAGNOSTIC_LOG_FILE
+
+
+def _diagnostic_write(message, force=False):
+    if not force and not _diagnostic_enabled():
+        return
+    print(message, file=sys.stderr, flush=True)
+    log_file = _diagnostic_file()
+    if log_file is not None:
+        print(message, file=log_file, flush=True)
+
+
+def _diagnostic_log(event, force=False, **fields):
+    """Emit flushed adapter diagnostics that survive TTK child-process failures."""
+    if not force and not _diagnostic_enabled():
+        return
+    context = {
+        "event": event,
+        "pid": os.getpid(),
+        "thread": threading.current_thread().name,
+    }
+    context.update(fields)
+    details = " ".join(f"{key}={_diagnostic_value(value)}" for key, value in context.items())
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    _diagnostic_write(f"{_DIAGNOSTIC_PREFIX} {timestamp} {details}", force=force)
+
+
+def _module_file(module):
+    if module is None:
+        return None
+    return getattr(module, "__file__", None)
+
+
+def _find_spec_origin(module_name):
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except Exception as exc:
+        return f"<find_spec failed: {type(exc).__name__}: {exc}>"
+    return None if spec is None else spec.origin
+
+
+def _enable_fault_handler():
+    try:
+        output = _diagnostic_file() or sys.stderr
+        faulthandler.enable(file=output, all_threads=True)
+        _diagnostic_log(
+            "faulthandler_ready",
+            enabled=faulthandler.is_enabled(),
+            output_file=getattr(output, "name", "<stderr>"),
+        )
+    except Exception as exc:
+        _diagnostic_log(
+            "faulthandler_enable_failure",
+            force=True,
+            exception_type=type(exc).__name__,
+            exception=str(exc),
+        )
+
+
+def _log_runtime_snapshot(pytest_dir, module_path):
+    if not _diagnostic_enabled():
+        return
+    environment = {key: os.environ.get(key) for key in _DIAGNOSTIC_ENV_KEYS if os.environ.get(key)}
+    modules = {
+        name: _module_file(sys.modules.get(name))
+        for name in ("generate_tensor_data", "sparse_flash_attention_golden", "tensorflow", "torch", "torch_npu")
+    }
+    module_specs = {
+        name: _find_spec_origin(name)
+        for name in ("tensorflow", "torch", "torch_npu")
+    }
+    _diagnostic_log(
+        "runtime_snapshot",
+        interpreter=sys.executable,
+        python_version=sys.version,
+        platform=platform.platform(),
+        cwd=os.getcwd(),
+        torch_version=getattr(torch, "__version__", None),
+        pytest_dir=str(pytest_dir),
+        module_path=str(module_path),
+        modules=modules,
+        module_specs=module_specs,
+        environment=environment,
+        sys_path_head=sys.path[:8],
+    )
+
+
+def _preflight_output(value, limit=2048):
+    if not value:
+        return ""
+    return value[-limit:]
+
+
+def _log_preflight_stream(stream_name, value):
+    if not value:
+        return
+    limit = 16384
+    truncated = len(value) > limit
+    excerpt = value[-limit:]
+    header = (
+        f"{_DIAGNOSTIC_PREFIX} generator_preflight_{stream_name} "
+        f"truncated={truncated} bytes={len(value)}"
+    )
+    _diagnostic_write(f"{header}\n{excerpt.rstrip()}\n{header}_end", force=True)
+
+
+def _run_generator_preflight(pytest_dir):
+    """Probe pytest's import-time native dependencies without risking the TTK worker."""
+    if not _preflight_enabled():
+        return
+    code = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(pytest_dir)!r})\n"
+        "import generate_tensor_data\n"
+        "print(getattr(generate_tensor_data, '__file__', '<unknown>'))\n"
+    )
+    environment = os.environ.copy()
+    environment["PYTHONFAULTHANDLER"] = "1"
+    try:
+        result = subprocess.run(
+            [sys.executable, "-X", "faulthandler", "-c", code],
+            check=False,
+            capture_output=True,
+            env=environment,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        _diagnostic_log(
+            "generator_preflight_failure",
+            force=True,
+            exception_type=type(exc).__name__,
+            exception=str(exc),
+        )
+        raise RuntimeError("Cannot complete isolated pytest generator import preflight") from exc
+
+    _diagnostic_log(
+        "generator_preflight_complete",
+        returncode=result.returncode,
+        stdout_tail=_preflight_output(result.stdout),
+        stderr_tail=_preflight_output(result.stderr),
+    )
+    if result.returncode != 0:
+        _log_preflight_stream("stdout", result.stdout)
+        _log_preflight_stream("stderr", result.stderr)
+        raise RuntimeError(
+            "Isolated pytest generator import preflight failed "
+            f"with return code {result.returncode}; see {_DIAGNOSTIC_FILE_NAME}"
+        )
+
+
+def _log_exception(event, exc):
+    _diagnostic_log(
+        event,
+        force=True,
+        exception_type=type(exc).__name__,
+        exception=str(exc),
+    )
+    _diagnostic_write(
+        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).rstrip(),
+        force=True,
+    )
 
 
 class CaseDataStore:
@@ -49,26 +273,74 @@ def load_pytest_golden_module():
     """Load the pytest implementation without polluting another operator's imports."""
     global PYTEST_GOLDEN_MODULE
     if PYTEST_GOLDEN_MODULE is not None:
+        _diagnostic_log(
+            "pytest_module_cache_hit",
+            module_file=_module_file(PYTEST_GOLDEN_MODULE),
+        )
         return PYTEST_GOLDEN_MODULE
 
     pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
     module_path = pytest_dir / "sparse_flash_attention_golden.py"
+    _enable_fault_handler()
+    _log_runtime_snapshot(pytest_dir, module_path)
     saved_generator = sys.modules.pop("generate_tensor_data", None)
     sys.path.insert(0, str(pytest_dir))
+    _diagnostic_log(
+        "pytest_load_start",
+        loader="spec_from_file_location",
+        saved_generator_file=_module_file(saved_generator),
+        pytest_dir=str(pytest_dir),
+        module_path=str(module_path),
+    )
     try:
+        _run_generator_preflight(pytest_dir)
         spec = importlib.util.spec_from_file_location("sfa_ttk_pytest_golden", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot create a loader for {module_path}")
+        _diagnostic_log(
+            "pytest_load_spec_ready",
+            spec_name=spec.name,
+            loader_type=type(spec.loader).__name__,
+            origin=spec.origin,
+        )
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
+        _diagnostic_log(
+            "pytest_exec_start",
+            spec_name=spec.name,
+            module_file=_module_file(module),
+        )
         spec.loader.exec_module(module)
-    except Exception:
+        _diagnostic_log(
+            "pytest_exec_complete",
+            spec_name=spec.name,
+            module_file=_module_file(module),
+        )
+    except Exception as exc:
+        _log_exception("pytest_load_failure", exc)
         sys.modules.pop("sfa_ttk_pytest_golden", None)
         raise
     finally:
-        sys.path.remove(str(pytest_dir))
+        try:
+            sys.path.remove(str(pytest_dir))
+        except ValueError:
+            _diagnostic_log(
+                "pytest_path_cleanup_missing",
+                force=True,
+                pytest_dir=str(pytest_dir),
+            )
         sys.modules.pop("generate_tensor_data", None)
         if saved_generator is not None:
             sys.modules["generate_tensor_data"] = saved_generator
+        _diagnostic_log(
+            "pytest_load_cleanup_complete",
+            generator_restored=saved_generator is not None,
+        )
     PYTEST_GOLDEN_MODULE = module
+    _diagnostic_log(
+        "pytest_module_ready",
+        module_file=_module_file(PYTEST_GOLDEN_MODULE),
+    )
     return module
 
 
