@@ -15,6 +15,7 @@
 #ifndef MOE_V3_GATHER_MXFP8_QUANT_H_REGBASE
 #define MOE_V3_GATHER_MXFP8_QUANT_H_REGBASE
 
+
 #include "moe_v3_common.h"
 #include "op_kernel/platform_util.h"
 #include "op_kernel/math_util.h"
