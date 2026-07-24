@@ -49,7 +49,7 @@ __global__ __aicore__ void quant_lightning_indexer_v2(__gm__ uint8_t *query, __g
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-
+    
 #if (__CCE_AICORE__ == 310)
     if (ORIG_DTYPE_Q == DT_FLOAT8_E4M3FN) {
         INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, fp8_e4m3fn_t, fp8_e4m3fn_t, float, uint16_t, int32_t,
