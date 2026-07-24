@@ -199,8 +199,8 @@ ge::graphStatus MaskChecker::CheckFP8GQAFullQuant(const FiaTilingInfo &fiaInfo)
                 ((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag))),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
                         std::to_string(fiaInfo.sparseMode).c_str(),
-                        "In FP8 GQA fullquant scenario, only support sparse 0 without mask "
-                        "or sparse 3 with mask"),
+                        "In FP8 GQA fullquant scenario, only support sparse_mode 0 without mask "
+                        "or sparse_mode 3 with mask"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
