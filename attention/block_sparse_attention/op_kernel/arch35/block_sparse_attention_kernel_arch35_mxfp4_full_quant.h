@@ -166,12 +166,6 @@ public:
         }
         AscendC::SyncAll<false>();
 
-        // tla define
-        auto ubOTmpLayoutTla = tla::MakeLayout(
-            tla::MakeShape(embed_, qBaseTile_ / 2),
-            tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
-        auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor, ubOTmpLayoutTla, Arch::PositionUB{});
-
  #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
@@ -252,6 +246,10 @@ public:
                     //   row-stride=64（固定 rowsum-fractal 宽，供 fixpipe dstStride）。
                     //   非标 RowMajor（stride≠cols），由 block 的 FixpipeMm2 经 CopyL0CToUBTla SPLIT_N 消费；
                     //   isRowMajor 只查 stride<1>==1 → 命中。block 直传此 tla（不再 .data() 重包）。
+                     auto ubOTmpLayoutTla = tla::MakeLayout(
+ 	                         tla::MakeShape(embed_ + 1, CeilDiv(delay20TaskInfo.qsActBaseTile, 128u) * 128),
+ 	                         tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
+                    auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor, ubOTmpLayoutTla, Arch::PositionUB{});
 
                     GemmCoord actualBlockShapePV{delay20TaskInfo.qsActBaseTile, embed_, delay20TileInfo.kvsActBaseTile};
                     // [改造] 传 base GM 张量(gVDequantScale/gSparseIdx) + delay20TaskInfo 整体，
