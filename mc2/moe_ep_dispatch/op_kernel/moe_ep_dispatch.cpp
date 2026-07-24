@@ -56,7 +56,7 @@ __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR t
     } else {
         MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
         op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank, numRecvPerExpert,
-                dstBufferSlotIdx, workspaceGM, &pipe, &tilingData);
+                dstBufferSlotIdx, debugOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 }
