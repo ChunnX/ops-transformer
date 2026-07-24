@@ -173,7 +173,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 
   allToAllA_.Init(udmaCtx_, teamBarrier_, tilingData->commTilingData, baseParams_.aGm, commBuf.Get(),
     baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
-
+  SyncAll<true>();
   uint64_t scaleKLen = baseParams_.scaleKaSize / sizeof(TypeScaleA);
   CommTilingData commTilingDataScaleA_ = {
     baseParams_.axisM, 1, 0, 0, scaleKLen
@@ -181,6 +181,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 
   allToAllScaleA_.Init(udmaCtx_, teamBarrier_, commTilingDataScaleA_, baseParams_.scaleAGm, commScaleBuf.Get(),
     baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()), baseParams_.rankSize * baseParams_.rankDataBytes);
+  SyncAll<true>();
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
