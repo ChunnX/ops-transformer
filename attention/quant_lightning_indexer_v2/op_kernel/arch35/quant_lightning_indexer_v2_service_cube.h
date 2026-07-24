@@ -101,6 +101,22 @@ protected:
                                           const QLIV2Common::RunInfo &runInfo);
     __aicore__ inline void LoadKScaleToL1(uint64_t s2L1RealSize, uint64_t s2GmOffset,
                                           const QLIV2Common::RunInfo &runInfo);
+#ifdef QLIV2_DEBUG_DUMP
+    __aicore__ inline bool IsDebugCubeS1Block(const QLIV2Common::RunInfo &runInfo);
+    __aicore__ inline bool IsDebugCubeMRange(const QLIV2Common::RunInfo &runInfo,
+                                             uint64_t s1gGmOffset, uint64_t mSize);
+    __aicore__ inline bool IsDebugCubeS2Range(uint64_t s2Start, uint64_t s2Size);
+    __aicore__ inline uint32_t DumpCubeMeta(uint32_t stage, const QLIV2Common::RunInfo &runInfo,
+                                            uint64_t s1gGmOffset, uint64_t s2GmOffset,
+                                            uint64_t logicalS2Start, uint64_t logicalS2Size,
+                                            uint64_t dataElementOffset, uint64_t dataElementCount,
+                                            uint32_t bufferIndex, uint32_t dim0, uint32_t dim0Aligned,
+                                            uint32_t layout, uint32_t physicalBlockId = 0xFFFFFFFFU);
+    __aicore__ inline void DumpKeyL1AfterNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset,
+                                               const QLIV2Common::RunInfo &runInfo);
+    __aicore__ inline void DumpQueryL1AfterNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
+                                                 const QLIV2Common::RunInfo &runInfo);
+#endif
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
     GlobalTensor<Q_T> queryGm_;
@@ -126,6 +142,10 @@ protected:
 
     TBuf<TPosition::VECCALC> bufUB_;
     LocalTensor<QK_T> mm1ResUB_;
+#ifdef QLIV2_DEBUG_DUMP
+    TBuf<TPosition::VECCALC> bufCubeDebugMeta_;
+    LocalTensor<uint32_t> cubeDebugMeta_;
+#endif
 
     uint64_t keyL1BufIdx_ = 0;
     uint64_t queryL1Mte2BufIdx_ = 0;
@@ -140,6 +160,9 @@ protected:
     uint64_t scaleHeadDim_ = 4;  // MX scale单行元素数，即headDim/32，MXFP8/MXFP4共用
     uint64_t keyBufferOffset_ = 16384;  // Key L1乒乓缓冲区步长，s2BasicBlock_ * D_BASIC_BLOCK
     uint64_t keyScaleBufferOffset_ = 512;  // Key scale L1乒乓缓冲区步长，s2BasicBlock_ * D_BASIC_BLOCK / 32
+#ifdef QLIV2_DEBUG_DUMP
+    int32_t blockId_ = -1;
+#endif
     
     ConstInfo constInfo_;
 
@@ -161,6 +184,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInf
     scaleHeadDim_ = constInfo_.headDim / MX_SCALE_GROUP_SIZE;
     keyBufferOffset_ = s2BasicBlock_ * D_BASIC_BLOCK;
     keyScaleBufferOffset_ = s2BasicBlock_ * D_BASIC_BLOCK / MX_SCALE_GROUP_SIZE;
+#ifdef QLIV2_DEBUG_DUMP
+    blockId_ = GetBlockIdx();
+#endif
 }
 
 template <typename QLIV2T>
@@ -187,6 +213,12 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 
     pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(float));
     cL0_ = bufL0C_.Get<float>();
+#ifdef QLIV2_DEBUG_DUMP
+    if constexpr (IS_MXFP4) {
+        pipe->InitBuffer(bufCubeDebugMeta_, DebugDump::CUBE_META_WORDS * sizeof(uint32_t));
+        cubeDebugMeta_ = bufCubeDebugMeta_.Get<uint32_t>();
+    }
+#endif
 }
 
 template <typename QLIV2T>
@@ -204,6 +236,141 @@ QLIV2Matmul<QLIV2T>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm
         mxQueryScaleGmBf16_ = queryScaleGmBf16;
     }
 }
+
+#ifdef QLIV2_DEBUG_DUMP
+template <typename QLIV2T>
+__aicore__ inline bool QLIV2Matmul<QLIV2T>::IsDebugCubeS1Block(const QLIV2Common::RunInfo &runInfo)
+{
+    if (runInfo.bIdx != DebugDump::TARGET_B_IDX || runInfo.n2Idx != DebugDump::TARGET_N2_IDX) {
+        return false;
+    }
+    uint64_t s1BlockStart = static_cast<uint64_t>(runInfo.gS1Idx) * constInfo_.s1BaseSize;
+    if (DebugDump::TARGET_S1_IDX < s1BlockStart) {
+        return false;
+    }
+    uint64_t targetMOffset =
+        (static_cast<uint64_t>(DebugDump::TARGET_S1_IDX) - s1BlockStart) * constInfo_.gSize;
+    return targetMOffset < runInfo.actMBaseSize;
+}
+
+template <typename QLIV2T>
+__aicore__ inline bool QLIV2Matmul<QLIV2T>::IsDebugCubeMRange(
+    const QLIV2Common::RunInfo &runInfo, uint64_t s1gGmOffset, uint64_t mSize)
+{
+    if (!IsDebugCubeS1Block(runInfo)) {
+        return false;
+    }
+    uint64_t s1BlockStart = static_cast<uint64_t>(runInfo.gS1Idx) * constInfo_.s1BaseSize;
+    uint64_t targetMStart =
+        (static_cast<uint64_t>(DebugDump::TARGET_S1_IDX) - s1BlockStart) * constInfo_.gSize;
+    uint64_t targetMEnd = targetMStart + constInfo_.gSize;
+    return s1gGmOffset < targetMEnd && s1gGmOffset + mSize > targetMStart;
+}
+
+template <typename QLIV2T>
+__aicore__ inline bool QLIV2Matmul<QLIV2T>::IsDebugCubeS2Range(uint64_t s2Start, uint64_t s2Size)
+{
+    return s2Size > 0 && s2Start < DebugDump::CUBE_S2_END &&
+           s2Start + s2Size > DebugDump::CUBE_S2_BEGIN;
+}
+
+template <typename QLIV2T>
+__aicore__ inline uint32_t QLIV2Matmul<QLIV2T>::DumpCubeMeta(
+    uint32_t stage, const QLIV2Common::RunInfo &runInfo, uint64_t s1gGmOffset, uint64_t s2GmOffset,
+    uint64_t logicalS2Start, uint64_t logicalS2Size, uint64_t dataElementOffset, uint64_t dataElementCount,
+    uint32_t bufferIndex, uint32_t dim0, uint32_t dim0Aligned, uint32_t layout, uint32_t physicalBlockId)
+{
+    uint32_t recordId = static_cast<uint32_t>(blockId_) * DebugDump::CUBE_CORE_DESC_STRIDE +
+                        stage * DebugDump::CUBE_STAGE_DESC_STRIDE +
+                        static_cast<uint32_t>(logicalS2Start % DebugDump::CUBE_STAGE_DESC_STRIDE);
+    cubeDebugMeta_.SetValue(0, 1U);
+    cubeDebugMeta_.SetValue(1, stage);
+    cubeDebugMeta_.SetValue(2, static_cast<uint32_t>(blockId_));
+    cubeDebugMeta_.SetValue(3, runInfo.bIdx);
+    cubeDebugMeta_.SetValue(4, runInfo.n2Idx);
+    cubeDebugMeta_.SetValue(5, DebugDump::TARGET_S1_IDX);
+    cubeDebugMeta_.SetValue(6, runInfo.gS1Idx);
+    cubeDebugMeta_.SetValue(7, runInfo.s2Idx);
+    cubeDebugMeta_.SetValue(8, static_cast<uint32_t>(runInfo.tensorKeyOffset));
+    cubeDebugMeta_.SetValue(9, static_cast<uint32_t>(runInfo.tensorKeyOffset >> 32));
+    cubeDebugMeta_.SetValue(10, static_cast<uint32_t>(runInfo.tensorQueryOffset));
+    cubeDebugMeta_.SetValue(11, static_cast<uint32_t>(runInfo.tensorQueryOffset >> 32));
+    cubeDebugMeta_.SetValue(12, static_cast<uint32_t>(s1gGmOffset));
+    cubeDebugMeta_.SetValue(13, static_cast<uint32_t>(s1gGmOffset >> 32));
+    cubeDebugMeta_.SetValue(14, static_cast<uint32_t>(s2GmOffset));
+    cubeDebugMeta_.SetValue(15, static_cast<uint32_t>(s2GmOffset >> 32));
+    cubeDebugMeta_.SetValue(16, static_cast<uint32_t>(logicalS2Start));
+    cubeDebugMeta_.SetValue(17, static_cast<uint32_t>(logicalS2Size));
+    cubeDebugMeta_.SetValue(18, static_cast<uint32_t>(dataElementOffset));
+    cubeDebugMeta_.SetValue(19, static_cast<uint32_t>(dataElementOffset >> 32));
+    cubeDebugMeta_.SetValue(20, static_cast<uint32_t>(dataElementCount));
+    cubeDebugMeta_.SetValue(21, static_cast<uint32_t>(dataElementCount >> 32));
+    cubeDebugMeta_.SetValue(22, bufferIndex);
+    cubeDebugMeta_.SetValue(23, static_cast<uint32_t>(qkHeadDim_));
+    cubeDebugMeta_.SetValue(24, dim0);
+    cubeDebugMeta_.SetValue(25, dim0Aligned);
+    cubeDebugMeta_.SetValue(26, layout);
+    cubeDebugMeta_.SetValue(27, physicalBlockId);
+    cubeDebugMeta_.SetValue(28, runInfo.loop);
+    cubeDebugMeta_.SetValue(29, constInfo_.gSize);
+    cubeDebugMeta_.SetValue(30, constInfo_.headDim);
+    cubeDebugMeta_.SetValue(31, constInfo_.s1BaseSize);
+    DumpTensor(cubeDebugMeta_, DebugDump::CUBE_META_DESC_BASE + recordId, DebugDump::CUBE_META_WORDS);
+    return recordId;
+}
+
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::DumpKeyL1AfterNd2Nz(
+    uint64_t s2L1RealSize, uint64_t s2GmOffset, const QLIV2Common::RunInfo &runInfo)
+{
+    if constexpr (IS_MXFP4) {
+        uint64_t logicalS2Start = PAGE_ATTENTION ?
+            s2GmOffset : static_cast<uint64_t>(runInfo.s2Idx) * constInfo_.s2BaseSize + s2GmOffset;
+        if (!IsDebugCubeS1Block(runInfo) || !IsDebugCubeS2Range(logicalS2Start, s2L1RealSize)) {
+            return;
+        }
+        uint32_t rowsAligned = static_cast<uint32_t>(CeilAlign(s2L1RealSize, (uint64_t)BLOCK_CUBE));
+        uint64_t keyL1Offset = (keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_;
+        uint64_t dataCount = static_cast<uint64_t>(rowsAligned) * qkHeadDim_;
+        uint32_t recordId = DumpCubeMeta(
+            DebugDump::CUBE_STAGE_KEY_L1_NZ, runInfo, 0, s2GmOffset, logicalS2Start, s2L1RealSize,
+            keyL1Offset, dataCount, static_cast<uint32_t>(keyL1BufIdx_ % KEY_BUF_NUM),
+            static_cast<uint32_t>(s2L1RealSize), rowsAligned, DebugDump::CUBE_LAYOUT_L1_NZ);
+        DumpTensor(keyL1_[keyL1Offset], DebugDump::CUBE_DATA_DESC_BASE + recordId,
+                   static_cast<uint32_t>(dataCount));
+    }
+}
+
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::DumpQueryL1AfterNd2Nz(
+    uint64_t s1gL1RealSize, uint64_t s1gGmOffset, const QLIV2Common::RunInfo &runInfo)
+{
+    if constexpr (IS_MXFP4) {
+        uint64_t coreS2Start = static_cast<uint64_t>(runInfo.s2Start) * constInfo_.s2BaseSize;
+        uint64_t coreS2End = (static_cast<uint64_t>(runInfo.s2LoopEnd) + 1) * constInfo_.s2BaseSize;
+        if (coreS2End > runInfo.actS2Size) {
+            coreS2End = runInfo.actS2Size;
+        }
+        if (!IsDebugCubeMRange(runInfo, s1gGmOffset, s1gL1RealSize) ||
+            coreS2End <= coreS2Start || !IsDebugCubeS2Range(coreS2Start, coreS2End - coreS2Start)) {
+            return;
+        }
+        uint64_t rowsAligned = CeilAlign(
+            CeilAlign(s1gL1RealSize, 2 * static_cast<uint64_t>(constInfo_.gSize)),
+            static_cast<uint64_t>(BLOCK_CUBE));
+        uint64_t queryL1Offset = (queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET;
+        uint64_t dataCount = rowsAligned * qkHeadDim_;
+        uint32_t recordId = DumpCubeMeta(
+            DebugDump::CUBE_STAGE_QUERY_L1_NZ, runInfo, s1gGmOffset, coreS2Start,
+            DebugDump::CUBE_S2_BEGIN, DebugDump::CUBE_S2_END - DebugDump::CUBE_S2_BEGIN,
+            queryL1Offset, dataCount, static_cast<uint32_t>(queryL1Mte2BufIdx_ % QUERY_BUF_NUM),
+            static_cast<uint32_t>(s1gL1RealSize), static_cast<uint32_t>(rowsAligned),
+            DebugDump::CUBE_LAYOUT_L1_NZ);
+        DumpTensor(queryL1_[queryL1Offset], DebugDump::CUBE_DATA_DESC_BASE + recordId,
+                   static_cast<uint32_t>(dataCount));
+    }
+}
+#endif
 
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInfo &runInfo)
@@ -236,6 +403,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
 
             SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+#ifdef QLIV2_DEBUG_DUMP
+            DumpKeyL1AfterNd2Nz(s2L1RealSize,
+                PAGE_ATTENTION ? s2GmBaseOffset + s2GmOffset : s2GmOffset, runInfo);
+#endif
             // s1gProcessSize当前必定不会超过2倍的s1g basic block
             for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += constInfo_.mBaseSize) {
                 uint64_t s1gL1RealSize =
@@ -255,6 +426,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                     }
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+#ifdef QLIV2_DEBUG_DUMP
+                    DumpQueryL1AfterNd2Nz(s1gL1LoadSize, s1gGmOffset, runInfo);
+#endif
                 } else {
                     queryL1Mte1BufIdx_ =
                         queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSize) - 1 - (s1gGmOffset > 0));
@@ -319,6 +493,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
 
                 SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+#ifdef QLIV2_DEBUG_DUMP
+                DumpKeyL1AfterNd2Nz(s2L1LoadSize,
+                    PAGE_ATTENTION ? s2GmBaseOffset + s2GmOffset : s2GmOffset, runInfo);
+#endif
 
                 isKeyCacheValid_ = true;
                 keyGmStart_ = s2GmBaseOffset;
@@ -343,6 +521,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                     }
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+#ifdef QLIV2_DEBUG_DUMP
+                    DumpQueryL1AfterNd2Nz(s1gL1LoadSize, s1gGmOffset, runInfo);
+#endif
                 } else {
                     queryL1Mte1BufIdx_ =
                         queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSize) - 1 - (s1gGmOffset > 0));
@@ -409,6 +590,23 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::KeyNd2Nz(uint64_t s2L1RealSize, uint
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
+#ifdef QLIV2_DEBUG_DUMP
+    if constexpr (IS_MXFP4) {
+        uint64_t logicalS2Start =
+            static_cast<uint64_t>(runInfo.s2Idx) * constInfo_.s2BaseSize + s2GmOffset;
+        if (IsDebugCubeS1Block(runInfo) && IsDebugCubeS2Range(logicalS2Start, s2L1RealSize)) {
+            uint64_t keyGmOffset = runInfo.tensorKeyOffset + s2GmOffset * qkHeadDim_;
+            uint64_t dataCount = s2L1RealSize * qkHeadDim_;
+            uint32_t recordId = DumpCubeMeta(
+                DebugDump::CUBE_STAGE_KEY_GM, runInfo, 0, s2GmOffset, logicalS2Start, s2L1RealSize,
+                keyGmOffset, dataCount, static_cast<uint32_t>(keyL1BufIdx_ % KEY_BUF_NUM),
+                static_cast<uint32_t>(s2L1RealSize), static_cast<uint32_t>(s2L1RealSize),
+                DebugDump::CUBE_LAYOUT_GM_ND);
+            DumpTensor(keyGm_[keyGmOffset], DebugDump::CUBE_DATA_DESC_BASE + recordId,
+                       static_cast<uint32_t>(dataCount));
+        }
+    }
+#endif
     DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_],
              keyGm_[runInfo.tensorKeyOffset + s2GmOffset * qkHeadDim_], nd2nzPara);
 }
@@ -422,8 +620,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::KeyNd2NzForPA(uint64_t s2L1RealSize,
     while (s2L1Offset < s2L1RealSize) {
         uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
         uint64_t s2BlkOffset = (s2L1Offset + s2GmOffset) % constInfo_.kCacheBlockSize;
-        uint64_t keyGmOffset = blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) *
-                               constInfo_.keyStride0 + s2BlkOffset * qkHeadDim_;
+        uint64_t physicalBlkId =
+            blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId);
+        uint64_t keyGmOffset =
+            physicalBlkId * constInfo_.keyStride0 + s2BlkOffset * qkHeadDim_;
 
         uint64_t s2Mte2Size = s2L1RealSize - s2L1Offset;
         s2Mte2Size = s2BlkOffset + s2Mte2Size >= constInfo_.kCacheBlockSize ? constInfo_.kCacheBlockSize - s2BlkOffset
@@ -437,6 +637,21 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::KeyNd2NzForPA(uint64_t s2L1RealSize,
         nd2nzPara.dstNzNStride = 1;
         nd2nzPara.srcNdMatrixStride = 0;
         nd2nzPara.dstNzMatrixStride = 0;
+#ifdef QLIV2_DEBUG_DUMP
+        if constexpr (IS_MXFP4) {
+            uint64_t logicalS2Start = s2GmOffset + s2L1Offset;
+            if (IsDebugCubeS1Block(runInfo) && IsDebugCubeS2Range(logicalS2Start, s2Mte2Size)) {
+                uint64_t dataCount = s2Mte2Size * qkHeadDim_;
+                uint32_t recordId = DumpCubeMeta(
+                    DebugDump::CUBE_STAGE_KEY_GM, runInfo, 0, s2GmOffset, logicalS2Start, s2Mte2Size,
+                    keyGmOffset, dataCount, static_cast<uint32_t>(keyL1BufIdx_ % KEY_BUF_NUM),
+                    static_cast<uint32_t>(s2Mte2Size), static_cast<uint32_t>(s2Mte2Size),
+                    DebugDump::CUBE_LAYOUT_GM_ND, static_cast<uint32_t>(physicalBlkId));
+                DumpTensor(keyGm_[keyGmOffset], DebugDump::CUBE_DATA_DESC_BASE + recordId,
+                           static_cast<uint32_t>(dataCount));
+            }
+        }
+#endif
         DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_ + s2L1Offset * FP8_BLOCK_CUBE],
                  keyGm_[keyGmOffset], nd2nzPara);
 
@@ -460,6 +675,28 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::QueryNd2Nz(uint64_t s1gL1RealSize, u
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
+#ifdef QLIV2_DEBUG_DUMP
+    if constexpr (IS_MXFP4) {
+        uint64_t coreS2Start = static_cast<uint64_t>(runInfo.s2Start) * constInfo_.s2BaseSize;
+        uint64_t coreS2End = (static_cast<uint64_t>(runInfo.s2LoopEnd) + 1) * constInfo_.s2BaseSize;
+        if (coreS2End > runInfo.actS2Size) {
+            coreS2End = runInfo.actS2Size;
+        }
+        if (IsDebugCubeMRange(runInfo, s1gGmOffset, s1gL1RealSize) &&
+            coreS2End > coreS2Start && IsDebugCubeS2Range(coreS2Start, coreS2End - coreS2Start)) {
+            uint64_t queryGmOffset = runInfo.tensorQueryOffset + s1gGmOffset * qkHeadDim_;
+            uint64_t dataCount = s1gL1RealSize * qkHeadDim_;
+            uint32_t recordId = DumpCubeMeta(
+                DebugDump::CUBE_STAGE_QUERY_GM, runInfo, s1gGmOffset, coreS2Start,
+                DebugDump::CUBE_S2_BEGIN, DebugDump::CUBE_S2_END - DebugDump::CUBE_S2_BEGIN,
+                queryGmOffset, dataCount, static_cast<uint32_t>(queryL1Mte2BufIdx_ % QUERY_BUF_NUM),
+                static_cast<uint32_t>(s1gL1RealSize), static_cast<uint32_t>(s1gL1RealSize),
+                DebugDump::CUBE_LAYOUT_GM_ND);
+            DumpTensor(queryGm_[queryGmOffset], DebugDump::CUBE_DATA_DESC_BASE + recordId,
+                       static_cast<uint32_t>(dataCount));
+        }
+    }
+#endif
     DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
              queryGm_[runInfo.tensorQueryOffset + s1gGmOffset * qkHeadDim_], nd2nzPara);
 }
@@ -646,6 +883,29 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
 {
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
+
+#ifdef QLIV2_DEBUG_DUMP
+    if constexpr (IS_MXFP4) {
+        uint64_t logicalS2Start =
+            static_cast<uint64_t>(runInfo.s2Idx) * constInfo_.s2BaseSize + s2GmOffset;
+        if (IsDebugCubeMRange(runInfo, s1gGmOffset, s1gL0RealSize) &&
+            IsDebugCubeS2Range(logicalS2Start, s2L0RealSize)) {
+            uint32_t mAligned = static_cast<uint32_t>(
+                CeilAlign(s1gL0RealSize, static_cast<uint64_t>(BLOCK_CUBE)));
+            uint32_t nAligned = static_cast<uint32_t>(
+                CeilAlign(s2L0RealSize, static_cast<uint64_t>(BLOCK_CUBE)));
+            uint64_t l0cOffset = (l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET;
+            uint64_t dataCount = static_cast<uint64_t>(mAligned) * nAligned;
+            uint32_t recordId = DumpCubeMeta(
+                DebugDump::CUBE_STAGE_L0C_NZ, runInfo, s1gGmOffset, s2GmOffset,
+                logicalS2Start, s2L0RealSize, l0cOffset, dataCount,
+                static_cast<uint32_t>(l0BufIdx_ % L0_BUF_NUM), static_cast<uint32_t>(s1gL0RealSize),
+                mAligned, DebugDump::CUBE_LAYOUT_L0C_NZ, nAligned);
+            DumpTensor(cL0_[l0cOffset], DebugDump::CUBE_DATA_DESC_BASE + recordId,
+                       static_cast<uint32_t>(dataCount));
+        }
+    }
+#endif
 
     if constexpr (std::is_same_v<QK_T, float>) {
         // s1gL0RealSize：2*gSize(128)对齐, 最大256
