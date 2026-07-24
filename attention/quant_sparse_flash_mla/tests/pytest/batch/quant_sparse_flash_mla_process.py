@@ -30,7 +30,7 @@ class Network(torch.nn.Module):
     def forward(self, q, ori_kv, cmp_kv, q_descale, ori_kv_descale, cmp_kv_descale, ori_sparse_indices,
                 cmp_sparse_indices, ori_block_table, cmp_block_table, cu_seqlens_q, cu_seqlens_ori_kv,
                 cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length,
-                cmp_topk_length, sinks, metadata, qkv_quant_mode, softmax_scale, cmp_ratio, ori_mask_mode,
+                cmp_topk_length, sinks, metadata, quant_mode, softmax_scale, cmp_ratio, ori_mask_mode,
                 cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, topk_value_mode, return_softmax_lse):
         npu_result, _ = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
                                 q=q,
@@ -54,7 +54,7 @@ class Network(torch.nn.Module):
                                 cmp_topk_length=cmp_topk_length,
                                 sinks=sinks,
                                 metadata=metadata,
-                                qkv_quant_mode=qkv_quant_mode,
+                                quant_mode=quant_mode,
                                 softmax_scale=softmax_scale,
                                 cmp_ratio=cmp_ratio,
                                 ori_mask_mode=ori_mask_mode,
@@ -89,7 +89,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
     layout_kv_qsas = metadata_input['layout_kv']
     if layout_kv_qsas == "PA_BBND":
         layout_kv_qsas = "PA_ND"
-    metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
+    metadata = torch.ops.cann_ops_transformer.quant_sparse_flash_mla_metadata(
                                 num_heads_q = metadata_input['num_heads_q'],
                                 num_heads_kv = metadata_input['num_heads_kv'],
                                 head_dim = metadata_input['head_dim'],
@@ -102,7 +102,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
                                 cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
                                 ori_topk_length=None,
                                 cmp_topk_length=None,
-                                quant_mode=op_input['qkv_quant_mode'],
+                                quant_mode=op_input['quant_mode'],
                                 batch_size = metadata_input['batch_size'],
                                 max_seqlen_q = metadata_input['max_seqlen_q'],
                                 max_seqlen_ori_kv = metadata_input['max_seqlen_ori_kv'],
@@ -146,7 +146,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
                           cmp_topk_length=None,
                           sinks=op_input['sinks'].npu() if op_input['sinks'] is not None else None,
                           metadata=metadata,
-                          qkv_quant_mode=op_input['qkv_quant_mode'],
+                          quant_mode=op_input['quant_mode'],
                           softmax_scale=op_input['softmax_scale'],
                           cmp_ratio=op_input['cmp_ratio'],
                           ori_mask_mode=op_input['ori_mask_mode'],
@@ -172,7 +172,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     layout_kv_qsas = metadata_input['layout_kv']
     if layout_kv_qsas == "PA_BBND":
         layout_kv_qsas = "PA_ND"
-    metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
+    metadata = torch.ops.cann_ops_transformer.quant_sparse_flash_mla_metadata(
                                 num_heads_q = metadata_input['num_heads_q'],
                                 num_heads_kv = metadata_input['num_heads_kv'],
                                 head_dim = metadata_input['head_dim'],
@@ -185,7 +185,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
                                 cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
                                 ori_topk_length=None,
                                 cmp_topk_length=None,
-                                quant_mode=op_input['qkv_quant_mode'],
+                                quant_mode=op_input['quant_mode'],
                                 batch_size = metadata_input['batch_size'],
                                 max_seqlen_q = metadata_input['max_seqlen_q'],
                                 max_seqlen_ori_kv = metadata_input['max_seqlen_ori_kv'],
@@ -228,7 +228,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
                                 cmp_topk_length=None,
                                 sinks=op_input['sinks'].npu() if op_input['sinks'] is not None else None,
                                 metadata=metadata,
-                                qkv_quant_mode=op_input['qkv_quant_mode'],
+                                quant_mode=op_input['quant_mode'],
                                 softmax_scale=op_input['softmax_scale'],
                                 cmp_ratio=op_input['cmp_ratio'],
                                 ori_mask_mode=op_input['ori_mask_mode'],

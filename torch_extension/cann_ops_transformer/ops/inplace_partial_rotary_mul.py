@@ -28,8 +28,9 @@ class InplacePartialRotaryMulFn(torch.autograd.Function):
         ctx.rotary_mode = rotary_mode
         ctx.partial_slice = partial_slice
         ctx.mark_dirty(x)
-        op_module = inplace_partial_rotary_mul_op_builder.load()
-        op_module.inplace_partial_rotary_mul(x, r1, r2, rotary_mode, partial_slice)
+        torch.ops.cann_ops_transformer.inplace_partial_rotary_mul(
+            x, r1, r2, rotary_mode=rotary_mode, partial_slice=partial_slice
+        )
         return x
 
     @staticmethod
@@ -39,13 +40,12 @@ class InplacePartialRotaryMulFn(torch.autograd.Function):
             grad_input = grad_output.contiguous()
         else:
             grad_input = grad_output
-        from cann_ops_transformer.ops.inplace_partial_rotary_mul_backward import (
-            inplace_partial_rotary_mul_backward_op_builder,
-        )
-
-        op_module = inplace_partial_rotary_mul_backward_op_builder.load()
-        op_module.inplace_partial_rotary_mul_backward(
-            grad_input, r1, r2, ctx.rotary_mode, ctx.partial_slice
+        torch.ops.cann_ops_transformer.inplace_partial_rotary_mul_backward(
+            grad_input,
+            r1,
+            r2,
+            rotary_mode=ctx.rotary_mode,
+            partial_slice=ctx.partial_slice,
         )
         return grad_input, None, None, None, None
 
@@ -95,6 +95,10 @@ class InplacePartialRotaryMulOpBuilder(OpBuilder):
 
 # Instantiate the builder
 inplace_partial_rotary_mul_op_builder = InplacePartialRotaryMulOpBuilder()
+# Pre-load the op module so that torch.compile / dynamo tracing does not
+# encounter torch.utils.cpp_extension.load() at trace time (it is marked
+# as "skipped" by the dynamo trace rules).
+inplace_partial_rotary_mul_op_builder.load()
 
 
 @impl(AS_LIBRARY, inplace_partial_rotary_mul_op_builder.name, "PrivateUse1")

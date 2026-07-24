@@ -36,7 +36,7 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnPromptFlashAttentionV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnPromptFlashAttentionV2”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnPromptFlashAttentionV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnPromptFlashAttentionV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnPromptFlashAttentionV2GetWorkspaceSize(
@@ -52,13 +52,13 @@ aclnnStatus aclnnPromptFlashAttentionV2GetWorkspaceSize(
     const aclTensor   *deqScale2,
     const aclTensor   *quantScale2,
     const aclTensor   *quantOffset2,
-    int64_t            numHeads, 
+    int64_t            numHeads,
     double             scaleValue,
     int64_t            preTokens,
     int64_t            nextTokens,
     char              *inputLayout,
     int64_t            numKeyValueHeads,
-    int64_t            sparseMode, 
+    int64_t            sparseMode,
     const aclTensor   *attentionOut,
     uint64_t          *workspaceSize,
     aclOpExecutor     **executor)
@@ -77,15 +77,15 @@ aclnnStatus aclnnPromptFlashAttentionV2(
 - **参数说明**
 
     <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1577px"><colgroup> 
-    <col style="width: 180px"> 
-    <col style="width: 120px"> 
-    <col style="width: 300px"> 
-    <col style="width: 330px"> 
-    <col style="width: 212px"> 
-    <col style="width: 100px">  
-    <col style="width: 190px">  
-    <col style="width: 145px">  
+    <table style="undefined;table-layout: fixed; width: 1577px"><colgroup>
+    <col style="width: 180px">
+    <col style="width: 120px">
+    <col style="width: 300px">
+    <col style="width: 330px">
+    <col style="width: 212px">
+    <col style="width: 100px">
+    <col style="width: 190px">
+    <col style="width: 145px">
     </colgroup>
     <thead>
     <tr>
@@ -335,7 +335,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
 
@@ -410,7 +410,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -423,7 +423,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
 - query，key，value输入，功能使用限制如下：
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
-  
+
     - 支持B轴小于等于65536（64k），输入类型包含INT8时D轴非32对齐或输入类型为FLOAT16或BFLOAT16时D轴非16对齐时，B轴仅支持到128；
 
     - 支持N轴小于等于256；
@@ -481,34 +481,34 @@ aclnnStatus aclnnPromptFlashAttentionV2(
             </tbody>
             </table>
     - 支持D轴小于等于512。inputLayout为BSH或者BSND时，要求N*D小于65535。
-    
+
   - Atlas推理系列加速卡产品：
       - 在inputLayout为BSH时，支持B轴小于等于300，其余情况B轴小于等于128；
       - 支持N轴小于等于256；
       - 支持S轴小于等于65535(64k), Q_S或KV_S非128对齐，Q_S和KV_S不等长的场景不支持配置atten_mask；
       - 支持D轴小于等于512。
-  
+
   - 输入数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16、INT8
     - Atlas推理系列加速卡产品：数据类型仅支持FLOAT16
-  
+
 - pseShift功能使用限制如下：
-  
+
   - 预留参数，暂未使用。Device侧的aclTensor，数据类型与query的数据类型需满足数据类型推导规则。目前该参数会被强制设置为nullptr。
   - 输入数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16
     - Atlas推理系列加速卡产品：仅支持nullptr
-  
+
 - attenMask功能使用限制如下：
-  
+
   - 输入shape限制：如果不使用该功能可传入nullptr。通常建议shape输入Q_S,KV_S;B,Q_S,KV_S;1,Q_S,KV_S;B,1,Q_S,KV_S;1,1,Q_S,KV_S，其中Q_S为query的shape中的S，KV_S为key和value的shape中的S，对于attenMask的KV_S为非32对齐的场景，建议padding到32对齐来提高性能，多余部分填充成1。
   - 输入数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持BOOL、INT8和UINT8。
     - Atlas推理系列加速卡产品：仅支持BOOL。
   - 当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1。
-  
+
 - actualSeqLengths，actualSeqLengthsKv输入，功能使用限制如下：
-  
+
   - 输入值域限制：
     - 对于actualSeqLengths，如果不指定序列长度，可以传入nullptr，这表示有效序列长度与query的shape中的S长度相同。需要注意的是，该参数中每个batch的有效序列长度不应超过query中对应batch的序列长度。
     - 对于actualSeqLengthsKv，如果不指定序列长度，可以传入nullptr，这表示有效序列长度与key/value的shape中的S长度相同。需要注意的是，该参数中每个batch的有效序列长度不应超过key/value中对应batch的序列长度。
@@ -516,52 +516,52 @@ aclnnStatus aclnnPromptFlashAttentionV2(
   - 输入数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
     - Atlas推理系列加速卡产品：数据类型支持INT64。
-  
+
 - deqScale1，deqScale2输入，功能使用限制如下：
-  
+
   - 输入数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持UINT64、FLOAT32。
     - Atlas推理系列加速卡产品：仅支持nullptr。
-  
+
 - quantScale1输入，功能使用限制如下：
-  
+
   - 输入数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT32。
     - Atlas推理系列加速卡产品：仅支持nullptr。
-  
+
 - quantScale2，quantOffset2输入，功能使用限制如下：
-  
+
   - 输入数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT32和BFLOAT16。
     - Atlas推理系列加速卡产品：仅支持nullptr。
-  
+
 - preTokens输入，功能使用限制如下：
-  
+
   - 输入数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
     - Atlas推理系列加速卡产品：仅支持取值2147483647。
-  
+
 - nextTokens输入，功能使用限制如下：
-  
+
   - 输入数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
     - Atlas推理系列加速卡产品：仅支持取值0和2147483647。
-  
+
 - inputLayout输入，功能使用限制如下：
-  
+
   - 输入数据类型限制：
     - 当前支持BSH、BSND、BNSD、BNSD_BSND（输入为BNSD时，输出格式为BSND）。用户不特意指定时建议传入"BSH"。
     - 说明：query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
-  
+
 - numKeyValueHeads输入，功能使用限制如下：
-  
+
   - Host侧的int，代表key、value中head个数，用于支持GQA（Grouped-Query Attention，分组查询注意力）场景。用户不特意指定时建议传入0，表示key/value和query的head个数相等。限制：需要满足numHeads整除numKeyValueHeads，且在BSND、BNSD、BNSD_BSND场景下，需要与shape中的key/value的N轴shape值相同，否则报错。
   - 输入数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
     - Atlas推理系列加速卡产品：仅支持取值0。
-  
+
 - sparseMode输入，功能使用限制如下：
-  
+
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
     - sparseMode为0时，代表defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens（内部赋值为INT_MAX）；如果传入，则需要传入完整的attenmask矩阵（S1 * S2），表示preTokens和nextTokens之间的部分需要计算。
     - sparseMode为1时，代表allMask，必须传入完整的attenmask矩阵（S1 * S2）。
@@ -569,16 +569,16 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     - sparseMode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵（2048*2048）。
     - sparseMode为4时，代表band模式的mask，需要传入优化后的attenmask矩阵（2048*2048）。
     - sparseMode为5、6、7、8时，分别代表prefix、global、dilated、block_local，**均暂不支持**。用户不特意指定时建议传入0。
-  
+
   - Atlas推理系列加速卡产品：仅支持取值0
-  
+
 - attentionOut输出，功能使用限制如下：
-  
+
   - shape限制：当inputLayout为BNSD_BSND时，输入query的shape是BNSD，输出shape为BSND；其余情况该入参的shape需要与入参query的shape保持一致。
   - 数据类型限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16、INT8。
     - Atlas推理系列加速卡产品：仅支持FLOAT16。
-  
+
 - 其它约束：
   - int8量化相关入参数量与输入、输出数据格式的综合限制：
     - 输入为INT8，输出为INT8的场景：入参deqScale1、quantScale1、deqScale2、quantScale2需要同时存在，quantOffset2可选，不传时默认为0。
@@ -595,7 +595,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -605,21 +605,21 @@ aclnnStatus aclnnPromptFlashAttentionV2(
 #include "acl/acl.h"
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_prompt_flash_attention_v2.h"
- 
+
 using namespace std;
- 
+
 #define CHECK_RET(cond, return_expr) \
   do {                               \
     if (!(cond)) {                   \
       return_expr;                   \
     }                                \
   } while (0)
- 
+
 #define LOG_PRINT(message, ...)     \
   do {                              \
     printf(message, ##__VA_ARGS__); \
   } while (0)
- 
+
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   int64_t shapeSize = 1;
   for (auto i : shape) {
@@ -627,7 +627,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   }
   return shapeSize;
 }
- 
+
 int Init(int32_t deviceId, aclrtStream* stream) {
   // Fixed format, AscendCL initialization
   auto ret = aclInit(nullptr);
@@ -638,7 +638,7 @@ int Init(int32_t deviceId, aclrtStream* stream) {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
   return 0;
 }
- 
+
 template <typename T>
 int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
                     aclDataType dataType, aclTensor** tensor) {
@@ -649,19 +649,19 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
   // Call aclrtMemcpy to copy host side data to device side memory
   ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
- 
+
   // Calculate the strides of continuous tensor
   std::vector<int64_t> strides(shape.size(), 1);
   for (int64_t i = shape.size() - 2; i >= 0; i--) {
     strides[i] = shape[i + 1] * strides[i + 1];
   }
- 
+
   // Call the aclCreateTensor interface to create aclTensor
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                             shape.data(), shape.size(), *deviceAddr);
   return 0;
 }
- 
+
 int main() {
   // 1. (Fixed format) Device/stream initialization, refer to AscendCL external interface list
   // Fill in the deviceId based on your actual device
@@ -669,7 +669,7 @@ int main() {
   aclrtStream stream;
   auto ret = Init(deviceId, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
- 
+
   // 2. To construct input and output, it is necessary to customize the construction according to the API interface
   std::vector<int64_t> queryShape = {1, 2, 1, 16}; // BNSD
   std::vector<int64_t> keyShape = {1, 2, 2, 16}; // BNSD
@@ -696,7 +696,7 @@ int main() {
   std::vector<float> valueHostData(valueShapeSize, 1);
   std::vector<float> attenHostData(attenShapeSize, 1);
   std::vector<float> outHostData(outShapeSize, 1);
- 
+
   // Create query aclTensor
   ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -712,7 +712,7 @@ int main() {
   // Create out aclTensor
   ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &outTensor);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   std::vector<int64_t> actualSeqlenVector = {2};
   auto actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(), actualSeqlenVector.size());
   int64_t numHeads=2; // N
@@ -726,7 +726,7 @@ int main() {
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
   // Call the first interface
-  ret = aclnnPromptFlashAttentionV2GetWorkspaceSize(queryTensor, keyTensor, valueTensor, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 
+  ret = aclnnPromptFlashAttentionV2GetWorkspaceSize(queryTensor, keyTensor, valueTensor, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
     numHeads, scaleValue, preTokens, nextTokens, layerOut, numKeyValueHeads, sparseMode, outTensor, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnPromptFlashAttentionV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // Apply for device memory based on the workspaceSize calculated from the first interface
@@ -738,18 +738,18 @@ int main() {
   // Call the second interface
   ret = aclnnPromptFlashAttentionV2(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnPromptFlashAttentionV2 failed. ERROR: %d\n", ret); return ret);
- 
+
   // 4. (Fixed format) Synchronize and wait for the completion of task execution
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
- 
+
   // 5. Obtain the output value, copy the result from the device side memory to the host side, and modify it according to the specific API interface definition
   auto size = GetShapeSize(outShape);
   std::vector<op::fp16_t> resultData(size, 0);
   ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                     size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
- 
+
   // 6. Release resources
   aclDestroyTensor(queryTensor);
   aclDestroyTensor(keyTensor);

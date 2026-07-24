@@ -174,7 +174,7 @@ public:
     }
 
 private:
-__aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
     {
         OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
         uint64_t s1Size = 0;
@@ -182,8 +182,7 @@ __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FOR
         uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
         uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
 
-        uint64_t queryGmbaseOffset =
-            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, 0);
+        uint64_t queryGmbaseOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, 0);
 
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = 1; // 外部传入
@@ -192,8 +191,8 @@ __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FOR
         dataCopyParams.dstStride = 0; // 外部传入
 
         DataCopyPadExtParams<T> dataCopyPadParams;
-        DataCopyPad(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset + s1IdxStart],
-                    dataCopyParams, dataCopyPadParams);
+        DataCopyPad(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset + s1IdxStart], dataCopyParams,
+                    dataCopyPadParams);
     }
 };
 
@@ -227,8 +226,8 @@ private:
             }
 
             uint64_t srcOffset = offsetCalculator.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, curS2Idx);
-            CopyKeyScaleNDToND(dstTensor.tensor[dstOffset], srcTensor.gmTensor[srcOffset], 1, copyElemCnt,
-                               copyElemCnt, copyElemCnt);
+            CopyKeyScaleNDToND(dstTensor.tensor[dstOffset], srcTensor.gmTensor[srcOffset], 1, copyElemCnt, copyElemCnt,
+                               copyElemCnt);
 
             dstOffset += copyElemCnt;
             copyFinishElmeCnt += copyElemCnt;
@@ -249,7 +248,7 @@ private:
             srcRowStride = srcRowStride / HALF_SIZE_DIVISOR;
         }
         bool isPad = ((actDataLen % blockElemNum) != 0 || (srcRowStride % blockElemNum) != 0 ||
-                    (dstRowStride % blockElemNum) != 0); // 判断是否32字节对齐，确定是否走datacopypad
+                      (dstRowStride % blockElemNum) != 0); // 判断是否32字节对齐，确定是否走datacopypad
         uint64_t srcStrideOfDataCopy = (srcRowStride - actDataLen) / blockElemNum;
         // 在有pad或srcStrideOfDataCopy不符合datacopy范围时，使用datacopypad拷贝完成
         if (unlikely(isPad || (srcStrideOfDataCopy > UINT16_MAX_VALUE))) {

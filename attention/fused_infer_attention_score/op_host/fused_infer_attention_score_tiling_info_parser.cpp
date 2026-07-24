@@ -29,6 +29,31 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 
+namespace {
+// 判断tensor是否连续，逻辑与 BaseChecker::CheckTensorContiguous 一致
+ge::graphStatus CheckTensorContiguousLocal(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
+    const gert::Stride *strides, int32_t &index)
+{
+    if (strides == nullptr || strides->GetDimNum() == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (tensorDimNum == 0 || tensorDimNum == 1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t preStride = 1;
+    for (index = tensorDimNum - 1; index >= 0; index--) {
+        if (inputShape.GetDim(index) == 1) {
+            continue;
+        }
+        if (preStride != strides->GetStride(index)) {
+            return ge::GRAPH_FAILED;
+        }
+        preStride *= inputShape.GetDim(index);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+} // namespace
+
 ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
@@ -226,7 +251,7 @@ ge::graphStatus FiaInfoParser::GetStrides()
 {
     // 用opbase版本判断，老版本opbase为tensorv1
     if (context_->InputIsView(KEY_INDEX) == false) {
-        isTensorV1_ = true;
+        hasViewStride_ = false;
         return ge::GRAPH_SUCCESS;
     }
     keyStrides_ = context_->GetDynamicInputStride(KEY_INDEX, 0);
@@ -239,6 +264,68 @@ ge::graphStatus FiaInfoParser::GetStrides()
         kRopeStrides_ = context_->GetInputStride(KEY_ROPE_INDEX);
     }
     return ge::GRAPH_SUCCESS;
+}
+
+void FiaInfoParser::GetKvIsContiguous()
+{
+    if (!hasViewStride_) {
+        return ;
+    }
+    for (size_t i = 0; i < kStrideCache_.size(); ++i) {
+        int32_t dim = 0;
+        if (CheckTensorContiguousLocal(kCache_[i]->GetStorageShape().GetDimNum(),
+                                       kCache_[i]->GetStorageShape(),
+                                       kStrideCache_[i], dim) != ge::GRAPH_SUCCESS) {
+            keyNonContigDim_ = dim;
+        }
+    }
+    for (size_t i = 0; i < vStrideCache_.size(); ++i) {
+        int32_t dim = 0;
+        if (CheckTensorContiguousLocal(vCache_[i]->GetStorageShape().GetDimNum(),
+                                       vCache_[i]->GetStorageShape(),
+                                       vStrideCache_[i], dim) != ge::GRAPH_SUCCESS) {
+            valueNonContigDim_ = dim;
+        }
+    }
+    if (kRopeStrides_ != nullptr) {
+        int32_t dim = 0;
+        if (CheckTensorContiguousLocal(opParamInfo_.keyRope.tensor->GetStorageShape().GetDimNum(),
+                                       opParamInfo_.keyRope.tensor->GetStorageShape(),
+                                       kRopeStrides_, dim) != ge::GRAPH_SUCCESS) {
+            keyRopeNonContigDim_ = dim;
+        }
+    }
+}
+
+void FiaInfoParser::GetKvStrideValues()
+{
+    if (!hasViewStride_) {
+        return;
+    }
+    if (kvLayout_ == FiaLayout::BnBsH) {
+        if (keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+        }
+        if (valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+        }
+        if (kRopeStrides_ != nullptr) {
+            kRopeBnStride_ = kRopeStrides_->GetStride(0);
+        }
+    } else if (kvLayout_ == FiaLayout::BnNBsD || kvLayout_ == FiaLayout::NZ) {
+        if (keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+            keyN2Stride_ = keyStrides_->GetStride(1);
+        }
+        if (valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+            valueN2Stride_ = valueStrides_->GetStride(1);
+        }
+        if (kRopeStrides_ != nullptr) {
+            kRopeBnStride_ = kRopeStrides_->GetStride(0);
+            kRopeN2Stride_ = kRopeStrides_->GetStride(1);
+        }
+    }
 }
 
 ge::graphStatus FiaInfoParser::GetNpuInfo()
@@ -499,12 +586,15 @@ void FiaInfoParser::GetPreNextToken()
 }
 
 ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::string &name,
-                                                  std::vector<gert::StorageShape *> &cache)
+                                                  std::vector<gert::StorageShape *> &cache,
+                                                  std::vector<gert::Stride *> &strides)
 {
     cache.clear();
+    strides.clear();
     uint32_t bIdx = 0;
     while ((context_->GetDynamicInputShape(index, bIdx)) != nullptr) {
         cache.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(index, bIdx)));
+        strides.push_back(const_cast<gert::Stride *>(context_->GetDynamicInputStride(index, bIdx)));
         bIdx++;
     }
     if (bIdx == 0) {
@@ -512,15 +602,16 @@ ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::str
         return ge::GRAPH_FAILED;
     }
     cache.resize(bIdx);
+    strides.resize(bIdx);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaInfoParser::GetKvCache()
 {
-    if (GetTensorListCache(KEY_INDEX, KEY_NAME, kCache_) != ge::GRAPH_SUCCESS) {
+    if (GetTensorListCache(KEY_INDEX, KEY_NAME, kCache_, kStrideCache_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (GetTensorListCache(VALUE_INDEX, VALUE_NAME, vCache_) != ge::GRAPH_SUCCESS) {
+    if (GetTensorListCache(VALUE_INDEX, VALUE_NAME, vCache_, vStrideCache_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -660,6 +751,7 @@ void FiaInfoParser::GetKvStorageMode()
             kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
         }
     }
+    GetKvIsContiguous();
 }
 
 void FiaInfoParser::GetQuantMode()
@@ -1486,6 +1578,11 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     GenerateDtypeInfo(fiaInfo);
     fiaInfo.kvStorageMode = kvStorageMode_;
     fiaInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
+
+    fiaInfo.keyNonContigDim = keyNonContigDim_;
+    fiaInfo.valueNonContigDim = valueNonContigDim_;
+    fiaInfo.keyRopeNonContigDim = keyRopeNonContigDim_;
+
     fiaInfo.ropeMode = ropeMode_;
     fiaInfo.mlaMode = mlaMode_;
     fiaInfo.quantMode = quantMode_;
@@ -1502,7 +1599,13 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     fiaInfo.kRopeStrides = kRopeStrides_;
     fiaInfo.kScaleStrides = kScaleStrides_;
     fiaInfo.vScaleStrides = vScaleStrides_;
-    fiaInfo.isTensorV1 = isTensorV1_;
+    fiaInfo.hasViewStride = hasViewStride_;
+    fiaInfo.keyBnStride = keyBnStride_;
+    fiaInfo.keyN2Stride = keyN2Stride_;
+    fiaInfo.valueBnStride = valueBnStride_;
+    fiaInfo.valueN2Stride = valueN2Stride_;
+    fiaInfo.kRopeBnStride = kRopeBnStride_;
+    fiaInfo.kRopeN2Stride = kRopeN2Stride_;
 
     fiaInfo.totalOutputSize = opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize();
 
@@ -1566,6 +1669,9 @@ ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
     GetInOutDataType();
+    if (ge::GRAPH_SUCCESS != GetStrides()) {
+        return ge::GRAPH_FAILED;
+    }
     GetKvStorageMode();
     GetQuantMode();
     if (ge::GRAPH_SUCCESS != GetAntiQuantInfo()) {
@@ -1574,6 +1680,7 @@ ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
     if (ge::GRAPH_SUCCESS != GetQueryAndOutLayout() || ge::GRAPH_SUCCESS != GetKvLayout()) {
         return ge::GRAPH_FAILED;
     }
+    GetKvStrideValues();
     if (ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
         return ge::GRAPH_FAILED;
     }
@@ -1610,9 +1717,6 @@ ge::graphStatus FiaInfoParser::ParseAxisInfo()
     }
     GetKeyTSize();
     if (ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != GetRopeHeadDim()) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != GetStrides()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
