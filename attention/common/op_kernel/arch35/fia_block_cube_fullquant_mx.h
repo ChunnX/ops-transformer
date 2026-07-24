@@ -58,8 +58,8 @@ public:
     /* ============确定L0C的类型============= */
     template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
     struct L0CBuffSel {
-        static constexpr uint32_t maxNDim = (s2BaseSize > dVBaseSize) ? s2BaseSize : dVBaseSize;
-        using Type = std::conditional_t<(mBaseSize * maxNDim * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
+        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
                                         BuffersPolicy4buff<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>;
     };
 
@@ -208,7 +208,8 @@ public:
         mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
         mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);  // L0B DB 32KB/buf, architect confirmed do not change
 
-        if constexpr (mBaseSize * L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::maxNDim * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
+        if constexpr (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                      mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
             mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_4) * KB_TO_BYTES);
         } else {
             mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
@@ -901,7 +902,7 @@ public:
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
-        constexpr uint32_t baseK = s2BaseSize;
+        constexpr uint32_t baseK = s2SplitSize;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
         uint64_t l1ScaleOffset = baseK / 32 * runInfo.actMSizeAlign32;
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
@@ -946,6 +947,9 @@ public:
         }
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
+        if constexpr (BMM2_TOUB) {
+            outputBuf.WaitCrossCore();
+        }
         FixpipeMm2(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), runInfo);  // 数据搬出
         mm2ResL0C.Set<HardEvent::FIX_M>();
         outputBuf.SetCrossCore();
@@ -954,13 +958,13 @@ public:
     template <typename DST_TENSOR_T>
     __aicore__ inline void FixpipeMm2(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
     {
-        constexpr uint32_t baseN = l1BaseD;
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
         if constexpr (BMM2_TOUB) {
             fixpipeParams.nSize = (constInfo.dSizeV + 7) >> 3 << 3;
         } else {
             fixpipeParams.nSize = constInfo.dSizeV;
         }
+
         if constexpr (!USE_DN) {
             fixpipeParams.mSize = (runInfo.actMSize + 31) >> 5 << 5;
             fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
@@ -968,8 +972,9 @@ public:
             fixpipeParams.mSize = mBaseSize;
             fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
         }
+
         if constexpr (BMM2_TOUB || SPLITD) {
-            fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4; // dstStride matches dSizeV
+            fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
         } else {
             fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV;
         }
@@ -977,82 +982,7 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        if constexpr (BMM2_TOUB) {
-            Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
-        } else {
-            Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
-        }
-    }
-
-    // Local copy of MatmulN from matmul.h for debugging
-    template <uint32_t localBaseM, uint32_t localBaseN, uint32_t localBaseK>
-    __aicore__ inline void MatmulNLocal(
-        const LocalTensor<INPUT_T> &aL1Tensor,
-        const LocalTensor<KV_T> &bL1Tensor,
-        L0AType &aL0BuffsDb,
-        L0BType &bL0BuffsDb,
-        const LocalTensor<T> &cL0Tensor,
-        const MMParam &param,
-        const LocalTensor<SCALE_T> &aScaleL1Tensor,
-        const LocalTensor<SCALE_T> &bScaleL1Tensor)
-    {
-        uint32_t nLoops = (param.singleN + localBaseN - 1) / localBaseN;
-        uint32_t tailSize = param.singleN % localBaseN;
-        uint32_t tailN = tailSize ? tailSize : localBaseN;
-        uint64_t L1Boffset = param.isRightTranspose ? (localBaseN << 4) : ((param.singleK + 15) >> 4 << 4) * localBaseN;
-    #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-        if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                      IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
-            L1Boffset = ((param.singleK + 31) >> 5 << 5) * localBaseN;
-        }
-    #endif
-        uint64_t L0Coffset = ((param.singleM + 15) >> 4 << 4) * localBaseN;
-        if (param.realM != 0) {
-            L0Coffset = ((param.realM + 15) >> 4 << 4) * localBaseN;
-        }
-
-        Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
-        l0aBuffer.Wait<HardEvent::M_MTE1>();
-        LocalTensor<mx_fp8_e4m3_t> L0ATensor = l0aBuffer.GetTensor<mx_fp8_e4m3_t>();
-    #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-        if constexpr (IsSameType<mx_fp8_e4m3_t, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0AMx<INPUT_T, mx_fp8_e4m3_t>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);
-        }
-    #endif
-        for (uint32_t n = 0; n < nLoops; n++) {
-            uint32_t tileN = (n == (nLoops - 1)) ? tailN : localBaseN;
-
-            Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
-            l0bBuffer.Wait<HardEvent::M_MTE1>();
-            LocalTensor<mx_fp8_e4m3_t> L0BTensor = l0bBuffer.GetTensor<mx_fp8_e4m3_t>();
-            uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
-    #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-            if constexpr (IsSameType<mx_fp8_e4m3_t, mx_fp8_e4m3_t>::value) {
-                
-                LoadDataToL0BMx<KV_T, mx_fp8_e4m3_t>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, n * L1Boffset, param.singleK, tileN, loopNum);
-            }
-    #endif
-            l0bBuffer.Set<HardEvent::MTE1_M>();
-            l0bBuffer.Wait<HardEvent::MTE1_M>();
-
-            MmadParams mmadParams;
-            mmadParams.m = param.singleM;
-            if (param.realM != 0) {
-                mmadParams.m = param.realM;
-            }
-            mmadParams.n = tileN;
-            mmadParams.k = param.singleK;
-            if (mmadParams.m == 1) {
-                mmadParams.m = FP16_ONE_FRACTAL_ELEMENT;
-            }
-            mmadParams.cmatrixInitVal = param.isOutKFisrt;
-            mmadParams.cmatrixSource = false;
-            mmadParams.unitFlag = param.unitFlag;
-            Mmad(cL0Tensor[n * L0Coffset], L0ATensor, L0BTensor, mmadParams);
-
-            l0bBuffer.Set<HardEvent::M_MTE1>();
-        }
-        l0aBuffer.Set<HardEvent::M_MTE1>();
+        Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm2Dn(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
@@ -1067,6 +997,9 @@ public:
                 mBaseSize * s2SplitSize / MXFP_GROUP_SIZE / sizeOfInt16);
             InitConstValue(mm2AScaleTensor,
                 {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
+            // DIAGNOSTIC: zero PScale at C2 read position. If branch taken, output will change.
+            LocalTensor<int16_t> diagZero = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16);
+            InitConstValue(diagZero, {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x0000});
         }
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
 
@@ -1075,8 +1008,8 @@ public:
         uint32_t realN = baseN;
 
         constexpr uint32_t baseK = s2BaseSize;
-        uint64_t l1BaseKOffset = baseK * mBaseSize;
-        uint64_t l1ScaleOffset = l1BaseKOffset / MXFP_GROUP_SIZE;
+        // uint64_t l1BaseKOffset = baseK * mBaseSize; // dead: only used by MatmulFullMX, not MatmulN
+        // uint64_t l1ScaleOffset = l1BaseKOffset / MXFP_GROUP_SIZE; // dead: same
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
 
 
@@ -1110,7 +1043,9 @@ public:
         if constexpr (!USE_DN) {
             param.realM = (uint32_t)runInfo.actMSize;
         }
-        MatmulNLocal<128, baseN, 128>(mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers,
+        MatmulN<INPUT_T, KV_T, T, 128, baseN, 128, ABLayout::MK, ABLayout::KN,
+            L0AType, L0BType, SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+            mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers,
             mm2ResL0C.GetTensor<T>(), param, mm2AScaleFakeTensor, mm2BScaleTensor);
         mm2B.Set<HardEvent::MTE1_MTE2>();
 

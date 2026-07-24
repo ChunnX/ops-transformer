@@ -1535,9 +1535,8 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetWorkspaceNormal(const Fia
     uint32_t calcTypeSize = sizeof(float);
     if ((!dnFlag_ && dSize > DSIZE_128) || (dnFlag_ && dSize > DSIZE_192)) {
         bmm2Bytes = s1BasicBlock * bmm2ResBlockSize * calcTypeSize;
-        vec2Bytes = s1BasicBlock * bmm2ResBlockSize * calcTypeSize;
         if (dVBasicBlock > DSIZE_256) {
-            vec2Bytes += s1BasicBlock * dVBasicBlock * calcTypeSize;
+            vec2Bytes = s1BasicBlock * dVBasicBlock * calcTypeSize;
         }
     }
     curWorkspaceSize = (bmm2Bytes + vec2Bytes) * 3 * platformInfo_.coreNum + // 3: perload 2次 需要2+1

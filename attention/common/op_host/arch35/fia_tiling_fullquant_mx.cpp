@@ -737,9 +737,8 @@ void FiaTilingFullQuantMxArch35::CalcWorkspaceSize()
     }
     if (dSize > DSIZE_128) {
         bmm2Bytes = mSize * bmm2ResBlockSize * sizeof(float);
-        vec2Bytes = mSize * bmm2ResBlockSize * sizeof(float);
         if (dVBasicBlock > DSIZE_256) {
-            vec2Bytes += mSize * dVBasicBlock * sizeof(float);
+            vec2Bytes = mSize * dVBasicBlock * sizeof(float);
         }
     }
     workspaceSize_ += (bmm2Bytes + vec2Bytes) * 3 * numBlocks_; // 3: perload 2次 需要2+1
