@@ -406,12 +406,12 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
     string qInputLayoutStr = ConvertLayoutString(qInputLayout);
     string kvInputLayoutStr = ConvertLayoutString(kvInputLayout);
 
-    auto outputs = l0op::BlockSparseAttentionGrad(dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional,
-                                                  attenMaskOptional, blockShapeOptional,actualSeqLengthsOptional, actualSeqLengthsKvOptional,
-                                                  qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional,
-                                                  const_cast<char*>(qInputLayoutStr.c_str()),
-                                                  const_cast<char*>(kvInputLayoutStr.c_str()), numKeyValueHeads,
-                                                  maskType, scaleValue, preTokens, nextTokens, executorImpl);
+    auto outputs = l0op::BlockSparseAttentionGrad(
+        dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional, attenMaskOptional,
+        blockShapeOptional, actualSeqLengthsOptional, actualSeqLengthsKvOptional, qDequantScaleOptional,
+        kDequantScaleOptional, vDequantScaleOptional, const_cast<char *>(qInputLayoutStr.c_str()),
+        const_cast<char *>(kvInputLayoutStr.c_str()), numKeyValueHeads, maskType, scaleValue, preTokens, nextTokens,
+        executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr || outputs[2] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockSparseAttentionGrad returned nullptr outputs.");
         return ACLNN_ERR_INNER_NULLPTR;
