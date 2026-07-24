@@ -492,7 +492,6 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           AscendC::PipeBarrier<PIPE_V>();
           AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(3);
           AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
-          AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(2);
           tl::ascend::copy_gm_to_ub<float, 2048>(v1_bw_p_full[0], PReduced[(((pipe_iter * 49152) + (cid * 2048)) - 49152)], 2048, 1, 2048, 0.000000e+00f);
           tl::ascend::copy_gm_to_ub<float, 2048>(v1_bw_sy_full[0], SoftmaxI[(((pipe_iter * 49152) + (cid * 2048)) - 49152)], 2048, 1, 2048, 0.000000e+00f);
           AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(3);
@@ -523,6 +522,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           }
           AscendC::Sub(v1_bw_p_full[0], v1_bw_sy_full[0], v1_bw_p_full[0], 2048);
           AscendC::PipeBarrier<PIPE_V>();
+          AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(3);
           for (int32_t bw_row_tile = 0; bw_row_tile < 8; ++bw_row_tile) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(2);
