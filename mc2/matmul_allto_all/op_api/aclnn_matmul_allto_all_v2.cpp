@@ -18,7 +18,7 @@
 
 // 两段式接口
 extern "C" aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                             const aclTensor *biasOptional,
+                const aclTensor *biasOptional,
                                                              const aclIntArray *alltoAllAxesOptional, const char *group,
                                                              const char *commMode, bool transposeX1, bool transposeX2,
                                                              const aclTensor *output, uint64_t *workspaceSize,
