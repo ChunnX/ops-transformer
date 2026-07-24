@@ -856,7 +856,8 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
     }
 
     if (attrs->GetAttrPointer<float>(SCALE_VALUE_INDEX) == nullptr) {
-        scaleValue_ = 1.0f / std::sqrt(static_cast<float>(embeddingSize_));
+        OP_LOGW(bsaContext->GetNodeName(), "Attr scaleValue is not provided and will be used as 1.0.");
+        scaleValue_ = 1.0f;
     } else {
         scaleValue_ = *attrs->GetAttrPointer<float>(SCALE_VALUE_INDEX);
     }
