@@ -1173,6 +1173,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRe
         return;
     }
 
+    SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID4>();
     Duplicate<int32_t>(relayReceivedTensor_, 0, static_cast<int32_t>(DISPATCH_WAVE_TILE_M));
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
 
@@ -1218,6 +1219,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRe
             relayReceivedTensor_.SetValue(copyIdx, int32_t(1));
             ++receivedCount;
         }
+        SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID1>();
     }
     hcomm_.Drain(channel);
 }
