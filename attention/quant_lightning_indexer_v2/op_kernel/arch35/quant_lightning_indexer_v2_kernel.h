@@ -450,9 +450,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::DealActSeqLenIsZero(uint32_t bIdx, 
         } else if (constInfo.outputLayout == LI_LAYOUT::BSND) {
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
                 // B,S1,N2,K
-                uint64_t indiceOutOffset = static_cast<uint64_t>(bIdx) * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount +
-                                           static_cast<uint64_t>(s1Idx) * constInfo.kHeadNum * constInfo.sparseCount +  // B轴、S1轴偏移
-                                           static_cast<uint64_t>(n2Idx) * constInfo.sparseCount;                        // N2轴偏移
+                uint64_t indiceOutOffset = static_cast<uint64_t>(bIdx) * constInfo.qSeqSize * constInfo.kHeadNum *
+                                           constInfo.sparseCount + static_cast<uint64_t>(s1Idx) * constInfo.kHeadNum *
+                                           constInfo.sparseCount +     // B轴、S1轴偏移
+                                           static_cast<uint64_t>(n2Idx) * constInfo.sparseCount;  // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         }

@@ -225,13 +225,27 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitLDBuffers(TPipe *pipe,
     const struct QLIV2Common::LdSplitCoreInfo &ldInfo) {
     pipe->Reset();
 
-    // 根据sparseCount动态计算LD的trunk长度，使LD阶段UB占用尽量接近目标值(248KB)且不超限
-    // UB总占用 = 20·topkCountAlign256_ + 8·trunkLenLd_ + 3840 (字节)，其中3840为各buffer的固定开销
-    // Dynamically compute LD trunk length based on sparseCount to approach the
-    // target UB usage (248KB) without exceeding it.
-    // Total UB = 20·topkCountAlign256_ + 8·trunkLenLd_ + 3840 (bytes); 3840 is fixed overhead
-    uint32_t fixedBytes = 20 * topkCountAlign256_ + 3840;
-    uint32_t availForTrunk = (LD_UB_TARGET_BYTES > fixedBytes) ? (LD_UB_TARGET_BYTES - fixedBytes) : 0;
+    // 根据sparseCount动态计算LD的trunk长度，使LD阶段UB占用尽量接近248KB且不超限
+    //
+    // UB总占用 = Σ各buffer，按 A=topkCountAlign256_、L=trunkLenLd_ 归并后：
+    //   Total = 20·A + 8·L + fixedBytes
+    //   A系数20 = ldIndex(4)+indicesOut(4)+mrgValue(2)+scoreOut(2)+valueOut(2)+topkTmp(6) (字节/元素)
+    //   L系数8  = ldIndex(4)+mrgValue(2)+topkTmp(2)                                  (字节/元素)
+    //   fixedBytes = topk内部固定区 + 三输出buffer的+64余量(见下方命名常量)
+    //
+    // Dynamically compute LD trunk length so UB usage approaches 248KB without exceeding it.
+    // Total = 20·A + 8·L + fixedBytes (A=topkCountAlign256_, L=trunkLenLd_)
+
+    // topk内部固定区: histograms(256)+idxHigh(256)+idxLow(256)+nkValue(64)，均为uint32
+    // topk internal fixed area: histograms+idxHigh+idxLow (3×256) + nkValue(64), all uint32
+    constexpr uint32_t TOPK_FIXED_BYTES = (3 * 256 + 64) * sizeof(uint32_t);
+    // 三输出buffer的+64余量(用于duplicate刷-1/刷0): indicesOut(uint32)+scoreOut(SCORE_T)+valueOut(bf16)
+    // +64 padding of 3 output buffers for duplicate/zero-fill
+    constexpr uint32_t OUTPUT_PAD_BYTES = 64 * (sizeof(uint32_t) + sizeof(SCORE_T) + sizeof(bfloat16_t));
+    const uint32_t fixedBytes = TOPK_FIXED_BYTES + OUTPUT_PAD_BYTES;
+
+    uint32_t availForTrunk = (LD_UB_TARGET_BYTES > 20 * topkCountAlign256_ + fixedBytes)
+        ? (LD_UB_TARGET_BYTES - 20 * topkCountAlign256_ - fixedBytes) : 0;
     trunkLenLd_ = availForTrunk / 8;
     // 保底：至少能装下一个topkCountAlign16_块
     // Floor: at least one topkCountAlign16_ block
