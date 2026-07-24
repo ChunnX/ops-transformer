@@ -529,6 +529,12 @@ def tilelang_grad_kl_loss_single_kernel(
                                 else:
                                     T.wait_flag("fix", "m", 1)
                                     T.mma(c1_q_l0a_ping, c1_key_l0b_ping, c1_p_l0c_pong, init=(d_idx == 0))
+                                # The next d tile accumulates into this same
+                                # L0C slot.  MTE1 may advance on the other
+                                # operand slot, but M must finish this write
+                                # before its FIX_M token is returned.
+                                if d_idx + 1 < d_num_query or d_num_rope > 0:
+                                    T.pipe_barrier("m")
                                 T.set_flag("m", "mte1", 0)
                                 if d_idx + 1 < d_num_query or d_num_rope > 0:
                                     if k_inner % 2 == 0:
@@ -575,6 +581,8 @@ def tilelang_grad_kl_loss_single_kernel(
                                 else:
                                     T.wait_flag("fix", "m", 1)
                                     T.mma(c1_q_l0a_pong, c1_key_l0b_pong, c1_p_l0c_pong, init=(d_idx == 0))
+                                if d_idx + 1 < d_num_query or d_num_rope > 0:
+                                    T.pipe_barrier("m")
                                 T.set_flag("m", "mte1", 1)
                                 if d_idx + 1 < d_num_query or d_num_rope > 0:
                                     if k_inner % 2 == 0:
@@ -603,6 +611,8 @@ def tilelang_grad_kl_loss_single_kernel(
                                 else:
                                     T.wait_flag("fix", "m", 1)
                                     T.mma(c1_q_l0a_ping, c1_key_l0b_ping, c1_p_l0c_pong, init=False)
+                                if rope_idx + 1 < d_num_rope:
+                                    T.pipe_barrier("m")
                                 T.set_flag("m", "mte1", 0)
                                 if rope_idx + 1 < d_num_rope:
                                     if k_inner % 2 == 0:
@@ -629,6 +639,8 @@ def tilelang_grad_kl_loss_single_kernel(
                                 else:
                                     T.wait_flag("fix", "m", 1)
                                     T.mma(c1_q_l0a_pong, c1_key_l0b_pong, c1_p_l0c_pong, init=False)
+                                if rope_idx + 1 < d_num_rope:
+                                    T.pipe_barrier("m")
                                 T.set_flag("m", "mte1", 1)
                                 if rope_idx + 1 < d_num_rope:
                                     if k_inner % 2 == 0:

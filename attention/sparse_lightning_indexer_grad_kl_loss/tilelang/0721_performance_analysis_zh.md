@@ -236,6 +236,14 @@ L0A/L0B/L0C 容量无法同时容纳 P 的双槽和 SY 的独立精确形状，�
 证明两套 P L0 地址彼此不重叠、MMA/FIX 模板仍为 128x128、且 SY 地址来自已结束
 的 P lifetime。任何容量、offset 或 event 审计失败都必须立即回退。
 
+首次运行已确认两套 P L0C 位于 offset 0 和 65536，物理布局和 MMA/FIX 模板均
+正确，但设备报告 `L0C read/write conflict`。根因是 L0A/L0B 双槽让后续 MMA 更早
+发射，而中间 d tile 对同一 L0C 的累加没有显式完成边；仅凭 `FIX_M` token 不能
+证明前一 Cube 写已完成。修复是在每次仍需向同一 L0C 累加的 MMA 后插入
+`T.pipe_barrier("m")`，再归还 `FIX_M`。该屏障只约束 M pipe 的 L0C 写完成，保留
+不同 L0A/L0B 槽上的物理隔离；修复后仍须重新审计 C++ 的 `PipeBarrier<PIPE_M>`
+位置、精度和性能。
+
 ### 已回退：V0 P/SY 两阶段 gather
 
 官方 `ProcessVector0` 并不在同一稀疏行中同时 gather 三种数据。它先遍历全部
