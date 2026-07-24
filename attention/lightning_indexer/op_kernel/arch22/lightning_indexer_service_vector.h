@@ -404,12 +404,8 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 // (cuS1Idx alone is 0,1,2 for every batch when s1BaseSize > qSeqSize, causing overwrites)
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
                 uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
-                AscendC::DataCopyParams dcParams;
-                dcParams.blockCount = 1;
-                dcParams.blockLen = s2BaseSize_ * sizeof(float);
-                dcParams.srcStride = 0;
-                dcParams.dstStride = 0;
-                DataCopyPad(scoreB16Gm[scoreOffset], reduceOutInner, dcParams);
+                DataCopyPad(scoreB16Gm[scoreOffset], reduceOutInner, DataCopyExtParams{
+                    static_cast<uint16_t>(1), static_cast<uint32_t>(s2BaseSize_ * sizeof(float)), 0, 0, 0});
             }
             } // end if radixCuS2Len > 0
             } else {
