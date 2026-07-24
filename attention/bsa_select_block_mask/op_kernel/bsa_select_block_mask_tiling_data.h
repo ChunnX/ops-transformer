@@ -83,9 +83,10 @@ public:
     uint8_t kvLayout;
     uint8_t useActualBlockLenQ;
     uint8_t useActualBlockLenK;
+    uint8_t useActualSeqLenQ;
+    uint8_t useActualSeqLenK;
     uint16_t qChunkSize;
     uint16_t kChunkSize;
-    uint8_t rsvd3;
 
     uint32_t get_batchSize() const { return batchSize; }
     void set_batchSize(uint32_t v) { this->batchSize = v; }
@@ -121,6 +122,10 @@ public:
     void set_useActualBlockLenQ(uint8_t v) { this->useActualBlockLenQ = v; }
     uint8_t get_useActualBlockLenK() const { return useActualBlockLenK; }
     void set_useActualBlockLenK(uint8_t v) { this->useActualBlockLenK = v; }
+    uint8_t get_useActualSeqLenQ() const { return useActualSeqLenQ; }
+    void set_useActualSeqLenQ(uint8_t v) { this->useActualSeqLenQ = v; }
+    uint8_t get_useActualSeqLenK() const { return useActualSeqLenK; }
+    void set_useActualSeqLenK(uint8_t v) { this->useActualSeqLenK = v; }
     uint16_t get_qChunkSize() const { return qChunkSize; }
     void set_qChunkSize(uint16_t v) { this->qChunkSize = v; }
     uint16_t get_kChunkSize() const { return kChunkSize; }

@@ -122,6 +122,13 @@ bool BSASelectBlockMaskTilingBase::AnalyzeAttrs()
     useActualBlockLenK = (actualBlockLenKVTensor != nullptr &&
                           actualBlockLenKVTensor->GetShape().GetStorageShape().GetDimNum() != 0) ? 1 : 0;
 
+    auto actualSeqLenQTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENS_Q_INPUT_INDEX);
+    useActualSeqLenQ = (actualSeqLenQTensor != nullptr &&
+                        actualSeqLenQTensor->GetShape().GetStorageShape().GetDimNum() != 0) ? 1 : 0;
+    auto actualSeqLenKTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENS_KV_INPUT_INDEX);
+    useActualSeqLenK = (actualSeqLenKTensor != nullptr &&
+                        actualSeqLenKTensor->GetShape().GetStorageShape().GetDimNum() != 0) ? 1 : 0;
+
     OP_LOGD(opName, "attrs: queryLayout[%s] kvLayout[%s] blockShapeX[%lu] blockShapeY[%lu] "
             "sparsity[%f] sparsityMode[%d] scaleValue[%f].",
             queryLayout, kvLayout, blockShapeX, blockShapeY, sparsity, sparsityMode, scaleValue);
@@ -341,6 +348,8 @@ ge::graphStatus BSASelectBlockMaskTilingBase::GetShapeAttrsInfo()
     baseParams_->set_kvLayout(static_cast<uint8_t>(tilingKeyLayoutKV));
     baseParams_->set_useActualBlockLenQ(useActualBlockLenQ);
     baseParams_->set_useActualBlockLenK(useActualBlockLenK);
+    baseParams_->set_useActualSeqLenQ(useActualSeqLenQ);
+    baseParams_->set_useActualSeqLenK(useActualSeqLenK);
     baseParams_->set_qChunkSize(Q_CHUNK_SIZE);
     baseParams_->set_kChunkSize(K_CHUNK_SIZE);
 

@@ -53,12 +53,14 @@ public:
                                                  GlobalTensor<IN_T> &queryGm,
                                                  GlobalTensor<int64_t> &actualBlockLenQGm,
                                                  GlobalTensor<POOL_OUT_T> &qCmpGm,
-                                                 uint64_t seqPrefixSumQ);
+                                                 uint64_t seqPrefixSumQ,
+                                                 uint64_t blockPrefixSumQ);
     __aicore__ inline void PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
                                                  GlobalTensor<IN_T> &keyGm,
                                                  GlobalTensor<int64_t> &actualBlockLenKVGm,
                                                  GlobalTensor<POOL_OUT_T> &kCmpGm,
-                                                 uint64_t seqPrefixSumKV);
+                                                 uint64_t seqPrefixSumKV,
+                                                 uint64_t blockPrefixSumKV);
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
                                                         uint32_t kChunkStart, uint32_t kChunkSize,
                                                         uint32_t validYBlocks);
@@ -125,9 +127,10 @@ __aicore__ inline void BSAVectorService<BSAT>::PoolingSingleQBlock(
     GlobalTensor<IN_T> &queryGm,
     GlobalTensor<int64_t> &actualBlockLenQGm,
     GlobalTensor<POOL_OUT_T> &qCmpGm,
-    uint64_t seqPrefixSumQ)
+    uint64_t seqPrefixSumQ, uint64_t blockPrefixSumQ)
 {
-    poolOP.PoolingSingleQBlock(batchIdx, headIdx, qBlockIdx, queryGm, actualBlockLenQGm, qCmpGm, seqPrefixSumQ);
+    poolOP.PoolingSingleQBlock(batchIdx, headIdx, qBlockIdx, queryGm, actualBlockLenQGm,
+                              qCmpGm, seqPrefixSumQ, blockPrefixSumQ);
 }
 
 template <typename BSAT>
@@ -136,9 +139,10 @@ __aicore__ inline void BSAVectorService<BSAT>::PoolingSingleKBlock(
     GlobalTensor<IN_T> &keyGm,
     GlobalTensor<int64_t> &actualBlockLenKVGm,
     GlobalTensor<POOL_OUT_T> &kCmpGm,
-    uint64_t seqPrefixSumKV)
+    uint64_t seqPrefixSumKV, uint64_t blockPrefixSumKV)
 {
-    poolOP.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx, keyGm, actualBlockLenKVGm, kCmpGm, seqPrefixSumKV);
+    poolOP.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx, keyGm, actualBlockLenKVGm,
+                              kCmpGm, seqPrefixSumKV, blockPrefixSumKV);
 }
 
 template <typename BSAT>

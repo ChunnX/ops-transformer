@@ -48,11 +48,13 @@ public:
 
     __aicore__ inline void PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
                                                GlobalTensor<IN_T> &queryGm, GlobalTensor<int64_t> &actualBlockLenQGm,
-                                               GlobalTensor<OUT_T> &qCmpGm, uint64_t seqPrefixSumQ);
+                                               GlobalTensor<OUT_T> &qCmpGm, uint64_t seqPrefixSumQ,
+                                               uint64_t blockPrefixSumQ);
 
     __aicore__ inline void PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
                                                GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                               GlobalTensor<OUT_T> &kCmpGm, uint64_t seqPrefixSumKV);
+                                               GlobalTensor<OUT_T> &kCmpGm, uint64_t seqPrefixSumKV,
+                                               uint64_t blockPrefixSumKV);
 
 private:
     __aicore__ inline void PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset, uint32_t actualLen,
@@ -194,7 +196,8 @@ template <typename BSAT>
 __aicore__ inline void
 BSAVecPoolService<BSAT>::PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
                                             GlobalTensor<IN_T> &queryGm, GlobalTensor<int64_t> &actualBlockLenQGm,
-                                            GlobalTensor<OUT_T> &qCmpGm, uint64_t seqPrefixSumQ)
+                                            GlobalTensor<OUT_T> &qCmpGm, uint64_t seqPrefixSumQ,
+                                            uint64_t blockPrefixSumQ)
 {
     uint32_t dSize = constInfo.dSize;
     uint64_t blockShapeX = constInfo.blockShapeX;
@@ -221,7 +224,8 @@ BSAVecPoolService<BSAT>::PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx
     // 2. 获取 actualLen
     uint32_t actualLen;
     if (tilingData->baseParams.useActualBlockLenQ) {
-        uint64_t blkIdx = static_cast<uint64_t>(batchIdx) * xBlocks + qBlockIdx;
+        uint64_t blkIdx = (BSAT::layoutQ == BSALayout::TND) ?
+            (blockPrefixSumQ + qBlockIdx) : (static_cast<uint64_t>(batchIdx) * xBlocks + qBlockIdx);
         actualLen = static_cast<uint32_t>(actualBlockLenQGm.GetValue(blkIdx));
 
         // 防止 actualLen > blockShapeX情形
@@ -234,10 +238,10 @@ BSAVecPoolService<BSAT>::PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx
     // 避免短序列 batch 读取到下一个 batch 的数据
     uint32_t tokenStart = qBlockIdx * static_cast<uint32_t>(blockShapeX);
     uint32_t curBatchSeqlen;
-    if constexpr (BSAT::layoutQ == BSALayout::BNSD) {
-        curBatchSeqlen = maxQSeqlen;
-    } else {
+    if (tilingData->baseParams.useActualSeqLenQ) {
         curBatchSeqlen = static_cast<uint32_t>(actualSeqLensQGmTensor.GetValue(batchIdx));
+    } else {
+        curBatchSeqlen = maxQSeqlen;
     }
     uint32_t remaining = (curBatchSeqlen > tokenStart) ? (curBatchSeqlen - tokenStart) : 0;
     actualLen = BSAMin(actualLen, remaining);
@@ -257,7 +261,8 @@ template <typename BSAT>
 __aicore__ inline void
 BSAVecPoolService<BSAT>::PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
                                             GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                            GlobalTensor<OUT_T> &kCmpGm, uint64_t seqPrefixSumKV)
+                                            GlobalTensor<OUT_T> &kCmpGm, uint64_t seqPrefixSumKV,
+                                            uint64_t blockPrefixSumKV)
 {
     uint32_t dSize = constInfo.dSize;
     uint64_t blockShapeY = constInfo.blockShapeY;
@@ -284,7 +289,9 @@ BSAVecPoolService<BSAT>::PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx
     // 2. 获取 actualLen
     uint32_t actualLen;
     if (tilingData->baseParams.useActualBlockLenK) {
-        uint64_t blkIdx = static_cast<uint64_t>(batchIdx) * constInfo.yBlocks + kBlockIdx;
+        uint64_t blkIdx = (BSAT::layoutKV == BSALayout::TND) ?
+            (blockPrefixSumKV + kBlockIdx) :
+            (static_cast<uint64_t>(batchIdx) * constInfo.yBlocks + kBlockIdx);
         actualLen = static_cast<uint32_t>(actualBlockLenKVGm.GetValue(blkIdx));
         // 防止 actualLen > blockShapeX情形
         actualLen = BSAMin(actualLen, blockShapeY);
@@ -296,10 +303,10 @@ BSAVecPoolService<BSAT>::PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx
     // TND 下各 batch 序列长度不同，需按当前 batch 的实际 seqlen 计算剩余有效长度
     uint32_t tokenStart = kBlockIdx * static_cast<uint32_t>(blockShapeY);
     uint32_t curBatchSeqlen;
-    if constexpr (BSAT::layoutKV == BSALayout::BNSD) {
-        curBatchSeqlen = maxKvSeqlen;
-    } else {
+    if (tilingData->baseParams.useActualSeqLenK) {
         curBatchSeqlen = static_cast<uint32_t>(actualSeqLensKVGmTensor.GetValue(batchIdx));
+    } else {
+        curBatchSeqlen = maxKvSeqlen;
     }
     uint32_t remaining = (curBatchSeqlen > tokenStart) ? (curBatchSeqlen - tokenStart) : 0;
     actualLen = BSAMin(actualLen, remaining);
