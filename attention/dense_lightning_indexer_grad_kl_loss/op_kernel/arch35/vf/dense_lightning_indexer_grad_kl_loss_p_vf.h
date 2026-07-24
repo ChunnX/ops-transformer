@@ -32,6 +32,7 @@ __simd_vf__ inline void ComputePHeadVF(
     RegTensor<float> scaledReg;
     RegTensor<float> maxReg;
     RegTensor<float> sumReg;
+    RegTensor<float> subReg;
     RegTensor<float> probReg;
     RegTensor<float> accReg;
 
@@ -47,8 +48,8 @@ __simd_vf__ inline void ComputePHeadVF(
             uint32_t offset = rowOffset + columnOffset;
             LoadAlign(scoreReg, scoreUb + offset);
             Muls(scaledReg, scoreReg, scale, tailMask);
-            ExpSub<float, float, RegLayout::ZERO, MaskMergeMode::ZEROING>(
-                probReg, scaledReg, maxReg, tailMask);
+            Sub(subReg, scaledReg, maxReg, tailMask);
+            Exp(probReg, subReg, tailMask);
             Div(probReg, probReg, sumReg, tailMask);
             if constexpr (!FIRST_HEAD) {
                 LoadAlign(accReg, dstUb + offset);
