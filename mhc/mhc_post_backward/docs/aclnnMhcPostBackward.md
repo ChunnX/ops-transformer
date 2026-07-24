@@ -39,7 +39,7 @@
   grad\_h\_post=({grad\_output} * (h_{l}^{out}.unsqueeze(-2))).sum(dim=-1)
   $$
 
-  > 注：hRes作为可选参数（支持置为nullptr）仅在 <term>Ascend 950PR/Ascend 950DT</term> 及 <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 上支持；其他产品hRes为必选输入。
+  > 注：hRes作为可选参数（支持置为nullptr）仅在 <term>Ascend 950PR/Ascend 950DT</term> 上支持。
 
 ## 函数原型
 
