@@ -102,7 +102,7 @@ protected:
     LocalTensor<QK_T> cL0_;
 
     TBuf<TPosition::VECCALC> bufUB_;
-    LocalTensor<QK_T> mm1ResUB_;
+    LocalTensor<float> mm1ResUB_;
 
     uint64_t keyL1BufIdx_ = 0;
     uint64_t queryL1Mte2BufIdx_ = 0;
@@ -134,7 +134,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(QK_T));
         // 大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
-    mm1ResUB_ = bufUB_.Get<QK_T>();
+    mm1ResUB_ = bufUB_.Get<float>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
     pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK * sizeof(K_T));
@@ -146,7 +146,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
     keyL0_ = bufKeyL0_.Get<K_T>();
 
     pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(float));
-    cL0_ = bufL0C_.Get<float>();
+    cL0_ = bufL0C_.Get<QK_T>();
 }
 
 template <typename QLIV2T>
@@ -505,13 +505,13 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         fixpipeParams.quantPre = F322BF16;
         fixpipeParams.reluEn = true; // ReLU激活
         fixpipeParams.subBlockId = 0;
-        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
+        Fixpipe<float, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
         // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
             cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
             fixpipeParams);
 
         fixpipeParams.subBlockId = 1;
-        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
+        Fixpipe<float, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
             // 未考虑s1gGmOffset和s2GmOffset
                                                     cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + mSize / 2 * 16],
                                                         fixpipeParams); // 将matmul结果从L0C搬运到UB

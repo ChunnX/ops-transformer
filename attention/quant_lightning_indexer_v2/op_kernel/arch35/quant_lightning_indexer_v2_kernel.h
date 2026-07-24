@@ -77,9 +77,9 @@ public:
     static constexpr bool PAGE_ATTENTION = QLIV2T::pageAttention;
     static constexpr LI_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
     static constexpr LI_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
-
+    using W_T = typename QLIV2T::weightType;
     using SCORE_T = typename QLIV2T::scoreType;
-
+    using SCALE_T = typename QLIV2T::scaleType;
     QLIV2Matmul<QLIV2T> matmulService;
     QLIV2Vector<QLIV2T> vectorService;
 
@@ -119,9 +119,9 @@ protected:
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
-    GlobalTensor<float> weightsGm;
-    GlobalTensor<float> qScaleGm;
-    GlobalTensor<float> kScaleGm;
+    GlobalTensor<W_T> weightsGm;
+    GlobalTensor<SCALE_T> qScaleGm;
+    GlobalTensor<SCALE_T> kScaleGm;
     GlobalTensor<uint32_t> metadataGm;
 
     GlobalTensor<int32_t> indiceOutGm;
@@ -505,9 +505,9 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
 
     if ASCEND_IS_AIV {
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-        weightsGm.SetGlobalBuffer((__gm__ float *)weights);
-        qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
-        kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
+        weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
+        qScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)queryScale);
+        kScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)keyScale);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         valueOutGm.SetGlobalBuffer((__gm__ bfloat16_t *)sparseValues);
         if (outputIdxOffset != nullptr) {
