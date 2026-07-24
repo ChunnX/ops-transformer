@@ -9,9 +9,15 @@
  */
 
 #include "../arch35/kernel_utils.hpp"
+#include "../attn_infra/epilogue/block/block_epilogue_arch35_utils.hpp"
+#include "../attn_infra/gemm/block/block_mmad_arch35_utils.hpp"
 
 using namespace NpuArch;
 using namespace tla;
+using namespace MXFP4;
+
+namespace EpMXFP4 = Epilogue::Block::MXFP4;   // UB 常量别名
+namespace GmMXFP4 = Gemm::Block::MXFP4;       // L1 常量别名
 
 namespace BsaKernelArch35 {
 
@@ -43,7 +49,7 @@ public:
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
     using ElementGroupMax = typename EpilogueComputePScale::ElementGroupMax;
-    using ElementScale = typename EpilogueComputePScale::ElementScale;
+    using ElementPScale = typename EpilogueComputePScale::ElementPScale;
     using ElementLocalGlobalMax = typename EpilogueCopyGlobalMaxUbToL1::ElementLocalGlobalMax;
 
     using LayoutQ = layout::RowMajor;
@@ -60,9 +66,9 @@ public:
 
     using LayoutTagL1P = typename BlockMmadPV::LayoutTagL1A;
 
+    // 核间同步
     static constexpr uint8_t SYNC_MODE_2 = 2;
     static constexpr uint8_t SYNC_MODE_4 = 4;
-    // static constexpr uint16_t CROSS_CORE_SYNC_C1_V1[2] = {0, 1};
     static constexpr uint16_t CROSS_CORE_SYNC_V1_C1[2] = {9, 10};
     static constexpr uint16_t CROSS_CORE_SYNC_GMAX_UB_TO_L1 = 8;
     static constexpr uint16_t CROSS_CORE_SYNC_GMAX_L1_TO_UB = 7;
@@ -76,11 +82,6 @@ public:
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PV_RE_DELAY_N + 1;
     static constexpr uint32_t TILE_GROUP_N = 16;
 
-    static constexpr uint32_t L1_P_BUF_CNT = 20;
-    static constexpr uint32_t UB_S_BUF_CNT = 2;
-    static constexpr uint32_t L1_PSCALE_CNT = 20;
-    static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_CNT = 4;
-    static constexpr uint32_t UB_PEER_GLOBAL_MAX_CNT = 4;
     static constexpr uint32_t UB_S_OTMP_BUF_STAGES = 2;
 
     // Methods
@@ -138,12 +139,18 @@ public:
         gSparseIdx.SetGlobalBuffer((__gm__ ElementSparseIdx *)params.workSpace);
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
         gSparseCount.SetGlobalBuffer((__gm__ ElementSparseCount *)(params.workSpace + sparseIdxSize_));
-        // cross core data move dst buffers
-        AscendC::LocalTensor<ElementP> l1PTensor[L1_P_BUF_CNT];
-        AscendC::LocalTensor<ElementS> ubSTensor[UB_S_BUF_CNT];
-        AscendC::LocalTensor<ElementOTmp> ubOTmpTensor[UB_S_OTMP_BUF_STAGES];
 
-        InitCrossCoreDstBuf(l1PTensor, ubSTensor, ubOTmpTensor);
+        // cross core data move dst buffers
+        AscendC::LocalTensor<ElementS> ubSTensor[EpMXFP4::UB_S_BUF_CNT];
+        AscendC::LocalTensor<ElementP> l1PTensor[GmMXFP4::L1_P_BUF_CNT];
+        AscendC::LocalTensor<ElementPScale> l1PScaleTensor[GmMXFP4::L1_P_SCALE_BUF_CNT];
+        AscendC::LocalTensor<ElementS> l1LocalGlobalMaxTensor[GmMXFP4::L1_LOCAL_GLOBAL_MAX_BUF_CNT];
+        AscendC::LocalTensor<ElementS> ubLocalGlobalMaxTensor[EpMXFP4::UB_LOCAL_GLOBAL_MAX_CNT];
+        AscendC::LocalTensor<ElementOTmp> ubOTmpTensor;
+
+
+        InitCrossCoreDstBuf(l1PTensor, l1PScaleTensor, l1LocalGlobalMaxTensor,
+                            ubSTensor, ubLocalGlobalMaxTensor, ubOTmpTensor);
         // core idx
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();
@@ -160,14 +167,19 @@ public:
         AscendC::SyncAll<false>();
 
  #ifdef __DAV_CUBE__
-            coreIdx = AscendC::GetBlockIdx();
-            // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
-            BlockMmadPV blockMmadPV(resource);
+        coreIdx = AscendC::GetBlockIdx();
+        // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
+        BlockMmadPV blockMmadPV(resource);
+
+        //  auto ubOTmpLayoutTla = tla::MakeLayout(
+        tla::MakeShape(embed_ + 1, CeilDiv(delay20TaskInfo.qsActBaseTile, 128u) * 128),
+        tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
+        auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor, ubOTmpLayoutTla, Arch::PositionUB{});
  #endif	 
  #ifdef __DAV_VEC__
-            coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-            // EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
-            // EpilogueRescaleO epilogueRescaleO(resource);
+        coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        // EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
+        // EpilogueRescaleO epilogueRescaleO(resource);
  #endif	 
 
         // runMainLoop
@@ -239,10 +251,6 @@ public:
                     //   row-stride=64（固定 rowsum-fractal 宽，供 fixpipe dstStride）。
                     //   非标 RowMajor（stride≠cols），由 block 的 FixpipeMm2 经 CopyL0CToUBTla SPLIT_N 消费；
                     //   isRowMajor 只查 stride<1>==1 → 命中。block 直传此 tla（不再 .data() 重包）。
-                    auto ubOTmpLayoutTla = tla::MakeLayout(
-                        tla::MakeShape(embed_ + 1, CeilDiv(delay20TaskInfo.qsActBaseTile, 128u) * 128),
-                        tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
-                    auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor[0], ubOTmpLayoutTla, Arch::PositionUB{});
 
                     GemmCoord actualBlockShapePV{delay20TaskInfo.qsActBaseTile, embed_, delay20TileInfo.kvsActBaseTile};
                     // [改造] 传 base GM 张量(gVDequantScale/gSparseIdx) + delay20TaskInfo 整体，
@@ -265,7 +273,7 @@ public:
                 } else {
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
-                        AscendC::DumpTensor(ubOTmpTensor[0], 130, 128);
+                        AscendC::DumpTensor(ubOTmpTensor, 130, 128);
                         ComputeVec2(delay20TileInfo);
                         
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
@@ -295,6 +303,7 @@ public:
 
                 uint32_t mm1ResBufId = (curTileInfo.loop / 2) % 2;
                 uint32_t subBlockIdx = curTileInfo.loop % 2;
+
                 if ASCEND_IS_AIC {
                     AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                     ComputeMm1(curTileInfo);
@@ -433,33 +442,41 @@ public:
         mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
     }
 
-    __aicore__ inline
-    uint64_t CalcCrossMm1Mm2PrefixSumL0ABStages(uint32_t gatheredKvSTileIdx, uint32_t singleMm1L0Stages,
-                                                uint32_t singleMm2L0Stages, uint32_t kvSLoopNum, bool isCurPhaseMm1)
-    {
-        // uint64_t prefixSumStages;
-        // if (isCurPhaseMm1) {
-        //     prefixSumStages =
-        //         (gatheredKvSTileIdx <= PRE_LAUNCH) ?
-        //             gatheredKvSTileIdx * singleMm1L0Stages :
-        //             gatheredKvSTileIdx * singleMm1L0Stages + (gatheredKvSTileIdx - PRE_LAUNCH) * singleMm2L0Stages;
-        // } else {
-        //     prefixSumStages =
-        //         (gatheredKvSTileIdx < kvSLoopNum - PRE_LAUNCH) ?
-        //             (gatheredKvSTileIdx + 1 + PRE_LAUNCH) * singleMm1L0Stages + gatheredKvSTileIdx * singleMm2L0Stages :
-        //             kvSLoopNum * singleMm1L0Stages + gatheredKvSTileIdx * singleMm2L0Stages;
-        // }
-        // return prefixSumStages;
-    }
 
     __aicore__ inline
     void InitCrossCoreDstBuf(
-        AscendC::LocalTensor<ElementP> (&l1PTensor)[L1_P_BUF_CNT],
-        AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_BUF_CNT],
-        AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
+        AscendC::LocalTensor<ElementP> (&l1PTensor)[GmMXFP4::L1_P_BUF_CNT],
+        AscendC::LocalTensor<ElementPScale> (&l1PScaleTensor)[GmMXFP4::L1_P_SCALE_BUF_CNT],
+        AscendC::LocalTensor<ElementS> (&l1LocalGlobalMax)[GmMXFP4::L1_LOCAL_GLOBAL_MAX_BUF_CNT],
+        AscendC::LocalTensor<ElementS> (&ubSTensor)[EpMXFP4::UB_S_BUF_CNT],
+        AscendC::LocalTensor<ElementS> (&ubLocalGlobalMax)[EpMXFP4::UB_LOCAL_GLOBAL_MAX_CNT],
+        AscendC::LocalTensor<ElementOTmp> &ubOTmpTensor)
 
     {
-        ubOTmpTensor[0] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(0);
+        // L1 侧 buffer 初始化：OFFSET + i * SIZE 递增
+        for (uint32_t i = 0; i < GmMXFP4::L1_P_BUF_CNT; i++) {
+            l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
+                GmMXFP4::L1_P_BUF_OFFSET + GmMXFP4::L1_P_BUF_SIZE * i);
+        }
+        for (uint32_t i = 0; i < GmMXFP4::L1_P_SCALE_BUF_CNT; i++) {
+            l1PScaleTensor[i] = resource.l1Buf.template GetBufferByByte<ElementPScale>(
+                GmMXFP4::L1_P_SCALE_BUF_OFFSET + GmMXFP4::L1_P_SCALE_BUF_SIZE * i);
+        }
+        for (uint32_t i = 0; i < GmMXFP4::L1_LOCAL_GLOBAL_MAX_BUF_CNT; i++) {
+            l1LocalGlobalMax[i] = resource.l1Buf.template GetBufferByByte<ElementS>(
+                GmMXFP4::L1_LOCAL_GLOBAL_MAX_BUF_OFFSET + GmMXFP4::L1_LOCAL_GLOBAL_MAX_BUF_SIZE * i);
+        }
+        // UB 侧 buffer 初始化
+        for (uint32_t i = 0; i < EpMXFP4::UB_S_BUF_CNT; i++) {
+            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
+                EpMXFP4::UB_S_BUF_OFFSET + EpMXFP4::UB_S_INNER_BUF_OFFSET * i);
+        }
+        for (uint32_t i = 0; i < EpMXFP4::UB_LOCAL_GLOBAL_MAX_CNT; i++) {
+            ubLocalGlobalMax[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
+                EpMXFP4::UB_LOCAL_GLOBAL_MAX_OFFSET + EpMXFP4::UB_P_INNER_BUF_OFFSET * i);
+        }
+        // OTmp 单 buffer
+        ubOTmpTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(EpMXFP4::UB_OTMP_BUF_OFFSET);
     }
 
     template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>

@@ -20,16 +20,15 @@
 
 #include "../attn_infra/arch/bsa_cross_core_sync.hpp"
 #include "../attn_infra/arch/bsa_resource.hpp"
-#include "../attn_infra/epilogue/block/bsa_block_epilogue.hpp"
-#include "../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
+
 #include "../tla/tensor.hpp"
 #include "../tla/layout.hpp"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 
-namespace BsaKernelArch35 {
-
+namespace MXFP4 {
+    
 struct TaskInfo {
     uint32_t batchIdx = 0;
     uint32_t qHeadIdx = 0;
@@ -69,6 +68,12 @@ struct TileInfo {
     // ===== PV 稀疏 gather 所需（mxfp4）=====
     uint32_t pvGatheredKvSTileIdx = 0;  // 当前 tile 在 task 内的 gather 后 KV base tile 序号，供 PV
 };
+}
+
+#include "../attn_infra/epilogue/block/bsa_block_epilogue.hpp"
+#include "../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
+
+namespace BsaKernelArch35 {
 
 enum class Format {
     TND = 0,
