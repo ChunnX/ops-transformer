@@ -36,5 +36,5 @@ if (NOT BUILD_OPS_RTY_KERNEL)
             )
         endif()
     endforeach()
-    
+
 endif()
