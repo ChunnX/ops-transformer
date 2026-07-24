@@ -704,6 +704,9 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessMain()
 
     if ASCEND_IS_AIV {
         vectorService.FreeEventID();
+        if (constInfo.radixTotalBatch > 0) {
+            PipeBarrier<PIPE_ALL>();
+        }
     } else {
         matmulService.FreeEventID();
         CrossCoreWaitFlag(constInfo.syncV1C1);
