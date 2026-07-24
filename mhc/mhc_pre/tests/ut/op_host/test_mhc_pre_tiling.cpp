@@ -1980,5 +1980,7 @@ TEST_F(MhcPreTiling, Ut_Check_MK_Fallback_SmallK)
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Fallback_Deterministic)
 {
+    CheckMkGeneralizedTiling(256U, 4U, 5120U, 1, 1);
+    CheckMkGeneralizedTiling(257U, 4U, 5120U, 2, 1);
     CheckMkGeneralizedTiling(1024U, 4U, 5120U, 2, 1);
 }
