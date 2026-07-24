@@ -1483,7 +1483,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 # loss partition, then recycle P's storage for diff = SY - P.
                 T.set_flag("v", "mte2", 3)
                 T.wait_flag("v", "mte2", 3)
-                T.wait_flag("mte3", "mte2", 2)
                 T.copy(
                     PReduced[bz_task, s1_id, 0:K],
                     v1_bw_p_full,
@@ -1537,6 +1536,10 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 T.tile.sub(v1_bw_p_full, v1_bw_sy_full, v1_bw_p_full)
                 T.pipe_barrier("v")
+                # P/SY full vectors share physical UB with the upcoming
+                # BMM2 slot.  Return only V ownership here; MTE3_MTE2(2)
+                # remains seeded for the first reluGrad store/BMM2 refill.
+                T.set_flag("v", "mte2", 3)
 
                 for bw_row_tile in T.serial(bw_row_tile_count):
                     bw_row_start = bw_row_tile * bw_rows_per_tile
