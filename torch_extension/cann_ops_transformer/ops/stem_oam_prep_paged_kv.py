@@ -27,8 +27,8 @@ class StemOamPrepPagedKvOpBuilder(OpBuilder):
     def schema(self) -> str:
         return [
             "stem_oam_prep_paged_kv(Tensor kCache, Tensor vCache, Tensor kvIndices, "
-            "Tensor kvSeqLens, Tensor kScaleCache, Tensor vScale, "
-            "float lambdaMag, int cacheLayout, int kvBlockSize, "
+            "int[] kvSeqLens, Tensor kScaleCache, Tensor vScale, "
+            "double lambdaMag, int cacheLayout, int kvBlockSize, "
             "int stemBlockSize, int stemStride) -> (Tensor, Tensor)"
         ]
 
@@ -37,11 +37,10 @@ class StemOamPrepPagedKvOpBuilder(OpBuilder):
         def stem_oam_prep_paged_kv_meta(
             kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale,
             lambdaMag, cacheLayout, kvBlockSize, stemBlockSize, stemStride):
-            batch = kvSeqLens.shape[0]
+            batch = kvIndices.shape[0]
             numHeads = kCache.shape[2] if cacheLayout == 0 else kCache.shape[1]
             # estimate max_Kb from kvIndices as an upper bound
-            maxKvBlocks = kvIndices.shape[1]
-            maxKvLen = maxKvBlocks * kvBlockSize
+            maxKvLen = max(kvSeqLens)
             maxKb = (maxKvLen + stemBlockSize - 1) // stemBlockSize
             if maxKb < 1:
                 maxKb = 1
@@ -58,10 +57,9 @@ stem_oam_prep_paged_kv_builder = StemOamPrepPagedKvOpBuilder()
 
 @impl(AS_LIBRARY, "stem_oam_prep_paged_kv", "PrivateUse1")
 def stem_oam_prep_paged_kv(
-    kCache: torch.Tensor, vCache: torch.Tensor, kvIndices: torch.Tensor,
-    kvSeqLens: torch.Tensor, kScaleCache: torch.Tensor, vScale: torch.Tensor,
-    lambdaMag: float, cacheLayout: int, kvBlockSize: int,
-    stemBlockSize: int, stemStride: int):
+    kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale,
+    lambdaMag=0.3, cacheLayout=0, kvBlockSize=64,
+    stemBlockSize=128, stemStride=16):
     op_module = stem_oam_prep_paged_kv_builder.load()
     return op_module.stem_oam_prep_paged_kv(
         kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale,
