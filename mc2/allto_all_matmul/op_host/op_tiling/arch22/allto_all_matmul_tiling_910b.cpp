@@ -1496,9 +1496,9 @@ ge::graphStatus AlltoAllMatmulTiling910b::DoOpTiling()
     auto cclRet = mc2tiling::GetCclBufferSize(group, &hcclBuffSize, opName_);
     if (cclRet == ge::GRAPH_SUCCESS) {
         OP_TILING_CHECK(hcclBuffSize < MAX_BUFF_BYTES,
-            OP_LOGE(opName_, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
-                hcclBuffSize, MAX_BUFF_BYTES, MAX_BUFF_BYTES / MB_BYTES),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE(opName_, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
+                                hcclBuffSize, MAX_BUFF_BYTES, MAX_BUFF_BYTES / MB_BYTES),
+                        return ge::GRAPH_FAILED);
     } else {
         OP_LOGW(opName_, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
     }

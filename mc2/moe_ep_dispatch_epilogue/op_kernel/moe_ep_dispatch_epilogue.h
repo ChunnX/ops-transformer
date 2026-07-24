@@ -458,8 +458,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         GM_ADDR firstSlotAddrThisAiv = srcRankBase + (int64_t)slotStart * perSlotBytes_;
         GlobalTensor<int32_t> srcMetaGm;
         srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(firstSlotAddrThisAiv + metaOffset_));
-        DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
-                                         perSlotBytes_ - metaBytes_, 0, 0};
+        DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_, perSlotBytes_ - metaBytes_,
+                                         0, 0};
         DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
