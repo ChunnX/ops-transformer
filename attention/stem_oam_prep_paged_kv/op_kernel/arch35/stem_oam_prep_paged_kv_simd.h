@@ -61,12 +61,6 @@ private:
     __aicore__ inline void CopyOutVFlat(int32_t batchIdx, int32_t headIDx, int32_t stemBlocksIdx);
     __aicore__ inline void CopyOutVBias(int32_t batchIdx, int32_t headIdx, int64_t numStemBlocks);
 
-    __aicore__ inline void InitKFlatAndVBias(void);
-    template <typename OUTPUT_TYPE>
-    __aicore__ inline void InitOutPutGm(const GlobalTensor<OUTPUT_TYPE> &gmTensor,
-                                                                const LocalTensor<OUTPUT_TYPE> &ublTensor,
-                                                                int64_t totalLen, int64_t lineLen);
-
 private:
     TPipe *pipe_;
     StemOamPrepPagedKvTilingData tilingData_;
@@ -175,11 +169,10 @@ __aicore__ inline void StemOamPrepPagedKvSimd::Init(GM_ADDR kCache, GM_ADDR vCac
 
     pipe_->InitBuffer(vFLatOutQue_, 1, maxKb_ * r_ * sizeof(float)); // 64k
     pipe_->InitBuffer(vBiasOutQue_, 1, maxKb_ * sizeof(float));      // 32K
-    // if (blockIdx_ == 0) {
-    //     InitOutput<bfloat16_t>(kFlatGm_, batchSize_ * hKv_ * maxKb_ * kflatDim_, bfloat16_t(0));
-    //     InitOutput<float>(vBiasGm_, batchSize_ * hKv_ * maxKb_, float(0));
-    // }
-    InitKFlatAndVBias();
+    if (blockIdx_ == 0) {
+        InitOutput<bfloat16_t>(kFlatGm_, batchSize_ * hKv_ * maxKb_ * kflatDim_, bfloat16_t(0));
+        InitOutput<float>(vBiasGm_, batchSize_ * hKv_ * maxKb_, float(0));
+    }
     SyncAll();
 }
 
@@ -276,55 +269,6 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockIndex(void)
         }
     }
     kvSeqLensQue_.FreeTensor(kvSeqLensLocal);
-}
-
-__aicore__ inline void StemOamPrepPagedKvSimd::InitKFlatAndVBias(void)
-{
-    LocalTensor<bfloat16_t> kFlatInitLocal = groupSumQue_.AllocTensor<bfloat16_t>();
-    LocalTensor<float> vBiasInitLocal = kFlatInitLocal.ReinterpretCast<float>();
-    int64_t bufSize = stemStride_ * dimQk_ * sizeof(bfloat16_t);
-    int64_t kFlatSize = batchSize_ * hKv_ * maxKb_ * kflatDim_;
-    int64_t vBiasSize = batchSize_ * hKv_ * maxKb_;
-    int64_t curCoreKFlatInitSize = Ops::Base::CeilDiv(kFlatSize, blockNum_);
-    curCoreKFlatInitSize =
-        ((curCoreKFlatInitSize * sizeof(bfloat16_t)) >= bufSize) ? curCoreKFlatInitSize : bufSize / sizeof(bfloat16_t);
-    int64_t curCoreVBiasInitSize = Ops::Base::CeilDiv(vBiasSize, blockNum_);
-    curCoreVBiasInitSize =
-        ((curCoreVBiasInitSize * sizeof(float)) >= bufSize) ? curCoreVBiasInitSize : bufSize / sizeof(float);
-    int64_t kFlatUsedCoreNum = Ops::Base::CeilDiv(kFlatSize, curCoreKFlatInitSize);
-    int64_t vBiasUsedCoreNum = Ops::Base::CeilDiv(vBiasSize, curCoreVBiasInitSize);
-    int64_t tailCoreKFlatInitSize = kFlatSize - (kFlatUsedCoreNum - 1) * curCoreKFlatInitSize;
-    int64_t tailCoreVBiasInitSize = vBiasSize - (vBiasUsedCoreNum - 1) * curCoreVBiasInitSize;
-
-    Duplicate(kFlatInitLocal, bfloat16_t(0), stemStride_ * dimQk_);
-
-    if (blockIdx_ < kFlatUsedCoreNum) {
-        auto kFlatGmOffset = blockIdx_ * curCoreKFlatInitSize;
-        auto kFlatInitLen = (blockIdx_ == kFlatUsedCoreNum - 1) ? tailCoreKFlatInitSize : curCoreKFlatInitSize;
-        InitOutPutGm<bfloat16_t>(kFlatGm_[kFlatGmOffset], kFlatInitLocal, kFlatInitLen, bufSize / sizeof(bfloat16_t));
-    }
-
-    if (blockIdx_ < vBiasUsedCoreNum) {
-        auto vBiasGmOffset = blockIdx_ * curCoreVBiasInitSize;
-        auto vBiasInitLen = (blockIdx_ == vBiasUsedCoreNum - 1) ? tailCoreVBiasInitSize : curCoreVBiasInitSize;
-        InitOutPutGm<float>(vBiasGm_[vBiasGmOffset], vBiasInitLocal, vBiasInitLen, bufSize / sizeof(float));
-    }
-
-    groupSumQue_.FreeTensor(kFlatInitLocal);
-}
-
-template <typename OUTPUT_TYPE>
-__aicore__ inline void StemOamPrepPagedKvSimd::InitOutPutGm(const GlobalTensor<OUTPUT_TYPE> &gmTensor,
-                                                            const LocalTensor<OUTPUT_TYPE> &ublTensor, int64_t totalLen,
-                                                            int64_t lineLen)
-{
-    int64_t loopNum = Ops::Base::CeilDiv(totalLen, lineLen);
-    int64_t tailDataLen = totalLen - (loopNum - 1) * lineLen;
-    for (int64_t i = 0; i < loopNum; i++) {
-        auto gmOffset = i * lineLen;
-        auto copyDataLen = (i == (loopNum - 1)) ? tailDataLen : lineLen;
-        CopyOut(gmTensor[gmOffset], ublTensor, 1, copyDataLen, 0, 0);
-    }
 }
 
 __aicore__ inline void StemOamPrepPagedKvSimd::CopyInKvSeqLens(void)
