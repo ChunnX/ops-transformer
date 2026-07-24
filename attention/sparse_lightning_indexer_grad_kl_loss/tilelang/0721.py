@@ -239,9 +239,10 @@ def tilelang_grad_kl_loss_single_kernel(
     p_row_chunk_count = ceil_div(N1, p_rows_per_chunk)
     p_cols_per_chunk = min(n_block, 64)
     p_col_chunk_count = ceil_div(n_block, p_cols_per_chunk)
-    # Keep V1 backward vector operations within the precision-proven 32x64
-    # physical tile.  C1/C2 retain their 128-column scheduling tile.
-    bw_col_block = min(n_block, 64)
+    # Process one complete C1/C2 K tile per V1 backward iteration.  The
+    # 32x128 single slot keeps the proven ownership protocol while removing
+    # the second 64-column sub-iteration.
+    bw_col_block = min(n_block, 128)
     assert n_block % bw_col_block == 0
     bw_col_count = n_block // bw_col_block
     s1_tile_num = ceil_div(S1, s1_block)
@@ -1554,8 +1555,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.mul(v1_bw_rg, v1_bw_rg, v1_bw_mask)
                         T.pipe_barrier("v")
 
-                        # dWeight consumes the unweighted diff tile and is
-                        # accumulated across both 64-column subtiles.
+                        # dWeight consumes the complete unweighted K tile and
+                        # accumulates once per 128-column iteration.
                         T.tile.mul(
                             v1_bw_bmm2,
                             v1_bw_bmm2,
