@@ -1679,7 +1679,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBa
         params_.workspaceInfo.tripleInfoPtr +
         (gmm2State.expertBeforeCnt + currentRow) * TRIPLE_SIZE * sizeof(int32_t)));
     AscendC::DataCopy(tripleTensor, tripleGm, batchCount * TRIPLE_SIZE);
-    // PipeBarrier<PIPE_MTE2>();
 
     // 执行 combine 并发送
     MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(

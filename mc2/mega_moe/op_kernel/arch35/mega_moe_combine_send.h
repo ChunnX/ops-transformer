@@ -87,14 +87,16 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
     gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ DataType *>(srcAddr));
     uint64_t dstBaseOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSize; // 元素个数
     AscendC::DataCopyExtParams singleCopyParams{1, static_cast<uint32_t>(quantTokenSize * sizeof(DataType)), 0, 0, 0};
-    DataCopyPadExtParams<DataType> copyPadParams{false, 0U, 0U, 0U};
 
-    if (!IsQuantized && toRankId == rankId) {
-        AscendC::GlobalTensor<DataType> gmm2OutGm;
-        gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ DataType *>(localSrcPtr));
-        SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
-        AscendC::DataCopyPad(ubQuant, gmm2OutGm, singleCopyParams, copyPadParams);
-        SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID4>();
+    if constexpr (!IsQuantized) {
+        DataCopyPadExtParams<DataType> copyPadParams{false, 0U, 0U, 0U};
+        if (toRankId == rankId) {
+            AscendC::GlobalTensor<DataType> gmm2OutGm;
+            gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ DataType *>(localSrcPtr));
+            SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+            AscendC::DataCopyPad(ubQuant, gmm2OutGm, singleCopyParams, copyPadParams);
+            SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID4>();
+        }
     }
     
     if (IsQuantized || toRankId == rankId) {
