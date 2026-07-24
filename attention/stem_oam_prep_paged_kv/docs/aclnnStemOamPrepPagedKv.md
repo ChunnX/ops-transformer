@@ -122,10 +122,10 @@ aclnnStatus aclnnStemOamPrepPagedKv(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">kvSeqLens（aclTensor*）</td>
+      <td class="tg-0pky">kvSeqLens（aclIntArray*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">每batch KV序列长度。</td>
-      <td class="tg-0pky">不支持空Tensor。<br>该值用于派生kvIndices第二维max_kv_blocks及输出shape中max_Kb。</td>
+      <td class="tg-0pky">不支持空列表。<br>该值用于派生kvIndices第二维max_kv_blocks及输出shape中max_Kb。</td>
       <td class="tg-0pky">INT32</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">1</td>
