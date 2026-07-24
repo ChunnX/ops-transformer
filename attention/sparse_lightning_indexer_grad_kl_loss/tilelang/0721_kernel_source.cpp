@@ -135,7 +135,6 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_bw_bmm2 = ascend_ub.GetWithOffset<float>(8192, 12800);
   auto v1_bw_exp_or_diff = ascend_ub.GetWithOffset<float>(8192, 55296);
   auto v1_bw_relu_mask = ascend_ub.GetWithOffset<float>(8192, 88064);
-  auto v1_bw_weight_row = ascend_ub.GetWithOffset<float>(2048, 45568);
   auto v1_bw_rg_half = ascend_ub.GetWithOffset<half>(8192, 55296);
   auto v1_bw_dw_half = ascend_ub.GetWithOffset<half>(32, 196256);
   auto c2_dq_l0c = ascend_l0c.GetWithOffset<float>(8192, 98304);
@@ -548,9 +547,11 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             tl::ascend::copy_ub_to_ub<float, float, 8192>(v1_bw_bmm2[0], v1_bw_exp_or_diff[0], 4, 2048, 2048, 4, 2048, 2048);
             AscendC::PipeBarrier<PIPE_V>();
             for (int32_t bw_local_row = 0; bw_local_row < 4; ++bw_local_row) {
-              tl::ascend::Broadcast<float, 2, 1, false>(v1_bw_weight_row[0],v1_bw_weight[((bw_row_tile * 4) + bw_local_row)],tmp_ub,(uint32_t[]){1, 2048}, (uint32_t[]){1, 1});
-              AscendC::PipeBarrier<PIPE_V>();
-              AscendC::Mul(v1_bw_bmm2[(bw_local_row * 2048)], v1_bw_bmm2[(bw_local_row * 2048)], v1_bw_weight_row[0], 2048);
+              {
+              AscendC::PipeBarrier<PIPE_ALL>();
+              auto v1_bw_weight_scalar = v1_bw_weight.GetValue(((bw_row_tile * 4) + bw_local_row));
+              AscendC::Muls(v1_bw_bmm2[(bw_local_row * 2048)], v1_bw_bmm2[(bw_local_row * 2048)], v1_bw_weight_scalar, 2048);
+              }
               AscendC::PipeBarrier<PIPE_V>();
             }
             AscendC::Mul(v1_bw_bmm2[0], v1_bw_bmm2[0], v1_bw_relu_mask[0], 8192);
