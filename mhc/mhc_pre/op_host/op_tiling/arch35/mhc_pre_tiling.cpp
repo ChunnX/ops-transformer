@@ -808,43 +808,4 @@ ge::graphStatus MhcPreBaseTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingFunc4mHCPre(gert::TilingContext *context)
-{
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("[mHCPreTilingTilingFunc]", "Context is null"),
-                return ge::GRAPH_FAILED);
-
-    return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
-}
-
-
-static ge::graphStatus TilingPrepare4mHCPre(gert::TilingParseContext *context)
-{
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("[TilingPrepare4mHC]", "Context is null"),
-                return ge::GRAPH_FAILED);
-    fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr, OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "PlatformInfoPtr is null"),
-                return ge::GRAPH_FAILED);
-
-    auto compileInfoPtr = context->GetCompiledInfo<MhcPreCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "CompileInfoPtr is null"),
-                return ge::GRAPH_FAILED);
-
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-
-    compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
-    compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
-
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfoPtr->l2Size);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, compileInfoPtr->l0ASize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, compileInfoPtr->l0BSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0CSize);
-
-    OP_LOGI(context->GetNodeName(), "ParseCompileInfo success, L1Size: %lu, L2Size: %lu, CoreNum: %lu",
-            compileInfoPtr->l1Size, compileInfoPtr->l2Size, compileInfoPtr->aicNum);
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(MhcPre).Tiling(TilingFunc4mHCPre).TilingParse<MhcPreCompileInfo>(TilingPrepare4mHCPre);
 } // namespace optiling

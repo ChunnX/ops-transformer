@@ -35,7 +35,7 @@ using namespace AscendC;
 
 namespace MhcPreSinkhorn {
 
-constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(false, false, 0, false, false, false, true);
+constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(true, false, 0, false, false, false, true);
 
 struct MmParams {
     uint64_t curML1;
