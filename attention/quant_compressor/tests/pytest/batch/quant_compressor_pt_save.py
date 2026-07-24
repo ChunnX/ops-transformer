@@ -158,10 +158,12 @@ def compressor_output_single(data_case):
     bs_combine_flag = False
     if seqused is not None:
         seqused = torch.tensor(seqused).to(torch.int32)
+    exist_start_pos = True
     if start_pos is not None:
         start_pos = torch.tensor(start_pos).to(torch.int32)
     else:
-        start_pos = torch.full((batch_size,), start_p, dtype=torch.int32)
+        exist_start_pos = False
+        start_pos = torch.zeros((batch_size,), dtype=torch.int32)
 
     if layout_x == "TH":
         bs_combine_flag = True
@@ -198,10 +200,6 @@ def compressor_output_single(data_case):
         if cu_seqlens is not None:
             print(f"Warning: layout of x is [batch_size, Seq_len, hidden_size], but cu_seqlens is not None, it is modified to None!!!")
         cu_seqlens = None
-    exist_start_pos = True
-    if start_pos is None:
-        exist_start_pos = False
-        start_pos = [0] * batch_size
     # ======================== set input params finish ========================
     # ======================== check input params start ========================
     if start_pos is not None:
@@ -348,7 +346,7 @@ def compressor_output_single(data_case):
         "block_table":block_table,
         "cu_seqlens":cu_seqlens,
         "seqused":seqused,
-        "start_pos":start_pos,
+        "start_pos": start_pos if exist_start_pos else None,
         "cmp_ratio":cmp_ratio,
         "coff":coff,
         "cache_mode":cache_mode,

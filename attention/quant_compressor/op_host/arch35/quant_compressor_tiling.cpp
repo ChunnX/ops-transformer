@@ -168,10 +168,10 @@ ge::graphStatus QuantCompressorTiling::SetPageAttentionInfo()
 
 ge::graphStatus QuantCompressorTiling::SetWorkSpaceInfo()
 {
-    workspaceParams_->dbWorkspaceRatio = 2;
+    workspaceParams_->dbWorkspaceRatio = 2; // 2: dbWorkspaceRatio
     workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
     workspaceParams_->mm1ScoreResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
-    if (coff == 2) {
+    if (coff == 2) { // 2: overlap
         workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim;
     }
 
@@ -190,6 +190,7 @@ ge::graphStatus QuantCompressorTiling::SetTemplateId()
     }
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         // 设置高性能模板
+        // 4: max S; 256: max tokensize
         if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
             context_->templateId = TemplateId::FULL_LOAD;
         }
