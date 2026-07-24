@@ -18,6 +18,7 @@
 #endif
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/arch35/moe_distribute_dispatch_v2_a5_full_mesh.h"
+#include "../../../moe_distribute_dispatch_v2/op_kernel/arch35/moe_distribute_dispatch_v2_a5_atomic.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/arch35/moe_distribute_dispatch_v2_apt_tiling_key.h"
 using namespace MoeDistributeDispatchV2A5FullMeshImpl;
 using namespace Mc2Kernel;
@@ -43,6 +44,14 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
             if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
                 MoeDistributeDispatchV2A5FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
                                                   Mc2Kernel::UNQUANT, false>
+                    op;
+                op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                op.Process();
+            } else if constexpr (FullMesh == TILINGKEY_ENABLE_ATOMIC) {
+                MoeDistributeDispatchV2Atomic<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
+                                              Mc2Kernel::UNQUANT, false>
                     op;
                 op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
@@ -74,6 +83,14 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
                         epSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
+            } else if constexpr (FullMesh == TILINGKEY_ENABLE_ATOMIC) {
+                MoeDistributeDispatchV2Atomic<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
+                                              Mc2Kernel::UNQUANT, true>
+                    op;
+                op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                op.Process();
             } else {
                 MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT,
                                         true>
@@ -99,6 +116,14 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
                             expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
                             epSendCountsOut, workspaceGM, &pipe, &tilingData);
                     op.Process();
+                } else if constexpr (FullMesh == TILINGKEY_ENABLE_ATOMIC) {
+                    MoeDistributeDispatchV2Atomic<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode,
+                                                  ScaleMode>
+                        op;
+                    op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                            expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                            epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    op.Process();
                 } else {
                     MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode,
                                             ScaleMode>
@@ -119,6 +144,14 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
             if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
                 MoeDistributeDispatchV2A5FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode,
                                                   ScaleMode>
+                    op;
+                op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                op.Process();
+            } else if constexpr (FullMesh == TILINGKEY_ENABLE_ATOMIC) {
+                MoeDistributeDispatchV2Atomic<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode,
+                                              ScaleMode>
                     op;
                 op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
