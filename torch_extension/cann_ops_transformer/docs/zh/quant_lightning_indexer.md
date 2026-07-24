@@ -2,18 +2,24 @@
 
 ## 产品支持情况
 
-<!-- npu="950" id2 -->
+<!-- npu="950" id1 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
-<!-- end id2 -->
-<!-- npu="A3" id3 -->
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
-<!-- end id3 -->
-<!-- npu="910b" id4 -->
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
-<!-- end id4 -->
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id8 -->
 - <term>Atlas 推理系列产品</term>：不支持
+<!-- end id8 -->
+<!-- npu="910" id9 -->
 - <term>Atlas 训练系列产品</term>：不支持
+<!-- end id9 -->
 
 ## 功能说明
 
@@ -106,7 +112,7 @@ cann_ops_transformer.quant_lightning_indexer(
 | cu_seqlens_k | Tensor | 可选 | 表示不同Batch中Key的有效Sequence Length，仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
 | seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
 | seqused_k | Tensor | 可选 | 表示不同Batch中Key实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
-| cmp_residual_k | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_ratio不为1且mask_mode为3场景下必传。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| cmp_residual_k | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_ratio不为1且mask_mode为3场景下必传。需满足cmp_residual_k\[i\] \< cmp_ratio。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
 | batch_size | int | 可选 | 表示Batch数量，默认值为0。 | int32 | - |
 | max_seqlen_q | int | 可选 | 表示Query的最长Sequence Length，-1表示任意可能长度，默认值为-1。 | int32 | - |
 | max_seqlen_k | int | 可选 | 表示Key的最长Sequence Length，-1表示任意可能长度，默认值为-1。 | int32 | - |
@@ -115,28 +121,33 @@ cann_ops_transformer.quant_lightning_indexer(
 | mask_mode | int | 可选 | 表示sparse模式，0表示No mask，3表示rightDownCausal模式，默认值为0。 | int32 | - |
 | cmp_ratio | int | 可选 | 表示Key的压缩率，取值范围[1, 128]，默认值为1，表示无压缩。 | int32 | - |
 
+<!-- npu="950" id5 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：不支持quant_mode = 2。
+<!-- end id5 -->
+<!-- npu="A3" id6 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1, 128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。
+<!-- end id6 -->
+<!-- npu="910b" id7 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1, 128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。
+<!-- end id7 -->
 
 ### quant_lightning_indexer
-<!-- npu="950" id1 -->
-Ascend 950PR/Ascend 950DT
-<!-- end id1 -->
+
+<!-- npu="950,A3,910b" id12 -->
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
 | query | Tensor | 必选 | 公式中的量化输入$Q_{index}^{Quant}$。不支持空tensor。数据格式为ND。 | INT8、FLOAT8_e4m3fn、HIFLOAT8 | layout_q为BSND时shape为(B,S1,N1,D)；layout_q为TND时shape为(T1,N1,D) |
-| key | Tensor | 必选 | 公式中的量化输入$K_{index}^{Quant}$。不支持空tensor。数据格式为ND，支持非连续的Tensor（仅PA_BBND场景下0轴及key_dequant_scale的0轴支持非连续）。 | INT8、FLOAT8_e4m3fn、HIFLOAT8 | layout_k为BSND时shape为(B,S2,N2,D)；layout_k为TND时shape为(T2,N2,D)；layout_k为PA_BBND时shape为(block_num,block_size,N2,D) |
+| key | Tensor | 必选 | 公式中的量化输入$K_{index}^{Quant}$。不支持空tensor。数据格式为ND，仅PA_BBND场景下0轴支持非连续。PA_BBND场景下block_size取值为16的倍数，最大支持1024。 | INT8、FLOAT8_e4m3fn、HIFLOAT8 | layout_k为BSND时shape为(B,S2,N2,D)；layout_k为TND时shape为(T2,N2,D)；layout_k为PA_BBND时shape为(block_num,block_size,N2,D) |
 | weights | Tensor | 必选 | 公式中的权重系数$W$。不支持空tensor。数据格式为ND。 | float16、float32 | layout_q为BSND时shape为(B,S1,N1)；layout_q为TND时shape为(T1,N1) |
 | query_dequant_scale | Tensor | 必选 | 公式中的$Scale_Q$，表示Index Query的反量化系数。不支持空tensor。数据格式为ND。 | float16、float32 | shape与weights保持一致 |
-| key_dequant_scale | Tensor | 必选 | 公式中的$Scale_K$，表示Index Key的反量化系数。不支持空tensor。数据格式为ND。 | float16、float32 | layout_k为PA_BBND时shape为(block_num,block_size,N2)；layout_k为BSND时shape为(B,S2,N2)；layout_k为TND时shape为(T2,N2)。quant_mode为4时shape必须为(1,)，表示Per-Tensor量化 |
+| key_dequant_scale | Tensor | 必选 | 公式中的$Scale_K$，表示Index Key的反量化系数。不支持空tensor。数据格式为ND，仅PA_BBND场景下0轴支持非连续。 | float16、float32 | layout_k为PA_BBND时shape为(block_num,block_size,N2)；layout_k为BSND时shape为(B,S2,N2)；layout_k为TND时shape为(T2,N2)。quant_mode为4时shape必须为(1,)，表示Per-Tensor量化 |
 | topk | int | 必选 | topK阶段需要保留的block数量，当前支持[1, 2048]。 | int32 | - |
 | quant_mode | int | 必选 | 表示量化模式，当前仅支持1/2/4。1表示qk: fp8(e4m3fn) per-token-head, scale: fp32；2表示qk: int8 per-token-head, scale: fp16, w: fp16；4表示qk: hifloat8 per-tensor, scale: fp32。 | int32 | - |
-| cu_seqlens_q | Tensor | 可选 | 当前Batch及前序Batch中query的有效token数的累加和。仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND。 | int32 | (B+1,) |
-| cu_seqlens_k | Tensor | 可选 | 当前Batch及前序Batch中key的有效token数的累加和。仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND。 | int32 | (B+1,) |
-| seqused_q | Tensor | 可选 | 不同Batch中query的真实使用长度。数据格式为ND。 | int32 | (B,) |
-| seqused_k | Tensor | 可选 | 不同Batch中key的真实使用长度。数据格式为ND。layout_k为PA_BBND时必须传入。 | int32 | (B,) |
-| cmp_residual_k | Tensor | 可选 | 表示k压缩前token数量除以cmp_ratio的余数。需要在mask_mode等于3、cmp_ratio不等于1的场景下使用。数据格式为ND。 | int32 | (B,) |
+| cu_seqlens_q | Tensor | 可选 | 当前Batch及前序Batch中query的有效token数的累加和，后一个元素的值必须大于等于前一个元素的值。仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND。 | int32 | (B+1,) |
+| cu_seqlens_k | Tensor | 可选 | 当前Batch及前序Batch中key的有效token数的累加和，后一个元素的值必须大于等于前一个元素的值。仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND。 | int32 | (B+1,) |
+| seqused_q | Tensor | 可选 | 不同Batch中query的真实使用长度，每个Batch的有效token数不超过query中的维度S大小且不小于0。数据格式为ND。 | int32 | (B,) |
+| seqused_k | Tensor | 可选 | 不同Batch中key的真实使用长度，每个Batch的有效token数不超过key中的维度S大小且不小于0。数据格式为ND。layout_k为PA_BBND时必须传入。 | int32 | (B,) |
+| cmp_residual_k | Tensor | 可选 | 表示k压缩前token数量除以cmp_ratio的余数，需满足cmp_residual_k\[i\] \< cmp_ratio。需要在mask_mode等于3、cmp_ratio不等于1的场景下使用。数据格式为ND。 | int32 | (B,) |
 | block_table | Tensor | 可选 | 表示PageAttention中KV存储使用的block映射表。不支持空tensor。layout_k为PA_BBND时必须传入。数据格式为ND。 | int32 | (B, S2_max/block_size) |
 | output_idx_offset | Tensor | 可选 | 表示topK结果输出索引所需要加上的偏移。值必须大于0，加上偏移后topK index不能超过int32最大值。数据格式为ND。 | int32 | (B,) |
 | metadata | Tensor | 可选 | quant_lightning_indexer_metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。不支持空tensor。数据格式为ND。 | int32 | (1024,) |
@@ -146,11 +157,15 @@ Ascend 950PR/Ascend 950DT
 | mask_mode | int | 可选 | 表示mask的模式，0代表defaultMask模式，3代表rightDownCausal模式，默认值为0。 | int32 | - |
 | cmp_ratio | int | 可选 | 用于稀疏计算，表示key的压缩倍数。Atlas A3/A2支持2的幂次方且范围为[1, 128]，即1/2/4/8/16/32/64/128；Ascend 950PR/950DT支持(0, 128]范围内的正整数。默认值为1，表示无压缩。 | int32 | - |
 | return_value | int | 可选 | 代表是否需要返回sparseIndices对应的sparseValues值。0代表不返回，1代表返回值，默认值为0。当前仅在Ascend 950PR/Ascend 950DT上支持。 | int32 | - |
+<!-- end id12 -->
 
+<!-- npu="950" id10 -->
 - <term>Ascend 950PR/Ascend 950DT</term>:
   - query、key在quant_mode为1时支持FLOAT8_e4m3fn，quant_mode为4时支持HIFLOAT8，不支持INT8。
   - weights、query_dequant_scale和key_dequant_scale支持float32，不支持float16。
   - query的N支持32或64。
+<!-- end id10 -->
+<!-- npu="A3,910b" id11 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
   - query、key仅支持INT8，不支持FLOAT8_e4m3fn和HIFLOAT8。
   - weights、query_dequant_scale和key_dequant_scale支持float16，不支持float32。
@@ -158,6 +173,7 @@ Ascend 950PR/Ascend 950DT
   - layout_k仅支持PA_BBND。
   - cmp_ratio仅支持2的幂次方值：1/2/4/8/16/32/64/128。
   - 不支持return_value功能，不建议传入该参数。
+<!-- end id11 -->
 
 ## 返回值说明
 
@@ -176,22 +192,12 @@ Ascend 950PR/Ascend 950DT
 
 ## 约束说明
 
-- 该接口支持推理场景下使用。
-- 该接口支持单算子模式和aclgraph图模式调用。
+- 该接口支持推理场景下使用，支持单算子模式和aclgraph图模式调用。
 - quant_lightning_indexer_metadata接口需与quant_lightning_indexer算子配套使用。
-- B（Batch）表示输入样本批量大小。
-- 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
-- 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
-- 参数cmp_residual_k需满足cmp_residual_k\[i\] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode_introduction.md)。
-- 参数query的N在Atlas A3/A2上仅支持64，在Ascend 950PR/950DT上支持32或64。key的N仅支持1。
-- head_dim支持128。
-- block_size取值为16的倍数，最大支持1024。
-- 当layout_k不为PA_BBND时，layout_q和layout_k必须一致。
-- 当quant_mode为4时（仅Ascend 950PR/950DT），query_dequant_scale和key_dequant_scale的shape维度必须为1且shape[0]=1（Per-Tensor量化）。
-- key和key_dequant_scale仅支持0轴非连续。
-- query、key应保持一致的量化模式（即quant_mode相同）。
-- 该接口要求$W \odot Scale_Q$的结果在对应平台的表示范围内（Atlas A3/A2: float16，Ascend 950PR/950DT: float32）。
+<!-- npu="A3,910b" id15 -->
+- 该接口要求$W \odot Scale_Q$的结果在float16的表示范围内（Atlas A3/A2）。
+<!-- end id15 -->
 - 该接口的TopK过程对NaN排序是未定义行为。
 - sparse_indices无效部分填-1；sparse_values无效部分填-inf。
 
@@ -218,15 +224,13 @@ Ascend 950PR/Ascend 950DT
   topk = 32
 
   # 构造输入
-  query = torch.randn(B, S1, N1, D, dtype=torch.float32).npu()
-  query = query.to(dtype=torch.float8_e4m3fn)
-  key = torch.randn(block_num, block_size, N2, D, dtype=torch.float32).npu()
-  key = key.to(dtype=torch.float8_e4m3fn)
-  weights = torch.randn(B, S1, N1, dtype=torch.float32).npu()
-  query_dequant_scale = torch.randn(B, S1, N1, dtype=torch.float32).npu()
-  key_dequant_scale = torch.randn(block_num, block_size, N2, dtype=torch.float32).npu()
+  query = torch.randn(B, S1, N1, D).to(torch.float8_e4m3fn).npu()
+  key = torch.randn(block_num, block_size, N2, D).to(torch.float8_e4m3fn).npu()
+  weights = torch.randn(B, S1, N1).npu()
+  query_dequant_scale = torch.randn(B, S1, N1).npu()
+  key_dequant_scale = torch.randn(block_num, block_size, N2).npu()
   block_table = torch.arange(block_num, dtype=torch.int32).expand(B, -1).npu()
-  seqused_k = torch.tensor([block_num * block_size] * B, dtype=torch.int32).npu()
+  seqused_k = torch.full((B,), block_num * block_size, dtype=torch.int32).npu()
 
   # 生成metadata
   metadata = quant_lightning_indexer_metadata(
@@ -260,6 +264,72 @@ Ascend 950PR/Ascend 950DT
       cmp_ratio=1,
       return_value=1
   )
+  print(f"sparse_indices shape: {sparse_indices.shape}")
+  print(f"sparse_values shape: {sparse_values.shape}")
+  ```
+
+- aclgraph图模式调用：
+
+  ```python
+  import torch
+  import torch_npu
+  import torchair
+  from cann_ops_transformer.ops import quant_lightning_indexer, quant_lightning_indexer_metadata
+
+  B = 2
+  S1 = 64
+  S2 = 128
+  N1 = 64
+  N2 = 1
+  D = 128
+  topk = 32
+
+  query = torch.randn(B, S1, N1, D).to(torch.float8_e4m3fn).npu()
+  key = torch.randn(B, S2, N2, D).to(torch.float8_e4m3fn).npu()
+  weights = torch.randn(B, S1, N1).npu()
+  query_dequant_scale = torch.randn(B, S1, N1).npu()
+  key_dequant_scale = torch.randn(B, S2, N2).npu()
+
+  class QuantLightningIndexerNetwork(torch.nn.Module):
+      def __init__(self):
+          super(QuantLightningIndexerNetwork, self).__init__()
+
+      def forward(self, query, key, weights, query_dequant_scale, key_dequant_scale):
+          metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+              num_heads_q=N1,
+              num_heads_k=N2,
+              head_dim=D,
+              topk=topk,
+              quant_mode=1,
+              batch_size=B,
+              max_seqlen_q=S1,
+              max_seqlen_k=S2,
+              layout_q="BSND",
+              layout_k="BSND",
+              mask_mode=0,
+              cmp_ratio=1
+          )
+
+          return torch.ops.cann_ops_transformer.quant_lightning_indexer(
+              query, key, weights, query_dequant_scale, key_dequant_scale,
+              topk=topk,
+              quant_mode=1,
+              metadata=metadata,
+              max_seqlen_q=-1,
+              layout_q="BSND",
+              layout_k="BSND",
+              mask_mode=0,
+              cmp_ratio=1,
+              return_value=1
+          )
+
+  from torchair.configs.compiler_config import CompilerConfig
+  config = CompilerConfig()
+  config.mode = "reduce-overhead"
+  npu_backend = torchair.get_npu_backend(compiler_config=config)
+  torch._dynamo.reset()
+  npu_mode = torch.compile(QuantLightningIndexerNetwork(), fullgraph=True, backend=npu_backend, dynamic=False)
+  sparse_indices, sparse_values = npu_mode(query, key, weights, query_dequant_scale, key_dequant_scale)
   print(f"sparse_indices shape: {sparse_indices.shape}")
   print(f"sparse_values shape: {sparse_values.shape}")
   ```
