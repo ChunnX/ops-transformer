@@ -203,8 +203,12 @@ def _build_sampling_lut(codes, vals, min_val, max_val):
     n = len(sorted_codes)
 
     mids = (sorted_vals[:-1] + sorted_vals[1:]) * 0.5
-    lo = np.empty(n, dtype=np.float64); hi = np.empty(n, dtype=np.float64)
-    lo[0] = min_val; lo[1:] = mids; hi[:-1] = mids; hi[-1] = max_val
+    lo = np.empty(n, dtype=np.float64)
+    hi = np.empty(n, dtype=np.float64)
+    lo[0] = min_val
+    lo[1:] = mids
+    hi[:-1] = mids
+    hi[-1] = max_val
     widths = np.maximum(hi - lo, 0.0)
     total = widths.sum()
 
