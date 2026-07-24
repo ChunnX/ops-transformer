@@ -10,18 +10,19 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 """
-  把 redline.xlsx 的 mxfp8 sheet 转成符合 ttk e2e 标准的 csv。
+把 redline.xlsx 的 mxfp8 sheet 转成符合 ttk e2e 标准的 csv。
 
-  环境：无 openpyxl/pandas，xlsx 解析走 _xlsx_minireader（zipfile + minidom）。
+环境：无 openpyxl/pandas，xlsx 解析走 _xlsx_minireader（zipfile + minidom）。
 
-  输入：redline.xlsx（同目录），xl/worksheets/sheet1.xml 是 mxfp8 sheet
-  输出：3 个 csv 到同目录
-    - qfa_mxfp8_excel.csv            api_name=qfa_mxfp8_wrapper.npu_qfa_mxfp8
-    - qfa_mxfp8_excel_metadata.csv   api_name=qfa_metadata_wrapper.run_metadata
-    - qfa_mxfp8_excel_main.csv       api_name=qfa_main_wrapper.run_main
+输入：redline.xlsx（同目录），xl/worksheets/sheet1.xml 是 mxfp8 sheet
+输出：3 个 csv 到同目录
+  - qfa_mxfp8_excel.csv            api_name=qfa_mxfp8_wrapper.npu_qfa_mxfp8
+  - qfa_mxfp8_excel_metadata.csv   api_name=qfa_metadata_wrapper.run_metadata
+  - qfa_mxfp8_excel_main.csv       api_name=qfa_main_wrapper.run_main
 
-  空值契约：excel 空单元格 → csv attributes 省略该 key（不写 key:None）。
+空值契约：excel 空单元格 → csv attributes 省略该 key（不写 key:None）。
 """
+
 import csv
 import os
 import sys
@@ -36,9 +37,17 @@ _XLSX = os.path.join(_HERE, "redline.xlsx")
 
 # 11 列 header
 HEADER = [
-    "testcase_name", "api_name", "tensor_view_shapes", "tensor_dtypes",
-    "tensor_formats", "attributes", "output_tensor_indexes", "golden_api",
-    "input_data_ranges", "precision_tolerances", "absolute_precision",
+    "testcase_name",
+    "api_name",
+    "tensor_view_shapes",
+    "tensor_dtypes",
+    "tensor_formats",
+    "attributes",
+    "output_tensor_indexes",
+    "golden_api",
+    "input_data_ranges",
+    "precision_tolerances",
+    "absolute_precision",
 ]
 
 # 3 个 csv 的 api_name 和 testcase_name 后缀
@@ -60,39 +69,78 @@ DTYPE_MAP = {
 }
 
 # --- Excel 列索引（mxfp8 sheet 列 A=0 ... CD=81） ---
-COL = {name: col_to_idx(letter) for name, letter in [
-    ("A_testcase_name", "A"),
-    ("K_attn_out_shape", "K"), ("L_attn_out_dtype", "L"), ("M_attn_out_datarange", "M"),
-    ("N_lse_shape", "N"), ("O_lse_dtype", "O"), ("P_lse_datarange", "P"),
-    ("Q_q_shape", "Q"), ("R_q_dtype", "R"), ("S_q_datarange", "S"),
-    ("T_k_shape", "T"), ("U_k_dtype", "U"), ("V_k_datarange", "V"),
-    ("W_v_shape", "W"), ("X_v_dtype", "X"), ("Y_v_datarange", "Y"),
-    ("Z_qdescale_shape", "Z"), ("AA_qdescale_dtype", "AA"), ("AB_qdescale_datarange", "AB"),
-    ("AC_kdescale_shape", "AC"), ("AD_kdescale_dtype", "AD"), ("AE_kdescale_datarange", "AE"),
-    ("AF_vdescale_shape", "AF"), ("AG_vdescale_dtype", "AG"), ("AH_vdescale_datarange", "AH"),
-    ("AI_block_table_shape", "AI"), ("AJ_block_table_dtype", "AJ"), ("AK_block_table_datarange", "AK"),
-    ("AL_p_scale_value", "AL"),
-    ("AM_p_scale_shape", "AM"), ("AN_p_scale_dtype", "AN"), ("AO_p_scale_datarange", "AO"),
-    ("AP_cu_seqlens_q_value", "AP"), ("AQ_cu_seqlens_q_shape", "AQ"),
-    ("AR_cu_seqlens_q_dtype", "AR"), ("AS_cu_seqlens_q_datarange", "AS"),
-    ("AT_cu_seqlens_kv_value", "AT"), ("AU_cu_seqlens_kv_shape", "AU"),
-    ("AV_cu_seqlens_kv_dtype", "AV"), ("AW_cu_seqlens_kv_datarange", "AW"),
-    ("AX_seqused_q_value", "AX"), ("AY_seqused_q_shape", "AY"),
-    ("AZ_seqused_q_dtype", "AZ"), ("BA_seqused_q_datarange", "BA"),
-    ("BB_seqused_kv_value", "BB"), ("BC_seqused_kv_shape", "BC"),
-    ("BD_seqused_kv_dtype", "BD"), ("BE_seqused_kv_datarange", "BE"),
-    ("BI_attn_mask_shape", "BI"), ("BJ_attn_mask_dtype", "BJ"), ("BK_attn_mask_datarange", "BK"),
-    ("BO_quant_mode", "BO"),
-    ("BP_softmax_scale", "BP"),
-    ("BQ_mask_mode", "BQ"),
-    ("BR_win_left", "BR"), ("BS_win_right", "BS"),
-    ("BT_max_seqlen_q", "BT"), ("BU_max_seqlen_kv", "BU"),
-    ("BV_layout_q", "BV"), ("BW_layout_q_descale", "BW"),
-    ("BX_layout_kv", "BX"), ("BY_layout_out", "BY"),
-    ("BZ_return_softmax_lse", "BZ"),
-    ("CA_batch_size", "CA"), ("CB_num_heads_q", "CB"),
-    ("CC_num_heads_kv", "CC"), ("CD_head_dim", "CD"),
-]}
+COL = {
+    name: col_to_idx(letter)
+    for name, letter in [
+        ("A_testcase_name", "A"),
+        ("K_attn_out_shape", "K"),
+        ("L_attn_out_dtype", "L"),
+        ("M_attn_out_datarange", "M"),
+        ("N_lse_shape", "N"),
+        ("O_lse_dtype", "O"),
+        ("P_lse_datarange", "P"),
+        ("Q_q_shape", "Q"),
+        ("R_q_dtype", "R"),
+        ("S_q_datarange", "S"),
+        ("T_k_shape", "T"),
+        ("U_k_dtype", "U"),
+        ("V_k_datarange", "V"),
+        ("W_v_shape", "W"),
+        ("X_v_dtype", "X"),
+        ("Y_v_datarange", "Y"),
+        ("Z_qdescale_shape", "Z"),
+        ("AA_qdescale_dtype", "AA"),
+        ("AB_qdescale_datarange", "AB"),
+        ("AC_kdescale_shape", "AC"),
+        ("AD_kdescale_dtype", "AD"),
+        ("AE_kdescale_datarange", "AE"),
+        ("AF_vdescale_shape", "AF"),
+        ("AG_vdescale_dtype", "AG"),
+        ("AH_vdescale_datarange", "AH"),
+        ("AI_block_table_shape", "AI"),
+        ("AJ_block_table_dtype", "AJ"),
+        ("AK_block_table_datarange", "AK"),
+        ("AL_p_scale_value", "AL"),
+        ("AM_p_scale_shape", "AM"),
+        ("AN_p_scale_dtype", "AN"),
+        ("AO_p_scale_datarange", "AO"),
+        ("AP_cu_seqlens_q_value", "AP"),
+        ("AQ_cu_seqlens_q_shape", "AQ"),
+        ("AR_cu_seqlens_q_dtype", "AR"),
+        ("AS_cu_seqlens_q_datarange", "AS"),
+        ("AT_cu_seqlens_kv_value", "AT"),
+        ("AU_cu_seqlens_kv_shape", "AU"),
+        ("AV_cu_seqlens_kv_dtype", "AV"),
+        ("AW_cu_seqlens_kv_datarange", "AW"),
+        ("AX_seqused_q_value", "AX"),
+        ("AY_seqused_q_shape", "AY"),
+        ("AZ_seqused_q_dtype", "AZ"),
+        ("BA_seqused_q_datarange", "BA"),
+        ("BB_seqused_kv_value", "BB"),
+        ("BC_seqused_kv_shape", "BC"),
+        ("BD_seqused_kv_dtype", "BD"),
+        ("BE_seqused_kv_datarange", "BE"),
+        ("BI_attn_mask_shape", "BI"),
+        ("BJ_attn_mask_dtype", "BJ"),
+        ("BK_attn_mask_datarange", "BK"),
+        ("BO_quant_mode", "BO"),
+        ("BP_softmax_scale", "BP"),
+        ("BQ_mask_mode", "BQ"),
+        ("BR_win_left", "BR"),
+        ("BS_win_right", "BS"),
+        ("BT_max_seqlen_q", "BT"),
+        ("BU_max_seqlen_kv", "BU"),
+        ("BV_layout_q", "BV"),
+        ("BW_layout_q_descale", "BW"),
+        ("BX_layout_kv", "BX"),
+        ("BY_layout_out", "BY"),
+        ("BZ_return_softmax_lse", "BZ"),
+        ("CA_batch_size", "CA"),
+        ("CB_num_heads_q", "CB"),
+        ("CC_num_heads_kv", "CC"),
+        ("CD_head_dim", "CD"),
+    ]
+}
 
 ABSOLUTE_PRECISION_DEFAULT = 1e-8
 
@@ -208,41 +256,62 @@ def _build_tensor_lists(row):
         data_ranges.append(drange)
 
     # q / k / v
-    _push(_str_to_shape(row.get(COL["Q_q_shape"])),
-          _map_dtype(row.get(COL["R_q_dtype"])),
-          _str_to_datarange(row.get(COL["S_q_datarange"])))
-    _push(_str_to_shape(row.get(COL["T_k_shape"])),
-          _map_dtype(row.get(COL["U_k_dtype"])),
-          _str_to_datarange(row.get(COL["V_k_datarange"])))
-    _push(_str_to_shape(row.get(COL["W_v_shape"])),
-          _map_dtype(row.get(COL["X_v_dtype"])),
-          _str_to_datarange(row.get(COL["Y_v_datarange"])))
+    _push(
+        _str_to_shape(row.get(COL["Q_q_shape"])),
+        _map_dtype(row.get(COL["R_q_dtype"])),
+        _str_to_datarange(row.get(COL["S_q_datarange"])),
+    )
+    _push(
+        _str_to_shape(row.get(COL["T_k_shape"])),
+        _map_dtype(row.get(COL["U_k_dtype"])),
+        _str_to_datarange(row.get(COL["V_k_datarange"])),
+    )
+    _push(
+        _str_to_shape(row.get(COL["W_v_shape"])),
+        _map_dtype(row.get(COL["X_v_dtype"])),
+        _str_to_datarange(row.get(COL["Y_v_datarange"])),
+    )
     # q/k/v descale：真实值由 customize_inputs 生成（amax 计算产物），datarange 不从 Excel 映射。
     # 但 ttk 默认 input 生成路径对所有非 None shape 的 tensor 都要 RandomData(dtype, shape, data_range)，
     # data_range=None 会让 get(None, 0) 崩溃，所以用 (0, 1) 占位（customize_inputs 会覆盖真实值）。
     # dtype: Excel 里是 FLOAT8_E8M0，但 ttk numpy_to_torch_tensor 不支持 float8_e8m0fnu 转换
-    #（is_torch_native_dtype 用 hasattr 判断，NPU torch 有此属性但 numpy_to_torch_tensor 白名单没加）。
+    # （is_torch_native_dtype 用 hasattr 判断，NPU torch 有此属性但 numpy_to_torch_tensor 白名单没加）。
     # descale 真实 dtype 由 customize_inputs 生成 e8m0 tensor 覆盖，这里用 float8_e4m3fn 占位让 ttk 默认路径不崩。
     _DRANGE_PLACEHOLDER = (0, 1)
     _DESCALE_PLACEHOLDER_DTYPE = "float8_e4m3fn"
-    _push(_str_to_shape(row.get(COL["Z_qdescale_shape"])),
-          _DESCALE_PLACEHOLDER_DTYPE, _DRANGE_PLACEHOLDER)
-    _push(_str_to_shape(row.get(COL["AC_kdescale_shape"])),
-          _DESCALE_PLACEHOLDER_DTYPE, _DRANGE_PLACEHOLDER)
-    _push(_str_to_shape(row.get(COL["AF_vdescale_shape"])),
-          _DESCALE_PLACEHOLDER_DTYPE, _DRANGE_PLACEHOLDER)
+    _push(
+        _str_to_shape(row.get(COL["Z_qdescale_shape"])),
+        _DESCALE_PLACEHOLDER_DTYPE,
+        _DRANGE_PLACEHOLDER,
+    )
+    _push(
+        _str_to_shape(row.get(COL["AC_kdescale_shape"])),
+        _DESCALE_PLACEHOLDER_DTYPE,
+        _DRANGE_PLACEHOLDER,
+    )
+    _push(
+        _str_to_shape(row.get(COL["AF_vdescale_shape"])),
+        _DESCALE_PLACEHOLDER_DTYPE,
+        _DRANGE_PLACEHOLDER,
+    )
     # p_scale：标量，真实值由 customize_inputs 生成，datarange 用占位
-    _push(_str_to_shape(row.get(COL["AM_p_scale_shape"])),
-          _map_dtype(row.get(COL["AN_p_scale_dtype"])), _DRANGE_PLACEHOLDER)
+    _push(
+        _str_to_shape(row.get(COL["AM_p_scale_shape"])),
+        _map_dtype(row.get(COL["AN_p_scale_dtype"])),
+        _DRANGE_PLACEHOLDER,
+    )
     # block_table：wrapper 签名中是必选位置参数（无默认值），
     # 即使非 PA 模式 Excel 为空，也必须给占位 shape 让 ttk 计入 input_count，
     # 否则 match_overload 会因 input_count < required 而返回 PARAM_PLAN_FAILURE。
     # wrapper 内部从 golden_mod._cached_mxfp8_inputs 取真实 block_table（非 PA 时为 None）覆盖占位。
     bt_shape = _str_to_shape(row.get(COL["AI_block_table_shape"]))
     if bt_shape is not None:
-        _push(bt_shape,
-              _map_dtype(row.get(COL["AJ_block_table_dtype"])),
-              _str_to_datarange(row.get(COL["AK_block_table_datarange"])) or _DRANGE_PLACEHOLDER)
+        _push(
+            bt_shape,
+            _map_dtype(row.get(COL["AJ_block_table_dtype"])),
+            _str_to_datarange(row.get(COL["AK_block_table_datarange"]))
+            or _DRANGE_PLACEHOLDER,
+        )
     else:
         _push((0,), "int32", _DRANGE_PLACEHOLDER)
 
@@ -280,7 +349,9 @@ def _build_attributes(row):
     # cu_seqlens value → list，shape/dtype 不传（由 NPU 推）
     # cu_seqlens_q/kv 是 wrapper 必选参数（无默认值），空则写 None（PA 模式 kv 可能为空）
     _set_force("cu_seqlens_q", _str_to_int_list(row.get(COL["AP_cu_seqlens_q_value"])))
-    _set_force("cu_seqlens_kv", _str_to_int_list(row.get(COL["AT_cu_seqlens_kv_value"])))
+    _set_force(
+        "cu_seqlens_kv", _str_to_int_list(row.get(COL["AT_cu_seqlens_kv_value"]))
+    )
     # seqused_q/kv：空则写 None（wrapper 无默认值，需要 key 存在，golden 透传 None 给 NPU）
     _set_force("seqused_q", _str_to_int_list(row.get(COL["AX_seqused_q_value"])))
     _set_force("seqused_kv", _str_to_int_list(row.get(COL["BB_seqused_kv_value"])))
