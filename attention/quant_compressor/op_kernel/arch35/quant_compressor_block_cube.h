@@ -302,9 +302,10 @@ __aicore__ inline void QuantCompressorBlockCube<COMP>::MatrixMmad(LocalTensor<T>
 }
 
 template <typename COMP>
-__aicore__ inline void
-QuantCompressorBlockCube<COMP>::CopyOutMm1Res(const RunInfo &info, LocalTensor<T> cL0Tensor, uint32_t coffId,
-                                              uint32_t mStart, uint32_t mDealSize, uint32_t nStart, uint32_t nDealSize)
+__aicore__ inline void QuantCompressorBlockCube<COMP>::CopyOutMm1Res(const RunInfo &info, LocalTensor<T> cL0Tensor,
+                                                                     uint32_t coffId, uint32_t mStart,
+                                                                     uint32_t mDealSize, uint32_t nStart,
+                                                                     uint32_t nDealSize)
 {
     // coffId=0, 存左矩阵的数据; coffId=1, 存右矩阵的数据
     FixpipeParamsV220 fixParams;

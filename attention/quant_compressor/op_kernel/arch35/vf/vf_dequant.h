@@ -186,7 +186,6 @@ __simd_vf__ void DequantVfCoff2BaseImpl(__ubuf__ float *outputAddr, __ubuf__ flo
     MicroAPI::RegTensor<float> vregMulCoff0;
     MicroAPI::RegTensor<float> vregMulCoff1;
 
-
     MicroAPI::MaskReg mask = MicroAPI::UpdateMask<float>(col);
 
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0, descaleAddr);
@@ -218,7 +217,6 @@ __simd_vf__ void DequantVfCoff2D128Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     MicroAPI::RegTensor<float> vregDescaleCoff1[2];
     MicroAPI::RegTensor<float> vregMulCoff0[2];
     MicroAPI::RegTensor<float> vregMulCoff1[2];
-
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
@@ -265,7 +263,6 @@ __simd_vf__ void DequantVfCoff2D256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     MicroAPI::RegTensor<float> vregMulCoff0[4];
     MicroAPI::RegTensor<float> vregMulCoff1[4];
 
-
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[0], descaleAddr);
@@ -290,17 +287,13 @@ __simd_vf__ void DequantVfCoff2D256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
                                                                   inputAddr + offset + 2 * VF_FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff0[3],
                                                                   inputAddr + offset + 3 * VF_FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[0],
-                                                                  inputAddr + offset + actualCol);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[0], inputAddr + offset + actualCol);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[1],
-                                                                  inputAddr + offset +
-                                                                  actualCol + VF_FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[2],
-                                                                  inputAddr + offset +
-                                                                  actualCol + 2 * VF_FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[3],
-                                                                  inputAddr + offset +
-                                                                  actualCol + 3 * VF_FLOAT_REP_SIZE);
+                                                                  inputAddr + offset + actualCol + VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+            vregInputCoff1[2], inputAddr + offset + actualCol + 2 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+            vregInputCoff1[3], inputAddr + offset + actualCol + 3 * VF_FLOAT_REP_SIZE);
 
         MicroAPI::Mul(vregMulCoff0[0], vregInputCoff0[0], vregDescaleCoff0[0], mask);
         MicroAPI::Mul(vregMulCoff0[1], vregInputCoff0[1], vregDescaleCoff0[1], mask);
@@ -340,7 +333,6 @@ __simd_vf__ void DequantVfCoff2D512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     MicroAPI::RegTensor<float> vregDescaleCoff1[8];
     MicroAPI::RegTensor<float> vregMulCoff0[8];
     MicroAPI::RegTensor<float> vregMulCoff1[8];
-
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
@@ -386,29 +378,21 @@ __simd_vf__ void DequantVfCoff2D512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
                                                                   inputAddr + offset + 6 * VF_FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff0[7],
                                                                   inputAddr + offset + 7 * VF_FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[0],
-                                                                  inputAddr + offset + actualCol);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[0], inputAddr + offset + actualCol);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[1],
-                                                                  inputAddr + offset +
-                                                                  actualCol + VF_FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[2],
-                                                                  inputAddr + offset +
-                                                                  actualCol + 2 * VF_FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[3],
-                                                                  inputAddr + offset +
-                                                                  actualCol + 3 * VF_FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[4],
-                                                                  inputAddr + offset +
-                                                                  actualCol + 4 * VF_FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[5],
-                                                                  inputAddr + offset +
-                                                                  actualCol + 5 * VF_FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[6],
-                                                                  inputAddr + offset +
-                                                                  actualCol + 6 * VF_FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[7],
-                                                                  inputAddr + offset +
-                                                                  actualCol + 7 * VF_FLOAT_REP_SIZE);
+                                                                  inputAddr + offset + actualCol + VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+            vregInputCoff1[2], inputAddr + offset + actualCol + 2 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+            vregInputCoff1[3], inputAddr + offset + actualCol + 3 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+            vregInputCoff1[4], inputAddr + offset + actualCol + 4 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+            vregInputCoff1[5], inputAddr + offset + actualCol + 5 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+            vregInputCoff1[6], inputAddr + offset + actualCol + 6 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+            vregInputCoff1[7], inputAddr + offset + actualCol + 7 * VF_FLOAT_REP_SIZE);
 
         MicroAPI::Mul(vregMulCoff0[0], vregInputCoff0[0], vregDescaleCoff0[0], mask);
         MicroAPI::Mul(vregMulCoff0[1], vregInputCoff0[1], vregDescaleCoff0[1], mask);

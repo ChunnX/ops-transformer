@@ -30,9 +30,7 @@ struct ToolsParams {
 template <typename COMP>
 class QuantCompressorTools {
 public:
-    __aicore__ inline QuantCompressorTools()
-    {
-    }
+    __aicore__ inline QuantCompressorTools() {}
 
     __aicore__ inline void Init(__gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos);
 
@@ -137,9 +135,7 @@ struct SliceInfo {
 template <typename COMP>
 class QuantCompressorSliceIterator {
 public:
-    __aicore__ inline QuantCompressorSliceIterator(QuantCompressorTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline QuantCompressorSliceIterator(QuantCompressorTools<COMP> &tools) : tools_(tools) {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
@@ -310,9 +306,7 @@ struct SplitCoreSliceInfo : public SliceInfo {
 template <typename COMP>
 class QuantCompressorSplitCoreSliceIterator {
 public:
-    __aicore__ inline QuantCompressorSplitCoreSliceIterator(QuantCompressorTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline QuantCompressorSplitCoreSliceIterator(QuantCompressorTools<COMP> &tools) : tools_(tools) {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
@@ -549,9 +543,7 @@ struct StatisticInfo {
 template <typename COMP>
 class QuantCompressorVec1SliceIterator {
 public:
-    __aicore__ inline QuantCompressorVec1SliceIterator(QuantCompressorTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline QuantCompressorVec1SliceIterator(QuantCompressorTools<COMP> &tools) : tools_(tools) {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt, uint32_t compressoredScCnt);
@@ -691,7 +683,6 @@ __aicore__ inline uint32_t QuantCompressorVec1SliceIterator<COMP>::GetNeedDealTc
     return needDealTcSize_;
 }
 
-
 template <typename COMP>
 __aicore__ inline bool QuantCompressorVec1SliceIterator<COMP>::IsEnd()
 {
@@ -756,7 +747,6 @@ __aicore__ inline StatisticInfo &QuantCompressorVec1SliceIterator<COMP>::FullIte
     }
     return statisticInfo_;
 }
-
 
 } // namespace QuantCompressor
 
