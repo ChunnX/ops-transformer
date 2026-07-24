@@ -214,6 +214,8 @@ bool GroupedA4W4QuantTiling::AnalyzeA4W4()
                     OP_LOGE(context_->GetNodeName(), "A4W4 pergroup: k(%lu) must be divisible by G(%lu).",
                             inputParams_.kSize, g),
                     return false);
+        // PlanA: groupSize(=k/G) 必须为 128 倍数（baseK 对齐粒度，c0=32 倍数，L0B 约束）。
+        // 详见 GMM_A5_A4W4_PERGROUPSIZE_CONSTRAINT.md §3。PlanB(放宽到 32 倍数)待验证，未启用。
         OP_CHECK_IF((inputParams_.kSize / g) % A4W4_QUANT_GROUP_SIZE != 0,
                     OP_LOGE(context_->GetNodeName(), "A4W4 pergroup: k/G(%lu) must be multiple of %u.",
                             inputParams_.kSize / g, A4W4_QUANT_GROUP_SIZE),
@@ -245,24 +247,31 @@ bool GroupedA4W4QuantTiling::CheckA4W4Params()
     OP_CHECK_IF(inputParams_.nSize % 8UL != 0,
                 OP_LOGE(context_->GetNodeName(), "A4W4: n(%lu) must be multiple of 8.", inputParams_.nSize),
                 return false);
+    OP_CHECK_IF(inputParams_.kSize == 0UL,
+                OP_LOGE(context_->GetNodeName(), "A4W4: k must be > 0, got k=%lu.", inputParams_.kSize),
+                return false);
+    OP_CHECK_IF(inputParams_.kSize % 32UL != 0,
+                OP_LOGE(context_->GetNodeName(), "A4W4: k(%lu) must be multiple of 32 (int8 C0_SIZE, L0B alignment).",
+                        inputParams_.kSize),
+                return false);
     OP_CHECK_IF(!inputParams_.isSingleX,
                 OP_LOGE(context_->GetNodeName(), "A4W4 only supports single x."), return false);
     OP_CHECK_IF(!inputParams_.isSingleW,
                 OP_LOGE(context_->GetNodeName(), "A4W4 only supports single weight."), return false);
     OP_CHECK_IF(!inputParams_.isSingleY,
                 OP_LOGE(context_->GetNodeName(), "A4W4 only supports single y."), return false);
-    auto offsetDesc = context_->GetOptionalInputDesc(OFFSET_INDEX);
-    OP_CHECK_IF(offsetDesc != nullptr,
-                OP_LOGE(context_->GetNodeName(), "A4W4: offset must be nullptr (symmetric quant)."), return false);
-    auto biasDesc = context_->GetOptionalInputDesc(BIAS_INDEX);
-    OP_CHECK_IF(biasDesc != nullptr,
-                OP_LOGE(context_->GetNodeName(), "A4W4: bias must be nullptr."), return false);
-    auto antiquantScaleDesc = context_->GetOptionalInputDesc(ANTIQUANT_SCALE_INDEX);
-    OP_CHECK_IF(antiquantScaleDesc != nullptr,
-                OP_LOGE(context_->GetNodeName(), "A4W4: antiquantScale must be nullptr."), return false);
-    auto antiquantOffsetDesc = context_->GetOptionalInputDesc(ANTIQUANT_OFFSET_INDEX);
-    OP_CHECK_IF(antiquantOffsetDesc != nullptr,
-                OP_LOGE(context_->GetNodeName(), "A4W4: antiquantOffset must be nullptr."), return false);
+    // auto offsetDesc = context_->GetOptionalInputDesc(OFFSET_INDEX);
+    // OP_CHECK_IF(offsetDesc != nullptr,
+    //             OP_LOGE(context_->GetNodeName(), "A4W4: offset must be nullptr (symmetric quant)."), return false);
+    // auto biasDesc = context_->GetOptionalInputDesc(BIAS_INDEX);
+    // OP_CHECK_IF(biasDesc != nullptr,
+    //             OP_LOGE(context_->GetNodeName(), "A4W4: bias must be nullptr."), return false);
+    // auto antiquantScaleDesc = context_->GetOptionalInputDesc(ANTIQUANT_SCALE_INDEX);
+    // OP_CHECK_IF(antiquantScaleDesc != nullptr,
+    //             OP_LOGE(context_->GetNodeName(), "A4W4: antiquantScale must be nullptr."), return false);
+    // auto antiquantOffsetDesc = context_->GetOptionalInputDesc(ANTIQUANT_OFFSET_INDEX);
+    // OP_CHECK_IF(antiquantOffsetDesc != nullptr,
+    //             OP_LOGE(context_->GetNodeName(), "A4W4: antiquantOffset must be nullptr."), return false);
     if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
         uint64_t innerAxis = inputParams_.transB ? inputParams_.kSize : inputParams_.nSize;
         OP_CHECK_IF(innerAxis % 64UL != 0,
