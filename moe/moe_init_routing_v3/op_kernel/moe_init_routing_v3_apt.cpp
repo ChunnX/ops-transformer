@@ -412,11 +412,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER)) {
-        TPipe rowIdxPipe;
         RowIdxGather rowIdxGatherOp;
-        rowIdxGatherOp.Init(expandedRowIdx, userWS, t, &rowIdxPipe);
+        rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
         rowIdxGatherOp.Process();
-        rowIdxPipe.Destroy();
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER) ||
@@ -428,11 +426,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_SCATTER)) {
         if (t->useGatherCopy) {
-            TPipe rowIdxPipe;
             RowIdxGather rowIdxGatherOp;
-            rowIdxGatherOp.Init(expandedRowIdx, userWS, t, &rowIdxPipe);
+            rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
             rowIdxGatherOp.Process();
-            rowIdxPipe.Destroy();
         }
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
