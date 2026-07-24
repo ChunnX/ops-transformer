@@ -92,7 +92,7 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
                                               (uint32_t)s1TemplateType == 64),
                       ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false, false, useDn);
     constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
-    constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
+    constexpr bool splitD = (uint16_t)dVTemplateType >= (uint16_t)DTemplateType::Aligned256;
 
     // CubBlockType
     using CubBlockNormal = BaseApi::FAFullQuantMxBlockCube<INPUT_T, float, inputLayoutType,
@@ -159,7 +159,7 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(
                       ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
     constexpr bool useDn = (quantMode == FULLQUANT_MODE_QK_PER_TOKEN_HEAD_V_PER_HEAD);
     constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
-    constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
+    constexpr bool splitD = (uint16_t)dVTemplateType >= (uint16_t)DTemplateType::Aligned256;
 
     // CubBlockType
     using CubBlockNormal = BaseApi::FAFullQuantGqaBlockCube<INPUT_T, float, inputLayoutType,
