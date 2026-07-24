@@ -533,7 +533,7 @@ public:
         RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
-            uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, 256);
+            uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, s2BaseSize >> 1);
             for (uint32_t subLoop = 0; subLoop < c1v1Loop; ++subLoop) {
                 if ASCEND_IS_AIC {
                     ComputeMm1(runInfo0, subLoop);

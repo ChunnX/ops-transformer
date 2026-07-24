@@ -2429,13 +2429,13 @@ TEST_PARAMS = {
         'enable_lse': [True],
         'enable_rope': [False],
     },
-    "TND_B1_QS128_KVS128_Nq8_Nkv8_D256_SP3": {
+    "TND_B1_QS128_KVS256_Nq8_Nkv8_D256_SP3": {
         'B': [1],
         'N_q': [8],
         'N_kv': [8],
         'D': [256],
         'actual_seq_q': [[128]],
-        'actual_seq_kv': [[128]],
+        'actual_seq_kv': [[256]],
         'enable_pa': [False],
         'kv_cache_layout': ['TND'],
         'block_size': [1024],
@@ -2445,13 +2445,13 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "TND_B1_QS1_KVS128_Nq8_Nkv8_D256_SP3": {
+    "TND_B1_QS1_KVS256_Nq8_Nkv8_D256_SP3": {
         'B': [1],
         'N_q': [8],
         'N_kv': [8],
         'D': [256],
         'actual_seq_q': [[1]],
-        'actual_seq_kv': [[128]],
+        'actual_seq_kv': [[256]],
         'enable_pa': [False],
         'kv_cache_layout': ['TND'],
         'block_size': [1024],
@@ -2466,7 +2466,7 @@ TEST_PARAMS = {
 SKIP_CASES = {
     "TND_B1_QS3_KVS768_Nq16_Nkv1_D64_SP3",
     "TND_B1_QS10_KVS128_Nq2_Nkv1_D128_SP3",
-    "TND_B1_QS1_KVS128_Nq8_Nkv8_D256_SP3",
+    "TND_B1_QS1_KVS256_Nq8_Nkv8_D256_SP3",
     "PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3",
     "PA_BnNBsD_B1_QS7_KVS1555_Nq1_Nkv1_D128_SP0",
     "TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0",
