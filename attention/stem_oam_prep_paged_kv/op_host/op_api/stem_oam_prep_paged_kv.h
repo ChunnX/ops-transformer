@@ -21,7 +21,7 @@
 namespace l0op {
 std::tuple<const aclTensor*, const aclTensor*> StemOamPrepPagedKv(
     const aclTensor *kCache, const aclTensor *vCache, const aclTensor *kvIndices,
-    const aclTensor *kvSeqLens, const aclTensor *kScaleCache, const aclTensor *vScale, float lambdaMag,
+    const aclTensor *kvSeqLens, const aclTensor *kScaleCache, const aclTensor *vScale, double lambdaMag,
     int64_t cacheLayout, int64_t kvBlockSize, int64_t stemBlockSize, int64_t stemStride,
     const aclTensor *kFlat, const aclTensor *vBias, aclOpExecutor *executor);
 }
