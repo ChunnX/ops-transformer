@@ -18,6 +18,7 @@
 #include "log/log.h"
 #include "quant_sparse_flash_mla_check.h"
 
+using namespace optiling;
 using namespace ge;
 
 namespace ops {
@@ -38,11 +39,11 @@ ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
     gert::Shape *softmaxLseShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxLseShape);
     auto attr = context->GetAttrs();
-    const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_INDEX);
+    const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE_INDEX);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
 
     const gert::Shape *kvShape = context->GetInputShape(ORI_KV_INDEX);
-    OPS_LOG_E_IF_NULL(context, kvShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, kvShape);
     const char *layoutQ = attr->GetStr(ATTR_LAYOUT_Q_INDEX);
     const char *layoutKv = attr->GetStr(ATTR_LAYOUT_KV_INDEX);
     std::string layoutQStr = (layoutQ != nullptr) ? std::string(layoutQ) : "BSND";
@@ -55,18 +56,12 @@ ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
             } else {
                 kvHeadNum = kvShape->GetDim(DIM_IDX_ONE);
             }
-            OPS_ERR_IF(kvHeadNum <= 0,
-                       OPS_LOG_E("QuantSparseFlashMla", "kvHeadNum must be positive, but got %ld", kvHeadNum),
-                       return ge::GRAPH_FAILED);
             softmaxLseShape->SetDimNum(DIM_NUM_THREE);
             softmaxLseShape->SetDim(DIM_IDX_ZERO, kvHeadNum);
             softmaxLseShape->SetDim(DIM_IDX_ONE, queryShape->GetDim(DIM_IDX_ZERO));
             softmaxLseShape->SetDim(DIM_IDX_TWO, queryShape->GetDim(DIM_IDX_ONE) / kvHeadNum);
         } else {
             int64_t kvHeadNum = kvShape->GetDim(DIM_IDX_TWO);
-            OPS_ERR_IF(kvHeadNum <= 0,
-                       OPS_LOG_E("QuantSparseFlashMla", "kvHeadNum must be positive, but got %ld", kvHeadNum),
-                       return ge::GRAPH_FAILED);
             softmaxLseShape->SetDimNum(DIM_NUM_FOUR);
             softmaxLseShape->SetDim(DIM_IDX_ZERO, queryShape->GetDim(DIM_IDX_ZERO));
             softmaxLseShape->SetDim(DIM_IDX_ONE, kvHeadNum);

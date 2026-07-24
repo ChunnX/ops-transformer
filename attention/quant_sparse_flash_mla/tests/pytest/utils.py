@@ -219,7 +219,7 @@ def fill_none_params(params_dict):
     seqused_cmp_kv = params_dict.get('seqused_cmp_kv')
     cu_seqlens_cmp_kv = params_dict.get('cu_seqlens_cmp_kv')
     cmp_residual_kv = params_dict.get('cmp_residual_kv')
-
+    B = int(B)
     if seqused_q is not None and len(seqused_q) == 1:
         seqused_q = seqused_q * B
     if seqused_ori_kv is not None and len(seqused_ori_kv) == 1:
