@@ -972,6 +972,32 @@ public:
         Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
     }
 
+    template <typename DST_TENSOR_T>
+    __aicore__ inline void FixpipeMm2DnSlice(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C,
+                                              RunInfoX &runInfo, uint32_t sliceN)
+    {
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        if constexpr (BMM2_TOUB) {
+            fixpipeParams.nSize = (sliceN + 7) >> 3 << 3;
+        } else {
+            fixpipeParams.nSize = sliceN;
+        }
+
+        fixpipeParams.mSize = mBaseSize;
+        fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
+
+        if constexpr (BMM2_TOUB || SPLITD) {
+            fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
+        } else {
+            fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV;
+        }
+        fixpipeParams.dualDstCtl = 1;
+        fixpipeParams.params.ndNum = 1;
+        fixpipeParams.params.srcNdStride = 0;
+        fixpipeParams.params.dstNdStride = 0;
+        Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
+    }
+
     __aicore__ inline void IterateBmm2Dn(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
         MM2_ABUF_T mm2A = inputBuf.Get();
@@ -1047,7 +1073,15 @@ public:
         if constexpr (BMM2_TOUB) {
             outputBuf.WaitCrossCore();
         }
-        FixpipeMm2(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), runInfo);
+        if constexpr (nLoops > 1) {
+            for (uint32_t n = 0; n < nLoops; n++) {
+                FixpipeMm2DnSlice(outputBuf.template GetTensor<T>()[n * baseN],
+                                  mm2ResL0C.GetTensor<T>()[n * mBaseSize * baseN],
+                                  runInfo, baseN);
+            }
+        } else {
+            FixpipeMm2(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), runInfo);
+        }
         mm2ResL0C.Set<HardEvent::FIX_M>();
 
         outputBuf.SetCrossCore();
