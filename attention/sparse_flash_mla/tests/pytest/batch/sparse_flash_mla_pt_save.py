@@ -31,13 +31,49 @@ save_path = os.getenv("SMLA_PT_SAVE_PATH", "./data")
 
 param_combinations = utils.generate_param_combinations(ENABLED_PARAMS_FROM_FILE, is_save_pt=True)
 
+case_id = 0
+failed_cases = []
+failed_record_path = Path('pt_save_failed.xlsx')
+
+def record_failed_case(param_combinations, error_msg):
+    global case_id
+    row = {
+        "case_id": case_id,
+        "testcase_name": param_combinations.get("testcase_name"),
+        "template_mode": param_combinations.get("template_mode"),
+        "layout_q": param_combinations.get("layout_q"),
+        "layout_kv": param_combinations.get("layout_kv"),
+        "B": param_combinations.get("B"),
+        "S1": param_combinations.get("S1"),
+        "S2": param_combinations.get("S2"),
+        "N1": param_combinations.get("N1"),
+        "K": param_combinations.get("K"),
+        "K1": param_combinations.get("K1"),
+        "cmp_ratio": param_combinations.get("cmp_ratio"),
+        "ori_mask_mode": param_combinations.get("ori_mask_mode"),
+        "cmp_mask_mode": param_combinations.get("cmp_mask_mode"),
+        "error_msg": str(error_msg),
+    }
+    failed_cases.append(row)
+    df = pd.DataFrame(failed_cases)
+    df.to_excel(failed_record_path, index=False)
+
+def generate_and_save(param_combinations):
+    global case_id
+    try:
+        test_data = utils.generate_case_with_default_param(param_combinations)
+        print("data parsed.", test_data)
+        print("strat to generate data")
+        input_data = sparse_flash_mla_golden.gen_data(test_data)
+        print("strat to save data")
+        sparse_flash_mla_golden.save_test_case(input_data, save_path)
+    except Exception as e:
+        record_failed_case(param_combinations, e)
+        print(f"[FAILED CASE RECORDED] case_id={case_id}, error={e}")
+    finally:
+        case_id += 1
+
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
-def test_sparse_flash_mla(param_combinations):   # 初始化参数和tensor
-    test_data = utils.generate_case_with_default_param(param_combinations)
-    print("data parsed.", test_data)
-    print("strat to generate data")
-    # 生成测试数据
-    input_data = sparse_flash_mla_golden.gen_data(test_data, test_data.get("template_mode"))
-    print("strat to save data")
-    sparse_flash_mla_golden.save_test_case(input_data, save_path)
+def test_sparse_flash_mla(param_combinations):
+    generate_and_save(param_combinations)

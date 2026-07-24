@@ -62,8 +62,8 @@ class Network(torch.nn.Module):
             cmp_ratio=cmp_ratio,
             ori_mask_mode=ori_mask_mode,
             cmp_mask_mode=cmp_mask_mode,
-            ori_win_left=ori_win_left,
-            ori_win_right=ori_win_right,
+            **({'ori_win_left': ori_win_left} if ori_win_left is not None else {}),
+            **({'ori_win_right': ori_win_right} if ori_win_right is not None else {}),
             layout_q=layout_q,
             layout_kv=layout_kv,
             topk_value_mode=topk_value_mode,
@@ -132,13 +132,6 @@ def call_npu(input_data):
         ori_topk_length = ori_topk_length.npu()
     if cmp_topk_length is not None:
         cmp_topk_length = cmp_topk_length.npu()
-
-    print("ori_win_left", ori_win_left)
-    print("ori_win_right", ori_win_right)
-    print("ori_topk_length", ori_topk_length)
-    print("cmp_topk_length", cmp_topk_length)
-    print("seqused_ori_kv", seqused_ori_kv)
-    print("seqused_cmp_kv", seqused_cmp_kv)
 
     # 生成 metadata
     print("sparse_flash_mla_metadata...")
@@ -265,8 +258,8 @@ def call_npu_graph(input_data, device_id=0):
     ori_sparse_indices = tensor_input['ori_sparse_indices']
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
     cmp_block_table = tensor_input['cmp_block_table']
-    ori_topk_length = None
-    cmp_topk_length = None
+    ori_topk_length = metadata_input.get('ori_topk_length')
+    cmp_topk_length = metadata_input.get('cmp_topk_length')
     return_softmax_lse = params.get('return_softmax_lse')
 
     # 将需要上NPU的tensor搬到NPU
@@ -276,6 +269,10 @@ def call_npu_graph(input_data, device_id=0):
         cmp_sparse_indices = cmp_sparse_indices.npu()
     if cmp_block_table is not None:
         cmp_block_table = cmp_block_table.npu()
+    if ori_topk_length is not None:
+        ori_topk_length = ori_topk_length.npu()
+    if cmp_topk_length is not None:
+        cmp_topk_length = cmp_topk_length.npu()
 
     # 生成 metadata
     print("sparse_flash_mla_metadata...")
@@ -336,8 +333,8 @@ def call_npu_graph(input_data, device_id=0):
         cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
         ori_mask_mode=ori_mask_mode,
         cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 3,
-        **({'ori_win_left': ori_win_left} if ori_win_left is not None else {}),
-        **({'ori_win_right': ori_win_right} if ori_win_right is not None else {}),
+        ori_win_left=ori_win_left,
+        ori_win_right=ori_win_right,
         layout_q=layout_q,
         layout_kv=layout_kv,
         topk_value_mode=1,
