@@ -135,8 +135,8 @@ def run_test(name, q_fp8, q_scale, q_seq_lens, cu_seqlens_q,
     qscale_npu = q_scale.to(device) if q_scale is not None else None
 
     qflat = op_fn(q_npu, q_seq_lens, cu_seqlens_q,
-                  qScale=qscale_npu,
-                  stemBlockSize=stem_block_size, stemStride=stem_stride)
+                  q_scale=qscale_npu,
+                  stem_block_size=stem_block_size, stem_stride=stem_stride)
     torch.npu.synchronize()
 
     golden = prep_q_reference(q_fp8, q_scale, q_seq_lens, cu_seqlens_q,
@@ -210,7 +210,7 @@ def main():
     results.append(run_test("P5 varlen_3batch_4head_unaligned", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, B, S, device))
 
-    # P6: stemBlockSize=256, stemStride=32, 2 heads, random scales
+    # P6: stem_block_size=256, stem_stride=32, 2 heads, random scales
     q_len = 512
     q_fp8 = (torch.randn(q_len, 2, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
     q_scale = torch.randn(q_len, 2, dtype=torch.float32).abs() + 0.5
@@ -219,7 +219,7 @@ def main():
     results.append(run_test("P6 B256_S32_single_batch", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, 256, 32, device))
 
-    # P7: stemBlockSize=64, stemStride=16, 2 batches, 2 heads
+    # P7: stem_block_size=64, stem_stride=16, 2 batches, 2 heads
     q_lens = [30, 100]
     total = sum(q_lens)
     q_fp8 = (torch.randn(total, 2, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
@@ -229,7 +229,7 @@ def main():
     results.append(run_test("P7 B64_S16_varlen_2batch", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, 64, 16, device))
 
-    # P8: stemBlockSize=128, stemStride=64, single batch, 1 head
+    # P8: stem_block_size=128, stem_stride=64, single batch, 1 head
     q_len = 256
     q_fp8 = (torch.randn(q_len, 1, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
     q_scale = torch.randn(q_len, 1, dtype=torch.float32).abs() + 0.5
