@@ -247,8 +247,8 @@ struct RunInfo {
 
 struct Vec1RunInfo {
     // vec相关信息，一次syncAll需处理数据的起始索引
-    uint32_t c1v1DbIdx = 0;    // vec1 doubleBuffer索引
-    uint32_t v1v2DbIdx = 0;    // v1v2 doubleBuffer索引
+    uint32_t c1v1DbIdx = 0; // vec1 doubleBuffer索引
+    uint32_t v1v2DbIdx = 0; // v1v2 doubleBuffer索引
     uint32_t bStart = 0;
     uint32_t sStart = 0;
     uint32_t dealTcNum = 0;
@@ -347,9 +347,9 @@ __aicore__ inline constexpr uint32_t RepeatElementNum()
 }
 
 // BLOCK和REPEAT的FP32元素数
-inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float); // 8
+inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);         // 8
 inline constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float); // 64
-inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK; // 8
+inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK;          // 8
 inline constexpr uint32_t REPEAT_MAX_NUM = 255;
 inline constexpr uint32_t BRCB_NUM = 8;
 inline constexpr uint32_t MAX_R = 256;

@@ -78,13 +78,13 @@ at::Tensor ConstructQuantCompressorOutputTensor(const at::Tensor &x, const at::T
     return cmpKv;
 }
 
-at::Tensor QuantCompressor(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate,
-                           at::Tensor &stateCache, const at::Tensor &ape, int64_t quantMode, int64_t cmpRatio,
+at::Tensor QuantCompressor(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate, at::Tensor &stateCache,
+                           const at::Tensor &ape, int64_t quantMode, int64_t cmpRatio,
                            const c10::optional<at::Tensor> &xDescale, const c10::optional<at::Tensor> &wkvDescale,
                            const c10::optional<at::Tensor> &wgateDescale,
-                           const c10::optional<at::Tensor> &stateBlockTable,
-                           const c10::optional<at::Tensor> &cuSeqlens, const c10::optional<at::Tensor> &seqused,
-                           const c10::optional<at::Tensor> &startPos, int64_t coff, int64_t cacheMode)
+                           const c10::optional<at::Tensor> &stateBlockTable, const c10::optional<at::Tensor> &cuSeqlens,
+                           const c10::optional<at::Tensor> &seqused, const c10::optional<at::Tensor> &startPos,
+                           int64_t coff, int64_t cacheMode)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
     auto xDim = x.dim();
