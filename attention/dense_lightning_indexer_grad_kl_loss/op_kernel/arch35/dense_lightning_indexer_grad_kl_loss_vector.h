@@ -925,6 +925,8 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::ProcessVector1(DLIGradKLLos
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID4);
 
         VectorDwDqDk(runInfo);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
 
         VectorLoss(runInfo);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
