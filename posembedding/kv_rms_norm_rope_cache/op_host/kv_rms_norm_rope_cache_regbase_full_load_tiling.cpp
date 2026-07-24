@@ -326,6 +326,10 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     tilingData_.set_vScaleType(vScaleType_);
     tilingData_.set_vOffsetType(vOffsetType_);
     tilingData_.set_cacheMode(currentCacheMode_);
+    OP_CHECK_IF(
+        !GetCacheRowLimit(cacheRowLimit_), OP_LOGE(context_->GetNodeName(), "get cache row limit failed."),
+        return ge::GRAPH_FAILED);
+    tilingData_.set_cacheRowLimit(cacheRowLimit_);
     int64_t kScaleOffsetUbSize = kScaleType_ > 0 ? K_SCALE_OFFSET_UB_NUM * halfDkAlign * sizeof(float) : 0;
     int64_t vScaleOffsetUbSize = vScaleType_ > 0 ? V_SCALE_OFFSET_UB_NUM * dvAlign * sizeof(float) : 0;
     int64_t gammaUbSize = dvAlign * kvDtypeSize_;
@@ -333,8 +337,17 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     int64_t inUbSize = std::max(dkAlign, dvAlign) * kvDtypeSize_;
     int64_t kOutUbsize = 0;
     int64_t vOutUbsize = 0;
+    // outQueue 的记账判据必须与 kernel 里 RopeXxx/RmsNorm 的 if constexpr 同源，即看 cache 的 dtype 是否量化，
+    // 而不是看可选输入 scale 是否存在：量化 cache 一定带 scale，但带了 scale 的 cache 未必是量化 dtype
+    // (CheckInputDtype 只约束了前一个方向)，用 scaleType 记账会在后者上少算一半。
+    auto kCacheDescForUb = context_->GetInputDesc(K_CACHE_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kCacheDescForUb);
+    auto vCacheDescForUb = context_->GetInputDesc(V_CACHE_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, vCacheDescForUb);
+    ge::DataType kCacheDtypeForUb = kCacheDescForUb->GetDataType();
+    ge::DataType vCacheDtypeForUb = vCacheDescForUb->GetDataType();
     // k量化场景
-    if (kScaleType_ > 0) {
+    if (CheckCacheIsQuant(kCacheDtypeForUb)) {
         if (isOutputKv_) {
             kOutUbsize = dkB8Align * kvDtypeSize_ + dkB8Align * sizeof(int8_t);
         } else {
@@ -344,11 +357,12 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
         kOutUbsize = dkAlign * kvDtypeSize_;
     }
     // v量化场景
-    if (vScaleType_ > 0) {
+    if (CheckCacheIsQuant(vCacheDtypeForUb)) {
         if (isOutputKv_) {
             vOutUbsize = dvB8Align * kvDtypeSize_ + dvB8Align * sizeof(int8_t);
         } else {
-            vOutUbsize = dvB8Align * kvDtypeSize_ + dvB8Align * sizeof(int8_t);
+            // 不输出 c_kv 时 kernel 直接把 outQueue 整块当量化区用（无 T_KV 中间区），只需 1B/元素
+            vOutUbsize = dvB8Align * sizeof(int8_t);
         }
     } else {
         vOutUbsize = dvAlign * kvDtypeSize_;

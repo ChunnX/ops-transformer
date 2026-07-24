@@ -60,7 +60,7 @@ def check_valid_param(params):
     if not isinstance(pa_block_padding_bytes, int) or pa_block_padding_bytes != 0:
         raise ValueError(f"pa_block_padding_bytes should be 0 for segmented KV cache, got {pa_block_padding_bytes}")
 
-    if params["layout_q"] not in ("BSND", "TND", "NTD"):
+    if params["layout_q"] not in ("TND", "NTD"):
         raise ValueError(f"unsupported layout_q: {params['layout_q']}")
 
     if params.get("layout_kv") != "PA_BNSD":

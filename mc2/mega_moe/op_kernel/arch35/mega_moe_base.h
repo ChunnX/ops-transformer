@@ -39,6 +39,7 @@ struct GMMAddrInfo {
     GM_ADDR gmm2OutGlobal;
     __gm__ int32_t *swigluToGmm2Flag;
     __gm__ int32_t *dispatchToGmm1Flag;
+    __gm__ int32_t *gmm2CombineSyncCounter;
 };
 
 struct PeermemInfo {
