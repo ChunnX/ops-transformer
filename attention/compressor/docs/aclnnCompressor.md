@@ -122,6 +122,7 @@ aclnnStatus aclnnCompressor(
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
  cacheMode不支持输入2，且不支持0轴非连续。
+ cmp_ratio仅支持2/4/8/16/32/64/128
 
 - **返回值**
 
@@ -270,7 +271,7 @@ aclnnStatus aclnnCompressor(
   - 支持D为128/512。
   - 支持H为1K~10K，512对齐。
   - 支持blockSize为1~1024。
-  - 支持cmpRatio为2~128。支持如下三种典型组合场景：
+  - 支持如下三种典型组合场景：
       - C4A: D=512, coff=2, cmp_ratio=4；
       - C4Li: D=128, coff=2, cmp_ratio=4；
       - C128A: D=512, coff=1, cmp_ratio=128。
