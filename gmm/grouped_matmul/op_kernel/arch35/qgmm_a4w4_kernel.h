@@ -36,6 +36,7 @@
 #define QGMM_A4W4_KERNEL_H
 
 #include "grouped_matmul_tiling_data_apt.h"
+#include "tensor_api/tensor.h"
 
 #ifdef A4W4_BLAZE_ENABLED
 #include "blaze/gemm/kernel/kernel_gmm_a4w4.h"  // A8W4 风格 A4W4 kernel (ops-tensor)
