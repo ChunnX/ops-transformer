@@ -875,6 +875,16 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
     tilingData_.mmTilingData.set_dbL0A(2); // db switch, 1: off, 2: on
     tilingData_.mmTilingData.set_dbL0B(2); // db switch, 1: off, 2: on
     tilingData_.mmTilingData.set_dbL0C(basicTiling_.dbL0c);
+
+    // 临时填充所需值
+    auto kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
+    auto kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
+    tilingData_.mmTilingData.set_batchM(kAL1);
+    tilingData_.mmTilingData.set_batchN(kBL1);
+    uint32_t scaleKL1 = std::min(
+        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa, basicTiling_.scaleFactorB * basicTiling_.stepKb) * basicTiling_.baseK, inputParams_.kSize);
+    tilingData_.mmTilingData.set_shareMode(scaleKL1);
+
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         if (basicTiling_.scaleFactorA >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorA <= SCALER_FACTOR_MAX &&
             basicTiling_.scaleFactorB >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorB <= SCALER_FACTOR_MAX) {
