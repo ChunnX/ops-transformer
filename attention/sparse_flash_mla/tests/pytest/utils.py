@@ -253,11 +253,13 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
             "actlen_mode": params.get("actlen_mode", ["full"]),
             "template_mode": params.get("template_mode", [None]),
-            "q_datarange": params.get("q_datarange", ["[-10, 10]"]),
-            "ori_kv_datarange": params.get("ori_kv_datarange", ["[-10, 10]"]),
-            "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-10, 10]"]),
+            "q_datarange": params.get("q_datarange", ["[-2, 2]"]),
+            "ori_kv_datarange": params.get("ori_kv_datarange", ["[-2, 2]"]),
+            "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-2, 2]"]),
             "random_seq": params.get("random_seq", [False]),
-            "return_softmax_lse": params.get("return_softmax_lse", [False])
+            "return_softmax_lse": params.get("return_softmax_lse", [False]),
+            "ori_topk_length": params.get("ori_topk_length", [None]),
+            "cmp_topk_length": params.get("cmp_topk_length", [None]),
         }
         param_names = list(param_values.keys())
         for key, value in param_values.items():
