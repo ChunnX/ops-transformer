@@ -1200,15 +1200,6 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffset
 // 整体流程：
 //   外层循环按 dstRankIdx 遍历所有源 rank（每个 block 间隔 blockNum_ 取一个 rank，实现多 core 并行）；
 //   内层循环按 dispatchTotalRounds_ 分轮次加载 mask → GatherMask 压缩 → CopyGMToGMPerToken 搬运。
-//
-// 坐标系：
-//   rowStartIdxInDst   — 当前 expert 从 dstRankIdx 接收的 token 在全局 workspace 中的起始行号（由 cumsum 决定）
-//   accumulatedRowSrcOffset — 已扫描轮次累计的命中 token 数，用于在全局 workspace 中定位本轮写入的行偏移
-//   priorExpertCumsum  — 前一个 expert 的全局行末值，用于将全局行号转换为 expert-local 行号
-//
-// 数据流：
-//   win mask slot → gatherMaskTensor_(UB) → GatherMask → validTopkIndexTensor_ → CopyGMToGMPerToken → workspace
-//
 // 两项优化：
 //   1) 读 GM mask slot 末尾的 count 字段提前跳过空 rank，避免无意义的 mask 加载和 GatherMask；
 //   2) AtomicAdd 提到 round 级：所有 chunk 搬运完成后统一做一次 wave flag 更新，减少同步点。
