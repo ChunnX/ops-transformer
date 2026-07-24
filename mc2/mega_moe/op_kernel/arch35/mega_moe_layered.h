@@ -1717,8 +1717,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineGr
     AscendC::SetCtrlSpr<60, 60>(0);
 
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
+    // A8W4/A4W4 路径每两个 AIV 只有 subBlockIdx=1 参与 Combine，逻辑核数需与 producer 端一致。
+    uint32_t logicalCoreCount = blockAivNum_;
+    if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
+        logicalCoreCount = blockAivNum_ / 2;
+    }
     MegaMoeImpl::GroupSyncSlotLayout slotLayout =
-        MegaMoeImpl::CalcGroupSyncSlotLayout(mExpert, blockAivNum_);
+        MegaMoeImpl::CalcGroupSyncSlotLayout(mExpert, logicalCoreCount);
     __gm__ int32_t *expertCounterBase = (__gm__ int32_t *)gmmAddrInfo.gmm2CombineSyncCounter;
 
     uint32_t rankIndex = 0;
@@ -2160,7 +2165,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithC
 {
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode,
-            SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsShared>(
+            SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsShared, true>(
             params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
             state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
     } else {
