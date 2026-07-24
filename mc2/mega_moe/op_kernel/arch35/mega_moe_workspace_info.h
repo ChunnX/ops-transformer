@@ -199,13 +199,13 @@ struct WorkspaceInfo {
         if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ ||
-            tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+            tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA) {
             gmm2MmadResPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
         }
 
         // Combine-quant-only workspace buffers
-        if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+        if (tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA) {
             // Token group completion counters
             gmm2CombineSyncCounterPtr = base + workspaceSize;
             int64_t combineCounterBytes = static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *

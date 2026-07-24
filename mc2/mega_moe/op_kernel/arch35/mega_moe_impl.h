@@ -223,7 +223,7 @@ struct BlockMmadSelector<true, C> {
 // ==================================================================================
 template <bool IsA8W4, typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB,
           typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
-          bool IsShared = false>
+          bool IsShared = false, bool IsLayered = false>
 struct Config {
     static constexpr bool IS_SHARED = IsShared;
     using ElementAType = ElementA;
@@ -317,7 +317,7 @@ struct Config {
         config.blockIdx = GetBlockIdx() / GetTaskRation();
         config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         if constexpr (!IsA8W4) {
-            if constexpr (Policy::IS_GMM1) {
+            if constexpr (Policy::IS_GMM1 || IsLayered) {
                 config.tileM = L1_TILE_M_256;
             } else {
                 config.tileM = (CombineQuantMode == COMBINE_NO_QUANT && !IsShared) ? L1_TILE_M_128 : L1_TILE_M_256;
@@ -340,7 +340,7 @@ struct Config {
             if constexpr (Policy::IS_GMM1) {
                 layouts.c = MakeLayoutC{}(L1_TILE_M_256, L1_TILE_N);
             } else {
-                if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared) {
+                if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
                     layouts.c = MakeLayoutC{}(L1_TILE_M_128, L1_TILE_N);
                 } else {
                     layouts.c = MakeLayoutC{}(config.m, config.n);
@@ -352,13 +352,14 @@ struct Config {
 };
 
 template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename ElementC, bool IsShared,
-          typename WorkSet, typename ExtraArgs>
+         bool IsLayered = false, typename WorkSet, typename ExtraArgs>
 __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet, uint32_t startLoopIdx,
                                          uint32_t tileNum, ExtraArgs &args)
 {
     constexpr uint32_t ubBufSize =
         Policy::IS_GMM1 ? MAX_SINGLE_MN_ALIGN32_NUM_256 :
-                          ((CombineQuantMode == COMBINE_NO_QUANT && !IsShared) ? MAX_SINGLE_MN_ALIGN32_NUM_128 : 0);
+                          ((CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) ? 
+                          MAX_SINGLE_MN_ALIGN32_NUM_128 : 0);
     int64_t ubOffsetFirst = 0;
     int64_t ubOffsetSecond = static_cast<int64_t>(ubBufSize) * sizeof(ElementC);
     auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), workSet.layouts.c);
@@ -400,7 +401,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             if (loopIdx == startLoopIdx) {
                 WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
             }
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsLayered) {
                 if (args.vecSetSyncCom2 >= 2) {
                     WaitForVector(args.pingpongIdx);
                 }
@@ -432,7 +433,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             auto gmBlockScaleB = workSet.gmScaleB.Slice(
                 Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
                 Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared) {
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) { //URMA通信combine路径归一
                 auto tensorUb = args.pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
                 auto tensorBlockUb = tensorUb.Slice(
                     Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -483,7 +484,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
     }
 }
 
-template <typename ElementC, bool IsLayered = false, typename WorkSet, typename ExtraArgs>
+template <typename ElementC, typename WorkSet, typename ExtraArgs>
 __aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uint32_t startLoopIdx, uint32_t tileNum)
 {
     constexpr uint32_t ubBufSize = MAX_SINGLE_MN_ALIGN32_NUM_128;
@@ -509,13 +510,8 @@ __aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
         tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
             workSet.params.workspaceInfo.tripleInfoPtr + (args.groupCnt + mLoc) * TRIPLE_SIZE * sizeof(int32_t)));
         AscendC::DataCopy(tripleTensor, tripleGm, lenTile * TRIPLE_SIZE);
-        if constexpr (IsLayered) {
-            MegaMoeCombineImpl::CombineTokensLayered<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, workSet.config.n, tripleTensor, l0cOutUbGMM2, actualShape, workSet.params);
-        } else {
-            MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, workSet.config.n, tripleTensor, l0cOutUbGMM2, actualShape, workSet.params);
-        }
+        MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
+            mLoc, nLoc, workSet.config.n, tripleTensor, l0cOutUbGMM2, actualShape, workSet.params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
         NotifyCube(args.pingpongIdx);
@@ -562,13 +558,13 @@ __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLo
         typename BlockMmad::ProblemShape matmulShape{workSet.config.m, workSet.config.n, workSet.config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
 
-        AicComputeGeneric<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared>(blockMmad, workSet, startLoopIdx,
+        AicComputeGeneric<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared, IsLayered>(blockMmad, workSet, startLoopIdx,
                                                                                    tileNum, args);
     } else {
         if constexpr (Policy::IS_GMM1) {
             AivGmm1PostGeneric(workSet, args, startLoopIdx, tileNum);
-        } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared) {
-            AivGmm2PostGeneric<ElementC, IsLayered>(workSet, args, startLoopIdx, tileNum);
+        } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
+            AivGmm2PostGeneric<ElementC>(workSet, args, startLoopIdx, tileNum);
         }
     }
 }
@@ -581,7 +577,7 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
                                               const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, ExtraArgs &args)
 {
     using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
-                          ElementMxScaleB, IsWeightNZ, IsShared>;
+                          ElementMxScaleB, IsWeightNZ, IsShared, IsLayered>;
     auto config = Config::BuildProblemConfig(problemShape);
 
     BlockScheduler scheduler(
@@ -599,7 +595,7 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
             return;
         }
         args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
-    } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared) {
+    } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
         if (GetSubBlockIdx() != 0)
             return;
     }
