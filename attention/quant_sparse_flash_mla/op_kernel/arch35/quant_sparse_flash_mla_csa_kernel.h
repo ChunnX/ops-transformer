@@ -71,7 +71,7 @@ public:
         __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *seqUsedOriKV,
         __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKv, __gm__ uint8_t *oriTopkLength,
         __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
-        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+        __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
         const QuantSparseFlashMlaTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 private:
@@ -159,7 +159,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
     __gm__ uint8_t *sequsedQ, __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV,
     __gm__ uint8_t *cmpResidualKv, __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength,
-    __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+    __gm__ uint8_t *workspace,
     const QuantSparseFlashMlaTilingData *__restrict tiling, TPipe *tPipe)
 {
     __gm__ uint8_t *sequsedOriKv = seqUsedOriKV;
@@ -203,7 +204,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
         cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv, sequsedCmpKv, cmpResidualKv,
         sinks, workspace, tiling, tPipe); // gm设置
     vecBlock.InitVecBlock(tPipe, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedOriKv, sequsedCmpKv, cmpResidualKv);
-    vecBlock.CleanOutput(attentionOut, constInfo);
+    vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
     if ASCEND_IS_AIV {
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE && IS_VEC_S2PHYADDR) {
             this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx, hasActualSeqQlen,
@@ -262,6 +263,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Pars
     constInfo.dSize = quantSparseFlashMlaBaseParams.dSize;
     constInfo.dSizeV = constInfo.dSize;
     constInfo.dSizeVInput = quantSparseFlashMlaBaseParams.dSizeVInput;
+    constInfo.isSoftmaxLseEnable = quantSparseFlashMlaBaseParams.returnSoftmaxLse;
     constInfo.sparseBlockSize = 1;
     constInfo.actualSeqLenSize = constInfo.bSize + 1;
 
