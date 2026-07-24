@@ -20,7 +20,7 @@
 
 -   **计算公式**：
 
-    阶段一：根据是否为sparse场景，对输入key进行选择
+    阶段一：根据是否为sparse场景，对输入k进行选择
 
     * 当为sparse时：
 
@@ -37,7 +37,7 @@
     阶段二：计算P（SimpleSoftmax）
 
     $$
-    P = SimpleSoftmax(Mask(Q \text{ }@\text{ } selectedKv^{{T}} \cdot \text{ } scale), lse)
+    P = SimpleSoftmax(Mask(Q \text{ }@\text{ } selectedKv^{{T}} \cdot \text{ } scale), softmaxLse)
     $$
 
     阶段三：计算Softmax L1Norm
@@ -46,7 +46,7 @@
     softmaxL1Norm = \frac{ReduceSum(P, dim=G)}{G}
     $$
 
-    其中，$G$ 为group数（$G = N1 / N2$），$ReduceSum$ 在G维度（query head group维度）上对softmax概率$P$求和后取平均。
+    其中，$G$ 为group数（$G = N1 / N2$），$ReduceSum$ 在G维度（q head group维度）上对softmax概率$P$求和后取平均。
 
 
 ## 函数原型
@@ -54,9 +54,9 @@
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashMlaSoftmaxL1NormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashMlaSoftmaxL1Norm”接口执行计算。
 ```c++
 aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormGetWorkspaceSize(
-    const aclTensor   *query,
-    const aclTensor   *key,
-    const aclTensor   *lse,
+    const aclTensor   *q,
+    const aclTensor   *k,
+    const aclTensor   *softmaxLse,
     const aclTensor   *sparseIndicesOptional,
     const aclTensor   *cuSeqlensQOptional,
     const aclTensor   *cuSeqlensKOptional,
@@ -65,7 +65,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormGetWorkspaceSize(
     const aclTensor   *cmpResidualKOptional,
     const aclTensor   *topkLengthOptional,
     const aclTensor   *metadataOptional,
-    double             scaleValue,
+    double             softmaxScale,
     int64_t            cmpRatio,
     int64_t            maskMode,
     char              *layoutQOptional,
@@ -110,11 +110,11 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
         </tr></thead>
         <tbody>
         <tr>
-            <td>query（aclTensor*）</td>
+            <td>q（aclTensor*）</td>
             <td>输入</td>
             <td>attention结构的输入Q。</td>
             <td>
-            query、key的N轴对应关系需满足GQA约束（N1 = N2 × G）。
+            q、k的N轴对应关系需满足GQA约束（N1 = N2 × G）。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -124,7 +124,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <td>√</td>
         </tr>
         <tr>
-            <td>key（aclTensor*）</td>
+            <td>k（aclTensor*）</td>
             <td>输入</td>
             <td>attention结构的输入K(V)。</td>
             <td>
@@ -133,28 +133,28 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
             <td>(B,S2,N2,D)、(T2,N2,D)<br>
-            B：与query的B保持一致；S2：支持泛化；N2：1；D：512；T2：B × S2
+            B：与q的B保持一致；S2：支持泛化；N2：1；D：512；T2：B × S2
             </td>
             <td>√</td>
         </tr>
         <tr>
-            <td>lse（aclTensor*）</td>
+            <td>softmaxLse（aclTensor*）</td>
             <td>输入</td>
-            <td>注意力正向计算的输出lse，计算公式详见sparse_flash_mla文档。</td>
+            <td>注意力正向计算的输出softmaxLse，计算公式详见sparse_flash_mla文档。</td>
             <td>
             -
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)<br>
-            B：与query的B保持一致；N2：1；S1：与query的S1保持一致；G：N1/N2；T1：B × S1
+            B：与q的B保持一致；N2：1；S1：与q的S1保持一致；G：N1/N2；T1：B × S1
             </td>
             <td>√</td>
         </tr>
         <tr>
             <td>sparseIndicesOptional（aclTensor*）</td>
             <td>输入</td>
-            <td>稀疏场景下选择的key中权重较高的注意力索引。</td>
+            <td>稀疏场景下选择的k中权重较高的注意力索引。</td>
             <td>
             <ul>
                 <li>支持空tensor</li>
@@ -200,7 +200,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
         <tr>
             <td>sequsedQOptional（aclTensor*）</td>
             <td>输入</td>
-            <td>表示不同batch中query实际参与运算的token数。</td>
+            <td>表示不同batch中q实际参与运算的token数。</td>
             <td>
             长度为B。
             </td>
@@ -213,7 +213,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
         <tr>
             <td>sequsedKOptional（aclTensor*）</td>
             <td>输入</td>
-            <td>表示不同batch中key实际参与运算的token数。</td>
+            <td>表示不同batch中k实际参与运算的token数。</td>
             <td>
             长度为B。
             </td>
@@ -228,7 +228,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <td>输入</td>
             <td>表示每个batch S2 // cmpRatio后的余数。</td>
             <td>
-            当key不为空且maskMode=3时必须传入。
+            当k不为空且maskMode=3时必须传入。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -239,7 +239,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
         <tr>
             <td>topkLengthOptional（aclTensor*）</td>
             <td>输入</td>
-            <td>表示每行query对应的key实际可选的topk长度。</td>
+            <td>表示每行q对应的k实际可选的topk长度。</td>
             <td>
             maskMode=0且存在稀疏索引时需要传，且必须为准确值。
             </td>
@@ -263,7 +263,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <td>√</td>
         </tr>
         <tr>
-            <td>scaleValue（double）</td>
+            <td>softmaxScale（double）</td>
             <td>输入</td>
             <td>缩放系数。</td>
             <td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
         <tr>
             <td>cmpRatio（int64_t）</td>
             <td>输入</td>
-            <td>表示对key的压缩率。</td>
+            <td>表示对k的压缩率。</td>
             <td>
             取值范围：1~128。
             </td>
@@ -289,7 +289,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
         <tr>
             <td>maskMode（int64_t）</td>
             <td>输入</td>
-            <td>表示query和key计算的mask模式。</td>
+            <td>表示q和k计算的mask模式。</td>
         <td>
               <ul>
                 <li>表示sparse的模式。sparse不同模式的详细说明请参见<a href="#约束说明">约束说明</a>。</li>
@@ -303,7 +303,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
         <tr>
             <td>layoutQOptional（char*）</td>
             <td>输入</td>
-            <td>表示输入query的数据排布格式。</td>
+            <td>表示输入q的数据排布格式。</td>
             <td>
             支持"BSND"、"TND"。需与layoutKOptional一致。
             </td>
@@ -315,7 +315,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
         <tr>
             <td>layoutKOptional（char*）</td>
             <td>输入</td>
-            <td>表示输入key的数据排布格式。</td>
+            <td>表示输入k的数据排布格式。</td>
             <td>
             支持"BSND"、"TND"。需与layoutQOptional一致。
             </td>
@@ -327,14 +327,14 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
         <tr>
             <td>softmaxL1Norm（aclTensor*）</td>
             <td>输出</td>
-            <td>表示query与key计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
+            <td>表示q与k计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
             <td>
             若存在稀疏索引，则该输出不为空；其他场景下该参数输出为空。
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,S1,N2,S2)、(T1,N2,T2)<br>
-            B：与query的B保持一致；S1：与query的S1保持一致；N2：1；S2：与key的S2保持一致；T1：B × S1；T2：B × S2
+            B：与q的B保持一致；S1：与q的S1保持一致；N2：1；S2：与k的S2保持一致；T1：B × S1；T2：B × S2
             </td>
             <td>√</td>
         </tr>
@@ -366,7 +366,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>输入变量，如query、key……的数据类型和数据格式不在支持的范围内。</td>
+                <td>输入变量，如q、k……的数据类型和数据格式不在支持的范围内。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_RUNTIME_ERROR</td>
@@ -428,7 +428,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
   - aclnnSparseFlashMlaSoftmaxL1Norm默认确定性实现。
 - 公共约束
     - 入参为空的场景处理：
-        - query为空Tensor：直接返回。
+        - q为空Tensor：直接返回。
 
 - Mask
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
@@ -572,10 +572,10 @@ int main() {
   auto ret = Init(deviceId, &context, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  // TND layout: qShape=(T1,N1,D), keyShape=(T2,N2,D), lseShape=(N2,T1,G)
+  // TND layout: qShape=(T1,N1,D), kShape=(T2,N2,D), softmaxLseShape=(N2,T1,G)
   std::vector<int64_t> qShape = {16, 128, 512};
-  std::vector<int64_t> keyShape = {2048, 1, 512};
-  std::vector<int64_t> lseShape = {1, 16, 128};
+  std::vector<int64_t> kShape = {2048, 1, 512};
+  std::vector<int64_t> softmaxLseShape = {1, 16, 128};
   std::vector<int64_t> cuSeqQLenshape = {2};
   std::vector<int64_t> cuSeqKLenshape = {2};
   std::vector<int64_t> cmpResidualKShape = {1};
@@ -583,8 +583,8 @@ int main() {
   std::vector<int64_t> metadataShape = {64};
 
   void* qDeviceAddr = nullptr;
-  void* keyDeviceAddr = nullptr;
-  void* lseDeviceAddr = nullptr;
+  void* kDeviceAddr = nullptr;
+  void* softmaxLseDeviceAddr = nullptr;
   void* cuSeqQLenDeviceAddr = nullptr;
   void* cuSeqKLenDeviceAddr = nullptr;
   void* cmpResidualKDeviceAddr = nullptr;
@@ -592,8 +592,8 @@ int main() {
   void* metadataDeviceAddr = nullptr;
 
   aclTensor* q = nullptr;
-  aclTensor* key = nullptr;
-  aclTensor* lse = nullptr;
+  aclTensor* k = nullptr;
+  aclTensor* softmaxLse = nullptr;
   aclTensor* cuSeqQLen = nullptr;
   aclTensor* cuSeqKLen = nullptr;
   aclTensor* cmpResidualK = nullptr;
@@ -601,8 +601,8 @@ int main() {
   aclTensor* metadata = nullptr;
 
   std::vector<short> qHostData(16 * 128 * 512, 1.0);
-  std::vector<short> keyHostData(2048 * 1 * 512, 1.0);
-  std::vector<float> lseHostData(1 * 16 * 128, 3.0);
+  std::vector<short> kHostData(2048 * 1 * 512, 1.0);
+  std::vector<float> softmaxLseHostData(1 * 16 * 128, 3.0);
   std::vector<int32_t> cuSeqQLenHostData = {0, 16};
   std::vector<int32_t> cuSeqKLenHostData = {0, 2048};
   std::vector<int32_t> cmpResidualKHostData = {0};
@@ -611,9 +611,9 @@ int main() {
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(keyHostData, keyShape, &keyDeviceAddr, aclDataType::ACL_FLOAT16, &key);
+  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &k);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(lseHostData, lseShape, &lseDeviceAddr, aclDataType::ACL_FLOAT, &lse);
+  ret = CreateAclTensor(softmaxLseHostData, softmaxLseShape, &softmaxLseDeviceAddr, aclDataType::ACL_FLOAT, &lse);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(cuSeqQLenHostData, cuSeqQLenshape, &cuSeqQLenDeviceAddr, aclDataType::ACL_INT32, &cuSeqQLen);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -628,7 +628,7 @@ int main() {
   ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadata);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  double scaleValue = 0.088388;
+  double softmaxScale = 0.088388;
   int64_t maxSeqlenK = 2048;
   int64_t cmpRatio = 128;
   int64_t maskMode = 3;
@@ -659,8 +659,8 @@ int main() {
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   ret = aclnnSparseFlashMlaSoftmaxL1NormGetWorkspaceSize(
-      q, key, lse, nullptr, cuSeqQLen, cuSeqKLen, nullptr, nullptr, cmpResidualK, nullptr, metadata,
-      scaleValue, maxSeqlenK, cmpRatio, maskMode, layoutQ, layoutK, softmaxL1Norm, &workspaceSize, &executor);
+      q, k, softmaxLse, nullptr, cuSeqQLen, cuSeqKLen, nullptr, nullptr, cmpResidualK, nullptr, metadata,
+      softmaxScale, maxSeqlenK, cmpRatio, maskMode, layoutQ, layoutK, softmaxL1Norm, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnSparseFlashMlaSoftmaxL1NormGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
@@ -683,16 +683,16 @@ int main() {
   }
 
   aclDestroyTensor(q);
-  aclDestroyTensor(key);
-  aclDestroyTensor(lse);
+  aclDestroyTensor(k);
+  aclDestroyTensor(softmaxLse);
   aclDestroyTensor(cuSeqQLen);
   aclDestroyTensor(cuSeqKLen);
   aclDestroyTensor(cmpResidualK);
   aclDestroyTensor(softmaxL1Norm);
   aclDestroyTensor(metadata);
   aclrtFree(qDeviceAddr);
-  aclrtFree(keyDeviceAddr);
-  aclrtFree(lseDeviceAddr);
+  aclrtFree(kDeviceAddr);
+  aclrtFree(softmaxLseDeviceAddr);
   aclrtFree(cuSeqQLenDeviceAddr);
   aclrtFree(cuSeqKLenDeviceAddr);
   aclrtFree(cmpResidualKDeviceAddr);

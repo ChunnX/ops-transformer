@@ -17,30 +17,30 @@
 
 -   计算公式：
 
-    阶段一：根据不同cmp_ratio场景，对输入key进行选择
+    阶段一：根据不同cmp_ratio场景，对输入k进行选择
 
     * 当cmp_ratio = 1 (SWA)：
 
     $$
-    selectedKv\text{ }=\text{ }key
+    selectedKv\text{ }=\text{ }k
     $$
 
     * 当cmp_ratio = 4 (SCFA)：
 
     $$
-    selectedKv\text{ }=concat(key, \text{ }Gather \left( cmpkv,topkIndices \left[ i \left]  \left)) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
+    selectedKv\text{ }=concat(k, \text{ }Gather \left( cmpkv,topkIndices \left[ i \left]  \left)) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
     $$
 
     * else (CFA):
 
     $$
-    selectedKv\text{ }=concat(key, \text{ }cmpkv)
+    selectedKv\text{ }=concat(k, \text{ }cmpkv)
     $$
 
     阶段二：计算P（SimpleSoftmax）
 
     $$
-    P = SimpleSoftmax(Mask(Q \text{ }@\text{ } selectedKv^{{T}} \cdot \text{ } scale), lse)
+    P = SimpleSoftmax(Mask(Q \text{ }@\text{ } selectedKv^{{T}} \cdot \text{ } scale), softmaxLse)
     $$
 
     阶段三：计算Softmax L1Norm
@@ -72,30 +72,30 @@
     </tr></thead>
     <tbody>
     <tr>
-        <td>query</td>
+        <td>q</td>
         <td>输入</td>
         <td>attention结构的输入Q。</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
     </tr>
     <tr>
-        <td>key</td>
+        <td>k</td>
         <td>输入</td>
         <td>attention结构的输入K(V)。</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
     </tr>
     <tr>
-        <td>lse</td>
+        <td>softmaxLse</td>
         <td>输入</td>
-        <td>注意力正向计算的输出lse，计算公式详见sparse_flash_mla文档。</td>
+        <td>注意力正向计算的输出softmaxLse，计算公式详见sparse_flash_mla文档。</td>
         <td>FLOAT32</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>sparseIndicesOptional</td>
         <td>输入</td>
-        <td>稀疏场景下选择的key中权重较高的注意力索引。</td>
+        <td>稀疏场景下选择的k中权重较高的注意力索引。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
@@ -116,14 +116,14 @@
     <tr>
         <td>sequsedQOptional</td>
         <td>输入</td>
-        <td>表示不同batch中query实际参与运算的token数。</td>
+        <td>表示不同batch中q实际参与运算的token数。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>sequsedKOptional</td>
         <td>输入</td>
-        <td>表示不同batch中key实际参与运算的token数。</td>
+        <td>表示不同batch中k实际参与运算的token数。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
@@ -137,7 +137,7 @@
     <tr>
         <td>topkLengthOptional</td>
         <td>输入</td>
-        <td>表示每行query对应的key实际可选的topk长度。</td>
+        <td>表示每行q对应的k实际可选的topk长度。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
@@ -149,7 +149,7 @@
         <td>ND</td>
     </tr>
     <tr>
-        <td>scaleValue</td>
+        <td>softmaxScale</td>
         <td>属性</td>
         <td>缩放系数。</td>
         <td>FLOAT32</td>
@@ -158,35 +158,35 @@
     <tr>
         <td>cmpRatio</td>
         <td>属性</td>
-        <td>表示对key的压缩率。</td>
+        <td>表示对k的压缩率。</td>
         <td>INT64</td>
         <td>-</td>
     </tr>
     <tr>
         <td>maskMode</td>
         <td>属性</td>
-        <td>表示query和key计算的mask模式。</td>
+        <td>表示q和k计算的mask模式。</td>
         <td>INT64</td>
         <td>-</td>
     </tr>
     <tr>
         <td>layoutQOptional</td>
         <td>属性</td>
-        <td>表示输入query的数据排布格式。</td>
+        <td>表示输入q的数据排布格式。</td>
         <td>STRING</td>
         <td>-</td>
     </tr>
     <tr>
         <td>layoutKOptional</td>
         <td>属性</td>
-        <td>表示输入key的数据排布格式。</td>
+        <td>表示输入k的数据排布格式。</td>
         <td>STRING</td>
         <td>-</td>
     </tr>
     <tr>
         <td>softmaxL1Norm</td>
         <td>输出</td>
-        <td>表示query与key计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
+        <td>表示q与k计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
         <td>FLOAT32</td>
         <td>ND</td>
     </tr>

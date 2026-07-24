@@ -72,10 +72,10 @@ int main() {
   auto ret = Init(deviceId, &context, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  // TND layout: qShape=(T1,N1,D), keyShape=(T2,N2,D), lseShape=(N2,T1,G)
+  // TND layout: qShape=(T1,N1,D), kShape=(T2,N2,D), softmaxLseShape=(N2,T1,G)
   std::vector<int64_t> qShape = {16, 128, 512};
-  std::vector<int64_t> keyShape = {2048, 1, 512};
-  std::vector<int64_t> lseShape = {1, 16, 128};
+  std::vector<int64_t> kShape = {2048, 1, 512};
+  std::vector<int64_t> softmaxLseShape = {1, 16, 128};
   std::vector<int64_t> cuSeqQLenshape = {2};
   std::vector<int64_t> cuSeqKLenshape = {2};
   std::vector<int64_t> cmpResidualKShape = {1};
@@ -83,8 +83,8 @@ int main() {
   std::vector<int64_t> metadataShape = {64};
 
   void* qDeviceAddr = nullptr;
-  void* keyDeviceAddr = nullptr;
-  void* lseDeviceAddr = nullptr;
+  void* kDeviceAddr = nullptr;
+  void* softmaxLseDeviceAddr = nullptr;
   void* cuSeqQLenDeviceAddr = nullptr;
   void* cuSeqKLenDeviceAddr = nullptr;
   void* cmpResidualKDeviceAddr = nullptr;
@@ -92,8 +92,8 @@ int main() {
   void* metadataDeviceAddr = nullptr;
 
   aclTensor* q = nullptr;
-  aclTensor* key = nullptr;
-  aclTensor* lse = nullptr;
+  aclTensor* k = nullptr;
+  aclTensor* softmaxLse = nullptr;
   aclTensor* cuSeqQLen = nullptr;
   aclTensor* cuSeqKLen = nullptr;
   aclTensor* cmpResidualK = nullptr;
@@ -101,8 +101,8 @@ int main() {
   aclTensor* metadata = nullptr;
 
   std::vector<short> qHostData(16 * 128 * 512, 1.0);
-  std::vector<short> keyHostData(2048 * 1 * 512, 1.0);
-  std::vector<float> lseHostData(1 * 16 * 128, 3.0);
+  std::vector<short> kHostData(2048 * 1 * 512, 1.0);
+  std::vector<float> softmaxLseHostData(1 * 16 * 128, 3.0);
   std::vector<int32_t> cuSeqQLenHostData = {0, 16};
   std::vector<int32_t> cuSeqKLenHostData = {0, 2048};
   std::vector<int32_t> cmpResidualKHostData = {0};
@@ -111,9 +111,9 @@ int main() {
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(keyHostData, keyShape, &keyDeviceAddr, aclDataType::ACL_FLOAT16, &key);
+  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &k);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(lseHostData, lseShape, &lseDeviceAddr, aclDataType::ACL_FLOAT, &lse);
+  ret = CreateAclTensor(softmaxLseHostData, softmaxLseShape, &softmaxLseDeviceAddr, aclDataType::ACL_FLOAT, &softmaxLse);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(cuSeqQLenHostData, cuSeqQLenshape, &cuSeqQLenDeviceAddr, aclDataType::ACL_INT32, &cuSeqQLen);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -128,7 +128,7 @@ int main() {
   ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadata);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  double scaleValue = 0.088388;
+  double softmaxScale = 0.088388;
   int64_t maxSeqlenK = 2048;
   int64_t cmpRatio = 128;
   int64_t maskMode = 3;
@@ -159,8 +159,8 @@ int main() {
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   ret = aclnnSparseFlashMlaSoftmaxL1NormGetWorkspaceSize(
-      q, key, lse, nullptr, cuSeqQLen, cuSeqKLen, nullptr, nullptr, cmpResidualK, nullptr, metadata,
-      scaleValue, maxSeqlenK, cmpRatio, maskMode, layoutQ, layoutK, softmaxL1Norm, &workspaceSize, &executor);
+      q, k, softmaxLse, nullptr, cuSeqQLen, cuSeqKLen, nullptr, nullptr, cmpResidualK, nullptr, metadata,
+      softmaxScale, maxSeqlenK, cmpRatio, maskMode, layoutQ, layoutK, softmaxL1Norm, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnSparseFlashMlaSoftmaxL1NormGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
@@ -183,16 +183,16 @@ int main() {
   }
 
   aclDestroyTensor(q);
-  aclDestroyTensor(key);
-  aclDestroyTensor(lse);
+  aclDestroyTensor(k);
+  aclDestroyTensor(softmaxLse);
   aclDestroyTensor(cuSeqQLen);
   aclDestroyTensor(cuSeqKLen);
   aclDestroyTensor(cmpResidualK);
   aclDestroyTensor(softmaxL1Norm);
   aclDestroyTensor(metadata);
   aclrtFree(qDeviceAddr);
-  aclrtFree(keyDeviceAddr);
-  aclrtFree(lseDeviceAddr);
+  aclrtFree(kDeviceAddr);
+  aclrtFree(softmaxLseDeviceAddr);
   aclrtFree(cuSeqQLenDeviceAddr);
   aclrtFree(cuSeqKLenDeviceAddr);
   aclrtFree(cmpResidualKDeviceAddr);

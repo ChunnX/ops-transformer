@@ -239,7 +239,7 @@ def compute_qk(q, k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_vec_db, 
     G_align2 = (constInfo.g_size + 1) // 2 * 2
     pl.set_validshape(qk_acc, [G_align2, TKV])
     
-    # query复用
+    # q复用
     if runInfo.ki == 0:
         if IS_TND == 1:
             pl.load(cur_q_slot, q, [runInfo.t1_offset + runInfo.s1_idx, 0, 0], order=[1, 2])
@@ -281,7 +281,7 @@ def compute_qk_dense(q, k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_ve
     G_align2 = (constInfo.g_size + 1) // 2 * 2
     pl.set_validshape(qk_acc, [G_align2, TKV])
     
-    # query复用
+    # q复用
     if runInfo.ki == 0:
         if IS_TND == 1:
             pl.load(cur_q_slot, q, [runInfo.t1_offset + runInfo.s1_idx, 0, 0], order=[1, 2])
@@ -491,12 +491,12 @@ def set_preload_info(runInfo, preload_info, ki):
 @pl.jit(auto_mutex=True,
     tiling_key=SmlaTilingKey,
     datatype={
-        "query": "input_dtype",
+        "q": "input_dtype",
     })
 def sparse_flash_mla_softmax_l1_norm(
-    query: pl.Ptr[pl.DT_UINT8],
-    key: pl.Ptr[pl.DT_UINT8],
-    lse: pl.Ptr[pl.DT_UINT8],
+    q: pl.Ptr[pl.DT_UINT8],
+    k: pl.Ptr[pl.DT_UINT8],
+    softmax_lse: pl.Ptr[pl.DT_UINT8],
     sparse_indices_optional: pl.Ptr[pl.DT_UINT8],
     cu_seqlens_q_optional: pl.Ptr[pl.DT_UINT8],
     cu_seqlens_k_optional: pl.Ptr[pl.DT_UINT8],
@@ -511,19 +511,19 @@ def sparse_flash_mla_softmax_l1_norm(
 ):
     if IS_TND == 1:
         tensor_q = pl.make_tensor(
-            query,
+            q,
             [tiling.t1, tiling.g, tiling.d],
             [tiling.g * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_k = pl.make_tensor(
-            key,
+            k,
             [tiling.t2, 1, tiling.d],
             [tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_lse = pl.make_tensor(
-            lse,
+            softmax_lse,
             [1, tiling.t1, tiling.g],
             [tiling.g, tiling.g, 1],
             dtype=pl.DT_FP32,
@@ -568,19 +568,19 @@ def sparse_flash_mla_softmax_l1_norm(
             )
     else:
         tensor_q = pl.make_tensor(
-            query,
+            q,
             [tiling.b, tiling.sq, tiling.g, tiling.d],
             [tiling.sq * tiling.g * tiling.d, tiling.g * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_k = pl.make_tensor(
-            key,
+            k,
             [tiling.b, tiling.sk, 1, tiling.d],
             [tiling.sk * tiling.d, tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_lse = pl.make_tensor(
-            lse,
+            softmax_lse,
             [tiling.b, tiling.sq, 1, tiling.g],
             [tiling.sq * tiling.g, tiling.g, tiling.g, 1],
             dtype=pl.DT_FP32,
