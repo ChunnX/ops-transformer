@@ -23,15 +23,18 @@
 namespace NpuArch::Epilogue::Block {
 
 template <
-    class ElementLocalGlobalMax_>
+    class ElementLocalGlobalMax_,
+    class LayoutLocalGlobalMax_>
 class BlockEpilogue<
     EpilogueCopyGlobalMaxUbToL1Bsa,
-    ElementLocalGlobalMax_>
+    ElementLocalGlobalMax_,
+    LayoutLocalGlobalMax_>
 {
 public:
     using DispatchPolicy = EpilogueCopyGlobalMaxUbToL1Bsa;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementLocalGlobalMax = ElementLocalGlobalMax_;
+    using LayoutLocalGlobalMax = LayoutLocalGlobalMax_;
 
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource) {}
     __aicore__ inline ~BlockEpilogue() {}

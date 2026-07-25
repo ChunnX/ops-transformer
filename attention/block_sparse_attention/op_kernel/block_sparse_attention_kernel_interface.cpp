@@ -353,7 +353,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     // copy global max from UB to L1: 输入 ElementLocalGlobalMax
     using DispatchPolicyCopyGlobalMaxUbToL1 = Epilogue::EpilogueCopyGlobalMaxUbToL1Bsa;
     using EpilogueCopyGlobalMaxUbToL1 = Epilogue::Block::BlockEpilogue<
-        DispatchPolicyCopyGlobalMaxUbToL1, ElementLocalGlobalMax>;
+        DispatchPolicyCopyGlobalMaxUbToL1, ElementLocalGlobalMax, LayoutLocalGlobalMax>;
     // 处理单个tile内P和Value的matmul
     using L1TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;

@@ -15,13 +15,18 @@ namespace NpuArch::Epilogue::Block {
 
 namespace MXFP4 {
     static constexpr uint32_t KB_SIZE = 1024;
+    static constexpr uint32_t QS_BASE_SIZE = 128;
+    static constexpr uint32_t KVS_BASE_SIZE = 256;
+    static constexpr uint32_t DATA_BLOCK_BYTE = 32;
 
     // UB 分配
     // mm1Res(S): single 64K, BUFCNT=2, FIXPIPE<->V
     static constexpr uint32_t UB_S_BUF_CNT = 2;
     static constexpr uint32_t UB_S_INNER_BUF_OFFSET = 256;
+    static constexpr uint32_t UB_S_INNER_BUF_ELEMENT_OFFSET = 128;
     static constexpr uint32_t UB_S_BUF_SIZE = 64 * KB_SIZE;
     static constexpr uint32_t UB_S_BUF_OFFSET = 0;
+    static constexpr uint32_t UB_S_QS_MAJOR_BYTE = 256;
 
     // mm2Res(PV): 32K, BUFCNT=1, FIXPIPE<->V
     static constexpr uint32_t UB_OTMP_BUF_SIZE = 32 * KB_SIZE;
@@ -38,8 +43,10 @@ namespace MXFP4 {
     // vec1Res(P): single 16K, BUFCNT=2, output buffer
     static constexpr uint32_t UB_P_BUF_CNT = 2;
     static constexpr uint32_t UB_P_INNER_BUF_OFFSET = 256;
+    static constexpr uint32_t UB_P_INNER_BUF_ELEMENT_OFFSET = 256;
     static constexpr uint32_t UB_P_BUF_SIZE = 16 * KB_SIZE;
     static constexpr uint32_t UB_P_BUF_OFFSET = 160 * KB_SIZE + 512;
+    static constexpr uint32_t UB_P_QS_MAJOR_BYTE = 256;
 
     // attnTrans(space-reuse P): 18K, BUFCNT=1, output buffer
     static constexpr uint32_t UB_O_TRANS_SIZE = 18 * KB_SIZE;
@@ -81,6 +88,16 @@ namespace MXFP4 {
     // Index: 0.25K, BUFCNT=1, resident
     static constexpr uint32_t UB_INDEX_SIZE = 256;
     static constexpr uint32_t UB_INDEX_OFFSET = 247 * KB_SIZE + 768;
+
+    // 同步eventID
+    static constexpr uint64_t SYNC_VEC1_RES_BUF0_FLAG = 0;
+    static constexpr uint64_t SYNC_VEC1_RES_BUF1_FLAG = 1;
+    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF0_FLAG = 2;
+    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF1_FLAG = 3;
+    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF2_FLAG = 4;
+    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF3_FLAG = 5;
+    static constexpr uint64_t SYNC_ATTN_BUF_FLAG = 6;
+    static constexpr uint64_t SYNC_INIT_OUTPUT = 7;
 }  // namespace MXFP4
 
 }  // namespace NpuArch::Epilogue::Block

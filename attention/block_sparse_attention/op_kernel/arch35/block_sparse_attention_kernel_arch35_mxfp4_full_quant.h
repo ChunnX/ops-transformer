@@ -14,7 +14,7 @@
 
 using namespace NpuArch;
 using namespace tla;
-using namespace MXFP4;
+using namespace MXFP4Kernel;
 
 namespace EpMXFP4 = Epilogue::Block::MXFP4;   // UB 常量别名
 namespace GmMXFP4 = Gemm::Block::MXFP4;       // L1 常量别名
@@ -41,6 +41,7 @@ public:
     using ElementK = typename BlockMmadQK::ElementB;
     using ElementS = typename EpilogueOnlineSoftmax::ElementInput;
     using ElementP = typename BlockMmadPV::ElementA;
+    using ElementDisguiseP = uint8_t;
     using ElementV = typename BlockMmadPV::ElementB;
     using ElementOTmp = typename BlockMmadPV::ElementC;
     using ElementO = typename EpilogueOnlineSoftmax::ElementInput;
@@ -60,7 +61,7 @@ public:
     using LayoutO = layout::RowMajor;
     using LayoutLse = layout::RowMajor;
     using LayoutOTmp = layout::RowMajor;
-    using LayoutLocalGlobalMax = layout::RowMajor;
+    using LayoutLocalGlobalMax = typename EpilogueCopyGlobalMaxUbToL1::LayoutLocalGlobalMax;
     using LayoutSparseIdx = layout::RowMajor;
     using LayoutSparseCount = layout::RowMajor;
 
@@ -82,7 +83,7 @@ public:
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PV_RE_DELAY_N + 1;
     static constexpr uint32_t TILE_GROUP_N = 16;
 
-    static constexpr uint32_t UB_S_OTMP_BUF_STAGES = 2;
+    static constexpr uint32_t DATA_BLOCK_BYTE = 32;
 
     // Methods
     __aicore__ inline
@@ -142,15 +143,14 @@ public:
 
         // cross core data move dst buffers
         AscendC::LocalTensor<ElementS> ubSTensor[EpMXFP4::UB_S_BUF_CNT];
-        AscendC::LocalTensor<ElementP> l1PTensor[GmMXFP4::L1_P_BUF_CNT];
+        AscendC::LocalTensor<ElementDisguiseP> l1PTensor[GmMXFP4::L1_P_BUF_CNT];
         AscendC::LocalTensor<ElementPScale> l1PScaleTensor[GmMXFP4::L1_P_SCALE_BUF_CNT];
         AscendC::LocalTensor<ElementS> l1LocalGlobalMaxTensor[GmMXFP4::L1_LOCAL_GLOBAL_MAX_BUF_CNT];
-        AscendC::LocalTensor<ElementS> ubLocalGlobalMaxTensor[EpMXFP4::UB_LOCAL_GLOBAL_MAX_CNT];
+        AscendC::LocalTensor<ElementS> ubPeerGlobalMaxTensor[EpMXFP4::UB_PEER_GLOBAL_MAX_CNT];
         AscendC::LocalTensor<ElementOTmp> ubOTmpTensor;
 
-
         InitCrossCoreDstBuf(l1PTensor, l1PScaleTensor, l1LocalGlobalMaxTensor,
-                            ubSTensor, ubLocalGlobalMaxTensor, ubOTmpTensor);
+                            ubSTensor, ubPeerGlobalMaxTensor, ubOTmpTensor);
         // core idx
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();
@@ -166,6 +166,10 @@ public:
         }
         AscendC::SyncAll<false>();
 
+        // tla define
+        auto ubSLayoutTla = tla::MakeLayout<ElementS, LayoutS>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE * 2);
+        auto ubSTensorTla = tla::MakeTensor(ubSTensor[0], ubSLayoutTla, Arch::PositionUB{});
+
  #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
@@ -173,7 +177,8 @@ public:
  #endif	 
  #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-        // EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
+        half dstTypeMax = static_cast<half>(dstTypeMax_);
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, dstTypeMax);
         // EpilogueRescaleO epilogueRescaleO(resource);
  #endif	 
 
@@ -285,6 +290,8 @@ public:
                     if ASCEND_IS_AIC {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1 + 16);
+                        auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(1, CV_Q_BASE_TILE);
+                        auto l1GMaxTensorTla = tla::MakeTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionUB{});
                         CopyGMaxL1ToUb(delay3TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB + 16);
@@ -305,15 +312,24 @@ public:
 
                 if ASCEND_IS_AIC {
                     AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
+                    // todo mm1
+                    auto curUBSTensorTla = GetTile(ubSTensorTla, MakeCoord(0, CV_Q_BASE_TILE * mm1ResBufId), MakeShape(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE));
+
                     ComputeMm1(curTileInfo);
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                 } else {
                     if (subBlockIdx == AscendC::GetSubBlockIdx()) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
-                        ComputeVec1(curTileInfo);
+                        uint32_t l1PBufId = curTileInfo.loop % L1_P_BUF_CNT;
+                        auto l1PLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutP>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE / 2);
+                        auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
+                        GemmCoord actualBlockShapeQK{curTileInfo.kvsActBaseTile, curTileInfo.qsActBaseTile, embed_};
+                        epilogueOnlineSoftmax(l1PTensorTla, actualBlockShapeQK, curTileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
                     }
                     if (curTileInfo.isUpdatePScale) {
+                        auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(2, CV_Q_BASE_TILE);
+                        auto l1GMaxTensorTla = tla::MakeTensor(l1LocalGlobalMaxTensor[curTileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionL1{});
                         CopyGMaxUbToL1(curTileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
                     }
@@ -396,6 +412,7 @@ public:
         blockShapeX_ = bsaTilingData->blockShapeX;
         blockShapeY_ = bsaTilingData->blockShapeY;
         scaleValue_ = bsaTilingData->scaleValue;
+        dstTypeMax_ = bsaTilingData->dstTypeMax;
         // mask2idx tile info
         xBlockNumAligned_ = bsaTilingData->BsaMask2IdxTileInfo.xBlockNumAligned;
         yBlockNumAligned_ = bsaTilingData->BsaMask2IdxTileInfo.yBlockNumAligned;
@@ -444,17 +461,17 @@ public:
 
     __aicore__ inline
     void InitCrossCoreDstBuf(
-        AscendC::LocalTensor<ElementP> (&l1PTensor)[GmMXFP4::L1_P_BUF_CNT],
+        AscendC::LocalTensor<ElementDisguiseP> (&l1PTensor)[GmMXFP4::L1_P_BUF_CNT],
         AscendC::LocalTensor<ElementPScale> (&l1PScaleTensor)[GmMXFP4::L1_P_SCALE_BUF_CNT],
         AscendC::LocalTensor<ElementS> (&l1LocalGlobalMax)[GmMXFP4::L1_LOCAL_GLOBAL_MAX_BUF_CNT],
         AscendC::LocalTensor<ElementS> (&ubSTensor)[EpMXFP4::UB_S_BUF_CNT],
-        AscendC::LocalTensor<ElementS> (&ubLocalGlobalMax)[EpMXFP4::UB_LOCAL_GLOBAL_MAX_CNT],
+        AscendC::LocalTensor<ElementS> (&ubPeerGlobalMax)[EpMXFP4::UB_PEER_GLOBAL_MAX_CNT],
         AscendC::LocalTensor<ElementOTmp> &ubOTmpTensor)
 
     {
         // L1 侧 buffer 初始化：OFFSET + i * SIZE 递增
         for (uint32_t i = 0; i < GmMXFP4::L1_P_BUF_CNT; i++) {
-            l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
+            l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementDisguiseP>(
                 GmMXFP4::L1_P_BUF_OFFSET + GmMXFP4::L1_P_BUF_SIZE * i);
         }
         for (uint32_t i = 0; i < GmMXFP4::L1_P_SCALE_BUF_CNT; i++) {
@@ -468,11 +485,11 @@ public:
         // UB 侧 buffer 初始化
         for (uint32_t i = 0; i < EpMXFP4::UB_S_BUF_CNT; i++) {
             ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
-                EpMXFP4::UB_S_BUF_OFFSET + EpMXFP4::UB_S_INNER_BUF_OFFSET * i);
+                EpMXFP4::UB_S_BUF_OFFSET + EpMXFP4::UB_S_INNER_BUF_ELEMENT_OFFSET * i);
         }
-        for (uint32_t i = 0; i < EpMXFP4::UB_LOCAL_GLOBAL_MAX_CNT; i++) {
-            ubLocalGlobalMax[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
-                EpMXFP4::UB_LOCAL_GLOBAL_MAX_OFFSET + EpMXFP4::UB_P_INNER_BUF_OFFSET * i);
+        for (uint32_t i = 0; i < EpMXFP4::UB_PEER_GLOBAL_MAX_CNT; i++) {
+            ubPeerGlobalMax[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
+                EpMXFP4::UB_PEER_GLOBAL_MAX_OFFSET + EpMXFP4::UB_PEER_GLOBAL_MAX_SIZE * i);
         }
         // OTmp 单 buffer
         ubOTmpTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(EpMXFP4::UB_OTMP_BUF_OFFSET);
@@ -687,6 +704,8 @@ public:
             (taskInfo.gatheredKvSeqlen - (taskInfo.taskTileNum - 1) * kvBaseTile_) : kvBaseTile_;
         // PV 稀疏 gather 用：当前 tile 在 task 内 gather 后的 KV base tile 序号
         info.pvGatheredKvSTileIdx = curTaskTileIdx;
+        info.kvsActBaseTileAlign32 = (info.info.kvsActBaseTile + 31) / 32;
+        info.kvsActBaseTileAlign64 = (info.info.kvsActBaseTile + 63) / 64;;
     }
 
     
@@ -754,6 +773,7 @@ private:
     uint32_t blockShapeX_;
     uint32_t blockShapeY_;
     float scaleValue_;
+    float dstTypeMax_;
     // mask2idx tile info
     uint32_t xBlockNumAligned_;
     uint32_t yBlockNumAligned_;

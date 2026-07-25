@@ -14,10 +14,6 @@
 #include "../attn_infra/arch/bsa_arch.hpp"
 #include "../attn_infra/layout/bsa_layout.hpp"
 
-#include "../attn_infra/gemm/block/bsa_block_mmad.hpp"
-#include "../attn_infra/gemm/bsa_gemm_dispatch_policy.hpp"
-#include "../attn_infra/gemm/bsa_gemm_type.hpp"
-
 #include "../attn_infra/arch/bsa_cross_core_sync.hpp"
 #include "../attn_infra/arch/bsa_resource.hpp"
 
@@ -27,7 +23,7 @@
 #include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 
-namespace MXFP4 {
+namespace MXFP4Kernel {
     
 struct TaskInfo {
     uint32_t batchIdx = 0;
@@ -65,6 +61,8 @@ struct TileInfo {
     bool isKvsFirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，    
     
     uint32_t kvsActBaseTile = 0;
+    uint32_t kvsActBaseTileAlign32 = 0;
+    uint32_t kvsActBaseTileAlign64 = 0;
     // ===== PV 稀疏 gather 所需（mxfp4）=====
     uint32_t pvGatheredKvSTileIdx = 0;  // 当前 tile 在 task 内的 gather 后 KV base tile 序号，供 PV
 };
@@ -72,6 +70,9 @@ struct TileInfo {
 
 #include "../attn_infra/epilogue/block/bsa_block_epilogue.hpp"
 #include "../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
+#include "../attn_infra/gemm/block/bsa_block_mmad.hpp"
+#include "../attn_infra/gemm/bsa_gemm_dispatch_policy.hpp"
+#include "../attn_infra/gemm/bsa_gemm_type.hpp"
 
 namespace BsaKernelArch35 {
 
