@@ -27,10 +27,6 @@ logger = logging.getLogger(__name__)
 
 
 def _to_torch(x):
-    """numpy array -> torch tensor; torch tensor -> 原样返回; None -> None
-    处理 bfloat16: numpy 原生不支持 bfloat16 (ml_dtypes), torch.from_numpy 会失败,
-    需要先 view uint8 再 reinterpret 为 bfloat16.
-    """
     if x is None:
         return None
     if isinstance(x, np.ndarray):
@@ -43,19 +39,12 @@ def _to_torch(x):
 
 
 def compare(*outputs, **kwargs):
-    """对比 NPU 输出与 golden 输出.
-
-    TTK 传参方式: [npu_out(, npu_lse), golden_out(, golden_lse)]
-    当 lse 未启用时, npu_lse 可能是空数组 (size=0), golden 不含 lse.
-    所以输出数可能不等, 需按实际非空输出配对.
-    """
     non_none = [o for o in outputs if o is not None]
 
     if len(non_none) < 2:
         return {"pass": False, "precision": "invalid",
                 "error_info": f"not enough valid outputs: {len(non_none)}"}
 
-    # 检查是否都是空 tensor (act_seq_q=[0] 时会出现)
     all_empty = all(
         (hasattr(o, 'size') and o.size == 0) or (hasattr(o, 'numel') and o.numel() == 0)
         for o in non_none
@@ -65,7 +54,6 @@ def compare(*outputs, **kwargs):
         return {"pass": True, "precision": "100.0%",
                 "error_info": None, "metrics": {"result": "Pass", "PctRlt": "100.0%", "MaxRE": 0.0}}
 
-    # 过滤掉空数组, 只保留有效输出
     valid = []
     for o in non_none:
         if hasattr(o, 'size') and o.size == 0:
@@ -78,7 +66,6 @@ def compare(*outputs, **kwargs):
         return {"pass": False, "precision": "invalid",
                 "error_info": f"not enough valid outputs after filtering: {len(valid)}"}
 
-    # 前半 NPU, 后半 golden
     half = len(valid) // 2
     npu_outputs = valid[:half]
     golden_outputs = valid[half:]

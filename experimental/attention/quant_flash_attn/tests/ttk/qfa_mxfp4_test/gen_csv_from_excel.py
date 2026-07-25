@@ -14,28 +14,6 @@
                                 [--sheet mxfp4]
                                 [--output qfa_mxfp4.csv]
 
-读 Excel mxfp4 sheet -> TTK e2e CSV (批量转换交付件).
-
-每行 Excel 用例 -> 一行 CSV. Tensor 顺序与 wrapper 签名一致:
-  q, k, v, q_descale, k_descale, v_descale, block_table
-  - q/k/v: MXFP4 packed, 末维 = D // 2
-  - q/k_descale: 直接取 Excel shape (5D)
-  - v_descale: Excel 公式偶有错误 (用 v_shape 的 S 而非 max(seqused_kv)),
-    这里按 golden 量化逻辑重算校验, 不一致时用 golden 值并告警
-
-列定位: 按表头名动态查找, 列位置变化不影响输出 (保证表头名不变即可).
-  - 必需列 (HEADER 里列出的字段) 缺失则报错退出
-  - 精度列 (precision_tolerances / absolute_precision) 可选, 缺失用默认值
-
-seqused / max_seqlen 透传 (与表格保持一致, 不做自动填充):
-  - 表格传了 seqused -> CSV act_seq_lens 传该值, max_seqlen 传表格值 (可能 -1)
-  - 表格只传 max_seqlen -> CSV act_seq_lens 传空 [], max_seqlen 传表格值
-  - 表格两个都传 -> CSV 两个都传
-  - 表格两个都空 -> CSV 两个都空 (act_seq_lens=[], max_seqlen=-1), host 校验拦截
-
-精度阈值 (precision_tolerances / absolute_precision):
-  - 若 Excel 表头含同名列, 则从该列原样读取 (字符串透传到 CSV)
-  - 否则用默认值 (bfloat16: rtol=0.0078125, ptol=0.005, atol=0.0001)
 """
 
 import argparse
@@ -231,7 +209,7 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
     G = N_q // N_kv if N_kv > 0 else 1   # GQA group size = Q heads // KV heads
     V_D = D  # Excel head_dim == D, 无独立 V_D 列
 
-    # act_seq_lens_q/kv: 透明透传 Excel 的 seqused 列; 为空则传空 (不自动用 max_seqlen 填充)
+    # act_seq_lens_q/kv: 透明透传 Excel 的 seqused 列; 为空则传空
     sq = _parse_int_list(g("seqused_q_value"))
     skv = _parse_int_list(g("seqused_kv_value"))
 
@@ -299,7 +277,7 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
     sinks_info = _read_opt_tensor("learnable_sink_shape", "learnable_sink_dtype", "learnable_sink_datarange")
     attn_mask_info = _read_opt_tensor("attn_mask_shape", "attn_mask_dtype", "attn_mask_datarange")
 
-    # p_scale_value: 表格传了就用表格值 (标量), 否则 None (golden 侧按 shape 随机生成)
+    # p_scale_value: 表格传了就用表格值 (标量), 否则 None
     p_scale_value = g("p_scale_value")
     if p_scale_value is not None and str(p_scale_value).strip() != "":
         try:
@@ -394,7 +372,7 @@ def main():
         raise ValueError(f"sheet '{args.sheet}' 不存在, 可用: {wb.sheetnames}")
     ws = wb[args.sheet]
 
-    # 按表头名动态构建 字段key -> 列号 映射 (列位置可任意, 保证表头名不变即可)
+    # 按表头名动态构建 字段key -> 列号 映射
     col_map = _build_col_map(ws)
     prec_found = {h: col_map[h] for h in OPTIONAL_HEADER if h in col_map}
     if prec_found:

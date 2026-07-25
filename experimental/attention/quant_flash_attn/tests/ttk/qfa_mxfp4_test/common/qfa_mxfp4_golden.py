@@ -9,18 +9,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""
-MXFP4 Flash Attention Golden
-
-功能: 把原 quant_flash_attn_golden.py 中单体 run_fia_eager 拆分为
-  - generate_data():  BNSD FP32 Q/K/V 生成 + MXFP4 量化 + scale 转换
-  - cpu_mxfp4_golden(): CPU flash-attention golden (复用 flash_attention_cpu_golden_varlen)
-  - npu_mxfp4_fa():    NPU 调用 quant_flash_attn_metadata + quant_flash_attn
-                       支持 GRAPH_PATH=0 (eager) / 7 (npugraph_ex)
-
-支持: BNSD / BSND layout, continue KV storage, varlen act_seq_lens_q/kv
-不支持 (后续可扩展): PA / rope / mask / learnable_sink
-"""
 
 import logging
 import math
@@ -358,14 +346,6 @@ def get_dtype(data_type):
 
 
 def _parse_datarange(val):
-    """解析 datarange -> (lo, hi) 数值区间.
-
-    支持两种格式:
-      - float (如 1.0 / 6.0): 视为对称区间 [-val, val]
-      - 'min,max' 字符串 (如 '-100,100' / '0.01,1' / '-1,1'): 取 (min, max)
-
-    返回 (lo, hi) 两个 float; None -> (-1.0, 1.0) 默认.
-    """
     if val is None:
         return (-1.0, 1.0)
     if isinstance(val, (int, float)):
@@ -408,7 +388,7 @@ def _gen_opt_tensor(shape, dtype_str, datarange_str, seed):
     torch_dtype = dt_map.get((dtype_str or "").lower(), torch.float32)
     # 解析 datarange
     lo, hi = _parse_datarange(datarange_str)
-    # 生成: float 类型用 randn+clamp; int 类型用 randint
+ 
     torch.manual_seed(seed)
     if torch_dtype.is_floating_point:
         t = torch.randn(shape, dtype=torch_dtype)

@@ -1,17 +1,3 @@
-"""
-MXFP4 (Microscaling FP4 E2M1) 完整量化与反量化实现
-====================================================
-包含: FP4 编码表 | MX 量化/反量化 | 位级打包/解包 | E8M0 缩放因子
-支持: Baseline 和 OAS (溢出感知缩放) 两种策略
-
-本版本修复了以下 bug:
-  1. FP4 E2M1 编码表中 e=3 错误返回 inf/nan (应为 ±4.0/±6.0)
-  2. compute_e8m0_scale_block 未按 OCP MX 规范扣除 emax_elem,
-     且禁用了负指数 (scale<1 的 block 被错误量化)
-  3. mx_quantize 去 pad 时存在多余的逻辑判断
-  4. mx_dequantize_fp4_full 在 last dim 非 block_size 倍数时数据错位
-  5. scale 通过 log2 反算并以 E8M0 biased 编码存储 (符合规范)
-"""
 
 import torch
 import torch.nn as nn
