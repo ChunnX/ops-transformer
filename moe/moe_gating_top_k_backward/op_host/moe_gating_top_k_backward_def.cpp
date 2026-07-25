@@ -43,7 +43,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
         this->Attr("renorm").AttrType(OPTIONAL).Int(0);
-        this->Attr("norm_type").AttrType(OPTIONAL).Int(0);
+        this->Attr("norm_type").AttrType(OPTIONAL).Int(1);
         this->Attr("routed_scaling_factor").AttrType(OPTIONAL).Float(1.0);
         this->Attr("eps").AttrType(OPTIONAL).Float(1e-20f);
 
@@ -56,6 +56,16 @@ public:
             .PrecisionReduceFlag(true);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
+
+        OpAICoreConfig regbaseCfg;
+        regbaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("opFile.value", "moe_gating_top_k_backward_apt");
+        this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };
 
