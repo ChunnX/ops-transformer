@@ -199,7 +199,6 @@
 - 参数q、k的数据类型应保持一致。
 - sparse_indices无效部分填-1；sparse_values无效部分填-inf。
 - 传入的cmpResidualK中的每一个元素的值都应小于传入的压缩率cmpRatio。
-- 参数metadataOptional必须传入，且shape固定为[1024]。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
   - 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
@@ -210,6 +209,7 @@
   - 当layout_q为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparseIndices和sparseValues全部置为无效值。
   - 当传入的cmpRatio > 1且maskMode = 3时，必须传入cmpResidualKOptional，其余情况不传入。
   - 当layout_k为PA_BBND时，必须传入sequsedKOptional。
+  - 参数metadataOptional必须传入，且shape固定为[1024]。
 
 ## 调用示例
 

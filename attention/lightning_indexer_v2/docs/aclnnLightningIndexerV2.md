@@ -196,7 +196,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>metadataOptional（aclTensor*）</td>
     <td>输入</td>
     <td>LightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。</td>
-    <td><ul><li>不支持空tensor。</li><li>必须传入该参数。</li></ul></td>
+    <td><ul><li>不支持空tensor。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
     <td>shape固定为[1024]。</td>
@@ -316,7 +316,7 @@ aclnnStatus aclnnLightningIndexerV2(
     </tbody>
     </table>
 
-  - q、k、w、q_descale、k_descale参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+  - q、k、w参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
   - 使用S1和S2分别表示q和k的输入样本序列长度，N1和N2分别表示q和k对应的多头数，k表示最后选取的索引个数。参数q中的D和参数k中的D值相等为128。T1和T2分别表示q和k的输入样本序列长度的累加和。
 
 - **返回值：**
@@ -412,6 +412,7 @@ aclnnStatus aclnnLightningIndexerV2(
   - 当layout_q为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparseIndices和sparseValues全部置为无效值。
   - 当传入的cmpRatio > 1且maskMode = 3时，必须传入cmpResidualKOptional，其余情况不传入。
   - 当layout_k为PA_BBND时，必须传入sequsedKOptional。
+  - 参数metadataOptional必须传入。
 
 ## 调用示例
 
