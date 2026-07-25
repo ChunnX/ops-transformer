@@ -132,7 +132,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_bw_bmm2 = ascend_ub.GetWithOffset<float>(1024, 4608);
   auto v1_bw_diff = ascend_ub.GetWithOffset<float>(64, 192288);
   auto v1_bw_diff_2d = ascend_ub.GetWithOffset<float>(1024, 8704);
-  auto v1_bw_mask = ascend_ub.GetWithOffset<uint8_t>(128, 192544);
+  auto v1_bw_mask = ascend_ub.GetWithOffset<float>(32, 192544);
   auto v1_bw_dw = ascend_ub.GetWithOffset<float>(16, 192672);
   auto v1_bw_rg = ascend_ub.GetWithOffset<float>(1024, 12800);
   auto v1_bw_rg_half = ascend_ub.GetWithOffset<bfloat16_t>(1024, 192736);
@@ -513,7 +513,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               AscendC::Add(v1_bw_dw_accum[0], v1_bw_dw_accum[0], v1_bw_dw[0], 16);
               AscendC::Mul(v1_bw_rg[0], v1_bw_weight_2d[0], v1_bw_diff_2d[0], 1024);
               AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, uint8_t>(v1_bw_bmm2[0], v1_bw_mask[0], v1_bw_rg[0], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 1024);
+AscendC::Select<float, float>(v1_bw_bmm2[0], v1_bw_mask[0], v1_bw_rg[0], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 1024);
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Cast(v1_bw_rg_half[0], v1_bw_bmm2[0], AscendC::RoundMode::CAST_RINT, 1024);
               AscendC::PipeBarrier<PIPE_V>();
