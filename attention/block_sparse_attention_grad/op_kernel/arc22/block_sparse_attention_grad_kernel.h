@@ -380,9 +380,9 @@ namespace BSA {
             AscendC::GlobalTensor<float> gDq;
             gDq.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize));
             AscendC::GlobalTensor<float> gDk;
-            gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize));
+            gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + (deter ? tilingData->dkFinalOffset : (sOutSize + dPOutSize + dQOutSize))));
             AscendC::GlobalTensor<float> gDv;
-            gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
+            gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + (deter ? tilingData->dvFinalOffset : (sOutSize + dPOutSize + dQOutSize + dKOutSize))));
 
             // ===== deterministic: 每核私有 dK/dV 缓冲(单 slot, 逐轮复用) =====
             // 注: runInfo 由 AIV 侧发布(cube 核不支持 SetValue 标量 GM 写)
@@ -858,8 +858,9 @@ namespace BSA {
             uint64_t dVOutSize = tilingData->dVOutSize;
 
             GM_ADDR gDqGm = params.workspace + sOutSize + dPOutSize;
-            GM_ADDR gDkGm = params.workspace + sOutSize + dPOutSize + dQOutSize;
-            GM_ADDR gDvGm = params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize;
+            __gm__ BlockSparseAttentionGradTilingData *tdPost = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+            GM_ADDR gDkGm = tdPost->deterministic ? (params.workspace + tdPost->dkFinalOffset) : (params.workspace + sOutSize + dPOutSize + dQOutSize);
+            GM_ADDR gDvGm = tdPost->deterministic ? (params.workspace + tdPost->dvFinalOffset) : (params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize);
             GM_ADDR actualSeqQlen = params.actualQseqlen;
             GM_ADDR actualSeqKvlen = params.actualKvseqlen;
 
@@ -887,6 +888,46 @@ namespace BSA {
             PreParams preParms(gDqWrkGm, gDkWrkGm, gDvWrkGm, params.tiling);
             EpilogueFAGPre vecPre(preParms);
             vecPre();
+
+            // 方案L: deter 模式下清零 dkFinalOffset/dvFinalOffset (SetAtomicAdd 需要初始值为零)
+            if (tilingData->deterministic) {
+                uint64_t dkFinalOff = tilingData->dkFinalOffset;
+                uint64_t dvFinalOff = tilingData->dvFinalOffset;
+                uint64_t dkFinalSize = tilingData->dKOutSize;
+                uint64_t dvFinalSize = tilingData->dVOutSize;
+                __gm__ float* dkFinalGm = (__gm__ float*)(params.workspace + dkFinalOff);
+                __gm__ float* dvFinalGm = (__gm__ float*)(params.workspace + dvFinalOff);
+                // 用 AscendC::InitOutput 清零
+                AscendC::GlobalTensor<float> gDkFinalPre;
+                gDkFinalPre.SetGlobalBuffer(dkFinalGm);
+                AscendC::GlobalTensor<float> gDvFinalPre;
+                gDvFinalPre.SetGlobalBuffer(dvFinalGm);
+                uint64_t dkFinalElem = dkFinalSize / sizeof(float);
+                uint64_t dvFinalElem = dvFinalSize / sizeof(float);
+                // 分核清零
+                uint32_t aivNum = tilingData->usedVecCoreNum;
+                uint32_t cBlockIdx = AscendC::GetBlockIdx();
+                uint64_t dkPerCore = dkFinalElem / aivNum;
+                uint64_t dvPerCore = dvFinalElem / aivNum;
+                uint64_t dkStart = cBlockIdx * dkPerCore;
+                uint64_t dkEnd = (cBlockIdx == aivNum - 1) ? dkFinalElem : (dkStart + dkPerCore);
+                uint64_t dvStart = cBlockIdx * dvPerCore;
+                uint64_t dvEnd = (cBlockIdx == aivNum - 1) ? dvFinalElem : (dvStart + dvPerCore);
+                constexpr uint32_t ZERO_CHUNK = 2048;
+                AscendC::LocalTensor<float> zeroUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET);
+                AscendC::Duplicate(zeroUb, 0.0f, ZERO_CHUNK);
+                AscendC::PipeBarrier<PIPE_ALL>();
+                for (uint64_t off = dkStart; off < dkEnd; off += ZERO_CHUNK) {
+                    uint32_t chunk = (dkEnd - off > ZERO_CHUNK) ? ZERO_CHUNK : (uint32_t)(dkEnd - off);
+                    AscendC::DataCopy(gDkFinalPre[off], zeroUb, chunk);
+                }
+                AscendC::PipeBarrier<PIPE_ALL>();
+                for (uint64_t off = dvStart; off < dvEnd; off += ZERO_CHUNK) {
+                    uint32_t chunk = (dvEnd - off > ZERO_CHUNK) ? ZERO_CHUNK : (uint32_t)(dvEnd - off);
+                    AscendC::DataCopy(gDvFinalPre[off], zeroUb, chunk);
+                }
+                AscendC::PipeBarrier<PIPE_ALL>();
+            }
         }
 
     private:
