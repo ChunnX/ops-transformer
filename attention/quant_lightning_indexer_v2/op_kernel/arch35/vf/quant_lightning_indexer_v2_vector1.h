@@ -729,8 +729,8 @@ __simd_vf__ void MulWeightAndReduceSum2Int32VF(__ubuf__ uint16_t* out0, __ubuf__
         // MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK0[1], regQK0Half[1], maskAllB16);
         // MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK1[0], regQK1Half[0], maskAllB16);
         // MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK1[1], regQK1Half[1], maskAllB16);
-        CastFP32ToFP16ToFP32(regQK0, regQKHalf0, maskAllB32);
-        CastFP32ToFP16ToFP32(regQK1, regQKHalf1, maskAllB32);
+        CastFP32ToFP16ToFP32(regQK0, regQ0KHalf, maskAllB32);
+        CastFP32ToFP16ToFP32(regQK1, regQK1Half, maskAllB32);
 
         MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
         MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
