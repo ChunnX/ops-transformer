@@ -1766,7 +1766,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DrainCombineChan
             continue;
         }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
-        PipeBarrier<PIPE_ALL>();
     }
 }
 

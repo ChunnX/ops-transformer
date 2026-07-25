@@ -320,11 +320,10 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
            CombineSendTokenToRemote<SendType,IsQuantized>(i, 1, n, nScale, groupIdx, rankId, tripleTensor, ubQuantSend, params, localSrcPtr);
         } else {
             CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, tripleTensor, ubQuantSend, params);
+            // Wait for all MTE3 operations to complete
+            SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
         }
     }
-
-    // Wait for all MTE3 operations to complete
-    SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
 }
 
 } // namespace MegaMoeCombineImpl
