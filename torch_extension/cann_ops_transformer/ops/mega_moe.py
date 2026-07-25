@@ -193,8 +193,8 @@ class SymmBuffer:
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
-        self.topo_type = self._ctx_manager.topo_type
-        self.rank_num_per_server = self._ctx_manager.rank_num_per_server
+        self.topo_type = 0
+        self.rank_num_per_server = 2
 
 
 _TORCH_DTYPE_TO_INT = {  # torch枚举
