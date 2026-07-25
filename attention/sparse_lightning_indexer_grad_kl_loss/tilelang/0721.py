@@ -1565,7 +1565,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_bw_diff_2d,
                         )
                         T.pipe_barrier("v")
-                        for mask_group in T.serial(
+                        for mask_group in range(
                             rows_per_aiv // bw_mask_rows
                         ):
                             mask_row_start = mask_group * bw_mask_rows
