@@ -300,7 +300,7 @@ public:
                             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
                         }
                         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-                        if (mL0Itr == 0 && kL0Itr == 0) {
+                        if (nL0Itr == 0 && kL0Itr == 0) {
                             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
                         }
                         tileMmad(
@@ -362,7 +362,7 @@ public:
                                       std::is_same<ElementS, half>::value) &&
                                      (mm1L0C2UBMode == Gemm::Tile::CopyL0CToUBMode::NO_SPLIT)) {
                     uint32_t mFixPAligned16 = RoundUp(l0TileMAct, 16);
-                    uint32_t nFixPAligned8 = RoundUp(qSTile, 8);
+                    uint32_t nFixPAligned8 = RoundUp(qSTile, 32);
                     uint32_t nPerSubCore = nFixPAligned8 / 2;
                     auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mL0Itr * L0_TILE_M, 0),
                                                     tla::MakeShape(mFixPAligned16, nPerSubCore));

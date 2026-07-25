@@ -181,7 +181,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
         ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
         void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
     using BlockMmadPV = Gemm::Block::BlockMmadTla<
-        DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV, ElementOTmp, void, TileCopyPV>;
+        DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV, ElementOTmp, ElementS, void, TileCopyPV>;
     // rescale O
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat, transposedMm1>;
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<

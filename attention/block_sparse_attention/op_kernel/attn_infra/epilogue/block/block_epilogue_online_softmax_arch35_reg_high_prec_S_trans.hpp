@@ -149,7 +149,7 @@ public:
         __ubuf__ ElementInput *nowMaxStartAddr = (__ubuf__ float*) lmUbTensor.GetPhyAddr();
         __ubuf__ ElementInput *nowSumAddr = (__ubuf__ float*) llUbTensor.GetPhyAddr();
         __ubuf__ float *expMaxUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
-        // wait QK Fixpipe finsh
+        // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         
@@ -166,45 +166,45 @@ public:
         }
         if (isFirstKvSTile) {
             if (mAligned16TileNum == 0) {
-                ComputeScaleAndMaxDn<ElementInput, ElementOutput, false, MAligendTileNum::Zero>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAligendTileNum::Zero>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 1) {
-                ComputeScaleAndMaxDn<ElementInput, ElementOutput, false, MAligendTileNum::One>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAligendTileNum::One>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 2) {
-                ComputeScaleAndMaxDn<ElementInput, ElementOutput, false, MAligendTileNum::Two>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAligendTileNum::Two>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 3) {
-                ComputeScaleAndMaxDn<ElementInput, ElementOutput, false, MAligendTileNum::Three>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAligendTileNum::Three>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else {
-                ComputeScaleAndMaxDn<ElementInput, ElementOutput, false, MAligendTileNum::Four>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAligendTileNum::Four>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             }
         } else {
             if (mAligned16TileNum == 0) {
-                ComputeScaleAndMaxDn<ElementInput, ElementOutput, true, MAligendTileNum::Zero>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAligendTileNum::Zero>(
                     sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 1) {
-                ComputeScaleAndMaxDn<ElementInput, ElementOutput, true, MAligendTileNum::One>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAligendTileNum::One>(
                     sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 2) {
-                ComputeScaleAndMaxDn<ElementInput, ElementOutput, true, MAligendTileNum::Two>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAligendTileNum::Two>(
                     sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 3) {
-                ComputeScaleAndMaxDn<ElementInput, ElementOutput, true, MAligendTileNum::Three>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAligendTileNum::Three>(
                     sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else {
-                ComputeScaleAndMaxDn<ElementInput, ElementOutput, true, MAligendTileNum::Four>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAligendTileNum::Four>(
                     sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             }
@@ -270,9 +270,12 @@ private:
     };
 
     template <typename ElementS, typename ElementP, bool isUpdate, MAligendTileNum mTileNum>
-    __simd_vf__ inline void ComputeScaleAndMaxDn(__ubuf__ ElementS *srcUb, __ubuf__ ElementS *newMaxUb, __ubuf__ ElementS *LastMaxUbStart, __ubuf__ ElementP *expUb,
-        __ubuf__ ElementS *expSumUb, uint16_t mRound, uint16_t m, uint32_t tailN, uint32_t mFirstTile, ElementInput dScale, uint16_t s2BaseSize, 
-        uint32_t blockStride, uint32_t repeatStride, __ubuf__ float *expMaxUb, __ubuf__ ElementS *lastExpSumUb)
+    __simd_vf__ inline void ComputeOnlineSoftmaxDN(__ubuf__ ElementS *srcUb, __ubuf__ ElementS *newMaxUb,
+                                                 __ubuf__ ElementS *LastMaxUbStart, __ubuf__ ElementP *expUb,
+                                                 __ubuf__ ElementS *expSumUb, uint16_t mRound, uint16_t m,
+                                                 uint32_t tailN, uint32_t mFirstTile, ElementInput dScale,
+                                                 uint16_t s2BaseSize, uint32_t blockStride, uint32_t repeatStride,
+                                                 __ubuf__ float *expMaxUb, __ubuf__ ElementS *lastExpSumUb)
     {
         using namespace AscendC::MicroAPI;
         RegTensor<float> src0Vreg;
@@ -285,7 +288,7 @@ private:
         RegTensor<float> exp1Vreg32;
         RegTensor<float> exp2Vreg32;
         RegTensor<float> exp3Vreg32;
-        
+
         RegTensor<float> max0Vreg;
         RegTensor<float> max1Vreg;
         RegTensor<float> max2Vreg;
@@ -304,38 +307,16 @@ private:
         RegTensor<ElementP> exp1Vreg16;
         RegTensor<ElementP> exp2Vreg16;
         RegTensor<ElementP> exp3Vreg16;
-        RegTensor<ElementP> deInterleave1Vreg;
         RegTensor<ElementP> deInterleave0Vreg;
+        RegTensor<ElementP> deInterleave1Vreg;
         RegTensor<ElementP> deInterleave2Vreg;
         RegTensor<ElementP> deInterleave3Vreg;
-
-        //FP8 RegTensor
-        RegTensor<ElementP> deInterleave4Vreg;
-        RegTensor<ElementP> deInterleave5Vreg;
-        RegTensor<ElementP> deInterleave6Vreg;
-        RegTensor<ElementP> deInterleave7Vreg;
-        RegTensor<ElementP> exp0Vreg8;
-        RegTensor<ElementP> exp1Vreg8;
-        RegTensor<ElementP> exp2Vreg8;
-        RegTensor<ElementP> exp3Vreg8;
-        RegTensor<ElementP> deInterleave0ResultVreg;
-        RegTensor<ElementP> deInterleave1ResultVreg;
-        RegTensor<ElementP> deInterleave2ResultVreg;
-        RegTensor<ElementP> deInterleave3ResultVreg;
-
 
         constexpr static CastTrait castTraitZeroROUND = {
             RegLayout::ZERO,
             SatMode::SAT,
             MaskMergeMode::ZEROING,
             AscendC::RoundMode::CAST_ROUND,
-        };
-
-        constexpr static CastTrait castTraitZeroRINT = {
-            RegLayout::ZERO,
-            SatMode::SAT,
-            MaskMergeMode::ZEROING,
-            AscendC::RoundMode::CAST_RINT,
         };
 
         MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
@@ -397,15 +378,23 @@ private:
             LoadAlign(src2Vreg, srcUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
             LoadAlign(src3Vreg, srcUb + mRound * s2BaseSize / 2 + mRound * s2BaseSize / 4 + i * s2BaseSize);
 
-            Muls(src0Vreg, src0Vreg, dScale, pregTailN);
-            Muls(src1Vreg, src1Vreg, dScale, pregTailN);
-            Muls(src2Vreg, src2Vreg, dScale, pregTailN);
-            Muls(src3Vreg, src3Vreg, dScale, pregTailN);
+            if constexpr (mTileNum >= MAligendTileNum::Zero) {
+                Muls(src0Vreg, src0Vreg, dScale, pregTailN);
+                FusedExpSub(exp0Vreg32, src0Vreg, max0Vreg, pregTailN);
+            }
+            if constexpr (mTileNum >= MAligendTileNum::Zero) {
+                Muls(src1Vreg, src1Vreg, dScale, pregTailN);
 
-            FusedExpSub(exp0Vreg32, src0Vreg, max0Vreg, pregTailN);
-            FusedExpSub(exp1Vreg32, src1Vreg, max0Vreg, pregTailN);
-            FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
-            FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
+                FusedExpSub(exp1Vreg32, src1Vreg, max0Vreg, pregTailN);
+            }
+            if constexpr (mTileNum >= MAligendTileNum::Zero) {
+                Muls(src2Vreg, src2Vreg, dScale, pregTailN);
+                FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
+            }
+            if constexpr (mTileNum >= MAligendTileNum::Zero) {
+                Muls(src3Vreg, src3Vreg, dScale, pregTailN);
+                FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
+            }
 
             Cast<ElementP, float, castTraitZeroROUND>(exp0Vreg16, exp0Vreg32, pregFull);
             Cast<ElementP, float, castTraitZeroROUND>(exp2Vreg16, exp2Vreg32, pregFull);
@@ -414,7 +403,7 @@ private:
             Cast<ElementP, float, castTraitZeroROUND>(exp3Vreg16, exp3Vreg32, pregFull);
             DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp1Vreg16, exp3Vreg16);
             StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                        AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                       AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg, blockStride, 1, pregFp16VL128);
 
             if constexpr (mTileNum >= MAligendTileNum::Zero) {
@@ -424,7 +413,7 @@ private:
                 Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
             }
             StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                        AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                       AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg, blockStride, 1, pregFp16VL128);
             if constexpr (mTileNum >= MAligendTileNum::One) {
                 Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
@@ -440,15 +429,25 @@ private:
                 LoadAlign(src2Vreg, srcUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
                 LoadAlign(src3Vreg, srcUb + mRound * s2BaseSize / 2 + mRound * s2BaseSize / 4 + i * s2BaseSize);
 
-                Muls(src0Vreg, src0Vreg, dScale, pregTailN);
-                Muls(src1Vreg, src1Vreg, dScale, pregTailN);
-                Muls(src2Vreg, src2Vreg, dScale, pregTailN);
-                Muls(src3Vreg, src3Vreg, dScale, pregTailN);
+                if constexpr (mTileNum >= MAligendTileNum::Zero) {
+                    Muls(src0Vreg, src0Vreg, dScale, pregTailN);
+                    FusedExpSub(exp0Vreg32, src0Vreg, max0Vreg, pregTailN);
+                }
 
-                FusedExpSub(exp0Vreg32, src0Vreg, max0Vreg, pregTailN);
-                FusedExpSub(exp1Vreg32, src1Vreg, max0Vreg, pregTailN);
-                FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
-                FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
+                if constexpr (mTileNum >= MAligendTileNum::Zero) {
+                    Muls(src1Vreg, src1Vreg, dScale, pregTailN);
+                    FusedExpSub(exp1Vreg32, src1Vreg, max0Vreg, pregTailN);
+                }
+
+                if constexpr (mTileNum >= MAligendTileNum::Zero) {
+                    Muls(src2Vreg, src2Vreg, dScale, pregTailN);
+                    FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
+                }
+
+                if constexpr (mTileNum >= MAligendTileNum::Zero) {
+                    Muls(src3Vreg, src3Vreg, dScale, pregTailN);
+                    FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
+                }
 
                 Cast<ElementP, float, castTraitZeroROUND>(exp0Vreg16, exp0Vreg32, pregFull);
                 Cast<ElementP, float, castTraitZeroROUND>(exp2Vreg16, exp2Vreg32, pregFull);
@@ -457,7 +456,7 @@ private:
                 Cast<ElementP, float, castTraitZeroROUND>(exp3Vreg16, exp3Vreg32, pregFull);
                 DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp1Vreg16, exp3Vreg16);
                 StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                            AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                           AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                     ((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg, blockStride, 1, pregFp16VL128);
 
                 if constexpr (mTileNum > MAligendTileNum::Zero) {
@@ -467,7 +466,7 @@ private:
                     Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
                 }
                 StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                            AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                           AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                     ((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg, blockStride, 1, pregFp16VL128);
                 if constexpr (mTileNum > MAligendTileNum::One) {
                     Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
@@ -481,8 +480,7 @@ private:
             Add(updateExpSumVreg, updateExpSumVreg, sum0Vreg, pregFull);
             StoreAlign<float, StoreDist::DIST_NORM_B32>(lastExpSumUb, updateExpSumVreg, pregFull);
         }
-        StoreAlign<float, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ float *&)expSumUb, sum0Vreg, pregFull);
+        StoreAlign<float, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)expSumUb, sum0Vreg, pregFull);
     }
 };
 }

@@ -57,7 +57,7 @@ public:
     // static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
     static constexpr uint32_t ELE_NUM_PER_C0 = 16;
     static constexpr uint32_t ELE_NUM_PER_C0_FP8 = 32;
-    static constexpr uint32_t ELE_NUM_PER_DATABLOCK = 16;
+    static constexpr uint32_t ELE_NUM_PER_DATABLOCK = 32 / sizeof(ElementOutput);
 
     // static constexpr uint32_t REDUCE_UB_SIZE = 1024;
     // static constexpr uint32_t ROW_OPS_SPEC_MASK_32 = 32;
@@ -80,6 +80,8 @@ public:
     // static constexpr uint32_t SM_VREG_SIZE = 256 / sizeof(ElementInput);
     static constexpr uint32_t UB_S_P_BUF_STAGES = 2;
     static constexpr uint32_t UB_DM_BUF_MAX_STAGES = 3;
+
+    static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value;
 
     __aicore__ inline
     BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_, UBufTileHelper &uBufTileHelper)
@@ -134,9 +136,9 @@ public:
         }
         uint32_t m = actualBlockShape.n();
         uint16_t mRound = RoundUp(m, C0_NUM_PER_FRACTAL);
-        uint16_t nRound = RoundUp(n, ELE_NUM_PER_C0);
+        uint16_t nRound = FULL_QUANT_FP8 ? RoundUp(n, ELE_NUM_PER_C0_FP8) : RoundUp(n, ELE_NUM_PER_C0);
         // alter nd2nz dst stride (typically 64->65) to alleviate bank conflict
-        uint32_t blockStride = mRound / 2 + 1;
+        uint32_t blockStride = mRound + 1;
         constexpr int16_t vlSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(ElementInput));
         int32_t nLoops = AscendC::CeilDivision(n, vlSize) - 1;
         uint32_t tailN = (n - 1) % vlSize + 1;
@@ -146,57 +148,67 @@ public:
         uint32_t tailM = (m - 1) % vlSize + 1;
         uint32_t nPadding = (tailN + BLOCK_SIZE_IN_BYTE - 1) / BLOCK_SIZE_IN_BYTE * BLOCK_SIZE_IN_BYTE;
         uint16_t s2BaseSize = 64;
-        uint32_t mAligendTile = mRound / 4;
-        uint32_t mFirstTile = m % mAligendTile;
-        uint32_t mAligned16TileNum = m / mAligendTile;
-        if (mAligned16TileNum == 4) {
-            mFirstTile = mAligendTile;
+
+        uint32_t mAlignedTile = mRound / 2;
+        uint32_t mFirstTile = m % mAlignedTile;
+        uint32_t mAligned16TileNum = m / mAlignedTile;
+        if (mAligned16TileNum == 2) {
+            mFirstTile = mAlignedTile;
         }
-        __ubuf__ bfloat16_t *pUbAddr = (__ubuf__ bfloat16_t *)lpUbTensor[ubSBufId].GetPhyAddr();
         __ubuf__ bfloat16_t *sUbAddr = (__ubuf__ bfloat16_t *)lsUbTensor[ubSBufId].GetPhyAddr();
+        __ubuf__ ElementOutput *pUbAddr = (__ubuf__ ElementOutput *)lpUbTensor[ubSBufId].GetPhyAddr();
         __ubuf__ float *gmUbAddr = (__ubuf__ float *)gmUbTensor.GetPhyAddr();
         __ubuf__ float *gmUbStartAddr = (__ubuf__ float *)gmUbTensor.GetPhyAddr();
         __ubuf__ float *glUbAddr = (__ubuf__ float *)glUbTensor.GetPhyAddr();
         __ubuf__ float *lmUbAddr = (__ubuf__ float*) lmUbFloatTensor.GetPhyAddr();
         __ubuf__ float *llUbAddr = (__ubuf__ float*) llUbFloatTensor.GetPhyAddr();
         __ubuf__ float *dmUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
-        // wait QK Fixpipe finsh
+        // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+
+        // AscendC::printf("tkd lsUbTensor[ubSBufId]\n");
+        // AscendC::DumpTensor(lsUbTensor[ubSBufId], 1, 128);
 
         ComputeLocalMax(sUbAddr, lmUbAddr, m, s2BaseSize, tailN, scaleValue);
 
-        AscendC::printf("tkd lsUbTensor[ubSBufId]\n");
-        AscendC::DumpTensor(lsUbTensor[ubSBufId], 1, 128);
+        // AscendC::printf("tkd lmUbFloatTensor\n");
+        // AscendC::DumpTensor(lmUbFloatTensor, 1, 128);
 
         if (!isFirstKvSTile) {
             UpdateHistoricalMax(lmUbAddr, gmUbAddr, tailN);
-            AscendC::printf("tkd historical max\n");
-            AscendC::DumpTensor(lmUbFloatTensor, 1, 128);
+            // AscendC::printf("tkd historical max\n");
+            // AscendC::DumpTensor(lmUbFloatTensor, 1, 128);
         }
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
 
-        if (mAligned16TileNum == 0) {
-            ComputePAndLocalSum<MAligendTileNum::Zero>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m, mFirstTile,
-                                                       s2BaseSize, tailN, tailNOdd, tailNEven, blockStride, scaleValue);
-        } else if (mAligned16TileNum == 1) {
-            ComputePAndLocalSum<MAligendTileNum::One>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m, mFirstTile,
-                                                      s2BaseSize, tailN, tailNOdd, tailNEven, blockStride, scaleValue);
-        } else if (mAligned16TileNum == 2) {
-            ComputePAndLocalSum<MAligendTileNum::Two>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m, mFirstTile,
-                                                      s2BaseSize, tailN, tailNOdd, tailNEven, blockStride, scaleValue);
-        } else if (mAligned16TileNum == 3) {
-            ComputePAndLocalSum<MAligendTileNum::Three>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m, mFirstTile,
-                                                        s2BaseSize, tailN, tailNOdd, tailNEven, blockStride,
-                                                        scaleValue);
+        if constexpr (FULL_QUANT_FP8) {
+            if (mAligned16TileNum == 0) {
+                ComputePAndLocalSumFP8<MAlignedTileNum::Zero>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
+                                                              mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+            } else if (mAligned16TileNum == 1) {
+                ComputePAndLocalSumFP8<MAlignedTileNum::One>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
+                                                             mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+            } else {
+                ComputePAndLocalSumFP8<MAlignedTileNum::Two>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
+                                                             mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+            }
         } else {
-            ComputePAndLocalSum<MAligendTileNum::Four>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m, mFirstTile,
-                                                       s2BaseSize, tailN, tailNOdd, tailNEven, blockStride, scaleValue);
+            if (mAligned16TileNum == 0) {
+                ComputePAndLocalSum<MAlignedTileNum::Zero>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m, mFirstTile,
+                                                           s2BaseSize, tailN, blockStride, scaleValue);
+            } else if (mAligned16TileNum == 1) {
+                ComputePAndLocalSum<MAlignedTileNum::One>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m, mFirstTile,
+                                                          s2BaseSize, tailN, blockStride, scaleValue);
+            } else {
+                ComputePAndLocalSum<MAlignedTileNum::Two>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m, mFirstTile,
+                                                          s2BaseSize, tailN, blockStride, scaleValue);
+            }
         }
 
-        AscendC::printf("tkd lpUbTensor[ubSBufId]\n");
-        AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 128);
-        AscendC::printf("tkd llUbFloatTensor\n");
-        AscendC::DumpTensor(llUbFloatTensor, 1, 128);
+        // AscendC::printf("tkd lpUbTensor[ubSBufId]\n");
+        // AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 128);
+        // AscendC::printf("tkd llUbFloatTensor\n");
+        // AscendC::DumpTensor(llUbFloatTensor, 1, 128);
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
@@ -211,12 +223,10 @@ public:
 
         AscendC::DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = nRound / 16; // 分两次搬运
-        dataCopyParams.blockLen = mRound / 2;
+        dataCopyParams.blockLen = mRound;
         dataCopyParams.srcStride = 1;
-        dataCopyParams.dstStride = mRound / 2;
+        dataCopyParams.dstStride = 0;
         DataCopy(l1PTensorTla.data()[subBlockIdx_ * mRound * nCopyOffset], lpUbTensor[ubSBufId], dataCopyParams);
-        DataCopy(l1PTensorTla.data()[subBlockIdx_ * mRound * nCopyOffset + mRound * 8],
-                 lpUbTensor[ubSBufId][blockStride * 64], dataCopyParams);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         // crossCoreSync after PIPE_MTE1 move
@@ -224,18 +234,18 @@ public:
 
         if (isFirstKvSTile) {
             SetGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, tailN);
-            AscendC::printf("tkd SetGlobalMaxAndGlobalSum\n");
-            AscendC::printf("tkd gmUbTensor\n");
-            AscendC::DumpTensor(gmUbTensor, 1, 128);
-            AscendC::printf("tkd glUbTensor\n");
-            AscendC::DumpTensor(glUbTensor, 1, 128);
+            // AscendC::printf("tkd SetGlobalMaxAndGlobalSum\n");
+            // AscendC::printf("tkd gmUbTensor\n");
+            // AscendC::DumpTensor(gmUbTensor, 1, 128);
+            // AscendC::printf("tkd glUbTensor\n");
+            // AscendC::DumpTensor(glUbTensor, 1, 128);
         } else {
             UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, dmUbAddr, tailN);
-            AscendC::printf("tkd UpdateDeltaMaxGlobalMaxAndGlobalSum\n");
-            AscendC::printf("tkd gmUbTensor\n");
-            AscendC::DumpTensor(gmUbTensor, 1, 128);
-            AscendC::printf("tkd glUbTensor\n");
-            AscendC::DumpTensor(glUbTensor, 1, 128);
+            // AscendC::printf("tkd UpdateDeltaMaxGlobalMaxAndGlobalSum\n");
+            // AscendC::printf("tkd gmUbTensor\n");
+            // AscendC::DumpTensor(gmUbTensor, 1, 128);
+            // AscendC::printf("tkd glUbTensor\n");
+            // AscendC::DumpTensor(glUbTensor, 1, 128);
         }
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -254,7 +264,7 @@ private:
     uint32_t subBlockIdx_;
     bfloat16_t MIN_VALUE;
 
-    enum class MAligendTileNum {
+    enum class MAlignedTileNum {
         Zero = 0,
         One = 1,
         Two = 2,
@@ -282,9 +292,10 @@ private:
 
         RegTensor<float> maxVregFloat;
 
+        uint32_t anotherTailN = tailN;
         MaskReg maskReg16TailN = UpdateMask<bfloat16_t>(tailN);
         MaskReg maskReg16All = CreateMask<bfloat16_t, MaskPattern::ALL>();
-        MaskReg maskReg32TailN = UpdateMask<float>(tailN);
+        MaskReg maskReg32TailN = UpdateMask<float>(anotherTailN);
 
         constexpr static CastTrait castTraitZeroUNKNOWN = {
             RegLayout::ZERO,
@@ -360,62 +371,52 @@ private:
         StoreAlign<float, StoreDist::DIST_NORM_B32>(lmUb, hmVreg, maskReg32TailN);
     }
 
-    template <MAligendTileNum mTileNum>
-    __simd_vf__ inline void
-    ComputePAndLocalSum(__ubuf__ bfloat16_t *sUb, __ubuf__ bfloat16_t *pUb, __ubuf__ float *lmUb, __ubuf__ float *llUb,
-                        uint16_t mRound, uint16_t m, uint32_t mFirstTile, uint16_t s2BaseSize, uint32_t tailN,
-                        uint32_t tailNOdd, uint32_t tailNEven, uint32_t blockStride, bfloat16_t scaleValue)
+    template <MAlignedTileNum mTileNum>
+    __simd_vf__ inline void ComputePAndLocalSum(__ubuf__ bfloat16_t *sUb, __ubuf__ bfloat16_t *pUb,
+                                                __ubuf__ float *lmUb, __ubuf__ float *llUb, uint16_t mRound, uint16_t m,
+                                                uint32_t mFirstTile, uint16_t s2BaseSize, uint32_t tailN,
+                                                uint32_t blockStride, bfloat16_t scaleValue)
     {
         using namespace AscendC::MicroAPI;
 
         RegTensor<bfloat16_t> sVreg0;
         RegTensor<bfloat16_t> sVreg1;
-        RegTensor<bfloat16_t> sVreg2;
-        RegTensor<bfloat16_t> sVreg3;
 
         RegTensor<bfloat16_t> scaleValueVreg;
 
         RegTensor<bfloat16_t> pVreg0;
         RegTensor<bfloat16_t> pVreg1;
-        RegTensor<bfloat16_t> pVreg2;
-        RegTensor<bfloat16_t> pVreg3;
+
+        RegTensor<bfloat16_t> interleaveVreg0;
+        RegTensor<bfloat16_t> interleaveVreg1;
+        RegTensor<bfloat16_t> interleaveVreg2;
+        RegTensor<bfloat16_t> interleaveVreg3;
+
+        RegTensor<bfloat16_t> deInterleaveVreg0;
+        RegTensor<bfloat16_t> deInterleaveVreg1;
+        RegTensor<bfloat16_t> deInterleaveVreg2;
+        RegTensor<bfloat16_t> deInterleaveVreg3;
 
         RegTensor<float> pVregFloat0;
         RegTensor<float> pVregFloat1;
-        RegTensor<float> pVregFloat2;
-        RegTensor<float> pVregFloat3;
-        RegTensor<float> pVregFloat4;
-        RegTensor<float> pVregFloat5;
-        RegTensor<float> pVregFloat6;
-        RegTensor<float> pVregFloat7;
 
         RegTensor<bfloat16_t> pVregBfloat160;
         RegTensor<bfloat16_t> pVregBfloat161;
-        RegTensor<bfloat16_t> pVregBfloat162;
-        RegTensor<bfloat16_t> pVregBfloat163;
-        RegTensor<bfloat16_t> pVregBfloat164;
-        RegTensor<bfloat16_t> pVregBfloat165;
-        RegTensor<bfloat16_t> pVregBfloat166;
-        RegTensor<bfloat16_t> pVregBfloat167;
 
         RegTensor<float> hmVreg;
 
         RegTensor<float> sumVreg0;
         RegTensor<float> sumVreg1;
-        RegTensor<float> sumVreg2;
-        RegTensor<float> sumVreg3;
 
         Duplicate(sumVreg0, 0);
         Duplicate(sumVreg1, 0);
-        Duplicate(sumVreg2, 0);
-        Duplicate(sumVreg3, 0);
         Duplicate(scaleValueVreg, scaleValue);
 
+        uint32_t anotherTailN = tailN;
         MaskReg maskReg16TailN = UpdateMask<bfloat16_t>(tailN);
         MaskReg maskReg16VL64 = CreateMask<bfloat16_t, MaskPattern::VL64>();
         MaskReg maskReg16All = CreateMask<bfloat16_t, MaskPattern::ALL>();
-        MaskReg maskReg32TailNOdd = UpdateMask<float>(tailNOdd);
-        MaskReg maskReg32TailNEven = UpdateMask<float>(tailNEven);
+        MaskReg maskReg32TailN = UpdateMask<float>(anotherTailN);
         MaskReg maskReg32All = CreateMask<float, MaskPattern::ALL>();
 
         constexpr static CastTrait castTraitZeroUNKNOWN = {
@@ -447,139 +448,237 @@ private:
         };
 
         __ubuf__ bfloat16_t *pUb0 = pUb;
-        __ubuf__ bfloat16_t *pUb1 = pUb0 + (mRound * 4); // *pUb1 = pUb0 + (mRound / 4 * ELE_NUM_PER_DATABLOCK)
-        __ubuf__ bfloat16_t *pUb2 = pUb0 + (mRound * 32 + 64); // *pUb2 = pUb0 + (mRound / 2 + 1) * 4 * ELE_NUM_PER_DATABLOCK
-        __ubuf__ bfloat16_t *pUb3 = pUb2 + (mRound * 4); // *pUb3 = pUb2 + (mRound / 4 * ELE_NUM_PER_DATABLOCK)
+        __ubuf__ bfloat16_t *pUb1 = pUb + (mRound * 8); // *pUb1 = pUb0 + (mRound / 4 * ELE_NUM_PER_DATABLOCK)
 
         LoadAlign(hmVreg, lmUb);
         for (uint16_t i = 0; i < mFirstTile; i++) {
             LoadAlign(sVreg0, sUb + i * s2BaseSize);
-            LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 4 + i * s2BaseSize);
-            LoadAlign(sVreg2, sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
-            LoadAlign(sVreg3, sUb + mRound * s2BaseSize / 2 + mRound * s2BaseSize / 4 + i * s2BaseSize);
+            LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
 
             Mul(sVreg0, sVreg0, scaleValueVreg, maskReg16TailN);
             Mul(sVreg1, sVreg1, scaleValueVreg, maskReg16TailN);
-            Mul(sVreg2, sVreg2, scaleValueVreg, maskReg16TailN);
-            Mul(sVreg3, sVreg3, scaleValueVreg, maskReg16TailN);
 
-            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat0, sVreg0, maskReg16All);
-            Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat1, sVreg0, maskReg16All);
-            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat2, sVreg1, maskReg16All);
-            Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat3, sVreg1, maskReg16All);
-            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat4, sVreg2, maskReg16All);
-            Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat5, sVreg2, maskReg16All);
-            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat6, sVreg3, maskReg16All);
-            Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat7, sVreg3, maskReg16All);
+            Interleave(interleaveVreg0, interleaveVreg1, sVreg0, sVreg0);
+            Interleave(interleaveVreg2, interleaveVreg3, sVreg1, sVreg1);
 
-            FusedExpSub(pVregFloat0, pVregFloat0, hmVreg, maskReg32TailNEven);
-            FusedExpSub(pVregFloat1, pVregFloat1, hmVreg, maskReg32TailNOdd);
-            FusedExpSub(pVregFloat2, pVregFloat2, hmVreg, maskReg32TailNEven);
-            FusedExpSub(pVregFloat3, pVregFloat3, hmVreg, maskReg32TailNOdd);
-            FusedExpSub(pVregFloat4, pVregFloat4, hmVreg, maskReg32TailNEven);
-            FusedExpSub(pVregFloat5, pVregFloat5, hmVreg, maskReg32TailNOdd);
-            FusedExpSub(pVregFloat6, pVregFloat6, hmVreg, maskReg32TailNEven);
-            FusedExpSub(pVregFloat7, pVregFloat7, hmVreg, maskReg32TailNOdd);
+            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat0, interleaveVreg0, maskReg16All);
+            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat1, interleaveVreg2, maskReg16All);
 
-            if constexpr (mTileNum >= MAligendTileNum::Zero) {
-                Add(sumVreg0, sumVreg0, pVregFloat0, maskReg32TailNEven);
-                Add(sumVreg0, sumVreg0, pVregFloat1, maskReg32TailNOdd);
+            FusedExpSub(pVregFloat0, pVregFloat0, hmVreg, maskReg32TailN);
+            FusedExpSub(pVregFloat1, pVregFloat1, hmVreg, maskReg32TailN);
+
+            if constexpr (mTileNum >= MAlignedTileNum::Zero) {
+                Add(sumVreg0, sumVreg0, pVregFloat0, maskReg32TailN);
             }
-            if constexpr (mTileNum >= MAligendTileNum::One) {
-                Add(sumVreg1, sumVreg1, pVregFloat2, maskReg32TailNEven);
-                Add(sumVreg1, sumVreg1, pVregFloat3, maskReg32TailNOdd);
-            }
-            if constexpr (mTileNum >= MAligendTileNum::Two) {
-                Add(sumVreg2, sumVreg2, pVregFloat4, maskReg32TailNEven);
-                Add(sumVreg2, sumVreg2, pVregFloat5, maskReg32TailNOdd);
-            }
-            if constexpr (mTileNum >= MAligendTileNum::Three) {
-                Add(sumVreg3, sumVreg3, pVregFloat6, maskReg32TailNEven);
-                Add(sumVreg3, sumVreg3, pVregFloat7, maskReg32TailNOdd);
+            if constexpr (mTileNum >= MAlignedTileNum::One) {
+                Add(sumVreg1, sumVreg1, pVregFloat1, maskReg32TailN);
             }
 
             Cast<bfloat16_t, float, castTraitZeroROUND>(pVregBfloat160, pVregFloat0, maskReg32All);
             Cast<bfloat16_t, float, castTraitOneROUND>(pVregBfloat161, pVregFloat1, maskReg32All);
-            Cast<bfloat16_t, float, castTraitZeroROUND>(pVregBfloat162, pVregFloat2, maskReg32All);
-            Cast<bfloat16_t, float, castTraitOneROUND>(pVregBfloat163, pVregFloat3, maskReg32All);
-            Cast<bfloat16_t, float, castTraitZeroROUND>(pVregBfloat164, pVregFloat4, maskReg32All);
-            Cast<bfloat16_t, float, castTraitOneROUND>(pVregBfloat165, pVregFloat5, maskReg32All);
-            Cast<bfloat16_t, float, castTraitZeroROUND>(pVregBfloat166, pVregFloat6, maskReg32All);
-            Cast<bfloat16_t, float, castTraitOneROUND>(pVregBfloat167, pVregFloat7, maskReg32All);
 
             Or((RegTensor<uint16_t> &)pVreg0, (RegTensor<uint16_t> &)pVregBfloat160,
                (RegTensor<uint16_t> &)pVregBfloat161, maskReg16All);
-            Or((RegTensor<uint16_t> &)pVreg1, (RegTensor<uint16_t> &)pVregBfloat162,
-               (RegTensor<uint16_t> &)pVregBfloat163, maskReg16All);
-            Or((RegTensor<uint16_t> &)pVreg2, (RegTensor<uint16_t> &)pVregBfloat164,
-               (RegTensor<uint16_t> &)pVregBfloat165, maskReg16All);
-            Or((RegTensor<uint16_t> &)pVreg3, (RegTensor<uint16_t> &)pVregBfloat166,
-               (RegTensor<uint16_t> &)pVregBfloat167, maskReg16All);
+
+            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVreg0, pVreg0);
 
             StoreAlign<bfloat16_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb0, pVreg0, blockStride, 1, maskReg16VL64);
+                pUb0, deInterleaveVreg0, blockStride, 1, maskReg16VL64);
             StoreAlign<bfloat16_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb1, pVreg1, blockStride, 1, maskReg16VL64);
-            StoreAlign<bfloat16_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb2, pVreg2, blockStride, 1, maskReg16VL64);
-            StoreAlign<bfloat16_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb3, pVreg3, blockStride, 1, maskReg16VL64);
+                pUb1, deInterleaveVreg1, blockStride, 1, maskReg16VL64);
         }
-        if constexpr (mTileNum < MAligendTileNum::Four) {
-            for (uint16_t i = mFirstTile; i < mRound / 4; i++) {
+        if constexpr (mTileNum < MAlignedTileNum::Two) {
+            for (uint16_t i = mFirstTile; i < mRound / 2; i++) {
                 LoadAlign(sVreg0, sUb + i * s2BaseSize);
-                LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 4 + i * s2BaseSize);
-                LoadAlign(sVreg2, sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
-                LoadAlign(sVreg3, sUb + mRound * s2BaseSize / 2 + mRound * s2BaseSize / 4 + i * s2BaseSize);
 
                 Mul(sVreg0, sVreg0, scaleValueVreg, maskReg16TailN);
-                Mul(sVreg1, sVreg1, scaleValueVreg, maskReg16TailN);
-                Mul(sVreg2, sVreg2, scaleValueVreg, maskReg16TailN);
-                Mul(sVreg3, sVreg3, scaleValueVreg, maskReg16TailN);
 
-                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat0, sVreg0, maskReg16All);
-                Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat1, sVreg0, maskReg16All);
-                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat2, sVreg1, maskReg16All);
-                Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat3, sVreg1, maskReg16All);
-                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat4, sVreg2, maskReg16All);
-                Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat5, sVreg2, maskReg16All);
-                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat6, sVreg3, maskReg16All);
-                Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat7, sVreg3, maskReg16All);
+                Interleave(interleaveVreg0, interleaveVreg1, sVreg0, sVreg0);
 
-                FusedExpSub(pVregFloat0, pVregFloat0, hmVreg, maskReg32TailNEven);
-                FusedExpSub(pVregFloat1, pVregFloat1, hmVreg, maskReg32TailNOdd);
-                FusedExpSub(pVregFloat2, pVregFloat2, hmVreg, maskReg32TailNEven);
-                FusedExpSub(pVregFloat3, pVregFloat3, hmVreg, maskReg32TailNOdd);
-                FusedExpSub(pVregFloat4, pVregFloat4, hmVreg, maskReg32TailNEven);
-                FusedExpSub(pVregFloat5, pVregFloat5, hmVreg, maskReg32TailNOdd);
-                FusedExpSub(pVregFloat6, pVregFloat6, hmVreg, maskReg32TailNEven);
-                FusedExpSub(pVregFloat7, pVregFloat7, hmVreg, maskReg32TailNOdd);
+                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat0, interleaveVreg0, maskReg16All);
 
-                if constexpr (mTileNum > MAligendTileNum::Zero) {
-                    Add(sumVreg0, sumVreg0, pVregFloat0, maskReg32TailNEven);
-                    Add(sumVreg0, sumVreg0, pVregFloat1, maskReg32TailNOdd);
-                }
-                if constexpr (mTileNum > MAligendTileNum::One) {
-                    Add(sumVreg1, sumVreg1, pVregFloat2, maskReg32TailNEven);
-                    Add(sumVreg1, sumVreg1, pVregFloat3, maskReg32TailNOdd);
-                }
-                if constexpr (mTileNum > MAligendTileNum::Two) {
-                    Add(sumVreg2, sumVreg2, pVregFloat4, maskReg32TailNEven);
-                    Add(sumVreg2, sumVreg2, pVregFloat5, maskReg32TailNOdd);
+                FusedExpSub(pVregFloat0, pVregFloat0, hmVreg, maskReg32TailN);
+
+                if constexpr (mTileNum > MAlignedTileNum::Zero) {
+                    Add(sumVreg0, sumVreg0, pVregFloat0, maskReg32TailN);
                 }
 
+                Cast<bfloat16_t, float, castTraitZeroROUND>(pVregBfloat160, pVregFloat0, maskReg32All);
+
+                DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregBfloat160, pVregBfloat160);
+
                 StoreAlign<bfloat16_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    pUb0, pVreg0, blockStride, 1, maskReg16VL64);
-                StoreAlign<bfloat16_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    pUb1, pVreg1, blockStride, 1, maskReg16VL64);
-                StoreAlign<bfloat16_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    pUb2, pVreg2, blockStride, 1, maskReg16VL64);
+                    pUb0, deInterleaveVreg0, blockStride, 1, maskReg16VL64);
             }
         }
-        Add(sumVreg0, sumVreg0, sumVreg2, maskReg16TailN);
-        Add(sumVreg1, sumVreg1, sumVreg3, maskReg16TailN);
-        Add(sumVreg0, sumVreg0, sumVreg1, maskReg16TailN);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(llUb, sumVreg0, maskReg16TailN);
+        Add(sumVreg0, sumVreg0, sumVreg1, maskReg32TailN);
+
+        StoreAlign<float, StoreDist::DIST_NORM_B32>(llUb, sumVreg0, maskReg32TailN);
+    }
+
+    template <MAlignedTileNum mTileNum>
+    __simd_vf__ inline void ComputePAndLocalSumFP8(__ubuf__ bfloat16_t *sUb, __ubuf__ ElementOutput *pUb,
+                                                   __ubuf__ float *lmUb, __ubuf__ float *llUb, uint16_t mRound,
+                                                   uint16_t m, uint32_t mFirstTile, uint16_t s2BaseSize, uint32_t tailN,
+                                                   uint32_t blockStride, bfloat16_t scaleValue)
+    {
+        using namespace AscendC::MicroAPI;
+
+        RegTensor<bfloat16_t> sVreg0;
+        RegTensor<bfloat16_t> sVreg1;
+
+        RegTensor<bfloat16_t> scaleValueVreg;
+
+        RegTensor<bfloat16_t> pVreg0;
+        RegTensor<bfloat16_t> pVreg1;
+
+        RegTensor<bfloat16_t> interleaveVreg0;
+        RegTensor<bfloat16_t> interleaveVreg1;
+        RegTensor<bfloat16_t> interleaveVreg2;
+        RegTensor<bfloat16_t> interleaveVreg3;
+
+        RegTensor<float> pVregFloat0;
+        RegTensor<float> pVregFloat1;
+
+        RegTensor<float> pVregScaleMaxValue0;
+        RegTensor<float> pVregScaleMaxValue1;
+
+        RegTensor<fp8_e4m3fn_t> pVregFP80;
+        RegTensor<fp8_e4m3fn_t> pVregFP81;
+
+        RegTensor<bfloat16_t> pVregBfloat160;
+        RegTensor<bfloat16_t> pVregBfloat161;
+
+        RegTensor<fp8_e4m3fn_t> deInterleaveVreg0;
+        RegTensor<fp8_e4m3fn_t> deInterleaveVreg1;
+        RegTensor<fp8_e4m3fn_t> deInterleaveVreg2;
+        RegTensor<fp8_e4m3fn_t> deInterleaveVreg3;
+        RegTensor<fp8_e4m3fn_t> deInterleaveVreg4;
+        RegTensor<fp8_e4m3fn_t> deInterleaveVreg5;
+        RegTensor<fp8_e4m3fn_t> deInterleaveVreg6;
+        RegTensor<fp8_e4m3fn_t> deInterleaveVreg7;
+
+        RegTensor<float> hmVreg;
+
+        RegTensor<float> sumVreg0;
+        RegTensor<float> sumVreg1;
+
+        Duplicate(sumVreg0, 0);
+        Duplicate(sumVreg1, 0);
+        Duplicate(scaleValueVreg, scaleValue);
+
+        uint32_t anotherTailN = tailN;
+        MaskReg maskReg8VL64 = CreateMask<uint8_t, MaskPattern::VL64>();
+        MaskReg maskReg8All = CreateMask<uint8_t, MaskPattern::ALL>();
+        MaskReg maskReg16TailN = UpdateMask<bfloat16_t>(tailN);
+        MaskReg maskReg16VL64 = CreateMask<bfloat16_t, MaskPattern::VL64>();
+        MaskReg maskReg16All = CreateMask<bfloat16_t, MaskPattern::ALL>();
+        MaskReg maskReg32TailN = UpdateMask<float>(anotherTailN);
+        MaskReg maskReg32All = CreateMask<float, MaskPattern::ALL>();
+
+        constexpr static CastTrait castTraitZeroUNKNOWN = {
+            RegLayout::ZERO,
+            SatMode::UNKNOWN,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN,
+        };
+
+        constexpr static CastTrait castTraitOneUNKNOWN = {
+            RegLayout::ONE,
+            SatMode::UNKNOWN,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN,
+        };
+
+        constexpr static CastTrait castTraitZeroRINT = {
+            RegLayout::ZERO,
+            SatMode::SAT,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::CAST_RINT,
+        };
+
+        constexpr static CastTrait castTraitTwoRINT = {
+            RegLayout::TWO,
+            SatMode::SAT,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::CAST_RINT,
+        };
+
+        __ubuf__ fp8_e4m3fn_t *pUb0 = pUb;
+        __ubuf__ fp8_e4m3fn_t *pUb1 = pUb + (mRound * 8); // *pUb1 = pUb0 + (mRound / 4 * ELE_NUM_PER_DATABLOCK)
+
+        constexpr half maxValueFP8 = static_cast<half>(448.0f);
+
+        LoadAlign(hmVreg, lmUb);
+        for (uint16_t i = 0; i < mFirstTile; i++) {
+            LoadAlign(sVreg0, sUb + i * s2BaseSize);
+            LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
+
+            Mul(sVreg0, sVreg0, scaleValueVreg, maskReg16TailN);
+            Mul(sVreg1, sVreg1, scaleValueVreg, maskReg16TailN);
+
+            Interleave(interleaveVreg0, interleaveVreg1, sVreg0, sVreg0);
+            Interleave(interleaveVreg2, interleaveVreg3, sVreg1, sVreg1);
+
+            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat0, interleaveVreg0, maskReg16All);
+            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat1, interleaveVreg2, maskReg16All);
+
+            FusedExpSub(pVregFloat0, pVregFloat0, hmVreg, maskReg32TailN);
+            FusedExpSub(pVregFloat1, pVregFloat1, hmVreg, maskReg32TailN);
+
+            Muls(pVregScaleMaxValue0, pVregFloat0, maxValueFP8, maskReg32TailN);
+            Muls(pVregScaleMaxValue1, pVregFloat1, maxValueFP8, maskReg32TailN);
+
+            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregScaleMaxValue0, maskReg32All);
+            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP81, pVregScaleMaxValue1, maskReg32All);
+
+            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregFP80, pVregFP80);
+            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVregFP81, pVregFP81);
+
+            DeInterleave(deInterleaveVreg4, deInterleaveVreg5, deInterleaveVreg0, deInterleaveVreg0);
+            DeInterleave(deInterleaveVreg6, deInterleaveVreg7, deInterleaveVreg2, deInterleaveVreg2);
+
+            if constexpr (mTileNum >= MAlignedTileNum::Zero) {
+                Add(sumVreg0, sumVreg0, pVregFloat0, maskReg32TailN);
+            }
+            if constexpr (mTileNum >= MAlignedTileNum::One) {
+                Add(sumVreg1, sumVreg1, pVregFloat1, maskReg32TailN);
+            }
+
+            StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                pUb0, deInterleaveVreg4, mRound + 1, 1, maskReg8VL64);
+            StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                pUb1, deInterleaveVreg6, mRound + 1, 1, maskReg8VL64);
+        }
+        if constexpr (mTileNum < MAlignedTileNum::Two) {
+            for (uint16_t i = mFirstTile; i < mRound / 2; i++) {
+                LoadAlign(sVreg0, sUb + i * s2BaseSize);
+
+                Mul(sVreg0, sVreg0, scaleValueVreg, maskReg16TailN);
+
+                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat0, interleaveVreg0, maskReg16All);
+
+                FusedExpSub(pVregFloat0, pVregFloat0, hmVreg, maskReg32TailN);
+
+                Muls(pVregScaleMaxValue0, pVregFloat0, maxValueFP8, maskReg32TailN);
+
+                Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregScaleMaxValue0, maskReg32All);
+
+                DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregFP80, pVregFP80);
+
+                DeInterleave(deInterleaveVreg2, deInterleaveVreg3, deInterleaveVreg0, deInterleaveVreg0);
+
+                if constexpr (mTileNum > MAlignedTileNum::Zero) {
+                    Add(sumVreg0, sumVreg0, pVregFloat0, maskReg32TailN);
+                }
+
+                StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                    pUb0, deInterleaveVreg2, mRound + 1, 1, maskReg8VL64);
+            }
+        }
+        Add(sumVreg0, sumVreg0, sumVreg1, maskReg32TailN);
+
+        StoreAlign<float, StoreDist::DIST_NORM_B32>(llUb, sumVreg0, maskReg32TailN);
     }
 
     __simd_vf__ inline void SetGlobalMaxAndGlobalSum(__ubuf__ float *lmUb, __ubuf__ float *gmUb, __ubuf__ float *llUb,

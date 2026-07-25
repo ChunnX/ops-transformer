@@ -235,7 +235,7 @@ public:
         __ubuf__ float *nowSumAddr = (__ubuf__ float*) llUbFloatTensor.GetPhyAddr();
         __ubuf__ float *expMaxUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
 
-        // wait QK Fixpipe finsh
+        // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
         if (isFirstKvSTile) {
             nowMaxFloatAddr = lastMaxAddr;
