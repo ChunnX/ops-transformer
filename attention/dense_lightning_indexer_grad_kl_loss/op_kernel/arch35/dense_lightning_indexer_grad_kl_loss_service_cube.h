@@ -49,7 +49,7 @@ public:
                                                GlobalTensor<MM12_OUT_T> &bmm5Res);
     __aicore__ inline void InitMm5DeterGlobalTensor(GlobalTensor<MM12_OUT_T> &dKeyIndexDeterGmFloat);
     __aicore__ inline void InitMm6GlobalTensor(GlobalTensor<T> &bmm6Res);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
+    __aicore__ inline void InitBuffers(TPipe *pipe, LocalTensor<KV_T> reluGradL1);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void ComputeMm1(const DLIGradKLLossRunInfo &info);
     __aicore__ inline void ComputeMm2(const DLIGradKLLossRunInfo &info);
@@ -130,7 +130,6 @@ private:
     TBuf<TPosition::A1> queryBuf;
     TBuf<TPosition::A1> queryIndexBuf[2];
     TBuf<TPosition::A1> keyBuf[2];
-    TBuf<TPosition::A1> reluGradOutBuf;
     TBuf<TPosition::A2> tmpBufL0A[2];
     TBuf<TPosition::B2> tmpBufL0B[2];
     TBuf<TPosition::CO1> tmpBufL0C[2];
@@ -143,7 +142,7 @@ private:
     LocalTensor<Q_T> aL0TensorPingPong[2];
     LocalTensor<KV_T> bL0TensorPingPong[2];
     LocalTensor<MM12_OUT_T> cL0TensorPingPong[2];
-    LocalTensor<Q_T> l1ReLuGradTensor;
+    LocalTensor<KV_T> l1ReLuGradTensor;
 
 };
 
@@ -203,7 +202,8 @@ DLITMatmulService<DLIT>::InitMm6GlobalTensor(GlobalTensor<T> &bmm6Res)
     this->mm6ResGm = bmm6Res;
 }
 
-template <typename DLIT> __aicore__ inline void DLITMatmulService<DLIT>::InitBuffers(TPipe *pipe)
+template <typename DLIT>
+__aicore__ inline void DLITMatmulService<DLIT>::InitBuffers(TPipe *pipe, LocalTensor<KV_T> reluGradL1)
 {
     // L1
     pipe->InitBuffer(queryBuf, 128 * 192 * sizeof(Q_T));            // 48k
@@ -211,7 +211,6 @@ template <typename DLIT> __aicore__ inline void DLITMatmulService<DLIT>::InitBuf
     pipe->InitBuffer(keyBuf[1], 128 * 192 * sizeof(KV_T));          // 48k
     pipe->InitBuffer(queryIndexBuf[0], 128 * 128 * sizeof(Q_T));       // 32k
     pipe->InitBuffer(queryIndexBuf[1], 128 * 128 * sizeof(Q_T));       // 32k
-    pipe->InitBuffer(reluGradOutBuf, 128 * 1024 * sizeof(KV_T));    // 256k
 
     l1QueryTensor = queryBuf.Get<Q_T>();
     l1QueryRopeTensor = l1QueryTensor[CUBE_BASE_BLOCK * constInfo.dSizeQuery];
@@ -223,7 +222,7 @@ template <typename DLIT> __aicore__ inline void DLITMatmulService<DLIT>::InitBuf
     l1KeyRopeTensor[1] = l1KeyTensor[1][CUBE_BASE_BLOCK * constInfo.dSizeQuery];
     // l1KeyIndexTensor[0] = keyIndexBuf[0].Get<KV_T>();
     // l1KeyIndexTensor[1] = keyIndexBuf[1].Get<KV_T>();
-    l1ReLuGradTensor = reluGradOutBuf.Get<Q_T>();
+    l1ReLuGradTensor = reluGradL1;
 
     // L0A/B/C
     pipe->InitBuffer(tmpBufL0A[0], L0A_PP_SIZE); // 32K
@@ -696,7 +695,11 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34(const DLIGradKLLossR
         uint32_t n2IndexId = n1IndexId / constInfo.gSizeQueryIndex;
         // 一个head拷贝一次, mm3和mm4复用
         WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_RELU_GRAD);
-        CopyInReluGradToL1A(info, n1IndexId);
+        if (n1IndexId == this->constInfo.n1IndexSize - 1) {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_RELU_GRAD_L1_FLAG);
+        } else {
+            CopyInReluGradToL1A(info, n1IndexId);
+        }
 
         // matmul 3
         WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q_INDEX[l1PingPongFlag & 1]);
@@ -757,6 +760,9 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34(const DLIGradKLLossR
             l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
         }
         SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_RELU_GRAD);
+        if (n1IndexId == this->constInfo.n1IndexSize - 1) {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_RELU_GRAD_L1_FLAG);
+        }
         l0cPingPongFlag = (l0cPingPongFlag + 1) & 1;
         // 和mm3结束赋值l0PingPongFlag的理由一样
         l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
@@ -796,7 +802,11 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKL
         uint32_t n2IndexId = n1IndexId / constInfo.gSizeQueryIndex;
         // 一个head拷贝一次, mm3和mm4复用
         WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_RELU_GRAD);
-        CopyInReluGradToL1A(info, n1IndexId);
+        if (n1IndexId == this->constInfo.n1IndexSize - 1) {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_RELU_GRAD_L1_FLAG);
+        } else {
+            CopyInReluGradToL1A(info, n1IndexId);
+        }
 
         // matmul 3
         WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q_INDEX[l1PingPongFlag & 1]);
@@ -856,6 +866,9 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKL
             l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
         }
         SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_RELU_GRAD);
+        if (n1IndexId == this->constInfo.n1IndexSize - 1) {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_RELU_GRAD_L1_FLAG);
+        }
         l0cPingPongFlag = (l0cPingPongFlag + 1) & 1;
         // 和mm3结束赋值l0PingPongFlag的理由一样
         l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
