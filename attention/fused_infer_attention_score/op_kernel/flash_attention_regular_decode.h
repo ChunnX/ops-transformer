@@ -71,6 +71,8 @@ namespace SplitFuse {
         __aicore__ inline
         void operator()(FAIKernelParams const &params)
         {
+            printf("hello wangsong!! flash_attention_regular_decode.h operator WORKSPACE_BLOCK_SIZE_DB is %d\n",
+                   WORKSPACE_BLOCK_SIZE_DB);
             __gm__ FAInferTilingData *fATilingData = reinterpret_cast<__gm__ FAInferTilingData *>(params.tiling);
             uint64_t mm1OutSize = fATilingData->mm1OutSize;
             uint64_t smOnlineOutSize = fATilingData->smOnlineOutSize;

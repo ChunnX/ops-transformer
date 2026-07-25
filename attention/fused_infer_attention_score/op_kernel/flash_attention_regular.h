@@ -472,6 +472,9 @@ namespace SplitFuse {
             auto& gOUpdate = globalTensors.gOUpdate;
             auto& gSink = globalTensors.gSink;
 
+            printf("hello wangsong!! flash_attention_regular.h runMainLoop WORKSPACE_BLOCK_SIZE_DB is %d\n",
+                   WORKSPACE_BLOCK_SIZE_DB);
+
             uint32_t qSeqlen = static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx));
             uint32_t kvSeqlen = static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx));
             uint32_t prevQSeqlenSum = 0;
