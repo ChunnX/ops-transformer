@@ -609,7 +609,7 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
     if (GetPlatformInfo(context, opName, aicoreParams_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    int64_t perCoreNum = tilingData->init_total_num / static_cast<int64_t>(aicoreParams_.numBlocks);
+    int64_t perCoreNum = AlignData(tilingData->init_total_num, static_cast<int64_t>(aicoreParams_.numBlocks)) / static_cast<int64_t>(aicoreParams_.numBlocks);
     tilingData->init_per_core_num = AlignData(perCoreNum, 8 * 1024);
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(static_cast<uint64_t>(maskMode), static_cast<uint64_t>(isTnd ? 1 : 0), static_cast<uint64_t>(isSparse ? 1 : 0));
