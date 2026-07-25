@@ -26,6 +26,5 @@ struct ScaledCosineAttentionScoreTilingData {
     float clampMax;
     float eps;
 };
-}  // namespace optiling
-#endif  // OPS_OP_KERNEL_SCALED_COSINE_ATTENTION_SCORE_TILING_DEF_H_
-
+} // namespace optiling
+#endif // OPS_OP_KERNEL_SCALED_COSINE_ATTENTION_SCORE_TILING_DEF_H_

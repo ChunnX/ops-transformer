@@ -31,7 +31,6 @@ REG_OP(ScaledCosineAttentionScore)
     .ATTR(clamp_max, Float, 4.6052)
     .ATTR(eps, Float, 1e-12)
     .OP_END_FACTORY_REG(ScaledCosineAttentionScore)
-}  // namespace ge
+} // namespace ge
 
-#endif  // OPS_OP_PROTO_INC_SCALED_COSINE_ATTENTION_SCORE_H_
-
+#endif // OPS_OP_PROTO_INC_SCALED_COSINE_ATTENTION_SCORE_H_

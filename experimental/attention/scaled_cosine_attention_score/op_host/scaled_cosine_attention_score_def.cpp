@@ -13,7 +13,7 @@ namespace ops {
 
 class ScaledCosineAttentionScore : public OpDef {
 public:
-    explicit ScaledCosineAttentionScore(const char* name) : OpDef(name)
+    explicit ScaledCosineAttentionScore(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -59,5 +59,4 @@ public:
 };
 
 OP_ADD(ScaledCosineAttentionScore);
-}  // namespace ops
-
+} // namespace ops

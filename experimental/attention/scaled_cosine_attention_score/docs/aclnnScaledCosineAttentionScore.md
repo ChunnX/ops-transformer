@@ -43,4 +43,3 @@ aclnnStatus aclnnScaledCosineAttentionScore(
 
 参见
 [`examples/test_aclnn_scaled_cosine_attention_score.cpp`](../examples/test_aclnn_scaled_cosine_attention_score.cpp)。
-
