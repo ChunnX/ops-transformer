@@ -124,52 +124,25 @@ def _make_sparse_indices(case: Dict[str, Any], seed: int) -> torch.Tensor:
     return sparse_indices.npu()
 
 
-def _build_softmax_stats(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    query_rope: torch.Tensor,
-    key_rope: torch.Tensor,
-    scale_value: float,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Generate the forward-attention softmax max/sum inputs in FP32.
-
-    The row loop caps temporary storage at [B, N1, S2] rather than materializing
-    [B, S1, N1, S2], which matters for the long-sequence cases.
-    """
-    batch_size, sequence_q, head_count, _ = query.shape
-    group_count = head_count
-    key_full = torch.cat((key.squeeze(2), key_rope.squeeze(2)), dim=-1)
-    key_transposed = key_full.transpose(-1, -2).contiguous()
-    query_full = torch.cat((query, query_rope), dim=-1)
-    softmax_max = torch.empty(
-        (batch_size, 1, sequence_q, group_count), dtype=torch.float32, device=query.device
-    )
-    softmax_sum = torch.empty(
-        softmax_max.shape, dtype=softmax_max.dtype, device=softmax_max.device
-    )
-
-    with torch.no_grad():
-        for query_id in range(sequence_q):
-            scores = torch.matmul(query_full[:, query_id], key_transposed).float()
-            row_max = scores.mul(scale_value).amax(dim=-1)
-            row_sum = torch.exp(scores.mul(scale_value) - row_max.unsqueeze(-1)).sum(dim=-1)
-            softmax_max[:, 0, query_id, :] = row_max
-            softmax_sum[:, 0, query_id, :] = row_sum
-    return softmax_max, softmax_sum
-
-
 def make_inputs(case: Dict[str, Any], seed: int) -> Dict[str, Any]:
     _validate_case(case)
     input_dtype = torch.bfloat16
     torch.manual_seed(seed)
 
-    bsnd_shape = (case["B"], case["S1"], case["N1"], case["DQuery"])
-    key_shape = (case["B"], case["S2"], case["N2"], case["DQuery"])
-    query_index_shape = (case["B"], case["S1"], case["Nidx1"], case["DQueryIndex"])
-    key_index_shape = (case["B"], case["S2"], case["Nidx2"], case["DQueryIndex"])
-    query_rope_shape = (case["B"], case["S1"], case["N1"], case["d_rope"])
-    key_rope_shape = (case["B"], case["S2"], case["N2"], case["d_rope"])
-    weight_shape = (case["B"], case["S1"], case["Nidx1"])
+    B, S1, S2, N1, N2, Nidx1, Nidx2 = (
+        case["B"], case["S1"], case["S2"], case["N1"], case["N2"], case["Nidx1"], case["Nidx2"]
+    )
+    DQuery, DQueryIndex, d_rope, K = case["DQuery"], case["DQueryIndex"], case["d_rope"], case["K"]
+    G = N1 // N2
+    scale_value = 1.0 / math.sqrt(DQuery)
+
+    bsnd_shape = (B, S1, N1, DQuery)
+    key_shape = (B, S2, N2, DQuery)
+    query_index_shape = (B, S1, Nidx1, DQueryIndex)
+    key_index_shape = (B, S2, Nidx2, DQueryIndex)
+    query_rope_shape = (B, S1, N1, d_rope)
+    key_rope_shape = (B, S2, N2, d_rope)
+    weight_shape = (B, S1, Nidx1)
 
     query_bsnd = torch.randn(bsnd_shape, dtype=input_dtype).npu()
     key_bsnd = torch.randn(key_shape, dtype=input_dtype).npu()
@@ -179,38 +152,80 @@ def make_inputs(case: Dict[str, Any], seed: int) -> Dict[str, Any]:
     key_rope_bsnd = torch.randn(key_rope_shape, dtype=input_dtype).npu()
     weights_bsnd = torch.randn(weight_shape, dtype=input_dtype).npu()
     sparse_indices_bsnd = _make_sparse_indices(case, seed)
-    scale_value = 1.0 / math.sqrt(case["DQuery"])
-    softmax_max_bsnd, softmax_sum_bsnd = _build_softmax_stats(
-        query_bsnd, key_bsnd, query_rope_bsnd, key_rope_bsnd, scale_value
-    )
 
-    if case["layout"] == "TND":
-        return {
-            "query": query_bsnd.squeeze(0),
-            "key": key_bsnd.squeeze(0),
-            "query_index": query_index_bsnd.squeeze(0),
-            "key_index": key_index_bsnd.squeeze(0),
-            "weights": weights_bsnd.squeeze(0),
-            "sparse_indices": sparse_indices_bsnd.squeeze(0),
-            "softmax_max": softmax_max_bsnd.squeeze(0),
-            "softmax_sum": softmax_sum_bsnd.squeeze(0),
-            "query_rope": query_rope_bsnd.squeeze(0),
-            "key_rope": key_rope_bsnd.squeeze(0),
-            "scale_value": scale_value,
-        }
+    with torch.no_grad():
+        if case["layout"] == "TND":
+            query = query_bsnd.squeeze(0)
+            key = key_bsnd.squeeze(0)
+            query_index = query_index_bsnd.squeeze(0)
+            key_index = key_index_bsnd.squeeze(0)
+            query_rope = query_rope_bsnd.squeeze(0)
+            key_rope = key_rope_bsnd.squeeze(0)
+            weights = weights_bsnd.squeeze(0)
+            sparse_indices = sparse_indices_bsnd.squeeze(0)
+
+            k_mqa = key.squeeze(1)
+            k_rope_mqa = key_rope.squeeze(1)
+            q_full = torch.cat([query, query_rope], dim=-1)
+            k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
+            k_full_t = k_full.transpose(-1, -2)
+            sm_max_list = []
+            sm_sum_list = []
+            for s1_idx in range(S1):
+                row = torch.matmul(q_full[s1_idx:s1_idx+1], k_full_t)
+                row_scaled = row.float() * scale_value
+                row_max = row_scaled.max(dim=-1).values
+                row_sum = torch.exp(row_scaled - row_max.unsqueeze(-1)).sum(dim=-1)
+                sm_max_list.append(row_max)
+                sm_sum_list.append(row_sum)
+            sm_max_val = torch.cat(sm_max_list, dim=0)
+            sm_sum_val = torch.cat(sm_sum_list, dim=0)
+            softmax_max = sm_max_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
+            softmax_sum = sm_sum_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
+            softmax_max = softmax_max.squeeze(0)
+            softmax_sum = softmax_sum.squeeze(0)
+            torch.npu.synchronize()
+        else:
+            query = query_bsnd
+            key = key_bsnd
+            query_index = query_index_bsnd
+            key_index = key_index_bsnd
+            query_rope = query_rope_bsnd
+            key_rope = key_rope_bsnd
+            weights = weights_bsnd
+            sparse_indices = sparse_indices_bsnd
+
+            k_mqa = key.squeeze(2)
+            k_rope_mqa = key_rope.squeeze(2)
+            q_full = torch.cat([query, query_rope], dim=-1)
+            k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
+            k_full_t = k_full.transpose(-1, -2).unsqueeze(1)
+            sm_max_list = []
+            sm_sum_list = []
+            for s1_idx in range(S1):
+                row = torch.matmul(q_full[:, s1_idx:s1_idx+1], k_full_t)
+                row_scaled = row.float() * scale_value
+                row_max = row_scaled.max(dim=-1).values
+                row_sum = torch.exp(row_scaled - row_max.unsqueeze(-1)).sum(dim=-1)
+                sm_max_list.append(row_max)
+                sm_sum_list.append(row_sum)
+            sm_max_val = torch.cat(sm_max_list, dim=1)
+            sm_sum_val = torch.cat(sm_sum_list, dim=1)
+            softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
+            softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
 
     return {
-        "query": query_bsnd,
-        "key": key_bsnd,
-        "query_index": query_index_bsnd,
-        "key_index": key_index_bsnd,
-        "weights": weights_bsnd,
-        "sparse_indices": sparse_indices_bsnd,
-        "softmax_max": softmax_max_bsnd,
-        "softmax_sum": softmax_sum_bsnd,
-        "query_rope": query_rope_bsnd,
-        "key_rope": key_rope_bsnd,
+        "query": query,
+        "key": key,
+        "query_index": query_index,
+        "key_index": key_index,
+        "weights": weights,
+        "sparse_indices": sparse_indices,
+        "softmax_max": softmax_max,
+        "softmax_sum": softmax_sum,
         "scale_value": scale_value,
+        "query_rope": query_rope,
+        "key_rope": key_rope,
     }
 
 
