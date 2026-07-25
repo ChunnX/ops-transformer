@@ -98,7 +98,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>不支持空tensor。</td>
     <td>BFLOAT16、FLOAT16</td>
     <td>ND</td>
-    <td><ul><li>layout_q为BSND时，shape为(B,S1,N1,D)。</li><li>layout_q为TND时，shape为(T1,N1,D)。</li><li>不支持空tensor。</li></ul></td>
+    <td><ul><li>layoutQ为BSND时，shape为(B,S1,N1,D)。</li><li>layoutQ为TND时，shape为(T1,N1,D)。</li><li>不支持空tensor。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
@@ -108,7 +108,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td><ul><li>不支持空tensor。</li><li>block_num为PageAttention时block总数，block_size为一个block的token数。</li></ul></td>
     <td>BFLOAT16、FLOAT16</td>
     <td>ND</td>
-    <td><ul><li>layout_k为PA_BBND时，shape为(block_num, block_size, N2, D)。</li><li>layout_k为BSND时，shape为(B, S2, N2, D)。</li><li>layout_k为TND时，shape为(T2, N2, D)。</li></ul>
+    <td><ul><li>layoutK为PA_BBND时，shape为(block_num, block_size, N2, D)。</li><li>layoutK为BSND时，shape为(B, S2, N2, D)。</li><li>layoutK为TND时，shape为(T2, N2, D)。</li></ul>
     </td>
     <td>✓</td>
     </tr>
@@ -119,7 +119,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>不支持空tensor。</td>
     <td>FLOAT</td>
     <td>ND</td>
-    <td><ul><li>layout_w为BSND时，shape为(B,S1,N1)。</li><li>layout_w为TND时，shape为(T1,N1)。</li></ul></td>
+    <td><ul><li>layoutQ为BSND时，shape为(B,S1,N1)。</li><li>layoutQ为TND时，shape为(T1,N1)。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
@@ -280,7 +280,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>不支持空tensor。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td><ul><li>layout_q为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layout_q为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
+    <td><ul><li>layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layoutQ为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
@@ -290,7 +290,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>不支持空tensor。</td>
     <td>FLOAT</td>
     <td>ND</td>
-    <td><ul><li>layout_q为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layout_q为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
+    <td><ul><li>layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layoutQ为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
@@ -400,18 +400,18 @@ aclnnStatus aclnnLightningIndexerV2(
 - headdim支持128。
 - pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32 Byte对齐。
 - 参数q、k的数据类型应保持一致。
-- sparse_indices无效部分填-1；sparse_values无效部分填-inf。
+- sparseIndices无效部分填-1；sparseValues无效部分填-inf。
 - 传入的cmpResidualKOptional中每一个元素的值都应小于压缩率cmpRatio。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
   - 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
-  - 当layout_k为PA_BBND时，必须传入sequsedKOptional；当layout_k不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
+  - 当layoutK为PA_BBND时，必须传入sequsedKOptional；当layoutK不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
 - <term>Ascend 950PR/Ascend 950DT</term>：
-  - 当layout_q为BSND时，不支持传入cuSeqlensQOptional；当layout_k为BSND或PA_BBND时，不支持传入cuSeqlensKOptional。
-  - 当传入outputIdxOffsetOptional时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
-  - 当layout_q为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparseIndices和sparseValues全部置为无效值。
+  - 当传入的参数layoutQ为BSND时，不支持传入cuSeqlensQOptional；当layoutK为BSND或PA_BBND时，不支持传入cuSeqlensKOptional。
+  - 当传入参数outputIdxOffsetOptional时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
+  - 当参入的参数layoutQ为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparseIndices和sparseValues全部置为无效值。
   - 当传入的cmpRatio > 1且maskMode = 3时，必须传入cmpResidualKOptional，其余情况不传入。
-  - 当layout_k为PA_BBND时，必须传入sequsedKOptional。
+  - 当传入的参数layoutK为PA_BBND时，必须传入sequsedKOptional。
   - 参数metadataOptional必须传入。
 
 ## 调用示例
