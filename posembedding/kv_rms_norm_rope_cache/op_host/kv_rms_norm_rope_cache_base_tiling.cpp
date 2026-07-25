@@ -108,6 +108,28 @@ bool KvRmsNormRopeCacheTilingBase::CheckVValid(
     return isValid;
 }
 
+// index 的取值语义：Norm 下是 batch 内的行号(< Scache)，PA 系下是全局槽位号(< BlockNum * BlockSize)。
+// Kernel 只能拿到 tiling 下发的上界，故这里算好下发，避免 kernel 用越界的 index 写 cache。
+bool KvRmsNormRopeCacheTilingBase::GetCacheRowLimit(int64_t& cacheRowLimit)
+{
+    if (currentCacheMode_ == CacheMode::Norm) {
+        cacheRowLimit = cacheLength_;
+        return true;
+    }
+    const gert::StorageShape* kCacheShapePtr = context_->GetInputShape(K_CACHE_INDEX);
+    // 本函数返回 bool，不能用 OP_CHECK_NULL_WITH_CONTEXT：它失败时 return ge::GRAPH_FAILED(0xFFFFFFFF)，
+    // 转成 bool 是 true，会被调用方当成"取上界成功"
+    OP_CHECK_IF(
+        kCacheShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "shape of k_cache is nullptr."), return false);
+    int64_t blockNum = kCacheShapePtr->GetStorageShape().GetDim(SHAPE_IDX_B);
+    OP_CHECK_IF(
+        blockNum <= 0 || blockSize_ <= 0,
+        OP_LOGE(context_->GetNodeName(), "invalid BlockNum(%ld) or BlockSize(%ld) of k_cache.", blockNum, blockSize_),
+        return false);
+    cacheRowLimit = blockNum * blockSize_;
+    return true;
+}
+
 bool KvRmsNormRopeCacheTilingBase::CheckCosSinValid(
     const gert::TilingContext* context, int64_t batchSize, int64_t numHead, int64_t seqLen, int64_t headSize)
 {
@@ -202,13 +224,24 @@ bool KvRmsNormRopeCacheTilingBase::CheckCacheValid(
     auto cacheShapeTuple = GetShapeTuple(context, cacheIndex);
     int64_t cacheB = std::get<SHAPE_IDX_B>(cacheShapeTuple);
     int64_t cacheN = std::get<SHAPE_IDX_N>(cacheShapeTuple);
-    if (cacheB != batchSize) {
-        OP_LOGW(context_->GetNodeName(),
-            "In CacheMode::Norm, the B dimension of %s should be %ld, but got %ld.", cacheName, batchSize, cacheB);
+    // In CacheMode::Norm the cache is addressed linearly as (b * N + n) * cacheLen * headSize, so the B and N axes may
+    // be split or merged freely, but their product must cover every (batch, head) the kernel scatters to.
+    if (cacheB * cacheN < batchSize * numHead) {
+        // GetShapeTuple 在 shape 为空指针时返回全 0，会走进本分支，故这里必须自己判空后再取 shape
+        const gert::StorageShape* cacheShapePtr = context->GetInputShape(cacheIndex);
+        std::string cacheShapeStr = (cacheShapePtr == nullptr) ? "nullptr" : ToString(cacheShapePtr->GetStorageShape());
+        std::string reasonMsg = "In CacheMode::Norm, the product of the B and N dimensions of " +
+            std::string(cacheName) + " should be no less than " + std::to_string(batchSize * numHead) +
+            " (B * N of input kv), but got " + std::to_string(cacheB * cacheN);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), cacheName,
+            cacheShapeStr.c_str(), reasonMsg.c_str());
+        return false;
     }
-    if (cacheN != numHead) {
+    if (cacheB != batchSize || cacheN != numHead) {
         OP_LOGW(context_->GetNodeName(),
-            "In CacheMode::Norm, the N dimension of %s should be %ld, but got %ld.", cacheName, numHead, cacheN);
+            "In CacheMode::Norm, the B and N dimensions of %s are expected to be %ld and %ld, but got %ld and %ld. "
+            "The cache is large enough, so it is addressed as if it were [%ld, %ld, %ld, %ld].",
+            cacheName, batchSize, numHead, cacheB, cacheN, batchSize, numHead, cacheLen, headSize);
     }
     bool isValid = true;
     isValid = isValid && (std::get<SHAPE_IDX_S>(cacheShapeTuple) == cacheLen);
@@ -310,6 +343,9 @@ bool KvRmsNormRopeCacheTilingBase::CheckIndexValid(
         isValid = isValid && (shapeSize == batchSize * seqLen);
         OP_CHECK_IF(!isValid, OP_LOGE(context, "Index's shape size must equal with B*S."), return false);
     } else {
+        OP_CHECK_IF(
+            pageSize <= 0,
+            OP_LOGE(context, "invalid BlockSize(%ld) of k_cache for PA_BLK cache mode.", pageSize), return false);
         int64_t page_num = (seqLen + pageSize - 1) / pageSize;
         isValid = isValid && (shapeSize == batchSize * page_num);
         OP_CHECK_IF(
@@ -445,7 +481,6 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
     const float* epsilon = attrs->GetFloat(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, epsilon);
-
     epsilon_ = *epsilon;
     const char* tmpmode = attrs->GetStr(CACHE_MODE_IDX);
     if (tmpmode != nullptr) {

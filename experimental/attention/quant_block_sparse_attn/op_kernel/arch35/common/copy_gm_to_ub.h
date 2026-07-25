@@ -36,12 +36,14 @@ private:
                                      const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
                                      const ConstInfo &constInfo)
     {
-        int32_t byteOffset1 = 0;
-        int32_t byteOffset2 = 0;
+        int64_t byteOffset1 = 0;
+        int64_t byteOffset2 = 0;
         if constexpr (GM_FORMAT == BSALayout::PA_BNSD) {
             DataCopyExtParams dataCopyParams;
             dataCopyParams.blockCount = 1;
-            dataCopyParams.blockLen = constInfo.kvSparseBlockSize * sizeof(float);
+
+            // 当 runInfo.sparseBlkIdx2 >= 0 的情况时，runInfo.s2SparseBlk1RealSize = constInfo.kvSparseBlockSize
+            dataCopyParams.blockLen = runInfo.s2SparseBlk1RealSize * sizeof(float);
             dataCopyParams.srcStride = 0;
             dataCopyParams.dstStride = 0;
             DataCopyPadExtParams<T> dataCopyPadParams{};
@@ -67,13 +69,14 @@ private:
             DataCopyPad(dstTensor[128], srcTensor[byteOffset2], dataCopyParams, dataCopyPadParams);
         }
     }
-    __aicore__ inline void GetPaKScaleOffset(int32_t &byteOffset, const int64_t sparseBlkIdx,
+    __aicore__ inline void GetPaKScaleOffset(int64_t &byteOffset, const int64_t sparseBlkIdx,
                                              const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
                                              const ConstInfo &constInfo)
     {
-        int32_t physicalBlock = blockTableTensor.GetValue(runInfo.boIdx * constInfo.blockTableDim2 + sparseBlkIdx);
-        byteOffset =
-            physicalBlock * (constInfo.paBlockStride / sizeof(float)) + runInfo.n2oIdx * constInfo.kvSparseBlockSize;
+        int64_t blockTableOffset = runInfo.boIdx * constInfo.blockTableDim2 + sparseBlkIdx;
+        int64_t physicalBlock = blockTableTensor.GetValue(blockTableOffset);
+        byteOffset = physicalBlock * (constInfo.paBlockStride / sizeof(float)) +
+                     runInfo.n2oIdx * constInfo.kvSparseBlockSize;
     }
 };
 
@@ -110,8 +113,6 @@ private:
             DataCopyPadExtParams<T> dataCopyPadParams{};
             int64_t qScaleOffset = runInfo.qBScalarOffset + runInfo.sOuterOffset;
             DataCopyPad(dstTensor, srcTensor[qScaleOffset], dataCopyParams, dataCopyPadParams);
-        } else if constexpr (GM_FORMAT == BSALayout::BSND) {
-        } else if constexpr (GM_FORMAT == BSALayout::BNSD) {
         }
     }
 };

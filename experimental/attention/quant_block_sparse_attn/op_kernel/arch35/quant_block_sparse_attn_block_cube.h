@@ -107,7 +107,6 @@ public:
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr uint32_t s2SplitSize = (uint32_t)256;
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr TPosition bmm2OutPos = GetC2Position();
@@ -134,9 +133,7 @@ public:
     GlobalTensor<int32_t> blockTableGm; // pageattention需要
 private:
     __aicore__ inline void InitLocalBuffer();
-    __aicore__ inline void InitGmTensor(CVSharedParams<isPa> *sharedParams, __gm__ int32_t *actualSeqQlenAddr,
-                                        __gm__ int32_t *actualSeqKvlenAddr);
-    __aicore__ inline void CalcS1Coord(RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void InitGmTensor(CVSharedParams<isPa> *sharedParams, __gm__ int32_t *actualSeqQlenAddr);
     __aicore__ inline void CalcS2Coord(RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void GetKvByTensorList(RunInfo &runInfo, const ConstInfo &constInfo,
                                              GlobalTensor<INPUT_T> &keyValueGm, GlobalTensor<INPUT_T> &tempKeyValueGm);
@@ -160,13 +157,10 @@ private:
     FaGmTensor<INPUT_T, Q_FORMAT, int32_t> queryGm;
     FaGmTensor<INPUT_T, KV_FORMAT, int32_t> keyGm;
     FaGmTensor<INPUT_T, KV_FORMAT, int32_t> valueGm;
-    FaGmTensor<INPUT_T, KV_FORMAT, int32_t> keySharedPrefixGm;
-    FaGmTensor<INPUT_T, KV_FORMAT, int32_t> valueSharedPrefixGm;
     GlobalTensor<float> deScaleQGm;
     GlobalTensor<float> deScaleKGm;
     GlobalTensor<float> deScaleVGm;
 
-    uint32_t kvCacheBlockSize = 0;    // pageattention需要
     uint32_t maxBlockNumPerBatch = 0; // pageattention需要
     KVLAYOUT pa_kvLayout;             // pageattention需要
 
@@ -245,7 +239,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t
         attenMaskInfo->attenMaskS2Size = sharedParams->attenMaskS2Size;
         if constexpr (isPa) {
             this->blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blocktablePtr);
-            // this->kvCacheBlockSize = sharedParams->blockSize;
             this->maxBlockNumPerBatch = sharedParams->blockTableDim2;
             if (sharedParams->paLayoutType == 2) { // NZ下paLayoutType == 2
                 pa_kvLayout = KVLAYOUT::NZ;
@@ -253,7 +246,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t
                 pa_kvLayout = sharedParams->paLayoutType == 1 ? KVLAYOUT::BBH : KVLAYOUT::BNBD;
             }
         }
-        InitGmTensor(sharedParams, actualSeqQlenAddr, actualSeqKvlenAddr);
+        InitGmTensor(sharedParams, actualSeqQlenAddr);
     }
 }
 
@@ -291,8 +284,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isPa> *sharedParams,
-                                                                 __gm__ int32_t *actualSeqQlenAddr,
-                                                                 __gm__ int32_t *actualSeqKvlenAddr)
+                                                                 __gm__ int32_t *actualSeqQlenAddr)
 {
     if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
         GlobalTensor<int32_t> actualSeqQLen;
@@ -300,22 +292,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<
         this->queryGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->gSize, sharedParams->dSize,
                                             actualSeqQLen, sharedParams->actualSeqLengthsSize);
     }
-    // cube侧 KV地址访存  需要适配算子需求重新实现
-    GlobalTensor<int32_t> actualSeqKVLen;
-    actualSeqKVLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqKvlenAddr);
-    this->keyGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSize, actualSeqKVLen,
-                                      sharedParams->actualSeqLengthsKVSize);
-    this->valueGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeV, actualSeqKVLen,
-                                        sharedParams->actualSeqLengthsKVSize);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo &runInfo, ConstInfo &constInfo)
-{
-    // 计算s1方向偏移
-    coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * s1BaseSize;
-    // 推理无效行场景，s1方向起始跳过无效行
-    coordInfo[runInfo.taskIdMod3].s1Coord += (runInfo.nextTokensPerBatch < 0) ? -runInfo.nextTokensPerBatch : 0;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -324,11 +300,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo &runInfo
     // BSA sparse: sparse block indices 已在 SetRunInfo 中预计算
     coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] = runInfo.sparseBlkIdx1;
     coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] = runInfo.sparseBlkIdx2;
-    coordInfo[runInfo.taskIdMod3].s2Coord = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
-    coordInfo[runInfo.taskIdMod3].curBIdx = runInfo.boIdx;
-    if (constInfo.isKvContinuous == 0) {
-        coordInfo[runInfo.taskIdMod3].curBIdx = 0;
-    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -336,7 +307,6 @@ __aicore__ inline void
 BSABlockCube<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                          RunInfo &runInfo, ConstInfo &constInfo)
 {
-    // CalcS1Coord(runInfo, constInfo);
     CalcS2Coord(runInfo, constInfo);
     if constexpr (isFp8) {
         if constexpr (useDn) {

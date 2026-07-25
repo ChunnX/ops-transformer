@@ -22,6 +22,8 @@ GE_DTYPE_FLOAT = 0
 GE_DTYPE_FLOAT8_E5M2 = 35
 GE_DTYPE_FLOAT8_E4M3FN = 36
 GE_DTYPE_FLOAT8_E8M0 = 37
+GE_DTYPE_FLOAT4_E2M1 = 40
+GE_DTYPE_FLOAT4_E1M2 = 41
 ACL_DTYPE_OFFSET = 256
 DEFAULT_Y_DTYPE = GE_DTYPE_FLOAT8_E4M3FN
 
@@ -40,6 +42,15 @@ _GE_DTYPE_TO_TORCH_DTYPE = {
     GE_DTYPE_FLOAT8_E5M2: torch.float8_e5m2,
     GE_DTYPE_FLOAT8_E4M3FN: torch.float8_e4m3fn,
     GE_DTYPE_FLOAT8_E8M0: FLOAT8_E8M0_DTYPE,
+}
+
+_GE_DTYPE_TO_NAME = {
+    GE_DTYPE_FLOAT: "FLOAT",
+    GE_DTYPE_FLOAT8_E5M2: "FLOAT8_E5M2",
+    GE_DTYPE_FLOAT8_E4M3FN: "FLOAT8_E4M3FN",
+    GE_DTYPE_FLOAT8_E8M0: "FLOAT8_E8M0",
+    GE_DTYPE_FLOAT4_E2M1: "FLOAT4_E2M1",
+    GE_DTYPE_FLOAT4_E1M2: "FLOAT4_E1M2",
 }
 
 
@@ -97,7 +108,8 @@ def _normalize_wrapper_dtype(dtype):
 def _to_torch_dtype(dtype):
     ge_dtype = _normalize_attr_dtype(dtype)
     if ge_dtype not in _GE_DTYPE_TO_TORCH_DTYPE:
-        raise TypeError(f"Unsupported y_dtype: {dtype}.")
+        dtype_name = _GE_DTYPE_TO_NAME.get(ge_dtype, "UNKNOWN")
+        raise TypeError(f"Unsupported y_dtype: {dtype_name}.")
     return _GE_DTYPE_TO_TORCH_DTYPE[ge_dtype]
 
 

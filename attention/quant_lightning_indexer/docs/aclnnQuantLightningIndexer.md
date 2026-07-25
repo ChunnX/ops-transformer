@@ -1,4 +1,4 @@
- # aclnnQuantLightningIndexer
+# aclnnQuantLightningIndexer
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/quant_lightning_indexer)
 
@@ -24,7 +24,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantLightningIndexerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantLightningIndexer”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnQuantLightningIndexerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantLightningIndexer”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
@@ -62,6 +62,7 @@ aclnnStatus aclnnQuantLightningIndexer(
 - **参数说明：**
 
 > [!NOTE]
+>
 >- query、key、weights、queryDequantScale、keyDequantScale参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 >- 使用S1和S2分别表示query和key的输入样本序列长度，N1和N2分别表示query和key对应的多头数，k表示最后选取的索引个数。参数query中的D和参数key中的D值相等为128。T1和T2分别表示query和key的输入样本序列长度的累加和。
 
@@ -357,7 +358,7 @@ aclnnStatus aclnnQuantLightningIndexer(
 
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口会完成入参校验，出现以下场景时报错：
 
@@ -427,9 +428,9 @@ aclnnStatus aclnnQuantLightningIndexer(
 
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
- ## 约束说明
+## 约束说明
 
 - 确定性说明：aclnnQuantLightningIndexer默认确定性实现。
 - 参数query中的N1支持小于等于64/32/24/16，key的N2支持1。
@@ -449,7 +450,7 @@ aclnnStatus aclnnQuantLightningIndexer(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 /**

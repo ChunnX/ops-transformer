@@ -18,7 +18,7 @@
     相较于[GroupedMatmulV4](../grouped_matmul/docs/aclnnGroupedMatmulV4.md)接口，**此接口变化：**
     - 输入输出参数类型均为aclTensor。
     - 在GroupedMatMul计算结束后增加了InplaceAdd计算。
-    - 仅支持量化场景（1.mx量化；2.T-C量化；3.T-T量化）。量化方式请参见[量化介绍](../../docs/zh/context/量化介绍.md)。
+    - 仅支持量化场景（1.mx量化；2.T-C量化；3.T-T量化）。量化方式请参见[量化介绍](../../docs/zh/context/quant_mode_introduction.md)。
     - 仅支持x1、x2是FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入。
 
 - 计算公式：
