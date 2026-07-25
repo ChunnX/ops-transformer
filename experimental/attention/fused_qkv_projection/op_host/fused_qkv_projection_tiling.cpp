@@ -1,17 +1,17 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "log/log.h"
 #include "util/math_util.h"
-#include "op_host/tiling_util.h"
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_base/tiling_util.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "lib/tiling_api.h"
 #include "../op_kernel/fused_qkv_projection_tiling_data.h"
 #include "../op_kernel/fused_qkv_projection_tiling_key.h"
@@ -20,13 +20,16 @@ namespace optiling {
 using namespace Ops::Transformer::OpTiling;
 using namespace matmul_tiling;
 
-inline int64_t CeilDiv(int64_t x, int64_t y) { return (x + y - 1) / y; }
+inline int64_t CeilDiv(int64_t x, int64_t y)
+{
+    return (x + y - 1) / y;
+}
 
 struct CompileInfo {};
 
-static ge::graphStatus GetPlatformInfo(gert::TilingContext* ctx, uint64_t& ubSize, int64_t& coreNum)
+static ge::graphStatus GetPlatformInfo(gert::TilingContext *ctx, uint64_t &ubSize, int64_t &coreNum)
 {
-    auto* pi = ctx->GetPlatformInfo();
+    auto *pi = ctx->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(ctx, pi);
     auto plat = platform_ascendc::PlatformAscendC(pi);
     coreNum = plat.GetCoreNumAiv();
@@ -43,7 +46,7 @@ struct TilingInput {
     int32_t dtype; // ge::DT_FLOAT=0, ge::DT_FLOAT16=1
 };
 
-static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInput* in)
+static ge::graphStatus ParseTilingInputs(gert::TilingContext *context, TilingInput *in)
 {
     auto hsShape = EnsureNotScalar(context->GetInputShape(0)->GetStorageShape());
     int64_t batch = hsShape.GetDim(0);
@@ -53,7 +56,7 @@ static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInp
     auto wtShape = EnsureNotScalar(context->GetInputShape(1)->GetStorageShape());
     int64_t fusedDim = wtShape.GetDim(1);
 
-    auto* attrs = context->GetAttrs();
+    auto *attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
     in->qDim = *attrs->GetAttrPointer<int64_t>(0);
@@ -68,8 +71,7 @@ static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInp
     return ge::GRAPH_SUCCESS;
 }
 
-static void ConfigCubeTiling(
-    matmul_tiling::MultiCoreMatmulTiling* ct, const TilingInput& in, int64_t coreNum)
+static void ConfigCubeTiling(matmul_tiling::MultiCoreMatmulTiling *ct, const TilingInput &in, int64_t coreNum)
 {
     matmul_tiling::DataType dt = matmul_tiling::DataType::DT_FLOAT;
     if (in.dtype == static_cast<int32_t>(ge::DT_FLOAT16)) {
@@ -89,7 +91,8 @@ static void ConfigCubeTiling(
 
     // 计算多核实际使用的核数与单核M
     int64_t useCoreNum = std::min(coreNum, CeilDiv(in.M, 16));
-    if (useCoreNum < 1) useCoreNum = 1;
+    if (useCoreNum < 1)
+        useCoreNum = 1;
     int64_t singleCoreM = CeilDiv(alignedM, useCoreNum);
 
     // 【关键修改】将单核视角的 singleCoreM 传给框架进行Tiling
@@ -100,9 +103,8 @@ static void ConfigCubeTiling(
     ct->SetDim(1); // 强制 Matmul 内部为单核 Tiling
 }
 
-static ge::graphStatus DoCubeTiling(
-    gert::TilingContext* context, matmul_tiling::MultiCoreMatmulTiling* ct,
-    FusedQkvProjectionTilingData* td, int32_t N)
+static ge::graphStatus DoCubeTiling(gert::TilingContext *context, matmul_tiling::MultiCoreMatmulTiling *ct,
+                                    FusedQkvProjectionTilingData *td, int32_t N)
 {
     memset_s(td, sizeof(FusedQkvProjectionTilingData), 0, sizeof(FusedQkvProjectionTilingData));
     if (ct->GetTiling(td->cubeTiling) != 0) {
@@ -112,11 +114,10 @@ static ge::graphStatus DoCubeTiling(
     return ge::GRAPH_SUCCESS;
 }
 
-static void FillTilingOutputs(
-    gert::TilingContext* context, FusedQkvProjectionTilingData* td,
-    const TilingInput& in, platform_ascendc::PlatformAscendC& plat, int64_t coreNum)
+static void FillTilingOutputs(gert::TilingContext *context, FusedQkvProjectionTilingData *td, const TilingInput &in,
+                              platform_ascendc::PlatformAscendC &plat, int64_t coreNum)
 {
-    size_t* ws = context->GetWorkspaceSizes(1);
+    size_t *ws = context->GetWorkspaceSizes(1);
     ws[0] = plat.GetLibApiWorkSpaceSize();
 
     td->M = static_cast<int32_t>(in.M);
@@ -125,8 +126,9 @@ static void FillTilingOutputs(
 
     int64_t alignedM = CeilDiv(in.M, 16) * 16;
     int64_t useCoreNum = std::min(coreNum, CeilDiv(in.M, 16));
-    if (useCoreNum < 1) useCoreNum = 1;
-    
+    if (useCoreNum < 1)
+        useCoreNum = 1;
+
     // 把我们手动计算的单核M下发给Kernel
     td->singleCoreM = static_cast<int32_t>(CeilDiv(alignedM, useCoreNum));
     td->singleCoreN = td->cubeTiling.singleCoreN;
@@ -138,7 +140,7 @@ static void FillTilingOutputs(
     td->vDim = static_cast<int32_t>(in.vDim);
     td->hasBias = in.hasBias;
     td->dtype = in.dtype;
-    
+
     td->blockDim = static_cast<uint32_t>(useCoreNum);
     context->SetBlockDim(td->blockDim);
 
@@ -150,7 +152,7 @@ static void FillTilingOutputs(
 }
 
 
-static ge::graphStatus TilingFunc(gert::TilingContext* context)
+static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
     uint64_t ubSize;
     int64_t coreNum;
@@ -158,14 +160,14 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
                 OP_LOGE(context, "GetPlatformInfo error"), return ge::GRAPH_FAILED);
 
     TilingInput in;
-    OP_CHECK_IF(ParseTilingInputs(context, &in) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context, "ParseTilingInputs error"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ParseTilingInputs(context, &in) != ge::GRAPH_SUCCESS, OP_LOGE(context, "ParseTilingInputs error"),
+                return ge::GRAPH_FAILED);
 
     auto plat = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     matmul_tiling::MultiCoreMatmulTiling cubeTiling(plat);
     ConfigCubeTiling(&cubeTiling, in, coreNum);
 
-    auto* td = context->GetTilingData<FusedQkvProjectionTilingData>();
+    auto *td = context->GetTilingData<FusedQkvProjectionTilingData>();
     OP_CHECK_IF(DoCubeTiling(context, &cubeTiling, td, static_cast<int32_t>(in.N)) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context, "DoCubeTiling error"), return ge::GRAPH_FAILED);
 
@@ -173,9 +175,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParse(gert::TilingParseContext*) { return ge::GRAPH_SUCCESS; }
+static ge::graphStatus TilingParse(gert::TilingParseContext *)
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-IMPL_OP_OPTILING(FusedQkvProjection)
-    .Tiling(TilingFunc)
-    .TilingParse<CompileInfo>(TilingParse);
+IMPL_OP_OPTILING(FusedQkvProjection).Tiling(TilingFunc).TilingParse<CompileInfo>(TilingParse);
 } // namespace optiling
