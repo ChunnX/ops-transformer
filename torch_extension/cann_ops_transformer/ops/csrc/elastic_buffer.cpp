@@ -57,7 +57,6 @@ constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
 constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;
 constexpr int64_t NETWORK_DIRECT = 0;
 constexpr int64_t NETWORK_HYBRID = 1;
-constexpr int64_t DEBUG_OUT_NUM_BYTES = 1024 * 1024;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int DIM_TWO = 2;
 
@@ -694,7 +693,7 @@ public:
                                             at::ScalarType dtype = at::kBFloat16);
 
     using DispatchTensorList = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor,
-                                          at::Tensor, at::Tensor, at::Tensor>;
+                                          at::Tensor, at::Tensor>;
     using DispatchEpilogueTensorList =
         std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>, c10::optional<at::Tensor>>;
     using CombineTensorList = std::tuple<at::Tensor, c10::optional<at::Tensor>>;
@@ -815,12 +814,6 @@ int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
 
 int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const
 {
-    c10::optional<int64_t> debugTopoType = ReadEnvInt64("MOE_EP_DEBUG_TOPO_TYPE");
-    if (debugTopoType.has_value()) {
-        TORCH_CHECK(*debugTopoType == NETWORK_DIRECT || *debugTopoType == NETWORK_HYBRID,
-                    "MOE_EP_DEBUG_TOPO_TYPE must be 0 or 1, got ", *debugTopoType);
-        return *debugTopoType;
-    }
     return (epWorldSize / rankNumPerServer > 1) ? NETWORK_HYBRID : NETWORK_DIRECT;
 }
 
@@ -1087,7 +1080,6 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     at::Tensor routeScaleupMask = at::zeros({numTokens, routeCapacity, maskWordCount}, x.options().dtype(at::kInt));
     at::Tensor routeScaleupSlot =
         at::full({numTokens, routeCapacity, rankNumPerServer}, -1, x.options().dtype(at::kInt));
-    at::Tensor debugOut = at::zeros({DEBUG_OUT_NUM_BYTES}, x.options().dtype(at::kByte));
 
     at::Tensor topkWeightsTensor = topkWeights.has_value() ? *topkWeights : at::Tensor();
     at::Tensor cachedSlotTensor = cachedDstSlotIdx.has_value() ? *cachedDstSlotIdx : at::Tensor();
@@ -1112,10 +1104,10 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
               cachedRouteScaleupMaskTensor, cachedRouteScaleupSlotTensor, epWorldSize, epRankId, numExperts,
               numMaxTokensPerRank, moeCclBufferSize_, expertAlignment, doCpuSync, hostPinnedCounterAddr, topoType,
               rankNumPerServer, numRecvPerRank, numRecvPerExpert, dstSlot, routeCount, routeDstScaleout,
-              routeScaleoutSlot, routeScaleupMask, routeScaleupSlot, debugOut);
+              routeScaleoutSlot, routeScaleupMask, routeScaleupSlot);
 
     return std::make_tuple(numRecvPerRank, numRecvPerExpert, dstSlot, routeCount, routeDstScaleout, routeScaleoutSlot,
-                           routeScaleupMask, routeScaleupSlot, debugOut);
+                           routeScaleupMask, routeScaleupSlot);
 }
 
 Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue(
