@@ -61,9 +61,10 @@ using namespace AscendC;
 
 constexpr uint32_t DIM_QK = 128;
 constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;
+constexpr uint32_t SCALE_PAD_SIZE = 8;
 
 __simd_callee__ inline void MulsOnAllRows(__ubuf__ float *qFP32Ptr, __ubuf__ float *scalePtr, uint16_t R, uint16_t S,
-                                          uint16_t D) {
+                                          uint16_t D, uint16_t scaleStride) {
     using namespace AscendC::MicroAPI;
 
     constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
@@ -77,7 +78,7 @@ __simd_callee__ inline void MulsOnAllRows(__ubuf__ float *qFP32Ptr, __ubuf__ flo
         for (uint16_t g = 0; g < S; g++) {
             uint16_t rowIdx = static_cast<uint16_t>(r * S + g);
             uint32_t rowOff = static_cast<uint32_t>(rowIdx) * D;
-            DataCopy<float, LoadDist::DIST_BRC_B32>(regScale, scalePtr + rowIdx);
+            DataCopy<float, LoadDist::DIST_BRC_B32>(regScale, scalePtr + rowIdx * scaleStride);
             for (uint16_t vi = 0; vi < vlIter; vi++) {
                 uint32_t off = rowOff + static_cast<uint32_t>(vi) * VL_F;
                 DataCopy(regA, qFP32Ptr + off);
@@ -89,8 +90,8 @@ __simd_callee__ inline void MulsOnAllRows(__ubuf__ float *qFP32Ptr, __ubuf__ flo
 }
 
 __simd_vf__ inline void WeightedBinaryReduceFull(__ubuf__ float *qFP32Ptr, __ubuf__ float *scalePtr, uint16_t R,
-                                                  uint16_t S, uint16_t D) {
-    MulsOnAllRows(qFP32Ptr, scalePtr, R, S, D);
+                                                  uint16_t S, uint16_t D, uint16_t scaleStride) {
+    MulsOnAllRows(qFP32Ptr, scalePtr, R, S, D, scaleStride);
 
     using namespace AscendC::MicroAPI;
 
@@ -147,6 +148,7 @@ public:
         ppNum = tiling->ubFactor > 1 ? DOUBLE_BUFFER_DEPTH : 1;
 
         mte2sEventId = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE2_S>());
+        mte2sScaleEventId = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE2_S>());
 
         InitTaskRange(tiling->blocksPerCoreBase,
                       tiling->blocksRemainder);
@@ -251,12 +253,6 @@ public:
 
     __aicore__ inline void CopyInScalesBulk()
     {
-        LocalTensor<float> scalesLocal = scalesQue.AllocTensor<float>();
-        Duplicate(scalesLocal, 0.0f, B);
-        event_t vsEvent = static_cast<event_t>(pipe.FetchEventID(HardEvent::V_S));
-        SetFlag<HardEvent::V_S>(vsEvent);
-        WaitFlag<HardEvent::V_S>(vsEvent);
-
         uint32_t startRow = qbLocal * B;
         uint32_t validRows = (startRow + B <= qLen) ? B :
             (qLen > startRow ? qLen - startRow : 0);
@@ -264,26 +260,39 @@ public:
             uint32_t baseOffset = (cuOff + startRow) * numQHeads + headIdx;
             uint32_t gmRange = validRows * numQHeads;
             qscaleGm.SetGlobalBuffer((__gm__ float*)qscaleBase + baseOffset, gmRange);
-            for (uint32_t i = 0; i < validRows; i++) {
-                scalesLocal.SetValue(i, qscaleGm.GetValue(i * numQHeads));
-            }
+            LocalTensor<float> bulkBuf = scaleBulkBuf.Get<float>();
+            uint32_t copyCount = (numQHeads < SCALE_PAD_SIZE) ? numQHeads : SCALE_PAD_SIZE;
+            LoopModeParams loopParams;
+            loopParams.loop1Size = validRows;
+            loopParams.loop1SrcStride = numQHeads * sizeof(float);
+            loopParams.loop1DstStride = SCALE_PAD_SIZE * sizeof(float);
+            loopParams.loop2Size = 1;
+            loopParams.loop2SrcStride = 0;
+            loopParams.loop2DstStride = 0;
+            SetLoopModePara(loopParams, DataCopyMVType::OUT_TO_UB);
+            DataCopyExtParams copyParams = {1,
+                static_cast<uint32_t>(copyCount * sizeof(float)),
+                0, 0, 0};
+            DataCopyPadExtParams<float> padParams = {false, 0, 0, 0};
+            DataCopyPad(bulkBuf, qscaleGm[0], copyParams, padParams);
+            ResetLoopModePara(DataCopyMVType::OUT_TO_UB);
         }
-        scalesQue.EnQue(scalesLocal);
+        SetFlag<HardEvent::MTE2_S>(mte2sScaleEventId);
     }
 
     __aicore__ inline void AccumulateBlock()
     {
-
+        WaitFlag<HardEvent::MTE2_S>(mte2sScaleEventId);
         LocalTensor<float> fp32Buf = qBlockFP32Que.DeQue<float>();
-        LocalTensor<float> scaleBuf = scalesQue.DeQue<float>();
+        LocalTensor<float> scaleBuf = scaleBulkBuf.Get<float>();
         __ubuf__ float *qFP32Ptr = (__ubuf__ float *)fp32Buf.GetPhyAddr();
         __ubuf__ float *scalePtr = (__ubuf__ float *)scaleBuf.GetPhyAddr();
 
         VF_CALL<WeightedBinaryReduceFull>(qFP32Ptr, scalePtr, static_cast<uint16_t>(R),
                                           static_cast<uint16_t>(S),
-                                          static_cast<uint16_t>(dimQk));
+                                          static_cast<uint16_t>(dimQk),
+                                          static_cast<uint16_t>(SCALE_PAD_SIZE));
 
-        scalesQue.FreeTensor(scaleBuf);
         qBlockFP32Que.EnQue(fp32Buf);
     }
 
@@ -349,8 +358,8 @@ private:
     {
         pipe.InitBuffer(qBlockQue, ppNum, B * dimQk * sizeof(fp8_e4m3fn_t));
         pipe.InitBuffer(qBlockFP32Que, ppNum, B * dimQk * sizeof(float));
-        pipe.InitBuffer(scalesQue, ppNum, B * sizeof(float));
         pipe.InitBuffer(outQueueQflat, ppNum, kflatDim * sizeof(bfloat16_t));
+        pipe.InitBuffer(scaleBulkBuf, B * SCALE_PAD_SIZE * sizeof(float));
     }
 
     __aicore__ inline void LoadCuSeqLensQ()
@@ -388,6 +397,7 @@ private:
     uint32_t ppNum = 2;
 
     event_t mte2sEventId;
+    event_t mte2sScaleEventId;
 
     GM_ADDR cuSeqLensQBase = nullptr;
     GM_ADDR qBase = nullptr;
@@ -401,9 +411,9 @@ private:
 
     TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> qBlockQue;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> qBlockFP32Que;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> scalesQue;
     TQue<TPosition::VECOUT, DOUBLE_BUFFER_DEPTH> outQueueQflat;
     TBuf<QuePosition::VECCALC> cuSeqLensQBuf;
+    TBuf<QuePosition::VECCALC> scaleBulkBuf;
 };
 
 #endif

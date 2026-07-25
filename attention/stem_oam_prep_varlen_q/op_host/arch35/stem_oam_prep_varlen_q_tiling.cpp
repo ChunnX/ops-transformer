@@ -46,6 +46,7 @@ static constexpr uint32_t SIZEOF_FLOAT32 = 4;
 static constexpr uint32_t SIZEOF_BFLOAT16 = 2;
 static constexpr uint64_t DEFAULT_TILING_KEY = 0;
 static constexpr uint32_t MAX_UB_FACTOR = 2;
+static constexpr uint32_t SCALE_PAD_SIZE = 8;
 
 // ===========================================================================
 // GetShapeAttrsInfo: Validate attrs + input shapes + dtypes + consistency + output
@@ -534,7 +535,7 @@ ge::graphStatus StemOamPrepVarlenQTiling::CalcUBFactor()
     uint32_t B = static_cast<uint32_t>(stemBlockSize_);
     uint32_t S = static_cast<uint32_t>(stemStride_);
     uint32_t perBlockUB = B * DIM_QK_HOST * SIZEOF_FLOAT32 + B * DIM_QK_HOST * SIZEOF_FP8 +
-        B * SIZEOF_FLOAT32 + S * DIM_QK_HOST * SIZEOF_BFLOAT16;
+        B * SCALE_PAD_SIZE * SIZEOF_FLOAT32 + S * DIM_QK_HOST * SIZEOF_BFLOAT16;
     uint32_t cuSeqLensBuf = static_cast<uint32_t>((batch_ + 1) * sizeof(int64_t));
     uint32_t availableUB = static_cast<uint32_t>(ubSize_ - SYSTEM_RESERVED_UB_SIZE - cuSeqLensBuf);
     uint32_t ubFactor = availableUB / perBlockUB;
