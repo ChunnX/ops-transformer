@@ -14,6 +14,7 @@
  */
 
 #include "fused_causal_conv1d_cut_bsh_tiling_arch35.h"
+#include <limits>
 
 namespace optiling {
 constexpr uint64_t DIM_0 = 0;
@@ -241,6 +242,15 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckCacheStatesDim()
                                                  "The shape dim of cache_states must be 3");
         return ge::GRAPH_FAILED;
     }
+    // cache_states shape[0] 必须 >= batch，保证每个 batch 都能索引到 cache line
+    uint64_t cacheStatesDim0 = cacheStatesShape_.GetDim(DIM_0);
+    if (cacheStatesDim0 < batch_) {
+        std::string reasonMsg =
+            "Shape [0] of cache_states must be greater than or equal to batch (" + std::to_string(batch_) + ")";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cache_states",
+                                              std::to_string(cacheStatesDim0).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     uint64_t cacheStatesDim1 = cacheStatesShape_.GetDim(DIM_1);
     if (cacheStatesDim1 < (kernelWidth_ - 1)) {
         std::string reasonMsg =
@@ -286,6 +296,154 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckIndexDims()
     return ge::GRAPH_SUCCESS;
 }
 
+// cache_indices 校验：非 APC 为 1D [batch]；APC 为 2D [batch, maxNumBlocks]；shape[0] 必须等于 batch
+ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckCacheIndicesDim()
+{
+    auto cacheIndicesStorage = context_->GetOptionalInputShape(INPUT_CACHE_INDICES_INDEX);
+    if (cacheIndicesStorage == nullptr) {
+        return ge::GRAPH_SUCCESS; // 可选输入，缺省即跳过
+    }
+    auto cacheIndicesShape = cacheIndicesStorage->GetOriginShape();
+    size_t cacheIndicesDimNum = cacheIndicesShape.GetDimNum();
+
+    if (apcEnabled_ == 1) {
+        if (cacheIndicesDimNum != DIM_2) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "cache_indices",
+                                                     std::to_string(cacheIndicesDimNum).c_str(),
+                                                     "The shape dim of cache_indices must be 2 when APC is enabled");
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        if (cacheIndicesDimNum != SEQ_START_INDEX_DIM_NUM) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "cache_indices",
+                                                     std::to_string(cacheIndicesDimNum).c_str(),
+                                                     "The shape dim of cache_indices must be 1");
+            return ge::GRAPH_FAILED;
+        }
+    }
+
+    uint64_t cacheIndicesDim0 = static_cast<uint64_t>(cacheIndicesShape.GetDim(DIM_0));
+    if (cacheIndicesDim0 != batch_) {
+        std::string reasonMsg = "Shape [0] of cache_indices must be equal to batch (" + std::to_string(batch_) + ")";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cache_indices",
+                                              std::to_string(cacheIndicesDim0).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    // cache_states.shape[0] 必须 >= cache_indices 总元素数（cache_indices 中保存的是 cache_states 的 line 索引）
+    // 1D 时总元素数 = dim0；2D 时总元素数 = dim0 * dim1
+    uint64_t cacheIndicesTotal = cacheIndicesDim0;
+    if (cacheIndicesDimNum == DIM_2) {
+        cacheIndicesTotal *= static_cast<uint64_t>(cacheIndicesShape.GetDim(DIM_1));
+    }
+    uint64_t cacheStatesDim0 = cacheStatesShape_.GetDim(DIM_0);
+    if (cacheStatesDim0 < cacheIndicesTotal) {
+        std::string reasonMsg = "Shape [0] of cache_states (" + std::to_string(cacheStatesDim0) +
+                                ") must be greater than or equal to the total element count of cache_indices (" +
+                                std::to_string(cacheIndicesTotal) + ")";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cache_indices",
+                                              std::to_string(cacheIndicesTotal).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// APC 开启时，以下可选输入必须全部非 NULL
+ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckApcOptionalInputs()
+{
+    if (apcEnabled_ != 1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    struct RequiredInput {
+        uint64_t idx;
+        const char *name;
+    };
+    const RequiredInput requiredInputs[] = {
+        {INPUT_INITIAL_STATE_MODE_INDEX, "initial_state_mode"},
+        {INPUT_BLOCK_IDX_FIRST_INDEX, "block_idx_first_scheduled_token"},
+        {INPUT_BLOCK_IDX_LAST_INDEX, "block_idx_last_scheduled_token"},
+        {INPUT_INITIAL_STATE_IDX_INDEX, "initial_state_idx"},
+    };
+    for (const auto &r : requiredInputs) {
+        if (context_->GetOptionalInputShape(r.idx) == nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), r.name, "nullptr",
+                                                  "This input cannot be nullptr when APC is enabled");
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// 属性合法性校验：activation_mode / pad_slot_id / run_mode / residual_connection /
+//                 block_size / max_query_len / conv_mode
+// BSH 模板仅处理 2D 输入，max_query_len 不允许为 -1
+ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckAttrs()
+{
+    auto attrs = context_->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
+
+    // activation_mode ∈ {0, 1, 2}
+    int64_t activationMode = 0;
+    const int64_t *p = attrs->GetAttrPointer<int64_t>(ATTR_ACTIVATION_MODE_INDEX);
+    if (p != nullptr) {
+        activationMode = *p;
+    }
+    if (activationMode != 0 && activationMode != 1 && activationMode != 2) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "activation_mode",
+                                              std::to_string(activationMode).c_str(),
+                                              "The value of activation_mode must be 0, 1 or 2");
+        return ge::GRAPH_FAILED;
+    }
+
+    // pad_slot_id 不做范围校验（允许任意 int64 值）
+
+    // run_mode ∈ {0, 1}
+    if (runMode_ != 0 && runMode_ != 1) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "run_mode", std::to_string(runMode_).c_str(),
+                                              "The value of run_mode must be 0 or 1");
+        return ge::GRAPH_FAILED;
+    }
+
+    // run_mode=1（decode）时，num_computed_tokens 必须提供
+    if (runMode_ == 1 && hasNumComputedTokens_ == 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "num_computed_tokens", "nullptr",
+                                              "num_computed_tokens cannot be nullptr when run_mode is 1");
+        return ge::GRAPH_FAILED;
+    }
+
+    // residual_connection ∈ {0, 1}
+    if (residualConnection_ != 0UL && residualConnection_ != 1UL) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "residual_connection",
+                                              std::to_string(residualConnection_).c_str(),
+                                              "The value of residual_connection must be 0 or 1");
+        return ge::GRAPH_FAILED;
+    }
+
+    // block_size ∈ [2, INT64_MAX]（属性类型 int64，读入 uint64_t）
+    if (blockSize_ < 2UL || blockSize_ > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "block_size", std::to_string(blockSize_).c_str(),
+                                              "The value of block_size must be within [2, INT64_MAX]");
+        return ge::GRAPH_FAILED;
+    }
+
+    // BSH 模板仅处理 2D 输入 x，max_query_len 必须 > 0
+    if (maxQueryLen_ <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "max_query_len",
+                                              std::to_string(maxQueryLen_).c_str(),
+                                              "The value of max_query_len must be greater than 0 when x is 2D");
+        return ge::GRAPH_FAILED;
+    }
+
+    // conv_mode ∈ {0, 1}
+    if (convMode_ != 0UL && convMode_ != 1UL) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "conv_mode", std::to_string(convMode_).c_str(),
+                                              "The value of conv_mode must be 0 or 1");
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDim()
 {
     if (CheckXDim() != ge::GRAPH_SUCCESS)
@@ -295,6 +453,12 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDim()
     if (CheckCacheStatesDim() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
     if (CheckIndexDims() != ge::GRAPH_SUCCESS)
+        return ge::GRAPH_FAILED;
+    if (CheckCacheIndicesDim() != ge::GRAPH_SUCCESS)
+        return ge::GRAPH_FAILED;
+    if (CheckApcOptionalInputs() != ge::GRAPH_SUCCESS)
+        return ge::GRAPH_FAILED;
+    if (CheckAttrs() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
     if (!(batch_ >= BATCH_MIN && batch_ <= BATCH_MAX)) {
         std::string reasonMsg = "The value of batch must be within the range [" + std::to_string(BATCH_MIN) + ", " +
@@ -437,6 +601,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetShapeAttrsInfo()
     residualConnection_ = 0;
     if (context_->GetAttrs() != nullptr && context_->GetAttrs()->GetInt(ATTR_RESIDUAL_CONNECTION_INDEX) != nullptr) {
         residualConnection_ = *(context_->GetAttrs()->GetInt(ATTR_RESIDUAL_CONNECTION_INDEX));
+    }
+    runMode_ = 0;
+    if (context_->GetAttrs() != nullptr && context_->GetAttrs()->GetInt(ATTR_RUN_MODE_INDEX) != nullptr) {
+        runMode_ = *(context_->GetAttrs()->GetInt(ATTR_RUN_MODE_INDEX));
     }
 
     auto attrs = context_->GetAttrs();

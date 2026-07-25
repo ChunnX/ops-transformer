@@ -123,6 +123,12 @@ protected:
     ge::graphStatus ValidateCacheIndicesType();
     ge::graphStatus ValidateNumAcceptedTokenType();
 
+    // ---- APC 开启时的可选输入非 NULL 校验 ----
+    ge::graphStatus ValidateApcOptionalInputs();
+
+    // ---- 属性合法性校验 ----
+    ge::graphStatus ValidateAttrs();
+
     // ---- 总校验入口（依次调用上面的 Validate* 函数）----
     ge::graphStatus CheckInputParams();
 
