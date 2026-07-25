@@ -601,9 +601,9 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
     tilingData->has_topk_length = has_topk_length;
     
     if (isTnd) {
-        tilingData->init_total_num = info.t1 * (has_topk_length ? kLength : maxSeqlenK);
+        tilingData->init_total_num = info.t1 * (isSparse ? kLength : maxSeqlenK);
     } else {
-        tilingData->init_total_num = info.bSize * info.sqSize * (has_topk_length ? kLength : info.skSize);
+        tilingData->init_total_num = info.bSize * info.sqSize * (isSparse ? kLength : info.skSize);
     }
     AiCoreParams aicoreParams_;
     if (GetPlatformInfo(context, opName, aicoreParams_) != ge::GRAPH_SUCCESS) {
