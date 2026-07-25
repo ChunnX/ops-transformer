@@ -646,10 +646,10 @@ __simd_vf__ void MulWeightAndReduceSum2Int32VF(__ubuf__ uint16_t* out0, __ubuf__
     MicroAPI::RegTensor<float> regwBrc[2];
     MicroAPI::RegTensor<float> regQK0[2];
     MicroAPI::RegTensor<float> regQK1[2];
-    MicroAPI::RegTensor<float> regQK0Half[2];
-    MicroAPI::RegTensor<float> regQK1Half[2];
-    MicroAPI::RegTensor<float> regQK0Int32[2];
-    MicroAPI::RegTensor<float> regQK1Int32[2];
+    MicroAPI::RegTensor<half> regQK0Half[2];
+    MicroAPI::RegTensor<half> regQK1Half[2];
+    MicroAPI::RegTensor<int32_t> regQK0Int32[2];
+    MicroAPI::RegTensor<int32_t> regQK1Int32[2];
     MicroAPI::RegTensor<float> regW[2];
     MicroAPI::RegTensor<half> regWFP16[2];
     MicroAPI::RegTensor<float> regQScale[2];
