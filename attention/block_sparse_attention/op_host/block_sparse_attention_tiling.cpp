@@ -922,7 +922,6 @@ uint32_t BSATiling::GetCurQSTileNum950(int64_t curQSeqlen)
 
 static inline uint32_t GetMaxDiv(uint32_t value, uint32_t maxBound)
 {
-    // 求 value 的、不超过 maxBound 的最大正约数（保证 value % result == 0 且 result <= maxBound）
     if (value == 0 || maxBound == 0) {
         return 1;
     }
