@@ -67,6 +67,12 @@ class EPHandle:
     expert_alignment: int
     num_max_tokens_per_rank: int
     topk_idx: torch.Tensor
+    route_count: Optional[torch.Tensor] = None
+    route_dst_scaleout: Optional[torch.Tensor] = None
+    route_scaleout_slot: Optional[torch.Tensor] = None
+    route_scaleup_mask: Optional[torch.Tensor] = None
+    route_scaleup_slot: Optional[torch.Tensor] = None
+    debug_out: Optional[torch.Tensor] = None
 
     @property
     def num_recv_tokens(self) -> int:
@@ -78,7 +84,12 @@ class _DispatchArgs:
     x: torch.Tensor
     scales: Optional[torch.Tensor]
     topk_idx: torch.Tensor
-    cached_dst_slot: Optional[torch.Tensor]
+    cached_dst_slot_idx: Optional[torch.Tensor]
+    cached_route_count: Optional[torch.Tensor]
+    cached_route_dst_scaleout: Optional[torch.Tensor]
+    cached_route_scaleout_slot: Optional[torch.Tensor]
+    cached_route_scaleup_mask: Optional[torch.Tensor]
+    cached_route_scaleup_slot: Optional[torch.Tensor]
     cached_recv_src_metadata: Optional[torch.Tensor]
     num_experts: int
     num_max_tokens_per_rank: int
@@ -386,15 +397,41 @@ class ElasticBuffer:
             expert_alignment,
             do_cpu_sync,
         )
+        torch._check(
+            args.x.shape[1] == self._hidden,
+            lambda: f"x hidden must equal configured hidden, got {args.x.shape[1]} and {self._hidden}",
+        )
+        torch._check(
+            args.topk_idx.shape[1] == self._num_topk,
+            lambda: (
+                "topk_idx topk must equal configured num_topk, "
+                f"got {args.topk_idx.shape[1]} and {self._num_topk}"
+            ),
+        )
         hp_addr = self._prepare_host_counter(args.do_cpu_sync)
 
-        num_recv_per_rank, num_recv_per_expert, dst_slot = (
+        (
+            num_recv_per_rank,
+            num_recv_per_expert,
+            dst_slot,
+            route_count,
+            route_dst_scaleout,
+            route_scaleout_slot,
+            route_scaleup_mask,
+            route_scaleup_slot,
+            debug_out,
+        ) = (
             self._runtime.moe_ep_dispatch(
                 args.x,
                 args.topk_idx,
                 topk_weights,
                 args.scales,
-                args.cached_dst_slot,
+                args.cached_dst_slot_idx,
+                args.cached_route_count,
+                args.cached_route_dst_scaleout,
+                args.cached_route_scaleout_slot,
+                args.cached_route_scaleup_mask,
+                args.cached_route_scaleup_slot,
                 self._ep_world_size,
                 self._rank_id,
                 args.num_experts,
@@ -420,7 +457,6 @@ class ElasticBuffer:
                 self._rank_id,
                 args.num_experts,
                 args.num_max_tokens_per_rank,
-                args.expert_alignment,
                 recv_x,
                 recv_src_meta,
                 recv_topk_weights,
@@ -430,7 +466,17 @@ class ElasticBuffer:
 
         recv_x = (recv_x, recv_scales) if recv_scales is not None else recv_x
         new_handle = self._make_dispatch_handle(
-            args, dst_slot, recv_src_meta, num_recv_per_rank, num_recv_per_expert
+            args,
+            dst_slot,
+            recv_src_meta,
+            num_recv_per_rank,
+            num_recv_per_expert,
+            route_count,
+            route_dst_scaleout,
+            route_scaleout_slot,
+            route_scaleup_mask,
+            route_scaleup_slot,
+            debug_out,
         )
         return recv_x, None, recv_topk_weights, new_handle
 
@@ -471,8 +517,6 @@ class ElasticBuffer:
                 handle.recv_src_metadata,
                 handle.num_recv_tokens_per_expert,
                 topk_weights,
-                bias_0,
-                bias_1,
                 self._ep_world_size,
                 self._rank_id,
                 handle.num_experts,
@@ -535,6 +579,11 @@ class ElasticBuffer:
                 scales,
                 handle.topk_idx,
                 handle.dst_buffer_slot_idx,
+                handle.route_count,
+                handle.route_dst_scaleout,
+                handle.route_scaleout_slot,
+                handle.route_scaleup_mask,
+                handle.route_scaleup_slot,
                 handle.recv_src_metadata,
                 handle.num_experts,
                 handle.num_max_tokens_per_rank,
@@ -553,6 +602,11 @@ class ElasticBuffer:
             x,
             scales,
             topk_idx,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             num_experts,
@@ -616,6 +670,12 @@ class ElasticBuffer:
         recv_src_meta: torch.Tensor,
         num_recv_per_rank: torch.Tensor,
         num_recv_per_expert: torch.Tensor,
+        route_count: torch.Tensor,
+        route_dst_scaleout: torch.Tensor,
+        route_scaleout_slot: torch.Tensor,
+        route_scaleup_mask: torch.Tensor,
+        route_scaleup_slot: torch.Tensor,
+        debug_out: torch.Tensor,
     ) -> EPHandle:
         topk_idx = (
             args.topk_idx
@@ -631,6 +691,12 @@ class ElasticBuffer:
             expert_alignment=args.expert_alignment,
             num_max_tokens_per_rank=args.num_max_tokens_per_rank,
             topk_idx=topk_idx,
+            route_count=route_count,
+            route_dst_scaleout=route_dst_scaleout,
+            route_scaleout_slot=route_scaleout_slot,
+            route_scaleup_mask=route_scaleup_mask,
+            route_scaleup_slot=route_scaleup_slot,
+            debug_out=debug_out,
         )
 
     def _unpack_bias(self, bias):

@@ -40,14 +40,14 @@ constexpr uint32_t TOPK_IDX_INDEX = 2U;
 constexpr uint32_t RECV_SRC_METADATA_INDEX = 3U;
 constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 4U;
 constexpr uint32_t TOPK_WEIGHTS_INDEX = 5U;
-constexpr uint32_t BIAS_0_INDEX = 6U;
-constexpr uint32_t BIAS_1_INDEX = 7U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
 constexpr uint32_t ATTR_NUM_EXPERTS_INDEX = 2;
 constexpr uint32_t ATTR_NUM_MAX_TPR_INDEX = 3;
 constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
+constexpr uint32_t ATTR_TOPO_TYPE_INDEX = 5;
+constexpr uint32_t ATTR_RANK_NUM_PER_SERVER_INDEX = 6;
 
 constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
@@ -180,22 +180,6 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     }
     info.hasTopkWeights = hasTopkWeights ? 1 : 0;
 
-    const gert::StorageShape *bias0Shape = context->GetInputShape(BIAS_0_INDEX);
-    if (bias0Shape != nullptr) {
-        OP_TILING_CHECK(bias0Shape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE(nodeName, "bias_optional_0 dims must be 2, but got %lu.",
-                                bias0Shape->GetStorageShape().GetDimNum()),
-                        return ge::GRAPH_FAILED);
-    }
-
-    const gert::StorageShape *bias1Shape = context->GetInputShape(BIAS_1_INDEX);
-    if (bias1Shape != nullptr) {
-        OP_TILING_CHECK(bias1Shape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE(nodeName, "bias_optional_1 dims must be 2, but got %lu.",
-                                bias1Shape->GetStorageShape().GetDimNum()),
-                        return ge::GRAPH_FAILED);
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -244,22 +228,6 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
                         return ge::GRAPH_FAILED);
     }
 
-    auto bias0Desc = context->GetOptionalInputDesc(BIAS_0_INDEX);
-    if (bias0Desc != nullptr) {
-        OP_TILING_CHECK(bias0Desc->GetDataType() != ge::DT_BF16,
-                        OP_LOGE(nodeName, "bias_optional_0 dtype must be DT_BF16, but got %s.",
-                                ge::TypeUtils::DataTypeToSerialString(bias0Desc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-    }
-
-    auto bias1Desc = context->GetOptionalInputDesc(BIAS_1_INDEX);
-    if (bias1Desc != nullptr) {
-        OP_TILING_CHECK(bias1Desc->GetDataType() != ge::DT_BF16,
-                        OP_LOGE(nodeName, "bias_optional_1 dtype must be DT_BF16, but got %s.",
-                                ge::TypeUtils::DataTypeToSerialString(bias1Desc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -273,6 +241,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     auto numExpertsPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_EXPERTS_INDEX);
     auto nmtPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TPR_INDEX);
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_TOPO_TYPE_INDEX);
+    auto rankNumPerServerPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_NUM_PER_SERVER_INDEX);
 
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(nodeName, "epWorldSizePtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankIdPtr is null."), return ge::GRAPH_FAILED);
@@ -280,8 +250,13 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(nmtPtr == nullptr, OP_LOGE(nodeName, "nmtPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(topoTypePtr == nullptr, OP_LOGE(nodeName, "topoTypePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(rankNumPerServerPtr == nullptr, OP_LOGE(nodeName, "rankNumPerServerPtr is null."),
+                    return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
+    int64_t topoType = *topoTypePtr;
+    int64_t rankNumPerServer = *rankNumPerServerPtr;
     OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > MAX_EP_WORLD_SIZE),
                     OP_LOGE(nodeName, "ep_world_size is invalid, should be in [%ld, %ld], but got %ld.",
                             MIN_EP_WORLD_SIZE, MAX_EP_WORLD_SIZE, epWorldSize),
@@ -301,6 +276,18 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*cclBufferSizePtr <= 0,
                     OP_LOGE(nodeName, "ccl_buffer_size must be positive, but got %ld.", *cclBufferSizePtr),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((topoType != 0) && (topoType != 1),
+                    OP_LOGE(nodeName, "topo_type is invalid, expected 0 or 1, got %ld.", topoType),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(rankNumPerServer <= 0,
+                    OP_LOGE(nodeName, "rank_num_per_server must be positive, got %ld.", rankNumPerServer),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSize % rankNumPerServer != 0,
+                    OP_LOGE(nodeName,
+                            "ep_world_size must be divisible by rank_num_per_server, got ep_world_size=%ld, "
+                            "rank_num_per_server=%ld.",
+                            epWorldSize, rankNumPerServer),
                     return ge::GRAPH_FAILED);
 
     info.cfg.epWorldSize = static_cast<uint32_t>(epWorldSize);
