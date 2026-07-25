@@ -76,7 +76,9 @@ public:
         if ASCEND_IS_AIV {
             tPipe_ = pipe;
             attentionOutGm_.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
-            softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+            if constexpr (HAS_LSE) {
+                softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+            }
             GlobalTensor<uint8_t> pScaleGm;
             pScaleGm.SetGlobalBuffer((__gm__ uint8_t *)pScale);
             if constexpr (HAS_ATTEN) {
@@ -114,7 +116,9 @@ public:
             tPipe_->InitBuffer(preLoopMaxBuf_, 256U);
             tPipe_->InitBuffer(preLoopSumBuf_, 256U);
             tPipe_->InitBuffer(firstLoopSumBuf_, 256U);
-            tPipe_->InitBuffer(softmaxLseQueue_, 1, (M_BASE >> 1U) * sizeof(float) * 8U);
+            if constexpr (HAS_LSE) {
+                tPipe_->InitBuffer(softmaxLseQueue_, 1, (M_BASE >> 1U) * sizeof(float) * 8U);
+            }
             if constexpr (HAS_ATTEN) {
                 // DN mask UB：[256,64]，按 sparse segment 拼接。
                 tPipe_->InitBuffer(attenMaskInQue_, 1, ATTEN_MASK_UB_SIZE);
@@ -465,11 +469,11 @@ private:
         const uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if (subLoop % 2U == 1U) {
             for (uint16_t i = 0U; i < 4U; ++i) {
-                DataCopy(pScaleL1Tensor[vecOffset + i * 32U], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
+                DataCopy(pScaleL1Tensor[vecOffset + (i << 5U)], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= S2_SPLIT) {
             for (uint16_t i = 0U; i < 2U; ++i) {
-                DataCopy(pScaleL1Tensor[vecOffset + i * 256U], pScaleSubLoopTensor, {1, 8, 0, 0});
+                DataCopy(pScaleL1Tensor[vecOffset + (i << 8U)], pScaleSubLoopTensor, {1, 8, 0, 0});
             }
         }
     }
