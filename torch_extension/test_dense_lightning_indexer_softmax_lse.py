@@ -20,11 +20,11 @@ except ImportError:
     openpyxl = None
 
 
-def _golden_dense_lightning_index_lse(query_index, key_index, weight):
+def _golden_dense_lightning_index_lse(query_index, key_index, weight, device="cpu"):
     """Golden: LSE of (relu(q@k^T) * weight) summed over N1, then LogSumExp over S2."""
-    q = query_index.float()
-    k = key_index.float()
-    w = weight.float()
+    q = query_index.float().to(device)
+    k = key_index.float().to(device)
+    w = weight.float().to(device)
     # q: [B, S1, N1, D], k: [B, S2, N2, D]
     score = torch.matmul(q, k.permute(0, 2, 3, 1))  # [B, S1, N1, S2]
     relu_score = torch.relu(score)
@@ -57,7 +57,7 @@ def _compute_row_valid_mask_blk(B, S1, S2, seqused_q, seqused_k, cmp_residual_k,
                 row_valid[b, s1_i] = vk > 0
             else:
                 row_valid[b, s1_i] = k_used > 0
-    return row_valid
+    return row_valid.to(device)
 
 
 def _compute_row_valid_mask_tnd(cu_seqlens_q, cu_seqlens_k, T1,
@@ -84,18 +84,18 @@ def _compute_row_valid_mask_tnd(cu_seqlens_q, cu_seqlens_k, T1,
                 vk = max((s1_i + 1 + ori_k_size - q_used) // cmp_ratio, 0)
                 row_valid[q_start + s1_i] = vk > 0
             else:
-                row_valid[q_start + s1_i] = k_used > 0
-    return row_valid
+                row_valid[q_start + s1_i] = vk > 0
+    return row_valid.to(device)
 
 
 def golden_dli_lse_blk(query_index, key_index, weight, seqused_q=None, seqused_k=None,
-                       cmp_residual_k=None, mask_mode=0, cmp_ratio=1):
-    q = query_index.float()
-    k = key_index.float()
-    w = weight.float()
+                       cmp_residual_k=None, mask_mode=0, cmp_ratio=1, device="cpu"):
+    q = query_index.float().to(device)
+    k = key_index.float().to(device)
+    w = weight.float().to(device)
     B, S1, N1, D = q.shape
     _, S2, _, _ = k.shape
-    dev = "cpu"
+    dev = device
 
     TKV = 128
     neg_inf = -torch.inf
@@ -296,13 +296,13 @@ def test_e2e():
 
 def golden_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seqlens_k,
                         seqused_q=None, seqused_k=None, cmp_residual_k=None,
-                        mask_mode=0, cmp_ratio=1):
-    q = query_index.float()
-    k = key_index.float()
-    w = weight.float()
+                        mask_mode=0, cmp_ratio=1, device="cpu"):
+    q = query_index.float().to(device)
+    k = key_index.float().to(device)
+    w = weight.float().to(device)
     T1, N1, D = q.shape
     T2, _, _ = k.shape
-    dev = "cpu"
+    dev = device
     B = cu_seqlens_q.shape[0] - 1
 
     TKV = 128
@@ -374,26 +374,131 @@ def golden_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seqlens_
     return lse.unsqueeze(0)  # [N2=1, T1]
 
 
+def golden_dli_lse_blk_noblock(query_index, key_index, weight, seqused_q=None, seqused_k=None,
+                               cmp_residual_k=None, mask_mode=0, cmp_ratio=1, device="cpu"):
+    """非分块版 golden (BSND)，一次性 batch matmul，无 b 循环、无 TKV 切块。"""
+    q = query_index.float().to(device)
+    k = key_index.float().to(device)
+    w = weight.float().to(device)
+    B, S1, N1, D = q.shape
+    _, S2, _, _ = k.shape
+    dev = device
+    neg_inf = -torch.inf
+
+    row_valid_all = _compute_row_valid_mask_blk(B, S1, S2, seqused_q, seqused_k,
+                                                cmp_residual_k, mask_mode, cmp_ratio, dev)
+
+    k_squeeze = k[:, :, 0, :]  # [B, S2, D]
+    score = torch.matmul(q, k_squeeze.permute(0, 2, 1))  # [B, S1, N1, S2]
+    relu_score = torch.relu(score)
+    weighted = relu_score * w.unsqueeze(-1)
+    x = weighted.sum(dim=2)  # [B, S1, S2]
+
+    if mask_mode == 3:
+        q_used_vec = S1 if seqused_q is None else seqused_q[:B, 0].to(dev)
+        k_used_vec = S2 if seqused_k is None else seqused_k[:B, 0].to(dev)
+        if cmp_ratio > 1:
+            residual_vec = torch.zeros(B, device=dev) if cmp_residual_k is None else cmp_residual_k[:B, 0].float().to(dev)
+        else:
+            residual_vec = torch.zeros(B, device=dev)
+        ori_k_size_vec = k_used_vec * cmp_ratio + residual_vec  # [B]
+        s1_idx = torch.arange(S1, device=dev).unsqueeze(0)  # [1, S1]
+        valid_k_size_mat = torch.clamp(
+            ((s1_idx + 1 + ori_k_size_vec.unsqueeze(1) - q_used_vec.unsqueeze(1)) // cmp_ratio).float(),
+            min=0
+        )  # [B, S1]
+        s2_idx = torch.arange(S2, device=dev)  # [S2]
+        mask = s2_idx.unsqueeze(0).unsqueeze(0) >= valid_k_size_mat.unsqueeze(2)  # [B, S1, S2]
+        x = x.masked_fill(mask, neg_inf)
+
+    reduce_max = x.amax(dim=2)  # [B, S1]
+    shifted = x - reduce_max.unsqueeze(2)
+    sum_exp = torch.exp(shifted).sum(dim=2)  # [B, S1]
+    lse = torch.where(row_valid_all, reduce_max + torch.log(sum_exp), torch.full_like(reduce_max, neg_inf))
+
+    return lse.unsqueeze(1)  # [B, N2=1, S1]
+
+
+def golden_dli_lse_tnd_noblock(query_index, key_index, weight, cu_seqlens_q, cu_seqlens_k,
+                               seqused_q=None, seqused_k=None, cmp_residual_k=None,
+                               mask_mode=0, cmp_ratio=1, device="cpu"):
+    """非分块版 golden (TND)，一次性 matmul 计算 score，不按 TKV 切块。"""
+    q = query_index.float().to(device)
+    k = key_index.float().to(device)
+    w = weight.float().to(device)
+    T1, N1, D = q.shape
+    T2, _, _ = k.shape
+    dev = device
+    B = cu_seqlens_q.shape[0] - 1
+    neg_inf = -torch.inf
+
+    row_valid_all = _compute_row_valid_mask_tnd(cu_seqlens_q, cu_seqlens_k, T1,
+                                                seqused_q, seqused_k, cmp_residual_k,
+                                                mask_mode, cmp_ratio, dev)
+    lse = torch.zeros(T1, dtype=torch.float32, device=dev)
+
+    for b in range(B):
+        q_start = cu_seqlens_q[b].item()
+        q_end = cu_seqlens_q[b + 1].item()
+        k_start = cu_seqlens_k[b].item()
+        k_end = cu_seqlens_k[b + 1].item()
+        q_len = q_end - q_start
+        k_len = k_end - k_start
+
+        q_b = q[q_start:q_end]
+        k_b = k[k_start:k_end]
+        w_b = w[q_start:q_end]
+
+        q_used = q_len if seqused_q is None else seqused_q[b, 0].item()
+        k_used = k_len if seqused_k is None else seqused_k[b, 0].item()
+
+        if k_len == 0:
+            lse[q_start:q_end] = neg_inf
+            continue
+
+        score = torch.matmul(q_b, k_b[:k_used, 0, :].T)  # [q_len, N1, k_used]
+        relu_score = torch.relu(score)
+        weighted = relu_score * w_b.unsqueeze(-1)
+        x = weighted.sum(dim=1)  # [q_len, k_used]
+
+        if mask_mode == 3:
+            cur_residual = 0
+            if cmp_ratio > 1:
+                cur_residual = 0 if cmp_residual_k is None else cmp_residual_k[b, 0].item()
+            ori_k_size = k_used * cmp_ratio + cur_residual
+            for s1_i in range(min(q_used, q_len)):
+                valid_k_size = max((s1_i + 1 + ori_k_size - q_used) // cmp_ratio, 0)
+                if valid_k_size < k_used:
+                    x[s1_i, valid_k_size:] = neg_inf
+
+        row_valid = row_valid_all[q_start:q_end]
+
+        reduce_max = x.amax(dim=1)
+        shifted = x - reduce_max.unsqueeze(1)
+        sum_exp = torch.exp(shifted).sum(dim=1)
+        lse[q_start:q_end] = torch.where(row_valid, reduce_max + torch.log(sum_exp), torch.full_like(reduce_max, neg_inf))
+
+    return lse.unsqueeze(0)  # [N2=1, T1]
+
+
 def cpu_kernel_dli_lse_blk(query_index, key_index, weight, seqused_q=None, seqused_k=None,
-                           cmp_residual_k=None, mask_mode=0, cmp_ratio=1):
+                           cmp_residual_k=None, mask_mode=0, cmp_ratio=1, device="cpu"):
     """CPU 实现的 kernel 等价流程，与 NPU kernel 的分块/精度/归约逻辑一致。
 
     关键对齐点：
-    - S2 按 TKV=128 切块，每块 matmul 输入保持原始精度(fp16/bf16)，输出 fp32
+    - S2 按 TKV=128 切块，每块 matmul 使用 float32 高精度计算
     - DualModeSplitN: acc[N1, TKV] 按 N 拆为两半 sub_id=0/1，各做 reduce_max 后取 max
     - 两阶段归约: reduce_max(relu(qk)*w, 沿N1求和) → reduce_sum(exp_sub, 沿S2) → lse
     - mask_mode=3 的 valid_k_size 计算与 kernel 一致
     """
-    input_dtype = query_index.dtype
-    q = query_index
-    k = key_index
-    w = weight.float()
+    q = query_index.float().to(device)
+    k = key_index.float().to(device)
+    w = weight.float().to(device)
     B, S1, N1, D = q.shape
     _, S2, _, _ = k.shape
-    dev = "cpu"
+    dev = device
 
     TKV = 128
-    TKV_HALF = TKV // 2
     neg_inf = -torch.inf
 
     lse = torch.zeros(B, S1, dtype=torch.float32, device=dev)
@@ -426,7 +531,7 @@ def cpu_kernel_dli_lse_blk(query_index, key_index, weight, seqused_q=None, sequs
 
             s2_tiles = (valid_k_size + TKV - 1) // TKV
 
-            reduce_sum_vec = torch.zeros(s2_tiles, TKV_HALF, dtype=torch.float32, device=dev)
+            reduce_sum_vec = torch.zeros(s2_tiles, TKV, dtype=torch.float32, device=dev)
             vec_tail_size = torch.zeros(1, dtype=torch.int32, device=dev)
             running_max = neg_inf
 
@@ -437,22 +542,19 @@ def cpu_kernel_dli_lse_blk(query_index, key_index, weight, seqused_q=None, sequs
 
                 k_slice = k_b[s2_start:s2_end, 0, :]
                 if s2_len < TKV:
-                    k_tile = torch.zeros(TKV, D, dtype=input_dtype, device=dev)
+                    k_tile = torch.zeros(TKV, D, dtype=torch.float32, device=dev)
                     k_tile[:s2_len] = k_slice
                 else:
                     k_tile = k_slice
 
-                score = torch.matmul(q_b[s1_i].to(input_dtype), k_tile.T)
-                score_fp32 = score.float()
-                relu_score = torch.relu(score_fp32)
+                score = torch.matmul(q_b[s1_i], k_tile.T)
+                relu_score = torch.relu(score)
                 weighted = relu_score * w_b[s1_i].unsqueeze(-1)
                 reduce_sum = weighted.sum(dim=0)
 
-                sub0 = reduce_sum[:TKV_HALF]
-                sub1 = reduce_sum[TKV_HALF:TKV]
-                reduce_sum_vec[s2_i] = sub0 + sub1
+                reduce_sum_vec[s2_i, :s2_len] = reduce_sum[:s2_len]
 
-                tile_max = max(sub0.max().item(), sub1.max().item())
+                tile_max = reduce_sum[:s2_len].max().item() if s2_len > 0 else neg_inf
                 if tile_max > running_max:
                     running_max = tile_max
 
@@ -477,22 +579,21 @@ def cpu_kernel_dli_lse_blk(query_index, key_index, weight, seqused_q=None, sequs
 
 def cpu_kernel_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seqlens_k,
                            seqused_q=None, seqused_k=None, cmp_residual_k=None,
-                           mask_mode=0, cmp_ratio=1):
+                           mask_mode=0, cmp_ratio=1, device="cpu"):
     """CPU 实现的 kernel 等价流程 (TND layout)。
 
     与 cpu_kernel_dli_lse_blk 逻辑一致，区别在于按 cu_seqlens 切分 batch。
+    matmul 使用 float32 高精度计算。
     """
-    input_dtype = query_index.dtype
-    q = query_index
-    k = key_index
-    w = weight.float()
+    q = query_index.float().to(device)
+    k = key_index.float().to(device)
+    w = weight.float().to(device)
     T1, N1, D = q.shape
     T2, _, _ = k.shape
-    dev = "cpu"
+    dev = device
     B = cu_seqlens_q.shape[0] - 1
 
     TKV = 128
-    TKV_HALF = TKV // 2
     neg_inf = -torch.inf
 
     lse = torch.zeros(T1, dtype=torch.float32, device=dev)
@@ -536,7 +637,7 @@ def cpu_kernel_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seql
 
             s2_tiles = (valid_k_size + TKV - 1) // TKV
 
-            reduce_sum_vec = torch.zeros(s2_tiles, TKV_HALF, dtype=torch.float32, device=dev)
+            reduce_sum_vec = torch.zeros(s2_tiles, TKV, dtype=torch.float32, device=dev)
             vec_tail_size = torch.zeros(1, dtype=torch.int32, device=dev)
             running_max = neg_inf
 
@@ -547,22 +648,19 @@ def cpu_kernel_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seql
 
                 k_slice = k_b[s2_start:s2_end, 0, :]
                 if s2_len < TKV:
-                    k_tile = torch.zeros(TKV, D, dtype=input_dtype, device=dev)
+                    k_tile = torch.zeros(TKV, D, dtype=torch.float32, device=dev)
                     k_tile[:s2_len] = k_slice
                 else:
                     k_tile = k_slice
 
-                score = torch.matmul(q_b[s1_i, :, :].to(input_dtype), k_tile.T)
-                score_fp32 = score.float()
-                relu_score = torch.relu(score_fp32)
+                score = torch.matmul(q_b[s1_i, :, :], k_tile.T)
+                relu_score = torch.relu(score)
                 weighted = relu_score * w_b[s1_i].unsqueeze(-1)
                 reduce_sum = weighted.sum(dim=0)
 
-                sub0 = reduce_sum[:TKV_HALF]
-                sub1 = reduce_sum[TKV_HALF:TKV]
-                reduce_sum_vec[s2_i] = sub0 + sub1
+                reduce_sum_vec[s2_i, :s2_len] = reduce_sum[:s2_len]
 
-                tile_max = max(sub0.max().item(), sub1.max().item())
+                tile_max = reduce_sum[:s2_len].max().item() if s2_len > 0 else neg_inf
                 if tile_max > running_max:
                     running_max = tile_max
 
@@ -599,6 +697,147 @@ def test_invalid_num_heads_q():
         assert False, "Should have raised for num_heads_q not divisible by num_heads_k"
     except RuntimeError:
         pass
+
+
+
+def cpu_kernel_dli_lse_blk_noblock(query_index, key_index, weight, seqused_q=None, seqused_k=None,
+                                   cmp_residual_k=None, mask_mode=0, cmp_ratio=1, device="cpu"):
+    """非分块版 cpu_kernel (BSND)，matmul 使用 float32 高精度。
+
+    与 _golden_dense_lightning_index_lse 的非分块实现类似，但保留 kernel 的 mask 逻辑。
+    """
+    q = query_index.float().to(device)
+    k = key_index.float().to(device)
+    w = weight.float().to(device)
+    B, S1, N1, D = q.shape
+    _, S2, _, _ = k.shape
+    dev = device
+    neg_inf = -torch.inf
+
+    lse = torch.zeros(B, S1, dtype=torch.float32, device=dev)
+
+    for b in range(B):
+        q_b = q[b]
+        k_b = k[b]
+        w_b = w[b]
+
+        q_used = S1 if seqused_q is None else seqused_q[b, 0].item()
+        k_used = S2 if seqused_k is None else seqused_k[b, 0].item()
+
+        score = torch.matmul(q_b, k_b[:, 0, :].T)  # [S1, N1, S2]
+        relu_score = torch.relu(score)
+        weighted = relu_score * w_b.unsqueeze(-1)
+        x = weighted.sum(dim=1)  # [S1, S2]
+
+        if mask_mode == 3:
+            cur_residual = 0
+            if cmp_ratio > 1:
+                cur_residual = 0 if cmp_residual_k is None else cmp_residual_k[b, 0].item()
+            ori_k_size = k_used * cmp_ratio + cur_residual
+            for s1_i in range(min(q_used, S1)):
+                valid_k_size = max((s1_i + 1 + ori_k_size - q_used) // cmp_ratio, 0)
+                if valid_k_size < k_used:
+                    x[s1_i, valid_k_size:] = neg_inf
+
+        for s1_i in range(S1):
+            if s1_i >= q_used:
+                lse[b, s1_i] = neg_inf
+                continue
+            row = x[s1_i, :k_used]
+            if mask_mode == 3:
+                cur_residual = 0
+                if cmp_ratio > 1:
+                    cur_residual = 0 if cmp_residual_k is None else cmp_residual_k[b, 0].item()
+                ori_k_size = k_used * cmp_ratio + cur_residual
+                valid_k_size = max((s1_i + 1 + ori_k_size - q_used) // cmp_ratio, 0)
+                if valid_k_size <= 0:
+                    lse[b, s1_i] = neg_inf
+                    continue
+                row = x[s1_i, :valid_k_size]
+            row_max = row.max()
+            if row_max == neg_inf:
+                lse[b, s1_i] = neg_inf
+            else:
+                lse[b, s1_i] = row_max + torch.log(torch.exp(row - row_max).sum())
+
+    return lse.unsqueeze(1)  # [B, N2=1, S1]
+
+
+def cpu_kernel_dli_lse_tnd_noblock(query_index, key_index, weight, cu_seqlens_q, cu_seqlens_k,
+                                   seqused_q=None, seqused_k=None, cmp_residual_k=None,
+                                   mask_mode=0, cmp_ratio=1, device="cpu"):
+    """非分块版 cpu_kernel (TND)，matmul 使用 float32 高精度。
+
+    与 cpu_kernel_dli_lse_blk_noblock 逻辑一致，区别在于按 cu_seqlens 切分 batch。
+    """
+    q = query_index.float().to(device)
+    k = key_index.float().to(device)
+    w = weight.float().to(device)
+    T1, N1, D = q.shape
+    T2, _, _ = k.shape
+    dev = device
+    B = cu_seqlens_q.shape[0] - 1
+    neg_inf = -torch.inf
+
+    lse = torch.zeros(T1, dtype=torch.float32, device=dev)
+
+    for b in range(B):
+        q_start = cu_seqlens_q[b].item()
+        q_end = cu_seqlens_q[b + 1].item()
+        k_start = cu_seqlens_k[b].item()
+        k_end = cu_seqlens_k[b + 1].item()
+        q_len = q_end - q_start
+        k_len = k_end - k_start
+
+        q_b = q[q_start:q_end]
+        k_b = k[k_start:k_end]
+        w_b = w[q_start:q_end]
+
+        q_used = q_len if seqused_q is None else seqused_q[b, 0].item()
+        k_used = k_len if seqused_k is None else seqused_k[b, 0].item()
+
+        if k_len == 0:
+            lse[q_start:q_end] = neg_inf
+            continue
+
+        score = torch.matmul(q_b, k_b[:, 0, :].T)  # [q_len, N1, k_len]
+        relu_score = torch.relu(score)
+        weighted = relu_score * w_b.unsqueeze(-1)
+        x = weighted.sum(dim=1)  # [q_len, k_len]
+
+        if mask_mode == 3:
+            cur_residual = 0
+            if cmp_ratio > 1:
+                cur_residual = 0 if cmp_residual_k is None else cmp_residual_k[b, 0].item()
+            ori_k_size = k_used * cmp_ratio + cur_residual
+            for s1_i in range(min(q_used, q_len)):
+                valid_k_size = max((s1_i + 1 + ori_k_size - q_used) // cmp_ratio, 0)
+                if valid_k_size < k_used:
+                    x[s1_i, valid_k_size:] = neg_inf
+
+        for s1_i in range(q_len):
+            if s1_i >= q_used:
+                lse[q_start + s1_i] = neg_inf
+                continue
+            if mask_mode == 3:
+                cur_residual = 0
+                if cmp_ratio > 1:
+                    cur_residual = 0 if cmp_residual_k is None else cmp_residual_k[b, 0].item()
+                ori_k_size = k_used * cmp_ratio + cur_residual
+                valid_k_size = max((s1_i + 1 + ori_k_size - q_used) // cmp_ratio, 0)
+                if valid_k_size <= 0:
+                    lse[q_start + s1_i] = neg_inf
+                    continue
+                row = x[s1_i, :valid_k_size]
+            else:
+                row = x[s1_i, :k_used]
+            row_max = row.max()
+            if row_max == neg_inf:
+                lse[q_start + s1_i] = neg_inf
+            else:
+                lse[q_start + s1_i] = row_max + torch.log(torch.exp(row - row_max).sum())
+
+    return lse.unsqueeze(0)  # [N2=1, T1]
 
 
 def test_invalid_cmp_ratio():
@@ -714,7 +953,7 @@ def _compute_mare(actual, golden, valid_mask):
     b = golden[valid_mask].float()
     if a.numel() == 0:
         return 0.0
-    rel = (a - b).abs() / (b.abs() + 1e-7)
+    rel = (a - b).abs() / (b.abs() + 2 ** -14)
     return rel.max().item()
 
 
@@ -723,7 +962,7 @@ def _compute_mere(actual, golden, valid_mask):
     b = golden[valid_mask].float()
     if a.numel() == 0:
         return 0.0
-    rel = (a - b).abs() / (b.abs() + 1e-7)
+    rel = (a - b).abs() / (b.abs() + 2 ** -14)
     return rel.mean().item()
 
 
@@ -738,7 +977,7 @@ def _compute_rmse(actual, golden, valid_mask):
 L2_MARE_RATIO = 2.0
 L2_MERE_RATIO = 1.2
 L2_RMSE_RATIO = 1.2
-_ERR_FLOOR = 1e-7
+_ERR_FLOOR = 2 ** -14
 
 
 def _check_l2_precision(mare_npu, mere_npu, rmse_npu, mare_gpu, mere_gpu, rmse_gpu):
@@ -772,17 +1011,39 @@ def _load_xlsx_cases(xlsx_path):
     return cases
 
 
-def _build_case_inputs(case, device):
+def _dump_npu_inputs(tag, tensors):
+    print(f"  [{tag} npu inputs] " + ", ".join(
+        f"{name}={t.shape if t is not None else None}/{t.dtype if t is not None else None}"
+        for name, t in tensors.items()))
+
+
+def _build_case_inputs(case, device, raw_optional_shape=False):
     B = case["B"]
     N1 = case["N1"]
+    N2 = case.get("N2", 1)
+    if N2 is None:
+        N2 = 1
     D = case["D"]
     S1 = case["S1"]
     S2 = case["S2"]
     dtype_str = case.get("dtype", "float16")
-    torch_dtype = torch.float16 if dtype_str == "float16" else torch.bfloat16
-    seed = case.get("manual_seed", 0) or 0
-    layout_q = case.get("layout_q", "BSND") or "BSND"
-    layout_k = case.get("layout_k", "BSND") or "BSND"
+    dtype_map = {"float16": torch.float16, "bfloat16": torch.bfloat16, "bf16": torch.bfloat16, "float32": torch.float32}
+    if "_" in dtype_str:
+        q_dtype_str, k_dtype_str = dtype_str.split("_")
+        torch_dtype_q = dtype_map.get(q_dtype_str, torch.float16)
+        torch_dtype_k = dtype_map.get(k_dtype_str, torch.float16)
+    else:
+        torch_dtype_q = dtype_map.get(dtype_str, torch.float16)
+        torch_dtype_k = torch_dtype_q
+    seed = case.get("manual_seed", 0)
+    if seed is None:
+        seed = 0
+    layout_q = case.get("layout_q", "BSND")
+    if layout_q is None:
+        layout_q = "BSND"
+    layout_k = case.get("layout_k", "BSND")
+    if layout_k is None:
+        layout_k = "BSND"
     is_tnd = (layout_q == "TND")
 
     torch.manual_seed(seed)
@@ -805,13 +1066,27 @@ def _build_case_inputs(case, device):
         cu_seqlens_q = None
         cu_seqlens_k = None
 
+    D_k = case.get("D_k")
+    if D_k is None:
+        D_k = D
+    q_ndim = case.get("q_ndim")
+    if q_ndim is None:
+        q_ndim = 3 if is_tnd else 4
+    k_ndim = case.get("k_ndim")
+    if k_ndim is None:
+        k_ndim = 3 if is_tnd else 4
+
+    if q_ndim == 3:
+        q = torch.randn((T1, N1, D), dtype=torch_dtype_q)
+    else:
+        q = torch.randn((B, S1, N1, D), dtype=torch_dtype_q)
+    if k_ndim == 3:
+        k = torch.randn((T2, N2, D_k), dtype=torch_dtype_k)
+    else:
+        k = torch.randn((B, S2, N2, D_k), dtype=torch_dtype_k)
     if is_tnd:
-        q = torch.randn((T1, N1, D), dtype=torch_dtype)
-        k = torch.randn((T2, 1, D), dtype=torch_dtype)
         w = torch.randn((T1, N1), dtype=torch.float32)
     else:
-        q = torch.randn((B, S1, N1, D), dtype=torch_dtype)
-        k = torch.randn((B, S2, 1, D), dtype=torch_dtype)
         w = torch.randn((B, S1, N1), dtype=torch.float32)
 
     seqused_q_val = case.get("seqused_q")
@@ -820,17 +1095,28 @@ def _build_case_inputs(case, device):
 
     seqused_q = None
     if seqused_q_val is not None:
-        seqused_q = torch.tensor(seqused_q_val, dtype=torch.int32).reshape(B, 1)
+        seqused_q = torch.tensor(seqused_q_val, dtype=torch.int32)
+        if not raw_optional_shape:
+            seqused_q = seqused_q.reshape(B, 1)
 
     seqused_k = None
     if seqused_k_val is not None:
-        seqused_k = torch.tensor(seqused_k_val, dtype=torch.int32).reshape(B, 1)
+        seqused_k = torch.tensor(seqused_k_val, dtype=torch.int32)
+        if not raw_optional_shape:
+            seqused_k = seqused_k.reshape(B, 1)
 
     cmp_residual_k = None
     if cmp_residual_k_val is not None:
-        cmp_residual_k = torch.tensor(cmp_residual_k_val, dtype=torch.int32).reshape(B, 1)
-    else:
-        cmp_residual_k = torch.zeros((B, 1), dtype=torch.int32)
+        cmp_residual_k = torch.tensor(cmp_residual_k_val, dtype=torch.int32)
+        if not raw_optional_shape:
+            cmp_residual_k = cmp_residual_k.reshape(B, 1)
+
+    mask_mode = case.get("mask_mode", 0)
+    if mask_mode is None:
+        mask_mode = 0
+    cmp_ratio = case.get("cmp_ratio", 1)
+    if cmp_ratio is None:
+        cmp_ratio = 1
 
     return {
         "q": q, "k": k, "w": w,
@@ -838,11 +1124,148 @@ def _build_case_inputs(case, device):
         "seqused_q": seqused_q, "seqused_k": seqused_k,
         "cmp_residual_k": cmp_residual_k,
         "layout_q": layout_q, "layout_k": layout_k,
-        "mask_mode": case.get("mask_mode", 0) or 0,
-        "cmp_ratio": case.get("cmp_ratio", 1) or 1,
+        "mask_mode": mask_mode,
+        "cmp_ratio": cmp_ratio,
         "is_tnd": is_tnd,
         "B": B,
+        "N2": N2,
     }
+
+
+def _err_check_case(case, device):
+    """Faithfully construct illegal inputs (preserving wrong shapes/lengths, zero sizes)
+    and call only the NPU ops (metadata + main). Returns a dict describing which stage
+    rejected the input, or NOT_REJECTED if the op accepted it."""
+    inputs = _build_case_inputs(case, device, raw_optional_shape=True)
+    B = case["B"]
+    N1 = case["N1"]
+    S1 = case["S1"]
+    S2 = case["S2"]
+    D = case["D"]
+    mask_mode = case.get("mask_mode", 0)
+    if mask_mode is None:
+        mask_mode = 0
+    cmp_ratio = case.get("cmp_ratio", 1)
+    if cmp_ratio is None:
+        cmp_ratio = 1
+    is_tnd = inputs["is_tnd"]
+
+    result = {"meta_stage": "SKIPPED", "meta_msg": "", "main_stage": "SKIPPED", "main_msg": ""}
+
+    def _to(t):
+        return t.to(device) if t is not None else None
+
+    try:
+        _dump_npu_inputs("metadata", {
+            "cu_seqlens_q": inputs["cu_seqlens_q"],
+            "cu_seqlens_k": inputs["cu_seqlens_k"],
+            "seqused_q": inputs["seqused_q"],
+            "seqused_k": inputs["seqused_k"],
+            "cmp_residual_k": inputs["cmp_residual_k"],
+        })
+        print(f"  [metadata npu inputs] num_heads_q={N1}, num_heads_k={inputs['N2']}, "
+              f"head_dim={D}, batch_size={B if not is_tnd else None}, "
+              f"max_seqlen_q={S1 if not is_tnd else None}, "
+              f"max_seqlen_k={S2 if not is_tnd else None}, "
+              f"layout_q={inputs['layout_q']}, layout_k={inputs['layout_k']}, "
+              f"mask_mode={mask_mode}, cmp_ratio={cmp_ratio}", flush=True)
+        metadata = cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+            num_heads_q=N1,
+            num_heads_k=inputs["N2"],
+            head_dim=D,
+            cu_seqlens_q=_to(inputs["cu_seqlens_q"]),
+            cu_seqlens_k=_to(inputs["cu_seqlens_k"]),
+            seqused_q=_to(inputs["seqused_q"]),
+            seqused_k=_to(inputs["seqused_k"]),
+            cmp_residual_k=_to(inputs["cmp_residual_k"]),
+            batch_size=B if not is_tnd else None,
+            max_seqlen_q=S1 if not is_tnd else None,
+            max_seqlen_k=S2 if not is_tnd else None,
+            layout_q=inputs["layout_q"],
+            layout_k=inputs["layout_k"],
+            mask_mode=mask_mode,
+            cmp_ratio=cmp_ratio,
+        )
+        torch.npu.synchronize()
+        result["meta_stage"] = "OK"
+        print(f"  [metadata] OK, metadata={tuple(metadata.shape)}", flush=True)
+    except Exception as e:
+        result["meta_stage"] = "REJECT"
+        result["meta_msg"] = f"{type(e).__name__}: {str(e)[:500]}"
+        return result
+
+    try:
+        _dump_npu_inputs("lse", {
+            "q": inputs["q"],
+            "k": inputs["k"],
+            "w": inputs["w"],
+            "cu_seqlens_q": inputs["cu_seqlens_q"],
+            "cu_seqlens_k": inputs["cu_seqlens_k"],
+            "seqused_q": inputs["seqused_q"],
+            "seqused_k": inputs["seqused_k"],
+            "cmp_residual_k": inputs["cmp_residual_k"],
+            "metadata": metadata,
+        })
+        print(f"  [lse npu inputs] layout_q={inputs['layout_q']}, "
+              f"layout_k={inputs['layout_k']}, mask_mode={mask_mode}, cmp_ratio={cmp_ratio}",
+              flush=True)
+        lse = cann_ops_transformer.dense_lightning_indexer_softmax_lse(
+            inputs["q"].to(device), inputs["k"].to(device), inputs["w"].to(device),
+            cu_seqlens_q=_to(inputs["cu_seqlens_q"]),
+            cu_seqlens_k=_to(inputs["cu_seqlens_k"]),
+            seqused_q=_to(inputs["seqused_q"]),
+            seqused_k=_to(inputs["seqused_k"]),
+            cmp_residual_k=_to(inputs["cmp_residual_k"]),
+            metadata=metadata,
+            layout_q=inputs["layout_q"],
+            layout_k=inputs["layout_k"],
+            mask_mode=mask_mode,
+            cmp_ratio=cmp_ratio,
+        )
+        torch.npu.synchronize()
+        result["main_stage"] = "NOT_REJECTED"
+        result["main_msg"] = f"out shape={tuple(lse.shape)}"
+    except Exception as e:
+        result["main_stage"] = "REJECT"
+        result["main_msg"] = f"{type(e).__name__}: {str(e)[:500]}"
+    return result
+
+
+def _write_errcheck_results_to_xlsx(xlsx_path, results):
+    if openpyxl is None:
+        print("[fuzz] openpyxl not available, skip writing results to xlsx")
+        return
+    import shutil
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base, ext = os.path.splitext(xlsx_path)
+    out_path = f"{base}_errcheck_{timestamp}{ext}"
+    shutil.copy2(xlsx_path, out_path)
+    wb = openpyxl.load_workbook(out_path)
+    ws = wb.active
+
+    max_col = ws.max_column
+    ws.cell(row=1, column=max_col + 1, value="err_result")
+    ws.cell(row=1, column=max_col + 2, value="err_stage")
+    ws.cell(row=1, column=max_col + 3, value="err_msg")
+
+    case_name_to_row = {}
+    for row_idx in range(2, ws.max_row + 1):
+        name = ws.cell(row=row_idx, column=2).value
+        if name is not None:
+            case_name_to_row[name] = row_idx
+
+    written = 0
+    for case_name, final, stage, msg in results:
+        row_idx = case_name_to_row.get(case_name)
+        if row_idx is not None:
+            ws.cell(row=row_idx, column=max_col + 1, value=final)
+            ws.cell(row=row_idx, column=max_col + 2, value=stage)
+            ws.cell(row=row_idx, column=max_col + 3, value=msg)
+            written += 1
+
+    wb.save(out_path)
+    print(f"[fuzz] Err-check results written to {out_path} ({written}/{len(results)} cases)")
 
 
 def _get_cache_path(case_name, cache_dir):
@@ -872,7 +1295,8 @@ def _load_cached_case(case_name, cache_dir):
 def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                         save_golden=False, use_cache=False, verbose_elem=False,
                         no_metadata=False, aic_core_num=DEFAULT_AIC_CORE_NUM,
-                        l2_precision=False):
+                        l2_precision=False, ref_device="cpu", noblock=False,
+                        err_check=False):
     if xlsx_path is None:
         xlsx_path = r"C:\Users\kjc\Desktop\pto相关\dli\测试用例\dense_lightning_indexer_softmax_lse_fuzz_0.5g - mk.xlsx"
     if cache_dir is None:
@@ -885,14 +1309,19 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
     print(f"[fuzz] Loaded {len(cases)} test cases from {xlsx_path}")
     print(f"[fuzz] save_golden={save_golden}, use_cache={use_cache}, cache_dir={cache_dir}")
     print(f"[fuzz] verbose_elem={verbose_elem}")
+    if err_check:
+        os.environ["ASCEND_LAUNCH_BLOCKING"] = "1"
+        print(f"[fuzz] ** ERR-CHECK MODE: NPU-only, faithful illegal inputs, no golden, ASCEND_LAUNCH_BLOCKING=1 **")
     if no_metadata:
         print(f"[fuzz] ** USING PYTHON METADATA (no NPU metadata op), aic_core_num={aic_core_num} **")
     if l2_precision:
         print(f"[fuzz] ** L2 PRECISION CHECK ENABLED (cpu_kernel as gpu reference) **")
+    print(f"[fuzz] ref_device={ref_device}, noblock={noblock}")
 
     pass_count = 0
     fail_count = 0
     results = []
+    err_results = []
 
     for idx, case in enumerate(cases):
         case_name = case.get("testcase_name", f"case_{idx}")
@@ -901,12 +1330,41 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
         S1 = case["S1"]
         S2 = case["S2"]
         D = case["D"]
-        mask_mode = case.get("mask_mode", 0) or 0
-        cmp_ratio = case.get("cmp_ratio", 1) or 1
-        layout_q = case.get("layout_q", "BSND") or "BSND"
+        mask_mode = case.get("mask_mode", 0)
+        if mask_mode is None:
+            mask_mode = 0
+        cmp_ratio = case.get("cmp_ratio", 1)
+        if cmp_ratio is None:
+            cmp_ratio = 1
+        layout_q = case.get("layout_q", "BSND")
+        if layout_q is None:
+            layout_q = "BSND"
         is_tnd = (layout_q == "TND")
         print(f"\n[{idx+1}/{len(cases)}] {case_name} (B={B}, N1={N1}, S1={S1}, S2={S2}, D={D}, "
               f"mask={mask_mode}, cmp={cmp_ratio}, layout={layout_q})")
+
+        if err_check:
+            try:
+                res = _err_check_case(case, device)
+                if res["meta_stage"] == "REJECT":
+                    final, stage, msg = "REJECTED", "METADATA", res["meta_msg"]
+                elif res["main_stage"] == "REJECT":
+                    final, stage, msg = "REJECTED", "MAIN", res["main_msg"]
+                elif res["main_stage"] == "NOT_REJECTED":
+                    final, stage, msg = "NOT_REJECTED", "-", res["main_msg"]
+                else:
+                    final, stage, msg = "UNKNOWN", "-", ""
+                print(f"  [ERR-CHECK] {final} ({stage}) {msg}")
+                err_results.append((case_name, final, stage, msg))
+                if final == "REJECTED":
+                    pass_count += 1
+                else:
+                    fail_count += 1
+            except Exception as e:
+                print(f"  [ERR-CHECK] BUILD_ERROR {type(e).__name__}: {e}")
+                err_results.append((case_name, "BUILD_ERROR", "-", f"{type(e).__name__}: {e}"))
+                fail_count += 1
+            continue
 
         case_max_diff = None
         case_result = "ERROR"
@@ -920,7 +1378,7 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
             if no_metadata:
                 metadata = _compute_metadata_python(
                     num_heads_q=N1,
-                    num_heads_k=1,
+                    num_heads_k=inputs["N2"],
                     head_dim=D,
                     cu_seqlens_q=inputs["cu_seqlens_q"],
                     cu_seqlens_k=inputs["cu_seqlens_k"],
@@ -943,13 +1401,13 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
             else:
                 metadata = cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
                     num_heads_q=N1,
-                    num_heads_k=1,
+                    num_heads_k=inputs["N2"],
                     head_dim=D,
                     cu_seqlens_q=inputs["cu_seqlens_q"].to(device) if inputs["cu_seqlens_q"] is not None else None,
                     cu_seqlens_k=inputs["cu_seqlens_k"].to(device) if inputs["cu_seqlens_k"] is not None else None,
                     seqused_q=inputs["seqused_q"].to(device) if inputs["seqused_q"] is not None else None,
                     seqused_k=inputs["seqused_k"].to(device) if inputs["seqused_k"] is not None else None,
-                    cmp_residual_k=inputs["cmp_residual_k"].to(device),
+                    cmp_residual_k=inputs["cmp_residual_k"].to(device) if inputs["cmp_residual_k"] is not None else None,
                     batch_size=B if not is_tnd else None,
                     max_seqlen_q=S1 if not is_tnd else None,
                     max_seqlen_k=S2 if not is_tnd else None,
@@ -958,6 +1416,7 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                     mask_mode=mask_mode,
                     cmp_ratio=cmp_ratio,
                 )
+                torch.npu.synchronize()
 
             lse = cann_ops_transformer.dense_lightning_indexer_softmax_lse(
                 inputs["q"].to(device), inputs["k"].to(device), inputs["w"].to(device),
@@ -965,7 +1424,7 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                 cu_seqlens_k=inputs["cu_seqlens_k"].to(device) if inputs["cu_seqlens_k"] is not None else None,
                 seqused_q=inputs["seqused_q"].to(device) if inputs["seqused_q"] is not None else None,
                 seqused_k=inputs["seqused_k"].to(device) if inputs["seqused_k"] is not None else None,
-                cmp_residual_k=inputs["cmp_residual_k"].to(device),
+                cmp_residual_k=inputs["cmp_residual_k"].to(device) if inputs["cmp_residual_k"] is not None else None,
                 metadata=metadata,
                 layout_q=inputs["layout_q"],
                 layout_k=inputs["layout_k"],
@@ -973,7 +1432,6 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                 cmp_ratio=cmp_ratio,
             )
             torch.npu.synchronize()
-
             do_golden = True
             if use_cache:
                 cached = _load_cached_case(case_name, cache_dir)
@@ -984,8 +1442,14 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                 else:
                     print(f"  [cache] no cached golden found, computing golden (use --save-golden to cache for next run)")
             if do_golden:
+                if noblock:
+                    golden_tnd = golden_dli_lse_tnd_noblock
+                    golden_blk = golden_dli_lse_blk_noblock
+                else:
+                    golden_tnd = golden_dli_lse_tnd
+                    golden_blk = golden_dli_lse_blk
                 if is_tnd:
-                    lse_ref = golden_dli_lse_tnd(
+                    lse_ref = golden_tnd(
                         inputs["q"], inputs["k"], inputs["w"],
                         inputs["cu_seqlens_q"],
                         inputs["cu_seqlens_k"],
@@ -993,21 +1457,23 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                         seqused_k=inputs["seqused_k"],
                         cmp_residual_k=inputs["cmp_residual_k"],
                         mask_mode=mask_mode,
-                        cmp_ratio=cmp_ratio)
+                        cmp_ratio=cmp_ratio,
+                        device=ref_device)
                 else:
-                    lse_ref = golden_dli_lse_blk(
+                    lse_ref = golden_blk(
                         inputs["q"], inputs["k"], inputs["w"],
                         seqused_q=inputs["seqused_q"],
                         seqused_k=inputs["seqused_k"],
                         cmp_residual_k=inputs["cmp_residual_k"],
                         mask_mode=mask_mode,
-                        cmp_ratio=cmp_ratio)
+                        cmp_ratio=cmp_ratio,
+                        device=ref_device)
 
             if save_golden and do_golden:
-                _save_case(case_name, cache_dir, inputs, lse.cpu(), lse_ref)
+                _save_case(case_name, cache_dir, inputs, lse.cpu(), lse_ref.cpu() if lse_ref.is_npu else lse_ref)
 
             lse_cpu = lse.cpu().float()
-            lse_ref_f = lse_ref.float()
+            lse_ref_f = lse_ref.cpu().float() if lse_ref.is_npu else lse_ref.float()
             if lse_cpu.shape != lse_ref_f.shape:
                 print(f"  [FAIL] shape mismatch: lse={lse_cpu.shape} vs lse_ref={lse_ref_f.shape}")
                 case_max_diff = None
@@ -1093,8 +1559,14 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
             case_l2_rmse_ratio = None
             case_l2_result = None
             if l2_precision:
+                if noblock:
+                    cpu_kernel_tnd = cpu_kernel_dli_lse_tnd_noblock
+                    cpu_kernel_blk = cpu_kernel_dli_lse_blk_noblock
+                else:
+                    cpu_kernel_tnd = cpu_kernel_dli_lse_tnd
+                    cpu_kernel_blk = cpu_kernel_dli_lse_blk
                 if is_tnd:
-                    lse_gpu = cpu_kernel_dli_lse_tnd(
+                    lse_gpu = cpu_kernel_tnd(
                         inputs["q"], inputs["k"], inputs["w"],
                         inputs["cu_seqlens_q"],
                         inputs["cu_seqlens_k"],
@@ -1102,23 +1574,30 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                         seqused_k=inputs["seqused_k"],
                         cmp_residual_k=inputs["cmp_residual_k"],
                         mask_mode=mask_mode,
-                        cmp_ratio=cmp_ratio)
+                        cmp_ratio=cmp_ratio,
+                        device=ref_device)
                 else:
-                    lse_gpu = cpu_kernel_dli_lse_blk(
+                    lse_gpu = cpu_kernel_blk(
                         inputs["q"], inputs["k"], inputs["w"],
                         seqused_q=inputs["seqused_q"],
                         seqused_k=inputs["seqused_k"],
                         cmp_residual_k=inputs["cmp_residual_k"],
                         mask_mode=mask_mode,
-                        cmp_ratio=cmp_ratio)
+                        cmp_ratio=cmp_ratio,
+                        device=ref_device)
 
+                lse_gpu_cpu = lse_gpu.cpu().float() if lse_gpu.is_npu else lse_gpu.float()
                 mare_npu = _compute_mare(lse_cpu, lse_ref_f, valid_mask)
                 mere_npu = _compute_mere(lse_cpu, lse_ref_f, valid_mask)
                 rmse_npu = _compute_rmse(lse_cpu, lse_ref_f, valid_mask)
-                mare_gpu = _compute_mare(lse_gpu, lse_ref_f, valid_mask)
-                mere_gpu = _compute_mere(lse_gpu, lse_ref_f, valid_mask)
-                rmse_gpu = _compute_rmse(lse_gpu, lse_ref_f, valid_mask)
-
+                mare_gpu = _compute_mare(lse_gpu_cpu, lse_ref_f, valid_mask)
+                mere_gpu = _compute_mere(lse_gpu_cpu, lse_ref_f, valid_mask)
+                rmse_gpu = _compute_rmse(lse_gpu_cpu, lse_ref_f, valid_mask)
+                # for i in range(len(lse_gpu_cpu.flatten())):
+                #     print(f"test, lse_gpu[{i}] = {(lse_gpu_cpu.flatten())[i]}")
+                #     print(f"test, lse_cpu[{i}] = {(lse_cpu.flatten())[i]}")
+                #     print(f"test, lse_ref_f[{i}] = {(lse_ref_f.flatten())[i]}")
+                print(f"mare_npu = {mare_npu}, mere_npu = {mere_npu}, rmse_npu = {rmse_npu}, mare_gpu = {mare_gpu}, mere_gpu = {mere_gpu}, rmse_gpu = {rmse_gpu}")
                 l2_passed, mare_ratio, mere_ratio, rmse_ratio = _check_l2_precision(
                     mare_npu, mere_npu, rmse_npu, mare_gpu, mere_gpu, rmse_gpu)
                 case_l2_mare_ratio = mare_ratio
@@ -1147,7 +1626,10 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
 
     print(f"\n[fuzz] Summary: {pass_count} passed, {fail_count} failed")
 
-    _write_results_to_xlsx(xlsx_path, results)
+    if err_check:
+        _write_errcheck_results_to_xlsx(xlsx_path, err_results)
+    else:
+        _write_results_to_xlsx(xlsx_path, results)
 
 
 def _write_results_to_xlsx(xlsx_path, results):
@@ -1217,7 +1699,17 @@ if __name__ == "__main__":
                         help=f"AIC core count for Python metadata (default: {DEFAULT_AIC_CORE_NUM}, try 36 if results wrong)")
     parser.add_argument("--l2-precision", action="store_true",
                         help="Enable L2 precision check (MARE/MERE/RMSE ratio, cpu_kernel as gpu reference)")
+    parser.add_argument("--ref-device", type=str, default="cpu", choices=["cpu", "npu"],
+                        help="Device for golden/cpu_kernel reference computation (default: cpu)")
+    parser.add_argument("--noblock", action="store_true",
+                        help="Use non-blocked variant for both golden and cpu_kernel (one-shot matmul, no TKV tiling)")
+    parser.add_argument("--err-check", action="store_true",
+                        help="NPU-only mode: faithfully construct illegal inputs, call NPU ops, record rejection (no golden)")
     args = parser.parse_args()
+
+    ref_device = "npu:0" if args.ref_device == "npu" else "cpu"
+    if ref_device == "npu:0":
+        torch.npu.set_device(ref_device)
 
     test_fuzz_from_xlsx(
         xlsx_path=args.xlsx,
@@ -1228,4 +1720,7 @@ if __name__ == "__main__":
         no_metadata=args.no_metadata,
         aic_core_num=args.aic_core_num,
         l2_precision=args.l2_precision,
+        ref_device=ref_device,
+        noblock=args.noblock,
+        err_check=args.err_check,
     )
