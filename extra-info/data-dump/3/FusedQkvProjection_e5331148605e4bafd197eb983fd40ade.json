@@ -1,0 +1,169 @@
+{
+ "binFileName": "FusedQkvProjection_e5331148605e4bafd197eb983fd40ade",
+ "binFileSuffix": ".o",
+ "blockDim": -1,
+ "coreType": "MIX",
+ "intercoreSync": 1,
+ "kernelName": "FusedQkvProjection_e5331148605e4bafd197eb983fd40ade",
+ "magic": "RT_DEV_BINARY_MAGIC_ELF",
+ "memoryStamping": [],
+ "opParaSize": 288,
+ "parameters": [
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null
+ ],
+ "sha256": "8d56c1cad225c262d1e4c8cd132ef6525b2a424bb93db81c3f2c980621d4d1d2",
+ "workspace": {
+  "num": 1,
+  "size": [
+   -1
+  ],
+  "type": [
+   0
+  ]
+ },
+ "kernelList": [
+  {
+   "tilingKey": 0,
+   "kernelType": "MIX_AIC",
+   "crossCoreSync": 1,
+   "taskRation": "1:1",
+   "kernelName": "FusedQkvProjection_e5331148605e4bafd197eb983fd40ade_0"
+  },
+  {
+   "tilingKey": 2,
+   "kernelType": "MIX_AIC",
+   "crossCoreSync": 1,
+   "taskRation": "1:1",
+   "kernelName": "FusedQkvProjection_e5331148605e4bafd197eb983fd40ade_2"
+  },
+  {
+   "tilingKey": 1,
+   "kernelType": "MIX_AIC",
+   "crossCoreSync": 1,
+   "taskRation": "1:1",
+   "kernelName": "FusedQkvProjection_e5331148605e4bafd197eb983fd40ade_1"
+  },
+  {
+   "tilingKey": 3,
+   "kernelType": "MIX_AIC",
+   "crossCoreSync": 1,
+   "taskRation": "1:1",
+   "kernelName": "FusedQkvProjection_e5331148605e4bafd197eb983fd40ade_3"
+  }
+ ],
+ "taskRation": "tilingKey",
+ "optionalInputMode": "gen_placeholder",
+ "optionalOutputMode": "gen_placeholder",
+ "supportSuperKernel": 1,
+ "compileInfo": {},
+ "supportInfo": {
+  "implMode": "high_performance",
+  "int64Mode": false,
+  "simplifiedKeyMode": 0,
+  "simplifiedKey": [
+   "FusedQkvProjection/d=0,p=1/0,2/0,2/0,2/0,2/0,2",
+   "FusedQkvProjection/d=0,p=0/0,2/0,2/0,2/0,2/0,2",
+   "FusedQkvProjection/d=1,p=1/0,2/0,2/0,2/0,2/0,2",
+   "FusedQkvProjection/d=1,p=0/0,2/0,2/0,2/0,2/0,2"
+  ],
+  "optionalInputMode": "gen_placeholder",
+  "optionalOutputMode": "gen_placeholder",
+  "staticKey": "18d09ec4d965ea4658a24b51f2486f29b4367dc43638167d33b413583fa0fd94,ebe68fc44b88f153bbd15f53463a912ac54a5a235da576b3fdca82a420b59a60",
+  "inputs": [
+   {
+    "name": "hidden_states",
+    "index": 0,
+    "dtype": "float32",
+    "format": "ND",
+    "paramType": "required",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   },
+   {
+    "name": "weight",
+    "index": 1,
+    "dtype": "float32",
+    "format": "ND",
+    "paramType": "required",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   },
+   {
+    "name": "bias",
+    "index": 2,
+    "dtype": "float32",
+    "format": "ND",
+    "paramType": "optional",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   }
+  ],
+  "outputs": [
+   {
+    "name": "query",
+    "index": 0,
+    "dtype": "float32",
+    "format": "ND",
+    "paramType": "required",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   },
+   {
+    "name": "key",
+    "index": 1,
+    "dtype": "float32",
+    "format": "ND",
+    "paramType": "required",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   },
+   {
+    "name": "value",
+    "index": 2,
+    "dtype": "float32",
+    "format": "ND",
+    "paramType": "required",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   }
+  ],
+  "attrs": [
+   {
+    "name": "q_output_dim",
+    "dtype": "int",
+    "value": 0
+   },
+   {
+    "name": "k_output_dim",
+    "dtype": "int",
+    "value": 0
+   },
+   {
+    "name": "v_output_dim",
+    "dtype": "int",
+    "value": 0
+   }
+  ],
+  "opMode": "dynamic",
+  "deterministic": "ignore"
+ },
+ "filePath": "ascend910b/bin/fused_qkv_projection/FusedQkvProjection_e5331148605e4bafd197eb983fd40ade.json"
+}
