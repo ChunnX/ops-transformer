@@ -114,8 +114,6 @@ static ge::graphStatus CheckInputDim(gert::TilingContext* context)
         return ge::GRAPH_FAILED;
     }
 
-    printf("targetShapeStr: %s\nindexShapeStr %s\n", targetShapeStr.c_str(), indexShapeStr.c_str());
-
     int64_t D = targetScoreOrigin.GetDim(dimNum - 1);
     if (D > 8192) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "target_score",

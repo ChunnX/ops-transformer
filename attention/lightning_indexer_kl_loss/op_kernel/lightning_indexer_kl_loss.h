@@ -138,8 +138,6 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Init(GM_ADDR 
     uint32_t ubOffset = 0;
     ubTargetScoreIn = tmpBuf_.GetWithOffset<float>(tileElemsAligned, ubOffset);
     ubOffset += tileElemsAligned * sizeof(float);
-    ubIndexProbsIn = tmpBuf_.GetWithOffset<float>(tileElemsAligned, ubOffset);
-    ubOffset += tileElemsAligned * sizeof(float);
     ubReduceSum = tmpBuf_.GetWithOffset<float>(tileElemsAligned, ubOffset);
     ubOffset += tileElemsAligned * sizeof(float);
     ubLogP = tmpBuf_.GetWithOffset<float>(tileElemsAligned, ubOffset);
@@ -201,17 +199,10 @@ template <typename T, bool isDeterministic>
 __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::CopyIn(uint32_t rowOffset, uint32_t curTileLen)
 {
     uint64_t offset = (uint64_t)rowOffset * (uint64_t)K_;
-    if(rowOffset > 799900) printf("CopyIn\n");
     copyParams.blockCount = curTileLen;
     if constexpr (std::is_same_v<T, float>) {
-        if(rowOffset > 799900) {
-            printf("%u %ld %lu %lu\n", rowOffset, K_, offset, inputGMIndexProbs.GetSize());
-        }
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
-        // printf("1111 curTileLen %u\n", curTileLen);
-        // printf("%u %u %u\n", copyParams.blockCount, copyParams.blockLen, copyParams.dstStride);
         DataCopyPad(ubIndexProbsIn, inputGMIndexProbs[offset], copyParams, padParams);
-        // printf("111\n");
         SetFlag<HardEvent::MTE2_V>(eventMTE2YToV_);
 
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
@@ -373,7 +364,6 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Process()
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
     SetFlag<HardEvent::MTE3_V>(eventMTE3ToV_);
-    printf("blocksPerCore_ %d\n", blocksPerCore_);
     for (int64_t b = 0; b < blocksPerCore_; b++) {
         curTileLen = (rowOffset + tileLength_ <= totalLength_)
                          ? tileLength_
@@ -384,7 +374,6 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Process()
         CopyOut();
         rowOffset += step;
     }
-    printf("finish\n");
 
     WaitFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
     WaitFlag<HardEvent::V_MTE2>(eventVToMTE2y_);

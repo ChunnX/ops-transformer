@@ -119,13 +119,13 @@ def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
 
     if check_fn is not None:
         return check_fn(npu_out, y, Y)
-        
-    print("shape:")
-    print(y.shape)
-    print(Y.shape)
-    print("dtype:")
-    print(y.dtype)
-    print(Y.dtype)
+
+    # print("shape:")
+    # print(y.shape)
+    # print(Y.shape)
+    # print("dtype:")
+    # print(y.dtype)
+    # print(Y.dtype)
 
     torch.npu.synchronize()  # 做profiling前先同步
     profile_path = "./fag_profiling"
@@ -184,15 +184,15 @@ def _check_zero_index_probs(npu_out, y_cpu, Y_cpu):
 # Test registry
 # ---------------------------------------------------------------------------
 TESTS = [
-    ("big basic_2d: (B, D) float32",         (800000, 2332),           {"deterministic": True}),
-    # ("basic_2d: (B, D) float32",         (8888, 2332),           None),
-    # ("basic_3d: (B, H, D) float32",      (4, 10, 333),       {"eps": 0.5}),
-    # ("fp16: (B, H, D) float16",          (4, 2, 4444),       {"dtype": torch.float16, "diff_thd": 0.001}),
-    # ("bf16: (B, H, D) bfloat16",         (40, 264, 10),       {"eps": 0.5,"dtype": torch.bfloat16, "diff_thd": 0.005}),
-    # ("custom_eps: eps=1e-6",             (4000, 1),         {"eps": 1e-6}),
-    # ("large_d: (B, H, 512) float32",     (2125, 45, 8192),        None),
-    # ("edge: zero target_score",          (2, 4, 128),        {"zero_target": True}),
-    # ("edge: zero index_probs",           (2, 4, 128),          {"zero_index_probs": True}),
+    ("big basic_2d: (B, D) float32",         (800000, 2336),           {"deterministic": True}),
+    ("basic_2d: (B, D) float32",         (8888, 2332),           None),
+    ("basic_3d: (B, H, D) float32",      (4, 10, 333),       {"eps": 0.5}),
+    ("fp16: (B, H, D) float16",          (4, 2, 4444),       {"dtype": torch.float16, "diff_thd": 0.001}),
+    ("bf16: (B, H, D) bfloat16",         (40, 264, 10),       {"eps": 0.5,"dtype": torch.bfloat16, "diff_thd": 0.005}),
+    ("custom_eps: eps=1e-6",             (4000, 1),         {"eps": 1e-6}),
+    ("large_d: (B, H, 512) float32",     (2125, 45, 8192),        None),
+    ("edge: zero target_score",          (2, 4, 128),        {"zero_target": True}),
+    ("edge: zero index_probs",           (2, 4, 128),          {"zero_index_probs": True}),
 ]
 
 
@@ -200,7 +200,7 @@ TESTS = [
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    torch_npu.npu.set_device(6)
+    torch_npu.npu.set_device(7)
     passed = 0
     failed = 0
     failedList = []
