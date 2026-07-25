@@ -70,8 +70,8 @@ const std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> MhcPostBackward
         gradHresShape.SetDim(gradHresShape.GetDimNum() - 1, gradHresShape.GetDim(gradHresShape.GetDimNum() - 2));
         gradHres = executor->AllocTensor(gradHresShape, op::DataType::DT_FLOAT, x->GetViewFormat());
         // A5 no-hres: create empty tensor for operator layer
-        op::Shape emptyShape({0});
-        hResInput = executor->AllocTensor(emptyShape, op::DataType::DT_FLOAT, x->GetViewFormat());
+        op::Shape emptyShape({});
+        hResInput = executor->AllocTensor(emptyShape, op::DataType::DT_FLOAT, op::Format::FORMAT_ND);
     }
     auto gradHout = executor->AllocTensor(hOut->GetViewShape(), hOut->GetDataType(), hOut->GetViewFormat());
     auto gradHpost = executor->AllocTensor(hPost->GetViewShape(), hPost->GetDataType(), hPost->GetViewFormat());

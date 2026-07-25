@@ -283,13 +283,11 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckDataType()
         return ge::GRAPH_FAILED;
     }
 
-    if (isHResActive_) {
-        auto hResType = context_->GetInputDesc(H_RES_INPUT_INDEX)->GetDataType();
-        if (hResType != ge::DT_FLOAT) {
-            std::string hResTypeStr = std::to_string(static_cast<int32_t>(hResType));
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dtype of h_res", hResTypeStr.c_str(), "[0(DT_FLOAT)]");
-            return ge::GRAPH_FAILED;
-        }
+    auto hResType = context_->GetInputDesc(H_RES_INPUT_INDEX)->GetDataType();
+    if (hResType != ge::DT_FLOAT) {
+        std::string hResTypeStr = std::to_string(static_cast<int32_t>(hResType));
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dtype of h_res", hResTypeStr.c_str(), "[0(DT_FLOAT)]");
+        return ge::GRAPH_FAILED;
     }
 
     auto hPostType = context_->GetInputDesc(H_POST_INPUT_INDEX)->GetDataType();
