@@ -27,10 +27,8 @@
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
 // ProcessTopK（非LD路径）每次处理的s2长度
-// s2 length processed per iteration in ProcessTopK (non-LD path)
 constexpr uint32_t TRUNK_LEN_16K = 16384;
 // LD阶段UB目标占用（248KB = 256KB UB - 8KB 系统保留）
-// Target UB usage for the LD stage (248KB = 256KB UB - 8KB system reserved)
 constexpr uint32_t LD_UB_TARGET_BYTES = 248 * 1024;
 template <typename QLIV2T>
 class QLIV2Vector {
@@ -229,32 +227,23 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitLDBuffers(TPipe *pipe,
     //
     // UB总占用 = Σ各buffer，按 A=topkCountAlign256_、L=trunkLenLd_ 归并后：
     //   Total = 20·A + 8·L + fixedBytes
-    //   A系数20 = ldIndex(4)+indicesOut(4)+mrgValue(2)+scoreOut(2)+valueOut(2)+topkTmp(6) (字节/元素)
-    //   L系数8  = ldIndex(4)+mrgValue(2)+topkTmp(2)                                  (字节/元素)
+    //   A系数20 = ldIndex(4)+indicesOut(4)+mrgValue(2)+scoreOut(2)+valueOut(2)+topkTmp(6)
+    //   L系数8  = ldIndex(4)+mrgValue(2)+topkTmp(2) 
     //   fixedBytes = topk内部固定区 + 三输出buffer的+64余量(见下方命名常量)
-    //
-    // Dynamically compute LD trunk length so UB usage approaches 248KB without exceeding it.
-    // Total = 20·A + 8·L + fixedBytes (A=topkCountAlign256_, L=trunkLenLd_)
 
     // topk内部固定区: histograms(256)+idxHigh(256)+idxLow(256)+nkValue(64)，均为uint32
-    // topk internal fixed area: histograms+idxHigh+idxLow (3×256) + nkValue(64), all uint32
     constexpr uint32_t TOPK_FIXED_BYTES = (3 * 256 + 64) * sizeof(uint32_t);
     // 三输出buffer的+64余量(用于duplicate刷-1/刷0): indicesOut(uint32)+scoreOut(SCORE_T)+valueOut(bf16)
-    // +64 padding of 3 output buffers for duplicate/zero-fill
     constexpr uint32_t OUTPUT_PAD_BYTES = 64 * (sizeof(uint32_t) + sizeof(SCORE_T) + sizeof(bfloat16_t));
     const uint32_t fixedBytes = TOPK_FIXED_BYTES + OUTPUT_PAD_BYTES;
 
     uint32_t availForTrunk = (LD_UB_TARGET_BYTES > 20 * topkCountAlign256_ + fixedBytes)
         ? (LD_UB_TARGET_BYTES - 20 * topkCountAlign256_ - fixedBytes) : 0;
     trunkLenLd_ = availForTrunk / 8;
-    // 保底：至少能装下一个topkCountAlign16_块
-    // Floor: at least one topkCountAlign16_ block
-    if (trunkLenLd_ < topkCountAlign16_) {
-        trunkLenLd_ = topkCountAlign16_;
-    }
+    // trunkLenLd_向下对齐到256，确保LD阶段UB不超限且满足topk直方图对齐要求
+    trunkLenLd_ = (trunkLenLd_ / 256) * 256;
 
     // 更新topkOp_的trunkLen，使GetSharedTmpBufferSize返回正确尺寸
-    // Update topkOp_ trunkLen so GetSharedTmpBufferSize returns the correct size
     topkOp_.Init(topkCount_, trunkLenLd_);
 
     pipe->InitBuffer(ldIndexBuf_, (topkCountAlign256_ + trunkLenLd_) * sizeof(uint32_t));
@@ -781,8 +770,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             }
             // LD或returnValue场景需要将score搬入scoreOutLocal_
             if (info.isNeedLD || returnValueFlag) {
-                SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
-                WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
+                SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
+                WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
                 copyInParams.blockLen = QLIV2Common::Align(validS2Len, (int32_t)32) * sizeof(SCORE_T);
                 AscendC::DataCopyPad(scoreOutLocal_,
                     scoreGm[vecOffset * QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)
@@ -814,10 +803,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
 
             AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
                 indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
-            SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
             if (returnValueFlag) {
-                WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
+                PipeBarrier<PIPE_V>();
                 vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
                 // 无效值刷-inf
                 if (validS2Len < topkCount_) {
@@ -835,7 +823,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                             constInfo_.NEG_INF_BFLOAT,
                             topkCount_ - (validS2Len / 16 * 16 + 64));
                 }
-                SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
 
@@ -848,6 +835,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                 AscendC::DataCopyPad(valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
                     valueOutLocal_, copyOutValueParams);
             }
+            SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         } else {
             PipeBarrier<PIPE_V>();
             AscendC::Adds(indicesOutLocal_.ReinterpretCast<int32_t>(), indicesOutLocal_.ReinterpretCast<int32_t>(),
@@ -901,12 +889,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
 {
-    LocalTensor<uint32_t> ldIndexLocal_ = ldIndexBuf_.Get<uint32_t>();
-    LocalTensor<uint32_t> indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
-    LocalTensor<SCORE_T> mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
-    LocalTensor<SCORE_T> scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
-    LocalTensor<bfloat16_t> valueOutLocal_ = valueOutBuf_.Get<bfloat16_t>();
-
     AscendC::DataCopyParams copyOutParams;
     copyOutParams.blockCount = 1;
     copyOutParams.blockLen = topkCount_ * sizeof(uint32_t); // bytes
@@ -1020,7 +1002,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
                 Duplicate(scoreOutLocal_[topkCount_ / 64 * 64 + 64], zero,
                     topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
                 PipeBarrier<PIPE_V>();
-                Duplicate(ldIndexLocal_.ReinterpretCast<int32_t>()[topkCount_ / 64 * 64 + 64], neg,
+                Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[topkCount_ / 64 * 64 + 64], neg,
                     topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
             }
 
