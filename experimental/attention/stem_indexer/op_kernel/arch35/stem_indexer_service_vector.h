@@ -309,23 +309,20 @@ __aicore__ inline uint32_t SIVector<SIT>::CalcDynamicTopkCount(uint32_t s1Idx, i
         return static_cast<uint32_t>(kStart);
     }
 
-    // 计算 kEnd
-    int32_t kEnd = static_cast<int32_t>(kStart * alpha_);
+    // 公式定义 kEnd = alpha * kStart，插值完成后再向下取整。
+    float kStartFloat = static_cast<float>(kStart);
+    float kEnd = kStartFloat * alpha_;
 
     // 计算插值系数 t
     float t = static_cast<float>(s1Pos - kStart) / static_cast<float>(decayLen - 1);
+    float interpolatedTopkCount = kStartFloat + t * (kEnd - kStartFloat);
 
-    // 计算 dynamicTopkCount
-    uint32_t dynamicTopkCount =
-        static_cast<uint32_t>(static_cast<float>(kStart) + t * static_cast<float>(kEnd - kStart));
+    // 正数转有符号整数等价于 floor；外推到负数时先钳制，避免无符号转换。
+    int32_t dynamicTopkCount =
+        interpolatedTopkCount < 1.0f ? 1 : static_cast<int32_t>(interpolatedTopkCount);
+    dynamicTopkCount = Min(dynamicTopkCount, kStart);
 
-    // 限制范围：下限为 1，上限为 kStart
-    dynamicTopkCount =
-        dynamicTopkCount < 1 ?
-            1 :
-            (dynamicTopkCount > static_cast<uint32_t>(kStart) ? static_cast<uint32_t>(kStart) : dynamicTopkCount);
-
-    return dynamicTopkCount;
+    return static_cast<uint32_t>(dynamicTopkCount);
 }
 
 template <typename SIT>
