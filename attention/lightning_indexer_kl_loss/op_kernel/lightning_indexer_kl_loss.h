@@ -198,14 +198,15 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::InitHalfBufs(
 template <typename T, bool isDeterministic>
 __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::CopyIn(uint32_t rowOffset, uint32_t curTileLen)
 {
-    uint64_t offset = rowOffset * K_;
-    // printf("CopyIn\n");
+    uint64_t offset = (uint64_t)rowOffset * K_;
+    printf("CopyIn\n");
     copyParams.blockCount = curTileLen;
     if constexpr (std::is_same_v<T, float>) {
-        // printf("%u %u %u %u\n", rowOffset, K_, rowOffset* K_, inputGMIndexProbs.GetSize());
+        printf("%u %u %u %u\n", rowOffset, K_, offset, inputGMIndexProbs.GetSize());
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
         // printf("1111 curTileLen %u\n", curTileLen);
-        DataCopyPad(ubIndexProbsIn, inputGMIndexProbs[offset], copyParams, padParams);
+        // printf("%u %u %u\n", copyParams.blockCount, copyParams.blockLen, copyParams.dstStride);
+        // DataCopyPad(ubIndexProbsIn, inputGMIndexProbs[offset], copyParams, padParams);
         // printf("111\n");
         SetFlag<HardEvent::MTE2_V>(eventMTE2YToV_);
 
@@ -368,7 +369,9 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Process()
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
     SetFlag<HardEvent::MTE3_V>(eventMTE3ToV_);
-    for (int b = 0; b < blocksPerCore_; b++) {
+    printf("blocksPerCore_ %d\n", blocksPerCore_);
+    for (int64_t b = 0; b < blocksPerCore_; b++) {
+        printf("loop %d\n", b);
         curTileLen = (rowOffset + tileLength_ <= totalLength_)
                          ? tileLength_
                          : (totalLength_ - rowOffset);

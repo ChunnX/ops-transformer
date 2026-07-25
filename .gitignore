@@ -59,3 +59,4 @@ torch_extension/dist/
 torch_extension/extra-info/
 torch_extension/1.log
 torch_extension/test
+torch_extension/fag_profiling

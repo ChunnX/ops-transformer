@@ -9,6 +9,6 @@ cd torch_extension/ || { echo "Error: Failed to change directory to torch_extens
 python -m build --wheel -n || { echo "Error: Failed to build wheel"; exit 1; }
 python -m pip install dist/*.whl --force-reinstall --no-deps || { echo "Error: Failed to install wheel"; exit 1; }
 python test_lightning_indexer_kl_loss.py > 1.log || { echo "Error: Failed to run test script"; exit 1; }
-msprof op --output=test --kernel-name=LightningIndexerKlLoss python test_lightning_indexer_kl_loss.py 
-msprof op simulator --soc-version=Ascend910B1 --core-id="0" --kernel-name="LightningIndexerKlLoss" --output=test --timeout=10 python test_lightning_indexer_kl_loss.py
+# msprof op --output=test --kernel-name=LightningIndexerKlLoss python test_lightning_indexer_kl_loss.py 
+# msprof op simulator --soc-version=Ascend910B1 --core-id="0" --kernel-name="LightningIndexerKlLoss" --output=test --timeout=10 python test_lightning_indexer_kl_loss.py
 echo "All steps completed successfully."

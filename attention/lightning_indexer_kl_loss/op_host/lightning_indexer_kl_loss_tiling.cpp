@@ -101,7 +101,7 @@ static ge::graphStatus CheckInputDim(gert::TilingContext* context)
     std::string targetShapeStr = std::to_string(targetScoreOrigin.GetDim(0));
     std::string indexShapeStr = std::to_string(indexProbsOrigin.GetDim(0));
 
-    for (uint64_t i = 0; i < dimNum; i++) {
+    for (uint64_t i = 1; i < dimNum; i++) {
         targetShapeStr += ", " + std::to_string(targetScoreOrigin.GetDim(i));
         indexShapeStr += ", " + std::to_string(indexProbsOrigin.GetDim(i));
     }
@@ -113,6 +113,8 @@ static ge::graphStatus CheckInputDim(gert::TilingContext* context)
             reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
+
+    printf("targetShapeStr: %s\nindexShapeStr %s\n", targetShapeStr.c_str(), indexShapeStr.c_str());
 
     int64_t D = targetScoreOrigin.GetDim(dimNum - 1);
     if (D > 8192) {
@@ -157,12 +159,12 @@ static ge::graphStatus LightningIndexerKlLossTilingFunc(gert::TilingContext* con
 
     // 计算 tile 块总数
     int64_t totalTileNum = (M + tileLength - 1) / tileLength;
-
+    coreNum = 1;
     // round-robin 分核
     int64_t formerNum = totalTileNum % coreNum;
     int64_t formerTileNum = (totalTileNum + coreNum - 1) / coreNum;
     int64_t tailTileNum = totalTileNum / coreNum;
-
+    printf("tailTileNum %d, formerTileNum %d\n",tailTileNum, formerTileNum);
     LightningIndexerKlLossTilingData* tiling = context->GetTilingData<LightningIndexerKlLossTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, tiling);
     OP_CHECK_IF(

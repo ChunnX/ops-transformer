@@ -5,13 +5,15 @@ Compares the NPU operator output with a pure-PyTorch CPU reference
 across multiple shapes, dtypes, and edge cases.
 """
 
+import os
 import sys
 from pathlib import Path
-
+import pandas as pd
 import torch
 import torch_npu
 from xrun_test import data_compare
-
+import time
+from torch.profiler import profile, record_function, ProfilerActivity
 
 # Ensure the torch_extension package is importable
 TORCH_EXTENSION_PATH = Path(__file__).resolve().parent
@@ -39,7 +41,7 @@ def lightning_indexer_kl_loss_ref(target_score, index_probs, eps=1e-9):
     log_p = torch.log(torch.clamp_min(norm_target, eps))
     log_Y = torch.log(Y + eps)
     tmp = log_p - log_Y
-    torch.set_printoptions(threshold=torch.inf)
+    # torch.set_printoptions(threshold=torch.inf)
     # print(f'=====target_score:\n{target_score.to(torch.int)}')
     # print(f'=====reduce_target:\n{reduce_target}')
     result = tmp * y
@@ -68,6 +70,17 @@ def _gen_data(shape, dtype=torch.float32):
         Y = torch.softmax(torch.randn(b, h, d, dtype=dtype), dim=-1)
     return y, Y
 
+def get_file(path, file_name):
+    try:
+        files = os.listdir(path)
+        for file in files:
+            file_path = os.path.join(path, file)
+            if not os.path.isdir(file_path) and "op_statistic" in file:
+                file_name.append(file_path)
+            else:
+                get_file(file_path, file_name)
+    except:
+        pass
 
 def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
              max_diff_hd=0.1, check_fn=None, zero_target=False, zero_index_probs=False, deterministic=False):
@@ -96,13 +109,51 @@ def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
         Y = torch.zeros_like(Y)
     if (Y < 0).any():
         raise ValueError("index_probs 不是有效的概率分布")
-    ref = lightning_indexer_kl_loss_ref(y.float(), Y.float(), eps=eps)
+    with profile(activities=[ProfilerActivity.CPU], record_shapes=True) as prof:
+        with record_function("model_inference"):
+            ref = lightning_indexer_kl_loss_ref(y.float(), Y.float(), eps=eps)
+    print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
     if deterministic:
         torch.use_deterministic_algorithms(True)
-    npu_out = lightning_indexer_kl_loss(y.npu(), Y.npu(), eps=eps)
+    # npu_out = lightning_indexer_kl_loss(y.npu(), Y.npu(), eps=eps)
 
     if check_fn is not None:
         return check_fn(npu_out, y, Y)
+        
+    print("shape:")
+    print(y.shape)
+    print(Y.shape)
+    print("dtype:")
+    print(y.dtype)
+    print(Y.dtype)
+
+    torch.npu.synchronize()  # 做profiling前先同步
+    profile_path = "./fag_profiling"
+    os.system(f"rm -rf {profile_path}")
+    experimental_config = torch_npu.profiler._ExperimentalConfig(
+            aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
+            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
+            l2_cache=False,
+            data_simplification=False
+            )
+    with torch_npu.profiler.profile(
+        activities=[torch_npu.profiler.ProfilerActivity.CPU,torch_npu.profiler.ProfilerActivity.NPU],
+        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profile_path),
+        record_shapes=False,
+        profile_memory=True,
+        with_stack=False,
+        with_flops=False,
+        with_modules=False,
+        experimental_config=experimental_config
+    ) as prof:
+        for step in range(1):
+            npu_out = lightning_indexer_kl_loss(y.npu(), Y.npu(), eps=eps)
+            prof.step()
+    file_name = []
+    get_file(profile_path, file_name)
+    result = pd.read_csv(file_name[0])
+    print(result)
+    print("Total Time(us):",result["Total Time(us)"].sum())
     
     # part = lightning_indexer_kl_loss_ref(y.float()[:133,:], Y.float()[:133,:], eps=eps)
     # print(f"====={part}")
@@ -133,11 +184,11 @@ def _check_zero_index_probs(npu_out, y_cpu, Y_cpu):
 # Test registry
 # ---------------------------------------------------------------------------
 TESTS = [
-    # ("big basic_2d: (B, D) float32",         (88888, 2332),           {"deterministic": True}),
+    ("big basic_2d: (B, D) float32",         (800000, 2332),           {"deterministic": True}),
     # ("basic_2d: (B, D) float32",         (8888, 2332),           None),
     # ("basic_3d: (B, H, D) float32",      (4, 10, 333),       {"eps": 0.5}),
     # ("fp16: (B, H, D) float16",          (4, 2, 4444),       {"dtype": torch.float16, "diff_thd": 0.001}),
-    ("bf16: (B, H, D) bfloat16",         (40, 264, 10),       {"eps": 0.5,"dtype": torch.bfloat16, "diff_thd": 0.005}),
+    # ("bf16: (B, H, D) bfloat16",         (40, 264, 10),       {"eps": 0.5,"dtype": torch.bfloat16, "diff_thd": 0.005}),
     # ("custom_eps: eps=1e-6",             (4000, 1),         {"eps": 1e-6}),
     # ("large_d: (B, H, 512) float32",     (2125, 45, 8192),        None),
     # ("edge: zero target_score",          (2, 4, 128),        {"zero_target": True}),
@@ -168,3 +219,5 @@ if __name__ == "__main__":
         if failed:
             sys.exit(1)
         break
+
+
