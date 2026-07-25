@@ -37,6 +37,13 @@
 using namespace AscendC;
 
 namespace MegaMoeImpl {
+__aicore__ inline uint64_t GetRelayFlagBufferBytes(uint32_t tokenNum)
+{
+    uint64_t validBytes = static_cast<uint64_t>(tokenNum) * sizeof(uint64_t);
+    return (validBytes + static_cast<uint64_t>(ALIGN_32) - 1U) /
+           static_cast<uint64_t>(ALIGN_32) * static_cast<uint64_t>(ALIGN_32);
+}
+
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t, int64_t, int64_t>;
@@ -358,7 +365,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
                                              static_cast<uint64_t>(ALIGN_512));
     sendWorkspaceServerBytes_ =
         static_cast<uint64_t>(ALIGN_32) + static_cast<uint64_t>(m_) * sendWorkspaceMetaBytes_;
-    uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
+    uint64_t flagSnapshotBytes = GetRelayFlagBufferBytes(m_);
     dispatchL2ScratchBytes_ =
         Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<uint64_t>(ALIGN_512));
 }
@@ -394,7 +401,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
             static_cast<int64_t>(ALIGN_32));
         uint32_t copyTmpBytes = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * tokenScaleSize;
-        uint32_t relayFlagBytes = m_ * sizeof(uint64_t);
+        uint32_t relayFlagBytes = static_cast<uint32_t>(GetRelayFlagBufferBytes(m_));
         uint32_t relayReceivedBytes = Ops::Base::CeilAlign(
             static_cast<uint32_t>(DISPATCH_WAVE_TILE_M * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
         uint32_t relayAndCopyTmpBytes = (relayFlagBytes > copyTmpBytes ? relayFlagBytes : copyTmpBytes) +
@@ -462,7 +469,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             TPosition::VECCALC, copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
             COPY_TMP_BUFFER_SIZE / sizeof(ActivationType));
     }
-    uint32_t relayFlagTensorSize = m_ * sizeof(uint64_t);
+    uint32_t relayFlagTensorSize = static_cast<uint32_t>(GetRelayFlagBufferBytes(m_));
     relayFlagTensor_ = LocalTensor<uint64_t>(TPosition::VECCALC, copyTmpBaseAddr,
                                              relayFlagTensorSize / sizeof(uint64_t));
     uint32_t relayReceivedTensorAddr =
@@ -1193,7 +1200,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRe
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
 
     uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
-    uint32_t flagElementNum = static_cast<uint32_t>(flagSnapshotBytes / sizeof(uint64_t));
     GM_ADDR scratchAddr = params_.workspaceInfo.dispatchL2CommPtr +
                           static_cast<uint64_t>(blockIdx_) * dispatchL2ScratchBytes_;
     GlobalTensor<uint64_t> scratchFlagGlobalTensor;
@@ -1201,13 +1207,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRe
     GM_ADDR remoteFlagAddr = GetRankWinAddrWithOffset(relayRank, dispatchFlagWinOffset_) +
                              RelayFlagOffset(srcServer, 0);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
+    DataCopyExtParams flagCopyParams{1U, static_cast<uint32_t>(flagSnapshotBytes), 0U, 0U, 0U};
+    DataCopyPadParams flagCopyPadParams{true, 0U, 0U, 0U};
 
     int32_t receivedCount = 0;
     while (receivedCount < copyNum) {
         hcomm_.ReadNbi<true>(channel, scratchAddr, remoteFlagAddr, flagSnapshotBytes);
         hcomm_.Drain(channel);
         SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
-        DataCopy(relayFlagTensor_, scratchFlagGlobalTensor, flagElementNum);
+        // flag 在 win/L2 中按 bs * sizeof(uint64_t) 紧凑存放；搬入 UB 时由 DataCopyPad 处理非 32B 尾块。
+        DataCopyPad(relayFlagTensor_, scratchFlagGlobalTensor, flagCopyParams, flagCopyPadParams);
         SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID1>();
 
         for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
