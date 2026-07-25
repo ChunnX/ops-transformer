@@ -161,9 +161,9 @@ public:
                                   ((HcclRankRelationResV2 *)(winContext_->remoteRes[i].nextDevicePtr))->windowsIn);
             }
         } else {
-            __gm__ HcclA2CombineOpParam *winContext_{nullptr};
+            __gm__ HcclCombineOpParam *winContext_{nullptr};
             auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-            winContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
+            winContext_ = (__gm__ HcclCombineOpParam *)contextGM0;
             rank = winContext_->rankId;
             rank_size = winContext_->rankNum;
             for (int i = 0; i < rank_size; i++) {
