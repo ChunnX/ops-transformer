@@ -69,16 +69,20 @@ BI_ORIENT=notrans bash run_bi_test.sh  # 只非转置
   换空闲卡（`ASCEND_RT_VISIBLE_DEVICES`）。
 - **torchrun**（非手动 multiprocessing），否则 MC2 op 的 HCCL 资源分配失败。
 
-## 6. 数据生成（`BI_DATA_MODE`）
+## 6. 数据生成
 
-- `random`（默认）：随机 uint8 → fp8_e4m3 / e8m0，自包含无外部依赖。**非转置路径已充分验证**。
-- `mx`（待接线）：改用仓库 `script/generate_mx_data.mx_quantize`（合法 MX 值，依赖 en_dtypes/ml_dtypes）。
-  **transB 路径需要**——随机字节在 transB 下可能触发 aicpu 异常，须用合法 MX 数据。集成进 ST 树时接上。
+- **非转置**：`BI_DATA_MODE=random`（默认）随机 uint8 → fp8_e4m3 / e8m0，自包含无外部依赖，已充分验证。
+- **transB**：driver 内部**已接** `script/generate_mx_data.mx_quantize`（合法 MX 值，方形 K==N），
+  x2/scale 以**非连续转置 view** 传入（`x2.t()`、`torch.transpose(x2s,0,1)`，不加 `.contiguous()`——
+  加了报 `561002`）。随机字节在 transB 下会触发 aicpu 异常，故 transB **必须**用合法 MX 数据。
+  依赖 en_dtypes/ml_dtypes（ST 树内自带），在 ops-transformer ST 树里跑即可。
 
 ## 7. 已验证状态
 
-见 [STATUS.md](STATUS.md)。摘要：非转置在 WS=2/4/8 × 11 shape × M∈{8,16,32} = **99/99 BI_PASS**
-（`DATA_MODE=random`）；transB 待 `BI_DATA_MODE=mx` 接线后补测。
+见 [STATUS.md](STATUS.md)。摘要：
+- **非转置**：WS=2/4/8 × 11 shape × M∈{8,16,32} = **99/99 BI_PASS**。
+- **transB**：WS=2/4 **BI_PASS + 数值正确**（组合-BI + batch-size-BI，probe SHA 跨 M/seed/WS 一致，
+  正确性 vs fp8-dequant fp32 参考 median_rel 0.001）。在含合入版 #4705（master `03b5c20`）的 vendor 上验证。
 
 ## 8. 与 ATK 框架集成（待讨论）
 
