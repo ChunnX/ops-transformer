@@ -427,7 +427,7 @@ private:
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = AlignUp32(runInfo.actMSize);
         fixpipeParams.mSize = (s2RealSize + 7U) >> 3 << 3;
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15U) >> 4) * 16U;
+        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15U) >> 4) << 4U;
         fixpipeParams.dstStride = 64U;
         fixpipeParams.dualDstCtl = 2;
         fixpipeParams.params.ndNum = 1;
@@ -443,7 +443,7 @@ private:
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (constInfo.dSizeV + 7U) >> 3 << 3;
         fixpipeParams.mSize = M_BASE;
-        fixpipeParams.srcStride = ((M_BASE + 15U) >> 4) * 16U;
+        fixpipeParams.srcStride = ((M_BASE + 15U) >> 4) << 4U;
         fixpipeParams.dstStride = (DV_BASE + 15U) >> 4 << 4;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
@@ -464,7 +464,7 @@ private:
         initConstValueParams.blockNum = curPadK - realK;
         initConstValueParams.dstGap = realK;
         initConstValueParams.initValue = 0;
-        InitConstValue(valueL1.template ReinterpretCast<half>()[realK * 16U], initConstValueParams);
+        InitConstValue(valueL1.template ReinterpretCast<half>()[realK << 4U], initConstValueParams);
     }
 
     TPipe *tPipe_ = nullptr;

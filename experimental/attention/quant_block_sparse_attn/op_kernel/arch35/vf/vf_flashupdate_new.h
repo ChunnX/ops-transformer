@@ -474,7 +474,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     constexpr uint32_t tmpMin = 0xFF7FFFFF;
     float minValue = *((float *)&tmpMin);
     uint16_t updateLoops = dealCount / dealRows;
-    uint16_t tailLSize = dealCount % dealRows * 8;
+    uint16_t tailLSize = (dealCount % dealRows) << 3;
     uint32_t pltTail = static_cast<uint32_t>(tailLSize);
 
     MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
