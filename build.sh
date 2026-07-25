@@ -41,6 +41,7 @@ ENABLE_AICPU=TRUE
 ENABLE_BUILT_CUSTOM=FALSE
 ENABLE_STATIC=FALSE
 ENABLE_EXPERIMENTAL=FALSE
+ENABLE_TORCH_EXTENSION_ONLY=FALSE
 KERNEL_TEMPLATE_INPUT=""
 ASCEND_SOC_UNITS="ascend910b"
 SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "kirinx90" "kirin9030" "mc62")
@@ -337,6 +338,7 @@ function help_info() {
     echo "    --opkernel build binary kernel"
     echo "    --jit build run package without kernel bin"
     echo "    --pkg build run package with kernel bin"
+    echo "    --torch_extension_only       Build torch_extension whl package only"
     echo "    --experimental build experimental version"
     echo "    --aicpu_kernel Enable ENABLE_AICPU_KERNEL, compile kernel_aicpu"
     echo "    --opapi_test build and run opapi unit tests"
@@ -1408,6 +1410,10 @@ while [[ $# -gt 0 ]]; do
         ENABLE_UT_EXEC=FALSE
         shift
         ;;
+    --torch_extension_only)
+        ENABLE_TORCH_EXTENSION_ONLY=TRUE
+        shift
+        ;;
     -j*)
         OPTARG=$1
         if [[ "$OPTARG" =~ ^-j[0-9]+$ ]]; then
@@ -1967,6 +1973,14 @@ if [[ "$ENABLE_GENOP" == "TRUE" ]]; then
 fi
 if [[ "$ENABLE_GENOP_AICPU" == "TRUE" ]]; then
     gen_aicpu_op
+fi
+
+if [[ "$ENABLE_TORCH_EXTENSION_ONLY" == "TRUE" ]]; then
+    build_torch_extension_whl || exit 1
+    mkdir -p "${BUILD_OUT_DIR}"
+    cp "${CURRENT_DIR}/torch_extension/dist/"*.whl "${BUILD_OUT_DIR}/"
+    log "[INFO] torch_extension whl package copied to ${BUILD_OUT_DIR}"
+    exit 0
 fi
 
 if [[ "$ENABLE_TEST" == "TRUE" ]]; then
