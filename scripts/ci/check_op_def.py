@@ -25,7 +25,6 @@
     I4 (ERROR):   ParamType 取值必须为 REQUIRED/OPTIONAL/DYNAMIC
     I5 (ERROR):   DataType/Format/UnknownShapeFormat 三件套计数必须一致
     I6 (WARNING): DataTypeList 搭配 Format（缺少 FormatList）为可疑用法
-    I7 (WARNING): 三件套计数应等于 AddConfig 调用数或为 1（广播）
   取值校验规则:
     V1 (ERROR):   ge::DT_* 必须为合法数据类型
     V2 (ERROR):   ge::FORMAT_* 必须为合法格式
@@ -295,7 +294,7 @@ def check_structure(content, file_path):
     return violations
 
 
-def check_io_block(block, file_path, add_config_count, is_aicpu=False):
+def check_io_block(block, file_path, is_aicpu=False):
     """检查单个 Input/Output 块的 I/O 规则。"""
     violations = []
     api_calls = extract_api_calls(block['chain'])
@@ -360,22 +359,37 @@ def check_io_block(block, file_path, add_config_count, is_aicpu=False):
     fmtl_count = len(fmtl_items)
     unk_count = len(unk_items)
 
-    type_count = dt_count if has_datatype else dtl_count
-    fmt_total = fmt_count if has_format else fmtl_count
+    # 统一的 Format/FormatList 计数（两者互斥使用）
+    has_any_format = has_format or has_formatlist
+    fmt_api_name = 'Format' if has_format else 'FormatList'
+    fmt_effective_count = fmt_count if has_format else fmtl_count
 
     # 判断是否为变量形式（无法解析具体值，跳过计数校验）
     dt_is_var = has_datatype and dt_count == 0
     fmt_is_var = (has_format and fmt_count == 0) or (has_formatlist and fmtl_count == 0)
     unk_is_var = has_unknown and unk_count == 0
 
-    # I5: 三件套计数一致（DataType/Format/UnknownShapeFormat 之间）
+    # I5: 三件套计数一致（DataType/Format/FormatList/UnknownShapeFormat 之间）
+    # 计数规则:
+    #   Format({A,B}):    逐类型声明格式，计数必须等于 DataType 计数
+    #   FormatList({ND}): 计数为 1 时是广播语义（单值适用于所有 DataType）；
+    #                     计数 > 1 时是逐类型声明，必须等于 DataType 计数
+    #   UnknownShapeFormat: 计数必须等于 Format/FormatList 计数
     # 仅当两者都能解析出具体值时才校验
+    fmtl_is_broadcast = has_formatlist and fmtl_count == 1
     if has_datatype and has_format and not dt_is_var and not fmt_is_var and dt_count != fmt_count:
         violations.append(Violation(
             file=file_path, line=line,
             io_type=block['io_type'], io_name=block['io_name'],
             severity='ERROR', rule='I5',
             message=f"{io_desc}: DataType count ({dt_count}) != Format count ({fmt_count})"
+        ))
+    if has_datatype and has_formatlist and not dt_is_var and not fmt_is_var and not fmtl_is_broadcast and dt_count != fmtl_count:
+        violations.append(Violation(
+            file=file_path, line=line,
+            io_type=block['io_type'], io_name=block['io_name'],
+            severity='ERROR', rule='I5',
+            message=f"{io_desc}: DataType count ({dt_count}) != FormatList count ({fmtl_count})"
         ))
     if has_datatype and has_unknown and not dt_is_var and not unk_is_var and dt_count != unk_count:
         violations.append(Violation(
@@ -384,12 +398,12 @@ def check_io_block(block, file_path, add_config_count, is_aicpu=False):
             severity='ERROR', rule='I5',
             message=f"{io_desc}: DataType count ({dt_count}) != UnknownShapeFormat count ({unk_count})"
         ))
-    if has_format and has_unknown and not fmt_is_var and not unk_is_var and fmt_count != unk_count:
+    if has_any_format and has_unknown and not fmt_is_var and not unk_is_var and fmt_effective_count != unk_count:
         violations.append(Violation(
             file=file_path, line=line,
             io_type=block['io_type'], io_name=block['io_name'],
             severity='ERROR', rule='I5',
-            message=f"{io_desc}: Format count ({fmt_count}) != UnknownShapeFormat count ({unk_count})"
+            message=f"{io_desc}: {fmt_api_name} count ({fmt_effective_count}) != UnknownShapeFormat count ({unk_count})"
         ))
 
     # I6: DataTypeList + Format（缺少 FormatList）为可疑用法
@@ -400,16 +414,6 @@ def check_io_block(block, file_path, add_config_count, is_aicpu=False):
             severity='WARNING', rule='I6',
             message=f"{io_desc}: DataTypeList with Format (no FormatList) - verify this is truly a tensor list, not a misuse of DataType"
         ))
-
-    # I7: 三件套计数应等于 AddConfig 数或为 1（WARNING）
-    if add_config_count > 0 and has_datatype and has_format and not dt_is_var and not fmt_is_var:
-        if type_count != 1 and type_count != add_config_count:
-            violations.append(Violation(
-                file=file_path, line=line,
-                io_type=block['io_type'], io_name=block['io_name'],
-                severity='WARNING', rule='I7',
-                message=f"{io_desc}: DataType count ({type_count}) != AddConfig count ({add_config_count}), expected 1 or {add_config_count}"
-            ))
 
     # V1: 数据类型取值校验
     dtype_values = []
@@ -553,10 +557,9 @@ def check_file(file_path):
     violations.extend(check_aicore(content, file_path))
 
     # Input/Output 规则
-    add_config_count = count_add_config(content)
     blocks = parse_io_blocks(content)
     for block in blocks:
-        violations.extend(check_io_block(block, file_path, add_config_count, is_aicpu))
+        violations.extend(check_io_block(block, file_path, is_aicpu))
 
     # Attr 规则
     violations.extend(check_attrs(content, file_path))
