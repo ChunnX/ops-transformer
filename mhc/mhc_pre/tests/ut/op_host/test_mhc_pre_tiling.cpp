@@ -1871,7 +1871,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidHMixShape)
 
 static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t d,
                                     int64_t expectedTilingKey, int32_t deterministicLevel = 0,
-                                    bool hasResi = true)
+                                    bool hasResi = true, int64_t implMode = 0)
 {
     uint32_t phiDim0 = hasResi ? n * n + 2U * n : 2U * n;
     uint32_t alphaDim0 = hasResi ? 3U : 2U;
@@ -1898,7 +1898,8 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
         {
             {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
-            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)}
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
+            {"impl_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(implMode)}
         },
         &compileInfo);
     tilingContextPara.deterministicInfo_ = deterministicLevel;
@@ -1940,6 +1941,9 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_stage2UsedAivNum(value); }));
     uint32_t stage2RowsPerCore =
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_stage2RowsPerCore(value); }));
+    uint32_t actualImplMode =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_implMode(value); }));
+    EXPECT_EQ(actualImplMode, static_cast<uint32_t>(implMode));
     EXPECT_EQ(kL1Size % 128U, 0U);
     EXPECT_EQ(fusionAlign % 8U, 0U);
     EXPECT_LE(static_cast<uint64_t>(kL1Size) * fusionAlign, 128U * 256U);
@@ -1951,6 +1955,11 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_SmallM)
 {
     CheckMkGeneralizedTiling(64U, 4U, 2560U, 3);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_MK_ImplMode_HF32)
+{
+    CheckMkGeneralizedTiling(64U, 4U, 2560U, 3, 0, true, 1);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_Boundary)
