@@ -378,15 +378,10 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 if (cuS2LenAlign8 < s2BaseSize_) {
                     Duplicate(reduceOutInner[cuS2LenAlign8], -1.0e30f, s2BaseSize_ - cuS2LenAlign8);
                 }
-                PipeBarrier<PIPE_V>();
+                // TEST2: skip PipeBarrier after tail padding
+                // PipeBarrier<PIPE_V>();
             }
-            // Replace +1e30 (MM1 cube L0C uninitialized garbage) with -1e30
-            // TEST1: skip Mins to measure its cost
-            // PipeBarrier<PIPE_V>();
-            // {
-            //     Mins(reduceOutInner, reduceOutInner, 1.0e29f, s2BaseSize_);
-            //     PipeBarrier<PIPE_V>();
-            // }
+            // TEST1: skip Mins
             {
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
                 uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
