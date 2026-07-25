@@ -41,19 +41,19 @@ def get_seq_used_by_batch(batch_idx, S, seqused, cu_seqlens):
     return S
 
 
-def build_block_table(block_table, B, S_max, block_size, cmp_ratio,
+def build_block_table(state_cache, block_table, B, S_max, block_size, cmp_ratio,
                       start_pos, seqused, cu_seqlens, cache_mode, S):
     if block_table is None or not torch.is_tensor(block_table):
         return
 
     block_table.zero_()
-    max_block_num_per_batch = (S_max + block_size - 1) // block_size
-    block_num = B * max_block_num_per_batch
     if block_table.shape[0] < B:
         return
 
     next_block_id = 1
     if cache_mode == 1:
+        max_block_num_per_batch = block_table.shape[1]
+        block_num = state_cache.shape[0]
         for i in range(B):
             cur_start = start_pos[i] // cmp_ratio * cmp_ratio - cmp_ratio
             cur_end = start_pos[i] // cmp_ratio * cmp_ratio + cmp_ratio
@@ -147,11 +147,11 @@ def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
 
     return cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size
 
-def apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, **kwargs):
+def apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, cmp_ratio, coff, **kwargs):
     """根据 batch_axis/batch_slice_info/batch_seed 生成切片数据并替换输入。
 
-    - batch_axis: 标记每个输入的 batch 轴位置
-    - batch_slice_info: 切片信息，指定要替换的 batch 范围
+    - batch_axis: 标记每个输入的 batch/seq 轴位置
+    - batch_slice_info: 切片信息，指定要替换的 batch/seq 范围
     - batch_seed: 随机种子，确保跨用例相同 seed 生成相同数据
     - input_ranges: ttk 框架自动传递，按 tensor 索引给出 (lo, hi) 取值范围
     
@@ -168,6 +168,7 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, **kwargs):
         return
     batch_axis = kwargs.get('batch_axis')
     # 输入 tensor 列表（与 tensor_view_shapes 顺序一致）
+    is_th = x.dim() == 2
     input_tensors = [x, wkv, wgate, state_cache, ape]
     
     for idx, tensor in enumerate(input_tensors):
@@ -179,7 +180,7 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, **kwargs):
         axes = batch_axis[idx]
 
         slices = batch_slice_info[idx]
-
+        seed = batch_seed[idx]
         if axes is None or slices is None:
             continue
         
@@ -205,23 +206,64 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, **kwargs):
         
         # 生成切片区域的数据
         # 获取切片后的 shape
-        # sliced_shape = list(tensor.shape)
-        # print(axes)
-        # print(slices)
-        # print(sliced_shape)
+
         for axis_pos in axes:
+            if slices[axis_pos] is None or seed[axis_pos] is None:
+                continue
             sliced_shape = list(tensor.shape)
-            for sl in slices[axis_pos]:
-                rng = np.random.RandomState(batch_seed)
+            for sl, seed_value in zip(slices[axis_pos],seed[axis_pos]):
+                print("=============sl============seed")
+                print(sl)
+                print(seed_value)
+                rng = np.random.RandomState(seed_value)
                 if sl is None:
                     continue
                 start = sl[0]
-                stop = sl[1]
+                end = sl[1]
                 step = sl[2]
-                sliced_shape[axis_pos] = step
-                # 用 batch_seed + 该 tensor 的 input_ranges 取值范围生成随机数据
-                data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
-                tensor[start:stop,:]= torch.from_numpy(data).to(tensor.dtype)
+                if end - start < cmp_ratio:
+                        print("slice_size < cmpratio")
+                        continue                
+                if coff == 1:
+                    if is_th:
+                        sliced_shape[axis_pos] = step
+                        data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
+                        tensor[start:end,:]= torch.from_numpy(data).to(tensor.dtype)
+                    else:
+                        if axis_pos == 1:
+                            sliced_shape[0] = 1
+                            sliced_shape[axis_pos] = step
+                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
+                            for i in range(start,end,step):
+                                left = i
+                                right = i+step if (i + step)<=end else end
+                                tensor[0, left:right,:]= torch.from_numpy(data[:,:(right-left),:]).to(tensor.dtype)
+                        else:
+                            sliced_shape[axis_pos] = step
+                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
+                            tensor[start:end,:,:]= torch.from_numpy(data).to(tensor.dtype)
+                elif coff == 2:
+                    if is_th:
+                        if start < cmp_ratio:
+                            print("slice neead support pertoken size > cmpratio")
+                            continue
+                        sliced_shape[axis_pos] = step + cmp_ratio
+                        data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
+                        tensor[(start - cmp_ratio):end,:]= torch.from_numpy(data).to(tensor.dtype)
+                    else:
+                        if axis_pos == 1:
+                            if start < cmp_ratio:
+                                print("slice neead support pertoken size > cmpratio")
+                                continue
+                            sliced_shape[0] = 1
+                            sliced_shape[axis_pos] = step + cmp_ratio
+                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
+                            tensor[0,start:end,:]= torch.from_numpy(data).to(tensor.dtype)
+                        else:
+                            sliced_shape[axis_pos] = step
+                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
+                            tensor[start:end,:,:]= torch.from_numpy(data).to(tensor.dtype)
+                               
 
 def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
                                 state_block_table=None, cu_seqlens=None, seqused=None,
@@ -237,8 +279,8 @@ def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
     cache_mode_val = int(cache_mode) if cache_mode is not None else 1
 
     if state_block_table is not None and torch.is_tensor(state_block_table):
-        build_block_table(state_block_table, B, S_max, block_size,
+        build_block_table(state_cache, state_block_table, B, S_max, block_size,
                           cmp_ratio_val, start_pos_list,
                           seqused_list, cu_seqlens_list, cache_mode_val, S)
     # batch一致性切片赋值
-    apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, **kwargs)
+    apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, cmp_ratio, coff, **kwargs)

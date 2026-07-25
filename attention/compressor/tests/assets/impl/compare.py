@@ -169,7 +169,7 @@ def _tensor_compare(npu_out, golden_out, name):
 
     dtype_str = str(golden.dtype).split('.')[-1]
     rtol, atol, pct_thd = _get_thresholds(dtype_str)
-    if name == _OUTPUT_NAMES[3] or name == _OUTPUT_NAMES[4]:
+    if name == _OUTPUT_NAMES[3] or name == _OUTPUT_NAMES[4] or name == "batch_consisteny":
         rtol = 0
         atol = 0
         pct_thd = 0
@@ -255,22 +255,21 @@ def _batch_consistency_check(npu_outputs, kwargs):
     batch_consistency_id = kwargs.get('batch_consistency_id')
     batch_axis = kwargs.get('batch_axis')
     batch_slice_info = kwargs.get('batch_slice_info')
-    testcase_name = kwargs.get('testcase_name', '')
-    cmp_ratio = kwargs.get('cmp_ratio')
 
-    print("=========compare  batch consistency============")
+    start_pos_list = kwargs.get('start_pos_list')
+    cmp_ratio = kwargs.get('cmp_ratio')
+    coff = kwargs.get('coff')
 
     if batch_consistency_id is None or not npu_outputs:
         return
 
     npu_cmp_kv = npu_outputs[0]
+    is_th = npu_outputs.dim() == 2
     if npu_cmp_kv is None:
         return
 
+    print("=========compare batch consistency============")
     npu_np = as_numpy(npu_cmp_kv)
-    print(npu_np.shape)
-    print(cmp_ratio)
-
     cache_key = batch_consistency_id
     result = []
 
@@ -278,33 +277,54 @@ def _batch_consistency_check(npu_outputs, kwargs):
             if axis_pos is None or slices is None or cache_key_idx is None:
                 continue
             for axis_idx , slices_idx, key_idx in zip(axis_pos, slices, cache_key_idx):
+                if axis_idx is None or slices_idx is None or key_idx is None:
+                    continue
                 for sl, kl in zip(slices_idx, key_idx):
                     if sl is None or kl is None:
                         continue
                     start = sl[0]
                     stop = sl[1]
-                    start_idx = start // cmp_ratio
-                    compare_len = (stop - start) // cmp_ratio
-                    slice_output = npu_np[start_idx:(start_idx+compare_len),:]
+                    if coff == 1:
+                        if is_th:
+                            start_idx = start // cmp_ratio
+                            compare_len = (stop - start) // cmp_ratio
+                            slice_output = npu_np[start_idx:(start_idx+compare_len),:]
+                        else:
+                            if axis_idx == 1:
+                                headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
+                                compare_len = (stop - start - headSize) // cmp_ratio
+                                slice_output = npu_np[start_idx:(start_idx+compare_len),:]
+                            else:
+                                start_idx = start // cmp_ratio
+                                compare_len = (stop - start) // cmp_ratio
+                                slice_output = npu_np[start_idx:(start_idx+compare_len),:]                                
+                    elif coff == 2:
+                        if is_th:
+                            start_idx = start // cmp_ratio
+                            compare_len = (stop - start) // cmp_ratio
+                            slice_output = npu_np[start_idx:(start_idx+compare_len),:]
+                        else:
+                            start_idx = start // cmp_ratio
+                            compare_len = (stop - start) // cmp_ratio
+                            slice_output = npu_np[start_idx:(start_idx+compare_len),:]                       
 
                     if kl not in _BATCH_CONSISTENCY_CACHE:
                         _BATCH_CONSISTENCY_CACHE[kl] = {
                             'base': slice_output.copy(),
-                            'base_case': testcase_name,
                             'comparisons': []
                         }
-                        print(f"[batch_consistency] {testcase_name}: base for id={kl}")
+                        print(f"[batch_consistency]: base for id={kl}")
                     else:
                         cached = _BATCH_CONSISTENCY_CACHE[kl]
                         compare_result = _tensor_compare(cached['base'], slice_output, "batch_consisteny")
+                        result.append(compare_result)
                         status = "Pass" if compare_result["pass"] else "Failed"
                         cached['comparisons'].append({
-                            'case_name': testcase_name,
                             'status': status,
                             'batch_consistency_id': kl,
                         })
-                        print(f"[batch_consistency] {testcase_name} vs {cached['base_case']}: {status} "
-                            f"(id={kl})")
+                        print(f"[batch_consistency]  {status}" f"(id={kl})")
+
     return result
 
 def compare(*outputs, **kwargs):
@@ -366,5 +386,7 @@ def compare(*outputs, **kwargs):
             results.append(_tensor_compare(npu_out, golden_out, name))
 
     result_consistency =_batch_consistency_check(npu_outputs, kwargs)
+    if result_consistency is not None:
+        results.append(result_consistency)
 
     return results

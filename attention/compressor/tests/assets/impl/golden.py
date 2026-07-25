@@ -167,6 +167,9 @@ def cpu_compressor(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
     _GOLDEN_CONTEXT['update_score'] = update_score
     _GOLDEN_CONTEXT['data_type'] = str(x_dtype)
     _GOLDEN_CONTEXT['cmp_ratio'] = cmp_ratio
+    _GOLDEN_CONTEXT['start_pos_list'] = start_pos_list
+    _GOLDEN_CONTEXT['seqused_list'] = seqused_list
+    _GOLDEN_CONTEXT['coff'] = coff
 
     return [
         cmp_kv,

@@ -44,7 +44,10 @@ class CompressorSpec:
         kwargs['cmp_kv_mask'] = ctx.get('cmp_kv_mask')
         kwargs['update_kv'] = ctx.get('update_kv')
         kwargs['update_score'] = ctx.get('update_score')
+        kwargs['start_pos_list'] = ctx.get('start_pos_list')
+        kwargs['seqused_list'] = ctx.get('seqused_list')
         kwargs['cmp_ratio'] = ctx.get('cmp_ratio')
+        kwargs['coff'] = ctx.get('coff')
         return compare_module.compare(*outputs, **kwargs)
 
 __spec__ = {
