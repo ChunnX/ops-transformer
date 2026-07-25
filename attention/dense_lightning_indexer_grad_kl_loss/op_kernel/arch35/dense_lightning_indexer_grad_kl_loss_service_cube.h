@@ -570,31 +570,16 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm1(const DLIGradKLLossRu
         WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q);
         CopyInMm1AToL1(info, qHeadIdx);
 
-        if (info.curS2LoopTimes > 0) {
-            uint32_t curS2BlkSize = (info.curS2LoopTimes == 1) ?
-                                    info.curS2StepSize : constInfo.s2BaseBlk;
-            WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[l1PingPongFlag & 1]);
-            CopyInMm1BToL1(info, kvHeadIdx, 0, curS2BlkSize, l1PingPongFlag);
-            SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY[l1PingPongFlag & 1]);
-        }
-
         for (uint32_t s2InnerIdx = 0; s2InnerIdx < info.curS2LoopTimes; s2InnerIdx++) {
             mmParams.dstFixOffset = dstHeadOffset + s2InnerIdx * constInfo.s2BaseBlk;
             uint32_t curS2BlkSize = (s2InnerIdx == info.curS2LoopTimes - 1) ?
                                     (info.curS2StepSize - s2InnerIdx * constInfo.s2BaseBlk) : constInfo.s2BaseBlk;
             mmParams.singleN = curS2BlkSize;
 
-            uint8_t nextL1PingPongFlag = (l1PingPongFlag + 1) & 1;
-            if (s2InnerIdx + 1 < info.curS2LoopTimes) {
-                uint32_t nextS2InnerIdx = s2InnerIdx + 1;
-                uint32_t nextS2BlkSize = (nextS2InnerIdx == info.curS2LoopTimes - 1) ?
-                                         (info.curS2StepSize - nextS2InnerIdx * constInfo.s2BaseBlk) :
-                                         constInfo.s2BaseBlk;
-                WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[nextL1PingPongFlag]);
-                CopyInMm1BToL1(info, kvHeadIdx, nextS2InnerIdx, nextS2BlkSize, nextL1PingPongFlag);
-                SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY[nextL1PingPongFlag]);
-            }
+            WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[l1PingPongFlag & 1]);
+            CopyInMm1BToL1(info, kvHeadIdx, s2InnerIdx, curS2BlkSize, l1PingPongFlag);
 
+            SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY[l1PingPongFlag & 1]);
             WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY[l1PingPongFlag & 1]);
 
             for (uint32_t kIdx = 0; kIdx < constInfo.dLoopTimesCube; kIdx++) {
