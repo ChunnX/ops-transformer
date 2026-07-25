@@ -378,10 +378,15 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 if (cuS2LenAlign8 < s2BaseSize_) {
                     Duplicate(reduceOutInner[cuS2LenAlign8], -1.0e30f, s2BaseSize_ - cuS2LenAlign8);
                 }
-                // TEST2: skip PipeBarrier after tail padding
-                // PipeBarrier<PIPE_V>();
+                PipeBarrier<PIPE_V>();
             }
-            // TEST1: skip Mins
+            // NOTE: Mins removed — +1e30 garbage will be handled by RadixTopK's
+            // bf16 Cast (float→bf16 truncates to max bf16 ≈ 3.39e38, which is
+            // still a very large positive number, correctly excluded by radix largest=true)
+            // Actually +1e30 in float → bf16 → float gives ~1e30 which radix treats
+            // as top score. Need Mins. But let's test with Cast-based approach instead.
+            // For now: use Mins but without PipeBarrier after it
+            Mins(reduceOutInner, reduceOutInner, 1.0e29f, s2BaseSize_);
             {
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
                 uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
