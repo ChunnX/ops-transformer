@@ -19,6 +19,38 @@
 namespace op_api {
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
+const int64_t QUANT_MODE_MXFP4 = 3;
+const int64_t FLOAT4_E2M1 = 296;
+const int64_t FLOAT8_E8M0 = 293;
+
+
+inline int64_t GetQkvDtypeRatio(int64_t quant_mode)
+{
+    // mxfp4 时 q/k/v 在 Python 端被 pack 成 uint8（每 byte 2 个 fp4 元素），
+    // 因此 v.size(-1) 是 packed 维度（d/2），output 需要展开为逻辑 d（即 2 倍）。
+    if (quant_mode == QUANT_MODE_MXFP4) {
+        return 2;
+    }
+    return 1;
+}
+
+TensorWrapper make_wrapper(const at::Tensor &tensor, const int64_t real_dtype)
+{
+    TensorWrapper wrapper = {tensor, ACL_DT_UNDEFINED};
+    int64_t temp = static_cast<int64_t>(tensor.scalar_type());
+    if (kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())] == ACL_UINT8) {
+        if (real_dtype == 296) {
+            wrapper.dtype = ACL_FLOAT4_E2M1;
+        } else if (real_dtype == 293) {
+            wrapper.dtype = ACL_FLOAT8_E8M0;
+        } else if (real_dtype == 290) {
+            wrapper.dtype = ACL_HIFLOAT8;
+        }
+    } else {
+        wrapper.dtype = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())];
+    }
+    return wrapper;
+}
 
 at::Tensor
 quant_flash_attn_metadata(
@@ -93,13 +125,13 @@ quant_flash_attn(
         softmaxOutSize = {0};
     }
     at::Tensor softmaxLse = at::empty(softmaxOutSize, torch::dtype(at::kFloat).device(outputDevice));
-
+    int64_t qDtypeRatio = GetQkvDtypeRatio(quant_mode);
     if (layout_out == "TND") {
-        attentionOutSize = {tSize, nSize, dSize};
+        attentionOutSize = {tSize, nSize, qDtypeRatio * dSize};
     } else if (layout_out == "BNSD") {
-        attentionOutSize = {bSize, nSize, sSize, dSize};
+        attentionOutSize = {bSize, nSize, sSize, qDtypeRatio * dSize};
     } else {
-        attentionOutSize = {bSize, sSize, nSize, dSize};
+        attentionOutSize = {bSize, sSize, nSize, qDtypeRatio * dSize};
     }
     at::Tensor attentionOutput = at::empty(attentionOutSize, torch::dtype(at::kBFloat16).device(outputDevice));
 
@@ -107,13 +139,26 @@ quant_flash_attn(
     char *layout_q_descale_ptr = const_cast<char *>(layout_q_descale.c_str());
     char *layout_kv_ptr = const_cast<char *>(layout_kv.c_str());
     char *layout_out_ptr = const_cast<char *>(layout_out.c_str());
-
-    ACLNN_CMD(aclnnQuantFlashAttn, q, k, v, q_descale, k_descale, v_descale, block_table, p_scale,
+    if (quant_mode == 3) {
+        TensorWrapper q_wrapper = make_wrapper(q, FLOAT4_E2M1);
+        TensorWrapper k_wrapper = make_wrapper(k, FLOAT4_E2M1);
+        TensorWrapper v_wrapper = make_wrapper(v, FLOAT4_E2M1);
+        TensorWrapper q_descale_wrapper = make_wrapper(q_descale, FLOAT8_E8M0);
+        TensorWrapper k_descale_wrapper = make_wrapper(k_descale, FLOAT8_E8M0);
+        TensorWrapper v_descale_wrapper = make_wrapper(v_descale, FLOAT8_E8M0);
+        ACLNN_CMD(aclnnQuantFlashAttn, q_wrapper, k_wrapper, v_wrapper, q_descale_wrapper, k_descale_wrapper, v_descale_wrapper, block_table, p_scale,
               cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, quant_mode,
               softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
               layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput,
               softmaxLse);
-
+    } else {
+        ACLNN_CMD(aclnnQuantFlashAttn, q, k, v, q_descale, k_descale, v_descale, block_table, p_scale,
+              cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, quant_mode,
+              softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
+              layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput,
+              softmaxLse);
+    }
+    
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);
 }
 

@@ -350,7 +350,6 @@ def _blockwise_snap_local_quantize_p_eff(
     )
     # snap: floor(m / ln 2) × ln 2, 落到全局 log2 网格上
     K_block = torch.floor(m_block_raw_safe / LN2)
-    K_block = torch.clamp(K_block, min=-127.0, max=127.0)
 
     ### local_group_max
     local_group_max = K_block.T
