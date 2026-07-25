@@ -1608,14 +1608,14 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
     if (fBaseParams.isBn2 && !fBaseParams.isBn2MultiBlk) {
         fBaseParams.isDeterministic = false;
         if ((fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.d > ALIGN128) ||
-                fBaseParams.dropMaskOuter) {
+                fBaseParams.dropoutIsDivisibleBy8 == 0) {
             fBaseParams.isBn2 = false;
             fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
         }
     }
     if (fBaseParams.isBn2MultiBlk) {
         fBaseParams.isDeterministic = false;
-        if (fBaseParams.dropMaskOuter) {
+        if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
             fBaseParams.isBn2 = false;
             fBaseParams.isBn2MultiBlk = false;
             fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
