@@ -15,15 +15,16 @@
 #ifndef MATMUL_REDUCE_SCATTER_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 #define MATMUL_REDUCE_SCATTER_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/dispatch_policy.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
+#include "matmul_reduce_scatter_catlass.h"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/epilogue/dispatch_policy.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/gemm/gemm_type.hpp"
+#include "catlass/matrix_coord.hpp"
+#include "catlass/layout/layout.hpp"
+#include "catlass/detail/callback.hpp"
+#include "catlass/epilogue/tile/copy_gm_to_ub.hpp"
 
 namespace Catlass::Epilogue::Block {
 
@@ -266,11 +267,11 @@ public:
             if (ptrBias != nullptr) {
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                               AscendC::IsSameType<ElementBias, half>::value) {
-                    tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32);
+                    tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32, actualTileShape);
                 } else {
                     auto &ubBias = ubBiasList[ubListId];
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
-                    tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBias);
+                    tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBias, actualTileShape);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
                 AscendC::PipeBarrier<PIPE_V>();
@@ -393,11 +394,11 @@ public:
             if (ptrBias != nullptr) {
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                               AscendC::IsSameType<ElementBias, half>::value) {
-                    tileRowBroadcastAdd(ubBiasAdd, ubMul, ubBiasFp32);
+                    tileRowBroadcastAdd(ubBiasAdd, ubMul, ubBiasFp32, actualTileShapeDequant);
                 } else {
                     auto &ubBias = ubBiasList[ubListId];
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
-                    tileRowBroadcastAdd(ubBiasAdd, ubMul, ubBias);
+                    tileRowBroadcastAdd(ubBiasAdd, ubMul, ubBias, actualTileShapeDequant);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
                 AscendC::PipeBarrier<PIPE_V>();
@@ -529,11 +530,11 @@ public:
             if (ptrBias != nullptr) {
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                               AscendC::IsSameType<ElementBias, half>::value) {
-                    tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32);
+                    tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32, actualTileShapePerToken);
                 } else {
                     auto &ubBias = ubBiasList[ubListId];
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
-                    tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBias);
+                    tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBias, actualTileShapePerToken);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
                 AscendC::PipeBarrier<PIPE_V>();

@@ -1033,6 +1033,12 @@ if (NOT ENABLE_AICPU_KERNEL)
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
 
+    if(DEFINED MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR)
+        install(DIRECTORY "${MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR}/"
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+        )
+    endif()
+
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
 foreach(_3rd_op_dir ${_3rd_op_dirs})
     if(IS_DIRECTORY "${_3rd_op_dir}")
@@ -1138,6 +1144,12 @@ endforeach(    )
                 list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
             endif()
         endforeach ()
+        if(ENABLE_OPS_KERNEL AND DEFINED ${_op_name}_external_common_depends)
+            foreach(COMMON_SRC_DIR ${${_op_name}_external_common_depends})
+                get_filename_component(COMMON_SRC_DIR "${COMMON_SRC_DIR}" REALPATH)
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endforeach()
+        endif()
     endforeach ()
 endif()
 

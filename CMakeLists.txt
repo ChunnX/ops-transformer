@@ -619,6 +619,12 @@ if (BUILD_OPS_RTY_KERNEL)
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
 
+    if(DEFINED MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR)
+        install(DIRECTORY "${MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR}/"
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+        )
+    endif()
+
     foreach (op_dir ${OP_DIR_LIST})
         get_filename_component(_op_name "${op_dir}" NAME)
 

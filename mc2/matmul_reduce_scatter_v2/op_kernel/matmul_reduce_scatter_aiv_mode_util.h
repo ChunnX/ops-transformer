@@ -15,6 +15,7 @@
 #ifndef MATMUL_REDUCE_SCATTER_AIV_MODE_UTIL
 #define MATMUL_REDUCE_SCATTER_AIV_MODE_UTIL
 #include "matmul_reduce_scatter_v2_aiv_mode_tiling.h"
+#include "matmul_reduce_scatter_catlass.h"
 
 using namespace AscendC;
 using namespace matmulReduceScatterV2_aivmode_tiling;
@@ -33,7 +34,8 @@ namespace matmulReduceScatterV2_util {
     uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale,              \
         __gm__ int32_t *workspace, GM_ADDR peerMem, GM_ADDR output, GM_ADDR biasptr, uint32_t tileM0, uint32_t tileN0, \
         uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount, uint32_t coreIdx, uint32_t coreNum,              \
-        uint32_t rankIdx, uint32_t rankSize, uint32_t calIdx, Arch::Resource<Arch::AtlasA2> resource,                  \
+        uint32_t rankIdx, uint32_t rankSize, uint32_t calIdx,                                                        \
+        Arch::Resource<MatmulReduceScatterArchTag> resource,                                                        \
         bool needPerChannel = false, bool needPerToken = false
 
 constexpr int32_t MAX_BLOCK_COUNT = 2;

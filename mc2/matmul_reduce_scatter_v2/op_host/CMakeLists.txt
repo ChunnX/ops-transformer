@@ -8,6 +8,16 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set(MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR
+    "${OPS_TRANSFORMER_DIR}/3rdparty/catlass/include"
+    CACHE INTERNAL "Catlass headers used by matmul_reduce_scatter_v2")
+if(NOT EXISTS "${MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR}/catlass/catlass.hpp")
+    message(FATAL_ERROR
+        "Catlass submodule is not initialized. Run: git submodule update --init 3rdparty/catlass")
+endif()
+set(matmul_reduce_scatter_v2_external_common_depends
+    "${MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR}" PARENT_SCOPE)
+
 if (BUILD_OPEN_PROJECT)  # custom
     # Ascend950 reuses the arch22 AIV implementation. Keep arch22 in this
     # operator's source search path even though ascend950 maps to arch35
@@ -25,7 +35,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         OPTYPE matmul_reduce_scatter_v2 matmul_reduce_scatter_v2 ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(matmul_reduce_scatter_v2_depends mc2/common mc2/3rd PARENT_SCOPE)
+    set(matmul_reduce_scatter_v2_depends mc2/common PARENT_SCOPE)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令
@@ -37,16 +47,22 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS --cce-auto-sync=off
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
+                    -DCATLASS_ARCH=3510
+                    "-I${MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR}"
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
             OP_NAME MatmulReduceScatterV2
             OPTIONS --cce-auto-sync=off
+                    -DCATLASS_ARCH=2201
+                    "-I${MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR}"
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910b")
         add_ops_compile_options(
             OP_NAME MatmulReduceScatterV2
             OPTIONS --cce-auto-sync=off
+                    -DCATLASS_ARCH=2201
+                    "-I${MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR}"
         )
     endif()
 else() # 回黄host

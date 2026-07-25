@@ -16,10 +16,12 @@
 #ifndef COPY_GM_TO_L1_H
 #define COPY_GM_TO_L1_H
 
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_gm_to_l1.hpp"
+#include "matmul_reduce_scatter_catlass.h"
+#include "catlass/gemm/tile/copy_gm_to_l1.hpp"
 
 namespace Catlass::Gemm::Tile {
-/// Partial specialization for nZ in and nZ out.
+// Keep the legacy two-argument VectorLayout copy used by the fixpipe path.
+// Current Catlass exposes this operation through the explicit GM-to-A1 form.
 template <class ArchTag, class Element>
 struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>> {
     using LayoutDst = layout::VectorLayout;
