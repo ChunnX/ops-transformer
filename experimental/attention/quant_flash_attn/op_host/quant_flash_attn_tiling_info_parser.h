@@ -16,7 +16,7 @@
 #pragma once
 
 #include "quant_flash_attn_tiling_info.h"
-#include "../../../../attention/common/op_host/fia_tiling_shape.h"
+#include "../common/op_host/fia_tiling_shape.h"
 
 namespace optiling {
 class QuantFlashAttnTilingInfoParser {
