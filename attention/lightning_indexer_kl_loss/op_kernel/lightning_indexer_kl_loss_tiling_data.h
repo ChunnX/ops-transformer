@@ -11,7 +11,7 @@
 #ifndef __LIGHTNING_INDEXER_KL_LOSS_TILLING_DATA_H__
 #define __LIGHTNING_INDEXER_KL_LOSS_TILLING_DATA_H__
 
-struct LightningIndexerKlLossTilingData {
+struct LightningIndexerKLLossTilingData {
     int64_t totalLength;        // 总行数 M = B*S (BSK) 或 T (TK)
     int64_t K;                  // hidden size（最后一维长度）
     int64_t formerNum;          // 多处理一块的 Core 数量（formerCore）

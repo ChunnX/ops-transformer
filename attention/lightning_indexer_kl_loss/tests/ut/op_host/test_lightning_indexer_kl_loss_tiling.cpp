@@ -22,19 +22,19 @@
 namespace {
 using OpAttr = gert::TilingContextPara::OpAttr;
 
-constexpr const char *kOpName = "LightningIndexerKlLoss";
+constexpr const char *kOpName = "LightningIndexerKLLoss";
 constexpr uint32_t kCoreNum = 48U;
 constexpr uint64_t kUbSize = 196608ULL;
 constexpr size_t kTilingDataSize = 8192;
 
-static const uint64_t kTilingKeyFp16 = GET_TPL_TILING_KEY(LightningIndexerKlLoss, 0, 0);
-static const uint64_t kTilingKeyFp32 = GET_TPL_TILING_KEY(LightningIndexerKlLoss, 0, 1);
-static const uint64_t kTilingKeyBf16 = GET_TPL_TILING_KEY(LightningIndexerKlLoss, 0, 2);
-static const uint64_t kTilingKeyDetFp16 = GET_TPL_TILING_KEY(LightningIndexerKlLoss, 1, 0);
-static const uint64_t kTilingKeyDetFp32 = GET_TPL_TILING_KEY(LightningIndexerKlLoss, 1, 1);
-static const uint64_t kTilingKeyDetBf16 = GET_TPL_TILING_KEY(LightningIndexerKlLoss, 1, 2);
+static const uint64_t kTilingKeyFp16 = GET_TPL_TILING_KEY(LightningIndexerKLLoss, 0, 0);
+static const uint64_t kTilingKeyFp32 = GET_TPL_TILING_KEY(LightningIndexerKLLoss, 0, 1);
+static const uint64_t kTilingKeyBf16 = GET_TPL_TILING_KEY(LightningIndexerKLLoss, 0, 2);
+static const uint64_t kTilingKeyDetFp16 = GET_TPL_TILING_KEY(LightningIndexerKLLoss, 1, 0);
+static const uint64_t kTilingKeyDetFp32 = GET_TPL_TILING_KEY(LightningIndexerKLLoss, 1, 1);
+static const uint64_t kTilingKeyDetBf16 = GET_TPL_TILING_KEY(LightningIndexerKLLoss, 1, 2);
 
-optiling::LightningIndexerKlLossCompileInfo MakeCompileInfo()
+optiling::LightningIndexerKLLossCompileInfo MakeCompileInfo()
 {
     return {};
 }
@@ -47,7 +47,7 @@ std::vector<OpAttr> MakeAttrs(float eps = 1e-9f, bool deterministic = false)
     };
 }
 
-gert::TilingContextPara MakePara(optiling::LightningIndexerKlLossCompileInfo &compileInfo,
+gert::TilingContextPara MakePara(optiling::LightningIndexerKLLossCompileInfo &compileInfo,
                                  ge::DataType dataType = ge::DT_FLOAT,
                                  std::initializer_list<int64_t> shape = {8, 22},
                                  float eps = 1e-9f,
@@ -73,19 +73,19 @@ gert::TilingContextPara MakePara(optiling::LightningIndexerKlLossCompileInfo &co
 }
 } // namespace
 
-class LightningIndexerKlLossTiling : public testing::Test {
+class LightningIndexerKLLossTiling : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "LightningIndexerKlLossTiling SetUp" << std::endl;
+        std::cout << "LightningIndexerKLLossTiling SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "LightningIndexerKlLossTiling TearDown" << std::endl;
+        std::cout << "LightningIndexerKLLossTiling TearDown" << std::endl;
     }
 
-    void VerifyTilingData(const LightningIndexerKlLossTilingData &tiling,
+    void VerifyTilingData(const LightningIndexerKLLossTilingData &tiling,
                           int64_t expectedTotalLength,
                           int64_t expectedK,
                           int64_t expectedKAligned)
@@ -98,56 +98,56 @@ protected:
     }
 };
 
-TEST_F(LightningIndexerKlLossTiling, tiling_2d_fp32_success)
+TEST_F(LightningIndexerKLLossTiling, tiling_2d_fp32_success)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_FLOAT, {8, 22});
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, kTilingKeyFp32);
 }
 
-TEST_F(LightningIndexerKlLossTiling, tiling_2d_fp16_success)
+TEST_F(LightningIndexerKLLossTiling, tiling_2d_fp16_success)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_FLOAT16, {8, 22});
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, kTilingKeyFp16);
 }
 
-TEST_F(LightningIndexerKlLossTiling, tiling_2d_bf16_success)
+TEST_F(LightningIndexerKLLossTiling, tiling_2d_bf16_success)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_BF16, {8, 22});
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, kTilingKeyBf16);
 }
 
-TEST_F(LightningIndexerKlLossTiling, tiling_3d_fp32_success)
+TEST_F(LightningIndexerKLLossTiling, tiling_3d_fp32_success)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_FLOAT, {4, 10, 333});
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, kTilingKeyFp32);
 }
 
-TEST_F(LightningIndexerKlLossTiling, tiling_3d_deterministic_fp32_success)
+TEST_F(LightningIndexerKLLossTiling, tiling_3d_deterministic_fp32_success)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_FLOAT, {4, 10, 333}, 1e-9f, true);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, kTilingKeyDetFp32);
 }
 
-TEST_F(LightningIndexerKlLossTiling, tiling_3d_deterministic_bf16_success)
+TEST_F(LightningIndexerKLLossTiling, tiling_3d_deterministic_bf16_success)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_BF16, {4, 10, 333}, 1e-9f, true);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, kTilingKeyDetBf16);
 }
 
-TEST_F(LightningIndexerKlLossTiling, tiling_3d_deterministic_fp16_success)
+TEST_F(LightningIndexerKLLossTiling, tiling_3d_deterministic_fp16_success)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_FLOAT16, {4, 10, 333}, 1e-9f, true);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, kTilingKeyDetFp16);
 }
 
-TEST_F(LightningIndexerKlLossTiling, tiling_custom_eps_success)
+TEST_F(LightningIndexerKLLossTiling, tiling_custom_eps_success)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_FLOAT, {8000, 65}, 1e-6f);
@@ -156,7 +156,7 @@ TEST_F(LightningIndexerKlLossTiling, tiling_custom_eps_success)
 
 // --------------- CheckInputDim 失败测试 ---------------
 
-TEST_F(LightningIndexerKlLossTiling, tiling_shape_mismatch_failed)
+TEST_F(LightningIndexerKLLossTiling, tiling_shape_mismatch_failed)
 {
     std::vector<int64_t> shapeA = {4, 10, 333};
     std::vector<int64_t> shapeB = {4, 10, 111};
@@ -183,21 +183,21 @@ TEST_F(LightningIndexerKlLossTiling, tiling_shape_mismatch_failed)
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(LightningIndexerKlLossTiling, tiling_1d_shape_failed)
+TEST_F(LightningIndexerKLLossTiling, tiling_1d_shape_failed)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_FLOAT, {256});
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(LightningIndexerKlLossTiling, tiling_4d_shape_failed)
+TEST_F(LightningIndexerKLLossTiling, tiling_4d_shape_failed)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_FLOAT, {2, 4, 10, 128});
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(LightningIndexerKlLossTiling, tiling_last_dim_ge_8192_failed)
+TEST_F(LightningIndexerKLLossTiling, tiling_last_dim_ge_8192_failed)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara(compileInfo, ge::DT_FLOAT, {4, 10, 8192});

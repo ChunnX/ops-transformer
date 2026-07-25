@@ -16,7 +16,7 @@
 #include "lightning_indexer_kl_loss_tiling_data.h"
 #include "lightning_indexer_kl_loss_tiling_key.h"
 
-namespace NsLightningIndexerKlLoss {
+namespace NsLightningIndexerKLLoss {
 
 using namespace AscendC;
 
@@ -29,11 +29,11 @@ constexpr uint32_t VECTOR_SIZE = 8;
 
 
 template <typename T, bool isDeterministic>
-class LightningIndexerKlLoss {
+class LightningIndexerKLLoss {
 public:
-    __aicore__ inline LightningIndexerKlLoss(){};
+    __aicore__ inline LightningIndexerKLLoss(){};
     __aicore__ inline void Init(GM_ADDR targetScore, GM_ADDR indexProbs, GM_ADDR loss,
-                                GM_ADDR workspace, const LightningIndexerKlLossTilingData* tilingData,
+                                GM_ADDR workspace, const LightningIndexerKLLossTilingData* tilingData,
                                 TPipe *pipe);
     __aicore__ inline void InitWorkspaceDet(GM_ADDR workspace);
     __aicore__ inline void InitHalfBufs();
@@ -98,8 +98,8 @@ private:
 };
 
 template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Init(GM_ADDR targetScore, GM_ADDR indexProbs,
-    GM_ADDR loss, GM_ADDR workspace, const LightningIndexerKlLossTilingData* tilingData, TPipe *pipe)
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Init(GM_ADDR targetScore, GM_ADDR indexProbs,
+    GM_ADDR loss, GM_ADDR workspace, const LightningIndexerKLLossTilingData* tilingData, TPipe *pipe)
 {
     totalLength_ = tilingData->totalLength;
     K_ = tilingData->K;
@@ -174,7 +174,7 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Init(GM_ADDR 
 
 /* ---------- InitWorkspaceDet: 初始化 deterministic workspace ---------- */
 template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::InitWorkspaceDet(GM_ADDR workspace)
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::InitWorkspaceDet(GM_ADDR workspace)
 {
     perCoreSumWS.SetGlobalBuffer((__gm__ float*)(workspace) + blockIdx_ * FLOAT_BLOCK_SIZE, FLOAT_BLOCK_SIZE);
     Fill(perCoreSumWS, FLOAT_BLOCK_SIZE, (float)0);
@@ -183,7 +183,7 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::InitWorkspace
 
 /* ---------- InitHalfBufs: half/bf16 版本 ubHalf 指向 float buffer 后半段 ---------- */
 template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::InitHalfBufs()
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::InitHalfBufs()
 {
     uint32_t tileElemsAligned = tileLength_ * KAligned_ * 2;
     uint32_t floatDword = tileLength_ * KAligned_ * sizeof(float);
@@ -198,7 +198,7 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::InitHalfBufs(
 }
 
 template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::CopyIn(uint32_t rowOffset, uint32_t curTileLen)
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::CopyIn(uint32_t rowOffset, uint32_t curTileLen)
 {
     uint64_t offset = (uint64_t)rowOffset * (uint64_t)K_;
     if(rowOffset > 799900) printf("CopyIn\n");
@@ -231,7 +231,7 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::CopyIn(uint32
 
 /* ---------- Compute: Vector 全部计算，含 setflag/waitflag ---------- */
 template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Compute(uint32_t tileElems, uint32_t curTileLen)
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Compute(uint32_t tileElems, uint32_t curTileLen)
 {
     uint32_t repeat, remain;
     constexpr uint32_t MAX_REPEAT_TIME = 255;
@@ -346,7 +346,7 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Compute(uint3
 }
 
 template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::CopyOut()
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::CopyOut()
 {
     // 等待 Vector 完成 ReduceSum，ubOut 已就绪
     WaitFlag<HardEvent::V_MTE3>(eventVToMTE3_);
@@ -364,7 +364,7 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::CopyOut()
 
 /* ---------- Process: 主循环，isHalf 区分 half/fp32 分支 ---------- */
 template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Process()
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Process()
 {
     uint32_t tileId, rowOffset, curTileLen, tileElems;
     rowOffset = blockIdx_ * tileLength_;
@@ -402,7 +402,7 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Process()
 
 /* ---------- WriteBackDet: 确定性结果写回 ---------- */
 template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::WriteBackDet()
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::WriteBackDet()
 {
     SyncAll();
     if (blockIdx_ == 0) {
@@ -431,5 +431,5 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::WriteBackDet(
     
 }
 
-} // namespace NsLightningIndexerKlLoss
+} // namespace NsLightningIndexerKLLoss
 #endif // LIGHTNING_INDEXER_KL_LOSS_H

@@ -23,7 +23,7 @@
 namespace {
 using OpAttr = gert::InfershapeContextPara::OpAttr;
 
-constexpr const char *kOpName = "LightningIndexerKlLoss";
+constexpr const char *kOpName = "LightningIndexerKLLoss";
 
 std::vector<OpAttr> MakeAttrs(float eps = 1e-9f, bool deterministic = false)
 {
@@ -93,20 +93,20 @@ gert::InfershapeContextPara MakeShapeMismatchPara(ge::DataType dataType = ge::DT
 }
 } // namespace
 
-class LightningIndexerKlLossProto : public testing::Test {
+class LightningIndexerKLLossProto : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "LightningIndexerKlLossProto SetUp" << std::endl;
+        std::cout << "LightningIndexerKLLossProto SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "LightningIndexerKlLossProto TearDown" << std::endl;
+        std::cout << "LightningIndexerKLLossProto TearDown" << std::endl;
     }
 };
 
-TEST_F(LightningIndexerKlLossProto, infershape_2d_fp32_success)
+TEST_F(LightningIndexerKLLossProto, infershape_2d_fp32_success)
 {
     auto para = Make2dPara();
     std::vector<std::vector<int64_t>> expectOutputShape = {
@@ -115,7 +115,7 @@ TEST_F(LightningIndexerKlLossProto, infershape_2d_fp32_success)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-TEST_F(LightningIndexerKlLossProto, infershape_3d_fp16_success)
+TEST_F(LightningIndexerKLLossProto, infershape_3d_fp16_success)
 {
     auto para = Make3dPara(ge::DT_FLOAT16);
     std::vector<std::vector<int64_t>> expectOutputShape = {
@@ -124,7 +124,7 @@ TEST_F(LightningIndexerKlLossProto, infershape_3d_fp16_success)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-TEST_F(LightningIndexerKlLossProto, infershape_3d_bf16_success)
+TEST_F(LightningIndexerKLLossProto, infershape_3d_bf16_success)
 {
     auto para = Make3dPara(ge::DT_BF16);
     std::vector<std::vector<int64_t>> expectOutputShape = {
@@ -133,7 +133,7 @@ TEST_F(LightningIndexerKlLossProto, infershape_3d_bf16_success)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-TEST_F(LightningIndexerKlLossProto, inferdtype_success)
+TEST_F(LightningIndexerKLLossProto, inferdtype_success)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
@@ -155,7 +155,7 @@ TEST_F(LightningIndexerKlLossProto, inferdtype_success)
     EXPECT_EQ(context->GetOutputDataType(0), dataType);
 }
 
-TEST_F(LightningIndexerKlLossProto, inferdtype_bf16_success)
+TEST_F(LightningIndexerKLLossProto, inferdtype_bf16_success)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);

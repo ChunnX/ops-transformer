@@ -16,7 +16,7 @@
 #include "lightning_indexer_kl_loss.h"
 #include "lightning_indexer_kl_loss_tiling_key.h"
 
-using namespace NsLightningIndexerKlLoss;
+using namespace NsLightningIndexerKLLoss;
 
 /*
  * Kernel entry: 8 TilingKey modes via one bool + one uint8:
@@ -27,25 +27,25 @@ template <bool isDeterministic, uint8_t dataType>
 __global__ __aicore__ void lightning_indexer_kl_loss(GM_ADDR targetScore, GM_ADDR indexProbs,
     GM_ADDR loss, GM_ADDR workspace, GM_ADDR tiling)
 {
-    REGISTER_TILING_DEFAULT(LightningIndexerKlLossTilingData);
-    GET_TILING_DATA_WITH_STRUCT(LightningIndexerKlLossTilingData, tilingData, tiling);
+    REGISTER_TILING_DEFAULT(LightningIndexerKLLossTilingData);
+    GET_TILING_DATA_WITH_STRUCT(LightningIndexerKLLossTilingData, tilingData, tiling);
     TPipe pipe;
     GM_ADDR user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
     if constexpr (dataType == 0) { // FLOAT16
-        LightningIndexerKlLoss<half, isDeterministic> op;
+        LightningIndexerKLLoss<half, isDeterministic> op;
         op.Init(targetScore, indexProbs, loss, user, &tilingData, &pipe);
         op.InitHalfBufs();
         op.Process();
         op.WriteBackDet();
     } else if constexpr (dataType == 2) { // BFLOAT16
-        LightningIndexerKlLoss<bfloat16_t, isDeterministic> op;
+        LightningIndexerKLLoss<bfloat16_t, isDeterministic> op;
         op.Init(targetScore, indexProbs, loss, user, &tilingData, &pipe);
         op.InitHalfBufs();
         op.Process();
         op.WriteBackDet();
     } else { // FLOAT32
-        LightningIndexerKlLoss<float, isDeterministic> op;
+        LightningIndexerKLLoss<float, isDeterministic> op;
         GM_ADDR user = GetUserWorkspace(workspace);
         op.Init(targetScore, indexProbs, loss, user, &tilingData, &pipe);
         op.Process();

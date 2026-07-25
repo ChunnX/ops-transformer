@@ -20,7 +20,7 @@
 
 
 /* 模板参数 */
-ASCENDC_TPL_ARGS_DECL(LightningIndexerKlLoss,
+ASCENDC_TPL_ARGS_DECL(LightningIndexerKLLoss,
     // bit: 1   DeterSparseType
     //          0：NO_DETER
     //          1：DETER

@@ -15,9 +15,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class LightningIndexerKlLoss : public OpDef {
+class LightningIndexerKLLoss : public OpDef {
 public:
-    explicit LightningIndexerKlLoss(const char* name) : OpDef(name)
+    explicit LightningIndexerKLLoss(const char* name) : OpDef(name)
     {
         // 输入参数说明
         this->Input("target_score")                                      
@@ -48,5 +48,5 @@ public:
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
     }
 };
-OP_ADD(LightningIndexerKlLoss); // 添加算子信息库
+OP_ADD(LightningIndexerKLLoss); // 添加算子信息库
 } // namespace ops

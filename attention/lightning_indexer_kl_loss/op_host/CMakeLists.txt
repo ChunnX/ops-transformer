@@ -17,11 +17,11 @@ endif()
 
 if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     add_ops_compile_options(
-        OP_NAME LightningIndexerKlLoss
+        OP_NAME LightningIndexerKLLoss
         OPTIONS --cce-auto-sync=off
                 -Wno-deprecated-declarations
                 -Werror
     )
 else()
-    add_modules_sources(OPTYPE lightning_indexer_kl_loss ACLNNTYPE aclnn_exclude)
+    add_modules_sources(OPTYPE lightning_indexer_kl_loss ACLNNTYPE aclnn)
 endif()

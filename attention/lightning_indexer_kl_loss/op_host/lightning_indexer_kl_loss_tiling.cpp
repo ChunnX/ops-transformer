@@ -19,7 +19,7 @@ namespace optiling {
 
 using namespace Ops::Transformer::OpTiling;
 
-struct LightningIndexerKlLossCompileInfo {};
+struct LightningIndexerKLLossCompileInfo {};
 
 static ge::graphStatus GetPlatformInfo(gert::TilingContext* context, uint64_t& ubSize, int64_t& coreNum)
 {
@@ -126,7 +126,7 @@ static ge::graphStatus CheckInputDim(gert::TilingContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus LightningIndexerKlLossTilingFunc(gert::TilingContext* context)
+static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* context)
 {
     uint64_t ubSize;
     int64_t coreNum;
@@ -138,7 +138,7 @@ static ge::graphStatus LightningIndexerKlLossTilingFunc(gert::TilingContext* con
     OP_CHECK_NULL_WITH_CONTEXT(context, targetScoreShape);
     OP_CHECK_IF(
         CheckInputDim(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context, "LightningIndexerKlLoss CheckInputDim FAILED."), return ge::GRAPH_FAILED);
+        OP_LOGE(context, "LightningIndexerKLLoss CheckInputDim FAILED."), return ge::GRAPH_FAILED);
 
     auto inputShape = targetScoreShape->GetOriginShape();
     int64_t dimNum = static_cast<int64_t>(inputShape.GetDimNum());
@@ -164,11 +164,11 @@ static ge::graphStatus LightningIndexerKlLossTilingFunc(gert::TilingContext* con
     int64_t formerNum = totalTileNum % coreNum;
     int64_t formerTileNum = (totalTileNum + coreNum - 1) / coreNum;
     int64_t tailTileNum = totalTileNum / coreNum;
-    printf("tailTileNum %d, formerTileNum %d\n",tailTileNum, formerTileNum);
-    LightningIndexerKlLossTilingData* tiling = context->GetTilingData<LightningIndexerKlLossTilingData>();
+
+    LightningIndexerKLLossTilingData* tiling = context->GetTilingData<LightningIndexerKLLossTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, tiling);
     OP_CHECK_IF(
-        memset_s(tiling, sizeof(LightningIndexerKlLossTilingData), 0, sizeof(LightningIndexerKlLossTilingData)) != EOK,
+        memset_s(tiling, sizeof(LightningIndexerKLLossTilingData), 0, sizeof(LightningIndexerKLLossTilingData)) != EOK,
         OP_LOGE(context, "set tiling data error"), return ge::GRAPH_FAILED);
     tiling->totalLength = M;
     tiling->K = D;
@@ -196,10 +196,10 @@ static ge::graphStatus LightningIndexerKlLossTilingFunc(gert::TilingContext* con
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParseForLightningIndexerKlLoss([[maybe_unused]] gert::TilingParseContext* context)
+static ge::graphStatus TilingParseForLightningIndexerKLLoss([[maybe_unused]] gert::TilingParseContext* context)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(LightningIndexerKlLoss).Tiling(LightningIndexerKlLossTilingFunc).TilingParse<LightningIndexerKlLossCompileInfo>(TilingParseForLightningIndexerKlLoss);
+IMPL_OP_OPTILING(LightningIndexerKLLoss).Tiling(LightningIndexerKLLossTilingFunc).TilingParse<LightningIndexerKLLossCompileInfo>(TilingParseForLightningIndexerKLLoss);
 } // namespace optiling

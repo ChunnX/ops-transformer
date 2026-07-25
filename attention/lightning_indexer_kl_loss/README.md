@@ -1,4 +1,4 @@
-# LightningIndexerKlLoss
+# LightningIndexerKLLoss
 
 ## 产品支持情况
 
@@ -121,7 +121,7 @@
     </a>
     </td>
     <td class="tg-lboi">
-    通过 aclnnLightningIndexerKlLoss 接口方式调用算子
+    通过 aclnnLightningIndexerKLLoss 接口方式调用算子
     </td>
   </tr>
 </tbody></table>

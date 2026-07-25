@@ -20,9 +20,9 @@ using namespace ge;
 namespace ops {
 static constexpr int64_t IDX_0 = 0;
 
-static ge::graphStatus InferShapeLightningIndexerKlLoss(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeLightningIndexerKLLoss(gert::InferShapeContext* context)
 {
-    OP_LOGD(context->GetNodeName(), "Begin to do InferShapeLightningIndexerKlLoss");
+    OP_LOGD(context->GetNodeName(), "Begin to do InferShapeLightningIndexerKLLoss");
 
     // get input shapes
     const gert::Shape* targetScoreShape = context->GetInputShape(IDX_0);
@@ -37,13 +37,13 @@ static ge::graphStatus InferShapeLightningIndexerKlLoss(gert::InferShapeContext*
     lossShape->SetDimNum(1);
     lossShape->SetDim(0, 1);
 
-    OP_LOGD(context->GetNodeName(), "End to do InferShapeLightningIndexerKlLoss");
+    OP_LOGD(context->GetNodeName(), "End to do InferShapeLightningIndexerKLLoss");
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeLightningIndexerKlLoss(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataTypeLightningIndexerKLLoss(gert::InferDataTypeContext* context)
 {
-    OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeLightningIndexerKlLoss");
+    OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeLightningIndexerKLLoss");
 
      if (context == nullptr){
         return ge::GRAPH_FAILED;
@@ -51,9 +51,9 @@ static ge::graphStatus InferDataTypeLightningIndexerKlLoss(gert::InferDataTypeCo
     const auto inputDataType = context->GetInputDataType(IDX_0);
     context->SetOutputDataType(0, inputDataType);
 
-    OP_LOGD(context->GetNodeName(), "End to do InferDataTypeLightningIndexerKlLoss");
+    OP_LOGD(context->GetNodeName(), "End to do InferDataTypeLightningIndexerKLLoss");
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(LightningIndexerKlLoss).InferShape(InferShapeLightningIndexerKlLoss).InferDataType(InferDataTypeLightningIndexerKlLoss);
+IMPL_OP_INFERSHAPE(LightningIndexerKLLoss).InferShape(InferShapeLightningIndexerKLLoss).InferDataType(InferDataTypeLightningIndexerKLLoss);
 } // namespace ops
