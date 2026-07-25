@@ -128,7 +128,7 @@ cann_ops_transformer.sparse_flash_mla(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| num_heads_q | int | 必选 | Query的头数，支持1、2、4、8、16、32、64、128。 | int32 | - | - |
+| num_heads_q | int | 必选 | Query的头数，支持1~128。 | int32 | - | - |
 | num_heads_kv | int | 必选 | `ori_kv`和`cmp_kv`的头数，仅支持1。 | int32 | - | - |
 | head_dim | int | 必选 | 每个注意力头的维度，仅支持512。 | int32 | - | - |
 | cu_seqlens_q | Tensor | 可选 | TND场景下q各Batch有效token数的累积和，第一个元素必须为0。 | int32 | ND | (B+1,) |
@@ -145,12 +145,12 @@ cann_ops_transformer.sparse_flash_mla(
 | max_seqlen_ori_kv | int | 可选 | `ori_kv`的最大有效序列长度，默认值为0。 | int32 | - | - |
 | max_seqlen_cmp_kv | int | 可选 | `cmp_kv`的最大有效序列长度，默认值为0。 | int32 | - | - |
 | ori_topk | int | 可选 | 原始KV的TopK长度，当前支持传0。 | int32 | - | - |
-| cmp_topk | int | 可选 | 压缩KV的TopK长度；CSA场景应与索引最后一维对应。默认值为0。 | int32 | - | - |
-| cmp_ratio | int | 可选 | `cmp_kv`相对于压缩前KV的压缩倍率，取值范围1~128；SWA场景固定为1。默认值为1。 | int32 | - | - |
+| cmp_topk | int | 可选 | 压缩KV的TopK长度；CSA场景取值大于0，且应与索引最后一维对应；SWA和HCA场景取值为0。默认值为0。 | int32 | - | - |
+| cmp_ratio | int | 可选 | `cmp_kv`相对于压缩前KV的压缩倍率；SWA场景固定为1，CSA和HCA场景取值大于0。默认值为1。 | int32 | - | - |
 | ori_mask_mode | int | 可选 | q与`ori_kv`的mask模式：0（No Mask）、3（RightDownCausal）或4（Band）。 | int32 | - | - |
 | cmp_mask_mode | int | 可选 | q与`cmp_kv`的mask模式：0（No Mask）或3（RightDownCausal）。 | int32 | - | - |
-| ori_win_left | int | 可选 | `ori_kv`滑动窗口左边界，-1表示不限制。 | int32 | - | - |
-| ori_win_right | int | 可选 | `ori_kv`滑动窗口右边界，-1表示不限制。 | int32 | - | - |
+| ori_win_left | int | 可选 | `ori_kv`滑动窗口左边界，取值为-1或不小于0；-1表示不限制。 | int32 | - | - |
+| ori_win_right | int | 可选 | `ori_kv`滑动窗口右边界，取值为-1或不小于0；-1表示不限制。 | int32 | - | - |
 | layout_q | string | 可选 | q的数据布局，支持`BSND`和`TND`。默认值为`BSND`。 | string | - | - |
 | layout_kv | string | 可选 | `ori_kv`和`cmp_kv`的数据布局，支持`BSND`、`TND`和`PA_BBND`。默认值为`BSND`。 | string | - | - |
 | has_ori_kv | bool | 可选 | 主算子是否传入`ori_kv`。默认值为True。 | bool | - | - |
@@ -180,17 +180,27 @@ cann_ops_transformer.sparse_flash_mla(
 | sinks | Tensor | 可选 | Attention Sink输入。 | float32 | ND | (N1,) |
 | metadata | Tensor | 必选 | 由`sparse_flash_mla_metadata`生成的任务切分结果。 | int32 | ND | (1024,) |
 | softmax_scale | float | 可选 | QK矩阵乘后的缩放系数。默认值为1.0。 | float32 | - | - |
-| cmp_ratio | int | 可选 | 压缩倍率，取值范围1~128。默认值为1。 | int32 | - | - |
+| cmp_ratio | int | 可选 | 压缩倍率；SWA场景固定为1，CSA和HCA场景取值大于0。默认值为1。 | int32 | - | - |
 | ori_mask_mode | int | 可选 | q与`ori_kv`的mask模式。默认值为4。 | int32 | - | - |
 | cmp_mask_mode | int | 可选 | q与`cmp_kv`的mask模式。默认值为3。 | int32 | - | - |
-| ori_win_left | int | 可选 | `ori_kv`滑动窗口左边界。默认值为127。 | int32 | - | - |
-| ori_win_right | int | 可选 | `ori_kv`滑动窗口右边界。默认值为0。 | int32 | - | - |
+| ori_win_left | int | 可选 | `ori_kv`滑动窗口左边界，取值为-1或不小于0。默认值为127。 | int32 | - | - |
+| ori_win_right | int | 可选 | `ori_kv`滑动窗口右边界，取值为-1或不小于0。默认值为0。 | int32 | - | - |
 | layout_q | string | 可选 | q的数据布局，支持`BSND`和`TND`。默认值为`BSND`。 | string | - | - |
 | layout_kv | string | 可选 | KV的数据布局，支持`BSND`、`TND`和`PA_BBND`。默认值为`BSND`。 | string | - | - |
 | topk_value_mode | int | 可选 | TopK索引取值模式，仅支持1。默认值为1。 | int32 | - | - |
 | return_softmax_lse | bool | 可选 | 是否返回softmax的log-sum-exp结果。默认值为False。 | bool | - | - |
 | attention_out | Tensor | 必选 | Attention计算输出，shape和数据类型与q一致。 | bfloat16/float16 | ND | 与q一致 |
 | softmax_lse | Tensor | 可选 | softmax的log-sum-exp结果。 | float32 | ND | `BSND`：(B, N2, S1, N1/N2)<br>`TND`：(N2, T1, N1/N2) |
+
+> [!NOTE]
+>
+> **产品型号参数差异：**
+>
+> - `num_heads_q`：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持1、2、4、8、16、32、64、128；<term>Ascend 950PR/Ascend 950DT</term>支持1~128内的任意整数。
+> - `cmp_ratio`：A2/A3上SWA仅支持1、CSA仅支持4、HCA仅支持128；950上SWA仅支持1，CSA和HCA支持任意大于0的值。
+> - `ori_win_left`和`ori_win_right`：A2/A3上分别仅支持127和0；950上均支持-1或不小于0的值。
+> - `block_size`：A2/A3上必须为16的倍数且不超过1024；950上支持任意大于0的值。
+> - TopK（`cmp_topk`及`cmp_sparse_indices`最后一维K）：A2/A3上CSA仅支持512或1024；950上CSA支持任意大于0的值。SWA和HCA场景的`cmp_topk`均为0。
 
 ## 返回值说明<a name="zh-cn_topic_sparse_flash_mla_returns"></a>
 
@@ -278,7 +288,7 @@ cann_ops_transformer.sparse_flash_mla(
 
 | 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
 | :--- | :--- | :--- | :--- | :--- |
-| num_heads_q | int；取值为1、2、4、8、16、32、64、128。 | 必选。 | 必须与q的N1维一致。 | 与`num_heads_kv`满足N1/N2为正整数；950PR/950DT不支持取1。 |
+| num_heads_q | int；范围1~128。 | 必选。 | 必须与q的N1维一致。 | A2/A3：取值非1、2、4、8、16、32、64、128时拦截；950：取值小于1或大于128时拦截。 |
 | num_heads_kv | int；仅支持1。 | 必选。 | 必须与`ori_kv`、`cmp_kv`的N2维一致。 | 与`num_heads_q`、`softmax_lse`的分组维度一致。 |
 | head_dim | int；仅支持512。 | 必选。 | 必须与q、`ori_kv`、`cmp_kv`的D维一致。 | 不满足时拦截；不允许依赖自动推导。 |
 | batch_size | int；必须大于0。 | BSND场景必传。 | 必须与BSND布局下q和KV的B维一致。 | TND场景由`cu_seqlens_q`长度推导时，仍须与所有长度类Tensor一致。 |
@@ -286,12 +296,12 @@ cann_ops_transformer.sparse_flash_mla(
 | max_seqlen_ori_kv | int；必须大于0。 | `ori_kv`为TND布局时必传。 | 必须等于`ori_kv`各Batch实际长度的最大值。 | 与`cu_seqlens_ori_kv`及T2一致。 |
 | max_seqlen_cmp_kv | int；必须大于0。 | `cmp_kv`为TND布局时必传。 | 必须等于`cmp_kv`各Batch实际长度的最大值。 | 与`cu_seqlens_cmp_kv`及T3一致。 |
 | ori_topk | int；当前仅支持0。 | 可选，默认0。 | 必须与`ori_sparse_indices`和`ori_topk_length`的传入状态一致。 | 当前不支持`ori_sparse_indices`非空，因此必须为0。 |
-| cmp_topk | int；取值为0或压缩KV的TopK长度。 | CSA场景必传且非0；其他场景为0。 | 必须等于`cmp_sparse_indices`最后一维K。 | A2/A3仅支持0、512、1024。 |
-| cmp_ratio | int；范围1~128。 | 可选，默认1。 | 必须与主接口、`cmp_residual_kv`和`cmp_kv`压缩关系一致。 | SWA固定1；A2/A3中CSA仅支持4、HCA仅支持128。 |
+| cmp_topk | int；SWA/HCA场景取值为0，CSA场景取值为压缩KV的TopK长度且大于0。 | CSA场景必传且非0；其他场景为0。 | 必须等于`cmp_sparse_indices`最后一维K。 | A2/A3：CSA取非512或1024、或SWA/HCA取非0时拦截；950：CSA取小于等于0、或SWA/HCA取非0时拦截。 |
+| cmp_ratio | int；SWA场景取值为1，CSA/HCA场景取值大于0。 | 可选，默认1。 | 必须与主接口、`cmp_residual_kv`和`cmp_kv`压缩关系一致。 | A2/A3：SWA取非1、CSA取非4、HCA取非128时拦截；950：SWA取非1或CSA/HCA取小于等于0时拦截。 |
 | ori_mask_mode | int；接口定义支持0、3、4。 | 可选。 | 必须与主接口一致。 | 当前规格仅支持4；与`ori_win_left=127`、`ori_win_right=0`组合使用。 |
 | cmp_mask_mode | int；接口定义支持0、3。 | 可选。 | 必须与主接口一致。 | SWA为0；CSA/HCA为3。 |
-| ori_win_left | int；接口定义为-1或非负数。 | 可选。 | 必须与主接口一致。 | 当前规格仅支持127，且仅作用于`ori_kv`侧。 |
-| ori_win_right | int；接口定义为-1或非负数。 | 可选。 | 必须与主接口一致。 | 当前规格仅支持0，且仅作用于`ori_kv`侧。 |
+| ori_win_left | int；接口定义为-1或非负数。 | 可选。 | 必须与主接口一致。 | A2/A3：取非127时拦截；950：取值小于-1时拦截。仅作用于`ori_kv`侧。 |
+| ori_win_right | int；接口定义为-1或非负数。 | 可选。 | 必须与主接口一致。 | A2/A3：取非0时拦截；950：取值小于-1时拦截。仅作用于`ori_kv`侧。 |
 | layout_q | string；仅支持`BSND`、`TND`。 | 可选，默认`BSND`。 | 必须与q的维度、主接口和长度类Tensor一致。 | 仅支持与`layout_kv`组合为`BSND`/`BSND`、`TND`/`TND`、`BSND`/`PA_BBND`或`TND`/`PA_BBND`。 |
 | layout_kv | string；仅支持`BSND`、`TND`、`PA_BBND`。 | 可选，默认`BSND`。 | 必须与`ori_kv`、`cmp_kv`的维度和主接口一致。 | 非PA场景必须与`layout_q`相同；PA场景要求Block Table和`seqused_ori_kv`。 |
 | has_ori_kv | bool。 | 必选，与主接口实际传入状态一致。 | 必须等价于`ori_kv is not None`。 | 三种已支持场景均要求为True。 |
@@ -352,10 +362,10 @@ cann_ops_transformer.sparse_flash_mla(
 | 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
 | :--- | :--- | :--- | :--- | :--- |
 | ori_sparse_indices | `int32`、ND。 | 必须不传。 | 与`ori_topk=0`和`ori_topk_length=None`一致。 | 当前版本传入非空Tensor应拦截。 |
-| cmp_sparse_indices | `int32`、ND；`BSND`为(B, S1, N2, K)，`TND`为(T1, N2, K)；值必须为-1或有效的cmp token索引。 | 仅CSA必传；SWA/HCA必须不传。 | B/T1、N2必须与q一致，K必须与`cmp_topk`一致。 | A2/A3下K仅支持512或1024；无效位置填-1。索引具体取值由用户保证。 |
+| cmp_sparse_indices | `int32`、ND；`BSND`为(B, S1, N2, K)，`TND`为(T1, N2, K)；值必须为-1或有效的cmp token索引。 | 仅CSA必传；SWA/HCA必须不传。 | B/T1、N2必须与q一致，K必须与`cmp_topk`一致。 | A2/A3：K取非512或1024时拦截；950：K取小于等于0时拦截。无效位置填-1，索引具体取值由用户保证。 |
 | ori_topk_length | `int32`、ND。 | 必须不传。 | 与`ori_sparse_indices=None`和`ori_topk=0`一致。 | 当前版本传入非空Tensor应拦截。 |
 | cmp_topk_length | `int32`、ND。 | 必须不传。 | 与`cmp_sparse_indices`和`cmp_topk`的状态一致。 | 当前版本传入非空Tensor应拦截。 |
-| cmp_ratio | int，范围1~128。 | 可选，默认1。 | 必须同时与metadata、`cmp_kv`长度和`cmp_residual_kv`一致。 | SWA为1；CSA为4、HCA为128（A2/A3）。 |
+| cmp_ratio | int；SWA场景取值为1，CSA/HCA场景取值大于0。 | 可选，默认1。 | 必须同时与metadata、`cmp_kv`长度和`cmp_residual_kv`一致。 | A2/A3：SWA取非1、CSA取非4、HCA取非128时拦截；950：SWA取非1或CSA/HCA取小于等于0时拦截。 |
 | topk_value_mode | int；仅支持1。 | 可选，默认1。 | 必须与`cmp_sparse_indices`的索引取值约定一致。 | 不参与metadata生成；取非1值应拦截。 |
 
 #### SeqLengths和Mask参数组
@@ -376,13 +386,13 @@ cann_ops_transformer.sparse_flash_mla(
 | cmp_residual_kv | `int32`、ND、shape为(B,)；每项范围[0, cmp_ratio)。 | CSA/HCA必传；SWA必须不传。 | 必须与metadata、`cmp_ratio`和`cmp_kv`长度一致。 | 恢复长度必须满足`cmp_len * cmp_ratio + residual = ori_len_for_cmp_mask`。 |
 | ori_mask_mode | int；接口定义支持0、3、4。 | 可选。 | 必须与metadata一致。 | 当前规格只支持4。 |
 | cmp_mask_mode | int；接口定义支持0、3。 | 可选。 | 必须与metadata一致。 | SWA为0；CSA/HCA为3。 |
-| ori_win_left | int；接口定义为-1或非负数。 | 可选。 | 必须与metadata一致。 | 当前规格支持-1和非负数。 |
-| ori_win_right | int；接口定义为-1或非负数。 | 可选。 | 必须与metadata一致。 | 当前规格支持-1和非负数。 |
+| ori_win_left | int；接口定义为-1或非负数。 | 可选。 | 必须与metadata一致。 | A2/A3：取非127时拦截；950：取值小于-1时拦截。 |
+| ori_win_right | int；接口定义为-1或非负数。 | 可选。 | 必须与metadata一致。 | A2/A3：取非0时拦截；950：取值小于-1时拦截。 |
 
 #### Paged Attention参数组
 
 - `layout_kv="PA_BBND"`时，必须传入`seqused_ori_kv`和`ori_block_table`；传入`cmp_kv`时，还必须传入`cmp_block_table`。
-- PageAttention的`block_size`支持1~1024。对于<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>，`block_size`必须为16的倍数且不超过1024。
+- PageAttention的`block_size`取值必须大于0。对于<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>，取非16的倍数或大于1024时拦截；对于<term>Ascend 950PR/Ascend 950DT</term>，取小于等于0时拦截。
 
 | 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -404,9 +414,9 @@ cann_ops_transformer.sparse_flash_mla(
 
 #### 产品型号和稀疏规格
 
-- `head_dim`仅支持512，`num_heads_kv`仅支持1；`num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128。
-- <term>Ascend 950PR/Ascend 950DT</term>不支持`num_heads_q / num_heads_kv=1`。
-- 对于<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：SWA场景`cmp_ratio`固定为1，CSA仅支持`cmp_ratio=4`，HCA仅支持`cmp_ratio=128`；`cmp_sparse_indices`最后一维K支持0、512、1024。
+- `head_dim`仅支持512，`num_heads_kv`仅支持1。
+- 对于<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：`num_heads_q`仅支持1、2、4、8、16、32、64、128；SWA场景`cmp_ratio`仅支持1，CSA仅支持4，HCA仅支持128；`ori_win_left`仅支持127，`ori_win_right`仅支持0；PageAttention的`block_size`仅支持16的倍数且不超过1024；CSA场景`cmp_sparse_indices`最后一维K（即`cmp_topk`）仅支持512或1024。
+- 对于<term>Ascend 950PR/Ascend 950DT</term>：`num_heads_q`支持1~128内的任意整数；SWA场景`cmp_ratio`仅支持1，CSA和HCA支持任意大于0的`cmp_ratio`；`ori_win_left`和`ori_win_right`均支持-1或不小于0的值；PageAttention的`block_size`支持任意大于0的值；CSA场景`cmp_sparse_indices`最后一维K（即`cmp_topk`）支持任意大于0的值。
 
 ## 确定性计算<a name="zh-cn_topic_sparse_flash_mla_deterministic"></a>
 
