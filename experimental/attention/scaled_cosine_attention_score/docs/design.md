@@ -63,4 +63,3 @@ Vector/Cube 混合 tiling key：Vector 侧生成片上归一化 tile，Cube 侧�
 tile 并以 fp32 累加，copy-out 阶段融合 scale。实现时必须验证片上生产消费同步、
 L1/L0 容量和尾 K padding；若退化为把完整归一化张量写入 GM workspace，就失去
 本算子的核心收益，不应作为默认优化路径。
-

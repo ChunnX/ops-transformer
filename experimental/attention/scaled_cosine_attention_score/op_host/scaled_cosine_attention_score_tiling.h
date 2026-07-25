@@ -14,27 +14,25 @@ constexpr uint64_t SCAS_TILING_KEY_BF16 = 1;
 constexpr uint64_t SCAS_TILING_KEY_FP32 = 2;
 
 BEGIN_TILING_DATA_DEF(ScaledCosineAttentionScoreTilingData)
-    TILING_DATA_FIELD_DEF(uint32_t, batch);
-    TILING_DATA_FIELD_DEF(uint32_t, heads);
-    TILING_DATA_FIELD_DEF(uint32_t, seqLen);
-    TILING_DATA_FIELD_DEF(uint32_t, headDim);
-    TILING_DATA_FIELD_DEF(uint32_t, alignedHeadDim);
-    TILING_DATA_FIELD_DEF(uint32_t, keyTileRows);
-    TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
-    TILING_DATA_FIELD_DEF(uint32_t, reserved);
-    TILING_DATA_FIELD_DEF(uint64_t, totalQueryRows);
-    TILING_DATA_FIELD_DEF(float, clampMax);
-    TILING_DATA_FIELD_DEF(float, eps);
+TILING_DATA_FIELD_DEF(uint32_t, batch);
+TILING_DATA_FIELD_DEF(uint32_t, heads);
+TILING_DATA_FIELD_DEF(uint32_t, seqLen);
+TILING_DATA_FIELD_DEF(uint32_t, headDim);
+TILING_DATA_FIELD_DEF(uint32_t, alignedHeadDim);
+TILING_DATA_FIELD_DEF(uint32_t, keyTileRows);
+TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, reserved);
+TILING_DATA_FIELD_DEF(uint64_t, totalQueryRows);
+TILING_DATA_FIELD_DEF(float, clampMax);
+TILING_DATA_FIELD_DEF(float, eps);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(ScaledCosineAttentionScore,
-                           ScaledCosineAttentionScoreTilingData)
+REGISTER_TILING_DATA_CLASS(ScaledCosineAttentionScore, ScaledCosineAttentionScoreTilingData)
 
 struct ScaledCosineAttentionScoreCompileInfo {
     int64_t aivCoreNum = 0;
     uint64_t ubSize = 0;
 };
 
-}  // namespace optiling
-#endif  // OPS_OP_HOST_SCALED_COSINE_ATTENTION_SCORE_TILING_H_
-
+} // namespace optiling
+#endif // OPS_OP_HOST_SCALED_COSINE_ATTENTION_SCORE_TILING_H_
