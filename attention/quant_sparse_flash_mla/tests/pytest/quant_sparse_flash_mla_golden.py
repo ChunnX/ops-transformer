@@ -868,7 +868,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         if seqused_cmp_kv is not None
         else None
     )
-    B = int(B)
     assert quant_mode == 1, f"quant_mode only support 1, but got {quant_mode}"
     # generate q (hifp8FullQuant)
     if layout_q == "BSND":
