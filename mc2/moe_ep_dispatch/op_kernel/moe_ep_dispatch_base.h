@@ -36,45 +36,7 @@ namespace MoeEpDispatchBase {
 
 using namespace AscendC;
 
-constexpr uint32_t DISPATCH_WIN_ADDR_ALIGN = 512U;
 constexpr uint64_t DISPATCH_CQE_MAX_WRITE_SIZE = 256UL * 1024UL * 1024UL;
-
-// debug_out中各字段的字节偏移
-constexpr uint32_t DEBUG_OFFSET_PATH_MARKER = 0U;
-constexpr uint32_t DEBUG_OFFSET_NETWORK_MODE = 1U;
-constexpr uint32_t DEBUG_OFFSET_SUPER_NODE_COUNT = 2U;
-constexpr uint32_t DEBUG_OFFSET_RANK_SIZE_PER_SERVER = 3U;
-constexpr uint32_t DEBUG_OFFSET_CURRENT_SERVER_INDEX = 4U;
-constexpr uint32_t DEBUG_OFFSET_TOTAL_CYCLES = 8U;
-constexpr uint32_t DEBUG_OFFSET_PREPARE_CYCLES = 16U;
-constexpr uint32_t DEBUG_OFFSET_TRANSFER_CYCLES = 24U;
-constexpr uint32_t DEBUG_OFFSET_CAL_SEND_COUNT_CYCLES = 32U;
-constexpr uint32_t DEBUG_OFFSET_EXCHANGE_COUNT_CYCLES = 40U;
-constexpr uint32_t DEBUG_OFFSET_RECV_COUNT_WAIT_CYCLES = 48U;
-constexpr uint32_t DEBUG_OFFSET_ROUTE_SLOT_CYCLES = 56U;
-constexpr uint32_t DEBUG_OFFSET_PAYLOAD_BUILD_CYCLES = 64U;
-constexpr uint32_t DEBUG_OFFSET_SEND_PHASE_CYCLES = 72U;
-constexpr uint32_t DEBUG_OFFSET_LOCAL_SEND_CYCLES = 80U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_SEND_CYCLES = 88U;
-constexpr uint32_t DEBUG_OFFSET_INITIAL_SEND_CYCLES = 96U;
-constexpr uint32_t DEBUG_OFFSET_READY_WAIT_CYCLES = 104U;
-constexpr uint32_t DEBUG_OFFSET_FANOUT_STAGE_CYCLES = 112U;
-constexpr uint32_t DEBUG_OFFSET_FANOUT_SEND_CYCLES = 120U;
-constexpr uint32_t DEBUG_OFFSET_READY_POLL_COUNT = 136U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_SLOT_COUNT = 152U;
-constexpr uint32_t DEBUG_OFFSET_FANOUT_PAYLOAD_COUNT = 156U;
-constexpr uint32_t DEBUG_OFFSET_FANOUT_ACTIVE_RANK_COUNT = 160U;
-constexpr uint32_t DEBUG_OFFSET_FANOUT_NBI_COUNT = 164U;
-constexpr uint32_t DEBUG_OFFSET_FANOUT_DRAIN_COUNT = 168U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_PAYLOAD_SUBMIT_CYCLES = 176U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_PAYLOAD_DRAIN_CYCLES = 184U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_NOTIFY_SUBMIT_CYCLES = 192U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_NOTIFY_DRAIN_CYCLES = 200U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_PAYLOAD_BYTES = 208U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_PAYLOAD_NBI_COUNT = 216U;
-
-constexpr uint8_t DEBUG_PATH_DIRECT = 0xD0U;
-constexpr uint8_t DEBUG_PATH_HYBRID = 0xA1U;
 
 // PerExpertCnt Calculation
 template <Reg::HistogramsType htype, typename T, typename U>
@@ -140,48 +102,6 @@ __aicore__ inline uint32_t GetServerEndRank(uint32_t epRankId, uint32_t rankSize
     return serverEndRank > epWorldSize ? epWorldSize : serverEndRank;
 }
 
-__aicore__ inline bool IsRankInSameServer(uint32_t sourceRankId, uint32_t targetRankId, uint32_t rankSizePerServer)
-{
-    return GetCurrentServerIndex(sourceRankId, rankSizePerServer) ==
-           GetCurrentServerIndex(targetRankId, rankSizePerServer);
-}
-
-__aicore__ inline uint64_t GetScaleupSlotOffset(uint32_t rankId, uint32_t slotIndex, uint32_t maxTokenCount,
-                                                uint32_t scaleupSlotBytes)
-{
-    return (static_cast<uint64_t>(rankId) * static_cast<uint64_t>(maxTokenCount) + static_cast<uint64_t>(slotIndex)) *
-           static_cast<uint64_t>(scaleupSlotBytes);
-}
-
-__aicore__ inline GM_ADDR GetScaleupSendSlotAddr(GM_ADDR scaleupSendWorkspaceAddr, uint32_t targetRankId,
-                                                 uint32_t slotIndex, uint32_t maxTokenCount, uint32_t scaleupSlotBytes)
-{
-    return scaleupSendWorkspaceAddr + GetScaleupSlotOffset(targetRankId, slotIndex, maxTokenCount, scaleupSlotBytes);
-}
-
-__aicore__ inline GM_ADDR GetScaleupFinalRecvSlotAddr(GM_ADDR scaleupFinalRecvBaseAddr, uint32_t sourceRankId,
-                                                      uint32_t slotIndex, uint32_t maxTokenCount,
-                                                      uint32_t scaleupSlotBytes)
-{
-    return scaleupFinalRecvBaseAddr + GetScaleupSlotOffset(sourceRankId, slotIndex, maxTokenCount, scaleupSlotBytes);
-}
-
-__aicore__ inline void WriteUint32ToDebug(GlobalTensor<uint8_t> &debugOutTensor, uint32_t byteOffset, uint32_t value)
-{
-    debugOutTensor.SetValue(byteOffset, static_cast<uint8_t>(value & 0xFFU));
-    debugOutTensor.SetValue(byteOffset + 1U, static_cast<uint8_t>((value >> 8U) & 0xFFU));
-    debugOutTensor.SetValue(byteOffset + 2U, static_cast<uint8_t>((value >> 16U) & 0xFFU));
-    debugOutTensor.SetValue(byteOffset + 3U, static_cast<uint8_t>((value >> 24U) & 0xFFU));
-}
-
-__aicore__ inline void WriteUint64ToDebug(GlobalTensor<uint8_t> &debugOutTensor, uint32_t byteOffset, uint64_t value)
-{
-    for (uint32_t byteIndex = 0U; byteIndex < sizeof(uint64_t); byteIndex++) {
-        debugOutTensor.SetValue(byteOffset + byteIndex,
-                                static_cast<uint8_t>((value >> (byteIndex * 8U)) & 0xFFUL));
-    }
-}
-
 template <typename HcommType>
 __aicore__ inline void WriteRemoteWindowByChunks(HcommType &hcomm, uint64_t commHandle, GM_ADDR remoteWindowAddr,
                                                  GM_ADDR localWorkspaceAddr, uint64_t sendBytes)
@@ -202,5 +122,18 @@ __aicore__ inline void WriteRemoteWindowByChunks(HcommType &hcomm, uint64_t comm
 
 
 } // namespace MoeEpDispatchBase
+
+namespace Mc2Kernel {
+
+using MoeEpDispatchBase::GetCommHandle;
+using MoeEpDispatchBase::GetExpertFreq;
+
+__aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext *context, uint32_t rankId,
+                                             uint64_t offset)
+{
+    return MoeEpDispatchBase::GetWindowAddrByRankId(context, rankId, offset);
+}
+
+} // namespace Mc2Kernel
 
 #endif // MOE_EP_DISPATCH_BASE_H

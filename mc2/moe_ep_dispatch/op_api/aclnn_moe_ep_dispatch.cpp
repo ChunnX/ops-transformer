@@ -25,8 +25,7 @@ constexpr int64_t HYBRID_MODE = 1;
 static aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x, const aclTensor *topkIdx,
                                 aclTensor *numRecvTokensPerRank, aclTensor *numRecvTokensPerExpert,
                                 aclTensor *dstBufferSlotIdx, aclTensor *routeCount, aclTensor *routeDstScaleout,
-                                aclTensor *routeScaleoutSlot, aclTensor *routeScaleupMask, aclTensor *routeScaleupSlot,
-                                aclTensor *debugOut)
+                                aclTensor *routeScaleoutSlot, aclTensor *routeScaleupMask, aclTensor *routeScaleupSlot)
 {
     CHECK_RET(context != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(x != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -39,7 +38,6 @@ static aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x, co
     CHECK_RET(routeScaleoutSlot != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(routeScaleupMask != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(routeScaleupSlot != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(debugOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
@@ -101,14 +99,14 @@ aclnnStatus aclnnMoeEpDispatchGetWorkspaceSize(const aclTensor *context, const a
                                                aclTensor *numRecvTokensPerExpert, aclTensor *dstBufferSlotIdx,
                                                aclTensor *routeCount, aclTensor *routeDstScaleout,
                                                aclTensor *routeScaleoutSlot, aclTensor *routeScaleupMask,
-                                               aclTensor *routeScaleupSlot, aclTensor *debugOut,
-                                               uint64_t *workspaceSize, aclOpExecutor **executor)
+                                               aclTensor *routeScaleupSlot, uint64_t *workspaceSize,
+                                               aclOpExecutor **executor)
 {
     OP_LOGD("aclnnMoeEpDispatch WorkspaceSize start");
 
     auto retNotNull = CheckNotNull(context, x, topkIdx, numRecvTokensPerRank, numRecvTokensPerExpert, dstBufferSlotIdx,
                                    routeCount, routeDstScaleout, routeScaleoutSlot, routeScaleupMask,
-                                   routeScaleupSlot, debugOut);
+                                   routeScaleupSlot);
     CHECK_RET(retNotNull == ACLNN_SUCCESS, retNotNull);
 
     auto retParams = CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize,
@@ -122,7 +120,7 @@ aclnnStatus aclnnMoeEpDispatchGetWorkspaceSize(const aclTensor *context, const a
         cachedRouteScaleoutSlot, cachedRouteScaleupMask, cachedRouteScaleupSlot, epWorldSize, epRankId, numExperts,
         numMaxTokensPerRank, cclBufferSize, expertAlignment, doCpuSync, hostPinnedCounterAddr, topoType,
         rankNumPerServer, numRecvTokensPerRank, numRecvTokensPerExpert, dstBufferSlotIdx, routeCount, routeDstScaleout,
-        routeScaleoutSlot, routeScaleupMask, routeScaleupSlot, debugOut, workspaceSize, executor);
+        routeScaleoutSlot, routeScaleupMask, routeScaleupSlot, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

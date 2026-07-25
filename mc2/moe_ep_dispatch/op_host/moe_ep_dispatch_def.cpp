@@ -109,10 +109,6 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
-        this->Output("debug_out")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_UINT8})
-            .FormatList({ge::FORMAT_ND});
 
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();

@@ -83,7 +83,6 @@ class EPHandle:
     route_scaleup_mask: Optional[torch.Tensor] = None
     route_scaleup_slot: Optional[torch.Tensor] = None
     topk_to_route: Optional[torch.Tensor] = None
-    debug_out: Optional[torch.Tensor] = None
 
     @property
     def num_recv_tokens(self) -> int:
@@ -479,7 +478,6 @@ class ElasticBuffer:
             route_scaleout_slot,
             route_scaleup_mask,
             route_scaleup_slot,
-            debug_out,
         ) = (
             self._runtime.moe_ep_dispatch(
                 args.x,
@@ -536,7 +534,6 @@ class ElasticBuffer:
             route_scaleout_slot,
             route_scaleup_mask,
             route_scaleup_slot,
-            debug_out,
         )
         return recv_x, None, recv_topk_weights, new_handle
 
@@ -735,7 +732,6 @@ class ElasticBuffer:
         route_scaleout_slot: torch.Tensor,
         route_scaleup_mask: torch.Tensor,
         route_scaleup_slot: torch.Tensor,
-        debug_out: torch.Tensor,
     ) -> EPHandle:
         topk_idx = (
             args.topk_idx
@@ -756,7 +752,6 @@ class ElasticBuffer:
             route_scaleout_slot=route_scaleout_slot,
             route_scaleup_mask=route_scaleup_mask,
             route_scaleup_slot=route_scaleup_slot,
-            debug_out=debug_out,
         )
 
     def _unpack_bias(self, bias):

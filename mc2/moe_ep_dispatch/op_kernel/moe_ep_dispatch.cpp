@@ -36,8 +36,7 @@ __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR t
                                            GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
                                            GM_ADDR dstBufferSlotIdx, GM_ADDR routeCount, GM_ADDR routeDstScaleout,
                                            GM_ADDR routeScaleoutSlot, GM_ADDR routeScaleupMask,
-                                           GM_ADDR routeScaleupSlot, GM_ADDR debugOut, GM_ADDR workspaceGM,
-                                           GM_ADDR tilingGM)
+                                           GM_ADDR routeScaleupSlot, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeEpDispatchTilingData);
 
@@ -51,12 +50,12 @@ __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR t
         op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
                 cachedRouteScaleoutSlot, cachedRouteScaleupMask, cachedRouteScaleupSlot, numRecvPerRank,
                 numRecvPerExpert, dstBufferSlotIdx, routeCount, routeDstScaleout, routeScaleoutSlot, routeScaleupMask,
-                routeScaleupSlot, debugOut, workspaceGM, &pipe, &tilingData);
+                routeScaleupSlot, workspaceGM, &pipe, &tilingData);
         op.Process();
     } else {
         MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
         op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank, numRecvPerExpert,
-                dstBufferSlotIdx, debugOut, workspaceGM, &pipe, &tilingData);
+                dstBufferSlotIdx, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 }
