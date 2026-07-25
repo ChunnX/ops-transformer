@@ -103,7 +103,6 @@ cann_ops_transformer.compressor(
 | start_pos | Tensor | 可选 | 计算起始位置。不支持非连续，数据格式支持ND，输入为None时从0开始计算 | int32 | [B,] |
 | coff | int | 可选 | 默认值1，仅支持1/2。<br>coff=1：无需进行overlap数据重排<br>coff=2：需要进行overlap数据重排。 | int32 | - |
 | cache_mode | int | 可选 | state_cache的存储模式。<br>1：连续buffer<br>2：循环buffer<br>默认值1。 | int32 | - |
-| state_cache_stride_dim0 | int | 可选 |表示state_cache的0轴stride，默认值为0。| int32          |-|
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>： cache_mode不支持输入2，且不支持0轴非连续。
 
 ## 返回值说明

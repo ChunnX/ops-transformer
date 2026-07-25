@@ -149,7 +149,7 @@ ge::graphStatus CompressorTiling::SetPageAttentionInfo()
 {
     pageAttentionParams_->blockNum = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     pageAttentionParams_->blockSize = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
-    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CONTINUOUS)) {
+    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER)) {
         pageAttentionParams_->maxBlockNumPerBatch =
             context_->stateBlockTable.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     }
@@ -448,7 +448,7 @@ void CompressorTiling::LogErrorNumberSupport(const std::vector<T> &expectNumberL
               name.c_str(), subName.c_str(), oss.str().c_str(), to_string(actualValue).c_str());
 }
 
-std::string LayoutTypeToStr(LayoutType layout)
+static std::string LayoutTypeToStr(LayoutType layout)
 {
     switch (layout) {
         case LayoutType::LAYOUT_BSH:
@@ -784,7 +784,7 @@ ge::graphStatus CompressorTiling::CheckShapeConsistency() const
                                                       baseParams_->cmpRatio)) {
         return ge::GRAPH_FAILED;
     }
-    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CONTINUOUS) &&
+    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER) &&
         (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, COMPRESSOR_DIM_INDEX_0,
                                                        "blockNum", pageAttentionParams_->blockNum) ||
          ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, COMPRESSOR_DIM_INDEX_1,

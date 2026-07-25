@@ -626,7 +626,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::WriteToCacheState(co
                                                                               uint32_t endSeqIdx, uint32_t dDealSize,
                                                                               uint32_t dBaseSize, uint32_t stateIdx)
 {
-    if constexpr (COMP::cacheMode == CACHE_MODE::CONTINUOUS) {
+    if constexpr (COMP::cacheMode == CACHE_MODE::LINEAR_BUFFER) {
         uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
         uint32_t curSeqIdx = startSeqIdx;
         uint32_t copyFinishRowCnt = 0;
@@ -684,7 +684,7 @@ CompressorBlockVectorFullLoad<COMP>::ReadFromCacheState(const LocalTensor<T> &ou
                                                         uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx,
                                                         uint32_t dDealSize, uint32_t stateIdx)
 {
-    if constexpr (COMP::cacheMode == CACHE_MODE::CONTINUOUS) {
+    if constexpr (COMP::cacheMode == CACHE_MODE::LINEAR_BUFFER) {
         uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
         uint32_t curSeqIdx = startSeqIdx;
         uint32_t copyFinishRowCnt = 0;
@@ -759,7 +759,7 @@ CompressorBlockVectorFullLoad<COMP>::SaveState(const LocalTensor<T> &srcLocal, c
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dBaseSize;
 
-    if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
+    if constexpr (COMP::cacheMode == CACHE_MODE::RING_BUFFER) {
         uint64_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, (uint64_t)cmpRatio_);
         uint32_t writeSeqStartIdx = compressSeqIdx > (coff_ - 1) * cmpRatio_ ?
                                     compressSeqIdx - (coff_ - 1) * cmpRatio_ : 0;
