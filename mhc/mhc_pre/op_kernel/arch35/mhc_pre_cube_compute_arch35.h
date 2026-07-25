@@ -23,6 +23,7 @@ public:
     uint64_t baseN_{0};
     uint64_t baseK_{0};
     uint64_t kL1_{0};
+    uint32_t implMode_{MHC_PRE_IMPL_MODE_FP32};
     uint8_t bL1BufferID_{0};
     uint8_t l0PingPongID_{0};
     uint8_t cl0PingPongID_{0};
@@ -66,6 +67,7 @@ public:
 
     __aicore__ inline void Init(uint32_t implMode)
     {
+        implMode_ = implMode;
         uint32_t aL0OneBuffer = 256 * 32;
         uint32_t bL0OneBuffer = 256 * 32;
         uint32_t cL0OneBuffer = 256 * 128;
@@ -180,18 +182,26 @@ public:
     __aicore__ inline void MmadBase(uint64_t kOffset, bool isFirstKL1, bool isLastKL1, bool isLastKL0)
     {
         uint32_t mmK = AscendC::Std::min(baseK_, kL1_ - kOffset);
-        AscendC::MmadParams params;
-        params.m = baseM_;
-        params.n = baseN_;
-        params.k = mmK;
-        params.disableGemv = true;
-        params.cmatrixInitVal = (isFirstKL1 && kOffset == 0);
-        params.cmatrixSource = false;
-        params.unitFlag = (isLastKL1 && isLastKL0) ? FINAL_ACCUMULATION : NON_FINAL_ACCUMULATION;
-        AscendC::Mmad(cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_,
-            l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_,
-            l0PingPongID_ == 0 ? bL0Ping_ : bL0Pong_, params);
-        AscendC::PipeBarrier<PIPE_M>();
+        uint32_t mmKStep = implMode_ == MHC_PRE_IMPL_MODE_FP32 ? 32U : mmK;
+        uint64_t mAlign = LowApiAlign(baseM_, AscendC::BLOCK_CUBE);
+        uint64_t nAlign = LowApiAlign(baseN_, AscendC::BLOCK_CUBE);
+        for (uint32_t innerK = 0; innerK < mmK; innerK += mmKStep) {
+            uint32_t currentK = AscendC::Std::min(mmKStep, mmK - innerK);
+            bool isLastInnerK = innerK + currentK >= mmK;
+            AscendC::MmadParams params;
+            params.m = baseM_;
+            params.n = baseN_;
+            params.k = currentK;
+            params.disableGemv = true;
+            params.cmatrixInitVal = (isFirstKL1 && kOffset == 0 && innerK == 0);
+            params.cmatrixSource = false;
+            params.unitFlag = (isLastKL1 && isLastKL0 && isLastInnerK) ?
+                FINAL_ACCUMULATION : NON_FINAL_ACCUMULATION;
+            AscendC::Mmad(cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_,
+                (l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_)[innerK * mAlign],
+                (l0PingPongID_ == 0 ? bL0Ping_ : bL0Pong_)[innerK * nAlign], params);
+            AscendC::PipeBarrier<PIPE_M>();
+        }
     }
 
     __aicore__ inline void CopyOut(const AscendC::LocalTensor<float>& dstLocal)

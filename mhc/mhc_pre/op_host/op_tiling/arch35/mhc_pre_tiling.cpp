@@ -78,6 +78,9 @@ const constexpr uint32_t SCHEDULE_MODE = 1;
 
 const constexpr float DEFAULT_NORM_EPS = 1e-6f;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
+const constexpr uint32_t IMPL_MODE_ATTR_INDEX = 3;
+const constexpr int64_t IMPL_MODE_FP32 = 0;
+const constexpr int64_t IMPL_MODE_HF32 = 1;
 
 const constexpr uint64_t DECODE_BS_THRESHOLD = 256;
 const constexpr uint32_t DECODE_CHUNK_T_SIZE = 2;
@@ -614,6 +617,16 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
     auto hcEpsPtr = attrs->GetAttrPointer<float>(2);
     hcEps_ = (hcEpsPtr != nullptr) ? *hcEpsPtr : DEFAULT_HC_EPS;
 
+    auto implModePtr = attrs->GetAttrPointer<int64_t>(IMPL_MODE_ATTR_INDEX);
+    int64_t implMode = (implModePtr != nullptr) ? *implModePtr : IMPL_MODE_FP32;
+    if (implMode != IMPL_MODE_FP32 && implMode != IMPL_MODE_HF32) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "impl_mode",
+                                              std::to_string(implMode).c_str(),
+                                              "impl_mode must be 0 (FP32) or 1 (HF32)");
+        return ge::GRAPH_FAILED;
+    }
+    implMode_ = static_cast<uint32_t>(implMode);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -752,6 +765,7 @@ void MhcPreBaseTiling::FillTilingData()
     tilingData_.set_outFlag(outFlag_);
     tilingData_.set_hasGamma(hasGamma_);
     tilingData_.set_hasResi(hasResi_);
+    tilingData_.set_implMode(implMode_);
 
     float scaleMean = 1.0f / static_cast<float>(matK_);
     tilingData_.set_scaleMean(scaleMean);

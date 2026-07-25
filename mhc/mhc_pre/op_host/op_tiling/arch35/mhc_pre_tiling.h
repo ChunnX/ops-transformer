@@ -66,6 +66,7 @@ TILING_DATA_FIELD_DEF(uint32_t, mkWorkspaceFinalOffset);
 TILING_DATA_FIELD_DEF(uint32_t, mkUseGmStage);
 TILING_DATA_FIELD_DEF(uint32_t, stage2UsedAivNum);
 TILING_DATA_FIELD_DEF(uint32_t, stage2RowsPerCore);
+TILING_DATA_FIELD_DEF(uint32_t, implMode);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPre, MhcPreTilingData);
@@ -164,6 +165,7 @@ private:
     uint32_t hasGamma_ = 0;
     uint32_t chunkTSize_ = 0;
     uint32_t v1ChunkDSize_ = 0;
+    uint32_t implMode_ = 0;
     TilingMode tilingMode_ = TilingMode::SPLIT_BS;
     uint32_t hasResi_ = 1;
 
