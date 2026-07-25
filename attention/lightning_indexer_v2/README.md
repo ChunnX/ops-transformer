@@ -118,7 +118,7 @@
   <tr>
   <td>metadataOptional</td>
   <td>输入</td>
-  <td>QuantLightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。</td>
+  <td>LightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。</td>
   <td>INT32</td>
   <td>ND</td>
   </tr>
