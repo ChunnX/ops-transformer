@@ -1208,7 +1208,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRe
                              RelayFlagOffset(srcServer, 0);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
     DataCopyExtParams flagCopyParams{1U, static_cast<uint32_t>(flagSnapshotBytes), 0U, 0U, 0U};
-    DataCopyPadExtParams flagCopyPadParams{true, 0U, 0U, 0U};
+    DataCopyPadExtParams<uint64_t> flagCopyPadParams{true, 0U, 0U, 0U};
 
     int32_t receivedCount = 0;
     while (receivedCount < copyNum) {
