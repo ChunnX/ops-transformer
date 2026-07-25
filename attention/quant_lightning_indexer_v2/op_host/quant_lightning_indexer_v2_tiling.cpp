@@ -316,8 +316,8 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
             OP_CHECK_IF(*opParamInfo_.quantMode != 2, OP_LOGE(opName_, "input attr quant_mode only supported 2."),
                return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF((*opParamInfo_.quantMode != 1) && (*opParamInfo_.quantMode != 4),
-            OP_LOGE(opName_, "input attr quant_mode only supported 1 and 4."),
+        OP_CHECK_IF((*opParamInfo_.quantMode != 1) && (*opParamInfo_.quantMode != 2) && (*opParamInfo_.quantMode != 4),
+            OP_LOGE(opName_, "input attr quant_mode only supported 1, 2 and 4."),
             return ge::GRAPH_FAILED);
     }
 

@@ -39,7 +39,7 @@ public:
     using SCORE_T = typename QLIV2T::scoreType;
     using W_T = typename QLIV2T::weightType;
     using SCALE_T = typename QLIV2T::scaleType;
-
+    static constexpr bool IS_WEIGHT_FP16 = QLIV2T::isWeightFP16;
     __aicore__ inline QLIV2Vector() {};
     __aicore__ inline void ProcessVec1(const QLIV2Common::RunInfo &info);
     __aicore__ inline void ProcessTopK(const QLIV2Common::RunInfo &info);
@@ -97,7 +97,7 @@ private:
 
     // tmp buff for vector
     TBuf<TPosition::VECCALC> resMm1Buf_;
-    LocalTensor<QK_T> resMm1UB_;
+    LocalTensor<float> resMm1UB_;
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
     LocalTensor<W_T> weightUB_;
@@ -488,7 +488,18 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / 2 * constInfo_.mBaseSize;
-    if (constInfo_.quantMode == 4) { // 4: per_tensor量化
+    if constexpr (IS_WEIGHT_FP16) {
+        auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
+        auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ +
+            ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
+        vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
+            qkBase, qkVLstride,
+            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
+            kScaleBase, (uint32_t)0,
+            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
+            gSize_, curAivS1ProcNum);
+    } else if (constInfo_.quantMode == 4) { // 4: per_tensor量化
         // quantMode为4时不适用sacle的UB
         float kScaleValue = globalKScale_;
         float qScaleValue = globalQScale_;
@@ -498,7 +509,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
             weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
             kScaleValue, qScaleValue,
             gSize_, curAivS1ProcNum);
-    } else {
+    } else if (constInfo_.quantMode == 1) {
         auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
         auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ +
             ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];

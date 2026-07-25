@@ -49,18 +49,22 @@ __global__ __aicore__ void quant_lightning_indexer_v2(__gm__ uint8_t *query, __g
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    
+    GET_TILING_DATA_WITH_STRUCT(QLIV2TilingData, tiling_data_in, tiling);
+    const QLIV2TilingData *__restrict tilingData = &tiling_data_in;
 #if (__CCE_AICORE__ == 310)
-    if (ORIG_DTYPE_Q == DT_FLOAT8_E4M3FN) {
+    constexpr uint32_t QUANT_MODE_FP8 = 1;
+    constexpr uint32_t QUANT_MODE_INT8 = 2;
+    constexpr uint32_t QUANT_MODE_HIFLOAT8 = 4;
+    if (tilingData->quantMode == QUANT_MODE_FP8) {
         INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, fp8_e4m3fn_t, fp8_e4m3fn_t, float, uint16_t, int32_t,
                 PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
                 float32_t, float32_t, float32_t);
-    } else if (ORIG_DTYPE_Q == DT_HIFLOAT8) {
+    } else if (tilingData->quantMode == QUANT_MODE_HIFLOAT8) {
         INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, hifloat8, hifloat8, float, uint16_t, int32_t,
                                 PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
                                 float32_t, float32_t, float32_t);
-    } else {
-        INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, int8_t, int8_t, float, uint16_t, int32_t,
+    } else if (tilingData->quantMode == QUANT_MODE_INT8){
+        INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, int8_t, int8_t, int32_t, uint16_t, int32_t,
                                 PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
                                 half, half, int32_t);
     }
