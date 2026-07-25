@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""General correctness and optional performance tests for ``0721.py``.
+"""General correctness and performance tests for ``0721.py``.
 
-The default ``official`` suite uses K=2048 because the installed official
-torch_npu operator currently rejects other documented K values.  ``spec``
-contains the remaining documented K values and runs the TileLang path without
-claiming an official precision comparison unless explicitly requested.
-All variable floating-point inputs use BF16.  The operator contract still
-requires FP32 softmax statistics and INT32 sparse indices.
+Every selected case runs both TileLang and the official torch_npu operator.
+The default suite covers all documented shapes and K values.  All variable
+floating-point inputs use BF16.  The operator contract still requires FP32
+softmax statistics and INT32 sparse indices.
 
 Examples:
   python test_0721_general.py
-  python test_0721_general.py --suite smoke --bench
-  python test_0721_general.py --suite all
-  python test_0721_general.py --case bsnd_k4096 --try-official-unsupported
+  python test_0721_general.py --suite smoke
+  python test_0721_general.py --case bsnd_k4096
+  python test_0721_general.py --no-bench
 """
 
 from __future__ import annotations
@@ -63,7 +61,7 @@ def _case(name: str, *, suite: str = "official", **kwargs: Any) -> Dict[str, Any
     return config
 
 
-# K=2048 cases can be compared with the installed official implementation.
+# K=2048 shape/layout coverage cases.
 OFFICIAL_CASES = [
     _case("bsnd_baseline"),
     _case("bsnd_batch2", B=2, S1=4),
@@ -73,9 +71,8 @@ OFFICIAL_CASES = [
     _case("tnd_s1_16", S1=16, layout="TND"),
 ]
 
-# The interface document also specifies K=1024..8192 in 1024 increments.
-# The currently installed official Python operator may reject these K values,
-# so these are TileLang coverage cases unless --try-official-unsupported is set.
+# The interface document specifies K=1024..8192 in 1024 increments.  K=2048
+# is already covered above; every remaining value is compared with official.
 SPEC_CASES = [
     _case("bsnd_k1024", suite="spec", S1=8, S2=1537, N1=64, Nidx1=32, K=1024),
     _case("bsnd_k3072", suite="spec", S1=4, S2=3329, N1=32, Nidx1=8, K=3072),
@@ -147,7 +144,9 @@ def _build_softmax_stats(
     softmax_max = torch.empty(
         (batch_size, 1, sequence_q, group_count), dtype=torch.float32, device=query.device
     )
-    softmax_sum = torch.empty_like(softmax_max)
+    softmax_sum = torch.empty(
+        softmax_max.shape, dtype=softmax_max.dtype, device=softmax_max.device
+    )
 
     with torch.no_grad():
         for query_id in range(sequence_q):
@@ -258,8 +257,14 @@ def _compare_tensor(name: str, actual: torch.Tensor, expected: torch.Tensor) -> 
         raise AssertionError(f"{name}: shape mismatch: TileLang={tuple(actual.shape)}, official={tuple(expected.shape)}")
     actual_f32 = actual.float()
     expected_f32 = expected.float()
-    if not torch.isfinite(actual_f32).all().item() or not torch.isfinite(expected_f32).all().item():
-        raise AssertionError(f"{name}: non-finite value detected")
+    actual_finite = torch.isfinite(actual_f32)
+    expected_finite = torch.isfinite(expected_f32)
+    if not actual_finite.all().item() or not expected_finite.all().item():
+        raise AssertionError(
+            f"{name}: non-finite value detected "
+            f"(TileLang={actual_f32.numel() - actual_finite.sum().item()}, "
+            f"Official={expected_f32.numel() - expected_finite.sum().item()})"
+        )
     difference = (actual_f32 - expected_f32).abs()
     return {
         "max_abs": difference.max().item(),
@@ -326,43 +331,43 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
         print(f"  TileLang FAIL: {exc}")
         return "FAIL"
 
-    compare_official = case["K"] == 2048 or args.try_official_unsupported
-    official_outputs: Tuple[torch.Tensor, ...] | None = None
-    if compare_official:
-        try:
-            official_outputs = _call_official(inputs, case)
-            torch.npu.synchronize()
-            print("  Official: completed")
-        except Exception as exc:
-            print(f"  Official unavailable: {exc}")
-            if args.require_official:
-                return "FAIL"
-    else:
-        print("  Official comparison: skipped (installed reference is known to require K=2048)")
+    try:
+        official_outputs = _call_official(inputs, case)
+        torch.npu.synchronize()
+        print("  Official: completed")
+    except Exception as exc:
+        print(f"  Official FAIL: {exc}")
+        return "FAIL"
 
-    status = "UNVERIFIED"
-    if official_outputs is not None:
+    try:
+        metrics, passed = _compare_outputs(tilelang_outputs, official_outputs)
+        _print_metrics(metrics)
+        status = "PASS" if passed else "FAIL"
+        print(f"  Precision: {status} (mean relative tolerance={REL_TOLERANCE:.1e})")
+    except Exception as exc:
+        print(f"  PRECISION FAIL: {exc}")
+        status = "FAIL"
+
+    if args.bench:
         try:
-            metrics, passed = _compare_outputs(tilelang_outputs, official_outputs)
-            _print_metrics(metrics)
-            status = "PASS" if passed else "FAIL"
-            print(f"  Precision: {status} (mean relative tolerance={REL_TOLERANCE:.1e})")
+            tl_avg, tl_med, tl_min = _bench(
+                lambda: _call_tilelang(inputs, case), args.warmup, args.iters
+            )
+            off_avg, off_med, off_min = _bench(
+                lambda: _call_official(inputs, case), args.warmup, args.iters
+            )
+            print(
+                f"  TileLang: avg={tl_avg * 1e3:.3f}ms med={tl_med * 1e3:.3f}ms "
+                f"min={tl_min * 1e3:.3f}ms"
+            )
+            print(
+                f"  Official: avg={off_avg * 1e3:.3f}ms med={off_med * 1e3:.3f}ms "
+                f"min={off_min * 1e3:.3f}ms"
+            )
+            print(f"  Ratio (official/tilelang median): {off_med / tl_med:.2f}x")
         except Exception as exc:
-            print(f"  PRECISION FAIL: {exc}")
+            print(f"  BENCHMARK FAIL: {exc}")
             status = "FAIL"
-
-    if args.bench and official_outputs is not None and status == "PASS":
-        tl_avg, tl_med, tl_min = _bench(lambda: _call_tilelang(inputs, case), args.warmup, args.iters)
-        off_avg, off_med, off_min = _bench(lambda: _call_official(inputs, case), args.warmup, args.iters)
-        print(
-            f"  TileLang: avg={tl_avg * 1e3:.3f}ms med={tl_med * 1e3:.3f}ms min={tl_min * 1e3:.3f}ms"
-        )
-        print(
-            f"  Official: avg={off_avg * 1e3:.3f}ms med={off_med * 1e3:.3f}ms min={off_min * 1e3:.3f}ms"
-        )
-        print(f"  Ratio (official/tilelang median): {off_med / tl_med:.2f}x")
-    elif args.bench:
-        print("  Benchmark: skipped because no passing official comparison is available")
 
     return status
 
@@ -384,22 +389,17 @@ def _select_cases(args: argparse.Namespace) -> Iterable[Dict[str, Any]]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite", choices=("smoke", "official", "spec", "all"), default="official")
+    parser.add_argument("--suite", choices=("smoke", "official", "spec", "all"), default="all")
     parser.add_argument("--case", action="append", help="Run exactly this named case; can be repeated")
-    parser.add_argument("--bench", action="store_true", help="Benchmark only cases that pass official precision")
+    parser.add_argument(
+        "--bench",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Benchmark both implementations after comparison (default: enabled)",
+    )
     parser.add_argument("--warmup", type=int, default=WARMUP_ITERS)
     parser.add_argument("--iters", type=int, default=BENCH_ITERS)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument(
-        "--try-official-unsupported",
-        action="store_true",
-        help="Try the official operator for documented non-2048 K cases",
-    )
-    parser.add_argument(
-        "--require-official",
-        action="store_true",
-        help="Treat an unavailable official reference as a failed case",
-    )
     args = parser.parse_args()
     if args.warmup < 0 or args.iters < 1:
         parser.error("--warmup must be non-negative and --iters must be at least one")
@@ -425,8 +425,7 @@ def main() -> int:
     for name, status in results:
         print(f"  {status:<10} {name}")
     failures = [name for name, status in results if status == "FAIL"]
-    unverified = [name for name, status in results if status == "UNVERIFIED"]
-    print(f"  failures={len(failures)} unverified={len(unverified)}")
+    print(f"  failures={len(failures)}")
     return 1 if failures else 0
 
 
