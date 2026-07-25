@@ -339,7 +339,10 @@ struct Config {
             config.k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
         }
         config.outputN = Policy::IS_GMM1 ? config.n / SWIGLU_N_HALF : config.n;
-        config.schedulerN = Policy::IS_GMM1 && IsGmm1Interleaved ? config.n : config.outputN;
+        // Keep GMM1 ownership identical for interleaved and non-interleaved
+        // weights.  One scheduler tile represents a gate+up pair; the
+        // interleaved path splits it into at most two raw MMAD tiles locally.
+        config.schedulerN = config.outputN;
         config.blockNum = GetBlockNum();
         config.blockIdx = GetBlockIdx() / GetTaskRation();
         config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
@@ -432,12 +435,10 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
                 lastWaveWaited = waveIdx;
             }
-            if constexpr (IsGmm1Interleaved) {
-                if (args.vecSetSyncCom >= 2) {
-                    WaitForVector(args.pingpongIdx);
+            if constexpr (!IsGmm1Interleaved) {
+                if (args.vecSetSyncCom != 0) {
+                    WaitForVector();
                 }
-            } else if (args.vecSetSyncCom != 0) {
-                WaitForVector();
             }
         } else {
             if constexpr (std::remove_reference_t<decltype(config)>::SOURCE_GMM1_INTERLEAVED) {
@@ -461,19 +462,31 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
 
         if constexpr (Policy::IS_GMM1) {
             if constexpr (IsGmm1Interleaved) {
-                auto gmBlockB = workSet.gmB.Slice(
-                    Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-                auto gmBlockScaleB = workSet.gmScaleB.Slice(
-                    Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
-                    Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
-                auto tensorUb = args.pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
-                auto tensorBlockUb = tensorUb.Slice(
-                    Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-                blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, tensorBlockUb,
-                          singleShape);
-                NotifyVector(args.pingpongIdx);
-                args.vecSetSyncCom++;
-                args.pingpongIdx = 1U - args.pingpongIdx;
+                uint32_t rawTileN = Get<N_VALUE>(actualShape) * SWIGLU_N_HALF;
+                uint32_t rawBaseNLoc = nLoc * SWIGLU_N_HALF;
+                for (uint32_t rawNOffset = 0; rawNOffset < rawTileN; rawNOffset += L1_TILE_N) {
+                    uint32_t rawN = rawTileN - rawNOffset < L1_TILE_N ? rawTileN - rawNOffset : L1_TILE_N;
+                    uint32_t rawNLoc = rawBaseNLoc + rawNOffset;
+                    if (args.vecSetSyncCom >= 2) {
+                        WaitForVector(args.pingpongIdx);
+                    }
+
+                    auto gmBlockB =
+                        workSet.gmB.Slice(Te::MakeCoord(kLoc, rawNLoc), Te::MakeShape(Get<K_VALUE>(actualShape), rawN));
+                    auto gmBlockScaleB = workSet.gmScaleB.Slice(
+                        Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, rawNLoc),
+                        Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), rawN));
+                    auto tensorUb = args.pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
+                    auto tensorBlockUb =
+                        tensorUb.Slice(Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), rawN));
+                    typename BlockMmad::BlockShape rawSingleShape{Get<M_VALUE>(actualShape), rawN,
+                                                                  Get<K_VALUE>(actualShape), 0};
+                    blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, tensorBlockUb,
+                              rawSingleShape);
+                    NotifyVector(args.pingpongIdx);
+                    args.vecSetSyncCom++;
+                    args.pingpongIdx = 1U - args.pingpongIdx;
+                }
             } else {
                 auto tensorBlockUbFirst = l0cOutUbFirst.Slice(
                     Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -544,29 +557,43 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
-        uint32_t epilogueN =
-            IsGmm1Interleaved ? Get<N_VALUE>(actualShape) / SWIGLU_N_HALF : Get<N_VALUE>(actualShape);
-        uint32_t epilogueNLoc = IsGmm1Interleaved ? nLoc / SWIGLU_N_HALF : nLoc;
-        Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape), epilogueN, 0, 0};
-        Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
-            mLoc * config.outputN + epilogueNLoc,
-            mLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
-                CeilDiv(epilogueNLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-            static_cast<int64_t>(mLoc / L1_TILE_M_256),
-            0,
-            0,
-            0};
         if constexpr (IsGmm1Interleaved) {
-            WaitForCube(args.pingpongIdx);
+            uint32_t rawTileN = Get<N_VALUE>(actualShape) * SWIGLU_N_HALF;
+            uint32_t rawBaseNLoc = nLoc * SWIGLU_N_HALF;
+            for (uint32_t rawNOffset = 0; rawNOffset < rawTileN; rawNOffset += L1_TILE_N) {
+                uint32_t rawN = rawTileN - rawNOffset < L1_TILE_N ? rawTileN - rawNOffset : L1_TILE_N;
+                uint32_t rawNLoc = rawBaseNLoc + rawNOffset;
+                uint32_t epilogueN = rawN / SWIGLU_N_HALF;
+                uint32_t epilogueNLoc = rawNLoc / SWIGLU_N_HALF;
+                Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape), epilogueN, 0,
+                                                                             0};
+                Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
+                    mLoc * config.outputN + epilogueNLoc,
+                    mLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
+                        CeilDiv(epilogueNLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
+                    static_cast<int64_t>(mLoc / L1_TILE_M_256),
+                    0,
+                    0,
+                    0};
+                WaitForCube(args.pingpongIdx);
+                AscendC::SetCtrlSpr<60, 60>(0);
+                args.swigluQuantOp(epilogueShape, epilogueOffset, args.pingpongIdx);
+                NotifyCube(args.pingpongIdx);
+                args.pingpongIdx = 1U - args.pingpongIdx;
+            }
         } else {
+            Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape),
+                                                                         Get<N_VALUE>(actualShape), 0, 0};
+            Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
+                mLoc * config.outputN + nLoc,
+                mLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
+                    CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
+                static_cast<int64_t>(mLoc / L1_TILE_M_256),
+                0,
+                0,
+                0};
             WaitForCube();
-        }
-        AscendC::SetCtrlSpr<60, 60>(0);
-        if constexpr (IsGmm1Interleaved) {
-            args.swigluQuantOp(epilogueShape, epilogueOffset, args.pingpongIdx);
-            NotifyCube(args.pingpongIdx);
-            args.pingpongIdx = 1U - args.pingpongIdx;
-        } else {
+            AscendC::SetCtrlSpr<60, 60>(0);
             args.swigluQuantOp(epilogueShape, epilogueOffset);
             NotifyCube();
         }
