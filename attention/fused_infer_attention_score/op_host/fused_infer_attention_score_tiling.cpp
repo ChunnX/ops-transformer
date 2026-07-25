@@ -1605,10 +1605,6 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
         return false;
     }
 
-    if (!ResolveDynamicTiling()) {
-        return false;
-    }
-
     if (!isPageAttention) {
         return CheckFAIDSizeNoPA(tempD, tempK->GetStorageShape().GetDim(DIM_2),
                                  tempV->GetStorageShape().GetDim(DIM_2));
