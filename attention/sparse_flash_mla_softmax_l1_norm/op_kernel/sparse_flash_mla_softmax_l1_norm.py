@@ -368,7 +368,7 @@ def _muls_sel_vf_pse_type1_inner(
     vreg_reduce_sum_muls = vf.full(0.0, preg_full)
     vreg_reduce_sum_muls_tail = vf.full(0.0, preg_tail)
     
-    UNROLL = 4
+    UNROLL = 8
     n1_main = src_m // UNROLL * UNROLL
     n1_tail = src_m % UNROLL
     
@@ -394,10 +394,34 @@ def _muls_sel_vf_pse_type1_inner(
             vreg_muls3 = vf.muls(vreg_src3, scale, preg_full)
             vreg_exp3 = vf.exp_sub(vreg_muls3, vreg_lse3, preg_full)
             
+            vreg_lse4 = vf.load_align(lse_tiles, m_idx + 4, dist=pl.LoadDist.BRC_B32)
+            vreg_src4 = vf.load_align(src_tiles, (m_idx + 4) * TKV)
+            vreg_muls4 = vf.muls(vreg_src4, scale, preg_full)
+            vreg_exp4 = vf.exp_sub(vreg_muls4, vreg_lse4, preg_full)
+            
+            vreg_lse5 = vf.load_align(lse_tiles, m_idx + 5, dist=pl.LoadDist.BRC_B32)
+            vreg_src5 = vf.load_align(src_tiles, (m_idx + 5) * TKV)
+            vreg_muls5 = vf.muls(vreg_src5, scale, preg_full)
+            vreg_exp5 = vf.exp_sub(vreg_muls5, vreg_lse5, preg_full)
+            
+            vreg_lse6 = vf.load_align(lse_tiles, m_idx + 6, dist=pl.LoadDist.BRC_B32)
+            vreg_src6 = vf.load_align(src_tiles, (m_idx + 6) * TKV)
+            vreg_muls6 = vf.muls(vreg_src6, scale, preg_full)
+            vreg_exp6 = vf.exp_sub(vreg_muls6, vreg_lse6, preg_full)
+            
+            vreg_lse7 = vf.load_align(lse_tiles, m_idx + 7, dist=pl.LoadDist.BRC_B32)
+            vreg_src7 = vf.load_align(src_tiles, (m_idx + 7) * TKV)
+            vreg_muls7 = vf.muls(vreg_src7, scale, preg_full)
+            vreg_exp7 = vf.exp_sub(vreg_muls7, vreg_lse7, preg_full)
+            
             vreg_sum01 = vf.add(vreg_exp0, vreg_exp1, preg_full)
             vreg_sum23 = vf.add(vreg_exp2, vreg_exp3, preg_full)
+            vreg_sum45 = vf.add(vreg_exp4, vreg_exp5, preg_full)
+            vreg_sum67 = vf.add(vreg_exp6, vreg_exp7, preg_full)
             vreg_sum0123 = vf.add(vreg_sum01, vreg_sum23, preg_full)
-            vreg_reduce_sum_muls = vf.add(vreg_reduce_sum_muls, vreg_sum0123, preg_full)
+            vreg_sum4567 = vf.add(vreg_sum45, vreg_sum67, preg_full)
+            vreg_sumall = vf.add(vreg_sum0123, vreg_sum4567, preg_full)
+            vreg_reduce_sum_muls = vf.add(vreg_reduce_sum_muls, vreg_sumall, preg_full)
 
         for m_idx in pl.range(n1_main, src_m):
             vreg_lse = vf.load_align(lse_tiles, m_idx, dist=pl.LoadDist.BRC_B32)
@@ -427,10 +451,34 @@ def _muls_sel_vf_pse_type1_inner(
         vreg_muls3 = vf.muls(vreg_src3, scale, preg_tail)
         vreg_exp3 = vf.exp_sub(vreg_muls3, vreg_lse3, preg_tail)
         
+        vreg_lse4 = vf.load_align(lse_tiles, m_idx + 4, dist=pl.LoadDist.BRC_B32)
+        vreg_src4 = vf.load_align(src_tiles, (m_idx + 4) * TKV + 64)
+        vreg_muls4 = vf.muls(vreg_src4, scale, preg_tail)
+        vreg_exp4 = vf.exp_sub(vreg_muls4, vreg_lse4, preg_tail)
+        
+        vreg_lse5 = vf.load_align(lse_tiles, m_idx + 5, dist=pl.LoadDist.BRC_B32)
+        vreg_src5 = vf.load_align(src_tiles, (m_idx + 5) * TKV + 64)
+        vreg_muls5 = vf.muls(vreg_src5, scale, preg_tail)
+        vreg_exp5 = vf.exp_sub(vreg_muls5, vreg_lse5, preg_tail)
+        
+        vreg_lse6 = vf.load_align(lse_tiles, m_idx + 6, dist=pl.LoadDist.BRC_B32)
+        vreg_src6 = vf.load_align(src_tiles, (m_idx + 6) * TKV + 64)
+        vreg_muls6 = vf.muls(vreg_src6, scale, preg_tail)
+        vreg_exp6 = vf.exp_sub(vreg_muls6, vreg_lse6, preg_tail)
+        
+        vreg_lse7 = vf.load_align(lse_tiles, m_idx + 7, dist=pl.LoadDist.BRC_B32)
+        vreg_src7 = vf.load_align(src_tiles, (m_idx + 7) * TKV + 64)
+        vreg_muls7 = vf.muls(vreg_src7, scale, preg_tail)
+        vreg_exp7 = vf.exp_sub(vreg_muls7, vreg_lse7, preg_tail)
+        
         vreg_sum01 = vf.add(vreg_exp0, vreg_exp1, preg_tail)
         vreg_sum23 = vf.add(vreg_exp2, vreg_exp3, preg_tail)
+        vreg_sum45 = vf.add(vreg_exp4, vreg_exp5, preg_tail)
+        vreg_sum67 = vf.add(vreg_exp6, vreg_exp7, preg_tail)
         vreg_sum0123 = vf.add(vreg_sum01, vreg_sum23, preg_tail)
-        vreg_reduce_sum_muls_tail = vf.add(vreg_reduce_sum_muls_tail, vreg_sum0123, preg_tail)
+        vreg_sum4567 = vf.add(vreg_sum45, vreg_sum67, preg_tail)
+        vreg_sumall = vf.add(vreg_sum0123, vreg_sum4567, preg_tail)
+        vreg_reduce_sum_muls_tail = vf.add(vreg_reduce_sum_muls_tail, vreg_sumall, preg_tail)
 
     for m_idx in pl.range(n1_main, src_m):
         vreg_lse = vf.load_align(lse_tiles, m_idx, dist=pl.LoadDist.BRC_B32)
