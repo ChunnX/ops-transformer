@@ -1451,17 +1451,17 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_bmm2 = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
-            if rows_per_aiv == 16:
-                # Four aligned compare-mask slots preserve the official
-                # gSizeInner granularity. Their combined storage is 256 bytes.
-                v1_bw_mask0 = T.alloc_ub(16, calc_dtype)
-                v1_bw_mask1 = T.alloc_ub(16, calc_dtype)
-                v1_bw_mask2 = T.alloc_ub(16, calc_dtype)
-                v1_bw_mask3 = T.alloc_ub(16, calc_dtype)
-            else:
-                v1_bw_mask = T.alloc_ub(
-                    rows_per_aiv * bw_col_block // 16, calc_dtype
-                )
+            v1_bw_mask = T.alloc_ub(
+                rows_per_aiv * bw_col_block // 16, calc_dtype
+            )
+            # T.macro symbol collection does not safely propagate allocations
+            # through a Python conditional. Keep these four aligned 4x64 mask
+            # slots defined for every specialization; only the 16-row path
+            # consumes them.
+            v1_bw_mask0 = T.alloc_ub(16, calc_dtype)
+            v1_bw_mask1 = T.alloc_ub(16, calc_dtype)
+            v1_bw_mask2 = T.alloc_ub(16, calc_dtype)
+            v1_bw_mask3 = T.alloc_ub(16, calc_dtype)
             v1_bw_rg = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
