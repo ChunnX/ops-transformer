@@ -54,7 +54,9 @@ void QuantFlashAttnTilingImpl::CalcScheduleMode()
 
 ge::graphStatus QuantFlashAttnTilingImpl::DoOpTiling()
 {
-    OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(qfaInfo_->opName, "Set plat memory info fail."),
+    OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(qfaInfo_->opName, "platformInfo",
+                    "Failed to set platform memory info"),
                 return ge::GRAPH_FAILED);
 
     InitImplParam();
@@ -75,7 +77,9 @@ ge::graphStatus QuantFlashAttnTilingImpl::DoOpTiling()
 ge::graphStatus QuantFlashAttnTilingImpl::SetPlatMemoryInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(qfaInfo_->opName, "The platformInfoPtr is null!"),
+    OP_CHECK_IF(platformInfoPtr == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(qfaInfo_->opName, "platformInfo",
+                    "platformInfo cannot be nullptr"),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     platformInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -358,7 +362,10 @@ bool QuantFlashAttnTilingImpl::CheckNeedInitOutput() const
 ge::graphStatus QuantFlashAttnTilingImpl::SetTilingData(QuantFlashAttnTilingData &tilingData)
 {
     QuantFlashAttnTilingData *tiling = context_->GetTilingData<QuantFlashAttnTilingData>();
-    OP_CHECK_IF(tiling == nullptr, OP_LOGE(qfaInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tiling == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(qfaInfo_->opName, "tilingData",
+                    "tilingData cannot be nullptr"),
+                return ge::GRAPH_FAILED);
     *tiling = tilingData;
     return ge::GRAPH_SUCCESS;
 }

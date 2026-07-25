@@ -17,6 +17,7 @@
 #include <map>
 #include <algorithm>
 #include "qfa_tiling_shape.h"
+#include "quant_flash_attn_tiling_utils.h"
 
 namespace optiling {
 namespace quant_flash_attn {
@@ -84,7 +85,10 @@ static ge::graphStatus GetLayoutAxes(std::vector<QfaAxis> &layoutAxes, const Qfa
 {
     auto it = QFA_LAYOUT_AXIS_MAP.find(layout);
     if (it == QFA_LAYOUT_AXIS_MAP.end()) {
-        OP_LOGE(opName, "[%s] Layout %s is unsupported.", funcName.c_str(), QfaLayoutToSerialString(layout).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "layout",
+            QfaLayoutToSerialString(layout).c_str(),
+            ("The value of layout must be in the supported layout list, but got " +
+             QfaLayoutToSerialString(layout)).c_str());
         return ge::GRAPH_FAILED;
     }
     layoutAxes = it->second;
@@ -119,7 +123,8 @@ int64_t QfaTilingShape::GetAxisNum(const QfaAxis &axis) const
 ge::graphStatus QfaTilingShape::CheckHasAxis(const QfaAxis &axis, const std::string &funcName) const
 {
     if (shape_.GetDimNum() == 0) {
-        OP_LOGE(opName_, "[%s] The dim number of %s is 0.", funcName.c_str(), name_.c_str());
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name_.c_str(), "0D",
+            ("The shape dim of " + name_ + " cannot be 0").c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -129,8 +134,10 @@ ge::graphStatus QfaTilingShape::CheckHasAxis(const QfaAxis &axis, const std::str
     }
 
     if (shape_.GetDimNum() != layoutAxes.size()) {
-        OP_LOGE(opName_, "[%s] %s shape dimension is %zu, expected is %zu (layout %s).", funcName.c_str(),
-                name_.c_str(), shape_.GetDimNum(), layoutAxes.size(), QfaLayoutToSerialString(layout_).c_str());
+        std::string reasonMsg = "The shape dim of " + name_ + " must be " + std::to_string(layoutAxes.size()) +
+            "D when layout is " + QfaLayoutToSerialString(layout_);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name_.c_str(),
+            (std::to_string(shape_.GetDimNum()) + "D").c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -138,15 +145,19 @@ ge::graphStatus QfaTilingShape::CheckHasAxis(const QfaAxis &axis, const std::str
         if (HasShapeD()) {
             return ge::GRAPH_SUCCESS;
         }
-        OP_LOGE(opName_, "[%s] %s's layout is %s, axis D or (D1, D0) does not exist.", funcName.c_str(), name_.c_str(),
-                QfaLayoutToSerialString(layout_).c_str());
+        std::string reasonMsg = "When layout is " + QfaLayoutToSerialString(layout_) +
+            ", axis D or (D1, D0) of " + name_ + " must exist";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, name_.c_str(),
+            QfaAxisToSerialString(axis).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     } else if (HasAxis(axis)) {
         return ge::GRAPH_SUCCESS;
     }
 
-    OP_LOGE(opName_, "[%s] %s's layout is %s, %s is not exists.", funcName.c_str(), name_.c_str(),
-            QfaLayoutToSerialString(layout_).c_str(), QfaAxisToSerialString(axis).c_str());
+    std::string reasonMsg = "When layout is " + QfaLayoutToSerialString(layout_) + ", axis " +
+        QfaAxisToSerialString(axis) + " of " + name_ + " must exist";
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, name_.c_str(),
+        QfaAxisToSerialString(axis).c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
 }
 
@@ -202,8 +213,10 @@ ge::graphStatus QfaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpect
             shapeExpected = gert::Shape({param.N, param.T});
             break;
         default:
-            OP_LOGE(opName_, "[%s] Layout %s is unsupported.", funcName.c_str(),
-                    QfaLayoutToSerialString(layout_).c_str());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout",
+                QfaLayoutToSerialString(layout_).c_str(),
+                ("The value of layout must be in the supported layout list, but got " +
+                 QfaLayoutToSerialString(layout_)).c_str());
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -222,8 +235,10 @@ ge::graphStatus QfaTilingShapeCompare::GetCompareFunc(const QfaCompareType &comp
 {
     auto it = compareFuncMap_.find(compareType);
     if (it == compareFuncMap_.end()) {
-        OP_LOGE(opName_, "[%s] Compare type %s is unsupported.", funcName.c_str(),
-                CompareTypeToSerialString(compareType).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "compareType",
+            CompareTypeToSerialString(compareType).c_str(),
+            ("The value of compareType must be in the supported compare type list, but got " +
+             CompareTypeToSerialString(compareType)).c_str());
         return ge::GRAPH_FAILED;
     }
     compareFunc = it->second;
@@ -244,8 +259,11 @@ ge::graphStatus QfaTilingShapeCompare::CompareShape(QfaTilingShapeCompareParam &
     }
 
     if (shape_.GetDimNum() != shapeExpected.GetDimNum() || shape_.GetDimNum() != layoutAxes.size()) {
-        OP_LOGE(opName_, "[%s] %s shape dimension is %zu, expected is %zu (layout %s).", funcName.c_str(),
-                name_.c_str(), shape_.GetDimNum(), shapeExpected.GetDimNum(), QfaLayoutToSerialString(layout_).c_str());
+        std::string reasonMsg = "The shape dim of " + name_ + " must be " +
+            std::to_string(shapeExpected.GetDimNum()) + "D when layout is " +
+            QfaLayoutToSerialString(layout_);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name_.c_str(),
+            (std::to_string(shape_.GetDimNum()) + "D").c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -259,17 +277,19 @@ ge::graphStatus QfaTilingShapeCompare::CompareShape(QfaTilingShapeCompareParam &
 
         if (!compareFunc(shape_.GetDim(i), shapeExpected.GetDim(i))) {
             if (param.compareTypeMap.empty()) {
-                OP_LOGE(opName_, "[%s] %s layout is %s, shape %s should be equal to %s.", funcName.c_str(),
-                        name_.c_str(), QfaLayoutToSerialString(layout_).c_str(), GetQfaShapeStr(shape_).c_str(),
-                        GetQfaShapeStr(shapeExpected).c_str());
+                std::string reasonMsg = "When layout is " + QfaLayoutToSerialString(layout_) +
+                    ", the shape of " + name_ + " must be [" +
+                    ToStringRaw(shapeExpected) + "]";
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, name_.c_str(),
+                    ToStringRaw(shape_).c_str(), reasonMsg.c_str());
             } else {
-                OP_LOGE(opName_,
-                        "[%s] %s layout is %s, shape is %s, expected is %s, "
-                        "axis %s(%ld) should %s expected %ld.",
-                        funcName.c_str(), name_.c_str(), QfaLayoutToSerialString(layout_).c_str(),
-                        GetQfaShapeStr(shape_).c_str(), GetQfaShapeStr(shapeExpected).c_str(),
-                        QfaAxisToSerialString(axis).c_str(), shape_.GetDim(i),
-                        CompareTypeToSerialSymbolString(compareType).c_str(), shapeExpected.GetDim(i));
+                std::string reasonMsg = "When layout is " + QfaLayoutToSerialString(layout_) +
+                    ", shape [" + QfaAxisToSerialString(axis) + "] of " + name_ +
+                    " must " + CompareTypeToSerialSymbolString(compareType) + " " +
+                    std::to_string(shapeExpected.GetDim(i)) + ", the shape must be [" +
+                    ToStringRaw(shapeExpected) + "]";
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, name_.c_str(),
+                    ToStringRaw(shape_).c_str(), reasonMsg.c_str());
             }
             return ge::GRAPH_FAILED;
         }
