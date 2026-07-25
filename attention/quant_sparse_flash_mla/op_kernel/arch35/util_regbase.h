@@ -203,7 +203,8 @@ struct RunInfo {
     bool isSoftmaxLseEnable; \
     uint32_t oriSparseBlockCount; \
     uint32_t cmpSparseBlockCount; \
-    uint32_t alignedSparseBlockCount; /* 按128对齐后的sparseBlockCount，用于kvPhyAddrGm的UB/GM buffer分配与寻址 */ \
+    uint32_t alignedOriSparseBlockCount; /* ori按128对齐后的sparseBlockCount */ \
+    uint32_t alignedCmpSparseBlockCount; /* cmp按128对齐后的sparseBlockCount */ \
     uint32_t actualSeqLenSize; /* 用户输入的actualseq的长度 */ \
     /* service mm1 mm2 pageAttention */ \
     uint32_t oriBlockSize; \

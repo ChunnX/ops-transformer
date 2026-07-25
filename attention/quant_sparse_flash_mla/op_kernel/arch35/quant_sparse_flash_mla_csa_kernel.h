@@ -210,11 +210,18 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
     vecBlock.InitVecBlock(tPipe, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedOriKv, sequsedCmpKv, cmpResidualKv);
     vecBlock.CleanOutput(attentionOut, constInfo);
     if ASCEND_IS_AIV {
-        if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE && IS_VEC_S2PHYADDR) {
-            this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx, hasActualSeqQlen,
-                                        hasCuSeqlensQ, hasActualSeqCmpKvlen, hasCuSeqlensCmpKv, actualSeqQlenGm,
-                                        cuSeqlensQGm, actualSeqCmpKvlenGm, cuSeqlensCmpKvGm, cmpResidualKvGm, workspace,
-                                        constInfo);
+        if constexpr ((TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
+                       TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
+                      IS_VEC_S2PHYADDR) {
+            this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx,
+                                        hasActualSeqQlen, hasCuSeqlensQ,
+                                        hasActualSeqOriKvlen, hasCuSeqlensOriKv,
+                                        actualSeqOriKvlenGm, cuSeqlensOriKvGm, oriTopkLengthGm,
+                                        hasActualSeqCmpKvlen, hasCuSeqlensCmpKv,
+                                        actualSeqCmpKvlenGm, cuSeqlensCmpKvGm, cmpTopkLengthGm,
+                                        cmpResidualKvGm, actualSeqQlenGm, cuSeqlensQGm,
+                                        workspace, constInfo);
         }
     }
     /* cube侧不依赖sharedParams的scalar前置 */
@@ -253,7 +260,9 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Pars
     constInfo.oriSparseBlockCount = quantSparseFlashMlaBaseParams.oriSparseBlockCount;
     constInfo.cmpSparseBlockCount = quantSparseFlashMlaBaseParams.cmpSparseBlockCount;
     constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128;
-    constInfo.alignedSparseBlockCount = (constInfo.cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
+    constInfo.alignedOriSparseBlockCount = (constInfo.oriSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
+        SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
+    constInfo.alignedCmpSparseBlockCount = (constInfo.cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
         SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
         TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
