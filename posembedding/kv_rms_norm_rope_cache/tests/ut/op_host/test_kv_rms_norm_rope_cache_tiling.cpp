@@ -1476,7 +1476,8 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_odd_dk1_bf1
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000, "");
 }
 
-// int8 量化 cache：kernel 里 scatter 按 dtype 用 if constexpr 分派到 kQuantLocal 分支，
+// int8 量化 cache（dk0 = 32B / 1B = 32，故取 dk = 96 使 dk1 = 3 为奇数）：kernel 里 scatter 按 dtype
+// 用 if constexpr 分派到 kQuantLocal 分支，
 // 与非量化分支是两条独立路径，tiling 放行口径同样要覆盖
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_odd_dk1_int8_tiling)
 {
@@ -1485,21 +1486,21 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_odd_dk1_int
     compileInfo.ubSize = 196608;
     gert::TilingContextPara tilingContextPara(
         "KvRmsNormRopeCache",
-        {{{{4, 1, 1, 32784}, {4, 1, 1, 32784}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{{4, 1, 1, 32864}, {4, 1, 1, 32864}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 96}, {4, 1, 1, 96}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 96}, {4, 1, 1, 96}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
-         {{{8, 128, 1, 16}, {8, 128, 1, 16}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{8, 128, 1, 96}, {8, 128, 1, 96}}, ge::DT_INT8, ge::FORMAT_ND},
          {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_INT8, ge::FORMAT_ND},
-         {{{16}, {16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{96}, {96}}, ge::DT_FLOAT, ge::FORMAT_ND},
          {{{32768}, {32768}}, ge::DT_FLOAT, ge::FORMAT_ND},
          kOptionalInput,
          kOptionalInput,
          kOptionalInput},
-        {{{{8, 128, 1, 16}, {8, 128, 1, 16}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{{8, 128, 1, 96}, {8, 128, 1, 96}}, ge::DT_INT8, ge::FORMAT_ND},
          {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_INT8, ge::FORMAT_ND},
-         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 96}, {4, 1, 1, 96}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         {
             {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
@@ -1509,6 +1510,147 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_odd_dk1_int
         &compileInfo, "Ascend950", 64, 196608);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000, "");
+}
+
+// dk = 48（dk1 = 3，奇数）：dk 是 dk0(fp16 为 16)的整数倍，odd-dk1 路径成立 -> 放行。
+// 与下面 dk = 40 的用例只差 dk 一个变量，用来把"拦不拦"的原因锁死在 dk 是否整除 dk0 上
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_odd_dk1_dk48_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32816}, {4, 1, 1, 32816}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 48}, {8, 128, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 48}, {8, 128, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000, "");
+}
+
+// dk = 40：不是 dk0(fp16 为 16)的整数倍。odd-dk1 的 r = dk0 / 2、m = halfDk / dk0 依赖
+// halfDk = m * dk0 + r，只有 dk % dk0 == 0 时才成立，因此这类 shape 必须在 tiling 就拦掉。
+// 拦截点在 CheckCosSinValid：NZ 模式下要求 sin 的 D 维（== dk）整除 FP16_BLOCK_ALIGN_NUM(16)
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_dk_not_multiple_of_dk0_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32808}, {4, 1, 1, 32808}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 40}, {4, 1, 1, 40}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 40}, {4, 1, 1, 40}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 40}, {8, 128, 1, 40}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 40}, {8, 128, 1, 40}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 40}, {4, 1, 1, 40}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// int8 cache 的 dk0 是 32（32B / 1B），dk = 48 对 fp16 合法、对 int8 非法。
+// 与上面 fp16 dk = 48 放行的用例形成对照，证明这条约束是按 cache dtype 取 dk0 的，不是巧合
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_int8_dk_not_multiple_of_dk0_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32816}, {4, 1, 1, 32816}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 48}, {8, 128, 1, 48}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{48}, {48}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 48}, {8, 128, 1, 48}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// dv = 32760 不是 C0(fp16 为 16)的整数倍。NZ 下 ckv_cache 的尾轴同样要求按 C0 分形对齐，
+// 校验点在 CheckGammaValid：gamma 的 0 轴(== dv)必须整除 FP16_BLOCK_ALIGN_NUM
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_dv_not_multiple_of_c0_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32824}, {4, 1, 1, 32824}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32760}, {32760}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 64}, {8, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32760}, {8, 128, 1, 32760}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 64}, {8, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32760}, {8, 128, 1, 32760}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32760}, {4, 1, 1, 32760}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 // cacheRowLimit is the sole host-side source of the kernel's index upper bound
