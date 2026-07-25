@@ -973,3 +973,4 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::RowMuls(LocalTensor<T> dstUb, Loca
 }
 } // namespace SMLAKernel
 #endif
+

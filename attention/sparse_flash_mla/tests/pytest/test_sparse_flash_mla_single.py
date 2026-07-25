@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -10,23 +9,24 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import result_compare_method
-import utils
-import itertools
-import torch
-import torch_npu
-from sparse_flash_mla_paramset import ENABLED_PARAMS
-import sparse_flash_mla_golden
 import os
+
 import pytest
+import torch_npu
+
+import result_compare_method
+import sparse_flash_mla_golden
+import utils
 from batch import sparse_flash_mla_process
+from sparse_flash_mla_paramset import ENABLED_PARAMS
 
 save_pt = False
 pt_save_path = "data"
 
 # 处理所有参数组合
-result_path = os.getenv("SMLA_RESULT_SAVE_PATH", './result/smla_result_all_sparse.xlsx')
+result_path = os.getenv("SMLA_RESULT_SAVE_PATH", "./result/smla_result_all_sparse.xlsx")
 param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
+
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
@@ -53,10 +53,10 @@ def test_example(param_combinations):
     else:
         print("npu_result.size():", npu_result.size())
         # 结果精度对比
-        result, fulfill_percent = result_compare_method.check_result(input_data['cpu_output'], npu_result)
+        result, fulfill_percent = result_compare_method.check_result(input_data["cpu_output"], npu_result)
 
     if test_data.get("return_softmax_lse", False):
-        result, fulfill_percent = result_compare_method.check_result(input_data['softmax_lse'], softmax_lse)
+        result, fulfill_percent = result_compare_method.check_result(input_data["softmax_lse"], softmax_lse)
     # 记录结果
     utils.save_result(result, fulfill_percent, test_data, result_path)
 

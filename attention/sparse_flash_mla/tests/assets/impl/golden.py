@@ -47,3 +47,4 @@ def cpu_sparse_flash_mla(q, *, return_softmax_lse=False, testcase_name=None,
         # Pytest returns (T1, N2, G), while the operator contract is (N2, T1, G).
         lse = lse.permute(1, 0, 2).contiguous()
     return data["cpu_output"], lse
+

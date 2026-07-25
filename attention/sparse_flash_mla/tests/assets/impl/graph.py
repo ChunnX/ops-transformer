@@ -136,3 +136,4 @@ class SparseFlashMlaAclGraph(torch.nn.Module):
             topk_value_mode=self.topk_value_mode,
             return_softmax_lse=self.return_softmax_lse,
         )
+

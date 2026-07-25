@@ -1228,3 +1228,4 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
 }
 } // namespace SMLAKernel
 #endif
+

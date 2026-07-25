@@ -228,3 +228,4 @@ def sparse_flash_mla_ttk(
         topk_value_mode=int(topk_value_mode),
         return_softmax_lse=bool(return_softmax_lse),
     )
+

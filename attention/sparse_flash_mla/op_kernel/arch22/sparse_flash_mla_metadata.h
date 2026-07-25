@@ -78,3 +78,4 @@ static_assert(SMLA_META_SIZE * sizeof(SMLA_METADATA_T) >= sizeof(detail::SasMeta
 } // namespace optiling
 
 #endif
+

@@ -948,3 +948,4 @@ __aicore__ inline void SparseFlashMlaCsa<SMLAT>::PreloadPipeline(uint32_t loop, 
 
 } // namespace SMLAKernel
 #endif // SPARSE_FLASH_MLA_CSA_KERNEL_H
+

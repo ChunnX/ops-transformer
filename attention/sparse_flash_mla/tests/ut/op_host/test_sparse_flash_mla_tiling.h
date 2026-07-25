@@ -82,3 +82,4 @@ inline void InitCsaTilingData(optiling::SparseFlashMlaTilingData &tiling, uint32
 } // namespace smla_ut
 
 #endif // TEST_SPARSE_FLASH_MLA_TILING_H
+

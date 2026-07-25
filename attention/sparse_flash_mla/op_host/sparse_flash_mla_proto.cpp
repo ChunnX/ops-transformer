@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file sparse_flash_mla_proto.cpp
-* \brief
-*/
+ * \file sparse_flash_mla_proto.cpp
+ * \brief
+ */
 
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
@@ -53,7 +53,7 @@ const gert::Shape *GetOptionalStorageShape(gert::InferShapeContext *context, uin
 ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("SparseFlashMla", "InferShapeContext is nullptr"),
-            return ge::GRAPH_FAILED);
+               return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OPS_LOG_E_IF_NULL(context, queryShape, return ge::GRAPH_FAILED)
     const gert::Shape *oriKvShape = GetOptionalStorageShape(context, ORI_KV_INPUT_INDEX);
@@ -99,7 +99,7 @@ ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
 ge::graphStatus InferDataTypeSparseFlashMla(gert::InferDataTypeContext *context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("SparseFlashMla", "InferShapeContext is nullptr"),
-            return ge::GRAPH_FAILED);
+               return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(0, inputDataType);
     context->SetOutputDataType(1, ge::DT_FLOAT);

@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -10,19 +9,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import ast
-import utils
-import itertools
-import math
-import numpy as np
 import os
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
 import pytest
-import random
-import sparse_flash_mla_process
+
 import sparse_flash_mla_golden
-import torch
+import utils
 
 excel_path = os.getenv("SMLA_EXCEL_PATH", "./excel/example.xlsx")
 excel_sheet = os.getenv("SMLA_EXCEL_SHEET", "CSA")
@@ -33,7 +27,8 @@ param_combinations = utils.generate_param_combinations(ENABLED_PARAMS_FROM_FILE,
 
 case_id = 0
 failed_cases = []
-failed_record_path = Path('pt_save_failed.xlsx')
+failed_record_path = Path("pt_save_failed.xlsx")
+
 
 def record_failed_case(param_combinations, error_msg):
     global case_id
@@ -58,6 +53,7 @@ def record_failed_case(param_combinations, error_msg):
     df = pd.DataFrame(failed_cases)
     df.to_excel(failed_record_path, index=False)
 
+
 def generate_and_save(param_combinations):
     global case_id
     try:
@@ -72,6 +68,7 @@ def generate_and_save(param_combinations):
         print(f"[FAILED CASE RECORDED] case_id={case_id}, error={e}")
     finally:
         case_id += 1
+
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)

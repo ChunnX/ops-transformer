@@ -125,3 +125,4 @@ def compare(*outputs):
         COMPARATOR.compare_output(npu_out, golden_out)
         for npu_out, golden_out in zip(outputs[:half], outputs[half:])
     ]
+

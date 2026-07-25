@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -10,20 +9,20 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import os
+from pathlib import Path
+
+import pandas as pd
+import pytest
 import torch
 import torch_npu
+
 import result_compare_method
 import utils
 from batch import sparse_flash_mla_process
-import pytest
-import random
-import pandas as pd
-from pathlib import Path
-import numpy as np
-import os
 
 pt_dir = os.getenv("SMLA_PT_LOAD_PATH", "./data")
-result_path = Path(os.getenv("SMLA_RESULT_SAVE_PATH", './result/smla_result.xlsx'))
+result_path = Path(os.getenv("SMLA_RESULT_SAVE_PATH", "./result/smla_result.xlsx"))
 batch_test_mode = int(os.environ.get("SMLA_BATCH_TEST_MODE", 0))
 excel_path = os.environ.get("SMLA_EXCEL_PATH", os.path.join(os.path.dirname(__file__), "excel", "example.xlsx"))
 excel_sheet = os.environ.get("SMLA_EXCEL_SHEET", "CSA")
@@ -38,12 +37,12 @@ if _single_case_path:
         print(f"单用例隔离模式, 仅执行: {_single_case_path}")
         locals()["testcase_files"].append(_single_case_path)
 elif os.path.isdir(pt_dir):
-    pt_files = [f for f in os.listdir(pt_dir) if f.endswith('.pt')]
+    pt_files = [f for f in os.listdir(pt_dir) if f.endswith(".pt")]
     if not pt_files:
         print(f"错误: 目录中没有找到.pt文件: {pt_dir}")
     elif batch_test_mode == 1:
         df = pd.read_excel(excel_path, sheet_name=excel_sheet)
-        target_names = [str(name) for name in df['testcase_name'].dropna().tolist() if str(name) != 'None']
+        target_names = [str(name) for name in df["testcase_name"].dropna().tolist() if str(name) != "None"]
         if not target_names:
             print(f"错误: 表格中没有有效的testcase_name: {excel_path} sheet: {excel_sheet}")
         else:
@@ -68,6 +67,7 @@ else:
 
 print("files:", locals()["testcase_files"])
 
+
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
 def test_sparse_flash_mla(testcase_files):
@@ -78,16 +78,16 @@ def test_sparse_flash_mla(testcase_files):
     try:
         npu_result, softmax_lse = sparse_flash_mla_process.call_npu(test_data)
     except Exception as e:
-        utils.save_result('Exception', 0, test_data['params'], result_path)
+        utils.save_result("Exception", 0, test_data["params"], result_path)
         pytest.fail(f"NPU执行异常: {e}")
     if npu_result != None:
-        result, fulfill_percent = result_compare_method.check_result(test_data['cpu_output'], npu_result)
+        result, fulfill_percent = result_compare_method.check_result(test_data["cpu_output"], npu_result)
     else:
         result = "Failed"
         fulfill_percent = 0
-    if test_data['params'].get('return_softmax_lse'):
-            print("return_softmax_lse is true!!!")
-            result, fulfill_percent = result_compare_method.check_result(test_data['softmax_lse'], softmax_lse)
-    utils.save_result(result, fulfill_percent, test_data['params'], result_path)
+    if test_data["params"].get("return_softmax_lse"):
+        print("return_softmax_lse is true!!!")
+        result, fulfill_percent = result_compare_method.check_result(test_data["softmax_lse"], softmax_lse)
+    utils.save_result(result, fulfill_percent, test_data["params"], result_path)
     if result not in ("Passed", "passed", "Pass", "pass"):
         pytest.fail(f"用例结果校验失败: result={result}, fulfill_percent={fulfill_percent}")

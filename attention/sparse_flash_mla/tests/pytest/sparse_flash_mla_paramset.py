@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -269,9 +268,7 @@ TEST_PARAMS = {
                 128,
             ]
         ],
-        "seqused_cmp_kv": [
-            [32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32]
-        ],
+        "seqused_cmp_kv": [[32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32]],
         "cmp_residual_kv": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],  # 残差
         "softmax_scale": [0.04419417],
         "cmp_ratio": [4],
@@ -629,6 +626,4 @@ TEST_PARAMS = {
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
-ENABLED_PARAMS = [
-    {**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()
-]
+ENABLED_PARAMS = [{**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS]

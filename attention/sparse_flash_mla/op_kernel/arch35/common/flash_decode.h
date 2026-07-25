@@ -258,3 +258,4 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
 } // namespace AttentionCommon
 
 #endif  // SPARSE_FLASH_MLA_FLASH_DECODE_H
+
