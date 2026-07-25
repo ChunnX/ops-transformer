@@ -450,13 +450,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         qwDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
         qwDataCopyExtParams.srcStride = 0;
         qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qwDataCopyExtParams.blockLen) / 32;
-        DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))],
+        DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
         if (constInfo_.quantMode != 4) {
             // qScaleGm  -->  qScaleUB_
             DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
-            DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))],
+            DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))],
                         qScaleGm[weightGmOffset], qwDataCopyExtParams, padQScaleParams);
         }
 
@@ -483,21 +483,21 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     static_assert(std::is_same_v<SCORE_T, uint16_t>);
     auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCORE_T))];
-    auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
+    auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))];
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / 2 * constInfo_.mBaseSize;
     if constexpr (IS_WEIGHT_FP16) {
-        auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
+        auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))];
         auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ +
             ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
         vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
             qkBase, qkVLstride,
             (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
+            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T), weightTempBase,
             kScaleBase, (uint32_t)0,
-            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
+            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
             gSize_, curAivS1ProcNum);
     } else if (constInfo_.quantMode == 4) { // 4: per_tensor量化
         // quantMode为4时不适用sacle的UB
