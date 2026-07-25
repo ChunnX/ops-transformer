@@ -378,8 +378,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 if (cuS2LenAlign8 < s2BaseSize_) {
                     Duplicate(reduceOutInner[cuS2LenAlign8], -1.0e30f, s2BaseSize_ - cuS2LenAlign8);
                 }
-                // Removed PipeBarrier here — Duplicate is V pipe, Mins below is also V pipe,
-                // so no cross-pipe sync needed
+                PipeBarrier<PIPE_V>();
             }
             // Replace +1e30 (MM1 cube L0C uninitialized garbage) with -1e30
             PipeBarrier<PIPE_V>();
