@@ -179,6 +179,8 @@ namespace optiling{
             return this->blockNum_;
         }
         uint64_t GetTilingKey();
+        bool ResolveDynamicTiling();
+        uint32_t CalculateL1Usage(uint32_t qTileCeil, uint32_t maxKvStackLen) const;
     private:
         void FillSplitCoreTilingData(FAInferTilingData &tilingdata);
         void FillWorkSpaceTilingData(FAInferTilingData &faTilingData);
@@ -207,8 +209,6 @@ namespace optiling{
             uint32_t coreIdx, int32_t &splitIdx, int32_t &prevBIdx,
             int32_t &prevN1Idx, int32_t &prevS1Idx,
             int64_t &currentLseTaskOffset, int64_t &currentOTaskOffset);
-        bool ResolveDynamicTiling();
-        uint32_t CalculateL1Usage(uint32_t qTileCeil, uint32_t maxKvStackLen) const;
     private:
         FAInferContext faInfo_;
         uint32_t blockNum_;
@@ -752,9 +752,6 @@ namespace optiling{
 
     ge::graphStatus FAInferTiling::DoTiling(FAInferTilingData &tilingdata)
     {
-        if (!ResolveDynamicTiling()) {
-            return ge::GRAPH_FAILED;
-        }
         FillBasicTilingData(tilingdata);
         if (!faInfo_.isTilingSink) {
             FillSplitCoreTilingData(tilingdata);
