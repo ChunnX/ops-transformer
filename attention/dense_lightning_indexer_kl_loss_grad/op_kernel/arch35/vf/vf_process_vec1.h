@@ -52,8 +52,7 @@ __simd_vf__ inline void ProcessVec1BasicVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb,
     RegTensor<float> vreg_output_x34;
     RegTensor<float> vreg_output_x56;
     RegTensor<float> vreg_output_x78;
-    RegTensor<float> vreg_output;
-
+    
     RegTensor<float> vreg_weight1;
     RegTensor<float> vreg_weight2;
     RegTensor<float> vreg_weight3;
@@ -67,50 +66,57 @@ __simd_vf__ inline void ProcessVec1BasicVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb,
     MaskReg preg_all_b32 = CreateMask<float, MaskPattern::ALL>();
 
     for (uint16_t idx = 0; idx < repeatTime; idx++){
+        RegTensor<float> vreg_output;
         Duplicate(vreg_output, 0, preg_all_b32);
-        for (uint16_t i = 0; i < loopNum; i+=UNROLL_SIZE) {
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight1, weightUb + i);
-            LoadAlign(vreg_input_x1, srcUb + i * nBaseSize + idx * floatRepSize);
+        for (uint16_t i = 0; i < loopNum; i++) {
+            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight1, weightUb + i * UNROLL_SIZE);
+            LoadAlign(vreg_input_x1, srcUb + (i * UNROLL_SIZE + 0) * nBaseSize + idx * floatRepSize);
             Relu(vreg_input_x1, vreg_input_x1, preg_all_b32);
+            StoreAlign(((__ubuf__ T *&)srcUb + (i * UNROLL_SIZE + 0) * nBaseSize + idx * floatRepSize),vreg_input_x1, preg_all_b32);
             Mul(vreg_input_x1, vreg_input_x1, vreg_weight1, preg_all_b32);
             
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight2, weightUb + i + 1);
-            LoadAlign(vreg_input_x2, srcUb + i * nBaseSize + idx * floatRepSize);
+            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight2, weightUb + i * UNROLL_SIZE + 1);
+            LoadAlign(vreg_input_x2, srcUb + (i * UNROLL_SIZE + 1) * nBaseSize + idx * floatRepSize);
             Relu(vreg_input_x2, vreg_input_x2, preg_all_b32);
+            StoreAlign(((__ubuf__ T *&)srcUb + (i * UNROLL_SIZE + 1) * nBaseSize + idx * floatRepSize),vreg_input_x2, preg_all_b32);
             Mul(vreg_input_x2, vreg_input_x2, vreg_weight2, preg_all_b32);
 
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight3, weightUb + i + 2);
-            LoadAlign(vreg_input_x3, srcUb + i * nBaseSize + idx * floatRepSize);
+            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight3, weightUb + i * UNROLL_SIZE + 2);
+            LoadAlign(vreg_input_x3, srcUb + (i * UNROLL_SIZE + 2) * nBaseSize + idx * floatRepSize);
             Relu(vreg_input_x3, vreg_input_x3, preg_all_b32);
+            StoreAlign(((__ubuf__ T *&)srcUb + (i * UNROLL_SIZE + 2) * nBaseSize + idx * floatRepSize),vreg_input_x3, preg_all_b32);
             Mul(vreg_input_x3, vreg_input_x3, vreg_weight3, preg_all_b32);
 
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight4, weightUb + i + 3);
-            LoadAlign(vreg_input_x4, srcUb + i * nBaseSize + idx * floatRepSize);
+            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight4, weightUb + i * UNROLL_SIZE + 3);
+            LoadAlign(vreg_input_x4, srcUb + (i * UNROLL_SIZE + 3) * nBaseSize + idx * floatRepSize);
             Relu(vreg_input_x4, vreg_input_x4, preg_all_b32);
+            StoreAlign(((__ubuf__ T *&)srcUb + (i * UNROLL_SIZE + 3) * nBaseSize + idx * floatRepSize),vreg_input_x4, preg_all_b32);
             Mul(vreg_input_x4, vreg_input_x4, vreg_weight4, preg_all_b32);
 
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight5, weightUb + i + 4);
-            LoadAlign(vreg_input_x5, srcUb + i * nBaseSize + idx * floatRepSize);
+            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight5, weightUb + i * UNROLL_SIZE + 4);
+            LoadAlign(vreg_input_x5, srcUb + (i * UNROLL_SIZE + 4) * nBaseSize + idx * floatRepSize);
             Relu(vreg_input_x5, vreg_input_x5, preg_all_b32);
+            StoreAlign(((__ubuf__ T *&)srcUb + (i * UNROLL_SIZE + 4) * nBaseSize + idx * floatRepSize),vreg_input_x5, preg_all_b32);
             Mul(vreg_input_x5, vreg_input_x5, vreg_weight5, preg_all_b32);
             
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight6, weightUb + i + 5);
-            LoadAlign(vreg_input_x6, srcUb + i * nBaseSize + idx * floatRepSize);
+            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight6, weightUb + i * UNROLL_SIZE + 5);
+            LoadAlign(vreg_input_x6, srcUb + (i * UNROLL_SIZE + 5) * nBaseSize + idx * floatRepSize);
             Relu(vreg_input_x6, vreg_input_x6, preg_all_b32);
+            StoreAlign(((__ubuf__ T *&)srcUb + (i * UNROLL_SIZE + 5) * nBaseSize + idx * floatRepSize),vreg_input_x6, preg_all_b32);
             Mul(vreg_input_x6, vreg_input_x6, vreg_weight6, preg_all_b32);
 
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight7, weightUb + i + 6);
-            LoadAlign(vreg_input_x7, srcUb + i * nBaseSize + idx * floatRepSize);
+            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight7, weightUb + i * UNROLL_SIZE + 6);
+            LoadAlign(vreg_input_x7, srcUb + (i * UNROLL_SIZE + 6) * nBaseSize + idx * floatRepSize);
             Relu(vreg_input_x7, vreg_input_x7, preg_all_b32);
+            StoreAlign(((__ubuf__ T *&)srcUb + (i * UNROLL_SIZE + 6) * nBaseSize + idx * floatRepSize),vreg_input_x7, preg_all_b32);
             Mul(vreg_input_x7, vreg_input_x7, vreg_weight7, preg_all_b32);
 
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight8, weightUb + i + 7);
-            LoadAlign(vreg_input_x8, srcUb + i * nBaseSize + idx * floatRepSize);
+            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight8, weightUb + i * UNROLL_SIZE + 7);
+            LoadAlign(vreg_input_x8, srcUb + (i * UNROLL_SIZE + 7) * nBaseSize + idx * floatRepSize);
             Relu(vreg_input_x8, vreg_input_x8, preg_all_b32);
+            StoreAlign(((__ubuf__ T *&)srcUb + (i * UNROLL_SIZE + 7) * nBaseSize + idx * floatRepSize),vreg_input_x8, preg_all_b32);
             Mul(vreg_input_x8, vreg_input_x8, vreg_weight8, preg_all_b32);
             
-
-            // SY 累加和ReduceSum
             Add(vreg_output_x12, vreg_input_x1, vreg_input_x2, preg_all_b32);
             Add(vreg_output_x34, vreg_input_x3, vreg_input_x4, preg_all_b32);
             Add(vreg_output_x56, vreg_input_x5, vreg_input_x6, preg_all_b32);
@@ -121,9 +127,10 @@ __simd_vf__ inline void ProcessVec1BasicVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb,
             Add(vreg_output, vreg_output, vreg_output_x12, preg_all_b32);
         }
         for (uint16_t j = 0; j < tailSize; j++) {
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight1, weightUb + c * UNROLL_SIZE + j);
-            LoadAlign(vreg_input_x1, srcUb + loopNum * UNROLL_SIZE * nBaseSize + j * nBaseSize + idx * floatRepSize);
+            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight1, weightUb + loopNum * UNROLL_SIZE + j);
+            LoadAlign(vreg_input_x1, srcUb + (loopNum * UNROLL_SIZE + j) * nBaseSize + idx * floatRepSize);
             Relu(vreg_input_x1, vreg_input_x1, preg_all_b32);
+            StoreAlign(((__ubuf__ T *&)srcUb + (loopNum * UNROLL_SIZE + j) * nBaseSize + idx * floatRepSize),vreg_input_x1, preg_all_b32);
             Mul(vreg_input_x1, vreg_input_x1, vreg_weight1, preg_all_b32);
             Add(vreg_output, vreg_output, vreg_input_x1, preg_all_b32);
         }
