@@ -79,14 +79,16 @@ ge::graphStatus PagedAttentionChecker::CheckSingleParaBlockTable(const QfaTiling
     int64_t dim0 = static_cast<int64_t>(shape.GetDim(0));
     int64_t dim1 = static_cast<int64_t>(shape.GetDim(1));
     OP_CHECK_IF(dim0 != qfaInfo.bSize,
-                OP_LOGE(qfaInfo.opName,
-                        "block_table shape dim0 should be %ld (B), but got %ld.",
-                        qfaInfo.bSize, dim0),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qfaInfo.opName, BLOCK_TABLE_NAME.c_str(),
+                    ToStringRaw(shape).c_str(),
+                    ("Shape [0] of block_table must be equal to B (" +
+                     std::to_string(qfaInfo.bSize) + ")").c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(dim1 != qfaInfo.maxBlockNumPerBatch,
-                OP_LOGE(qfaInfo.opName,
-                        "block_table shape dim1 should be %ld (Bn), but got %ld.",
-                        qfaInfo.maxBlockNumPerBatch, dim1),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qfaInfo.opName, BLOCK_TABLE_NAME.c_str(),
+                    ToStringRaw(shape).c_str(),
+                    ("Shape [1] of block_table must be equal to Bn (" +
+                     std::to_string(qfaInfo.maxBlockNumPerBatch) + ")").c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

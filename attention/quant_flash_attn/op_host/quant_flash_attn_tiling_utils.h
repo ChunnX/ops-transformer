@@ -16,8 +16,24 @@
 #ifndef QUANT_FLASH_ATTN_TILING_UTILS_H
 #define QUANT_FLASH_ATTN_TILING_UTILS_H
 
+#include <sstream>
+#include "tiling/tiling_api.h"
+
 namespace optiling {
 namespace quant_flash_attn {
+
+inline std::string ToStringRaw(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i > 0) {
+            oss << ", ";
+        }
+        oss << shape.GetDim(i);
+    }
+    return oss.str();
+}
+
 template <typename T>
 inline auto CeilDivision(T num1, T num2) -> T
 {
