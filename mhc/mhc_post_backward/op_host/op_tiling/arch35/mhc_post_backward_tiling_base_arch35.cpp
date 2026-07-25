@@ -139,6 +139,26 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::GetPlatformInfo()
 
 ge::graphStatus MhcPostBackwardTilingBaseArch35::GetShapeAttrsInfo()
 {
+    auto totalInputs = context_->GetComputeNodeInputNum();
+    OP_LOGI(context_, "GetShapeAttrsInfo: totalInputs=%zu", totalInputs);
+    for (size_t i = 0; i < totalInputs; i++) {
+        auto desc = context_->GetInputDesc(i);
+        auto shape = context_->GetInputShape(i);
+        if (desc == nullptr || shape == nullptr) {
+            OP_LOGI(context_, "  input[%zu]: desc=%p, shape=%p", i, desc, shape);
+        } else {
+            const auto& s = shape->GetStorageShape();
+            std::string shapeStr = "[";
+            for (size_t d = 0; d < s.GetDimNum(); d++) {
+                shapeStr += std::to_string(s.GetDim(d));
+                if (d + 1 < s.GetDimNum()) shapeStr += ",";
+            }
+            shapeStr += "]";
+            OP_LOGI(context_, "  input[%zu]: dtype=%d, shape=%s, shapeSize=%ld", i,
+                    static_cast<int32_t>(desc->GetDataType()), shapeStr.c_str(), s.GetShapeSize());
+        }
+    }
+
     auto gradOutputShapePtr = context_->GetInputShape(GRAD_OUTPUT_INPUT_INDEX);
     if (gradOutputShapePtr == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "Storage shape of grad_output", "null",
