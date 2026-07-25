@@ -102,6 +102,10 @@ while [[ $# -gt 0 ]]; do
         ENABLE_OOM="$2"
         shift 2
         ;;
+    --enable_experimental)
+        ENABLE_EXPERIMENTAL="$2"
+        shift 2
+        ;;
     --cann_3rd_lib_path)
         CANN_3RD_LIB_PATH="$(realpath $2)"
         shift 2
@@ -159,7 +163,8 @@ function build() {
         -DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH} \
         -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
         -DVERSION=${VERSION} \
-        -DENABLE_OOM=${ENABLE_OOM}
+        -DENABLE_OOM=${ENABLE_OOM} \
+        -DENABLE_EXPERIMENTAL=${ENABLE_EXPERIMENTAL}
 
     make ${JOB_NUM} prepare_build
 }

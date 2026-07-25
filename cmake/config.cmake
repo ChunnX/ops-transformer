@@ -261,6 +261,7 @@ if (BUILD_OPEN_PROJECT)
                 --build_type ${BUILD_TYPE}
                 --version ${VERSION}
                 --enable_oom ${ENABLE_OOM}
+                --enable_experimental ${ENABLE_EXPERIMENTAL}
                 RESULT_VARIABLE result
                 OUTPUT_STRIP_TRAILING_WHITESPACE
                 OUTPUT_VARIABLE PREPARE_BUILD_OUTPUT_VARIABLE)
