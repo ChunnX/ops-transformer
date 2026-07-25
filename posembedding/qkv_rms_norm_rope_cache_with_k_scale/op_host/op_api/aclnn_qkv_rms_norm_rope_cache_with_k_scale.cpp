@@ -189,14 +189,10 @@ static aclnnStatus AddQkvRmsNormRopeCacheWithKScaleTask(Params &params, aclOpExe
     CHECK_RET(ContiguousInputs(params, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(CreateCacheViews(params, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
-    // The composite-op shape updater dereferences every tensor in OP_OUTPUT.
-    // Keep qScale optional at the public ACLNN boundary, but use an executor-owned
-    // placeholder while building the internal task when M-RoPE omits that output.
-    if (params.qScale == nullptr) {
-        params.qScale = executor->AllocTensor(op::DataType::DT_FLOAT, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
-        CHECK_RET(params.qScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
+    // Scene selection is defined by the paired M-RoPE inputs. Keep the public
+    // qScale argument unchanged; the L0 wrapper owns any internal placeholder
+    // needed to preserve the fixed launcher ABI.
+    const bool isMrope = params.mropePositionOptional != nullptr && params.mropeSectionOptional != nullptr;
     const int64_t qOutDtype = static_cast<int64_t>(params.qOut->GetDataType());
     auto l0Outs = l0op::QkvRmsNormRopeCacheWithKScale(
         params.qkv, params.qGamma, params.kGamma, params.cosSin, params.slotMapping, params.kCache, params.vCache,
@@ -204,7 +200,7 @@ static aclnnStatus AddQkvRmsNormRopeCacheWithKScaleTask(Params &params, aclOpExe
         params.mropePositionOptional, params.headNums, params.layoutQkv, params.layoutQOut, params.epsilon,
         params.mropeSectionOptional, QQuantModeToString(params.qQuantMode), qOutDtype, params.qOut, params.qScale,
         executor);
-    return CheckL0Outputs(l0Outs, true);
+    return CheckL0Outputs(l0Outs, !isMrope);
 }
 
 } // namespace QkvRmsNormRopeCacheWithKScale

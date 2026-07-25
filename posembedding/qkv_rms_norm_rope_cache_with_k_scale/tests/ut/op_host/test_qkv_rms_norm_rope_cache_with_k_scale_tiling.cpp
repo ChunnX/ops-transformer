@@ -291,7 +291,9 @@ DerivedInput DeriveInput(const QkvTilingCase &testCase)
     const auto &qkvShape = testCase.qkv.shape_.GetStorageShape();
     input.totalTokens = static_cast<uint64_t>(qkvShape.GetDim(layoutQkv == TEST_LAYOUT_TND ? 0 : 1));
     input.headDim = static_cast<uint64_t>(qkvShape.GetDim(2));
-    input.batch = static_cast<uint64_t>(testCase.queryStartLoc.shape_.GetStorageShape().GetDim(0) - 1);
+    // M-RoPE deliberately leaves the RoPE sequence tensors absent.
+    const bool isMrope = ParseIntList(testCase.mropeSection).size() == 3U;
+    input.batch = isMrope ? 0U : static_cast<uint64_t>(testCase.queryStartLoc.shape_.GetStorageShape().GetDim(0) - 1);
     input.blockSize = static_cast<uint64_t>(testCase.kCache.shape_.GetStorageShape().GetDim(2));
     input.epsilon = IsNullValue(testCase.epsilon) ? DEFAULT_EPSILON : std::stof(testCase.epsilon);
     return input;
@@ -334,6 +336,14 @@ void ExpectTilingResult(const QkvTilingCase &testCase, const TilingInfo &tilingI
     EXPECT_EQ(input.numVHeads, input.numKHeads) << "caseName=" << testCase.case_name;
     EXPECT_EQ(tiling.headDim, input.headDim) << "caseName=" << testCase.case_name;
     EXPECT_EQ(tiling.blockSize, input.blockSize) << "caseName=" << testCase.case_name;
+
+    const auto mropeSection = ParseIntList(testCase.mropeSection);
+    if (mropeSection.size() == 3U) {
+        EXPECT_EQ(tiling.mropeSectionH, static_cast<uint64_t>(mropeSection[1]))
+            << "caseName=" << testCase.case_name;
+        EXPECT_EQ(tiling.mropeSectionW, static_cast<uint64_t>(mropeSection[2]))
+            << "caseName=" << testCase.case_name;
+    }
 
     const uint64_t tokenTilePerAiv = Ops::Base::CeilDiv(tiling.tokenTile, QkvTiling::AIV_PER_AIC);
     const uint64_t qkHeadNum = tiling.qHeadNum + tiling.kvHeadNum;

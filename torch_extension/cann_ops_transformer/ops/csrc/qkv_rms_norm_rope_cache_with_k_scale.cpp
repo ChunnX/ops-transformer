@@ -82,7 +82,8 @@ QkvKScaleParams ResolveOutputParams(const at::Tensor &qkv, at::IntArrayRef head_
 
     const int64_t token_num = is_tnd ? qkv.size(DIM_0) : qkv.size(DIM_1);
     const int64_t head_size = qkv.size(DIM_2);
-    const bool is_mrope = mrope_position.has_value() || mrope_section.has_value();
+    const bool has_mrope_section = mrope_section.has_value() && !mrope_section.value().empty();
+    const bool is_mrope = mrope_position.has_value() || has_mrope_section;
     return {n_q, token_num, head_size, q_out_is_tnd, !is_mrope, q_out_dtype};
 }
 

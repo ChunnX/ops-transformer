@@ -23,21 +23,23 @@ constexpr uint64_t SYNC_C_READY = 1U;
 constexpr uint64_t SYNC_C_CONSUMED = 2U;
 constexpr uint64_t SYNC_A_CONSUMED = 3U;
 
-template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT>
+template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32_t K_QUANT_MODE,
+          uint32_t Q_QUANT_MODE>
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch, uint64_t qHeadNum,
                                 uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize, uint64_t tokenTile,
                                 uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead, uint64_t kvCacheStrideToken,
                                 uint64_t kScaleCacheStrideBlock, uint64_t kScaleCacheStrideHead,
-                                uint64_t kScaleCacheStrideToken, float epsilon)
+                                uint64_t kScaleCacheStrideToken, float epsilon, uint64_t mropeSectionH,
+                                uint64_t mropeSectionW)
     {
         if ASCEND_IS_AIC {
             InitAic(tensors, qHeadNum, kvHeadNum);
         } else {
             InitAiv(tensors, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize, tokenTile, kvCacheStrideBlock,
                     kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock, kScaleCacheStrideHead,
-                    kScaleCacheStrideToken, epsilon);
+                    kScaleCacheStrideToken, epsilon, mropeSectionH, mropeSectionW);
         }
     }
 
@@ -91,7 +93,8 @@ private:
                                    uint64_t qHeadNum, uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize,
                                    uint64_t tokenTile, uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead,
                                    uint64_t kvCacheStrideToken, uint64_t kScaleCacheStrideBlock,
-                                   uint64_t kScaleCacheStrideHead, uint64_t kScaleCacheStrideToken, float epsilon)
+                                   uint64_t kScaleCacheStrideHead, uint64_t kScaleCacheStrideToken, float epsilon,
+                                   uint64_t mropeSectionH, uint64_t mropeSectionW)
     {
         tileCount_ = 0U;
         outputBufferUseId_ = 0U;
@@ -101,7 +104,7 @@ private:
                                              QKV_K_SCALE_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
         vec_.Init(tensors, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize, tokenTile, kvCacheStrideBlock,
                   kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock, kScaleCacheStrideHead,
-                  kScaleCacheStrideToken, epsilon);
+                  kScaleCacheStrideToken, epsilon, mropeSectionH, mropeSectionW);
         vec_.InitIntraCoreEvents();
     }
 
@@ -236,7 +239,7 @@ private:
     LocalTensor<bfloat16_t> aRotL1Pool_;
     LocalTensor<float> outputDbPoolUb_;
     QkvRmsNormRopeCacheWithKScaleCube cube_;
-    QkvRmsNormRopeCacheWithKScaleVec<QKV_LAYOUT, Q_OUT_LAYOUT> vec_;
+    QkvRmsNormRopeCacheWithKScaleVec<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE> vec_;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale

@@ -474,7 +474,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td style="white-space: nowrap">mropeSectionOptional（const aclIntArray*）</td>
       <td>可选输入</td>
       <td>M-RoPE场景的T/H/W lane容量参数，语义顺序为<code>(T,H,W)</code>，按<code>[t,h,w]</code>传入。</td>
-      <td><ul><li>是否传入及其与<code>mropePositionOptional</code>的组合见“约束说明”。</li><li>传入时长度必须为3，值域和总和约束见“约束说明”。</li></ul></td>
+      <td><ul><li>是否传入及其与<code>mropePositionOptional</code>的组合见“约束说明”。</li><li>空数组与未传入等价；非空时长度必须为3，值域和总和约束见“约束说明”。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>长度为3（<code>[t,h,w]</code>）</td>
@@ -574,7 +574,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td><code>kCacheRef</code>、<code>vCacheRef</code>或<code>kScaleCacheRef</code>非连续Tensor的stride不满足约束。</td>
     </tr>
     <tr>
-      <td><code>mropePositionOptional</code>与<code>mropeSectionOptional</code>未同时为空或同时传入，<code>mropeSectionOptional</code>长度/单项值域/三项总和不满足约束，或位置参数、<code>qQuantMode</code>、<code>qOut</code> dtype、<code>qScaleOptional</code>的组合与所选场景不匹配。</td>
+      <td><code>mropePositionOptional</code>与非空<code>mropeSectionOptional</code>未同时缺席或同时存在，<code>mropeSectionOptional</code>长度/单项值域/三项总和不满足约束，或位置参数、<code>qQuantMode</code>、<code>qOut</code> dtype、<code>qScaleOptional</code>的组合与所选场景不匹配。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
@@ -637,10 +637,10 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
 
   | 场景 | 位置输入 | Q分支约束 | K分支约束 | 支持的N/T布局 |
   |:---|:---|:---|:---|:---|
-  | RoPE场景 | 传入`queryStartLocOptional`和`seqLensOptional`；不传`mropePositionOptional`和`mropeSectionOptional` | `qQuantMode="PerTokenPerHead"`；`qOut`为FP8 E4M3FN；`qScaleOptional`为FP32 | K量化为FP8 E4M3FN并写入`kCacheRef`；K scale写入FP32 `kScaleCacheRef` | `NTD -> NTD`、`TND -> TND`、`TND -> NTD` |
+  | RoPE场景 | 传入`queryStartLocOptional`和`seqLensOptional`；不传`mropePositionOptional`；`mropeSectionOptional`不传或传空数组 | `qQuantMode="PerTokenPerHead"`；`qOut`为FP8 E4M3FN；`qScaleOptional`为FP32 | K量化为FP8 E4M3FN并写入`kCacheRef`；K scale写入FP32 `kScaleCacheRef` | `NTD -> NTD`、`TND -> TND`、`TND -> NTD` |
   | M-RoPE场景 | 不传`queryStartLocOptional`和`seqLensOptional`；传入`mropePositionOptional[T,3]`和`mropeSectionOptional=[t,h,w]` | `qQuantMode="NoQuant"`；`qOut`为BF16；`qScaleOptional`为`nullptr` | K量化为INT8并写入`kCacheRef`；K scale写入FP32 `kScaleCacheRef` | 仅`TND -> TND` |
 
-  本接口不提供独立的场景属性，而是根据两组位置输入是否存在确定场景。每组位置输入必须同时传入或同时不传，两组不能同时存在或同时缺失。`qOut`的数据类型由调用方构造的`qOut` Tensor决定，ACLNN接口不单独接收输出dtype参数。
+  本接口不提供独立的场景属性，而是根据两组位置输入的有效presence确定场景。空`mropeSectionOptional`与未传入等价，只有非空数组才表示M-RoPE属性存在。每组位置输入必须同时存在或同时缺席，两组不能同时存在或同时缺席。`qOut`的数据类型由调用方构造的`qOut` Tensor决定，ACLNN接口不单独接收输出dtype参数。
 
   两个场景均要求`D=128`且`Nv=Nk`。`rotationOptional`和`vScaleOptional`在接口合同中均须传入：Q/K在位置编码后共享右乘`rotationOptional[D,D]`；V按head乘`vScaleOptional[Nv]`后转换为FP8 E4M3FN。三个Cache Tensor均为输入输出别名，只更新`slotMapping`指定的slot，其余位置保持原值。
 

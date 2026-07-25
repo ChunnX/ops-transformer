@@ -43,7 +43,7 @@
   q_{rot} = q_{rope} @ rotation,\quad k_{rot} = k_{rope} @ rotation
   $$
 
-- RoPE场景的RoPE与量化：
+- RoPE场景的位置：
 
   第`b`个batch中第`i`个token的RoPE位置由`query_start_loc`和`seq_lens`确定：
 
@@ -51,13 +51,9 @@
   position = seq\_lens[b] - (query\_start\_loc[b + 1] - query\_start\_loc[b]) + i
   $$
 
-  `cos_sin[..., :D/2]`为cos，`cos_sin[..., D/2:]`为sin。Q/K按每个token和head做动态量化，FP8 E4M3FN最大有限值为448：
+  `cos_sin[..., :D/2]`为cos，`cos_sin[..., D/2:]`为sin。
 
-  $$
-  scale = max(abs(x)) / 448,\quad x_{fp8} = cast(x / scale)
-  $$
-
-- M-RoPE场景的cos/sin交织与量化：
+- M-RoPE场景的cos/sin交织：
 
   令 $C=\mathrm{cos\_sin}$、$P=\mathrm{mrope\_position}$、$D_{\mathrm{half}}=D/2$，并定义
   $\iota(\mathrm T)=0,\ \iota(\mathrm H)=1,\ \iota(\mathrm W)=2$。
@@ -99,20 +95,38 @@
   $\widehat c$ 和 $\widehat s$ 代入前述 RoPE 旋转公式即可。输出维度仍为
   $D$，不会扩展为 $3D$。
 
-  Q分支不量化，直接输出BF16且不创建`q_scale`：
+- Q/K输出与统一动态量化：
+
+  令 $X^Q=q_{rot}$、$X^K=k_{rot}$，目标类型为
+  $\tau_A\in\{\mathrm{FP8\ E4M3FN},\mathrm{INT8}\}$。两种目标类型只在正向量化上限上不同：
 
   $$
-  q_{out}=\operatorname{RNE}_{\mathrm{BF16}}\!\left(q_{rot}\right),\qquad q_{scale}=\varnothing.
+  M_{\tau_A}=
+  \begin{cases}
+  448, & \tau_A=\mathrm{FP8\ E4M3FN},\\
+  127, & \tau_A=\mathrm{INT8}.
+  \end{cases}
   $$
 
-  K分支按每个token和head使用INT8最大值127做动态量化。对token $u$、head $n$ 和通道 $d$，
+  对 $A\in\{Q,K\}$、token $u$ 和head $n$，启用动态量化时统一计算
 
   $$
-  k_{scale}(u,n)=\frac{\displaystyle\max_{0\leq d<D}|k_{rot}(u,n,d)|}{127},
-  \qquad
-  k_{int8}(u,n,d)=\operatorname{sat}_{[-127,127]}
-  \!\left(\operatorname{rint}\!\left(\frac{k_{rot}(u,n,d)}{k_{scale}(u,n)}\right)\right).
+  \begin{aligned}
+  m^A_{u,n}&=\max_{0\leq d<D}\left|X^A_{u,n,d}\right|,\\
+  \alpha^A_{u,n}&=\frac{m^A_{u,n}}{M_{\tau_A}},\\
+  \widehat X^A_{u,n,d}
+  &=\operatorname{cast}_{\tau_A}
+    \!\left(\frac{X^A_{u,n,d}}{\alpha^A_{u,n}}\right).
+  \end{aligned}
   $$
+
+  `cast`按目标类型执行舍入与饱和，INT8目标范围为$[-127,127]$。未启用动态量化时，输出为
+
+  $$
+  O^A_{u,n,d}=\operatorname{cast}_{\tau_A}\!\left(X^A_{u,n,d}\right),
+  $$
+
+  且不产生scale。各场景对应的目标类型和量化开关统一列在“约束说明”，不属于量化公式本身。
 
   V分支在两种场景中均按`v_scale`缩放并量化为FP8 E4M3FN：
 
@@ -207,7 +221,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
 | layout_q_out | Optional[str] | 可选 | `q_out`和存在时的`q_scale`的N/T轴布局标识，默认值为`"NTD"`；传入`None`或空字符串时按默认值处理。大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
 | epsilon | float | 可选 | RMSNorm防除零参数，默认值为`1e-6`。 | float | - |
 | mrope_position | Optional[Tensor] | 可选（接口级） | M-RoPE唯一位置源。每行记录一个token，三列依次记录T/H/W三路`cos_sin`行下标；RoPE场景必须为`None`。公开参数名仅为`mrope_position`，不支持旧草案名`position`。 | torch.int32 | `[T,3]` |
-| mrope_section | Optional[List[int]] | 可选（接口级） | M-RoPE的T/H/W lane容量参数`[t,h,w]`；D128下三项分别位于`[0,22]`、`[0,21]`、`[0,21]`，且总和不超过64。RoPE场景必须为`None`。该参数是ListInt属性，不是int32 Tensor；公开参数名仅为`mrope_section`，不支持旧草案名`msection`。 | int | 长度为3 |
+| mrope_section | Optional[List[int]] | 可选（接口级） | M-RoPE的T/H/W lane容量参数`[t,h,w]`；D128下三项分别位于`[0,22]`、`[0,21]`、`[0,21]`，且总和不超过64。RoPE场景必须为`None`或空列表，二者语义相同。该参数是ListInt属性，不是int32 Tensor；公开参数名仅为`mrope_section`，不支持旧草案名`msection`。 | int | 长度为0或3 |
 | q_quant_mode | str | 可选 | Q分支量化模式，默认值为`"PerTokenPerHead"`。大小写敏感，仅支持`"PerTokenPerHead"`和`"NoQuant"`。 | str | - |
 | q_out_dtype | torch.dtype | 可选 | `q_out`的数据类型，默认值为`torch.float8_e4m3fn`。Torch层仅将`None`归一化为默认值、要求该参数为`torch.dtype`并据此构造`q_out`；ACLNN直接读取输出Tensor的数据类型，并校验支持范围及其与场景的匹配关系。完整合同支持`torch.float8_e4m3fn`和`torch.bfloat16`。 | torch.dtype | - |
 
@@ -239,7 +253,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
   | 条件 | RoPE场景 | M-RoPE场景 |
   |---|---|---|
   | query_start_loc / seq_lens | 两者都存在 | 两者都为None |
-  | mrope_position / mrope_section | 两者都为None | 两者都存在 |
+  | mrope_position / mrope_section | 前者为None，后者为None或空列表 | 前者存在，后者为非空三项列表 |
   | q_quant_mode | `"PerTokenPerHead"` | `"NoQuant"` |
   | q_out_dtype / q_out dtype | FP8 E4M3FN | BF16 |
   | q_scale | FP32 Tensor | None |
@@ -247,8 +261,8 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
   | v_cache dtype | FP8 E4M3FN | FP8 E4M3FN |
   | layout_qkv -> layout_q_out | NTD->NTD、TND->TND、TND->NTD | 仅TND->TND |
 
-- Torch extension不执行上表的完整合同校验。为安全构造和传递输出Tensor，Torch层只要求`head_nums[0]`和`qkv`前三维可读、layout能够解释输出轴、`q_out_dtype`为`torch.dtype`，并检查有值的Optional Tensor不是undefined；`mrope_position`或`mrope_section`任一存在时即构造M-RoPE候选返回结构。其他Tensor shape/dtype、属性值域和场景相关性均交由ACLNN校验。
-- 算子不提供独立`scene`参数。ACLNN根据四个可选参数的实际presence识别场景：`query_start_loc`与`seq_lens`只存在一个、`mrope_position`与`mrope_section`只存在一个、两组位置源同时存在或同时缺失均非法。零元素Tensor或空List仍视为已提供，并由ACLNN按shape或长度非法处理。
+- Torch extension不执行上表的完整合同校验。为安全构造和传递输出Tensor，Torch层只要求`head_nums[0]`和`qkv`前三维可读、layout能够解释输出轴、`q_out_dtype`为`torch.dtype`，并检查有值的Optional Tensor不是undefined；`mrope_position`存在或`mrope_section`非空时构造M-RoPE候选返回结构。其他Tensor shape/dtype、属性值域和场景相关性均交由ACLNN校验。
+- 算子不提供独立`scene`参数。ACLNN根据四个可选参数的有效presence识别场景：空`mrope_section=[]`与`None`等价，均属于RoPE侧的未提供状态；非空`mrope_section`才表示M-RoPE属性存在。`query_start_loc`与`seq_lens`只存在一个、`mrope_position`与非空`mrope_section`只存在一个、两组位置源同时存在或同时缺失均非法。零元素Tensor仍视为已提供，并由ACLNN按shape非法处理。
 - 仅支持`D=128`，且`Nv`必须等于`Nk`。
 - M-RoPE下令`HALF_D=D/2=64`，`mrope_section=[t,h,w]`三项分别满足`0 <= value <= [22,21,21]`，并且`t+h+w <= HALF_D`。容量上限的一般形式为`(T,H,W)=[ceil(HALF_D/3),floor((HALF_D+1)/3),floor(HALF_D/3)]`。第0项`t`虽需满足`[0,22]`且参与总和校验，但其数值不参与交织公式、场景判断或T轴采集范围；T/H/W三路始终全部采集。D128下总和上限为64。
 - M-RoPE中cos和sin分别应用`mrope_section`，两者使用相同的half内lane规则；不得把`mrope_section`当作整行连续分段，也不得把结果扩为`3D`。

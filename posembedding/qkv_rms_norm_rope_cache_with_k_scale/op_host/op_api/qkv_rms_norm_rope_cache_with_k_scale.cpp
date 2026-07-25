@@ -45,10 +45,22 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
            queryStartLoc, seqLens, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkvAttr,
            layoutQOutAttr, epsilon, mropeSectionOptional, qQuantMode, qOutDtype);
 
+    // A null optional output is omitted from the launcher argument list. Keep
+    // the middle qScale ABI slot materialized internally; the public return
+    // value remains null when the caller did not request qScale.
+    aclTensor *qScaleForKernel = qScaleOptional;
+    if (qScaleForKernel == nullptr) {
+        qScaleForKernel = executor->AllocTensor(op::DataType::DT_FLOAT, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
+        if (qScaleForKernel == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Failed to allocate internal qScale tensor.");
+            return {nullptr, nullptr, nullptr, nullptr, nullptr};
+        }
+    }
+
     auto ret = INFER_SHAPE(QkvRmsNormRopeCacheWithKScale,
                            OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
                                     queryStartLoc, seqLens, rotationOptional, vScaleOptional, mropePositionOptional),
-                           OP_OUTPUT(qOut, qScaleOptional, kCache, vCache, kScaleCache),
+                           OP_OUTPUT(qOut, qScaleForKernel, kCache, vCache, kScaleCache),
                            OP_ATTR(headNums, layoutQkvAttr, layoutQOutAttr, epsilon, mropeSectionOptional,
                                    qQuantMode, qOutDtype));
     if (ret != ACLNN_SUCCESS) {
@@ -60,7 +72,7 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
                                       OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
                                                queryStartLoc, seqLens, rotationOptional, vScaleOptional,
                                                mropePositionOptional),
-                                      OP_OUTPUT(qOut, qScaleOptional, kCache, vCache, kScaleCache),
+                                      OP_OUTPUT(qOut, qScaleForKernel, kCache, vCache, kScaleCache),
                                       OP_ATTR(headNums, layoutQkvAttr, layoutQOutAttr, epsilon, mropeSectionOptional,
                                               qQuantMode, qOutDtype));
     if (ret != ACLNN_SUCCESS) {

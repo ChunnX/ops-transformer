@@ -335,10 +335,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateOutputContract(
                 return ge::GRAPH_FAILED);
 
     if (ropeMode_ == RopeMode::MROPE) {
-        OP_CHECK_IF(input_.qScale.descriptorPresent,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qScale", "present",
-                                                          "qScale must be absent in the M-RoPE scene"),
-                    return ge::GRAPH_FAILED);
+        // ACLNN rejects a caller-provided qScale. The L0 wrapper materializes
+        // this optional middle output internally to preserve the kernel ABI.
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(!input_.qScale.descriptorPresent,
@@ -747,6 +745,17 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillTilingData(uint64_t tokenTile)
     tilingData_.kScaleCacheStrideToken = static_cast<uint64_t>(input_.kScaleCache.stride.GetStride(2));
     tilingData_.tokenTile = tokenTile;
     tilingData_.epsilon = epsilon_;
+    if (ropeMode_ == RopeMode::MROPE) {
+        const auto *attrs = context_->GetAttrs();
+        const auto mropeSection = attrs == nullptr ? nullptr : attrs->GetListInt(MROPE_SECTION_ATTR_INDEX);
+        // ValidateMropeSection() has already checked presence, length and
+        // value bounds.  Only H/W are consumed by the device lane selector;
+        // the T entry remains a host-side contract value.
+        if (mropeSection != nullptr && mropeSection->GetData() != nullptr && mropeSection->GetSize() == 3) {
+            tilingData_.mropeSectionH = static_cast<uint64_t>(mropeSection->GetData()[1]);
+            tilingData_.mropeSectionW = static_cast<uint64_t>(mropeSection->GetData()[2]);
+        }
+    }
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateParsedInput() const
@@ -1443,11 +1452,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetPlatformInfo()
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::DoOpTiling()
 {
-    if (ropeMode_ == RopeMode::MROPE) {
-        tilingData_ = {};
-        numBlocks_ = 1;
-        return ge::GRAPH_SUCCESS;
-    }
     OP_CHECK_IF(ComputeTilingData() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale contract tiling build failed."),
                 return ge::GRAPH_FAILED);
@@ -1477,14 +1481,15 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ResolveRopeMode()
     const auto attrs = context_->GetAttrs();
     if (attrs != nullptr && static_cast<uint64_t>(attrs->GetAttrNum()) > MROPE_SECTION_ATTR_INDEX) {
         const auto mropeSection = attrs->GetListInt(MROPE_SECTION_ATTR_INDEX);
-        // A non-null list is present even when it has zero elements.  Keep that
-        // distinction so ValidateMropeSection() can reject an explicitly empty
-        // section instead of silently changing the selected scene.
-        hasMropeSection = mropeSection != nullptr;
+        // The framework materializes an omitted optional ListInt as an empty
+        // list.  An empty mrope_section therefore belongs to the RoPE scene.
+        hasMropeSection = mropeSection != nullptr && mropeSection->GetSize() != 0;
     }
 
-    const bool isRope = queryStartLoc != nullptr && seqLens != nullptr && mropePosition == nullptr && !hasMropeSection;
-    const bool isMrope = queryStartLoc == nullptr && seqLens == nullptr && mropePosition != nullptr && hasMropeSection;
+    const bool wantsMrope = mropePosition != nullptr || hasMropeSection;
+    const bool isRope = !wantsMrope && queryStartLoc != nullptr && seqLens != nullptr;
+    const bool isMrope = wantsMrope && queryStartLoc == nullptr && seqLens == nullptr && mropePosition != nullptr &&
+                         hasMropeSection;
     OP_CHECK_IF(!isRope && !isMrope,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                     opName_, "query_start_loc/seq_lens/mrope_position/mrope_section", "inconsistent presence",

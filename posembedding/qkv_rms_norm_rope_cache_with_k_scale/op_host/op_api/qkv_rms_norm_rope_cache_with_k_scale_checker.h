@@ -174,7 +174,8 @@ private:
     aclnnStatus DetermineScene()
     {
         const bool hasMropePosition = params_.mropePositionOptional != nullptr;
-        const bool hasMropeSection = params_.mropeSectionOptional != nullptr;
+        const bool hasMropeSection =
+            params_.mropeSectionOptional != nullptr && params_.mropeSectionOptional->Size() != 0;
         if (hasMropePosition != hasMropeSection) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 ACLNN_NAME, "mropePositionOptional/mropeSectionOptional", "presence mismatch",

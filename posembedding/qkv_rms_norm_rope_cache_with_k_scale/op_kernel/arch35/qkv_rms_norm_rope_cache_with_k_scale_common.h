@@ -20,6 +20,24 @@
 #ifndef QKV_K_SCALE_LAYOUT_TND
 #define QKV_K_SCALE_LAYOUT_TND 1
 #endif
+#ifndef QKV_K_SCALE_ROPE_MODE_ROPE
+#define QKV_K_SCALE_ROPE_MODE_ROPE 0
+#endif
+#ifndef QKV_K_SCALE_ROPE_MODE_MROPE
+#define QKV_K_SCALE_ROPE_MODE_MROPE 1
+#endif
+#ifndef QKV_K_SCALE_K_QUANT_MODE_FP8
+#define QKV_K_SCALE_K_QUANT_MODE_FP8 0
+#endif
+#ifndef QKV_K_SCALE_K_QUANT_MODE_INT8
+#define QKV_K_SCALE_K_QUANT_MODE_INT8 1
+#endif
+#ifndef QKV_K_SCALE_Q_QUANT_MODE_PER_TOKEN_PER_HEAD
+#define QKV_K_SCALE_Q_QUANT_MODE_PER_TOKEN_PER_HEAD 0
+#endif
+#ifndef QKV_K_SCALE_Q_QUANT_MODE_NO_QUANT
+#define QKV_K_SCALE_Q_QUANT_MODE_NO_QUANT 1
+#endif
 
 namespace QkvRmsNormRopeCacheWithKScale {
 using AscendC::CO2Layout;
@@ -79,7 +97,10 @@ constexpr uint32_t QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS =
 
 constexpr uint32_t QKV_K_SCALE_RESERVE_UB_BYTES = 40U * QKV_K_SCALE_KIB;
 constexpr uint32_t QKV_K_SCALE_GAMMA_UB_BYTES = 1U * QKV_K_SCALE_KIB;
-constexpr uint32_t QKV_K_SCALE_COS_SIN_ONE_BUFFER_BYTES = 4U * QKV_K_SCALE_KIB;
+// RoPE consumes one D-wide row per token.  M-RoPE keeps the raw T/H/W rows
+// in the same ping-pong slot, so reserve three rows per token without
+// changing the top-level UB partition.
+constexpr uint32_t QKV_K_SCALE_COS_SIN_ONE_BUFFER_BYTES = 6U * QKV_K_SCALE_KIB;
 constexpr uint32_t QKV_K_SCALE_SLOT_MAPPING_ONE_BUFFER_BYTES = 512U;
 constexpr uint32_t QKV_K_SCALE_V_SCALE_UB_BYTES = 512U;
 constexpr uint32_t QKV_K_SCALE_QK_SCALE_MTE3_ALIGN_ELEMENTS = QKV_K_SCALE_BLOCK_BYTES / sizeof(float);
@@ -87,6 +108,13 @@ constexpr uint32_t QKV_K_SCALE_QK_NZ_SCATTER_INDEX_TABLE_ELEMENTS = QKV_K_SCALE_
 constexpr uint32_t QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_BYTES =
     2U * QKV_K_SCALE_QK_NZ_SCATTER_INDEX_TABLE_ELEMENTS * sizeof(uint16_t);
 constexpr uint32_t QKV_K_SCALE_V_OUT_ONE_BUFFER_BYTES = 10U * QKV_K_SCALE_KIB;
+// Keep the scene-local position slot valid for the generic eight-token AIV
+// tile limit: 8 tokens * 3 axes * sizeof(int32_t), rounded to a stable 128 B
+// transfer slot.  Current host tiling uses a smaller cap, but the layout must
+// remain safe if that cap is raised later.
+constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_BYTES = 128U;
+constexpr uint32_t QKV_K_SCALE_MROPE_GATHER_INDEX_BYTES =
+    (QKV_K_SCALE_HEAD_DIM_D128 / 2U) * sizeof(uint32_t);
 
 constexpr uint32_t QKV_K_SCALE_GAMMA_UB_OFFSET = 0U;
 constexpr uint32_t QKV_K_SCALE_COS_SIN_DB_POOL_OFFSET = QKV_K_SCALE_GAMMA_UB_OFFSET + QKV_K_SCALE_GAMMA_UB_BYTES;
@@ -98,6 +126,11 @@ constexpr uint32_t QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_OFFSET =
     QKV_K_SCALE_V_SCALE_UB_OFFSET + QKV_K_SCALE_V_SCALE_UB_BYTES;
 constexpr uint32_t QKV_K_SCALE_V_OUT_DB_POOL_OFFSET =
     QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_OFFSET + QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_BYTES;
+constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_DB_POOL_OFFSET =
+    QKV_K_SCALE_V_OUT_DB_POOL_OFFSET + QKV_K_SCALE_DOUBLE_BUFFER_NUM * QKV_K_SCALE_V_OUT_ONE_BUFFER_BYTES;
+constexpr uint32_t QKV_K_SCALE_MROPE_GATHER_INDEX_OFFSET =
+    QKV_K_SCALE_MROPE_POSITION_DB_POOL_OFFSET +
+    QKV_K_SCALE_DOUBLE_BUFFER_NUM * QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_BYTES;
 constexpr uint32_t QKV_K_SCALE_GAMMA_UB_ELEMENTS = QKV_K_SCALE_GAMMA_UB_BYTES / sizeof(float);
 constexpr uint32_t QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS = QKV_K_SCALE_COS_SIN_ONE_BUFFER_BYTES / sizeof(float);
 constexpr uint32_t QKV_K_SCALE_COS_SIN_DB_POOL_ELEMENTS =
@@ -112,6 +145,18 @@ constexpr uint32_t QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_ELEMENTS =
 constexpr uint32_t QKV_K_SCALE_V_OUT_ONE_BUFFER_ELEMENTS = QKV_K_SCALE_V_OUT_ONE_BUFFER_BYTES / sizeof(fp8_e4m3fn_t);
 constexpr uint32_t QKV_K_SCALE_V_OUT_DB_POOL_ELEMENTS =
     QKV_K_SCALE_DOUBLE_BUFFER_NUM * QKV_K_SCALE_V_OUT_ONE_BUFFER_ELEMENTS;
+constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_ELEMENTS =
+    QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_BYTES / sizeof(int32_t);
+constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_DB_POOL_ELEMENTS =
+    QKV_K_SCALE_DOUBLE_BUFFER_NUM * QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_ELEMENTS;
+static_assert(QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_BYTES >=
+                  QKV_K_SCALE_MAX_TOKEN_TILE_PER_AIV * 3U * sizeof(int32_t),
+              "M-RoPE position slot is smaller than the maximum AIV token slice");
+constexpr uint32_t QKV_K_SCALE_MROPE_GATHER_INDEX_ELEMENTS =
+    QKV_K_SCALE_MROPE_GATHER_INDEX_BYTES / sizeof(uint32_t);
+static_assert(QKV_K_SCALE_MROPE_GATHER_INDEX_OFFSET + QKV_K_SCALE_MROPE_GATHER_INDEX_BYTES <=
+                  QKV_K_SCALE_RESERVE_UB_BYTES,
+              "M-RoPE reserve layout exceeds the 40 KiB UB budget");
 
 constexpr uint32_t QKV_K_SCALE_INPUT_DB_POOL_OFFSET = 0U;
 constexpr uint32_t QKV_K_SCALE_OUTPUT_DB_POOL_OFFSET =
@@ -144,6 +189,7 @@ struct GlobalTensors {
     GM_ADDR seqLens;
     GM_ADDR rotation;
     GM_ADDR vScale;
+    GM_ADDR mropePosition;
     GM_ADDR qOut;
     GM_ADDR qScale;
     GM_ADDR kCacheOut;

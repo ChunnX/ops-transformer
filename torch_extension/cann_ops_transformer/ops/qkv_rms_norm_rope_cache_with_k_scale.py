@@ -223,7 +223,7 @@ def _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(
     q_out_dtype = _normalize_q_out_dtype(q_out_dtype)
     layout_qkv, layout_q_out = _normalize_meta_layouts(layout_qkv, layout_q_out)
     token_num, head_size = _get_qkv_shape_for_meta(qkv, layout_qkv)
-    is_mrope = mrope_position is not None or mrope_section is not None
+    is_mrope = mrope_position is not None or bool(mrope_section)
     return _make_meta_output_tensors(
         n_q, token_num, head_size, layout_q_out, is_mrope, q_out_dtype
     )
