@@ -92,7 +92,9 @@ function(gen_aclnn_classify host_obj prefix ori_out_srcs ori_out_headers opbuild
     endif()
   else()
     set(${opbuild_out_srcs} ${ori_out_srcs} ${out_srcs} PARENT_SCOPE)
-    set(${opbuild_out_headers} ${ori_out_headers} ${out_headers} PARENT_SCOPE)
+    if ("${prefix}" STREQUAL "aclnn")
+      set(${opbuild_out_headers} ${ori_out_headers} ${out_headers} PARENT_SCOPE)
+    endif()
   endif()
 endfunction()
 
@@ -127,6 +129,30 @@ function(gen_aclnn_with_opdef)
   gen_aclnn_classify(${OPHOST_NAME}_opdef_aclnn_exclude_obj aclnnExc "${opbuild_out_srcs}" "${opbuild_out_headers}"
     opbuild_out_srcs opbuild_out_headers)
 
+  set(filtered_opbuild_out_headers)
+  foreach(header_file ${opbuild_out_headers})
+    set(skip_this_header FALSE)
+
+    get_filename_component(header_name ${header_file} NAME)
+    if(header_name MATCHES "aclnn_([^.]+)\\.h")
+      set(op_name ${CMAKE_MATCH_1})
+      string(TOUPPER ${op_name} op_name_upper)
+      string(REPLACE "-" "_" op_name_upper ${op_name_upper})
+
+      set(skip_var_name "${op_name_upper}_SKIP_HEADER")
+      if(DEFINED ${skip_var_name} AND ${skip_var_name})
+        message(STATUS "Skipping header packaging for operator: ${op_name}")
+        set(skip_this_header TRUE)
+      endif()
+    endif()
+
+    if(NOT skip_this_header)
+      list(APPEND filtered_opbuild_out_headers ${header_file})
+    endif()
+  endforeach()
+
+  set(opbuild_out_headers ${filtered_opbuild_out_headers})
+
   # 创建汇总头文件
   if(NOT ENABLE_BUILT_IN)
     set(aclnn_master_header_name "aclnn_ops_transformer_${VENDOR_NAME}")
@@ -136,43 +162,32 @@ function(gen_aclnn_with_opdef)
   set(aclnn_master_header "${CMAKE_CURRENT_BINARY_DIR}/${aclnn_master_header_name}.h")
   gen_aclnn_master_header(${aclnn_master_header_name} "${aclnn_master_header}" "${opbuild_out_headers}")
 
-  set(mc2_op_aclnn_name 
-        "all_gather_matmul"
-        "all_to_all_all_gather_batch_matmul"
-        "allto_allv_grouped_mat_mul"
-        "batch_matmul_reduce_scatter_all_to_all"
-        "distribute_barrier"
-        "distribute_barrier_v2"
-        "grouped_mat_mul_allto_allv"
-        "inplace_matmul_all_reduce_add_rms_norm"
-        "inplace_quant_matmul_all_reduce_add_rms_norm"
-        "inplace_weight_quant_matmul_all_reduce_add_rms_norm"
-        "matmul_all_reduce"
-        "matmul_all_reduce_add_rms_norm"
-        "matmul_all_reduce_v2"
-        "matmul_reduce_scatter"
-        "moe_distribute_combine"
-        "moe_distribute_combine_add_rms_norm"
-        "moe_distribute_combine_add_rms_norm_v2"
-        "moe_distribute_combine_v2"
-        "moe_distribute_combine_v3"
-        "moe_distribute_dispatch"
-        "moe_distribute_dispatch_v2"
-        "moe_distribute_dispatch_v3"
-        "moe_update_expert"
-        "weight_quant_matmul_all_reduce"
-        "weight_quant_matmul_all_reduce_add_rms_norm"
-      )
   set(mc2_aclnn_master_headers "")
-  foreach(op_aclnn_name ${mc2_op_aclnn_name})
-    if (NOT ENABLE_BUILT_IN AND NOT ("${ASCEND_OP_NAME}" STREQUAL "ALL"))
-      foreach(op_name IN LISTS ASCEND_OP_NAME)
-        file(GLOB matching_file "${OPS_TRANSFORMER_DIR}/mc2/${op_name}/op_api/aclnn_${op_aclnn_name}.h")
-        list(APPEND mc2_aclnn_master_headers ${matching_file})
-      endforeach()
-    else()
-      file(GLOB matching_file "${OPS_TRANSFORMER_DIR}/mc2/*/op_api/aclnn_${op_aclnn_name}.h")
+  if (NOT ENABLE_BUILT_IN AND NOT ("${ASCEND_OP_NAME}" STREQUAL "ALL"))
+    foreach(op_name IN LISTS ASCEND_OP_NAME)
+      file(GLOB matching_file "${OPS_TRANSFORMER_DIR}/mc2/${op_name}/op_api/aclnn_*.h")
       list(APPEND mc2_aclnn_master_headers ${matching_file})
+    endforeach()
+  else()
+    file(GLOB matching_file "${OPS_TRANSFORMER_DIR}/mc2/*/op_api/aclnn_*.h")
+    list(APPEND mc2_aclnn_master_headers ${matching_file})
+  endif()
+
+  # 读取 level2_ops_list 文件
+  set(level2_ops_list_file "${CMAKE_CURRENT_LIST_DIR}/cmake/level2_ops_list")
+  if(EXISTS ${level2_ops_list_file})
+    file(STRINGS ${level2_ops_list_file} level2_ops_list)
+  else()
+    set(level2_ops_list "")
+  endif()
+
+  # 过滤 mc2 头文件：只在 level2_ops_list 中的才安装到 level2
+  set(mc2_level2_headers "")
+  foreach(header_file ${mc2_aclnn_master_headers})
+    get_filename_component(header_name ${header_file} NAME)
+    list(FIND level2_ops_list "${header_name}" idx)
+    if(NOT idx EQUAL -1)
+      list(APPEND mc2_level2_headers ${header_file})
     endif()
   endforeach()
 
@@ -188,9 +203,33 @@ function(gen_aclnn_with_opdef)
     install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
     install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
     install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
+    install(CODE "
+      set(level2_dest \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${ACLNN_INC_LEVEL2_INSTALL_DIR}\")
+      foreach(h ${opbuild_out_headers} ${aclnn_master_header})
+        get_filename_component(h_name \"\${h}\" NAME)
+        set(dest_file \"\${level2_dest}/\${h_name}\")
+        if(EXISTS \"\${dest_file}\")
+          execute_process(
+            COMMAND ${ASCEND_PYTHON_EXECUTABLE} \"${PROJECT_SOURCE_DIR}/scripts/util/add_deprecation_warning.py\" \"\${dest_file}\"
+          )
+        endif()
+      endforeach()
+    ")
     if (BUILD_OPEN_PROJECT)
       install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
-      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
+      install(FILES ${mc2_level2_headers} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
+      install(CODE "
+        set(level2_dest \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${ACLNN_INC_LEVEL2_INSTALL_DIR}\")
+        foreach(h ${mc2_aclnn_master_headers} ${mc2_level2_headers})
+          get_filename_component(h_name \"\${h}\" NAME)
+          set(dest_file \"\${level2_dest}/\${h_name}\")
+          if(EXISTS \"\${dest_file}\")
+            execute_process(
+              COMMAND ${ASCEND_PYTHON_EXECUTABLE} \"${PROJECT_SOURCE_DIR}/scripts/util/add_deprecation_warning.py\" \"\${dest_file}\"
+            )
+          endif()
+        endforeach()
+      ")
     endif()
   endif()
 
@@ -201,7 +240,7 @@ function(gen_aclnn_with_opdef)
     install(FILES ${aclnn_master_header} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
     if (BUILD_OPEN_PROJECT)
       install(FILES ${mc2_aclnn_master_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
-      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
+      install(FILES ${mc2_level2_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
     endif()
   endif()
 
@@ -236,6 +275,44 @@ function(gen_aclnn_with_opdef)
   endif()
 endfunction()
 
+function(gen_aicpu_ini_from_opdef)
+  message(STATUS "Opbuild generating AICPU ini/json from OpDef")
+  cmake_parse_arguments(OPBUILD "" "OUT_DIR;PROJECT_NAME;ACCESS_PREFIX;ENABLE_SOURCE" "OPS_SRC" ${ARGN})
+  if(NOT OPBUILD_OPS_SRC)
+    message(STATUS "No AICPU OpDef sources, skip.")
+    return()
+  endif()
+
+  file(MAKE_DIRECTORY ${OPBUILD_OUT_DIR})
+
+  set(AICPU_OPDEF_SO ${OPBUILD_OUT_DIR}/libaicpu_ops.so)
+  set(AICPU_INI ${OPBUILD_OUT_DIR}/aicpu_kernel.ini)
+  set(opbuild_env "")
+  if(NOT "${OPBUILD_PROJECT_NAME}x" STREQUAL "x")
+    list(APPEND opbuild_env "OPS_PROJECT_NAME=${OPBUILD_PROJECT_NAME}")
+  endif()
+  if(NOT "${OPBUILD_ACCESS_PREFIX}x" STREQUAL "x")
+    list(APPEND opbuild_env "OPS_DIRECT_ACCESS_PREFIX=${OPBUILD_ACCESS_PREFIX}")
+  endif()
+
+  add_custom_command(
+    OUTPUT ${AICPU_INI}
+    COMMAND ${CMAKE_CXX_COMPILER} -g -fPIC -shared -std=c++11 ${OPBUILD_OPS_SRC} -D_GLIBCXX_USE_CXX11_ABI=0
+            -I ${ASCEND_CANN_PACKAGE_PATH}/include
+            -I ${CMAKE_SOURCE_DIR}/common/include
+            -L ${ASCEND_CANN_PACKAGE_PATH}/lib64
+            -lexe_graph -lregister -ltiling_api
+            -o ${AICPU_OPDEF_SO}
+    COMMAND ${CMAKE_COMMAND} -E env ENABLE_SOURCE_PACKAGE=${OPBUILD_ENABLE_SOURCE} ${opbuild_env}
+            ${OP_BUILD_TOOL} ${AICPU_OPDEF_SO} ${OPBUILD_OUT_DIR} --aicpu
+    DEPENDS ${OPBUILD_OPS_SRC}
+    COMMENT "Generating aicpu_kernel.ini from *_aicpu_def.cpp"
+    VERBATIM
+  )
+
+  message(STATUS "Opbuild generating AICPU ini/json from OpDef - done")
+endfunction()
+
 function(merge_graph_headers)
   set(oneValueArgs TARGET OUT_DIR)
   cmake_parse_arguments(MGPROTO "" "${oneValueArgs}" "" ${ARGN})
@@ -245,7 +322,16 @@ function(merge_graph_headers)
     ${proto_headers}
     --output-file ${MGPROTO_OUT_DIR}/ops_proto_transformer.h
   )
-  add_custom_target(${MGPROTO_TARGET} ALL
+  add_custom_command(
+    OUTPUT ${MGPROTO_OUT_DIR}/ops_proto_transformer.cpp
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${MGPROTO_OUT_DIR}/ops_proto_transformer.h
+      ${MGPROTO_OUT_DIR}/ops_proto_transformer.cpp
     DEPENDS ${MGPROTO_OUT_DIR}/ops_proto_transformer.h
+  )
+  add_custom_target(${MGPROTO_TARGET} ALL
+    DEPENDS
+    ${MGPROTO_OUT_DIR}/ops_proto_transformer.h
+    ${MGPROTO_OUT_DIR}/ops_proto_transformer.cpp
   )
 endfunction()

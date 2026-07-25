@@ -18,11 +18,36 @@ import re
 import datetime
 from typing import List
 import json
+from pathlib import Path
 import opdesc_parser
 import const_var
 
 
 PYF_PATH = os.path.dirname(os.path.realpath(__file__))
+COMPUTE_UNIT = None
+ENABLE_EXPERIMENTAL = "OFF"
+
+if const_var.CHECK_ASC_DEVKIT_VERSION:
+    IMPORT_HEADER = '''
+from asc_op_compile_base.common.platform import get_soc_spec
+from asc_op_compile_base.common.utils import para_check
+from asc_op_compile_base.asc_op_compiler import compile_op, replay_op, check_op_cap, generalize_op_params, get_code_channel, OpInfo
+from asc_op_compile_base.asc_op_compiler.compile_op import CommonUtility, AscendCLogLevel
+from asc_op_compile_base.common.buildcfg import get_default_build_config
+from asc_op_compile_base.common.buildcfg import get_current_build_config
+from asc_op_compile_base.common import register as tbe_register
+__version__ = '2.0.0'
+'''
+else:
+    IMPORT_HEADER = '''
+from tbe.common.platform import get_soc_spec	 
+from tbe.common.utils import para_check	 
+from tbe.tikcpp import compile_op, replay_op, check_op_cap, generalize_op_params, get_code_channel, OpInfo	 
+from tbe.tikcpp.compile_op import CommonUtility, AscendCLogLevel	 
+from tbe.common.buildcfg import get_default_build_config	 
+from tbe.common.buildcfg import get_current_build_config	 
+import tbe.common.register as tbe_register
+'''
 
 IMPL_HEAD = '''#!/usr/bin/env python
 # -*- coding: UTF-8 -*-
@@ -35,13 +60,9 @@ import os, sys
 import ctypes
 import json
 import shutil
-from tbe.common.platform import get_soc_spec
-from tbe.common.utils import para_check
-from tbe.tikcpp import compile_op, replay_op, check_op_cap, generalize_op_params, get_code_channel, OpInfo
-from tbe.tikcpp.compile_op import CommonUtility, AscendCLogLevel
-from tbe.common.buildcfg import get_default_build_config
-from tbe.common.buildcfg import get_current_build_config
-import tbe.common.register as tbe_register
+
+{}
+
 PYF_PATH = os.path.dirname(os.path.realpath(__file__))
 
 DTYPE_MAP = {{"float32": ["DT_FLOAT", "float"],
@@ -179,7 +200,7 @@ def {}({}, kernel_name="{}"{}):
     bisheng = os.environ.get('BISHENG_REAL_PATH')
     if bisheng is None:
         bisheng = shutil.which("bisheng")
-    if bisheng != None:
+    if bisheng is not None:
         bisheng_path = os.path.dirname(bisheng)
         tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "..", "tikcpp"))
     else:
@@ -195,6 +216,8 @@ def {}({}, kernel_name="{}"{}):
     if toolkit_path is None:
         toolkit_path = os.path.realpath("/usr/local/Ascend/latest/")
     options.append("-I" + toolkit_path + os.path.join("/", os.uname().machine +"-linux", "asc", "atcos"))
+    op_common_path = os.path.realpath(toolkit_path + "/include/op_common/")
+    options.append("-I" + op_common_path)
     op_common_path = os.path.realpath(toolkit_path + "/pkg_inc/op_common/")
     options.append("-I" + op_common_path)
     if "impl_mode" in locals():
@@ -527,14 +550,14 @@ class AdpBuilder(opdesc_parser.OpDesc):
         now = datetime.datetime.now()
         curr_year = now.year
         former_year = curr_year - 1
-        fd.write(IMPL_HEAD.format(former_year, curr_year, self.input_ori_name, self.output_ori_name))
+        fd.write(IMPL_HEAD.format(former_year, curr_year, IMPORT_HEADER, self.input_ori_name, self.output_ori_name))
 
     def _write_argparse(self: any, fd: object):
         args = self._build_paralist(False)
         fd.write('def _build_args({}):\n'.format(args))
         fd.write('    __inputs__ = []\n')
         fd.write('    for arg in [{}]:\n'.format(', '.join(self.input_name)))
-        fd.write('        if arg != None:\n')
+        fd.write('        if arg is not None:\n')
         fd.write('            if isinstance(arg, (list, tuple)):\n')
         fd.write('                if len(arg) == 0:\n')
         fd.write('                    continue\n')
@@ -545,7 +568,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
         fd.write('            __inputs__.append(arg)\n')
         fd.write('    __outputs__ = []\n')
         fd.write('    for arg in [{}]:\n'.format(', '.join(self.output_name)))
-        fd.write('        if arg != None:\n')
+        fd.write('        if arg is not None:\n')
         fd.write('            if isinstance(arg, (list, tuple)):\n')
         fd.write('                if len(arg) == 0:\n')
         fd.write('                    continue\n')
@@ -556,7 +579,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
         fd.write('            __outputs__.append(arg)\n')
         fd.write('    __attrs__ = []\n')
         for attr in self.attr_list:
-            fd.write('    if {} != None:\n'.format(attr))
+            fd.write('    if {} is not None:\n'.format(attr))
             fd.write('        attr = {}\n')
             fd.write('        attr["name"] = "{}"\n'.format(attr))
             fd.write('        attr["dtype"] = "{}"\n'.format(self.attr_val.get(attr).get('type')))
@@ -611,6 +634,47 @@ class AdpBuilder(opdesc_parser.OpDesc):
         else:
             self.impl_mode = ', impl_mode = ""'
             self.impl_mode_op_info = ", impl_mode = impl_mode"
+    
+    def _get_src(self: any):
+        search_dir = Path.cwd().parent
+        if "build" in search_dir.parts:
+            search_dir = search_dir.parent
+        mc2_path = search_dir.joinpath("mc2")
+        target_files = []
+        for file_path in mc2_path.rglob(self.op_file + '.cpp'):
+            target_files.append(str(file_path))
+        target_file = None
+        if len(target_files) == 1:
+            target_file = target_files[0]
+        elif len(target_files) > 1:
+            compute_unit = COMPUTE_UNIT[0] if COMPUTE_UNIT else ""
+            arch_version = ""
+            if compute_unit == "ascend310p":
+                arch_version = "arch31"
+            elif compute_unit == "ascend950":
+                arch_version = "arch35"
+            else:
+                arch_version = "arch22"
+            
+            # 查找包含 arch_version 的文件路径
+            for file_path in target_files:
+                if arch_version in file_path:
+                    target_file = file_path
+                    break
+        if target_file and ENABLE_EXPERIMENTAL == "OFF":
+            target_file_path = Path(target_file)
+            # 查找 op_kernel 在路径中的位置
+            parts = list(target_file_path.parts)
+            if "op_kernel" in parts:
+                op_kernel_index = parts.index("op_kernel")
+                # 取 op_kernel 之后的部分
+                new_parts = parts[op_kernel_index + 1:]
+                src = str(Path(*new_parts))
+            else:
+                src = self.op_file + '.cpp'
+        else:
+            src = self.op_file + '.cpp'
+        return src
 
     def _write_impl(self: any, fd: object, impl_path: str = ""):
         argsdef = self._build_paralist()
@@ -620,7 +684,9 @@ class AdpBuilder(opdesc_parser.OpDesc):
             kern_name = self.kern_name
         else:
             kern_name = self.op_intf
-        src = self.op_file + '.cpp'
+        
+        src = self._get_src()
+    
         virt_exprs = self._build_virtual()
         fd.write(IMPL_API.format(self.op_type, pchk, \
                                  self.op_intf, argsdef, kern_name, self.impl_mode, virt_exprs, argsval,\
@@ -697,6 +763,8 @@ def parse_args(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('argv', nargs='+')
     parser.add_argument('--opsinfo-dir', nargs='*', default=None)
+    parser.add_argument('--compute-unit', nargs='*', default=['ascend910b'])
+    parser.add_argument('--enable-experimental', default="OFF")
     return parser.parse_args(argv)
 
 
@@ -722,6 +790,7 @@ if __name__ == '__main__':
             raise OpFileNotExistsError(args.opsinfo_dir)
     else:
         ops_infos.append(args.argv[1])
-
+    COMPUTE_UNIT = args.compute_unit
+    ENABLE_EXPERIMENTAL = args.enable_experimental
     for ops_info in ops_infos:
         write_scripts(cfgfile=ops_info, cfgs=rep_cfg, dirs=cfg_dir)

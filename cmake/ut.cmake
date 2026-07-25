@@ -139,6 +139,7 @@ if(UT_TEST_ALL OR OP_API_UT)
               ${ASCEND_DIR}/pkg_inc 
               ${ASCEND_DIR}/include/ascendc/basic_api 
               ${ASCEND_CANN_PACKAGE_PATH}/runtime/pkg_inc
+              ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
       )
     target_link_libraries(${OP_API_MODULE_NAME}_cases_obj 
       PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
@@ -362,7 +363,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       else()
         return()
       endif()    
-    # op_kernel/arch20/arch22/arch32/arch38
+    # op_kernel/arch20/arch22/arch38
     else()
       list(FIND ARCH_DIRECTORY "arch35" INDEX)
       if(INDEX EQUAL -1)
@@ -401,10 +402,23 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
                 ${ASCEND_DIR}/include
         )
       target_compile_definitions(${opName}_${socVersion}_tiling_tmp PRIVATE LOG_CPP _GLIBCXX_USE_CXX11_ABI=0)
+      set(GERT_FILE "libgert.so")
+      set(SEARCH_GERT_PATHS
+          "${ASCEND_DIR}/x86_64-linux/lib64"
+          "${ASCEND_DIR}/aarch64-linux/lib64"
+      )
+      find_file(
+          GERT_PATH
+          ${GERT_FILE}
+          PATHS ${SEARCH_GERT_PATHS}
+          NO_DEFAULT_PATH
+          NO_CMAKE_FIND_ROOT_PATH
+      )
       target_link_libraries(
         ${opName}_${socVersion}_tiling_tmp
-        PRIVATE -Wl,--no-as-needed $<$<TARGET_EXISTS:opsbase>:opsbase> -Wl,--as-needed -Wl,--whole-archive tiling_api
+        PRIVATE -Wl,--no-as-needed -Wl,--as-needed -Wl,--whole-archive tiling_api
                 -Wl,--no-whole-archive gcov
+                -Wl,--no-whole-archive ${GERT_PATH}
                 $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
         )
 
@@ -450,8 +464,10 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
         )
       target_include_directories(
         ${opName}_${socVersion}_cases_obj
-        PRIVATE ${ASCEND_DIR}/include/base/context_builder ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/op_kernel
+        PRIVATE ${ASCEND_DIR}/include/base/context_builder 
+                ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/op_kernel
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
+                ${PROJECT_SOURCE_DIR}/common/include/op_kernel
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/impl/basic_api
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/include
@@ -470,7 +486,15 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
           ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj OBJECT
           $<TARGET_OBJECTS:${opName}_${socVersion}_cases_obj>
           )
+      else()
+        target_sources(
+          ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj PRIVATE
+          $<TARGET_OBJECTS:${opName}_${socVersion}_cases_obj>
+          )
       endif()
+      add_dependencies(
+        ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj ${opName}_${socVersion}_cases_obj
+        )
       target_link_libraries(
         ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
                                                                     $<TARGET_OBJECTS:${opName}_${socVersion}_cases_obj>
@@ -488,7 +512,11 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
 endif()
 
 if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
-  include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
+  add_cann_third_party(gtest)
+  if (TARGET GTest::gtest)
+    add_library(gtest ALIAS GTest::gtest)
+  endif()
+
   function(AddAicpuOpTestCase opName)
     get_filename_component(UT_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
     get_filename_component(OP_NAME ${UT_DIR} NAME)
@@ -526,8 +554,7 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
             -ldl
             gtest
             c_sec
-            Eigen3::EigenMath
-            $<$<TARGET_EXISTS:opsbase>:opsbase>
+            Eigen3::Eigen
             )
 
     ## add object: math_op_kernel_ut_cases_obj
@@ -541,14 +568,13 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
     endif()
 
     target_link_libraries(${AICPU_OP_KERNEL_MODULE_NAME}_cases_obj PRIVATE
-        $<BUILD_INTERFACE:intf_llt_pub_asan>
+            $<BUILD_INTERFACE:intf_llt_pub_asan>
             $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
             -ldl
             $<TARGET_OBJECTS:${opName}_cases_obj>
             gtest
             c_sec
-            Eigen3::EigenMath
-      $<$<TARGET_EXISTS:opsbase>:opsbase>
+            Eigen3::Eigen
             )
   endfunction()
 endif()

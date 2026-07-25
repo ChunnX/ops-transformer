@@ -8,12 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-function(gen_common_symbol)
-  install(DIRECTORY ${OPS_TRANSFORMER_COMMON_INC_HEADERS}
-    DESTINATION ${COMMON_INC_INSTALL_DIR}
-  )
-endfunction()
-
 # ophost shared
 function(gen_ophost_symbol)
   add_library(${OPHOST_NAME} SHARED
@@ -21,7 +15,9 @@ function(gen_ophost_symbol)
     $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_tiling_obj>>
     $<$<TARGET_EXISTS:${OPHOST_NAME}_aicpu_objs>:$<TARGET_OBJECTS:${OPHOST_NAME}_aicpu_objs>>
     $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
-    $<$<TARGET_EXISTS:${OPHOST_NAME}_opmaster_ct_gentask_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opmaster_ct_gentask_obj>>
+    $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+    $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
+    $<$<TARGET_EXISTS:opbase_tiling_objs>:$<TARGET_OBJECTS:opbase_tiling_objs>>
   )
 
   target_link_libraries(
@@ -30,13 +26,15 @@ function(gen_ophost_symbol)
             c_sec
             -Wl,--no-as-needed
             register
-            $<$<TARGET_EXISTS:opsbase>:opsbase>
             -Wl,--as-needed
             -Wl,--whole-archive
             rt2_registry_static
             -Wl,--no-whole-archive
             tiling_api
+            runtime
+            acl_rt
             -Wl,-Bsymbolic
+            mmpa
     )
 
   target_link_directories(${OPHOST_NAME}
@@ -49,31 +47,113 @@ function(gen_ophost_symbol)
   )
 endfunction()
 
+function(gen_es_transformer_lib_builtin)
+  add_library(
+    proto_temp_transformer SHARED
+  )
+  add_dependencies(proto_temp_transformer merge_ops_proto)
+  target_sources(
+    proto_temp_transformer
+    PRIVATE
+    ${ASCEND_GRAPH_CONF_DST}/ops_proto_transformer.cpp
+  )
+  target_link_libraries(
+    proto_temp_transformer
+    PRIVATE $<BUILD_INTERFACE:intf_pub_cxx17>
+            c_sec
+            -Wl,--no-as-needed
+            register
+            -Wl,--as-needed
+  )
+  target_link_directories(proto_temp_transformer
+    PRIVATE
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/lib64
+  )
+  add_es_library_and_whl(
+    ES_LINKABLE_AND_ALL_TARGET es_transformer
+    OPP_PROTO_TARGET proto_temp_transformer
+    OUTPUT_PATH ${CMAKE_BINARY_DIR}/es_packages
+  )
+  install(
+    FILES ${CMAKE_BINARY_DIR}/es_packages/lib64/libes_transformer.so
+ 	  DESTINATION ${VERSION_INFO_INSTALL_DIR}/lib64
+    OPTIONAL
+  )
+  install(
+ 	  DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/include/es_transformer
+ 	  DESTINATION ${VERSION_INFO_INSTALL_DIR}/include/es
+ 	  OPTIONAL
+ 	)
+  install(
+    DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/whl/
+    DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
+    OPTIONAL
+  )
+endfunction()
+
 # graph_plugin shared
 function(gen_opgraph_symbol)
-  add_library(${OPGRAPH_NAME} SHARED
-    $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:$<TARGET_OBJECTS:${GRAPH_PLUGIN_NAME}_obj>>
-  )
+  merge_graph_headers(TARGET merge_ops_proto ALL OUT_DIR ${ASCEND_GRAPH_CONF_DST})
 
+  gen_es_transformer_lib_builtin()
+
+  add_library(
+    ${OPGRAPH_NAME} SHARED
+    $<$<TARGET_EXISTS:${COMMON_NAME}_fallback_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_fallback_obj>>
+    $<$<TARGET_EXISTS:${OPGRAPH_NAME}_fallback_obj>:$<TARGET_OBJECTS:${OPGRAPH_NAME}_fallback_obj>>
+    $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:$<TARGET_OBJECTS:${GRAPH_PLUGIN_NAME}_obj>>
+    $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:$<TARGET_OBJECTS:${OPGRAPH_NAME}_gentask_obj>>
+    $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+    $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
+  )
+  add_dependencies(${OPGRAPH_NAME} merge_ops_proto)
+  target_sources(
+    ${OPGRAPH_NAME}
+    PRIVATE
+    ${ASCEND_GRAPH_CONF_DST}/ops_proto_transformer.cpp
+  )
   target_link_libraries(
     ${OPGRAPH_NAME}
     PRIVATE $<BUILD_INTERFACE:intf_pub_cxx17>
             c_sec
             -Wl,--no-as-needed
             register
-            $<$<TARGET_EXISTS:opsbase>:opsbase>
             -Wl,--as-needed
             -Wl,--whole-archive
             rt2_registry_static
             -Wl,--no-whole-archive
             -Wl,-Bsymbolic
-    )
-
+            ge_compiler
+  )
   target_link_directories(${OPGRAPH_NAME}
     PRIVATE
     ${ASCEND_DIR}/${SYSTEM_PREFIX}/lib64
+    ${CMAKE_BINARY_DIR}/es_packages/lib64
   )
 
+  if(TARGET ${GRAPH_PLUGIN_NAME}_obj)
+    message(STATUS "Link es graph to graph plugin obj")
+    unset(GRAPH_SOURCE)
+    get_target_property(GRAPH_SOURCE ${GRAPH_PLUGIN_NAME}_obj SOURCES)
+    if(GRAPH_SOURCE)
+      add_dependencies(${GRAPH_PLUGIN_NAME}_obj
+        build_es_math
+        build_es_transformer
+      )
+      target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
+        PRIVATE
+        es_math
+        es_transformer
+      )
+    endif()
+    target_link_libraries(${OPGRAPH_NAME}
+      PRIVATE
+      -Wl,--no-as-needed
+      es_math
+      es_transformer
+      -Wl,--as-needed
+    )
+  endif()
   set_target_properties(${OPGRAPH_NAME} PROPERTIES OUTPUT_NAME "opgraph_transformer")
   install(TARGETS ${OPGRAPH_NAME}
     LIBRARY DESTINATION ${OPGRAPH_LIB_INSTALL_DIR}
@@ -97,6 +177,7 @@ function(gen_opapi_symbol)
     ops_aclnn
     -Wl,--no-whole-archive
     nnopbase
+    -Wl,-Bsymbolic
     profapi
     ge_common_base
     ascend_dump
@@ -129,6 +210,8 @@ function(gen_cust_optiling_symbol)
   add_library(cust_opmaster SHARED
     $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_tiling_obj>
     $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>>
+    $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+    $<$<TARGET_EXISTS:opbase_tiling_objs>:$<TARGET_OBJECTS:opbase_tiling_objs>>
   )
   target_link_libraries(cust_opmaster
     PRIVATE
@@ -168,13 +251,14 @@ function(gen_cust_proto_symbol)
   add_library(cust_proto SHARED
     $<$<TARGET_EXISTS:${OPHOST_NAME}_infer_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_infer_obj>>
     $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:$<TARGET_OBJECTS:${GRAPH_PLUGIN_NAME}_obj>>
+    $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+    $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
   )
   target_link_libraries(cust_proto
     PRIVATE
     c_sec
     -Wl,--no-as-needed
     register
-    $<$<TARGET_EXISTS:opsbase>:opsbase>
     -Wl,--as-needed
     -Wl,--whole-archive
     rt2_registry_static
@@ -197,21 +281,121 @@ function(gen_cust_proto_symbol)
   )
 endfunction()
 
-function(gen_cust_aicpu_json_symbol)
-  get_property(ALL_AICPU_JSON_FILES GLOBAL PROPERTY AICPU_JSON_FILES)
-  if(NOT ALL_AICPU_JSON_FILES)
-    message(STATUS "No aicpu json files to merge, skipping.")
+# Collects AICPU_HOST_OBJ_TARGETS (registered by add_aicpu_host_kernel_modules in obj_func.cmake)
+# and links all host OBJECT files into one SHARED library libopconstant_folding_transformer.so.
+function(gen_aicpu_const_symbol)
+  get_property(AICPU_HOST_OBJ_TARGETS GLOBAL PROPERTY AICPU_HOST_OBJ_TARGETS)
+  message(STATUS "All host targets: ${AICPU_HOST_OBJ_TARGETS}")
+
+  if(NOT DEFINED AICPU_HOST_OBJ_TARGETS OR "${AICPU_HOST_OBJ_TARGETS}" STREQUAL "")
+    message(STATUS "No builtin host aicpu targets found, skipping.")
     return()
   endif()
 
+  set(CONST_SO_OUTPUT ${CMAKE_BINARY_DIR}/libopconstant_folding_transformer.so)
+
+  set(ALL_OBJECTS "")
+  foreach(tgt IN LISTS AICPU_HOST_OBJ_TARGETS)
+    list(APPEND ALL_OBJECTS $<TARGET_OBJECTS:${tgt}>)
+  endforeach()
+
+  message(STATUS "Linking libopconstant_folding_transformer.so with host compiler")
+  message(STATUS "Objects: ${ALL_OBJECTS}")
+  message(STATUS "Output: ${CONST_SO_OUTPUT}")
+
+  set(AICPU_HOST_CONST_LIBS
+    -lc_sec
+    -lgraph
+    -lexe_graph
+    -lregister
+    -lpthread
+    -ldl
+  )
+
+  add_custom_command(
+    OUTPUT ${CONST_SO_OUTPUT}
+    COMMAND ${CMAKE_CXX_COMPILER} -shared ${ALL_OBJECTS}
+      -Wl,--whole-archive
+          ${ASCEND_DIR}/lib64/libaicpu_context_host.a
+          ${ASCEND_DIR}/lib64/libaicpu_nodedef_host.a
+          ${ASCEND_DIR}/lib64/libhost_ascend_protobuf.a
+      -Wl,--no-whole-archive
+      -Wl,-Bsymbolic
+      -Wl,--exclude-libs=libhost_ascend_protobuf.a
+      -Wl,-z,now
+      -s
+      -L${ASCEND_DIR}/lib64
+      ${AICPU_HOST_CONST_LIBS}
+      -o ${CONST_SO_OUTPUT}
+    DEPENDS ${AICPU_HOST_OBJ_TARGETS}
+    COMMENT "Linking libopconstant_folding_transformer.so using host compiler"
+    COMMAND_EXPAND_LISTS
+  )
+
+  add_custom_target(opconstant_folding_transformer_builtin ALL DEPENDS ${CONST_SO_OUTPUT})
+  install(
+    FILES ${CONST_SO_OUTPUT}
+    DESTINATION ${AICPU_HOST_KERNEL_IMPL}
+    OPTIONAL
+  )
+endfunction()
+
+function(gen_cust_aicpu_op_def_symbol)
+  get_property(ALL_AICPU_OP_DEF_FILES GLOBAL PROPERTY AICPU_OP_DEF_FILES)
+  if(NOT ALL_AICPU_OP_DEF_FILES)
+    message(STATUS "No aicpu opdef files found, skip opdef ini generation.")
+    return()
+  endif()
+
+  gen_aicpu_ini_from_opdef(
+    OPS_SRC ${ALL_AICPU_OP_DEF_FILES}
+    OUT_DIR ${ASCEND_AUTOGEN_PATH}
+  )
+endfunction()
+
+function(gen_cust_aicpu_json_symbol)
+  get_property(ALL_AICPU_JSON_FILES GLOBAL PROPERTY AICPU_JSON_FILES)
+  get_property(ALL_AICPU_OP_DEF_FILES GLOBAL PROPERTY AICPU_OP_DEF_FILES)
+  if(NOT ALL_AICPU_OP_DEF_FILES AND NOT ALL_AICPU_JSON_FILES)
+    message(STATUS "No aicpu opdef/json files to merge, skipping.")
+    return()
+  endif()
+
+  set(AICPU_PARSER_INI_SCRIPT ${CMAKE_SOURCE_DIR}/scripts/kernel/binary_script/aicpu_parser_ini_to_json.py)
+  if(NOT EXISTS ${AICPU_PARSER_INI_SCRIPT})
+    message(FATAL_ERROR "AICPU parser script not found: ${AICPU_PARSER_INI_SCRIPT}")
+  endif()
+
   set(MERGED_JSON ${CMAKE_BINARY_DIR}/cust_aicpu_kernel.json)
+  set(INPUT_JSONS "")
+
+  if(ALL_AICPU_OP_DEF_FILES)
+    gen_cust_aicpu_op_def_symbol()
+    set(AICPU_INI ${ASCEND_AUTOGEN_PATH}/aicpu_kernel.ini)
+    set(OPDEF_JSON ${CMAKE_BINARY_DIR}/aicpu_opdef_kernel.json)
+    add_custom_command(
+      OUTPUT ${OPDEF_JSON}
+      COMMAND ${ASCEND_PYTHON_EXECUTABLE} ${AICPU_PARSER_INI_SCRIPT} ${AICPU_INI} ${OPDEF_JSON}
+      DEPENDS ${ALL_AICPU_OP_DEF_FILES} ${AICPU_INI} ${AICPU_PARSER_INI_SCRIPT}
+      COMMENT "Generating ${OPDEF_JSON} from ${AICPU_INI}"
+      VERBATIM
+    )
+    list(APPEND INPUT_JSONS ${OPDEF_JSON})
+  endif()
+
+  if(ALL_AICPU_JSON_FILES)
+    list(APPEND INPUT_JSONS ${ALL_AICPU_JSON_FILES})
+  endif()
+
   add_custom_command(
     OUTPUT ${MERGED_JSON}
-    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/util/merge_aicpu_info_json.sh ${CMAKE_SOURCE_DIR} ${MERGED_JSON} ${ALL_AICPU_JSON_FILES}
-    DEPENDS ${ALL_AICPU_JSON_FILES}
-    COMMENT "Merging Json files into ${MERGED_JSON}"
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/util/merge_aicpu_info_json.sh
+            ${CMAKE_SOURCE_DIR} ${MERGED_JSON} ${INPUT_JSONS}
+    DEPENDS ${INPUT_JSONS}
+    COMMENT "Merging aicpu json inputs into ${MERGED_JSON}"
     VERBATIM
   )
+  add_custom_target(gen_aicpu_json_from_opdef DEPENDS ${MERGED_JSON})
   add_custom_target(merge_aicpu_json ALL DEPENDS ${MERGED_JSON})
   install(
     FILES ${MERGED_JSON}
@@ -227,7 +411,7 @@ function(gen_cust_aicpu_kernel_symbol)
   endif()
 
   set(ARM_CXX_COMPILER ${ASCEND_DIR}/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++)
-  set(ARM_SO_OUTPUT ${CMAKE_BINARY_DIR}/libcust_aicpu_kernels.so)
+  set(ARM_SO_OUTPUT ${CMAKE_BINARY_DIR}/libtransformer_aicpu_kernels.so)
 
   set(ALL_OBJECTS "")
   foreach(tgt IN LISTS AICPU_CUST_OBJ_TARGETS)
@@ -273,9 +457,34 @@ function(gen_cust_aicpu_kernel_symbol)
   )
 endfunction()
 
-function(gen_norm_symbol)
-  gen_common_symbol()
+function(gen_onnx_plugin_symbol)
+  add_library(
+    ${ONNX_PLUGIN_NAME} SHARED
+    $<$<TARGET_EXISTS:${ONNX_PLUGIN_NAME}_obj>:$<TARGET_OBJECTS:${ONNX_PLUGIN_NAME}_obj>>
+  )
 
+  target_link_libraries(
+    ${ONNX_PLUGIN_NAME}
+    PRIVATE $<BUILD_INTERFACE:intf_pub_cxx14>
+            c_sec
+            -Wl,--no-as-needed
+            register
+            -Wl,--as-needed
+            -Wl,--whole-archive
+            rt2_registry_static
+            -Wl,--no-whole-archive
+    )
+
+  target_link_directories(${ONNX_PLUGIN_NAME} PRIVATE ${ASCEND_DIR}/${SYSTEM_PREFIX}/lib64)
+
+  install(
+    TARGETS ${ONNX_PLUGIN_NAME}
+    LIBRARY DESTINATION ${ONNX_PLUGIN_LIB_INSTALL_DIR}
+    )
+
+endfunction()
+
+function(gen_norm_symbol)
   if (ENABLE_OPS_HOST)
     gen_ophost_symbol()
     gen_opapi_symbol()
@@ -283,6 +492,8 @@ function(gen_norm_symbol)
   endif()
 
   gen_opgraph_symbol()
+  gen_onnx_plugin_symbol()
+  gen_aicpu_const_symbol()
 
 endfunction()
 
@@ -297,5 +508,10 @@ function(gen_cust_symbol)
 
   gen_cust_aicpu_json_symbol()
 
+  gen_cust_aicpu_kernel_symbol()
+endfunction()
+
+function(gen_cust_aicpu_symbol)
+  gen_cust_aicpu_json_symbol()
   gen_cust_aicpu_kernel_symbol()
 endfunction()

@@ -20,7 +20,7 @@ def match_op_proto(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    op_def_pattern = re.compile(r"REG_OP\((.+)\).*OP_END_FACTORY_REG\(\1\)\;", re.DOTALL)
+    op_def_pattern = re.compile(r"REG_OP\((.+)\).*OP_END_FACTORY_REG\(\1\)", re.DOTALL)
     match = op_def_pattern.search(content)
 
     if match:
@@ -29,7 +29,7 @@ def match_op_proto(file_path):
         return op_name, op_def
     else:
         return None, None
-    
+
 
 def merge_op_proto(protos_path, output_file):
     op_defs = []

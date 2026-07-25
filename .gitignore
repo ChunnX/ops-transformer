@@ -34,3 +34,17 @@ output/
 *.pyc
 __pycache__
 MANIFEST.in
+
+# third_party
+third_party/
+!cmake/third_party/
+!cmake/third_party/ops-tensor.cmake
+
+# ai
+.agents/
+.opencode/
+.claude/
+
+# pre-commit log
+log/
+oat_reports/
