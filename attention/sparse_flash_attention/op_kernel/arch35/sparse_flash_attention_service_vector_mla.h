@@ -521,7 +521,7 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispat
     LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo, ConstInfo &constInfo)
 {
     // loopCount = 0 但传入sinks时走update分支，maxUb通过sinks初始化，sumUb初始化为1.0
-    if (runInfo.s2LoopCount == 0 && !isSinks) {  // sink 丢失首token信息，sink会增加首token信息，维度是n1
+    if (runInfo.s2LoopCount == 0 && !isSinks) { // sink 丢失首token信息，sink会增加首token信息，维度是n1
         if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
                 stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,

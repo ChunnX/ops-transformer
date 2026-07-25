@@ -33,19 +33,19 @@ enum class VselrIndexEnum {
     int64_t s1oIdx;                                                                                                    \
     int64_t n2oIdx;                                                                                                    \
     int64_t goIdx;                                                                                                     \
-    int64_t s2LoopEndIdx;       /* S2方向的循环控制信息 souter层确定 */                                                \
-    int64_t s2LineStartIdx = 0; /* S2方向按行的起始位置 */                                                             \
-    int64_t s2LineEndIdx;       /* S2方向按行的结束位置 */                                                             \
+    int64_t s2LoopEndIdx;       /* S2方向的循环控制信息 souter层确定 */                                    \
+    int64_t s2LineStartIdx = 0; /* S2方向按行的起始位置 */                                                    \
+    int64_t s2LineEndIdx;       /* S2方向按行的结束位置 */                                                    \
     int64_t s2CmpLineEndIdx;                                                                                           \
-    /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */                           \
+    /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */            \
     uint32_t s1RealSize;                                                                                               \
     uint32_t halfS1RealSize;                                                                                           \
     uint32_t firstHalfS1RealSize;                                                                                      \
     uint32_t mRealSize;                                                                                                \
     uint32_t halfMRealSize;                                                                                            \
     uint32_t firstHalfMRealSize;                                                                                       \
-    int64_t attentionOutOffset; /* attentionOut的offset souter层确定 */                                                \
-    int32_t actualS1Size;       /* Q的actualSeqLength */                                                               \
+    int64_t attentionOutOffset; /* attentionOut的offset souter层确定 */                                            \
+    int32_t actualS1Size;       /* Q的actualSeqLength */                                                              \
     int32_t actualS2Size        /* KV的actualSeqLength */
 
 struct RunParamStr { // 分核与切块需要使用到参数
@@ -70,42 +70,44 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t kvLoopEndIdx;
 };
 
-#define COMMON_RUN_INFO                                                                                                         \
-    int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */                                                               \
-    int64_t s2EndIdx;                                                                                                           \
-    int64_t s2LoopCount; /* s2循环当前的循环index */                                                                            \
-    int64_t s2LoopLimit;                                                                                                        \
-    int64_t s1oIdx = 0; /* s1轴的index */                                                                                       \
-    int64_t loop = 0;   /* for v0 perload loop */                                                                               \
-    int64_t boIdx = 0;  /* b轴的index */                                                                                        \
-    int64_t n2oIdx = 0; /* n2轴的index */                                                                                       \
-    int64_t goIdx = 0;  /* g轴的index */                                                                                        \
-    int32_t s1RealSize;                                                                                                         \
-    int32_t halfS1RealSize; /* vector侧实际的s1基本块大小，如果Cube基本块=128，那么halfS1RealSize=64 */                         \
-    int32_t firstHalfS1RealSize; /* 当s1RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s1 \
-                                    size */                                                                                     \
-    int32_t mRealSize;                                                                                                          \
-    int32_t halfMRealSize;                                                                                                      \
-    int32_t firstHalfMRealSize;                                                                                                 \
-    int32_t s2RealSize;     /* s2方向基本块的真实长度 */                                                                        \
-    int64_t s2AlignedSize;  /* s2方向基本块对齐到16之后的长度 */                                                                \
-    int32_t vec2S1BaseSize; /* vector2侧开循环之后，经过切分的S1大小，例如把64切分成两份32 */                                   \
-    int32_t vec2S1RealSize; /* vector2侧开循环之后，经过切分的S1的尾块大小，例如把63切分成两份32和31，第二份的实际大小是31   \
-                             */                                                                                                 \
-    int32_t vec2MBaseSize;                                                                                                      \
-    int32_t vec2MRealSize;                                                                                                      \
-    int64_t taskId;                                                                                                             \
-    int64_t multiCoreInnerIdx = 0;                                                                                              \
-    int64_t attentionOutOffset;                                                                                                 \
-    int32_t actualS1Size;       /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */                                            \
-    int32_t actualS2Size;       /* 非TND场景=总s2Size, Tnd场景下当前batch对应的s2 */                                            \
-    int64_t preTokensPerBatch;  /* vector2 左上顶点的pretoken */                                                                \
-    int64_t nextTokensPerBatch; /* vector2 左上顶点的nexttoken */                                                               \
-    uint8_t taskIdMod2;                                                                                                         \
-    uint8_t taskIdMod3;                                                                                                         \
-    uint8_t multiCoreIdxMod2 = 0;                                                                                               \
-    uint8_t multiCoreIdxMod3 = 0;                                                                                               \
-    int64_t sOuterOffset;                                                                                                       \
+#define COMMON_RUN_INFO                                                                                                                                     \
+    int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */                                                                              \
+    int64_t s2EndIdx;                                                                                                                                       \
+    int64_t s2LoopCount; /* s2循环当前的循环index */                                                                                                 \
+    int64_t s2LoopLimit;                                                                                                                                    \
+    int64_t s1oIdx = 0; /* s1轴的index */                                                                                                                 \
+    int64_t loop = 0;   /* for v0 perload loop */                                                                                                           \
+    int64_t boIdx = 0;  /* b轴的index */                                                                                                                  \
+    int64_t n2oIdx = 0; /* n2轴的index */                                                                                                                 \
+    int64_t goIdx = 0;  /* g轴的index */                                                                                                                  \
+    int32_t s1RealSize;                                                                                                                                     \
+    int32_t halfS1RealSize; /* vector侧实际的s1基本块大小，如果Cube基本块=128，那么halfS1RealSize=64 */                                   \
+    int32_t                                                                                                                                                 \
+        firstHalfS1RealSize; /* 当s1RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s1             \
+                                size */                                                                                                                     \
+    int32_t mRealSize;                                                                                                                                      \
+    int32_t halfMRealSize;                                                                                                                                  \
+    int32_t firstHalfMRealSize;                                                                                                                             \
+    int32_t s2RealSize;     /* s2方向基本块的真实长度 */                                                                                          \
+    int64_t s2AlignedSize;  /* s2方向基本块对齐到16之后的长度 */                                                                               \
+    int32_t vec2S1BaseSize; /* vector2侧开循环之后，经过切分的S1大小，例如把64切分成两份32 */                                        \
+    int32_t                                                                                                                                                 \
+        vec2S1RealSize; /* vector2侧开循环之后，经过切分的S1的尾块大小，例如把63切分成两份32和31，第二份的实际大小是31 \
+                         */                                                                                                                                 \
+    int32_t vec2MBaseSize;                                                                                                                                  \
+    int32_t vec2MRealSize;                                                                                                                                  \
+    int64_t taskId;                                                                                                                                         \
+    int64_t multiCoreInnerIdx = 0;                                                                                                                          \
+    int64_t attentionOutOffset;                                                                                                                             \
+    int32_t actualS1Size;       /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */                                                            \
+    int32_t actualS2Size;       /* 非TND场景=总s2Size, Tnd场景下当前batch对应的s2 */                                                            \
+    int64_t preTokensPerBatch;  /* vector2 左上顶点的pretoken */                                                                                       \
+    int64_t nextTokensPerBatch; /* vector2 左上顶点的nexttoken */                                                                                      \
+    uint8_t taskIdMod2;                                                                                                                                     \
+    uint8_t taskIdMod3;                                                                                                                                     \
+    uint8_t multiCoreIdxMod2 = 0;                                                                                                                           \
+    uint8_t multiCoreIdxMod3 = 0;                                                                                                                           \
+    int64_t sOuterOffset;                                                                                                                                   \
     int64_t mOuterOffset
 
 struct RunInfo {
@@ -119,7 +121,7 @@ struct RunInfo {
 };
 
 #define COMMON_CONST_INFO                                                                                              \
-    /* 全局的基本块信息 */                                                                                             \
+    /* 全局的基本块信息 */                                                                                     \
     uint32_t bSize;                                                                                                    \
     uint32_t needInit;                                                                                                 \
     uint32_t s1BaseSize;                                                                                               \
@@ -131,11 +133,11 @@ struct RunInfo {
     int64_t dSizeRope;   /* key rope d 64 */                                                                           \
     int64_t tileSize;    /* 64 */                                                                                      \
     int64_t sparseMode;                                                                                                \
-    int64_t gSize; /* g轴的大小 */                                                                                     \
+    int64_t gSize; /* g轴的大小 */                                                                                 \
     int64_t n2Size;                                                                                                    \
-    int64_t s1Size; /* s1总大小 */                                                                                     \
-    int64_t s2Size; /* s2总大小 */                                                                                     \
-    /* 轴的乘积 */                                                                                                     \
+    int64_t s1Size; /* s1总大小 */                                                                                  \
+    int64_t s2Size; /* s2总大小 */                                                                                  \
+    /* 轴的乘积 */                                                                                                 \
     int64_t s1D;                                                                                                       \
     int64_t gS1D;                                                                                                      \
     int64_t n2GS1D;                                                                                                    \
@@ -182,9 +184,9 @@ struct RunInfo {
     int64_t s1BaseBN2GDv;                                                                                              \
     int32_t s1BaseDv;                                                                                                  \
     int32_t s2BaseDv;                                                                                                  \
-    /* matmul跳读参数 */                                                                                               \
+    /* matmul跳读参数 */                                                                                           \
     int64_t mm1Ka;                                                                                                     \
-    /* dq 或者attentionOut的Stride */                                                                                  \
+    /* dq 或者attentionOut的Stride */                                                                               \
     int64_t attentionOutStride;                                                                                        \
     uint32_t aicIdx;                                                                                                   \
     uint32_t aivIdx;                                                                                                   \
@@ -192,7 +194,7 @@ struct RunInfo {
     uint8_t subBlockIdx;                                                                                               \
     bool returnSoftmaxLse;                                                                                             \
     uint8_t resv;                                                                                                      \
-    /* 分核相关 */                                                                                                     \
+    /* 分核相关 */                                                                                                 \
     uint32_t s2Start;                                                                                                  \
     uint32_t s2End;                                                                                                    \
     uint32_t bN2Start;                                                                                                 \
@@ -201,14 +203,14 @@ struct RunInfo {
     uint32_t gS1End
 
 #define INFER_CONST_INFO                                                                                               \
-    /* 推理 */                                                                                                         \
-    bool isActualLenDimsNull;   /* 判断是否有actualseq */                                                              \
-    bool isActualLenDimsKVNull; /* 判断是否有actualseq_kv */                                                           \
+    /* 推理 */                                                                                                       \
+    bool isActualLenDimsNull;   /* 判断是否有actualseq */                                                         \
+    bool isActualLenDimsKVNull; /* 判断是否有actualseq_kv */                                                      \
     bool isSoftmaxLseEnable;                                                                                           \
     bool rsvd1;                                                                                                        \
     uint32_t sparseBlockCount;                                                                                         \
-    uint32_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */                                                       \
-    uint32_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */                                                    \
+    uint32_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */                                               \
+    uint32_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */                                            \
     /* service mm1 mm2 pageAttention */                                                                                \
     uint32_t blockSize;                                                                                                \
     uint32_t paLayoutType;                                                                                             \
