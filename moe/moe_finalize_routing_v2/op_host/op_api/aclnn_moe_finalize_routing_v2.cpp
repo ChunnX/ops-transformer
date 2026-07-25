@@ -157,12 +157,15 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     bool is310P = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P;
+    bool isCommonValidationChip = Ops::Transformer::AclnnUtil::IsRegbase()
+        || GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B
+        || GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93;
 
     aclnnStatus ret = ACLNN_SUCCESS;
     if (is310P) {
         ret = MoeFinalizeRoutingV2Check::CheckParams310P(expandedX, expandedRowIdx, x1Optional, x2Optional,
                                                          biasOptional, scalesOptional, expertIdxOptional, out);
-    } else if (Ops::Transformer::AclnnUtil::IsRegbase()) {
+    } else if (isCommonValidationChip) {
         ret = MoeFinalizeRoutingV2Check::CheckParams(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
                                                      scalesOptional, expertIdxOptional, out);
     }
