@@ -193,8 +193,6 @@ class SymmBuffer:
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
-        self.topo_type = 0
-        self.rank_num_per_server = 2
 
 
 _TORCH_DTYPE_TO_INT = {  # torch枚举
@@ -321,6 +319,4 @@ def mega_moe(
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
         weight2_type=weight2_type,
-        topo_type=sym_buffer.topo_type,
-        rank_num_per_server=sym_buffer.rank_num_per_server,
     )
