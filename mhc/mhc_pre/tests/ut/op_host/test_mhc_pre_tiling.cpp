@@ -1899,7 +1899,7 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
             {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
             {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
-            {"impl_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(implMode)}
+            {"op_impl_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(implMode)}
         },
         &compileInfo);
     tilingContextPara.deterministicInfo_ = deterministicLevel;

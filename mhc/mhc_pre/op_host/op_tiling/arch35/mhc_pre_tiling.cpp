@@ -620,9 +620,9 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
     auto implModePtr = attrs->GetAttrPointer<int64_t>(IMPL_MODE_ATTR_INDEX);
     int64_t implMode = (implModePtr != nullptr) ? *implModePtr : IMPL_MODE_FP32;
     if (implMode != IMPL_MODE_FP32 && implMode != IMPL_MODE_HF32) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "impl_mode",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "op_impl_mode",
                                               std::to_string(implMode).c_str(),
-                                              "impl_mode must be 0 (FP32) or 1 (HF32)");
+                                              "op_impl_mode must be 0 (FP32) or 1 (HF32)");
         return ge::GRAPH_FAILED;
     }
     implMode_ = static_cast<uint32_t>(implMode);
