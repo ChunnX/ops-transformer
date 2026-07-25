@@ -732,16 +732,31 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34(const DLIGradKLLossR
         uint32_t dQueryGmOffset = n1IndexId * info.curS1Size * constInfo.dSizeQueryIndex;
         LocalTensor<MM12_OUT_T> mm4L0cTensor = cL0TensorPingPong[l0cPingPongFlag & 1];
 
+        if (info.curS2LoopTimes > 0) {
+            uint32_t curS2BlkSize = (info.curS2LoopTimes == 1) ?
+                                    info.curS2StepSize : constInfo.s2BaseBlk;
+            WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[l0abPingPongFlag & 1]);
+            CopyInMm2BToL1(info, n2IndexId, 0, curS2BlkSize, l0abPingPongFlag);
+            SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY_INDEX[l0abPingPongFlag & 1]);
+        }
+
         for (uint32_t s2InnerIdx = 0; s2InnerIdx < info.curS2LoopTimes; s2InnerIdx++) {
             uint32_t curS2BlkSize = (s2InnerIdx == info.curS2LoopTimes - 1) ?
                                     (info.curS2StepSize - s2InnerIdx * constInfo.s2BaseBlk) : constInfo.s2BaseBlk;
             mm4Params.singleK = curS2BlkSize;
             mm4Params.isFixOut = (s2InnerIdx == info.curS2LoopTimes - 1);
             mm4Params.isL0CInit = (s2InnerIdx == 0);
-            WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[l0abPingPongFlag & 1]);
-            CopyInMm2BToL1(info, n2IndexId, s2InnerIdx, curS2BlkSize, l0abPingPongFlag);
+            uint8_t nextL0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
+            if (s2InnerIdx + 1 < info.curS2LoopTimes) {
+                uint32_t nextS2InnerIdx = s2InnerIdx + 1;
+                uint32_t nextS2BlkSize = (nextS2InnerIdx == info.curS2LoopTimes - 1) ?
+                                         (info.curS2StepSize - nextS2InnerIdx * constInfo.s2BaseBlk) :
+                                         constInfo.s2BaseBlk;
+                WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[nextL0abPingPongFlag]);
+                CopyInMm2BToL1(info, n2IndexId, nextS2InnerIdx, nextS2BlkSize, nextL0abPingPongFlag);
+                SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY_INDEX[nextL0abPingPongFlag]);
+            }
 
-            SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY_INDEX[l0abPingPongFlag & 1]);
             WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY_INDEX[l0abPingPongFlag & 1]);
 
             uint32_t l1ReluGradOffset = s2InnerIdx * constInfo.s2BaseBlk * info.curS1SizeAlign16;
