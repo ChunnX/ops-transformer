@@ -9,10 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_token_permute import moe_token_permute
-from .mega_moe import (
-    get_symm_buffer_for_mega_moe,
-    mega_moe
-)
+from .mega_moe import get_symm_buffer_for_mega_moe, mega_moe
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
 from .quant_flash_attn import quant_flash_attn, quant_flash_attn_metadata
@@ -43,6 +40,7 @@ from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_backward
+from .stem_oam_prep_varlen_q import stem_oam_prep_varlen_q
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from . import graph_convert as _graph_convert
