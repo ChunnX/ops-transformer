@@ -261,6 +261,12 @@ public:
             uint32_t gmRange = validRows * numQHeads;
             qscaleGm.SetGlobalBuffer((__gm__ float*)qscaleBase + baseOffset, gmRange);
             LocalTensor<float> bulkBuf = scaleBulkBuf.Get<float>();
+            if (validRows < B) {
+                Duplicate(bulkBuf, 0.0f, B * SCALE_PAD_SIZE);
+                event_t vsEvent = static_cast<event_t>(pipe.FetchEventID(HardEvent::V_MTE2));
+                SetFlag<HardEvent::V_MTE2>(vsEvent);
+                WaitFlag<HardEvent::V_MTE2>(vsEvent);
+            }
             uint32_t copyCount = (numQHeads < SCALE_PAD_SIZE) ? numQHeads : SCALE_PAD_SIZE;
             LoopModeParams loopParams;
             loopParams.loop1Size = validRows;
