@@ -42,6 +42,7 @@ const std::string CMP_KV_NAME = "cmp_kv";
 const std::string ORI_SPARSE_INDICES_NAME = "ori_sparse_indices";
 const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
 const std::string ATTEN_OUT_NAME = "attention_out";
+const std::string SOFTMAX_LSE_NAME = "softmax_lse";
 
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
 const std::string CU_SEQLENS_ORI_KV_NAME = "cu_seqlens_ori_kv";
@@ -146,6 +147,7 @@ constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 9;
 constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 10;
 
 // Dim Index
+constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
 constexpr uint32_t DIM_IDX_THREE = 3;

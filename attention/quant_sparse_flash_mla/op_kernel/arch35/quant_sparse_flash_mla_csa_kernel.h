@@ -263,9 +263,9 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Pars
     constInfo.dSize = quantSparseFlashMlaBaseParams.dSize;
     constInfo.dSizeV = constInfo.dSize;
     constInfo.dSizeVInput = quantSparseFlashMlaBaseParams.dSizeVInput;
+    constInfo.isSoftmaxLseEnable = quantSparseFlashMlaBaseParams.returnSoftmaxLse;
     constInfo.sparseBlockSize = 1;
     constInfo.actualSeqLenSize = constInfo.bSize + 1;
-    constInfo.isSoftmaxLseEnable = quantSparseFlashMlaBaseParams.returnSoftmaxLse;
 
     if constexpr (isPa) {
         constInfo.oriBlockSize = quantSparseFlashMlaBaseParams.paOriBlockSize;

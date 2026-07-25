@@ -32,7 +32,7 @@ class Network(torch.nn.Module):
                 cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length,
                 cmp_topk_length, sinks, metadata, quant_mode, softmax_scale, cmp_ratio, ori_mask_mode,
                 cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, topk_value_mode, return_softmax_lse):
-        npu_result, _ = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
+        npu_result, npu_lse = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
                                 q=q,
                                 ori_kv=ori_kv,
                                 cmp_kv=cmp_kv,
@@ -65,7 +65,7 @@ class Network(torch.nn.Module):
                                 layout_kv=layout_kv,
                                 topk_value_mode=topk_value_mode,
                                 return_softmax_lse=return_softmax_lse)
-        return npu_result
+        return npu_result, npu_lse
 
 
 def test_qsmla_quant_process_graph(test_data, device_id=0):
@@ -74,6 +74,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']
     cpu_output = test_data['cpu_output']
+    cpu_lse = test_data.get('cpu_lse')
     torch_npu.npu.set_device(device_id)
 
     # 编译
@@ -165,6 +166,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']
     cpu_output = test_data['cpu_output']
+    cpu_lse = test_data.get('cpu_lse')
     torch_npu.npu.set_device(device_id)
 
     logging.info(f"test_data:{params}")

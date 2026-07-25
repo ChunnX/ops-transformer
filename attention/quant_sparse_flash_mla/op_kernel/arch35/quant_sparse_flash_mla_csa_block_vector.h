@@ -232,9 +232,9 @@ private:
     TBuf<> softmaxMaxBuf[2];
     TBuf<> softmaxSumBuf[2];
     TBuf<> softmaxExpBuf[2];
-    TBuf<> outLseBuf[2];
     TBuf<> stage0InBuf[2];
     TBuf<> stage0OutBuf[2];
+    TBuf<> outLseBuf[2];
     TBuf<> vselrIndexesBuf[2];
     uint32_t pingPongV0 = 0;
 

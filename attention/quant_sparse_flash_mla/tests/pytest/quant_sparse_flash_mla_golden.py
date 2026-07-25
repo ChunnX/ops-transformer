@@ -113,7 +113,7 @@ class GeneralizedSFAQuant:
         seqused_cmp_kv,
         cmp_residual_kv,
         sinks,
-        return_softmax_lse=false
+        return_softmax_lse=False
     ):
         attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
         softmax_lse = None
@@ -394,7 +394,7 @@ class GeneralizedSFAQuant:
             G = tensor.shape[3]
             output = torch.zeros((N2, T, G), dtype=torch.float)
             t_start = 0
-            act_seq_per_batch = prefix_sum_to_original(act_seq)
+            act_seq_per_batch = prefix_sum_to_original(act_seq)  # prefix_sum_to_original 还原成每个batch的真实长度
             for b_index in range(B):
                 cur_act_seq = act_seq_per_batch[b_index]
                 t_end = t_start + cur_act_seq
@@ -419,6 +419,7 @@ class GeneralizedSFAQuant:
         seqused_cmp_kv,
         cmp_residual_kv,
         sinks,
+        return_softmax_lse
     ):
         logging.info("cpu执行中...")
         logging.info(f"template_run_mode = {self.template_run_mode}")
@@ -439,7 +440,7 @@ class GeneralizedSFAQuant:
                 )
             )
 
-        attn_out = self.calculate_by_bnsd(
+        attn_out, softmax_lse = self.calculate_by_bnsd(
             q_bnsd,
             ori_k_bnsd,
             cmp_k_bnsd,
@@ -858,7 +859,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     return_softmax_lse = params.get("return_softmax_lse", False)
     quant_mode = params.get("quant_mode", False)
     isSink = params.get("isSink", True)
-
+    return_softmax_lse = params.get('return_softmax_lse', False)
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     seqused_q = torch.tensor(seqused_q).to(torch.int32)
     seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
@@ -1019,7 +1020,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         ori_kv_descale_val=ori_kv_descale.item(),
         cmp_kv_descale_val=cmp_kv_descale.item() if cmp_kv_descale is not None else None,
     )
-    cpu_result = test_qsmla.forward(
+    cpu_result, cpu_lse = test_qsmla.forward(
         q,
         ori_k_bnsd,
         cmp_k_bnsd,
@@ -1029,6 +1030,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         seqused_cmp_kv,
         cmp_residual_kv,
         sinks,
+        return_softmax_lse
     )
 
     logging.info("mode:%s\n", template_run_mode)
@@ -1125,6 +1127,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "return_softmax_lse": return_softmax_lse,
         },
         "cpu_output": cpu_result,
+        'cpu_lse': cpu_lse if return_softmax_lse else None
     }
 
     if save_pt:
