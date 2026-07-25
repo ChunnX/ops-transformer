@@ -1495,14 +1495,25 @@ def tilelang_grad_kl_loss_single_kernel(
                     rows_per_aiv,
                 )
 
-                T.tile.fill(v1_bw_weight_2d, 1.0)
-                T.pipe_barrier("v")
-                T.tile.row_expand_mul_experiment(
-                    v1_bw_weight_2d,
-                    v1_bw_weight_2d,
-                    v1_bw_weight,
-                    v1_bw_row_tmp,
-                )
+                if rows_per_aiv == 4:
+                    # BRCB-based row expansion requires a multiple of 8 rows.
+                    # Broadcast each runtime scalar for the Nidx1=8 path only.
+                    for bw_row in T.serial(rows_per_aiv):
+                        T.tile.broadcast(
+                            v1_bw_weight_2d[
+                                bw_row, 0:bw_col_block
+                            ],
+                            v1_bw_weight[bw_row:bw_row + 1],
+                        )
+                else:
+                    T.tile.fill(v1_bw_weight_2d, 1.0)
+                    T.pipe_barrier("v")
+                    T.tile.row_expand_mul_experiment(
+                        v1_bw_weight_2d,
+                        v1_bw_weight_2d,
+                        v1_bw_weight,
+                        v1_bw_row_tmp,
+                    )
                 T.pipe_barrier("v")
                 T.set_flag("v", "mte2", 3)
                 for n_idx in T.serial(n_num):
