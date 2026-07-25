@@ -267,10 +267,77 @@ TileLang 有 `T.mma`、MTE copy 和 event，但缺少与官方 `SLITMatmulServic
 | per-task dKey scatter、减少 SyncAll | NaN 或大误差 | atomic/scatter finalize ownership 和阶段顺序错误 | 回退 deterministic V2 |
 | 将三次 SyncAll 收敛 | 性能未改善或精度失败 | clear/scatter/finalize 存在真实全局依赖 | 保留三个阶段边界 |
 | C2 L1 单槽软件预取 | 无稳定收益 | C2 仅约 13 us，控制开销占比高 | 回退 |
+| `Nidx1=8` 的 C2-dK `K=16` 尾部补零审计 | 精度通过；最初曾把生成的 `c2_*_l1[128]` 误判为错误偏移 | L1 使用 Cube `zN` 分形布局，逻辑第 8 行在首个 `16x16` 分形块内的偏移正是 `8*16=128`，不能按 ND row-major 计算为 1024 | 保留当前补零；以后必须结合 L1 layout 和 copy 描述符解释局部地址 |
 | launch 24 核 | 约 0.483 ms | 三次 SyncAll、atomic 竞争、V2 尾部分支过多 | 改为自适应 |
 | launch 1 核 | 性能倒退 | V2 每 AIV 串行批次过多 | 不作为当前 shape 默认 |
 | launch 8 核 | 约 0.461 ms | 已明显优于 24 核，但略慢于 4 核 | 用于校准公式 |
 | launch 4 核 | 约 0.455 ms | 每 AIV 16 个批次，分区完全均衡 | 当前默认模型 |
+
+### 5.1 `Nidx1=8` C2-dK 补齐到 `K=16` 的地址审计修正
+
+对应复现命令：
+
+```bash
+python attention/sparse_lightning_indexer_grad_kl_loss/tilelang/precision_test_general/test_0721_general.py \
+  --case bsnd_n1_32_nidx8 --seed 46 --no-bench
+```
+
+该版本的物理 buffer 和 MMA 形状符合预期：`c2_qi_l1`、`c2_rg_l1` 均为
+`16x128`，dKey MMA 为 `M=128, N=128, K=16`，dQuery 仍为
+`M=8, N=128, K=128`。
+
+源码意图是把零写入尾部 8 行：
+
+```python
+c2_qi_l1[8:16, 0:128]
+c2_rg_l1[8:16, 0:128]
+```
+
+实际生成 C++ 为：
+
+```cpp
+copy_gm_to_l1(..., c2_qi_l1[128], C2ZeroPad[0], ...);
+copy_gm_to_l1(..., c2_rg_l1[128], C2ZeroPad[0], ...);
+```
+
+最初按普通 ND row-major 把 `[128]` 解释为第 1 行，并据此认为正确偏移应为
+`8*128=1024`。这个解释是错误的：`alloc_L1` 的矩阵由 Cube copy 路径按 `zN`
+分形布局组织。对于 BF16 `16x128`，每个基本分形块为 `16x16`，逻辑第 8 行在
+首个分形块内的偏移是 `8*16=128`。后续跨 N 分形块的步进由
+`copy_gm_to_l1<16, 128>` 的形状和 copy 参数处理，而不是简单连续写入普通二维
+数组。
+
+两个 `Nidx1=8` 用例均保持有限值且精度达标，是当前补零地址有效的直接运行证据。
+因此保留现有 `c2_*_l1[128]` lowering，不再实施“完整 `16x128` 清零后覆盖前缀”
+的规避方案。以后审计 L1/L0 地址时，必须先确认 `zN/nZ` 等物理布局，不能只按
+Python 逻辑 shape 推导线性偏移。
+
+### 5.2 `bsnd_k3072` 生成 C++ 审计记录
+
+对应复现命令：
+
+```bash
+python attention/sparse_lightning_indexer_grad_kl_loss/tilelang/precision_test_general/test_0721_general.py \
+  --case bsnd_k3072 --seed 49 --no-bench
+```
+
+该用例为 `B=1, S1=4, S2=3329, N1=32, Nidx1=8, K=3072`。运行结果精度
+达标，与下面的生成 C++ 静态覆盖审计一致。
+
+本次生成 C++ 对 `K=3072` 的覆盖关系是完整的：
+
+- V0 gather 的 `k_outer < 3`，每段覆盖 1024 行；
+- C1-P 和 C1-SY 均为 `3 x 8 x 128 = 3072`，输出 GM stride 也是 3072；
+- V1-P、V1-SY、V1 backward 和 C2 均循环 24 个 128 列 tile；
+- V2 scatter 遍历 4 个主任务，并把每个任务的 3072 行分配到 7 个 launch core
+  的两个 AIV；前三个 core 各处理 448 行，后四个 core 各处理 432 行，合计
+  `3*448 + 4*432 = 3072`，未发现遗漏或重叠；
+- `S2=3329` 使用 `S2_pad=3584` 的 FP32 accumulator，最终由 wrapper reshape 后
+  截取前 3329 行，生成 C++ 对 padded 区域的读写不是本用例的越界证据。
+
+该 C++ 中的 `c2_qi_l1[128]` 和 `c2_rg_l1[128]` 是 `zN` 分形布局下逻辑尾部
+8 行的起点，不是错误的 row-major 偏移。当前结论修正为：**`Nidx1=8` 的
+`K=16` padding 和 `K=3072` 的循环/调度均已通过本用例验证，未发现独立缺陷。**
 
 ## 6. 为什么累计很多微优化，整体提升仍有限
 

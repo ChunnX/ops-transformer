@@ -3502,6 +3502,40 @@ def sparse_lightning_indexer_grad_kl_loss(
             p_reduced_diff = (p_reduced_ws.float() - debug_p_reduced).abs()
             softmax_i_diff = (softmax_i_ws.float() - debug_softmax_i).abs()
             relu_grad_diff = (relu_grad_out.float() - debug_relu_grad).abs()
+            debug_relu_grad_bf16 = debug_relu_grad.to(
+                relu_grad_out.dtype
+            ).float()
+            relu_grad_bf16_diff = (
+                relu_grad_out.float() - debug_relu_grad_bf16
+            ).abs()
+            debug_unmasked_rg = (
+                weights.float().unsqueeze(-1) * debug_diff.unsqueeze(2)
+            )
+            debug_expected_mask = bmm2_res_ws.float() > 0
+            debug_actual_rg = relu_grad_out.float()
+            debug_strong_candidate = debug_unmasked_rg.abs() > 1e-3
+            debug_false_zero = (
+                debug_expected_mask
+                & debug_strong_candidate
+                & (debug_actual_rg == 0)
+            )
+            debug_false_nonzero = (
+                (~debug_expected_mask) & (debug_actual_rg.abs() > 1e-3)
+            )
+
+            # Rebuild C2 from the stored BF16 reluGrad to separate V1 from C2.
+            debug_dq_from_stored_rg = torch.matmul(
+                debug_actual_rg, gather_key_index_ws.float()
+            )
+            debug_dk_from_stored_rg = torch.matmul(
+                debug_actual_rg.transpose(-2, -1), query_index.float()
+            )
+            debug_c2_dq_diff = (
+                d_query_index_accum.float() - debug_dq_from_stored_rg
+            ).abs()
+            debug_c2_dk_diff = (
+                dk_matmul_partial.float() - debug_dk_from_stored_rg
+            ).abs()
             d_weight_diff = (d_weight.float() - debug_d_weight).abs()
             loss_diff = (loss_out.float().reshape(-1)[0] - debug_loss).abs()
             p_max_diff = (
@@ -3546,6 +3580,47 @@ def sparse_lightning_indexer_grad_kl_loss(
                 f"[DEBUG] reluGradRes vs host formula: "
                 f"max_diff={relu_grad_diff.max().item():.6e}, "
                 f"mean_diff={relu_grad_diff.mean().item():.6e}"
+            )
+            relu_max_flat = int(relu_grad_bf16_diff.reshape(-1).argmax().item())
+            relu_max_coords = [0] * relu_grad_bf16_diff.ndim
+            relu_remaining = relu_max_flat
+            for dim_idx in range(relu_grad_bf16_diff.ndim - 1, -1, -1):
+                dim_size = relu_grad_bf16_diff.shape[dim_idx]
+                relu_max_coords[dim_idx] = relu_remaining % dim_size
+                relu_remaining //= dim_size
+            relu_max_coords = tuple(relu_max_coords)
+            relu_b, relu_s1, relu_g, relu_k = relu_max_coords
+            print(
+                f"[DEBUG] reluGradRes vs BF16-rounded host formula: "
+                f"max_diff={relu_grad_bf16_diff.max().item():.6e}, "
+                f"mean_diff={relu_grad_bf16_diff.mean().item():.6e}, "
+                f"diff_gt_1e-3={(relu_grad_bf16_diff > 1e-3).sum().item()}, "
+                f"diff_gt_1e-2={(relu_grad_bf16_diff > 1e-2).sum().item()}"
+            )
+            print(
+                f"[DEBUG] reluGrad max-error coord={relu_max_coords}: "
+                f"actual={debug_actual_rg[relu_max_coords].item():.6e}, "
+                f"expected_bf16={debug_relu_grad_bf16[relu_max_coords].item():.6e}, "
+                f"unmasked={debug_unmasked_rg[relu_max_coords].item():.6e}, "
+                f"bmm2={bmm2_res_ws[relu_max_coords].float().item():.6e}, "
+                f"P={debug_p_reduced[relu_b, relu_s1, relu_k].item():.6e}, "
+                f"SY={debug_softmax_i[relu_b, relu_s1, relu_k].item():.6e}, "
+                f"weight={weights[relu_b, relu_s1, relu_g].float().item():.6e}"
+            )
+            print(
+                f"[DEBUG] reluGrad inferred mask disagreement: "
+                f"false_zero={debug_false_zero.sum().item()}, "
+                f"false_nonzero={debug_false_nonzero.sum().item()}"
+            )
+            print(
+                f"[DEBUG] C2 dQueryAccum vs host(stored reluGrad): "
+                f"max_diff={debug_c2_dq_diff.max().item():.6e}, "
+                f"mean_diff={debug_c2_dq_diff.mean().item():.6e}"
+            )
+            print(
+                f"[DEBUG] C2 dk_partial vs host(stored reluGrad): "
+                f"max_diff={debug_c2_dk_diff.max().item():.6e}, "
+                f"mean_diff={debug_c2_dk_diff.mean().item():.6e}"
             )
             print(
                 f"[DEBUG] dWeightOut vs host formula: "
