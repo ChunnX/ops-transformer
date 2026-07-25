@@ -18,12 +18,12 @@ FA_METADATA_OP_NAME = "flash_attn_metadata"
 
 
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
-    if batch_size is not None:
-        return batch_size
+    if seqused_q is not None:
+        return seqused_q.size(0)
     elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:
         return cu_seqlens_q.size(0) - 1
-    elif seqused_q is not None:
-        return seqused_q.size(0)
+    elif batch_size is not None and batch_size > 0:
+        return batch_size
     return 0
 
 
