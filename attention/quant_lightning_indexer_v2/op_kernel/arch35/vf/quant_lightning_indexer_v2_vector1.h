@@ -159,11 +159,11 @@ __simd_vf__ void MulWeightAndReduceSumInt32GSizeOddVF(__ubuf__ uint16_t* out, __
         MicroAPI::Muls(regQK[0], regQK[0], mulsScalar, maskAllB32);
         MicroAPI::Muls(regQK[1], regQK[1], mulsScalar, maskAllB32);
 
-        MicroAPI::Cast<half, float, castTraitFP32ToFP16>(regQKHalf[0], regQK[0], maskAllB32);
-        MicroAPI::Cast<half, float, castTraitFP32ToFP16>(regQKHalf[1], regQK[1], maskAllB32);
+        MicroAPI::Cast<half, float, castTraitF32ToF16>(regQKHalf[0], regQK[0], maskAllB32);
+        MicroAPI::Cast<half, float, castTraitF32ToF16>(regQKHalf[1], regQK[1], maskAllB32);
 
-        MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK[0], regQKHalf[0], maskAllB16);
-        MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK[1], regQKHalf[1], maskAllB16);
+        MicroAPI::Cast<float, half, castTraitF16ToF32>(regQK[0], regQKHalf[0], maskAllB16);
+        MicroAPI::Cast<float, half, castTraitF16ToF32>(regQK[1], regQKHalf[1], maskAllB16);
 
         liV2Vector1::BroadcastLane(regwBrc, regW, i);
         liV2Vector1::WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
@@ -176,11 +176,11 @@ __simd_vf__ void MulWeightAndReduceSumInt32GSizeOddVF(__ubuf__ uint16_t* out, __
         MicroAPI::Muls(regQK[0], regQK[0], mulsScalar, maskAllB32);
         MicroAPI::Muls(regQK[1], regQK[1], mulsScalar, maskAllB32);
 
-        MicroAPI::Cast<half, float, castTraitFP32ToFP16>(regQKHalf[0], regQK[0], maskAllB32);
-        MicroAPI::Cast<half, float, castTraitFP32ToFP16>(regQKHalf[1], regQK[1], maskAllB32);
+        MicroAPI::Cast<half, float, castTraitF32ToF16>(regQKHalf[0], regQK[0], maskAllB32);
+        MicroAPI::Cast<half, float, castTraitF32ToF16>(regQKHalf[1], regQK[1], maskAllB32);
 
-        MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK[0], regQKHalf[0], maskAllB16);
-        MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK[1], regQKHalf[1], maskAllB16);
+        MicroAPI::Cast<float, half, castTraitF16ToF32>(regQK[0], regQKHalf[0], maskAllB16);
+        MicroAPI::Cast<float, half, castTraitF16ToF32>(regQK[1], regQKHalf[1], maskAllB16);
 
         liV2Vector1::BroadcastLane(regwBrc, regW, i + 1);
         liV2Vector1::WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
@@ -195,11 +195,11 @@ __simd_vf__ void MulWeightAndReduceSumInt32GSizeOddVF(__ubuf__ uint16_t* out, __
     MicroAPI::Muls(regQK[0], regQK[0], mulsScalar, maskAllB32);
     MicroAPI::Muls(regQK[1], regQK[1], mulsScalar, maskAllB32);
 
-    MicroAPI::Cast<half, float, castTraitFP32ToFP16>(regQKHalf[0], regQK[0], maskAllB32);
-    MicroAPI::Cast<half, float, castTraitFP32ToFP16>(regQKHalf[1], regQK[1], maskAllB32);
+    MicroAPI::Cast<half, float, castTraitF32ToF16>(regQKHalf[0], regQK[0], maskAllB32);
+    MicroAPI::Cast<half, float, castTraitF32ToF16>(regQKHalf[1], regQK[1], maskAllB32);
 
-    MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK[0], regQKHalf[0], maskAllB16);
-    MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK[1], regQKHalf[1], maskAllB16);
+    MicroAPI::Cast<float, half, castTraitF16ToF32>(regQK[0], regQKHalf[0], maskAllB16);
+    MicroAPI::Cast<float, half, castTraitF16ToF32>(regQK[1], regQKHalf[1], maskAllB16);
 
     liV2Vector1::BroadcastLane(regwBrc, regW, (gSize - 1));
     liV2Vector1::WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
@@ -275,11 +275,11 @@ __simd_vf__ void MulWeightAndReduceSumInt32GSizeEvenVF(__ubuf__ uint16_t* out, _
         MicroAPI::Muls(regQK[0], regQK[0], mulsScalar, maskAllB32);
         MicroAPI::Muls(regQK[1], regQK[1], mulsScalar, maskAllB32);
 
-        MicroAPI::Cast<half, float, castTraitFP32ToFP16>(regQKHalf[0], regQK[0], maskAllB32);
-        MicroAPI::Cast<half, float, castTraitFP32ToFP16>(regQKHalf[1], regQK[1], maskAllB32);
+        MicroAPI::Cast<half, float, castTraitF32ToF16>(regQKHalf[0], regQK[0], maskAllB32);
+        MicroAPI::Cast<half, float, castTraitF32ToF16>(regQKHalf[1], regQK[1], maskAllB32);
 
-        MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK[0], regQKHalf[0], maskAllB16);
-        MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK[1], regQKHalf[1], maskAllB16);
+        MicroAPI::Cast<float, half, castTraitF16ToF32>(regQK[0], regQKHalf[0], maskAllB16);
+        MicroAPI::Cast<float, half, castTraitF16ToF32>(regQK[1], regQKHalf[1], maskAllB16);
 
         liV2Vector1::BroadcastLane(regwBrc, regW, i);
         liV2Vector1::WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
@@ -292,11 +292,11 @@ __simd_vf__ void MulWeightAndReduceSumInt32GSizeEvenVF(__ubuf__ uint16_t* out, _
         MicroAPI::Muls(regQK[0], regQK[0], mulsScalar, maskAllB32);
         MicroAPI::Muls(regQK[1], regQK[1], mulsScalar, maskAllB32);
 
-        MicroAPI::Cast<half, float, castTraitFP32ToFP16>(regQKHalf[0], regQK[0], maskAllB32);
-        MicroAPI::Cast<half, float, castTraitFP32ToFP16>(regQKHalf[1], regQK[1], maskAllB32);
+        MicroAPI::Cast<half, float, castTraitF32ToF16>(regQKHalf[0], regQK[0], maskAllB32);
+        MicroAPI::Cast<half, float, castTraitF32ToF16>(regQKHalf[1], regQK[1], maskAllB32);
 
-        MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK[0], regQKHalf[0], maskAllB16);
-        MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regQK[1], regQKHalf[1], maskAllB16);
+        MicroAPI::Cast<float, half, castTraitF16ToF32>(regQK[0], regQKHalf[0], maskAllB16);
+        MicroAPI::Cast<float, half, castTraitF16ToF32>(regQK[1], regQKHalf[1], maskAllB16);
 
         liV2Vector1::BroadcastLane(regwBrc, regW, i + 1);
         liV2Vector1::WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
