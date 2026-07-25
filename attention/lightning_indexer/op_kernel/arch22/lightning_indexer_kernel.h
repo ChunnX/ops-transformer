@@ -585,8 +585,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Process()
     }
 
     ProcessMain();
-    // TEST: skip ProcessRadixTopK to isolate scoreB16Gm write cost
-    if (false && constInfo.radixTotalBatch > 0) {
+    if (constInfo.radixTotalBatch > 0) {
         ProcessRadixTopK();
     } else {
         ProcessDecode();
