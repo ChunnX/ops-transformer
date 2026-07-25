@@ -270,6 +270,7 @@ def tilelang_grad_kl_loss_single_kernel(
     d_num_total = d_num_query + d_num_rope
 
     d_num_query_index = DQueryIndex // k_block
+    c2_dk_k = max(Nidx1, 16)
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
     rows_per_aiv = Nidx1 // 2
@@ -1699,6 +1700,7 @@ def tilelang_grad_kl_loss_single_kernel(
         QueryIndex,
         GatherKeyIndex_ws,
         reluGradRes,
+        C2ZeroPad,
         dQueryIndexAccum,
         dk_matmul_partial,
         bz_task,
@@ -1708,11 +1710,11 @@ def tilelang_grad_kl_loss_single_kernel(
     ):
         """Compute dKey partials and dQuery with explicit MMA pipelines."""
         with T.Scope("C"):
-            c2_rg_l1 = T.alloc_L1((Nidx1, n_block), input_dtype)
-            c2_qi_l1 = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)
+            c2_rg_l1 = T.alloc_L1((c2_dk_k, n_block), input_dtype)
+            c2_qi_l1 = T.alloc_L1((c2_dk_k, DQueryIndex), input_dtype)
             c2_gki_l1 = T.alloc_L1((n_block, DQueryIndex), input_dtype)
-            c2_dk_rg_l0a = T.alloc_L0A((n_block, Nidx1), input_dtype)
-            c2_dk_qi_l0b = T.alloc_L0B((Nidx1, DQueryIndex), input_dtype)
+            c2_dk_rg_l0a = T.alloc_L0A((n_block, c2_dk_k), input_dtype)
+            c2_dk_qi_l0b = T.alloc_L0B((c2_dk_k, DQueryIndex), input_dtype)
             c2_dk_l0c = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)
             c2_dq_rg_l0a = T.alloc_L0A((Nidx1, n_block), input_dtype)
             c2_dq_gki_l0b = T.alloc_L0B((n_block, DQueryIndex), input_dtype)
@@ -1720,8 +1722,14 @@ def tilelang_grad_kl_loss_single_kernel(
 
             T.copy(
                 QueryIndex[bz_task, s1_begin_task, 0:Nidx1, 0:DQueryIndex],
-                c2_qi_l1,
+                c2_qi_l1[0:Nidx1, 0:DQueryIndex],
             )
+            if Nidx1 == 8:
+                # BF16 Cube requires a 16-wide reduction dimension.  Keep the
+                # logical eight rows intact and zero the physical tail once;
+                # later RG loads overwrite only the valid first eight rows.
+                T.copy(C2ZeroPad, c2_qi_l1[8:16, 0:DQueryIndex])
+                T.copy(C2ZeroPad, c2_rg_l1[8:16, 0:n_block])
             T.set_flag("mte2", "mte1", 6)
 
             if task_slot == 0:
@@ -1742,7 +1750,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.copy(
                         reluGradRes[bz_task, s1_id, 0:Nidx1,
                                     n_idx * n_block:(n_idx + 1) * n_block],
-                        c2_rg_l1,
+                        c2_rg_l1[0:Nidx1, 0:n_block],
                     )
                     T.copy(
                         GatherKeyIndex_ws[bz_task, s1_id,
@@ -1757,7 +1765,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte2", "mte1", 2)
                     T.copy(c2_rg_l1, c2_dk_rg_l0a, transpose=True)
                     T.copy(c2_qi_l1, c2_dk_qi_l0b)
-                    T.copy(c2_rg_l1, c2_dq_rg_l0a)
+                    T.copy(
+                        c2_rg_l1[0:Nidx1, 0:n_block],
+                        c2_dq_rg_l0a,
+                    )
                     T.copy(c2_gki_l1, c2_dq_gki_l0b)
                     T.set_flag("mte1", "mte2", 2)
                     T.set_flag("mte1", "m", 2)
@@ -2946,7 +2957,7 @@ def tilelang_grad_kl_loss_single_kernel(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
-        # Workspaces: 10-21
+        # Workspaces: 10-22
         dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
         dKeyIndexAccum: T.Tensor((dkey_output_rows, DQueryIndex), calc_dtype),
         GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),
@@ -2959,6 +2970,7 @@ def tilelang_grad_kl_loss_single_kernel(
         dk_matmul_partial: T.Tensor((B, S1, v2_k_padded, DQueryIndex), calc_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossPartial: T.Tensor((loss_partial_size,), calc_dtype),
+        C2ZeroPad: T.Tensor((8, DQueryIndex), input_dtype),
         # Outputs: -4..-1
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         dKeyIndexOut: T.Tensor((dkey_output_rows, DQueryIndex), input_dtype),
@@ -3042,6 +3054,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 QueryIndex,
                                 GatherKeyIndex_ws,
                                 reluGradRes,
+                                C2ZeroPad,
                                 dQueryIndexAccum,
                                 dk_matmul_partial,
                                 bz_prev,
@@ -3336,7 +3349,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             d_query_index_accum, d_key_index_accum, \
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws, \
-                dk_matmul_partial, relu_grad_out, loss_partial_ws = ws
+                dk_matmul_partial, relu_grad_out, loss_partial_ws, \
+                c2_zero_pad = ws
         else:
             gather_key_ws = torch.zeros(B, S1, K, DQuery, dtype=input_dtype, device=query.device)
             gather_key_rope_ws = torch.zeros(B, S1, K, d_rope, dtype=input_dtype, device=query.device)
@@ -3359,11 +3373,15 @@ def sparse_lightning_indexer_grad_kl_loss(
             loss_partial_ws = torch.zeros(
                 loss_partial_size, dtype=torch.float32, device=query.device
             )
+            c2_zero_pad = torch.zeros(
+                8, DQueryIndex, dtype=input_dtype, device=query.device
+            )
             _workspace_cache[ws_key] = (
                 d_query_index_accum, d_key_index_accum,
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws,
                 dk_matmul_partial, relu_grad_out, loss_partial_ws,
+                c2_zero_pad,
             )
 
         if _DEBUG_REQUESTED and not _debug_dump_done:
@@ -3385,7 +3403,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             bmm1_res_ws, bmm2_res_ws,                  # 15-16
             p_reduced_ws, softmax_i_ws,                # 17-18
             dk_matmul_partial, relu_grad_out,           # 19-20
-            loss_partial_ws,                           # 21
+            loss_partial_ws, c2_zero_pad,               # 21-22
         )
         if _PROFILE:
             _t_kernel_end.record()
