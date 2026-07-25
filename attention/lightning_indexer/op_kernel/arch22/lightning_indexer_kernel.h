@@ -585,7 +585,8 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Process()
     }
 
     ProcessMain();
-    if (constInfo.radixTotalBatch > 0) {
+    // BASELINE: skip ProcessRadixTopK
+    if (false && constInfo.radixTotalBatch > 0) {
         ProcessRadixTopK();
     } else {
         ProcessDecode();
