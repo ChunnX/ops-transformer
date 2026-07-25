@@ -480,6 +480,10 @@ namespace SplitFuse {
             uint32_t prevQSeqlenSum = 0;
             uint32_t prevKvSeqlenSum = 0;
 
+            qTileCeil = fATilingData->qTileCeil;
+            maxKvStackLen = fATilingData->maxKvStackLen;
+            uint32_t workSpaceBlockSize = qTileCeil * maxKvStackLen;
+
             if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
                 prevQSeqlenSum = (BIdx == 0) ?
                     0 : static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
