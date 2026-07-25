@@ -271,7 +271,7 @@ private:
         runInfo.actS1Size = actualS1Size;
         runInfo.actS2Size = actualS2Size;
         runInfo.actMSize = constInfo.qSparseBlockSize;
-        if (runInfo.s1Idx + constInfo.qSparseBlockSize > runInfo.actS1Size) {
+        if (unlikely(runInfo.s1Idx + constInfo.qSparseBlockSize > runInfo.actS1Size)) {
             runInfo.actMSize = static_cast<uint32_t>(runInfo.actS1Size) - runInfo.s1Idx;
         }
         runInfo.actMSizeAlign32 = (runInfo.actMSize + 31U) >> 5 << 5;
@@ -303,7 +303,7 @@ private:
             runInfo.sparseBlockRealSize[i] = sparseBlockRealSize;
             runInfo.sparseBlockPartialMask[i] = false;
             if constexpr (HAS_ATTEN) {
-                if (sparseBlockRealSize != 0U) {
+                if (likely(sparseBlockRealSize != 0U)) {
                     const int64_t causalDelta = static_cast<int64_t>(runInfo.actS2Size) -
                                                 static_cast<int64_t>(runInfo.actS1Size);
                     int64_t sparseBlkIdxForMask = sparseBlkIdx;
@@ -338,7 +338,7 @@ private:
         // 当前 task 做 C1/V1，PRELOAD_N 之前的 task 做 C2/V2。
         MxRunInfo &runInfoCur = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
         MxRunInfo &runInfoPre = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
-        if (runInfoCur.isValid) {
+        if (likely(runInfoCur.isValid)) {
             const uint32_t c1v1Loop = (runInfoCur.actSingleLoopS2Size + S2_SPLIT - 1U) / S2_SPLIT;
             if ASCEND_IS_AIC {
                 for (uint32_t subLoop = 0U; subLoop < c1v1Loop; ++subLoop) {
@@ -351,7 +351,7 @@ private:
                 }
             }
         }
-        if (loop >= PRELOAD_N && runInfoPre.isValid) {
+        if (likely(loop >= PRELOAD_N && runInfoPre.isValid)) {
             if ASCEND_IS_AIC {
                 cubeBlock.IterateBmm2(bmm2Buffers.Get(), l1PBuffers, runInfoPre, constInfo);
             } else {
@@ -377,7 +377,7 @@ private:
         const uint32_t sectionNum = GetBsaSectionNum(metadataGm);
         for (uint32_t sectionIdx = 0U; sectionIdx < sectionNum; ++sectionIdx) {
             const BsaFaCoreMetadata coreMetadata = GetBsaCoreMetadata(metadataGm, sectionIdx, constInfo.aicIdx);
-            if (coreMetadata.coreEnable == 0U) {
+            if (unlikely(coreMetadata.coreEnable == 0U)) {
                 continue;
             }
             const uint32_t bn1StartIdx = coreMetadata.bn1StartIdx;
@@ -387,7 +387,7 @@ private:
             if (s1EndIdx != 0U) {
                 ++bn1EndIdx;
             }
-            if (bn1EndIdx <= bn1StartIdx) {
+            if (unlikely(bn1EndIdx <= bn1StartIdx)) {
                 continue;
             }
 
@@ -406,7 +406,7 @@ private:
                         sparseSeqLenGm.GetValue((static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) *
                                                     constInfo.maxQb +
                                                 s1OuterIdx);
-                    if (sparseLen <= 0) {
+                    if (unlikely(sparseLen <= 0)) {
                         continue;
                     }
                     // sparseBase 指向 sparseIndices[B,N1,Qb,0]。
@@ -424,7 +424,7 @@ private:
                         FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
                                     actualS2Size, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount, sparseBase,
                                     !hasValidS2Task);
-                        if (runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U) {
+                        if (likely(runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U)) {
                             ExecuteTask(loop, taskRunInfo);
                             hasValidS2Task = true;
                             ++loop;
