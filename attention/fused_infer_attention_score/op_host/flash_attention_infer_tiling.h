@@ -94,7 +94,7 @@ namespace optiling{
     const uint32_t N_SPLIT_HELPER = 2;
     const uint32_t MAX_KV_STACK_LEN = 512;
     const uint32_t Q_TILE_CEIL = 128;
-    const uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
+    uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
     const uint32_t BASE_KV_SIZE = 128;
     const uint32_t PRELANCH_NUM = 3;
     const int64_t SPARSE_MODE_INT_MAX = 2147483647;
@@ -769,6 +769,7 @@ namespace optiling{
         FillWorkSpaceTilingData(tilingdata);
         tilingdata.set_qTileCeil(qTileCeil_);
         tilingdata.set_maxKvStackLen(maxKvStackLen_);
+        WORKSPACE_BLOCK_SIZE_DB = qTileCeil_ * maxKvStackLen_;
         OP_LOGD("FusedInferAttentionScore", "hello wangsong!! DoTiling qTileCeil_ is %u ", qTileCeil_);
         OP_LOGD("FusedInferAttentionScore", "hello wangsong!! DoTiling maxKvStackLen_ is %u ", maxKvStackLen_);
         OP_LOGD("FusedInferAttentionScore", "hello wangsong!! DoTiling WORKSPACE_BLOCK_SIZE_DB is %u ", WORKSPACE_BLOCK_SIZE_DB);
