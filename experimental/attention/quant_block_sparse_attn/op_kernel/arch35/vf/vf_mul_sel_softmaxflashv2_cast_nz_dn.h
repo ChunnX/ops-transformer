@@ -509,7 +509,8 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue,     bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue,
+    bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -1052,7 +1053,8 @@ __aicore__ inline void ProcessVec1DnUpdate(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue,     bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue,
+    bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -1603,7 +1605,8 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue,     bool needAtten, const float pScale = 1.0f)
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue,
+    bool needAtten, const float pScale = 1.0f)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -2124,7 +2127,8 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue,     bool needAtten, const float pScale = 1.0f)
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue,
+    bool needAtten, const float pScale = 1.0f)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -2175,7 +2179,8 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue,     bool needAtten, const float pScale = 1.0f)
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue,
+    bool needAtten, const float pScale = 1.0f)
 {
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
