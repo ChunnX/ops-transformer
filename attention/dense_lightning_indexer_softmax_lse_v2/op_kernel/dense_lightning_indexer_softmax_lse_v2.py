@@ -280,8 +280,7 @@ def process_long_s2_reduce_max(qk_vec, weight_vec, reduce_sum_vec_tile, workspac
             if cur_vec_size > 0:
                 pl.set_validshape(src_tile, [1, cur_vec_size])
                 process_reduce_max_vf(src_tile, qk_vec_tile, weight_tile_cur, max_tile, n1_dim, cur_vec_size)
-            if not (j == work_count and (chunk_start + ci) >= prev_s2_tiles - 2):
-                pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2])
+            pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2])
             task_id = task_id + 1
         for ci in pl.range(0, chunk_tiles):
             ws_tile = reduce_sum_vec_tile[0 : 1, ci * TKV_HALF :]
