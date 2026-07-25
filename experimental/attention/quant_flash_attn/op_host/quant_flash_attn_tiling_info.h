@@ -17,8 +17,8 @@
 #define FA_TILING_INFO_H
 
 #include <vector>
-#include "../../../../attention/common/op_host/fia_tiling_base.h"
-#include "../../../../attention/common/op_host/fia_tiling_shape.h"
+#include "../common/op_host/fia_tiling_base.h"
+#include "../common/op_host/fia_tiling_shape.h"
 
 namespace optiling {
 

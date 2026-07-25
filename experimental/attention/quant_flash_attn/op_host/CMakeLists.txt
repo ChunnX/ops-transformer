@@ -17,7 +17,6 @@ endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    set(quant_flash_attn_depends ../attention/common CACHE INTERNAL "Dependencies for quant_flash_attn")
     add_ops_compile_options(
         OP_NAME QuantFlashAttn
         COMPUTE_UNIT Ascend950PR_9599
@@ -41,7 +40,7 @@ else()
     )
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-    ../../../../attention/common/op_host/fia_tiling_shape.cpp
+    ../common/op_host/fia_tiling_shape.cpp
     quant_flash_attn_tiling_info_parser.cpp
     checkers/base_checker.cpp
     checkers/common_checker.cpp

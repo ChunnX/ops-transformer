@@ -31,9 +31,9 @@
 
 #include "quant_flash_attn_template_tiling_key.h"
 #include "quant_flash_attn_common_def.h"
-#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
-#include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
-#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
+#include "../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../common/op_kernel/memcopy/fa_ub_tensor.h"
+#include "../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;

@@ -24,7 +24,7 @@
 #endif
 #include "quant_flash_attn_template_tiling_key.h"
 #include "quant_flash_attn_common_def.h"
-#include "../../../common/op_kernel/const_def.h"
+#include "../../common/op_kernel/const_def.h"
 
 using namespace optiling;
 using namespace AscendC;

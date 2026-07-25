@@ -20,7 +20,7 @@
 #include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "../../../../../attention/common/op_host/fia_tiling_templates_registry.h"
+#include "../../common/op_host/fia_tiling_templates_registry.h"
 #include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
 
 using namespace ge;

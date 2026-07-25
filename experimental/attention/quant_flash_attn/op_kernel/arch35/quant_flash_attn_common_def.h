@@ -25,7 +25,7 @@
 
 #include "asc_simd.h"
 #include "quant_flash_attn_template_tiling_key.h"
-#include "../../../common/op_kernel/memcopy/parser.h"
+#include "../../common/op_kernel/memcopy/parser.h"
 
 namespace QFA_KERNEL {
 
