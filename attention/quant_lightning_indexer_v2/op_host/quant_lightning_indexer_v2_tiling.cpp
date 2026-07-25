@@ -410,13 +410,14 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
                     " must be int8."),
                 return ge::GRAPH_FAILED);
         }
-        if (inputQType_ != ge::DT_INT8) {
+        if (inputQType_ == ge::DT_INT8) {
             OP_CHECK_IF(
             inputQueryScaleType_ != ge::DT_FLOAT16,
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
                 QLIV2DataTypeToSerialString(inputQueryScaleType_) + " and " +
                 QLIV2DataTypeToSerialString(inputKeyScaleType_),
-                "The data types of the input query_dequant_scale and key_dequant_scale must be float"),
+                "When data types of input query is int8, "
+                "The data types of the input query_dequant_scale and key_dequant_scale must be float16"),
             return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(
@@ -424,8 +425,8 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
                 QLIV2DataTypeToSerialString(inputQueryScaleType_) + " and " +
                 QLIV2DataTypeToSerialString(inputKeyScaleType_),
-                "When data types of input query is int8, "
-                "the data types of the input query_dequant_scale and key_dequant_scale must be float16"),
+                "When data types of input query is not int8, "
+                "the data types of the input query_dequant_scale and key_dequant_scale must be float"),
             return ge::GRAPH_FAILED);
         }
     }
