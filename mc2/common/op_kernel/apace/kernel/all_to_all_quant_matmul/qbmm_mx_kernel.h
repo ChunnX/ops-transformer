@@ -72,10 +72,9 @@ public:
   *                 DEFERRED_SYNC (per-tile 本地先算驻留 L0C → wait_flag → 远程累加 → 单次 fixpipe)
    */
   enum class MatmulMode : uint32_t {
-    NORMAL = 0,
+    REMOTE = 0,
     LOCAL = 1,
-    REMOTE = 2,
-    DEFERRED_SYNC = 3
+    DEFERRED_SYNC = 2
   };
   /**
    * @brief Tiling 配置
