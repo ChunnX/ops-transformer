@@ -19,7 +19,7 @@
 #include <iomanip>
 #include <cstdint>
 
-#define DO_TILING(tilingPara)                                                                                          \
+#define DO_TILING_WITH_FUNC(tilingPara, tilingFuncOverride)                                                           \
     auto contextFaker = gert::TilingContextFaker();                                                                    \
     /* 1. input/output information */                                                                                  \
     size_t inputNum = tilingContextPara.inputTensorDesc_.size();                                                       \
@@ -159,10 +159,16 @@
     tilingContext->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);                           \
     tilingContext->GetPlatformInfo()->SetPlatformRes("version", versions);                                             \
     /* 3. get tiling func */                                                                                           \
-    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();                         \
-    auto tilingFunc = spaceRegistry->GetOpImpl(tilingContextPara.opName_.c_str())->tiling;                             \
+    TilingFunc tilingFunc = static_cast<TilingFunc>(tilingFuncOverride);                                               \
+    if (tilingFunc == nullptr) {                                                                                       \
+        auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();                     \
+        auto opImpl = spaceRegistry->GetOpImpl(tilingContextPara.opName_.c_str());                                     \
+        tilingFunc = opImpl == nullptr ? nullptr : opImpl->tiling;                                                     \
+    }                                                                                                                  \
     /* 4. check tiling func */                                                                                         \
-    auto tilingRet = tilingFunc(tilingContext);
+    auto tilingRet = tilingFunc == nullptr ? ge::GRAPH_FAILED : tilingFunc(tilingContext);
+
+#define DO_TILING(tilingPara) DO_TILING_WITH_FUNC(tilingPara, nullptr)
 
 static bool isNpuArchString(string version)
 {
@@ -368,5 +374,30 @@ bool ExecuteTiling(const gert::TilingContextPara& tilingContextPara, TilingInfo&
     tilingInfo.tilingDataSize = rawTilingData->GetDataSize();
     std::memcpy(tilingInfo.tilingData.get(), rawTilingData->GetData(), rawTilingData->GetDataSize());
 
+    return true;
+}
+
+bool ExecuteTiling(
+    const gert::TilingContextPara& tilingContextPara, TilingInfo& tilingInfo, TilingFunc tilingFuncOverride)
+{
+    DO_TILING_WITH_FUNC(tilingContextPara, tilingFuncOverride);
+
+    if (tilingRet != ge::GRAPH_SUCCESS) {
+        return false;
+    }
+
+    tilingInfo.tilingKey = tilingContext->GetTilingKey();
+    tilingInfo.blockNum = tilingContext->GetBlockDim();
+    size_t workspaceCount = tilingContext->GetWorkspaceNum();
+    if (workspaceCount > 0) {
+        auto workSpaceSizes = tilingContext->GetWorkspaceSizes(workspaceCount);
+        for (size_t i = 0; i < workspaceCount; i++) {
+            tilingInfo.workspaceSizes.push_back(workSpaceSizes[i]);
+        }
+    }
+    auto rawTilingData = tilingContext->GetRawTilingData();
+    tilingInfo.tilingData = std::make_unique<uint8_t[]>(rawTilingData->GetDataSize());
+    tilingInfo.tilingDataSize = rawTilingData->GetDataSize();
+    std::memcpy(tilingInfo.tilingData.get(), rawTilingData->GetData(), rawTilingData->GetDataSize());
     return true;
 }

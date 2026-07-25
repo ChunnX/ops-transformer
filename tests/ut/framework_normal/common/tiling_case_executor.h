@@ -23,6 +23,8 @@ struct TilingInfo {
     size_t blockNum = 0;
 };
 
+using TilingFunc = ge::graphStatus (*)(gert::TilingContext *context);
+
 void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara, 
                      ge::graphStatus                expectResult = ge::GRAPH_FAILED,
                      uint64_t                       expectTilingKey = 0, 
@@ -32,5 +34,7 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
                      bool                           useHashTilingData = false);
 
 bool ExecuteTiling(const gert::TilingContextPara& tilingContextPara, TilingInfo& tilingInfo);
+bool ExecuteTiling(
+    const gert::TilingContextPara& tilingContextPara, TilingInfo& tilingInfo, TilingFunc tilingFuncOverride);
 
 #endif // OPS_TRANSFORMER_DEV_TESTS_UT_COMMON_TILING_CASE_EXECUTOR_H

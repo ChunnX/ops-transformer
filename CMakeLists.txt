@@ -17,6 +17,9 @@ endif()
 
 project(cann_ops-transformer)
 
+# Keep the compilation database available for clangd and other source tools.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_C_FLAGS_RELEASE "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 

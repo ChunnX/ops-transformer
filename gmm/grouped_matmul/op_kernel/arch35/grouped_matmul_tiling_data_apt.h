@@ -119,6 +119,38 @@ struct GMMQuantBasicApiTilingData {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
+struct GMMA8W4BasicApiParams {
+    uint32_t quantGroupSize = 0;
+    uint32_t quantGroupNum = 0;
+    uint32_t expectedTokenNum = 0;
+    uint32_t coreNum = 0;
+    uint8_t dequantMode = 0; // 0: symmetric per-group, 1: asymmetric per-channel
+    uint8_t hasOffset = 0;
+    uint8_t specialWeightFormat = 0;
+    uint8_t weightPackedInt32 = 0;
+    uint8_t enableWeightPreprocess = 0;
+    uint8_t reserved[3] = {0};
+    uint64_t expandedWeightOffsetBytes = 0;
+    uint64_t expandedWeightSizeBytes = 0;
+    uint64_t expandedWeightStrideBytes = 0;
+    uint64_t tileWorkspaceOffsetBytes = 0;
+    uint64_t tileWorkspaceSizeBytes = 0;
+    uint64_t tileWorkspaceStrideBytes = 0;
+    uint64_t rowSumOffsetBytes = 0;
+    uint64_t rowSumSizeBytes = 0;
+    uint64_t userWorkspaceSizeBytes = 0;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
+struct GMMA8W4BasicApiTilingData {
+    GMMQuantParams gmmQuantParams;
+    GMMA8W4BasicApiParams a8w4Params;
+    QuantBasicApiMMTiling mmTilingData;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
 struct GMMNoQuantTilingData {
     GMMNoQuantBaseParams gmmNoQuantParam;
     TCubeTiling mmTilingData;

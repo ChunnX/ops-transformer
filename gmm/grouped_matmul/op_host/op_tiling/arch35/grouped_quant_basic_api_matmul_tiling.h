@@ -49,6 +49,65 @@ private:
     ge::graphStatus CalScaleFactors();
     GroupedMatmulTilingData::GMMQuantBasicApiTilingData tilingData_;
 };
+
+class GroupedA8W4BasicApiTiling : public GroupedQmmTiling {
+public:
+    explicit GroupedA8W4BasicApiTiling(gert::TilingContext *context);
+    ~GroupedA8W4BasicApiTiling() override = default;
+
+    void Reset(gert::TilingContext *context) override
+    {
+        Ops::Transformer::OpTiling::TilingBaseClass::Reset(context);
+        Reset();
+    }
+
+protected:
+    bool IsCapable() override;
+    ge::graphStatus GetShapeAttrsInfo() override;
+    ge::graphStatus DoOpTiling() override;
+    ge::graphStatus DoLibApiTiling() override;
+    ge::graphStatus GetWorkspaceSize() override;
+    ge::graphStatus PostTiling() override;
+    bool AnalyzeDtype() override;
+    bool AnalyzeAttrs() override;
+    bool AnalyzeInputs() override;
+    uint64_t GetTilingKey() const override;
+    void Reset() override;
+
+private:
+    enum class DequantMode : uint8_t {
+        SYMMETRIC_PER_GROUP = 0,
+        ASYMMETRIC_PER_CHANNEL = 1,
+    };
+
+    bool CheckTensorLists() const;
+    bool CheckCommonShapes(const gert::Shape &xShape, const gert::Shape &wShape) const;
+    bool CheckBiasShape() const;
+    bool CheckPerTokenScaleShape() const;
+    bool CheckAntiquantInputsEmpty() const;
+    bool CheckWeightStorageShape(const gert::StorageShape &weightShape);
+    bool CheckScaleAndOffsetShapes();
+    bool SetLogicalMkn(const gert::Shape &xShape, const gert::Shape &wShape);
+    void SetBasicBlock();
+    uint64_t GetRequiredL1Size(uint64_t kL1) const;
+    ge::graphStatus ValidateFixedTileResources(uint64_t kL1) const;
+
+    static constexpr uint32_t QUANT_GROUP_SIZE = 256U;
+    static constexpr uint32_t A8W4_BASE_M = 256U;
+    static constexpr uint32_t A8W4_ASYM_BASE_M = 256U;
+    static constexpr uint32_t A8W4_BASE_N = 256U;
+    static constexpr uint32_t A8W4_BASE_K = 128U;
+    static constexpr uint32_t A8W4_PER_GROUP_K_L1 = 256U;
+    static constexpr uint32_t A8W4_PER_CHANNEL_K_L1 = 256U;
+
+    bool hasOffset_ = false;
+    bool specialWeightFormat_ = false;
+    bool weightPackedInt32_ = false;
+    uint32_t expectedTokenNum_ = 0;
+    uint64_t userWorkspaceSize_ = 0;
+    DequantMode dequantMode_ = DequantMode::SYMMETRIC_PER_GROUP;
+    GroupedMatmulTilingData::GMMA8W4BasicApiTilingData tilingData_;
+};
 } // namespace optiling
 
 #endif // GROUPED_QUANT_BASIC_API_MATMUL_TILING_H
