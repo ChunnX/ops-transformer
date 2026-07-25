@@ -11,6 +11,7 @@
 #define OP_API_INC_GROUPED_MATMUL_UTIL_H
 #include "opdev/common_types.h"
 #include "opdev/op_executor.h"
+#include "log/log.h"
 #include <algorithm>
 #include <map>
 #include <sstream>
@@ -42,15 +43,15 @@ inline std::string DTypeVectorToString(const std::vector<op::DataType> &dataType
 #ifdef OP_CHECK_DTYPE_NOT_SUPPORT
 #undef OP_CHECK_DTYPE_NOT_SUPPORT
 #endif
-#define OP_CHECK_DTYPE_NOT_SUPPORT(tensor, supportList, retExpr)                                      \
-    do {                                                                                                     \
-        if (!gmm::CheckDTypeInVector((tensor)->GetDataType(), (supportList))) {                              \
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,                                                                 \
-                    "Tensor %s not implemented for %s, should be in dtype support list %s.",                 \
-                    #tensor, op::ToString((tensor)->GetDataType()).GetString(),                              \
-                    gmm::DTypeVectorToString(supportList).c_str());                                          \
-            retExpr;                                                                                         \
-        }                                                                                                    \
+#define OP_CHECK_DTYPE_NOT_SUPPORT(tensor, supportList, retExpr)                                            \
+    do {                                                                                                    \
+        if (!gmm::CheckDTypeInVector((tensor)->GetDataType(), (supportList))) {                             \
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(                                                        \
+                __func__, #tensor, op::ToString((tensor)->GetDataType()).GetString(),                       \
+                "the dtype of " + std::string(#tensor) + " must be one of " +                             \
+                    gmm::DTypeVectorToString(supportList));                                                 \
+            retExpr;                                                                                        \
+        }                                                                                                   \
     } while (0)
 
 constexpr int64_t NO_SPLIT = -1L;
