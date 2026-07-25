@@ -14,7 +14,7 @@
 ## 功能说明
 
 - **接口功能**：BlockSparseAttentionV2稀疏注意力计算，支持灵活的块级稀疏模式，通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
-  
+
   相比于BlockSparseAttention,本接口新增qDequantScaleOptional、kDequantScaleOptional、vDequantScaleOptional参数。
 
 - **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
@@ -36,26 +36,26 @@
   - kvInputLayout: "TND" "BNSD" "BSND"
 
 - **FP8特性说明（仅<term>Ascend 950PR/Ascend 950DT</term>支持）**：
-  
+
   本算子新增支持FP8数据类型的输入，以提供计算效率并降低显存占用。当使用FP8输入时，需要提供相应的量化缩放因子用于反量化计算。
 
 - **量化缩放因子**：
-  
+
   当输入的query、key、value采用FLOAT8_E4M3FN数据类型时，需要提供以下量化缩放因子参数：
-  
+
   qDequantScale（query量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, HeadNum, CeilDiv(maxQSeqLength, 128), 1)
+  - shape：(Batch, HeadNum, CeilDiv(maxQSeqLength, blockshapeX), 1)
   - 用途：在QK矩阵乘法时对query进行反量化。
 
   kDequantScale（key量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
+  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, blockShapeY), 1)
   - 用途：在QK矩阵乘法时对key进行反量化。
 
   vDequantScale（value量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
+  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, blockShapeY), 1)
   - 用途：在PV矩阵乘法时对value进行反量化。
 
 ## 函数原型
@@ -216,8 +216,8 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：必须包含两个元素[blockShapeX, blockShapeY]
         <ul>
-          <li>blockShapeX: Q方向块大小，值必须大于0。</li>
-          <li>blockShapeY: KV方向块大小，值必须大于0且为128的倍数。</li>
+          <li>blockShapeX: Q方向块大小，值必须大于0（无对齐约束）。</li>
+          <li>blockShapeY: KV方向块大小，值必须大于0；在<term>Ascend 950PR/Ascend 950DT</term>上须为16的倍数，在<term>Atlas A2/A3</term>上须为128的倍数。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -278,7 +278,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：
         <ul>
-          <li>shape为[batch, headNum, ceilDiv(maxQSeqLength, 128), 1]。</li>
+          <li>shape为[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), 1]。</li>
         </ul>
       </td>
       <td>FLOAT32</td>
@@ -298,7 +298,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：
         <ul>
-          <li>shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 256), 1]或shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 512), 1]。</li>
+          <li>shape为[batch, kvHeadNum, ceilDiv(maxKvSeqLength, blockShapeY), 1]。</li>
         </ul>
       </td>
       <td>FLOAT32</td>
@@ -318,7 +318,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：
         <ul>
-          <li>shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 256), 1]或shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 512), 1]。</li>
+          <li>shape为[batch, kvHeadNum, ceilDiv(maxKvSeqLength, blockShapeY), 1]。</li>
         </ul>
       </td>
       <td>FLOAT32</td>
@@ -493,7 +493,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -588,7 +588,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
 - 当前query、key、value的InputLayout必须保持一致。
 - 输入query、key、value的数据类型必须一致，支持FLOAT16和BFLOAT16。
 - query、key、value的D轴当前仅支持配置为64或128
-- blockShapeOptional如果传入，则必须包含至少两个元素[blockShapeX, blockShapeY]，且值必须大于0，blockShapeY必须为128的倍数。
+- blockShapeOptional如果传入，则必须包含至少两个元素[blockShapeX, blockShapeY]，且值必须大于0，blockShapeY在<term>Ascend 950PR/Ascend 950DT</term>上须为16的倍数，在<term>Atlas A2/A3</term>上须为128的倍数。
 - blockSparseMaskOptional当前必须传入，且shape必须为[batch, headNum, ceilDiv(maxQS, blockShapeX), ceilDiv(maxKVS, blockShapeY)]。
 - attentionMaskOptional当前只支持传入nullptr。
 - actualSeqLengthsOptional在qInputLayout为“TND”时必选；actualSeqLengthsKvOptional在kvInputLayout为“TND”时必选。
@@ -606,8 +606,8 @@ aclnnStatus aclnnBlockSparseAttentionV2(
   - 当query、key、value中任意一个数据类型为FLOAT8_E4M3FN时，query、key、value必须同时为FLOAT8_E4M3FN数据类型。
   - 使用FP8输入时，必须提供对应的量化缩放因子输入qDequantScale、kDequantScale、vDequantScale。
   - 量化缩放因子的数据类型必须为FLOAT32。
-  - qDequantScale的shape必须为(Batch, HeadNum, CeilDiv(maxQSeqLength, 128), 1)。
-  - kDequantScale和vDequantScale的shape必须一致，为(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)。
+  - qDequantScale的shape必须为(Batch, HeadNum, CeilDiv(maxQSeqLength, blockShapeX), 1)。
+  - kDequantScale和vDequantScale的shape必须一致，为(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, blockShapeY), 1)。
   - 当query、key、value中任意一个数据类型不为FLOAT8_E4M3FN时，qDequantScale、kDequantScale、vDequantScale必须传入nullptr。
   - blockShapeOptional必须传入。
   - q和kv的量化块大小必须与blockShapeOptional的两个元素大小分别保持一致。
@@ -674,27 +674,27 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
             return -1;
         }
     }
-    
+
     auto size = GetShapeSize(shape) * sizeof(T);
 
     // 检查hostData大小是否匹配
     if (hostData.size() != static_cast<size_t>(GetShapeSize(shape))) {
-        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n", 
+        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n",
                   hostData.size(), GetShapeSize(shape));
         return -1;
     }
-    
+
     // 调用aclrtMalloc申请device侧内存
     *deviceAddr = nullptr;
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
               return ret);
-    
+
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
               return ret);
-    
+
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
     if (shape.size() > 1) {
@@ -707,7 +707,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     *tensor = nullptr;
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                               shape.data(), shape.size(), *deviceAddr);
-    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n"); 
+    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n");
             return -1);
     return 0;
 }
@@ -790,7 +790,7 @@ int main() {
     int32_t headDim = 128;
     int32_t blockShapeX = 128;
     int32_t blockShapeY = 256;
-    
+
     // 计算TND格式维度
     int64_t totalQTokens = batch * qSeqlen;
     int64_t totalKvTokens = batch * kvSeqlen;
@@ -799,7 +799,7 @@ int main() {
     // totalQBlocks = qBlockNum * numHeads (每个Q块对应一个head)
     int32_t totalQBlocks = qBlockNum * numHeads;
     int32_t maxKvBlockNum = kvBlockNum;
-    
+
     aclTensor *queryTensor = nullptr;
     aclTensor *keyTensor = nullptr;
     aclTensor *valueTensor = nullptr;
@@ -891,7 +891,7 @@ int main() {
     // 8. 创建actualSeqLengths和actualSeqLengthsKv (必需参数)
     std::vector<int64_t> actualSeqLengthsHost(batch, static_cast<int64_t>(qSeqlen));
     std::vector<int64_t> actualSeqLengthsKvHost(batch, static_cast<int64_t>(kvSeqlen));
-    
+
     size_t seqLengthsSize = batch * sizeof(int64_t);
 
     ret = aclrtMalloc(&actualSeqLengthsDeviceAddr, seqLengthsSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -944,14 +944,14 @@ int main() {
     char kvLayoutBuffer[16] = {0};
     strncpy(qLayoutBuffer, qLayoutStr, sizeof(qLayoutBuffer) - 1);
     strncpy(kvLayoutBuffer, kvLayoutStr, sizeof(kvLayoutBuffer) - 1);
-    
+
     // 10. 计算scaleValue
     float scaleValue = 1.0f / std::sqrt(static_cast<float>(headDim));
-    
+
     // 11. 调用第一段接口
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
-    
+
     ret = aclnnBlockSparseAttentionV2GetWorkspaceSize(
         queryTensor,              // query
         keyTensor,                // key
@@ -996,7 +996,7 @@ int main() {
     // 12. 分配workspace
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); 
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret);
                   FreeResource(queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor,
                               actualSeqLengths, actualSeqLengthsKv, blockShape, queryDeviceAddr, keyDeviceAddr,
                               valueDeviceAddr, blockSparseMaskDeviceAddr, attentionOutDeviceAddr,
@@ -1040,7 +1040,7 @@ int main() {
     for (uint64_t i = 0; i < printNum && i < resultData.size(); i++) {
         LOG_PRINT("  index %lu: %f\n", i, static_cast<float>(resultData[i]));
     }
-    
+
     // 17. 释放资源
     FreeResource(queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor,
                   actualSeqLengths, actualSeqLengthsKv, blockShape, queryDeviceAddr, keyDeviceAddr,
