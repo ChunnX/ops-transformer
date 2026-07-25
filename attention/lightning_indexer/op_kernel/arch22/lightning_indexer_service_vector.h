@@ -376,37 +376,21 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             if (radixCuS2Len < s2BaseSize_) {
                 int32_t cuS2LenAlign8 = (radixCuS2Len + 7) / 8 * 8;
                 if (cuS2LenAlign8 < s2BaseSize_) {
-                    // Fill with -1e30 so that radix (largest=true) excludes it
                     Duplicate(reduceOutInner[cuS2LenAlign8], -1.0e30f, s2BaseSize_ - cuS2LenAlign8);
                 }
                 PipeBarrier<PIPE_V>();
             }
             // Replace +1e30 (MM1 cube L0C uninitialized garbage) with -1e30
+            // Vectorized: Mins caps large values, then Compares+Select replaces
             PipeBarrier<PIPE_V>();
             {
-                event_t eVS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-                SetFlag<HardEvent::V_S>(eVS);
-                WaitFlag<HardEvent::V_S>(eVS);
-                for (int32_t i = 0; i < s2BaseSize_; i++) {
-                    float v = reduceOutInner.GetValue(i);
-                    if (v > 1.0e29f) {
-                        reduceOutInner.SetValue(i, -1.0e30f);
-                    }
-                }
-                event_t eSV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-                SetFlag<HardEvent::S_V>(eSV);
-                WaitFlag<HardEvent::S_V>(eSV);
-            }
-            // DEBUG: overwrite ALL with -1e30
-            Duplicate<float>(reduceOutInner, -1.0e30f, s2BaseSize_);
-            PipeBarrier<PIPE_V>();
-            {
+                LocalTensor<float> tmpFloat = outValueBuf_.Get<float>();
+                Mins(reduceOutInner, reduceOutInner, 1.0e29f, s2BaseSize_);
                 PipeBarrier<PIPE_V>();
+            }
+            {
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
                 uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
-                event_t eVM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-                SetFlag<HardEvent::V_MTE3>(eVM);
-                WaitFlag<HardEvent::V_MTE3>(eVM);
                 DataCopyPad(scoreB16Gm[scoreOffset], reduceOutInner, DataCopyExtParams{
                     static_cast<uint16_t>(1), static_cast<uint32_t>(s2BaseSize_ * sizeof(float)), 0, 0, 0});
             }
