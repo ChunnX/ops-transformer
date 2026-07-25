@@ -15,7 +15,7 @@
 
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
-#include "log/log.h"
+#include "err/ops_err.h"
 #include "quant_sparse_flash_mla_check.h"
 
 using namespace optiling;
@@ -26,10 +26,10 @@ constexpr uint32_t QUERY_INPUT_INDEX = 0;
 
 ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
 {
-    if (context == nullptr) {
-        OP_LOGE("QuantSparseFlashMla", "context is nullptr!");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(context == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantSparseFlashMla", "InferShapeContext",
+            "InferShapeContext is nullptr"),
+        return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     gert::Shape *attentionOutShape = context->GetOutputShape(0);
@@ -39,6 +39,7 @@ ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
     gert::Shape *softmaxLseShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxLseShape);
     auto attr = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attr);
     const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE_INDEX);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
 
@@ -77,10 +78,6 @@ ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
 
 ge::graphStatus InferDataTypeQuantSparseFlashMla(gert::InferDataTypeContext *context)
 {
-    if (context == nullptr) {
-        OP_LOGE("QuantSparseFlashMla", "context is nullptr!");
-        return ge::GRAPH_FAILED;
-    }
     context->SetOutputDataType(0, ge::DT_BF16); // 目前仅支持BF16
     context->SetOutputDataType(SOFTMAX_LSE_INDEX, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
