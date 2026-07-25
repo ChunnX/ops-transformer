@@ -874,11 +874,6 @@ ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_U
     RegTensor<float> vreg_chunk0;
     RegTensor<float> vreg_thresh;
 
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
-
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                   IsSameType<T2, hifloat8_t>::value) {
@@ -907,7 +902,7 @@ ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_U
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                    IsSameType<T2, hifloat8_t>::value) &&
                   hasAtten) {
-        Arrange(vreg_chunk0, (float)maskLine);
+        Arange(vreg_chunk0, (float)maskLine);
         Duplicate(vreg_thresh, 0.0f);
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
@@ -1202,7 +1197,7 @@ ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T
 
     ProcessVec1DnNoUpdateMxfp8VF<T, T2, hasAtten, ubN>(
         x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, indexesUb, pScaleSubLoop0Ub, m,
-        n, originN, scale, deScaleQK, pScale, minValue, keepProb, dScale, blockStride, repeatStride, subLoop);
+        n, originN, scale, deScaleQK, pScale, minValue, keepProb, dScale, blockStride, repeatStride, subLoop, maskLine);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
@@ -1300,10 +1295,6 @@ ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -1320,7 +1311,7 @@ ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                    IsSameType<T2, hifloat8_t>::value) &&
                   hasAtten) {
-        Arrange(vreg_chunk0, (float)maskLine);
+        Arange(vreg_chunk0, (float)maskLine);
         Duplicate(vreg_thresh, 0.0f);
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);

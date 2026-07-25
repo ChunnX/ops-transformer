@@ -310,7 +310,7 @@ public:
     {
         int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
-            maskLine = computeMaskLine(runInfo, 0, subLoop);
+            maskLine = computeMaskLineDN(runInfo, 0, subLoop);
         }
         if (isSkipCompute) {
             maskLine = -256;
@@ -1111,7 +1111,7 @@ public:
         }
     }
 
-    __aicore__ inline void computeMaskLine(RunInfoX &runInfo, uint32_t vecMIdx, uint32_t subLoop)
+    __aicore__ inline int64_t computeMaskLineDN(RunInfoX &runInfo, uint32_t vecMIdx, uint32_t subLoop)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
@@ -1122,19 +1122,16 @@ public:
         int64_t nextToken = static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(runInfo.actS1Size);
         uint32_t s1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
         uint32_t s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
-        if (static_cast<int64_t>(info.s2StartIdx + s2RealSize) <= static_cast<int64_t>(s1StartIdx) + nextToken) {
+        if (static_cast<int64_t>(s2StartIdx + s2RealSize) <= static_cast<int64_t>(s1StartIdx) + nextToken) {
             isSkipMask = true;
         } else {
             isSkipMask = false;
         }
+        int64_t maskLine = nextToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(s2StartIdx);
         if (maskLine < 0) {
-            isSkipCompute = -maskLine >= (info.gs1dealNum / 2);
+            isSkipCompute = -maskLine >= (mBaseSize / 2);
         } else {
-            isSkipCompute = maskLine >= info.nBaseSize;
-        }
-        int64_t maskLine = 0;
-        if (unlikely(!isSkipMask && !isSkipCompute)) {
-            maskLine = nextToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(s2StartIdx);
+            isSkipCompute = maskLine >= s2BaseSizeCur;
         }
         return maskLine;
     }
