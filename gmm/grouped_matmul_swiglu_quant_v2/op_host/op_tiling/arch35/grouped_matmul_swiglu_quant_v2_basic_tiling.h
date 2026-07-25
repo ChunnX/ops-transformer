@@ -59,6 +59,7 @@ protected:
     void Reset() override;
     void SetKernelType();
     ge::graphStatus GetWorkspaceSize() override;
+    uint64_t kernelType_{0};
 
 private:
     bool AnalyzeAttrs() override;
@@ -78,6 +79,12 @@ private:
     bool IsMxFp8WeightNz() const;
     bool IsMxWeightNzMultiTensor(const gert::Shape &wShape) const;
     bool CheckMxFp4WeightNzShape(const gert::Shape &xShape, const gert::Shape &wShape) const;
+    ge::graphStatus CalL1Tiling();
+    ge::graphStatus CalL1Depth(uint64_t leftL1Size);
+    uint64_t GetDepthWithHighBW(uint64_t mnL1) const;
+    void ModifyDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize,
+                               uint64_t baseScaleABSize);
+    ge::graphStatus CalScaleFactors();
     ge::graphStatus CalWeightNzL1Tiling();
     ge::graphStatus CalWeightNzL1Depth(uint64_t leftL1Size);
     uint64_t GetWeightNzDepthWithHighBW(uint64_t mnL1) const;
