@@ -461,37 +461,52 @@ private:
     }
 
     CATLASS_DEVICE
-    void GetCumsumForMMAIV(AscendC::GlobalTensor<int32_t> & tokenPerExpert,
-                           AscendC::GlobalTensor<int32_t> & result,
+    void GetCumsumForMMAIV(AscendC::GlobalTensor<int32_t> &tokenPerExpert, AscendC::GlobalTensor<int32_t> &result,
                            uint32_t expertPerRank, uint32_t EP)
     {
-        int32_t expertPerRankAligned = (EP * expertPerRank + 8 - 1) / 8 * 8;
+        constexpr uint32_t int32PerBlock = 8;
+        constexpr uint32_t ubReservedBytes = 32;
+        uint32_t totalExpertNum = EP * expertPerRank;
+        // Cumsum is independent for every global expert. Tile that dimension so the [EP, tileExpertNum]
+        // working set always stays in the 192-KiB A2 UB.
+        uint32_t maxExpertNumPerLoop =
+            (ArchTag::UB_SIZE - ubReservedBytes) / sizeof(int32_t) / EP / int32PerBlock * int32PerBlock;
         AscendC::LocalTensor<int32_t> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::LocalTensor<int32_t> tmpResult =
-            resource.ubBuf.template GetBufferByByte<int32_t>(EP * EP * expertPerRank * sizeof(int32_t));
 #define U16(x) static_cast<uint16_t>(x)
 
-        AscendC::DataCopyPad(tmpBuffer1, tokenPerExpert,
-            {U16(EP), U16(EP * expertPerRank * sizeof(int32_t)),
-             U16((paddedExpertNumAligned - EP * expertPerRank) * sizeof(int32_t)), 0}, {});
+        for (uint32_t expertOffset = 0; expertOffset < totalExpertNum; expertOffset += maxExpertNumPerLoop) {
+            uint32_t remainingExpertNum = totalExpertNum - expertOffset;
+            uint32_t currentExpertNum =
+                remainingExpertNum < maxExpertNumPerLoop ? remainingExpertNum : maxExpertNumPerLoop;
+            uint32_t currentExpertNumAligned =
+                (currentExpertNum + int32PerBlock - 1) / int32PerBlock * int32PerBlock;
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::DataCopyPad(
+                tmpBuffer1, tokenPerExpert[expertOffset],
+                {U16(EP), U16(currentExpertNum * sizeof(int32_t)),
+                 U16((paddedExpertNumAligned - currentExpertNum) * sizeof(int32_t)), 0},
+                {});
 
-        for (uint32_t i = 1; i < EP; ++i) {
-            AscendC::Add(tmpBuffer1[i * expertPerRankAligned], tmpBuffer1[i * expertPerRankAligned],
-                         tmpBuffer1[(i - 1) * expertPerRankAligned], EP * expertPerRank);
-            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+
+            for (uint32_t i = 1; i < EP; ++i) {
+                AscendC::Add(tmpBuffer1[i * currentExpertNumAligned], tmpBuffer1[i * currentExpertNumAligned],
+                             tmpBuffer1[(i - 1) * currentExpertNumAligned], currentExpertNum);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+
+            AscendC::DataCopyPad(
+                result[expertOffset], tmpBuffer1,
+                {U16(EP), U16(currentExpertNum * sizeof(int32_t)), 0,
+                 U16((paddedExpertNumAligned - currentExpertNum) * sizeof(int32_t))});
+            // The next loop reuses the same UB range for MTE2. Wait until MTE3 has consumed it.
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         }
-
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-
-        AscendC::DataCopyPad(
-            result, tmpBuffer1,
-            {U16(EP), U16((EP * expertPerRank) * sizeof(int32_t)),
-                0, U16((paddedExpertNumAligned - EP * expertPerRank) * sizeof(int32_t))}
-        );
     }
 
     CATLASS_DEVICE
