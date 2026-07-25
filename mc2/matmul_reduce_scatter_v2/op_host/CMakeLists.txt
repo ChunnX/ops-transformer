@@ -32,6 +32,7 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS --cce-auto-sync=off
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
+                    -DCATLASS_ARCH=3510
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(

@@ -1221,27 +1221,17 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     PrintTilingDataInfo(info, tilingData->cocTiling);
 
     // 6. communication
-    if (info.is910C) {
-        uint32_t opType = OP_TYPE_REDUCE_SCATTER;
-        std::string algConfig = "ReduceScatter=level0:fullmesh";
-        AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
-        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-                        OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2InitTiling GetTiling failed."),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-                        OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2CcTiling GetTiling failed."),
-                        return ge::GRAPH_FAILED);
-    } else {
-        uint32_t opType = 18;
-        std::string algConfig = "MultiPut=level0:fullmesh";
-        AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
-        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-                        OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2InitTiling GetTiling failed."),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-                        OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2CcTiling GetTiling failed."),
-                        return ge::GRAPH_FAILED);
-    }
+    uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, aType));
+    const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
+    uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
+    std::string algConfig = "ReduceScatter=level0:fullmesh";
+    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig, reduceType, dataType, dataType);
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
+                    OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2InitTiling GetTiling failed."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
+                    OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2CcTiling GetTiling failed."),
+                    return ge::GRAPH_FAILED);
 
     OP_LOGI("Leave MatmulReduceScatterV2AivMode tiling func.");
     return ge::GRAPH_SUCCESS;

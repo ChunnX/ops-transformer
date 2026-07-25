@@ -33,7 +33,7 @@ namespace matmulReduceScatterV2_util {
     uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale,              \
         __gm__ int32_t *workspace, GM_ADDR peerMem, GM_ADDR output, GM_ADDR biasptr, uint32_t tileM0, uint32_t tileN0, \
         uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount, uint32_t coreIdx, uint32_t coreNum,              \
-        uint32_t rankIdx, uint32_t rankSize, uint32_t calIdx, Arch::Resource<Arch::AtlasA2> resource,                  \
+        uint32_t rankIdx, uint32_t rankSize, uint32_t calIdx, Arch::Resource<Arch::Ascend950> resource,                  \
         bool needPerChannel = false, bool needPerToken = false
 
 constexpr int32_t MAX_BLOCK_COUNT = 2;
@@ -148,27 +148,14 @@ public:
         core_idx = block_id / GetTaskRation();
 
         SetTiling(tilingData);
-        if (is910C) {
-            __gm__ HcclOpResParam *winContext_{nullptr};
-            auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-            winContext_ = (__gm__ HcclOpResParam *)contextGM0;
-            rank = winContext_->localUsrRankId;
-            rank_size = winContext_->rankSize;
-            for (int i = 0; i < rank_size; i++) {
-                buff[i] =
-                    (GM_ADDR)((i == rank) ?
-                                  winContext_->localWindowsIn :
-                                  ((HcclRankRelationResV2 *)(winContext_->remoteRes[i].nextDevicePtr))->windowsIn);
-            }
-        } else {
-            __gm__ HcclA2CombineOpParam *winContext_{nullptr};
-            auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-            winContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
-            rank = winContext_->rankId;
-            rank_size = winContext_->rankNum;
-            for (int i = 0; i < rank_size; i++) {
-                buff[i] = (GM_ADDR)winContext_->windowsIn[i];
-            }
+        
+        __gm__ HcclCombinOpParam *winContext_{nullptr};
+        auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+        winContext_ = (__gm__ HcclCombinOpParam *)contextGM0;
+        rank = winContext_->rankId;
+        rank_size = winContext_->rankDim;
+        for (int i = 0; i < rank_size; i++) {
+            buff[i] = (GM_ADDR)winContext_->windowsIn[i];
         }
         k_loop = CeilDev(k, k0);
         n_loop = CeilDev(n, n0);

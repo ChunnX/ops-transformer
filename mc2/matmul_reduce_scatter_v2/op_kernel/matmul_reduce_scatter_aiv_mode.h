@@ -25,14 +25,14 @@
 #include "matmul_reduce_scatter_v2_aiv_mode_tiling.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "matmul_reduce_scatter_aiv_mode_util.h"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/arch.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/arch/arch.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/layout/layout.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/gemm/block/block_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/gemm/block/block_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/gemm/dispatch_policy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/gemm/gemm_type.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/gemm_coord.hpp"
 #include "matmul.hpp"
 #include "matmul_reduce_scatter_aiv_mode_padding.h"
 #include "matmul_reduce_scatter_aiv_mode_dequant.h"
@@ -98,7 +98,7 @@ private:
     GM_ADDR gm_a_align;
     GM_ADDR gm_b_align;
     DequantRunner<biasType, cType> dequant_runner;
-    Arch::Resource<Arch::AtlasA2> resource;
+    Arch::Resource<Arch::Ascend950> resource;
 };
 
 template <TemplateMMReduceScatterV2Class, typename Derived>
@@ -172,7 +172,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
         int32_t peer_mem_m = m0 * loop_num_per_comm * MAX_BLOCK_COUNT;
         uint32_t layout_b_row = (TB && !weight_nz) ? static_cast<uint32_t>(k_align) : static_cast<uint32_t>(k);
         uint32_t layout_b_col = (TB || weight_nz) ? static_cast<uint32_t>(n) : static_cast<uint32_t>(n_align);
-        using ArchTag = Arch::AtlasA2;
+        using ArchTag = Arch::Ascend950;
         constexpr bool ENABLE_UNIT_FLAG = false;
         constexpr bool ENABLE_SHUFFLE_K = true;
         constexpr bool aicCalBias = !quantFlag && hasBias; // 如果计算量化后的矩阵乘，bias不由CatlassMatmul负责
@@ -196,8 +196,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
 
         constexpr int32_t L1TileShapeK = quantFlag ? TILE_SHAPE_512 : TILE_SHAPE_256;
         constexpr int32_t L0TileShapeK = quantFlag ? TILE_SHAPE_128 : TILE_SHAPE_64;
-        using DispatchPolicy = std::conditional_t<aicCalBias, Gemm::MmadAtlasA2PingpongBias<ENABLE_UNIT_FLAG>,
-                                                  Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>>;
+        using DispatchPolicy = std::conditional_t<aicCalBias, Gemm::MmadPingpongBias<ArchTag, ENABLE_UNIT_FLAG>,
+                                                  Gemm::MmadPreload<ArchTag, ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>>;
         using AType_ = Gemm::GemmType<ElementA, LayoutA>;
         using CType_ = Gemm::GemmType<ElementC, LayoutC>;
         using BiasType_ = std::conditional_t<aicCalBias, Gemm::GemmType<ElementBias, LayoutBias>, void>;
