@@ -117,10 +117,12 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Init(GM_ADDR 
 
     inputGMTargetScore.SetGlobalBuffer((__gm__ T*)targetScore, totalLength_ * K_);
     inputGMIndexProbs.SetGlobalBuffer((__gm__ T*)indexProbs, totalLength_ * K_);
-    outputGMLoss.SetGlobalBuffer((__gm__ T*)loss, BLOCK_SIZE / sizeof(T));
-    if (std::is_same_v<T, float> && !isDeterministic && blockIdx_ == 0) {
-        outputGMLoss.SetValue(0, (T)0);
-        DataCacheCleanAndInvalid<T, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(outputGMLoss);
+    outputGMLoss.SetGlobalBuffer((__gm__ T*)loss, 1);
+    if (std::is_same_v<T, float> && !isDeterministic) {
+        if (blockIdx_ == 0) {
+            outputGMLoss.SetValue(0, (T)0);
+            DataCacheCleanAndInvalid<T, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(outputGMLoss);
+        }
     }
     else {
         InitWorkspaceDet(workspace);
@@ -198,15 +200,17 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::InitHalfBufs(
 template <typename T, bool isDeterministic>
 __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::CopyIn(uint32_t rowOffset, uint32_t curTileLen)
 {
-    uint64_t offset = (uint64_t)rowOffset * K_;
-    printf("CopyIn\n");
+    uint64_t offset = (uint64_t)rowOffset * (uint64_t)K_;
+    if(rowOffset > 799900) printf("CopyIn\n");
     copyParams.blockCount = curTileLen;
     if constexpr (std::is_same_v<T, float>) {
-        printf("%u %u %u %u\n", rowOffset, K_, offset, inputGMIndexProbs.GetSize());
+        if(rowOffset > 799900) {
+            printf("%u %ld %lu %lu\n", rowOffset, K_, offset, inputGMIndexProbs.GetSize());
+        }
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
         // printf("1111 curTileLen %u\n", curTileLen);
         // printf("%u %u %u\n", copyParams.blockCount, copyParams.blockLen, copyParams.dstStride);
-        // DataCopyPad(ubIndexProbsIn, inputGMIndexProbs[offset], copyParams, padParams);
+        DataCopyPad(ubIndexProbsIn, inputGMIndexProbs[offset], copyParams, padParams);
         // printf("111\n");
         SetFlag<HardEvent::MTE2_V>(eventMTE2YToV_);
 
@@ -348,10 +352,10 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::CopyOut()
     WaitFlag<HardEvent::V_MTE3>(eventVToMTE3_);
     SetAtomicAdd<float>();
     if constexpr (std::is_same_v<T, float> && !isDeterministic) {
-        DataCopy(outputGMLoss, ubOut, 8);
+        DataCopyPad(outputGMLoss, ubOut, {1, sizeof(float), 0, 0});
     }
     else {
-        DataCopy(perCoreSumWS, ubOut, 8);
+        DataCopyPad(perCoreSumWS, ubOut, {1, sizeof(float), 0, 0});
     }
     DisableDmaAtomic();
     // 通知 Vector ubOut 已读取，可安全写入下一轮
@@ -371,7 +375,6 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Process()
     SetFlag<HardEvent::MTE3_V>(eventMTE3ToV_);
     printf("blocksPerCore_ %d\n", blocksPerCore_);
     for (int64_t b = 0; b < blocksPerCore_; b++) {
-        printf("loop %d\n", b);
         curTileLen = (rowOffset + tileLength_ <= totalLength_)
                          ? tileLength_
                          : (totalLength_ - rowOffset);
@@ -381,6 +384,7 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::Process()
         CopyOut();
         rowOffset += step;
     }
+    printf("finish\n");
 
     WaitFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
     WaitFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
@@ -414,14 +418,14 @@ __aicore__ inline void LightningIndexerKlLoss<T, isDeterministic>::WriteBackDet(
         if constexpr (std::is_same_v<T, float>) {
             SetFlag<HardEvent::V_MTE3>(eventVToMTE3_);
             WaitFlag<HardEvent::V_MTE3>(eventVToMTE3_);
-            DataCopy(outputGMLoss, ubOut, FLOAT_BLOCK_SIZE);
+            DataCopyPad(outputGMLoss, ubOut, {1, sizeof(float), 0, 0});
         }
         else {
             LocalTensor<T> ubOutHalf = tmpBuf_.GetWithOffset<T>(HALF_BLOCK_SIZE, count * sizeof(float));
             Cast(ubOutHalf, ubOut, RoundMode::CAST_RINT, FLOAT_BLOCK_SIZE);
             SetFlag<HardEvent::V_MTE3>(eventVToMTE3_);
             WaitFlag<HardEvent::V_MTE3>(eventVToMTE3_);
-            DataCopy(outputGMLoss, ubOutHalf, HALF_BLOCK_SIZE);
+            DataCopyPad(outputGMLoss, ubOutHalf, {1, sizeof(T), 0, 0});
         }
     }
     
