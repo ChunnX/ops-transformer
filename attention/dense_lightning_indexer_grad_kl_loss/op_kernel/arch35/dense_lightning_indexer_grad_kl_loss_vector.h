@@ -58,7 +58,6 @@ public:
     __aicore__ inline void InitParams(const DLIGradKLLossConstInfo &vecConstInfo,
                                       const optiling::DenseLightningIndexerGradKLLossTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitReluGradL1(LocalTensor<KV_T> reluGradL1);
     __aicore__ inline void InitVector1GM(const GlobalTensor<T> &softmaxMax, const GlobalTensor<T> &softmaxSum,
                                          const GlobalTensor<T> &softmaxMaxIndex, const GlobalTensor<T> &softmaxSumIndex,
                                          const GlobalTensor<MM12_OUT_T> &bmm1Res,
@@ -136,7 +135,6 @@ private:
     GlobalTensor<T> reluGm;
     GlobalTensor<KV_T> reluGradResGm[2];
     GlobalTensor<MM5_OUT_T> bmm5ResGm;
-    LocalTensor<KV_T> reluGradL1_;
 
     // local tensor
     TBuf<> mm1Tbuf;
@@ -374,12 +372,6 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::InitBuffers(TPipe *pipe)
         deterCoreInfoUbConsumer_ = uBuf_.GetWithOffset<int64_t>(DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_128, ubOffset);
         ubOffset += DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_128;
     }
-}
-
-template <typename DLIT>
-__aicore__ inline void DLIKLLossVectorService<DLIT>::InitReluGradL1(LocalTensor<KV_T> reluGradL1)
-{
-    reluGradL1_ = reluGradL1;
 }
 
 template <typename DLIT> __aicore__ inline void DLIKLLossVectorService<DLIT>::AllocEventID()
@@ -813,16 +805,6 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorDwDqDk(DLIGradKLLossR
     dataCopyReluGradPadParams.rightPadding = runInfo.curS2StepSizeAlign8 - runInfo.curS2StepSize;
     dataCopyReluGradPadParams.paddingValue = 0;
 
-    Nd2NzParams reluGradNd2NzParams;
-    reluGradNd2NzParams.ndNum = 1;
-    reluGradNd2NzParams.nValue = 1;
-    reluGradNd2NzParams.dValue = runInfo.curS2StepSize;
-    reluGradNd2NzParams.srcNdMatrixStride = 0;
-    reluGradNd2NzParams.srcDValue = runInfo.curS2StepSizeAlign8;
-    reluGradNd2NzParams.dstNzC0Stride = runInfo.curS1SizeAlign16;
-    reluGradNd2NzParams.dstNzNStride = 1;
-    reluGradNd2NzParams.dstNzMatrixStride = 0;
-
     DataCopyParams dataCopyDwParams;
     dataCopyDwParams.blockLen = sizeof(T);
     dataCopyDwParams.srcStride = 0;
@@ -874,21 +856,7 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorDwDqDk(DLIGradKLLossR
             SetFlag<HardEvent::V_MTE3>(vToMte3);
             WaitFlag<HardEvent::V_MTE3>(vToMte3);
 
-            if (nIdx == constInfo.n1IndexSize - 1) {
-                if (runInfo.s1InnerIdxV1V2 == 0 && rowIdx == 0) {
-                    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_RELU_GRAD_L1_FLAG);
-                }
-                uint32_t reluGradL1Row =
-                    constInfo.subBlockIdx * runInfo.curS1Size / AIC_AIV_RATIO +
-                    runInfo.s1InnerIdxV1V2 * S1_VEC_SIZE_8 + rowIdx;
-                DataCopy(reluGradL1_[reluGradL1Row * C0_SIZE], reluGradUb_, reluGradNd2NzParams);
-                if (runInfo.s1InnerIdxV1V2 * S1_VEC_SIZE_8 + rowIdx + 1 == runInfo.curS1SizeVec) {
-                    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_RELU_GRAD_L1_FLAG);
-                }
-            } else {
-                DataCopyPad(reluGradResGm[runInfo.taskIdMod2][reluResOffset], reluGradUb_,
-                            dataCopyReluGradParams);
-            }
+            DataCopyPad(reluGradResGm[runInfo.taskIdMod2][reluResOffset], reluGradUb_, dataCopyReluGradParams);
             SetFlag<HardEvent::MTE3_V>(mte3ToV);
         }
 
@@ -930,8 +898,6 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::ProcessVector1(DLIGradKLLos
 {
 
     if (runInfo.curS1SizeVec == 0) {
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_RELU_GRAD_L1_FLAG);
-        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_RELU_GRAD_L1_FLAG);
         return;
     }
 

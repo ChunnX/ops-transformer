@@ -121,7 +121,6 @@ private:
     GlobalTensor<T> dKeyIndexDeterGmFloat;
     GlobalTensor<T> lossGmDeterFloat;
     GlobalTensor<INFO_INT_64_T> deterCoreInfoGm;
-    TBuf<TPosition::A1> reluGradSharedBuf;
 };
 
 template <typename DLIT>
@@ -526,15 +525,11 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Init(
     // init wordspace
     InitWorkspace(workspace);
 
-    pipe->InitBuffer(reluGradSharedBuf, S1_BASE_STEP * S2_BASE_STEP * sizeof(KV_T));
-    LocalTensor<KV_T> reluGradSharedL1 = reluGradSharedBuf.Get<KV_T>();
-
     // init cubeService and vectorService
     if ASCEND_IS_AIV {
         // InitVecOP
         vectorService.InitParams(constInfo, tilingData);
         vectorService.InitBuffers(pipe);
-        vectorService.InitReluGradL1(reluGradSharedL1);
         vectorService.InitVector1GM(softmaxMaxGm, softmaxSumGm, softmaxMaxIndexGm, softmaxSumIndexGm,
                                     bmm1Res, bmm2Res, weightGm, pSyncGm, sySyncGm, lossGm, dWeightGmFloat, reluGm,
                                     reluGradRes, dWeightGm, dQueryIndexGmFloat, dQueryIndexGm);
@@ -544,7 +539,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Init(
     } else if ASCEND_IS_AIC {
         // initCubeOP
         matmulService.InitParams(constInfo);
-        matmulService.InitBuffers(pipe, reluGradSharedL1);
+        matmulService.InitBuffers(pipe);
         matmulService.InitMm1GlobalTensor(queryGm, keyGm, queryRopeGm, keyRopeGm, actualSeqLengthsQueryGm, actualSeqLengthsKeyGm, bmm1Res, dKeyIndex);
         matmulService.InitMm2GlobalTensor(queryIndexGm, keyIndexGm, bmm2Res);
         matmulService.InitMm5GlobalTensor(reluGradRes, dKeyIndexGmFloat);
@@ -562,7 +557,6 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
         vectorService.AllocEventID();
     } else {
         matmulService.AllocEventID();
-        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_RELU_GRAD_L1_FLAG);
     }
 
     int64_t bStartIdx, s1StartIdx, bEndIdx, s1EndIdx;
@@ -719,7 +713,6 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
         }
     }
     if ASCEND_IS_AIV {
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_RELU_GRAD_L1_FLAG);
         vectorService.FreeEventID();
     } else {
         matmulService.FreeEventID();
