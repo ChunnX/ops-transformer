@@ -36,6 +36,17 @@ constexpr size_t WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET = 2;
 constexpr size_t MXFP4_ND_N_ALIGN = 4; // MXFP4、ND场景下，N需要4对齐
 constexpr size_t MXFP8_ND_N_ALIGN_TENSORAPI = 128; // MXFP8、ND场景下，切换tensorApi时N需要128对齐
 constexpr size_t MXFP8_ND_M_LOWER_TENSORAPI = 128; // MXFP8、ND场景下，切换tensorApi时M需要大于128
+enum class TensorApiBaseBlockStrategy {
+    FIXED_BASE_M,
+    EPILOGUE_CAPACITY,
+};
+// 修改此处可切换两种策略。默认按SwiGLU epilogue的实际容量动态约束基本块。
+constexpr TensorApiBaseBlockStrategy TENSOR_API_BASE_BLOCK_STRATEGY =
+    TensorApiBaseBlockStrategy::EPILOGUE_CAPACITY;
+constexpr uint64_t TENSOR_API_FIXED_BASE_M = 128UL;
+constexpr uint64_t SWIGLU_EPILOGUE_MAX_SINGLE_MN = 64UL * 256UL;
+constexpr uint64_t SWIGLU_EPILOGUE_TASK_RATIO = 2UL;
+constexpr uint64_t SWIGLU_EPILOGUE_N_ALIGN = 64UL;
 
 size_t GetDynamicInputCount(gert::TilingContext *context, size_t inputIndex)
 {
@@ -828,23 +839,14 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
 {
     if (kernelType_) {
         GroupedQmmTiling::CalBasicBlock();
-        OP_LOGD(context_->GetNodeName(),
-                "===========yangtao0723================= baseM %ld ====== baseN %ld ====== baseK %ld ======.",
-                basicTiling_.baseM, basicTiling_.baseM, basicTiling_.baseM);
+        OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."),
+                    return ge::GRAPH_FAILED);
         if (inputParams_.mSize >= 256) {
             basicTiling_.baseM = 256;
         }
-        if (inputParams_.nSize >= 256 && inputParams_.kSize >= 128) {
+        if (inputParams_.nSize > 256 && inputParams_.kSize >= 128) {
             basicTiling_.baseN = 128;
         }
-        OP_LOGD(context_->GetNodeName(),
-                "===========yangtao0723================= baseM %ld ====== baseN %ld ====== baseK %ld ======.",
-                basicTiling_.baseM, basicTiling_.baseM, basicTiling_.baseM);
-        OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."),
-                    return ge::GRAPH_FAILED);
-        OP_LOGD(context_->GetNodeName(),
-                "===========yangtao0723================= baseM %ld ====== baseN %ld ====== baseK %ld ======.",
-                basicTiling_.baseM, basicTiling_.baseM, basicTiling_.baseM);
     } else {
         GroupedQmmTiling::CalBasicBlock();
         auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
