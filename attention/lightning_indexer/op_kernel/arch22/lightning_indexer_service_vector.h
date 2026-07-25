@@ -381,12 +381,12 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 PipeBarrier<PIPE_V>();
             }
             // Replace +1e30 (MM1 cube L0C uninitialized garbage) with -1e30
-            // Vectorized: Mins caps large values, then Compares+Select replaces
-            PipeBarrier<PIPE_V>();
-            {
-                Mins(reduceOutInner, reduceOutInner, 1.0e29f, s2BaseSize_);
-                PipeBarrier<PIPE_V>();
-            }
+            // TEST1: skip Mins to measure its cost
+            // PipeBarrier<PIPE_V>();
+            // {
+            //     Mins(reduceOutInner, reduceOutInner, 1.0e29f, s2BaseSize_);
+            //     PipeBarrier<PIPE_V>();
+            // }
             {
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
                 uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
