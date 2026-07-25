@@ -1561,50 +1561,111 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_bw_diff,
                         )
 
-                        T.tile.compare(
-                            v1_bw_mask,
-                            v1_bw_bmm2,
-                            0.0,
-                            "GT",
-                        )
-                        T.pipe_barrier("v")
-                        # dWeight consumes the unweighted diff tile and is
-                        # accumulated across both 64-column subtiles.
-                        T.tile.mul(
-                            v1_bw_bmm2,
-                            v1_bw_bmm2,
-                            v1_bw_diff_2d,
-                        )
-                        T.pipe_barrier("v")
-                        T.reduce_sum(
-                            v1_bw_bmm2,
-                            v1_bw_dw,
-                            1,
-                        )
-                        T.pipe_barrier("v")
-                        T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
+                        if rows_per_aiv == 16:
+                            # The installed Compare/Select lowering loses a
+                            # few mask bits for this 16x64 vector tile at
+                            # K=7168. Keep each 4x64 group self-contained and
+                            # statically shaped; no dynamic UB slice is used.
+                            T.tile.compare(v1_bw_mask, v1_bw_bmm2[0:4, 0:bw_col_block], 0.0, "GT")
+                            T.pipe_barrier("v")
+                            T.tile.mul(v1_bw_bmm2[0:4, 0:bw_col_block], v1_bw_bmm2[0:4, 0:bw_col_block], v1_bw_diff_2d[0:4, 0:bw_col_block])
+                            T.pipe_barrier("v")
+                            T.reduce_sum(v1_bw_bmm2[0:4, 0:bw_col_block], v1_bw_dw[0:4], 1)
+                            T.pipe_barrier("v")
+                            T.tile.add(v1_bw_dw_accum[0:4], v1_bw_dw_accum[0:4], v1_bw_dw[0:4])
+                            T.tile.mul(v1_bw_rg[0:4, 0:bw_col_block], v1_bw_weight_2d[0:4, 0:bw_col_block], v1_bw_diff_2d[0:4, 0:bw_col_block])
+                            T.pipe_barrier("v")
+                            T.tile.select(v1_bw_bmm2[0:4, 0:bw_col_block], v1_bw_mask, v1_bw_rg[0:4, 0:bw_col_block], 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                            T.pipe_barrier("v")
+                            T.tile.cast(v1_bw_rg_half[0:4, 0:bw_col_block], v1_bw_bmm2[0:4, 0:bw_col_block], "CAST_RINT", 4 * bw_col_block)
+                            T.pipe_barrier("v")
 
-                        T.tile.mul(
-                            v1_bw_rg,
-                            v1_bw_weight_2d,
-                            v1_bw_diff_2d,
-                        )
-                        T.pipe_barrier("v")
-                        T.tile.select(
-                            v1_bw_bmm2,
-                            v1_bw_mask,
-                            v1_bw_rg,
-                            0.0,
-                            "VSEL_TENSOR_SCALAR_MODE",
-                        )
-                        T.pipe_barrier("v")
-                        T.tile.cast(
-                            v1_bw_rg_half,
-                            v1_bw_bmm2,
-                            "CAST_RINT",
-                            rows_per_aiv * bw_col_block,
-                        )
-                        T.pipe_barrier("v")
+                            T.tile.compare(v1_bw_mask, v1_bw_bmm2[4:8, 0:bw_col_block], 0.0, "GT")
+                            T.pipe_barrier("v")
+                            T.tile.mul(v1_bw_bmm2[4:8, 0:bw_col_block], v1_bw_bmm2[4:8, 0:bw_col_block], v1_bw_diff_2d[4:8, 0:bw_col_block])
+                            T.pipe_barrier("v")
+                            T.reduce_sum(v1_bw_bmm2[4:8, 0:bw_col_block], v1_bw_dw[4:8], 1)
+                            T.pipe_barrier("v")
+                            T.tile.add(v1_bw_dw_accum[4:8], v1_bw_dw_accum[4:8], v1_bw_dw[4:8])
+                            T.tile.mul(v1_bw_rg[4:8, 0:bw_col_block], v1_bw_weight_2d[4:8, 0:bw_col_block], v1_bw_diff_2d[4:8, 0:bw_col_block])
+                            T.pipe_barrier("v")
+                            T.tile.select(v1_bw_bmm2[4:8, 0:bw_col_block], v1_bw_mask, v1_bw_rg[4:8, 0:bw_col_block], 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                            T.pipe_barrier("v")
+                            T.tile.cast(v1_bw_rg_half[4:8, 0:bw_col_block], v1_bw_bmm2[4:8, 0:bw_col_block], "CAST_RINT", 4 * bw_col_block)
+                            T.pipe_barrier("v")
+
+                            T.tile.compare(v1_bw_mask, v1_bw_bmm2[8:12, 0:bw_col_block], 0.0, "GT")
+                            T.pipe_barrier("v")
+                            T.tile.mul(v1_bw_bmm2[8:12, 0:bw_col_block], v1_bw_bmm2[8:12, 0:bw_col_block], v1_bw_diff_2d[8:12, 0:bw_col_block])
+                            T.pipe_barrier("v")
+                            T.reduce_sum(v1_bw_bmm2[8:12, 0:bw_col_block], v1_bw_dw[8:12], 1)
+                            T.pipe_barrier("v")
+                            T.tile.add(v1_bw_dw_accum[8:12], v1_bw_dw_accum[8:12], v1_bw_dw[8:12])
+                            T.tile.mul(v1_bw_rg[8:12, 0:bw_col_block], v1_bw_weight_2d[8:12, 0:bw_col_block], v1_bw_diff_2d[8:12, 0:bw_col_block])
+                            T.pipe_barrier("v")
+                            T.tile.select(v1_bw_bmm2[8:12, 0:bw_col_block], v1_bw_mask, v1_bw_rg[8:12, 0:bw_col_block], 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                            T.pipe_barrier("v")
+                            T.tile.cast(v1_bw_rg_half[8:12, 0:bw_col_block], v1_bw_bmm2[8:12, 0:bw_col_block], "CAST_RINT", 4 * bw_col_block)
+                            T.pipe_barrier("v")
+
+                            T.tile.compare(v1_bw_mask, v1_bw_bmm2[12:16, 0:bw_col_block], 0.0, "GT")
+                            T.pipe_barrier("v")
+                            T.tile.mul(v1_bw_bmm2[12:16, 0:bw_col_block], v1_bw_bmm2[12:16, 0:bw_col_block], v1_bw_diff_2d[12:16, 0:bw_col_block])
+                            T.pipe_barrier("v")
+                            T.reduce_sum(v1_bw_bmm2[12:16, 0:bw_col_block], v1_bw_dw[12:16], 1)
+                            T.pipe_barrier("v")
+                            T.tile.add(v1_bw_dw_accum[12:16], v1_bw_dw_accum[12:16], v1_bw_dw[12:16])
+                            T.tile.mul(v1_bw_rg[12:16, 0:bw_col_block], v1_bw_weight_2d[12:16, 0:bw_col_block], v1_bw_diff_2d[12:16, 0:bw_col_block])
+                            T.pipe_barrier("v")
+                            T.tile.select(v1_bw_bmm2[12:16, 0:bw_col_block], v1_bw_mask, v1_bw_rg[12:16, 0:bw_col_block], 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                            T.pipe_barrier("v")
+                            T.tile.cast(v1_bw_rg_half[12:16, 0:bw_col_block], v1_bw_bmm2[12:16, 0:bw_col_block], "CAST_RINT", 4 * bw_col_block)
+                            T.pipe_barrier("v")
+                        else:
+                            T.tile.compare(
+                                v1_bw_mask,
+                                v1_bw_bmm2,
+                                0.0,
+                                "GT",
+                            )
+                            T.pipe_barrier("v")
+                            # dWeight consumes the unweighted diff tile and is
+                            # accumulated across both 64-column subtiles.
+                            T.tile.mul(
+                                v1_bw_bmm2,
+                                v1_bw_bmm2,
+                                v1_bw_diff_2d,
+                            )
+                            T.pipe_barrier("v")
+                            T.reduce_sum(
+                                v1_bw_bmm2,
+                                v1_bw_dw,
+                                1,
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
+
+                            T.tile.mul(
+                                v1_bw_rg,
+                                v1_bw_weight_2d,
+                                v1_bw_diff_2d,
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_bw_bmm2,
+                                v1_bw_mask,
+                                v1_bw_rg,
+                                0.0,
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.cast(
+                                v1_bw_rg_half,
+                                v1_bw_bmm2,
+                                "CAST_RINT",
+                                rows_per_aiv * bw_col_block,
+                            )
+                            T.pipe_barrier("v")
                         T.set_flag("v", "mte3", 2)
                         T.wait_flag("v", "mte3", 2)
                         T.pipe_barrier("mte3")
