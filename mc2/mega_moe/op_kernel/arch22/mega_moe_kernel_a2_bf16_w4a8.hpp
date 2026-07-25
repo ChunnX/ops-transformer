@@ -126,6 +126,9 @@ public:
         // `expertPerRank - 1`; BF16 path historically uses `expertPerRank - 2`.
         uint32_t epilogueGranularity{0};
         float swigluLimit;
+        uint32_t activationCode{0};
+        float activationAlpha{Epilogue::GptOssSwigluActivation::DEFAULT_ALPHA};
+        float activationBeta{Epilogue::SituActivation::DEFAULT_BETA};
         GM_ADDR contextGM{nullptr};
         GM_ADDR tilingGM{nullptr};
         MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
@@ -146,10 +149,13 @@ public:
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_, uint32_t epilogueGranularity_ = 0,
-               float swigluLimit_ = std::numeric_limits<float>::infinity(), GM_ADDR tilingGM_ = nullptr)
+               float swigluLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
+               float activationAlpha_ = Epilogue::GptOssSwigluActivation::DEFAULT_ALPHA,
+               float activationBeta_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
+              activationCode(activationCode_), activationAlpha(activationAlpha_), activationBeta(activationBeta_),
               contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
               layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
               layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
@@ -1314,7 +1320,9 @@ private:
                                         tokenPerExpertLayout(0, params.EP - 1, 0)],
                                rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank, params.EP,
                                RuntimeRank(params), params.listLen, resource, params.epilogueCoreNum,
-                               params.swigluLimit, params.gmmOutPreRowStride);
+                               params.swigluLimit, params.activationCode, params.activationAlpha,
+                               params.activationBeta,
+                               params.gmmOutPreRowStride);
             }
             AscendC::SyncAll<true>();
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);

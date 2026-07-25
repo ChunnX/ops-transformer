@@ -129,7 +129,10 @@ private:
     uint64_t maxOutputSize_;
     int32_t epWorldSize_;
     int32_t listLen_;
+    uint32_t activationCode_;
     float activationClamp_;
+    float activationAlpha_;
+    float activationBeta_;
 
     MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
     MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
@@ -177,7 +180,10 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
         maxOutputSize_ = tilingData.common.maxRecvTokenNum;
         listLen_ = tilingData.common.listLen;
 
+        activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
+        activationAlpha_ = tilingData.common.activationAlpha;
+        activationBeta_ = tilingData.common.activationBeta;
 
         moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -194,7 +200,10 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
         maxOutputSize_ = tilingData.common.maxRecvTokenNum;
         listLen_ = tilingData.common.listLen;
 
+        activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
+        activationAlpha_ = tilingData.common.activationAlpha;
+        activationBeta_ = tilingData.common.activationBeta;
 
         moeInitRoutingV2TilingData = tilingData.moeInitRoutingV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -359,6 +368,9 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                moeInitRoutingQuantV2TilingData,
                                                epilogueGranularity,
                                                activationClamp_,
+                                               activationCode_,
+                                               activationAlpha_,
+                                               activationBeta_,
                                                tilingGM_};
     } else {
         params = typename MatmulKernel::Params{problemShape,
@@ -398,6 +410,9 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                moeInitRoutingV2TilingData,
                                                epilogueGranularity,
                                                activationClamp_,
+                                               activationCode_,
+                                               activationAlpha_,
+                                               activationBeta_,
                                                tilingGM_};
     }
 
