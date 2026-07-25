@@ -95,8 +95,10 @@ namespace optiling{
     const int64_t SPARSE_MODE_INT_MAX = 2147483647;
     const uint32_t TAIL_TASK_DIVISOR = 2;
 
-    uint32_t MAX_KV_STACK_LEN = 512;
-    uint32_t Q_TILE_CEIL = 128;
+    // uint32_t MAX_KV_STACK_LEN = 512;
+    // uint32_t Q_TILE_CEIL = 128;
+    uint32_t MAX_KV_STACK_LEN = 256;
+    uint32_t Q_TILE_CEIL = 64;
     const uint32_t Q_TILE_CEIL_MIN = 64;       // halving floor for QBasicTile
     const uint32_t MAX_KV_STACK_LEN_MIN = 256; // halving floor for KSeqStackTile
     const uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
@@ -750,9 +752,9 @@ namespace optiling{
 
     ge::graphStatus FAInferTiling::DoTiling(FAInferTilingData &tilingdata)
     {
-        if (!ResolveDynamicTiling()) {
-            return ge::GRAPH_FAILED;
-        }
+        // if (!ResolveDynamicTiling()) {
+        //     return ge::GRAPH_FAILED;
+        // }
         FillBasicTilingData(tilingdata);
         if (!faInfo_.isTilingSink) {
             FillSplitCoreTilingData(tilingdata);
