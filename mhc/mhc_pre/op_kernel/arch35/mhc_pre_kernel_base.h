@@ -263,6 +263,7 @@ public:
         v1ChunkDSize_ = tiling_->v1ChunkDSize;
         hasGamma_ = (tiling_->hasGamma != 0);
         hasResi_ = (tiling_->hasResi != 0);
+        implMode_ = tiling_->implMode;
         eleNumPerVf_ = MhcPreUtils::GetVRegSize() / sizeof(P);
     }
 
@@ -925,7 +926,7 @@ protected:
     bool outFlag_;
     bool hasGamma_;
     bool hasResi_ = true;
-    uint32_t implMode_ = MHC_PRE_IMPL_MODE_HF32; // Fake value until impl_mode is passed through tiling data.
+    uint32_t implMode_ = MHC_PRE_IMPL_MODE_FP32;
 
     GlobalTensor<T> xGm_;
     GlobalTensor<P> phiGm_;

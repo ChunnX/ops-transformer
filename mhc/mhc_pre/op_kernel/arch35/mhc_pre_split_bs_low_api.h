@@ -176,9 +176,6 @@ private:
         uint64_t mAlign = LowApiAlign(this->mnConfig_.curSingleCoreM, AscendC::BLOCK_CUBE);
         uint64_t nAlign = LowApiAlign(this->mnConfig_.n, AscendC::BLOCK_CUBE);
         uint64_t baseK = (256 / AscendC::Std::max(mAlign, nAlign)) * 32;
-        if (this->implMode_ == MHC_PRE_IMPL_MODE_FP32) {
-            baseK = 32;
-        }
         mmService_.Process(this->mnConfig_.curSingleCoreM, this->mnConfig_.n,
             this->mnConfig_.curSingleCoreM, baseK, isFirstKL1, isLastKL1, currentAL1, currentBL1);
 
