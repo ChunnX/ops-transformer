@@ -626,16 +626,31 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm2(const DLIGradKLLossRu
         WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q_INDEX[l1PingPongFlag & 1]);
         CopyInMm2AToL1(info, n1IndexId, l1PingPongFlag);
 
+        if (info.curS2LoopTimes > 0) {
+            uint32_t curS2BlkSize = (info.curS2LoopTimes == 1) ?
+                                    info.curS2StepSize : constInfo.s2BaseBlk;
+            WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[l0PingPongFlag & 1]);
+            CopyInMm2BToL1(info, n2IndexId, 0, curS2BlkSize, l0PingPongFlag);
+            SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY_INDEX[l0PingPongFlag & 1]);
+        }
+
         for (uint32_t s2InnerIdx = 0; s2InnerIdx < info.curS2LoopTimes; s2InnerIdx++) {
             mmParams.dstFixOffset = dstHeadOffset + s2InnerIdx * constInfo.s2BaseBlk;
             uint32_t curS2BlkSize = (s2InnerIdx == info.curS2LoopTimes - 1) ?
                                     (info.curS2StepSize - s2InnerIdx * constInfo.s2BaseBlk) : constInfo.s2BaseBlk;
             mmParams.singleN = curS2BlkSize;
 
-            WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[l0PingPongFlag & 1]);
-            CopyInMm2BToL1(info, n2IndexId, s2InnerIdx, curS2BlkSize, l0PingPongFlag);
+            uint8_t nextL0PingPongFlag = (l0PingPongFlag + 1) & 1;
+            if (s2InnerIdx + 1 < info.curS2LoopTimes) {
+                uint32_t nextS2InnerIdx = s2InnerIdx + 1;
+                uint32_t nextS2BlkSize = (nextS2InnerIdx == info.curS2LoopTimes - 1) ?
+                                         (info.curS2StepSize - nextS2InnerIdx * constInfo.s2BaseBlk) :
+                                         constInfo.s2BaseBlk;
+                WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[nextL0PingPongFlag]);
+                CopyInMm2BToL1(info, n2IndexId, nextS2InnerIdx, nextS2BlkSize, nextL0PingPongFlag);
+                SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY_INDEX[nextL0PingPongFlag]);
+            }
 
-            SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY_INDEX[l0PingPongFlag & 1]);
             WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY_INDEX[l0PingPongFlag & 1]);
 
             auto mm2DstGm = mm2ResGm[info.taskIdMod2][mmParams.dstFixOffset];
