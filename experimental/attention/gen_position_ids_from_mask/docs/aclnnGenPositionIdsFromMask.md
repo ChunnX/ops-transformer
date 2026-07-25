@@ -15,7 +15,7 @@
 
 - 计算逻辑：对 `attentionMask` 的每一行（每个 Batch），沿序列维计算前缀和后减 1 得到有效 token 的递增位置编号，padding 位置替换为填充值。等价表达：
 
-  ```
+  ```python
   c = cumsum(mask, axis=-1)
   p = c - 1
   p[mask == 0] = paddingFillValue
