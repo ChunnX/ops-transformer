@@ -178,7 +178,7 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
                 "ori_mask_mode",
                 std::to_string(oriMaskMode).c_str(),
                 "When has_ori_kv is true, the value of ori_mask_mode "
-                "must be in [0, 3, 4]");
+                "must be in ['0', '3', '4']");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // ori_win_left >= -1
@@ -216,7 +216,7 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
                 "cmp_mask_mode",
                 std::to_string(cmpMaskMode).c_str(),
                 "When has_cmp_kv is true, the value of cmp_mask_mode "
-                "must be in [0, 3]");
+                "must be in ['0', '3']");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // cmp_ratio: 1~128
@@ -252,7 +252,7 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         strcmp(layoutQOptional, "BSND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "layout_q",
             layoutQOptional,
-            "The value of layout_q must be in [TND, BSND]");
+            "The value of layout_q must be in ['TND', 'BSND']");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_kv: BSND, TND, or PA_BBND
@@ -261,7 +261,7 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         strcmp(layoutKvOptional, "PA_BBND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "layout_kv",
             layoutKvOptional,
-            "The value of layout_kv must be in [TND, BSND, PA_BBND]");
+            "The value of layout_kv must be in ['TND', 'BSND', 'PA_BBND']");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 非PA场景下（layout_kv != PA_BBND），layout_q必须与layout_kv相同

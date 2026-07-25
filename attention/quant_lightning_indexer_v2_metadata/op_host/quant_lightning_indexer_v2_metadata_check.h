@@ -162,7 +162,7 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
     if (maskMode != QLI_V2_NO_MASK_MODE && maskMode != QLI_V2_CAUSAL_MASK_MODE) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QLI_V2_ACLNN_OP_NAME, "mask_mode",
             std::to_string(maskMode).c_str(),
-            "The value of mask_mode must be in [0, 3]");
+            "The value of mask_mode must be in ['0', '3']");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_q 校验
@@ -175,7 +175,7 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
         strcmp(layoutQOptional, "BSND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QLI_V2_ACLNN_OP_NAME, "layout_q",
             layoutQOptional,
-            "The value of layout_q must be in [TND, BSND]");
+            "The value of layout_q must be in ['TND', 'BSND']");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_k 校验
@@ -227,7 +227,7 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
                 "cmp_ratio",
                 std::to_string(cmpRatio).c_str(),
                 "The value of cmp_ratio must be in "
-                "[1, 2, 4, 8, 16, 32, 64, 128]");
+                "['1', '2', '4', '8', '16', '32', '64', '128']");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (strcmp(layoutKOptional, "PA_BBND") != 0) {
@@ -266,7 +266,7 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QLI_V2_ACLNN_OP_NAME,
                 "quant_mode",
                 std::to_string(quantMode).c_str(),
-                "The value of quant_mode must be in [1, 2, 4]");
+                "The value of quant_mode must be in ['1', '2', '4']");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // cmp_ratio 校验
@@ -288,7 +288,7 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
                 "layout_k",
                 layoutKOptional,
                 "The value of layout_k must be in "
-                "[TND, BSND, PA_BBND]");
+                "['TND', 'BSND', 'PA_BBND']");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }

@@ -184,7 +184,7 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
     if (maskMode != SLI_NO_MASK_MODE && maskMode != SLI_CAUSAL_MASK_MODE) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "mask_mode",
             std::to_string(maskMode).c_str(),
-            "The value of mask_mode must be in [0, 3]");
+            "The value of mask_mode must be in ['0', '3']");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // cmp_ratio 校验
@@ -208,7 +208,7 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
         strcmp(layoutQOptional, "BSND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "layout_q",
             layoutQOptional,
-            "The value of layout_q must be in [TND, BSND]");
+            "The value of layout_q must be in ['TND', 'BSND']");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_k 校验
@@ -221,7 +221,7 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
         strcmp(layoutKOptional, "BSND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "layout_k",
             layoutKOptional,
-            "The value of layout_k must be in [TND, BSND]");
+            "The value of layout_k must be in ['TND', 'BSND']");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_q必须与layout_k相同
