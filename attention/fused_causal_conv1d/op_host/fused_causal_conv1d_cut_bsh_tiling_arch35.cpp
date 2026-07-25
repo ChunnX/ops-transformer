@@ -14,6 +14,7 @@
  */
 
 #include "fused_causal_conv1d_cut_bsh_tiling_arch35.h"
+#include <limits>
 
 namespace optiling {
 constexpr uint64_t DIM_0 = 0;
@@ -57,8 +58,8 @@ constexpr uint64_t BATCH_MIN = 1;
 constexpr uint64_t BATCH_MAX = 256;
 constexpr uint64_t KERNEL_WIDTH_MAX = 6;
 
-constexpr uint64_t DIM_ALIGN_ELEMENTS = 128;           // 256 bytes / 2 bytes per element (fp16/bf16)
-constexpr uint64_t SYSTEM_RESERVED_UB_SIZE = 8 * 1024; // 8 KB system reserved UB space
+constexpr uint64_t DIM_ALIGN_ELEMENTS = 128;            // 256 bytes / 2 bytes per element (fp16/bf16)
+constexpr uint64_t SYSTEM_RESERVED_UB_SIZE = 8 * 1024;  // 8 KB system reserved UB space
 constexpr uint64_t DOUBLE_BUFFER_NUM = 2;
 constexpr uint64_t TILING_KEY_BSH_BF16 = 10000UL;
 constexpr uint64_t TILING_KEY_BSH_FP16 = 10001UL;
@@ -135,23 +136,27 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetPlatformInfo()
 ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDtype()
 {
     if (xType_ != ge::DataType::DT_FLOAT16 && xType_ != ge::DataType::DT_BF16) {
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x", Ops::Base::ToString(xType_).c_str(),
-                                              "The dtype of x must be FLOAT16 or BF16");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(),
+            "x",
+            Ops::Base::ToString(xType_).c_str(),
+            "The dtype of x must be FLOAT16 or BF16");
         return ge::GRAPH_FAILED;
     }
 
     if (weightType_ != xType_) {
         std::string dtypeMsg = Ops::Base::ToString(xType_) + " and " + Ops::Base::ToString(weightType_);
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x and weight", dtypeMsg.c_str(),
-                                               "The dtypes of x and weight must be the same");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            context_->GetNodeName(), "x and weight", dtypeMsg.c_str(), "The dtypes of x and weight must be the same");
         return ge::GRAPH_FAILED;
     }
 
     auto cacheStatesType = context_->GetInputDesc(INPUT_CACHE_STATES_INDEX)->GetDataType();
     if (cacheStatesType != xType_) {
         std::string dtypeMsg = Ops::Base::ToString(xType_) + " and " + Ops::Base::ToString(cacheStatesType);
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x and cache_states", dtypeMsg.c_str(),
-                                               "The dtypes of x and cache_states must be the same");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(),
+            "x and cache_states",
+            dtypeMsg.c_str(),
+            "The dtypes of x and cache_states must be the same");
         return ge::GRAPH_FAILED;
     }
 
@@ -160,9 +165,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDtype()
     if (cacheIndicesDesc != nullptr) {
         auto cacheIndicesType = cacheIndicesDesc->GetDataType();
         if (cacheIndicesType != ge::DataType::DT_INT32) {
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "cache_indices",
-                                                  Ops::Base::ToString(cacheIndicesType).c_str(),
-                                                  "The dtype of cache_indices must be INT32");
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(),
+                "cache_indices",
+                Ops::Base::ToString(cacheIndicesType).c_str(),
+                "The dtype of cache_indices must be INT32");
             return ge::GRAPH_FAILED;
         }
     }
@@ -172,9 +178,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDtype()
     if (seqStartIndexDesc != nullptr) {
         auto seqStartIndexType = seqStartIndexDesc->GetDataType();
         if (seqStartIndexType != ge::DataType::DT_INT32) {
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "query_start_loc",
-                                                  Ops::Base::ToString(seqStartIndexType).c_str(),
-                                                  "The dtype of query_start_loc must be INT32");
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(),
+                "query_start_loc",
+                Ops::Base::ToString(seqStartIndexType).c_str(),
+                "The dtype of query_start_loc must be INT32");
             return ge::GRAPH_FAILED;
         }
     }
@@ -187,22 +194,22 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckXDim()
 {
     uint64_t xDimNum = xShape_.GetDimNum();
     if (xDimNum != X_DIM_NUM) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x", std::to_string(xDimNum).c_str(),
-                                                 "The shape dim of x must be 2");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context_->GetNodeName(), "x", std::to_string(xDimNum).c_str(), "The shape dim of x must be 2");
         return ge::GRAPH_FAILED;
     }
     if (!(cuSeqLen_ >= CU_SEQ_LEN_MIN && cuSeqLen_ <= CU_SEQ_LEN_MAX)) {
         std::string reasonMsg = "The value of cu_seq_len must be within the range [" + std::to_string(CU_SEQ_LEN_MIN) +
                                 ", " + std::to_string(CU_SEQ_LEN_MAX) + "]";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x", std::to_string(cuSeqLen_).c_str(),
-                                              reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "x", std::to_string(cuSeqLen_).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     if (!(dim_ >= DIM_MIN && dim_ <= DIM_MAX && dim_ % DIM_MIN == 0)) {
         std::string reasonMsg = "The value of dim must be within the range [" + std::to_string(DIM_MIN) + ", " +
                                 std::to_string(DIM_MAX) + "] and must be a multiple of " + std::to_string(DIM_MIN);
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x", std::to_string(dim_).c_str(),
-                                              reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "x", std::to_string(dim_).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -212,21 +219,24 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckWeightDim()
 {
     uint64_t weightDimNum = weightShape_.GetDimNum();
     if (weightDimNum != WEIGHT_DIM_NUM) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "weight",
-                                                 std::to_string(weightDimNum).c_str(),
-                                                 "The shape dim of weight must be 2");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(),
+            "weight",
+            std::to_string(weightDimNum).c_str(),
+            "The shape dim of weight must be 2");
         return ge::GRAPH_FAILED;
     }
     uint64_t weightDim = weightShape_.GetDim(DIM_1);
     if (weightDim != dim_) {
         std::string reasonMsg = "Shape [1] of weight must be equal to shape [1] of x (" + std::to_string(dim_) + ")";
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "weight", std::to_string(weightDim).c_str(),
-                                              reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "weight", std::to_string(weightDim).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     if (kernelWidth_ != 3) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "weight", std::to_string(kernelWidth_).c_str(),
-                                              "The value of kernel_width must be equal to 3");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "weight",
+            std::to_string(kernelWidth_).c_str(),
+            "The value of kernel_width must be equal to 3");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -236,24 +246,34 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckCacheStatesDim()
 {
     uint64_t cacheStatesDimNum = cacheStatesShape_.GetDimNum();
     if (cacheStatesDimNum != CACHE_STATES_DIM_NUM) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "cache_states",
-                                                 std::to_string(cacheStatesDimNum).c_str(),
-                                                 "The shape dim of cache_states must be 3");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(),
+            "cache_states",
+            std::to_string(cacheStatesDimNum).c_str(),
+            "The shape dim of cache_states must be 3");
+        return ge::GRAPH_FAILED;
+    }
+    // cache_states shape[0] 必须 >= batch，保证每个 batch 都能索引到 cache line
+    uint64_t cacheStatesDim0 = cacheStatesShape_.GetDim(DIM_0);
+    if (cacheStatesDim0 < batch_) {
+        std::string reasonMsg =
+            "Shape [0] of cache_states must be greater than or equal to batch (" + std::to_string(batch_) + ")";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "cache_states", std::to_string(cacheStatesDim0).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     uint64_t cacheStatesDim1 = cacheStatesShape_.GetDim(DIM_1);
     if (cacheStatesDim1 < (kernelWidth_ - 1)) {
         std::string reasonMsg =
             "Shape [1] of cache_states must be greater than or equal to " + std::to_string(kernelWidth_ - 1);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cache_states",
-                                              std::to_string(cacheStatesDim1).c_str(), reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "cache_states", std::to_string(cacheStatesDim1).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     uint64_t cacheStatesDim2 = cacheStatesShape_.GetDim(DIM_2);
     if (cacheStatesDim2 != dim_) {
         std::string reasonMsg = "Shape [2] of cache_states must be equal to " + std::to_string(dim_);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cache_states",
-                                              std::to_string(cacheStatesDim2).c_str(), reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "cache_states", std::to_string(cacheStatesDim2).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -263,26 +283,197 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckIndexDims()
 {
     auto seqStartIndexStorageShape = context_->GetOptionalInputShape(INPUT_QUERY_START_LOC_INDEX);
     if (seqStartIndexStorageShape == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "query_start_loc", "nullptr",
-                                              "query_start_loc cannot be nullptr");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "query_start_loc", "nullptr", "query_start_loc cannot be nullptr");
         return ge::GRAPH_FAILED;
     }
     // cache_indices 可选：为空时 kernel 使用 batch_idx 作为 cache line
     auto seqStartIndexShape = seqStartIndexStorageShape->GetOriginShape();
     uint64_t seqStartIndexDimNum = seqStartIndexShape.GetDimNum();
     if (seqStartIndexDimNum != SEQ_START_INDEX_DIM_NUM) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "query_start_loc",
-                                                 std::to_string(seqStartIndexDimNum).c_str(),
-                                                 "The shape dim of query_start_loc must be 1");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(),
+            "query_start_loc",
+            std::to_string(seqStartIndexDimNum).c_str(),
+            "The shape dim of query_start_loc must be 1");
         return ge::GRAPH_FAILED;
     }
     uint64_t seqStartIndexDim0 = seqStartIndexShape.GetDim(DIM_0);
     if (seqStartIndexDim0 != (batch_ + 1)) {
         std::string reasonMsg = "Shape [0] of query_start_loc must be equal to " + std::to_string(batch_ + 1);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "query_start_loc",
-                                              std::to_string(seqStartIndexDim0).c_str(), reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "query_start_loc", std::to_string(seqStartIndexDim0).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+// cache_indices 校验：非 APC 为 1D [batch]；APC 为 2D [batch, maxNumBlocks]；shape[0] 必须等于 batch
+ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckCacheIndicesDim()
+{
+    auto cacheIndicesStorage = context_->GetOptionalInputShape(INPUT_CACHE_INDICES_INDEX);
+    if (cacheIndicesStorage == nullptr) {
+        return ge::GRAPH_SUCCESS;  // 可选输入，缺省即跳过
+    }
+    auto cacheIndicesShape = cacheIndicesStorage->GetOriginShape();
+    size_t cacheIndicesDimNum = cacheIndicesShape.GetDimNum();
+
+    if (apcEnabled_ == 1) {
+        if (cacheIndicesDimNum != DIM_2) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(),
+                "cache_indices",
+                std::to_string(cacheIndicesDimNum).c_str(),
+                "The shape dim of cache_indices must be 2 when APC is enabled");
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        if (cacheIndicesDimNum != SEQ_START_INDEX_DIM_NUM) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(),
+                "cache_indices",
+                std::to_string(cacheIndicesDimNum).c_str(),
+                "The shape dim of cache_indices must be 1");
+            return ge::GRAPH_FAILED;
+        }
+    }
+
+    uint64_t cacheIndicesDim0 = static_cast<uint64_t>(cacheIndicesShape.GetDim(DIM_0));
+    if (cacheIndicesDim0 != batch_) {
+        std::string reasonMsg = "Shape [0] of cache_indices must be equal to batch (" + std::to_string(batch_) + ")";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "cache_indices", std::to_string(cacheIndicesDim0).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    // cache_states.shape[0] 必须 >= cache_indices 总元素数（cache_indices 中保存的是 cache_states 的 line 索引）
+    // 1D 时总元素数 = dim0；2D 时总元素数 = dim0 * dim1
+    uint64_t cacheIndicesTotal = cacheIndicesDim0;
+    if (cacheIndicesDimNum == DIM_2) {
+        cacheIndicesTotal *= static_cast<uint64_t>(cacheIndicesShape.GetDim(DIM_1));
+    }
+    uint64_t cacheStatesDim0 = cacheStatesShape_.GetDim(DIM_0);
+    if (cacheStatesDim0 < cacheIndicesTotal) {
+        std::string reasonMsg = "Shape [0] of cache_states (" + std::to_string(cacheStatesDim0) +
+                                ") must be greater than or equal to the total element count of cache_indices (" +
+                                std::to_string(cacheIndicesTotal) + ")";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "cache_indices", std::to_string(cacheIndicesTotal).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// APC 开启时，以下可选输入必须全部非 NULL
+ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckApcOptionalInputs()
+{
+    if (apcEnabled_ != 1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    struct RequiredInput {
+        uint64_t idx;
+        const char *name;
+    };
+    const RequiredInput requiredInputs[] = {
+        {INPUT_INITIAL_STATE_MODE_INDEX, "initial_state_mode"},
+        {INPUT_BLOCK_IDX_FIRST_INDEX, "block_idx_first_scheduled_token"},
+        {INPUT_BLOCK_IDX_LAST_INDEX, "block_idx_last_scheduled_token"},
+        {INPUT_INITIAL_STATE_IDX_INDEX, "initial_state_idx"},
+    };
+    for (const auto &r : requiredInputs) {
+        if (context_->GetOptionalInputShape(r.idx) == nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context_->GetNodeName(), r.name, "nullptr", "This input cannot be nullptr when APC is enabled");
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// 属性合法性校验：activation_mode / pad_slot_id / run_mode / residual_connection /
+//                 block_size / max_query_len / conv_mode
+// BSH 模板仅处理 2D 输入，max_query_len 不允许为 -1
+ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckAttrs()
+{
+    auto attrs = context_->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
+
+    // activation_mode ∈ {0, 1, 2}
+    int64_t activationMode = 0;
+    const int64_t *p = attrs->GetAttrPointer<int64_t>(ATTR_ACTIVATION_MODE_INDEX);
+    if (p != nullptr) {
+        activationMode = *p;
+    }
+    if (activationMode != 0 && activationMode != 1 && activationMode != 2) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "activation_mode",
+            std::to_string(activationMode).c_str(),
+            "The value of activation_mode must be 0, 1 or 2");
+        return ge::GRAPH_FAILED;
+    }
+
+    // pad_slot_id 不做范围校验（允许任意 int64 值）
+
+    // run_mode ∈ {0, 1}
+    if (runMode_ != 0 && runMode_ != 1) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "run_mode",
+            std::to_string(runMode_).c_str(),
+            "The value of run_mode must be 0 or 1");
+        return ge::GRAPH_FAILED;
+    }
+
+    // run_mode=1（decode）时，num_computed_tokens 必须提供
+    if (runMode_ == 1 && hasNumComputedTokens_ == 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "num_computed_tokens",
+            "nullptr",
+            "num_computed_tokens cannot be nullptr when run_mode is 1");
+        return ge::GRAPH_FAILED;
+    }
+
+    // residual_connection ∈ {0, 1}
+    if (residualConnection_ != 0UL && residualConnection_ != 1UL) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "residual_connection",
+            std::to_string(residualConnection_).c_str(),
+            "The value of residual_connection must be 0 or 1");
+        return ge::GRAPH_FAILED;
+    }
+
+    // block_size ∈ [2, INT64_MAX]（属性类型 int64，读入 uint64_t）
+    if (blockSize_ < 2UL || blockSize_ > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "block_size",
+            std::to_string(blockSize_).c_str(),
+            "The value of block_size must be within [2, INT64_MAX]");
+        return ge::GRAPH_FAILED;
+    }
+
+    // BSH 模板仅处理 2D 输入 x，max_query_len 必须 > 0
+    if (maxQueryLen_ <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "max_query_len",
+            std::to_string(maxQueryLen_).c_str(),
+            "The value of max_query_len must be greater than 0 when x is 2D");
+        return ge::GRAPH_FAILED;
+    }
+
+    // 2D 输入 x 的第一维 cu_seq_len 不能超过 batch * max_query_len
+    if (cuSeqLen_ > batch_ * static_cast<uint64_t>(maxQueryLen_)) {
+        std::string reasonMsg = "Shape [0] of x must be less than or equal to batch * max_query_len (" +
+                                std::to_string(batch_ * static_cast<uint64_t>(maxQueryLen_)) + ")";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "x", std::to_string(cuSeqLen_).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    // conv_mode ∈ {0, 1}
+    if (convMode_ != 0UL && convMode_ != 1UL) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "conv_mode",
+            std::to_string(convMode_).c_str(),
+            "The value of conv_mode must be 0 or 1");
+        return ge::GRAPH_FAILED;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -296,11 +487,17 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDim()
         return ge::GRAPH_FAILED;
     if (CheckIndexDims() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
+    if (CheckCacheIndicesDim() != ge::GRAPH_SUCCESS)
+        return ge::GRAPH_FAILED;
+    if (CheckApcOptionalInputs() != ge::GRAPH_SUCCESS)
+        return ge::GRAPH_FAILED;
+    if (CheckAttrs() != ge::GRAPH_SUCCESS)
+        return ge::GRAPH_FAILED;
     if (!(batch_ >= BATCH_MIN && batch_ <= BATCH_MAX)) {
         std::string reasonMsg = "The value of batch must be within the range [" + std::to_string(BATCH_MIN) + ", " +
                                 std::to_string(BATCH_MAX) + "]";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "batch", std::to_string(batch_).c_str(),
-                                              reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "batch", std::to_string(batch_).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -325,8 +522,8 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckOutputParams()
     auto outputYType = outputYDesc->GetDataType();
     if (xType_ != outputYType) {
         std::string dtypeMsg = Ops::Base::ToString(xType_) + " and " + Ops::Base::ToString(outputYType);
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x and y", dtypeMsg.c_str(),
-                                               "The dtypes of x and y must be the same");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            context_->GetNodeName(), "x and y", dtypeMsg.c_str(), "The dtypes of x and y must be the same");
         return ge::GRAPH_FAILED;
     }
 
@@ -335,8 +532,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckOutputParams()
     auto outputCacheStatesType = outputCacheStatesDesc->GetDataType();
     if (xType_ != outputCacheStatesType) {
         std::string dtypeMsg = Ops::Base::ToString(xType_) + " and " + Ops::Base::ToString(outputCacheStatesType);
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x and output_cache_states", dtypeMsg.c_str(),
-                                               "The dtypes of x and output_cache_states must be the same");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(),
+            "x and output_cache_states",
+            dtypeMsg.c_str(),
+            "The dtypes of x and output_cache_states must be the same");
         return ge::GRAPH_FAILED;
     }
 
@@ -378,8 +577,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputDtypes()
 
     xDtypeSize_ = GetSizeByDataType(xType_);
     if (xDtypeSize_ == 0) {
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x", Ops::Base::ToString(xType_).c_str(),
-                                              "The dtype size of x must be greater than 0");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(),
+            "x",
+            Ops::Base::ToString(xType_).c_str(),
+            "The dtype size of x must be greater than 0");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -390,11 +591,13 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputStrides()
     if (context_->InputIsView(INPUT_X_INDEX)) {
         auto *xStride = context_->GetInputStride(INPUT_X_INDEX);
         OP_CHECK_IF(xStride == nullptr || xStride->GetDimNum() == 0,
-                    OP_LOGE(context_->GetNodeName(), "x stride is invalid."), return ge::GRAPH_FAILED);
+            OP_LOGE(context_->GetNodeName(), "x stride is invalid."),
+            return ge::GRAPH_FAILED);
         if (xStride->GetDimNum() != xShape_.GetDimNum()) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x stride",
-                                                     std::to_string(xStride->GetDimNum()).c_str(),
-                                                     "The shape dim of x stride must be equal to that of x");
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(),
+                "x stride",
+                std::to_string(xStride->GetDimNum()).c_str(),
+                "The shape dim of x stride must be equal to that of x");
             return ge::GRAPH_FAILED;
         }
         xStride_ = xStride->GetStride(DIM_0);
@@ -405,10 +608,12 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputStrides()
     if (context_->InputIsView(INPUT_CACHE_STATES_INDEX)) {
         auto *cacheStride = context_->GetInputStride(INPUT_CACHE_STATES_INDEX);
         OP_CHECK_IF(cacheStride == nullptr || cacheStride->GetDimNum() == 0,
-                    OP_LOGE(context_->GetNodeName(), "cache_states stride is invalid."), return ge::GRAPH_FAILED);
+            OP_LOGE(context_->GetNodeName(), "cache_states stride is invalid."),
+            return ge::GRAPH_FAILED);
         if (cacheStride->GetDimNum() != cacheStatesShape_.GetDimNum()) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                context_->GetNodeName(), "cache_states stride", std::to_string(cacheStride->GetDimNum()).c_str(),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(),
+                "cache_states stride",
+                std::to_string(cacheStride->GetDimNum()).c_str(),
                 "The shape dim of cache_states stride must be equal to that of cache_states");
             return ge::GRAPH_FAILED;
         }
@@ -437,6 +642,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetShapeAttrsInfo()
     residualConnection_ = 0;
     if (context_->GetAttrs() != nullptr && context_->GetAttrs()->GetInt(ATTR_RESIDUAL_CONNECTION_INDEX) != nullptr) {
         residualConnection_ = *(context_->GetAttrs()->GetInt(ATTR_RESIDUAL_CONNECTION_INDEX));
+    }
+    runMode_ = 0;
+    if (context_->GetAttrs() != nullptr && context_->GetAttrs()->GetInt(ATTR_RUN_MODE_INDEX) != nullptr) {
+        runMode_ = *(context_->GetAttrs()->GetInt(ATTR_RUN_MODE_INDEX));
     }
 
     auto attrs = context_->GetAttrs();
@@ -470,8 +679,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetShapeAttrsInfo()
     }
     if (apcEnabled_ == 1) {
         if (blockSize_ == 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "blockSize", "0",
-                                                  "The value of blockSize must be greater than 0 when APC is enabled");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+                "blockSize",
+                "0",
+                "The value of blockSize must be greater than 0 when APC is enabled");
             return ge::GRAPH_FAILED;
         }
     }
@@ -481,8 +692,9 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetShapeAttrsInfo()
     // convMode!=0 或 apcEnabled 时，必须提供 num_computed_tokens
     if (convMode_ != 0 || apcEnabled_ == 1) {
         if (hasNumComputedTokens_ == 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                context_->GetNodeName(), "num_computed_tokens", "nullptr",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+                "num_computed_tokens",
+                "nullptr",
                 "num_computed_tokens cannot be nullptr when conv_mode != 0 or APC is enabled");
             return ge::GRAPH_FAILED;
         }
@@ -502,8 +714,8 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetShapeAttrsInfo()
 }
 
 // 辅助函数：计算切cu_seq_len时的核间切分信息（均分多尾核策略）
-FusedCausalConv1dCutBSHTiling::CuSeqLenSplitInfo
-FusedCausalConv1dCutBSHTiling::CalculateCuSeqLenSplitInfo(uint64_t cuSeqLen, uint64_t bsOverlap, uint64_t coreNum) const
+FusedCausalConv1dCutBSHTiling::CuSeqLenSplitInfo FusedCausalConv1dCutBSHTiling::CalculateCuSeqLenSplitInfo(
+    uint64_t cuSeqLen, uint64_t bsOverlap, uint64_t coreNum) const
 {
     CuSeqLenSplitInfo info;
 
@@ -523,27 +735,25 @@ FusedCausalConv1dCutBSHTiling::CalculateCuSeqLenSplitInfo(uint64_t cuSeqLen, uin
 
     // 前 remainder 个核是大核，后面是小核
     if (info.remainder > 0) {
-        info.blockFactor = info.baseLen + 1; // 大核载入长度
-        info.blockTailFactor = info.baseLen; // 小核载入长度
+        info.blockFactor = info.baseLen + 1;  // 大核载入长度
+        info.blockTailFactor = info.baseLen;  // 小核载入长度
     } else {
         // 所有核均匀分配
         info.blockFactor = info.baseLen;
         info.blockTailFactor = info.baseLen;
     }
-    info.realCoreNum = coreNum; // 所有核都使用
+    info.realCoreNum = coreNum;  // 所有核都使用
 
     return info;
 }
 
 // 计算二维切分时的tiling（支持不均匀切分 + dim循环）
 ge::graphStatus FusedCausalConv1dCutBSHTiling::CalcCoreUbTiling(uint64_t coreDim, uint64_t coreBS,
-                                                                uint64_t bsBlockFactor, int64_t availableUbSize,
-                                                                uint64_t weightCacheCoeffPerDim, uint64_t bsOverlap,
-                                                                uint64_t &ubFactorBS, uint64_t &ubFactorDim,
-                                                                uint64_t &loopNumBS, uint64_t &ubTailFactorBS,
-                                                                uint64_t &loopNumDim, uint64_t &ubTailFactorDim)
+    uint64_t bsBlockFactor, int64_t availableUbSize, uint64_t weightCacheCoeffPerDim, uint64_t bsOverlap,
+    uint64_t &ubFactorBS, uint64_t &ubFactorDim, uint64_t &loopNumBS, uint64_t &ubTailFactorBS, uint64_t &loopNumDim,
+    uint64_t &ubTailFactorDim)
 {
-    constexpr uint64_t XY_BUFFER_FACTOR = 2 * DOUBLE_BUFFER_NUM; // 2(x双) + 2(y双) = 4
+    constexpr uint64_t XY_BUFFER_FACTOR = 2 * DOUBLE_BUFFER_NUM;  // 2(x双) + 2(y双) = 4
     int64_t maxUbDim = availableUbSize / (weightCacheCoeffPerDim + coreBS * xDtypeSize_ * XY_BUFFER_FACTOR);
     maxUbDim = (maxUbDim / DIM_ALIGN_ELEMENTS) * DIM_ALIGN_ELEMENTS;
 
@@ -592,38 +802,48 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::Calculate2DTiling()
     auto alignUp = [](uint64_t x, uint64_t a) -> uint64_t { return ((x + a - 1) / a) * a; };
     constexpr uint64_t META_ALIGN = 32UL;
     uint64_t metaInt32Bytes = batch_ * sizeof(int32_t);
-    uint64_t metaTBufBytes = alignUp((batch_ + 1) * sizeof(int32_t), META_ALIGN); // startLoc
+    uint64_t metaTBufBytes = alignUp((batch_ + 1) * sizeof(int32_t), META_ALIGN);  // startLoc
     if (hasCacheIndices_ == 1 && apcEnabled_ == 0) {
-        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN); // 1D cacheIdx
+        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN);  // 1D cacheIdx
     }
     if (hasNumComputedTokens_ == 1) {
-        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN); // num_computed_tokens
+        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN);  // num_computed_tokens
     }
     if (hasAcceptTokenNum_ == 1) {
-        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN); // num_accepted_tokens
+        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN);  // num_accepted_tokens
     }
     if (apcEnabled_ == 1) {
-        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN) * 3; // blockIdxFirst/Last + initialStateIdx
+        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN) * 3;  // blockIdxFirst/Last + initialStateIdx
         // metaTBufBytes += alignUp(maxNumBlocks_ * sizeof(int32_t), META_ALIGN);  // 2D cacheIndices (单 batch)
     }
     uint64_t fixedUbSize = metaTBufBytes;
 
     // weight 双 buffer + cache 双 buffer：(K×2 + stateLen×2) × sizeof(T)
     // 注：cache UB 按 stateLen_ × maxUbDim × sizeof(T) 分配（正向加载，cachedStateLen 最大为 stateLen_）
-    uint64_t cacheStatesDim1 = cacheStatesShape_.GetDim(DIM_1); // stateLen
+    uint64_t cacheStatesDim1 = cacheStatesShape_.GetDim(DIM_1);  // stateLen
     uint64_t weightCacheCoeffPerDim =
         (kernelWidth_ * DOUBLE_BUFFER_NUM + cacheStatesDim1 * DOUBLE_BUFFER_NUM) * xDtypeSize_;
     int64_t availableUbSize = static_cast<int64_t>(ubSize_) - static_cast<int64_t>(fixedUbSize);
     OP_CHECK_IF(availableUbSize <= 0,
-                OP_LOGE(context_->GetNodeName(),
-                        "FusedCausalConv1dCutBSH availableUbSize <= 0 (ubSize_=%lu fixedUbSize=%lu)", ubSize_,
-                        fixedUbSize),
-                return ge::GRAPH_FAILED);
+        OP_LOGE(context_->GetNodeName(),
+            "FusedCausalConv1dCutBSH availableUbSize <= 0 (ubSize_=%lu fixedUbSize=%lu)",
+            ubSize_,
+            fixedUbSize),
+        return ge::GRAPH_FAILED);
 
     uint64_t mainCoreDim = (dimBlockFactor_ > 0) ? dimBlockFactor_ : DIM_ALIGN_ELEMENTS;
-    if (CalcCoreUbTiling(mainCoreDim, bsBlockFactor_, bsBlockFactor_, availableUbSize, weightCacheCoeffPerDim,
-                         bsOverlap, ubFactorBS_, ubFactorDim_, loopNumBS_, ubTailFactorBS_, loopNumDim_,
-                         ubTailFactorDim_) != ge::GRAPH_SUCCESS) {
+    if (CalcCoreUbTiling(mainCoreDim,
+            bsBlockFactor_,
+            bsBlockFactor_,
+            availableUbSize,
+            weightCacheCoeffPerDim,
+            bsOverlap,
+            ubFactorBS_,
+            ubFactorDim_,
+            loopNumBS_,
+            ubTailFactorBS_,
+            loopNumDim_,
+            ubTailFactorDim_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -632,10 +852,18 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::Calculate2DTiling()
     if (tailCoreDim == 0) {
         tailCoreDim = DIM_ALIGN_ELEMENTS;
     }
-    if (CalcCoreUbTiling(tailCoreDim, bsBlockTailFactor_, bsBlockTailFactor_, availableUbSize, weightCacheCoeffPerDim,
-                         bsOverlap, tailBlockubFactorBS_, tailBlockubFactorDim_, tailBlockloopNumBS_,
-                         tailBlockubTailFactorBS_, tailBlockloopNumDim_,
-                         tailBlockubTailFactorDim_) != ge::GRAPH_SUCCESS) {
+    if (CalcCoreUbTiling(tailCoreDim,
+            bsBlockTailFactor_,
+            bsBlockTailFactor_,
+            availableUbSize,
+            weightCacheCoeffPerDim,
+            bsOverlap,
+            tailBlockubFactorBS_,
+            tailBlockubFactorDim_,
+            tailBlockloopNumBS_,
+            tailBlockubTailFactorBS_,
+            tailBlockloopNumDim_,
+            tailBlockubTailFactorDim_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -647,10 +875,18 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::Calculate2DTiling()
         uint64_t lastCoreubFactorBS_unused = 0;
         uint64_t lastCoreloopNumBS_unused = 0;
         uint64_t lastCoreubTailFactorBS_unused = 0;
-        if (CalcCoreUbTiling(lastCoreDim, lastCoreBS, lastCoreBS, availableUbSize, weightCacheCoeffPerDim, bsOverlap,
-                             lastCoreubFactorBS_unused, lastCoreubFactorDim_, lastCoreloopNumBS_unused,
-                             lastCoreubTailFactorBS_unused, lastCoreloopNumDim_,
-                             lastCoreubTailFactorDim_) != ge::GRAPH_SUCCESS) {
+        if (CalcCoreUbTiling(lastCoreDim,
+                lastCoreBS,
+                lastCoreBS,
+                availableUbSize,
+                weightCacheCoeffPerDim,
+                bsOverlap,
+                lastCoreubFactorBS_unused,
+                lastCoreubFactorDim_,
+                lastCoreloopNumBS_unused,
+                lastCoreubTailFactorBS_unused,
+                lastCoreloopNumDim_,
+                lastCoreubTailFactorDim_) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -671,12 +907,11 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::Calculate2DTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::SearchBestCoreSplit(uint64_t N, uint64_t bsOverlap,
-                                                                   uint64_t &bestDimCores,
-                                                                   CuSeqLenSplitInfo &bestBSSplitInfo)
+ge::graphStatus FusedCausalConv1dCutBSHTiling::SearchBestCoreSplit(
+    uint64_t N, uint64_t bsOverlap, uint64_t &bestDimCores, CuSeqLenSplitInfo &bestBSSplitInfo)
 {
     uint64_t bestUsed = 0;
-    bool bestIsBalanced = false; // 当前最佳是否 BS 均分
+    bool bestIsBalanced = false;  // 当前最佳是否 BS 均分
     for (uint64_t dc = N; dc >= 1; --dc) {
         uint64_t base = N / dc;
         if (base == 0)
@@ -699,7 +934,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::SearchBestCoreSplit(uint64_t N, u
             // 选优条件
             bool better = false;
             if (!bestIsBalanced && isBalanced) {
-                better = true; // 不均分→均分 升级
+                better = true;  // 不均分→均分 升级
             } else if (bestIsBalanced == isBalanced) {
                 if (usedCores > bestUsed)
                     better = true;
@@ -874,8 +1109,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::PostTiling()
 
     // Save tiling data to buffer
     auto tilingDataSize = sizeof(FusedCausalConv1dCutBSHTilingData);
-    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-                           reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(),
+        context_->GetRawTilingData()->GetCapacity(),
+        reinterpret_cast<void *>(&tilingData_),
+        tilingDataSize);
     if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
@@ -943,4 +1180,4 @@ void FusedCausalConv1dCutBSHTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "%s", info.str().c_str());
 }
 
-} // namespace optiling
+}  // namespace optiling
