@@ -8,6 +8,8 @@
 
 """Register custom ops for torch.ops.custom and torch_npu."""
 
+import os
+import pkgutil
 import warnings
 
 import torch
@@ -18,7 +20,9 @@ from . import custom_ops_lib as custom_ops_lib
 from .converter import npu_stem_indexer as npu_stem_indexer
 from .converter import npu_stem_indexer_metadata as npu_stem_indexer_metadata
 
-__all__ = ["converter", "custom_ops_lib"]
+__all__ = list(
+    module for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)])
+)
 
 # get torch.ops.custom module
 custom_ops_module = getattr(torch.ops, "custom", None)
