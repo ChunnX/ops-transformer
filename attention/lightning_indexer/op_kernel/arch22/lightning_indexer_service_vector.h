@@ -361,9 +361,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             LIServiceVec::DoReduce(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], reduceOutInner, gRedCnt, s2BaseSize_);
             outQueue_.FreeTensor(reduceCacheBuf);
 
-            // BASELINE: skip both RadixTopK and Sort+MergeSort paths
-            // Only DoScale + DoReduce remains (shared baseline)
-            if (false && constInfo_.radixTotalBatch > 0) {
+            if (constInfo_.radixTotalBatch > 0) {
             // RadixTopK path: write scoreB16Gm, skip Sort+MergeSort
             int32_t radixCuRealAcSeq = cuRealAcSeq;
             if (constInfo_.qSeqSize == 0 && constInfo_.attenMaskFlag) {
