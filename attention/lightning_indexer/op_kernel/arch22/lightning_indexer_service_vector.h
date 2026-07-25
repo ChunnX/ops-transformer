@@ -380,17 +380,15 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 }
                 PipeBarrier<PIPE_V>();
             }
-            // Replace +1e30 with capped value (Mins), no PipeBarrier — use V→MTE3 event sync
+            // Replace +1e30 with capped value (Mins), use V→MTE3 event sync (no PipeBarrier)
             Mins(reduceOutInner, reduceOutInner, 1.0e29f, s2BaseSize_);
             {
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
                 uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
-                event_t eVM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-                SetFlag<HardEvent::V_MTE3>(eVM);
-                WaitFlag<HardEvent::V_MTE3>(eVM);
+                SetFlag<HardEvent::V_MTE3>(EVENTID_V_TO_MTE3_SCORE);
+                WaitFlag<HardEvent::V_MTE3>(EVENTID_V_TO_MTE3_SCORE);
                 DataCopyPad(scoreB16Gm[scoreOffset], reduceOutInner, DataCopyExtParams{
                     static_cast<uint16_t>(1), static_cast<uint32_t>(s2BaseSize_ * sizeof(float)), 0, 0, 0});
-                GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eVM);
             }
             } // end if radixCuS2Len > 0
             } else {
