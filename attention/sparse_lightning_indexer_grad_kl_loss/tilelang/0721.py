@@ -1451,8 +1451,11 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_bmm2 = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
+            # AscendC's sparse reference passes the packed compare bits through
+            # a float-typed LocalTensor. Keep the same byte capacity while
+            # matching that Select<float, float> overload.
             v1_bw_mask = T.alloc_ub(
-                rows_per_aiv * bw_col_block // 8, "uint8"
+                rows_per_aiv * bw_col_block // 32, calc_dtype
             )
             v1_bw_rg = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
