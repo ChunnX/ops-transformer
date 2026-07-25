@@ -305,8 +305,8 @@ def check_result(expect, result, data_type, pct_thd=0.005):
         n_sample = 10
         r_head = result_flat[:n_sample].cpu().to(torch.float32).numpy()
         c_head = expect_flat[:n_sample].cpu().to(torch.float32).numpy()
-        r_tail = result_flat[total - n_sample:].cpu().to(torch.float32).numpy()
-        c_tail = expect_flat[total - n_sample:].cpu().to(torch.float32).numpy()
+        r_tail = result_flat[total - n_sample :].cpu().to(torch.float32).numpy()
+        c_tail = expect_flat[total - n_sample :].cpu().to(torch.float32).numpy()
         for i in range(n_sample):
             diff_abs = abs(np.float64(c_head[i]) - np.float64(r_head[i]))
             diff_rate = cal_relative_diff_np_isclose(r_head[i], c_head[i])
