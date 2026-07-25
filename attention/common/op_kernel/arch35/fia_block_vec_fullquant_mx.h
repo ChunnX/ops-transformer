@@ -308,11 +308,9 @@ public:
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                          RunInfoX runInfo, uint32_t subLoop)
     {
-        LocalTensor<uint8_t> attenMaskUb;
         int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
-            attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
-            maskLine = AttenMaskCopyInDn(attenMaskUb, 0, runInfo.actVecMSize, runInfo, subLoop);
+            maskLine = computeMaskLine(runInfo, 0, subLoop);
         }
         if (isSkipCompute) {
             maskLine = -256;
@@ -369,9 +367,6 @@ public:
             }
         }
         bmm1ResBuf.SetCrossCore();
-        if constexpr (HAS_MASK) {
-            this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
-        }
 
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
@@ -1116,8 +1111,7 @@ public:
         }
     }
 
-    __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
-                                             RunInfoX &runInfo, uint32_t subLoop)
+    __aicore__ inline void computeMaskLine(RunInfoX &runInfo, uint32_t vecMIdx, uint32_t subLoop)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
@@ -1125,35 +1119,24 @@ public:
             s2RealSize = subLoop == 0 ? s2SplitSize : runInfo.actSingleLoopS2Size - s2SplitSize;
         }
 
-        MaskInfo maskInfo;
-        maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
-        maskInfo.gs1dealNum = mBaseSize;
-        maskInfo.s1Size = runInfo.actS1Size;
-        maskInfo.gSize = constInfo.realGSize;
-        maskInfo.s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
-        maskInfo.s2dealNum = s2RealSize;
-        maskInfo.s2Size = runInfo.actS2Size;
-        maskInfo.nBaseSize = s2BaseSizeCur;
-        maskInfo.preToken = constInfo.preTokens;
-        maskInfo.nextToken = constInfo.nextTokens;
-        maskInfo.sparseMode = static_cast<SparseMode>(constInfo.sparseMode);
-        maskInfo.batchIdx = (constInfo.attenMaskBatch == 1) ? 0 : runInfo.bIdx;
-        maskInfo.attenMaskBatchStride = constInfo.attenMaskS1Size * constInfo.attenMaskS2Size;
-        maskInfo.attenMaskS1Stride = constInfo.attenMaskS2Size;
-        maskInfo.attenMaskDstStride = 0U;
-        maskInfo.maskValue = negativeIntScalar;
-        maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
-        maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
-        maskInfo.maskFormat = MASK_LAYOUT;
-        maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
-
-        isSkipCompute = IsSkipVFCompute(maskInfo);
-        isSkipMask = IsSkipAttentionmask(maskInfo);
-        uint64_t maskLine = 0;
-        if (unlikely(!isSkipMask && !isSkipCompute)) {
-            maskLine = (ComputeAttenMaskOffsetCompressDn(maskInfo) % 2048) - 1;
+        int64_t nextToken = static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(runInfo.actS1Size);
+        uint32_t s1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
+        uint32_t s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
+        if (static_cast<int64_t>(info.s2StartIdx + s2RealSize) <= static_cast<int64_t>(s1StartIdx) + nextToken) {
+            isSkipMask = true;
+        } else {
+            isSkipMask = false;
         }
-        return (int64_t)maskLine;
+        if (maskLine < 0) {
+            isSkipCompute = -maskLine >= (info.gs1dealNum / 2);
+        } else {
+            isSkipCompute = maskLine >= info.nBaseSize;
+        }
+        int64_t maskLine = 0;
+        if (unlikely(!isSkipMask && !isSkipCompute)) {
+            maskLine = nextToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(s2StartIdx);
+        }
+        return maskLine;
     }
 };
 
