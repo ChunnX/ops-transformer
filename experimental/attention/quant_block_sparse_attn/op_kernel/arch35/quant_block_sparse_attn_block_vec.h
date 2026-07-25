@@ -22,7 +22,6 @@
 #include "quant_block_sparse_attn_attenmask.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/activation/softmax.h"
-#include "vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "vf/vf_flashupdate_new.h"
 #include "vf/vf_div_cast.h"
@@ -188,8 +187,6 @@ private:
 
     __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar,
                                                    SoftMaxShapeInfo &softmaxShapeInfo);
-    __aicore__ inline void InvalidLineProcess(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<T> &sumUb,
-                                              LocalTensor<T> &maxUb);
 
     __aicore__ inline int64_t ComputeOffsetForSoftmax(RunInfo &runInfo, const int64_t vec2S1Idx);
     __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
@@ -283,25 +280,6 @@ __aicore__ inline bool BSABlockVec<TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(Local
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InvalidLineProcess(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                      LocalTensor<T> &sumUb, LocalTensor<T> &maxUb)
-{
-    if (constInfo.softMaxCheckRes) {
-        SoftMaxShapeInfo softmaxShapeInfo{static_cast<uint32_t>(runInfo.halfS1RealSize), static_cast<uint32_t>(1),
-                                          static_cast<uint32_t>(runInfo.halfS1RealSize), static_cast<uint32_t>(1)};
-        bool res = SoftmaxInvalidLineCheck(maxUb, NEGATIVE_MIN_VALUE_FP32, softmaxShapeInfo);
-        if (!res) {
-            constInfo.softMaxCheckRes = false;
-        } else {
-            if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-                SoftmaxSumUpdate<T>(sumUb, maxUb, runInfo.halfS1RealSize, this->negativeFloatScalar,
-                                    this->positiveFloatScalar);
-            }
-        }
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::BroadCastAndCopyOut(RunInfo &runInfo, GlobalTensor<T> &sumGm,
                                                                        GlobalTensor<T> &maxGm, int64_t gmOffset,
                                                                        int64_t calculateSize)
@@ -346,7 +324,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
     LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
     LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
     if (runInfo.s2SparseBlk1RealSize < constInfo.kvSparseBlockSize) {
-        Duplicate<float>(kScaleUbTensor, 1, constInfo.kvSparseBlockSize);
+        Duplicate<float>(kScaleUbTensor, 1, s2BaseSize);
         TEventID vDoneEvent = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
         SetFlag<HardEvent::V_MTE2>(vDoneEvent);  // Vector 完成
         WaitFlag<HardEvent::V_MTE2>(vDoneEvent); // MTE2 等待
