@@ -32,7 +32,7 @@ class Network(torch.nn.Module):
                 cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length,
                 cmp_topk_length, sinks, metadata, quant_mode, softmax_scale, cmp_ratio, ori_mask_mode,
                 cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, topk_value_mode, return_softmax_lse):
-        npu_result, _ = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
+        npu_result, npu_lse = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
                                 q=q,
                                 ori_kv=ori_kv,
                                 cmp_kv=cmp_kv,
@@ -65,23 +65,29 @@ class Network(torch.nn.Module):
                                 layout_kv=layout_kv,
                                 topk_value_mode=topk_value_mode,
                                 return_softmax_lse=return_softmax_lse)
-        return npu_result
+        return npu_result, npu_lse
 
 
 def test_qsmla_quant_process_graph(test_data, device_id=0):
-    global npu_model, is_compiled
     params = test_data['params']
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']
     cpu_output = test_data['cpu_output']
+    cpu_lse = test_data.get('cpu_lse')
     torch_npu.npu.set_device(device_id)
 
     # 编译
-    npu_model = Network().npu()
+    torch._dynamo.reset()
+    npu_mode = Network().npu()
     config = CompilerConfig()
     config.mode = "reduce-overhead"
+    config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
+    config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./"
+    config.experimental_config.frozen_parameter = True
+    config.experimental_config.tiling_schedule_optimize = True
+    config.experimental_config.topology_sorting_strategy = "StableRDFS"
     npu_backend = torchair.get_npu_backend(compiler_config=config)
-    npu_model = torch.compile(npu_model, backend=npu_backend, fullgraph=True, dynamic=False)
+    npu_mode = torch.compile(npu_mode, fullgraph=True, backend=npu_backend, dynamic=False)
 
     logging.info("program running in aclgraph mode.")
     logging.info(f"test_data:{params}")
@@ -125,7 +131,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
 
     torch.npu.synchronize()
     logging.info("quant_sparse_flash_mla...")
-    npu_result = npu_model(q=op_input['q'].npu() if op_input['q'] is not None else None,
+    npu_result, npu_lse  = npu_mode(q=op_input['q'].npu() if op_input['q'] is not None else None,
                           ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
                           cmp_kv=op_input['cmp_kv'].npu() if op_input['cmp_kv'] is not None else None,
                           q_descale=op_input['q_descale'].npu() if op_input['q_descale'] is not None else None,
@@ -158,13 +164,14 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
                           topk_value_mode=op_input.get('topk_value_mode', 1),
                           return_softmax_lse=op_input.get('return_softmax_lse', False)
                         )
-    return npu_result, cpu_output
+    return npu_result, cpu_output, npu_lse, cpu_lse
 
 def test_qsmla_quant_process_ci(test_data, device_id=0):
     params = test_data['params']
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']
     cpu_output = test_data['cpu_output']
+    cpu_lse = test_data.get('cpu_lse')
     torch_npu.npu.set_device(device_id)
 
     logging.info(f"test_data:{params}")
@@ -206,7 +213,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     metadata.npu()
 
     logging.info("quant_sparse_flash_mla...")
-    npu_result, _ = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
+    npu_result, npu_lse = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
                                 ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
                                 cmp_kv=op_input['cmp_kv'].npu() if op_input['cmp_kv'] is not None else None,
@@ -242,4 +249,4 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
 
     torch.npu.synchronize()
 
-    return npu_result, cpu_output
+    return npu_result, cpu_output, cpu_lse, npu_lse

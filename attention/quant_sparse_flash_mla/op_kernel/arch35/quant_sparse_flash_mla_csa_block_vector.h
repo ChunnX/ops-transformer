@@ -85,7 +85,8 @@ public:
     static constexpr uint64_t SYNC_SINKS_BUF_FLAG = 6;
     static constexpr uint32_t vec1ScmBlockFp8 = s1BaseSize * 16;
     static constexpr float hifp8ScaleValue = 16.0f;
-
+    static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    bool isSoftmaxLseGmValid = false;  // 标记 softmaxLseGm 是否已有效 SetGlobalBuffer
     // ==================== Functions ======================
     __aicore__ inline CSABlockVec() {};
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
@@ -121,7 +122,7 @@ public:
     // 初始化LocalTensor
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
     // 初始化attentionOutGM
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
+    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
         __gm__ uint8_t *qDescale, __gm__ uint8_t *oriKvDescale, __gm__ uint8_t *cmpKvDescale,
         __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
@@ -194,6 +195,7 @@ private:
     TPipe *tPipe;
 
     GlobalTensor<OUTPUT_T> attentionOutGm;
+    GlobalTensor<float> softmaxLseGm;
     GlobalTensor<KV_T> oriKVGm;
     GlobalTensor<KV_T> cmpKVGm;
     GlobalTensor<KV_T> keyGm;
@@ -220,6 +222,8 @@ private:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId;
     TEventID vToMte3Id;
+    TEventID mte3ToVLseOutId;
+    TEventID vToMte3LseOutId;
     TEventID mte2ToVV0Id[2];
     TEventID vToMte2V0Id[2];
     TEventID vToMte3V0Id[2];
@@ -229,6 +233,7 @@ private:
     TBuf<> softmaxExpBuf[2];
     TBuf<> stage0InBuf[2];
     TBuf<> stage0OutBuf[2];
+    TBuf<> outLseBuf[2];
     TBuf<> vselrIndexesBuf[2];
     uint32_t pingPongV0 = 0;
 
@@ -746,21 +751,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
             if constexpr (!IS_SPLIT_G) {
                 sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
             } else {
-                switch (constInfo.aivIdx % 4) {
-                    case 0:
-                        sinksOffset = 0;
-                        break;
-                    case 1:
-                        sinksOffset = 32;
-                        break;
-                    case 2:
-                        sinksOffset = 64;
-                        break;
-                    case 3:
-                        sinksOffset = 96;
-                        break;
-                    default:
-                        break;
+                sinksOffset = runInfo.goIdx;
+                if (constInfo.subBlockIdx == 1) {
+                    sinksOffset += runInfo.firstHalfMRealSize;
                 }
             }
             LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
@@ -801,6 +794,21 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
+    if (constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid && runInfo.halfMRealSize > 0 &&
+        runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+        LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+            DataCopyExtParams lseParams;
+            lseParams.blockCount = 1;
+            lseParams.blockLen = static_cast<uint32_t>(runInfo.halfMRealSize * sizeof(float));
+            lseParams.srcStride = 0;
+            lseParams.dstStride = 0;
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+            ComputeLse<float>(outLse, sumUb, maxUb, static_cast<uint32_t>(runInfo.halfMRealSize));
+            SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+            DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], outLse, lseParams);
+            SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -914,24 +922,51 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
         uint64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
         uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
         if (singleInitOutputSize > 0) {
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             matmul::InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * singleCoreSize],
                 singleInitOutputSize, 0);
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+        }
+    }
+    if (constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid) {
+        uint64_t totalLseSize = 0;
+        if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND) {
+            totalLseSize = constInfo.bSize * constInfo.n2Size * constInfo.gSize * constInfo.s1Size;
+        } else if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
+            totalLseSize = constInfo.n2Size * constInfo.s1Size * constInfo.gSize;
+        }
+        if (coreNum != 0 && totalLseSize > 0) {
+            uint64_t singleCoreLse = (totalLseSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
+            uint64_t tailLse = totalLseSize - constInfo.aivIdx * singleCoreLse;
+            uint64_t singleInitLse = tailLse < singleCoreLse ? tailLse : singleCoreLse;
+            if (constInfo.aivIdx * singleCoreLse < totalLseSize && singleInitLse > 0) {
+                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+                matmul::InitOutput<float>(this->softmaxLseGm[constInfo.aivIdx * singleCoreLse],
+                    singleInitLse, 0);
+                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            }
         }
     }
     SyncAll();
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut,
+    __gm__ uint8_t *softmaxLse, ConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
+        if (constInfo.isSoftmaxLseEnable && softmaxLse != nullptr) {
+            this->softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+            this->isSoftmaxLseGmValid = true;
+        }
         if (constInfo.needInit == 1) {
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             InitOutputSingleCore(constInfo);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 }
-
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bool hasActualSeq,
@@ -1421,7 +1456,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
 
     tPipe->InitBuffer(commonTBuf, 512); // commonTBuf内存申请512B
     tPipe->InitBuffer(sinksBuf, 512); // sinksBuf内存申请512B
-
+    if (constInfo.isSoftmaxLseEnable) {
+            tPipe->InitBuffer(outLseBuf[0], 256);
+            tPipe->InitBuffer(outLseBuf[1], 256);
+        }
     tPipe->InitBuffer(stage0InBuf[0], dVTemplateTypeInput * 32 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
     tPipe->InitBuffer(stage0InBuf[1], dVTemplateTypeInput * 32 * sizeof(KV_T));
     // kv输入D轴512, V0阶段每次处理16个seq, 开2 buffer
@@ -1435,6 +1473,11 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     mte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     vToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
+    if (constInfo.isSoftmaxLseEnable) {
+            mte3ToVLseOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+            vToMte3LseOutId = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+            SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        }
     mte2ToVV0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
     mte2ToVV0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
     vToMte2V0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
@@ -1480,7 +1523,8 @@ TEMPLATES_DEF
 class CSABlockVecDummy {
 public:
     __aicore__ inline CSABlockVecDummy() {};
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo) {}
+    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+        ConstInfo &constInfo) {}
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
         __gm__ uint8_t *qDescale, __gm__ uint8_t *oriKvDescale, __gm__ uint8_t *cmpKvDescale,
         __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
