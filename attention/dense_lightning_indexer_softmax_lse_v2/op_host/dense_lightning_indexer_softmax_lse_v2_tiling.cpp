@@ -23,7 +23,9 @@ namespace optiling {
 ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(gert::TilingContext* context, int64_t layout, int64_t maskMode,
                                    int64_t cmpRatio, const std::string& layoutQStr, const std::string& layoutKStr,
                                    int64_t bSize, int64_t s1Size, int64_t s2Size,
-                                   int64_t n1Size, int64_t n2Size, int64_t dSize)
+                                   int64_t n1Size, int64_t n2Size, int64_t dSize,
+                                   int64_t keyB, int64_t keyD,
+                                   int64_t weightB, int64_t weightS1, int64_t weightN1)
 {
     OP_CHECK_IF(layoutQStr != layoutKStr,
                 OP_LOGE(context->GetNodeName(), "layoutQ and layoutK must be the same, but got %s and %s.",
@@ -42,6 +44,11 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(gert::TilingContext* 
                 OP_LOGE(context->GetNodeName(), "head_dim must be 128, but got %ld.", dSize),
                 return ge::GRAPH_PARAM_INVALID);
 
+    OP_CHECK_IF(keyD != dSize,
+                OP_LOGE(context->GetNodeName(), "keyIndex D dim must be equal to queryIndex D dim, but got qD=%ld kD=%ld.",
+                        dSize, keyD),
+                return ge::GRAPH_PARAM_INVALID);
+
     OP_CHECK_IF(n1Size < 1 || n1Size > 128,
                 OP_LOGE(context->GetNodeName(), "num_heads_q must be in [1, 128], but got %ld.", n1Size),
                 return ge::GRAPH_PARAM_INVALID);
@@ -55,6 +62,10 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(gert::TilingContext* 
                 return ge::GRAPH_PARAM_INVALID);
 
     if (layout == 0) {
+        OP_CHECK_IF(keyB != bSize,
+                    OP_LOGE(context->GetNodeName(), "keyIndex B dim must be equal to queryIndex B dim, but got qB=%ld kB=%ld.",
+                            bSize, keyB),
+                    return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF(s1Size <= 0,
                     OP_LOGE(context->GetNodeName(), "S1 must be positive for BSND, but got %ld.", s1Size),
                     return ge::GRAPH_PARAM_INVALID);
@@ -128,6 +139,18 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(gert::TilingContext* 
                     return ge::GRAPH_PARAM_INVALID);
     }
 
+    if (layout == 0) {
+        OP_CHECK_IF(weightB != bSize,
+                    OP_LOGE(context->GetNodeName(), "weight B dim must be %ld, but got %ld.", bSize, weightB),
+                    return ge::GRAPH_PARAM_INVALID);
+    }
+    OP_CHECK_IF(weightS1 != s1Size,
+                OP_LOGE(context->GetNodeName(), "weight S1 dim must be %ld, but got %ld.", s1Size, weightS1),
+                return ge::GRAPH_PARAM_INVALID);
+    OP_CHECK_IF(weightN1 != n1Size,
+                OP_LOGE(context->GetNodeName(), "weight N1 dim must be %ld, but got %ld.", n1Size, weightN1),
+                return ge::GRAPH_PARAM_INVALID);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -172,18 +195,26 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
     // Extract runtime dimensions from input shapes.
     auto queryShape = context->GetInputShape(0);
     auto keyShape = context->GetInputShape(1);
-    OP_CHECK_IF(queryShape == nullptr || keyShape == nullptr,
-                OP_LOGE(context->GetNodeName(), "query_index or key_index shape is null."),
+    auto weightShape = context->GetInputShape(2);
+    OP_CHECK_IF(queryShape == nullptr || keyShape == nullptr || weightShape == nullptr,
+                OP_LOGE(context->GetNodeName(), "query_index, key_index or weight shape is null."),
                 return ge::GRAPH_PARAM_INVALID);
     int64_t bSize, s1Size, n1Size, n2Size, dSize, s2Size;
+    int64_t keyB, keyD;
+    int64_t weightB, weightS1, weightN1;
 
     if (layout == 1) {
-        // TND: query [T1, N1, D], key [T2, N2, D]
+        // TND: query [T1, N1, D], key [T2, N2, D], weight [T1, N1]
         s1Size = queryShape->GetStorageShape().GetDim(0);
         n1Size = queryShape->GetStorageShape().GetDim(1);
         dSize = queryShape->GetStorageShape().GetDim(2);
         s2Size = keyShape->GetStorageShape().GetDim(0);
         n2Size = keyShape->GetStorageShape().GetDim(1);
+        keyD = keyShape->GetStorageShape().GetDim(2);
+        keyB = 1;
+        weightS1 = weightShape->GetStorageShape().GetDim(0);
+        weightN1 = weightShape->GetStorageShape().GetDim(1);
+        weightB = 1;
         // B from cu_seq_lens_q input (index 3, shape [B+1])
         auto cuSeqLensQShape = context->GetOptionalInputShape(3);
         if (cuSeqLensQShape != nullptr) {
@@ -192,18 +223,25 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
             bSize = 1;
         }
     } else {
-        // BSND: query [B, S1, N1, D], key [B, S2, N2, D]
+        // BSND: query [B, S1, N1, D], key [B, S2, N2, D], weight [B, S1, N1]
         bSize = queryShape->GetStorageShape().GetDim(0);
         s1Size = queryShape->GetStorageShape().GetDim(1);
         n1Size = queryShape->GetStorageShape().GetDim(2);
         dSize = queryShape->GetStorageShape().GetDim(3);
         s2Size = keyShape->GetStorageShape().GetDim(1);
         n2Size = keyShape->GetStorageShape().GetDim(2);
+        keyB = keyShape->GetStorageShape().GetDim(0);
+        keyD = keyShape->GetStorageShape().GetDim(3);
+        weightB = weightShape->GetStorageShape().GetDim(0);
+        weightS1 = weightShape->GetStorageShape().GetDim(1);
+        weightN1 = weightShape->GetStorageShape().GetDim(2);
     }
 
     // Unified parameter validation
     auto ret = DenseLISoftmaxLseV2CompileInfo::ParamCheck(context, layout, maskMode, cmpRatio, layoutQStr, layoutKStr,
-                          bSize, s1Size, s2Size, n1Size, n2Size, dSize);
+                          bSize, s1Size, s2Size, n1Size, n2Size, dSize,
+                          keyB, keyD,
+                          weightB, weightS1, weightN1);
     OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "DenseLISoftmaxLseV2CompileInfo::ParamCheck failed."),
                 return ge::GRAPH_PARAM_INVALID);
@@ -245,7 +283,9 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
     constexpr int64_t WS_MAX_CORES = 36;
     size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     workspaceSize += WS_MAX_BYTES * 2;
-    workspaceSize += static_cast<size_t>(WS_MAX_CORES) * static_cast<size_t>(s2Size) * sizeof(float);
+    if (isLongS2) {
+        workspaceSize += static_cast<size_t>(WS_MAX_CORES) * static_cast<size_t>(s2Size) * sizeof(float);
+    }
     size_t* workSpaces = context->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
@@ -254,7 +294,7 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParseForDenseLightningIndexerSoftmaxLseV2([[maybe_unused]] gert::TilingParseContext* context)
+static ge::graphStatus TilingParseForDenseLightningIndexerSoftmaxLseV2(gert::TilingParseContext* context)
 {
     return ge::GRAPH_SUCCESS;
 }

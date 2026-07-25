@@ -280,8 +280,7 @@ def process_long_s2_reduce_max(qk_vec, weight_vec, reduce_sum_vec_tile, workspac
             if cur_vec_size > 0:
                 pl.set_validshape(src_tile, [1, cur_vec_size])
                 process_reduce_max_vf(src_tile, qk_vec_tile, weight_tile_cur, max_tile, n1_dim, cur_vec_size)
-            if not (j == work_count and (chunk_start + ci) >= prev_s2_tiles - 2):
-                pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2])
+            pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2])
             task_id = task_id + 1
         for ci in pl.range(0, chunk_tiles):
             ws_tile = reduce_sum_vec_tile[0 : 1, ci * TKV_HALF :]
@@ -318,12 +317,30 @@ def process_long_s2_reduce_sum(lse_vec_tile, reduce_sum_vec, workspace, tmp_s2_m
 #  Inner kernel — receives typed tensor views + workspace
 # ================================================================
 
-def resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_lens_k):
+def resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_lens_k,
+                 has_seq_used_q, seqused_q):
     b_idx = 0
     s1_i = 0
     q_offset = 0
     k_offset_base = 0
-    if layout == 1:
+    if has_seq_used_q == 1:
+        acc = 0
+        for b in pl.range(b_dim):
+            cur_used = pl.getval(seqused_q, b)
+            if work_id >= acc + cur_used:
+                acc = acc + cur_used
+                b_idx = b + 1
+            else:
+                b_idx = b
+                break
+        s1_i = work_id - acc
+        if layout == 1:
+            q_offset = pl.getval(cu_seq_lens_q, b_idx) + s1_i
+            k_offset_base = pl.getval(cu_seq_lens_k, b_idx)
+        else:
+            q_offset = b_idx * s1_dim + s1_i
+            k_offset_base = b_idx * s2_dim
+    elif layout == 1:
         for b in pl.range(b_dim):
             cu_val = pl.getval(cu_seq_lens_q, b + 1)
             if work_id >= cu_val:
@@ -422,7 +439,7 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
         task_id = 0
         for j in pl.range(0, work_count):
             work_id = core_id + j * total_cores
-            b_idx, s1_i, q_offset, k_offset_base = resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_lens_k)
+            b_idx, s1_i, q_offset, k_offset_base = resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_lens_k, has_seq_used_q, seqused_q)
             if has_seq_used_q == 1:
                 q_used_size = pl.getval(seqused_q, b_idx)
             elif layout == 1:
@@ -445,7 +462,7 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                 qk_residual = q_used_size - ori_k_size
                 valid_s1_start = pl.max(qk_residual, 0)
                 valid_k_size = pl.max((s1_i + 1 - qk_residual) // cmp_ratio, 0)
-            is_s1_valid = s1_i < q_used_size and s1_i >= valid_s1_start and valid_k_size > 0
+            is_s1_valid = s1_i >= valid_s1_start and valid_k_size > 0
             if is_s1_valid:
                 s2_tiles = (valid_k_size + TKV - 1) // TKV
                 s2_tail_size = TKV + valid_k_size - s2_tiles * TKV
@@ -507,7 +524,7 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
 
         for j in pl.range(0, work_count + 1):
             work_id = core_id + j * total_cores
-            b_idx, s1_i, q_offset, _ = resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_lens_k)
+            b_idx, s1_i, q_offset, _ = resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_lens_k, has_seq_used_q, seqused_q)
 
             max_tile = max_vec.next()
             init_data(max_tile)
@@ -536,7 +553,7 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                     qk_residual = q_used_size - ori_k_size
                     valid_s1_start = pl.max(qk_residual, 0)
                     valid_k_size = pl.max((s1_i + 1 - qk_residual) // cmp_ratio, 0)
-                is_s1_valid = s1_i >= valid_s1_start and s1_i < q_used_size and valid_k_size > 0
+                is_s1_valid = s1_i >= valid_s1_start and valid_k_size > 0
                 if is_s1_valid:
                     s2_tiles = (valid_k_size + TKV - 1) // TKV
                     s2_tail_size = TKV + valid_k_size - s2_tiles * TKV
