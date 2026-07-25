@@ -53,6 +53,9 @@ protected:
     ge::graphStatus CheckXDim();
     ge::graphStatus CheckWeightDim();
     ge::graphStatus CheckCacheStatesDim();
+    ge::graphStatus CheckCacheIndicesDim();
+    ge::graphStatus CheckApcOptionalInputs();
+    ge::graphStatus CheckAttrs();
     ge::graphStatus CheckIndexDims();
     ge::graphStatus Calculate2DTiling(); // 二维切分的tiling计算
     ge::graphStatus GetInputShapes();
