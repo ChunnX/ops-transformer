@@ -426,12 +426,7 @@ namespace BSA {
 
             AscendC::SyncAll<false>();
 
-            // deter: 方案E — 等 AIV 清零+锁初始化, 然后 GM 锁序列化
-            if (deter) {
-                AscendC::CrossCoreWaitFlag(DETER_V2C);
-                __gm__ int32_t* lockGm = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
-                while (AscendC::ReadGmByPassDCache<int32_t>(lockGm) != (int32_t)coreIdx) {}
-            }
+            // deter: 方案D — 无需等待 AIV 清零 (cube 写共享 gDk/gDv)
             SetFlag();
             uint32_t vec2CubeFlag = 0;
             for (uint32_t i = 0; i < taskLength; i++) {
@@ -602,12 +597,7 @@ namespace BSA {
                     mmadFlag);
                 // deter: 方案D — final mmad3 写共享, 无 SyncAll
             }
-            // deter: 方案E — 释放 GM 锁
-            if (deter) {
-                AscendC::PipeBarrier<PIPE_FIX>();
-                __gm__ int32_t* lockGm = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
-                AscendC::WriteGmByPassDCache<int32_t>(lockGm, (int32_t)(coreIdx + 1));
-            }
+            // deter: 方案D — 无需 padding SyncAll
             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
             WaitFlag();
         }
@@ -706,10 +696,7 @@ namespace BSA {
                     AscendC::DataCopy(gDvDeterVec[off], zeroUb, chunk);
                 }
                 AscendC::PipeBarrier<PIPE_ALL>();
-                // 方案E: 初始化 GM 锁为 0
-                __gm__ int32_t* lockGm = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
-                AscendC::WriteGmByPassDCache<int32_t>(lockGm, 0);
-                AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(DETER_V2C); // 通知 AIC: 清零+锁初始化完成
+                AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(DETER_V2C); // 通知 AIC: slot 清零完成(用 DETER_V2C, 不复用 CUBE2VEC)
             }
             AscendC::GlobalTensor<bool> gBlcokSpaseMask;
             gBlcokSpaseMask.SetGlobalBuffer((__gm__ bool *)params.blockSparseMask);
