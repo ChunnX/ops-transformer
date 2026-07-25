@@ -362,6 +362,13 @@ ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInf
         return ge::GRAPH_SUCCESS;
     }
 
+    // MxFP4: layout_q_descale 仅支持 BNSD
+    OP_CHECK_IF(qfaInfo.layoutQDescale != FiaLayout::BNSD,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, LAYOUT_Q_DESCALE_NAME.c_str(),
+                    LayoutToSerialStr(qfaInfo.layoutQDescale).c_str(),
+                    "MxFP4 only supports layout_q_descale = BNSD"),
+                return ge::GRAPH_FAILED);
+
     // MxFP4: 仅支持 Q_N == KV_N (即 G=1)
     OP_CHECK_IF(qfaInfo.n1Size != qfaInfo.n2Size,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(qfaInfo.opName, "query and key",
