@@ -554,15 +554,15 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                                               UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), weightTempBase, gSize_,
                                               curAivS1ProcNum);
     } else if constexpr (IS_WEIGHT_FP16) {
-        auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
+        auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(WEIGHT_T))];
         auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ +
             ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
         vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
             qkBase, qkVLstride,
             (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
+            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T), weightTempBase,
             kScaleBase, (uint32_t)0,
-            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
+            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
             gSize_, curAivS1ProcNum);
     } else if (constInfo_.quantMode == 4) { // 4: per_tensor量化
         // quantMode为4时不适用sacle的UB
