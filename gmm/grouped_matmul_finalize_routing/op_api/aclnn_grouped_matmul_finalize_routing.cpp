@@ -1381,6 +1381,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(void *workspace, uint64_t worksp
 }
 
 static inline aclnnStatus CheckSupportSceneforV3(const aclTensor *x1, const aclTensor *x2, const aclTensor *scaleOptional,
+                                                 const aclTensor *biasOptional,
                                                  const aclTensor *groupListOptional,
                                                  const aclTensor *pertokenScaleOptional, const aclTensor *logitOptional,
                                                  const aclTensor *rowIndexOptional,
@@ -1388,8 +1389,10 @@ static inline aclnnStatus CheckSupportSceneforV3(const aclTensor *x1, const aclT
                                                  const aclTensor *antiquantOffsetOptional)
 {
     // 支持sharedInput输入为空, 不支持logit为空
+    const bool biasRequired = op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510;
     auto scene = x1 != nullptr && x2 != nullptr && scaleOptional != nullptr && groupListOptional != nullptr &&
                  pertokenScaleOptional != nullptr && logitOptional != nullptr && rowIndexOptional != nullptr &&
+                 (!biasRequired || biasOptional != nullptr) &&
                  antiquantScaleOptional == nullptr && antiquantOffsetOptional == nullptr;
 
     if (scene) {
@@ -1419,6 +1422,9 @@ static inline aclnnStatus CheckSupportSceneforV3(const aclTensor *x1, const aclT
     if (rowIndexOptional == nullptr) {
         errMsg += " Required parameter 'rowIndex' is null.";
     }
+    if (biasRequired && biasOptional == nullptr) {
+        errMsg += " Parameter 'bias' must not be null on Atlas A2/A3.";
+    }
     if (antiquantScaleOptional != nullptr) {
         errMsg += " Required parameter 'antiquantScale' must be null.";
     }
@@ -1441,8 +1447,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
         DFX_IN(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional, sharedInputOptional, logitOptional, rowIndexOptional, dtype,
         sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType), DFX_OUT(out));
     
-    auto ret0 = CheckSupportSceneforV3(x1, x2, scaleOptional, groupListOptional, pertokenScaleOptional, logitOptional,
-                                       rowIndexOptional, antiquantScaleOptional, antiquantOffsetOptional);
+    auto ret0 = CheckSupportSceneforV3(x1, x2, scaleOptional, biasOptional, groupListOptional, pertokenScaleOptional,
+                                       logitOptional, rowIndexOptional, antiquantScaleOptional,
+                                       antiquantOffsetOptional);
     CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
