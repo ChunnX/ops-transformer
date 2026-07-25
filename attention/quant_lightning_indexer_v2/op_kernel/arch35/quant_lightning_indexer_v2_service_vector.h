@@ -97,7 +97,7 @@ private:
 
     // tmp buff for vector
     TBuf<TPosition::VECCALC> resMm1Buf_;
-    LocalTensor<float> resMm1UB_;
+    LocalTensor<QK_T> resMm1UB_;
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
     LocalTensor<W_T> weightUB_;
@@ -171,8 +171,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
     // 大小：2(开dB) 2 * 64 * 128 * 4 = 128KB
     pipe->InitBuffer(resMm1Buf_,
-        2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
-    resMm1UB_ = resMm1Buf_.Get<float>(); // qk
+        2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));
+    resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     // 大小：2(开dB) * 2 * 64 * 2 = 0.5KB
     pipe->InitBuffer(weightBuf_,
         2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
@@ -450,13 +450,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         qwDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
         qwDataCopyExtParams.srcStride = 0;
         qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qwDataCopyExtParams.blockLen) / 32;
-        DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
+        DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))],
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
         if (constInfo_.quantMode != 4) {
             // qScaleGm  -->  qScaleUB_
             DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
-            DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
+            DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))],
                         qScaleGm[weightGmOffset], qwDataCopyExtParams, padQScaleParams);
         }
 
