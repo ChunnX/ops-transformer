@@ -1543,7 +1543,7 @@ static bool CheckFAIDSizePA3Dim(int64_t tempD, const gert::Shape *tempKShape,
     int64_t tempVD = tempVShape->GetDim(DIM_2) / kvHeadNum;
     int64_t blockSize = tempKShape->GetDim(DIM_1);
     constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
-    bool isFAIDSize = (tempD <= 256 && tempKD <= 256 && tempVD <= 256) &&
+    bool isFAIDSize = (tempD <= 512 && tempKD <= 512 && tempVD <= 512) &&
             (tempD == tempKD && tempD == tempVD);
     bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) &&
             (blockSize <= MAX_BLOCK_SIZE);
@@ -2196,8 +2196,6 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! TilingFusedInferAttentionScore %u ", 0);
-
     if (RouteToFia(context)) {
         return TilingFusedInferAttentionScoreV3(context);
     }
@@ -2234,9 +2232,7 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     OP_CHECK_IF(CheckOutShape(context, outputLayoutStr, outShape, qkvShapeInfo) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check output shape failed"), return ge::GRAPH_FAILED);
     // 是否路由到IFA
-    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! TilingFusedInferAttentionScore %u ", 1);
     bool usingIFA = IsUsingIFA(*context, inputLayoutStr, queryD, queryS);
-    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! TilingFusedInferAttentionScore %u ", 2);
     bool usingFAI = IsUsingFAI(*context, inputLayoutStr, queryD);
     OP_LOGD("FusedInferAttentionScore", "hello wangsong!! TilingFusedInferAttentionScore IsUsingFAI is %u ", usingFAI);
     if (usingFAI) {
