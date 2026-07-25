@@ -32,15 +32,6 @@ using std::string;
 using namespace ge;
 using namespace Ops::Base;
 
-// ============================================================================
-// Layout — SinglePara
-// 文档约束(单参数校验):
-//   layout_q   : BSND/TND/BNSD
-//   layout_kv  : BSND/TND/BNSD/PA_BBND/PA_BNBD/PA_NZ
-//   layout_out : BSND/TND/BNSD
-//   layout_q_descale : BNSD/BSND/TND/N2TGD  (全量化参数组, 单参数校验此处暂不涉及)
-// ============================================================================
-
 ge::graphStatus CommonChecker::CheckSingleParaLayout(const QuantFlashAttnTilingInfo &qfaInfo)
 {
     const std::vector<FiaLayout> supportedQLayouts = {FiaLayout::BSND, FiaLayout::BNSD, FiaLayout::TND};
@@ -70,13 +61,6 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const QuantFlashAttnTilingI
 
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// Dtype — SinglePara
-// 文档约束(单参数校验):
-//   q/k/v      : tensor_type 支持 FLOAT8_E4M3FN、FLOAT4_E2M1
-//   attn_out   : data_type 仅支持 BFLOAT16
-// ============================================================================
 
 ge::graphStatus CommonChecker::CheckSingleParaDtype(const QuantFlashAttnTilingInfo &qfaInfo)
 {
@@ -145,14 +129,6 @@ ge::graphStatus CommonChecker::CheckSingleParaDtype(const QuantFlashAttnTilingIn
     return ge::GRAPH_SUCCESS;
 }
 
-// ============================================================================
-// ShapeDim — SinglePara
-// 文档约束(单参数校验):
-//   q          : shape dim 支持 3、4
-//   k/v        : shape dim 支持 3、4、5
-//   attn_out   : shape dim 支持 3、4
-// ============================================================================
-
 ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QuantFlashAttnTilingInfo &qfaInfo)
 {
     const std::vector<uint32_t> supportedQDims = {DIM_NUM_3, DIM_NUM_4};
@@ -199,11 +175,6 @@ ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QuantFlashAttnTilin
     return ge::GRAPH_SUCCESS;
 }
 
-// ============================================================================
-// Attr — SinglePara
-// 文档约束(单参数校验): softmax_scale 必须大于 0
-// ============================================================================
-
 ge::graphStatus CommonChecker::CheckSingleParaSoftmaxScale(const QuantFlashAttnTilingInfo &qfaInfo)
 {
     OP_CHECK_IF(qfaInfo.softmaxScale <= 0.0f,
@@ -212,10 +183,6 @@ ge::graphStatus CommonChecker::CheckSingleParaSoftmaxScale(const QuantFlashAttnT
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// SinglePara — combined
-// ============================================================================
 
 ge::graphStatus CommonChecker::CheckSinglePara(const QuantFlashAttnTilingInfo &qfaInfo)
 {
@@ -227,13 +194,6 @@ ge::graphStatus CommonChecker::CheckSinglePara(const QuantFlashAttnTilingInfo &q
     }
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// ParaExistence
-// 文档约束(存在性校验):
-//   q/k/v/attn_out : 必须存在
-//   metadata       : 可选参数，但当前不支持不传入，未传入将发出拦截报警
-// ============================================================================
 
 ge::graphStatus CommonChecker::CheckMetadataExistence(const QuantFlashAttnTilingInfo &qfaInfo)
 {
@@ -261,11 +221,6 @@ ge::graphStatus CommonChecker::CheckParaExistence(const QuantFlashAttnTilingInfo
     }
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// MultiPara — dtype consistency
-// 文档约束(一致性校验): q、k、v 的数据类型必须相同
-// ============================================================================
 
 ge::graphStatus CommonChecker::CheckDtypeConsistency(const QuantFlashAttnTilingInfo &qfaInfo)
 {
@@ -299,16 +254,8 @@ ge::graphStatus CommonChecker::CheckMultiPara(const QuantFlashAttnTilingInfo &qf
     return ge::GRAPH_SUCCESS;
 }
 
-// ============================================================================
-// Feature — axis & headNum cross-check
-// 文档约束(特性交叉校验):
-//   65536 > B > 0；Q_S ≥ 0；KV_S ≥ 0；Q_T ≥ 0、KV_T ≥ 0；D 仅支持 64 或 128
-//   Q_N % KV_N == 0 且 Q_N / KV_N > 0
-// ============================================================================
-
 ge::graphStatus CommonChecker::CheckAxis(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束(特性交叉校验):
     //   65536 > B > 0；Q_S ≥ 0；KV_S ≥ 0；Q_T ≥ 0、KV_T ≥ 0；D 仅支持 64 或 128
     if (qfaInfo.bSize >= B_LIMIT || qfaInfo.bSize <= 0) {
         std::string reason = "The value of B must be within the range (0, " + std::to_string(B_LIMIT) + ")";
@@ -358,7 +305,7 @@ ge::graphStatus CommonChecker::CheckAxis(const QuantFlashAttnTilingInfo &qfaInfo
 
 ge::graphStatus CommonChecker::CheckHeadNum(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束: Q_N % KV_N == 0 且 Q_N / KV_N > 0
+    // Q_N % KV_N == 0 且 Q_N / KV_N > 0
     OP_CHECK_IF(qfaInfo.n1Size <= 0 || qfaInfo.n2Size <= 0,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(qfaInfo.opName, "query and key",
                     (ToString(qfaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +

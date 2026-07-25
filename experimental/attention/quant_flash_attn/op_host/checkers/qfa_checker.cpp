@@ -47,8 +47,6 @@ void QfaChecker::RegisterCheckers()
     checkers_.push_back(std::make_unique<PagedAttentionChecker>());
     checkers_.push_back(std::make_unique<SinksChecker>());
     checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
-    // 后续按参数组陆续注册:
-    //                       MetadataChecker
 }
 
 ge::graphStatus QfaChecker::Init(const QuantFlashAttnTilingInfo &qfaInfo)

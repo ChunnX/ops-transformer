@@ -32,18 +32,9 @@ using std::string;
 using namespace ge;
 using namespace Ops::Base;
 
-// ============================================================================
-// SinglePara
-// 文档约束(单参数校验):
-//   mask_mode       : data_type 支持 INT32；支持输入为 0/3/4
-//   attn_mask       : tensor_type 支持 INT8；tensor_shape 为 (2048, 2048)
-//   win_left/win_right : data_type 支持 INT32；值需要 >= -1
-// ============================================================================
-
 ge::graphStatus MaskChecker::CheckSingleParaMaskMode(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束: data_type 支持 INT32；支持输入为 0/3/4
-    // maskMode 为已解析的 uint32_t（parser 默认填充 0）
+    // data_type 支持 INT32；支持输入为 0/3/4
     const std::vector<uint32_t> supportedMaskModes = {static_cast<uint32_t>(MaskMode::NO_MASK),
                                                       static_cast<uint32_t>(MaskMode::CAUSAL),
                                                       static_cast<uint32_t>(MaskMode::BAND)};
@@ -57,8 +48,7 @@ ge::graphStatus MaskChecker::CheckSingleParaMaskMode(const QuantFlashAttnTilingI
 
 ge::graphStatus MaskChecker::CheckSingleParaAttnMask(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束: tensor_type 支持 INT8；tensor_shape 为 (2048, 2048)
-    // attn_mask 为可选输入，未传入时跳过（存在性校验负责）
+    // tensor_type 支持 INT8；tensor_shape 为 (2048, 2048)
     const gert::Tensor *attnMaskTensor = qfaInfo.opParamInfo.attnMask.tensor;
     const gert::CompileTimeTensorDesc *attnMaskDesc = qfaInfo.opParamInfo.attnMask.desc;
     if (attnMaskTensor == nullptr || attnMaskDesc == nullptr) {
@@ -90,7 +80,7 @@ ge::graphStatus MaskChecker::CheckSingleParaAttnMask(const QuantFlashAttnTilingI
 
 ge::graphStatus MaskChecker::CheckSingleParaWindowParams(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束: data_type 支持 INT32；值需要 >= -1
+    // data_type 支持 INT32；值需要 >= -1
     // win_left / win_right 为可选属性，默认值为 -1（表示无穷）
     OP_CHECK_IF(qfaInfo.winLeft < -1,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, WIN_LEFT_NAME.c_str(),
@@ -113,21 +103,11 @@ ge::graphStatus MaskChecker::CheckSinglePara(const QuantFlashAttnTilingInfo &qfa
     return ge::GRAPH_SUCCESS;
 }
 
-// ============================================================================
-// ParaExistence / Feature / MultiPara — 后续阶段补充
-// ============================================================================
-
 ge::graphStatus MaskChecker::CheckParaExistence(const QuantFlashAttnTilingInfo &qfaInfo)
 {
     (void)qfaInfo;
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// Feature — quant_mode 与 mask_mode 取值约束 (文档"特性交叉校验"列)
-//   MxFP8 仅支持 mask_mode 取 0 和 3 (不支持 BAND=4)
-//   MxFP4 仅支持 mask_mode=0 (不支持 CAUSAL=3 和 BAND=4)
-// ============================================================================
 
 ge::graphStatus MaskChecker::CheckMaskModeQuantMode(const QuantFlashAttnTilingInfo &qfaInfo)
 {
@@ -158,14 +138,6 @@ ge::graphStatus MaskChecker::CheckFeature(const QuantFlashAttnTilingInfo &qfaInf
     }
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// MultiPara — mask_mode 与 attn_mask 的存在性关系校验 (文档"一致性校验"列)
-// 文档约束:
-//   mask_mode=0 (NO_MASK): 不支持传入 attn_mask
-//   mask_mode=3 (CAUSAL):  必须传入 attn_mask 矩阵
-//   mask_mode=4 (BAND):    必须传入 attn_mask 矩阵
-// ============================================================================
 
 ge::graphStatus MaskChecker::CheckMaskModeAttnMaskConsistency(const QuantFlashAttnTilingInfo &qfaInfo)
 {

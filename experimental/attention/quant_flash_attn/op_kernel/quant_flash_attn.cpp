@@ -110,37 +110,8 @@ __global__ __aicore__ void quant_flash_attn(
     __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling)
 {
-    // AscendC::InitSocState();
-    // constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
-    // constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);
-    // constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
-    // constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);
-    // constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
-    // constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
-    // constexpr bool useDn = false;
-    // constexpr bool bmm2Write2Ub = false;
-    // constexpr bool splitD = false;
-
-    // using INPUT_T = half;
-    // using OUT_T = half;
-    // using CubBlock =
-    //     QFA_KERNEL::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
-    //                                    dVTemplateType, hasRope, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
-    // using VecFaBlock =
-    //     QFA_KERNEL::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-    //                                   s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    //                                   static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, KvLayoutType, isFd,
-    //                                   useDn, bmm2Write2Ub, splitD>;
-    // using VecFdBlock =
-    //     QFA_KERNEL::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-    //                                  s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    //                                   static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, KvLayoutType,
-    //                                   useDn, bmm2Write2Ub, splitD>;
-
     REGISTER_TILING_DEFAULT(QuantFlashAttnTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-
-    // p_scale 仅 mxfp8 量化场景使用，mxfp4 不需要，显式忽略以避免未使用参数告警。
     (void)pScale;
 
 #if (ORIG_DTYPE_Q == DT_FLOAT4_E2M1) && (ORIG_DTYPE_Q_DESCALE == DT_FLOAT8_E8M0) && (ORIG_DTYPE_ATTN_OUT == DT_BF16)

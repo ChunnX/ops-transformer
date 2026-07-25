@@ -45,7 +45,7 @@ private:
     // --- Attr checks (SinglePara) ---
     ge::graphStatus CheckSingleParaSoftmaxScale(const QuantFlashAttnTilingInfo &qfaInfo);
 
-    // --- ParaExistence: metadata (公共参数组, 文档"可选参数但当前不支持不传入") ---
+    // --- ParaExistence: metadata (公共参数组) ---
     ge::graphStatus CheckMetadataExistence(const QuantFlashAttnTilingInfo &qfaInfo);
 
     // --- MultiPara: dtype consistency ---

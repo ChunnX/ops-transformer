@@ -27,7 +27,6 @@ using namespace optiling::quant_flash_attn;
 
 namespace optiling {
 
-//参考训练算子公共info
 struct QuantFlashAttnCompileInfo {
     uint32_t aivNum;
     uint32_t aicNum;

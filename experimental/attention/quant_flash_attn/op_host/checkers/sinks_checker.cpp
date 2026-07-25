@@ -32,10 +32,6 @@ using std::string;
 using namespace ge;
 using namespace Ops::Base;
 
-// ============================================================================
-// SinglePara — 文档约束(单参数校验列): 暂不支持
-// 传入 sinks 时直接报错
-// ============================================================================
 ge::graphStatus SinksChecker::CheckSinglePara(const QuantFlashAttnTilingInfo &qfaInfo)
 {
     const gert::Tensor *sinksTensor = qfaInfo.opParamInfo.sinks.tensor;

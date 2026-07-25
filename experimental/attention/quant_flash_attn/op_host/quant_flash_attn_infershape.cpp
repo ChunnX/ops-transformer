@@ -21,7 +21,7 @@ using namespace ge;
 
 namespace ops {
 
-// 属性索引 对其def注册索引   TODO::图模式infershape没有验证
+// 属性索引 对其def注册索引
 static constexpr size_t ATTR_IDX_QUANT_MODE       = 0;
 static constexpr size_t ATTR_IDX_SOFTMAX_SCALE    = 1;
 static constexpr size_t ATTR_IDX_MASK_MODE        = 2;
@@ -134,8 +134,6 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
     gert::Shape *attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTN_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, attnOutShape);
 
-    // mxfp4 量化时 v 在 Python 端被 pack 成 uint8（每 byte 2 个 fp4 元素），
-    // vShape 最后一维是 packed 维度（d/2），output 需展开为逻辑 d（2 倍 headDimV）。
     if (layoutOutStr == "BSND") {
         attnOutShape->SetDimNum(4);
         attnOutShape->SetDim(0, batchSize);

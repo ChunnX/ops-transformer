@@ -36,7 +36,6 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDes
     RegTensor<half> curr_group_max;
     RegTensor<half> next_group_max;
     RegTensor<half> group_gmax;
-    RegTensor<half> min_val_reg;
     RegTensor<uint8_t> idx_nd2nz;
 
     // 量化专用寄存器

@@ -599,12 +599,6 @@ void QuantFlashAttnTilingInfoParser::SetFaShape()
         std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.key.shape->GetStorageShape(), tilingInfo_.layoutKV, KEY_NAME, tilingInfo_.opName);
     valueShape_ =
         std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.value.shape->GetStorageShape(), tilingInfo_.layoutKV, VALUE_NAME, tilingInfo_.opName);
-    // qDescaleShape_ =
-    //     std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.qDescale.shape->GetStorageShape(), tilingInfo_.layoutQ, Q_DESCALE_NAME, tilingInfo_.opName);
-    // kDescaleShape_ =
-    //     std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.kDescale.shape->GetStorageShape(), tilingInfo_.layoutKV, K_DESCALE_NAME, tilingInfo_.opName);
-    // vDescaleShape_ =
-    //     std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.vDescale.shape->GetStorageShape(), tilingInfo_.layoutKV, V_DESCALE_NAME, tilingInfo_.opName);
 }
 
 void QuantFlashAttnTilingInfoParser::GetKvStorageMode()

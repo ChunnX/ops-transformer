@@ -302,7 +302,6 @@ public:
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
-        // constInfo.dSize表示QUANT_T类型的元素数, 这里转换为DATA_T类型的元素数
         headDimInt8 = (constInfo.dSize / GetBlockElemCnt<QUANT_T>()) * GetBlockElemCnt<DATA_T>();
         InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, 
             headDimInt8, qSeqLensTool, queryGm, query);
@@ -437,7 +436,6 @@ public:
         if (info.actSingleLoopS2SizeAlign != info.actSingleLoopS2SizeAlign64) {
             InitConstValueParams<uint16_t> PL1InitParams (1, static_cast<uint16_t>(info.actSingleLoopS2SizeAlign64-info.actSingleLoopS2SizeAlign), 0, 0x0000);
             uint32_t l1P_Base_Offset = (info.loop % 20) * L1_P_SIZE;
-            // uint32_t POffset =  info.actSingleLoopS2SizeAlign * info.actMSizeAlign128 / 2 / 2;
             Fill(pL1Tensor[l1P_Base_Offset + info.actSingleLoopS2SizeAlign * 32].template ReinterpretCast<uint16_t>(), PL1InitParams);
             if (info.actMSizeAlign128 == mBaseSize) {
                 Fill(pL1Tensor[l1P_Base_Offset + 2 * info.actSingleLoopS2SizeAlign * 32 + 32 * 32].template ReinterpretCast<uint16_t>(), PL1InitParams);
@@ -466,14 +464,12 @@ public:
                 WaitFlag<HardEvent::MTE1_M>(PV_L0AB_EVENT0 + pvL0abBufId);
                 MatmulPV(info);
                 SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-                pvL0abBufId = (pvL0abBufId + 1) % 2;
             }
             if (info.isUpdatePScale) {
                 SetFlag<HardEvent::M_FIX>(PV_L0C_EVENT0 + pvL0cBufId);
                 WaitFlag<HardEvent::M_FIX>(PV_L0C_EVENT0 + pvL0cBufId);
                 FixpipeMm2(info);
                 SetFlag<HardEvent::FIX_M>(PV_L0C_EVENT0 + pvL0cBufId);
-                // pvL0cBufId = (pvL0cBufId + 1) % 1;
             }
         }
         SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
@@ -572,11 +568,6 @@ private:
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
                                              constInfo.maxBlockNumPerBatch);
-        // } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
-        //     uint32_t d0 = 32 / sizeof(DATA_T);
-        //     uint32_t d1 = headDim / d0;
-        //     kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
-        //                                      constInfo.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, kvSeqLensTool.seqUsedParser);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
@@ -592,11 +583,6 @@ private:
         if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
             kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
                                              constInfo.maxBlockNumPerBatch);
-        // } else if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
-        //     uint32_t d0 = 32 / sizeof(SCALE_T);
-        //     uint32_t d1 = headDim / d0;
-        //     kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
-        //                                      constInfo.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             kScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, kvSeqLensTool.seqUsedParser);
         } else if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
@@ -612,11 +598,6 @@ private:
         if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
             vScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
                                              constInfo.maxBlockNumPerBatch);
-        // } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
-        //     uint32_t d0 = 32 / sizeof(SCALE_T);
-        //     uint32_t d1 = headDim / d0;
-        //     vScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
-        //                                      constInfo.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             vScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, kvSeqLensTool.seqUsedParser);
         } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
@@ -628,23 +609,12 @@ private:
     {
         WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
 
-        // InitConstValueParams<uint16_t> vL1InitParams (
-        //     .repeatTimes = 1,
-        //     .blockNum = static_cast<uint16_t>(PV_L0A_SIZE / 32),
-        //     .dstGap = 0,
-        //     .initValue = 0x7777
-        // );
         InitConstValueParams<uint16_t> vL1InitParams (1, static_cast<uint16_t>(PV_L0A_SIZE / 32), 0, 0x6666);
         uint64_t l1BaseOffset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
         Fill(kvL1Tensor[l1BaseOffset].template ReinterpretCast<uint16_t>(), vL1InitParams);
 
-        PipeBarrier<PIPE_MTE2>(); // initvalue会被刷到同一个寄存器，两个Fill需要顺序执行
-        // InitConstValueParams<uint16_t> vScaleL1InitParams (
-        //     .repeatTimes = 1,
-        //     .blockNum = static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32),
-        //     .dstGap = 0,
-        //     .initValue = 0x7f7f
-        // );
+        PipeBarrier<PIPE_MTE2>(); 
+
         InitConstValueParams<uint16_t> vScaleL1InitParams (1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
         uint32_t vScaleL1Offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         Fill(kvDescaleL1Tensor[vScaleL1Offset].template ReinterpretCast<uint16_t>(), vScaleL1InitParams);
@@ -669,17 +639,14 @@ private:
         loadData2DMXParamsA.srcStride = loadData2DMXParamsA.yStep;
         loadData2DMXParamsA.dstStride = loadData2DMXParamsA.yStep;
 
-        for (uint32_t i = 0; i < 2; i++) {
-            WaitFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-            uint32_t pvL0AOffset = pvL0abBufId * (PV_L0A_SIZE / sizeof(DATA_T));
-            LoadData(pvL0ATensor[pvL0AOffset].ReinterpretCast<QUANT_T>(),
-                    kvL1Tensor[l1BaseOffset].ReinterpretCast<QUANT_T>(),
-                    kvDescaleL1Tensor[vScaleL1Offset],
-                    loadData2DParamsA,
-                    loadData2DMXParamsA);
-            SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-            pvL0abBufId = (pvL0abBufId + 1) % 2;
-        }
+        WaitFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
+        uint32_t pvL0AOffset = pvL0abBufId * (PV_L0A_SIZE / sizeof(DATA_T));
+        LoadData(pvL0ATensor[pvL0AOffset].ReinterpretCast<QUANT_T>(),
+                kvL1Tensor[l1BaseOffset].ReinterpretCast<QUANT_T>(),
+                kvDescaleL1Tensor[vScaleL1Offset],
+                loadData2DParamsA,
+                loadData2DMXParamsA);
+        SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
         SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
     }
@@ -936,7 +903,6 @@ private:
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
         loadData2DParamsA.kStartPosition = 0;
-        // loadData2DParamsA.mStep = ((info.actSingleLoopS2SizeAlign64 + 15) / 16 + 3) / 4 * 4;
         loadData2DParamsA.mStep = info.actSingleLoopS2SizeAlign64 / 16;
         loadData2DParamsA.kStep = constInfo.dSize / GetBlockElemCnt<QUANT_T>();
         

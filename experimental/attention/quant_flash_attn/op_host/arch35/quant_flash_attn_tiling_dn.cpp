@@ -208,10 +208,6 @@ ge::graphStatus QuantFlashAttnTilingDn::SetTilingData(QuantFlashAttnTilingData &
     return ge::GRAPH_SUCCESS;
 }
 
-// 值越小表示优先级越高. 对于FIA, 使用3位数表示优先级, 优先级编码含义为:
-// 1. 百位代表非量化、伪量化、全量化等场景, 即: 0xx-非量化，1xx-伪量化, 2xx-全量化
-// 2. 十位表示gqa、mla、泛化，即: x0x-mla, x1x-gpa, x2x-泛化
-// 3. 个位代表特化模板到泛化模板的优先级排序
 REGISTER_TILING_TEMPLATE_FIA(QuantFlashAttn, QuantFlashAttnTilingDn,
     std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 210);
 } // namespace optiling

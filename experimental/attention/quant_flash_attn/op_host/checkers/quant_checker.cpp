@@ -33,20 +33,9 @@ using std::string;
 using namespace ge;
 using namespace Ops::Base;
 
-// ============================================================================
-// SinglePara
-// 文档约束(单参数校验):
-//   quant_mode       : data_type 支持 INT32；支持输入范围为 1、2、3
-//   q_descale        : tensor_type 支持 FLOAT8_E8M0、FLOAT32；shape dim 支持 4、5
-//   k_descale        : tensor_type 支持 FLOAT8_E8M0、FLOAT32；shape dim 支持 4、5、6
-//   v_descale        : tensor_type 支持 FLOAT8_E8M0、FLOAT32；shape dim 支持 4、5、6
-//   p_scale          : tensor_type 仅支持 FLOAT32；shape 仅支持 (1,)
-//   layout_q_descale : data_type 支持 STRING；支持输入 BNSD/BSND/TND/N2TGD
-// ============================================================================
-
 ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束: data_type 支持 INT32；支持输入范围为 1、2、3
+    // data_type 支持 INT32；支持输入范围为 1、2、3
     // quant_mode 为属性, parser 中以 const int64_t* 存储, 此处校验其原始值范围
     if (qfaInfo.opParamInfo.quantMode == nullptr) {
         return ge::GRAPH_SUCCESS; // 存在性校验负责
@@ -63,7 +52,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QuantFlashAttnTilin
 
 ge::graphStatus QuantChecker::CheckSingleParaQDescale(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束: tensor_type 支持 FLOAT8_E8M0、FLOAT32；shape dim 支持 4、5
+    // tensor_type 支持 FLOAT8_E8M0、FLOAT32；shape dim 支持 4、5
     const gert::CompileTimeTensorDesc *desc = qfaInfo.opParamInfo.qDescale.desc;
     const gert::StorageShape *shape = qfaInfo.opParamInfo.qDescale.shape;
     if (desc == nullptr || shape == nullptr) {
@@ -90,7 +79,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQDescale(const QuantFlashAttnTiling
 
 ge::graphStatus QuantChecker::CheckSingleParaKDescale(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束: tensor_type 支持 FLOAT8_E8M0、FLOAT32；shape dim 支持 4、5、6
+    // tensor_type 支持 FLOAT8_E8M0、FLOAT32；shape dim 支持 4、5、6
     const gert::CompileTimeTensorDesc *desc = qfaInfo.opParamInfo.kDescale.desc;
     const gert::StorageShape *shape = qfaInfo.opParamInfo.kDescale.shape;
     if (desc == nullptr || shape == nullptr) {
@@ -117,7 +106,7 @@ ge::graphStatus QuantChecker::CheckSingleParaKDescale(const QuantFlashAttnTiling
 
 ge::graphStatus QuantChecker::CheckSingleParaVDescale(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束: tensor_type 支持 FLOAT8_E8M0、FLOAT32；shape dim 支持 4、5、6
+    // tensor_type 支持 FLOAT8_E8M0、FLOAT32；shape dim 支持 4、5、6
     const gert::CompileTimeTensorDesc *desc = qfaInfo.opParamInfo.vDescale.desc;
     const gert::StorageShape *shape = qfaInfo.opParamInfo.vDescale.shape;
     if (desc == nullptr || shape == nullptr) {
@@ -144,7 +133,7 @@ ge::graphStatus QuantChecker::CheckSingleParaVDescale(const QuantFlashAttnTiling
 
 ge::graphStatus QuantChecker::CheckSingleParaPScale(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束: tensor_type 仅支持 FLOAT32；shape 仅支持 (1,)
+    // tensor_type 仅支持 FLOAT32；shape 仅支持 (1,)
     // p_scale 为可选参数，未传入时跳过
     const gert::CompileTimeTensorDesc *desc = qfaInfo.opParamInfo.pScale.desc;
     const gert::Tensor *tensor = qfaInfo.opParamInfo.pScale.tensor;
@@ -175,8 +164,8 @@ ge::graphStatus QuantChecker::CheckSingleParaPScale(const QuantFlashAttnTilingIn
 
 ge::graphStatus QuantChecker::CheckSingleParaLayoutQDescale(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束: data_type 支持 STRING；支持输入 BNSD/BSND/TND/N2TGD
-    // 注: 目标仓库 FiaLayout 枚举未引入 N2TGD, parser 仅解析 BSND/BNSD/TND, checker 对齐 parser 实际值。
+    // data_type 支持 STRING；支持输入 BNSD/BSND/TND/N2TGD
+    // FiaLayout 枚举未引入 N2TGD, parser 仅解析 BSND/BNSD/TND, checker 对齐 parser 实际值。
     const std::vector<FiaLayout> supportedLayouts = {FiaLayout::BNSD, FiaLayout::BSND, FiaLayout::TND};
     OP_CHECK_IF(std::find(supportedLayouts.begin(), supportedLayouts.end(), qfaInfo.layoutQDescale) ==
                     supportedLayouts.end(),
@@ -200,15 +189,6 @@ ge::graphStatus QuantChecker::CheckSinglePara(const QuantFlashAttnTilingInfo &qf
     return ge::GRAPH_SUCCESS;
 }
 
-// ============================================================================
-// ParaExistence
-// 文档约束(存在性校验):
-//   quant_mode       : 必选属性
-//   q_descale/k_descale/v_descale : 必须存在
-//   p_scale          : 可选参数，默认值为 [1.0f]，不强制存在
-//   layout_q_descale : 可选属性，默认值为 BSND，无需存在性校验
-// ============================================================================
-
 ge::graphStatus QuantChecker::CheckParaExistence(const QuantFlashAttnTilingInfo &qfaInfo)
 {
     // quant_mode: 必选属性
@@ -226,13 +206,6 @@ ge::graphStatus QuantChecker::CheckParaExistence(const QuantFlashAttnTilingInfo 
     // p_scale: 可选参数，默认值为 [1.0f]，不强制存在
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// Feature — layout 匹配关系校验 (文档: layout匹配关系表)
-// MxFP8: layout_q=TND, layout_kv∈{TND,PA_BNBD,PA_NZ}, layout_out=TND, layout_q_descale∈{TND,N2TGD}
-// MxFP4: layout_q=BNSD, layout_kv=BNSD, layout_out=BNSD
-// 注: 目标仓库 FiaLayout 无 N2TGD, layout_q_descale 仅 {BSND,BNSD,TND}, 此处不校验 N2TGD
-// ============================================================================
 
 namespace {
 struct QuantLayoutConstraintConfig {
@@ -285,10 +258,6 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QuantFlashAttnTilingIn
 
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// Feature — q/k/v/attn_out shape 校验 (文档: q/k/v/attn_out shape匹配关系表)
-// ============================================================================
 
 ge::graphStatus QuantChecker::CheckQueryShape(const QuantFlashAttnTilingInfo &qfaInfo) const
 {
@@ -383,14 +352,6 @@ ge::graphStatus QuantChecker::CheckShapeMatch(const QuantFlashAttnTilingInfo &qf
     return ge::GRAPH_SUCCESS;
 }
 
-// ============================================================================
-// Feature — MxFP4 场景特殊约束 (文档: 特性交叉校验列后三条)
-//   MxFP4 场景下, layout_q/layout_kv/layout_out 仅支持 BNSD
-//   MxFP4 场景下, 仅支持 Q_N == KV_N (即 G=1, 不支持 GQA)
-//   MxFP4 场景下, D 仅支持 128
-// 注: layout_q/kv/out 仅支持 BNSD 已由 CheckLayoutConstraint 覆盖, 此处校验 G 与 D
-// ============================================================================
-
 ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInfo &qfaInfo) const
 {
     if (qfaInfo.opParamInfo.quantMode == nullptr) {
@@ -426,11 +387,6 @@ ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInf
 
 ge::graphStatus QuantChecker::CheckFeature(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档"特性交叉校验"列(rowspan=6)包含:
-    //   1. 非连续 Tensor 支持 —— 跳过(目标仓库无 strides 基础设施)
-    //   2. Layout 校验(layout 匹配关系表, 含 MxFP4 layout_q/kv/out 仅 BNSD)
-    //   3. q/k/v/attn_out shape 校验(shape 匹配关系表)
-    //   4. MxFP4 特殊约束(G=1, D=128, layout 仅 BNSD)
     if (CheckLayoutConstraint(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -442,11 +398,6 @@ ge::graphStatus QuantChecker::CheckFeature(const QuantFlashAttnTilingInfo &qfaIn
     }
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// MultiPara — descale shape consistency (文档"一致性校验"列: descale_shape匹配关系表)
-// 注: v_descale shape 不做校验, 仅校验 q_descale / k_descale
-// ============================================================================
 
 ge::graphStatus QuantChecker::CheckShapeEqual(const gert::StorageShape &actual, const std::vector<int64_t> &expected,
                                               const std::string &paraName, const char *opName) const
@@ -470,13 +421,6 @@ ge::graphStatus QuantChecker::CheckShapeEqual(const gert::StorageShape &actual, 
 
 ge::graphStatus QuantChecker::CheckQDescaleShape(const QuantFlashAttnTilingInfo &qfaInfo) const
 {
-    // 文档(descale_shape匹配关系表):
-    //   MxFP8, layout_q=TND
-    //     4D: (Q_T, Q_N, D/64, 2)              prefill场景，layout_q_descale=TND
-    //     5D: (KV_N, Q_T, G, D/64, 2)          decode场景，layout_q_descale=N2TGD
-    //   MxFP4, layout_q=BNSD
-    //     5D: (B, Q_N, Q_S, D/64, 2)
-    //   其中 G = Q_N / KV_N
     const gert::StorageShape *shape = qfaInfo.opParamInfo.qDescale.shape;
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -508,13 +452,6 @@ ge::graphStatus QuantChecker::CheckQDescaleShape(const QuantFlashAttnTilingInfo 
 
 ge::graphStatus QuantChecker::CheckKDescaleShape(const QuantFlashAttnTilingInfo &qfaInfo) const
 {
-    // 文档(k_descale/v_descale shape匹配关系表):
-    //   MxFP8
-    //     TND:      (KV_T, KV_N, D/64, 2)              - 4D
-    //     PA_BNBD:  (Bn, KV_N, Bs, D/64, 2)            - 5D
-    //     PA_NZ:    (Bn, KV_N, Bs/16, D/64, 16, 2)     - 6D
-    //   MxFP4
-    //     BNSD:     (B, KV_N, KV_S, D/64, 2)           - 5D
     const gert::StorageShape *shape = qfaInfo.opParamInfo.kDescale.shape;
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -560,7 +497,6 @@ ge::graphStatus QuantChecker::CheckDescaleShape(const QuantFlashAttnTilingInfo &
 
 ge::graphStatus QuantChecker::CheckDescaleDtype(const QuantFlashAttnTilingInfo &qfaInfo) const
 {
-    // 文档约束(一致性校验, descale_dtype匹配关系表):
     //   MxFP8/MxFP4 场景下, q/k/v descale 的 tensor_type 仅支持 FLOAT8_E8M0
     if (qfaInfo.opParamInfo.quantMode == nullptr) {
         return ge::GRAPH_SUCCESS; // 存在性校验负责

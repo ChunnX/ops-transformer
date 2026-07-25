@@ -32,14 +32,6 @@ using std::string;
 using namespace ge;
 using namespace Ops::Base;
 
-// ============================================================================
-// SinglePara — 文档约束(单参数校验列):
-//   return_softmax_lse: data_type 仅支持 BOOL; 值仅支持 True/False
-//   softmax_lse: data_type 仅支持 FLOAT32
-// 注: return_softmax_lse 为属性, 其 data_type(BOOL) 由 op def 在编译期约束,
-//     tiling 阶段通过 GetAttrPointer<bool> 获取, 类型已保证为 bool, 不再校验 dtype。
-// ============================================================================
-
 ge::graphStatus SoftmaxLSEChecker::CheckSingleParaReturnSoftmaxLse(const QuantFlashAttnTilingInfo &qfaInfo)
 {
     const bool *returnSoftmaxLse = qfaInfo.opParamInfo.returnSoftMaxLse;

@@ -26,7 +26,6 @@
 #include "vf/vf_updateScale_dn_mxfp4.h"
 #include "vf/vf_attenOut_dn_mxfp4.h"
 #include "vf/vf_onlyUpdateScale_dn_mxfp4.h"
-// #include  "vf/vf_init_dubpilcate.h"
 #include  "vf/vf_mm1_res_pre_padding_align_kvs32_multi.h"
 
 #include "quant_flash_attn_template_tiling_key.h"
@@ -342,9 +341,6 @@ public:
         if (likely(runInfo.actMSize == s1BaseSize && runInfo.actSingleLoopS2Size == s2BaseSize)) {// s1=128, s2=256 softmax
             DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1ResUB[buffIdx * ve1ResOffset], {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / 4), 8, 8, 0});
         } else {
-            // 1 整块搬运
-            // DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1ResUB[buffIdx * ve1ResOffset], {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / 4), 8, 8, 0});
-            // 2 消去高位 低位中间的间隙搬运
             DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1ResUB[buffIdx * ve1ResOffset], {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / AttentionCommon::BYTE_BLOCK * 8 / 2), 8, 8, 0});
             DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2) + runInfo.actSingleLoopS2SizeAlign64 / AttentionCommon::BYTE_BLOCK * 8 / 2 * 256], vec1ResUB[buffIdx * ve1ResOffset + BUFFER_SIZE_BYTE_16K],
                 {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / AttentionCommon::BYTE_BLOCK * 8 / 2), 8, 8, 0});
@@ -356,7 +352,7 @@ public:
     {
         LocalTensor<half> localGlobalMax = GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
         
-        if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {// // 如果当前Tile的s2只有一个softmax， 就另外一个核不用做交换操作
+        if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {
             DataCopy(localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE], localGlobalMax, {1, 8, 0, 0});
             return;
         }
@@ -374,7 +370,7 @@ public:
         LocalTensor<half> softmaxMaxOld = softmaxMaxUB;
         LocalTensor<float> urs = GetUpdateScaleByCurIdx(runInfo.updateScaleIdx);
 
-        if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) { // 如果当前s2只有一个softmax， 就另外一个核不用做pscale操作
+        if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {
             if (runInfo.curS2LoopIdx / 16 == 0) {
                 Mxfp4Api::computeOnlyScale<true, half, s1BaseSize>(localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs, constInfo.subBlockIdx);
             } else {
@@ -434,7 +430,7 @@ public:
                                           globalRowsumUB, localRowsumUB);
         }
 
-        if (unlikely(runInfo.isLastS2Loop)) { // s1泛化128
+        if (unlikely(runInfo.isLastS2Loop)) {
             uint32_t vec2MBaseSize = (s1BaseSize + 1) / 2;
             uint32_t actDealMSize =  runInfo.actMSize < vec2MBaseSize ? runInfo.actMSize : vec2MBaseSize;
             if (constInfo.subBlockIdx != 0) {

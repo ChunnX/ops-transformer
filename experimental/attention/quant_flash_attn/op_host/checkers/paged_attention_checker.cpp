@@ -39,13 +39,6 @@ bool PagedAttentionChecker::IsPageAttention(const QuantFlashAttnTilingInfo &qfaI
             qfaInfo.layoutKV == FiaLayout::NZ);
 }
 
-// ============================================================================
-// SinglePara
-// 文档约束(单参数校验):
-//   block_table: tensor_type 仅支持 INT32；tensor_shape 为 (B, Bn)；值只能为正整数
-// 注: 值约束(正整数)需读 tensor 数值, tiling 阶段无法获取, 不校验。
-// ============================================================================
-
 ge::graphStatus PagedAttentionChecker::CheckSingleParaBlockTable(const QuantFlashAttnTilingInfo &qfaInfo)
 {
     // block_table 是否传入的校验属于特性交叉校验列, 此处为空时跳过 dtype/shape 校验
@@ -97,7 +90,7 @@ ge::graphStatus PagedAttentionChecker::CheckSingleParaBlockTable(const QuantFlas
 
 ge::graphStatus PagedAttentionChecker::CheckSinglePara(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // 文档约束(单参数校验列): block_table 的 dtype/shape
+    // block_table 的 dtype/shape
     // 仅 PA 场景下校验 block_table, 通过 layout_kv 判断
     if (!IsPageAttention(qfaInfo)) {
         return ge::GRAPH_SUCCESS;
@@ -109,23 +102,11 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const QuantFlashAttnTilin
     return ge::GRAPH_SUCCESS;
 }
 
-// ============================================================================
-// ParaExistence — 文档约束(存在性校验列): block_table 为可选参数, 无强制存在性约束
-// ============================================================================
-
 ge::graphStatus PagedAttentionChecker::CheckParaExistence(const QuantFlashAttnTilingInfo &qfaInfo)
 {
     (void)qfaInfo;
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// Feature (特性交叉校验):
-//   1. PA开启情况下, block_table 必须不为空
-//   2. PA开启情况下, 必须传入 seqused_kv
-//   3. MxFP8 仅支持 Bs 为 512 或 1024
-//   4. MxFP4 不支持 PA 开启, 即 block_table 必须为空
-// ============================================================================
 
 ge::graphStatus PagedAttentionChecker::CheckFeature(const QuantFlashAttnTilingInfo &qfaInfo)
 {
@@ -162,11 +143,6 @@ ge::graphStatus PagedAttentionChecker::CheckFeature(const QuantFlashAttnTilingIn
     }
     return ge::GRAPH_SUCCESS;
 }
-
-// ============================================================================
-// MultiPara — 文档约束(一致性校验列): 无
-// block_table shape (B, Bn) 的校验已在 CheckSingleParaBlockTable 中完成
-// ============================================================================
 
 ge::graphStatus PagedAttentionChecker::CheckMultiPara(const QuantFlashAttnTilingInfo &qfaInfo)
 {

@@ -129,8 +129,6 @@ public:
 
         InitConstInfo();
 
-        /* SeqLensTool 的 defaultVal 用 maxSeqlenQ/Kv (实际序列长度), 而非 s1Size/s2Size (物理 padded 维).
-           s1Size/s2Size 仍用于 GM buffer 大小/stride/offset (InitKVBuffer/InitAttentionOutBuffer 等). */
         qSeqLensTool.Init(cuSeqlensQ, constInfo.qCuSeqLensSize, seqUsedQ, constInfo.qSeqUsedSize, constInfo.maxSeqlenQ);
         kvSeqLensTool.Init(cuSeqlensKv, constInfo.kvCuSeqLensSize, seqUsedKv, constInfo.kvSeqUsedSize, constInfo.maxSeqlenKv);
 
@@ -171,14 +169,13 @@ public:
         constInfo.kvCuSeqLensSize = fiaBaseParams.kvCuSeqLensSize;
         constInfo.qSeqUsedSize = fiaBaseParams.qSeqUsedSize;
         constInfo.kvSeqUsedSize = fiaBaseParams.kvSeqUsedSize;
-        /* seqUsed/cuSeq 为空时的实际序列长度; host 侧 maxSeqlenQ/Kv >= 0 调用, 否则回退 s1Size/s2Size (物理维) */
+
         constInfo.maxSeqlenQ = (fiaBaseParams.maxSeqlenQ >= 0) ? static_cast<uint64_t>(fiaBaseParams.maxSeqlenQ)
                                                                : constInfo.s1Size;
         constInfo.maxSeqlenKv = (fiaBaseParams.maxSeqlenKv >= 0) ? static_cast<uint64_t>(fiaBaseParams.maxSeqlenKv)
                                                                  : constInfo.s2Size;
         constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
         constInfo.coreNum = fiaBaseParams.coreNum;
-        // constInfo.outputLayout = static_cast<FA_LAYOUT>(fiaBaseParams.outputLayout); 
 
         constInfo.sparseMode = fiaAttenMaskParams.sparseMode;
         constInfo.preTokens = fiaAttenMaskParams.winLefts;
@@ -196,12 +193,6 @@ public:
         }
         // LSE
         constInfo.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
-
-        // PRINTF("bSize:%d, t1Size:%d, t2Size:%d, n2Size:%d, gSize:%d, s1Size:%d, s2Size:%d, dSize:%d, dSizeV:%d, qCuSeqLensSize:%d, kvCuSeqLensSize:%d, qSeqUsedSize:%d, kvSeqUsedSize:%d, scaleValue:%f, coreNum:%d\n",
-        //     constInfo.bSize, constInfo.t1Size, constInfo.t2Size, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-        //     constInfo.s2Size, constInfo.dSize, constInfo.dSizeV, constInfo.qCuSeqLensSize, constInfo.kvCuSeqLensSize, constInfo.qSeqUsedSize, constInfo.kvSeqUsedSize, constInfo.scaleValue, constInfo.coreNum);
-        // PRINTF("sparseMode:%d, preTokens:%d, nextTokens:%d, attenMaskS1Size:%d, attenMaskS2Size:%d, accumOutSize:%d, logSumExpSize:%d, isSoftmaxLseEnable:%d\n",
-        //     constInfo.sparseMode, constInfo.preTokens, constInfo.nextTokens, constInfo.attenMaskS1Size, constInfo.attenMaskS2Size, constInfo.accumOutSize, constInfo.logSumExpSize, constInfo.isSoftmaxLseEnable);
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
@@ -272,11 +263,6 @@ public:
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        // PRINTF("bN2Cur:%d gS1Cur:%d s2Cur:%d bN2End_:%d gS1OEnd_:%d s2OEnd_:%d\n",
-        //     bN2Cur, gS1Cur, s2Cur, bN2End_, gS1OEnd_, s2OEnd_);
-        // if (bN2Cur > bN2End_) {
-        //     return false;
-        // }
         return ((bN2Cur != bN2End_) || (gS1Cur != gS1OEnd_) || (s2Cur != s2OEnd_));
     }
 
@@ -344,38 +330,15 @@ public:
             return TASK_DEAL_MODE::SKIP;
         }
 
-        // PRINTF("CREATE_TASK bN2Cur:%d gS1Cur:%d s2Cur:%d bIdx:%d actSeqLensQ:%d actSeqLensKv:%d\n",
-        //     bN2Cur, gS1Cur, s2Cur, bIdx, actSeqLensQ, actSeqLensKv);
-
         return TASK_DEAL_MODE::CREATE_TASK;
-    }
-
-    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
-                                                 int64_t &nextTokenLeftUp)
-    {
-        // preTokenLeftUp = constInfo.preTokens;
-        // nextTokenLeftUp = constInfo.nextTokens;
-        // fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
-        //                                 constInfo.sparseMode);
-
-        // if (constInfo.sparseMode == fa_base_vector::BAND) {
-        //     preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
-        // }
-
-        // if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL || constInfo.sparseMode == fa_base_vector::TREE) {
-        //     nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-        // } else if (constInfo.sparseMode == fa_base_vector::BAND) {
-        //     nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
-        // }
     }
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        // PRINTF("loop:%d ", loop);
 
-        RunInfo &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
-        RunInfo &runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];            // 前面3轮任务
-        RunInfo &runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];          // 前面20轮任务
+        RunInfo &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
+        RunInfo &runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];
+        RunInfo &runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
 
         if (loop >= PRELOAD_N && runInfo20.isValid) {
             if ASCEND_IS_AIC {
@@ -439,48 +402,40 @@ public:
             }
         }
 
-        // PRINTF("\n");
     }
 
     __aicore__ inline void ComputeMm1(RunInfo &runInfo)
     {
-        // PRINTF("C1 ");
         cubeBlock.ComputeMm1(runInfo);
     }
 
     __aicore__ inline void ComputeMm2(RunInfo &runInfo)
     {
-        // PRINTF("C2 ");
         cubeBlock.ComputeMm2(runInfo);
     }
 
     __aicore__ inline void ComputeVec1(RunInfo &runInfo)
     {
-        // PRINTF("V1 ");
         vectorBlock.ComputeVec1(runInfo);
     }
 
     __aicore__ inline void CopyGMaxUbToL1(RunInfo &runInfo)
     {
-        // PRINTF("CopyGMaxUbToL1 ");
         vectorBlock.CopyGMaxUbToL1(runInfo);
     }
 
     __aicore__ inline void CopyGMaxL1ToUb(RunInfo &runInfo)
     {
-        // PRINTF("CopyGMaxL1ToUb ");
         cubeBlock.CopyGMaxL1ToUb(runInfo);
     }
 
     __aicore__ inline void UpdatePScale(RunInfo &runInfo)
     {
-        // PRINTF("UpdatePScale ");
         vectorBlock.UpdatePScale(runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfo &runInfo)
     {
-        // PRINTF("V2 ");
         vectorBlock.ComputeVec2(runInfo);
     }
 
@@ -526,12 +481,8 @@ public:
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)16); // 统一对齐到16
         info.actSingleLoopS2SizeAlign64 =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)BUFFER_SIZE_BYTE_64B); // 统一对齐到64
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
-        // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
-        // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
-        // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
-        // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
+
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
@@ -554,8 +505,6 @@ public:
         info.tileMaxIdx = tileMaxIdx;
         info.updateScaleIdx = updateScaleIdx;
         info.isS2FirstTilePerCore = (info.curS2LoopIdx % TILE_N / 2 == 0);
-        // PRINTF("s2Cur:%d curS2Start:%d curS2End:%d isLastS2Loop:%d curS2LoopIdx:%d isUpdatePScale:%d isC2Sync:%d\n",
-        //     s2Cur, curS2Start, curS2End, info.isLastS2Loop, info.curS2LoopIdx, info.isUpdatePScale, info.isC2Sync);
 
         if constexpr (SOFTMAX_DN) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
@@ -583,12 +532,6 @@ public:
                 info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
             }
         }
-        // PRINTF("索引信息: bIdx=%d n2Idx=%d gIdx=%d gS1Idx=%d s1Idx=%d s2Idx=%d curS2LoopIdx=%d\n",
-        //     info.bIdx, info.n2Idx, info.gIdx, info.gS1Idx, info.s1Idx, info.s2Idx, info.curS2LoopIdx);
-        // PRINTF("尺寸信息: actS1Size=%lld actS2Size=%lld actMSize=%d actMSizeAlign32=%d actVecMSize=%d vecMbaseIdx=%d\n",
-        //     info.actS1Size, info.actS2Size, info.actMSize, info.actMSizeAlign32, info.actVecMSize, info.vecMbaseIdx);
-        // PRINTF("S2信息: actSingleLoopS2Size=%d actSingleLoopS2SizeAlign=%d, actSingleLoopS2SizeAlign64=%d\n",
-        //     info.actSingleLoopS2Size, info.actSingleLoopS2SizeAlign, info.actSingleLoopS2SizeAlign64);
     }
 
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
@@ -616,20 +559,6 @@ public:
         bN2Cur++;
     }
 
-    __aicore__ inline void FlashDecode(uint32_t sectionIdx)
-    {
-        // vecFdBlock.InitBuffers(this->pipe, SharedBuffer1, SharedBuffer2, SharedBuffer3);
-        AscendC::ICachePreLoad(2);
-        GetFDSectionInfo(sectionIdx);
-        // vecFdBlock.AllocEventID();
-        // vecFdBlock.InitDecodeParams();
-        SyncAll();
-        // vecFdBlock.FlashDecode(fdParams_);
-        // SyncAll();
-        // vecFdBlock.FreeBuffers(SharedBuffer1, SharedBuffer2);
-        // vecFdBlock.FreeEventID();
-    }
-
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
         bN2Start_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
@@ -641,21 +570,6 @@ public:
         coreFirstTmpOutWsPos_ = faMetaDataGm.GetValue(
             GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx)
         );
-        // PRINTF("ori bN2Start_ is %d, gS1OStart_ is %d, s2OStart_ is %d\n", bN2Start_, gS1OStart_, s2OStart_);
-        // PRINTF("ori bN2End_ is %d, gS1OEnd_ is %d, s2OEnd_ is %d\n", bN2End_, gS1OEnd_, s2OEnd_);
-    }
-
-    __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
-    {
-        fdParams_.fdBN2Idx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
-        fdParams_.fdMIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
-        fdParams_.fdWorkspaceIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
-        fdParams_.fdS2SplitNum =fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart =fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
-        fdParams_.mLen = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
-        fdParams_.fdCoreEnable = fdParams_.mLen > 0 ? 1U : 0U;
-        // PRINTF("ori fdParams_.fdBN2Idx is %d, fdParams_.fdMIdx is %d, fdParams_.fdWorkspaceIdx is %d, fdParams_.fdS2SplitNum is %d\n", fdParams_.fdBN2Idx, fdParams_.fdMIdx, fdParams_.fdWorkspaceIdx, fdParams_.fdS2SplitNum);
-        // PRINTF("ori fdParams_.mStart is %d, fdParams_.mLen is %d\n", fdParams_.mStart, fdParams_.mLen);
     }
 
     __aicore__ inline void Process()
@@ -684,18 +598,7 @@ public:
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[1] + 16);
                 }
             }
-            // if ASCEND_IS_AIV {
-            //     FlashDecode(sectionIdx);
-            // }
         }
-
-        // if (constInfo.aicIdx < constInfo.coreNum) {
-        //     if ASCEND_IS_AIV {
-        //         vectorBlock.FreeEventID();
-        //     } else {
-        //         cubeBlock.FreeEventID();
-        //     }
-        // }
     }
 };
 
