@@ -607,14 +607,13 @@ aclnnStatus aclnnMlaProlog(
 - 确定性计算：
   - aclnnMlaProlog默认确定性实现。
 
-<details>
+  <details>
   <summary><a id="shapeDesc"></a>shape格式字段含义说明</summary>
-    &nbsp;&nbsp;<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-        <col style="width: 165px">
-        <col style="width: 625px">
-        <col style="width: 360px">
-        </colgroup>
-<table>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 165px">
+  <col style="width: 625px">
+  <col style="width: 360px">
+  </colgroup>
   <thead>
     <tr>
       <th>字段名</th>
@@ -693,8 +692,8 @@ aclnnStatus aclnnMlaProlog(
       </td>
     </tr>
   </tbody>
-</table>
-</details>
+  </table>
+  </details>
 
   <details>
   <summary><a id="specialConstraint"></a>特殊约束</summary>
@@ -739,7 +738,7 @@ aclnnStatus aclnnMlaProlog(
   <details>
   <summary><a id="SupportScenes"></a>不同量化场景参数的dtype与shape约束</summary>
 
-- 在不同量化场景下，参数的dtype和shape组合需要满足如下条件：
+  - 在不同量化场景下，参数的dtype和shape组合需要满足如下条件：
   <div style="overflow-x: auto; width: 100%;">
   <table style="table-layout: auto;" border="1">
     <tr>

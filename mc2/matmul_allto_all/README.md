@@ -127,6 +127,7 @@
     <td>-</td>
     <td>-</td>
     </tr>
+    <tr>
     <td>x1_offset</td>
     <td>可选输入</td>
     <td>预留参数，左矩阵的量化偏置。</td>

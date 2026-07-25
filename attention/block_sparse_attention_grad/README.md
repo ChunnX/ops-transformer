@@ -9,9 +9,9 @@
 |<term>Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
-|<term> Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
-|<term> Atlas 推理系列产品</term>                                                 |    ×    |
-|<term> Atlas 训练系列产品</term>                                                 |    ×    |
+|<term>Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
+|<term>Atlas 推理系列产品</term>                                                 |    ×    |
+|<term>Atlas 训练系列产品</term>                                                 |    ×    |
 
 ## 功能说明
 
@@ -19,19 +19,19 @@
 * ​计算公式​：
 
   稀疏块大小：$blockShapeX×blockShapeY$，BlockSparseMask指定稀疏模式。
-  
+
   已知正向计算公式为：
-  
+
   $$
   attentionOut=Softmax(Mask(scale⋅query⋅key_{sparse}^{T},  atten\_mask))⋅value_{sparse}
   $$
-  
+
   为方便表达，以变量$S$和$P$表示计算公式：
-  
+
   $$
   S = Mask(scale⋅query⋅key_{sparse}^{T},atten\_mask)
   $$
-  
+
   $$
   P = SoftMax(S)
   $$
@@ -43,7 +43,7 @@
   $$
   Out = PV
   $$
-  
+
   则反向计算公式为：
 
   $$
@@ -84,10 +84,8 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 * qInputLayout: "TND" "BNSD" "BSND"
 * kvInputLayout: "TND" "BNSD" "BSND"
 
-- <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>:
+* <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>:
 不支持"BSND"。
-
-</ul>
 
 ## 参数说明
 
@@ -366,16 +364,14 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 * softmaxLse的layout需要与query的layout保持一致。如果query的layout为"BSND"时，softmaxLse的layout应传入"BNS1"。
 * HeadDim必须等于128。
 * 根据算子支持的输入 Layout，query 张量 Shape 中对应的 head 维度大小记为 N1，key 和 value 张量 Shape 中对应的 head 维度大小记为 N2。必须满足N1 % N2 == 0。
-  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当前只支持MHA，即N1等于N2。
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持MQA、MHA、GQA场景。
+  * <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当前只支持MHA，即N1等于N2。
+  * <term>Ascend 950PR/Ascend 950DT</term>：支持MQA、MHA、GQA场景。
 * actualSeqLengthsOptional与actualSeqLengthsKvOptional相关约束：
 
-  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当 qInputLayout或kvInputLayout 为 "BNSD" 时，如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；如不配置（传 nullptr），算子将默认把 query shape 中的 S 维度作为有效长度进行全量处理。
+  * <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当 qInputLayout或kvInputLayout 为 "BNSD" 时，如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；如不配置（传 nullptr），算子将默认把 query shape 中的 S 维度作为有效长度进行全量处理。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：当qInputLayout或kvInputLayout 为 非"TND"时，会忽略这两个入参。
+  * <term>Ascend 950PR/Ascend 950DT</term>：当qInputLayout或kvInputLayout 为 非"TND"时，会忽略这两个入参。
 * 不支持确定性计算场景。
-
-</ul>
 
 ## 调用说明
 
