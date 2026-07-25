@@ -9,7 +9,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ */
 
 /*!
  * \file quant_flash_attn_block_vector_dn.h
@@ -26,7 +26,7 @@
 #include "vf/vf_updateScale_dn_mxfp4.h"
 #include "vf/vf_attenOut_dn_mxfp4.h"
 #include "vf/vf_onlyUpdateScale_dn_mxfp4.h"
-#include  "vf/vf_mm1_res_pre_padding_align_kvs32_multi.h"
+#include "vf/vf_mm1_res_pre_padding_align_kvs32_multi.h"
 
 #include "quant_flash_attn_template_tiling_key.h"
 #include "quant_flash_attn_common_def.h"
@@ -42,15 +42,14 @@ namespace QFA_KERNEL {
 template <QFA_LAYOUT LAYOUT_OUT>
 __aicore__ inline constexpr GmFormat GetAttentionOutGmFormat()
 {
-    static_assert((LAYOUT_OUT == QFA_LAYOUT::BSND) ||
-                      (LAYOUT_OUT == QFA_LAYOUT::BNSD) ||
+    static_assert((LAYOUT_OUT == QFA_LAYOUT::BSND) || (LAYOUT_OUT == QFA_LAYOUT::BNSD) ||
                       (LAYOUT_OUT == QFA_LAYOUT::TND),
-                      "Get OUT GmFormat fail, LAYOUT_OUT is incorrect");
+                  "Get OUT GmFormat fail, LAYOUT_OUT is incorrect");
     if constexpr (LAYOUT_OUT == QFA_LAYOUT::BSND) {
         return GmFormat::BSNGD;
-    } else if constexpr(LAYOUT_OUT == QFA_LAYOUT::BNSD) {
+    } else if constexpr (LAYOUT_OUT == QFA_LAYOUT::BNSD) {
         return GmFormat::BNGSD;
-    } else if constexpr(LAYOUT_OUT == QFA_LAYOUT::TND) {
+    } else if constexpr (LAYOUT_OUT == QFA_LAYOUT::TND) {
         return GmFormat::TNGD;
     }
 }
@@ -77,13 +76,12 @@ public:
     static constexpr bool SOFTMAX_DN = true;
     static constexpr bool PAGE_ATTENTION = QFAT::pageAttention;
     static constexpr bool HAS_MASK = QFAT::hasMask;
-    
+
     static constexpr QFA_LAYOUT LAYOUT_Q = QFAT::qLayout;
     static constexpr QFA_LAYOUT LAYOUT_KV = QFAT::kvLayout;
     static constexpr QFA_LAYOUT LAYOUT_OUT = QFAT::outLayout;
 
 private:
-
     // 初始化基础常量
     const ConstInfo &constInfo;
     const SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool;
@@ -100,7 +98,7 @@ private:
     static constexpr uint32_t LOCAL_GROUP_MAX_SIZE = 128 * 128 / 32 * sizeof(half);
     static constexpr uint32_t LOCAL_GLOBAL_MAX_SIZE = 128 * sizeof(half);
     static constexpr uint32_t L1_SINGLE_GLOBAL_MAX_SIZE = 128;
-    static constexpr uint32_t SINGLE_PSCALE_SPACE_SIZE = 32*5*8;
+    static constexpr uint32_t SINGLE_PSCALE_SPACE_SIZE = 32 * 5 * 8;
     static constexpr uint32_t SINGLE_GROUP_MAX_SPACE_SIZE = 4 * 128;
 
     static constexpr uint32_t mm1ResOffset = 128;
@@ -132,16 +130,13 @@ private:
     static constexpr uint32_t UB_UPDATE_BUFCNT = 4;
     static constexpr uint32_t UB_INDEX_BUFCNT = 1;
     static constexpr uint32_t UB_FD_BUFCNT = 8;
-    static constexpr uint32_t INIT_OUTPUT_UB_BYTES = UB_S_SIZE * UB_S_BUFCNT * sizeof(half) +
-                                                     UB_PV_SIZE * UB_PV_BUFCNT * sizeof(float) +
-                                                     UB_ROWSUM_SIZE * UB_ROWSUM_BUFCNT * sizeof(float) +
-                                                     UB_ROWSUM_SIZE * UB_ROWSUM_BUFCNT * sizeof(float) +
-                                                     UB_P_SIZE * UB_P_BUFCNT * sizeof(uint8_t) +
-                                                     UB_ATTENTIONOUT_SIZE * UB_ATTENTIONOUT_BUFCNT * sizeof(float) +
-                                                     UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half) +
-                                                     UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half) +
-                                                     UB_LOCALGROUPMAX_SIZE * UB_LOCALGROUPMAX_BUFCNT * sizeof(half);
-    
+    static constexpr uint32_t INIT_OUTPUT_UB_BYTES =
+        UB_S_SIZE * UB_S_BUFCNT * sizeof(half) + UB_PV_SIZE * UB_PV_BUFCNT * sizeof(float) +
+        UB_ROWSUM_SIZE * UB_ROWSUM_BUFCNT * sizeof(float) + UB_ROWSUM_SIZE * UB_ROWSUM_BUFCNT * sizeof(float) +
+        UB_P_SIZE * UB_P_BUFCNT * sizeof(uint8_t) + UB_ATTENTIONOUT_SIZE * UB_ATTENTIONOUT_BUFCNT * sizeof(float) +
+        UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half) + UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half) +
+        UB_LOCALGROUPMAX_SIZE * UB_LOCALGROUPMAX_BUFCNT * sizeof(half);
+
     LocalTensor<half> mm1ResUB;
     LocalTensor<float> mm2ResUB;
     LocalTensor<uint8_t> pscaleUB;
@@ -161,16 +156,16 @@ private:
     LocalTensor<half> maxFDUB;
 
     // =================================L1 Buffer=================================
-    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2; // 16K, 2个fp4_e2m1元素为1B
-    static constexpr uint32_t L1_P_DESCALE_SIZE = 32*5*8; // 1.25K
+    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;      // 16K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_P_DESCALE_SIZE = 32 * 5 * 8; // 1.25K
     static constexpr uint32_t L1_P_BUFCNT = 20;
-    
+
     LocalTensor<uint8_t> pL1Tensor;
     LocalTensor<uint8_t> pScaleL1;
     LocalTensor<half> localGlobalMaxL1;
 
     /* =====================GM变量==================== */
-    
+
     static constexpr GmFormat OUT_FORMAT = GetAttentionOutGmFormat<LAYOUT_OUT>();
 
     // V2 attentionOut 变量
@@ -192,15 +187,13 @@ public:
     // 初始化 Vec Block 层
     __aicore__ inline QuantFlashAttnBlockVectorDn(ConstInfo &constInfo, SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool,
                                                   SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
-        : constInfo(constInfo),
-          qSeqLensTool(qSeqLensTool),
-          kvSeqLensTool(kvSeqLensTool){};
+        : constInfo(constInfo), qSeqLensTool(qSeqLensTool), kvSeqLensTool(kvSeqLensTool){};
 
     __aicore__ inline void InitInput(__gm__ uint8_t *attentionOut)
     {
         // 初始化 attentionOut GM Buffer 及 GmTensor
         InitAttentionOutBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSize,
-            qSeqLensTool, outGmTensor, attentionOut);
+                               qSeqLensTool, outGmTensor, attentionOut);
     }
 
     // 初始化 UB
@@ -209,7 +202,7 @@ public:
         AllocEventID();
 
         // =================================L1 Tensor Init=================================
-        uint32_t addrL1Start = 0;  // 16K * 20 = 320K
+        uint32_t addrL1Start = 0; // 16K * 20 = 320K
         pL1Tensor = LocalTensor<uint8_t>(TPosition::A1, addrL1Start, L1_P_SIZE * L1_P_BUFCNT);
         addrL1Start += L1_P_SIZE * L1_P_BUFCNT;
         pScaleL1 = LocalTensor<uint8_t>(TPosition::A1, addrL1Start, L1_P_DESCALE_SIZE * L1_P_BUFCNT); // 1K * 20 = 20K
@@ -234,7 +227,8 @@ public:
         vec1ResUB = LocalTensor<uint8_t>(TPosition::VECCALC, addrUBStart, UB_P_SIZE * UB_P_BUFCNT);
 
         addrUBReuseStart = addrUBStart;
-        attentionTransUB = LocalTensor<bfloat16_t>(TPosition::VECCALC, addrUBReuseStart, UB_ATTENTIONTRANS_SIZE * UB_ATTENTIONOUT_BUFCNT);
+        attentionTransUB = LocalTensor<bfloat16_t>(TPosition::VECCALC, addrUBReuseStart,
+                                                   UB_ATTENTIONTRANS_SIZE * UB_ATTENTIONOUT_BUFCNT);
 
         addrUBReuseStart += UB_ATTENTIONTRANS_SIZE * UB_ATTENTIONOUT_BUFCNT * sizeof(bfloat16_t);
         pscaleUB = LocalTensor<uint8_t>(TPosition::VECCALC, addrUBReuseStart, UB_PSCALE_SIZE * UB_PSCALE_BUFCNT);
@@ -246,7 +240,8 @@ public:
         maxFDUB = LocalTensor<half>(TPosition::VECCALC, addrUBReuseStart, UB_MAX_SIZE * UB_FD_BUFCNT);
 
         addrUBStart += UB_P_SIZE * UB_P_BUFCNT * sizeof(uint8_t);
-        attentionOutUB = LocalTensor<float>(TPosition::VECCALC, addrUBStart, UB_ATTENTIONOUT_SIZE * UB_ATTENTIONOUT_BUFCNT);
+        attentionOutUB =
+            LocalTensor<float>(TPosition::VECCALC, addrUBStart, UB_ATTENTIONOUT_SIZE * UB_ATTENTIONOUT_BUFCNT);
 
         addrUBStart += UB_ATTENTIONOUT_SIZE * UB_ATTENTIONOUT_BUFCNT * sizeof(float);
         peerGlobalMaxUB = LocalTensor<half>(TPosition::VECCALC, addrUBStart, UB_MAX_SIZE * UB_PEER_MAX_BUFCNT);
@@ -255,7 +250,8 @@ public:
         softmaxMaxUB = LocalTensor<half>(TPosition::VECCALC, addrUBStart, UB_MAX_SIZE * UB_MAX_BUFCNT);
 
         addrUBStart += UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half);
-        localGroupMaxUB = LocalTensor<half>(TPosition::VECCALC, addrUBStart, UB_LOCALGROUPMAX_SIZE * UB_LOCALGROUPMAX_BUFCNT);
+        localGroupMaxUB =
+            LocalTensor<half>(TPosition::VECCALC, addrUBStart, UB_LOCALGROUPMAX_SIZE * UB_LOCALGROUPMAX_BUFCNT);
 
         addrUBStart += UB_LOCALGROUPMAX_SIZE * UB_LOCALGROUPMAX_BUFCNT * sizeof(half);
         localGlobalMaxUB = LocalTensor<half>(TPosition::VECCALC, addrUBStart, UB_MAX_SIZE * UB_LOCALGLOBALMAX_BUFCNT);
@@ -278,13 +274,14 @@ public:
     __aicore__ inline void ComputeVec1(const RunInfo &runInfo)
     {
         uint32_t buffIdx = GetBufferIdx(runInfo.loop);
-        if (runInfo.isS2FirstTilePerCore) {// 每个vector core都需要一个跨tile的同步
+        if (runInfo.isS2FirstTilePerCore) { // 每个vector core都需要一个跨tile的同步
             WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG + runInfo.tileMaxIdx);
         }
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG + buffIdx);
 
         if (unlikely(runInfo.isFirstS2Loop)) {
-            if (likely(runInfo.actMSize == s1BaseSize && runInfo.actSingleLoopS2Size == s2BaseSize)) {// s1=128, s2=256 softmax
+            if (likely(runInfo.actMSize == s1BaseSize &&
+                       runInfo.actSingleLoopS2Size == s2BaseSize)) { // s1=128, s2=256 softmax
                 Mxfp4Api::softmaxWithGroupMaxQs128Kvs256CallVF<true, half, uint8_t, false, s2BaseSize, s1BaseSize>(
                     vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
                     GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
@@ -292,11 +289,13 @@ public:
             } else {
                 // s2 padding 32 multi
                 if (runInfo.actSingleLoopS2Size != runInfo.actSingleLoopS2SizeAlign) {
-                    Mxfp4Api::Mm1ResPrePaddingAlignKvs32MultiCallVF<half>(mm1ResUB[buffIdx * mm1ResOffset],  static_cast<uint16_t>(runInfo.actSingleLoopS2Size), static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign));
+                    Mxfp4Api::Mm1ResPrePaddingAlignKvs32MultiCallVF<half>(
+                        mm1ResUB[buffIdx * mm1ResOffset], static_cast<uint16_t>(runInfo.actSingleLoopS2Size),
+                        static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign));
                     PipeBarrier<PIPE_V>();
                 }
                 // softmax
-                if (runInfo.actSingleLoopS2SizeAlign == AttentionCommon::BYTE_BLOCK) {// softmax_padding_32
+                if (runInfo.actSingleLoopS2SizeAlign == AttentionCommon::BYTE_BLOCK) { // softmax_padding_32
                     Mxfp4Api::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<true, half, uint8_t, false>(
                         vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
                         GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
@@ -305,11 +304,14 @@ public:
                     Mxfp4Api::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<true, half, uint8_t, false>(
                         vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
                         GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
-                        nd2nzIndexUB, static_cast<half>(constInfo.scaleValue),  static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign), static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign64));
+                        nd2nzIndexUB, static_cast<half>(constInfo.scaleValue),
+                        static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
+                        static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign64));
                 }
             }
         } else {
-             if (likely(runInfo.actMSize == s1BaseSize && runInfo.actSingleLoopS2Size == s2BaseSize)) {// s1=128, s2=256 softmax
+            if (likely(runInfo.actMSize == s1BaseSize &&
+                       runInfo.actSingleLoopS2Size == s2BaseSize)) { // s1=128, s2=256 softmax
                 Mxfp4Api::softmaxWithGroupMaxQs128Kvs256CallVF<false, half, uint8_t, false, s2BaseSize, s1BaseSize>(
                     vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
                     GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
@@ -317,11 +319,13 @@ public:
             } else {
                 // s2 padding 32 multi
                 if (runInfo.actSingleLoopS2Size != runInfo.actSingleLoopS2SizeAlign) {
-                     Mxfp4Api::Mm1ResPrePaddingAlignKvs32MultiCallVF<half>(mm1ResUB[buffIdx * mm1ResOffset],  static_cast<uint16_t>(runInfo.actSingleLoopS2Size), static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign));
+                    Mxfp4Api::Mm1ResPrePaddingAlignKvs32MultiCallVF<half>(
+                        mm1ResUB[buffIdx * mm1ResOffset], static_cast<uint16_t>(runInfo.actSingleLoopS2Size),
+                        static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign));
                     PipeBarrier<PIPE_V>();
                 }
                 // softmax
-                if (runInfo.actSingleLoopS2SizeAlign == AttentionCommon::BYTE_BLOCK) {// softmax_padding_32
+                if (runInfo.actSingleLoopS2SizeAlign == AttentionCommon::BYTE_BLOCK) { // softmax_padding_32
                     Mxfp4Api::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<false, half, uint8_t, false>(
                         vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
                         GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
@@ -330,7 +334,9 @@ public:
                     Mxfp4Api::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<false, half, uint8_t, false>(
                         vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
                         GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
-                        nd2nzIndexUB, static_cast<half>(constInfo.scaleValue),  static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign), static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign64));
+                        nd2nzIndexUB, static_cast<half>(constInfo.scaleValue),
+                        static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
+                        static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign64));
                 }
             }
         }
@@ -338,12 +344,19 @@ public:
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF0_FLAG + buffIdx);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF0_FLAG + buffIdx);
 
-        if (likely(runInfo.actMSize == s1BaseSize && runInfo.actSingleLoopS2Size == s2BaseSize)) {// s1=128, s2=256 softmax
-            DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1ResUB[buffIdx * ve1ResOffset], {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / 4), 8, 8, 0});
+        if (likely(runInfo.actMSize == s1BaseSize &&
+                   runInfo.actSingleLoopS2Size == s2BaseSize)) { // s1=128, s2=256 softmax
+            DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1ResUB[buffIdx * ve1ResOffset],
+                     {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / 4), 8, 8, 0});
         } else {
-            DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1ResUB[buffIdx * ve1ResOffset], {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / AttentionCommon::BYTE_BLOCK * 8 / 2), 8, 8, 0});
-            DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2) + runInfo.actSingleLoopS2SizeAlign64 / AttentionCommon::BYTE_BLOCK * 8 / 2 * 256], vec1ResUB[buffIdx * ve1ResOffset + BUFFER_SIZE_BYTE_16K],
-                {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / AttentionCommon::BYTE_BLOCK * 8 / 2), 8, 8, 0});
+            DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1ResUB[buffIdx * ve1ResOffset],
+                     {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / AttentionCommon::BYTE_BLOCK * 8 / 2), 8,
+                      8, 0});
+            DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2) +
+                               runInfo.actSingleLoopS2SizeAlign64 / AttentionCommon::BYTE_BLOCK * 8 / 2 * 256],
+                     vec1ResUB[buffIdx * ve1ResOffset + BUFFER_SIZE_BYTE_16K],
+                     {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / AttentionCommon::BYTE_BLOCK * 8 / 2), 8,
+                      8, 0});
         }
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG + buffIdx);
     }
@@ -351,16 +364,19 @@ public:
     __aicore__ inline void CopyGMaxUbToL1(const RunInfo &runInfo)
     {
         LocalTensor<half> localGlobalMax = GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
-        
+
         if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {
-            DataCopy(localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE], localGlobalMax, {1, 8, 0, 0});
+            DataCopy(
+                localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE],
+                localGlobalMax, {1, 8, 0, 0});
             return;
         }
-    
+
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG + runInfo.tileMaxIdx);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG + runInfo.tileMaxIdx);
 
-        DataCopy(localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE], localGlobalMax, {1, 8, 0, 0});
+        DataCopy(localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE],
+                 localGlobalMax, {1, 8, 0, 0});
     }
 
     __aicore__ inline void UpdatePScale(const RunInfo &runInfo)
@@ -372,9 +388,11 @@ public:
 
         if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {
             if (runInfo.curS2LoopIdx / 16 == 0) {
-                Mxfp4Api::computeOnlyScale<true, half, s1BaseSize>(localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs, constInfo.subBlockIdx);
+                Mxfp4Api::computeOnlyScale<true, half, s1BaseSize>(localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs,
+                                                                   constInfo.subBlockIdx);
             } else {
-                Mxfp4Api::computeOnlyScale<false, half, s1BaseSize>(localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs, constInfo.subBlockIdx);
+                Mxfp4Api::computeOnlyScale<false, half, s1BaseSize>(localGlobalMax1, localGlobalMax2, softmaxMaxOld,
+                                                                    urs, constInfo.subBlockIdx);
             }
             PipeBarrier<PIPE_V>();
             return;
@@ -386,7 +404,7 @@ public:
         uint16_t secondLoopStart = 0;
 
         GetPScaleParams(runInfo, firstLoopStart, firstLoop, secondLoopStart, secondLoop);
-        
+
         LocalTensor<uint8_t> pscale1 = this->pscaleUB;
         LocalTensor<uint8_t> pscale2 = this->pscaleUB[firstLoop * SINGLE_PSCALE_SPACE_SIZE];
         LocalTensor<half> localGroupMax1 = this->localGroupMaxUB[firstLoopStart * SINGLE_GROUP_MAX_SPACE_SIZE];
@@ -409,9 +427,11 @@ public:
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF0_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF1_FLAG);
 
-        DataCopy(pScaleL1[constInfo.subBlockIdx*(32*5*8)+firstLoopStart*(32*5*8)], pscale1, {static_cast<uint16_t>(firstLoop), 40, 0, 40});
+        DataCopy(pScaleL1[constInfo.subBlockIdx * (32 * 5 * 8) + firstLoopStart * (32 * 5 * 8)], pscale1,
+                 {static_cast<uint16_t>(firstLoop), 40, 0, 40});
         if (secondLoop != 0) {
-            DataCopy(pScaleL1[constInfo.subBlockIdx*(32*5*8)+secondLoopStart*(32*5*8)], pscale1[firstLoop*(32*5*8)], {static_cast<uint16_t>(secondLoop), 40, 0, 40});
+            DataCopy(pScaleL1[constInfo.subBlockIdx * (32 * 5 * 8) + secondLoopStart * (32 * 5 * 8)],
+                     pscale1[firstLoop * (32 * 5 * 8)], {static_cast<uint16_t>(secondLoop), 40, 0, 40});
         }
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF1_FLAG);
@@ -423,16 +443,14 @@ public:
 
         if (runInfo.curS2LoopIdx / 16 == 0) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_ATTN_BUF_FLAG);
-            Mxfp4Api::processUpdate<false>(attentionOutUB, mm2ResUB, urs,
-                                           globalRowsumUB, localRowsumUB);
+            Mxfp4Api::processUpdate<false>(attentionOutUB, mm2ResUB, urs, globalRowsumUB, localRowsumUB);
         } else {
-            Mxfp4Api::processUpdate<true>(attentionOutUB, mm2ResUB, urs,
-                                          globalRowsumUB, localRowsumUB);
+            Mxfp4Api::processUpdate<true>(attentionOutUB, mm2ResUB, urs, globalRowsumUB, localRowsumUB);
         }
 
         if (unlikely(runInfo.isLastS2Loop)) {
             uint32_t vec2MBaseSize = (s1BaseSize + 1) / 2;
-            uint32_t actDealMSize =  runInfo.actMSize < vec2MBaseSize ? runInfo.actMSize : vec2MBaseSize;
+            uint32_t actDealMSize = runInfo.actMSize < vec2MBaseSize ? runInfo.actMSize : vec2MBaseSize;
             if (constInfo.subBlockIdx != 0) {
                 actDealMSize = runInfo.actMSize < vec2MBaseSize ? 0 : (runInfo.actMSize - vec2MBaseSize);
             }
@@ -451,10 +469,10 @@ public:
 
                 SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG);
                 SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF1_FLAG);
-                
+
                 SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_ATTN_BUF_FLAG);
                 WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_ATTN_BUF_FLAG);
-                
+
                 GmCoord gmCoord;
                 gmCoord.bIdx = runInfo.bIdx;
                 gmCoord.n2Idx = runInfo.n2Idx;
@@ -464,9 +482,7 @@ public:
                 gmCoord.dDealSize = constInfo.dSize;
 
                 FaUbTensor<OUT_T> ubTensor{
-                    .tensor = attentionOutUBBf16,
-                    .rowCount = actDealMSize,
-                    .colCount = columnCnt};
+                    .tensor = attentionOutUBBf16, .rowCount = actDealMSize, .colCount = columnCnt};
 
                 AttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
             }
@@ -583,9 +599,8 @@ private:
         return updateScaleUB[spaceIdx * UB_UPDATE_SIZE];
     }
 
-    __aicore__ inline void GetPScaleParams(const RunInfo &runInfo,
-                                           uint16_t &firstLoopStart, uint16_t &firstLoop, uint16_t &secondLoopStart,
-                                           uint16_t &secondLoop)
+    __aicore__ inline void GetPScaleParams(const RunInfo &runInfo, uint16_t &firstLoopStart, uint16_t &firstLoop,
+                                           uint16_t &secondLoopStart, uint16_t &secondLoop)
     {
         uint32_t subBlockIdx = constInfo.subBlockIdx;
         uint16_t isLoopFirstTaskVecCore = (subBlockIdx == runInfo.s2FirstStartVecCore);
@@ -604,8 +619,8 @@ private:
         uint16_t toProcessGroupMaxLoopLen =
             (curS2LoopIdx + 1) - (curS2LoopIdx / WHOLE_PROCESS_LOOP) * WHOLE_PROCESS_LOOP + isLoopFirstTaskVecCore;
         toProcessGroupMaxLoopLen = toProcessGroupMaxLoopLen / 2 * 2;
-        toProcessGroupMaxLoopLen = toProcessGroupMaxLoopLen < WHOLE_PROCESS_LOOP ? toProcessGroupMaxLoopLen :
-                                                                                   WHOLE_PROCESS_LOOP;
+        toProcessGroupMaxLoopLen =
+            toProcessGroupMaxLoopLen < WHOLE_PROCESS_LOOP ? toProcessGroupMaxLoopLen : WHOLE_PROCESS_LOOP;
         firstLoop = (toProcessGroupMaxLoopLen / 2 + 1) / 2 * 2;
         secondLoop = toProcessGroupMaxLoopLen - firstLoop;
         int32_t firstLoopStartNotU = groupMaxEndIdx - toProcessGroupMaxLoopLen + 1;
@@ -616,12 +631,12 @@ private:
             secondLoopStart = 0;
         } else {
             firstLoopStart = firstLoopStartNotU;
-            secondLoopStart = firstLoopStart + firstLoop;  // 向上对齐到2
+            secondLoopStart = firstLoopStart + firstLoop; // 向上对齐到2
         }
         // 两片groupmax空间对应其中的一个softmax任务
         firstLoop /= 2;
         secondLoop /= 2;
     }
 };
-}
-#endif  // QUANT_FLASH_ATTN_BLOCK_VECTOR_DN_H_
+} // namespace QFA_KERNEL
+#endif // QUANT_FLASH_ATTN_BLOCK_VECTOR_DN_H_

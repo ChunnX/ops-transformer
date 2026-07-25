@@ -32,8 +32,7 @@
 #define KV_STORAGE_MODE_PA_BSND 1
 #define KV_STORAGE_MODE_PA_BNSD 2
 
-enum class QFA_LAYOUT : uint32_t
-{
+enum class QFA_LAYOUT : uint32_t {
     BSND = LAYOUT_ENUM_BSND,
     BNSD = LAYOUT_ENUM_BNSD,
     TND = LAYOUT_ENUM_TND,
@@ -54,30 +53,29 @@ struct QFAType {
 };
 
 ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
-    //    bit 0-7 QueryLayout
-    //    0: BSND
-    //    1: BNSD
-    //    3: TND
-    //    4: BNSD_BSND
-    ASCENDC_TPL_UINT_DECL(queryOutLayout, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_LIST, LAYOUT_ENUM_BSND, LAYOUT_ENUM_BNSD, LAYOUT_ENUM_TND, LAYOUT_ENUM_BNSD_BSND),
-    //    bit 8-15 kvLayout
-    //    0: CONTINUE, kvLayout = qLayout
-    //    1: PA_BBND
-    //    2: PA_BNBD
-    ASCENDC_TPL_UINT_DECL(kvStorageMode, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_LIST, KV_STORAGE_MODE_CONTINUE, KV_STORAGE_MODE_PA_BSND, KV_STORAGE_MODE_PA_BNSD),
-    //    bit 16 HasMask
-    //    0: false
-    //    1: true
-    ASCENDC_TPL_BOOL_DECL(hasMask, 0, 1),
-);
+                      //    bit 0-7 QueryLayout
+                      //    0: BSND
+                      //    1: BNSD
+                      //    3: TND
+                      //    4: BNSD_BSND
+                      ASCENDC_TPL_UINT_DECL(queryOutLayout, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_LIST, LAYOUT_ENUM_BSND,
+                                            LAYOUT_ENUM_BNSD, LAYOUT_ENUM_TND, LAYOUT_ENUM_BNSD_BSND),
+                      //    bit 8-15 kvLayout
+                      //    0: CONTINUE, kvLayout = qLayout
+                      //    1: PA_BBND
+                      //    2: PA_BNBD
+                      ASCENDC_TPL_UINT_DECL(kvStorageMode, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_LIST,
+                                            KV_STORAGE_MODE_CONTINUE, KV_STORAGE_MODE_PA_BSND, KV_STORAGE_MODE_PA_BNSD),
+                      //    bit 16 HasMask
+                      //    0: false
+                      //    1: true
+                      ASCENDC_TPL_BOOL_DECL(hasMask, 0, 1), );
 
-ASCENDC_TPL_SEL(
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(queryOutLayout, ASCENDC_TPL_UI_LIST, LAYOUT_ENUM_BSND, LAYOUT_ENUM_BNSD, LAYOUT_ENUM_TND, LAYOUT_ENUM_BNSD_BSND),
-        ASCENDC_TPL_UINT_SEL(kvStorageMode, ASCENDC_TPL_UI_LIST, KV_STORAGE_MODE_CONTINUE, KV_STORAGE_MODE_PA_BSND, KV_STORAGE_MODE_PA_BNSD),
-        ASCENDC_TPL_BOOL_SEL(hasMask, 0, 1),
-        ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)
-    ),
-);
+ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(queryOutLayout, ASCENDC_TPL_UI_LIST, LAYOUT_ENUM_BSND,
+                                                          LAYOUT_ENUM_BNSD, LAYOUT_ENUM_TND, LAYOUT_ENUM_BNSD_BSND),
+                                     ASCENDC_TPL_UINT_SEL(kvStorageMode, ASCENDC_TPL_UI_LIST, KV_STORAGE_MODE_CONTINUE,
+                                                          KV_STORAGE_MODE_PA_BSND, KV_STORAGE_MODE_PA_BNSD),
+                                     ASCENDC_TPL_BOOL_SEL(hasMask, 0, 1),
+                                     ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)), );
 
 #endif // TEMPLATE_TILING_KEY_QUANT_FLASH_ATTN_H_

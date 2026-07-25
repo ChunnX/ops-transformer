@@ -20,8 +20,8 @@ extern "C" {
 
 namespace {
 
-void QuantFlashAttnProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse,
-                                     const aclTensor *&tempTensor, const aclTensor *&placeHolder)
+void QuantFlashAttnProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
+                                     const aclTensor *&placeHolder)
 {
 }
 

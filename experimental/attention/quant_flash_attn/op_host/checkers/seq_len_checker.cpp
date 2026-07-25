@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -42,7 +42,7 @@ ge::graphStatus SeqLenChecker::CheckSingleParaSequsedQ(const QuantFlashAttnTilin
     }
     OP_CHECK_IF(desc->GetDataType() != ge::DT_INT32,
                 OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, SEQUSED_Q_NAME.c_str(),
-                    DataTypeToSerialStr(desc->GetDataType()).c_str(), "INT32"),
+                                          DataTypeToSerialStr(desc->GetDataType()).c_str(), "INT32"),
                 return ge::GRAPH_FAILED);
     if (CheckFormatSupport(desc, SEQUSED_Q_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -50,11 +50,11 @@ ge::graphStatus SeqLenChecker::CheckSingleParaSequsedQ(const QuantFlashAttnTilin
     const gert::Shape &shape = tensor->GetStorageShape();
     OP_CHECK_IF(shape.GetDimNum() != DIM_NUM_1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, SEQUSED_Q_NAME.c_str(),
-                    (std::to_string(shape.GetDimNum()) + "D").c_str(), "1D"),
+                                             (std::to_string(shape.GetDimNum()) + "D").c_str(), "1D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(shape.GetDim(0) != qfaInfo.bSize,
-                OP_LOGE(qfaInfo.opName, "%s shape dim0(%ld) must be equal to B(%ld).",
-                    SEQUSED_Q_NAME.c_str(), shape.GetDim(0), qfaInfo.bSize),
+                OP_LOGE(qfaInfo.opName, "%s shape dim0(%ld) must be equal to B(%ld).", SEQUSED_Q_NAME.c_str(),
+                        shape.GetDim(0), qfaInfo.bSize),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -69,7 +69,7 @@ ge::graphStatus SeqLenChecker::CheckSingleParaSequsedKv(const QuantFlashAttnTili
     }
     OP_CHECK_IF(desc->GetDataType() != ge::DT_INT32,
                 OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, SEQUSED_KV_NAME.c_str(),
-                    DataTypeToSerialStr(desc->GetDataType()).c_str(), "INT32"),
+                                          DataTypeToSerialStr(desc->GetDataType()).c_str(), "INT32"),
                 return ge::GRAPH_FAILED);
     if (CheckFormatSupport(desc, SEQUSED_KV_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -77,11 +77,11 @@ ge::graphStatus SeqLenChecker::CheckSingleParaSequsedKv(const QuantFlashAttnTili
     const gert::Shape &shape = tensor->GetStorageShape();
     OP_CHECK_IF(shape.GetDimNum() != DIM_NUM_1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, SEQUSED_KV_NAME.c_str(),
-                    (std::to_string(shape.GetDimNum()) + "D").c_str(), "1D"),
+                                             (std::to_string(shape.GetDimNum()) + "D").c_str(), "1D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(shape.GetDim(0) != qfaInfo.bSize,
-                OP_LOGE(qfaInfo.opName, "%s shape dim0(%ld) must be equal to B(%ld).",
-                    SEQUSED_KV_NAME.c_str(), shape.GetDim(0), qfaInfo.bSize),
+                OP_LOGE(qfaInfo.opName, "%s shape dim0(%ld) must be equal to B(%ld).", SEQUSED_KV_NAME.c_str(),
+                        shape.GetDim(0), qfaInfo.bSize),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -96,7 +96,7 @@ ge::graphStatus SeqLenChecker::CheckSingleParaCuSeqlensQ(const QuantFlashAttnTil
     }
     OP_CHECK_IF(desc->GetDataType() != ge::DT_INT32,
                 OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, CU_SEQLENS_Q_NAME.c_str(),
-                    DataTypeToSerialStr(desc->GetDataType()).c_str(), "INT32"),
+                                          DataTypeToSerialStr(desc->GetDataType()).c_str(), "INT32"),
                 return ge::GRAPH_FAILED);
     if (CheckFormatSupport(desc, CU_SEQLENS_Q_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -104,11 +104,11 @@ ge::graphStatus SeqLenChecker::CheckSingleParaCuSeqlensQ(const QuantFlashAttnTil
     const gert::Shape &shape = tensor->GetStorageShape();
     OP_CHECK_IF(shape.GetDimNum() != DIM_NUM_1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, CU_SEQLENS_Q_NAME.c_str(),
-                    (std::to_string(shape.GetDimNum()) + "D").c_str(), "1D"),
+                                             (std::to_string(shape.GetDimNum()) + "D").c_str(), "1D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(shape.GetDim(0) != qfaInfo.bSize + 1,
-                OP_LOGE(qfaInfo.opName, "%s shape dim0(%ld) must be equal to B+1(%ld).",
-                    CU_SEQLENS_Q_NAME.c_str(), shape.GetDim(0), qfaInfo.bSize + 1),
+                OP_LOGE(qfaInfo.opName, "%s shape dim0(%ld) must be equal to B+1(%ld).", CU_SEQLENS_Q_NAME.c_str(),
+                        shape.GetDim(0), qfaInfo.bSize + 1),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -123,7 +123,7 @@ ge::graphStatus SeqLenChecker::CheckSingleParaCuSeqlensKv(const QuantFlashAttnTi
     }
     OP_CHECK_IF(desc->GetDataType() != ge::DT_INT32,
                 OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, CU_SEQLENS_KV_NAME.c_str(),
-                    DataTypeToSerialStr(desc->GetDataType()).c_str(), "INT32"),
+                                          DataTypeToSerialStr(desc->GetDataType()).c_str(), "INT32"),
                 return ge::GRAPH_FAILED);
     if (CheckFormatSupport(desc, CU_SEQLENS_KV_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -131,11 +131,11 @@ ge::graphStatus SeqLenChecker::CheckSingleParaCuSeqlensKv(const QuantFlashAttnTi
     const gert::Shape &shape = tensor->GetStorageShape();
     OP_CHECK_IF(shape.GetDimNum() != DIM_NUM_1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, CU_SEQLENS_KV_NAME.c_str(),
-                    (std::to_string(shape.GetDimNum()) + "D").c_str(), "1D"),
+                                             (std::to_string(shape.GetDimNum()) + "D").c_str(), "1D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(shape.GetDim(0) != qfaInfo.bSize + 1,
-                OP_LOGE(qfaInfo.opName, "%s shape dim0(%ld) must be equal to B+1(%ld).",
-                    CU_SEQLENS_KV_NAME.c_str(), shape.GetDim(0), qfaInfo.bSize + 1),
+                OP_LOGE(qfaInfo.opName, "%s shape dim0(%ld) must be equal to B+1(%ld).", CU_SEQLENS_KV_NAME.c_str(),
+                        shape.GetDim(0), qfaInfo.bSize + 1),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -179,8 +179,8 @@ ge::graphStatus SeqLenChecker::CheckSequsedMaxSeqlenAtLeastOne(const QuantFlashA
 {
     // q 侧: layout_q 不为 TND 时, seqused_q 与 max_seqlen_q 至少传1个
     if (qfaInfo.layoutQ != FiaLayout::TND) {
-        bool sequsedQExists = (qfaInfo.opParamInfo.sequsedQ.tensor != nullptr &&
-                               qfaInfo.opParamInfo.sequsedQ.desc != nullptr);
+        bool sequsedQExists =
+            (qfaInfo.opParamInfo.sequsedQ.tensor != nullptr && qfaInfo.opParamInfo.sequsedQ.desc != nullptr);
         bool maxSeqQProvided = (qfaInfo.maxSeqLenQ >= 0);
         OP_CHECK_IF(!sequsedQExists && !maxSeqQProvided,
                     OP_LOGE(qfaInfo.opName,
@@ -194,8 +194,8 @@ ge::graphStatus SeqLenChecker::CheckSequsedMaxSeqlenAtLeastOne(const QuantFlashA
     bool isPaLayout = (qfaInfo.layoutKV == FiaLayout::BnBsH || qfaInfo.layoutKV == FiaLayout::BnNBsD ||
                        qfaInfo.layoutKV == FiaLayout::NZ);
     if (qfaInfo.layoutKV != FiaLayout::TND && !isPaLayout) {
-        bool sequsedKvExists = (qfaInfo.opParamInfo.sequsedKv.tensor != nullptr &&
-                                qfaInfo.opParamInfo.sequsedKv.desc != nullptr);
+        bool sequsedKvExists =
+            (qfaInfo.opParamInfo.sequsedKv.tensor != nullptr && qfaInfo.opParamInfo.sequsedKv.desc != nullptr);
         bool maxSeqKvProvided = (qfaInfo.maxSeqLenKv >= 0);
         OP_CHECK_IF(!sequsedKvExists && !maxSeqKvProvided,
                     OP_LOGE(qfaInfo.opName,

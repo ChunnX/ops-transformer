@@ -2,7 +2,7 @@
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You can not use this file except in compliance with the License.
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
@@ -125,42 +125,18 @@ public:
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Attr("quant_mode")
-            .AttrType(REQUIRED)
-            .Int(1);
-        this->Attr("softmax_scale")
-            .AttrType(OPTIONAL)
-            .Float(0.0f);
-        this->Attr("mask_mode")
-            .AttrType(OPTIONAL)
-            .Int(0);
-        this->Attr("win_left")
-            .AttrType(OPTIONAL)
-            .Int(-1);
-        this->Attr("win_right")
-            .AttrType(OPTIONAL)
-            .Int(-1);
-        this->Attr("max_seqlen_q")
-            .AttrType(OPTIONAL)
-            .Int(-1);
-        this->Attr("max_seqlen_kv")
-            .AttrType(OPTIONAL)
-            .Int(-1);
-        this->Attr("layout_q")
-            .AttrType(OPTIONAL)
-            .String("BSND");
-        this->Attr("layout_q_descale")
-            .AttrType(OPTIONAL)
-            .String("BSND");
-        this->Attr("layout_kv")
-            .AttrType(OPTIONAL)
-            .String("BSND");
-        this->Attr("layout_out")
-            .AttrType(OPTIONAL)
-            .String("BSND");
-        this->Attr("return_softmax_lse")
-            .AttrType(OPTIONAL)
-            .Bool(false);
+        this->Attr("quant_mode").AttrType(REQUIRED).Int(1);
+        this->Attr("softmax_scale").AttrType(OPTIONAL).Float(0.0f);
+        this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("win_left").AttrType(OPTIONAL).Int(-1);
+        this->Attr("win_right").AttrType(OPTIONAL).Int(-1);
+        this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);
+        this->Attr("max_seqlen_kv").AttrType(OPTIONAL).Int(-1);
+        this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_q_descale").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_out").AttrType(OPTIONAL).String("BSND");
+        this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
 
 
         OpAICoreConfig aicore_config_95;
@@ -181,4 +157,4 @@ public:
 
 OP_ADD(QuantFlashAttn);
 
-}  // namespace ops
+} // namespace ops

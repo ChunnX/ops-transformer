@@ -24,7 +24,8 @@
 #include <vector>
 
 namespace optiling {
-template <typename T> using CompareFunc = bool (*)(const T&, const T&);
+template <typename T>
+using CompareFunc = bool (*)(const T &, const T &);
 
 enum class FiaLayout : uint32_t {
     // stardard
@@ -118,8 +119,8 @@ class FiaTilingShape {
 
 public:
     FiaTilingShape(const gert::Shape &shape, FiaLayout layout, std::string name, std::string opName,
-        int64_t N = std::numeric_limits<int64_t>::min()) :
-        shape_(shape), layout_(layout), name_(name), opName_(opName)
+                   int64_t N = std::numeric_limits<int64_t>::min())
+        : shape_(shape), layout_(layout), name_(name), opName_(opName)
     {
         if (HasShapeH() && N != std::numeric_limits<int64_t>::min()) {
             N_ = N;
@@ -130,70 +131,128 @@ public:
 public:
     const gert::Shape &shape_;
     FiaLayout layout_;
-    std::string name_ ;
+    std::string name_;
     std::string opName_;
     bool hasSetN_ = false;
     int64_t N_ = 1;
 
-    size_t GetDimNum() const { return shape_.GetDimNum(); }
+    size_t GetDimNum() const
+    {
+        return shape_.GetDimNum();
+    }
 
-    bool HasShapeB() const 
-    { 
-        return HasAxis(FiaAxis::B); 
+    bool HasShapeB() const
+    {
+        return HasAxis(FiaAxis::B);
     }
-    bool HasShapeS() const 
-    { 
-        return HasAxis(FiaAxis::S); 
+    bool HasShapeS() const
+    {
+        return HasAxis(FiaAxis::S);
     }
-    bool HasShapeH() const { 
-        return HasAxis(FiaAxis::H); 
+    bool HasShapeH() const
+    {
+        return HasAxis(FiaAxis::H);
     }
-    bool HasShapeN() const 
-    { 
-        return HasAxis(FiaAxis::N); 
+    bool HasShapeN() const
+    {
+        return HasAxis(FiaAxis::N);
     }
-    bool HasShapeT() const 
-    { 
-        return HasAxis(FiaAxis::T); 
+    bool HasShapeT() const
+    {
+        return HasAxis(FiaAxis::T);
     }
-    bool HasShapeD1() const 
-    { 
-        return HasAxis(FiaAxis::D1); 
+    bool HasShapeD1() const
+    {
+        return HasAxis(FiaAxis::D1);
     }
-    bool HasShapeD0() const 
-    { 
-        return HasAxis(FiaAxis::D0); 
+    bool HasShapeD0() const
+    {
+        return HasAxis(FiaAxis::D0);
     }
     bool HasShapeD() const
     {
-        if (HasAxis(FiaAxis::D)) { return true; }
-        if (HasShapeH() && hasSetN_ && N_ != 0 && GetShapeH() % N_ == 0) { return true; }
-        if (HasShapeD1() && HasShapeD0()) { return true; }
+        if (HasAxis(FiaAxis::D)) {
+            return true;
+        }
+        if (HasShapeH() && hasSetN_ && N_ != 0 && GetShapeH() % N_ == 0) {
+            return true;
+        }
+        if (HasShapeD1() && HasShapeD0()) {
+            return true;
+        }
         return false;
     }
 
-    int64_t GetShapeB() const { return GetAxisNum(FiaAxis::B); }
-    int64_t GetShapeS() const { return GetAxisNum(FiaAxis::S); }
-    int64_t GetShapeN() const { return GetAxisNum(FiaAxis::N); }
-    int64_t GetShapeH() const { return GetAxisNum(FiaAxis::H); }
-    int64_t GetShapeT() const { return GetAxisNum(FiaAxis::T); }
-    int64_t GetShapeD1() const { return GetAxisNum(FiaAxis::D1); }
-    int64_t GetShapeD0() const { return GetAxisNum(FiaAxis::D0); }
+    int64_t GetShapeB() const
+    {
+        return GetAxisNum(FiaAxis::B);
+    }
+    int64_t GetShapeS() const
+    {
+        return GetAxisNum(FiaAxis::S);
+    }
+    int64_t GetShapeN() const
+    {
+        return GetAxisNum(FiaAxis::N);
+    }
+    int64_t GetShapeH() const
+    {
+        return GetAxisNum(FiaAxis::H);
+    }
+    int64_t GetShapeT() const
+    {
+        return GetAxisNum(FiaAxis::T);
+    }
+    int64_t GetShapeD1() const
+    {
+        return GetAxisNum(FiaAxis::D1);
+    }
+    int64_t GetShapeD0() const
+    {
+        return GetAxisNum(FiaAxis::D0);
+    }
     int64_t GetShapeD() const
     {
-        if (HasAxis(FiaAxis::D)) { return shape_.GetDim(GetAxisIdx(FiaAxis::D)); }
-        if (HasShapeH() && hasSetN_ && N_ != 0 && GetShapeH() % N_ == 0) { return GetShapeH() / N_; }
-        if (HasShapeD1() && HasShapeD0()) { return GetShapeD1() * GetShapeD0(); }
+        if (HasAxis(FiaAxis::D)) {
+            return shape_.GetDim(GetAxisIdx(FiaAxis::D));
+        }
+        if (HasShapeH() && hasSetN_ && N_ != 0 && GetShapeH() % N_ == 0) {
+            return GetShapeH() / N_;
+        }
+        if (HasShapeD1() && HasShapeD0()) {
+            return GetShapeD1() * GetShapeD0();
+        }
         return invalidDimValue_;
     }
-    int64_t GetShapeBlockSize() const { return GetAxisNum(FiaAxis::Bs); }
+    int64_t GetShapeBlockSize() const
+    {
+        return GetAxisNum(FiaAxis::Bs);
+    }
 
-    ge::graphStatus CheckHasShapeB(const std::string &funcName) const { return CheckHasAxis(FiaAxis::B, funcName); }
-    ge::graphStatus CheckHasShapeS(const std::string &funcName) const { return CheckHasAxis(FiaAxis::S, funcName); }
-    ge::graphStatus CheckHasShapeD(const std::string &funcName) const { return CheckHasAxis(FiaAxis::D, funcName); }
-    ge::graphStatus CheckHasShapeN(const std::string &funcName) const { return CheckHasAxis(FiaAxis::N, funcName); }
-    ge::graphStatus CheckHasShapeH(const std::string &funcName) const { return CheckHasAxis(FiaAxis::H, funcName); }
-    ge::graphStatus CheckHasShapeT(const std::string &funcName) const { return CheckHasAxis(FiaAxis::T, funcName); }
+    ge::graphStatus CheckHasShapeB(const std::string &funcName) const
+    {
+        return CheckHasAxis(FiaAxis::B, funcName);
+    }
+    ge::graphStatus CheckHasShapeS(const std::string &funcName) const
+    {
+        return CheckHasAxis(FiaAxis::S, funcName);
+    }
+    ge::graphStatus CheckHasShapeD(const std::string &funcName) const
+    {
+        return CheckHasAxis(FiaAxis::D, funcName);
+    }
+    ge::graphStatus CheckHasShapeN(const std::string &funcName) const
+    {
+        return CheckHasAxis(FiaAxis::N, funcName);
+    }
+    ge::graphStatus CheckHasShapeH(const std::string &funcName) const
+    {
+        return CheckHasAxis(FiaAxis::H, funcName);
+    }
+    ge::graphStatus CheckHasShapeT(const std::string &funcName) const
+    {
+        return CheckHasAxis(FiaAxis::T, funcName);
+    }
     ge::graphStatus CheckHasShapeBlockSize(const std::string &funcName) const
     {
         return CheckHasAxis(FiaAxis::Bs, funcName);
@@ -210,25 +269,24 @@ class FiaTilingShapeCompare {
     static const std::map<FiaCompareType, CompareFunc<int64_t>> compareFuncMap_;
 
 public:
-    FiaTilingShapeCompare(const gert::Shape &shape, FiaLayout layout, std::string name, std::string opName) :
-        shape_(shape), layout_(layout), name_(name), opName_(opName) {};
+    FiaTilingShapeCompare(const gert::Shape &shape, FiaLayout layout, std::string name, std::string opName)
+        : shape_(shape), layout_(layout), name_(name), opName_(opName) {};
 
 public:
     const gert::Shape &shape_;
     FiaLayout layout_;
-    std::string name_ ;
+    std::string name_;
     std::string opName_;
 
     std::string CompareTypeToSerialString(const FiaCompareType compareType) const;
     std::string CompareTypeToSerialSymbolString(const FiaCompareType &compareType) const;
-    ge::graphStatus GetExpectedShapeSpecial(gert::Shape &shapeExpected,
-        const FiaTilingShapeCompareParam &param, const std::string &funcName) const;
-    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected,
-        const FiaTilingShapeCompareParam &param, const std::string &funcName) const;
-    FiaCompareType GetCompareType(const std::map<FiaAxis, FiaCompareType> &compareTypeMap,
-        const FiaAxis &axis) const;
-    ge::graphStatus GetCompareFunc(const FiaCompareType &compareType, 
-        CompareFunc<int64_t> &compareFunc, const std::string &funcName) const;
+    ge::graphStatus GetExpectedShapeSpecial(gert::Shape &shapeExpected, const FiaTilingShapeCompareParam &param,
+                                            const std::string &funcName) const;
+    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const FiaTilingShapeCompareParam &param,
+                                     const std::string &funcName) const;
+    FiaCompareType GetCompareType(const std::map<FiaAxis, FiaCompareType> &compareTypeMap, const FiaAxis &axis) const;
+    ge::graphStatus GetCompareFunc(const FiaCompareType &compareType, CompareFunc<int64_t> &compareFunc,
+                                   const std::string &funcName) const;
     ge::graphStatus CompareShape(FiaTilingShapeCompareParam &param, const std::string &funcName) const;
 };
 } // namespace optiling

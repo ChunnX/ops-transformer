@@ -49,8 +49,8 @@ void QuantFlashAttnTilingDn::CalcScheduleMode()
 
 ge::graphStatus QuantFlashAttnTilingDn::DoOpTiling()
 {
-    OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS,
-                OP_LOGE(tilingInfo_->opName, "Set plat memory info fail."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(tilingInfo_->opName, "Set plat memory info fail."),
+                return ge::GRAPH_FAILED);
 
     InitImplParam();
     SplitPolicy();
@@ -59,10 +59,8 @@ ge::graphStatus QuantFlashAttnTilingDn::DoOpTiling()
     CalcWorkspaceSize();
     GenTilingKey();
 
-    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) ||
-        (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
-        (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
-        (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
+    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
+        (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) || (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
         (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
@@ -143,7 +141,7 @@ void QuantFlashAttnTilingDn::CalcNumBlocks(uint32_t aicNum)
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo_->platformInfo);
     auto aivNum = aicNum * platformInfo_.cvRatio;
 
-    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); 
+    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     OP_LOGI(tilingInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
 }
 
@@ -191,7 +189,8 @@ void QuantFlashAttnTilingDn::FillTiling()
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = tilingInfo_->maxBlockNumPerBatch;
 
     int64_t outSize = tilingInfo_->opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
-    int64_t lseSize = tilingInfo_->returnSoftmaxLse ? tilingInfo_->opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
+    int64_t lseSize =
+        tilingInfo_->returnSoftmaxLse ? tilingInfo_->opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
     uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
     tilingData_.baseTiling.flashAttnEmptyTensorParams.singleCoreSize = singleCoreSize;
     tilingData_.baseTiling.flashAttnEmptyTensorParams.totalOutputSize = outSize;
@@ -201,13 +200,12 @@ void QuantFlashAttnTilingDn::FillTiling()
 
 ge::graphStatus QuantFlashAttnTilingDn::SetTilingData(QuantFlashAttnTilingData &tilingData)
 {
-    QuantFlashAttnTilingData *tiling =
-        context_->GetTilingData<QuantFlashAttnTilingData>();
+    QuantFlashAttnTilingData *tiling = context_->GetTilingData<QuantFlashAttnTilingData>();
     OP_CHECK_IF(tiling == nullptr, OP_LOGE(tilingInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
     *tiling = tilingData;
     return ge::GRAPH_SUCCESS;
 }
 
 REGISTER_TILING_TEMPLATE_FIA(QuantFlashAttn, QuantFlashAttnTilingDn,
-    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 210);
+                             std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 210);
 } // namespace optiling

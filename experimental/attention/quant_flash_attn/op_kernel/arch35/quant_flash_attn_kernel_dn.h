@@ -106,31 +106,32 @@ public:
     CubeBlock cubeBlock;
     VectorBlock vectorBlock;
 
-    __aicore__ inline QuantFlashAttnKernelDn() :
-        cubeBlock(constInfo, qSeqLensTool, kvSeqLensTool), vectorBlock(constInfo, qSeqLensTool, kvSeqLensTool) {};
+    __aicore__ inline QuantFlashAttnKernelDn()
+        : cubeBlock(constInfo, qSeqLensTool, kvSeqLensTool), vectorBlock(constInfo, qSeqLensTool, kvSeqLensTool){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable,
-                                __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKv,
-                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
-                                const FlashAttnTilingData *__restrict tiling)
+                                __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKv, __gm__ uint8_t *seqUsedQ,
+                                __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
+                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *fiaMetaData, const FlashAttnTilingData *__restrict tiling)
     {
         this->tilingData = tiling;
 
         sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
 
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-            FA_AIC_CORE_NUM * 16U * sectionNum_);
-        fdMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-            FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+                                     FA_AIC_CORE_NUM * 16U * sectionNum_);
+        fdMetaDataGm.SetGlobalBuffer(
+            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
             FA_AIV_CORE_NUM * 16U * sectionNum_);
 
         InitConstInfo();
 
         qSeqLensTool.Init(cuSeqlensQ, constInfo.qCuSeqLensSize, seqUsedQ, constInfo.qSeqUsedSize, constInfo.maxSeqlenQ);
-        kvSeqLensTool.Init(cuSeqlensKv, constInfo.kvCuSeqLensSize, seqUsedKv, constInfo.kvSeqUsedSize, constInfo.maxSeqlenKv);
+        kvSeqLensTool.Init(cuSeqlensKv, constInfo.kvCuSeqLensSize, seqUsedKv, constInfo.kvSeqUsedSize,
+                           constInfo.maxSeqlenKv);
 
         if ASCEND_IS_AIC {
             cubeBlock.InitInput(query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable);
@@ -170,10 +171,10 @@ public:
         constInfo.qSeqUsedSize = fiaBaseParams.qSeqUsedSize;
         constInfo.kvSeqUsedSize = fiaBaseParams.kvSeqUsedSize;
 
-        constInfo.maxSeqlenQ = (fiaBaseParams.maxSeqlenQ >= 0) ? static_cast<uint64_t>(fiaBaseParams.maxSeqlenQ)
-                                                               : constInfo.s1Size;
-        constInfo.maxSeqlenKv = (fiaBaseParams.maxSeqlenKv >= 0) ? static_cast<uint64_t>(fiaBaseParams.maxSeqlenKv)
-                                                                 : constInfo.s2Size;
+        constInfo.maxSeqlenQ =
+            (fiaBaseParams.maxSeqlenQ >= 0) ? static_cast<uint64_t>(fiaBaseParams.maxSeqlenQ) : constInfo.s1Size;
+        constInfo.maxSeqlenKv =
+            (fiaBaseParams.maxSeqlenKv >= 0) ? static_cast<uint64_t>(fiaBaseParams.maxSeqlenKv) : constInfo.s2Size;
         constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
         constInfo.coreNum = fiaBaseParams.coreNum;
 
@@ -204,7 +205,7 @@ public:
 
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx ;
+        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
@@ -298,8 +299,7 @@ public:
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        bool isFirstTask =
-            (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
+        bool isFirstTask = (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
@@ -335,7 +335,6 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-
         RunInfo &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
         RunInfo &runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];
         RunInfo &runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
@@ -373,7 +372,7 @@ public:
                     CopyGMaxL1ToUb(runInfo3);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB + 16);
-                    
+
                 } else {
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
                     UpdatePScale(runInfo3);
@@ -401,7 +400,6 @@ public:
                 }
             }
         }
-
     }
 
     __aicore__ inline void ComputeMm1(RunInfo &runInfo)
@@ -476,9 +474,8 @@ public:
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
         info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)AttentionCommon::BYTE_BLOCK); // 统一对齐到32
-        info.actSingleLoopS2SizeAlign16 =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)16); // 统一对齐到16
+            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)AttentionCommon::BYTE_BLOCK);      // 统一对齐到32
+        info.actSingleLoopS2SizeAlign16 = Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)16); // 统一对齐到16
         info.actSingleLoopS2SizeAlign64 =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)BUFFER_SIZE_BYTE_64B); // 统一对齐到64
 
@@ -498,7 +495,7 @@ public:
             updateScaleIdx = (updateScaleIdx + 1) % 4;
         }
         if (info.isFirstS2Loop || info.isC2Sync) {
-            tileLoopIdx = (tileLoopIdx+1) % 2;
+            tileLoopIdx = (tileLoopIdx + 1) % 2;
             tileMaxIdx = (tileMaxIdx + 1) % 4;
         }
         info.tileBuffIdx = tileLoopIdx;
@@ -568,8 +565,7 @@ public:
         gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
         coreFirstTmpOutWsPos_ = faMetaDataGm.GetValue(
-            GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx)
-        );
+            GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
     }
 
     __aicore__ inline void Process()
@@ -602,6 +598,6 @@ public:
     }
 };
 
-}
+} // namespace QFA_KERNEL
 
 #endif

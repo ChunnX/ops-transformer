@@ -41,14 +41,15 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetOpName()
 ge::graphStatus QuantFlashAttnTilingInfoParser::GetNpuInfo()
 {
     tilingInfo_.platformInfo = context_->GetPlatformInfo();
-    OP_CHECK_IF(tilingInfo_.platformInfo == nullptr, OPS_REPORT_VECTOR_INNER_ERR(tilingInfo_.opName, "GetPlatformInfo is nullptr."),
+    OP_CHECK_IF(tilingInfo_.platformInfo == nullptr,
+                OPS_REPORT_VECTOR_INNER_ERR(tilingInfo_.opName, "GetPlatformInfo is nullptr."),
                 return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo_.platformInfo);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OPS_REPORT_VECTOR_INNER_ERR(tilingInfo_.opName, "num of core obtained is 0."),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0,
+                OPS_REPORT_VECTOR_INNER_ERR(tilingInfo_.opName, "num of core obtained is 0."), return GRAPH_FAILED);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if (npuArch_ != NpuArch::DAV_3510) {
         OPS_REPORT_VECTOR_INNER_ERR(tilingInfo_.opName, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
@@ -134,34 +135,34 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetOpParaInfo()
 
 ge::graphStatus QuantFlashAttnTilingInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(tilingInfo_.opParamInfo.query.shape == nullptr, OP_LOGE(tilingInfo_.opName, "Shape of tensor query is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.query.desc == nullptr, OP_LOGE(tilingInfo_.opName, "Desc of tensor query is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.key.shape == nullptr, OP_LOGE(tilingInfo_.opName, "Shape of tensor key is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.key.desc == nullptr, OP_LOGE(tilingInfo_.opName, "Desc of tensor key is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.value.shape == nullptr, OP_LOGE(tilingInfo_.opName, "Shape of tensor value is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.value.desc == nullptr, OP_LOGE(tilingInfo_.opName, "Desc of tensor value is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.qDescale.shape == nullptr, OP_LOGE(tilingInfo_.opName, "Shape of tensor q_descale is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.qDescale.desc == nullptr, OP_LOGE(tilingInfo_.opName, "Desc of tensor q_descale is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.kDescale.shape == nullptr, OP_LOGE(tilingInfo_.opName, "Shape of tensor k_descale is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.kDescale.desc == nullptr, OP_LOGE(tilingInfo_.opName, "Desc of tensor k_descale is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.vDescale.shape == nullptr, OP_LOGE(tilingInfo_.opName, "Shape of tensor v_descale is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.vDescale.desc == nullptr, OP_LOGE(tilingInfo_.opName, "Desc of tensor v_descale is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.attnOut.shape == nullptr, OP_LOGE(tilingInfo_.opName, "Shape of tensor attn_out is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingInfo_.opParamInfo.attnOut.desc == nullptr, OP_LOGE(tilingInfo_.opName, "Desc of tensor attn_out is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.query.shape == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Shape of tensor query is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.query.desc == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Desc of tensor query is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.key.shape == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Shape of tensor key is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.key.desc == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Desc of tensor key is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.value.shape == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Shape of tensor value is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.value.desc == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Desc of tensor value is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.qDescale.shape == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Shape of tensor q_descale is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.qDescale.desc == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Desc of tensor q_descale is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.kDescale.shape == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Shape of tensor k_descale is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.kDescale.desc == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Desc of tensor k_descale is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.vDescale.shape == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Shape of tensor v_descale is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.vDescale.desc == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Desc of tensor v_descale is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.attnOut.shape == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Shape of tensor attn_out is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingInfo_.opParamInfo.attnOut.desc == nullptr,
+                OP_LOGE(tilingInfo_.opName, "Desc of tensor attn_out is nullptr"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -171,49 +172,51 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::CheckOptionalInputExistence() co
     if ((tilingInfo_.opParamInfo.blockTable.tensor == nullptr && tilingInfo_.opParamInfo.blockTable.desc != nullptr) ||
         (tilingInfo_.opParamInfo.blockTable.tensor != nullptr && tilingInfo_.opParamInfo.blockTable.desc == nullptr)) {
         OP_LOGE(tilingInfo_.opName, "tensor and desc of %s are either both not nullptr or both nullptr.",
-            BLOCK_TABLE_NAME.c_str());
+                BLOCK_TABLE_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
     if ((tilingInfo_.opParamInfo.cuSeqlensQ.tensor == nullptr && tilingInfo_.opParamInfo.cuSeqlensQ.desc != nullptr) ||
         (tilingInfo_.opParamInfo.cuSeqlensQ.tensor != nullptr && tilingInfo_.opParamInfo.cuSeqlensQ.desc == nullptr)) {
         OP_LOGE(tilingInfo_.opName, "tensor and desc of %s are either both not nullptr or both nullptr.",
-            CU_SEQLENS_Q_NAME.c_str());
+                CU_SEQLENS_Q_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
-    if ((tilingInfo_.opParamInfo.cuSeqlensKv.tensor == nullptr && tilingInfo_.opParamInfo.cuSeqlensKv.desc != nullptr) ||
-        (tilingInfo_.opParamInfo.cuSeqlensKv.tensor != nullptr && tilingInfo_.opParamInfo.cuSeqlensKv.desc == nullptr)) {
+    if ((tilingInfo_.opParamInfo.cuSeqlensKv.tensor == nullptr &&
+         tilingInfo_.opParamInfo.cuSeqlensKv.desc != nullptr) ||
+        (tilingInfo_.opParamInfo.cuSeqlensKv.tensor != nullptr &&
+         tilingInfo_.opParamInfo.cuSeqlensKv.desc == nullptr)) {
         OP_LOGE(tilingInfo_.opName, "tensor and desc of %s are either both not nullptr or both nullptr.",
-            CU_SEQLENS_KV_NAME.c_str());
+                CU_SEQLENS_KV_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
     if ((tilingInfo_.opParamInfo.sequsedQ.tensor == nullptr && tilingInfo_.opParamInfo.sequsedQ.desc != nullptr) ||
         (tilingInfo_.opParamInfo.sequsedQ.tensor != nullptr && tilingInfo_.opParamInfo.sequsedQ.desc == nullptr)) {
         OP_LOGE(tilingInfo_.opName, "tensor and desc of %s are either both not nullptr or both nullptr.",
-            SEQUSED_Q_NAME.c_str());
+                SEQUSED_Q_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
     if ((tilingInfo_.opParamInfo.sequsedKv.tensor == nullptr && tilingInfo_.opParamInfo.sequsedKv.desc != nullptr) ||
         (tilingInfo_.opParamInfo.sequsedKv.tensor != nullptr && tilingInfo_.opParamInfo.sequsedKv.desc == nullptr)) {
         OP_LOGE(tilingInfo_.opName, "tensor and desc of %s are either both not nullptr or both nullptr.",
-            SEQUSED_KV_NAME.c_str());
+                SEQUSED_KV_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
     if ((tilingInfo_.opParamInfo.sinks.tensor == nullptr && tilingInfo_.opParamInfo.sinks.desc != nullptr) ||
         (tilingInfo_.opParamInfo.sinks.tensor != nullptr && tilingInfo_.opParamInfo.sinks.desc == nullptr)) {
         OP_LOGE(tilingInfo_.opName, "tensor and desc of %s are either both not nullptr or both nullptr.",
-            SINKS_NAME.c_str());
+                SINKS_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
     if ((tilingInfo_.opParamInfo.attnMask.tensor == nullptr && tilingInfo_.opParamInfo.attnMask.desc != nullptr) ||
         (tilingInfo_.opParamInfo.attnMask.tensor != nullptr && tilingInfo_.opParamInfo.attnMask.desc == nullptr)) {
         OP_LOGE(tilingInfo_.opName, "tensor and desc of %s are either both not nullptr or both nullptr.",
-            ATTEN_MASK_NAME.c_str());
+                ATTEN_MASK_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
     if ((tilingInfo_.opParamInfo.metadata.tensor == nullptr && tilingInfo_.opParamInfo.metadata.desc != nullptr) ||
         (tilingInfo_.opParamInfo.metadata.tensor != nullptr && tilingInfo_.opParamInfo.metadata.desc == nullptr)) {
         OP_LOGE(tilingInfo_.opName, "tensor and desc of %s are either both not nullptr or both nullptr.",
-            METADATA_NAME.c_str());
+                METADATA_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -246,7 +249,8 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetCuSeqLenQDims()
         }
         int64_t shapeSize = tilingInfo_.opParamInfo.cuSeqlensQ.tensor->GetShapeSize();
         if (shapeSize <= 1) {
-            OP_LOGE(tilingInfo_.opName, "%s's shape size is %ld, it should be greater than 1.", CU_SEQLENS_Q_NAME.c_str(), shapeSize);
+            OP_LOGE(tilingInfo_.opName, "%s's shape size is %ld, it should be greater than 1.",
+                    CU_SEQLENS_Q_NAME.c_str(), shapeSize);
             return ge::GRAPH_FAILED;
         }
         tilingInfo_.qCuSeqLensSize = static_cast<uint32_t>(shapeSize);
@@ -264,7 +268,8 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetCuSeqLenKvDims()
         }
         int64_t shapeSize = tilingInfo_.opParamInfo.cuSeqlensKv.tensor->GetShapeSize();
         if (shapeSize <= 1) {
-            OP_LOGE(tilingInfo_.opName, "%s's shape size is %ld, it should be greater than 1.", CU_SEQLENS_KV_NAME.c_str(), shapeSize);
+            OP_LOGE(tilingInfo_.opName, "%s's shape size is %ld, it should be greater than 1.",
+                    CU_SEQLENS_KV_NAME.c_str(), shapeSize);
             return ge::GRAPH_FAILED;
         }
         tilingInfo_.kvCuSeqLensSize = static_cast<uint32_t>(shapeSize);
@@ -279,7 +284,7 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetSeqUsedQDims()
         int64_t shapeSize = tilingInfo_.opParamInfo.sequsedQ.tensor->GetShapeSize();
         if (shapeSize <= 0) {
             OP_LOGE(tilingInfo_.opName, "%s's shape size is %ld, it should be greater than 0 when seqused_q exists.",
-                SEQUSED_Q_NAME.c_str(), shapeSize, SEQUSED_Q_NAME.c_str());
+                    SEQUSED_Q_NAME.c_str(), shapeSize, SEQUSED_Q_NAME.c_str());
             return ge::GRAPH_FAILED;
         }
         tilingInfo_.qSeqUsedSize = static_cast<uint32_t>(shapeSize);
@@ -294,7 +299,7 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetSeqUsedKvDims()
         int64_t shapeSize = tilingInfo_.opParamInfo.sequsedKv.tensor->GetShapeSize();
         if (shapeSize <= 0) {
             OP_LOGE(tilingInfo_.opName, "%s's shape size is %ld, it should be greater than 0 when %s exists.",
-                SEQUSED_KV_NAME.c_str(), shapeSize, SEQUSED_KV_NAME.c_str());
+                    SEQUSED_KV_NAME.c_str(), shapeSize, SEQUSED_KV_NAME.c_str());
             return ge::GRAPH_FAILED;
         }
         tilingInfo_.kvSeqUsedSize = static_cast<uint32_t>(shapeSize);
@@ -347,7 +352,8 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetGSize()
 {
     // 获取G基准值
     if (tilingInfo_.n1Size % tilingInfo_.n2Size != 0) {
-        OP_LOGE(tilingInfo_.opName, "Q numHeads(%ld) should be a multiple of Kv Heads(%ld).", tilingInfo_.n1Size, tilingInfo_.n2Size);
+        OP_LOGE(tilingInfo_.opName, "Q numHeads(%ld) should be a multiple of Kv Heads(%ld).", tilingInfo_.n1Size,
+                tilingInfo_.n2Size);
         return ge::GRAPH_FAILED;
     }
     tilingInfo_.gSize = tilingInfo_.n1Size / tilingInfo_.n2Size;
@@ -507,11 +513,11 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetInAndOutLayout()
         tilingInfo_.layoutQ = FiaLayout::BSND;
     } else {
         const std::map<std::string, FiaLayout> qLayoutMap = {
-            {"BSND", FiaLayout::BSND}, {"BNSD", FiaLayout::BNSD}, {"TND", FiaLayout::TND}
-        };
+            {"BSND", FiaLayout::BSND}, {"BNSD", FiaLayout::BNSD}, {"TND", FiaLayout::TND}};
         auto itQ = qLayoutMap.find(tilingInfo_.opParamInfo.layoutQ);
         if (itQ == qLayoutMap.end()) {
-            OP_LOGE(tilingInfo_.opName, "Invalid layout_q: %s, only support BSND/BNSD/TND", tilingInfo_.opParamInfo.layoutQ);
+            OP_LOGE(tilingInfo_.opName, "Invalid layout_q: %s, only support BSND/BNSD/TND",
+                    tilingInfo_.opParamInfo.layoutQ);
             return ge::GRAPH_FAILED;
         }
         tilingInfo_.layoutQ = itQ->second;
@@ -522,8 +528,7 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetInAndOutLayout()
         tilingInfo_.layoutQDescale = FiaLayout::BSND;
     } else {
         const std::map<std::string, FiaLayout> qDescaleLayoutMap = {
-            {"BSND", FiaLayout::BSND}, {"BNSD", FiaLayout::BNSD}, {"TND", FiaLayout::TND}
-        };
+            {"BSND", FiaLayout::BSND}, {"BNSD", FiaLayout::BNSD}, {"TND", FiaLayout::TND}};
         auto itQDescale = qDescaleLayoutMap.find(tilingInfo_.opParamInfo.layoutQDescale);
         if (itQDescale == qDescaleLayoutMap.end()) {
             OP_LOGE(tilingInfo_.opName, "Invalid layout_q_descale: %s, only support BSND/BNSD/TND for mxfp4",
@@ -536,13 +541,15 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetInAndOutLayout()
     if (tilingInfo_.opParamInfo.layoutKV == nullptr) {
         tilingInfo_.layoutKV = FiaLayout::BSND;
     } else {
-        const std::map<std::string, FiaLayout> kvLayoutMap = {
-            {"BSND", FiaLayout::BSND}, {"BNSD", FiaLayout::BNSD}, {"TND", FiaLayout::TND},
-            {"PA_BBND", FiaLayout::BnBsH}, {"PA_BNBD", FiaLayout::BnNBsD}
-        };
+        const std::map<std::string, FiaLayout> kvLayoutMap = {{"BSND", FiaLayout::BSND},
+                                                              {"BNSD", FiaLayout::BNSD},
+                                                              {"TND", FiaLayout::TND},
+                                                              {"PA_BBND", FiaLayout::BnBsH},
+                                                              {"PA_BNBD", FiaLayout::BnNBsD}};
         auto itKV = kvLayoutMap.find(tilingInfo_.opParamInfo.layoutKV);
         if (itKV == kvLayoutMap.end()) {
-            OP_LOGE(tilingInfo_.opName, "Invalid layoutKV: %s, only support BSND/BNSD/TND/PA_BBND/PA_BNBD", tilingInfo_.opParamInfo.layoutKV);
+            OP_LOGE(tilingInfo_.opName, "Invalid layoutKV: %s, only support BSND/BNSD/TND/PA_BBND/PA_BNBD",
+                    tilingInfo_.opParamInfo.layoutKV);
             return ge::GRAPH_FAILED;
         }
         tilingInfo_.layoutKV = itKV->second;
@@ -552,11 +559,11 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetInAndOutLayout()
         tilingInfo_.layoutOut = FiaLayout::BSND;
     } else {
         const std::map<std::string, FiaLayout> outLayoutMap = {
-            {"BSND", FiaLayout::BSND}, {"BNSD", FiaLayout::BNSD}, {"TND", FiaLayout::TND}
-        };
+            {"BSND", FiaLayout::BSND}, {"BNSD", FiaLayout::BNSD}, {"TND", FiaLayout::TND}};
         auto itOut = outLayoutMap.find(tilingInfo_.opParamInfo.layoutOut);
         if (itOut == outLayoutMap.end()) {
-            OP_LOGE(tilingInfo_.opName, "Invalid layoutOut: %s, only support BSND/BNSD/TND", tilingInfo_.opParamInfo.layoutOut);
+            OP_LOGE(tilingInfo_.opName, "Invalid layoutOut: %s, only support BSND/BNSD/TND",
+                    tilingInfo_.opParamInfo.layoutOut);
             return ge::GRAPH_FAILED;
         }
         tilingInfo_.layoutOut = itOut->second;
@@ -593,12 +600,12 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetQkvDataType()
 
 void QuantFlashAttnTilingInfoParser::SetFaShape()
 {
-    queryShape_ =
-        std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.query.shape->GetStorageShape(), tilingInfo_.layoutQ, QUERY_NAME, tilingInfo_.opName);
-    keyShape_ =
-        std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.key.shape->GetStorageShape(), tilingInfo_.layoutKV, KEY_NAME, tilingInfo_.opName);
-    valueShape_ =
-        std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.value.shape->GetStorageShape(), tilingInfo_.layoutKV, VALUE_NAME, tilingInfo_.opName);
+    queryShape_ = std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.query.shape->GetStorageShape(),
+                                                   tilingInfo_.layoutQ, QUERY_NAME, tilingInfo_.opName);
+    keyShape_ = std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.key.shape->GetStorageShape(),
+                                                 tilingInfo_.layoutKV, KEY_NAME, tilingInfo_.opName);
+    valueShape_ = std::make_shared<FiaTilingShape>(tilingInfo_.opParamInfo.value.shape->GetStorageShape(),
+                                                   tilingInfo_.layoutKV, VALUE_NAME, tilingInfo_.opName);
 }
 
 void QuantFlashAttnTilingInfoParser::GetKvStorageMode()
@@ -654,7 +661,8 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::ParseFeatureInfo()
     tilingInfo_.attnMaskFlag = (tilingInfo_.opParamInfo.attnMask.tensor != nullptr);
     tilingInfo_.learnableSinkFlag = (tilingInfo_.opParamInfo.sinks.tensor != nullptr);
     // softmax_precision/quant_block_size 已从接口删除，保留内部默认值
-    tilingInfo_.returnSoftmaxLse = (tilingInfo_.opParamInfo.returnSoftMaxLse == nullptr) ? 0 : (*tilingInfo_.opParamInfo.returnSoftMaxLse ? 1 : 0);
+    tilingInfo_.returnSoftmaxLse =
+        (tilingInfo_.opParamInfo.returnSoftMaxLse == nullptr) ? 0 : (*tilingInfo_.opParamInfo.returnSoftMaxLse ? 1 : 0);
 
     GetSoftmaxScale();
     GetPreNextToken();

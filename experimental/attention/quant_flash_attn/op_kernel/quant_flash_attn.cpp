@@ -31,10 +31,8 @@ using namespace QFA_KERNEL;
 template <uint8_t Q_OUT_LAYOUT_T>
 __aicore__ inline constexpr QFA_LAYOUT GetQueryLayout()
 {
-    static_assert((Q_OUT_LAYOUT_T == LAYOUT_ENUM_BSND) ||
-                  (Q_OUT_LAYOUT_T == LAYOUT_ENUM_BNSD) ||
-                  (Q_OUT_LAYOUT_T == LAYOUT_ENUM_BNSD_BSND) ||
-                  (Q_OUT_LAYOUT_T == LAYOUT_ENUM_TND),
+    static_assert((Q_OUT_LAYOUT_T == LAYOUT_ENUM_BSND) || (Q_OUT_LAYOUT_T == LAYOUT_ENUM_BNSD) ||
+                      (Q_OUT_LAYOUT_T == LAYOUT_ENUM_BNSD_BSND) || (Q_OUT_LAYOUT_T == LAYOUT_ENUM_TND),
                   "Get Query Layout fail, Q_OUT_LAYOUT_T is incorrect");
     if constexpr (Q_OUT_LAYOUT_T == LAYOUT_ENUM_BSND) {
         return QFA_LAYOUT::BSND;
@@ -48,10 +46,8 @@ __aicore__ inline constexpr QFA_LAYOUT GetQueryLayout()
 template <uint8_t Q_OUT_LAYOUT_T>
 __aicore__ inline constexpr QFA_LAYOUT GetOutLayout()
 {
-    static_assert((Q_OUT_LAYOUT_T == LAYOUT_ENUM_BSND) ||
-                  (Q_OUT_LAYOUT_T == LAYOUT_ENUM_BNSD) ||
-                  (Q_OUT_LAYOUT_T == LAYOUT_ENUM_BNSD_BSND) ||
-                  (Q_OUT_LAYOUT_T == LAYOUT_ENUM_TND),
+    static_assert((Q_OUT_LAYOUT_T == LAYOUT_ENUM_BSND) || (Q_OUT_LAYOUT_T == LAYOUT_ENUM_BNSD) ||
+                      (Q_OUT_LAYOUT_T == LAYOUT_ENUM_BNSD_BSND) || (Q_OUT_LAYOUT_T == LAYOUT_ENUM_TND),
                   "Get AttnOut Layout fail, Q_OUT_LAYOUT_T is incorrect");
     if constexpr (Q_OUT_LAYOUT_T == LAYOUT_ENUM_BSND || Q_OUT_LAYOUT_T == LAYOUT_ENUM_BNSD_BSND) {
         return QFA_LAYOUT::BSND;
@@ -65,9 +61,8 @@ __aicore__ inline constexpr QFA_LAYOUT GetOutLayout()
 template <uint8_t Q_OUT_LAYOUT_T, uint8_t KV_STORAGE_MODE>
 __aicore__ inline constexpr QFA_LAYOUT GetKvLayout()
 {
-    static_assert((KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) ||
-                  (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BSND) ||
-                  (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BNSD),
+    static_assert((KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) || (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BSND) ||
+                      (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BNSD),
                   "Get Key/Value Layout fail, KV_STORAGE_MODE is incorrect");
     if constexpr (KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) {
         return GetQueryLayout<Q_OUT_LAYOUT_T>();
@@ -81,34 +76,20 @@ __aicore__ inline constexpr QFA_LAYOUT GetKvLayout()
 template <uint8_t KV_STORAGE_MODE>
 __aicore__ inline constexpr bool IsPageAttention()
 {
-    static_assert((KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) ||
-                  (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BSND) ||
-                  (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BNSD),
+    static_assert((KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) || (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BSND) ||
+                      (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BNSD),
                   "Get PAGE_ATTENTION flag fail, KV_STORAGE_MODE is incorrect");
     return (KV_STORAGE_MODE != KV_STORAGE_MODE_CONTINUE);
 }
 
 template <uint8_t Q_OUT_LAYOUT_T, uint8_t KV_STORAGE_MODE, bool HAS_MASK>
-__global__ __aicore__ void quant_flash_attn(
-    __gm__ uint8_t *query,
-    __gm__ uint8_t *key,
-    __gm__ uint8_t *value,
-    __gm__ uint8_t *q_descale,
-    __gm__ uint8_t *k_descale,
-    __gm__ uint8_t *v_descale,
-    __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *pScale,
-    __gm__ uint8_t *cuSeqlensQ,
-    __gm__ uint8_t *cuSeqlensKv,
-    __gm__ uint8_t *sequsedQ,
-    __gm__ uint8_t *sequsedKv,
-    __gm__ uint8_t *learnableSink,
-    __gm__ uint8_t *attnMask,
-    __gm__ uint8_t *metadata,
-    __gm__ uint8_t *attnOut,
-    __gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *workspace,
-    __gm__ uint8_t *tiling)
+__global__ __aicore__ void
+quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *q_descale,
+                 __gm__ uint8_t *k_descale, __gm__ uint8_t *v_descale, __gm__ uint8_t *blockTable,
+                 __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKv,
+                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *learnableSink,
+                 __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,
+                 __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(QuantFlashAttnTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -125,9 +106,8 @@ __global__ __aicore__ void quant_flash_attn(
     using CubBlock = QuantFlashAttnBlockCubeDn<QFA_T>;
     using VectorBlock = QuantFlashAttnBlockVectorDn<QFA_T>;
     QuantFlashAttnKernelDn<QFA_T, CubBlock, VectorBlock> op;
-    op.Init(query, key, value, q_descale, k_descale, v_descale, blockTable, cuSeqlensQ, cuSeqlensKv,
-            sequsedQ, sequsedKv, attnMask, learnableSink, softmaxLse, attnOut,
-            workspace, metadata, tilingData);
+    op.Init(query, key, value, q_descale, k_descale, v_descale, blockTable, cuSeqlensQ, cuSeqlensKv, sequsedQ,
+            sequsedKv, attnMask, learnableSink, softmaxLse, attnOut, workspace, metadata, tilingData);
     op.Process();
     PipeBarrier<PIPE_ALL>();
 #endif

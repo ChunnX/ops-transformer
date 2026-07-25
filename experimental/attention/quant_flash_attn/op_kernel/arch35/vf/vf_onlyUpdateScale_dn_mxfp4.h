@@ -84,5 +84,5 @@ __aicore__ inline void computeOnlyScale(const LocalTensor<T> &umax1, const Local
 
     computeOnlyScaleVF<clear_gmax, T, S1Base>(umax1VF, umax2VF, ugmaxOldVF, ursVF, coreIndex);
 }
-}
-#endif  // ONLYUPDATESCALE_DN_MXFP4_H_
+} // namespace Mxfp4Api
+#endif // ONLYUPDATESCALE_DN_MXFP4_H_

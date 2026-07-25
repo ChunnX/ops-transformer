@@ -29,7 +29,7 @@ using namespace MicroAPI;
 
 template <bool isUpdate, uint16_t S2Base = 256>
 __simd_vf__ void processUpdateVF(__ubuf__ float *updateResUb, __ubuf__ float *mm2ResUb, __ubuf__ float *urs,
-                               __ubuf__ float *rsum, __ubuf__ float *ursum)
+                                 __ubuf__ float *rsum, __ubuf__ float *ursum)
 {
     // 更新 mm2
     MaskReg preg_all32 = CreateMask<uint32_t, MaskPattern::ALL>();
@@ -104,5 +104,5 @@ __aicore__ inline void processUpdate(const LocalTensor<float> &updateResUb, cons
     processUpdateVF<isUpdate, S2Base>(updateResUbVF, mm2ResUbVF, ursVF, rsumVF, ursumVF);
 }
 
-}  // namespace Mxfp4Api
-#endif  // UPDATESCALE_DN_MXFP4_H_
+} // namespace Mxfp4Api
+#endif // UPDATESCALE_DN_MXFP4_H_

@@ -1,3 +1,14 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 
 import torch
 import torch.nn as nn
@@ -13,10 +24,27 @@ from typing import Tuple, Dict, Optional
 # ============================================================
 
 # 所有 FP4 E2M1 可表示的 FP32 数值 (用于模拟量化)
-FP4_E2M1_VALUES = torch.tensor([
-    0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
-    -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0
-], dtype=torch.float32)
+FP4_E2M1_VALUES = torch.tensor(
+    [
+        0.0,
+        0.5,
+        1.0,
+        1.5,
+        2.0,
+        3.0,
+        4.0,
+        6.0,
+        -0.0,
+        -0.5,
+        -1.0,
+        -1.5,
+        -2.0,
+        -3.0,
+        -4.0,
+        -6.0,
+    ],
+    dtype=torch.float32,
+)
 
 # E8M0 偏置 (OCP MX 规范): biased = exp + 127
 E8M0_BIAS = 127
@@ -38,17 +66,17 @@ def generate_fp4_e2m1_encoding_table():
     encodings = []
     values = []
 
-    for s in [0, 1]:           # 符号位
-        for e in range(4):     # 2 位指数 (0-3)
-            for m in range(2): # 1 位尾数 (0-1)
+    for s in [0, 1]:  # 符号位
+        for e in range(4):  # 2 位指数 (0-3)
+            for m in range(2):  # 1 位尾数 (0-1)
                 encoding = (s << 3) | (e << 1) | m  # S-E-E-M
                 if e == 0:
                     # 次正规数: (-1)^S * 2^0 * (M/2)
-                    val = (-1)**s * (2.0**0) * (m / 2.0)
+                    val = (-1) ** s * (2.0**0) * (m / 2.0)
                 else:
                     # 正规数 (e=1,2,3): (-1)^S * 2^(E-1) * (1 + M/2)
                     # 注: E2M1 没有 inf/NaN, e=3 也是正规数
-                    val = (-1)**s * (2.0**(e - 1)) * (1.0 + m / 2.0)
+                    val = (-1) ** s * (2.0 ** (e - 1)) * (1.0 + m / 2.0)
 
                 encodings.append(encoding)
                 values.append(val)
@@ -77,6 +105,7 @@ FP4_VALUES, FP4_ENCODINGS, FP32_TO_FP4, FP4_TO_FP32 = generate_fp4_e2m1_encoding
 # 第二部分: 基础量化/反量化模块 (FP32 模拟)
 # ============================================================
 
+
 def quantize_fp4(tensor: torch.Tensor) -> torch.Tensor:
     """
     将张量量化到最近的 FP4 (E2M1) 值, 返回 FP32 模拟表示。
@@ -85,7 +114,7 @@ def quantize_fp4(tensor: torch.Tensor) -> torch.Tensor:
     输出: 同形状 FP32 张量 (值是 FP4 可表示的值)
     """
     with torch.no_grad():
-        expanded = tensor.unsqueeze(-1)                     # [..., 1]
+        expanded = tensor.unsqueeze(-1)  # [..., 1]
         expanded_abs = torch.abs(expanded - FP4_E2M1_VALUES.to(tensor.device))
         indices = torch.argmin(expanded_abs, dim=-1)
         quantized = FP4_E2M1_VALUES.to(tensor.device)[indices]
@@ -97,9 +126,9 @@ def dequantize_fp4(fp4_data: torch.Tensor) -> torch.Tensor:
     return fp4_data.float()
 
 
-def compute_e8m0_scale_block(block: torch.Tensor,
-                             mode: str = "baseline",
-                             emax_elem: int = FP4_E2M1_EMAX) -> torch.Tensor:
+def compute_e8m0_scale_block(
+    block: torch.Tensor, mode: str = "baseline", emax_elem: int = FP4_E2M1_EMAX
+) -> torch.Tensor:
     """
     为一个 block 计算 E8M0 缩放因子 (2 的整数次幂)。
 
@@ -132,12 +161,12 @@ def compute_e8m0_scale_block(block: torch.Tensor,
 
     # E8M0 with bias 127: 有效指数范围 [-127, 127]
     exponent = torch.clamp(exponent, -127.0, 127.0)
-    return 2.0 ** exponent
+    return 2.0**exponent
 
 
-def mx_quantize(tensor: torch.Tensor,
-                block_size: int = 32,
-                mode: str = "baseline") -> Tuple[torch.Tensor, torch.Tensor]:
+def mx_quantize(
+    tensor: torch.Tensor, block_size: int = 32, mode: str = "baseline"
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     MXFP4 量化 (FP32 模拟版本, 输出仍为 FP32)。
 
@@ -162,7 +191,9 @@ def mx_quantize(tensor: torch.Tensor,
     pad_size = 0
     if tensor_last % block_size != 0:
         pad_size = block_size - (tensor_last % block_size)
-        tensor = torch.nn.functional.pad(tensor, (0, pad_size), mode='constant', value=0.0)
+        tensor = torch.nn.functional.pad(
+            tensor, (0, pad_size), mode="constant", value=0.0
+        )
 
     reshaped = tensor.reshape(-1, block_size)
     num_blocks = reshaped.shape[0]
@@ -186,9 +217,9 @@ def mx_quantize(tensor: torch.Tensor,
     return fp4_quant, scales
 
 
-def mx_dequantize(fp4_vals: torch.Tensor,
-                  scales: torch.Tensor,
-                  block_size: int = 32) -> torch.Tensor:
+def mx_dequantize(
+    fp4_vals: torch.Tensor, scales: torch.Tensor, block_size: int = 32
+) -> torch.Tensor:
     """
     MXFP4 反量化 (从 FP32 模拟值恢复)。
 
@@ -223,7 +254,10 @@ def mx_dequantize(fp4_vals: torch.Tensor,
 # 第三部分: FP4 编码转换与位级打包 (真实 4-bit 存储)
 # ============================================================
 
-def convert_fp32_simulated_to_fp4_encoding(fp32_simulated: torch.Tensor) -> torch.Tensor:
+
+def convert_fp32_simulated_to_fp4_encoding(
+    fp32_simulated: torch.Tensor,
+) -> torch.Tensor:
     """
     将量化后的 FP32 模拟值转换为真实的 4-bit 二进制编码 (0-15)。
 
@@ -236,7 +270,7 @@ def convert_fp32_simulated_to_fp4_encoding(fp32_simulated: torch.Tensor) -> torc
     encodings = torch.zeros_like(flat, dtype=torch.uint8)
 
     for fp32_val, encoding in FP32_TO_FP4.items():
-        mask = (flat == fp32_val)
+        mask = flat == fp32_val
         encodings[mask] = encoding
 
     return encodings.to(fp32_simulated.device).reshape(fp32_simulated.shape)
@@ -260,9 +294,9 @@ def pack_fp4_to_uint8(fp4_encodings: torch.Tensor) -> torch.Tensor:
     return packed.reshape(*shape[:-1], shape[-1] // 2)
 
 
-def pack_mxfp4_full(fp4_simulated: torch.Tensor,
-                    scales: torch.Tensor,
-                    block_size: int = 32) -> Dict:
+def pack_mxfp4_full(
+    fp4_simulated: torch.Tensor, scales: torch.Tensor, block_size: int = 32
+) -> Dict:
     """
     完整的 MXFP4 打包: 将 FP32 模拟值和 scale 打包为紧凑字节格式。
 
@@ -285,7 +319,7 @@ def pack_mxfp4_full(fp4_simulated: torch.Tensor,
     if last_dim % block_size != 0:
         pad_size = block_size - (last_dim % block_size)
         fp4_encodings = torch.nn.functional.pad(
-            fp4_encodings, (0, pad_size), mode='constant', value=0
+            fp4_encodings, (0, pad_size), mode="constant", value=0
         )
 
     # Step 2: 重排为 [num_blocks, block_size]
@@ -300,10 +334,10 @@ def pack_mxfp4_full(fp4_simulated: torch.Tensor,
     scale_exponents = (scale_exps_int + E8M0_BIAS).clamp(0, 254).to(torch.uint8)
 
     return {
-        'fp4_data': packed_data,
-        'scales': scale_exponents,
-        'block_size': block_size,
-        'original_shape': tuple(fp4_simulated.shape)
+        "fp4_data": packed_data,
+        "scales": scale_exponents,
+        "block_size": block_size,
+        "original_shape": tuple(fp4_simulated.shape),
     }
 
 
@@ -318,8 +352,8 @@ def unpack_uint8_to_fp4(packed: torch.Tensor) -> torch.Tensor:
     flat = packed.flatten()
     unpacked = torch.zeros(len(flat) * 2, dtype=torch.uint8, device=packed.device)
 
-    unpacked[0::2] = flat & 0x0F        # 低 4 位
-    unpacked[1::2] = (flat >> 4) & 0x0F # 高 4 位
+    unpacked[0::2] = flat & 0x0F  # 低 4 位
+    unpacked[1::2] = (flat >> 4) & 0x0F  # 高 4 位
 
     return unpacked.reshape(*shape[:-1], shape[-1] * 2)
 
@@ -333,16 +367,16 @@ def unpack_mxfp4_full(packed_dict: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
         scales:              shape [num_blocks], 真实 scale 值 (2^exp)
     """
     # Step 1: 解包 FP4 编码 -> shape [num_blocks, block_size]
-    fp4_encodings = unpack_uint8_to_fp4(packed_dict['fp4_data'])
+    fp4_encodings = unpack_uint8_to_fp4(packed_dict["fp4_data"])
 
     # Step 2: 将编码映射回 FP32 数值
     fp32_vals = torch.zeros_like(fp4_encodings, dtype=torch.float32)
     for encoding, fp32_val in FP4_TO_FP32.items():
-        mask = (fp4_encodings == encoding)
+        mask = fp4_encodings == encoding
         fp32_vals[mask] = fp32_val
 
     # Step 3: 从 E8M0 biased 指数恢复 scale
-    scales = 2.0 ** (packed_dict['scales'].float() - E8M0_BIAS)
+    scales = 2.0 ** (packed_dict["scales"].float() - E8M0_BIAS)
 
     return fp32_vals, scales
 
@@ -351,9 +385,10 @@ def unpack_mxfp4_full(packed_dict: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
 # 第四部分: 完整的端到端 MXFP4 量化/反量化接口
 # ============================================================
 
-def mx_quantize_fp4_full(tensor: torch.Tensor,
-                         block_size: int = 32,
-                         mode: str = "baseline") -> Dict:
+
+def mx_quantize_fp4_full(
+    tensor: torch.Tensor, block_size: int = 32, mode: str = "baseline"
+) -> Dict:
     """
     端到端 MXFP4 量化: FP32 输入 -> 打包的紧凑字节格式。
 
@@ -387,8 +422,8 @@ def mx_dequantize_fp4_full(packed_dict: Dict) -> torch.Tensor:
     fp32_blocks, scales = unpack_mxfp4_full(packed_dict)
     # fp32_blocks shape: [num_blocks, block_size]
 
-    block_size = packed_dict['block_size']
-    original_shape = packed_dict['original_shape']
+    block_size = packed_dict["block_size"]
+    original_shape = packed_dict["original_shape"]
 
     # Step 1: 每 block 乘以对应的 scale
     dequant_flat = fp32_blocks * scales.unsqueeze(1).to(fp32_blocks.device)
@@ -415,10 +450,9 @@ def mx_dequantize_fp4_full(packed_dict: Dict) -> torch.Tensor:
     return dequant
 
 
-def mxfp4_quantize_pack_last(tensor: torch.Tensor,
-                             quant_axis: int,
-                             block_size: int = 32,
-                             mode: str = "baseline") -> Tuple[torch.Tensor, torch.Tensor]:
+def mxfp4_quantize_pack_last(
+    tensor: torch.Tensor, quant_axis: int, block_size: int = 32, mode: str = "baseline"
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     打包轴固定为最后一维, 量化轴任意 (可与打包轴同轴).
 
@@ -470,10 +504,10 @@ def mxfp4_quantize_pack_last(tensor: torch.Tensor,
 # 第五部分: 推理辅助函数
 # ============================================================
 
-def linear_mxfp4(x: torch.Tensor,
-                 w: torch.Tensor,
-                 block_size: int = 32,
-                 mode: str = "baseline") -> torch.Tensor:
+
+def linear_mxfp4(
+    x: torch.Tensor, w: torch.Tensor, block_size: int = 32, mode: str = "baseline"
+) -> torch.Tensor:
     """
     使用 MXFP4 量化权重进行线性层推理 (模拟)。
 
@@ -530,9 +564,7 @@ if __name__ == "__main__":
 
     error = torch.abs(w - dq).mean().item()
     max_error = torch.abs(w - dq).max().item()
-    cos_sim = torch.nn.functional.cosine_similarity(
-        w.flatten(), dq.flatten(), dim=0
-    )
+    cos_sim = torch.nn.functional.cosine_similarity(w.flatten(), dq.flatten(), dim=0)
 
     _info("Baseline 平均绝对误差", f"{error:.6f}")
     _info("Baseline 最大绝对误差", f"{max_error:.6f}")
@@ -577,10 +609,10 @@ if __name__ == "__main__":
 
     print(f"  原始大小 (FP32):       {original_bytes:,} bytes")
     print(f"  压缩后大小 (MXFP4):    {actual_compressed:,.0f} bytes")
-    print(f"  压缩比:                {actual_compressed/original_bytes:.2%}")
+    print(f"  压缩比:                {actual_compressed / original_bytes:.2%}")
     print(f"  打包数据形状:          {packed['fp4_data'].shape}")
     print(f"  Scale 形状:            {packed['scales'].shape}")
-    print(f"  每 block 字节数:       {32*0.5 + 1:.1f} (16 FP4 + 1 scale)")
+    print(f"  每 block 字节数:       {32 * 0.5 + 1:.1f} (16 FP4 + 1 scale)")
 
     # 解包恢复
     dq_packed = mx_dequantize_fp4_full(packed)
@@ -600,7 +632,7 @@ if __name__ == "__main__":
 
     # 验证不含 inf/NaN
     has_special = any(
-        (v != v) or (v == float('inf')) or (v == float('-inf'))
+        (v != v) or (v == float("inf")) or (v == float("-inf"))
         for v in FP4_TO_FP32.values()
     )
     _check_true("编码表不含 inf/NaN", not has_special)
@@ -612,8 +644,26 @@ if __name__ == "__main__":
     print(f"  编码:   {[bin(e.item())[2:].zfill(4) for e in enc]}")
 
     # 全值往返验证
-    test_vals = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
-                              -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0])
+    test_vals = torch.tensor(
+        [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            3.0,
+            4.0,
+            6.0,
+            -0.0,
+            -0.5,
+            -1.0,
+            -1.5,
+            -2.0,
+            -3.0,
+            -4.0,
+            -6.0,
+        ]
+    )
     enc_all = convert_fp32_simulated_to_fp4_encoding(test_vals)
     recovered = torch.zeros_like(test_vals)
     for i, e in enumerate(enc_all):
@@ -626,7 +676,13 @@ if __name__ == "__main__":
     # 测试 5: 任意形状张量支持
     # ========================================
     print("\n--- 测试 5: 不同形状张量支持 ---")
-    shapes = [(32,), (64, 32), (16, 128, 64), (3, 50), (7, 33)]  # 后两个 last dim 非 32 倍数
+    shapes = [
+        (32,),
+        (64, 32),
+        (16, 128, 64),
+        (3, 50),
+        (7, 33),
+    ]  # 后两个 last dim 非 32 倍数
     for shape in shapes:
         t = torch.randn(shape)
         q, s = mx_quantize(t, block_size=32)
@@ -658,8 +714,9 @@ if __name__ == "__main__":
     # ========================================
     print("\n--- 测试 7: mxfp4_quantize_pack_last ---")
 
-    def _dequant_from_packed(packed_fp4, e8m0_scales, quant_axis, orig_shape,
-                             block_size=32):
+    def _dequant_from_packed(
+        packed_fp4, e8m0_scales, quant_axis, orig_shape, block_size=32
+    ):
         """unpack + nibble->FP4 codes -> FP32 -> 沿 quant_axis 乘 scale, 还原 layout."""
         nd = len(orig_shape)
         qax = quant_axis % nd
@@ -698,8 +755,10 @@ if __name__ == "__main__":
     # 同轴: qax=-1 (等价于标准 OCP MXFP4)
     t1 = torch.randn(4, 8, 32, 64)
     packed1, scales1 = mxfp4_quantize_pack_last(t1, quant_axis=-1)
-    print(f"  [shape] 同轴 (qax=-1): in={list(t1.shape)} packed={list(packed1.shape)} "
-          f"scales={list(scales1.shape)}")
+    print(
+        f"  [shape] 同轴 (qax=-1): in={list(t1.shape)} packed={list(packed1.shape)} "
+        f"scales={list(scales1.shape)}"
+    )
     ref1 = _ref_quant_dequant_along(t1, -1)
     new1 = _dequant_from_packed(packed1, scales1, -1, t1.shape)
     _check("同轴 (qax=-1) 反量化 ≡ 参考路径", ref1, new1, atol=0.0, rtol=0.0)
@@ -707,8 +766,10 @@ if __name__ == "__main__":
     # 异轴: qax=2 (BNSD 沿 S 量化, 沿 D 打包), S=33 非 32 倍数
     t2 = torch.randn(4, 8, 33, 64)
     packed2, scales2 = mxfp4_quantize_pack_last(t2, quant_axis=2)
-    print(f"  [shape] 异轴 (qax=2,  S=33): in={list(t2.shape)} packed={list(packed2.shape)} "
-          f"scales={list(scales2.shape)}")
+    print(
+        f"  [shape] 异轴 (qax=2,  S=33): in={list(t2.shape)} packed={list(packed2.shape)} "
+        f"scales={list(scales2.shape)}"
+    )
     ref2 = _ref_quant_dequant_along(t2, 2)
     new2 = _dequant_from_packed(packed2, scales2, 2, t2.shape)
     _check("异轴 (qax=2) 反量化 ≡ movedim 参考路径", ref2, new2, atol=0.0, rtol=0.0)
@@ -716,8 +777,10 @@ if __name__ == "__main__":
     # 异轴: qax=0 (沿首轴量化)
     t3 = torch.randn(64, 16, 32)
     packed3, scales3 = mxfp4_quantize_pack_last(t3, quant_axis=0)
-    print(f"  [shape] 异轴 (qax=0): in={list(t3.shape)} packed={list(packed3.shape)} "
-          f"scales={list(scales3.shape)}")
+    print(
+        f"  [shape] 异轴 (qax=0): in={list(t3.shape)} packed={list(packed3.shape)} "
+        f"scales={list(scales3.shape)}"
+    )
     ref3 = _ref_quant_dequant_along(t3, 0)
     new3 = _dequant_from_packed(packed3, scales3, 0, t3.shape)
     _check("异轴 (qax=0) 反量化 ≡ movedim 参考路径", ref3, new3, atol=0.0, rtol=0.0)
@@ -725,8 +788,10 @@ if __name__ == "__main__":
     # OAS 模式 + 异轴
     t4 = torch.randn(2, 100, 16) * 0.5
     packed4, scales4 = mxfp4_quantize_pack_last(t4, quant_axis=1, mode="oas")
-    print(f"  [shape] OAS 异轴 (qax=1): in={list(t4.shape)} packed={list(packed4.shape)} "
-          f"scales={list(scales4.shape)}")
+    print(
+        f"  [shape] OAS 异轴 (qax=1): in={list(t4.shape)} packed={list(packed4.shape)} "
+        f"scales={list(scales4.shape)}"
+    )
     ref4 = _ref_quant_dequant_along(t4, 1, mode="oas")
     new4 = _dequant_from_packed(packed4, scales4, 1, t4.shape)
     _check("OAS 异轴 (qax=1) 反量化 ≡ movedim 参考路径", ref4, new4, atol=0.0, rtol=0.0)

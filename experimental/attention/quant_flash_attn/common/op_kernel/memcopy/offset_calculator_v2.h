@@ -29,7 +29,7 @@ enum class FormatCategory {
     GM_KV_PA_BNBD = 4,
     GM_KV_PA_NZ = 5,
     GM_POST_QUANT_NGD = 6, // post_quant
-    GM_ANTIQ_ND = 7, // antiquant no PA
+    GM_ANTIQ_ND = 7,       // antiquant no PA
     GM_ANTIQ_BS = 8,
     GM_ANTIQ_BNS = 9,
     GM_ANTIQ_BnBs = 10, // antiquant PA
@@ -126,7 +126,7 @@ template <>
 struct GmLayoutParams<GmFormat::PA_BnNBsD_KS> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_BnNBsD_KS;
 };
- 
+
 template <>
 struct GmLayoutParams<GmFormat::PA_NZ> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_KV_PA_NZ;
@@ -222,7 +222,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T, fa
     }
 
     __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1, uint32_t d,
-        const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &actualSeqLensQParser)
+                                const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &actualSeqLensQParser)
     {
         this->actualSeqLensQParser = actualSeqLensQParser;
         gmLayout.MakeLayout(b, n2, g, s1, d);
@@ -307,7 +307,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_NBSGD2, ACTLEN_T, W
 
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t gIdx, uint32_t s1Idx, uint32_t dIdx)
     {
-        uint64_t offset = n2Idx * GetStrideN2() + bIdx * GetStrideB() + s1Idx * GetStrideS1() + gIdx * GetStrideG() + dIdx * GetStrideD();
+        uint64_t offset = n2Idx * GetStrideN2() + bIdx * GetStrideB() + s1Idx * GetStrideS1() + gIdx * GetStrideG() +
+                          dIdx * GetStrideD();
         return offset;
     }
 
@@ -377,8 +378,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d,
-        const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensQParser)
+    __aicore__ inline void
+    Init(uint32_t n2, uint32_t g, uint32_t d,
+         const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensQParser)
     {
         this->actualSeqLensQParser = actualSeqLensQParser;
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
@@ -539,8 +541,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T, WITH_ZE
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t d,
-        const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensKVParser)
+    __aicore__ inline void
+    Init(uint32_t n2, uint32_t d,
+         const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensKVParser)
     {
         this->actualSeqLensKVParser = actualSeqLensKVParser;
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
@@ -605,8 +608,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_V_SCALE_TND, ACTLEN_T, WI
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t d,
-        const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensKVParser)
+    __aicore__ inline void
+    Init(uint32_t n2, uint32_t d,
+         const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensKVParser)
     {
         this->actualSeqLensKVParser = actualSeqLensKVParser;
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
@@ -739,16 +743,16 @@ template <GmFormat FORMAT, typename ACTLEN_T>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_BnNBsD_KS, ACTLEN_T> {
     GmLayout<FORMAT> gmLayout;
     BlockTableParser blockTableParser;
- 
+
     __aicore__ inline OffsetCalculatorImpl() = default;
- 
+
     __aicore__ inline void Init(uint32_t n2, uint32_t blockSize, uint32_t d, GlobalTensor<int32_t> blockTableGm,
                                 uint32_t maxblockNumPerBatch, uint64_t bnStrides = 0, uint64_t n2Strides = 0)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
         gmLayout.MakeLayout(n2, blockSize, d, bnStrides, n2Strides);
     }
- 
+
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t s2Idx, uint32_t dIdx)
     {
         uint64_t blockIdxInBatch = s2Idx / GetBlockSize(); // 获取block table上的索引
@@ -758,45 +762,45 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_BnNBsD_KS, ACTLEN_T> {
             blockIdx * GetStrideBlockNum() + n2Idx * GetStrideN2() + bsIdx * GetStrideBlockSize() + dIdx * GetStrideD();
         return offset;
     }
- 
+
     // Get Stride
     __aicore__ inline uint64_t GetStrideBlockNum()
     {
         return AscendC::Std::get<0>(gmLayout.stride);
     }
- 
+
     __aicore__ inline uint64_t GetStrideN2()
     {
         return AscendC::Std::get<1>(gmLayout.stride);
     }
- 
+
     __aicore__ inline uint64_t GetStrideBlockSize()
     {
         return AscendC::Std::get<2>(gmLayout.stride); // 2:代表第3个维度，索引从0开始
     }
- 
+
     __aicore__ inline uint64_t GetStrideD()
     {
         return AscendC::Std::get<3>(gmLayout.stride); // 3:代表第4个维度，索引从0开始
     }
- 
+
     // Get Dim
     __aicore__ inline uint64_t GetN2()
     {
         return AscendC::Std::get<0>(gmLayout.shape);
     }
- 
+
     __aicore__ inline uint64_t GetBlockSize()
     {
         return AscendC::Std::get<1>(gmLayout.shape);
     }
- 
+
     __aicore__ inline uint64_t GetD()
     {
         return AscendC::Std::get<2>(gmLayout.shape); // 2:代表第3个维度，索引从0开始
     }
 };
- 
+
 template <GmFormat FORMAT, typename ACTLEN_T>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_NZ, ACTLEN_T> {
     GmLayout<FORMAT> gmLayout;
@@ -1283,7 +1287,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_NT, ACTLEN_T, WITH_
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t g, const SeqLensQParserType& parser)
+    __aicore__ inline void Init(uint32_t n2, uint32_t g, const SeqLensQParserType &parser)
     {
         actualSeqLensQParser = parser;
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g);
@@ -1411,7 +1415,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T, f
     }
 
     __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1, uint32_t s2,
-        const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &actualSeqLensQParser)
+                                const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &actualSeqLensQParser)
     {
         this->actualSeqLensQParser = actualSeqLensQParser;
         gmLayout.MakeLayout(b, n2, g, s1, s2);
@@ -1481,7 +1485,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T, f
 };
 
 template <GmFormat FORMAT, typename ACTLEN_T = uint64_t, bool WITH_ZERO_HEAD = false>
-struct OffsetCalculator : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY, ACTLEN_T, WITH_ZERO_HEAD> {
-};
+struct OffsetCalculator
+    : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY, ACTLEN_T, WITH_ZERO_HEAD> {};
 
 #endif

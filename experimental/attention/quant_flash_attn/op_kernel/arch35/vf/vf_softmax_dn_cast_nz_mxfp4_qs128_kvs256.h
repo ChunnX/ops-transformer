@@ -25,10 +25,10 @@ using namespace AscendC;
 using namespace MicroAPI;
 
 
-
 template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S2Base = 256, uint16_t S1Base = 128>
-__simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max,
-                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb, const T dScale)
+__simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDest, __ubuf__ T *s,
+                                                               __ubuf__ T *local_group_max, __ubuf__ T *global_max,
+                                                               __ubuf__ uint8_t *indexesUb, const T dScale)
 {
     // ====================== 寄存器定义 ======================
     RegTensor<half> src_c0, src_c1, src_c2, src_c3;
@@ -70,10 +70,10 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDes
     // ====================== 预计算：第一个分组的最大值 ======================
     Duplicate(curr_group_max, MIN_VALUE);
     for (uint16_t iter = 0; iter < ITER_PER_GROUP; ++iter) {
-        LoadAlign(src_c0, s + (iter * S1Base * ROW_SUB_LOOP + 0 * S1Base)*2);
-        LoadAlign(src_c1, s + (iter * S1Base * ROW_SUB_LOOP + 1 * S1Base)*2);
-        LoadAlign(src_c2, s + (iter * S1Base * ROW_SUB_LOOP + 2 * S1Base)*2);
-        LoadAlign(src_c3, s + (iter * S1Base * ROW_SUB_LOOP + 3 * S1Base)*2);
+        LoadAlign(src_c0, s + (iter * S1Base * ROW_SUB_LOOP + 0 * S1Base) * 2);
+        LoadAlign(src_c1, s + (iter * S1Base * ROW_SUB_LOOP + 1 * S1Base) * 2);
+        LoadAlign(src_c2, s + (iter * S1Base * ROW_SUB_LOOP + 2 * S1Base) * 2);
+        LoadAlign(src_c3, s + (iter * S1Base * ROW_SUB_LOOP + 3 * S1Base) * 2);
 
         Max(src_c0, src_c0, src_c1, preg_all_16bit);
         Max(src_c2, src_c2, src_c3, preg_all_16bit);
@@ -100,21 +100,21 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDes
         // ========== 第一个内循环：处理偶数子块 j = 0,2,4,6 ==========
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
             uint16_t rowOffset_next = (i + 1) * ROWS_PER_GROUP + j * ROW_SUB_LOOP;
-            LoadAlign(src_n0, s + (rowOffset_next * S1Base + 0 * S1Base)*2);
-            LoadAlign(src_n1, s + (rowOffset_next * S1Base + 1 * S1Base)*2);
-            LoadAlign(src_n2, s + (rowOffset_next * S1Base + 2 * S1Base)*2);
-            LoadAlign(src_n3, s + (rowOffset_next * S1Base + 3 * S1Base)*2);
+            LoadAlign(src_n0, s + (rowOffset_next * S1Base + 0 * S1Base) * 2);
+            LoadAlign(src_n1, s + (rowOffset_next * S1Base + 1 * S1Base) * 2);
+            LoadAlign(src_n2, s + (rowOffset_next * S1Base + 2 * S1Base) * 2);
+            LoadAlign(src_n3, s + (rowOffset_next * S1Base + 3 * S1Base) * 2);
             Max(src_n0, src_n0, src_n1, preg_valid_max);
             Max(src_n2, src_n2, src_n3, preg_valid_max);
-            Max(next_group_max, next_group_max, src_n0, preg_valid_max);  
+            Max(next_group_max, next_group_max, src_n0, preg_valid_max);
             Max(next_group_max, next_group_max, src_n2, preg_valid_max);
 
             // 当前块计算：Sub + Exp
             uint16_t rowOffset_cur = i * ROWS_PER_GROUP + j * ROW_SUB_LOOP;
-            LoadAlign(src_c0, s + (rowOffset_cur * S1Base + 0 * S1Base)*2);
-            LoadAlign(src_c1, s + (rowOffset_cur * S1Base + 1 * S1Base)*2);
-            LoadAlign(src_c2, s + (rowOffset_cur * S1Base + 2 * S1Base)*2);
-            LoadAlign(src_c3, s + (rowOffset_cur * S1Base + 3 * S1Base)*2);
+            LoadAlign(src_c0, s + (rowOffset_cur * S1Base + 0 * S1Base) * 2);
+            LoadAlign(src_c1, s + (rowOffset_cur * S1Base + 1 * S1Base) * 2);
+            LoadAlign(src_c2, s + (rowOffset_cur * S1Base + 2 * S1Base) * 2);
+            LoadAlign(src_c3, s + (rowOffset_cur * S1Base + 3 * S1Base) * 2);
 
             Muls(src_c0, src_c0, dScale, preg_all_16bit);
             Muls(src_c1, src_c1, dScale, preg_all_16bit);
@@ -153,11 +153,11 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDes
 
             // 写入内存（偶数块：无+128偏移）
             StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256, (RegTensor<uint8_t> &)quant_0,
-                       preg_vl128  // 低128字节掩码
+                       preg_vl128 // 低128字节掩码
             );
 
             StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 16256, (RegTensor<uint8_t> &)quant_0,
-                       preg_vl128_not  // 高128字节掩码
+                       preg_vl128_not // 高128字节掩码
             );
         }
 
@@ -165,10 +165,10 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDes
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
             // 预计算：下一个块 (i+1) 最大值
             uint16_t rowOffset_next = (i + 1) * ROWS_PER_GROUP + (j + 1) * ROW_SUB_LOOP;
-            LoadAlign(src_n0, s + (rowOffset_next * S1Base + 0 * S1Base)*2);
-            LoadAlign(src_n1, s + (rowOffset_next * S1Base + 1 * S1Base)*2);
-            LoadAlign(src_n2, s + (rowOffset_next * S1Base + 2 * S1Base)*2);
-            LoadAlign(src_n3, s + (rowOffset_next * S1Base + 3 * S1Base)*2);
+            LoadAlign(src_n0, s + (rowOffset_next * S1Base + 0 * S1Base) * 2);
+            LoadAlign(src_n1, s + (rowOffset_next * S1Base + 1 * S1Base) * 2);
+            LoadAlign(src_n2, s + (rowOffset_next * S1Base + 2 * S1Base) * 2);
+            LoadAlign(src_n3, s + (rowOffset_next * S1Base + 3 * S1Base) * 2);
 
             Max(src_n0, src_n0, src_n1, preg_valid_max);
             Max(src_n2, src_n2, src_n3, preg_valid_max);
@@ -177,10 +177,10 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDes
 
             // 当前块计算：Sub + Exp
             uint16_t rowOffset_cur = i * ROWS_PER_GROUP + (j + 1) * ROW_SUB_LOOP;
-            LoadAlign(src_c0, s + (rowOffset_cur * S1Base + 0 * S1Base)*2);
-            LoadAlign(src_c1, s + (rowOffset_cur * S1Base + 1 * S1Base)*2);
-            LoadAlign(src_c2, s + (rowOffset_cur * S1Base + 2 * S1Base)*2);
-            LoadAlign(src_c3, s + (rowOffset_cur * S1Base + 3 * S1Base)*2);
+            LoadAlign(src_c0, s + (rowOffset_cur * S1Base + 0 * S1Base) * 2);
+            LoadAlign(src_c1, s + (rowOffset_cur * S1Base + 1 * S1Base) * 2);
+            LoadAlign(src_c2, s + (rowOffset_cur * S1Base + 2 * S1Base) * 2);
+            LoadAlign(src_c3, s + (rowOffset_cur * S1Base + 3 * S1Base) * 2);
 
             Muls(src_c0, src_c0, dScale, preg_all_16bit);
             Muls(src_c1, src_c1, dScale, preg_all_16bit);
@@ -246,21 +246,20 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDes
 }
 
 template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S2Base = 256, uint16_t S1Base = 128>
-__aicore__ inline void softmaxWithGroupMaxQs128Kvs256CallVF(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
-                                                  const LocalTensor<T> &local_group_max,
-                                                  const LocalTensor<T> &global_max,
-                                                  const LocalTensor<uint8_t> &indexesBuf,
-                                                  const T scale)
+__aicore__ inline void
+softmaxWithGroupMaxQs128Kvs256CallVF(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
+                                     const LocalTensor<T> &local_group_max, const LocalTensor<T> &global_max,
+                                     const LocalTensor<uint8_t> &indexesBuf, const T scale)
 {
-    __ubuf__ T2 *pDest = (__ubuf__ T2*) dstTensor.GetPhyAddr();
-    __ubuf__ T *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
-    __ubuf__ T *localGroupMax = (__ubuf__ T*)local_group_max.GetPhyAddr();
-    __ubuf__ T *globalMax = (__ubuf__ T*)global_max.GetPhyAddr();
-    __ubuf__ uint8_t * indexesUb = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
+    __ubuf__ T2 *pDest = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
+    __ubuf__ T *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ T *localGroupMax = (__ubuf__ T *)local_group_max.GetPhyAddr();
+    __ubuf__ T *globalMax = (__ubuf__ T *)global_max.GetPhyAddr();
+    __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesBuf.GetPhyAddr();
 
     softmax_with_group_max_qs128_kvs256_vf<clear_gmax, T, T2, hasAtten, S2Base, S1Base>(
         pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, scale);
 }
 
-}
-#endif  // VF_SOFTMAX_DN_CAST_NZ_MXFP4_QS128_KVS256_H_
+} // namespace Mxfp4Api
+#endif // VF_SOFTMAX_DN_CAST_NZ_MXFP4_QS128_KVS256_H_

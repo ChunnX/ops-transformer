@@ -18,7 +18,7 @@
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "../quant_flash_attn_tiling_info.h"
-#include "tiling/tiling_api.h"  //这个头文件顺序必须在手写的tiling data前
+#include "tiling/tiling_api.h" //这个头文件顺序必须在手写的tiling data前
 #include "../../op_kernel/arch35/quant_flash_attn_tiling_data.h"
 
 namespace optiling {
@@ -41,7 +41,9 @@ struct FaTilingKeyInfo {
 
 class QuantFlashAttnTilingDn : public FiaTilingBase {
 public:
-    explicit QuantFlashAttnTilingDn(gert::TilingContext *context) : FiaTilingBase(context) {}
+    explicit QuantFlashAttnTilingDn(gert::TilingContext *context) : FiaTilingBase(context)
+    {
+    }
     ~QuantFlashAttnTilingDn() override = default;
 
 protected:

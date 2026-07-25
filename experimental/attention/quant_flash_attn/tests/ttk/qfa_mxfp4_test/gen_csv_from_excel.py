@@ -10,9 +10,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 """
-  python3 gen_csv_from_excel.py [--excel B008QFA_红线用例.xlsx]
-                                [--sheet mxfp4]
-                                [--output qfa_mxfp4.csv]
+python3 gen_csv_from_excel.py [--excel B008QFA_红线用例.xlsx]
+                              [--sheet mxfp4]
+                              [--output qfa_mxfp4.csv]
 
 """
 
@@ -139,7 +139,11 @@ def _compute_v_descale_shape(B, N_kv, V_D, act_seq_lens_kv, max_seqlen_kv=-1):
     最终 (B, N_kv, n_blocks // 2, V_D, 2).
     用于校验 Excel v_descale 列 (Excel 偶用 v_shape 的 S 而非 max(seqused_kv) 致错).
     """
-    s2 = max(act_seq_lens_kv) if act_seq_lens_kv else (max_seqlen_kv if max_seqlen_kv >= 0 else 0)
+    s2 = (
+        max(act_seq_lens_kv)
+        if act_seq_lens_kv
+        else (max_seqlen_kv if max_seqlen_kv >= 0 else 0)
+    )
     n_blocks = (s2 + 31) // 32
     if n_blocks % 2 != 0:
         n_blocks += 1
@@ -181,7 +185,8 @@ def _build_col_map(ws):
     if missing:
         raise ValueError(
             f"Excel sheet 缺少必需列 (共 {len(missing)} 个): {', '.join(missing)}\n"
-            f"请保证表头名与脚本 HEADER 定义一致 (列位置可任意).")
+            f"请保证表头名与脚本 HEADER 定义一致 (列位置可任意)."
+        )
     for hdr_name in OPTIONAL_HEADER:
         col = _find_col_by_header(ws, hdr_name)
         if col is not None:
@@ -194,6 +199,7 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
 
     col_map: _build_col_map 返回的 字段key -> 列号 映射 (含可选精度列).
     """
+
     def g(key):
         return ws.cell(row=row_idx, column=col_map[key]).value
 
@@ -206,7 +212,7 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
     N_q = int(g("num_heads_q"))
     N_kv = int(g("num_heads_kv"))
     D = int(g("head_dim"))
-    G = N_q // N_kv if N_kv > 0 else 1   # GQA group size = Q heads // KV heads
+    G = N_q // N_kv if N_kv > 0 else 1  # GQA group size = Q heads // KV heads
     V_D = D  # Excel head_dim == D, 无独立 V_D 列
 
     # act_seq_lens_q/kv: 透明透传 Excel 的 seqused 列; 为空则传空
@@ -220,14 +226,22 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
     # max_seqlen_q/kv: 透明透传 Excel 的 max_seqlen 列; 缺失/空 -> -1 (算子侧 -1 表示不传)
     ms_q_raw = g("max_seqlen_q")
     ms_kv_raw = g("max_seqlen_kv")
-    max_seqlen_q = int(ms_q_raw) if ms_q_raw is not None and str(ms_q_raw).strip() != "" else -1
-    max_seqlen_kv = int(ms_kv_raw) if ms_kv_raw is not None and str(ms_kv_raw).strip() != "" else -1
+    max_seqlen_q = (
+        int(ms_q_raw) if ms_q_raw is not None and str(ms_q_raw).strip() != "" else -1
+    )
+    max_seqlen_kv = (
+        int(ms_kv_raw) if ms_kv_raw is not None and str(ms_kv_raw).strip() != "" else -1
+    )
 
     # pre/next_tokens: -1 -> 2147483647
     win_left = g("win_left")
-    pre_tokens = 2147483647 if (win_left is None or int(win_left) == -1) else int(win_left)
+    pre_tokens = (
+        2147483647 if (win_left is None or int(win_left) == -1) else int(win_left)
+    )
     win_right = g("win_right")
-    next_tokens = 2147483647 if (win_right is None or int(win_right) == -1) else int(win_right)
+    next_tokens = (
+        2147483647 if (win_right is None or int(win_right) == -1) else int(win_right)
+    )
 
     # q/k/v: Excel 是 unpacked shape (末维 = D), MXFP4 packed -> 末维 //2
     q_shape = _half_last_dim(_parse_shape(g("q_shape")))
@@ -242,20 +256,36 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
     v_descale_excel = _parse_shape(g("v_descale_shape"))
     v_descale_golden = _compute_v_descale_shape(B, N_kv, V_D, skv, max_seqlen_kv)
     if v_descale_excel != v_descale_golden:
-        print(f"[WARN] {name}: Excel v_descale={v_descale_excel} 与 golden={v_descale_golden} "
-              f"不一致, 使用 golden (Excel 公式疑似用 v_shape 的 S 而非 max(seqused_kv))")
+        print(
+            f"[WARN] {name}: Excel v_descale={v_descale_excel} 与 golden={v_descale_golden} "
+            f"不一致, 使用 golden (Excel 公式疑似用 v_shape 的 S 而非 max(seqused_kv))"
+        )
     v_descale_shape = v_descale_golden
 
-    block_table_shape = (0,)  # TTK 占位 (continue KV), 真实 block_table 从 attrs 读 shape 生成
+    block_table_shape = (
+        0,
+    )  # TTK 占位 (continue KV), 真实 block_table 从 attrs 读 shape 生成
 
-    shapes = [q_shape, k_shape, v_shape,
-              q_descale_shape, k_descale_shape, v_descale_shape,
-              block_table_shape]
+    shapes = [
+        q_shape,
+        k_shape,
+        v_shape,
+        q_descale_shape,
+        k_descale_shape,
+        v_descale_shape,
+        block_table_shape,
+    ]
     tensor_view_shapes = "(" + ",".join(f"({s})" for s in shapes) + ")"
 
-    dtypes = ["'uint8'", "'uint8'", "'uint8'",
-              "'uint8'", "'uint8'", "'uint8'",
-              "'int32'"]
+    dtypes = [
+        "'uint8'",
+        "'uint8'",
+        "'uint8'",
+        "'uint8'",
+        "'uint8'",
+        "'uint8'",
+        "'int32'",
+    ]
     tensor_dtypes = "(" + ",".join(dtypes) + ")"
 
     # layout: 从 Excel 读取 (layout_q / layout_q_descale / layout_kv / layout_out)
@@ -269,13 +299,23 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
         """读 Excel 可选 tensor 的 shape/dtype/datarange, 返回 dict (无值则 shape=())"""
         sh = _parse_shape(g(shape_key))
         dt = _norm_dtype(g(dtype_key)) if dtype_key else None
-        dr = str(g(datarange_key)) if datarange_key and g(datarange_key) is not None else None
+        dr = (
+            str(g(datarange_key))
+            if datarange_key and g(datarange_key) is not None
+            else None
+        )
         return {"shape": list(sh), "dtype": dt, "datarange": dr}
 
     block_table_info = _read_opt_tensor("block_table_shape", "block_table_dtype")
-    p_scale_info = _read_opt_tensor("p_scale_shape", "p_scale_dtype", "p_scale_datarange")
-    sinks_info = _read_opt_tensor("learnable_sink_shape", "learnable_sink_dtype", "learnable_sink_datarange")
-    attn_mask_info = _read_opt_tensor("attn_mask_shape", "attn_mask_dtype", "attn_mask_datarange")
+    p_scale_info = _read_opt_tensor(
+        "p_scale_shape", "p_scale_dtype", "p_scale_datarange"
+    )
+    sinks_info = _read_opt_tensor(
+        "learnable_sink_shape", "learnable_sink_dtype", "learnable_sink_datarange"
+    )
+    attn_mask_info = _read_opt_tensor(
+        "attn_mask_shape", "attn_mask_dtype", "attn_mask_datarange"
+    )
 
     # p_scale_value: 表格传了就用表格值 (标量), 否则 None
     p_scale_value = g("p_scale_value")
@@ -291,8 +331,13 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
     enable_mask = len(attn_mask_info["shape"]) > 0
 
     attrs = {
-        "B": B, "N_q": N_q, "N_kv": N_kv, "G": G,
-        "D": D, "V_D": V_D, "Rope_D": 0,
+        "B": B,
+        "N_q": N_q,
+        "N_kv": N_kv,
+        "G": G,
+        "D": D,
+        "V_D": V_D,
+        "Rope_D": 0,
         "act_seq_lens_q": sq,
         "act_seq_lens_kv": skv,
         "cu_seqlens_q": cu_sq,
@@ -313,7 +358,9 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
         "pre_tokens": pre_tokens,
         "next_tokens": next_tokens,
         "enable_mask": enable_mask,
-        "enable_lse": bool(g("return_softmax_lse")) if g("return_softmax_lse") is not None else False,
+        "enable_lse": bool(g("return_softmax_lse"))
+        if g("return_softmax_lse") is not None
+        else False,
         "inner_precise": 0,
         "device_id": 0,
         "graph_path": 0,
@@ -349,23 +396,42 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
     # 精度阈值: Excel 有对应列则原样透传字符串, 否则用默认值
     pt_raw = g_opt("precision_tolerances")
     ap_raw = g_opt("absolute_precision")
-    precision_tolerances = str(pt_raw).strip() if pt_raw is not None else DEFAULT_PRECISION_TOLERANCES
-    absolute_precision = str(ap_raw).strip() if ap_raw is not None else DEFAULT_ABSOLUTE_PRECISION
+    precision_tolerances = (
+        str(pt_raw).strip() if pt_raw is not None else DEFAULT_PRECISION_TOLERANCES
+    )
+    absolute_precision = (
+        str(ap_raw).strip() if ap_raw is not None else DEFAULT_ABSOLUTE_PRECISION
+    )
 
-    return [name, API_NAME, tensor_view_shapes, tensor_dtypes, "",
-            attributes, "", "",
-            precision_tolerances, absolute_precision]
+    return [
+        name,
+        API_NAME,
+        tensor_view_shapes,
+        tensor_dtypes,
+        "",
+        attributes,
+        "",
+        "",
+        precision_tolerances,
+        absolute_precision,
+    ]
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Excel mxfp4 sheet -> TTK e2e CSV (批量转换交付件)")
+    parser = argparse.ArgumentParser(
+        description="Excel mxfp4 sheet -> TTK e2e CSV (批量转换交付件)"
+    )
     parser.add_argument("--excel", default="B008QFA_红线用例.xlsx", help="Excel 路径")
     parser.add_argument("--sheet", default="mxfp4", help="sheet 名 (默认 mxfp4)")
     parser.add_argument("--output", default="qfa_mxfp4.csv", help="输出 CSV 路径")
     args = parser.parse_args()
 
-    excel_path = args.excel if os.path.isabs(args.excel) else os.path.join(_HERE, args.excel)
-    out_path = args.output if os.path.isabs(args.output) else os.path.join(_HERE, args.output)
+    excel_path = (
+        args.excel if os.path.isabs(args.excel) else os.path.join(_HERE, args.excel)
+    )
+    out_path = (
+        args.output if os.path.isabs(args.output) else os.path.join(_HERE, args.output)
+    )
 
     wb = openpyxl.load_workbook(excel_path, data_only=True)
     if args.sheet not in wb.sheetnames:
@@ -378,13 +444,24 @@ def main():
     if prec_found:
         print(f"[INFO] 检测到 Excel 精度列: {prec_found} (从 Excel 读取)")
     else:
-        print(f"[INFO] Excel 无精度列, 使用默认值: "
-              f"precision_tolerances={DEFAULT_PRECISION_TOLERANCES}, "
-              f"absolute_precision={DEFAULT_ABSOLUTE_PRECISION}")
+        print(
+            f"[INFO] Excel 无精度列, 使用默认值: "
+            f"precision_tolerances={DEFAULT_PRECISION_TOLERANCES}, "
+            f"absolute_precision={DEFAULT_ABSOLUTE_PRECISION}"
+        )
 
-    header = ["testcase_name", "api_name", "tensor_view_shapes", "tensor_dtypes",
-              "tensor_formats", "attributes", "output_tensor_indexes", "golden_api",
-              "precision_tolerances", "absolute_precision"]
+    header = [
+        "testcase_name",
+        "api_name",
+        "tensor_view_shapes",
+        "tensor_dtypes",
+        "tensor_formats",
+        "attributes",
+        "output_tensor_indexes",
+        "golden_api",
+        "precision_tolerances",
+        "absolute_precision",
+    ]
     rows = []
     name_col = col_map["name"]
     for r in range(2, ws.max_row + 1):
