@@ -126,7 +126,7 @@ protected:
     LocalTensor<QK_T> cL0_;
 
     TBuf<TPosition::VECCALC> bufUB_;
-    LocalTensor<float> mm1ResUB_;
+    LocalTensor<QK_T> mm1ResUB_;
 
     uint64_t keyL1BufIdx_ = 0;
     uint64_t queryL1Mte2BufIdx_ = 0;
@@ -672,9 +672,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
             fixpipeParams.params.dstNdStride =
                 constInfo_.s2BaseSize * constInfo_.mBaseSize / 2; // s2BasicBlock_ * M_BASE_SIZE / 2
         }
-        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
-                                                     // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
-                                                     cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
+        Fixpipe<QK_T, QK_T, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
+        // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
+            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
+            fixpipeParams);
     } else {
         uint32_t nSize = CeilAlign(s2L0RealSize, static_cast<uint64_t>(UB_BLOCK / sizeof(QK_T)));
         // 有效数据不足16行，只需输出部分行即可; L0C上bmm1结果矩阵M方向size必须是偶数
