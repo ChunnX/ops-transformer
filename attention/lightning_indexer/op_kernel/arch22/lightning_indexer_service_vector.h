@@ -384,7 +384,6 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             // Vectorized: Mins caps large values, then Compares+Select replaces
             PipeBarrier<PIPE_V>();
             {
-                LocalTensor<float> tmpFloat = outValueBuf_.Get<float>();
                 Mins(reduceOutInner, reduceOutInner, 1.0e29f, s2BaseSize_);
                 PipeBarrier<PIPE_V>();
             }
