@@ -26,6 +26,7 @@ using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
 using GMMQuantTilingData = GroupedMatmulTilingData::GMMQuantTilingData;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
 using GMMA4W4IntQuantTilingData = GroupedMatmulTilingData::GMMA4W4IntQuantTilingData;
+using GMMA8W4BasicApiTilingData = GroupedMatmulTilingData::GMMA8W4BasicApiTilingData;
 #if defined(V310_GMM_QUANT)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
@@ -55,6 +56,9 @@ using GMMA4W4IntQuantTilingData = GroupedMatmulTilingData::GMMA4W4IntQuantTiling
 #include "arch35/weight_quant_basic_block/weight_quant_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_vcv_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
+#if defined(V310_GMM_A8W4_V5)
+#include "arch35/a8w4_v5/gmm_a8w4_perchannel_tensor_api.h"
+#endif
 using WeightQuantBatchMatmulV2::Arch35::A16MXF4_NZKN;
 using WeightQuantBatchMatmulV2::Arch35::MXA8W4_NZNK;
 using WeightQuantBatchMatmulV2::Arch35::QuantType;
@@ -157,6 +161,14 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
                 &mmTilingData_, tiling, &tPipe);                                                                       \
         op.Process();                                                                                                  \
     } while (0)
+
+__aicore__ inline void InvokeGmmA8W4V5Materialize(const GMMA8W4BasicApiTilingData &tilingData, GM_ADDR workspace)
+{
+    // Temporary non-numerical per-group invocation. Keep the key materialized
+    // without touching either the runtime-reserved workspace or y.
+    (void)tilingData;
+    (void)workspace;
+}
 
 #define GMM_QUANT_IMPL_CLASS(transposeX1, transposeX2, templateClass)                                                  \
     do {                                                                                                               \
@@ -388,8 +400,38 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     }
 #endif
 #elif defined(V310_GMM_ANTI_QUANT)
-    REGISTER_TILING_DEFAULT(GMMWeightQuantTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#if defined(V310_GMM_A8W4_V5)
+    constexpr bool IS_A8W4_V5_COMMON =
+        (W_TYPE == WQGMM_ND || W_TYPE == WQGMM_FRACTAL_NZ) &&
+        OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
+        W_QUANT_TYPE == WQGMM_NONE && WQ_B_TRANS == WQGMM_NO_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
+        TEMPLATE_CUSTOM_SC == WQGMM_A8W4_FIXED_TEMPLATE &&
+        IS_SINGLE_MULTI_SINGLE == WQGMM_NOT_SINGLE_MULTI_SINGLE &&
+        ALGORITHM_SUB_CATEGORY == WQGMM_VDEFAULT && ALGORITHM_CATEGORY == WQGMM_MULTI_SCALE_DEQUANT;
+    constexpr bool IS_A8W4_V5_PER_GROUP = IS_A8W4_V5_COMMON && C_QUANT_TYPE == WQGMM_PER_GROUP;
+    constexpr bool IS_A8W4_V5_PER_CHANNEL =
+        IS_A8W4_V5_COMMON && C_QUANT_TYPE == WQGMM_PER_CHANNEL &&
+        AscendC::IsSameType<DTYPE_Y, half>::value;
+    static_assert(!(IS_A8W4_V5_PER_GROUP && IS_A8W4_V5_PER_CHANNEL),
+                  "A8W4 V5 per-group and per-channel keys must be mutually exclusive.");
+    REGISTER_TILING_DEFAULT(GMMWeightQuantTilingData);
+    REGISTER_TILING_FOR_TILINGKEY(
+        "(TILING_KEY_VAR == 543163136) || (TILING_KEY_VAR == 543162880) || (TILING_KEY_VAR == 543163137) || (TILING_KEY_VAR == 543162881)",
+        GMMA8W4BasicApiTilingData);
+    if constexpr (IS_A8W4_V5_COMMON) {
+        GET_TILING_DATA_WITH_STRUCT(GMMA8W4BasicApiTilingData, a8w4TilingData, tiling);
+        if constexpr (IS_A8W4_V5_PER_CHANNEL) {
+            GROUPED_MATMUL::A8W4V5::InvokeGmmA8W4PerChannelTensorApi<DTYPE_Y, wFormat>(
+                x, weight, scale, offset, groupList, perTokenScale, y, user1, &tPipe, &a8w4TilingData);
+        } else {
+            InvokeGmmA8W4V5Materialize(a8w4TilingData, workspace);
+        }
+    } else
+#else
+    REGISTER_TILING_DEFAULT(GMMWeightQuantTilingData);
+#endif
+    {
 #if ORIG_DTYPE_X == DT_INT8
     if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
                   OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
@@ -504,6 +546,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                                                          VEC_ANTIQUANT_CONFIG_6);
     }
 #endif
+    }
 #else
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {

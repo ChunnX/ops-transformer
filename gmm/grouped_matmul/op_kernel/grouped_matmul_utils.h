@@ -73,6 +73,15 @@
       #define V310_GMM_ANTI_QUANT
     #endif
   #endif
+
+  // V5 A8W4 uses logical INT4 weights. DT_INT32 is only a packed carrier containing eight INT4 values.
+  // This macro controls whether the dedicated A8W4 V5 dispatch code is compiled; the tiling-key tuple
+  // still selects symmetric per-group versus asymmetric per-channel at compile time.
+  #if defined(V310_GMM_ANTI_QUANT) && defined(ORIG_DTYPE_SCALE) && defined(DT_UINT64) &&                      \
+      defined(DT_INT8) && defined(DT_INT4) && defined(DT_INT32) && ORIG_DTYPE_X == DT_INT8 &&              \
+      (ORIG_DTYPE_WEIGHT == DT_INT4 || ORIG_DTYPE_WEIGHT == DT_INT32) && ORIG_DTYPE_SCALE == DT_UINT64
+    #define V310_GMM_A8W4_V5
+  #endif
 #endif
 
 #if defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_WEIGHT) && defined(ORIG_DTYPE_Y) && defined(DT_INT8) && \

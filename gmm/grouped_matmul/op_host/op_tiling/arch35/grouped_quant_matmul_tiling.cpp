@@ -1647,4 +1647,7 @@ void GQmmInputInfo::Reset()
 
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmul, GroupedQmmBasicApiTiling, 0);
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmul, GroupedQmmTiling, 1);
+// Dedicated V5 A8W4 host route. Its full input contract keeps it disjoint from MX/A8W8 and legacy
+// weight-antiquant templates, and the matching APT branch consumes GMMA8W4BasicApiTilingData.
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmul, GroupedA8W4BasicApiTiling, 2);
 } // namespace optiling

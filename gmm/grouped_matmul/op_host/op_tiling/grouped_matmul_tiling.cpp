@@ -2249,6 +2249,14 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext* context) {
     auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
     if (compileInfoPtr->npuArch == NpuArch::DAV_3510) {
+        auto scale0Desc = context->GetDynamicInputDesc(SCALE_INDEX, 0);
+        const bool isA8W4V5 = xDType == ge::DT_INT8 &&
+                              (weightDtype == ge::DT_INT4 || weightDtype == ge::DT_INT32) &&
+                              scale0Desc != nullptr && scale0Desc->GetDataType() == ge::DT_UINT64;
+        if (isA8W4V5) {
+            std::vector<int32_t> registerList = {2};
+            return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
+        }
         // 全量化：双8bits或双4bits(不会有A4W2)
         bool isQuant = xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 || xDType == ge::DT_FLOAT4_E1M2 ||
                        (ge::GetSizeByDataType(xDType) == 1 && ge::GetSizeByDataType(weightDtype) == 1);
