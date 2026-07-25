@@ -95,6 +95,7 @@ protected:
     ge::graphStatus CheckOutShape(gert::Shape &inputshape, const char *inputName, gert::Shape &outputshape);
     ge::graphStatus CheckOutPut();
     ge::graphStatus CheckContext();
+    ge::graphStatus ValidateRequiredInputs();
     bool AnalyzeAttrs();
     bool CrossShapeVerify();
     bool AnalyzeDimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape, const gert::Shape &weightsShape,

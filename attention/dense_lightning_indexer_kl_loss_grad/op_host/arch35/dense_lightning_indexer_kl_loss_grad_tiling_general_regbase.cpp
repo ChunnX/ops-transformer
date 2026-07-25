@@ -99,22 +99,22 @@ template <typename T> static auto CeilDiv(const T n1, const T n2) -> T
     return (n2 != 0) ? (((n1 - 1) / n2) + 1) : n1;
 }
 
-ge::graphStatus ValidateRequiredInputs(gert::TilingContext* context, const string& opName)
+ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::ValidateRequiredInputs()
 {
-    auto queryDesc = context->GetInputDesc(QUERY_INPUT_INDEX);
-    auto keyDesc = context->GetInputDesc(KEY_INPUT_INDEX);
-    auto weightDesc = context->GetInputDesc(WEIGHT_INPUT_INDEX);
-    auto attnSoftmaxL1NormDesc = context->GetInputDesc(ATTN_SOFTMAX_L1_NORM_INPUT_INDEX);
-    auto lseDesc = context->GetInputDesc(SOFTMAX_LSE_INPUT_INDEX);
+    auto queryDesc = context_->GetInputDesc(QUERY_INPUT_INDEX);
+    auto keyDesc = context_->GetInputDesc(KEY_INPUT_INDEX);
+    auto weightDesc = context_->GetInputDesc(WEIGHT_INPUT_INDEX);
+    auto attnSoftmaxL1NormDesc = context_->GetInputDesc(ATTN_SOFTMAX_L1_NORM_INPUT_INDEX);
+    auto lseDesc = context_->GetInputDesc(SOFTMAX_LSE_INPUT_INDEX);
 
     OP_CHECK_IF(queryDesc == nullptr, OP_LOGE(opName, "query must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(keyDesc == nullptr, OP_LOGE(opName, "key must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(weightDesc == nullptr, OP_LOGE(opName, "weight must be provided."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(attnSoftmaxL1NormDesc == nullptr, OP_LOGE(opName, "softmaxL1Norm must be provided."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attnSoftmaxL1NormDesc == nullptr, OP_LOGE(opName, "attnSoftmaxL1Norm must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(lseDesc == nullptr, OP_LOGE(opName, "lse must be provided."), return ge::GRAPH_FAILED);
 
-    auto metadataTensor = context->GetOptionalInputTensor(METADATA_INPUT_INDEX);
-    auto metadataDesc = context->GetOptionalInputDesc(METADATA_INPUT_INDEX);
+    auto metadataTensor = context_->GetOptionalInputTensor(METADATA_INPUT_INDEX);
+    auto metadataDesc = context_->GetOptionalInputDesc(METADATA_INPUT_INDEX);
     OP_CHECK_IF(metadataTensor == nullptr, OP_LOGE(opName, "metadata must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(metadataDesc == nullptr, OP_LOGE(opName, "metadata desc must be provided."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -655,7 +655,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetShapeAtt
     opName = context_->GetNodeName();
     OP_LOGD(opName, "TilingContext: %s.", GetTilingContextDebugStr().c_str());
 
-    if (ValidateRequiredInputs(context, opName) != ge::GRAPH_SUCCESS) {
+    if (ValidateRequiredInputs() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
