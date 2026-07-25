@@ -63,7 +63,6 @@ public:
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .ValueDepend(OPTIONAL)
             .AutoContiguous();
         this->Output("softmax_lse")
             .ParamType(REQUIRED)
