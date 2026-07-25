@@ -769,6 +769,9 @@ namespace optiling{
         FillWorkSpaceTilingData(tilingdata);
         tilingdata.set_qTileCeil(qTileCeil_);
         tilingdata.set_maxKvStackLen(maxKvStackLen_);
+        OP_LOGD("FusedInferAttentionScore", "hello wangsong!! DoTiling qTileCeil_ is %u ", qTileCeil_);
+        OP_LOGD("FusedInferAttentionScore", "hello wangsong!! DoTiling maxKvStackLen_ is %u ", maxKvStackLen_);
+        OP_LOGD("FusedInferAttentionScore", "hello wangsong!! DoTiling WORKSPACE_BLOCK_SIZE_DB is %u ", WORKSPACE_BLOCK_SIZE_DB);
         return ge::GRAPH_SUCCESS;
     }
 
