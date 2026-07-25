@@ -1451,13 +1451,17 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_bmm2 = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
-            # AscendC's sparse reference passes the packed compare bits through
-            # a float-typed LocalTensor and reserves a 256-byte mask buffer.
-            # Keep that physical guard between CompareScalar and the following
-            # reduction workspace write.
-            v1_bw_mask = T.alloc_ub(
-                rows_per_aiv * bw_col_block // 16, calc_dtype
-            )
+            if rows_per_aiv == 16:
+                # Four aligned compare-mask slots preserve the official
+                # gSizeInner granularity. Their combined storage is 256 bytes.
+                v1_bw_mask0 = T.alloc_ub(16, calc_dtype)
+                v1_bw_mask1 = T.alloc_ub(16, calc_dtype)
+                v1_bw_mask2 = T.alloc_ub(16, calc_dtype)
+                v1_bw_mask3 = T.alloc_ub(16, calc_dtype)
+            else:
+                v1_bw_mask = T.alloc_ub(
+                    rows_per_aiv * bw_col_block // 16, calc_dtype
+                )
             v1_bw_rg = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
@@ -1562,10 +1566,37 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
 
                         if rows_per_aiv == 16:
-                            # Diagnostic-only K=7168 path.  Preserve the
-                            # proven 16x64 dWeight reduction, but bypass the
-                            # ReLU Compare/Select stage so the next remote run
-                            # can distinguish a mask failure from rg/cast/DMA.
+                            # Compare each statically aligned 4x64 group before
+                            # bmm2 is reused for dWeight.  Keep dWeight itself
+                            # as its proven single 16x64 reduction.
+                            T.tile.compare(
+                                v1_bw_mask0,
+                                v1_bw_bmm2[0:4, 0:bw_col_block],
+                                0.0,
+                                "GT",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.compare(
+                                v1_bw_mask1,
+                                v1_bw_bmm2[4:8, 0:bw_col_block],
+                                0.0,
+                                "GT",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.compare(
+                                v1_bw_mask2,
+                                v1_bw_bmm2[8:12, 0:bw_col_block],
+                                0.0,
+                                "GT",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.compare(
+                                v1_bw_mask3,
+                                v1_bw_bmm2[12:16, 0:bw_col_block],
+                                0.0,
+                                "GT",
+                            )
+                            T.pipe_barrier("v")
                             T.tile.mul(
                                 v1_bw_bmm2,
                                 v1_bw_bmm2,
@@ -1585,9 +1616,41 @@ def tilelang_grad_kl_loss_single_kernel(
                                 v1_bw_diff_2d,
                             )
                             T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_bw_bmm2[0:4, 0:bw_col_block],
+                                v1_bw_mask0,
+                                v1_bw_rg[0:4, 0:bw_col_block],
+                                0.0,
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_bw_bmm2[4:8, 0:bw_col_block],
+                                v1_bw_mask1,
+                                v1_bw_rg[4:8, 0:bw_col_block],
+                                0.0,
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_bw_bmm2[8:12, 0:bw_col_block],
+                                v1_bw_mask2,
+                                v1_bw_rg[8:12, 0:bw_col_block],
+                                0.0,
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_bw_bmm2[12:16, 0:bw_col_block],
+                                v1_bw_mask3,
+                                v1_bw_rg[12:16, 0:bw_col_block],
+                                0.0,
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                            T.pipe_barrier("v")
                             T.tile.cast(
                                 v1_bw_rg_half,
-                                v1_bw_rg,
+                                v1_bw_bmm2,
                                 "CAST_RINT",
                                 rows_per_aiv * bw_col_block,
                             )
