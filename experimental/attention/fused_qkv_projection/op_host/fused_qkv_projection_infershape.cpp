@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+
 #include "register/op_impl_registry.h"
 #include "log/log.h"
 
@@ -15,18 +16,18 @@ using namespace ge;
 
 namespace ops {
 
-static ge::graphStatus InferShapeFusedQkvProjection(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeFusedQkvProjection(gert::InferShapeContext *context)
 {
-    const gert::Shape* hsShape = context->GetInputShape(0);
+    const gert::Shape *hsShape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, hsShape);
     auto dimNum = hsShape->GetDimNum();
     OP_CHECK_IF(dimNum < 3, OP_LOGE(context, "hidden_states rank < 3"), return ge::GRAPH_FAILED);
 
-    const gert::RuntimeAttrs* attrs = context->GetAttrs();
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t* qPtr = attrs->GetAttrPointer<int64_t>(0);
-    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(1);
-    const int64_t* vPtr = attrs->GetAttrPointer<int64_t>(2);
+    const int64_t *qPtr = attrs->GetAttrPointer<int64_t>(0);
+    const int64_t *kPtr = attrs->GetAttrPointer<int64_t>(1);
+    const int64_t *vPtr = attrs->GetAttrPointer<int64_t>(2);
     OP_CHECK_NULL_WITH_CONTEXT(context, qPtr);
     OP_CHECK_NULL_WITH_CONTEXT(context, kPtr);
     OP_CHECK_NULL_WITH_CONTEXT(context, vPtr);
@@ -37,9 +38,9 @@ static ge::graphStatus InferShapeFusedQkvProjection(gert::InferShapeContext* con
     int64_t kDim = *kPtr;
     int64_t vDim = *vPtr;
 
-    gert::Shape* qShape = context->GetOutputShape(0);
-    gert::Shape* kShape = context->GetOutputShape(1);
-    gert::Shape* vShape = context->GetOutputShape(2);
+    gert::Shape *qShape = context->GetOutputShape(0);
+    gert::Shape *kShape = context->GetOutputShape(1);
+    gert::Shape *vShape = context->GetOutputShape(2);
 
     qShape->SetDimNum(3);
     kShape->SetDimNum(3);
