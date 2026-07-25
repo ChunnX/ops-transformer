@@ -39,12 +39,10 @@ TensorWrapper make_wrapper(const at::Tensor &tensor, const int64_t real_dtype)
     TensorWrapper wrapper = {tensor, ACL_DT_UNDEFINED};
     int64_t temp = static_cast<int64_t>(tensor.scalar_type());
     if (kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())] == ACL_UINT8) {
-        if (real_dtype == 296) {
+        if (real_dtype == FLOAT4_E2M1) {
             wrapper.dtype = ACL_FLOAT4_E2M1;
-        } else if (real_dtype == 293) {
+        } else if (real_dtype == FLOAT8_E8M0) {
             wrapper.dtype = ACL_FLOAT8_E8M0;
-        } else if (real_dtype == 290) {
-            wrapper.dtype = ACL_HIFLOAT8;
         }
     } else {
         wrapper.dtype = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())];
@@ -139,7 +137,7 @@ quant_flash_attn(
     char *layout_q_descale_ptr = const_cast<char *>(layout_q_descale.c_str());
     char *layout_kv_ptr = const_cast<char *>(layout_kv.c_str());
     char *layout_out_ptr = const_cast<char *>(layout_out.c_str());
-    if (quant_mode == 3) {
+    if (quant_mode == QUANT_MODE_MXFP4) {
         TensorWrapper q_wrapper = make_wrapper(q, FLOAT4_E2M1);
         TensorWrapper k_wrapper = make_wrapper(k, FLOAT4_E2M1);
         TensorWrapper v_wrapper = make_wrapper(v, FLOAT4_E2M1);
