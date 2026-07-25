@@ -257,7 +257,7 @@ TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_6)
     int64_t expectTilingKey = 1090722587;
     std::string expectTilingData =
         "2 167503724608 8796093022224 68719476800 12884901889 "
-        "9223372036854775807 9223372036854775807 0 ";
+        "9223372036854775807 9223372036854775807 8796093022208 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }

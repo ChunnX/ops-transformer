@@ -1017,8 +1017,10 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
 
     if (!keyStridesVec_.empty()) {
         liInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
+    } else if (layOutKeyStr == "PA_BSND") {
+        liInfo.keyStride0 = blockSize_ * n2Size_ * headDim_;
     } else {
-        liInfo.keyStride0 = blockSize_ * n2Size_ * headDim_;  // 非PA无需使用stride
+        liInfo.keyStride0 = 0;  // 非PA无需使用stride
     }
 }
 ge::graphStatus LIInfoParser::CheckFeatureMlaNoQuantShape() const
