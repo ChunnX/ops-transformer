@@ -163,24 +163,27 @@ class GeneralizedSFAQuant:
                     if i_S1 in milestones:
                         current_pct = (i_S1 / cur_act_q) * 100
                         print(f"      进度：{current_pct:.1f}% | 步数：{i_S1:>{len(str(cur_act_q))}}/{cur_act_q}")
-                    if self.ori_mask_mode != 0 and i_S1 < cur_act_q - cur_ori_act_kv:  # 根据 win_kv 判断行无效
-                        attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = torch.zeros([G, self.D], dtype=torch.float)
-                        continue
-
-                    if self.ori_mask_mode == 4:
-                        ori_threshold = cur_ori_act_kv - cur_act_q + i_S1 + 1
-                        ori_win_end = ori_threshold + self.ori_win_right
+                    ori_threshold = cur_ori_act_kv - cur_act_q + i_S1 + 1
+                    if self.ori_mask_mode == 3:
+                        ori_win_start = 0
+                        ori_win_end = min(max(ori_threshold, 0), cur_ori_act_kv)
+                    elif self.ori_mask_mode == 4:
                         if self.ori_win_left == -1:
                             ori_win_start = 0
                         else:
                             ori_win_start = max(ori_threshold - self.ori_win_left - 1, 0)
-                    elif self.ori_mask_mode == 3:
-                        ori_threshold = cur_ori_act_kv - cur_act_q + i_S1 + 1
-                        ori_win_end = ori_threshold + self.ori_win_right
-                        ori_win_start = 0
-                    elif self.ori_mask_mode == 0:
+                        if self.ori_win_right == -1:
+                            ori_win_end = cur_ori_act_kv
+                        else:
+                            ori_win_end = min(max(ori_threshold + self.ori_win_right, 0), cur_ori_act_kv)
+                    else:
                         ori_win_start = 0
                         ori_win_end = cur_ori_act_kv
+                    ori_win_start = min(ori_win_start, cur_ori_act_kv)
+
+                    if ori_win_start >= ori_win_end:  # 根据 win_kv 判断行无效
+                        attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = torch.zeros([G, self.D], dtype=torch.float)
+                        continue
 
                     cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
 
@@ -1046,7 +1049,8 @@ def gen_ori_kv_quant_2_pa(q_type, ori_kv_type, B, S1, T1, N2, rope_head_dim, nop
     ori_k_in_pa_shape = torch.zeros((block_num1, block_size1, N2, d_combined_quant_2 + pad_d), dtype=ori_kv_type)
     for i_B in range(B):
         for i_block, cur_phys_block_id in enumerate(ori_block_table[i_B]):
-            if cur_phys_block_id == -1: continue
+            if cur_phys_block_id == -1:
+                continue
 
             # 计算该 Block 在逻辑序列中的起始 Token 位置
             start_s = i_block * block_size1
@@ -1055,7 +1059,8 @@ def gen_ori_kv_quant_2_pa(q_type, ori_kv_type, B, S1, T1, N2, rope_head_dim, nop
             # 计算实际有效的长度（处理边界）
             actual_end_s = min(end_s, ori_max_s2)
             valid_len = actual_end_s - start_s
-            if valid_len <= 0: continue
+            if valid_len <= 0:
+                continue
 
             # --- 填充 Feature 部分 (0:576) ---
             # 排布：block_size * (nope + rope)
@@ -1160,13 +1165,15 @@ def gen_cmp_kv_quant_2_pa(q_type, cmp_kv_type, B, S1, T1, N2, K, rope_head_dim, 
 
     for i_B in range(B):
         for i_block, cur_phys_block_id in enumerate(cmp_block_table[i_B]):
-            if cur_phys_block_id == -1: continue
+            if cur_phys_block_id == -1:
+                continue
 
             start_s = i_block * block_size2
             end_s = start_s + block_size2
             actual_end_s = min(end_s, cmp_max_s2)
             valid_len = actual_end_s - start_s
-            if valid_len <= 0: continue
+            if valid_len <= 0:
+                continue
 
             # --- A. 准备 Feature 数据 (nope + rope) ---
             # nope: [N, S, 448]
