@@ -16,7 +16,6 @@
 #include "mixed_quant_sparse_flash_mla_check.h"
 #include "../op_kernel/mixed_quant_sparse_flash_mla_template_tiling_key.h"
 #include "mixed_quant_sparse_flash_mla_tiling.h"
-#include "acl/acl_rt.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -32,19 +31,8 @@ struct QSMLACompileInfo {
 static bool IsBatchConsistencyEnabled(gert::TilingContext *context, const char *opName)
 {
     int32_t deterministicLevel = context->GetDeterministicLevel();
-    if (deterministicLevel == 1) {
-        OP_LOGD(opName, "Tiling context deterministic level is %d.", deterministicLevel);
-        return true;
-    }
-
-    int64_t deterministicValue = 0;
-    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicValue);
-    if (aclRet != ACL_SUCCESS) {
-        OP_LOGW(opName, "Failed to get ACL_OPT_DETERMINISTIC, use non-deterministic path.");
-        return false;
-    }
-    OP_LOGD(opName, "ACL_OPT_DETERMINISTIC is %ld.", deterministicValue);
-    return deterministicValue == 1;
+    OP_LOGD(opName, "Tiling context deterministic level is %d.", deterministicLevel);
+    return deterministicLevel == 3;
 }
 
 // --------------------------QSMLAInfoParser类成员函数定义-------------------------------------
@@ -666,6 +654,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
     constexpr uint32_t FLOAT_ELEM_SIZE = 4;   // sizeof(float)
     constexpr uint32_t FD_BLOCK_ELEM = 8;     // FD广播份数
     constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2; // max和sum两个区域
+    constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33; // 同token最大规约块数
     size_t workspaceSize = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
     bool isSplitG = tilingInfo->gSize > 64; // gSize超过64时采用Split-G
     if (isSplitG) {
@@ -677,8 +666,9 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
     if (tilingInfo->batchConsistency) {
         size_t combineElemSize = static_cast<size_t>(fdStagingMSize) * D_SIZE +
             static_cast<size_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
-        workspaceSize += 33ULL * combineElemSize * FLOAT_ELEM_SIZE; // 33: 同token最大规约块数
-        workspaceSize += 32ULL * 33ULL * combineElemSize * FLOAT_ELEM_SIZE; // 32: 跨核数, 33: 同token最大规约块数
+        workspaceSize += static_cast<size_t>(aicNum) * combineElemSize * FLOAT_ELEM_SIZE;
+        workspaceSize += static_cast<size_t>(aicNum) * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
+            combineElemSize * FLOAT_ELEM_SIZE;
     } else {
         // 末尾的2对应每个split分别暂存max和sum。
         size_t s2SplitStagingPerSlot = static_cast<size_t>(fdStagingMSize) * D_SIZE * FLOAT_ELEM_SIZE *

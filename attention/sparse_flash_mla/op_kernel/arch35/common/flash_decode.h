@@ -271,7 +271,6 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
             WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
             FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
                                                          dealRowCount, splitIdx);
-            PipeBarrier<PIPE_V>();
             SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
             outSrcOffset += outSplitStride;
         }
@@ -313,20 +312,18 @@ __aicore__ inline void ReduceUb(const S2SplitFdStagingLayout &layout,
             LocalTensor<T> splitPartialO = partialOUb[partialOOffset];
             FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, chunkSumUb, splitPartialO,
                 dealRowCount, splitIdx);
-            PipeBarrier<PIPE_V>();
+            if (splitIdx + 1 < workspaceNum) {
+                PipeBarrier<PIPE_V>();
+            }
         }
 
         startRow += layout.chunkRows;
     }
 }
 
-// Merge one previously staged result with one current normalized result.
-// dealRowCount must not exceed layout.chunkRows.
-// currentMaxUb/currentSumUb contain one scalar per row; currentPartialO uses D_ALIGN elements per row.
-// blockMaxUb/blockSumUb layout: [previous, current][dealRowCount][broadcastElems].
-// partialOTmpUb layout: [previous, current][dealRowCount][D_ALIGN].
-// The merged state is returned as normalized partial O plus (LSE, 1), so it can be staged and merged again.
-// Both V_MTE2 events must be set before the first call. This function restores them before returning.
+// Merge a staged result with the current normalized result and return normalized partial O plus (LSE, 1).
+// Temporary buffers use [previous, current][row][broadcastElems or D_ALIGN].
+// Both V_MTE2 events must be ready on entry and are restored before return.
 template <typename T, int64_t D_ALIGN>
 __aicore__ inline void MergeStagedAndCurrentChunk(const S2SplitFdStagingLayout &layout,
     __gm__ uint8_t *stagingBase, int64_t workspaceIdx, int64_t stagingMOffset,
@@ -381,7 +378,6 @@ __aicore__ inline void MergeStagedAndCurrentChunk(const S2SplitFdStagingLayout &
     ReduceUb<T, D_ALIGN>(layout, dealRowCount, currentPartialO, mergedLseBroadcastUb,
         blockMaxUb, blockSumUb, partialOTmpUb, FD_INCREMENTAL_MERGE_INPUT_NUM, true);
     Duplicate(mergedSumBroadcastUb, static_cast<float>(1.0), dealRowsElems);
-    PipeBarrier<PIPE_V>();
     SetFlag<HardEvent::V_MTE2>(partialOVToMte2Id);
     SetFlag<HardEvent::V_MTE2>(maxSumVToMte2Id);
 }

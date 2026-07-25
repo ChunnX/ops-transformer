@@ -399,7 +399,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
     if constexpr (IS_SPLIT_G || TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
         constexpr uint32_t TRIPLE_BUFFER_NUM = 3U;
         uint32_t v0ResSize = constInfo.s2BaseSize * constInfo.dSize * sizeof(Q_T);
-        uint32_t v0LogicalSlotCount = GetBlockNum() >> 1U;
+        uint32_t v0LogicalSlotCount = IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum();
         v0SplitGOffset = v0ResSize * TRIPLE_BUFFER_NUM * v0LogicalSlotCount;
     }
     s2SplitStagingBase = workspace + v0SplitGOffset;
