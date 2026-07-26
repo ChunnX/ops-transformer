@@ -1,11 +1,13 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 
 #ifndef ROTARY_POSITION_EMBEDDING3D_H
 #define ROTARY_POSITION_EMBEDDING3D_H
@@ -22,9 +24,11 @@ namespace NsRotaryPositionEmbedding3d {
 template <typename T>
 class RotaryPositionEmbedding3d {
 public:
-    __aicore__ inline RotaryPositionEmbedding3d() {}
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR z,
-                                GM_ADDR, const RotaryPositionEmbedding3dTilingData* td);
+    __aicore__ inline RotaryPositionEmbedding3d()
+    {
+    }
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR z, GM_ADDR,
+                                const RotaryPositionEmbedding3dTilingData *td);
     __aicore__ inline void Process();
 
 private:
@@ -45,9 +49,8 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void RotaryPositionEmbedding3d<T>::Init(
-    GM_ADDR x, GM_ADDR cos, GM_ADDR z,
-    GM_ADDR, const RotaryPositionEmbedding3dTilingData* td)
+__aicore__ inline void RotaryPositionEmbedding3d<T>::Init(GM_ADDR x, GM_ADDR cos, GM_ADDR z, GM_ADDR,
+                                                          const RotaryPositionEmbedding3dTilingData *td)
 {
     headDim_ = td->headDim;
     halfD_ = static_cast<int32_t>(headDim_ / 2);
@@ -58,15 +61,17 @@ __aicore__ inline void RotaryPositionEmbedding3d<T>::Init(
     int64_t maxTileElts = (196608ULL - static_cast<uint64_t>(halfD_) * sizeof(T)) / (3ULL * sizeof(T));
     int64_t posPerBlock = blockLength_ / headDim_;
     int64_t posPerTile = maxTileElts / headDim_;
-    if (posPerTile <= 0) posPerTile = 1;
-    if (posPerTile > posPerBlock) posPerTile = posPerBlock;
+    if (posPerTile <= 0)
+        posPerTile = 1;
+    if (posPerTile > posPerBlock)
+        posPerTile = posPerBlock;
     tileNum_ = static_cast<int32_t>((posPerBlock + posPerTile - 1) / posPerTile);
     tileLength_ = static_cast<uint32_t>(posPerTile * headDim_);
 
     int64_t blockOffset = blockLength_ * GetBlockIdx();
-    xGm_.SetGlobalBuffer((__gm__ T*)x + blockOffset, blockLength_);
-    cosGm_.SetGlobalBuffer((__gm__ T*)cos + blockOffset, blockLength_);
-    zGm_.SetGlobalBuffer((__gm__ T*)z + blockOffset, blockLength_);
+    xGm_.SetGlobalBuffer((__gm__ T *)x + blockOffset, blockLength_);
+    cosGm_.SetGlobalBuffer((__gm__ T *)cos + blockOffset, blockLength_);
+    zGm_.SetGlobalBuffer((__gm__ T *)z + blockOffset, blockLength_);
 
     pipe_.InitBuffer(inQueue_, 1, tileLength_ * sizeof(T) * 2);
     pipe_.InitBuffer(outQueue_, 1, tileLength_ * sizeof(T));
@@ -123,7 +128,8 @@ __aicore__ inline void RotaryPositionEmbedding3d<T>::CopyOut(int32_t progress)
 template <typename T>
 __aicore__ inline void RotaryPositionEmbedding3d<T>::Process()
 {
-    if (tileNum_ == 0) return;
+    if (tileNum_ == 0)
+        return;
     for (int32_t i = 0; i < tileNum_; i++) {
         CopyIn(i);
         Compute(i);

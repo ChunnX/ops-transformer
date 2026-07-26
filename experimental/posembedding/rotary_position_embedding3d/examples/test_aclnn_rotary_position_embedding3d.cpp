@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -7,19 +17,19 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_rotary_position_embedding3d.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape)
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -28,63 +38,86 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream* stream)
+int Init(int32_t deviceId, aclrtStream *stream)
 {
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n%s", ret, aclGetRecentErrMsg()); return ret);
     ret = aclrtSetDevice(deviceId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n%s", ret, aclGetRecentErrMsg()); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n%s", ret, aclGetRecentErrMsg());
+              return ret);
     ret = aclrtCreateStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n%s", ret, aclGetRecentErrMsg()); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n%s", ret, aclGetRecentErrMsg());
+              return ret);
     return 0;
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape,
-                    void** deviceAddr, aclDataType dataType, aclTensor** tensor)
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n%s", ret, aclGetRecentErrMsg()); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n%s", ret, aclGetRecentErrMsg());
+              return ret);
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n%s", ret, aclGetRecentErrMsg()); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n%s", ret, aclGetRecentErrMsg());
+              return ret);
 
     std::vector<int64_t> strides(shape.size(), 1);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
 
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0,
-                              aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), *deviceAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
 // ---- Wan2.2-style 3D RoPE reference ----
 // Three-axis frequency bands (2:1:1 split), position -> (t,i,j) decoding
 
-static void ComputeBandDims3D(int64_t headDim, int64_t& tBand, int64_t& hBand, int64_t& wBand)
+static void ComputeBandDims3D(int64_t headDim, int64_t &tBand, int64_t &hBand, int64_t &wBand)
 {
     int64_t bandUnit = headDim / 4;
-    if (bandUnit % 2 != 0) bandUnit -= 1;
+    if (bandUnit % 2 != 0)
+        bandUnit -= 1;
     tBand = bandUnit * 2;
     hBand = bandUnit;
     wBand = headDim - tBand - hBand;
-    if (wBand % 2 != 0) { wBand -= 1; tBand += 1; if (tBand % 2 != 0) { tBand -= 1; hBand += 1; } }
-    if (hBand % 2 != 0) { hBand -= 1; tBand += 1; }
-    if (tBand % 2 != 0) { tBand -= 1; hBand += 1; }
+    if (wBand % 2 != 0) {
+        wBand -= 1;
+        tBand += 1;
+        if (tBand % 2 != 0) {
+            tBand -= 1;
+            hBand += 1;
+        }
+    }
+    if (hBand % 2 != 0) {
+        hBand -= 1;
+        tBand += 1;
+    }
+    if (tBand % 2 != 0) {
+        tBand -= 1;
+        hBand += 1;
+    }
 }
 
-static void FactorVideoDims(int64_t seqLen, int64_t& T, int64_t& H, int64_t& W)
+static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
 {
-    T = 1; H = 1; W = seqLen;
-    if (seqLen <= 1) return;
+    T = 1;
+    H = 1;
+    W = seqLen;
+    if (seqLen <= 1)
+        return;
     int64_t maxDim = std::min((int64_t)128, (int64_t)std::sqrt((double)seqLen));
     for (int64_t w = maxDim; w >= 1; w--) {
         if (seqLen % w == 0) {
             int64_t rest = seqLen / w;
             for (int64_t h = std::min((int64_t)128, (int64_t)std::sqrt((double)rest)); h >= 1; h--) {
                 if (rest % h == 0) {
-                    T = rest / h; H = h; W = w;
+                    T = rest / h;
+                    H = h;
+                    W = w;
                     return;
                 }
             }
@@ -94,8 +127,7 @@ static void FactorVideoDims(int64_t seqLen, int64_t& T, int64_t& H, int64_t& W)
 
 // CPU reference: true 3D spatial RoPE
 // Computes theta tables from freqBase internally, decodes l->(t,i,j)
-static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim,
-                      const float* x, float* y, float freqBase)
+static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim, const float *x, float *y, float freqBase)
 {
     int64_t tBand, hBand, wBand;
     ComputeBandDims3D(headDim, tBand, hBand, wBand);
@@ -111,21 +143,25 @@ static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim,
     std::vector<float> thetaT(halfTBand), thetaH(halfHBand), thetaW(halfWBand);
     if (halfTBand > 0) {
         thetaT[0] = 1.0f;
-        for (int64_t i = 1; i < halfTBand; i++) thetaT[i] = thetaT[i-1] * rT;
+        for (int64_t i = 1; i < halfTBand; i++)
+            thetaT[i] = thetaT[i - 1] * rT;
     }
     if (halfHBand > 0) {
         thetaH[0] = 1.0f;
-        for (int64_t i = 1; i < halfHBand; i++) thetaH[i] = thetaH[i-1] * rH;
+        for (int64_t i = 1; i < halfHBand; i++)
+            thetaH[i] = thetaH[i - 1] * rH;
     }
     if (halfWBand > 0) {
         thetaW[0] = 1.0f;
-        for (int64_t i = 1; i < halfWBand; i++) thetaW[i] = thetaW[i-1] * rW;
+        for (int64_t i = 1; i < halfWBand; i++)
+            thetaW[i] = thetaW[i - 1] * rW;
     }
 
     int64_t vidT, vidH, vidW;
     FactorVideoDims(seqLen, vidT, vidH, vidW);
     int64_t hw = vidH * vidW;
-    if (hw <= 0) hw = 1;
+    if (hw <= 0)
+        hw = 1;
     int64_t wv = (vidW <= 0) ? 1 : vidW;
 
     for (int64_t b = 0; b < batch; b++) {
@@ -177,8 +213,7 @@ static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim,
 }
 
 // ========== 动态加载 aclnn API ==========
-int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
-            int testIdx, aclrtStream stream, bool benchmark)
+int RunTest(int64_t batch, int64_t seqLen, int64_t headDim, int testIdx, aclrtStream stream, bool benchmark)
 {
     int64_t total = batch * seqLen * headDim;
     std::vector<int64_t> shape = {batch, seqLen, headDim};
@@ -204,14 +239,27 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
     float rW = std::pow(freqBase, -2.0 / (double)wBand);
 
     std::vector<float> thetaT(halfTBand), thetaH(halfHBand), thetaW(halfWBand);
-    if (halfTBand > 0) { thetaT[0] = 1.0f; for (int64_t i = 1; i < halfTBand; i++) thetaT[i] = thetaT[i-1] * rT; }
-    if (halfHBand > 0) { thetaH[0] = 1.0f; for (int64_t i = 1; i < halfHBand; i++) thetaH[i] = thetaH[i-1] * rH; }
-    if (halfWBand > 0) { thetaW[0] = 1.0f; for (int64_t i = 1; i < halfWBand; i++) thetaW[i] = thetaW[i-1] * rW; }
+    if (halfTBand > 0) {
+        thetaT[0] = 1.0f;
+        for (int64_t i = 1; i < halfTBand; i++)
+            thetaT[i] = thetaT[i - 1] * rT;
+    }
+    if (halfHBand > 0) {
+        thetaH[0] = 1.0f;
+        for (int64_t i = 1; i < halfHBand; i++)
+            thetaH[i] = thetaH[i - 1] * rH;
+    }
+    if (halfWBand > 0) {
+        thetaW[0] = 1.0f;
+        for (int64_t i = 1; i < halfWBand; i++)
+            thetaW[i] = thetaW[i - 1] * rW;
+    }
 
     int64_t vidT, vidH, vidW;
     FactorVideoDims(seqLen, vidT, vidH, vidW);
     int64_t hw = vidH * vidW;
-    if (hw <= 0) hw = 1;
+    if (hw <= 0)
+        hw = 1;
     int64_t wv = (vidW <= 0) ? 1 : vidW;
 
     std::vector<float> x2Data(total, 0.0f);
@@ -252,7 +300,9 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
         int64_t pb = pos * headDim;
         LOG_PRINT("[Test %d] X1(pos=%ld)[0..%ld]:\n  ", testIdx, pos, std::min(headDim, (int64_t)16) - 1);
         for (int i = 0; i < std::min(headDim, (int64_t)16); i++) {
-            LOG_PRINT("%.4f ", x1Data[pb + i]); if ((i+1)%16 == 0) LOG_PRINT("\n  ");
+            LOG_PRINT("%.4f ", x1Data[pb + i]);
+            if ((i + 1) % 16 == 0)
+                LOG_PRINT("\n  ");
         }
         LOG_PRINT("\n");
     }
@@ -267,31 +317,38 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
     }
     LOG_PRINT("\n");
 
-    aclTensor* x1 = nullptr; void* x1Dev = nullptr;
+    aclTensor *x1 = nullptr;
+    void *x1Dev = nullptr;
     ret = CreateAclTensor(x1Data, shape, &x1Dev, ACL_FLOAT, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    aclTensor* x2 = nullptr; void* x2Dev = nullptr;
+    aclTensor *x2 = nullptr;
+    void *x2Dev = nullptr;
     ret = CreateAclTensor(x2Data, shape, &x2Dev, ACL_FLOAT, &x2);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    aclTensor* out = nullptr; void* outDev = nullptr;
+    aclTensor *out = nullptr;
+    void *outDev = nullptr;
     std::vector<float> outInit(total, 0);
     ret = CreateAclTensor(outInit, shape, &outDev, ACL_FLOAT, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    uint64_t wsSize = 0; aclOpExecutor* exec = nullptr;
+    uint64_t wsSize = 0;
+    aclOpExecutor *exec = nullptr;
     ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, out, &wsSize, &exec);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[Test %d] GetWorkspaceSize failed. %d\n", testIdx, ret); return ret);
 
-    void* ws = nullptr;
-    if (wsSize > 0) { aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST); }
+    void *ws = nullptr;
+    if (wsSize > 0) {
+        aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    }
 
     // 正确性验证（1次）
     ret = aclnnRotaryPositionEmbedding3d(ws, wsSize, exec, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[Test %d] Execute failed. %d\n", testIdx, ret); return ret);
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[Test %d] Sync failed. %d\n%s", testIdx, ret, aclGetRecentErrMsg()); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[Test %d] Sync failed. %d\n%s", testIdx, ret, aclGetRecentErrMsg());
+              return ret);
 
     std::vector<float> outData(total, 0);
     aclrtMemcpy(outData.data(), total * sizeof(float), outDev, total * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
@@ -302,14 +359,22 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
         if (std::fabs(outData[i] - yRef[i]) > eps) {
             if (allOk) {
                 LOG_PRINT("  y[0..%d] (pos0):\n  ", printN - 1);
-                for (int j = 0; j < printN; j++) { LOG_PRINT("%.4f ", outData[j]); if ((j+1)%16 == 0 && j+1 < printN) LOG_PRINT("\n  "); }
+                for (int j = 0; j < printN; j++) {
+                    LOG_PRINT("%.4f ", outData[j]);
+                    if ((j + 1) % 16 == 0 && j + 1 < printN)
+                        LOG_PRINT("\n  ");
+                }
                 LOG_PRINT("\n  yRef[0..%d] (pos0):\n  ", printN - 1);
-                for (int j = 0; j < printN; j++) { LOG_PRINT("%.4f ", yRef[j]); if ((j+1)%16 == 0 && j+1 < printN) LOG_PRINT("\n  "); }
+                for (int j = 0; j < printN; j++) {
+                    LOG_PRINT("%.4f ", yRef[j]);
+                    if ((j + 1) % 16 == 0 && j + 1 < printN)
+                        LOG_PRINT("\n  ");
+                }
                 LOG_PRINT("\n");
                 allOk = false;
             }
-            LOG_PRINT("[Test %d] y[%ld] mismatch: exp %.6f got %.6f (diff %.6f)\n",
-                      testIdx, i, yRef[i], outData[i], std::fabs(outData[i] - yRef[i]));
+            LOG_PRINT("[Test %d] y[%ld] mismatch: exp %.6f got %.6f (diff %.6f)\n", testIdx, i, yRef[i], outData[i],
+                      std::fabs(outData[i] - yRef[i]));
         }
     }
 
@@ -322,7 +387,8 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
         for (int i = 0; i < kWarmup; i++) {
             exec = nullptr;
             ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, out, &wsSize, &exec);
-            if (ret != ACL_SUCCESS) break;
+            if (ret != ACL_SUCCESS)
+                break;
             ret = aclnnRotaryPositionEmbedding3d(ws, wsSize, exec, stream);
             aclrtSynchronizeStream(stream);
         }
@@ -338,10 +404,14 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
     }
 
     if (!allOk) {
-        aclDestroyTensor(x1); aclrtFree(x1Dev);
-        aclDestroyTensor(x2); aclrtFree(x2Dev);
-        aclDestroyTensor(out); aclrtFree(outDev);
-        if (wsSize > 0) aclrtFree(ws);
+        aclDestroyTensor(x1);
+        aclrtFree(x1Dev);
+        aclDestroyTensor(x2);
+        aclrtFree(x2Dev);
+        aclDestroyTensor(out);
+        aclrtFree(outDev);
+        if (wsSize > 0)
+            aclrtFree(ws);
         return -1;
     }
 
@@ -362,17 +432,20 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
         LOG_PRINT("\n");
     }
 
-    aclDestroyTensor(x1); aclrtFree(x1Dev);
-    aclDestroyTensor(x2); aclrtFree(x2Dev);
-    aclDestroyTensor(out); aclrtFree(outDev);
-    if (wsSize > 0) aclrtFree(ws);
+    aclDestroyTensor(x1);
+    aclrtFree(x1Dev);
+    aclDestroyTensor(x2);
+    aclrtFree(x2Dev);
+    aclDestroyTensor(out);
+    aclrtFree(outDev);
+    if (wsSize > 0)
+        aclrtFree(ws);
     return 0;
 }
 
 // ===== Explicit 3D test with known T/H/W (bypasses FactorVideoDims) =====
 // ===== 3D test using FactorVideoDims (same as kernel tiling) =====
-int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim,
-              int testIdx, aclrtStream stream)
+int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim, int testIdx, aclrtStream stream)
 {
     int64_t seqLen = hintT * hintH * hintW;
     int64_t total = seqLen * headDim;
@@ -388,7 +461,8 @@ int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim,
     std::vector<float> x1Data(total);
     std::mt19937 rng(42 + testIdx);
     std::uniform_real_distribution<float> dist(-3.0f, 3.0f);
-    for (int64_t i = 0; i < total; i++) x1Data[i] = dist(rng);
+    for (int64_t i = 0; i < total; i++)
+        x1Data[i] = dist(rng);
 
     // Band dims
     int64_t tBand, hBand, wBand;
@@ -401,9 +475,21 @@ int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim,
     float rW = std::pow(freqBase, -2.0 / (double)wBand);
 
     std::vector<float> thetaT(halfTBand), thetaH(halfHBand), thetaW(halfWBand);
-    if (halfTBand > 0) { thetaT[0] = 1.0f; for (int64_t i = 1; i < halfTBand; i++) thetaT[i] = thetaT[i-1] * rT; }
-    if (halfHBand > 0) { thetaH[0] = 1.0f; for (int64_t i = 1; i < halfHBand; i++) thetaH[i] = thetaH[i-1] * rH; }
-    if (halfWBand > 0) { thetaW[0] = 1.0f; for (int64_t i = 1; i < halfWBand; i++) thetaW[i] = thetaW[i-1] * rW; }
+    if (halfTBand > 0) {
+        thetaT[0] = 1.0f;
+        for (int64_t i = 1; i < halfTBand; i++)
+            thetaT[i] = thetaT[i - 1] * rT;
+    }
+    if (halfHBand > 0) {
+        thetaH[0] = 1.0f;
+        for (int64_t i = 1; i < halfHBand; i++)
+            thetaH[i] = thetaH[i - 1] * rH;
+    }
+    if (halfWBand > 0) {
+        thetaW[0] = 1.0f;
+        for (int64_t i = 1; i < halfWBand; i++)
+            thetaW[i] = thetaW[i - 1] * rW;
+    }
 
     // Build cos/sin using FactorVideoDims-derived (t,i,j) — matches kernel
     std::vector<float> x2Data(total, 0.0f);
@@ -432,8 +518,8 @@ int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim,
     RefRoPE3D(1, seqLen, headDim, x1Data.data(), yRef.data(), freqBase);
 
     // NPU kernel execution
-    aclTensor *x1=nullptr, *x2=nullptr, *out=nullptr;
-    void *x1Dev=nullptr, *x2Dev=nullptr, *outDev=nullptr;
+    aclTensor *x1 = nullptr, *x2 = nullptr, *out = nullptr;
+    void *x1Dev = nullptr, *x2Dev = nullptr, *outDev = nullptr;
     ret = CreateAclTensor(x1Data, shape, &x1Dev, ACL_FLOAT, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(x2Data, shape, &x2Dev, ACL_FLOAT, &x2);
@@ -442,11 +528,14 @@ int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim,
     ret = CreateAclTensor(outInit, shape, &outDev, ACL_FLOAT, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    uint64_t wsSize = 0; aclOpExecutor* exec = nullptr;
+    uint64_t wsSize = 0;
+    aclOpExecutor *exec = nullptr;
     ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, out, &wsSize, &exec);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[3DTest %d] GetWorkspaceSize failed. %d\n", testIdx, ret); return ret);
-    void* ws = nullptr;
-    if (wsSize > 0) { aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST); }
+    void *ws = nullptr;
+    if (wsSize > 0) {
+        aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    }
     ret = aclnnRotaryPositionEmbedding3d(ws, wsSize, exec, stream);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     aclrtSynchronizeStream(stream);
@@ -460,87 +549,105 @@ int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim,
     for (int64_t i = 0; i < total; i++) {
         if (fabsf(outData[i] - yRef[i]) > eps) {
             if (allOk) {
-                LOG_PRINT("[3DTest %d] FAIL: first mismatch at idx %ld: exp %.6f got %.6f\n",
-                          testIdx, i, yRef[i], outData[i]);
+                LOG_PRINT("[3DTest %d] FAIL: first mismatch at idx %ld: exp %.6f got %.6f\n", testIdx, i, yRef[i],
+                          outData[i]);
                 allOk = false;
             }
         }
     }
 
     // Diagnostics: print positions with actual (t,i,j)
-    LOG_PRINT("[3DTest %d] hint=(T=%ld,H=%ld,W=%ld) actual=(T=%ld,H=%ld,W=%ld) D=%ld:\n  ",
-              testIdx, hintT, hintH, hintW, actualT, actualH, actualW, headDim);
-    int64_t showPos[] = {0, 1, wv, wv+1, hw, hw+1, 2*hw};
+    LOG_PRINT("[3DTest %d] hint=(T=%ld,H=%ld,W=%ld) actual=(T=%ld,H=%ld,W=%ld) D=%ld:\n  ", testIdx, hintT, hintH,
+              hintW, actualT, actualH, actualW, headDim);
+    int64_t showPos[] = {0, 1, wv, wv + 1, hw, hw + 1, 2 * hw};
     for (int si = 0; si < 7 && showPos[si] < seqLen; si++) {
         int64_t l = showPos[si];
-        int64_t t = l/hw, rem = l%hw, i = rem/wv, j = rem%wv;
+        int64_t t = l / hw, rem = l % hw, i = rem / wv, j = rem % wv;
         LOG_PRINT("l=%ld(t=%ld,i=%ld,j=%ld):", l, t, i, j);
         for (int d = 0; d < std::min(headDim, (int64_t)4); d++)
-            LOG_PRINT("%+.2f ", outData[l*headDim + d]);
+            LOG_PRINT("%+.2f ", outData[l * headDim + d]);
         LOG_PRINT("|");
     }
     LOG_PRINT("\n");
 
     // Axis independence: verify X2 (cos/sin) band separation
     // Same (i,j), diff t -> T-band cos/sin differs, H/W-band cos/sin same
-    if (halfTBand > 0 && 2*hw < seqLen) {
-        int64_t b1 = hw * headDim, b2 = (2*hw) * headDim;
+    if (halfTBand > 0 && 2 * hw < seqLen) {
+        int64_t b1 = hw * headDim, b2 = (2 * hw) * headDim;
         bool tBandDiff = false;
         for (int64_t k = 0; k < halfTBand; k++)
-            if (fabsf(x2Data[b1+k] - x2Data[b2+k]) > 1e-6f) { tBandDiff = true; break; }
+            if (fabsf(x2Data[b1 + k] - x2Data[b2 + k]) > 1e-6f) {
+                tBandDiff = true;
+                break;
+            }
         bool hwSame = true;
         for (int64_t k = halfTBand; k < halfD; k++)
-            if (fabsf(x2Data[b1+k] - x2Data[b2+k]) > 1e-6f) { hwSame = false; break; }
-        LOG_PRINT("[3DTest %d] Axis: (i=0,j=0) fixed, t=1->2: T-band(cs)%s, H/W-band(cs)%s\n",
-                  testIdx,
-                  tBandDiff ? " DIFFERS OK" : " SAME BUG",
-                  hwSame ? " SAME OK" : " DIFFERS BUG");
-        if (!tBandDiff || !hwSame) allOk = false;
+            if (fabsf(x2Data[b1 + k] - x2Data[b2 + k]) > 1e-6f) {
+                hwSame = false;
+                break;
+            }
+        LOG_PRINT("[3DTest %d] Axis: (i=0,j=0) fixed, t=1->2: T-band(cs)%s, H/W-band(cs)%s\n", testIdx,
+                  tBandDiff ? " DIFFERS OK" : " SAME BUG", hwSame ? " SAME OK" : " DIFFERS BUG");
+        if (!tBandDiff || !hwSame)
+            allOk = false;
     }
     // Same (i,j), diff t -> T-band cos/sin differs, H/W-band cos/sin same
-    if (halfTBand > 0 && 2*hw < seqLen) {
-        int64_t b1 = hw * headDim, b2 = (2*hw) * headDim;
+    if (halfTBand > 0 && 2 * hw < seqLen) {
+        int64_t b1 = hw * headDim, b2 = (2 * hw) * headDim;
         bool tBandDiff = false;
         for (int64_t k = 0; k < halfTBand; k++)
-            if (fabsf(x2Data[b1+k] - x2Data[b2+k]) > 1e-6f) { tBandDiff = true; break; }
+            if (fabsf(x2Data[b1 + k] - x2Data[b2 + k]) > 1e-6f) {
+                tBandDiff = true;
+                break;
+            }
         bool hwSame = true;
         for (int64_t k = halfTBand; k < halfD; k++)
-            if (fabsf(x2Data[b1+k] - x2Data[b2+k]) > 1e-6f) { hwSame = false; break; }
-        LOG_PRINT("[3DTest %d] Axis: (i=0,j=0) fixed, t=1->2: T-band(cs)%s, H/W-band(cs)%s\n",
-                  testIdx,
-                  tBandDiff ? " DIFFERS OK" : " SAME BUG",
-                  hwSame ? " SAME OK" : " DIFFERS BUG");
-        if (!tBandDiff || !hwSame) allOk = false;
+            if (fabsf(x2Data[b1 + k] - x2Data[b2 + k]) > 1e-6f) {
+                hwSame = false;
+                break;
+            }
+        LOG_PRINT("[3DTest %d] Axis: (i=0,j=0) fixed, t=1->2: T-band(cs)%s, H/W-band(cs)%s\n", testIdx,
+                  tBandDiff ? " DIFFERS OK" : " SAME BUG", hwSame ? " SAME OK" : " DIFFERS BUG");
+        if (!tBandDiff || !hwSame)
+            allOk = false;
     }
 
     LOG_PRINT("[3DTest %d] %s\n", testIdx, allOk ? "PASSED" : "FAILED");
-    aclDestroyTensor(x1); aclrtFree(x1Dev);
-    aclDestroyTensor(x2); aclrtFree(x2Dev);
-    aclDestroyTensor(out); aclrtFree(outDev);
-    if (wsSize > 0) aclrtFree(ws);
+    aclDestroyTensor(x1);
+    aclrtFree(x1Dev);
+    aclDestroyTensor(x2);
+    aclrtFree(x2Dev);
+    aclDestroyTensor(out);
+    aclrtFree(outDev);
+    if (wsSize > 0)
+        aclrtFree(ws);
     return allOk ? 0 : -1;
 }
 
 int main()
 {
-    int32_t deviceId = 0; aclrtStream stream;
+    int32_t deviceId = 0;
+    aclrtStream stream;
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init failed. %d\n", ret); return ret);
 
-    struct Case { int64_t b, s, d; const char* desc; };
+    struct Case {
+        int64_t b, s, d;
+        const char *desc;
+    };
     Case tests[] = {
         // 小规模
-        {1, 16, 16,  "M=16  D=16"},
-        {2, 16, 32,  "M=32  D=32"},
-        {4, 8,  64,  "M=32  D=64"},
+        {1, 16, 16, "M=16  D=16"},
+        {2, 16, 32, "M=32  D=32"},
+        {4, 8, 64, "M=32  D=64"},
         // 中规模
         {1, 64, 128, "M=64  D=128"},
         {4, 32, 128, "M=128 D=128"},
         {8, 16, 256, "M=128 D=256"},
         // 大规模
-        {2, 128, 512,"M=256 D=512"},
-        {4, 128, 256,"M=512 D=256"},
-        {8, 128, 128,"M=1024 D=128"},
+        {2, 128, 512, "M=256 D=512"},
+        {4, 128, 256, "M=512 D=256"},
+        {8, 128, 128, "M=1024 D=128"},
     };
     int numTests = sizeof(tests) / sizeof(tests[0]);
     int passed = 0, failed = 0;
@@ -548,11 +655,12 @@ int main()
     LOG_PRINT("------------------------------------------\n");
     for (int i = 0; i < numTests; i++) {
         auto t0 = std::chrono::high_resolution_clock::now();
-        ret = RunTest(tests[i].b, tests[i].s, tests[i].d, i+1, stream, numTests <= 10);
+        ret = RunTest(tests[i].b, tests[i].s, tests[i].d, i + 1, stream, numTests <= 10);
         auto t1 = std::chrono::high_resolution_clock::now();
         double totalMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
         if (ret) {
-            LOG_PRINT("=== Test %d FAILED ===\n", i+1); failed++;
+            LOG_PRINT("=== Test %d FAILED ===\n", i + 1);
+            failed++;
             LOG_PRINT("%-25s %-12.3f %-8s\n", tests[i].desc, totalMs, "FAIL");
         } else {
             passed++;
@@ -563,7 +671,10 @@ int main()
 
     // ===== 3D Axis Independence Tests =====
     LOG_PRINT("\n--- 3D Axis Independence Tests ---\n");
-    struct Case3D { int64_t T, H, W, D; const char* desc; };
+    struct Case3D {
+        int64_t T, H, W, D;
+        const char *desc;
+    };
     Case3D axisTests[] = {
         {2, 4, 4, 128, "(T=2,H=4,W=4,D=128)"},
         {3, 2, 4, 128, "(T=3,H=2,W=4,D=128)"},
@@ -572,9 +683,11 @@ int main()
     int num3d = sizeof(axisTests) / sizeof(axisTests[0]);
     int passed3d = 0, failed3d = 0;
     for (int i = 0; i < num3d; i++) {
-        ret = RunTest3D(axisTests[i].T, axisTests[i].H, axisTests[i].W,
-                        axisTests[i].D, i+1, stream);
-        if (ret) failed3d++; else passed3d++;
+        ret = RunTest3D(axisTests[i].T, axisTests[i].H, axisTests[i].W, axisTests[i].D, i + 1, stream);
+        if (ret)
+            failed3d++;
+        else
+            passed3d++;
     }
     LOG_PRINT("--- 3D Tests: %d/%d PASSED, %d FAILED ---\n", passed3d, num3d, failed3d);
 

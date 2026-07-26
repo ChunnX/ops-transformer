@@ -51,9 +51,8 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_001)
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    system(
-        "cp -r ../../../../../experimental/posembedding/rotary_position_embedding3d/tests/ut/op_kernel/"
-        "rotary_position_embedding3d_data ./");
+    system("cp -r ../../../../../experimental/posembedding/rotary_position_embedding3d/tests/ut/op_kernel/"
+           "rotary_position_embedding3d_data ./");
     system("chmod -R 755 ./rotary_position_embedding3d_data/");
     system("cd ./rotary_position_embedding3d_data/ && rm -rf ./*bin");
     system("cd ./rotary_position_embedding3d_data/ && python3 gen_data.py 2 4 8 float32");
@@ -70,25 +69,28 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_001)
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(0);
-    auto rotary_position_embedding3d_wrapper = [](GM_ADDR x, GM_ADDR y, GM_ADDR z,
-                                                   GM_ADDR workspace, GM_ADDR tiling) {
+    auto rotary_position_embedding3d_wrapper = [](GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR workspace, GM_ADDR tiling) {
         rotary_position_embedding3d<0>(x, y, z, workspace, tiling);
     };
     ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace,
                 (uint8_t *)(tilingDatafromBin));
 
     // Verify against golden reference
-    float* z_f32 = (float*)z;
+    float *z_f32 = (float *)z;
     size_t numElts = outputZByteSize / sizeof(float);
     std::vector<float> golden(numElts);
-    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t*)golden.data(), outputZByteSize);
+    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t *)golden.data(),
+             outputZByteSize);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
         float diff = fabsf(z_f32[i] - golden[i]);
-        if (diff > maxDiff) maxDiff = diff;
-        if (diff > 5e-2f) {  // relaxed tolerance for half precision
-            if (utPass) std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << golden[i] << " diff " << diff << std::endl;
+        if (diff > maxDiff)
+            maxDiff = diff;
+        if (diff > 5e-2f) { // relaxed tolerance for half precision
+            if (utPass)
+                std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << golden[i] << " diff "
+                          << diff << std::endl;
             utPass = false;
         }
     }
@@ -119,9 +121,8 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp16_3d_002)
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    system(
-        "cp -r ../../../../../experimental/posembedding/rotary_position_embedding3d/tests/ut/op_kernel/"
-        "rotary_position_embedding3d_data ./");
+    system("cp -r ../../../../../experimental/posembedding/rotary_position_embedding3d/tests/ut/op_kernel/"
+           "rotary_position_embedding3d_data ./");
     system("chmod -R 755 ./rotary_position_embedding3d_data/");
     system("cd ./rotary_position_embedding3d_data/ && rm -rf ./*bin");
     system("cd ./rotary_position_embedding3d_data/ && python3 gen_data.py 4 16 64 float16");
@@ -138,25 +139,28 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp16_3d_002)
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(1);
-    auto rotary_position_embedding3d_wrapper = [](GM_ADDR x, GM_ADDR y, GM_ADDR z,
-                                                   GM_ADDR workspace, GM_ADDR tiling) {
+    auto rotary_position_embedding3d_wrapper = [](GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR workspace, GM_ADDR tiling) {
         rotary_position_embedding3d<1>(x, y, z, workspace, tiling);
     };
     ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace,
                 (uint8_t *)(tilingDatafromBin));
 
     // Verify against golden reference
-    float* z_f32 = (float*)z;
+    float *z_f32 = (float *)z;
     size_t numElts = outputZByteSize / sizeof(float);
     std::vector<float> golden(numElts);
-    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t*)golden.data(), outputZByteSize);
+    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t *)golden.data(),
+             outputZByteSize);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
         float diff = fabsf(z_f32[i] - golden[i]);
-        if (diff > maxDiff) maxDiff = diff;
-        if (diff > 5e-2f) {  // relaxed tolerance for half precision
-            if (utPass) std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << golden[i] << " diff " << diff << std::endl;
+        if (diff > maxDiff)
+            maxDiff = diff;
+        if (diff > 5e-2f) { // relaxed tolerance for half precision
+            if (utPass)
+                std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << golden[i] << " diff "
+                          << diff << std::endl;
             utPass = false;
         }
     }
@@ -187,9 +191,8 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_003)
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    system(
-        "cp -r ../../../../../experimental/posembedding/rotary_position_embedding3d/tests/ut/op_kernel/"
-        "rotary_position_embedding3d_data ./");
+    system("cp -r ../../../../../experimental/posembedding/rotary_position_embedding3d/tests/ut/op_kernel/"
+           "rotary_position_embedding3d_data ./");
     system("chmod -R 755 ./rotary_position_embedding3d_data/");
     system("cd ./rotary_position_embedding3d_data/ && rm -rf ./*bin");
     system("cd ./rotary_position_embedding3d_data/ && python3 gen_data.py 1 32 128 float32");
@@ -206,25 +209,28 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_003)
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(0);
-    auto rotary_position_embedding3d_wrapper = [](GM_ADDR x, GM_ADDR y, GM_ADDR z,
-                                                   GM_ADDR workspace, GM_ADDR tiling) {
+    auto rotary_position_embedding3d_wrapper = [](GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR workspace, GM_ADDR tiling) {
         rotary_position_embedding3d<0>(x, y, z, workspace, tiling);
     };
     ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace,
                 (uint8_t *)(tilingDatafromBin));
 
     // Verify against golden reference
-    float* z_f32 = (float*)z;
+    float *z_f32 = (float *)z;
     size_t numElts = outputZByteSize / sizeof(float);
     std::vector<float> golden(numElts);
-    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t*)golden.data(), outputZByteSize);
+    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t *)golden.data(),
+             outputZByteSize);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
         float diff = fabsf(z_f32[i] - golden[i]);
-        if (diff > maxDiff) maxDiff = diff;
-        if (diff > 5e-2f) {  // relaxed tolerance for half precision
-            if (utPass) std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << golden[i] << " diff " << diff << std::endl;
+        if (diff > maxDiff)
+            maxDiff = diff;
+        if (diff > 5e-2f) { // relaxed tolerance for half precision
+            if (utPass)
+                std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << golden[i] << " diff "
+                          << diff << std::endl;
             utPass = false;
         }
     }
