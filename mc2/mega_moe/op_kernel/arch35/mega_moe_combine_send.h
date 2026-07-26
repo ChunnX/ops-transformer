@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_combine_send.h
- * \brief
+ * \brief 将专家 GMM2 结果按路由元数据回写到源 rank 的 Combine 实现。
  */
 
 #ifndef MEGA_MOE_COMBINE_SEND_H
@@ -31,6 +31,8 @@ using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
 constexpr uint32_t COMBINE_SEND_ADDR = 140 * 1024U; // triple tensor 在 UB 中的起始地址
+// tripleInfo 的前三个字段是每条专家输入行的“返回地址”：源 rank、源 token 行和该 token 的 Top-K 槽位。
+// 其余字段用于分层 URMA 通信记录，不参与 MTE 直接回写路径。
 constexpr uint32_t rankIdIndex = 0;
 constexpr uint32_t tokenIdxIndex = 1;
 constexpr uint32_t topkIdxIndex = 2;
@@ -44,6 +46,7 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
                                      LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape,
                                      const Params &params)
 {
+    // GMM2 的第 tileIdx 行与 tripleTensor 的第 tileIdx 条记录一一对应；矩阵乘不改变这种行序。
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
@@ -58,6 +61,7 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
         uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
         gmRemoteD.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
+        // expandedX 的逻辑坐标为 [tokenIdx, topkIdx, hiddenOffset]，故无需再按专家 ID 查找目的位置。
         uint64_t gmDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n + nLoc;
         AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)],
                              ub2GmParams);
@@ -69,6 +73,7 @@ __aicore__ inline void
 CombineTokensLayered(uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &tripleTensor,
                      LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape, const Params &params)
 {
+    // 分层 URMA 路径：本 rank 的结果可直接写入；远端结果先写入本地发送队列，后续由轮询逻辑发送。
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     uint32_t actualDataLength = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
     uint32_t maxDataLengthPerBlock =
@@ -328,6 +333,7 @@ template <uint8_t QuantMode, typename ExpandXType>
 __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType> &outLocal, LocalTensor<ExpandXType> &inLocal,
                                   LocalTensor<float> &floatTemp, int32_t processLen)
 {
+    // Combine 量化只压缩专家输出的通信槽位；Router 的 topk_weights 始终保留在源 rank，参与最终 Unpermute。
     PipeBarrier<PIPE_V>();
     uint32_t mxScaleNum = Align2(Ceil32(processLen));
     using Fp8Type = typename std::conditional<QuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t, fp8_e5m2_t>::type;

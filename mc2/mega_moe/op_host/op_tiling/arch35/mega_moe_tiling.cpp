@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_tiling.cpp
- * \brief
+ * \brief 从算子输入与属性计算 MegaMoE 运行时 tilingData、workspace 和编译期分支 TilingKey。
  */
 
 #include <vector>
@@ -136,6 +136,8 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
 
 static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *context, MegaMoeConfig &config)
 {
+    // dispatch_quant_out_dtype 由 ACLNN/PyTorch 调用者给出的是 ge::DataType 枚举值；
+    // TilingKey 只保留 4 bit，因此这里转换成设备模板使用的紧凑编码 3/4/5。
     auto attrs = context->GetAttrs();
     auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
     int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
@@ -154,6 +156,7 @@ static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *co
 
 static int64_t GetCombineQuantModeByAttr(const gert::TilingContext *context, MegaMoeConfig &config)
 {
+    // combine_quant_mode 已使用与设备模板一致的编码：0=不量化、3=E5M2、4=E4M3FN。
     auto attrs = context->GetAttrs();
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     if (combineQuantModePtr == nullptr) {
@@ -167,9 +170,13 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
 {
     auto attrs = context->GetAttrs();
 
+    // TilingKey 的四段依次对应设备入口的
+    // <DispatchQuantMode, DispatchQuantOutType, CombineQuantOutType, CommModeType>。
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
+    // 注意：当前 Arch35 的模板 key 固定选择 MTE。虽然 topo_type 另行写入 tilingData->topoType，
+    // 此处尚未用它生成 CommModeType；因此 mega_moe_apt.cpp 的 URMA 模板分支目前不是由本函数选出的。
     int64_t topoType = TILINGKEY_TPL_MTE;
 
     return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType);
@@ -1066,7 +1073,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     OP_TILING_CHECK(CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
 
-    // Cal TilingKey
+    // 先把属性编码为 TilingKey；设备启动时会据此选择已编译的 mega_moe<...> 模板实例。
     uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
     OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);

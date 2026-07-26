@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_workspace_info.h
- * \brief
+ * \brief MegaMoE Arch35 工作区的统一布局定义。
  */
 
 #ifndef MEGA_MOE_WORKSPACE_INFO_H
@@ -105,11 +105,18 @@ constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
 
 } // namespace
 
+// MTE 主路径的临时数据按以下顺序流动：
+//   Dispatch 后的量化 token/scale → GMM1 的 SwiGLU 量化输出 → GMM2 输出 → Combine 回写。
+// tripleInfo 与第一项中的每一行严格同序，记录 [srcRankId, tokenIdx, topkIdx, padding...]，
+// 因此专家计算只需保持行序，即可在 Combine 时把结果放回源 rank 的正确 Top-K 槽位。
 struct WorkspaceInfo {
+    // 专家端按连续行排列的输入激活及其 MX scale，供 GMM1 读取。
     GM_ADDR dispatchRevDataPtr;
     GM_ADDR dispatchRevScalePtr;
+    // GMM1 + SwiGLU 后的量化激活及其 scale，供 GMM2 读取。
     GM_ADDR swigluQuantDataPtr;
     GM_ADDR swigluQuantScalePtr;
+    // 路由元数据与流水同步：分别回答“每个专家收多少行”“每行回写到哪里”“何时可消费”。
     GM_ADDR expertRevTokenNumsPtr;
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
@@ -132,6 +139,7 @@ struct WorkspaceInfo {
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t serverNum = 1)
     {
+        // 指针均从同一个 base 顺序切分；每段结束后立即累加 workspaceSize，Host 与 Device 必须使用相同公式。
         workspaceSize = 0;
         dispatchRevDataPtr = base;
 
@@ -154,14 +162,15 @@ struct WorkspaceInfo {
         workspaceSize += Ops::Base::CeilAlign(tilingData->expertPerRank * ALIGN_32 * tilingData->aicNum, ALIGN_512);
 
         tripleInfoPtr = base + workspaceSize;
+        // 每条专家输入行预留 32B（8 个 int32）：前三项是源 rank、源 token 行和 Top-K 槽位。
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
         flagSwiGluToGmm2Ptr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
 
         flagDispatchToGmm1Ptr = base + workspaceSize;
-        // wave-grain dispatch flag: per expert allocate one slot per wave (L1_TILE_M=256 rows),
-        // aligned up to INT_CACHELINE so each expert's slot block stays cache-line clean.
+        // Dispatch 每填满一个 256 行 wave 就累加对应计数；GMM1 只消费已完整就绪的 wave。
+        // 每个专家的槽位块按 cache line 对齐，避免不同专家的原子更新互相干扰。
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
         int64_t dispatchFlagSlotsPerExpert =
@@ -172,9 +181,8 @@ struct WorkspaceInfo {
         flagSendCntCalToUpdParamsPtr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->expertPerRank * tilingData->aicNum;
 
-        // Conditional allocation for A8W4 / combine-quant paths.
-        // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，
-        // 由 TilingKey 保证同步。
+        // 下面的额外缓冲只由特定量化路径使用；分配条件必须与 mega_moe.h 的编译期分支一致，
+        // TilingKey 负责让 Host 的布局和 Device 的访问保持同步。
         // A8W4-only: cumsum GM backup and GMM1 intermediate result.
         cumsumInfoPtr = nullptr;
         gmm1MmadResPtr = nullptr;

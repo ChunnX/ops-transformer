@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe.h
- * \brief
+ * \brief MegaMoeTilingContext 中输入、输出和属性的位置约定。
  */
 
 #ifndef MEGA_MOE_TILING
@@ -43,9 +43,10 @@ struct MegaMoeConfig {
     uint32_t attrEpWorldSizeIndex = 1U;
     uint32_t attrCclBufferSizeIndex = 2U;
     uint32_t attrMaxRecvTokenNumIndex = 3U;
-    uint32_t attrDispatchQuantModeIndex = 4U;
-    uint32_t attrDispatchQuantOutDtypeIndex = 5U;
-    uint32_t attrCombineQuantModeIndex = 6U;
+    // 属性下标必须与 mega_moe_def.cpp 中 Attr(...) 的注册顺序一致；Host tiling 通过下标读取调用者参数。
+    uint32_t attrDispatchQuantModeIndex = 4U;     // dispatch_quant_mode：Dispatch 量化算法
+    uint32_t attrDispatchQuantOutDtypeIndex = 5U; // dispatch_quant_out_dtype：量化 token 的目标 dtype
+    uint32_t attrCombineQuantModeIndex = 6U;      // combine_quant_mode：Combine 回写量化模式
     uint32_t attrCommAlgIndex = 7U;
     uint32_t attrNumMaxTokensPerRankIndex = 8U;
     uint32_t attrActivationIndex = 9U;
@@ -54,7 +55,7 @@ struct MegaMoeConfig {
     uint32_t attrTransposeWeight1Index = 12U;
     uint32_t attrTransposeWeight2Index = 13U;
     uint32_t attrWeight1InterleaveIndex = 14U;
-    uint32_t attrTopoTypeIndex = 15U;
+    uint32_t attrTopoTypeIndex = 15U; // topo_type：通信拓扑请求，运行时值也会保存到 tilingData
     uint32_t attrRankNumPerServerIndex = 16U;
     bool isMc2Context = false;
 };

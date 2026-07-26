@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_impl.h
- * \brief
+ * \brief MegaMoE 两段 Grouped MatMul 的 AIC/AIV 协作流水。
  */
 
 #ifndef MEGA_MOE_IMPL_H
@@ -33,6 +33,9 @@
 #include "mega_moe_combine_send.h"
 
 namespace MegaMoeImpl {
+// AIC 负责矩阵乘；AIV 负责权重预处理、SwiGLU/量化、Combine 以及同步。
+// GMM1 将 [M_e, H] 映射为两路 [M_e, F]，AIV 用 SwiGLU 合成为 [M_e, F]；
+// GMM2 再投影为 [M_e, H]。M_e 是某个本地专家收到的路由项数，整个专家 FFN 中保持不变。
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
 // =================================================================================================
 // ComputeCoreGrouping：计算当前 core 所属的 group 及其在 group 内的位置
@@ -114,6 +117,8 @@ template <typename Policy, typename Config>
 __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc)
 {
     if constexpr (Policy::IS_GMM1) {
+        // Dispatch 以 256 行为一个 wave 填充 workspace；只有该 wave 的行数计数达到目标值，
+        // GMM1 才能读取，既避免读到未完成的远端 Pull，也允许前一 wave 与后续 Dispatch 重叠。
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
         __gm__ int32_t *flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
@@ -123,6 +128,7 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
             }
         }
     } else {
+        // GMM2 依赖整位专家的 SwiGLU/量化完成；该 flag 由 GMM1 的 AIV 后处理置位。
         BlockScheduler gmmBlockScheduler({config.m, config.k, config.n},
                                          BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256),
                                                                               static_cast<int64_t>(L1_TILE_N))});
@@ -359,6 +365,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             auto tensorBlockUbSecond = l0cOutUbSecond.Slice(
                 Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            // GMM1 的权重 N 维包含 SwiGLU 的两半；对同一批输入行分别计算 gate 与 up 两路结果。
             for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
                 auto gmBlockB = workSet.gmB.Slice(Te::MakeCoord(kLoc, nLoc + weightBlock * config.outputN),
                                                   Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -368,6 +375,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias,
                           weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
             }
+            // 两路 GMM1 tile 均完成后通知 AIV 执行 SwiGLU 和 MX 量化。
             NotifyVector();
             args.vecSetSyncCom = 1;
         } else {
@@ -385,6 +393,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 args.vecSetSyncCom2++;
                 args.pingpongIdx = 1 - args.pingpongIdx;
             } else {
+                // 量化 Combine 直接把 GMM2 tile 写入 GM；独立的 ProcessCombine 在行组就绪后量化并回写。
                 auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
                                               reinterpret_cast<__gm__ ElementC *>(workSet.gmmAddrInfo.gmm2OutGlobal)),
                                           workSet.layouts.c);
@@ -444,6 +453,7 @@ __aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
         WaitForCube(args.pingpongIdx);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+        // 取回与该 GMM2 tile 同行的返回元数据，CombineTokens 据此写回源 rank 的 expandedX 槽位。
         AscendC::GlobalTensor<int32_t> tripleGm;
         int32_t lenTile = Get<M_VALUE>(actualShape);
         LocalTensor<int32_t> tripleTensor =

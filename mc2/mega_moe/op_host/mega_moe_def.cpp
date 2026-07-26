@@ -112,8 +112,12 @@ public:
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
         this->Attr("max_recv_token_num").AttrType(OPTIONAL).Int(0);
+        // 以下属性由 ACLNN/PyTorch 接口传入，Host tiling 会将它们编码进 Arch35 TilingKey。
+        // dispatch_quant_mode 选择 Dispatch 量化算法；Arch35 当前要求 4（MXFP）。
         this->Attr("dispatch_quant_mode").AttrType(OPTIONAL).Int(0);
+        // 这里保存 ge::DataType 枚举，Host 随后映射为设备模板使用的 E5M2/E4M3FN/E2M1 紧凑编码。
         this->Attr("dispatch_quant_out_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
+        // 0 表示 BF16 直接回写；3/4 表示将专家输出量化为对应 FP8 格式后再回写。
         this->Attr("combine_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_alg").AttrType(OPTIONAL).String("");
         this->Attr("num_max_tokens_per_rank").AttrType(OPTIONAL).Int(0);
@@ -123,6 +127,7 @@ public:
         this->Attr("transpose_weight1").AttrType(OPTIONAL).Bool(false);
         this->Attr("transpose_weight2").AttrType(OPTIONAL).Bool(false);
         this->Attr("weight1_interleave").AttrType(OPTIONAL).Int(0);
+        // 0=MTE、1=URMA；当前 Arch35 CalTilingKey 仍固定选择 MTE，详见 mega_moe_tiling.cpp。
         this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
         this->Attr("rank_num_per_server").AttrType(OPTIONAL).Int(2); // 最少2个rank
 

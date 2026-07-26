@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe.h
- * \brief
+ * \brief Arch35 MTE MegaMoE 前向主流程：路由、Dispatch、专家 FFN、Combine 与 Unpermute。
  */
 
 #ifndef MEGA_MOE_H
@@ -41,7 +41,8 @@ using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t, int64_t, int64_t>;
 
-// 预留：XType OutputType TopkWeightsType Weight1Type
+// 前四项类型来自算子张量描述；QuantMode/CombineQuantMode 来自设备入口解码后的 TilingKey：
+// QuantMode 决定 Dispatch 激活的 FP8/FP4 类型，CombineQuantMode 决定专家结果回传时是否量化。
 #define TemplateMegaMoeTypeClass                                                                                       \
     typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode,            \
         int32_t CombineQuantMode
@@ -50,6 +51,9 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, 
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
 public:
+    // 一个物理 token 不会复制成多个输入张量；它通过 topK 条路由项关联多个专家。
+    // 本类将路由项转换为按专家连续的行，计算后再依据 tripleInfo 写回 [tokenIdx, topkIdx] 槽位，
+    // 最后由 topkWeights 对这些槽位做加权求和，恢复本 rank 的 token 行顺序。
     template <int32_t QM>
     struct QuantTraits {
         using OutType = fp8_e4m3fn_t;
@@ -69,7 +73,7 @@ public:
     struct ExpertLoopState {
         TupleShape problemShape;
         BlockOffset baseOffset;
-        // Rows before the current expert, kept per cursor for dispatch/GMM prefetch state split.
+        // 当前专家之前已占用的 workspace 行数。Dispatch 与 GMM1 各持一份状态，才能安全地预取下一专家。
         uint32_t expertBeforeCnt = 0;
     };
     __aicore__ inline MegaMoe(){};
@@ -145,7 +149,7 @@ private:
     uint32_t mxQuantTokenScaleAlignBytes_ = 0;
     uint32_t ubBufferUsedAddr_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
-    uint64_t sendTotalNum_ = 0;
+    uint64_t sendTotalNum_ = 0; // 路由项总数 = m_（本 rank token 行数）× topK_，不是去重后的 token 数。
     uint32_t maskAlignSize_ = 0;
     uint32_t maskSlotSize_ = 0;   // 单个 win 槽位 = maskAlignSize_(mask) + 32B(count)
     uint64_t maskWinOffset_ = 0;  // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
@@ -221,6 +225,8 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
                                        GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut,
                                        GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
+    // x 是当前源 rank 的 [bs, H] 隐藏状态；topkIds/topkWeights 的第 i 行共同描述 x[i] 的各条路由项。
+    // weight1/weight2 仅保存本 rank 的本地专家权重，不随 Dispatch 跨 rank 传输。
     m_ = tilingData->bs;
     k_ = tilingData->h;
     aicNum_ = tilingData->aicNum;
@@ -265,7 +271,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
     epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr, params_.workspaceInfo.swigluQuantScalePtr,
                       params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256,
                       tilingData->clampLimit});
-    // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
+    // 各 rank 的通信窗口布局相同，因此专家 rank 可用“目标 rank 窗口基址 + 同一偏移”读取远端记录。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     quantWinOffset_ =
         static_cast<uint64_t>(params_.peermemInfo.quantTokenScalePtr - params_.peermemInfo.rankSyncInWorldPtr);
@@ -1272,6 +1278,8 @@ __aicore__ inline void
 MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
                                                         const GlobalTensor<bfloat16_t> &expandedX)
 {
+    // expandedX 的逻辑形状是 [bs, topK, H]：Combine 已把每条专家输出写入其原始路由槽位。
+    // 在 FP32 中完成所有“专家输出 × 门控权重”的累加，最后才转换为 BF16，避免每次相加都提前舍入。
     LocalTensor<bfloat16_t> dataIn0Bf16 = dataResTensor_[k_];
     LocalTensor<bfloat16_t> dataIn1Bf16 = dataResTensor_[k_ * 2];
     LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor_[k_];
@@ -1516,7 +1524,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
-    // 1.本卡数据处理
+    // 阶段 1（源 rank）：topkIds → 每个目标专家的 [mask | count]，x → 可跨卡读取的 MX 量化记录。
+    // mask 的 bit 对应展平路由索引 topkIndex = tokenIdx * topK + topkIdx，而非物理 token 编号。
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
@@ -1530,7 +1539,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SyncAll<false>();           // aic需要等待flag位reset清理完成
     CrossRankSyncInWorldSize(); // 全卡同步
 
-    // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
+    // 阶段 2（专家 rank）：由 mask 恢复命中的 topkIndex，Pull token/scale 并连同 tripleInfo 写成专家连续输入；
+    // 随后在 Dispatch(e+1) 与 GMM1(e) 的重叠流水中执行 GMM1 + SwiGLU 量化。
     DispatchBuffInit();
     GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;
@@ -1587,7 +1597,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
 
-    // 3. 本卡专家接收数据GroupMatmul2 & Combine
+    // 阶段 3：GMM2 保持专家输入行序不变；Combine 读取同一行 tripleInfo，写回源 rank 的 [tokenIdx, topkIdx]。
     vecSetSyncCom_ = 0;
     GMMAddrInfo gmm2AddrInfo;
     ExpertLoopState gmm2State{initShape, initOffset, 0};
@@ -1606,7 +1616,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
-    // 4. 本卡数据Unpermute
+    // 阶段 4（源 rank）：所有 Combine 回写可见后，按 topkWeights 加权合并 Top-K 槽位得到 y[bs, H]。
     if constexpr (g_coreType == AIV) {
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
