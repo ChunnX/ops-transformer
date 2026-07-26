@@ -40,6 +40,8 @@ CONSISTENCY_REPORT_ROOT="./result/mqsmla_consistency"
 CONSISTENCY_DETAIL_SET=0
 CONSISTENCY_SELECTOR_SET=0
 CONSISTENCY_PROBE_ATTEMPTS=1
+CUSTOM_OPP_ROOT=""
+EXPECTED_CUSTOM_OPP_MANIFEST=""
 
 # ====================== 执行区 ======================
 
@@ -185,6 +187,34 @@ PY
         echo "错误: --probe-attempts 必须是1到100的整数，当前值: $CONSISTENCY_PROBE_ATTEMPTS"
         return 1
     fi
+    if ! [[ "$DEVICE_ID" =~ ^[0-9]+$ ]]; then
+        echo "错误: --device-id 必须是非负整数，当前值: $DEVICE_ID"
+        return 1
+    fi
+    if [ -n "$EXPECTED_CUSTOM_OPP_MANIFEST" ] && [ -z "$CUSTOM_OPP_ROOT" ]; then
+        echo "错误: --expected-custom-opp-manifest 必须与 --custom-opp-root 一起使用"
+        return 1
+    fi
+    if [ -n "$EXPECTED_CUSTOM_OPP_MANIFEST" ] && ! [[ "$EXPECTED_CUSTOM_OPP_MANIFEST" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        echo "错误: --expected-custom-opp-manifest 必须是64位SHA256"
+        return 1
+    fi
+    local probe_identity_args=()
+    if [ -n "$CUSTOM_OPP_ROOT" ]; then
+        if [ ! -d "$CUSTOM_OPP_ROOT" ] || [ ! -d "$CUSTOM_OPP_ROOT/op_api/lib" ]; then
+            echo "错误: custom OPP根或op_api/lib不存在: $CUSTOM_OPP_ROOT"
+            return 1
+        fi
+        CUSTOM_OPP_ROOT="$(cd "$CUSTOM_OPP_ROOT" && pwd -P)"
+        export ASCEND_CUSTOM_OPP_PATH="$CUSTOM_OPP_ROOT${ASCEND_CUSTOM_OPP_PATH:+:$ASCEND_CUSTOM_OPP_PATH}"
+        export LD_LIBRARY_PATH="$CUSTOM_OPP_ROOT/op_api/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        probe_identity_args+=(--expected-custom-opp-root "$CUSTOM_OPP_ROOT")
+        if [ -n "$EXPECTED_CUSTOM_OPP_MANIFEST" ]; then
+            EXPECTED_CUSTOM_OPP_MANIFEST="${EXPECTED_CUSTOM_OPP_MANIFEST,,}"
+            probe_identity_args+=(--expected-custom-opp-manifest "$EXPECTED_CUSTOM_OPP_MANIFEST")
+        fi
+        echo "custom OPP验证根: $CUSTOM_OPP_ROOT"
+    fi
 
     local case_files=()
     local pt_file
@@ -242,7 +272,8 @@ PY
     if python3 -m batch.consistency.runtime_capability \
         --output "$capability_report" \
         --device-id "$DEVICE_ID" \
-        --attempts "$CONSISTENCY_PROBE_ATTEMPTS" 2>&1 | tee -a "$pytest_log"
+        --attempts "$CONSISTENCY_PROBE_ATTEMPTS" \
+        "${probe_identity_args[@]}" 2>&1 | tee -a "$pytest_log"
     then
         probe_status=0
     else
@@ -316,6 +347,8 @@ show_help() {
     echo "  --result <路径>     指定结果保存路径（默认: ./mqsmla_result.xlsx）"
     echo "  --report-dir <目录> consistency结构化结果根目录；prepare为JSON目录"
     echo "  --probe-attempts <n> level 3真实NPU调度前置探针次数（1-100，默认1）"
+    echo "  --custom-opp-root <目录> 本地custom OPP根；自动置于两个搜索路径首位"
+    echo "  --expected-custom-opp-manifest <SHA256> 期望全树指纹（需配合root）"
     echo "  --device-id <id>    指定NPU设备ID（默认: 0）"
     echo "  --mode <0|1>        批跑模式: 0=全量批跑(默认), 1=按表格中case批跑"
     echo "  --keep-pt           执行完成后保留pt文件（默认清理，仅batch命令）"
@@ -368,7 +401,7 @@ shift
 if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch_exec_graph" ] || [ "$COMMAND" = "batch" ] || [ "$COMMAND" = "consistency" ] || [ "$COMMAND" = "consistency_prepare" ]; then
     while [ $# -gt 0 ]; do
         case "$1" in
-            --excel|--sheet|--pt-dir|--result|--report-dir|--device-id|--mode|--modes|-M|--profile|--config-file|--split-groups|--token-split-sizes|--mode3-batch|--common-tokens|--derived-extra|--seed|--probe-attempts)
+            --excel|--sheet|--pt-dir|--result|--report-dir|--device-id|--mode|--modes|-M|--profile|--config-file|--split-groups|--token-split-sizes|--mode3-batch|--common-tokens|--derived-extra|--seed|--probe-attempts|--custom-opp-root|--expected-custom-opp-manifest)
                 if [ $# -lt 2 ] || [ -z "$2" ]; then
                     echo "错误：$1 需要参数值"
                     exit 1
@@ -504,6 +537,22 @@ if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND
                     exit 1
                 fi
                 CONSISTENCY_PROBE_ATTEMPTS="$2"
+                shift 2
+                ;;
+            --custom-opp-root)
+                if [ "$COMMAND" != "consistency" ]; then
+                    echo "错误：--custom-opp-root 仅适用于 consistency 命令"
+                    exit 1
+                fi
+                CUSTOM_OPP_ROOT="$2"
+                shift 2
+                ;;
+            --expected-custom-opp-manifest)
+                if [ "$COMMAND" != "consistency" ]; then
+                    echo "错误：--expected-custom-opp-manifest 仅适用于 consistency 命令"
+                    exit 1
+                fi
+                EXPECTED_CUSTOM_OPP_MANIFEST="$2"
                 shift 2
                 ;;
             --randomize)

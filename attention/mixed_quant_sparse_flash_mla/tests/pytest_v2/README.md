@@ -107,6 +107,8 @@ golden、PT save/load、process 和 `check_result` 均保留；一致性入口�
 | `batch/consistency/result_artifact.py` | 逐模式结果JSON、level3 PASS门禁、完整性检查与聚合 |
 | `batch/consistency/runtime_capability.py` | level3可执行探针、异常恢复短压测及runtime/custom OPP内容指纹 |
 | `batch/consistency/metadata_stub.py` | CPU-only单核到多核候选规划及默认关闭hook约束 |
+| `excel/mqsmla_batch_consistency_cases.xlsx` | MQSMLA专属4行CPU关系矩阵；压力候选在独立sheet且不参与执行 |
+| `mixed_quant_sparse_flash_mla_golden.py` | 原量化golden；ori mask 0/3/4统一计算并裁剪可见KV窗口 |
 | 其余 `batch/consistency/*.py` | adapter、schema、layout、compare、flow和命名配置 |
 
 ```bash
@@ -117,7 +119,7 @@ bash test_run.sh consistency --pt-dir ./mqsmla_testcase \
 
 # 无NPU离线验收
 bash test_run.sh consistency_prepare \
-  --excel ../../../../requs/cases/SMLA_MQSMLA_batch一致性离线预检.xlsx \
+  --excel ./excel/mqsmla_batch_consistency_cases.xlsx \
   --sheet MQSMLA --pt-dir /tmp/mqsmla_pt --report-dir /tmp/mqsmla_report
 ```
 
@@ -136,8 +138,15 @@ bash test_run.sh consistency \
   --pt-dir /tmp/mqsmla_pt/baseline \
   --config-file ../../../../requs/cases/SMLA_MQSMLA_batch一致性执行配置.json \
   --report-dir ./result/mqsmla_consistency \
-  --probe-attempts 1
+  --probe-attempts 1 \
+  --device-id 0 \
+  --custom-opp-root "$STAGING" \
+  --expected-custom-opp-manifest "$MANIFEST"
 ```
+
+调用自定义算子前先加载`/home/Ascend/vendors/custom_transformer/bin/set_env.bash`。`STAGING`应指向
+待验证构建的`packages/vendors/custom_transformer`，`MANIFEST`是该根的期望全树SHA256；shell会
+把staging和`op_api/lib`分别放到两个搜索路径首位。身份不符会在set level和NPU smoke前失败。
 
 suite只加载一次，但每个PT分别按operator/case name/PT basename/content SHA256精确匹配，并按
 当前B和有效Q长度校验。`--config-file`不能和`--modes/--profile/--seed/groups/sizes`混用；
@@ -158,3 +167,6 @@ deterministic level均为3，逐模式状态才可写成`PASS`。聚合器还会
 `independent-cross-case`和同一次调用内位置互比`single-call-intra-case`是补充场景，artifact
 会如实列为gap，不把模式1/3改名冒充。metadata stub planner目前只从自然metadata找候选并给出
 拟拆分S2 block区间；FD契约、公式、安装包和level3关闭阻断前不会生成或执行synthetic tensor。
+
+端到端命令、Excel列、状态/退出码和排障见
+`../../../../requs/SMLA_MQSMLA_pytest_batch一致性测试使用指南.md`。

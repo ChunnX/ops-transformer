@@ -1559,3 +1559,451 @@ level0 metadata probe不能放入验收主线；DeepSeek把“设备能力白名
 当前结论不是“开发失败”，而是测试侧已经把阻断位置精确收敛到runtime dispatch，并建立了不会
 误报PASS的可复现门禁。解除RT-1后，现有入口会自动从快速`UNSUPPORTED`切换到两算子真实
 metadata/main-op执行，无需再改四模式配置接口。
+
+
+# 检视意见五
+
+cannbot模型不止glm-5.2还有deepseek v4和qwen3.7-max，我希望chatgpt能和多方合作沟通商量规划，毕竟别的模型有可能关注到chatgpt没关注到的点，实现的时候chatgpt可以指导其他模型帮你修改一下
+
+你有时会忘记之前的任务要求，最好执行前将工作量大纲规划提前总结记录在本文档，依据文档一步步去推行实现，实现一步记录在本并写明下一步该做什么，后续你就知道前面执行的进度而安排后面的事。最好不要像你之前把所有工作做完了才去写日志记录，这样你有可能会丢失很多前面的记忆，懂吗？最后有需要才尝试整理一下文档
+
+前置要求：一是验证前需要加载环境"source /mnt/workspace/gitCode/env.sh "，这里面有python + cann环境；二是如何对一些执行命令有疑问，建议查阅本文档之前的内容
+
+1. ops-transformer关于batch一致性的修改更新了，切到了pr_9103分支，尝试基于新分支推进验证测试。
+
+2. 把SMLA/MQSMLA的pytest batch一致性测试在ops-transformer_0716/requs输出一个文档详细介绍一下，从环境到适配到执行再到结果查看，同时在pytest/excel下准备用例表验证介绍
+
+## 检视意见五执行大纲（已完成）
+
+> 开始时间：2026-07-26。本文档从本轮第一项动作起持续记录；每完成一个阶段，立即补充实际命令、
+> 证据、结论、阻断项和下一步，不在全部工作结束后集中补写。所有真实验证命令必须先执行
+> `source /mnt/workspace/gitCode/env.sh`；需要调用自定义算子时，还必须执行
+> `source /home/Ascend/vendors/custom_transformer/bin/set_env.bash`。
+
+### 一、工作量与阶段验收条件
+
+| 阶段 | 工作内容 | 本阶段验收条件 | 初始状态 |
+| --- | --- | --- | --- |
+| A | 审计`ops-transformer/pr_9103`的SMLA/MQSMLA batch-consistency实现、构建物、已安装custom OPP和runtime | 明确两算子的开关值、tiling key、workspace/FD、规约路径及源码/构建/安装身份；不得沿用`pr_8`结论 | 已完成 |
+| B | 通过CANNBot邀请GLM-5.2、DeepSeek V4 Pro、Qwen3.7 Max做只读复审 | 三方分别给出风险与测试建议；主审用源码/实测逐项裁决；模型不直接并发修改共享工作树 | 已完成 |
+| C | 基于新分支重跑level3 capability、恢复短测及双算子最小真实smoke | probe证据包含set/readback、首个NPU dispatch、restore、runtime/SoC/package身份；仅`SUPPORTED`才进入主算子 | 已完成；runtime阻断smoke |
+| D | 准备并实际解析两算子`pytest_v2/excel`用例表 | 表格严格匹配现有parser schema；至少覆盖baseline、四种命名模式、位置敏感mask及边界候选；CPU golden/PT round-trip通过 | 已完成 |
+| E | 依门禁推进四模式、短压力和结果artifact验收 | 每模式真实metadata+主算子+同步+精度/bitwise检查通过后才可PASS；环境不支持时准确标记`UNSUPPORTED`且不跑长压测 | 已完成；正确阻断主算子 |
+| F | 输出详细使用指南、回归检查、整理开发记录并独立提交 | 文档覆盖环境、适配、Excel/PT、命令、artifact、状态与排障；双树回归、静态检查、工作树审计通过 | 已完成 |
+
+正式接口继续使用命名模式/profile和versioned suite config；`-M 1,2`仅保留为旧CLI的deprecated兼容，
+本轮不会退回数字模式。真实NPU长压测的解锁顺序固定为：capability `SUPPORTED` -> 双算子最小
+metadata/main-op smoke -> 四模式基础矩阵 -> 重复/跨进程/边界压力。
+
+### 二、开始时状态与边界
+
+- 测试仓：`master@b64b8149f`，相对`origin/master` ahead 3；开始时唯一修改是本节上方用户新增的
+  `# 检视意见五`，必须完整保留。
+- 算子开发仓：`pr_9103@1acab9aec`；存在用户未跟踪目录`.arts/`，本轮不读取后写入、不删除、
+  不纳入提交。
+- 上一轮`pr_8@48f862782`及旧安装包的结论仅作历史参照；新分支切换后，源码、构建物、安装包和
+  runtime capability必须重新取证。
+- 不修改`/home/Ascend`安装树；只做身份核验、环境加载和真实调用。CANNBot模型只读审议，不直接
+  修改测试仓或算子仓，最终实现与裁决由主审负责。
+
+### 三、当前步骤与紧接着的下一步
+
+当前执行阶段A：先读取`pr_9103`最近batch-consistency提交及两算子host/kernel/pytest实现，重点
+核对公共level3在新分支如何触发、SMLA与MQSMLA是否同时落地、是否仍有调试代码或未闭合分支。
+
+紧接着的下一步：比较`pr_9103`的build/CPack产物与
+`/home/Ascend/vendors/custom_transformer`已安装payload，记录关键文件hash和全树manifest；若身份
+不一致，只报告并停止以旧安装包做主算子结论，不擅自覆盖安装目录。
+
+### 四、阶段A完成记录：`pr_9103`源码、构建与安装身份
+
+完成时间：2026-07-26。所有版本/构建核验均先加载`/mnt/workspace/gitCode/env.sh`；读取旧安装树时
+还加载了其`bin/set_env.bash`。算子仓保持`pr_9103@1acab9aec`，tracked文件无修改，用户的`.arts/`
+仍是唯一未跟踪目录。
+
+#### 4.1 源码结论
+
+1. MQSMLA host已经从`pr_8`的“context level 1或ACL开关1”改为只在
+   `TilingContext::GetDeterministicLevel()==3`时开启；`batchConsistency`进入tiling info和新增的
+   `BATCH_CONSISTENCY` tiling-key模板维度。因此上一轮`MAP-1`的核心歧义在新源码中已经关闭：
+   公共level3直接对应host判断3，不再假设内部值1。
+2. MQSMLA batch路径按`BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM=33`分配核内/跨核combine workspace，
+   按固定32份规划reduce block，并在vector路径保存max/sum/partial-O、做增量merge和跨核最终规约；
+   非batch路径继续使用普通FD两slot staging。tiling key、workspace和kernel模板三处开关一致。
+3. `final`提交已清除上一版`[MQSMLA_DBG]`/`[MQSMLA_DEBUG]`类设备打印；相关host/kernel范围未发现
+   `printf`、`TODO`或`FIXME`残留。
+4. 算子仓自带旧pytest仍有一处真实不一致：
+   `tests/pytest/batch/mixed_quant_sparse_flash_mla_process.py`设置level 1，而新host只识别3；同目录
+   single入口已经设置3。这条batch入口不能用于验收新实现。本测试仓`pytest_v2`正式入口固定请求3，
+   后续文档会明确禁止照抄该旧入口。
+5. SMLA当前host/kernel没有`GetDeterministicLevel`判断，也没有`BATCH_CONSISTENCY` tiling-key维度。
+   `7ca0cd3c6`对SMLA目录的改动是扩展被MQSMLA复用的`flash_decode.h`并调整SMLA staging offset，
+   不能据此声称SMLA已经存在显式level3专用kernel分支。SMLA仍可做level3黑盒一致性测试，但“是否
+   按产品设计需要显式开关/固定规约路径”新增为算子owner确认项，不能由测试侧猜测。
+
+#### 4.2 旧安装树不属于新分支
+
+开始时本地`build/CPack`早于`pr_9103`提交，且build与安装树也不相同。三个关键文件对比如下：
+
+| 文件 | 旧安装树SHA256 | 开始时旧build SHA256 | 裁决 |
+| --- | --- | --- | --- |
+| `libcust_opmaster_rt2.0.so` | `3ad69362ee08b2eecb7248d068664a1e7c08426dfc82ed8d0b7fb1e667f75507` | `bccbc5b04a261b12257eb495fdc112e180a287ea2a52c2b2beb4ba0dce59d0bf` | 不同，均不能证明`pr_9103` |
+| `libtransformer_aicpu_kernels.so` | `dad01989062d98774200b1437c4fef8b38eb493522ede8fde103c7e2c3d04ba8` | `47e2c6fd201066059749c3a54b13cd26f032aeb9291bfbc2d5a324c833f68284` | 不同，均不能证明`pr_9103` |
+| `libcust_opapi.so` | `ba115cd4a9faaa2c36fe36e80e2ac65122c5c757056aef283d79793e4aa6209a` | `88d00cbc4d99639616b9ece1cdadf0fb7b78269e904de6c334dc92e3013f89e7` | 不同，均不能证明`pr_9103` |
+
+旧安装树manifest仍为`81730ebc09a01b62ea8639ce2f4977d489218817329fcd954356bd88055c7a5e`，
+776个文件、21194488字节。特别是旧安装树中的MQ kernel入口和tiling-key头与当前源码hash不同，
+所以不得用该安装树的调用结果替`pr_9103`下结论。
+
+#### 4.3 已只在本地重建`pr_9103`，未覆盖系统安装
+
+实际执行：
+
+```bash
+source /mnt/workspace/gitCode/env.sh
+bash build.sh --pkg --soc=ascend910_93 --vendor_name=custom \
+  --ops=sparse_flash_mla,sparse_flash_mla_metadata,mixed_quant_sparse_flash_mla,mixed_quant_sparse_flash_mla_metadata \
+  -j16
+```
+
+构建成功，生成`cann-ops-transformer-custom_linux-aarch64.run`；包SHA256为
+`fa30e3c778cd07d595cedd9237b4144459ca99a98db02024b56c4b9d521b9840`。新CPack staging为1414个
+文件、25293615字节，内容manifest为
+`ea11138e941250d4b0241d360b6b54ea6bb960f291e8dc4c5af90d1960a379a4`。关键二进制为：
+
+| 文件 | 新`pr_9103`本地构建SHA256 |
+| --- | --- |
+| `libcust_opmaster_rt2.0.so` | `6ab959c0088a6dc95c5e8aead320f5048111db77365af8098286be63243bc245` |
+| `libtransformer_aicpu_kernels.so` | `698fb75a1bc79bacb66e8c6bda254f40029e75b0b9e0365802ca927fa3815e3f` |
+| `libcust_opapi.so` | `1755dc9287265781ab95a5f0cab1d9ad0d6309e6a64cf383d8e8369b4f694273` |
+
+CPack内MQ kernel入口、MQ tiling-key头和SMLA kernel入口分别与当前工作树逐字节同hash，证明本地
+staging消费了当前源码；但`version.info`仍没有source commit字段，所以报告只能表述为“本轮命令、
+时间戳和逐文件hash强关联”，不能伪造包自证commit。
+
+系统`/home/Ascend/vendors/custom_transformer`未被修改。后续新分支验证将让独立Python进程把本地
+CPack staging置于`ASCEND_CUSTOM_OPP_PATH`和`LD_LIBRARY_PATH`首位；artifact必须同时记录新manifest，
+否则视为加载身份错误。
+
+阶段B当前步骤：把上述固定事实、检视意见五和现有pytest_v2状态分别交给GLM-5.2、DeepSeek V4
+Pro、Qwen3.7 Max只读复审。紧接着的下一步是汇总三方对“本地staging加载可信度、SMLA无显式开关、
+MQ旧level1入口、Excel最小矩阵和压力解锁”的独立意见，再由主审逐项用源码和实测裁决。
+
+### 五、阶段B完成记录：三模型复审与主审裁决
+
+完成时间：2026-07-26。三次CANNBot会话分别使用0700临时`XDG_DATA_HOME`和0600认证副本；结束后
+临时目录已精确清理。三个模型均只读，没有修改共享工作树。
+
+| 模型 | 分工 | 找到的有效问题 |
+| --- | --- | --- |
+| GLM-5.2 | 架构、状态机和证据链 | 正式pytest若缺capability report仍可能先执行NPU；probe device和测试device未绑定；新staging虽有manifest但未记录`LD_LIBRARY_PATH`/期望manifest，加载优先级证据不足；SMLA的黑盒结果与产品路径证明应分开 |
+| DeepSeek V4 Pro | 误报PASS、缓存和失败路径反审 | 两棵`test_run.sh`未提供显式staging参数；旧artifact/run目录复用有污染风险；SMLA shell严格模式与MQ不一致；离线`pass`容易被脱离scope误读；旧MQ level1入口必须显式告警 |
+| Qwen3.7 Max | Excel/schema、命令和用户文档 | 当前workbook每算子只有1条小shape CPU-only行；SMLA/MQ用例名列大小写不同；MQ一致性扩展列缺少类型归一化；文档必须解释退出码、四层覆盖、模式4 unmapped token和配置互斥 |
+
+#### 5.1 采纳并进入本轮实现
+
+1. capability report从“正式shell通常会提供”提升为测试函数的强制前置条件；缺失、无效、设备不匹配
+   均在任何executor/NPU调用前落`CONFIG_ERROR`/`FAIL`，不得依赖最终PASS校验兜底。
+2. probe新增运行身份契约：记录`LD_LIBRARY_PATH`，支持声明期望custom OPP根和manifest；根不在
+   `ASCEND_CUSTOM_OPP_PATH`首位、op-api lib不在`LD_LIBRARY_PATH`首位或manifest不符时为`ERROR`。
+   两棵正式shell增加通用参数，不把本机绝对staging路径硬编码进测试代码。
+3. probe device与pytest执行device强绑定；结果artifact继续要求同一probe，正式run使用独立report目录
+   并拒绝消费本次运行前的旧artifact。
+4. 双算子Excel各自落在本算子`pytest_v2/excel`，严格使用各自原parser列名；一致性扩展列在prepare
+   层做显式类型/非空校验，禁止Excel数值自动转换导致静默跳过模式。
+5. 新使用指南采用CPU离线、runtime capability、metadata/main-op、压力四层口径；清楚说明
+   `consistency_prepare`的PASS不是NPU PASS、`UNSUPPORTED`不是算子FAIL、命名模式是正式接口。
+6. SMLA artifact/文档增加assurance scope：可报告level3黑盒关系是否PASS，但在owner确认默认路径固定
+   规约语义前，不把它包装成“已证明命中专用tiling key”；MQSMLA则同时要求其level3专用路径证据。
+
+#### 5.2 不直接采纳或调整后的建议
+
+- 不采纳“恢复失败时仍优先标原始`UNSUPPORTED`”。恢复失败意味着全局/线程状态可能污染，按既有
+  门禁必须是硬`FAIL`；实现只需同时保留原始异常与restore异常，便于排障，不能降级。
+- 不采纳“最小SMLA小shape连续相同就说明误报，正确行为应至少一次不一致”。未观察到不一致不能
+  反证确定性；正确做法是给黑盒结果限定claim scope，并由owner/tiling证据关闭产品语义缺口。
+- 不采纳“probe进程恢复0后要求另一个pytest进程进入guard前必须读回0”。level状态可能有合法的
+  进入前值，guard的契约是记录、设3、读回、finally恢复进入值；跨进程残留目前没有源码或实测证据。
+- 不把`ldd`输出当“实际已加载路径”。`ldd`只解析依赖，不证明后续进程最终加载对象；本轮先用
+  环境首位、全树manifest和关键库hash形成可执行硬门禁，主算子进程的`/proc/self/maps`证据作为
+  后续增强项。
+- 不直接照搬“每算子7条且立刻跑S2=4096/5120”的数量建议。先由真实parser和CPU golden验证最小
+  smoke、四模式、位置mask、layout和边界候选；大shape只在资源估算通过且capability解锁后进入NPU。
+
+阶段C当前步骤：先实现并单测capability加载身份/设备/缺失报告门禁，再用新本地staging运行1次
+level3 probe。紧接着的下一步：若probe为`SUPPORTED`，分别只跑SMLA/MQSMLA各一个最小
+metadata+main-op smoke；若仍为`UNSUPPORTED`，停止主算子和长压测，但继续阶段D的Excel真实解析、
+CPU golden/PT round-trip及文档建设。
+
+#### 5.3 阶段C进度1：capability/provenance强门禁已实现
+
+完成时间：2026-07-26。双算子的镜像`runtime_capability.py`、`result_artifact.py`和正式pytest入口
+已完成以下增量：
+
+- probe可接收期望custom OPP根和全树manifest；只有该根同时位于`ASCEND_CUSTOM_OPP_PATH`首位、
+  其`op_api/lib`位于`LD_LIBRARY_PATH`首位、实际哈希manifest吻合时身份契约才为`PASS`；否则在
+  设置level和NPU smoke之前返回`ERROR/CUSTOM_OPP_IDENTITY_MISMATCH`。
+- 环境证据新增`LD_LIBRARY_PATH`；正式shell新增`--custom-opp-root`、
+  `--expected-custom-opp-manifest`和显式device参数，路径参数是通用接口，没有把本机staging写死。
+- pytest执行任何NPU前强制要求capability report，并校验probe device等于本次test device；缺失或
+  不匹配写`CONFIG_ERROR`，不再等PASS artifact末端才兜底。
+- artifact不但校验嵌入probe digest，还会重新读取源`runtime_capability.json`并校验文件SHA256和
+  JSON内容一致，防止旧/篡改副本混入；SMLA PASS的claim scope明确限定为level3黑盒关系结果。
+
+本步验证全部先加载`/mnt/workspace/gitCode/env.sh`：SMLA与MQSMLA镜像单测各`47 passed`；相关Python
+ruff通过；两份`test_run.sh`的`bash -n`通过；`git diff --check`通过。
+
+当前下一步：以新CPack staging根和
+`ea11138e941250d4b0241d360b6b54ea6bb960f291e8dc4c5af90d1960a379a4`作为硬期望运行1次真实
+level3 probe。先故意保留旧安装树环境，再由新CLI把staging插到首位，以证明身份门禁确实选择
+新分支payload而不是旧`/home/Ascend`包。
+
+#### 5.4 阶段C完成记录：`pr_9103`真实level3 capability仍为`UNSUPPORTED`
+
+完成时间：2026-07-27。实测先依次加载`env.sh`和旧安装树`set_env.bash`，再由本轮新接口把
+`pr_9103`本地CPack staging插到两个搜索路径首位，并把新manifest作为硬期望。身份契约结果为：
+
+```text
+custom_opp_identity_contract.status = PASS
+ASCEND_CUSTOM_OPP_PATH[0] = pr_9103 CPack staging
+LD_LIBRARY_PATH[0] = pr_9103 CPack staging/op_api/lib
+observed_manifest = expected_manifest
+                  = ea11138e941250d4b0241d360b6b54ea6bb960f291e8dc4c5af90d1960a379a4
+```
+
+这排除了“实际仍在验证旧`/home/Ascend`payload”的歧义。一次探针结果：退出2、`UNSUPPORTED`、
+`failure_stage=npu_smoke`、`reason_code=LEVEL3_ACCEPTED_BUT_NPU_REJECTED`；报告SHA256为
+`30359741a52cd299b5fe0473ad795e815448206dbc440911c5dd5d04cd5a1de2`。
+
+随后10次恢复短测结果完全一致：
+
+```text
+set_call_returned = 10/10
+readback_matches(level=3) = 10/10
+npu_smoke_passed = 0/10
+restore_to_level0 = 10/10
+overall = UNSUPPORTED / LEVEL3_ACCEPTED_BUT_NPU_REJECTED
+identity_contract = PASS
+```
+
+10次报告SHA256为`c641dcf8a9f9ab967db10a3b76acf4b63bafcd0f3cada74e92be3e2e1f128200`。
+两个临时报告的关键结论已归档于此，0700临时目录已清理。
+
+按门禁，双算子的metadata和主算子本轮均**没有执行**，这不是主算子FAIL，也不能验证或否定
+`pr_9103`的kernel精度；最小真实smoke保持“等待runtime capability SUPPORTED”。阶段E的四模式和
+长压测同样不得解锁。
+
+阶段D当前步骤：读取两算子原Excel parser的真实schema和golden约束，在各自`pytest_v2/excel`
+准备独立workbook，不复用一个大小写列名混杂的sheet。紧接着的下一步是先用小shape baseline、
+位置敏感mask和layout候选跑实际`consistency_prepare`；通过后再把大S2/N边界列为“压力候选”，不在
+当前runtime阻断环境冒充NPU覆盖。
+
+#### 5.5 阶段D进度1：Excel扩展列类型门禁回归完成
+
+完成时间：2026-07-27。两棵`offline.py`现在统一要求`consistency_modes`、`split_groups`和
+`token_split_sizes`只能是文本或空值；Excel把这些列自动解析成整数、浮点数等非字符串类型时，
+prepare会明确报出`Excel <column> must be text`，不再静默忽略并退回默认模式。双树单测新增
+`consistency_modes=1234`的反例，验证数值型模式配置必然失败。
+
+本步所有验证先加载`/mnt/workspace/gitCode/env.sh`：SMLA与MQSMLA单测各`47 passed`；
+`ruff 0.15.14`、相关Python `compileall`、双shell `bash -n`和`git diff --check`均通过。最初尝试的
+`python -m ruff`因当前Python环境未安装ruff模块而不能作为成功证据，随后改用环境中实际提供的
+`/opt/buildtools/Python-3.11.4/bin/ruff`重新运行并通过。
+
+当前下一步：依据两算子各自原始parser的大小写敏感schema生成可重复构建的workbook；先逐行运行
+`consistency_prepare`验证Excel解析、CPU golden、baseline/derived PT和四个命名模式的round-trip，
+再把大`S2/N`组合放进单独压力候选sheet，避免把未执行的候选写成NPU PASS。
+
+#### 5.6 阶段D完成记录：双算子Excel与CPU离线关系矩阵通过
+
+完成时间：2026-07-27。新增可重复生成脚本
+`requs/cases/generate_pytest_v2_consistency_workbooks.py`，实际产出：
+
+- `attention/sparse_flash_mla/tests/pytest_v2/excel/smla_batch_consistency_cases.xlsx`，主sheet为
+  `SMLA`且用例名列严格使用`testcase_name`；SHA256为
+  `42b294d0a3369a0890deb5b9d494e8d5d6e2d0736d27c1a99e42e3dc733d7d59`。
+- `attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/excel/mqsmla_batch_consistency_cases.xlsx`，主sheet为
+  `MQSMLA`且用例名列严格使用`Testcase_Name`；SHA256为
+  `d531b2d9c389ca8662dc68243acb084674fc511f9517b0a5a665d1d103c1cbac`。
+
+生成器还会固定workbook属性和ZIP成员时间/顺序；连续生成两次的两份SHA256均逐字节不变，避免
+内容相同却因XLSX容器时间戳导致provenance漂移。
+
+每份主sheet均含4条小shape可执行用例，覆盖BSND、TND、PA_BBND、no-mask、位置敏感mask和四个
+正式命名模式；`PressureCandidates`另列`S2=4096`、`S2=5120`、`N1=3`、`N1=125+PA`四条候选，
+状态全部是`NOT_EXECUTED_CANDIDATE`，且不属于主sheet，parser不会把它们当成已验证用例。
+
+实际`consistency_prepare`结果如下；命令均先加载`/mnt/workspace/gitCode/env.sh`，未加载custom OPP、
+未调用NPU：
+
+| 算子 | baseline | derived关系 | 模式计数（reorder/split/token-split/shape-change） | 结论 |
+| --- | ---: | ---: | --- | --- |
+| SMLA | 4 | 21 | `3/6/8/4` | CPU prepare PASS |
+| MQSMLA | 4 | 21 | `3/6/8/4` | CPU prepare PASS |
+
+SMLA summary/合并关系manifest SHA256分别为
+`ea2dd9e5044601030a771de1840be5a167b5babb229124bc82a1970a01c2da1b`和
+`49b72298620414e92c55b50e85c9dce15b490f6ac68a6995925a338361376bf8`；MQSMLA分别为
+`96dfc141689c863ea83cbccb68c047aa84f8efaf3a7378ba6efdfa6ae66f9edb`和
+`9fdb20e652a83caad6ab47908bce708ada31b07fe92b016c0e7ec4e40244c0af`。两个合并manifest均报告
+四模式、两种Q layout、三种KV layout和两类mask无缺口；大S2三个类别仍明确缺失，与压力sheet的
+未解锁状态一致。
+
+MQSMLA第一次执行在BSND/no-mask baseline暴露原CPU golden缺陷：`ori_mask_mode=0`没有初始化
+`ori_win_start/end`，抛出`UnboundLocalError`。本轮没有删除该用例来掩盖失败，而是在
+`mixed_quant_sparse_flash_mla_golden.py`补齐0（全窗口）、3（RightDown）和4（Band）统一窗口计算及
+越界裁剪，并新增单测覆盖三个合法模式和非法模式；MQSMLA单测随后为`48 passed`，完整4行prepare
+重跑通过。
+
+上述PASS严格限定为Excel解析、CPU golden、baseline/derived PT schema、语义oracle、关系manifest和
+保存/重载一致；不是NPU、metadata或batch-consistency PASS。阶段D完成，阶段E当前步骤是给8个新
+baseline补齐versioned suite selector，然后从正式`test_run.sh consistency`重跑身份probe和状态矩阵。
+按阶段C已知门禁，预期为完整`UNSUPPORTED`且executor调用数为0；任何主算子执行都属于门禁回归。
+
+#### 5.7 阶段E完成记录：正式入口完整落为`UNSUPPORTED`，未误跑主算子
+
+完成时间：2026-07-27。`requs/cases/SMLA_MQSMLA_batch一致性执行配置.json`保留原离线预检
+selector并新增8个pytest_v2 baseline的精确selector；加载真实PT逐个解析后，8/8恰好匹配一条配置，
+没有未匹配、多重匹配或shape参数越界。正式执行均先加载`env.sh`和旧安装树`set_env.bash`，再通过
+`--custom-opp-root`把`pr_9103` CPack staging置于`ASCEND_CUSTOM_OPP_PATH`与`LD_LIBRARY_PATH`首位，
+并以`ea11138e...379a4`作为manifest硬门禁。
+
+SMLA与MQSMLA分别通过本算子的`test_run.sh consistency`执行4个baseline、每个baseline固定汇总四个
+模式槽。两边结果完全同构：
+
+| 证据 | SMLA | MQSMLA |
+| --- | --- | --- |
+| shell退出码/overall | `2 / UNSUPPORTED` | `2 / UNSUPPORTED` |
+| artifact | `16/16` | `16/16` |
+| 状态 | `UNSUPPORTED=14, NOT_APPLICABLE=2` | `UNSUPPORTED=14, NOT_APPLICABLE=2` |
+| PASS/FAIL/CONFIG_ERROR/INVALID_TRANSFORM | 全部0 | 全部0 |
+| artifact校验错误/pytest进程失败 | `0/0` | `0/0` |
+| identity/restore | `PASS/true` | `PASS/true` |
+| capability report SHA256 | `8e8be7654d0596ee126c4cb409200b245df50998c42c492d4db307b231bcad0b` | `1cd8a1a36d44375116890589638cc86a7da48e87873fcd7d9640c2077f25ee45` |
+| result summary SHA256 | `a3ed65585518b39953ffec1b29b4e58aa8f897e8a4e69c6872e5de4c551d9f55` | `a54e323c8ddb210edefe7366bd6b15a904926668ca5fbe8a91b8110403be6385` |
+
+每个可执行槽的reason均为`LEVEL3_ACCEPTED_BUT_NPU_REJECTED`；两个专项case只选择模式3/4，故模式1/2
+各产生一个`MODE_NOT_SELECTED/NOT_APPLICABLE`槽，这属于预期完整矩阵，不是漏测。所有14个
+`UNSUPPORTED` artifact的执行`report`均为`null`；结合测试入口在capability判断之后才调用
+`set_device/executor`的控制流，证明本轮没有执行SMLA/MQSMLA metadata或主算子。探针仍是唯一NPU
+调用，且它在level3 smoke失败后恢复进入前的level 0。
+
+阶段E因此按当前硬件/runtime条件完成，但完成含义是“门禁和状态链正确”，不是kernel验收完成。
+`pr_9103`精度、bitwise、metadata和压力仍处于等待runtime支持状态；SMLA即使未来黑盒PASS，也仍需
+owner关闭“没有显式level3 tiling-key/固定规约路径”的产品语义问题。
+
+阶段F执行内容：输出端到端使用指南，更新双README、开发计划和冲突清单，把本轮各文件职责、命令、
+状态/退出码、artifact检查和压力解锁顺序固化；随后执行最终镜像/回归/工作树审计并创建独立提交。
+上述工作已完成，最终证据和后续计划见下一节。
+
+### 六、阶段F完成记录：逐项答复、文件职责、最终回归与后续计划
+
+完成时间：2026-07-27。阶段F所有验证继续先加载`/mnt/workspace/gitCode/env.sh`；本节落盘后以一个
+新的独立Git提交保存本轮修改，不amend已有提交。算子开发仓没有代码改动，系统custom OPP也没有被
+覆盖。
+
+#### 6.1 对检视意见五的最终逐项答复
+
+1. **多模型合作已完成且结论已经落地。** GLM-5.2、DeepSeek V4 Pro、Qwen3.7 Max分别从状态机/
+   provenance、误报PASS/失败路径、Excel/schema/用户入口三个角度独立只读审议。主审没有把模型意见
+   直接当事实，而是用`pr_9103`源码、本地构建、真实probe和pytest结果逐项裁决。采纳项已落实为
+   capability强门禁、probe/test device绑定、custom OPP双搜索路径与manifest身份契约、artifact源
+   文件复核、Excel类型门禁、算子专属workbook和SMLA claim scope；三模型没有并发修改共享工作树。
+2. **按阶段即时记录的工作方式已执行。** 本轮开始即写入A-F工作量、验收条件、当前步骤和下一步；
+   A到E每阶段结束后都立即记录命令、证据、结论与阻断，再进入下一阶段。本节只做最终收口，没有
+   反向伪造此前过程。以后继续以本节“后续解锁顺序”和开发计划状态表作为恢复点。
+3. **已经切换并基于`ops-transformer/pr_9103@1acab9aec`验证。** 本地重新构建的run包SHA256为
+   `fa30e3c778cd07d595cedd9237b4144459ca99a98db02024b56c4b9d521b9840`，staging全树manifest为
+   `ea11138e941250d4b0241d360b6b54ea6bb960f291e8dc4c5af90d1960a379a4`。正式probe证明该staging位于
+   `ASCEND_CUSTOM_OPP_PATH`和`LD_LIBRARY_PATH`首位且manifest吻合；旧`/home/Ascend`包没有冒充
+   新分支，也没有被覆盖。当前runtime仍在level3首个NPU dispatch处拒绝，因此结论是环境
+   `UNSUPPORTED`，不是`pr_9103`算子精度失败。
+4. **完整pytest batch一致性指南和两算子用例表已交付并实际执行。** 新指南覆盖环境、源码/包身份、
+   Excel列、CPU prepare、四模式、versioned suite、正式命令、artifact、退出码、排障和压力解锁。
+   两份workbook各有4条可运行小shape及4条隔离的未执行压力候选；实际CPU prepare各得到4个baseline、
+   21条关系，正式在线入口各得到16/16个结构化槽位。正式接口继续使用命名模式/profile/suite JSON；
+   `-M 1,2`只保留deprecated迁移兼容，不会等batch一致性打通后再设计正式接口。
+
+#### 6.2 本轮修复与实现结果
+
+- capability report从可选证据提升为pytest主算子执行的硬前置；缺失、损坏或device不一致在executor
+  前写`CONFIG_ERROR`。probe只有在期望root、搜索路径首位和全树manifest全部吻合后才设置level并做
+  NPU smoke；身份契约错误准确落`CONFIG_ERROR`，其他真实probe异常仍落`FAIL`；level3异常后严格
+  恢复进入前level。
+- 每个结果artifact重新读取capability源JSON，校验源文件SHA256、嵌入probe SHA256和JSON内容完全
+  相同；SMLA即使未来PASS也只声明level3黑盒关系，不能替代owner对固定规约产品路径的证明。
+- Excel一致性扩展列只接受文本或空值，数值型`consistency_modes/split_groups/token_split_sizes`
+  明确失败；workbook生成器固定属性、ZIP成员顺序和时间，当前环境连续生成两次字节完全一致。
+- MQSMLA原golden的no-mask未初始化窗口缺陷已修复；ori mask 0/3/4统一计算可见KV窗口并裁剪，合法
+  BSND no-mask用例不再被删除或绕过，非法模式有反例单测。
+- versioned suite新增8个精确selector；当前重生成的8个baseline逐个验证为恰好命中一条，模式与shape
+  校验全部通过。正式NPU入口在runtime阻断时完整输出`UNSUPPORTED/NOT_APPLICABLE`矩阵，未进入
+  metadata/main-op executor。
+
+#### 6.3 本轮23个文件的职责
+
+| 文件 | 本轮职责 |
+| --- | --- |
+| `attention/sparse_flash_mla/tests/pytest_v2/README.md` | 补充SMLA用例表、正式staging参数、capability/artifact状态和详细指南入口 |
+| `attention/sparse_flash_mla/tests/pytest_v2/batch/consistency/offline.py` | 严格校验Excel三个一致性扩展列的文本类型 |
+| `attention/sparse_flash_mla/tests/pytest_v2/batch/consistency/result_artifact.py` | 复核capability源文件，收紧SMLA PASS声明范围 |
+| `attention/sparse_flash_mla/tests/pytest_v2/batch/consistency/runtime_capability.py` | 绑定custom OPP根/manifest/搜索路径、device和runtime证据 |
+| `attention/sparse_flash_mla/tests/pytest_v2/test_batch_consistency_unit.py` | 覆盖Excel类型、身份契约、device绑定和capability篡改反例 |
+| `attention/sparse_flash_mla/tests/pytest_v2/test_sparse_flash_mla_batch_consistency.py` | 在lazy executor之前强制消费同device capability并落准确状态 |
+| `attention/sparse_flash_mla/tests/pytest_v2/test_run.sh` | 新增device、custom OPP根和期望manifest正式CLI及环境首位设置 |
+| `attention/sparse_flash_mla/tests/pytest_v2/excel/smla_batch_consistency_cases.xlsx` | SMLA 4条CPU可运行关系用例、4条隔离压力候选及表内指南 |
+| `attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/README.md` | 补充MQSMLA用例表、正式staging参数、结果语义和详细指南入口 |
+| `attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/batch/consistency/offline.py` | 与SMLA镜像，严格校验Excel扩展列类型 |
+| `attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/batch/consistency/result_artifact.py` | 与SMLA镜像，校验capability源与结果声明 |
+| `attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/batch/consistency/runtime_capability.py` | 与SMLA镜像，执行身份、device和level3 capability门禁 |
+| `attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/mixed_quant_sparse_flash_mla_golden.py` | 修复ori mask 0/3/4的可见KV窗口计算和边界裁剪 |
+| `attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/test_batch_consistency_unit.py` | 覆盖共享门禁并新增MQ golden窗口合法/非法模式回归 |
+| `attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/test_mixed_quant_sparse_flash_mla_batch_consistency.py` | 在MQ executor之前强制消费同device capability并落准确状态 |
+| `attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/test_run.sh` | 为MQ正式入口增加custom OPP身份参数并透传既有device |
+| `attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/excel/mqsmla_batch_consistency_cases.xlsx` | MQSMLA 4条CPU可运行关系用例、4条隔离压力候选及表内指南 |
+| `requs/SMLA_MQSMLA_pytest_batch一致性测试使用指南.md` | 新增从环境、适配、Excel/PT到在线执行、结果查看和排障的端到端指南 |
+| `requs/SMLA_MQSMLA需求冲突与对齐清单.md` | 登记SMLA level3路径、MQ旧level1入口和新旧包身份三项新冲突 |
+| `requs/SMLA_batch一致性测试开发计划.md` | 把权威分支、完成项、阻断项及后续P3/P4顺序更新到`pr_9103`现状 |
+| `requs/cases/SMLA_MQSMLA_batch一致性执行配置.json` | 为8个新baseline增加命名模式和shape-aware精确selector |
+| `requs/cases/generate_pytest_v2_consistency_workbooks.py` | 可重复生成两算子专属workbook、压力候选和表内Guide |
+| `requs/requs.md` | 保留用户原始检视意见五并持续记录A-F全过程、证据、答复和下一步 |
+
+#### 6.4 最终回归证据
+
+| 检查 | 最终结果 |
+| --- | --- |
+| SMLA CPU单测 | `48 passed` |
+| MQSMLA CPU单测 | `49 passed` |
+| Ruff | 11个本轮核心Python文件全部通过；MQ golden以`E9,F63,F7,F82`通过 |
+| Python编译 | 本轮Python文件`compileall`通过 |
+| Shell/JSON/diff | 两份`test_run.sh`均`bash -n`通过；suite JSON可解析；`git diff --check`通过 |
+| 双树镜像 | `offline.py`、`result_artifact.py`、`runtime_capability.py`三组逐字节相同 |
+| workbook可重复性 | 当前生成器连续执行两次SHA256一致；SMLA=`42b294...d7d59`，MQSMLA=`d531b2...1cbac` |
+| workbook结构 | 各为主sheet+`PressureCandidates`+`Guide`；4条可运行行、4条明确未执行候选 |
+| 最终CPU prepare | 两算子均`pass=true`、4 baseline、21 relation；模式计数`3/6/8/4` |
+| suite selector | 当前8个baseline全部唯一匹配，无未匹配、多重匹配或shape错误 |
+| staging复核 | manifest仍为`ea11138...379a4`，1414文件、25293615字节、0哈希错误；run包hash未变 |
+| 身份负向门禁 | 双算子故意传错manifest后均为14 `CONFIG_ERROR`+2 N/A；probe attempt=0、device=`NOT_RUN`、执行report全空 |
+| 正式在线状态 | 两算子各16/16 artifact：14 `UNSUPPORTED`+2 `NOT_APPLICABLE`；0 PASS/FAIL/配置错误/缺失 |
+
+阶段F重放生成器时发现阶段D记录的workbook字节hash已不是当前生成器的输出；本节已经把阶段D和最终
+表格hash统一修正为当前产物，并再次连续生成两次确认稳定。表格逻辑内容和CPU prepare覆盖计数未
+变化。临时PT和报告均位于`/tmp`，不进入Git。
+
+#### 6.5 当前未完成项与后续解锁顺序
+
+当前测试框架、配置、Excel和误报PASS门禁已经完成，但真实kernel验收仍被以下外部条件阻断：
+
+1. runtime/CANN owner提供并确认支持deterministic level 3真实NPU dispatch的版本组合；先要求同一
+   staging身份下`runtime_capability.json.status=SUPPORTED`。
+2. capability解锁后只跑每算子1条最小metadata+main-op smoke；MQSMLA同时确认命中
+   `BATCH_CONSISTENCY` tiling key，SMLA由owner确认“无显式level3分支”是设计还是实现缺口。
+3. 最小smoke通过后执行当前4 baseline/16模式槽基础矩阵，再做重复、跨进程和恢复短压测；任何FAIL
+   先停在基础矩阵定位，不能直接上长压。
+4. 基础矩阵稳定后，按资源估算依次解锁`S2=4096`、`S2=5120`、`N1=3`、`N1=125+PA`候选；候选在
+   执行前一直保持`NOT_EXECUTED_CANDIDATE`。
+5. 并行由需求/STC owner修正公式、N语义、数组和block映射；由构建owner给custom包补source
+   commit/build id；由算子pytest owner修复旧MQ level1 batch入口。之后再推进graph、ACLNN和nightly。
+
+因此本轮“检视意见五”开发任务已完成；尚未完成的是依赖新runtime和owner裁决的真实level3算子
+验收，不能在当前环境下写成PASS。

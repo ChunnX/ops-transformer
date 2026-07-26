@@ -92,6 +92,18 @@ SSR_DML_SHIFT = 10             # SSR舍入移位值
 SSR_RESERVED_BITS = 14         # SSR舍入保留位数
 HYBRID_ROUND_EXP_THRESHOLD = 4 # 混合舍入的指数分界点
 
+
+def calculate_ori_window(mask_mode, kv_length, q_length, token, win_left, win_right):
+    if mask_mode == 0:
+        return 0, kv_length
+    if mask_mode not in (3, 4):
+        raise ValueError(f"Unsupported ori_mask_mode={mask_mode}")
+
+    threshold = kv_length - q_length + token + 1
+    start = 0 if mask_mode == 3 or win_left == -1 else threshold - win_left - 1
+    return max(0, min(start, kv_length)), max(0, min(threshold + win_right, kv_length))
+
+
 class GeneralizedSFAQuant:
     def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2,
                  block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_ori_kv, cu_seqlens_cmp_kv,
@@ -158,13 +170,14 @@ class GeneralizedSFAQuant:
                         attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = torch.zeros([G, self.D], dtype=torch.float)
                         continue
 
-                    if self.ori_mask_mode == 4:
-                        ori_threshold = cur_ori_act_kv - cur_act_q + i_S1 + 1
-                        ori_win_end = ori_threshold + self.ori_win_right
-                        if self.ori_win_left == -1:
-                            ori_win_start = 0
-                        else:
-                            ori_win_start = max(ori_threshold - self.ori_win_left - 1, 0)
+                    ori_win_start, ori_win_end = calculate_ori_window(
+                        self.ori_mask_mode,
+                        cur_ori_act_kv,
+                        cur_act_q,
+                        i_S1,
+                        self.ori_win_left,
+                        self.ori_win_right,
+                    )
 
                     cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
 

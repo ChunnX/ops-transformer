@@ -31,7 +31,10 @@ from batch.consistency.result_artifact import (
 from batch.consistency.runtime_capability import (
     ERROR as CAPABILITY_ERROR,
     UNSUPPORTED as CAPABILITY_UNSUPPORTED,
+    RuntimeCapabilityError,
+    is_capability_configuration_error,
     load_runtime_capability_evidence,
+    require_runtime_capability_evidence,
 )
 from batch.consistency.schema import get_q_lengths
 from batch.consistency.suite_config import (
@@ -50,6 +53,7 @@ from batch.consistency.transform import (
 
 OPERATOR = "smla"
 ENV_PREFIX = "SMLA_CONSISTENCY"
+_CONFIGURED_CAPABILITY = object()
 
 
 class ConsistencyTestConfig:
@@ -74,10 +78,14 @@ class ConsistencyTestConfig:
         ]
 
     @staticmethod
-    def set_device() -> None:
+    def device_id() -> int:
+        return int(os.environ.get("SMLA_DEVICE_ID", "0"))
+
+    @classmethod
+    def set_device(cls) -> None:
         import torch_npu
 
-        torch_npu.npu.set_device(int(os.environ.get("SMLA_DEVICE_ID", "0")))
+        torch_npu.npu.set_device(cls.device_id())
 
 
 TESTCASE_FILES = ConsistencyTestConfig.collect_pt_files()
@@ -124,7 +132,13 @@ def record_result(
     report: Optional[Dict] = None,
     reason_code: Optional[str] = None,
     reason: Optional[str] = None,
+    runtime_capability_override: Any = _CONFIGURED_CAPABILITY,
 ) -> str:
+    capability = (
+        runtime_capability()
+        if runtime_capability_override is _CONFIGURED_CAPABILITY
+        else runtime_capability_override
+    )
     return write_result_artifact(
         ConsistencyTestConfig.report_dir,
         operator=OPERATOR,
@@ -136,7 +150,7 @@ def record_result(
         report=report,
         reason_code=reason_code,
         reason=reason,
-        runtime_capability=runtime_capability(),
+        runtime_capability=capability,
     )
 
 
@@ -242,30 +256,57 @@ def execute_mode(
             reason=f"{type(error).__name__}: {error}",
         )
         raise
-    capability = runtime_capability()
-    if capability is not None:
-        probe = capability["probe"]
-        if probe["status"] == CAPABILITY_UNSUPPORTED:
-            skip_with_result(
-                data,
-                path,
-                mode,
-                ResultStatus.UNSUPPORTED,
-                probe["reason_code"],
-                probe["reason"],
-                config,
-            )
-        if probe["status"] == CAPABILITY_ERROR:
-            record_result(
-                data,
-                path,
-                mode,
-                ResultStatus.FAIL,
-                config=config,
-                reason_code=probe["reason_code"],
-                reason=probe["reason"],
-            )
-            pytest.fail(f"FAIL: runtime capability probe failed: {probe['reason']}")
+    try:
+        capability = require_runtime_capability_evidence(
+            ConsistencyTestConfig.capability_report,
+            ConsistencyTestConfig.device_id(),
+        )
+    except RuntimeCapabilityError as error:
+        reason_code = (
+            "MISSING_RUNTIME_CAPABILITY"
+            if not ConsistencyTestConfig.capability_report
+            else "INVALID_RUNTIME_CAPABILITY"
+        )
+        record_result(
+            data,
+            path,
+            mode,
+            ResultStatus.CONFIG_ERROR,
+            config=config,
+            reason_code=reason_code,
+            reason=str(error),
+            runtime_capability_override=None,
+        )
+        pytest.fail(f"CONFIG_ERROR: {error}")
+    probe = capability["probe"]
+    if probe["status"] == CAPABILITY_UNSUPPORTED:
+        skip_with_result(
+            data,
+            path,
+            mode,
+            ResultStatus.UNSUPPORTED,
+            probe["reason_code"],
+            probe["reason"],
+            config,
+        )
+    if probe["status"] == CAPABILITY_ERROR:
+        result_status = (
+            ResultStatus.CONFIG_ERROR
+            if is_capability_configuration_error(probe)
+            else ResultStatus.FAIL
+        )
+        record_result(
+            data,
+            path,
+            mode,
+            result_status,
+            config=config,
+            reason_code=probe["reason_code"],
+            reason=probe["reason"],
+        )
+        pytest.fail(
+            f"{result_status.value}: runtime capability probe failed: {probe['reason']}"
+        )
     try:
         ConsistencyTestConfig.set_device()
         report = run()

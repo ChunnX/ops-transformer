@@ -47,22 +47,31 @@ def _safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "case"
 
 
+def _optional_excel_text(values: Dict[str, Any], name: str) -> Optional[str]:
+    value = values.get(name)
+    if value is None or (isinstance(value, float) and value != value):
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"Excel {name} must be text, got {type(value).__name__}")
+    return value.strip() or None
+
+
 def mode_options_from_mapping(values: Dict[str, Any]) -> Dict[str, Any]:
     """Parse the optional consistency columns carried beside the original Excel schema."""
     result: Dict[str, Any] = {}
-    modes = values.get("consistency_modes")
-    if isinstance(modes, str) and modes.strip():
+    modes = _optional_excel_text(values, "consistency_modes")
+    if modes:
         tokens = tuple(item.strip() for item in modes.split(",") if item.strip())
         if any(token.isdigit() for token in tokens):
             raise ValueError("Excel consistency_modes must use canonical names, not numeric aliases")
         result["modes"] = tuple(
             mode.value for mode in ModeRegistry.parse(modes, warn_legacy=False)
         )
-    groups = values.get("split_groups")
-    if isinstance(groups, str) and groups.strip():
+    groups = _optional_excel_text(values, "split_groups")
+    if groups:
         result["split_groups"] = CaseConfigParser.split_groups(groups)
-    sizes = values.get("token_split_sizes")
-    if isinstance(sizes, str) and sizes.strip():
+    sizes = _optional_excel_text(values, "token_split_sizes")
+    if sizes:
         result["token_split_sizes"] = CaseConfigParser.split_sizes(
             sizes, "token_split_sizes"
         )

@@ -41,6 +41,15 @@ class RuntimeCapabilityError(ValueError):
     """Raised when a capability report is invalid or cannot be loaded."""
 
 
+def is_capability_configuration_error(report: Dict[str, Any]) -> bool:
+    """Return whether a valid probe error describes caller-supplied identity."""
+    return (
+        report.get("status") == ERROR
+        and report.get("failure_stage") == "environment_identity"
+        and report.get("reason_code") == "CUSTOM_OPP_IDENTITY_MISMATCH"
+    )
+
+
 def is_level3_runtime_rejection(error: BaseException) -> bool:
     """Recognize the installed runtime's delayed level-3 rejection."""
     message = str(error).lower()
@@ -201,6 +210,81 @@ def _custom_opp_evidence() -> List[Dict[str, Any]]:
     return roots
 
 
+def _resolved_path_entries(name: str) -> List[str]:
+    return [
+        str(Path(raw).expanduser().resolve())
+        for raw in os.environ.get(name, "").split(":")
+        if raw
+    ]
+
+
+def _custom_opp_identity_contract(
+    environment: Dict[str, Any],
+    expected_root: Optional[str],
+    expected_manifest: Optional[str],
+) -> Dict[str, Any]:
+    contract: Dict[str, Any] = {
+        "status": "NOT_REQUESTED",
+        "expected_root": None,
+        "expected_manifest_sha256": expected_manifest,
+        "errors": [],
+    }
+    if not expected_root and not expected_manifest:
+        return contract
+
+    errors: List[str] = contract["errors"]
+    if not expected_root:
+        errors.append("expected manifest requires an expected custom OPP root")
+        contract["status"] = "ERROR"
+        return contract
+
+    root = Path(expected_root).expanduser().resolve()
+    root_text = str(root)
+    op_api_lib = str((root / "op_api" / "lib").resolve())
+    contract.update(
+        {
+            "expected_root": root_text,
+            "expected_op_api_lib": op_api_lib,
+            "ascend_custom_opp_path_entries": _resolved_path_entries(
+                "ASCEND_CUSTOM_OPP_PATH"
+            ),
+            "ld_library_path_entries": _resolved_path_entries("LD_LIBRARY_PATH"),
+        }
+    )
+    custom_entries = contract["ascend_custom_opp_path_entries"]
+    library_entries = contract["ld_library_path_entries"]
+    if not custom_entries or custom_entries[0] != root_text:
+        errors.append("expected custom OPP root is not first in ASCEND_CUSTOM_OPP_PATH")
+    if not library_entries or library_entries[0] != op_api_lib:
+        errors.append("expected custom OPP op_api/lib is not first in LD_LIBRARY_PATH")
+
+    packages = environment.get("custom_opp_packages", [])
+    package = next(
+        (item for item in packages if item.get("root") == root_text),
+        None,
+    )
+    if package is None:
+        errors.append("expected custom OPP root is absent from hashed package evidence")
+    else:
+        contract["observed_manifest_sha256"] = package.get(
+            "content_manifest_sha256"
+        )
+        contract["package_identity_status"] = package.get("identity_status")
+        if package.get("errors"):
+            errors.append("expected custom OPP tree could not be hashed without errors")
+
+    if expected_manifest:
+        normalized = expected_manifest.lower()
+        contract["expected_manifest_sha256"] = normalized
+        if len(normalized) != 64 or any(char not in "0123456789abcdef" for char in normalized):
+            errors.append("expected custom OPP manifest is not a SHA256 digest")
+        elif contract.get("observed_manifest_sha256") != normalized:
+            errors.append("expected custom OPP manifest does not match observed tree content")
+
+    contract["status"] = "PASS" if not errors else "ERROR"
+    return contract
+
+
 def collect_environment_evidence(device_id: int) -> Dict[str, Any]:
     """Collect version and package content evidence without claiming a source commit."""
     device: Dict[str, Any] = {"requested_device_id": device_id}
@@ -233,6 +317,7 @@ def collect_environment_evidence(device_id: int) -> Dict[str, Any]:
                 "ASCEND_TOOLKIT_HOME",
                 "ASCEND_OPP_PATH",
                 "ASCEND_CUSTOM_OPP_PATH",
+                "LD_LIBRARY_PATH",
             )
         },
         "runtime_version_files": _version_files(),
@@ -249,10 +334,14 @@ class RuntimeCapabilityProbe:
         *,
         npu: Any = None,
         smoke: Optional[Callable[[], Dict[str, Any]]] = None,
+        expected_custom_opp_root: Optional[str] = None,
+        expected_custom_opp_manifest: Optional[str] = None,
     ):
         self.device_id = device_id
         self.npu = npu if npu is not None else torch_npu.npu
         self.smoke = smoke if smoke is not None else self._default_smoke
+        self.expected_custom_opp_root = expected_custom_opp_root
+        self.expected_custom_opp_manifest = expected_custom_opp_manifest
 
     def _current_level(self) -> int:
         getter = getattr(self.npu, "_get_deterministic_level", None)
@@ -350,19 +439,34 @@ class RuntimeCapabilityProbe:
     def run(self, attempts: int = 1) -> Dict[str, Any]:
         if attempts < 1 or attempts > MAX_ATTEMPTS:
             raise ValueError(f"attempts must be in [1, {MAX_ATTEMPTS}]")
-        device_init: Dict[str, Any] = {"device_id": self.device_id}
+        environment = collect_environment_evidence(self.device_id)
+        identity_contract = _custom_opp_identity_contract(
+            environment,
+            self.expected_custom_opp_root,
+            self.expected_custom_opp_manifest,
+        )
+        device_init: Dict[str, Any] = {
+            "device_id": self.device_id,
+            "status": "NOT_RUN",
+        }
         records = []
-        try:
-            self.npu.set_device(self.device_id)
-            device_init["status"] = "PASS"
-            records = [self.run_attempt(index) for index in range(1, attempts + 1)]
-        except BaseException as error:
-            device_init.update(
-                {"status": "ERROR", "reason": f"{type(error).__name__}: {error}"}
-            )
+        if identity_contract["status"] != "ERROR":
+            try:
+                self.npu.set_device(self.device_id)
+                device_init["status"] = "PASS"
+                records = [self.run_attempt(index) for index in range(1, attempts + 1)]
+            except BaseException as error:
+                device_init.update(
+                    {"status": "ERROR", "reason": f"{type(error).__name__}: {error}"}
+                )
 
         statuses = [record["status"] for record in records]
-        if records and all(status == SUPPORTED for status in statuses):
+        if identity_contract["status"] == "ERROR":
+            status = ERROR
+            failure_stage = "environment_identity"
+            reason_code = "CUSTOM_OPP_IDENTITY_MISMATCH"
+            reason = "; ".join(identity_contract["errors"])
+        elif records and all(status == SUPPORTED for status in statuses):
             status = SUPPORTED
             failure_stage = reason_code = reason = None
         elif records and all(status == UNSUPPORTED for status in statuses):
@@ -399,7 +503,8 @@ class RuntimeCapabilityProbe:
             ),
             "device_init": device_init,
             "attempts": records,
-            "environment": collect_environment_evidence(self.device_id),
+            "environment": environment,
+            "custom_opp_identity_contract": identity_contract,
         }
 
 
@@ -412,6 +517,12 @@ def validate_runtime_capability_report(report: Dict[str, Any]) -> None:
         raise RuntimeCapabilityError("Runtime capability report did not request level 3")
     if report.get("status") not in (SUPPORTED, UNSUPPORTED, ERROR):
         raise RuntimeCapabilityError("Runtime capability status is invalid")
+    device_init = report.get("device_init")
+    if (
+        not isinstance(device_init, dict)
+        or not isinstance(device_init.get("device_id"), int)
+    ):
+        raise RuntimeCapabilityError("Runtime capability device identity is missing")
     attempts = report.get("attempts")
     if not isinstance(attempts, list):
         raise RuntimeCapabilityError("Runtime capability attempts must be a list")
@@ -474,13 +585,34 @@ def load_runtime_capability_evidence(path: str) -> Dict[str, Any]:
     }
 
 
+def require_runtime_capability_evidence(path: str, device_id: int) -> Dict[str, Any]:
+    """Load a mandatory probe and bind it to the device used by pytest."""
+    if not path:
+        raise RuntimeCapabilityError(
+            "Runtime capability report is required before any NPU execution"
+        )
+    evidence = load_runtime_capability_evidence(path)
+    probed_device = evidence["probe"]["device_init"]["device_id"]
+    if probed_device != device_id:
+        raise RuntimeCapabilityError(
+            f"Runtime capability device {probed_device} does not match test device {device_id}"
+        )
+    return evidence
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Probe executable deterministic level-3 support")
     parser.add_argument("--output", required=True)
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument("--attempts", type=int, default=1)
+    parser.add_argument("--expected-custom-opp-root")
+    parser.add_argument("--expected-custom-opp-manifest")
     args = parser.parse_args()
-    report = RuntimeCapabilityProbe(args.device_id).run(args.attempts)
+    report = RuntimeCapabilityProbe(
+        args.device_id,
+        expected_custom_opp_root=args.expected_custom_opp_root,
+        expected_custom_opp_manifest=args.expected_custom_opp_manifest,
+    ).run(args.attempts)
     validate_runtime_capability_report(report)
     _atomic_json_dump(args.output, report)
     print(
