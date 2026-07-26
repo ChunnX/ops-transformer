@@ -1,6 +1,9 @@
 #!/usr/bin/python3
-import sys, os, struct, math
+import sys
+import os
+import math
 import numpy as np
+
 
 def factor_dims(seq_len):
     """Match FactorVideoDims from tiling.cpp"""
@@ -15,6 +18,7 @@ def factor_dims(seq_len):
                     return rest // h, h, w
     return 1, 1, seq_len
 
+
 def compute_band_dims(head_dim):
     """Match ComputeBandDims3D: 2:1:1 ratio, all even"""
     unit = head_dim // 4
@@ -24,14 +28,19 @@ def compute_band_dims(head_dim):
     hb = unit
     wb = head_dim - tb - hb
     if wb % 2 != 0:
-        wb -= 1; tb += 1
+        wb -= 1
+        tb += 1
         if tb % 2 != 0:
-            tb -= 1; hb += 1
+            tb -= 1
+            hb += 1
     if hb % 2 != 0:
-        hb -= 1; tb += 1
+        hb -= 1
+        tb += 1
     if tb % 2 != 0:
-        tb -= 1; hb += 1
+        tb -= 1
+        hb += 1
     return tb, hb, wb
+
 
 def gen_data(b, s, d, dtype_str):
     shape = (int(b), int(s), int(d))
@@ -49,9 +58,9 @@ def gen_data(b, s, d, dtype_str):
     rw = freq_base ** (-2.0 / wb)
 
     # Theta tables
-    theta_t = np.array([rt ** i for i in range(half_tb)], dtype=np.float64)
-    theta_h = np.array([rh ** i for i in range(half_hb)], dtype=np.float64)
-    theta_w = np.array([rw ** i for i in range(half_wb)], dtype=np.float64)
+    theta_t = np.array([rt**i for i in range(half_tb)], dtype=np.float64)
+    theta_h = np.array([rh**i for i in range(half_hb)], dtype=np.float64)
+    theta_w = np.array([rw**i for i in range(half_wb)], dtype=np.float64)
 
     # x1: random input
     rng = np.random.default_rng(42)
@@ -121,6 +130,7 @@ def gen_data(b, s, d, dtype_str):
     data_x.tofile("./x.bin")
     data_cs.tofile("./cos_sin.bin")
     data_golden.astype(dtype_str).tofile("./golden.bin")
+
 
 if __name__ == "__main__":
     os.system("rm -rf ./*.bin")
