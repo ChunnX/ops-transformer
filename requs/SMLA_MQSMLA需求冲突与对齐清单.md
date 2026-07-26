@@ -1,6 +1,6 @@
 # SMLA/MQSMLA batch 一致性需求冲突与对齐清单
 
-> 版本：2026-07-20 检视意见二处理版
+> 版本：2026-07-27 检视意见五、`pr_9103`处理版
 > 用途：把“已裁决”“实现暂定”“必须找人确认”分开，禁止测试代码静默替需求做决定。
 > 第一需求源：`docs/SMLA batch一致性.md`；STC Excel 是验收草案，不反向覆盖主需求。
 
@@ -35,6 +35,9 @@
 | C-05 | STC 能否直接作为 generator 输入 | 001-020 只给部分维度，021-023 仅写“复用”，多行数组长度错误 | 两算子原 Excel parser/golden 需要 dtype、N1/N2/D、mask、template、block 等完整字段 | 原 STC 只做 traceability；新增独立小 shape 离线预检表，不篡改原表 | `BLOCKED_BY_SPEC`；STC owner、pytest owner |
 | C-06 | metadata 当前布局版本 | 旧资料按 FA `36x8` | PR8737 当前布局为 FA `36x9`、FD `72x8`、tail 124 | parser 严格按版本解析；禁止把两种布局猜成一种 | `CONFIRMED`（代码版本内）；tiling owner需确认发布包版本 |
 | C-07 | level 0 能否代替 level 3 | level 0 可调用普通 metadata/op | batch consistency 要求 level 3 固定规约；本机 runtime 拒绝 level 3 | 返回 `UNSUPPORTED`，禁止降级后报 PASS | `CONFIRMED`；Runtime owner负责环境 |
+| C-08 | SMLA是否已有level3专用固定规约路径 | `pr_9103`对共享`flash_decode.h`和SMLA staging offset有改动 | SMLA host/kernel未见`GetDeterministicLevel()==3`或`BATCH_CONSISTENCY` tiling-key；MQSMLA则两者都有 | SMLA允许做level3黑盒关系测试，但PASS scope不得声称命中专用路径 | `BLOCKED_BY_SPEC`；SMLA tiling/kernel owner |
+| C-09 | MQSMLA入口应设置level 1还是3 | 算子仓旧`tests/pytest/batch/mixed_quant_sparse_flash_mla_process.py`仍设置1 | `pr_9103` host只在`GetDeterministicLevel()==3`时开启batch consistency，本仓pytest_v2也请求3 | 禁止用旧level1 batch入口验收；修复或删除旧入口歧义 | `TEST_GAP`；算子pytest owner |
+| C-10 | 旧安装树能否代表`pr_9103` | `/home/Ascend/vendors/custom_transformer`可正常加载 | 旧树manifest为`81730e...7a5e`，新staging为`ea1113...379a4`且关键库hash不同 | 正式probe强制staging处于两个搜索路径首位并校验期望manifest；不覆盖系统安装 | `CONFIRMED`（本轮身份门禁）；构建owner仍需包内commit id |
 
 ## 3. 模式 4 与 mask 的完整数学
 

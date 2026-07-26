@@ -83,6 +83,14 @@ def _deterministic_levels(report: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
             yield from _deterministic_levels(subcase)
 
 
+def _sha256_path(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for block in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def _validate_runtime_capability_evidence(evidence: Dict[str, Any]) -> None:
     if not isinstance(evidence, dict):
         raise ResultArtifactError("Runtime capability evidence must be an object")
@@ -96,6 +104,15 @@ def _validate_runtime_capability_evidence(evidence: Dict[str, Any]) -> None:
         if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
             raise ResultArtifactError(f"Runtime capability {field} is not a SHA256 digest")
     try:
+        if _sha256_path(source["path"]) != source["sha256"]:
+            raise ResultArtifactError("Runtime capability source report digest mismatch")
+        with open(source["path"], "r", encoding="utf-8") as file:
+            source_probe = json.load(file)
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ResultArtifactError(
+            f"Cannot verify runtime capability source report: {error}"
+        ) from error
+    try:
         probe = evidence.get("probe")
         validate_runtime_capability_report(probe)
     except RuntimeCapabilityError as error:
@@ -105,6 +122,10 @@ def _validate_runtime_capability_evidence(evidence: Dict[str, Any]) -> None:
     ).encode("utf-8")
     if hashlib.sha256(canonical).hexdigest() != evidence["probe_sha256"]:
         raise ResultArtifactError("Runtime capability embedded probe digest mismatch")
+    if source_probe != probe:
+        raise ResultArtifactError(
+            "Runtime capability source report and embedded probe differ"
+        )
 
 
 def validate_result_artifact(artifact: Dict[str, Any]) -> None:
@@ -182,14 +203,19 @@ def write_result_artifact(
 ) -> str:
     """Persist one final status for exactly one operator/case/mode tuple."""
     identity = case_identity(input_data, pt_path)
+    if status is ResultStatus.PASS and operator == "smla":
+        claim_scope = (
+            "runtime-level3 black-box batch relation PASS; SMLA product-path "
+            "fixed-reduction semantics require separate operator-owner evidence"
+        )
+    elif status is ResultStatus.PASS:
+        claim_scope = "level-3 NPU batch-consistency result"
+    else:
+        claim_scope = "non-PASS execution/configuration status; no NPU PASS claim"
     artifact = {
         "schema_version": SCHEMA_VERSION,
         "kind": RESULT_KIND,
-        "claim_scope": (
-            "level-3 NPU batch-consistency result"
-            if status is ResultStatus.PASS
-            else "non-PASS execution/configuration status; no NPU PASS claim"
-        ),
+        "claim_scope": claim_scope,
         "scenario": SCENARIO,
         "operator": operator,
         "mode": mode,

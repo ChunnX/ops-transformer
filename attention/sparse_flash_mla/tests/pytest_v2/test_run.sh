@@ -50,6 +50,9 @@ show_help() {
     --config-file  versioned JSON配置（正式入口；按PT精确匹配并按shape校验）
     --report-dir   结构化结果根目录（每次执行自动创建独立子目录）
     --probe-attempts level 3真实NPU调度前置探针次数（1-100，默认1）
+    --device-id   NPU设备ID（默认读取SMLA_DEVICE_ID或0）
+    --custom-opp-root 本地custom OPP根目录；自动置于两个搜索路径首位
+    --expected-custom-opp-manifest 期望的custom OPP全树SHA256（需配合root）
     --modes      命名模式列表（显式模式优先）
     --profile    命名模式组合（默认 blackbox-basic）
     -M           数字模式兼容别名（例如 1,2，已废弃）
@@ -604,10 +607,13 @@ run_script_consistency() {
     local common_tokens=""
     local derived_extra=""
     local probe_attempts="1"
+    local device_id="${SMLA_DEVICE_ID:-0}"
+    local custom_opp_root=""
+    local expected_custom_opp_manifest=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -P|--pt-dir|--config-file|--report-dir|-M|--modes|--profile|--seed|--split-groups|--token-split-sizes|--mode3-batch|--common-tokens|--derived-extra|--probe-attempts)
+            -P|--pt-dir|--config-file|--report-dir|-M|--modes|--profile|--seed|--split-groups|--token-split-sizes|--mode3-batch|--common-tokens|--derived-extra|--probe-attempts|--device-id|--custom-opp-root|--expected-custom-opp-manifest)
                 if [ $# -lt 2 ] || [ -z "$2" ]; then
                     echo "错误: $1 参数需要值"
                     return 1
@@ -640,6 +646,9 @@ run_script_consistency() {
             --common-tokens) common_tokens="$2"; detail_set="1"; shift 2 ;;
             --derived-extra) derived_extra="$2"; detail_set="1"; shift 2 ;;
             --probe-attempts) probe_attempts="$2"; shift 2 ;;
+            --device-id) device_id="$2"; shift 2 ;;
+            --custom-opp-root) custom_opp_root="$2"; shift 2 ;;
+            --expected-custom-opp-manifest) expected_custom_opp_manifest="$2"; shift 2 ;;
             -h|--help) show_help; return 0 ;;
             *) echo "错误: consistency 未知参数 '$1'"; return 1 ;;
         esac
@@ -656,6 +665,34 @@ run_script_consistency() {
     if ! [[ "$probe_attempts" =~ ^[0-9]+$ ]] || [ "$probe_attempts" -lt 1 ] || [ "$probe_attempts" -gt 100 ]; then
         echo "错误: --probe-attempts 必须是1到100的整数，当前值: $probe_attempts"
         return 1
+    fi
+    if ! [[ "$device_id" =~ ^[0-9]+$ ]]; then
+        echo "错误: --device-id 必须是非负整数，当前值: $device_id"
+        return 1
+    fi
+    if [ -n "$expected_custom_opp_manifest" ] && [ -z "$custom_opp_root" ]; then
+        echo "错误: --expected-custom-opp-manifest 必须与 --custom-opp-root 一起使用"
+        return 1
+    fi
+    if [ -n "$expected_custom_opp_manifest" ] && ! [[ "$expected_custom_opp_manifest" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        echo "错误: --expected-custom-opp-manifest 必须是64位SHA256"
+        return 1
+    fi
+    local probe_identity_args=()
+    if [ -n "$custom_opp_root" ]; then
+        if [ ! -d "$custom_opp_root" ] || [ ! -d "$custom_opp_root/op_api/lib" ]; then
+            echo "错误: custom OPP根或op_api/lib不存在: $custom_opp_root"
+            return 1
+        fi
+        custom_opp_root="$(cd "$custom_opp_root" && pwd -P)"
+        export ASCEND_CUSTOM_OPP_PATH="$custom_opp_root${ASCEND_CUSTOM_OPP_PATH:+:$ASCEND_CUSTOM_OPP_PATH}"
+        export LD_LIBRARY_PATH="$custom_opp_root/op_api/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        probe_identity_args+=(--expected-custom-opp-root "$custom_opp_root")
+        if [ -n "$expected_custom_opp_manifest" ]; then
+            expected_custom_opp_manifest="${expected_custom_opp_manifest,,}"
+            probe_identity_args+=(--expected-custom-opp-manifest "$expected_custom_opp_manifest")
+        fi
+        echo "custom OPP验证根: $custom_opp_root"
     fi
     if [ -n "$config_file" ]; then
         if [ ! -f "$config_file" ]; then
@@ -699,6 +736,7 @@ PY
     local pytest_log="$run_dir/pytest.log"
 
     export SMLA_CONSISTENCY_TEST=1
+    export SMLA_DEVICE_ID="$device_id"
     export SMLA_PT_LOAD_PATH="$pt_dir"
     export SMLA_CONSISTENCY_REPORT_DIR="$run_dir"
     if [ -n "$config_file" ]; then
@@ -733,8 +771,9 @@ PY
     echo "先执行level 3真实NPU调度探针（$probe_attempts 次）" | tee -a "$pytest_log"
     python3 -m batch.consistency.runtime_capability \
         --output "$capability_report" \
-        --device-id "${SMLA_DEVICE_ID:-0}" \
-        --attempts "$probe_attempts" 2>&1 | tee -a "$pytest_log"
+        --device-id "$device_id" \
+        --attempts "$probe_attempts" \
+        "${probe_identity_args[@]}" 2>&1 | tee -a "$pytest_log"
     local probe_status=${PIPESTATUS[0]}
     if [ "$probe_status" -ne 0 ] && [ "$probe_status" -ne 2 ]; then
         process_failures=$((process_failures + 1))

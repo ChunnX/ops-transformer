@@ -63,7 +63,11 @@ from batch.consistency.runtime_capability import (
     KIND as CAPABILITY_KIND,
     SCHEMA_VERSION as CAPABILITY_SCHEMA_VERSION,
     RuntimeCapabilityProbe,
+    RuntimeCapabilityError,
+    _custom_opp_identity_contract,
+    is_capability_configuration_error,
     load_runtime_capability_evidence,
+    require_runtime_capability_evidence,
 )
 from batch.consistency.reporting import (
     attach_provenance,
@@ -302,6 +306,8 @@ def test_named_modes_and_explicit_config_parsing():
     }
     with pytest.raises(ValueError, match="canonical names"):
         mode_options_from_mapping({"consistency_modes": "1,2"})
+    with pytest.raises(ValueError, match="consistency_modes must be text"):
+        mode_options_from_mapping({"consistency_modes": 1234})
 
 
 def write_suite_config(tmp_path, document):
@@ -485,6 +491,9 @@ class FakeNpuState:
     def _get_deterministic_level(self):
         return self.level
 
+    def set_device(self, _device_id):
+        return None
+
 
 def test_runtime_capability_probe_detects_delayed_rejection_and_restores_level():
     npu = FakeNpuState()
@@ -515,6 +524,47 @@ def test_runtime_capability_probe_requires_real_smoke_success():
     assert attempt["npu_smoke_passed"]
     assert attempt["restoration"]["status"] == "PASS"
     assert npu.level == 0
+
+
+def test_custom_opp_identity_contract_binds_path_order_and_manifest(monkeypatch, tmp_path):
+    root = tmp_path / "custom_transformer"
+    op_api_lib = root / "op_api" / "lib"
+    op_api_lib.mkdir(parents=True)
+    manifest = "a" * 64
+    monkeypatch.setenv("ASCEND_CUSTOM_OPP_PATH", f"{root}:/old/custom")
+    monkeypatch.setenv("LD_LIBRARY_PATH", f"{op_api_lib}:/old/lib")
+    environment = {
+        "custom_opp_packages": [
+            {
+                "root": str(root.resolve()),
+                "content_manifest_sha256": manifest,
+                "identity_status": "CONTENT_HASHED_SOURCE_COMMIT_UNPROVEN",
+                "errors": [],
+            }
+        ]
+    }
+    contract = _custom_opp_identity_contract(environment, str(root), manifest)
+    assert contract["status"] == "PASS"
+    monkeypatch.setenv("ASCEND_CUSTOM_OPP_PATH", f"/old/custom:{root}")
+    contract = _custom_opp_identity_contract(environment, str(root), "b" * 64)
+    assert contract["status"] == "ERROR"
+    assert "expected custom OPP root is not first" in "; ".join(contract["errors"])
+    assert "manifest does not match" in "; ".join(contract["errors"])
+
+
+def test_capability_configuration_error_only_matches_custom_opp_identity():
+    identity_error = {
+        "status": "ERROR",
+        "failure_stage": "environment_identity",
+        "reason_code": "CUSTOM_OPP_IDENTITY_MISMATCH",
+    }
+    assert is_capability_configuration_error(identity_error)
+    assert not is_capability_configuration_error(
+        {**identity_error, "failure_stage": "npu_smoke"}
+    )
+    assert not is_capability_configuration_error(
+        {**identity_error, "status": "UNSUPPORTED"}
+    )
 
 
 def capability_evidence(tmp_path, status, marker="default"):
@@ -552,6 +602,16 @@ def supported_capability_evidence(tmp_path):
 
 def unsupported_capability_evidence(tmp_path):
     return capability_evidence(tmp_path, "UNSUPPORTED")
+
+
+def test_required_capability_binds_probe_to_test_device(tmp_path):
+    evidence = supported_capability_evidence(tmp_path)
+    path = evidence["source_report"]["path"]
+    assert require_runtime_capability_evidence(path, 0)["probe"]["status"] == "SUPPORTED"
+    with pytest.raises(RuntimeCapabilityError, match="does not match test device 1"):
+        require_runtime_capability_evidence(path, 1)
+    with pytest.raises(RuntimeCapabilityError, match="required before any NPU"):
+        require_runtime_capability_evidence("", 0)
 
 
 def test_result_artifact_requires_observed_level3_for_pass(tmp_path):
@@ -593,6 +653,23 @@ def test_result_artifact_requires_capability_evidence_for_pass(tmp_path):
             mode="reorder",
             status=ResultStatus.PASS,
             report=level3_report(),
+        )
+
+
+def test_result_artifact_rechecks_capability_source_file(tmp_path):
+    capability = supported_capability_evidence(tmp_path)
+    source_path = Path(capability["source_report"]["path"])
+    source_path.write_text(source_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    with pytest.raises(ResultArtifactError, match="source report digest mismatch"):
+        write_result_artifact(
+            str(tmp_path),
+            operator="smla",
+            input_data=make_case(),
+            pt_path="/tmp/unit.pt",
+            mode="reorder",
+            status=ResultStatus.PASS,
+            report=level3_report(),
+            runtime_capability=capability,
         )
 
 
