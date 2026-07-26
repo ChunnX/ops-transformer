@@ -49,20 +49,19 @@ TEST_F(RotaryPositionEmbedding3dInfershape, RotaryPositionEmbedding3d_infer_shap
 
 TEST_F(RotaryPositionEmbedding3dInfershape, RotaryPositionEmbedding3d_infer_shape_fp32)
 {
-    gert::InfershapeContextPara infershapeContextPara(
-        "RotaryPositionEmbedding3d",
-        {
-            // input info
-            {{{1, 32, 16}, {1, 32, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 32, 16}, {1, 32, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            // attr
-        });
+    gert::InfershapeContextPara infershapeContextPara("RotaryPositionEmbedding3d",
+                                                      {
+                                                          // input info
+                                                          {{{1, 32, 16}, {1, 32, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{1, 32, 16}, {1, 32, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                          // output info
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                          // attr
+                                                      });
     std::vector<std::vector<int64_t>> expectOutputShape = {{1, 32, 16}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -89,20 +88,19 @@ TEST_F(RotaryPositionEmbedding3dInfershape, RotaryPositionEmbedding3d_infer_shap
 
 TEST_F(RotaryPositionEmbedding3dInfershape, RotaryPositionEmbedding3d_infer_shape_3d_fp16)
 {
-    gert::InfershapeContextPara infershapeContextPara(
-        "RotaryPositionEmbedding3d",
-        {
-            // input info (B, S, D)
-            {{{1, 64, 128}, {1, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1, 64, 128}, {1, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {
-            // attr
-        });
+    gert::InfershapeContextPara infershapeContextPara("RotaryPositionEmbedding3d",
+                                                      {
+                                                          // input info (B, S, D)
+                                                          {{{1, 64, 128}, {1, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{1, 64, 128}, {1, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                          // output info
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                          // attr
+                                                      });
     std::vector<std::vector<int64_t>> expectOutputShape = {{1, 64, 128}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
