@@ -79,17 +79,17 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
             // 伪量化场景 MxA8W4: x=FP8_E4M3FN, w=FP4_E2M1
             OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the weight quant tiling for MxA8W4");
             registerList[0] = GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE;
-         } else if (xScaleDtype == ge::DT_FLOAT8_E8M0) {
- 	             // Tensor API is the preferred candidate for MX quant. Unsupported cases fall back to template 2.
- 	             registerList = {GMMSQ_TENSOR_API_TILING_TEMPLATE, GMMSQ_950_TILING_TEMPLATE};
- 	             OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc",
- 	                     "Using Tensor API tiling first and falling back to the original MX tiling");
-        else {
+        } else if (xScaleDtype == ge::DT_FLOAT8_E8M0) {
+            // Tensor API is the preferred candidate for MX quant. Unsupported cases fall back to template 2.
+            registerList = {GMMSQ_TENSOR_API_TILING_TEMPLATE, GMMSQ_950_TILING_TEMPLATE};
+            OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc",
+                    "Using Tensor API tiling first and falling back to the original MX tiling");
+        } else {
             // 全量化场景
             OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the mxfp8");
         }
         return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
-    }else {
+    } else {
         std::vector<int32_t> registerList = {GMMSQ_FUSING_TILING_TEMPLATE, GMMSQ_BASE_TILING_TEMPLATE};
         OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the int8");
         return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
