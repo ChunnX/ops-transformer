@@ -2128,6 +2128,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             ExpertTokenNumCopyOut();
         }
     }
+    // 权重前移路径：GMM1→GMM2 阶段间需核间同步，确保 AIV1 的 dispatch prefetch 写完成后再进 GMM2
+    if constexpr (TopkWeightsPrefetch) {
+        SyncAll<false>();
+    }
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     vecSetSyncCom = 0;
