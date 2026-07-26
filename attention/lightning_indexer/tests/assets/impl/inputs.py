@@ -44,12 +44,14 @@ def generate_li_inputs(query, key, weights, *,
                         layout_query="BSND", layout_key="BSND",
                         sparse_count=2048, sparse_mode=3, **kwargs):
     """Generate and preprocess NPU inputs for LightningIndexer, handling BSND/TND/PA_BSND layouts."""
-    fill_tensor_from_value(actual_seq_lengths_query, actual_seq_lengths_query)
-    fill_tensor_from_value(actual_seq_lengths_key, actual_seq_lengths_key)
+    actual_q_values = kwargs.get("actual_seq_lengths_query_values")
+    actual_k_values = kwargs.get("actual_seq_lengths_key_values")
+    fill_tensor_from_value(actual_seq_lengths_query, actual_q_values)
+    fill_tensor_from_value(actual_seq_lengths_key, actual_k_values)
     fill_tensor_from_value(block_table, block_table)
 
-    act_q = to_list(actual_seq_lengths_query)
-    act_k = to_list(actual_seq_lengths_key)
+    act_q = to_list(actual_q_values if actual_q_values is not None else actual_seq_lengths_query)
+    act_k = to_list(actual_k_values if actual_k_values is not None else actual_seq_lengths_key)
 
     if layout_query == "BSND":
         B = query.shape[0]
