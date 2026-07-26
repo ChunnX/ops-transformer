@@ -615,14 +615,14 @@
   <tr>
    <td>activation</td>
    <td>可选属性</td>
-   <td>激活函数类型。默认值为"swiglu"。当前仅支持"swiglu"。</td>
+   <td>激活函数类型。默认值为"swiglu"。A2/A3支持"swiglu"、"swiglu_gpt_oss"和"situ"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(1.702 * gate) * (up + 1)；"situ"按前后半区拆分gate/up，beta固定为1.0，并使用activation_clamp作为可选linear_beta。A5当前仅支持"swiglu"。</td>
    <td>STRING</td>
    <td></td>
   </tr>
   <tr>
    <td>activation_clamp</td>
    <td>可选属性</td>
-   <td>激活函数输入的对称截断阈值，将输入张量限制在[-activation_clamp, activation_clamp]区间内。默认值为float最大值，表示不截断，值需≥0。</td>
+   <td>激活函数控制值。对"swiglu"和"swiglu_gpt_oss"，gate分支仅限制上界，up分支限制在[-activation_clamp, activation_clamp]区间内。对"situ"，有限正值作为linear_beta，计算linear_beta * tanh(up / linear_beta)；0或float最大值表示linear_beta=None，up保持不变。默认值为float最大值，值需≥0。</td>
    <td>FLOAT</td>
    <td></td>
   </tr>
@@ -694,6 +694,8 @@
       | A16W16 | BF16 | BF16 | BF16 | – | – | – | – | BF16 | 0 | – |
       | A8W8-INT | BF16 | INT8 | INT8 | UINT64 | UINT64 | – | – | BF16 | 2 | 1（INT8） |
       | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
+
+    - intermediate_hidden（weight1 每个专家矩阵的 dim1 / 2）需大于等于 1024 且按 512 对齐。SwiGLU 采用 UB 分块计算，不再因 UB 容量设置该维度的上限。
 
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
     - BS（x.dim0）范围 [1, 512]。
