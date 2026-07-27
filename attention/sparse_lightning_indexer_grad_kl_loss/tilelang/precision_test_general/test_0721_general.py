@@ -28,6 +28,7 @@ import math
 import os
 import sys
 import time
+from collections import Counter
 from importlib import import_module
 from typing import Any, Callable, Dict, Iterable, List, Sequence, Tuple
 
@@ -472,7 +473,7 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
         inputs = make_inputs(case, args.seed + index)
     except Exception as exc:
         print(f"{case_prefix} INPUT FAIL: {exc}")
-        return "FAIL"
+        return "INPUT_FAIL"
 
     try:
         tilelang_outputs = _call_tilelang(inputs, case)
@@ -481,7 +482,7 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
             print("  TileLang: completed")
     except Exception as exc:
         print(f"{case_prefix} TileLang FAIL: {exc}")
-        return "FAIL"
+        return "TILELANG_FAIL"
 
     try:
         official_outputs = _call_official(inputs, case)
@@ -490,20 +491,22 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
             print("  Official: completed")
     except Exception as exc:
         print(f"{case_prefix} Official FAIL: {exc}")
-        return "FAIL"
+        return "OFFICIAL_FAIL"
 
     try:
         metrics, passed = _compare_outputs(tilelang_outputs, official_outputs)
-        status = "PASS" if passed else "FAIL"
-        if args.verbose or not passed:
+        status = "PASS" if passed else "PRECISION_FAIL"
+        if args.verbose:
             _print_metrics(metrics)
-        if not args.summary_only:
+        # Keep the normal 50-case run compact: a passing case is represented
+        # by its benchmark line below, while every failure keeps its metrics.
+        if not passed or (not args.bench and not args.summary_only):
             print(f"{case_prefix} {status} {_brief_metrics(metrics)}")
     except Exception as exc:
         print(f"{case_prefix} PRECISION FAIL: {exc}")
-        status = "FAIL"
+        status = "PRECISION_FAIL"
 
-    if args.bench:
+    if args.bench and status == "PASS":
         try:
             tl_avg, tl_med, tl_min = _bench(
                 lambda: _call_tilelang(inputs, case), args.warmup, args.iters
@@ -522,7 +525,7 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
                 )
         except Exception as exc:
             print(f"{case_prefix} BENCHMARK FAIL: {exc}")
-            status = "FAIL"
+            status = "BENCHMARK_FAIL"
 
     return status
 
@@ -551,15 +554,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--bench",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Benchmark both implementations after comparison (default: disabled)",
+        default=True,
+        help="Benchmark only precision-passing cases (default: enabled)",
     )
     parser.add_argument("--warmup", type=int, default=WARMUP_ITERS)
     parser.add_argument("--iters", type=int, default=BENCH_ITERS)
     parser.add_argument("--seed", type=int, default=42)
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument("--verbose", action="store_true", help="Print full per-case diagnostics")
-    output_group.add_argument("--summary-only", action="store_true", help="Print only failures and final totals")
+    output_group.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print failures, successful benchmark lines, and final totals",
+    )
+    parser.add_argument("--list-failures", action="store_true", help="List every non-passing case in the final summary")
     args = parser.parse_args()
     if args.warmup < 0 or args.iters < 1:
         parser.error("--warmup must be non-negative and --iters must be at least one")
@@ -579,12 +587,23 @@ def main() -> int:
         results.append((case["name"], run_case(case, args, index)))
         _release_case_memory()
 
-    failures = [name for name, status in results if status == "FAIL"]
-    passed_count = len(results) - len(failures)
-    print(f"Summary: total={len(results)} pass={passed_count} fail={len(failures)}")
-    if failures:
-        print(f"Failed: {', '.join(failures)}")
-    return 1 if failures else 0
+    status_counts = Counter(status for _, status in results)
+    passed_count = status_counts["PASS"]
+    failed_count = len(results) - passed_count
+    print(
+        f"Summary: total={len(results)} pass={passed_count} fail={failed_count} "
+        f"precision={status_counts['PRECISION_FAIL']} "
+        f"tilelang_error={status_counts['TILELANG_FAIL']} "
+        f"official_error={status_counts['OFFICIAL_FAIL']} "
+        f"input_error={status_counts['INPUT_FAIL']} "
+        f"bench_error={status_counts['BENCHMARK_FAIL']}"
+    )
+    if args.list_failures:
+        for status in ("PRECISION_FAIL", "TILELANG_FAIL", "OFFICIAL_FAIL", "INPUT_FAIL", "BENCHMARK_FAIL"):
+            names = [name for name, case_status in results if case_status == status]
+            if names:
+                print(f"{status}: {', '.join(names)}")
+    return 1 if failed_count else 0
 
 
 if __name__ == "__main__":
