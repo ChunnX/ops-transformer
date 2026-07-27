@@ -64,9 +64,9 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
 {
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID3>();
     int64_t quantTokenSize = IsQuantized ? (n + nScale) : n;
-    uint32_t toRankId = metaInfoTensor.GetValue(batchStart * TRIPLE_SIZE + RANK_ID);
-    uint32_t tokenIdx = metaInfoTensor.GetValue(batchStart * TRIPLE_SIZE + TOKEN_ID);
-    uint32_t topkIdx = metaInfoTensor.GetValue(batchStart * TRIPLE_SIZE + TOPK_INDEX);
+    uint32_t toRankId = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + RANK_ID);
+    uint32_t tokenIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOKEN_ID);
+    uint32_t topkIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOPK_INDEX);
 
     AscendC::GlobalTensor<DataType> gmLocalD;
     uint64_t gmRemoteOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
@@ -269,9 +269,9 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
                 ubQuantSend = ubBf16;
            }
            GM_ADDR localSrcPtr = gmm2OutAddr + (tokenStart + i) * n * sizeof(T);
-           CombineSendTokenToRemote<SendType,IsQuantized>(i, 1, n, nScale, groupIdx, rankId, tripleTensor, ubQuantSend, params, localSrcPtr);
+           CombineSendTokenToRemote<SendType,IsQuantized>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params, localSrcPtr);
         } else {
-            CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, tripleTensor, ubQuantSend, params);
+            CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params);
         }
     }
 

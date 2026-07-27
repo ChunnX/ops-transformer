@@ -1669,20 +1669,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBa
 
     // 加载 triple info 到 UB（复用 VECIN 空间，每次 batch 覆盖）
     offset = batchBaseOffset;
-    LocalTensor<int32_t> tripleTensor =
-        LocalTensor<int32_t>(TPosition::VECIN, offset, batchCount * TRIPLE_SIZE);
-    offset += batchCount * TRIPLE_SIZE * sizeof(int32_t);
+    LocalTensor<int32_t> metaInfoTensor =
+        LocalTensor<int32_t>(TPosition::VECIN, offset, batchCount * META_INFO_SIZE);
+    offset += batchCount * META_INFO_SIZE * sizeof(int32_t);
 
     AscendC::GlobalTensor<int32_t> tripleGm;
     tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-        params_.workspaceInfo.tripleInfoPtr +
-        (gmm2State.expertBeforeCnt + currentRow) * TRIPLE_SIZE * sizeof(int32_t)));
-    AscendC::DataCopy(tripleTensor, tripleGm, batchCount * TRIPLE_SIZE);
+        params_.workspaceInfo.metaInfoPtr +
+        (gmm2State.expertBeforeCnt + currentRow) * META_INFO_SIZE * sizeof(int32_t)));
+    AscendC::DataCopy(metaInfoTensor, tripleGm, batchCount * META_INFO_SIZE);
 
     // 执行 combine 并发送
     MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(
         currentRow, batchCount, k_, expertIdx, rankId_,
-        gmmAddrInfo.gmm2OutGlobal, params_, tripleTensor, combineUbTensorSize_,
+        gmmAddrInfo.gmm2OutGlobal, params_, metaInfoTensor, combineUbTensorSize_,
         offset, quantTokenSizeBytes);
 
     // 更新进度
@@ -1779,12 +1779,10 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx)
 {
-    // Phase 1 + Phase 2 由 ProcessCombineGroups 内部完成
     uint32_t startRankId = 0;
     uint32_t endRankId = 0;
     ProcessCombineGroups(gmmAddrInfo, gmm2State, expertIdx, startRankId, endRankId);
 
-    // ── Phase 3：冲刷 URMA 通道 ──
     if (expertIdx == expertPerRank_ - 1) {
         DrainCombineChannels(startRankId, endRankId);
     }
