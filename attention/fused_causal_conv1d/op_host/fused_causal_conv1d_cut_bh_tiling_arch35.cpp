@@ -1261,7 +1261,7 @@ void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "convMode: %ld", tilingData_.convMode);
     OP_LOGI(context_->GetNodeName(), "hasNumComputedTokens: %ld", tilingData_.hasNumComputedTokens);
     OP_LOGI(context_->GetNodeName(), "maxQueryLen: %ld", maxQueryLen_);
-    // dimRemainder（last dim core）相关字段
+    // dimRemainder（last dim core）相关的字段
     OP_LOGI(context_->GetNodeName(), "dimRemainderElems: %ld", tilingData_.dimRemainderElems);
     OP_LOGI(context_->GetNodeName(), "lastCoreloopNumDim: %ld", tilingData_.lastCoreloopNumDim);
     OP_LOGI(context_->GetNodeName(), "lastCoreubMainFactorDim: %ld", tilingData_.lastCoreubMainFactorDim);
