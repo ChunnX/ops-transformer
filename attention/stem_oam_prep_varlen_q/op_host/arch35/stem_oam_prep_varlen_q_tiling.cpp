@@ -154,14 +154,17 @@ ge::graphStatus StemOamPrepVarlenQTiling::GetWorkspaceSize()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
-        return ge::GRAPH_SUCCESS;
+        OP_LOGE(opName_, "platform info is null");
+        return ge::GRAPH_FAILED;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *workspaceSizes = context_->GetWorkspaceSizes(1);
     if (workspaceSizes != nullptr) {
-        workspaceSizes[0] = workspaceSize;
+        OP_LOGE(opName_, "workspaceSizes info is null");
+        return ge::GRAPH_FAILED;
     }
+    workspaceSizes[0] = workspaceSize;
     OP_LOGI(context_, "Workspace size: %zu bytes", workspaceSize);
     return ge::GRAPH_SUCCESS;
 }
@@ -568,6 +571,7 @@ ge::graphStatus TilingPrepare4StemOamPrepVarlenQ(gert::TilingParseContext *conte
 
 IMPL_OP_OPTILING(StemOamPrepVarlenQ)
     .Tiling(Tiling4StemOamPrepVarlenQ)
+    .TilingInputsDataDependency({1, 2})
     .TilingParse<StemPrepQCompileInfo>(TilingPrepare4StemOamPrepVarlenQ);
 
 } // namespace optiling
