@@ -56,7 +56,6 @@ private:
                                         const GM_ADDR cmp_residual_kv,
                                         const int64_t t1Idx, int64_t &bIdx);
     __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &actSelBlkCount, int32_t &curS2Loop);
-    __aicore__ inline void DeterScatterAfterLocalSync(VecOp<SMLAGT> &vecOp, int64_t s1Round, int64_t scatterDbIdx);
     __aicore__ inline void DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp);
 
     uint32_t cubeBlockIdx;
@@ -149,8 +148,6 @@ private:
     constexpr static uint32_t CUBE_WAIT_VEC_GATHER_PONG = 5;
     constexpr static uint32_t SCATTER_SYNC_FLAG = 6;
     constexpr static uint32_t DETER_KV_SYNC_FLAG = 7;
-    // B3′：全 AIC mode0，写完本轮 mm45 staging 后再通知 AIV（对齐 SFAG SCATTER_CUBE）
-    constexpr static uint32_t SCATTER_CUBE_SYNC_FLAG = 10;
     bool changePingpong = false;
     bool isLastBlockSelected = false;
 
@@ -260,8 +257,8 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         AllocEventID();
         int64_t task = 0;
         if constexpr (IS_DETER) {
-            // B3′：对齐 SFAG——2-buffer + mode0 CUBE sync；不再 Wait(REUSE)。
-            // AIV 在下一轮开头 Scatter 上一 face，与本轮 AIC compute 重叠。
+            // smlag_det：每轮 S1 的 mm45 结束后由 AIV SyncAll+Scatter；全核 formerProcessNNum 对齐。
+            // 保留 v2：固定 slot / Drain / 2-buffer face（i&1）。
             for (int32_t i = 0; i < static_cast<int32_t>(formerProcessNNum); i++) {
                 roundDbIdx = i & 1;
                 bool hasPendingTask = false;
@@ -297,9 +294,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
                     }
                 }
                 DrainCubeDeter(cubeOp, hasPendingTask);
-                // 全 AIC 对齐：本轮 mm45 写完后才通知 AIV Scatter（替代 AIV SyncAll #1 的 cube 侧语义）
-                CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                // 通知本 cube AIV：本轮 mm45 已完成（空 S1 也发，对齐轮次）
                 CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
             }
         } else {
@@ -354,14 +349,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         
         int64_t task = 0;
         if constexpr (IS_DETER) {
-            // B3′：轮初 Wait+Scatter 上一 face（与本轮 compute/Acc 重叠）；尾轮再 Drain 最后一面。
-            // 无 SyncAll #1/#2、无 REUSE；全核 mm45 就绪靠 AIC mode0 CUBE sync。
+            // smlag_det cmp：每轮 mm45 后 Wait → SyncAll → Scatter 本轮 face。
+            // 保留 v2 Acc：仅 ori slot + Drain；跳过每轮首 Acc；Acc-previous。
             for (int32_t i = 0; i < static_cast<int32_t>(formerProcessNNum); i++) {
                 roundDbIdx = i & 1;
-                if (i > 0) {
-                    CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                    DeterScatterAfterLocalSync(vecOp, i - 1, (i - 1) & 1);
-                }
                 bool hasPendingTask = false;
                 bool hasActualS1 = cubeBlockIdx < usedCoreNum &&
                                    i < static_cast<int32_t>(processBS1ByCore);
@@ -407,12 +398,11 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
 
                 DrainVecDeter(vecOp, hasPendingTask);
                 DeterAccumulateAfterLocalSync(vecOp);
-            }
-            // 尾轮：Wait 最后一轮 AIC 通知，Scatter 最后一面
-            if (formerProcessNNum > 0) {
-                int32_t lastRound = static_cast<int32_t>(formerProcessNNum) - 1;
+
+                // smlag_det：(1) 本轮 mm45 结束后 SyncAll，再 Scatter 本轮 face
                 CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                DeterScatterAfterLocalSync(vecOp, lastRound, lastRound & 1);
+                SyncAll();
+                vecOp.ScatterAddDeter(i, roundDbIdx);
             }
         } else {
             for (int32_t i = 0; i < processBS1ByCore; i++) {
@@ -732,19 +722,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetTndSeqLen(const GM
 }
 
 template <typename SMLAGT>
-__aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::DeterScatterAfterLocalSync(VecOp<SMLAGT> &vecOp,
-                                                                                        int64_t s1Round,
-                                                                                        int64_t scatterDbIdx)
-{
-    // B3′ Step2：调用方已 Wait SCATTER_SYNC；AIC 侧 mode0 CUBE sync 已保证全核 mm45 就绪。
-    // 不再 SyncAll；所有权 Scatter 各 AIV 独立读 staging / 写自己的 s2。
-    vecOp.ScatterAddDeter(s1Round, scatterDbIdx);
-}
-
-template <typename SMLAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp)
 {
-    // pending ori 先 Wait KV7；各核 staging 就绪后，按 core0..N-1 串行 AccumulateKvDeter。
+    // smlag_det (2)：SyncAll 后保序累加；core0..N-1 串行 + mode0 屏障（等价于每次循环间全 AIV 同步）。
+    // 保留 v1/v2：只累加本核 deterKv staging；Acc-previous / 跳过首 Acc 由调用方保证次数对齐。
     if (needDeterAcc) {
         CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
     }

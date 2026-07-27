@@ -44,9 +44,9 @@ public:
     __aicore__ inline void Process(const RunInfo &runInfo);
     __aicore__ inline void GatherKV(const int64_t n2Index, uint64_t currentS1Offset, const RunInfo &runInfo);
     __aicore__ inline void ScatterAdd(const RunInfo &runInfo);
-    // 全核 SyncAll 后调用；按 coreIdx 解析各核 S1 的 indices，方案 A 按 s2Idx 所有权写
+    // smlag_det：(1) 调用方 SyncAll 后；均分 K，依次处理 0~coreNum 产物，core 间全 AIV sync
     __aicore__ inline void ScatterAddDeter(int64_t s1Round, int64_t scatterDbIdx);
-    // 调用方 SyncAll 且按 core 串行后调用；只累加本 cube staging
+    // smlag_det：(2) 调用方 SyncAll 后按 core 串行；只累加本 cube deterKv staging
     __aicore__ inline void AccumulateKvDeter(const RunInfo &runInfo);
     __aicore__ inline void CopyOutDsinks();
 protected:
@@ -1154,122 +1154,116 @@ __aicore__ inline bool VecOp<SMLAGT>::ResolveCoreS1ForScatter(int64_t coreIdx, i
 template <typename SMLAGT>
 __aicore__ inline void VecOp<SMLAGT>::ScatterAddDeter(int64_t s1Round, int64_t scatterDbIdx)
 {
+    // - 调用方已 SyncAll，保证各核本轮 mm45 写完
+    // - 每个 AIV 均分该核 S1 的 K（selected rows），依次处理 core0..usedCoreNum-1 的产物
+    // - 每个 coreIdx 循环后全 AIV mode0 同步，保证写同一 s2 的跨核加序确定
     LocalTensor<float> dkInUb;
     LocalTensor<float> dvInUb;
-    LocalTensor<float> accRowUb;
     int64_t UB_ROW_SIZE = 16;
     int64_t totalVec = usedCoreNum * 2;
     if (totalVec <= 0) {
         return;
     }
     int64_t myVecId = static_cast<int64_t>(cubeBlockIdx) * 2 + static_cast<int64_t>(subBlockIdx);
+    bool isActiveVec = (static_cast<int64_t>(cubeBlockIdx) < usedCoreNum);
 
-    // 按 coreIdx 使用该核 S1 的 indices；s2Idx % totalVec == myVecId 唯一写。
-    // 同 AIV 内多 core 可能写同一 s2Idx：load-add-store 保证累加序确定（非 Atomic）。
+    SetAtomicAdd<float>();
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
-    // 空闲 AIV（cubeBlockIdx >= usedCoreNum）无所有权，只对齐事件后返回
-    if (static_cast<int64_t>(cubeBlockIdx) >= usedCoreNum) {
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
-        return;
-    }
+
     for (int64_t coreIdx = 0; coreIdx < usedCoreNum; coreIdx++) {
-        // staging 按 S1 覆盖写，n2 循环后仅保留最后一次；约束 n2=1（tiling/文档已约束）
+        // staging 按 S1 覆盖写，n2 循环后仅保留最后一次；约束 n2=1
         int64_t n2Idx = dimN2 - 1;
         int64_t indicesGmOffset = 0;
         int64_t cmpKeyGmOffset = 0;
         int64_t s2RealSize = 0;
-        if (!ResolveCoreS1ForScatter(coreIdx, s1Round, n2Idx, indicesGmOffset, cmpKeyGmOffset, s2RealSize)) {
-            continue;
-        }
+        bool valid = isActiveVec &&
+            ResolveCoreS1ForScatter(coreIdx, s1Round, n2Idx, indicesGmOffset, cmpKeyGmOffset, s2RealSize);
 
-        GlobalTensor<float> dCmpKvOutGm = dkWorkspaceGm[cmpKeyGmOffset + dOriKvSize];
-        GlobalTensor<int32_t> indicesGm = topkIndicesGm[indicesGmOffset];
-        int64_t dkCoreBase = scatterDbIdx * MAX_CORE_NUM * selectedBlockCount * dimDAlign +
-                             coreIdx * selectedBlockCount * dimDAlign;
-        int64_t dvCoreBase = scatterDbIdx * MAX_CORE_NUM * selectedBlockCount * dimD2Align +
-                             coreIdx * selectedBlockCount * dimD2Align;
-        GlobalTensor<float> dkSrcGm = mm4ResWorkspaceGm[dkCoreBase];
-        GlobalTensor<float> dvSrcGm = mm5ResWorkspaceGm[dvCoreBase];
+        if (valid && s2RealSize > 0) {
+            int64_t remainder = s2RealSize % totalVec;
+            int64_t avgSize = s2RealSize / totalVec;
+            int64_t mySize = avgSize + (myVecId < remainder ? 1 : 0);
+            int64_t myOffset = myVecId < remainder ? (myVecId * (avgSize + 1)) :
+                (remainder * (avgSize + 1) + (myVecId - remainder) * avgSize);
 
-        int64_t maxLoops = CeilDiv(s2RealSize, UB_ROW_SIZE);
-        int64_t tailRows = s2RealSize - (maxLoops - 1) * UB_ROW_SIZE;
+            if (mySize > 0) {
+                GlobalTensor<float> dCmpKvOutGm = dkWorkspaceGm[cmpKeyGmOffset + dOriKvSize];
+                GlobalTensor<int32_t> indicesGm = topkIndicesGm[indicesGmOffset];
+                int64_t dkCoreBase = scatterDbIdx * MAX_CORE_NUM * selectedBlockCount * dimDAlign +
+                                     coreIdx * selectedBlockCount * dimDAlign;
+                int64_t dvCoreBase = scatterDbIdx * MAX_CORE_NUM * selectedBlockCount * dimD2Align +
+                                     coreIdx * selectedBlockCount * dimD2Align;
+                GlobalTensor<float> dkSrcGm = mm4ResWorkspaceGm[dkCoreBase + myOffset * dimDAlign];
+                GlobalTensor<float> dvSrcGm = mm5ResWorkspaceGm[dvCoreBase + myOffset * dimD2Align];
 
-        for (int64_t loop = 0; loop < maxLoops - 1; loop++) {
-            event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3 : mte2WaitMte3Pong;
-            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
-            dkInUb = scatterAddTensorK[pingPongIdx * (UB_ROW_SIZE * dimDAlign)];
-            dvInUb = scatterAddTensorV[pingPongIdx * (UB_ROW_SIZE * dimD2Align)];
-            int64_t slotBase = loop * UB_ROW_SIZE;
-            DataCopy(dkInUb, dkSrcGm[slotBase * dimDAlign], UB_ROW_SIZE * dimDAlign);
-            event_t event = pingPongIdx == 0 ? vWaitMte2 : vWaitMte2Pong;
-            SetFlag<AscendC::HardEvent::MTE2_V>(event);
-            WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-            Muls(dkInUb, dkInUb, (float)tilingData->opInfo.scaleValue, UB_ROW_SIZE * dimDAlign);
-            DataCopy(dvInUb, dvSrcGm[slotBase * dimD2Align], UB_ROW_SIZE * dimD2Align);
-            SetFlag<AscendC::HardEvent::MTE2_V>(event);
-            WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-            PipeBarrier<PIPE_V>();
-            Add(dkInUb, dkInUb, dvInUb, UB_ROW_SIZE * dimDAlign);
-            SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-            WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-            // dvInUb 已消费完，复用其首行作 load-add-store 累加缓冲
-            accRowUb = dvInUb;
-            SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
-            for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
-                int32_t s2Idx = indicesGm.GetValue(slotBase + row);
-                if (s2Idx >= 0 && (static_cast<int64_t>(s2Idx) % totalVec) == myVecId) {
+                int64_t maxLoops = CeilDiv(mySize, UB_ROW_SIZE);
+                int64_t tailRows = mySize - (maxLoops - 1) * UB_ROW_SIZE;
+                int64_t curS2Index = myOffset;
+
+                for (int64_t loop = 0; loop < maxLoops - 1; loop++) {
+                    event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3 : mte2WaitMte3Pong;
                     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
-                    DataCopy(accRowUb, dCmpKvOutGm[s2Idx * dimDAlign], dimDAlign);
+                    dkInUb = scatterAddTensorK[pingPongIdx * (UB_ROW_SIZE * dimDAlign)];
+                    dvInUb = scatterAddTensorV[pingPongIdx * (UB_ROW_SIZE * dimD2Align)];
+                    DataCopy(dkInUb, dkSrcGm[loop * UB_ROW_SIZE * dimDAlign], UB_ROW_SIZE * dimDAlign);
+                    event_t event = pingPongIdx == 0 ? vWaitMte2 : vWaitMte2Pong;
                     SetFlag<AscendC::HardEvent::MTE2_V>(event);
                     WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-                    Add(accRowUb, accRowUb, dkInUb[row * dimDAlign], dimDAlign);
+                    Muls(dkInUb, dkInUb, (float)tilingData->opInfo.scaleValue, UB_ROW_SIZE * dimDAlign);
+                    DataCopy(dvInUb, dvSrcGm[loop * UB_ROW_SIZE * dimD2Align], UB_ROW_SIZE * dimD2Align);
+                    SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                    WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                    PipeBarrier<PIPE_V>();
+                    Add(dkInUb, dkInUb, dvInUb, UB_ROW_SIZE * dimDAlign);
                     SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
                     WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-                    DataCopy(dCmpKvOutGm[s2Idx * dimDAlign], accRowUb, dimDAlign);
+                    for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
+                        int32_t s2Idx = indicesGm.GetValue(curS2Index);
+                        if (s2Idx >= 0) {
+                            DataCopy(dCmpKvOutGm[s2Idx * dimDAlign], dkInUb[row * dimDAlign], dimDAlign);
+                        }
+                        curS2Index++;
+                    }
                     SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
+                    pingPongIdx = 1 - pingPongIdx;
                 }
-            }
-            pingPongIdx = 1 - pingPongIdx;
-        }
-        event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3 : mte2WaitMte3Pong;
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
-        dkInUb = scatterAddTensorK[pingPongIdx * (UB_ROW_SIZE * dimDAlign)];
-        dvInUb = scatterAddTensorV[pingPongIdx * (UB_ROW_SIZE * dimD2Align)];
-        int64_t slotBase = (maxLoops - 1) * UB_ROW_SIZE;
-        DataCopy(dkInUb, dkSrcGm[slotBase * dimDAlign], tailRows * dimDAlign);
-        event_t event = pingPongIdx == 0 ? vWaitMte2 : vWaitMte2Pong;
-        SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-        Muls(dkInUb, dkInUb, (float)tilingData->opInfo.scaleValue, tailRows * dimDAlign);
-        DataCopy(dvInUb, dvSrcGm[slotBase * dimD2Align], tailRows * dimD2Align);
-        SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-        PipeBarrier<PIPE_V>();
-        Add(dkInUb, dkInUb, dvInUb, tailRows * dimDAlign);
-        SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-        WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-        accRowUb = dvInUb;
-        SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
-        for (int64_t row = 0; row < tailRows; row++) {
-            int32_t s2Idx = indicesGm.GetValue(slotBase + row);
-            if (s2Idx >= 0 && (static_cast<int64_t>(s2Idx) % totalVec) == myVecId) {
+                event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3 : mte2WaitMte3Pong;
                 WaitFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
-                DataCopy(accRowUb, dCmpKvOutGm[s2Idx * dimDAlign], dimDAlign);
+                dkInUb = scatterAddTensorK[pingPongIdx * (UB_ROW_SIZE * dimDAlign)];
+                dvInUb = scatterAddTensorV[pingPongIdx * (UB_ROW_SIZE * dimD2Align)];
+                DataCopy(dkInUb, dkSrcGm[(maxLoops - 1) * UB_ROW_SIZE * dimDAlign], tailRows * dimDAlign);
+                event_t event = pingPongIdx == 0 ? vWaitMte2 : vWaitMte2Pong;
                 SetFlag<AscendC::HardEvent::MTE2_V>(event);
                 WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-                Add(accRowUb, accRowUb, dkInUb[row * dimDAlign], dimDAlign);
+                Muls(dkInUb, dkInUb, (float)tilingData->opInfo.scaleValue, tailRows * dimDAlign);
+                DataCopy(dvInUb, dvSrcGm[(maxLoops - 1) * UB_ROW_SIZE * dimD2Align], tailRows * dimD2Align);
+                SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                PipeBarrier<PIPE_V>();
+                Add(dkInUb, dkInUb, dvInUb, tailRows * dimDAlign);
                 SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
                 WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-                DataCopy(dCmpKvOutGm[s2Idx * dimDAlign], accRowUb, dimDAlign);
+                for (int64_t row = 0; row < tailRows; row++) {
+                    int32_t s2Idx = indicesGm.GetValue(curS2Index);
+                    if (s2Idx >= 0) {
+                        DataCopy(dCmpKvOutGm[s2Idx * dimDAlign], dkInUb[row * dimDAlign], dimDAlign);
+                    }
+                    curS2Index++;
+                }
                 SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
+                pingPongIdx = 1 - pingPongIdx;
             }
         }
-        pingPongIdx = 1 - pingPongIdx;
+
+        // 每个 core 产物处理完后全 AIV 对齐（空闲 / 无效 S1 核也必须参加）
+        CrossCoreSetFlag<0, PIPE_MTE3>(DETER_SCATTER_VEC_SYNC_FLAG);
+        CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_SCATTER_VEC_SYNC_FLAG);
     }
+
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
+    SetAtomicNone();
 
     SetFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);
     WaitFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);

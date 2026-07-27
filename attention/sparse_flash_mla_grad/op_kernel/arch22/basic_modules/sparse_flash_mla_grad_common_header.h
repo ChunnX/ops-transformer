@@ -49,7 +49,8 @@ struct SMLAG_TYPE {
 };
 
 // Deterministic sync flags (AIV-AIV mode=0 / mode=1)
-constexpr uint32_t DETER_SCATTER_VEC_SYNC_FLAG = 7;
+// 与 sfag_basic DETER_KV_SYNC_FLAG(7, mode2) 错开，避免同 id 不同 mode 冲突
+constexpr uint32_t DETER_SCATTER_VEC_SYNC_FLAG = 10;
 constexpr uint32_t DETER_CMP_L1_SYNC_FLAG = 8;
 // AccumulateKvDeter 按 core0..N-1 串行时的全 AIV 轮次屏障（替代每 core 一次 SyncAll）
 constexpr uint32_t DETER_ACC_VEC_SYNC_FLAG = 9;
@@ -72,7 +73,7 @@ struct RunInfo {
     int64_t actualSelCntOffset;
     int64_t scatterTaskId;
     int64_t s1Round{0}; // processBS1 轮次 i，供全局 ScatterAddDeter 解析各 core 的 S1
-    int64_t roundDbIdx{0}; // SCFA scatter staging face：s1Round & 1（B3′ 对齐 SFAG 2-buffer）
+    int64_t roundDbIdx{0}; // SCFA scatter staging face：s1Round & 1（2-buffer）
     int64_t s1Index;
     int64_t actualSelectedBlockCount;
     int64_t changeS1 = false;
