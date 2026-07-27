@@ -169,6 +169,11 @@ static bool CheckAivModeDtypeValid(const aclTensor *x1, const aclTensor *x2, con
         OP_CHECK_DTYPE_NOT_SUPPORT(x1, AIV_MODE_INPUT_SUPPORT_LIST, return false);
         OP_CHECK_DTYPE_NOT_SUPPORT(x2, AIV_MODE_INPUT_SUPPORT_LIST, return false);
     }
+    if ((x1->GetDataType() == op::DataType::DT_BF16) && (bias != nullptr)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "bias", "non-nullptr",
+                                              "BF16 input currently supports only nullptr bias on AIV mode.");
+        return false;
+    }
     if (bias != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, AIV_MODE_BIAS_SUPPORT_LIST, return false);
     }
@@ -313,6 +318,11 @@ static enum CaseOption CheckHighAccuracyCase(const aclTensor *x1, const aclTenso
     // 高精度场景须数据类型相同
     OP_CHECK_DTYPE_NOT_SAME(x1, x2, return CaseOption::INVALID);
     OP_CHECK_DTYPE_NOT_SAME(x1, y, return CaseOption::INVALID);
+    if ((x1->GetDataType() == op::DataType::DT_BF16) && (bias != nullptr)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "bias", "non-nullptr",
+                                              "BF16 input currently supports only nullptr bias.");
+        return CaseOption::INVALID;
+    }
     if (CheckEmptyOptionalTensor(bias, "bias")) {
         OP_CHECK_DTYPE_NOT_SAME(x1, bias, return CaseOption::INVALID);
     }
