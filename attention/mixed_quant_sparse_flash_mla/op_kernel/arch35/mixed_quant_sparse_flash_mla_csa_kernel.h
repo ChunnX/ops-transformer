@@ -451,6 +451,13 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         ParseFdRunInfo(fdRunInfo);
     }
     ProcessMainLoop();
+    if ASCEND_IS_AIV {
+        if constexpr (BATCH_CONSISTENCY) {
+            // SyncAll orders participating cores but does not drain an AIV's asynchronous MTE3 writes.
+            // Publish every FA/intra-reduce staging write before any core starts FD MTE2 reads.
+            this->vecBlock.WaitFaStagingMte3();
+        }
+    }
     SyncAll();
     if ASCEND_IS_AIV {
         if (fdRunInfo.coreEnable > 0) {

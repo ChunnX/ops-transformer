@@ -162,6 +162,11 @@ public:
     }
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo);
+    __aicore__ inline void WaitFaStagingMte3()
+    {
+        SetFlag<HardEvent::MTE3_S>(mte3ToSBeforeFdId);
+        WaitFlag<HardEvent::MTE3_S>(mte3ToSBeforeFdId);
+    }
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, ConstInfo &constInfo);
@@ -293,6 +298,9 @@ private:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId;
     TEventID vToMte3Id;
+    TEventID intraLseMte3ToMte2Id;
+    TEventID intraAttnOutMte3ToMte2Id;
+    TEventID mte3ToSBeforeFdId;
     TEventID mte3ToVLseOutId;
     TEventID vToMte3LseOutId;
     TEventID mte2ToVV0Id[2];
@@ -1286,6 +1294,32 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                 AttentionCommon::StageVec1Lse(stagingLayout, intraCoreCombineBase,
                     GetIntraCoreWorkspaceIdx(constInfo), stagingMOffset, runInfo.halfMRealSize,
                     maxUb, sumUb, tmpUb, vToMte3Id, mte3ToVId);
+                SetFlag<HardEvent::MTE3_MTE2>(intraLseMte3ToMte2Id);
+                if (runInfo.boIdx == 0) {
+                    printf("[MQSMLA_DBG_STAGE_LSE] aiv=%lld sub=%lld rb=%lld loop=%lld/%lld slot=%u mOffset=%lld rows=%lld\n",
+                        static_cast<long long>(constInfo.aivIdx),
+                        static_cast<long long>(constInfo.subBlockIdx),
+                        static_cast<long long>(runInfo.reduceBlockId),
+                        static_cast<long long>(runInfo.s2LoopCount),
+                        static_cast<long long>(runInfo.s2LoopLimit),
+                        GetIntraCoreWorkspaceIdx(constInfo),
+                        static_cast<long long>(stagingMOffset),
+                        static_cast<long long>(runInfo.halfMRealSize));
+                    int64_t debugMaxSumBytes = stagingLayout.StagingMaxSumBytes();
+                    int64_t debugOffset =
+                        GetIntraCoreWorkspaceIdx(constInfo) * (debugMaxSumBytes / sizeof(float)) +
+                        stagingMOffset * stagingLayout.broadcastElems;
+                    GlobalTensor<float> debugMaxGm;
+                    debugMaxGm.SetGlobalBuffer(
+                        (__gm__ float *)stagingLayout.MaxRegion(intraCoreCombineBase));
+                    GlobalTensor<float> debugSumGm;
+                    debugSumGm.SetGlobalBuffer(
+                        (__gm__ float *)stagingLayout.SumRegion(intraCoreCombineBase));
+                    DumpTensor(debugSumGm[debugOffset], 110, 8);
+                    DumpTensor(debugMaxGm[debugOffset], 111, 8);
+                    DumpTensor(sumUb, 142, 8);
+                    DumpTensor(maxUb, 143, 8);
+                }
             } else if (runInfo.isCrossCoreSplit && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0) {
                 AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                     dTemplateAlign64, GetStagingSlotNum(false),
@@ -1342,6 +1376,15 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
         sumUb = this->softmaxFinalSumBuf[runInfo.taskIdMod2].template Get<float>();
     }
 
+    WaitFlag<HardEvent::MTE3_MTE2>(intraLseMte3ToMte2Id);
+    WaitFlag<HardEvent::MTE3_MTE2>(intraAttnOutMte3ToMte2Id);
+    // The initial V_MTE2 flags are posted during buffer initialization, before
+    // ProcessVec2 consumes mmRes. Refresh them on the current V pipeline so the
+    // first GM-to-UB merge cannot overwrite mmRes while it is still being read.
+    WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+    WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
+    SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+    SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
     int64_t startRow = 0;
     while (startRow < runInfo.vec2MRealSize) {
         int64_t dealRowCount = intraLayout.chunkRows;
@@ -1351,11 +1394,45 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
         LocalTensor<T> chunkCurrent = vec2ResUb[startRow * dTemplateAlign64];
         LocalTensor<float> chunkMaxUb = maxUb[startRow];
         LocalTensor<float> chunkSumUb = sumUb[startRow];
+        if (runInfo.boIdx == 0 && startRow == 0) {
+            int64_t debugMaxSumBytes = intraLayout.StagingMaxSumBytes();
+            GlobalTensor<float> debugPreviousMaxGm;
+            debugPreviousMaxGm.SetGlobalBuffer((__gm__ float *)(intraLayout.MaxRegion(intraCoreCombineBase) +
+                intraWorkspaceIdx * debugMaxSumBytes));
+            GlobalTensor<float> debugPreviousSumGm;
+            debugPreviousSumGm.SetGlobalBuffer((__gm__ float *)(intraLayout.SumRegion(intraCoreCombineBase) +
+                intraWorkspaceIdx * debugMaxSumBytes));
+            GlobalTensor<float> debugPreviousPartialOGm;
+            debugPreviousPartialOGm.SetGlobalBuffer((__gm__ float *)(intraLayout.AttenOutRegion(
+                intraCoreCombineBase) + intraWorkspaceIdx * intraLayout.StagingAttenOutElems() * sizeof(float)));
+            int64_t debugMaxSumOffset = stagingMOffset * intraLayout.broadcastElems;
+            int64_t debugPartialOOffset = stagingMOffset * static_cast<int64_t>(constInfo.dSizeV);
+            printf("[MQSMLA_DBG_MERGE_IN] aiv=%lld sub=%lld rb=%lld loop=%lld/%lld slot=%u mOffset=%lld rows=%lld\n",
+                static_cast<long long>(constInfo.aivIdx),
+                static_cast<long long>(constInfo.subBlockIdx),
+                static_cast<long long>(runInfo.reduceBlockId),
+                static_cast<long long>(runInfo.s2LoopCount),
+                static_cast<long long>(runInfo.s2LoopLimit),
+                intraWorkspaceIdx,
+                static_cast<long long>(stagingMOffset),
+                static_cast<long long>(runInfo.vec2MRealSize));
+            DumpTensor(debugPreviousMaxGm[debugMaxSumOffset], 113, 8);
+            DumpTensor(debugPreviousSumGm[debugMaxSumOffset], 114, 8);
+            DumpTensor(debugPreviousPartialOGm[debugPartialOOffset], 115, 16);
+            DumpTensor(chunkCurrent, 116, 16);
+            DumpTensor(chunkMaxUb, 126, 8);
+            DumpTensor(chunkSumUb, 127, 8);
+        }
         AttentionCommon::MergeStagedAndCurrentChunk<T, dTemplateAlign64>(intraLayout,
             intraCoreCombineBase, intraWorkspaceIdx, stagingMOffset + startRow,
             dealRowCount, static_cast<int64_t>(constInfo.dSizeV), chunkMaxUb, chunkSumUb,
             chunkCurrent, blockMaxUb, blockSumUb, partialTmpUb, lseBroadcastUb, sumBroadcastUb,
             vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id[0]);
+        if (runInfo.boIdx == 0 && startRow == 0) {
+            DumpTensor(chunkCurrent, 118, 16);
+            DumpTensor(lseBroadcastUb, 121, 8);
+            DumpTensor(sumBroadcastUb, 123, 8);
+        }
 
         AttentionCommon::StageBroadcastMaxSum(intraLayout, intraCoreCombineBase, intraWorkspaceIdx,
             stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb,
@@ -1376,6 +1453,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
             stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
             vToMte3Id, mte3ToVId);
     }
+    SetFlag<HardEvent::MTE3_MTE2>(intraLseMte3ToMte2Id);
+    SetFlag<HardEvent::MTE3_MTE2>(intraAttnOutMte3ToMte2Id);
     if (constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid && runInfo.halfMRealSize > 0 &&
         runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
@@ -1468,6 +1547,23 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                     AttentionCommon::StageVec2PartialOAndWait<T>(stagingLayout, intraCoreCombineGm,
                         GetIntraCoreWorkspaceIdx(constInfo), stagingMOffset, runInfo.vec2MRealSize,
                         static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb, vToMte3Id, mte3ToVId);
+                    SetFlag<HardEvent::MTE3_MTE2>(intraAttnOutMte3ToMte2Id);
+                    if (runInfo.boIdx == 0) {
+                        printf("[MQSMLA_DBG_STAGE_O] aiv=%lld sub=%lld rb=%lld loop=%lld/%lld slot=%u mOffset=%lld rows=%lld\n",
+                            static_cast<long long>(constInfo.aivIdx),
+                            static_cast<long long>(constInfo.subBlockIdx),
+                            static_cast<long long>(runInfo.reduceBlockId),
+                            static_cast<long long>(runInfo.s2LoopCount),
+                            static_cast<long long>(runInfo.s2LoopLimit),
+                            GetIntraCoreWorkspaceIdx(constInfo),
+                            static_cast<long long>(stagingMOffset),
+                            static_cast<long long>(runInfo.vec2MRealSize));
+                        int64_t debugOffset =
+                            GetIntraCoreWorkspaceIdx(constInfo) * stagingLayout.StagingAttenOutElems() +
+                            stagingMOffset * static_cast<int64_t>(constInfo.dSizeV);
+                        DumpTensor(intraCoreCombineGm[debugOffset], 112, 16);
+                        DumpTensor(vec2ResUb, 139, 16);
+                    }
                 }
                 if (runInfo.isCrossCoreSplit &&
                     (!runInfo.isFirstS2SplitCore ||
@@ -1739,6 +1835,11 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
 
     mte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     vToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    if constexpr (BATCH_CONSISTENCY) {
+        intraLseMte3ToMte2Id = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
+        intraAttnOutMte3ToMte2Id = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
+        mte3ToSBeforeFdId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_S>();
+    }
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
     if (constInfo.isSoftmaxLseEnable) {
         mte3ToVLseOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();

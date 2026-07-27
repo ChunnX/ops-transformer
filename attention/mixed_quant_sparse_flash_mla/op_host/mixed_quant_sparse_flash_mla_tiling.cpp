@@ -679,6 +679,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
             static_cast<size_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
         workspaceSize += 33ULL * combineElemSize * FLOAT_ELEM_SIZE; // 33: 同token最大规约块数
         workspaceSize += 32ULL * 33ULL * combineElemSize * FLOAT_ELEM_SIZE; // 32: 跨核数, 33: 同token最大规约块数
+        printf("aicNum: %d\n", aicNum);
     } else {
         // 末尾的2对应每个split分别暂存max和sum。
         size_t s2SplitStagingPerSlot = static_cast<size_t>(fdStagingMSize) * D_SIZE * FLOAT_ELEM_SIZE *
