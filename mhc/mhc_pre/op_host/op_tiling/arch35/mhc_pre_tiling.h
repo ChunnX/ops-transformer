@@ -143,6 +143,7 @@ protected:
     void FillMkTilingData();
     bool CanUseLowApiBs() const;
     bool CanUseMk() const;
+    uint32_t SelectMkStage() const;
     size_t GetLastRequiredInputIndex() const;
 
 private:
