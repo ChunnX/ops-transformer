@@ -25,22 +25,6 @@
 #endif
 #include "mega_moe_impl_base.h"
 
-// GMM2 direct-GM readiness A/B modes.  Keep the selection in this common
-// host/device header so workspace sizing and kernel addressing cannot drift.
-#define MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC 0
-#define MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT 1
-#define MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED 2
-#define MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE 3
-#ifndef MEGA_MOE_GMM2_FANIN_MODE
-#define MEGA_MOE_GMM2_FANIN_MODE MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
-#endif
-#if MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC && \
-    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT && \
-    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED && \
-    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
-#error "invalid MEGA_MOE_GMM2_FANIN_MODE"
-#endif
-
 namespace {
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
@@ -137,7 +121,6 @@ struct WorkspaceInfo {
     GM_ADDR gmm2MmadResPtr{nullptr};
     GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
     GM_ADDR gmm2NoQuantReadyPtr{nullptr};
-    GM_ADDR gmm2NoQuantReleasePtr{nullptr};
     GM_ADDR sharedExpertResultPtr{nullptr};
     GM_ADDR sharedExpertGmm1OutPtr{nullptr};
     GM_ADDR sharedExpertInputDataPtr{nullptr};
@@ -248,25 +231,11 @@ struct WorkspaceInfo {
             // slotIdx is expertIdx in PER_EXPERT mode and batchIdx in
             // PER_BATCH mode.  The all-AIV reduction keeps each AIC arrival
             // on its own INT_CACHELINE-sized 64B cache line.
-            int64_t readyStrideBytes = static_cast<int64_t>(INT_CACHELINE) * static_cast<int64_t>(SIZE_INT_32);
-#if MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED
-            readyStrideBytes *= static_cast<int64_t>(tilingData->aicNum);
-#elif MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
-            readyStrideBytes = static_cast<int64_t>(tilingData->aicNum) * static_cast<int64_t>(INT_CACHELINE) *
-                               static_cast<int64_t>(SIZE_INT_32);
-#endif
+            int64_t readyStrideBytes = static_cast<int64_t>(tilingData->aicNum) *
+                                       static_cast<int64_t>(INT_CACHELINE) *
+                                       static_cast<int64_t>(SIZE_INT_32);
             int64_t readyBytes = static_cast<int64_t>(tilingData->expertPerRank) * readyStrideBytes;
             workspaceSize += Ops::Base::CeilAlign(readyBytes, static_cast<int64_t>(ALIGN_512));
-
-#if MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
-            // One private 64B release line for every (slot, logical AIV1).
-            // The coordinator publishes the whole slot with one MTE3 copy.
-            gmm2NoQuantReleasePtr = base + workspaceSize;
-            int64_t releaseBytes = static_cast<int64_t>(tilingData->expertPerRank) *
-                                   static_cast<int64_t>(tilingData->aicNum) * static_cast<int64_t>(INT_CACHELINE) *
-                                   static_cast<int64_t>(SIZE_INT_32);
-            workspaceSize += Ops::Base::CeilAlign(releaseBytes, static_cast<int64_t>(ALIGN_512));
-#endif
         }
 
         // Combine-quant-only workspace buffers
