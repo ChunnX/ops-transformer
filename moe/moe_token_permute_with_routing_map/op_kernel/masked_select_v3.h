@@ -207,6 +207,7 @@ public:
         SetPipeBuffer(hasProb);
         indexLocal = indexBuf.Get<int32_t>();
         offsetLocal = offsetBuf.Get<int32_t>();
+        offsetLocal.SetSize((numBlocks + ONE_BLOCK_NUM - 1) / ONE_BLOCK_NUM * ONE_BLOCK_NUM);
     }
 
     __aicore__ inline void Process(GM_ADDR y, GM_ADDR sortedIndices, int32_t& actualOutTokens)

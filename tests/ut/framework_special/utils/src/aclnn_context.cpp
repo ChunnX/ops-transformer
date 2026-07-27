@@ -56,41 +56,41 @@ aclOpExecutor *AclnnContext::GetAclOpExecutor() const
 
 bool AclnnContext::RunTiling(std::string &caseName, bool withSocversion)
 {
-	if (withSocversion) {
-		if (tilingRunCbf_ == nullptr) {
-			LOG_ERR("[%s:%s] TilingCbf nil", opName_.c_str(), caseName.c_str());
-			return false;
-		}
-		auto *curCase = ops::adv::tests::utils::CaseWithSocversion::GetCurrentCase();
-		if (curCase == nullptr) {
-			LOG_ERR("[%s:%s] Current case nil", opName_.c_str(), caseName.c_str());
-			return false;
-		}
-		if (!tilingRunCbf_(curCase, &workspaceSize_, &aclOpExecutor_)) {
-			LOG_DBG("[%s:%s] Run Tiling failed", opName_.c_str(), caseName.c_str());
+    if (withSocversion) {
+        if (tilingRunCbf_ == nullptr) {
+            LOG_ERR("[%s:%s] TilingCbf nil", opName_.c_str(), caseName.c_str());
+            return false;
+        }
+        auto *curCase = ops::adv::tests::utils::CaseWithSocversion::GetCurrentCase();
+        if (curCase == nullptr) {
+            LOG_ERR("[%s:%s] Current case nil", opName_.c_str(), caseName.c_str());
+            return false;
+        }
+        if (!tilingRunCbf_(curCase, &workspaceSize_, &aclOpExecutor_)) {
+            LOG_DBG("[%s:%s] Run Tiling failed", opName_.c_str(), caseName.c_str());
             aclDestroyAclOpExecutor(aclOpExecutor_);
-			aclOpExecutor_ = nullptr;
-			return false;
-		}
-		return true;
-	} else {
-		if (tilingRunCbf_ == nullptr) {
-			LOG_ERR("[%s:%s] TilingCbf nil", opName_.c_str(), caseName.c_str());
-			return false;
-		}
-		auto *curCase = ops::adv::tests::utils::Case::GetCurrentCase();
-		if (curCase == nullptr) {
-			LOG_ERR("[%s:%s] Current case nil", opName_.c_str(), caseName.c_str());
-			return false;
-		}
-		if (!tilingRunCbf_(curCase, &workspaceSize_, &aclOpExecutor_)) {
-			LOG_DBG("[%s:%s] Run Tiling failed", opName_.c_str(), caseName.c_str());
+            aclOpExecutor_ = nullptr;
+            return false;
+        }
+        return true;
+    } else {
+        if (tilingRunCbf_ == nullptr) {
+            LOG_ERR("[%s:%s] TilingCbf nil", opName_.c_str(), caseName.c_str());
+            return false;
+        }
+        auto *curCase = ops::adv::tests::utils::Case::GetCurrentCase();
+        if (curCase == nullptr) {
+            LOG_ERR("[%s:%s] Current case nil", opName_.c_str(), caseName.c_str());
+            return false;
+        }
+        if (!tilingRunCbf_(curCase, &workspaceSize_, &aclOpExecutor_)) {
+            LOG_DBG("[%s:%s] Run Tiling failed", opName_.c_str(), caseName.c_str());
             aclDestroyAclOpExecutor(aclOpExecutor_);
-			aclOpExecutor_ = nullptr;
-			return false;
-		}
-		return true;
-	}
+            aclOpExecutor_ = nullptr;
+            return false;
+        }
+        return true;
+    }
 }
 
 bool AclnnContext::RunKernelProcess(std::string &caseName)

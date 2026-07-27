@@ -37,35 +37,35 @@
     <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length，维度为B+1，仅layout_q为TND场景下必传，第一个值固定为0。</td>
+      <td>表示不同Batch中Query的有效Sequence Length，shape为(B+1, )，仅layout_q为TND场景下必传，第一个值固定为0。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Key的有效Sequence Length，维度为B+1，仅layout_k为TND场景下必传，第一个值固定为0。</td>
+      <td>表示不同Batch中Key的有效Sequence Length，shape为(B+1, )，仅layout_k为TND场景下必传，第一个值固定为0。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query实际参与运算的Sequence Length，维度为B。</td>
+      <td>表示不同Batch中Query实际参与运算的Sequence Length，shape为(B, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Key实际参与运算的Sequence Length，维度为B。</td>
+      <td>表示不同Batch中Key实际参与运算的Sequence Length，shape为(B, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_residual_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算，维度为B。cmp_ratio不为1且mask_mode为3场景下必传。</td>
+      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算，shape为(B, )。cmp_ratio不为1且mask_mode为3场景下必传。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -163,7 +163,7 @@
   </tbody>
   </table>
 
-  <ul><li><term>Ascend 950PR/Ascend 950DT</term> ：不支持quant_mode = 2。</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品</term> ：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1，128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。</li></ul>
+  <ul><li><term>Ascend 950PR/Ascend 950DT</term> ：不支持quant_mode = 2。</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1，128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1，128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。</li></ul>
 
 ## 约束说明
 
@@ -172,11 +172,11 @@
 - 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
 - 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
 - 参数cmp_residual_k需满足cmp_residual_k[i] < cmp_ratio。
-- mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode参数说明.md)。
+- mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn API | [test_aclnn_quant_lightning_indexer_v2_metadata](./examples/test_aclnn_quant_lightning_indexer_v2_metadata.cpp) | 通过[aclnnQuantLightningIndexerV2Metadata](./docs/aclnnQuantLightningIndexerV2Metadata.md)接口调用QuantLightningIndexerV2Metadata算子 |
-| PyTorch API | [test_torch_quant_lightning_indexer_v2_metadata](./examples/test_torch_quant_lightning_indexer_v2_metadata.py) | 通过[torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/quant_lightning_indexer.md)接口调用QuantLightningIndexerV2Metadata算子 |
+| PyTorch API | [test_torch_quant_lightning_indexer_v2_metadata](./examples/test_torch_quant_lightning_indexer_v2_metadata.py) | 通过[quant_lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/quant_lightning_indexer.md)接口调用QuantLightningIndexerV2Metadata算子 |

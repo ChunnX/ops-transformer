@@ -24,11 +24,11 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnAlltoAllMatmulGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAlltoAllMatmul”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnAlltoAllMatmulGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAlltoAllMatmul”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(
-  const aclTensor*   x1, 
+  const aclTensor*   x1,
   const aclTensor*   x2,
   const aclTensor*   biasOptional,
   const aclIntArray* alltoAllAxesOptional,
@@ -189,7 +189,7 @@ aclnnStatus aclnnAlltoAllMatmul(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -278,7 +278,7 @@ aclnnStatus aclnnAlltoAllMatmul(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -304,10 +304,10 @@ aclnnStatus aclnnAlltoAllMatmul(
   - <term>Ascend 950PR/Ascend 950DT</term>：x1/x2计算输入的数据类型为FLOAT16时，biasOptional计算输入的数据类型支持FLOAT16和FLOAT32；x1/x2计算输入的数据类型为BFLOAT16时，biasOptional计算输入的数据类型支持BFLOAT16和FLOAT32。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
-* 通信引擎约束：
-   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
-   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：支持AICPU通信。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
+* 通信约束：
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信，且通信缓冲区大于等于200MB。
+   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：支持AI_CPU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持AI_CPU通信。
 
 ## 调用示例
 
@@ -327,21 +327,21 @@ aclnnStatus aclnnAlltoAllMatmul(
     #include <hccl/hccl.h>
     #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_allto_all_matmul.h"
-    
+
     int ndev = 2;
-    
+
     #define CHECK_RET(cond, return_expr) \
     do {                               \
     if (!(cond)) {                   \
     return_expr;                   \
     }                                \
     } while (0)
-    
+
     #define LOG_PRINT(message, ...)     \
     do {                              \
     printf(message, ##__VA_ARGS__); \
     } while (0)
-    
+
     int64_t GetShapeSize(const std::vector<int64_t> &shape) {
         int64_t shapeSize = 1;
         for (auto i: shape) {
@@ -349,7 +349,7 @@ aclnnStatus aclnnAlltoAllMatmul(
         }
         return shapeSize;
     }
-    
+
     template<typename T>
     int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
                         aclDataType dataType, aclTensor **tensor) {
@@ -370,14 +370,14 @@ aclnnStatus aclnnAlltoAllMatmul(
                                 shape.data(), shape.size(), *deviceAddr);
         return 0;
     }
-    
+
     struct Args {
         uint32_t rankId;
         HcclComm hcclComm;
         aclrtStream stream;
         aclrtContext context;
     };
-    
+
     int launchOneThreadAlltoAllMatmul(Args &args)
     {
         int ret;
@@ -388,7 +388,7 @@ aclnnStatus aclnnAlltoAllMatmul(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d \n", ret); return -1);
         LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream,
                 args.context);
-    
+
         std::vector<int64_t> x1Shape = {32, 64};
         std::vector<int64_t> x2Shape = {64 * ndev, 128};
         std::vector<int64_t> biasShape = {128};
@@ -404,13 +404,13 @@ aclnnStatus aclnnAlltoAllMatmul(
         aclTensor *bias = nullptr;
         aclTensor *out = nullptr;
         aclTensor *alltoallout = nullptr;
-    
+
         int64_t a2aAxes[2] = {-2, -1};
         aclIntArray* alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor;
         void *workspaceAddr = nullptr;
-    
+
         long long x1ShapeSize = GetShapeSize(x1Shape);
         long long x2ShapeSize = GetShapeSize(x2Shape);
         long long biasShapeSize = GetShapeSize(biasShape);
@@ -489,7 +489,7 @@ aclnnStatus aclnnAlltoAllMatmul(
         aclrtResetDevice(args.rankId);
         return 0;
     }
-    
+
     int main(int argc, char *argv[])
     {
         // 本样例基于Atlas A2实现，必须在Atlas A2上运行
@@ -534,7 +534,7 @@ aclnnStatus aclnnAlltoAllMatmul(
         return 0;
     }
     ```
-    
+
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
     ```cpp
@@ -546,21 +546,21 @@ aclnnStatus aclnnAlltoAllMatmul(
     #include <acl/acl.h>
     #include <hccl/hccl.h>
     #include "aclnnop/aclnn_allto_all_matmul.h"
-  
+
     int ndev = 2;
-  
+
     #define CHECK_RET(cond, return_expr) \
     do {                               \
     if (!(cond)) {                   \
     return_expr;                   \
     }                                \
     } while (0)
-  
+
     #define LOG_PRINT(message, ...)     \
     do {                              \
     printf(message, ##__VA_ARGS__); \
     } while (0)
-  
+
     int64_t GetShapeSize(const std::vector<int64_t> &shape) {
         int64_t shapeSize = 1;
         for (auto i: shape) {
@@ -568,7 +568,7 @@ aclnnStatus aclnnAlltoAllMatmul(
         }
         return shapeSize;
     }
-  
+
     template<typename T>
     int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
                         aclDataType dataType, aclTensor **tensor) {
@@ -589,14 +589,14 @@ aclnnStatus aclnnAlltoAllMatmul(
                                 shape.data(), shape.size(), *deviceAddr);
         return 0;
     }
-  
+
     struct Args {
         uint32_t rankId;
         HcclComm hcclComm;
         aclrtStream stream;
         aclrtContext context;
     };
-  
+
     int launchOneThreadAlltoAllMatmul(Args &args)
     {
         int ret;
@@ -607,7 +607,7 @@ aclnnStatus aclnnAlltoAllMatmul(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d \n", ret); return -1);
         LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream,
                 args.context);
-  
+
         std::vector<int64_t> x1Shape = {32, 64};
         std::vector<int64_t> x2Shape = {64 * ndev, 128};
         std::vector<int64_t> biasShape = {128};
@@ -623,13 +623,13 @@ aclnnStatus aclnnAlltoAllMatmul(
         aclTensor *bias = nullptr;
         aclTensor *out = nullptr;
         aclTensor *alltoallout = nullptr;
-  
+
         int64_t a2aAxes[2] = {-2, -1};
         aclIntArray* alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor;
         void *workspaceAddr = nullptr;
-  
+
         long long x1ShapeSize = GetShapeSize(x1Shape);
         long long x2ShapeSize = GetShapeSize(x2Shape);
         long long biasShapeSize = GetShapeSize(biasShape);
@@ -708,7 +708,7 @@ aclnnStatus aclnnAlltoAllMatmul(
         aclrtResetDevice(args.rankId);
         return 0;
     }
-  
+
     int main(int argc, char *argv[])
     {
         // 本样例基于<term>Ascend 950PR/Ascend 950DT</term>实现，必须在<term>Ascend 950PR/Ascend 950DT</term>上运行

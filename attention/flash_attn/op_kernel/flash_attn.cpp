@@ -10,17 +10,96 @@
 
 /*!
  * \file flash_attn.cpp
- * \brief FlashAttn Kernel主入口（4字段）
+ * \brief FlashAttn Kernel 唯一入口；按 tiling key 编译期推导模板参数，分发 Dn / Nd 两套模板。
+ *        参考 quant_flash_attn.cpp 单层 __global__ 风格。
  */
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
-#include "arch35/flash_attn_entry_regbase.h"
+#endif
+
 #include "arch35/flash_attn_template_tiling_key.h"
 #include "arch35/flash_attn_tiling_data.h"
+#include "utils/flash_attn_utils.h"
+#include "utils/flash_attn_common_def.h"
+#if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
+#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#else
+#include "../common/arch35/flash_attention_score_common_regbase.h"
+#endif
+#include "arch35/flash_attn_kernel_noquant_gqa_dn.h"
+#include "arch35/flash_attn_kernel_noquant_gqa_nd.h"
 
 using namespace AscendC;
 
-// kernel主入口：4字段 → 模板参数
+template <uint8_t inOutLayoutType>
+__aicore__ inline constexpr FA_LAYOUT GetQueryLayout()
+{
+    static_assert((inOutLayoutType == InOutLayoutType_BSND) || (inOutLayoutType == InOutLayoutType_BNSD) ||
+                      (inOutLayoutType == InOutLayoutType_BNSD_BSND) || (inOutLayoutType == InOutLayoutType_TND),
+                  "Get Query Layout fail, inOutLayoutType is incorrect");
+    if constexpr (inOutLayoutType == InOutLayoutType_BSND) {
+        return FA_LAYOUT::BSND;
+    } else if constexpr (inOutLayoutType == InOutLayoutType_BNSD || inOutLayoutType == InOutLayoutType_BNSD_BSND) {
+        return FA_LAYOUT::BNSD;
+    } else if constexpr (inOutLayoutType == InOutLayoutType_TND) {
+        return FA_LAYOUT::TND;
+    }
+}
+
+template <uint8_t inOutLayoutType>
+__aicore__ inline constexpr FA_LAYOUT GetOutLayout()
+{
+    static_assert((inOutLayoutType == InOutLayoutType_BSND) || (inOutLayoutType == InOutLayoutType_BNSD) ||
+                      (inOutLayoutType == InOutLayoutType_BNSD_BSND) || (inOutLayoutType == InOutLayoutType_TND),
+                  "Get AttnOut Layout fail, inOutLayoutType is incorrect");
+    if constexpr (inOutLayoutType == InOutLayoutType_BSND || inOutLayoutType == InOutLayoutType_BNSD_BSND) {
+        return FA_LAYOUT::BSND;
+    } else if constexpr (inOutLayoutType == InOutLayoutType_BNSD) {
+        return FA_LAYOUT::BNSD;
+    } else if constexpr (inOutLayoutType == InOutLayoutType_TND) {
+        return FA_LAYOUT::TND;
+    }
+}
+
+template <uint8_t inOutLayoutType, uint8_t KV_STORAGE_MODE>
+__aicore__ inline constexpr FA_LAYOUT GetKvLayout()
+{
+    static_assert((KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) || (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BSND) ||
+                      (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BNSD) || (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_NZ),
+                  "Get Key/Value Layout fail, KV_STORAGE_MODE is incorrect");
+    if constexpr (KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) {
+        return GetQueryLayout<inOutLayoutType>();
+    } else if constexpr (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BSND) {
+        return FA_LAYOUT::BSND; // block内的格式类似于BSND
+    } else if constexpr (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BNSD) {
+        return FA_LAYOUT::BNSD; // block内的格式类似于BNSD
+    } else if constexpr (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_NZ) {
+        return FA_LAYOUT::NZ; // block内的格式类似于BNSD
+    }
+}
+
+template <uint8_t KV_STORAGE_MODE>
+__aicore__ inline constexpr bool IsPageAttention()
+{
+    static_assert((KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) || (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BSND) ||
+                      (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BNSD) || (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_NZ),
+                  "Get PAGE_ATTENTION flag fail, KV_STORAGE_MODE is incorrect");
+    return (KV_STORAGE_MODE != KV_STORAGE_MODE_CONTINUE);
+}
+
+template <bool hasAttenMask, uint8_t config>
+__aicore__ inline constexpr bool EnableSoftmaxDn()
+{
+    if constexpr (hasAttenMask) {
+        return false;
+    }
+    return ((config == 0) || (config == 2));
+}
+
 template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint8_t config>
 __global__ __aicore__ void
 flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
@@ -32,17 +111,76 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if constexpr (inOutLayoutType == InOutLayoutType_TND && KvLayoutType == KvLayoutType_NO_PA) {
-        dc_preload(reinterpret_cast<__gm__ uint64_t*>(cuSeqLensQ), 0);
-        dc_preload(reinterpret_cast<__gm__ uint64_t*>(cuSeqLensKv), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(cuSeqLensQ), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(cuSeqLensKv), 0);
     }
-    // dtype 分发 → flash_attn_kernel_run (类型推导 + kernel实例化执行)
+
 #if (ORIG_DTYPE_Q == DT_BF16)
-    flash_attn_kernel_run<bfloat16_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask, config>(
-        query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, blockTable, sinks, attnOut,
-        softmaxLse, user, tiling, metadata);
+    using INPUT_T = bfloat16_t;
+    using OUT_T = bfloat16_t;
 #elif (ORIG_DTYPE_Q == DT_FLOAT16)
-    flash_attn_kernel_run<half, half, inOutLayoutType, KvLayoutType, hasAttenMask, config>(
-        query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, blockTable, sinks, attnOut,
-        softmaxLse, user, tiling, metadata);
+    using INPUT_T = half;
+    using OUT_T = half;
 #endif
+
+#if (ORIG_DTYPE_Q == DT_BF16) || (ORIG_DTYPE_Q == DT_FLOAT16)
+    fa_base_matmul::idCounterNum = 0;
+
+    constexpr FA_LAYOUT qLayout = GetQueryLayout<inOutLayoutType>();
+    constexpr FA_LAYOUT outLayout = GetOutLayout<inOutLayoutType>();
+    constexpr FA_LAYOUT kvLayout = GetKvLayout<inOutLayoutType, KvLayoutType>();
+    constexpr bool pageAttention = IsPageAttention<KvLayoutType>();
+
+    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
+    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);
+    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
+    constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
+    constexpr bool useDn = EnableSoftmaxDn<hasAttenMask, config>();
+
+    // 根因（静态图）：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
+    // 不能直接 reinterpret_cast 成结构体指针访问，必须先拷贝到栈局部结构体对象再取指针。
+    // 该宏由编译器(generate_tiling_code.py)按动态/静态图自动生成两套展开：
+    //   动态图 → (__gm__ FlashAttnTilingData*)tiling 直接强转，零拷贝；
+    //   静态图 → convert_from_bytes 把常量数组拷成栈局部对象，dst_ptr 取其地址。
+    GET_TILING_DATA_PTR_WITH_STRUCT(FlashAttnTilingData, tilingData, tiling);
+
+    InitSocState();
+
+    using FA_T = BaseApi::FAType<INPUT_T, OUT_T, pageAttention, qLayout, kvLayout, outLayout, s1TemplateType,
+                                 s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask>;
+
+    if constexpr (useDn) {
+        using CubeBlock = BaseApi::FANoQuantGqaBlockCubeDn<FA_T>;
+        using VecFaBlock = BaseApi::FANoQuantGqaBlockVecDn<FA_T>;
+        using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<FA_T>;
+        using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyDn<FA_T>;
+        using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyDn<FA_T>;
+#ifdef __DAV_C310_CUBE__
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelDn<FA_T, CubeBlock, VecDummy, VecDummy>;
+#else
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelDn<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
+#endif
+        Kernel op;
+        op.Init(query, key, value, blockTable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
+                attnOut, softmaxLse, user, &tilingData->baseTiling);
+        op.Process();
+    } else {
+        using CubeBlock = BaseApi::FANoQuantGqaBlockCubeNd<FA_T>;
+        using VecFaBlock = BaseApi::FANoQuantGqaBlockVecNd<FA_T>;
+        using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<FA_T>;
+        using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyNd<FA_T>;
+        using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyNd<FA_T>;
+#ifdef __DAV_C310_CUBE__
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeBlock, VecDummy, VecDummy>;
+#else
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
+#endif
+        Kernel op;
+        op.Init(query, key, value, blockTable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
+                attnOut, softmaxLse, user, &tilingData->baseTiling);
+        op.Process();
+    }
+#endif
+
+    AscendC::PipeBarrier<PIPE_ALL>();
 }

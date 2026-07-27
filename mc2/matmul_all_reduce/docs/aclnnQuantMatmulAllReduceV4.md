@@ -21,7 +21,7 @@
 - **计算公式**：
 
   - 公式1，开启低bit通信的公式2或公式3场景：
-  
+
     x1，x2为INT8，commQuantScale1Optional, commQuantScale2Optional不为空时:
 
     $$
@@ -41,7 +41,7 @@
     $$
 
   - 公式2，perchannel量化 && pertensor量化：
-  
+
     x1，x2为INT8，无x1ScaleOptional，x2ScaleOptional为INT64/UINT64，可选biasOptional为INT32，out为BFLOAT16/FLOAT16：
 
     $$
@@ -49,7 +49,7 @@
     $$
 
   - 公式3，pertoken-perchannel量化 && pertoken-pertensor量化：
-    
+
     x1，x2为INT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32/BFLOAT16，可选biasOptional为INT32, out为FLOAT16/BFLOAT16：
 
     $$
@@ -57,12 +57,13 @@
     $$
 
   - 公式4，MXFP量化：
-    
+
     x1，x2为`FLOAT4_E2M1`/`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为`FLOAT8_E8M0`，x2ScaleOptional为`FLOAT8_E8M0`，可选biasOptional为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
     $$
     output = AllReduce((x1* x1ScaleOptional)@(x2* x2ScaleOptional) + biasOptional + x3Optional)
     $$
+
   - 公式5，perchannel量化 && pertensor量化：
 
     x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x2ScaleOptional为UINT/INT64，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
@@ -72,7 +73,7 @@
   $$
 
   - 公式6，pertoken-perchannel量化 && pertoken-pertensor量化：
-  
+
     x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2ScaleOptional为FLOAT32，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
     $$
@@ -80,16 +81,16 @@
     $$
 
   - 公式7，perblock-perblock量化：
-  
+
     x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceilDiv(a0，128)，ceilDiv(a1，128))，x2Scale为(ceilDiv(b0，128)，ceilDiv(b1，128))，out为FLOAT16/BFLOAT16/FLOAT32:
 
     $$
     output_{pq} = AllReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3Optional)
     $$
 
-   - 公式8，开启低bit通信，pertile量化：
+  - 公式8，开启低bit通信，pertile量化：
 
-      x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选biasOptional为FLOAT32，commQuantMode为1，out为FLOAT16/BFLOAT16/FLOAT32:
+    x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选biasOptional为FLOAT32，commQuantMode为1，out为FLOAT16/BFLOAT16/FLOAT32:
 
     $$
     matmulAddOutput_{fp32} = (x2ScaleOptional * x1ScaleOptional * (x1_{fp8}@x2_{fp8} + biasOptional_{fp32}) + x3Optional);
@@ -133,7 +134,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnQuantMatmulAllReduceV4GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnQuantMatmulAllReduceV4`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnQuantMatmulAllReduceV4GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnQuantMatmulAllReduceV4`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
@@ -364,7 +365,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一阶段接口完成入参校验，出现以下场景报错：
 
@@ -439,7 +440,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -525,7 +526,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     </table>
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
-    
+
     int8输入时，支持pertoken-perchannel量化 && pertensor-perchannel量化
     <table>
     <thead>
@@ -728,9 +729,9 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 

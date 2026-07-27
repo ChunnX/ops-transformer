@@ -75,5 +75,5 @@ struct QGmmInplaceAddBasicApiTilingData {
 };
 #pragma pack(pop)
 
-} // namespace GROUPED_MATMUL_INPLACE_ADD
+} // namespace QuantGroupedMatmulInplaceAdd
 #endif

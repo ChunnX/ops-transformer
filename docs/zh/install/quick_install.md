@@ -13,23 +13,21 @@
 
 |  安装方式  |  使用说明  |  使用场景  |
 | ----- | ------ | ------ |
-|  CANNLab  | 一站式开发平台，提供在线直接运行的昇腾环境，无需手动安装。<br>当前可提供单机算力，**默认安装最新商发版CANN包**。 | 适用于没有昇腾设备的开发者。|
-|  Docker  | Docker镜像是一种高效部署方式，已预集成CANN包和必备依赖。<br>当前仅适用于Atlas A2系列产品，OS仅支持Ubuntu操作系统。**默认安装最新商发版CANN包**。 |适用有昇腾设备，需要快速搭建环境的开发者。|
+|  CANNLab  | 一站式开发平台，提供在线直接运行的昇腾环境，无需手动安装。<br>当前可提供单机算力，**默认安装最新最新版本CANN包**。 | 适用于没有昇腾设备的开发者。|
+|  Docker  | Docker镜像是一种高效部署方式，已预集成CANN包和必备依赖。<br>当前仅适用于Atlas A2系列产品，OS仅支持Ubuntu操作系统。**默认安装最新最新版本CANN包**。 |适用有昇腾设备，需要快速搭建环境的开发者。|
 |  手动安装  | 手动安装CANN包和基础依赖，灵活性高。 |适用有昇腾设备，想体验手动安装CANN包或体验最新master分支能力的开发者。|
 
 ### 方式1：CANNLab
 
 对于无昇腾设备的开发者，可直接使用CANNLab云开发环境，即“**一站式开发平台**”，该平台为您提供在线可直接运行的昇腾环境，环境中已安装必备的驱动固件、软件包和依赖，无需手动安装。
 
-> **说明**：环境默认安装最新商发版CANN包，源码下载时注意与软件配套。更多关于开发平台的介绍请参考[CANNLab指导](https://gitcode.com/org/cann/discussions/54)。
+> **说明**：环境默认安装最新最新版本CANN包，源码下载时注意与软件配套。更多关于开发平台的介绍请参考[CANNLab指导](https://gitcode.com/org/cann/discussions/54)。
 
 1. 进入开源项目，单击“`CANNLab`”按钮，使用已认证过的华为云账号登录。若未注册或认证，请根据页面提示进行注册和认证。
 
    <img src="../figures/cloudIDE.png" alt="云平台"  width="750px" height="85px">
 
-2. 根据页面提示创建NPU环境并配置规格，启动云开发环境后，单击“`连接 > WebIDE`”进入一站式开发平台。
-
-    当前开源项目资源默认在`/mnt/workspace/gitCode/${gitCode_id}`目录下，\$\{gitCode\_id\}表示开发者个人gitCode账号。
+2. 根据页面提示创建NPU环境并配置规格，启动云开发环境后，单击“`连接 > WebIDE`”进入一站式开发平台。当前开源项目资源默认在`/mnt/workspace/gitCode`目录。
 
    <img src="../figures/webIDE.png" alt="云平台"  width="1000px" height="150px">
 
@@ -40,7 +38,7 @@
 > **说明**：
 >
 > - 镜像文件比较大，下载需要一定时间，请您耐心等待。关于docker命令的选项介绍可通过`docker --help`查询。
-> - 环境默认安装最新商发版CANN包，源码下载时注意与软件配套。
+> - 环境默认安装最新最新版本CANN包，源码下载时注意与软件配套。
 
 1.**安装驱动与固件（运行态依赖）**
 
@@ -111,12 +109,13 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
             ```bash
             bash ./Ascend-cann-${soc_name}-ops_${cann_version}_linux-${arch}.run --install --install-path=${install_path}
             ```
+
         变量含义说明：
 
         - \$\{cann\_version\}：表示CANN包版本号。
- 	    - \$\{arch\}：表示CPU架构，可通过`uname -m`查询，例如aarch64、x86_64。
- 	    - \$\{soc\_name\}：表示NPU型号名称。
- 	    - \$\{install\_path\}：表示指定安装路径，ops包需与toolkit包安装在相同路径，root用户默认安装在`/usr/local/Ascend`目录。
+      - \$\{arch\}：表示CPU架构，可通过`uname -m`查询，例如aarch64、x86_64。
+      - \$\{soc\_name\}：表示NPU型号名称。
+      - \$\{install\_path\}：表示指定安装路径，ops包需与toolkit包安装在相同路径，root用户默认安装在`/usr/local/Ascend`目录。
 
 - **场景2：体验已发布版本能力或基于已发布版本进行开发**
 
@@ -140,11 +139,11 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 1. 下载源码。
 
     下载与CANN版本配套的分支源码，命令如下，\$\{tag\_version\}替换为分支标签名。
-   
+
     ```bash
     git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
     ```
-    
+
 2. 安装依赖。
 
     先通过项目根目录install\_deps.sh一键安装上述依赖，命令如下，若遇到不支持系统，请参考该文件自行适配。
@@ -174,11 +173,11 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
     ```bash
     # 查看CANN toolkit包版本信息（默认路径安装）
- 	cat /usr/local/Ascend/cann/${arch}-linux/ascend_toolkit_install.info # docker和手动安装场景
- 	cat /home/developer/Ascend/cann/${arch}-linux/ascend_toolkit_install.info # CANNLab场景
- 	# 查看CANN ops包版本信息（默认路径安装）
- 	cat /usr/local/Ascend/cann/${arch}-linux/ascend_ops_install.info # docker和手动安装场景
- 	cat /home/developer/Ascend/cann/${arch}-linux/ascend_ops_install.info # CANNLab场景
+    cat /usr/local/Ascend/cann/${arch}-linux/ascend_toolkit_install.info # docker和手动安装场景
+    cat /home/developer/Ascend/cann/${arch}-linux/ascend_toolkit_install.info # CANNLab场景
+    # 查看CANN ops包版本信息（默认路径安装）
+    cat /usr/local/Ascend/cann/${arch}-linux/ascend_ops_install.info # docker和手动安装场景
+    cat /home/developer/Ascend/cann/${arch}-linux/ascend_ops_install.info # CANNLab场景
     ```
 
     其中\$\{arch\}可通过`uname -m`查询当前架构，如aarch64、x86_64。
@@ -193,4 +192,3 @@ source /usr/local/Ascend/cann/set_env.sh
 # 指定路径安装
 # source ${install_path}/cann/set_env.sh
 ```
-

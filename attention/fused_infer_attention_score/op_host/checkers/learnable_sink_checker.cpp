@@ -33,9 +33,6 @@ using namespace arch35FIA;
 // check sink dtype
 ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo &fiaInfo)
 {
-    if (!fiaInfo.learnableSinkFlag) {
-        return ge::GRAPH_SUCCESS;
-    }
     const gert::CompileTimeTensorDesc *learnableSinkDesc = fiaInfo.opParamInfo.learnableSink.desc;
     if (learnableSinkDesc != nullptr) {
         if (fiaInfo.npuArch == NpuArch::DAV_3510) {
@@ -43,7 +40,7 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
                 learnableSinkDesc->GetDataType() != ge::DT_BF16) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "learnable_sink",
                     ToString(learnableSinkDesc->GetDataType()).c_str(),
-                    "The dtype of learnable_sink must be BF16 or FLOAT16 when learnable sink is enabled");
+                    "The dtype of learnable_sink must be BFLOAT16 or FLOAT16 when learnable sink is enabled");
                 return ge::GRAPH_FAILED;
             }
 
@@ -58,7 +55,7 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
             if (learnableSinkDesc->GetDataType() != ge::DT_BF16) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "learnable_sink",
                     ToString(learnableSinkDesc->GetDataType()).c_str(),
-                    "The dtype of learnable_sink must be BF16 when learnable sink is enabled");
+                    "The dtype of learnable_sink must be BFLOAT16 when learnable sink is enabled");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -119,9 +116,6 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
 // check sink shape
 ge::graphStatus LearnableSinkChecker::CheckSinkShapeSupport(const FiaTilingInfo &fiaInfo)
 {
-    if (!fiaInfo.learnableSinkFlag) {
-        return ge::GRAPH_SUCCESS;
-    }
     uint32_t sinkDimNum = fiaInfo.opParamInfo.learnableSink.tensor->GetStorageShape().GetDimNum();
     uint32_t sinkDim0 = fiaInfo.opParamInfo.learnableSink.tensor->GetStorageShape().GetDim(0);
     if (sinkDimNum != 1) {
@@ -164,6 +158,9 @@ ge::graphStatus LearnableSinkChecker::CheckAxisSupport(const FiaTilingInfo &fiaI
 
 ge::graphStatus LearnableSinkChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
+    if (!fiaInfo.learnableSinkFlag) {
+        return ge::GRAPH_SUCCESS;
+    }
     if (ge::GRAPH_SUCCESS != CheckSinkDtypeSupport(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckSinkShapeSupport(fiaInfo)) {
         return ge::GRAPH_FAILED;

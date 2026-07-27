@@ -41,9 +41,9 @@
         $$
         hiddenState_q = query
         $$
-        
+
         当`normType = LAYER_NORM`时
-        
+
         $$
         \begin{aligned}
         queryMean_{b,s,n} &= \frac{1}{D}\sum_{i=0}^{D}query_{b,s,n} \\
@@ -103,7 +103,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNormRopeConcatGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnNormRopeConcat”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnNormRopeConcatGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnNormRopeConcat”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnNormRopeConcatGetWorkspaceSize(
@@ -469,7 +469,7 @@ aclnnStatus aclnnNormRopeConcat(
         <td>√</td>
       </tr>
       <tr>
-        <td>normEncoderQueryMean</td>
+        <td>normAddedQueryMean</td>
         <td>输出</td>
         <td>LayerNorm中的encoderQuery均值输出，用于反向。</td>
         <td>normAddedType!=0且isTraining=true时有效。</td>
@@ -479,7 +479,7 @@ aclnnStatus aclnnNormRopeConcat(
         <td>√</td>
       </tr>
       <tr>
-        <td>normEncoderQueryRstd</td>
+        <td>normAddedQueryRstd</td>
         <td>输出</td>
         <td>LayerNorm中的encoderQuery标准差输出，用于反向。</td>
         <td>normAddedType!=0且isTraining=true时有效。</td>
@@ -489,7 +489,7 @@ aclnnStatus aclnnNormRopeConcat(
         <td>√</td>
       </tr>
       <tr>
-        <td>normEncoderKeyMean</td>
+        <td>normAddedKeyMean</td>
         <td>输出</td>
         <td>LayerNorm中的encoderKey均值输出，用于反向。</td>
         <td>normAddedType!=0且isTraining=true时有效。</td>
@@ -499,7 +499,7 @@ aclnnStatus aclnnNormRopeConcat(
         <td>√</td>
       </tr>
       <tr>
-        <td>normEncoderKeyRstd</td>
+        <td>normAddedKeyRstd</td>
         <td>输出</td>
         <td>LayerNorm中的encoderKey标准差输出，用于反向。</td>
         <td>normAddedType!=0且isTraining=true时有效。</td>
@@ -512,7 +512,7 @@ aclnnStatus aclnnNormRopeConcat(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1149px"><colgroup>
@@ -598,7 +598,7 @@ aclnnStatus aclnnNormRopeConcat(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -610,7 +610,7 @@ aclnnStatus aclnnNormRopeConcat(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```c++
   #include <algorithm>

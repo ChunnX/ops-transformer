@@ -75,6 +75,7 @@ constexpr uint32_t MAX_HIDDEN_SIZE = 10240;
 constexpr uint32_t MIN_HIDDEN_SIZE = 1024;
 constexpr uint32_t ALIGN_FACTOR_HIDDEN_SIZE = 512;
 constexpr uint32_t MIN_BLOCK_SIZE = 1;
+constexpr uint32_t MAX_BLOCK_SIZE = 1024;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
@@ -113,7 +114,7 @@ const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
     {WGATE_NAME,              {COMPRESSOR_DIM_NUM_2}},
     {STATE_CACHE_NAME,        {COMPRESSOR_DIM_NUM_3}},
     {APE_NAME,                {COMPRESSOR_DIM_NUM_2}},
-    {STATE_BLOCK_TABLE_NAME,  {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_1}},
+    {STATE_BLOCK_TABLE_NAME,  {COMPRESSOR_DIM_NUM_2}},
     {CU_SEQLENS_NAME,         {COMPRESSOR_DIM_NUM_1}},
     {SEQUSED_NAME,            {COMPRESSOR_DIM_NUM_1}},
     {START_POS_NAME,          {COMPRESSOR_DIM_NUM_1}},

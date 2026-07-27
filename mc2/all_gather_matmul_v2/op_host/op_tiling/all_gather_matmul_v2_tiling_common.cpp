@@ -24,10 +24,9 @@ using namespace AscendC;
 using namespace ge;
 
 namespace optiling {
-ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext* context);
-struct AllGatherMatmulCompileInfo {
-};
-ge::graphStatus TilingParseForAllGatherMatmulV2(gert::TilingParseContext* context)
+ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext *context);
+struct AllGatherMatmulCompileInfo {};
+ge::graphStatus TilingParseForAllGatherMatmulV2(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
@@ -36,4 +35,4 @@ ge::graphStatus TilingParseForAllGatherMatmulV2(gert::TilingParseContext* contex
 IMPL_OP_OPTILING(AllGatherMatmulV2)
     .Tiling(AllGatherMatmulTilingV2Func)
     .TilingParse<AllGatherMatmulCompileInfo>(TilingParseForAllGatherMatmulV2);
-}  // namespace optiling
+} // namespace optiling

@@ -122,6 +122,10 @@ private:
                   const gert::Shape &yShape) const;
     bool CheckFp4Shape(const gert::Shape &xShape, const gert::Shape &wShape) const;
     bool CheckCoreNum() const override;
+    bool LoadInputDescsForRouting();
+    bool CheckOptionalInputsForRouting();
+    bool CheckScaleAndPerTokenDims(const gert::StorageShape *pertokenScaleStorageShape,
+                                   const gert::Shape &scaleShape) const;
 
     GMMFinalizeRoutingTilingData tilingData_;
     uint64_t sharedInputLen_ = 0;

@@ -37,7 +37,7 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBatchMatMulReduceScatterAlltoAll”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBatchMatMulReduceScatterAlltoAll”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(
@@ -202,7 +202,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -282,7 +282,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -291,8 +291,8 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 
   - 因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=epWorldSize，tp=tpWorldSize）
   - 按H轴进行ReduceScatter场景，即yShardType为0场景：
-   
-      - x: (E/ep, ep*C, M/tp) 
+
+      - x: (E/ep, ep*C, M/tp)
       - weight：(E/ep, M/tp, H)
       - biasOptional：非空指针情况下，三维时为(E/ep, 1, H/tp)，两维时为(E/ep, H/tp)
       - y：(E, C, H/tp)
@@ -317,7 +317,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
 
@@ -399,7 +399,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
         int64_t H = 2 * TP_WORLD_SIZE;
         int64_t M = 6 * TP_WORLD_SIZE;
         int64_t xShardType = 1;
-        
+
         std::vector<int64_t> xShape;
         std::vector<int64_t> weightShape;
         std::vector<int64_t> biasShape;

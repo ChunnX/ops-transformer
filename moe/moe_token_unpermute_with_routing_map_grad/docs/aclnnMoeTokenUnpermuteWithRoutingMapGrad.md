@@ -19,25 +19,25 @@
 - **计算公式**：
 
   (1) probs非None：
-  
+
   $$
   permutedTokensGrad[outIndex[i]] = unpermutedTokensGrad[permuteTokenId[i]]
   $$
-  
+
   $$
   permutedProbsGrad = permutedTokensGrad * permutedTokensOptional
   $$
-  
+
   $$
   probsGradExpertOrder = \sum_{j=0}^{hidden\_size}(permutedProbsGrad_{i,j})
   $$
 
     - dropAndPad为false时：
-  
+
   $$
   probsGradOut = masked\_scatter(routingMapOptional^T,probsGradExpertOrder)
   $$
-  
+
   $$
   permutedProbs = probsOptional^T.masked\_select(routingMapOptional^T)
   $$
@@ -47,7 +47,7 @@
   $$
 
     - dropAndPad为true时：
-  
+
   $$
   probsGradOut[permuteTokenId[i], outIndex[i]/capacity] = probsGradExpertOrder[outIndex[i]]
   $$
@@ -72,7 +72,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithRoutingMapGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithRoutingMapGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize(
@@ -248,9 +248,9 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
   </table>
 
 - **返回值：**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
@@ -345,8 +345,8 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
   </table>
 
 - **返回值：**
-  
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -356,14 +356,14 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
 - 通过dropAndPad区分以下两种模式：dropAndPad等于true时，每个专家固定能够处理capacity个token。dropAndPad等于false时，每个token能被小于等于topK_num个专家处理。
 - 当输入probsOptional非空，且dropAndPad为false时
   - 要求topK_num <= 512且topK_num <= experts_num。
-  - 要求experts_num满足(ubSize - (probTypeLen + 1) * numExpertAlign-(tokenTypeLen + 8) * 256) / (6 * tokenTypeLen + 12) >= 1，其中ubSize是芯片ub空间大小，probTypeLen是输入probsOptional的数据类型对应的字节数，tokenTypeLen是输入unpermutedTokensGrad的数据类型对应的字节数，numExpertAlign是experts_num对32做向上对齐的结果。
+  - 要求experts_num满足(ubSize - (probTypeLen + 1) *numExpertAlign-(tokenTypeLen + 8)* 256) / (6 * tokenTypeLen + 12) >= 1，其中ubSize是芯片ub空间大小，probTypeLen是输入probsOptional的数据类型对应的字节数，tokenTypeLen是输入unpermutedTokensGrad的数据类型对应的字节数，numExpertAlign是experts_num对32做向上对齐的结果。
 - 当输入probsOptional非空，且dropAndPad为true时
   - 要求capacity <= tokens_num。
   - 要求hidden_size <= 256 * (ubSize - 2080) / (8 + tokenTypeLen)，其中ubSize是芯片ub空间大小，tokenTypeLen是输入unpermutedTokensGrad的数据类型对应的字节数。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>

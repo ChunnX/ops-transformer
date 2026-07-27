@@ -19,7 +19,7 @@ GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRoutingWeightNz”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRoutingWeightNz”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(
@@ -262,7 +262,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -341,7 +341,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -357,7 +357,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
   #include <iostream>
@@ -487,7 +487,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
-    
+
       std::vector<int64_t> xShape = {m, k};
       std::vector<int64_t> wShape = {e, k, n};
       std::vector<int64_t> scaleShape = {e, n};
@@ -547,7 +547,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       // 创建scale aclTensor
       ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT, &scale);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> scaleTensorPtr(scale, aclDestroyTensor);
-      std::unique_ptr<void, aclError (*)(void *)> scaleDeviceAddrPtr(scaleDeviceAddr, aclrtFree);    
+      std::unique_ptr<void, aclError (*)(void *)> scaleDeviceAddrPtr(scaleDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建pertokenScale aclTensor
       ret = CreateAclTensor(pertokenScaleHostData, pertokenScaleShape, &pertokenScaleDeviceAddr, aclDataType::ACL_FLOAT, &pertokenScale);

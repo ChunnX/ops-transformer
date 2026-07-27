@@ -83,7 +83,7 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
 ## aclnnMoeDistributeCombineSetupGetWorkspaceSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1434px"><colgroup>
     <col style="width: 156px">
     <col style="width: 71px">
@@ -287,7 +287,7 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
         <td>-</td>
     </tr>
     </tbody></table>
-  
+
   - Ascend 950DT：
     - 不支持共享专家场景。
     - epWorldSize当前取值仅支持2、8。
@@ -300,11 +300,11 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     - commAlg当前版本不支持，传空指针即可。
 
 - **返回值**
-  
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
-  
+
     <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
     <col style="width: 300px">
     <col style="width: 150px">
@@ -341,7 +341,7 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
 ## aclnnMoeDistributeCombineSetup
 
 - **参数说明：**
-  
+
     <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
     <col style="width: 200px">
     <col style="width: 130px">
@@ -378,13 +378,13 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     </table>
 
 - **返回值：**
-  
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## aclnnMoeDistributeCombineSetupTeardownCalcOutputSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1434px"><colgroup>
     <col style="width: 156px">
     <col style="width: 71px">
@@ -590,8 +590,8 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     </tbody></table>
 
 - **返回值**
-  
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -625,14 +625,14 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
 - 文件准备：
 
     1. 按照下方指导创建rank_table_m2.json文件并修改。
-    
+
     2. 将项目拷贝到两台服务器中，并根据机器的device ip配置rank_table_m2.json文件内容。注意两机rank_table_m2.json文件保持一致。
-    
+
     3. 安装cann包，并根据[算子调用](../../../docs/zh/invocation/quick_op_invocation.md)编译运行。
 
 - 关于rankTable:
 
-    1. 开发者可以通过ranktable文件配置参与集合通信的NPU资源信息，详细配置请参考[《集合通信用户指南》](https://hiascend.com/document/redirect/CannCommercialHcclUg)中“通信功能开发>集群信息配置>ranktable文件配置资源信息”。
+    1. 开发者可以通过ranktable文件配置参与集合通信的NPU资源信息，详细配置请参考[《集合通信用户指南》](https://hiascend.com/document/redirect/CannCommunityHcclUg)中“通信功能开发>集群信息配置>ranktable文件配置资源信息”。
 
     2. 使用`cat /etc/hccn.conf`或者`for i in seq 0 7; do echo "===================> dev$i, NPU$((i+1))"; hccn_tool -i $i -ip -g; done`查询机器的device ip。然后参考集合通信文档填写json文件。
 
@@ -652,14 +652,16 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
 - 机器数量设置：
 
     两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+
     ```Cpp
     const uint32_t MACHINE_NUM = 2;
     ```
+
     单机16卡场景则无需修改。
 
 - Ascend 950DT：
 
-    示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+    示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
     ```Cpp
     #include <thread>

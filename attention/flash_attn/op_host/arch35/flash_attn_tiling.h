@@ -34,16 +34,16 @@ struct FaTilingKeyInfo {
 };
 
 struct FaPlatFormInfo {
+    uint32_t coreNum = 0;
+    uint32_t aicNum = 0;
+    uint32_t aivNum = 0;
+    uint32_t cvRatio = 0;
     uint64_t ubSize = 0;
     uint64_t l2Size = 0;
     uint64_t l1Size = 0;
     uint64_t l0cSize = 0;
     uint64_t l0bSize = 0;
     uint64_t l0aSize = 0;
-    uint32_t coreNum = 0;
-    uint32_t aicNum = 0;
-    uint32_t aivNum = 0;
-    uint32_t cvRatio = 0;
     uint64_t defaultSysWorkspaceSize = 0;
 };
 

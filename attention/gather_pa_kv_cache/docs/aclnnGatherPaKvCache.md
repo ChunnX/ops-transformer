@@ -22,11 +22,11 @@
   - 如果isSeqLensCumsum为false，则seqLens中所有值的累加和即为keyRef/valueRef的第一个维度大小：keyRef[dim0] = sum(seqLens)
 
   关于**keyRef**、**valueRef**的一些限制条件如下：
-  - 每个token大小控制在148k以内，例如，对于fp16/bf16类型，num_heads * head_size(keyRef/valueRef)取128*576。
+  - 每个token大小控制在148k以内，例如，对于fp16/bf16类型，num_heads *head_size(keyRef/valueRef)取128*576。
 
 - 示例：
 
-  ```
+  ```python
     keyCache_shape: [128, 128, 16, 144]
     valueCache_shape: [128, 128, 16, 128]
     blockTables_shape: [16, 12]
@@ -34,34 +34,34 @@
     keyRef_shape: [8931, 16, 144]
     valueRef_shape: [8931, 16, 128]
     seqOffset_shape: [16]
-    out1_shape: [8931, 16, 144]  
-    out2_shape: [8931, 16, 128]        
+    out1_shape: [8931, 16, 144]
+    out2_shape: [8931, 16, 128]
   ```
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGatherPaKvCacheGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGatherPaKvCache”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGatherPaKvCacheGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGatherPaKvCache”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
-  const aclTensor *keyCache, 
-  const aclTensor *valueCache, 
-  const aclTensor *blockTables, 
-  const aclTensor *seqLens, 
-  aclTensor       *keyRef, 
-  aclTensor       *valueRef, 
-  const aclTensor *seqOffsetOptional, 
-  char*            cacheMode, 
-  bool             isSeqLensCumsum, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *keyCache,
+  const aclTensor *valueCache,
+  const aclTensor *blockTables,
+  const aclTensor *seqLens,
+  aclTensor       *keyRef,
+  aclTensor       *valueRef,
+  const aclTensor *seqOffsetOptional,
+  char*            cacheMode,
+  bool             isSeqLensCumsum,
+  uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnGatherPaKvCache(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -106,7 +106,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示在当前层存储的value向量缓存。</td>
       <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_v]，数据格式必须是ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_v // elenum_aligned, block_size, elenum_aligned](b8场景：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须是FRACTAL_NZ。</td>
-      <td class="tg-0pky">与keyCache保持一致</td>
+      <td class="tg-0pky">INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
       <td class="tg-0pky">ND、FRACTAL_NZ</td>
       <td class="tg-0pky">4</td>
       <td class="tg-0pky">√</td>
@@ -146,7 +146,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">表示value向量。</td>
       <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_tokens, num_heads, head_size_v]。<br>当cacheMode为"PA_NZ"时，shape为[num_tokens, num_heads * head_size_v]。</td>
-      <td class="tg-0pky">与keyCache保持一致</td>
+      <td class="tg-0pky">与valueCache保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">2-3</td>
       <td class="tg-0pky">√</td>
@@ -204,14 +204,16 @@ aclnnStatus aclnnGatherPaKvCache(
   </tbody>
   </table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - <term>Ascend 950PR/Ascend 950DT</term>:
+    - 允许keyCache为FLOAT8_E4M3FN、valueCache为FLOAT16或BFLOAT16的组合。
 
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 输入keyCache、valueCache、keyRef、valueRef不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN数据类型。
     - 输入blockTables、seqLens、seqOffsetOptional不支持INT64数据类型。
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed; width: 1147px"><colgroup>
@@ -238,9 +240,6 @@ aclnnStatus aclnnGatherPaKvCache(
       </tr>
       <tr>
         <td>输入的维数不匹配。</td>
-      </tr>
-      <tr>
-        <td>输入的数据类型不一致。</td>
       </tr>
     </tbody>
     </table>
@@ -286,7 +285,7 @@ aclnnStatus aclnnGatherPaKvCache(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -295,7 +294,7 @@ aclnnStatus aclnnGatherPaKvCache(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

@@ -160,12 +160,12 @@ private:
     AscendC::GlobalTensor<CType> yGlobal_;
 
     GM_ADDR groupListPtr_;
-    __gm__ AType* xTensorPtr_;
-    __gm__ BType* wTensorPtr_;
+    __gm__ AType *xTensorPtr_;
+    __gm__ BType *wTensorPtr_;
     GM_ADDR x1ScaleTensorPtr_;
-    __gm__ AscendC::fp8_e8m0_t* x2ScaleTensorPtr_;
-    __gm__ BiasType* biasTensorPtr_;
-    __gm__ CType* yTensorPtr_;
+    __gm__ AscendC::fp8_e8m0_t *x2ScaleTensorPtr_;
+    __gm__ BiasType *biasTensorPtr_;
+    __gm__ CType *yTensorPtr_;
 
     int64_t perGroupBOffset_;
     int32_t preOffset_ = 0; // cumsum of group list

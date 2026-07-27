@@ -1049,7 +1049,7 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
 {
     uint32_t valueDAlign = fBaseParams.sfmgdInner;
 
-    int64_t normalAxisSize = 0;
+    uint64_t normalAxisSize = 0;
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
         normalAxisSize = fBaseParams.t1 * fBaseParams.n2 * fBaseParams.g;
     } else {
@@ -1059,7 +1059,7 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     int32_t inputSize = FP16_BYTES;
     int32_t outDtypeSize = FP16_BYTES;
     // 计算单loop的计算量及loop次数, hifp8场景按128对齐, quantblock大小为128 * 4, 目前仅支持D <= 256
-    int64_t singleLoopNBurstNum = SFMG_DEFAULT_BURST_NUM;
+    uint64_t singleLoopNBurstNum = SFMG_DEFAULT_BURST_NUM;
     if (fBaseParams.queryType == ge::DT_FLOAT) {
         inputSize = FP32_BYTES;
         outDtypeSize = FP32_BYTES;
@@ -1089,17 +1089,17 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
 
     // 计算单核的计算量
     uint32_t sfmgUsedCoreNum = fBaseParams.blockOuter * AICV_RATIO_DEFAULT;
-    int64_t normalCoreSize = CeilCommon(normalAxisSize, sfmgUsedCoreNum);
-    sfmgUsedCoreNum = CeilCommon(normalAxisSize, normalCoreSize);
-    int64_t tailCoreSize = normalAxisSize - (sfmgUsedCoreNum - 1) * normalCoreSize;
+    uint64_t normalCoreSize = CeilDivideBy(normalAxisSize, static_cast<uint64_t>(sfmgUsedCoreNum));
+    sfmgUsedCoreNum = CeilDivideBy(normalAxisSize, normalCoreSize);
+    uint64_t tailCoreSize = normalAxisSize - (sfmgUsedCoreNum - 1) * normalCoreSize;
     // 非fp8场景按照实际head dim的大小计算
     if (fBaseParams.queryType == ge::DT_FLOAT16 || fBaseParams.queryType == ge::DT_BF16) {
         singleLoopNBurstNum = sfmgDyBufferLen / inputSize / valueDAlign;
     }
-    int64_t normalCoreLoopTimes = CeilCommon(normalCoreSize, singleLoopNBurstNum);
-    int64_t normalCoreLastLoopNBurstNum = normalCoreSize - (normalCoreLoopTimes - 1) * singleLoopNBurstNum;
-    int64_t tailCoreLoopTimes = CeilCommon(tailCoreSize, singleLoopNBurstNum);
-    int64_t tailCoreLastLoopNBurstNum = tailCoreSize - (tailCoreLoopTimes - 1) * singleLoopNBurstNum;
+    uint64_t normalCoreLoopTimes = CeilDivideBy(normalCoreSize, singleLoopNBurstNum);
+    uint64_t normalCoreLastLoopNBurstNum = normalCoreSize - (normalCoreLoopTimes - 1) * singleLoopNBurstNum;
+    uint64_t tailCoreLoopTimes = CeilDivideBy(tailCoreSize, singleLoopNBurstNum);
+    uint64_t tailCoreLastLoopNBurstNum = tailCoreSize - (tailCoreLoopTimes - 1) * singleLoopNBurstNum;
 
     OP_LOGI("DoPreSfmgTiling",
             "DoPreSfmgTiling, sfmgUsedCoreNum = %d, ubsize = %d, valueDAlign = %d,"
@@ -1381,7 +1381,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
         }
     }
     // mask bool workspace size
-    if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
+    if (fBaseParams.dropoutIsDivisibleBy8 == 0 && fBaseParams.dropMaskOuter) {
         postTilingData_->set_dropMaskGmOffset(workspaceSize);
         workspaceSize =
             (workspaceSize + static_cast<size_t>(fBaseParams.dropMaskSize) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
@@ -1794,19 +1794,35 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
     } else if (isTnd) {
         if (fBaseParams.isDeterministic) {
             FagTilingWithTemplateTFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTFTF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             TND_TILING_DATA_COMMON_ASSIGN(tilingData);
             baseDeterParam_ = &tilingData->baseDeterParam;
         } else {
             FagTilingWithTemplateFFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFTF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             TND_TILING_DATA_COMMON_ASSIGN(tilingData);
         }
     } else {
         if (fBaseParams.isDeterministic) {
             FagTilingWithTemplateTFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTFFF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
             baseDeterParam_ = &tilingData->baseDeterParam;
         } else {
             FagTilingWithTemplateFFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFFF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
         }
     }
@@ -1849,7 +1865,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_offset(fBaseParams.offset);
     s1s2BNGS1S2BaseParams_->set_qStartIdx(fBaseParams.qStartIdx);
     s1s2BNGS1S2BaseParams_->set_kvStartIdx(fBaseParams.kvStartIdx);
-    s1s2BNGS1S2BaseParams_->set_dropMaskOuter(fBaseParams.dropMaskOuter);
+    s1s2BNGS1S2BaseParams_->set_dropMaskOuter(static_cast<uint8_t>(fBaseParams.dropMaskOuter));
     s1s2BNGS1S2BaseParams_->set_sinkOptional(fBaseParams.sinkOptional);
     s1s2BNGS1S2BaseParams_->set_s1SinkOuter(fBaseParams.s1SinkOuter);
     s1s2BNGS1S2BaseParams_->set_s2SinkOuter(fBaseParams.s2SinkOuter);

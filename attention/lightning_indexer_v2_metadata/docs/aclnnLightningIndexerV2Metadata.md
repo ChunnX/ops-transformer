@@ -6,12 +6,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| Ascend 950PR/Ascend 950DT |      √     |
-| Atlas A3 训练系列产品/Atlas A3 推理系列产品     |    √     |
-| Atlas A2 训练系列产品/Atlas A2 推理系列产品 |    √     |
-| Atlas 200I/500 A2 推理产品                      |    x     |
-| Atlas 推理系列产品                              |    x     |
-| Atlas 训练系列产品                              |    x     |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |     √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    x     |
+| <term>Atlas 推理系列产品</term>                              |    x     |
+| <term>Atlas 训练系列产品</term>                              |    x     |
 
 ## 功能说明
 
@@ -24,7 +24,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnLightningIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnLightningIndexerV2Metadata"执行计算
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnLightningIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnLightningIndexerV2Metadata"执行计算
 
 ``` cpp
 aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
@@ -87,50 +87,50 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
+      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cuSeqlensKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Key的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>layoutKOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>layoutKOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sequsedQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sequsedKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Key实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li><li>layoutK为PA_BBND时，该参数必须传入。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cmpResidualKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</td>
-      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li><li>shape固定为(B, )。</li><li>每个元素值都应小于传入的压缩率cmpRaio。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
@@ -278,7 +278,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -354,12 +354,12 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
   - aclnnLightningIndexerV2Metadata默认确定性实现。
-
+  - B（Batch）表示输入样本批量大小。
   - Batch取值规则
     - 优先获取sequsedQOptional中的Batch信息。
     - 如果未传入sequsedQOptional，优先获取cuSeqlensQOptional中的Batch信息。
@@ -382,7 +382,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ``` cpp
 #include <iostream>
@@ -492,7 +492,7 @@ struct ArgContext {
     Tensor metadata {};
 };
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape) 
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -501,7 +501,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-aclnnStatus Init(int32_t deviceId, aclrtStream* stream) 
+aclnnStatus Init(int32_t deviceId, aclrtStream* stream)
 {
     // 固定写法，初始化
     auto ret = aclInit(nullptr);
@@ -513,7 +513,7 @@ aclnnStatus Init(int32_t deviceId, aclrtStream* stream)
     return ACL_SUCCESS;
 }
 
-void Finalize(int32_t deviceId, aclrtStream stream) 
+void Finalize(int32_t deviceId, aclrtStream stream)
 {
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
@@ -665,7 +665,7 @@ int main() {
             workspaceAddr = nullptr;
         }
     });
-    
+
     // 调用aclnnLightningIndexerV2Metadata第二段接口
     ret = aclnnLightningIndexerV2Metadata(workspaceAddr, workspaceSize, executor, stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnLightningIndexerV2Metadata failed. ERROR: %d\n", ret);

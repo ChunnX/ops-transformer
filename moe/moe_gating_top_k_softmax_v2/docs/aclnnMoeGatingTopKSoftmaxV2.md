@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取topK操作；如果renorm=1，先对x的输出做topK操作，再进行Softmax操作。其中yOut为softmax的topK结果；expertIdxOut为topK的值的索引结果，即对应的专家序号；如果对应的行finished为True，则专家序号直接填num\_expert值（即x的最后一个轴大小）。
+- 接口功能：MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取topK操作；如果renorm=1，先对x的输出做topK操作，再进行Softmax操作。yOut：当renorm=0时，对x做Softmax后取的topK值；当renorm=1时，对x先取topK再进行Softmax，得到的结果。expertIdxOut为topK的值的索引结果，即对应的专家序号；如果对应的行finished为True，则专家序号直接填num\_expert值（即x的最后一个轴大小）。
 - 计算公式：
 
 1. renorm = 0,
@@ -40,27 +40,27 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeGatingTopKSoftmaxV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeGatingTopKSoftmaxV2”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize(
-    const aclTensor *x, 
-    const aclTensor *finishedOptional, 
-    int64_t          k, 
-    int64_t          renorm, 
-    bool             outputSoftmaxResultFlag, 
-    const aclTensor *yOut, 
-    const aclTensor *expertIdxOut, 
+    const aclTensor *x,
+    const aclTensor *finishedOptional,
+    int64_t          k,
+    int64_t          renorm,
+    bool             outputSoftmaxResultFlag,
+    const aclTensor *yOut,
+    const aclTensor *expertIdxOut,
     const aclTensor *softmaxResultOutOptional,
-    uint64_t        *workspaceSize, 
+    uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
 
 ```c++
 aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -194,7 +194,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -265,8 +265,8 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -275,7 +275,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
