@@ -13,14 +13,14 @@
 
 - **接口功能**：BlockSparseAttentionV3稀疏注意力计算，支持灵活的块级稀疏模式，通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
   
-  相比于BlockSparseAttentionV2,本接口新增pDequantScaleOptional、quantMode、dstTypeMax参数。
+  相比于BlockSparseAttentionV3,本接口新增pQuantScaleOptional、quantMode、dstTypeMax参数。
 - **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
   
   $$
   attentionOut = Softmax(scale \cdot query \cdot key_{sparse}^T + atten\_mask) \cdot value_{sparse}
   $$
   
-  BlockSparseAttentionV3输入query、key、value的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。
+  BlockSparseAttentionV2输入query、key、value的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。
   
   - B：表示输入样本批量大小（Batch）
   - T：B和S合轴紧密排列的长度（Total tokens）
@@ -36,35 +36,36 @@
 - **MXFP4特性说明(仅Ascend 950PR/Ascend 950DT支持)**
   
   本接口新增支持MXFP4数据类型(FLOAT4_E2M1)的输入，以提供计算效率并降低显存占用。当使用MXFP4输入时，需要提供相应的量化缩放因子用于反量化计算。
-  
 - <summary><a id="MXFP4量化模式的量化缩放因子"></a><strong>MXFP4量化模式的量化缩放因子</strong></summary>
   
   - qDequantScaleOptional：
-    - MX 量化模式，仅支持Rowwise E8M0 Micro Scaling
-    - 数据类型: FLOAT8_E8M01
-    - shape:
-      - BNSD: [B, N1, S1, D//64, 2]；
-      - BSND: [B, S1, N1, G, D//64, 2]；
-      - TND: [T1, N1, G, D//64, 2]。
-      
-  - kDequantScaleOptional：
+    
     - MX 量化模式，仅支持Rowwise E8M0 Micro Scaling
     - 数据类型: FLOAT8_E8M0
     - shape:
-      - BNSD:[B, N2, S2, D//64, 2]；
-      - BSND:[B, S2, N2, D//64, 2]；
-      - TND: [T2, N2, D//64, 2]。
-      
+      - BNSD: [B, Nq, Sq, CeilDiv(D, 64), 2]；
+      - BSND: [B, Sq, Nq, CeilDiv(D, 64), 2]；
+      - TND: [Tq, Nq, CeilDiv(D, 64), 2]。
+  - kDequantScaleOptional：
+    
+    - MX 量化模式，仅支持Rowwise E8M0 Micro Scaling
+    - 数据类型: FLOAT8_E8M0
+    - shape:
+      - BNSD:[B, Nkv, Skv, CeilDiv(D, 64), 2]；
+      - BSND:[B, Skv, Nkv, CeilDiv(D, 64), 2]；
+      - TND: [Tkv, Nkv, CeilDiv(D, 64), 2]。
   - vDequantScaleOptional：
+    
     - MX 量化模式，仅支持Columnwise E8M0 Micro Scaling
     - 数据类型: FLOAT8_E8M0
     - shape
-      - BNSD:[B, N2, S2//64, D, 2]；
-      - BSND:[B, S2//64, N2, D, 2]；
-      - TND: [BT2//64, N2, D, 2]。
+      
+      - BNSD:[B, Nkv, CeilDiv(Skv, 64), D, 2]；
+      - BSND:[B, CeilDiv(Skv, 64), Nkv, D, 2]；
+      - TND: [BTkv//64, Nkv, D, 2]。
       
       $$
-      BT2 = \sum_{b=0}^{B-1} \left\lceil \frac{S2_b}{64} \right\rceil
+      BTkv = \sum_{b=0}^{B-1} \left\lceil \frac{S2_b}{64} \right\rceil
       $$
 
 ## 函数原型
@@ -85,7 +86,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     const aclTensor *qDequantScaleOptional,
     const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional,
-	const aclTensor *pDequantScaleOptional,
+	const aclTensor *pQuantScaleOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -115,6 +116,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
 ## aclnnBlockSparseAttentionV3GetWorkspaceSize
 
 - **参数说明**
+  
   <table style="undefined;table-layout: fixed; width: 1550px">
   <colgroup>
   <col style="width: 269px">
@@ -293,9 +295,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
   		   <li>quantMode=2/3, 约束见<a href="#MXFP4量化模式的量化缩放因子">MXFP4量化模式的量化缩放因子。</a></li>
         </ul>
       </td>
-      <td>FLOAT32</td>
+      <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>4</td>
+      <td>4/5</td>
       <td>×</td>
     </tr>
     <tr>
@@ -316,7 +318,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>4</td>
+      <td>4/5</td>
       <td>×</td>
     </tr>
     <tr>
@@ -337,22 +339,22 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>4</td>
+      <td>4/5</td>
       <td>×</td>
     </tr>
     <tr>
-      <td>pDequantScaleOptional（aclTensor*）</td>
+      <td>pQuantScaleOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>softmax结果p的反量化缩放因子。</td>
+      <td>softmax结果p的量化缩放因子。</td>
       <td>
         可选输入：
         <ul>
           <li> 预留参数, 暂不支持, 此参数应传入nullptr。</li>
         </ul>
       </td>
-      <td>FLOAT8_E8M0</td>
+      <td>FLOAT32</td>
       <td>ND</td>
-      <td>4</td>
+      <td>-</td>
       <td>×</td>
     </tr>
     <tr>
@@ -557,7 +559,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
     </tr>
   </tbody>
   </table>
-
 - **返回值**
   aclnnStatus：
   返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -598,10 +599,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
   </tbody>
   </table>
 
-
 ## aclnnBlockSparseAttentionV3
 
 - **参数说明**
+  
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
   <col style="width: 128px">
@@ -636,13 +637,13 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
     </tr>
   </tbody>
   </table>
-
 - **返回值**
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明<a id="constraint_rule"></a>
 
 - 确定性计算：
+  
   - aclnnBlockSparseAttentionV3默认确定性实现。
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - qInputLayout当前仅支持"TND"和"BNSD"和"BSND"。
@@ -663,10 +664,26 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
 - maskType当前只支持输入0，表示不加mask。
 - blockSize当前只支持输入0，表示不支持paged cache。
 - preTokens和nextTokens当前只支持输入2147483647，表示当前token的前后所有token都参与attention运算，即不支持滑窗attention。
-
 - **quantMode=1(FP8静态量化模式)相关约束**：
   
-  - 仅<term>Ascend 950PR/Ascend 950DT</term>支持。
+  - 仅Ascend 950PR/Ascend 950DT支持。
+  - 输入的query、key、value采用FLOAT8_E4M3FN数据类型，需要提供以下量化缩放因子参数：
+  - 输入的query、key、value采用FLOAT8_E4M3FN数据类型，需要提供以下量化缩放因子参数：
+    - qDequantScale（query量化缩放因子）
+      
+      - 数据类型：FLOAT32
+      - shape：(Batch, HeadNum, CeilDiv(maxQSeqLength, 128), 1)
+      - 用途：在QK矩阵乘法时对query进行反量化。
+    - kDequantScale（key量化缩放因子）
+      
+      - 数据类型：FLOAT32
+      - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
+      - 用途：在QK矩阵乘法时对key进行反量化。
+    - vDequantScale（value量化缩放因子）
+      
+      - 数据类型：FLOAT32
+      - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
+      - 用途：在PV矩阵乘法时对value进行反量化。
   - 当query、key、value中任意一个数据类型为FLOAT8_E4M3FN时，query、key、value必须同时为FLOAT8_E4M3FN数据类型。
   - 使用FP8输入时，必须提供对应的量化缩放因子输入qDequantScale、kDequantScale、vDequantScale。
   - 量化缩放因子的数据类型必须为FLOAT32。
@@ -677,8 +694,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
   - q和kv的量化块大小必须与blockShapeOptional的两个元素大小分别保持一致。
 - **quantMode=2/3 (MXFP4量化模式)相关约束（新增）**
   
-  - 仅<term>Ascend 950PR/Ascend 950DT</term>支持
-  - blockShapeX 仅支持64/128；
+  - 仅Ascend 950PR/Ascend 950DT支持
+  - blockShapeX 仅支持64的倍数；
   - D仅支持64/128;
   - attentionOut数据类型仅支持FLOAT16或BFLOAT16；
   - 暂不支持attenMaskOptional、PagedAttention、softmaxLse等高阶特性。

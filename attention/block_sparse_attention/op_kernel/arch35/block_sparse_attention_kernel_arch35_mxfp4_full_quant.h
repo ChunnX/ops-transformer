@@ -735,12 +735,19 @@ public:
             // mask2index
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
 
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
+
+            // vec 
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_VEC1_RES_BUF0_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_VEC1_RES_BUF1_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_ATTN_BUF_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF0_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF1_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF2_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF3_FLAG);
         }
     }
 
@@ -759,13 +766,19 @@ public:
             // mask2index
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
             
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
 
+            // vec
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_VEC1_RES_BUF0_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_VEC1_RES_BUF1_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_ATTN_BUF_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF0_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF1_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF2_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF3_FLAG);
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
