@@ -115,7 +115,6 @@
 ## 约束说明
 
 - **确定性说明**：aclnnStemOamPrepVarlenQ 默认确定性实现。
-- **架构支持**：仅支持 arch35 (Ascend 950PR/Atlas A3) 架构，不支持 arch22。
 - **shape格式字段含义及约束**
     - total_tokens：total_tokens表示所有 batch 的 token 总数
     - H_q：H_q表示 Q 多头数，取值范围：1~128
