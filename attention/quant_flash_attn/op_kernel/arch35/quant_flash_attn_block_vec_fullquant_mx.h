@@ -166,7 +166,7 @@ public:
     T negativeFloatScalar;
     float pScaleValue {1.0f};
     bool isSkipMask {false};
-    bool isSkipCompute{false};
+    bool isFullMask{false};
     uint32_t minValue { NEGATIVE_MIN_VALUE_FP32 };
 
     // ==================== Functions ======================
@@ -315,7 +315,7 @@ public:
         if constexpr (HAS_MASK) {
             maskLine = ComputeMaskLineDN(runInfo, subLoop);
         }
-        if (isSkipCompute) {
+        if (isFullMask) {
             maskLine = -256;
         }
 
@@ -1132,9 +1132,9 @@ public:
         }
         int64_t maskLine = nextToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(s2StartIdx);
         if (maskLine < 0) {
-            isSkipCompute = -maskLine >= (mBaseSize / 2);
+            isFullMask = -maskLine >= (mBaseSize / 2);
         } else {
-            isSkipCompute = maskLine >= s2BaseSizeCur;
+            isFullMask = maskLine >= s2BaseSizeCur;
         }
         return maskLine;
     }
