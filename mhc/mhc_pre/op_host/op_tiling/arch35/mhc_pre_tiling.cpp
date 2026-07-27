@@ -71,6 +71,7 @@ const constexpr uint32_t SCHEDULE_MODE = 1;
 const constexpr float DEFAULT_NORM_EPS = 1e-6f;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
 const constexpr uint32_t IMPL_MODE_ATTR_INDEX = 3;
+const constexpr uint32_t OUT_FLAG_ATTR_INDEX = 0;
 const constexpr int64_t IMPL_MODE_FP32 = 0;
 const constexpr int64_t IMPL_MODE_HF32 = 1;
 
@@ -583,11 +584,26 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
 
 ge::graphStatus MhcPreBaseTiling::ParseOutputFlags()
 {
-    auto invRmsDesc = context_->GetOutputDesc(INV_RMS_INDEX);
-    auto hMixDesc = context_->GetOutputDesc(H_MIX_INDEX);
-    auto hPreDesc = context_->GetOutputDesc(H_PRE_INDEX);
+    auto attrs = context_->GetAttrs();
+    auto outFlagPtr = attrs->GetAttrPointer<int64_t>(OUT_FLAG_ATTR_INDEX);
+    int64_t outFlag = outFlagPtr != nullptr ? *outFlagPtr : 0;
+    if (outFlag != 0 && outFlag != 1) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "out_flag",
+                                              std::to_string(outFlag).c_str(),
+                                              "out_flag must be 0 or 1");
+        return ge::GRAPH_FAILED;
+    }
+    outFlag_ = outFlag == 1;
 
-    outFlag_ = (invRmsDesc != nullptr && hMixDesc != nullptr && hPreDesc != nullptr);
+    if (outFlag_) {
+        auto invRmsDesc = context_->GetOutputDesc(INV_RMS_INDEX);
+        auto hMixDesc = context_->GetOutputDesc(H_MIX_INDEX);
+        auto hPreDesc = context_->GetOutputDesc(H_PRE_INDEX);
+        OP_CHECK_IF(invRmsDesc == nullptr || hMixDesc == nullptr || hPreDesc == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "optional outputs", "nullptr",
+                                                          "invRms, hMix and hPre are required when out_flag is 1"),
+                    return ge::GRAPH_FAILED);
+    }
 
     if (hasResi_) {
         auto hResDesc = context_->GetOutputDesc(H_RES_INDEX);
