@@ -10,6 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import glob
 import os
 
 EXCEL_COLUMNS = [
@@ -27,6 +28,8 @@ EXCEL_COLUMNS = [
 PA_BLOCK_PADDING_BYTES = 0
 
 EXCEL_FILENAME = "cases.csv,cases_stc.csv,cases_generalized.csv"
+CSV_PATH_ENV = "QBSA_BATCH_CSV"
+CASE_INDEX_ENV = "QBSA_BATCH_CASE_INDEX"
 
 _INT_COLS = {"B", "N1", "N2", "S1", "S2", "D",
              "sparse_q_block_size", "sparse_kv_block_size",
@@ -49,10 +52,12 @@ def _get_excel_paths(csv_path=None):
         csv_name = str(csv_name).strip()
         if not csv_name:
             continue
-        if os.path.isabs(csv_name):
-            csv_paths.append(csv_name)
+        csv_path = csv_name if os.path.isabs(csv_name) else os.path.join(base_dir, csv_name)
+        matches = sorted(glob.glob(csv_path)) if glob.has_magic(csv_path) else []
+        if matches:
+            csv_paths.extend(matches)
         else:
-            csv_paths.append(os.path.join(base_dir, csv_name))
+            csv_paths.append(csv_path)
     return csv_paths
 
 
@@ -90,7 +95,16 @@ def _parse_float(val):
     return float(val)
 
 
-def _load_cases_from_one_csv(csv_path):
+def _parse_case_index(case_index):
+    if case_index in (None, ""):
+        return None
+    index = int(case_index)
+    if index < 1:
+        raise ValueError(f"case index should be 1-based and positive, got {index}")
+    return index
+
+
+def _load_cases_from_one_csv(csv_path, case_index=None):
     import csv
     with open(csv_path, "r", encoding="utf-8", newline="") as f:
         reader = csv.reader(f)
@@ -98,10 +112,19 @@ def _load_cases_from_one_csv(csv_path):
     if not rows:
         return {}
     header = [c.strip() for c in rows[0]]
+    data_rows = rows[1:]
+    selected_index = _parse_case_index(case_index)
+    if selected_index is not None:
+        if selected_index > len(data_rows):
+            raise ValueError(
+                f"case index {selected_index} is out of range for {csv_path}, total cases: {len(data_rows)}"
+            )
+        data_rows = [data_rows[selected_index - 1]]
+
     dtype_map = _get_dtype_map()
     import torch as _torch
     cases = {}
-    for row in rows[1:]:
+    for row in data_rows:
         record = dict(zip(header, row))
         case_name = record.get("case_name")
         if case_name is None:
@@ -137,10 +160,15 @@ def _load_cases_from_one_csv(csv_path):
     return cases
 
 
-def load_cases_from_csv(csv_path=None):
+def load_cases_from_csv(csv_path=None, case_index=None):
+    if csv_path is None:
+        csv_path = os.environ.get(CSV_PATH_ENV) or EXCEL_FILENAME
+    if case_index is None:
+        case_index = os.environ.get(CASE_INDEX_ENV)
+
     cases = {}
     for one_csv_path in _get_excel_paths(csv_path):
-        cases.update(_load_cases_from_one_csv(one_csv_path))
+        cases.update(_load_cases_from_one_csv(one_csv_path, case_index=case_index))
     return cases
 
 

@@ -21,7 +21,7 @@ import check_valid_param
 from quant_block_sparse_attn_paramset_batch import ENABLED_PARAMS
 
 
-SAVE_PATH = "bsa_testcase"
+SAVE_PATH = os.environ.get("BSA_TESTCASE_PATH", "bsa_testcase")
 
 
 def _parse_value(value):

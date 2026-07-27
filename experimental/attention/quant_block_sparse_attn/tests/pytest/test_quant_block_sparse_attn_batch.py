@@ -21,8 +21,8 @@ import utils
 from batch import quant_block_sparse_attn_process
 
 
-TESTCASE_PATH = "bsa_testcase"
-RESULT_PATH = Path("result.xlsx")
+TESTCASE_PATH = os.environ.get("BSA_TESTCASE_PATH", "bsa_testcase")
+RESULT_PATH = Path(os.environ.get("BSA_RESULT_PATH", "result.xlsx"))
 DEVICE_ID = 0
 
 
