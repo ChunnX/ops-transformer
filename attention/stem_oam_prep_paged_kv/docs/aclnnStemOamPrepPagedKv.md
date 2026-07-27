@@ -194,7 +194,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
     <tr>
       <td class="tg-0lax">stemStride（int64_t）</td>
       <td class="tg-0lax">ATTR</td>
-      <td class="tg-0lax">Stride大小，%16==0，≤64，≤stemBlockSize，推荐16。</td>
+      <td class="tg-0lax">Stride大小，%16==0，≤64，≤stemBlockSize且能被stemBlockSize整除，推荐16。</td>
       <td class="tg-0lax">必填。</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>

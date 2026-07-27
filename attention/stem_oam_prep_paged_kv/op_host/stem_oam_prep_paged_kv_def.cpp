@@ -16,6 +16,12 @@
 
 namespace ops {
 
+constexpr double DEFAULT_LAMBDA_MAG = 0.3;
+constexpr int64_t DEFAULT_CACHE_LAYOUT = 0;
+constexpr int64_t DEFAULT_KV_BLOCK_SIZE = 64;
+constexpr int64_t DEFAULT_STEM_BLOCK_SIZE = 128;
+constexpr int64_t DEFAULT_STEM_STRIDE = 16;
+
 class StemOamPrepPagedKv : public OpDef {
 public:
     explicit StemOamPrepPagedKv(const char *name) : OpDef(name)
@@ -59,11 +65,11 @@ public:
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Attr("lambdaMag").AttrType(OPTIONAL).Float(0.3);
-        this->Attr("cacheLayout").AttrType(OPTIONAL).Int(0);
-        this->Attr("kvBlockSize").AttrType(OPTIONAL).Int(64);
-        this->Attr("stemBlockSize").AttrType(OPTIONAL).Int(128);
-        this->Attr("stemStride").AttrType(OPTIONAL).Int(16);
+        this->Attr("lambdaMag").AttrType(OPTIONAL).Float(DEFAULT_LAMBDA_MAG);
+        this->Attr("cacheLayout").AttrType(OPTIONAL).Int(DEFAULT_CACHE_LAYOUT);
+        this->Attr("kvBlockSize").AttrType(OPTIONAL).Int(DEFAULT_KV_BLOCK_SIZE);
+        this->Attr("stemBlockSize").AttrType(OPTIONAL).Int(DEFAULT_STEM_BLOCK_SIZE);
+        this->Attr("stemStride").AttrType(OPTIONAL).Int(DEFAULT_STEM_STRIDE);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(false)
