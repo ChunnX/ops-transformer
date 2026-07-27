@@ -19,8 +19,11 @@
 #include "../../../attn_infra/bsa_matrix_coord.hpp"
 #include "../../../tla/tensor.hpp"
 #include "../../../tla/layout.hpp"
+#include "block_epilogue_arch35_utils.hpp"
 
 namespace NpuArch::Epilogue::Block {
+
+using namespace MXFP4Kernel;
 
 template <
     class ElementLocalGlobalMax_,
@@ -33,11 +36,60 @@ class BlockEpilogue<
 public:
     using DispatchPolicy = EpilogueCopyGlobalMaxUbToL1Bsa;
     using ArchTag = typename DispatchPolicy::ArchTag;
-    using ElementLocalGlobalMax = ElementLocalGlobalMax_;
+    using ElementGMax = ElementLocalGlobalMax_;
     using LayoutLocalGlobalMax = LayoutLocalGlobalMax_;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource) {}
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource) {
+        for (uint32_t i = 0; i < MXFP4::UB_LOCAL_GLOBAL_MAX_CNT; i++) {
+            localGlobalMaxUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementGMax>(
+                MXFP4::UB_LOCAL_GLOBAL_MAX_OFFSET + MXFP4::UB_LOCAL_GLOBAL_MAX_SIZE * i);
+        }
+    }
     __aicore__ inline ~BlockEpilogue() {}
+
+    template <class TensorL1GlobalMax>
+    __aicore__ inline
+    void operator()(TensorL1GlobalMax &l1GlocalMaxTensorTla, TileInfo &tileInfo)
+    {
+        uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
+        AscendC::LocalTensor<ElementGMax> &localGlobalMax = localGlobalMaxUBTensor[tileInfo.tileMaxIdx];
+        // 如果当前s2只有一个softmax，就另外一个核不用做同步操作
+        if (tileInfo.kvsFirstTileStartVecCore != subBlockIdx && tileInfo.isTileGoupFirstTile) {
+            auto l1TlaTile = tla::GetTile(l1GlocalMaxTensorTla,
+                tla::MakeCoord(1 - subBlockIdx, 0),
+                tla::MakeShape(1, MXFP4::QS_BASE_SIZE));
+            auto dstOffset = l1TlaTile.layout()(l1TlaTile.coord());
+            uint16_t l1TlaTileMSize = static_cast<uint16_t>(tla::Get<0>(l1TlaTile.shape()));
+            uint32_t l1TlaTileNSize = tla::Get<1>(l1TlaTile.shape());
+            AscendC::DataCopyParams repeatParams;
+            repeatParams.blockCount = l1TlaTileMSize;
+            repeatParams.blockLen = static_cast<uint16_t>(l1TlaTileNSize * sizeof(ElementGMax) / MXFP4::DATA_BLOCK_BYTE);
+            repeatParams.srcStride = 0;
+            repeatParams.dstStride = 0;
+            AscendC::DataCopy(l1GlocalMaxTensorTla.data()[dstOffset], localGlobalMax, repeatParams);
+            return;
+        }
+
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_GMAX_UB_TO_L1_BUF0_FLAG + tileInfo.tileMaxIdx);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_GMAX_UB_TO_L1_BUF0_FLAG + tileInfo.tileMaxIdx);
+
+        auto l1TlaTile = tla::GetTile(l1GlocalMaxTensorTla,
+            tla::MakeCoord(1 - subBlockIdx, 0),
+            tla::MakeShape(1, static_cast<uint32_t>(MXFP4::QS_BASE_SIZE)));
+        auto dstOffset = l1TlaTile.layout()(l1TlaTile.coord());
+
+        uint16_t l1TlaTileMSize = static_cast<uint16_t>(tla::Get<0>(l1TlaTile.shape()));
+        uint32_t l1TlaTileNSize = tla::Get<1>(l1TlaTile.shape());
+        AscendC::DataCopyParams repeatParams;
+        repeatParams.blockCount = l1TlaTileMSize;
+        repeatParams.blockLen = static_cast<uint16_t>(l1TlaTileNSize * sizeof(ElementGMax) / MXFP4::DATA_BLOCK_BYTE);
+        repeatParams.srcStride = 0;
+        repeatParams.dstStride = 0;
+        AscendC::DataCopy(l1GlocalMaxTensorTla.data()[dstOffset], localGlobalMax, repeatParams);
+    }
+
+private:
+    AscendC::LocalTensor<ElementGMax> localGlobalMaxUBTensor[MXFP4::UB_LOCAL_GLOBAL_MAX_CNT]; // LocalGlobalMax
 };
 
 }  // namespace NpuArch::Epilogue::Block
