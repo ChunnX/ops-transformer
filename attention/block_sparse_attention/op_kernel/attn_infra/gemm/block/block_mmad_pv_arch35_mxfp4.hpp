@@ -405,7 +405,7 @@ public:
         //   V 数据 = 0x6666（fp4 4.0）、V scale = 0x7d7d（e8m0 0x25→2^(125-127)=0.25）→ 有效 4.0×0.25=1.0
         //   原 0x2222(1.0)×0x7f7f(1.0)=1.0 也是 1.0，但 QFA 用 4.0×0.25（规避 fp4 0x2 编码问题）
         //   对应 QFA Fill kvL1[kvBufId]（当前 slot，非固定 slot 0）
-        AscendC::InitConstValueParams<uint16_t> vFillParams(1, static_cast<uint16_t>(PV_L0A_SIZE / 32 ), 0, 0x6666);
+        AscendC::InitConstValueParams<uint16_t> vFillParams(1, static_cast<uint16_t>(MXFP4::L0A_PV_BUF_SIZE / 32 ), 0, 0x6666);
         AscendC::Fill(l1ATensor[l1ABufId].template ReinterpretCast<uint16_t>(), vFillParams);          // V 数据
         AscendC::PipeBarrier<PIPE_MTE2>();
         AscendC::InitConstValueParams<uint16_t> vscaleFillParams(1, static_cast<uint16_t>(MXFP4::V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
