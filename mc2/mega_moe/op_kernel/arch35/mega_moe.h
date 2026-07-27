@@ -545,6 +545,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         ResetGmm2CombineSyncCounters();
     }
+    // 清零共享专家 GMM2 全局 flag + counter (复用 resetTensor_ 零源)
+    if (sharedExpertNum_ > 0) {
+        SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
+        GlobalTensor<int32_t> counterGm;
+        counterGm.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.sharedExpertGmm2CounterPtr);
+        DataCopyExtParams flagCopyParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(counterGm, resetTensor_, flagCopyParams);
+        GlobalTensor<int32_t> doneFlagGm;
+        doneFlagGm.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr);
+        DataCopyPad(doneFlagGm, resetTensor_, flagCopyParams);
+    }
 }
 
 // ==================================================
@@ -1607,6 +1618,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     if (coreLen == 0) {
         return;
     }
+
+    // 轮询全局 flag, 等待 C 核共享专家 GMM2 完成 (替代 SyncAll<false>)
+    if (sharedExpertNum_ > 0) {
+        GlobalTensor<int32_t> doneFlag;
+        doneFlag.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr);
+        while (ReadGmByPassDCache(&doneFlag[0]) == 0) {
+            int64_t waitStartCycle = AscendC::GetSystemCycle();
+            while (AscendC::GetSystemCycle() - waitStartCycle < 100) {}
+        }
+    }
+
     UnpermuteBufferConfig bufferConfig = UnpermuteBuffInit();
     int32_t tokensPerBatch = bufferConfig.tokensPerBatch;
 
@@ -1842,7 +1864,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
         UpdateSharedGlobalBuffer<AddrUpdateMode::GMM2>(sharedGmm2AddrInfo, sharedGmm2State);
         GroupMatmulWithCombine<true>(sharedGmm2AddrInfo, sharedGmm2State, sharedIdx, vecSetSyncCom);
     }
-    SyncAll<false>();
+    // C核: AtomicAdd 计数器, 最后完成的核写 flag
+    if constexpr (g_coreType == AIC) {
+        PipeBarrier<PIPE_ALL>();
+        GlobalTensor<int32_t> counter;
+        counter.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.sharedExpertGmm2CounterPtr);
+        int32_t cnt = AscendC::AtomicAdd(&counter[0], int32_t(1));
+        if (cnt + 1 == static_cast<int32_t>(aicNum_)) {
+            GlobalTensor<int32_t> doneFlag;
+            doneFlag.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr);
+            WriteGmByPassDCache(&doneFlag[0], 1);
+        }
+    }
+    // 移除 SyncAll<false>, 改用全局 flag 软同步
 }
 
 template <TemplateMegaMoeTypeClass>

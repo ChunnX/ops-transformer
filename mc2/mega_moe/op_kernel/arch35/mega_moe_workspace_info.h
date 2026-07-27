@@ -126,6 +126,8 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertInputScalePtr{nullptr};
     GM_ADDR sharedExpertSwigluDataPtr{nullptr};
     GM_ADDR sharedExpertSwigluScalePtr{nullptr};
+    GM_ADDR sharedExpertGmm2CounterPtr{nullptr};
+    GM_ADDR sharedExpertGmm2DoneFlagPtr{nullptr};
 
     GM_ADDR maskSlotPtr{nullptr};          // urma发送mask临时GM
     GM_ADDR dispatchL1CommPtr{nullptr};    // dispatch L1 communication workspace
@@ -297,8 +299,14 @@ struct WorkspaceInfo {
             // sharedExpertSwigluScale: SwiGLU scale [sharedExpertNum × bs × hiddenDim/2/32]
             sharedExpertSwigluScalePtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum *
-                                                      tilingData->hiddenDim / SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
-                                                  ALIGN_512);
+                                                       tilingData->hiddenDim / SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
+                                                   ALIGN_512);
+            // sharedExpertGmm2Counter: AtomicAdd 计数器 (1 个 int32)
+            sharedExpertGmm2CounterPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
+            // sharedExpertGmm2DoneFlag: 完成标志 (1 个 int32)
+            sharedExpertGmm2DoneFlagPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
         }
     }
 };
