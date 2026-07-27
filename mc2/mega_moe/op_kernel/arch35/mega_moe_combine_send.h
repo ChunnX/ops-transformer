@@ -269,9 +269,9 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
                 ubQuantSend = ubBf16;
            }
            GM_ADDR localSrcPtr = gmm2OutAddr + (tokenStart + i) * n * sizeof(T);
-           CombineSendTokenToRemote<SendType,IsQuantized>(i, 1, n, nScale, groupIdx, rankId, tripleTensor, ubQuantSend, params, localSrcPtr);
+           CombineSendTokenToRemote<SendType,IsQuantized>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params, localSrcPtr);
         } else {
-            CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, tripleTensor, ubQuantSend, params);
+            CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params);
         }
     }
 
