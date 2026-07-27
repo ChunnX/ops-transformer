@@ -134,6 +134,15 @@ private:
     /* 核Index信息 */
     int32_t aicIdx;
 
+    /* 分核信息 */
+    uint32_t bN2StartIdx;
+    uint32_t gS1StartIdx;
+    uint32_t s2StartIdx;
+    uint32_t bN2EndIdx;
+    uint32_t nextGs1Idx;
+    uint32_t s2EndIdx;
+    uint32_t hasLoad;
+
     /* 初始化后不变的信息 */
     ConstInfo constInfo;
 
@@ -172,22 +181,41 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     }
     this->metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
 
+    bN2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_START_INDEX, false));
+    gS1StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_START_INDEX, false));
+    s2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_START_INDEX, false));
+    bN2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_END_INDEX, false));
+    nextGs1Idx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_END_INDEX, false));
+    s2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_END_INDEX, false));
+    hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
+    if (nextGs1Idx != 0 || s2EndIdx != 0) {
+        bN2EndIdx++;
+    }
+
     constInfo.s1BaseSize = 64;
     constInfo.s2BaseSize = 128;
 
     this->pipe = tPipe;
     this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, sequsedOriKv, cuSeqlensCmpKv, sequsedCmpKv,
         cmpResidualKv);
+    this->InitGlobalBuffer(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable,
+        cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv, sequsedCmpKv, cmpResidualKv,
+        oriTopkLength, cmpTopkLength, sinks, workspace, tiling, tPipe); // gm设置
     vecBlock.InitVecBlock(tPipe, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedOriKv, sequsedCmpKv, cmpResidualKv);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
+    if ASCEND_IS_AIV {
+        if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE && IS_VEC_S2PHYADDR) {
+            this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx, hasActualSeqQlen,
+                                        hasCuSeqlensQ, hasActualSeqCmpKvlen, hasCuSeqlensCmpKv, actualSeqQlenGm,
+                                        cuSeqlensQGm, actualSeqCmpKvlenGm, cuSeqlensCmpKvGm, cmpResidualKvGm, workspace,
+                                        constInfo);
+        }
+    }
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
     vecBlock.InitS2SplitStaging(s2SplitStagingBase);
     cubeBlock.InitCubeBlock(pipe, l1BufferManager, query);
     this->ComputeConstexpr();
-    this->InitGlobalBuffer(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable,
-        cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv, sequsedCmpKv, cmpResidualKv,
-        oriTopkLength, cmpTopkLength, sinks, workspace, tiling, tPipe); // gm设置
     this->InitLocalBuffer();
 }
 
@@ -439,7 +467,6 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
-    uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
     int64_t maxS2LoopCnt = 0;
     if constexpr (IS_SPLIT_G) {
         maxS2LoopCnt = static_cast<int64_t>(metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_MAX_NUM, false)));
@@ -456,19 +483,9 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         return;
     }
 
-    // 从meta data解析分核信息
-    uint32_t bN2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_START_INDEX, false));
-    uint32_t gS1StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_START_INDEX, false));
-    uint32_t s2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_START_INDEX, false));
-    uint32_t bN2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_END_INDEX, false));
-    uint32_t nextGs1Idx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_END_INDEX, false));
-    uint32_t s2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_END_INDEX, false));
     uint32_t firstFdDataWorkspaceIdx =
         metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, false));
     uint32_t s2LoopLimit = 0;
-    if (nextGs1Idx != 0 || s2EndIdx != 0) {
-        bN2EndIdx++;
-    }
 
     int64_t taskId = 0;
     bool notLast = true;
