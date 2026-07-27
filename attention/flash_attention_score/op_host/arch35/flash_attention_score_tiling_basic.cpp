@@ -72,7 +72,9 @@ protected:
                 break;
             default:
                 dTemplateType = DTemplateType::DTEMPLATEBOTTOM;
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "Query or Key dSize is not in range:(0, 768]"); 
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
+                    std::to_string(dBasicBlock).c_str(),
+                    "The value of dBasicBlock must be in range (0, 768]");
         }
     }
 
@@ -131,11 +133,19 @@ protected:
         PseEncodeType pseEncodeType = PseEncodeType::PSE_ENCODE_NONE;
         if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE) {
             if (s1Size == s2Size) {
-                OP_CHECK_IF(inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL),
-                           OPS_REPORT_VECTOR_INNER_ERR(opName, "Pse alibi only support causal sparse type."), return false);
+                if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL)) {
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_type",
+                        std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
+                        "The value of sparse_type must be CAUSAL when pse alibi is used with "
+                        "s1Size > 1024 and s1Size == s2Size");
+                    return false;
+                }
                 pseEncodeType = PseEncodeType::PSE_ENCODE_ALIBI_S2_FULL;
             } else {
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "Pse alibi only support same S1 S2 when S1 lager than 1024");
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+                    "s1Size and s2Size", (std::to_string(s1Size) + " and " + std::to_string(s2Size)).c_str(),
+                    "The values of s1Size and s2Size must be the same "
+                    "when pse alibi is used with s1Size > 1024");
                 return false;
             }
         }
@@ -149,24 +159,39 @@ protected:
     {
         uint8_t pseMode = hasPse ? static_cast<uint8_t>(pseType) : static_cast<uint8_t>(PseType::PSE_NONE_TYPE);
         OP_LOGD(opName, "TilingKey info is implMode:%d, s1TemplateType:%d, s2TemplateType:%d, dTemplateType:%d,"
-            "dVTemplateType:%d, pseMode:%d, hasAttenMask:%d, hasDropOut:%d, hasRope:%d, outDtype:%d, regbase:%d",
-            static_cast<uint8_t>(implMode), static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
-            static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask,
-            hasDropOut, hasRope, static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase));
+            "dVTemplateType:%d, pseMode:%d, hasAttenMask:%d, hasDropOut:%d, hasRope:%d, outDtype:%d, regbase:%d,"
+            "optionalDn:%d", static_cast<uint8_t>(implMode), static_cast<uint16_t>(s1TemplateType),
+            static_cast<uint16_t>(s2TemplateType), static_cast<uint16_t>(dTemplateType),
+            static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask, hasDropOut, hasRope,
+            static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase), optionalDn);
 
         // Const 128
         if (dTemplateType == dVTemplateType) {
             return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
-            static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
-            static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(DTemplateType::NONALIGNED), pseMode, hasAttenMask,
-            hasDropOut, hasRope, static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase));
+                static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
+                static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(DTemplateType::NONALIGNED),
+                pseMode, hasAttenMask, hasDropOut, hasRope, static_cast<uint8_t>(outDtype),
+                static_cast<uint8_t>(regbase), optionalDn);
         }
         return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
             static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
             static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask,
-            hasDropOut, hasRope, static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase));
+            hasDropOut, hasRope, static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase), optionalDn);
     }
 
+    void AnalyzeOptionalDn() override
+    {
+        if ((hasAttenMask && attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE)
+            && attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) ||
+            !hasAttenMask || hasPse || hasRope || hasDropOut || inputDtypeBytes == DATA_TYPE_FP32 ||
+            inputDtypeBytes == DATA_TYPE_FP8 || dTemplateType > DTemplateType::ALIGNED_256 ||
+            dTemplateType != dVTemplateType || s1TemplateType == STemplateType::ALIGNED_64 ||
+            s1Size < NUM_1536 || s2Size < NUM_1536) {
+            return;
+        }
+        optionalDn = true;
+    }
+    
     bool IsCapable() override
     {
         if (npuArch != NpuArch::DAV_3510) {

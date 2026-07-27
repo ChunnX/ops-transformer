@@ -52,6 +52,8 @@ public:
     ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetS1Size();
     void GetKvStorageMode();
+    void GetKvIsContiguous();
+    ge::graphStatus GetStrides();
 
     void SetFaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout, int64_t &maxActualSeqLen);
@@ -101,6 +103,18 @@ public:
     int64_t keyTSize_ = 0;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
 
+    // kvcache strides (tensor v2 view inputs)
+    const gert::Stride *keyStrides_ = nullptr;
+    const gert::Stride *valueStrides_ = nullptr;
+    uint64_t keyBnStride_ = 0;
+    uint64_t keyN2Stride_ = 0;
+    uint64_t valueBnStride_ = 0;
+    uint64_t valueN2Stride_ = 0;
+
+    bool hasViewStride_ = true;
+    int32_t keyNonContigDim_ = -1;
+    int32_t valueNonContigDim_ = -1;
+
     // Layout
     FaLayout layoutQ_ = FaLayout::BSND;
     FaLayout layoutKV_ = FaLayout::BSND;
@@ -133,7 +147,6 @@ public:
 
     // 其他属性信息
     float softmaxScale_ = 1.0;
-    int64_t deterministic_ = 0;
 
     // seqLen信息
     int64_t seqLenQDims_ = 0;

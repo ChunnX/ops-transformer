@@ -43,7 +43,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnIncreFlashAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnIncreFlashAttention”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnIncreFlashAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnIncreFlashAttention”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnIncreFlashAttentionGetWorkspaceSize(
@@ -74,15 +74,15 @@ aclnnStatus aclnnIncreFlashAttention(
 
 - **参数说明**
   <div style="overflow-x: auto;">
-  <table style="undefined;table-layout: fixed; width: 1567px"><colgroup> 
-  <col style="width: 190px"> 
-  <col style="width: 120px"> 
-  <col style="width: 300px"> 
-  <col style="width: 330px"> 
-  <col style="width: 212px"> 
-  <col style="width: 100px">  
-  <col style="width: 170px">  
-  <col style="width: 145px">   
+  <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
+  <col style="width: 190px">
+  <col style="width: 120px">
+  <col style="width: 300px">
+  <col style="width: 330px">
+  <col style="width: 212px">
+  <col style="width: 100px">
+  <col style="width: 170px">
+  <col style="width: 145px">
     </colgroup>
     <thead>
       <tr>
@@ -110,7 +110,7 @@ aclnnStatus aclnnIncreFlashAttention(
         <td>key</td>
         <td>输入</td>
         <td>公式中的输入K。</td>
-        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>key、value中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -120,7 +120,7 @@ aclnnStatus aclnnIncreFlashAttention(
         <td>value</td>
         <td>输入</td>
         <td>公式中的输入V。</td>
-        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>key、value中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -229,8 +229,8 @@ aclnnStatus aclnnIncreFlashAttention(
     </tbody></table></div>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -303,9 +303,9 @@ aclnnStatus aclnnIncreFlashAttention(
   </tbody>
   </table>
 
-- **返回值**  
+- **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -327,7 +327,7 @@ aclnnStatus aclnnIncreFlashAttention(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>
@@ -395,7 +395,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -477,7 +477,7 @@ int main() {
   ret = aclnnIncreFlashAttention(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnIncreFlashAttention failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

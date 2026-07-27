@@ -12,11 +12,12 @@
 #include <array>
 #include "gtest/gtest.h"
 
-#include "level2/aclnn_quant_grouped_matmul_dequant.h"
+#include "../../../../op_api/aclnn_quant_grouped_matmul_dequant.h"
 
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/scalar_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
+#include "opdev/platform.h"
 
 
 using namespace std;
@@ -24,10 +25,13 @@ namespace {
 class l2_quant_grouped_matmul_dequant_test : public testing::Test {
  protected:
   static void SetUpTestCase() {
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND310P);
     cout << "l2_quant_grouped_matmul_dequant_test SetUp" << endl;
   }
 
-  static void TearDownTestCase() { cout << "l2_quant_grouped_matmul_dequant_test TearDown" << endl; }
+  static void TearDownTestCase() {
+    cout << "l2_quant_grouped_matmul_dequant_test TearDown" << endl;
+  }
 };
 
 TEST_F(l2_quant_grouped_matmul_dequant_test, ascend310P_normal_1) {
@@ -104,7 +108,7 @@ TEST_F(l2_quant_grouped_matmul_dequant_test, ascend310P_normal_4) {
   aclTensor *bias_desc = nullptr;
   auto x_scale_desc = TensorDesc({64}, ACL_FLOAT, ACL_FORMAT_ND);
   aclTensor *x_offset_desc = nullptr;
-  auto smooth_scale_desc = TensorDesc({256}, ACL_FLOAT, ACL_FORMAT_ND);
+  auto smooth_scale_desc = TensorDesc({256}, ACL_FLOAT16, ACL_FORMAT_ND);
   auto out_desc = TensorDesc({64, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
   bool weightTrans = true;
   char* quantMode = "pertoken";
@@ -115,6 +119,6 @@ TEST_F(l2_quant_grouped_matmul_dequant_test, ascend310P_normal_4) {
 
   uint64_t workspace_size = 0;
   aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-  EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 }

@@ -36,6 +36,14 @@ constexpr size_t MX_SPLIT_K_SINGLE_X_DIM = 2UL;
 constexpr size_t MX_SPLIT_K_SINGLE_WEIGHT_DIM = 2UL;
 constexpr size_t MX_SPLIT_K_SCALE_DIM = 3UL;
 constexpr size_t MX_SPLIT_K_PER_TOKEN_SCALE_DIM = 3UL;
+constexpr size_t MX_MULTI_ANTIQUANT_SCALE_DIM = 3UL;
+constexpr size_t MX_SINGLE_ANTIQUANT_SCALE_DIM = 4UL;
+constexpr size_t MX_MULTI_BIAS_DIM = 1UL;
+constexpr size_t MX_SINGLE_BIAS_DIM = 2UL;
+
+// mx dim num
+constexpr size_t PERGROUP_MULTI_ANTIQUANT_SCALE_DIM = 2UL;
+constexpr size_t PERGROUP_SINGLE_ANTIQUANT_SCALE_DIM = 3UL;
 
 constexpr size_t MX_TUPLE_X_DIM_INDEX = 0UL;
 constexpr size_t MX_TUPLE_WEIGHT_DIM_INDEX = 1UL;
@@ -60,6 +68,7 @@ constexpr size_t LAST_SECOND_DIM_INDEX = 2;
 constexpr size_t LAST_THIRD_DIM_INDEX = 3;
 constexpr size_t LAST_FOURTH_DIM_INDEX = 4;
 constexpr size_t QUANT_WEIGHTNZ_STORAGE_DIM = 5;
+constexpr size_t WEIGHTNZ_MULTI_TENSOR_STORAGE_DIM = 4;
 
 enum class GMMApiVersion : uint32_t {
     V1 = 1U,
@@ -102,40 +111,32 @@ struct GroupedMatmulParamsBase {
 
 using GroupedMatmulParams = GroupedMatmulParamsBase<aclTensorList>;
 
-const std::map<DataType, aclDataType> BIAS_DTYPE {
-    {DataType::DT_FLOAT16, aclDataType::ACL_FLOAT16},
-    {DataType::DT_BF16, aclDataType::ACL_FLOAT},
-    {DataType::DT_INT8, aclDataType::ACL_INT32},
-    {DataType::DT_FLOAT, aclDataType::ACL_FLOAT},
-    {DataType::DT_FLOAT8_E4M3FN, aclDataType::ACL_FLOAT},
-    {DataType::DT_FLOAT8_E5M2, aclDataType::ACL_FLOAT},
-    {DataType::DT_HIFLOAT8, aclDataType::ACL_FLOAT},
-    {DataType::DT_INT4, aclDataType::ACL_FLOAT16},
-    {DataType::DT_FLOAT4_E2M1, aclDataType::ACL_FLOAT},
-    {DataType::DT_FLOAT4_E1M2, aclDataType::ACL_FLOAT}
-};
+const std::map<DataType, aclDataType> BIAS_DTYPE{
+    {DataType::DT_FLOAT16, aclDataType::ACL_FLOAT16},     {DataType::DT_BF16, aclDataType::ACL_FLOAT},
+    {DataType::DT_INT8, aclDataType::ACL_INT32},          {DataType::DT_FLOAT, aclDataType::ACL_FLOAT},
+    {DataType::DT_FLOAT8_E4M3FN, aclDataType::ACL_FLOAT}, {DataType::DT_FLOAT8_E5M2, aclDataType::ACL_FLOAT},
+    {DataType::DT_HIFLOAT8, aclDataType::ACL_FLOAT},      {DataType::DT_INT4, aclDataType::ACL_FLOAT16},
+    {DataType::DT_FLOAT4_E2M1, aclDataType::ACL_FLOAT},   {DataType::DT_FLOAT4_E1M2, aclDataType::ACL_FLOAT}};
 
-const std::map<DataType, std::string> DTYPE_STRING{
-    {DataType::DT_FLOAT16, "FLOAT16"},
-    {DataType::DT_BF16, "BF16"},
-    {DataType::DT_INT8, "INT8"},
-    {DataType::DT_INT4, "INT4"},
-    {DataType::DT_FLOAT, "FLOAT"},
-    {DataType::DT_FLOAT8_E4M3FN, "FLOAT8_E4M3FN"},
-    {DataType::DT_FLOAT8_E5M2, "FLOAT8_E5M2"},
-    {DataType::DT_HIFLOAT8, "HIFLOAT8"}
-};
+const std::map<DataType, std::string> DTYPE_STRING{{DataType::DT_FLOAT16, "FLOAT16"},
+                                                   {DataType::DT_BF16, "BF16"},
+                                                   {DataType::DT_INT8, "INT8"},
+                                                   {DataType::DT_INT4, "INT4"},
+                                                   {DataType::DT_FLOAT, "FLOAT"},
+                                                   {DataType::DT_FLOAT8_E4M3FN, "FLOAT8_E4M3FN"},
+                                                   {DataType::DT_FLOAT8_E5M2, "FLOAT8_E5M2"},
+                                                   {DataType::DT_HIFLOAT8, "HIFLOAT8"}};
 
 const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
                                                                 DataType::DT_BF16};
 
 bool IsTransposeLastTwoDims(const aclTensor *tensor);
 bool IsTransposeForMxShape(const aclTensor *tensor);
-void CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                            aclOpExecutor *executor);
-void CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                                aclOpExecutor *executor);
-void CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                 aclOpExecutor *executor);
 std::string dTypeToString(const ge::DataType &dtype);
 } // namespace gmm

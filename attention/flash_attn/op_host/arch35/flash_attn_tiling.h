@@ -34,16 +34,16 @@ struct FaTilingKeyInfo {
 };
 
 struct FaPlatFormInfo {
+    uint32_t coreNum = 0;
+    uint32_t aicNum = 0;
+    uint32_t aivNum = 0;
+    uint32_t cvRatio = 0;
     uint64_t ubSize = 0;
     uint64_t l2Size = 0;
     uint64_t l1Size = 0;
     uint64_t l0cSize = 0;
     uint64_t l0bSize = 0;
     uint64_t l0aSize = 0;
-    uint32_t coreNum = 0;
-    uint32_t aicNum = 0;
-    uint32_t aivNum = 0;
-    uint32_t cvRatio = 0;
     uint64_t defaultSysWorkspaceSize = 0;
 };
 
@@ -62,8 +62,6 @@ public:
 private:
     ge::graphStatus SetPlatMemoryInfo();
     void SplitPolicy();
-    bool CheckS1OutSplit();
-    void SplitOutSeq();
     void ComputeTilingData();
     void GenTilingKey();
     void CalcWorkspaceSize();
@@ -72,10 +70,6 @@ private:
     void UpdateTilingKeyKvLayout();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
-    void GetWinLeftsRightUp(int64_t cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
-                            int64_t &winRightsLeftUp);
-    void FixParamWithRowInvalid(int64_t &cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
-                                int64_t &winRightsLeftUp);
     void InitImplParam();
     void PrintAllTilingData();
     void CalcMaxWorkspaceSize();
@@ -84,6 +78,7 @@ private:
     void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();
     ge::graphStatus SetTilingData(FlashAttnTilingData &tilingData);
+    bool CheckNeedInitOutput() const;
 
     FlashAttnTilingData tilingData_;
     FaTilingKeyInfo tilingKeyInfo_;
@@ -99,7 +94,6 @@ private:
     std::vector<int64_t> cuSeqLengthsQ_ = {};
     std::vector<int64_t> cuSeqLengthsKV_ = {};
     bool needInit_ = false;
-    bool enableS1OutSplit = false;
     uint64_t tilingKey_ = 0;
     uint64_t workspaceSize_ = 0;
     ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;

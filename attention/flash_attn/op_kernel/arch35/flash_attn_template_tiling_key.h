@@ -18,7 +18,6 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 #include "../utils/flash_attn_common_def.h"
-#include "../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
 #include "flash_attn_tiling_data.h"
 
 #ifndef ORIG_DTYPE_QUERY
@@ -33,6 +32,11 @@
 #define ORIG_DTYPE_ATTENTION_OUT (DT_BF16)
 #endif
 
+#define KV_STORAGE_MODE_CONTINUE 0
+#define KV_STORAGE_MODE_PA_BSND 1
+#define KV_STORAGE_MODE_PA_BNSD 2
+#define KV_STORAGE_MODE_PA_NZ 3
+
 ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       // q_out layout (8-bit)
                       //    0: BSND
@@ -45,24 +49,28 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       //    0: 连续（不开pageattention）
                       //    1: PA_BBND
                       //    2: PA_BNBD
-                      ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 2),
+                      //    3: PA_NZ
+                      ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 3),
 
                       // hasAttenMask (1-bit)
                       //    0: false
                       //    1: true
                       ASCENDC_TPL_BOOL_DECL(HasAttenMask, false, true),
 
-                      // config (1-bit), D=128 fixed
-                      //    0: sOuter=64, sInner=128 → S1=128, S2=128, D=128, DV=128
-                      //    1: sOuter=32, sInner=256 → S1=64,  S2=256, D=128, DV=128
-                      ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 1), );
+                      // config (3-bit), support D=64/128/256
+                      //    config=0: sOuter=64, sInner=128 → D=64,  DV=64
+                      //    config=1: sOuter=32, sInner=256 → D=64,  DV=64
+                      //    config=2: sOuter=64, sInner=128 → D=128, DV=128
+                      //    config=3: sOuter=32, sInner=256 → D=128, DV=128
+                      //    config=4: sOuter=32, sInner=256 → D=256, DV=256
+                      ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_3_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 4),);
 
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,
                                                           InOutLayoutType_BNSD, InOutLayoutType_TND,
                                                           InOutLayoutType_BNSD_BSND),
-                                     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2),
+                                     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
                                      ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
-                                     ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 1),
+                                     ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4),
                                      ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)), );
 
 #endif // TEMPLATE_TILING_KEY_FLASH_ATTN_H_

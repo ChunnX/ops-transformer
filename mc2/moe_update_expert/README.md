@@ -5,10 +5,10 @@
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 推理系列产品</term>                               |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
 
 ## 功能说明
@@ -40,21 +40,21 @@
   <tr>
    <td>expertIds</td>
    <td>输入</td>
-   <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
+   <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为(BS, K)；支持非连续的Tensor。</td>
    <td>INT32、INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>eplbTable</td>
    <td>输入</td>
-   <td>逻辑专家到物理专家的映射表，外部调用者需保证输入Tensor的值正确；worldSize张卡，每张卡部署place_per_rank个路由专家实例，共worldSize*place_per_rank个实例；每行第一列为行号对应逻辑专家部署的实例数count（取值范围[1, worldSize]），每行[1, count]列为对应的实例编号（取值范围[0, worldSize*place_per_rank)，有效实例编号不可重复）；Device侧的aclTensor，要求为2D Tensor，shape为 (moeExperNum, F)；支持非连续的Tensor。</td>
+   <td>逻辑专家到物理专家的映射表，外部调用者需保证输入Tensor的值正确；worldSize张卡，每张卡部署place_per_rank个路由专家实例，共worldSize*place_per_rank个实例；每行第一列为行号对应逻辑专家部署的实例数count（取值范围[1, worldSize]），每行[1, count]列为对应的实例编号（取值范围[0, worldSize*place_per_rank)，有效实例编号不可重复）；Device侧的aclTensor，要求为2D Tensor，shape为(moeExperNum, F)；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertScalesOptional</td>
    <td>输入</td>
-   <td>每个token的topK个专家的scale权重，用户需保证scale在token内部按降序排列；可传有效数据或空指针，传有效数据时pruningThresholdOptional也需传有效数据；Device侧的aclTensor，要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
+   <td>每个token的topK个专家的scale权重，用户需保证scale在token内部按降序排列；可传有效数据或空指针，传有效数据时pruningThresholdOptional也需传有效数据；Device侧的aclTensor，要求为2D Tensor，shape为(BS, K)；支持非连续的Tensor。</td>
    <td>FLOAT16、BFLOAT16、FLOAT</td>
    <td>ND</td>
   </tr>
@@ -68,7 +68,7 @@
   <tr>
    <td>activeMaskOptional</td>
    <td>输入</td>
-   <td>表示token是否参与通信；可传有效数据或空指针，传有效数据时expertScalesOptional、pruningThresholdOptional也必须传有效数据；true表示token参与通信且true需排在false前（例：{true, false, true}非法），传空指针表示所有token参与通信；Device侧的aclTensor，要求为1D Tensor，shape为 (BS，)；支持非连续的Tensor。</td>
+   <td>表示token是否参与通信；可传有效数据或空指针，传有效数据时expertScalesOptional、pruningThresholdOptional也必须传有效数据；true表示token参与通信且true需排在false前（例：{true, false, true}非法），传空指针表示所有token参与通信；Device侧的aclTensor，要求为1D Tensor，shape为(BS，)；支持非连续的Tensor。</td>
    <td>BOOL</td>
    <td>ND</td>
   </tr>
@@ -116,7 +116,7 @@
 
 - 调用接口过程中使用的worldSize、moeExpertNum参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和aclnnMoeDistributeDispatchV2,aclnnMoeDistributeCombineV2或aclnnMoeDistributeCombineAddRmsNorm对应参数也保持一致。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
 - 参数说明里shape格式说明：
     - BS：表示batch sequence size，即本卡最终输出的token数量，取值范围为0 < BS ≤ 512。

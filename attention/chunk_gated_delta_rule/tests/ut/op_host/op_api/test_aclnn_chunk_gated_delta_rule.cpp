@@ -41,7 +41,7 @@ class aclnnChunkGatedDeltaRule_test_case {
 public:
     uint32_t bs = 2;
     uint32_t seqLen = 100;
-    uint32_t t = bs * seqLen; 
+    uint32_t t = bs * seqLen;
     uint32_t nk = 4;
     uint32_t nv = 8;
     uint32_t dk = 128;
@@ -64,28 +64,20 @@ public:
             [this, low, high]() {
                 initialState = TensorDesc({bs, nv, dv, dk}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high);
             },
-            [this, low, high]() {
-                query = TensorDesc({t, nk, dk}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high);
-            },
+            [this, low, high]() { query = TensorDesc({t, nk, dk}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high); },
             [this, low, high]() { key = TensorDesc({t, nk, dk}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high); },
-            [this, low, high]() {
-                value = TensorDesc({t, nv, dv}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high);
-            },
+            [this, low, high]() { value = TensorDesc({t, nv, dv}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high); },
             [this, low, high]() { beta = TensorDesc({t, nv}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high); },
-            [this, low, high]() {
-                actualSeqLengths = TensorDesc({bs}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high);
-            },
-            [this, low, high]() {
-                gOptional = TensorDesc({t, nv}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high);
-            },
-            [this, low, high]() {
-                out = TensorDesc({t, nv, dv}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high);
-            },
+            [this, low, high]() { actualSeqLengths = TensorDesc({bs}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high); },
+            [this, low, high]() { gOptional = TensorDesc({t, nv}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high); },
+            [this, low, high]() { out = TensorDesc({t, nv, dv}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high); },
             [this, low, high]() {
                 finalState = TensorDesc({bs, nv, dv, dk}, ACL_INT8, ACL_FORMAT_ND).ValueRange(low, high);
             },
         };
-        if (validIdx >= 0 && validIdx < static_cast<int>(cases.size())) { cases[validIdx](); }
+        if (validIdx >= 0 && validIdx < static_cast<int>(cases.size())) {
+            cases[validIdx]();
+        }
     }
 
     void ChunkGatedDeltaRuleTestCase(int validIdx, int nullIdx)
@@ -115,54 +107,65 @@ public:
         EXPECT_EQ(aclRet, expected);
     }
 
-    aclnnStatus RunNullCase(int idx, uint64_t& ws)
+    aclnnStatus RunNullCase(int idx, uint64_t &ws)
     {
         constexpr float scale = 1.0f;
         switch (idx) {
             case 0:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(query, key, value, beta, initialState, actualSeqLengths, gOptional, scale),
-                    OUTPUT(out, finalState)).TestGetWorkspaceSize(&ws);
+                                 INPUT(query, key, value, beta, initialState, actualSeqLengths, gOptional, scale),
+                                 OUTPUT(out, finalState))
+                    .TestGetWorkspaceSize(&ws);
             case 1:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(nullptr, key, value, beta, initialState, actualSeqLengths, gOptional, scale),
-                    OUTPUT(out, finalState)).TestGetWorkspaceSize(&ws);
+                                 INPUT(nullptr, key, value, beta, initialState, actualSeqLengths, gOptional, scale),
+                                 OUTPUT(out, finalState))
+                    .TestGetWorkspaceSize(&ws);
             case 2:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(query, nullptr, value, beta, initialState, actualSeqLengths, gOptional, scale),
-                    OUTPUT(out, finalState)).TestGetWorkspaceSize(&ws);
+                                 INPUT(query, nullptr, value, beta, initialState, actualSeqLengths, gOptional, scale),
+                                 OUTPUT(out, finalState))
+                    .TestGetWorkspaceSize(&ws);
             case 3:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(query, key, nullptr, beta, initialState, actualSeqLengths, gOptional, scale),
-                    OUTPUT(out, finalState)).TestGetWorkspaceSize(&ws);
+                                 INPUT(query, key, nullptr, beta, initialState, actualSeqLengths, gOptional, scale),
+                                 OUTPUT(out, finalState))
+                    .TestGetWorkspaceSize(&ws);
             case 4:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(query, key, value, nullptr, initialState, actualSeqLengths, gOptional, scale),
-                    OUTPUT(out, finalState)).TestGetWorkspaceSize(&ws);
+                                 INPUT(query, key, value, nullptr, initialState, actualSeqLengths, gOptional, scale),
+                                 OUTPUT(out, finalState))
+                    .TestGetWorkspaceSize(&ws);
             case 5:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(query, key, value, beta, nullptr, actualSeqLengths, gOptional, scale),
-                    OUTPUT(out, finalState)).TestGetWorkspaceSize(&ws);
+                                 INPUT(query, key, value, beta, nullptr, actualSeqLengths, gOptional, scale),
+                                 OUTPUT(out, finalState))
+                    .TestGetWorkspaceSize(&ws);
             case 6:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(query, key, value, beta, initialState, nullptr, gOptional, scale),
-                    OUTPUT(out, finalState)).TestGetWorkspaceSize(&ws);
+                                 INPUT(query, key, value, beta, initialState, nullptr, gOptional, scale),
+                                 OUTPUT(out, finalState))
+                    .TestGetWorkspaceSize(&ws);
             case 7:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(query, key, value, beta, initialState, actualSeqLengths, nullptr, scale),
-                    OUTPUT(out, finalState)).TestGetWorkspaceSize(&ws);
+                                 INPUT(query, key, value, beta, initialState, actualSeqLengths, nullptr, scale),
+                                 OUTPUT(out, finalState))
+                    .TestGetWorkspaceSize(&ws);
             case 8:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(query, key, value, beta, initialState, actualSeqLengths, gOptional, scale),
-                    OUTPUT(nullptr, finalState)).TestGetWorkspaceSize(&ws);
+                                 INPUT(query, key, value, beta, initialState, actualSeqLengths, gOptional, scale),
+                                 OUTPUT(nullptr, finalState))
+                    .TestGetWorkspaceSize(&ws);
             case 9:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(query, key, value, beta, initialState, actualSeqLengths, gOptional, scale),
-                    OUTPUT(out, nullptr)).TestGetWorkspaceSize(&ws);
+                                 INPUT(query, key, value, beta, initialState, actualSeqLengths, gOptional, scale),
+                                 OUTPUT(out, nullptr))
+                    .TestGetWorkspaceSize(&ws);
             default:
                 return OP_API_UT(aclnnChunkGatedDeltaRule,
-                    INPUT(query, key, value, beta, initialState, actualSeqLengths, gOptional, scale),
-                    OUTPUT(nullptr, nullptr)).TestGetWorkspaceSize(&ws);
+                                 INPUT(query, key, value, beta, initialState, actualSeqLengths, gOptional, scale),
+                                 OUTPUT(nullptr, nullptr))
+                    .TestGetWorkspaceSize(&ws);
         }
     }
 
@@ -173,86 +176,86 @@ public:
     }
 };
 
-aclnnChunkGatedDeltaRule_test_case test;
+aclnnChunkGatedDeltaRule_test_case cgdr_test;
 // case 0-9: validIdx=0~9, nullIdx=0（覆盖各输入/输出 dtype 非法）
 // case 10-19: validIdx=0，nullIdx=1~10（覆盖各输入/输出为 nullptr）
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case0)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 0);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 0);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case1)
 {
-    test.ChunkGatedDeltaRuleTestCase(1, 0);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(1, 0);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case2)
 {
-    test.ChunkGatedDeltaRuleTestCase(2, 0);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(2, 0);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case3)
 {
-    test.ChunkGatedDeltaRuleTestCase(3, 0);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(3, 0);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case4)
 {
-    test.ChunkGatedDeltaRuleTestCase(4, 0);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(4, 0);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case5)
 {
-    test.ChunkGatedDeltaRuleTestCase(5, 0);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(5, 0);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case6)
 {
-    test.ChunkGatedDeltaRuleTestCase(6, 0);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(6, 0);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case7)
 {
-    test.ChunkGatedDeltaRuleTestCase(7, 0);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(7, 0);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case8)
 {
-    test.ChunkGatedDeltaRuleTestCase(8, 0);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(8, 0);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case9)
 {
-    test.ChunkGatedDeltaRuleTestCase(9, 0);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(9, 0);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case10)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 1);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 1);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case11)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 2);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 2);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case12)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 3);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 3);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case13)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 4);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 4);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case14)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 5);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 5);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case15)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 6);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 6);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case16)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 7);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 7);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case17)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 8);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 8);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case18)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 9);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 9);
 }
 TEST_F(aclnnChunkGatedDeltaRule_test, ascend910B2_test_opapi_case19)
 {
-    test.ChunkGatedDeltaRuleTestCase(0, 10);
+    cgdr_test.ChunkGatedDeltaRuleTestCase(0, 10);
 }

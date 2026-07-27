@@ -32,6 +32,7 @@ static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
 static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
 static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
 static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
 // FP32的0值和极大值
 static constexpr float FLOAT_ZERO = 0;
 static constexpr float FLOAT_MAX = 3.402823466e+38F;
@@ -163,14 +164,33 @@ struct ConfigParams {
 //   config=0: sOuter=64,sInner=128 → S1=128,S2=128
 //   config=1: sOuter=32,sInner=256 → S1=64,S2=256
 static constexpr ConfigParams ConfigValue[] = {
+    // D=64 configurations
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // config=0
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // config=1
+
+    // D=128 configurations
     {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned128,
-     inferDTemplateType::Aligned128}, // config=0
+     inferDTemplateType::Aligned128}, // config=2
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
-     inferDTemplateType::Aligned128}, // config=1
+     inferDTemplateType::Aligned128}, // config=3
+
+    // D=256 configurations
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // config=4
 };
 
-#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128 0
-#define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128 1
+// Config macro definitions for D=64
+#define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64 0
+#define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64 1
+
+// Config macro definitions for D=128
+#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128 2
+#define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128 3
+
+// Config macro definitions for D=256
+#define Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256 4
 
 
 // PseMode
@@ -188,8 +208,8 @@ static constexpr ConfigParams ConfigValue[] = {
 #define AntiquantMode_PER_TOKEN_HEAD 3
 #define AntiquantMode_PER_TOKEN_PAGE_ATTENTION 4
 #define AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION 5
-#define PerBlock 17
-#define FULLQUANT_MODE_PER_TOKEN_HEAD 18
+#define FULLQUANT_MODE_QKV_PERBLOCK 17
+#define FULLQUANT_MODE_Q_PER_TOKEN_HEAD_KV_PER_TENSOR 18
 #define FullQuantMode 30
 #define NoQuantMode 31
 
@@ -217,6 +237,9 @@ static constexpr ConfigParams ConfigValue[] = {
 // bool
 #define false 0
 #define true 1
+
+#define OFFSET_OF_MEMBER(TYPE, MEMBER)  ((uint64_t) &((TYPE *)0)->MEMBER)
+#define SIZE_OF_MEMBER(TYPE, MEMBER)  sizeof(((TYPE *)0)->MEMBER)
 
 // kernel stream related struct
 struct FDparamsX {
@@ -318,12 +341,19 @@ struct CommonConstInfo {
 
     /* 输出shape */
     FA_LAYOUT outputLayout;
+    bool needInitOutput;
+    bool enableFlashDecode;
 };
 
 struct PAConstInfo {
     uint32_t blockSize;
     uint32_t maxBlockNumPerBatch;
     uint32_t paLayoutType;
+    /* kvcache非连续场景的strides, 0表示连续 */
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
 };
 
 struct LseConstInfo {

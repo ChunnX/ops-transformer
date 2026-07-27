@@ -30,7 +30,7 @@ public:
     {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcFn, GM_ADDR workspace,
-        const MhcPreSinkhornTilingData* tilingDataPtr, TPipe* pipePtr)
+        const MhcPreSinkhornRegbaseTilingData* tilingDataPtr, TPipe* pipePtr)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
@@ -241,7 +241,7 @@ public:
 
 private:
     TPipe* pipe;
-    const MhcPreSinkhornTilingData* tilingData;
+    const MhcPreSinkhornRegbaseTilingData* tilingData;
     // (M, K) * (N, K)
 
     GlobalTensor<T> xGm;
@@ -281,7 +281,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y,
         GM_ADDR post, GM_ADDR combFrag, GM_ADDR workspace,
-        const MhcPreSinkhornTilingData* tilingDataPtr, TPipe* pipePtr)
+        const MhcPreSinkhornRegbaseTilingData* tilingDataPtr, TPipe* pipePtr)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
@@ -378,7 +378,7 @@ public:
                         rowOuterIdx * tilingData->stage2RowFactor * tilingData->hcMult * tilingData->d +
                         dLoopIdx * tilingData->dFactor;
                     CopyIn(xGm[xGmOffset],
-                        xLocal, tilingData->stage2RowFactor * tilingData->hcMult, curDFactor,
+                        xLocal, curRowFactor * tilingData->hcMult, curDFactor,
                         tilingData->d - curDFactor);
                     xQue.template EnQue(xLocal);
                     xLocal = xQue.template DeQue<T>();
@@ -431,7 +431,7 @@ public:
 
 private:
     TPipe* pipe;
-    const MhcPreSinkhornTilingData* tilingData;
+    const MhcPreSinkhornRegbaseTilingData* tilingData;
     GlobalTensor<float> hcScaleGm;
     GlobalTensor<float> hcBaseGm;
     GlobalTensor<T> xGm;

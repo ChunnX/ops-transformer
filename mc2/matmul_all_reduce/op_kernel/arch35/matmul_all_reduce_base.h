@@ -24,11 +24,11 @@
 #include "../common.h"
 #include "matmul_all_reduce_add_x3.h"
 #include "matmul_all_reduce_tiling_struct_ar35.h"
-#include "../../common/op_kernel/reduce_sum_cast_fp32.h"
-#include "../../common/op_kernel/gm_ub_gm_copy.h"
+#include "../../../common/op_kernel/reduce_sum_cast_fp32.h"
+#include "../../../common/op_kernel/gm_ub_gm_copy.h"
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
 template <typename XType, typename YType, Mc2CoreType CoreType, bool basedA2aRsAg, int commMode>
-class MatmulAllReduceBase{};
+class MatmulAllReduceBase {};
 } // namespace MatmulAllReduceImpl
 #endif // MATMUL_ALL_REDUCE_BASE_H

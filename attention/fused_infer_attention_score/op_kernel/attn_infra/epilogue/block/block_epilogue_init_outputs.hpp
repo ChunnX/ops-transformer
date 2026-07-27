@@ -12,12 +12,12 @@
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_INIT_OUTPUTS_HPP
 
 #include <limits>
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/resource.hpp"
-#include "../../../attn_infra/epilogue/dispatch_policy.hpp"
-#include "../../../attn_infra/epilogue/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm_coord.hpp"
-#include "../../../attn_infra/matrix_coord.hpp"
+#include "../../../attn_infra/fused_base_defs.hpp"
+#include "../../../attn_infra/arch/fused_resource.hpp"
+#include "../../../attn_infra/epilogue/fused_epilogue_dispatch_policy.hpp"
+#include "../../../attn_infra/epilogue/tile_common/fused_epilogue_tile_copy.hpp"
+#include "../../../attn_infra/fused_gemm_coord.hpp"
+#include "../../../attn_infra/fused_matrix_coord.hpp"
 
 namespace NpuArch::Epilogue::Block {
 

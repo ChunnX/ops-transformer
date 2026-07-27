@@ -16,7 +16,7 @@
 #ifndef __CUBE_OP_BN2_H__
 #define __CUBE_OP_BN2_H__
 
-#include "common_header.h"
+#include "flash_attention_score_grad_common_header.h"
 #include "kernel_operator.h"
 
 using namespace AscendC;

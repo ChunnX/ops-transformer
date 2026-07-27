@@ -193,14 +193,14 @@ struct SingleCompressionTokenMetadata_st {
         return;
     }
 
-    __aicore__ inline uint32_t _GetWeightOffset(WeightOffsetType type, SubTilingInfo *subtiling = nullptr)
+    __aicore__ inline uint64_t _GetWeightOffset(WeightOffsetType type, SubTilingInfo *subtiling = nullptr)
     {
         if (type == WeightOffsetType::BUFFSET_OFFSET && subtiling == nullptr) {
             return WEIGHT_OFFSET_INVALID;
         }
         if (type == WeightOffsetType::BUFFSET_OFFSET && subtiling) {
             uint32_t weight_dim = 8;
-            return weightOffset * subtiling->subHeadNum * weight_dim;
+            return static_cast<uint64_t>(weightOffset) * subtiling->subHeadNum * weight_dim;
         }
         if (type == WeightOffsetType::TOKEN_OFFSET) {
             return weightOffset;
@@ -335,7 +335,7 @@ struct SequenceManager {
 
     /// @brief
     /// @return
-    __aicore__ inline uint32_t GetWeightOffset(WeightOffsetType offsetType, SubTilingInfo *subtiling = nullptr)
+    __aicore__ inline uint64_t GetWeightOffset(WeightOffsetType offsetType, SubTilingInfo *subtiling = nullptr)
     {
         return compressMeta._GetWeightOffset(offsetType, subtiling);
     }

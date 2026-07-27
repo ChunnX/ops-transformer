@@ -58,7 +58,6 @@ TEST_P(FlashAttnInferDTypeTest, param)
                 {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_kv)},
                 {"layout_out", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_out)},
                 {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.return_softmax_lse)},
-                {"deterministic", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.deterministic)},
             })
             .Build();
 

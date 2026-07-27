@@ -9,13 +9,50 @@
  */
 
 #include <iostream>
+#include <map>
 #include <gtest/gtest.h>
 #include "../../../op_host/moe_finalize_routing_v2_grad_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
+#include "op_tiling_parse_context_builder.h"
+#include "base/registry/op_impl_space_registry_v2.h"
+#include "platform/platform_infos_def.h"
 
 using namespace std;
 using namespace ge;
+
+namespace {
+void SetupParsePlatformInfo(fe::PlatFormInfos* platformInfo)
+{
+    platformInfo->Init();
+    map<string, string> socInfos = {
+        {"ai_core_cnt", "64"},
+        {"l2_size", "33554432"},
+        {"core_type_list", "AICore"},
+    };
+    map<string, string> aicoreSpec = {
+        {"ub_size", "65536"},
+        {"l0_a_size", "65536"},
+        {"l0_b_size", "65536"},
+        {"l0_c_size", "131072"},
+        {"l1_size", "524288"},
+        {"bt_size", "0"},
+    };
+    map<string, string> intrinsics = {
+        {"Intrinsic_data_move_l12ub", "float16"},
+        {"Intrinsic_data_move_l0c2ub", "float16"},
+    };
+    map<string, string> versions = {
+        {"NpuArch", "2201"},
+        {"Short_SoC_version", "Ascend910B"},
+    };
+    platformInfo->SetPlatformRes("SoCInfo", socInfos);
+    platformInfo->SetPlatformRes("AICoreSpec", aicoreSpec);
+    platformInfo->SetCoreNumByCoreType("AICore");
+    platformInfo->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
+    platformInfo->SetPlatformRes("version", versions);
+}
+} // namespace
 
 class MoeFinalizeRoutingV2GradTiling : public testing::Test
 {
@@ -572,4 +609,200 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_regbase_20
     string expectTilingData = "15 0 15 15 0 15 0 3 262000 15 16360 16 240 20002 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2Grad_tiling_reset_twice)
+{
+    optiling::MoeFinalizeRoutingV2GradCompileInfo compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "MoeFinalizeRoutingV2Grad",
+        {
+            {{{5, 8}, {5, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5}, {5}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{5, 8}, {5, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 1}, {5, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10001, "", expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10001, "", expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingV2GradTiling, TilingParse_Success)
+{
+    optiling::MoeFinalizeRoutingV2GradCompileInfo compileInfo = {0, 0};
+    fe::PlatFormInfos platformInfo;
+    SetupParsePlatformInfo(&platformInfo);
+
+    const char* compileInfoString =
+        R"({"hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1", "Intrinsic_fix_pipe_l0c2out": false, )"
+        R"("Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, )"
+        R"("Intrinsic_data_move_out2l1_nd2nz": false, "UB_SIZE": 65536, "L2_SIZE": 33554432, )"
+        R"("L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072, )"
+        R"("CORE_NUM": 64, "socVersion": "Ascend910B"}})";
+
+    gert::OpTilingParseContextBuilder builder;
+    auto holder = builder.OpType("MoeFinalizeRoutingV2Grad")
+                      .OpName("MoeFinalizeRoutingV2Grad")
+                      .IONum(2, 2)
+                      .CompiledJson(compileInfoString)
+                      .CompiledInfo(&compileInfo)
+                      .PlatformInfo(reinterpret_cast<char*>(&platformInfo))
+                      .Build();
+    auto parseContext = holder.GetContext();
+    ASSERT_NE(parseContext, nullptr);
+
+    SetupParsePlatformInfo(parseContext->GetPlatformInfo());
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("MoeFinalizeRoutingV2Grad");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->tiling_parse, nullptr);
+
+    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext*>(parseContext));
+    EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
+    EXPECT_GT(compileInfo.aivNum, 0);
+    EXPECT_GT(compileInfo.ubSize, 0);
+}
+
+TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2Grad_invalid_expanded_x_last_dim)
+{
+    optiling::MoeFinalizeRoutingV2GradCompileInfo compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "MoeFinalizeRoutingV2Grad",
+        {
+            {{{5, 8}, {5, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{15}, {15}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{15, 16}, {15, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{15, 8}, {15, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 20001, "", expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2Grad_invalid_expanded_x_dim0)
+{
+    optiling::MoeFinalizeRoutingV2GradCompileInfo compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "MoeFinalizeRoutingV2Grad",
+        {
+            {{{5, 8}, {5, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{15}, {15}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{14, 8}, {14, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{15, 8}, {15, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 20001, "", expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2Grad_invalid_grad_y_row_idx_without_scales)
+{
+    optiling::MoeFinalizeRoutingV2GradCompileInfo compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "MoeFinalizeRoutingV2Grad",
+        {
+            {{{5, 8}, {5, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{5, 8}, {5, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 1}, {5, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 10001, "", expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2Grad_invalid_scales_grad_y_dim0)
+{
+    optiling::MoeFinalizeRoutingV2GradCompileInfo compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "MoeFinalizeRoutingV2Grad",
+        {
+            {{{5, 8}, {5, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{15}, {15}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{15, 8}, {15, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{6, 3}, {6, 3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{15, 8}, {15, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 20001, "", expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2Grad_invalid_bias_expert_num_droppad)
+{
+    optiling::MoeFinalizeRoutingV2GradCompileInfo compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "MoeFinalizeRoutingV2Grad",
+        {
+            {{{5, 8}, {5, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{15}, {15}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{20, 58, 8}, {20, 58, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{7, 8}, {7, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{20, 8}, {20, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{5, 3}, {5, 3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(58)},
+        },
+        &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 20001, "", expectWorkspaces);
 }

@@ -52,7 +52,11 @@ CubeOp<T1>::cube1Process(const int64_t queryGmOffset, const int64_t keyGmOffset,
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
             CopyGmToL1(l1_query_tensor, queryGm[currentQueryOffset], mmParam.singleM, K_SPLIT_SIZE, dimDqk);
             if constexpr (MODE == SMLAG_SCFA_MODE) {
-                CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+                if (!runInfo.isOri) {
+                    CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+                } else {
+                    CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+                }
             } else if (runInfo.isOri) {
                 CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
             } else {
@@ -85,7 +89,11 @@ CubeOp<T1>::cube1Process(const int64_t queryGmOffset, const int64_t keyGmOffset,
         int64_t srcDstride = dimDTotal;
         CopyGmToL1(l1_query_tensor, srcGm, mmParam.singleM, tailLoopDSize, srcDstride);
         if constexpr (MODE == SMLAG_SCFA_MODE) {
-            CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, tailLoopDSize, dimDTotal);
+            if (!runInfo.isOri) {
+                CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, tailLoopDSize, dimDTotal);
+            } else {
+                CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleN, tailLoopDSize, dimDTotal);
+            }
         } else if (runInfo.isOri) {
             CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
         } else {

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_TILE_COPY_TLA_HPP
-#define CATLASS_GEMM_TILE_TILE_COPY_TLA_HPP
+#ifndef GMM_GEMM_TILE_TILE_COPY_TLA_HPP
+#define GMM_GEMM_TILE_TILE_COPY_TLA_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 
@@ -40,4 +40,4 @@ struct TileCopyTlaExt {
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_TILE_COPY_TLA_HPP
+#endif // GMM_GEMM_TILE_TILE_COPY_TLA_HPP

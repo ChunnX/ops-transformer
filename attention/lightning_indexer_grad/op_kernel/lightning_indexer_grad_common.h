@@ -72,7 +72,12 @@ struct LIGType {
 template <typename T>
 __aicore__ inline T Align(T num, T rnd)
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
+    // Use division-based form to avoid unsigned integer wraparound in (num + rnd - 1).
+    if (rnd == 0) {
+        return 0;
+    }
+    T q = num / rnd;
+    return (num % rnd == 0) ? (q * rnd) : ((q + 1) * rnd);
 }
 
 template <typename T1, typename T2>
@@ -90,7 +95,8 @@ __aicore__ inline T1 Max(T1 a, T2 b)
 template <typename T>
 __aicore__ inline T CeilDiv(T num, T rnd)
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
+    // Use division-based form to avoid unsigned integer wraparound in (num + rnd - 1).
+    return (rnd == 0) ? 0 : (num / rnd + (num % rnd != 0 ? 1 : 0));
 }
 
 template <typename T> 

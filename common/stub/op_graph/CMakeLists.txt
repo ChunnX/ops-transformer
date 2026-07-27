@@ -28,6 +28,7 @@ target_link_libraries(proto_math PRIVATE
     -Wl,--whole-archive
     rt2_registry_static
     -Wl,--no-whole-archive
+    mmpa
 )
 
 # 生成es_math

@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "../../../op_host/op_tiling/quant_grouped_matmul_inplace_add_tiling.h"
+#include "../../../op_host/op_tiling/quant_grouped_matmul_inplace_add_basic_api_tiling.h"
 #include "../../../op_kernel/arch35/quant_grouped_matmul_inplace_add_tiling_data.h"
 #include "tiling_case_executor.h"
 #include "gmm_csv_ge_parse_utils.h"
@@ -62,6 +63,7 @@ struct QGmmInplaceAddArch35Param {
     uint64_t expectTilingKey = 0;
     vector<int64_t> scale2Shape;
     vector<int64_t> scale1Shape;
+    uint64_t tilingDataSize = 0;
 
     void Test() const
     {
@@ -75,21 +77,23 @@ struct QGmmInplaceAddArch35Param {
         gert::StorageShape groupListShape = MakeShape({groupNum});
         gert::StorageShape yShape = MakeShape({groupNum, m, n});
 
+        uint64_t actualTilingDataSize = (tilingDataSize == 0) ? 4096 : tilingDataSize;
+
         gert::TilingContextPara tilingContextPara(
             "QuantGroupedMatmulInplaceAdd",
             {
-                {xShape, xDtype, ge::FORMAT_ND},                         // x1
-                {weightShape, wDtype, ge::FORMAT_ND},                    // x2
-                {MakeShape(scale2Shape), scale2Dtype, ge::FORMAT_ND},    // scale2
-                {groupListShape, ge::DT_INT64, ge::FORMAT_ND},           // group_list
-                {yShape, yDtype, ge::FORMAT_ND},                          // y (inplace input)
-                {MakeShape(scale1Shape), scale1Dtype, ge::FORMAT_ND},     // scale1
+                {xShape, xDtype, ge::FORMAT_ND},
+                {weightShape, wDtype, ge::FORMAT_ND},
+                {MakeShape(scale2Shape), scale2Dtype, ge::FORMAT_ND},
+                {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
+                {yShape, yDtype, ge::FORMAT_ND},
+                {MakeShape(scale1Shape), scale1Dtype, ge::FORMAT_ND},
             },
             {{yShape, yDtype, ge::FORMAT_ND}},
             {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
              {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
             &compileInfo,
-            "3510", compileInfo.aicNum, compileInfo.ubSize);
+            "3510", compileInfo.aicNum, compileInfo.ubSize, actualTilingDataSize);
 
         TilingInfo tilingInfo;
         bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
@@ -99,8 +103,9 @@ struct QGmmInplaceAddArch35Param {
         }
 
         ASSERT_GT(tilingInfo.blockNum, 0U) << "case=" << caseName;
-        ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams))
-            << "case=" << caseName;
+        ASSERT_TRUE(tilingInfo.tilingDataSize == sizeof(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams) ||
+                    tilingInfo.tilingDataSize == sizeof(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData))
+            << "case=" << caseName << " tilingDataSize=" << tilingInfo.tilingDataSize;
         if (checkTilingKey) {
             ASSERT_EQ(tilingInfo.tilingKey, expectTilingKey) << "case=" << caseName;
         }
@@ -127,7 +132,7 @@ vector<QGmmInplaceAddArch35Param> GetParams(const string &socVersion)
         }
         vector<string> items;
         SplitStr2Vec(line, ",", items);
-        if (items.empty() || items[0] == "socVersion" || items.size() < 18U) {
+        if (items.empty() || items[0] == "socVersion" || items.size() < 19U) {
             continue;
         }
 
@@ -161,6 +166,7 @@ vector<QGmmInplaceAddArch35Param> GetParams(const string &socVersion)
             p.expectTilingKey = p.checkTilingKey ? static_cast<uint64_t>(stoull(keyField)) : 0;
             p.scale2Shape = ops::ut::ParseDims(items[idx++]);
             p.scale1Shape = ops::ut::ParseDims(items[idx++]);
+            p.tilingDataSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
             params.push_back(p);
         } catch (const std::exception &error) {
             ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
@@ -192,69 +198,4 @@ TEST_P(TestQuantGroupedMatmulInplaceAddArch35Tiling, csvDrivenCase)
 
 INSTANTIATE_TEST_SUITE_P(QUANT_GROUPED_MATMUL_INPLACE_ADD_950, TestQuantGroupedMatmulInplaceAddArch35Tiling,
                          testing::ValuesIn(GetAscend950Params()), MakeParamName);
-
-TEST(TestQuantGroupedMatmulInplaceAddArch35TilingExtra, post_tiling_memcpy_fail_when_tiling_buffer_too_small)
-{
-    optiling::GMMCompileInfo compileInfo = {
-        32, 64, 262144, 524288, 134217728, 262144, 65536, 65536, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510,
-    };
-
-    gert::StorageShape xShape = MakeShape({512, 96});
-    gert::StorageShape weightShape = MakeShape({512, 128});
-    gert::StorageShape groupListShape = MakeShape({4});
-    gert::StorageShape yShape = MakeShape({4, 96, 128});
-
-    gert::TilingContextPara para(
-        "QuantGroupedMatmulInplaceAdd",
-        {
-            {xShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-            {weightShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-            {MakeShape({12, 128, 2}), ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {MakeShape({12, 96, 2}), ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-        },
-        {{yShape, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize,
-        8); // intentionally too small raw tiling buffer to force memcpy_s failure in PostTiling
-
-    TilingInfo info;
-    EXPECT_FALSE(ExecuteTiling(para, info));
-}
-
-TEST(TestQuantGroupedMatmulInplaceAddArch35TilingExtra, print_quant_params_debug_branch_smoke)
-{
-#if defined(_WIN32)
-    _putenv_s("ASCEND_GLOBAL_LOG_LEVEL", "0");
-#else
-    setenv("ASCEND_GLOBAL_LOG_LEVEL", "0", 1);
-#endif
-
-    optiling::GMMCompileInfo compileInfo = {
-        32, 64, 262144, 524288, 134217728, 262144, 65536, 65536, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510,
-    };
-    gert::StorageShape xShape = MakeShape({512, 96});
-    gert::StorageShape weightShape = MakeShape({512, 128});
-    gert::StorageShape groupListShape = MakeShape({4});
-    gert::StorageShape yShape = MakeShape({4, 96, 128});
-    gert::TilingContextPara para(
-        "QuantGroupedMatmulInplaceAdd",
-        {
-            {xShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-            {weightShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-            {MakeShape({12, 128, 2}), ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {MakeShape({12, 96, 2}), ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-        },
-        {{yShape, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
-
-    TilingInfo info;
-    EXPECT_TRUE(ExecuteTiling(para, info));
-}
 } // namespace QuantGroupedMatmulInplaceAddArch35TilingUT

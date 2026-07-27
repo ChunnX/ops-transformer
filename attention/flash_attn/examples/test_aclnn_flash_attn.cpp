@@ -544,7 +544,6 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
             (int32_t)S_q, (int32_t)S_kv,
             "BNSD", "BNSD", "BNSD",
             (int32_t)0, // returnSoftmaxLse
-            (int32_t)0, // deterministic
             outT,
             nullptr,    // softmaxLse
             &wsSize, &exec);

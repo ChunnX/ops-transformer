@@ -64,3 +64,43 @@ TEST_F(l2_moe_init_routing_v3_test, Ascend910B2_moe_init_routing_v3)
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
+
+TEST_F(l2_moe_init_routing_v3_test, Ascend910B2_moe_init_routing_v3_with_scale_offset)
+{
+    auto x = TensorDesc({5, 8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto expertIdx = TensorDesc({5, 4}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 8);
+    auto scale = TensorDesc({5, 8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto offset = TensorDesc({5, 8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+
+    auto expandedXOut = TensorDesc({20, 8}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto expandedRowIdxOut = TensorDesc({20}, ACL_INT32, ACL_FORMAT_ND);
+    auto expertTokensCountOrCumsumOut = TensorDesc({8}, ACL_INT64, ACL_FORMAT_ND);
+    auto expandedScaleOut = TensorDesc({20}, ACL_FLOAT, ACL_FORMAT_ND);
+    std::vector<int64_t> activeExpertRangeArray = {0, 8};
+    aclIntArray *activeExpertRange = aclCreateIntArray(activeExpertRangeArray.data(), activeExpertRangeArray.size());
+
+    int64_t activeNum = 20;
+    int64_t expertCapacity = -1;
+    int64_t expertNum = 32;
+    int64_t dropPadMode = 0;
+    int64_t expertTokensNumType = 1;
+    int64_t expertTokensNumFlag = true;
+    int64_t quantMode = -1;
+    int64_t rowIdxType = 1;
+
+    auto ut = OP_API_UT(aclnnMoeInitRoutingV3,
+                        INPUT(x, expertIdx, scale, offset, activeNum, expertCapacity, expertNum, dropPadMode,
+                              expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRange, rowIdxType),
+                        OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
+}
+
+TEST(l2_moe_init_routing_v3_phase2_test, phase2_null_executor_path)
+{
+    // Cover phase2: L2_DFX_PHASE_2 + CommonOpExecutorRun
+    aclnnStatus ret = aclnnMoeInitRoutingV3(nullptr, 0, nullptr, nullptr);
+    EXPECT_NE(ret, ACLNN_SUCCESS);
+}

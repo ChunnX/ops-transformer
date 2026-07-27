@@ -46,7 +46,8 @@ bool QGMMInplaceAddBasicApiTiling::IsCapable()
     auto scaleDimNum = wScaleShape.GetDimNum();
 
     return inputParams_.aDtype == ge::DT_HIFLOAT8 &&
-           (scaleDimNum == 1 || (scaleDimNum == 2 && static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
+           (scaleDimNum == 1 || (scaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D &&
+                                  static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
 }
 
 bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs() { return AnalyzeAttrsForInplaceAdd(context_, inputParams_); }
@@ -59,25 +60,36 @@ bool QGMMInplaceAddBasicApiTiling::AnalyzeDtype()
 bool QGMMInplaceAddBasicApiTiling::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetInputShape(X_INDEX);
-    OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "xStorageShape is nullptr."), return false);
+    OP_CHECK_IF(xStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x1", "nullptr",
+                                                      "xStorageShape cannot be nullptr"),
+                return false);
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
 
     auto wStorageShape = context_->GetInputShape(WEIGHT_INDEX);
-    OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "wStorageShape is nullptr."), return false);
+    OP_CHECK_IF(wStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x2", "nullptr",
+                                                      "wStorageShape cannot be nullptr"),
+                return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
 
     auto scaleStorageShape = context_->GetInputShape(SCALE_INDEX);
-    OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "scaleStorageShape is nullptr."),
+    OP_CHECK_IF(scaleStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale2", "nullptr",
+                                                      "scaleStorageShape cannot be nullptr"),
                 return false);
     const gert::Shape &wScaleShape = scaleStorageShape->GetOriginShape();
     auto scaleDimNum = wScaleShape.GetDimNum();
     OP_CHECK_IF(
         scaleDimNum < 1,
-        OP_LOGE(inputParams_.opName, "The dimension of scale1 should be positive integer, actual is %zu", scaleDimNum),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale1", std::to_string(scaleDimNum),
+                                     "positive integer"),
         return false);
 
     auto x1ScaleStorageShape = context_->GetOptionalInputShape(PER_TOKEN_SCALE_INDEX);
-    OP_CHECK_IF(x1ScaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "x1ScaleStorageShape is nullptr."),
+    OP_CHECK_IF(x1ScaleStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale1", "nullptr",
+                                                      "x1ScaleStorageShape cannot be nullptr"),
                 return false);
     const gert::Shape &x1ScaleShape = x1ScaleStorageShape->GetOriginShape();
 
@@ -110,22 +122,19 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::DoOpTiling()
     tilingData_.gmmQuantParams.aQuantMode = static_cast<uint32_t>(inputParams_.aQuantMode);
     tilingData_.gmmQuantParams.bQuantMode = static_cast<uint32_t>(inputParams_.bQuantMode);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
-    PrintQuantParams();
+    OP_LOGD(inputParams_.opName, "%ld", LogQuantParams());
     return ge::GRAPH_SUCCESS;
 }
 
-void QGMMInplaceAddBasicApiTiling::PrintQuantParams()
+int64_t QGMMInplaceAddBasicApiTiling::LogQuantParams() const
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
     std::ostringstream oss;
     oss << "QGmmInplaceAddBasicApiParams: groupNum = " << tilingData_.gmmQuantParams.groupNum
         << ", aQuantMode = " << tilingData_.gmmQuantParams.aQuantMode
         << ", bQuantMode = " << tilingData_.gmmQuantParams.bQuantMode
         << ", groupListType = " << static_cast<uint32_t>(tilingData_.gmmQuantParams.groupListType);
     OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
+    return 0;
 }
 
 ge::graphStatus QGMMInplaceAddBasicApiTiling::DoLibApiTiling()

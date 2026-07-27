@@ -20,7 +20,7 @@
 namespace {
 constexpr uint32_t OP_TYPE_BATCH_WRITE = 18U;
 constexpr uint32_t LOCAL_STREAM_MAX_NUM = 40U;
-}
+} // namespace
 
 namespace optiling {
 
@@ -33,9 +33,8 @@ void MoeDistributeDispatchSetupTilingA3::SetHcommCfg()
     uint32_t aivNum = tilingData_->moeDistributeDispatchSetupInfo.aivNum;
     uint32_t sdmaUsedStreamPerCore = tilingData_->moeDistributeDispatchSetupInfo.sdmaUsedStreamPerCore;
 
-    OP_LOGD(
-        nodeName_, "QueueNum = %u, aivNum = %u, sdmaUsedStreamPerCore = %u", (LOCAL_STREAM_MAX_NUM / aivNum), aivNum,
-        sdmaUsedStreamPerCore);
+    OP_LOGD(nodeName_, "QueueNum = %u, aivNum = %u, sdmaUsedStreamPerCore = %u", (LOCAL_STREAM_MAX_NUM / aivNum),
+            aivNum, sdmaUsedStreamPerCore);
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp_, opType, algConfigStr, reduceType);
     mc2CcTilingConfig.SetQueueNum(sdmaUsedStreamPerCore);
     mc2CcTilingConfig.SetCommBlockNum(aivNum);

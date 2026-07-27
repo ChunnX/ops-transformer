@@ -46,10 +46,12 @@ public:
                           uint64_t ubOffset, uint64_t srcUbOffset);
     __aicore__ inline void NZVecClc(GlobalTensor<float> srcGm, GlobalTensor<OUT_TYPE> dstGm, uint64_t dataSize,
                              GM_ADDR seqS, int64_t curG, int64_t &curS, bool needMuls, int64_t flag, int64_t d, int64_t dAlign);
+    __aicore__ inline void EODCleanMultiCore(GlobalTensor<OUT_TYPE> &gm, int64_t offset, int64_t size);
     __aicore__ inline void NZProcess();
     __aicore__ inline void ComputeDataCopyOffset(int64_t curG, int64_t &curS, int64_t d, int64_t dAlign);
 
     constexpr static uint32_t BUFFER_NUM = 1;
+    __aicore__ inline void ReduceDsinkSum(TQue<QuePosition::VECIN, 1> &inQ, TQue<QuePosition::VECOUT, 1> &outQ);
     TPipe *pipe;
     TQue<QuePosition::VECIN, BUFFER_NUM> inQueue;
     TQue<QuePosition::VECOUT, BUFFER_NUM> outQueue;
@@ -470,8 +472,43 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
 
 template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
           const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
+__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::EODCleanMultiCore(
+    GlobalTensor<OUT_TYPE> &gm, int64_t offset, int64_t size)
+{
+    if (size <= 0 || usedCoreNum <= 0) {
+        return;
+    }
+    int64_t perSize = (size + usedCoreNum - 1) / usedCoreNum;
+    int64_t usedCore = (size + perSize - 1) / perSize;
+    int64_t tailSize = size - perSize * (usedCore - 1);
+    int64_t initSize = perSize;
+    if (cBlockIdx == usedCore - 1) {
+        initSize = tailSize;
+    }
+    if (cBlockIdx < usedCore) {
+        InitOutput<OUT_TYPE>(gm[offset + cBlockIdx * perSize], initSize, 0);
+    }
+}
+
+template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
+          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
 __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::NZProcess()
 {
+    if constexpr (LAYOUT == TND) {
+        int64_t t1Full = tilingData->postTilingData.t1;
+        int64_t t2Full = tilingData->postTilingData.t2;
+        EODCleanMultiCore(dqGm, qPostBlockTotal, t1Full * n2 * g * d - qPostBlockTotal);
+        EODCleanMultiCore(dkGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
+        if constexpr (CAST_DV) {
+            EODCleanMultiCore(dvGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
+        }
+        if constexpr (HAS_ROPE == ENABLE) {
+            EODCleanMultiCore(dqRopeGm, qRopePostBlockTotal, t1Full * n2 * g * rope_d - qRopePostBlockTotal);
+            EODCleanMultiCore(dkRopeGm, kRopePostBlockTotal, t2Full * n2 * rope_d - kRopePostBlockTotal);
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
+    }
+
     uint64_t qBegin = cBlockIdx * qPostBlockFactor * qPostBaseNum;
     uint64_t qEnd = (cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum;
     if (((cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum) > qPostBlockTotal) {
@@ -809,8 +846,6 @@ public:
         }
         dsinksumWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                     tilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
-        dsinksumDataSizeGm.SetGlobalBuffer((__gm__ uint32_t *)workspace +
-                    tilingData->postTilingData.dsinksumDataSizeOffset / sizeof(uint32_t));
 
         if constexpr (INPUT_FORMAT == NZ) {
             pipe->InitBuffer(inQueuePing, 1, ubBaseSize * 2 + nzReservedSize);
@@ -1028,61 +1063,51 @@ public:
         }
 
         // reduce dsinksum
-
         if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sink == 1)) {
-            AscendC::LocalTensor<float> vecIn = inQueue.template AllocTensor<float>();
-            AscendC::LocalTensor<float> vecOut = outQueue.template AllocTensor<float>();
-            int s1Pad = (tilingData->postTilingData.s1 + 255) / 256 * 256;
-            int s2Pad = (tilingData->postTilingData.s2 + 255) / 256 * 256;
-            int dataSizePerN1 = tilingData->postTilingData.b * s1Pad * s2Pad / tilingData->postTilingData.baseMN;
-            int N1 = tilingData->postTilingData.n2 * tilingData->postTilingData.g;
-            int dsinkSumMaxCopyTimePerN1 = (dataSizePerN1 * sizeof(float) + 2 * ubBaseSize -1) / ( 2 * ubBaseSize);
-            int tailDsinkSumSize = (dataSizePerN1 * sizeof(float)) % (2 * ubBaseSize);
-            int copyOffset = 0;
-            for (int n1temp = 0; n1temp < N1; n1temp++) {
-                float dsinkCalc = 0.0;
-                for (int dsinkSumDataCopyLoop = 0; dsinkSumDataCopyLoop < dsinkSumMaxCopyTimePerN1; dsinkSumDataCopyLoop++) {
-                    int currentCopyDataSize = (dsinkSumDataCopyLoop ==  dsinkSumMaxCopyTimePerN1-1) ? tailDsinkSumSize : 2 * ubBaseSize;
-                    int itemNum = currentCopyDataSize / sizeof(float);
-
-                    DataCopyExtParams copyParams;
-                    copyParams.blockCount = 1;
-                    copyParams.blockLen = currentCopyDataSize;
-                    copyParams.srcStride = 0;
-                    copyParams.dstStride = 0;
-                    copyParams.rsv = 0;
-                    DataCopyPadExtParams<float> copyPadParams;
-                    copyPadParams.isPad = ((itemNum % 8) == 0) ? false : true;
-                    copyPadParams.leftPadding = 0;
-                    copyPadParams.rightPadding = 8 - (itemNum % 8);
-                    copyPadParams.paddingValue = 0.0;
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    DataCopyPad(vecIn, dsinksumWorkSpaceGm[copyOffset], copyParams, copyPadParams);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-
-                    inQueue.EnQue(vecIn);
-                    inQueue.template DeQue<float>();
-
-
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    AscendC::ReduceSum<float>(vecOut, vecIn[0], vecIn[0], itemNum);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-
-                    outQueue.EnQue(vecOut);
-                    outQueue.template DeQue<float>();
-
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    dsinkCalc += vecOut.GetValue(0);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    copyOffset += itemNum;
-                }
-                AscendC::PipeBarrier<PIPE_ALL>();
-                dsinkGm.SetValue(n1temp, -dsinkCalc);
-                AscendC::PipeBarrier<PIPE_ALL>();
-            }
-            inQueue.FreeTensor(vecIn);
-            outQueue.FreeTensor(vecOut);
+            ReduceDsinkSum(inQueue, outQueue);
         }
+    }
+    __aicore__ inline void ReduceDsinkSum(TQue<QuePosition::VECIN, 1> &inQ, TQue<QuePosition::VECOUT, 1> &outQ)
+    {
+        int N1 = tilingData->postTilingData.n2 * tilingData->postTilingData.g;
+        int coreNumForSink = tilingData->postTilingData.coreNum;
+        int headsPerCore = (N1 + usedCoreNum - 1) / usedCoreNum;
+        int headStart = cBlockIdx * headsPerCore;
+        int myHeads = Min(N1 - headStart, headsPerCore);
+        if (myHeads <= 0) {
+            return;
+        }
+        int headsPerBatch = Max((2 * ubBaseSize) / (coreNumForSink * sizeof(float)), 1);
+        AscendC::LocalTensor<float> vecIn = inQ.template AllocTensor<float>();
+        AscendC::LocalTensor<float> vecOut = outQ.template AllocTensor<float>();
+
+        int processedHeads = 0;
+        while (processedHeads < myHeads) {
+            int curHeads = (myHeads - processedHeads > headsPerBatch) ? headsPerBatch : (myHeads - processedHeads);
+            int curItems = curHeads * coreNumForSink;
+            int curBytes = curItems * sizeof(float);
+            int curItemsAlign = (curItems + 7) / 8 * 8;
+            int curHeadOffset = headStart + processedHeads;
+
+            DataCopyPad(vecIn, dsinksumWorkSpaceGm[curHeadOffset * coreNumForSink],
+                {1, (uint32_t)curBytes, 0, 0, 0},
+                {curItemsAlign != curItems, 0, (uint8_t)(8 - curItems % 8), 0});
+            inQ.EnQue(vecIn);
+            inQ.template DeQue<float>();
+
+            uint32_t srcShape[] = {(uint32_t)curHeads, (uint32_t)coreNumForSink};
+            AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR>(vecOut, vecIn, srcShape, (coreNumForSink % 8 == 0));
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Muls<float>(vecOut, vecOut, -1.0f, curHeads);
+            AscendC::PipeBarrier<PIPE_V>();
+
+            outQ.EnQue(vecOut);
+            outQ.template DeQue<float>();
+            DataCopyPad(dsinkGm[curHeadOffset], vecOut, {1, (uint32_t)(curHeads * sizeof(float)), 0, 0, 0});
+            processedHeads += curHeads;
+        }
+        inQ.FreeTensor(vecIn);
+        outQ.FreeTensor(vecOut);
     }
     __aicore__ inline void NZ2ND(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, uint64_t sLen,
                           uint64_t ubOffset, uint64_t srcUbOffset, int64_t dAlign)
@@ -1247,8 +1272,39 @@ public:
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(mte2WaitVPong);
         outQueueCommon.FreeTensor(vecOut);
     }
+    __aicore__ inline void EODCleanMultiCore(GlobalTensor<OUT_TYPE> &gm, int64_t offset, int64_t size)
+    {
+        if (size <= 0 || usedCoreNum <= 0) {
+            return;
+        }
+        int64_t perSize = (size + usedCoreNum - 1) / usedCoreNum;
+        int64_t usedCore = (size + perSize - 1) / perSize;
+        int64_t tailSize = size - perSize * (usedCore - 1);
+        int64_t initSize = perSize;
+        if (cBlockIdx == usedCore - 1) {
+            initSize = tailSize;
+        }
+        if (cBlockIdx < usedCore) {
+            InitOutput<OUT_TYPE>(gm[offset + cBlockIdx * perSize], initSize, 0);
+        }
+    }
     __aicore__ inline void NZProcess()
     {
+        if constexpr (LAYOUT == TND) {
+            int64_t t1Full = tilingData->postTilingData.t1;
+            int64_t t2Full = tilingData->postTilingData.t2;
+            EODCleanMultiCore(dqGm, qPostBlockTotal, t1Full * n2 * g * d - qPostBlockTotal);
+            EODCleanMultiCore(dkGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
+            if constexpr (CAST_DV) {
+                EODCleanMultiCore(dvGm, vPostBlockTotal, t2Full * n2 * value_d - vPostBlockTotal);
+            }
+            if constexpr (HAS_ROPE == ENABLE) {
+                EODCleanMultiCore(dqRopeGm, qRopePostBlockTotal, t1Full * n2 * g * rope_d - qRopePostBlockTotal);
+                EODCleanMultiCore(dkRopeGm, kRopePostBlockTotal, t2Full * n2 * rope_d - kRopePostBlockTotal);
+            }
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
+
         uint64_t qBegin = cBlockIdx * qPostBlockFactor * qPostBaseNum;
         uint64_t qEnd = (cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum;
         if (((cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum) > qPostBlockTotal) {
@@ -1333,60 +1389,7 @@ public:
             AscendC::PipeBarrier<PIPE_ALL>();
         }
         if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sink == 1)) {
-            AscendC::LocalTensor<float> vecIn = inQueuePing.template AllocTensor<float>();
-            AscendC::LocalTensor<float> vecOut = outQueuePing.template AllocTensor<float>();
-
-            int s1Pad = (tilingData->postTilingData.s1 + 255) / 256 * 256;
-            int s2Pad = (tilingData->postTilingData.s2 + 255) / 256 * 256;
-            int dataSizePerN1 = tilingData->postTilingData.b * s1Pad * s2Pad / tilingData->postTilingData.baseMN;
-            int N1 = tilingData->postTilingData.n2 * tilingData->postTilingData.g;
-            int dsinkSumMaxCopyTimePerN1 = (dataSizePerN1 * sizeof(float) + 2 * ubBaseSize -1) / ( 2 * ubBaseSize);
-            int tailDsinkSumSize = (dataSizePerN1 * sizeof(float)) % (2 * ubBaseSize);
-            int copyOffset = 0;
-
-            for (int n1temp = 0; n1temp < N1; n1temp++) {
-                float dsinkCalc = 0.0;
-                for (int dsinkSumDataCopyLoop = 0; dsinkSumDataCopyLoop < dsinkSumMaxCopyTimePerN1; dsinkSumDataCopyLoop++) {
-                    int currentCopyDataSize = (dsinkSumDataCopyLoop ==  dsinkSumMaxCopyTimePerN1-1) ? tailDsinkSumSize : 2 * ubBaseSize;
-                    int itemNum = currentCopyDataSize / sizeof(float);
-
-                    DataCopyExtParams copyParams;
-                    copyParams.blockCount = 1;
-                    copyParams.blockLen = currentCopyDataSize;
-                    copyParams.srcStride = 0;
-                    copyParams.dstStride = 0;
-                    copyParams.rsv = 0;
-                    DataCopyPadExtParams<float> copyPadParams;
-                    copyPadParams.isPad = ((itemNum % 8) == 0) ? false : true;
-                    copyPadParams.leftPadding = 0;
-                    copyPadParams.rightPadding = 8 - (itemNum % 8);
-                    copyPadParams.paddingValue = 0.0;
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    DataCopyPad(vecIn, dsinksumWorkSpaceGm[copyOffset], copyParams, copyPadParams);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-
-                    inQueuePing.EnQue(vecIn);
-                    inQueuePing.template DeQue<float>();
-
-
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    AscendC::ReduceSum<float>(vecOut, vecIn[0], vecIn[0], itemNum);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-
-                    outQueuePing.EnQue(vecOut);
-                    outQueuePing.template DeQue<float>();
-
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    dsinkCalc += vecOut.GetValue(0);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    copyOffset += itemNum;
-                }
-                AscendC::PipeBarrier<PIPE_ALL>();
-                dsinkGm.SetValue(n1temp, -dsinkCalc);
-                AscendC::PipeBarrier<PIPE_ALL>();
-            }
-            inQueuePing.FreeTensor(vecIn);
-            outQueuePing.FreeTensor(vecOut);
+            ReduceDsinkSum(inQueuePing, outQueuePing);
         }
     }
     __aicore__ inline void ComputeDataCopyOffset(int64_t curG, int64_t &curS, int64_t d, int64_t dAlign)
@@ -1431,7 +1434,6 @@ public:
     AscendC::GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm;
     AscendC::GlobalTensor<float> dqRopeWorkSpaceGm, dkRopeWorkSpaceGm;
     AscendC::GlobalTensor<float> dsinksumWorkSpaceGm;
-    AscendC::GlobalTensor<uint32_t> dsinksumDataSizeGm;
 
     const FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb *__restrict tilingData;
     constexpr static uint32_t SYNC_GLOBAL_WORKSPACE_SIZE = 16 * 1024;
@@ -1971,8 +1973,39 @@ public:
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(mte2WaitVPong);
         outQueueCommon.FreeTensor(vecOut);
     }
+    __aicore__ inline void EODCleanMultiCore(GlobalTensor<OUT_TYPE> &gm, int64_t offset, int64_t size)
+    {
+        if (size <= 0 || usedCoreNum <= 0) {
+            return;
+        }
+        int64_t perSize = (size + usedCoreNum - 1) / usedCoreNum;
+        int64_t usedCore = (size + perSize - 1) / perSize;
+        int64_t tailSize = size - perSize * (usedCore - 1);
+        int64_t initSize = perSize;
+        if (cBlockIdx == usedCore - 1) {
+            initSize = tailSize;
+        }
+        if (cBlockIdx < usedCore) {
+            InitOutput<OUT_TYPE>(gm[offset + cBlockIdx * perSize], initSize, 0);
+        }
+    }
     __aicore__ inline void NZProcess()
     {
+        if constexpr (LAYOUT == TND) {
+            int64_t t1Full = tilingData->postTilingData.t1;
+            int64_t t2Full = tilingData->postTilingData.t2;
+            EODCleanMultiCore(dqGm, qPostBlockTotal, t1Full * n2 * g * d - qPostBlockTotal);
+            EODCleanMultiCore(dkGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
+            if constexpr (CAST_DV) {
+                EODCleanMultiCore(dvGm, vPostBlockTotal, t2Full * n2 * value_d - vPostBlockTotal);
+            }
+            if constexpr (HAS_ROPE == ENABLE) {
+                EODCleanMultiCore(dqRopeGm, qRopePostBlockTotal, t1Full * n2 * g * rope_d - qRopePostBlockTotal);
+                EODCleanMultiCore(dkRopeGm, kRopePostBlockTotal, t2Full * n2 * rope_d - kRopePostBlockTotal);
+            }
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
+
         uint64_t qBegin = cBlockIdx * qPostBlockFactor * qPostBaseNum;
         uint64_t qEnd = (cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum;
         if (((cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum) > qPostBlockTotal) {

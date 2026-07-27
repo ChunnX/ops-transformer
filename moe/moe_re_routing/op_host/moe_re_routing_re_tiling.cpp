@@ -23,6 +23,7 @@
 namespace optiling {
 
 constexpr int64_t NUM_TWO = 2;
+constexpr int64_t BYTE_LENGTH_FOUR = 4;
 constexpr uint64_t MOE_RE_ROUTING_RE_WITHOUT_SCALE = 200000;
 constexpr uint64_t MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT = 200100;
 /* Note: MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0 key is shared by multiple quantization types:
@@ -64,11 +65,14 @@ ge::graphStatus MoeReRoutingReTiling::SplitUb()
 
 ge::graphStatus MoeReRoutingReTiling::DoOpTiling()
 {
-    OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "check param fail."),
+    OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CheckParam()", "GRAPH_FAILED", "check param fail."),
                 return ge::GRAPH_FAILED);
     SplitCore();
     if (SplitUb() != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_->GetNodeName(), "SplitUb Failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "SplitUb()", "GRAPH_FAILED", "SplitUb failed.");
         return ge::GRAPH_FAILED;
     }
     if (hasScale_) {
@@ -115,7 +119,7 @@ ge::graphStatus MoeReRoutingReTiling::PostTiling()
     if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 || tokenDtype_ == ge::DT_HIFLOAT8 ||
          tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) &&
         scaleDtype_ == ge::DT_FLOAT) {
-        tilingData_.set_scaleSize(scaleSize_ * 4);
+        tilingData_.set_scaleSize(scaleSize_ * BYTE_LENGTH_FOUR);
     } else {
         tilingData_.set_scaleSize(scaleSize_);
     }

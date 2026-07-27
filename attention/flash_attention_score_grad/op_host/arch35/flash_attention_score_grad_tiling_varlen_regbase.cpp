@@ -60,7 +60,7 @@ protected:
         OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
     }
 
-    void CalcTNDSwizzleParam()
+    void CalcTNDSwizzleParam() override
     {
         if (fBaseParams.b >= TND_SWIZZLE_PREFIX_NUM) {
             return;

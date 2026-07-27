@@ -130,6 +130,7 @@ public:
         : context_(context), baseShapeInfo_(baseShapeInfo), scenarioInfo_(scenarioInfo) {}
     ge::graphStatus CheckSingleRequiredParam() const;
     ge::graphStatus CheckCacheMode() const;
+    ge::graphStatus CheckQuantMode() const;
     ge::graphStatus CheckDims() const;
     ge::graphStatus CheckParamByScenario();
     ge::graphStatus CheckSpecialScenarioParamShape();
@@ -144,6 +145,9 @@ private:
     bool CheckAttrsNotNull() const;
     bool CheckAttrsRange() const;
     bool CheckCacheModeParamShape() const;
+    ge::graphStatus CheckHcqSize() const;
+    ge::graphStatus CheckDSize() const;
+    ge::graphStatus CheckDtileSize() const;
     // ==================================单参数校验==================================
     bool IsSingleParamValid(const BaseParaInfo &param, const std::string &paramName,
                             const std::set<ge::DataType> &expectedDtype,
@@ -172,6 +176,13 @@ private:
     void FillOptionalOutputParamShapeWithDimsV2();
  	void FillOptionalOutputParamShapeWithDimsV3();
     void FillScenarioParamInfo();
+    void FillQueryNormScaleShape();
+    void FillQueryNormDtypes();
+    void FillTokenAndQueryShapes();
+    void FillWeightAndNormShapes();
+    void FillCacheShapes();
+    void CheckRepoMode(bool isPertile, ge::graphStatus &isCorrect);
+    void CheckQueryQuantMode(bool isPertensor, ge::graphStatus &isCorrect);
     void FillNonQuantParamInfo();
     void FillPartialQuantParamInfo();
     void FillPartialKVQuantParamInfo();

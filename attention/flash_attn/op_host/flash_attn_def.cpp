@@ -38,13 +38,13 @@
              .DataType({ge::DT_FLOAT16, ge::DT_BF16}) 
              .FormatList({ge::FORMAT_ND, ge::FORMAT_ND}) 
              .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND}) 
-             .AutoContiguous(); 
+             .IgnoreContiguous(); 
          this->Input("v") 
              .ParamType(REQUIRED) 
              .DataType({ge::DT_FLOAT16, ge::DT_BF16}) 
              .FormatList({ge::FORMAT_ND, ge::FORMAT_ND}) 
              .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND}) 
-             .AutoContiguous(); 
+             .IgnoreContiguous(); 
          this->Input("block_table") 
              .ParamType(OPTIONAL) 
              .DataTypeList({ge::DT_INT32}) 
@@ -126,12 +126,9 @@
          this->Attr("return_softmax_lse") 
              .AttrType(OPTIONAL) 
              .Int(0); 
-         this->Attr("deterministic") 
-             .AttrType(OPTIONAL) 
-             .Int(0); 
- 
- 
-         OpAICoreConfig aicore_config_95; 
+
+
+         OpAICoreConfig aicore_config_95;
          aicore_config_95.DynamicCompileStaticFlag(true) 
              .DynamicFormatFlag(true) 
              .DynamicRankSupportFlag(true) 

@@ -50,6 +50,9 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     const aclIntArray *actualSeqLengthsOptional,
     const aclIntArray *actualSeqLengthsKvOptional,
     const aclTensor *blockTableOptional,
+    const aclTensor *qDequantScaleOptional,
+    const aclTensor *kDequantScaleOptional,
+    const aclTensor *vDequantScaleOptional,
     const char *qInputLayout,
     const char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -60,13 +63,14 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     int64_t preTokens,
     int64_t nextTokens,
     int64_t softmaxLseFlag,
+    const aclTensor *attentionOut,
     aclOpExecutor *executor)
 {
     const char *safeKvInputLayout = (kvInputLayout != nullptr) ? kvInputLayout : qInputLayout;
-    
-    L0_DFX(BlockSparseAttention, query, key, value, blockSparseMaskOptional,
-           attenMaskOptional, blockShapeOptional, actualSeqLengthsOptional, actualSeqLengthsKvOptional,
-           blockTableOptional, qInputLayout, safeKvInputLayout, numKeyValueHeads,
+
+    L0_DFX(BlockSparseAttention, query, key, value, blockSparseMaskOptional, attenMaskOptional, blockShapeOptional,
+           actualSeqLengthsOptional, actualSeqLengthsKvOptional, blockTableOptional, qDequantScaleOptional,
+           kDequantScaleOptional, vDequantScaleOptional, qInputLayout, safeKvInputLayout, numKeyValueHeads,
            maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag);
 
     const aclTensor *blockShapeOptionalTensor = nullptr;
@@ -82,34 +86,35 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
         actualSeqKvTensor = ConvertIntArrayToTensor(actualSeqLengthsKvOptional, executor, DataType::DT_INT64);
     }
 
-    auto attentionOutTensor = executor->AllocTensor(query->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
+    auto attentionOutTensor = executor->AllocTensor(attentionOut->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxLseTensor = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
     // scaleValue is already float type, no need for cast
     auto ret = INFER_SHAPE(BlockSparseAttention,
                            OP_INPUT(query, key, value, blockSparseMaskOptional, attenMaskOptional,
-                                    blockShapeOptionalTensor, actualSeqTensor, actualSeqKvTensor, blockTableOptional),
+                                    blockShapeOptionalTensor, actualSeqTensor, actualSeqKvTensor, blockTableOptional,
+                                    qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional),
                            OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
-                           OP_ATTR(qInputLayout, safeKvInputLayout,
-                                   static_cast<int64_t>(numKeyValueHeads), static_cast<int64_t>(maskType),
-                                   static_cast<float>(scaleValue), static_cast<int64_t>(innerPrecise),
-                                   static_cast<int64_t>(blockSize), static_cast<uint32_t>(preTokens),
-                                   static_cast<int64_t>(nextTokens), static_cast<int64_t>(softmaxLseFlag)));
+                           OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads),
+                                   static_cast<int64_t>(maskType), static_cast<float>(scaleValue),
+                                   static_cast<int64_t>(innerPrecise), static_cast<int64_t>(blockSize),
+                                   static_cast<uint32_t>(preTokens), static_cast<int64_t>(nextTokens),
+                                   static_cast<int64_t>(softmaxLseFlag)));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockSparseAttention infer shape failed, scaleValue: %f.", scaleValue);
         return {nullptr, nullptr};
     }
-    
-    ADD_TO_LAUNCHER_LIST_AICORE(BlockSparseAttention,
-                                OP_INPUT(query, key, value, blockSparseMaskOptional, attenMaskOptional,
-                                         blockShapeOptionalTensor, actualSeqTensor, actualSeqKvTensor,
-                                         blockTableOptional),
-                                OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
-                                OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads),
-                                        static_cast<int64_t>(maskType), static_cast<float>(scaleValue),
-                                        static_cast<int64_t>(innerPrecise), static_cast<int64_t>(blockSize),
-                                        static_cast<int64_t>(preTokens), static_cast<int64_t>(nextTokens),
-                                        static_cast<int64_t>(softmaxLseFlag)));
+
+    ADD_TO_LAUNCHER_LIST_AICORE(
+        BlockSparseAttention,
+        OP_INPUT(query, key, value, blockSparseMaskOptional, attenMaskOptional, blockShapeOptionalTensor,
+                 actualSeqTensor, actualSeqKvTensor, blockTableOptional, qDequantScaleOptional, kDequantScaleOptional,
+                 vDequantScaleOptional),
+        OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
+        OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads), static_cast<int64_t>(maskType),
+                static_cast<float>(scaleValue), static_cast<int64_t>(innerPrecise), static_cast<int64_t>(blockSize),
+                static_cast<int64_t>(preTokens), static_cast<int64_t>(nextTokens),
+                static_cast<int64_t>(softmaxLseFlag)));
 
     return {attentionOutTensor, softmaxLseTensor};
 }

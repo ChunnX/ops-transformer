@@ -53,9 +53,9 @@ DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputG
         static_cast<uint16_t>((dequantRowColStrideParams.stride - dequantRowColStrideParams.col) * sizeof(T) / 32U), 0};
 
     Rectangle rectangleParams{
-        (uint32_t)1,     // row
-        (uint32_t)count, // col
-        (uint32_t)count  // columnStride
+        static_cast<uint32_t>(1),     // row
+        static_cast<uint32_t>(count), // col
+        static_cast<uint32_t>(count)  // columnStride
     };
 
     for (int64_t rowOffset = 0; rowOffset < oriRow; rowOffset += dequantRowColStrideParams.row) {
@@ -162,9 +162,9 @@ DequantSplitNQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
                                     static_cast<uint16_t>(dstStride * sizeof(O) / 32U)};
 
     Rectangle rectangleParams{
-        (uint32_t)1,     // row
-        (uint32_t)count, // col
-        (uint32_t)count  // columnStride
+        static_cast<uint32_t>(1),     // row
+        static_cast<uint32_t>(count), // col
+        static_cast<uint32_t>(count)  // columnStride
     };
 
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);

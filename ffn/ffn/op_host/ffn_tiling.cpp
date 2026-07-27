@@ -719,7 +719,7 @@ void FFNTiling::PrintMatMulTiling(const char *opName, TCubeTiling &matmulTiling)
 
 void FFNTiling::PrintFFNTiling(const gert::TilingContext *context, bool debugLevel)
 {
-    if (debugLevel && CheckLogLevel(OP, DLOG_DEBUG) != 1) {
+    if (debugLevel) {
         return;
     }
 
@@ -733,7 +733,7 @@ void FFNTiling::PrintFFNTiling(const gert::TilingContext *context, bool debugLev
        << baseParams.get_activeType() << " workspace1Size " << baseParams.get_workspace1Size() << " workspace2Size "
        << baseParams.get_workspace2Size() << " syncWorkspaceSize " << baseParams.get_syncWorkspaceSize()
        << " dataTypeSize " << baseParams.get_dataTypeSize();
-    OP_LOGI(context->GetNodeName(), "ffnBaseParams: %s", ss.str().c_str());
+    OP_LOGD(context->GetNodeName(), "ffnBaseParams: %s", ss.str().c_str());
 
     auto &singleCoreParams = tilingData.ffnSingleCoreParams;
     std::stringstream ss1;
@@ -741,7 +741,7 @@ void FFNTiling::PrintFFNTiling(const gert::TilingContext *context, bool debugLev
         << singleCoreParams.get_baseN2() << " ubCalSize " << singleCoreParams.get_ubCalSize() << " ubRestBytes "
         << singleCoreParams.get_ubRestBytes() << " mm1ResUbSize " << singleCoreParams.get_mm1ResUbSize() << " tiling "
         << context->GetTilingKey();
-    OP_LOGI(context->GetNodeName(), "ffnSingleCoreParams: %s", ss1.str().c_str());
+    OP_LOGD(context->GetNodeName(), "ffnSingleCoreParams: %s", ss1.str().c_str());
 }
 
 void FFNTiling::PrintCriticalInfo(gert::TilingContext *context)
@@ -798,9 +798,9 @@ ge::graphStatus FFNTiling::FFNParamsCheck(gert::TilingContext *context)
                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "the data type and format is invalid."), return ge::GRAPH_FAILED);
     weightDataTypeSize = GetSizeByDataType(weight1Dtype);
     innerPrecise = HIGH_PRECISION;
-    const int *innerPrecisePtr = attrs->GetAttrPointer<int>(FFN_ATTR_INDEX_INNER_PRECISE);
+    const int64_t *innerPrecisePtr = attrs->GetAttrPointer<int64_t>(FFN_ATTR_INDEX_INNER_PRECISE);
     if (innerPrecisePtr != nullptr) {
-        innerPrecise = *innerPrecisePtr;
+        innerPrecise = static_cast<int32_t>(*innerPrecisePtr);
     }
     OP_LOGI(context, "Inner_precise is %d.", innerPrecise);
 

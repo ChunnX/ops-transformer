@@ -7,5 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
 message(STATUS "=== Debug: start ops.transformer.moe_distribute_dispatch_setup.CMakeLists.txt ")
+if (BUILD_OPEN_PROJECT)
+    add_graph_plugin_sources()
+endif()

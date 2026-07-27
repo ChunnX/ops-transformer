@@ -23,8 +23,12 @@ using namespace std;
 
 class l2_moe_fused_topk_test : public testing::Test {
 protected:
- static void SetUpTestCase() { std::cout << "moe_fused_topk_test Setup" << std::endl; }
- static void TearDownTestCase() { std::cout << "moe_fused_topk_test TearDown" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "moe_fused_topk_test Setup" << std::endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    }
+    static void TearDownTestCase() { std::cout << "moe_fused_topk_test TearDown" << std::endl; }
 };
 
 TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_1) {
@@ -309,4 +313,38 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_7) {
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size); // check op graph
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_empty_x)
+{
+    int64_t num_token = 0;
+    int64_t expert_num = 128;
+    uint32_t group_num = 4;
+    uint32_t group_topk = 2;
+    uint32_t topk = 2;
+    uint32_t topn = 2;
+    uint32_t activate_type = 0;
+    bool is_norm = true;
+    float scale = 1.0f;
+    bool enable_expert_mapping = false;
+
+    vector<int64_t> x_dims = {num_token, expert_num};
+    vector<int64_t> add_num_dims = {expert_num};
+    vector<int64_t> y_dims = {num_token, topk};
+    vector<int64_t> indices_dims = {num_token, topk};
+
+    auto x_desc = TensorDesc(x_dims, ACL_FLOAT, ACL_FORMAT_ND);
+    auto add_num_desc = TensorDesc(add_num_dims, ACL_FLOAT, ACL_FORMAT_ND);
+    auto y_desc = TensorDesc(y_dims, ACL_FLOAT, ACL_FORMAT_ND);
+    auto indices_desc = TensorDesc(indices_dims, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeFusedTopk,
+                        INPUT(x_desc, add_num_desc, nullptr, nullptr, group_num, group_topk, topn, topk, activate_type,
+                              is_norm, scale, enable_expert_mapping),
+                        OUTPUT(y_desc, indices_desc));
+    uint64_t workspace_size = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(workspace_size, 0U);
 }

@@ -61,14 +61,20 @@ ge::graphStatus InferDataType4ScatterPaKvCache(gert::InferDataTypeContext *conte
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     auto cache_mode = attrs->GetAttrPointer<char>(ATTR_CACHE_MODE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, cache_mode);
-    OP_CHECK_IF(strcmp(cache_mode, "") != 0 && strcmp(cache_mode, "Norm") != 0 && strcmp(cache_mode, "PA_NZ") != 0,
-                OP_LOGE(context, "invalid cache mode : %s", cache_mode), return ge::GRAPH_FAILED);
+    if (strcmp(cache_mode, "") != 0 && strcmp(cache_mode, "Norm") != 0 && strcmp(cache_mode, "PA_NZ") != 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "cache_mode", cache_mode,
+            "The cache_mode must be one of '', 'Norm', or 'PA_NZ'.");
+        return ge::GRAPH_FAILED;
+    }
     auto scatter_mode = attrs->GetAttrPointer<char>(INPUT_SCATTER_MODE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, scatter_mode);
-    OP_CHECK_IF(strcmp(scatter_mode, "") != 0 && strcmp(scatter_mode, "None") != 0 &&
-                    strcmp(scatter_mode, "Alibi") != 0 && strcmp(scatter_mode, "Rope") != 0 &&
-                    strcmp(scatter_mode, "Omni") != 0 && strcmp(scatter_mode, "Nct") != 0,
-                OP_LOGE(context, "invalid scatter mode : %s", scatter_mode), return ge::GRAPH_FAILED);
+    if (strcmp(scatter_mode, "") != 0 && strcmp(scatter_mode, "None") != 0 &&
+        strcmp(scatter_mode, "Alibi") != 0 && strcmp(scatter_mode, "Rope") != 0 &&
+        strcmp(scatter_mode, "Omni") != 0 && strcmp(scatter_mode, "Nct") != 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "scatter_mode", scatter_mode,
+            "The scatter_mode must be one of '', 'None', 'Alibi', 'Rope', 'Omni', or 'Nct'.");
+        return ge::GRAPH_FAILED;
+    }
 
     context->SetOutputDataType(OUTPUT_KEY_CACHE, context->GetInputDataType(INPUT_KEY));
     context->SetOutputDataType(OUTPUT_VALUE_CACHE, context->GetInputDataType(INPUT_VALUE));

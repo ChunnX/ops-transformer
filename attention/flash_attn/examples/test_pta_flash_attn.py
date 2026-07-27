@@ -1,9 +1,19 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 import torch
 import torch_npu
 import math
 import numpy as np
-import npu_ops_transformer
-from npu_ops_transformer.ops import npu_flash_attn
+import cann_ops_transformer
+from cann_ops_transformer.ops import npu_flash_attn
 torch.manual_seed(42)
 
 # B = 1
@@ -46,8 +56,7 @@ for B in B_list:
                     layout_q = "BNSD",
                     layout_kv = "BNSD",
                     layout_out = "BNSD",
-                    return_softmax_lse=0,
-                    deterministic=0)
+                    return_softmax_lse=0)
         out = out.cpu()
 
         print("************end*************", out, out.shape)

@@ -12,8 +12,10 @@
  * \file apply_rotary_pos_emb_regbase_tiling_base.cpp
  * \brief
  */
+#include <algorithm>
 #include "apply_rotary_pos_emb_tiling.h"
 #include "log/log.h"
+#include <algorithm>
 
 namespace {
 constexpr int64_t Q_INDEX = 0;

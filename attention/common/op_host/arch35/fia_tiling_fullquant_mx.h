@@ -20,7 +20,7 @@
 #include "../fia_tiling_base.h"
 #include "../fia_tiling_info.h"
 #include "tiling/tiling_api.h" // 这个头文件顺序必须在手写的tiling data前
-#include "../../op_kernel/arch35/fia_tiling_data_fullquant_mx.h"
+#include "../../op_kernel/arch35/fia_tiling_data_fullquant.h"
 #include "../split_core_v2.h"
 #include "../../../fused_infer_attention_score/op_kernel/fused_infer_attention_score_template_tiling_key.h"
 #include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
@@ -59,7 +59,9 @@ struct FiaPlatFormInfo {
 
 class FiaTilingFullQuantMxArch35 : public FiaTilingBase {
 public:
-    explicit FiaTilingFullQuantMxArch35(gert::TilingContext *context) : FiaTilingBase(context) {}
+    explicit FiaTilingFullQuantMxArch35(gert::TilingContext *context) : FiaTilingBase(context)
+    {
+    }
     ~FiaTilingFullQuantMxArch35() override = default;
 
 protected:
@@ -88,10 +90,10 @@ private:
     void FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
                                 int64_t &nextTokensLeftUp);
     void InitImplParam();
+    bool IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo);
     bool IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo);
     void GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
                          int64_t &safePreToken, int64_t &safeNextToken);
-    bool CheckEnableDN();
     bool CheckQKVActualSeqLengthsRight();
     void PrintAllTilingData();
     void CalcMaxWorkspaceSize();
@@ -108,7 +110,6 @@ private:
     uint32_t sOuterFactor_;
     uint32_t sInnerFactor_;
     bool flashDecodeFlag_ = false;
-    bool dnFlag_ = false;
     bool actualSeqLenQFlag_ = false;
     bool actualSeqLenKVFlag_ = false;
     bool actualSharedPrefixLenFlag_ = false;

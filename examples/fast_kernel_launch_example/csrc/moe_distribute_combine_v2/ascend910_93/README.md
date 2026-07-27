@@ -10,7 +10,7 @@
 
 ## 约束说明
 
-想要完整使能功能，需要满足以下版本要求
+想要完整开启功能，需要满足以下版本要求
 - gcc 9.4.0+
 - python 3.9+
 - torch>=2.7.1
@@ -18,5 +18,5 @@
 
 该算子支持的平台为ascend910_93，默认构建环境为ascend910b，在ascend910_93构建环境下构建，请先执行命令：
 ```sh
-export NPU_ARCH=ascend910_93
+export NPU_SOC_VERSION=ascend910_93
 ```

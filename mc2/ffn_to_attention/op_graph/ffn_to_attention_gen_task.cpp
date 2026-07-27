@@ -39,7 +39,7 @@ ge::Status FFNToAttentionCalcParamFunc(gert::ExeResGenerationContext *context)
 }
 
 ge::Status FFNToAttentionGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                            std::vector<std::vector<uint8_t>> &tasks)
+                                     std::vector<std::vector<uint8_t>> &tasks)
 {
     const char *nodeName = context->GetNodeName();
     OPS_LOG_I(nodeName, "MC2 Generate task start.");
@@ -47,7 +47,5 @@ ge::Status FFNToAttentionGenTaskFunc(const gert::ExeResGenerationContext *contex
 }
 
 // new ver
-IMPL_OP(FFNToAttention)
-    .CalcOpParam(FFNToAttentionCalcParamFunc)
-    .GenerateTask(FFNToAttentionGenTaskFunc);
+IMPL_OP(FFNToAttention).CalcOpParam(FFNToAttentionCalcParamFunc).GenerateTask(FFNToAttentionGenTaskFunc);
 } // namespace ops

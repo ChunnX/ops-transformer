@@ -16,9 +16,12 @@
 #ifndef MC2_CONTEXT_H
 #define MC2_CONTEXT_H
 
-#ifdef BUILD_OPEN_PROJECT
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
+#if __has_include("version/hcomm_version.h")
 #include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#else
+#define HCOMM_VERSION_NUM HCCL_CHANNEL_SUPPORT_VERSION
+#endif
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include <memory>
 #include <string>
@@ -26,7 +29,7 @@
 #include <unordered_map>
 #include "hccl/hccl_rank_graph.h"
 #include "aclnn/aclnn_base.h"
-#include "opdev/op_log.h"
+#include "mc2_log_compat.h"
 #include "opdev/common_types.h"
 #include "mc2_moe_context.h"
 
@@ -36,9 +39,9 @@ class Mc2Context {
 public:
     static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
                                            aclTensor *&mc2Context);
+    static aclnnStatus GetMc2RankSize(const char *groupEp, uint32_t &rankSize);
 
 private:
-    static Mc2Context &GetInstance();
     explicit Mc2Context();
     ~Mc2Context();
 
@@ -56,17 +59,16 @@ private:
     aclnnStatus GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine, const CommProtocol &protocol,
                                     Mc2MoeContext *mc2ContextStruct);
     aclnnStatus CreatMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag, const CommEngine &engine,
-                                const CommProtocol &protocol, void *&ctx, Mc2MoeContext *mc2ContextStruct);
+                                const CommProtocol &protocol, Mc2MoeContext *mc2ContextStruct, void *&ctx,
+                                uint64_t &hcclBuffSize);
     aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize);
     aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum);
     aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol);
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
-    aclnnStatus GetOrCreateMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
-                                      const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
-                                      uint64_t &hcclBuffSize);
     aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList);
-
+    aclnnStatus CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+                                  const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize);
     const std::string GetLibPath();
     template <typename T>
     T GetHcclLibFunc(void *handle, const std::string &funcName);
@@ -93,6 +95,5 @@ private:
 };
 } // namespace Mc2Aclnn
 
-#endif // EXCEPTION_DUMP_SUPPORT_VERSION
-#endif // BUILD_OPEN_PROJECT
+#endif
 #endif // MC2_CONTEXT_H

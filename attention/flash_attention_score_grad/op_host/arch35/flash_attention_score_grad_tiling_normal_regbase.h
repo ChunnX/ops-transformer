@@ -24,6 +24,25 @@ using namespace Ops::Transformer::OpTiling;
 namespace optiling {
 namespace fag {
 
+#define TND_TILING_DATA_COMMON_ASSIGN(tilingData)                                                                      \
+    do {                                                                                                               \
+        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;                                                   \
+        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;                                         \
+        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;                                               \
+        preTilingData_ = &tilingData->preTilingData;                                                                   \
+        postTilingData_ = &tilingData->postTilingData;                                                                 \
+        tndParam_ = &tilingData->tndParam;                                                                             \
+    } while (0)
+
+#define BASE_TILING_DATA_COMMON_ASSIGN(tilingData)                                                                     \
+    do {                                                                                                               \
+        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;                                                   \
+        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;                                         \
+        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;                                               \
+        preTilingData_ = &tilingData->preTilingData;                                                                   \
+        postTilingData_ = &tilingData->postTilingData;                                                                 \
+    } while (0)
+
 class FlashAttentionScoreGradTilingNormalRegbase : public TilingBaseClass {
 public:
     explicit FlashAttentionScoreGradTilingNormalRegbase(gert::TilingContext *curContext_) : TilingBaseClass(curContext_)
@@ -36,6 +55,7 @@ public:
     BlockNumListParamsRegbase *s1s2BNGS1S2BlockNumList_ = nullptr;
     PreParamsRegbase *preTilingData_ = nullptr;
     PostParamsRegbase *postTilingData_ = nullptr;
+    BaseDeterParamRegbase *baseDeterParam_ = nullptr;
     DeterParamRegbase *deterParam = nullptr;
     TndParamRegbase *tndParam_ = nullptr;
     TndSwizzleParamRegbase *tndSwizzleParam_ = nullptr;

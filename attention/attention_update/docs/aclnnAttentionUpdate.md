@@ -34,16 +34,16 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnAttentionUpdateGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAttentionUpdate”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnAttentionUpdateGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAttentionUpdate”接口执行计算。
 
 ```c++
 aclnnStatus aclnnAttentionUpdateGetWorkspaceSize(
-   const aclTensorList  *lse, 
-   const aclTensorList  *localOut, 
-   int64_t              updateType, 
-   aclTensor            *out, 
-   aclTensor            *lseOut, 
-   uint64_t             *workspaceSize, 
+   const aclTensorList  *lse,
+   const aclTensorList  *localOut,
+   int64_t              updateType,
+   aclTensor            *out,
+   aclTensor            *lseOut,
+   uint64_t             *workspaceSize,
    aclOpExecutor        **executor)
 ```
 
@@ -58,7 +58,7 @@ aclnnStatus aclnnAttentionUpdate(
 ## aclnnAttentionUpdateGetWorkspaceSize
 
 - **参数说明**
-  
+
   <table style="undefined; table-layout: fixed; width: 1567px">
     <colgroup>
       <col style="width: 170px"> <!-- 参数名 -->
@@ -118,7 +118,7 @@ aclnnStatus aclnnAttentionUpdate(
         <td>输出</td>
         <td>输出的tensor。</td>
         <td>
-          - 
+          -
         </td>
         <td>与localOut一致</td>
         <td>ND</td>
@@ -157,17 +157,13 @@ aclnnStatus aclnnAttentionUpdate(
       </tr>
     </tbody>
   </table>
-  <ul>
-    <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持FLOAT32、FLOAT16、BFLOAT16的localOut和out。</li>
-    <li><term>Ascend 950PR/Ascend 950DT</term>：支持FLOAT32、FLOAT16、BFLOAT16的localOut和out。</li>
-  </ul>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <div style="overflow-x: auto;">
     <table style="table-layout: fixed; width: 1100px">
       <colgroup>
@@ -189,7 +185,7 @@ aclnnStatus aclnnAttentionUpdate(
           <td>传入的lse、localOut或者out是空指针。</td>
         </tr>
         <tr>
-          <!-- 合并单元格添加 merged-cell 类，与模板结构保持一致 -->
+          <!-- 合并单元格添加merged-cell类，与模板结构保持一致 -->
           <td class="merged-cell" rowspan="5">ACLNN_ERR_PARAM_INVALID</td>
           <td class="merged-cell" rowspan="5">161002</td>
           <td>传入的lse、localOut或者out的数据类型/数据格式不在支持的范围之内。</td>
@@ -213,7 +209,7 @@ aclnnStatus aclnnAttentionUpdate(
 ## aclnnAttentionUpdate
 
 - **参数说明**
-  
+
   <table><thead>
     <tr>
       <th>参数名</th>
@@ -243,22 +239,24 @@ aclnnStatus aclnnAttentionUpdate(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnAttentionUpdate默认确定性实现。
-- 序列并行的并行度sp取值范围[1, 16]。
+- 序列并行的并行度sp取值范围：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：[1, 128]。
+  - <term>Ascend 950PR/Ascend 950DT</term>：[1, 16]。
 - headDim取值范围[8, 512]且是8的倍数。
 - 支持空Tensor。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -416,7 +414,7 @@ aclnnStatus aclnnAttentionUpdateTest(int32_t deviceId, aclrtStream& stream) {
   ret = aclnnAttentionUpdate(workspaceAddr, workspaceSize, executor, stream);
   CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAttentionUpdate failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -434,7 +432,7 @@ aclnnStatus aclnnAttentionUpdateTest(int32_t deviceId, aclrtStream& stream) {
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考对外接口列表
+  // 1.（固定写法）device/stream初始化，参考对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;

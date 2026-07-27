@@ -52,12 +52,15 @@ static inline bool CheckDtypeValid(const aclTensor *expandedX, const aclTensor *
     }
     if (x1Optional != nullptr && x1Optional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x1Optional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, x1Optional, return false);
     }
     if (x2Optional != nullptr && x2Optional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x2Optional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, x2Optional, return false);
     }
     if (biasOptional != nullptr && biasOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, biasOptional, return false);
     }
     if (scalesOptional != nullptr && scalesOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(scalesOptional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
@@ -67,6 +70,7 @@ static inline bool CheckDtypeValid(const aclTensor *expandedX, const aclTensor *
     }
     if (out != nullptr && out->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(out, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, out, return false);
     }
     return true;
 }
@@ -84,12 +88,15 @@ static inline bool CheckDtypeValid310P(const aclTensor *expandedX, const aclTens
     }
     if (x1Optional != nullptr && x1Optional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x1Optional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, x1Optional, return false);
     }
     if (x2Optional != nullptr && x2Optional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x2Optional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, x2Optional, return false);
     }
     if (biasOptional != nullptr && biasOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, biasOptional, return false);
     }
     if (scalesOptional != nullptr && scalesOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(scalesOptional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
@@ -99,6 +106,7 @@ static inline bool CheckDtypeValid310P(const aclTensor *expandedX, const aclTens
     }
     if (out != nullptr && out->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(out, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, out, return false);
     }
     return true;
 }
@@ -142,20 +150,19 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2,
         DFX_IN(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
-            scalesOptional, expertIdxOptional, dropPadMode),
+               scalesOptional, expertIdxOptional, dropPadMode),
                    DFX_OUT(out));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    bool is310P = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P ||
-                  GetCurrentPlatformInfo().GetSocVersion() == SocVersion::KIRINX90 ||
-                  GetCurrentPlatformInfo().GetSocVersion() == SocVersion::KIRIN9030;
-    aclnnStatus ret;
+    bool is310P = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P;
+
+    aclnnStatus ret = ACLNN_SUCCESS;
     if (is310P) {
         ret = MoeFinalizeRoutingV2Check::CheckParams310P(expandedX, expandedRowIdx, x1Optional, x2Optional,
                                                          biasOptional, scalesOptional, expertIdxOptional, out);
-    } else {
+    } else if (Ops::Transformer::AclnnUtil::IsRegbase()) {
         ret = MoeFinalizeRoutingV2Check::CheckParams(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
                                                      scalesOptional, expertIdxOptional, out);
     }
@@ -201,7 +208,8 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
                                            x2Contiguous, biasContiguous, scalesContiguous,
                                            expertIdxContiguous, nullptr, nullptr, nullptr, nullptr,
-                                           dropPadMode, nullptr, nullptr, nullptr, out, uniqueExecutor.get());
+                                           dropPadMode, nullptr, nullptr, nullptr,
+                                           1, out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续

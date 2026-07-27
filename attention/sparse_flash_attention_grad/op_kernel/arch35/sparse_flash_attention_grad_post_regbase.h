@@ -75,6 +75,8 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
 
     if constexpr (IS_ROPE) {
         REGBASE_POST_BASE = POST_S_BASE * (ROPE_DIM + VALUE_DIM);
+    } else {
+        REGBASE_POST_BASE = tilingData->postTilingData.qPostBaseNum;
     }
 
     pipe->InitBuffer(inQueuePing, 1, REGBASE_POST_BASE * sizeof(T2));

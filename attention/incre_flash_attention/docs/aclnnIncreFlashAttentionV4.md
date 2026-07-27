@@ -20,11 +20,11 @@
   对于自回归（Auto-regressive）的语言模型，随着新词的生成，推理输入长度不断增大。在原来全量推理的基础上**实现增量推理**，query的S轴固定为1，key和value是经过KV Cache后，将之前推理过的state信息，叠加在一起，每个Batch对应S轴的实际长度可能不一样，输入的数据是经过padding后的固定长度数据。
 
   相比全量场景的FlashAttention算子（[PromptFlashAttention](../../prompt_flash_attention/README.md)），增量推理的流程与正常全量推理并不完全等价，不过增量推理的精度并无明显劣化。
-  
+
   **说明：**
-  
+
   KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为KV缓存（KV Cache）。
-  
+
 - 计算公式：
 
   self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*$d的矩阵。
@@ -45,7 +45,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnIncreFlashAttentionV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnIncreFlashAttentionV4”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnIncreFlashAttentionV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnIncreFlashAttentionV4”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnIncreFlashAttentionV4GetWorkspaceSize(
@@ -89,15 +89,15 @@ aclnnStatus aclnnIncreFlashAttentionV4(
 
   <div style="overflow-x: auto;">
   <table style="undefined;table-layout: fixed; width: 1567px">
-  <colgroup> 
-   <col style="width: 190px"> 
-   <col style="width: 120px"> 
-   <col style="width: 300px"> 
-   <col style="width: 330px"> 
-   <col style="width: 212px"> 
-   <col style="width: 100px">  
-   <col style="width: 170px">  
-   <col style="width: 145px">   
+  <colgroup>
+   <col style="width: 190px">
+   <col style="width: 120px">
+   <col style="width: 300px">
+   <col style="width: 330px">
+   <col style="width: 212px">
+   <col style="width: 100px">
+   <col style="width: 170px">
+   <col style="width: 145px">
    </colgroup>
     <thead>
       <tr>
@@ -125,7 +125,7 @@ aclnnStatus aclnnIncreFlashAttentionV4(
         <td>key</td>
         <td>输入</td>
         <td>公式中的输入K。</td>
-        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>key、value中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16、INT8</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -135,7 +135,7 @@ aclnnStatus aclnnIncreFlashAttentionV4(
         <td>value</td>
         <td>输入</td>
         <td>公式中的输入V。</td>
-        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>key、value中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16、INT8</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -355,8 +355,8 @@ aclnnStatus aclnnIncreFlashAttentionV4(
     </div>
 
 - **返回值**
-  
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -429,9 +429,9 @@ aclnnStatus aclnnIncreFlashAttentionV4(
   </tbody>
   </table>
 
-- **返回值**  
+- **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -457,23 +457,23 @@ aclnnStatus aclnnIncreFlashAttentionV4(
 - antiquantScale和antiquantOffset参数约束：
   - per-channel模式：两个参数的shape可支持(2, N, 1, D)，(2, N, D)，(2, H)，N为numKeyValueHeads。参数数据类型和query数据类型相同。
   - per-tensor模式：两个参数的shape均为(2)，数据类型和query数据类型相同。
-- 入参 quantScale2 和 quantOffset2 支持 per-tensor/per-channel 两种格式和 FLOAT32/BFLOAT16 两种数据类型。若传入 quantOffset2 ，需保证其类型和shape信息与 quantScale2 一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32 。per-channel 格式，当输出layout为BSH时，要求 quantScale2 所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。
+- 入参quantScale2和quantOffset2支持per-tensor/per-channel两种格式和FLOAT32/BFLOAT16两种数据类型。若传入quantOffset2 ，需保证其类型和shape信息与quantScale2一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32 。per-channel格式，当输出layout为BSH时，要求quantScale2所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。
 - page attention场景:
-  - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。
-  - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blockSize最大不超过512。key、value输入类型为FLOAT16/BFLOAT16时需要16对齐，key、value 输入类型为INT8时需要32对齐，推荐使用128。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+  - page attention的开启必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。
+  - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在开启page attention场景下，blockSize需要传入非0值，且blockSize最大不超过512。key、value输入类型为FLOAT16/BFLOAT16时需要16对齐，key、value输入类型为INT8时需要32对齐，推荐使用128。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
   - page attention场景下，当query的inputLayout为BNSD时，kv cache排布支持（blocknum, blocksize, H）和（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持（blocknum, blocksize, H）一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
   - page attention场景下，kv cache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kv cache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
-  - page attention使能场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKvHeads）或调整kv cache排布格式为（blocknum, numKvHeads, blocksize, D）解决。
+  - page attention开启场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且numKvHeads * headDim超过64k时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小numKvHeads）或调整kv cache排布格式为（blocknum, numKvHeads, blocksize, D）解决。
   - page attention场景下，必须传入输入actualSeqLengths。
   - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
-  - page attention使能场景下，以下场景输入S需要大于等于maxBlockNumPerSeq * blockSize。
-  - 使能 Attention mask，例如 mask shape为 (B, 1, 1, S)。
-  - 使能 pseShift，例如 pseShift shape为(B, N, 1, S)。
-  - 使能 kvPaddingSize，例如 kvPaddingSize shape为(1), 并且要求 S 大于等于 kvPaddingSize 加 每个Batch中最大actualSeqLengthsKv的和。
+  - page attention开启场景下，以下场景输入S需要大于等于maxBlockNumPerSeq * blockSize。
+  - 开启Attention mask，例如mask shape为(B, 1, 1, S)。
+  - 开启pseShift，例如pseShift shape为(B, N, 1, S)。
+  - 开启kvPaddingSize，例如kvPaddingSize shape为(1),并且要求S大于等于kvPaddingSize加每个Batch中最大actualSeqLengthsKv的和。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>
@@ -484,18 +484,18 @@ aclnnStatus aclnnIncreFlashAttentionV4(
 #include "acl/acl.h"
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_incre_flash_attention_v4.h"
- 
+
 using namespace std;
 
 namespace {
- 
+
 #define CHECK_RET(cond) ((cond) ? true :(false))
- 
+
 #define LOG_PRINT(message, ...)     \
   do {                              \
     (void)printf(message, ##__VA_ARGS__); \
   } while (0)
- 
+
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   int64_t shapeSize = 1;
   for (auto i : shape) {
@@ -503,47 +503,47 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   }
   return shapeSize;
 }
- 
+
 int Init(int32_t deviceId, aclrtStream* stream) {
   auto ret = aclInit(nullptr);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclInit failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
     return ret;
   }
   ret = aclrtSetDevice(deviceId);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret);
     return ret;
   }
   ret = aclrtCreateStream(stream);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
     return ret;
   }
   return 0;
 }
- 
+
 template <typename T>
 int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
                     aclDataType dataType, aclTensor** tensor) {
   auto size = GetShapeSize(shape) * sizeof(T);
   auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
     return ret;
   }
-  
+
   ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-    LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+  if (!CHECK_RET(ret == ACL_SUCCESS)) {
+    LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
     return ret;
   }
- 
+
   std::vector<int64_t> strides(shape.size(), 1);
   for (int64_t i = shape.size() - 2; i >= 0; i--) {
     strides[i] = shape[i + 1] * strides[i + 1];
   }
- 
+
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                             shape.data(), shape.size(), *deviceAddr);
   return 0;
@@ -571,44 +571,44 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<int64_t> valueShape = {1, 2, 2, 16};
     std::vector<int64_t> attenShape = {1, 1, 1, 2};
     std::vector<int64_t> outShape = {1, 2, 1, 16};
-    
+
     int64_t queryShapeSize = GetShapeSize(queryShape);
     int64_t keyShapeSize = GetShapeSize(keyShape);
     int64_t valueShapeSize = GetShapeSize(valueShape);
     int64_t attenShapeSize = GetShapeSize(attenShape);
     int64_t outShapeSize = GetShapeSize(outShape);
-    
+
     std::vector<float> queryHostData(queryShapeSize, 1);
     std::vector<float> keyHostData(keyShapeSize, 1);
     std::vector<float> valueHostData(valueShapeSize, 1);
     std::vector<int8_t> attenHostData(attenShapeSize, 1);
     std::vector<float> outHostData(outShapeSize, 1);
 
-    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr, 
+    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
                              aclDataType::ACL_FLOAT16, &resources.queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr, 
+    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.keyTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(valueHostData, valueShape, &resources.valueDeviceAddr, 
+    ret = CreateAclTensor(valueHostData, valueShape, &resources.valueDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.valueTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(attenHostData, attenShape, &resources.attenDeviceAddr, 
+    ret = CreateAclTensor(attenHostData, attenShape, &resources.attenDeviceAddr,
                          aclDataType::ACL_INT8, &resources.attenTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(outHostData, outShape, &resources.outDeviceAddr, 
+    ret = CreateAclTensor(outHostData, outShape, &resources.outDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.outTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
@@ -617,18 +617,18 @@ int InitializeTensors(TensorResources& resources) {
     int kvTensorNum = 1;
     aclTensor* tensorsOfKey[] = {resources.keyTensor};
     resources.tensorKeyList = aclCreateTensorList(tensorsOfKey, kvTensorNum);
-    
+
     aclTensor* tensorsOfValue[] = {resources.valueTensor};
     resources.tensorValueList = aclCreateTensorList(tensorsOfValue, kvTensorNum);
 
     std::vector<int64_t> actualSeqlenVector = {2};
-    resources.actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(), 
+    resources.actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(),
                                                   actualSeqlenVector.size());
 
     return ACL_SUCCESS;
 }
 
-int ExecuteIncreFlashAttention(TensorResources& resources, aclrtStream stream, 
+int ExecuteIncreFlashAttention(TensorResources& resources, aclrtStream stream,
                               void** workspaceAddr, uint64_t* workspaceSize) {
     int64_t numHeads = 2;
     int64_t numKeyValueHeads = numHeads;
@@ -636,18 +636,18 @@ int ExecuteIncreFlashAttention(TensorResources& resources, aclrtStream stream,
     int64_t innerPrecise = 1;
     double scaleValue = 1 / sqrt(2);
     constexpr const char LAYER_OUT_STR[] = "BNSD";
-    constexpr size_t LAYER_OUT_LEN = sizeof(LAYER_OUT_STR);  
+    constexpr size_t LAYER_OUT_LEN = sizeof(LAYER_OUT_STR);
     char layerOut[LAYER_OUT_LEN];
     memcpy(layerOut, LAYER_OUT_STR, LAYER_OUT_LEN);
 
     aclOpExecutor* executor;
     int ret = aclnnIncreFlashAttentionV4GetWorkspaceSize(
-        resources.queryTensor, resources.tensorKeyList, resources.tensorValueList, 
-        nullptr, resources.attenTensor, resources.actualSeqLengths, nullptr, 
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 
-        numHeads, scaleValue, layerOut, numKeyValueHeads, blockSize, innerPrecise, 
+        resources.queryTensor, resources.tensorKeyList, resources.tensorValueList,
+        nullptr, resources.attenTensor, resources.actualSeqLengths, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        numHeads, scaleValue, layerOut, numKeyValueHeads, blockSize, innerPrecise,
         resources.outTensor, workspaceSize, &executor);
-        
+
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnIncreFlashAttentionV4GetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -673,23 +673,23 @@ int ExecuteIncreFlashAttention(TensorResources& resources, aclrtStream stream,
 int ProcessResults(TensorResources& resources, const std::vector<int64_t>& outShape) {
     auto size = GetShapeSize(outShape);
     std::vector<op::fp16_t> resultData(size, 0);
-    
-    int ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), 
-                         resources.outDeviceAddr, size * sizeof(resultData[0]), 
+
+    int ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
+                         resources.outDeviceAddr, size * sizeof(resultData[0]),
                          ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
-    
+
     for (int64_t i = 0; i < size; i++) {
         std::cout << "index: " << i << ": " << static_cast<float>(resultData[i]) << std::endl;
     }
-    
+
     return ACL_SUCCESS;
 }
 
-void CleanupResources(TensorResources& resources, void* workspaceAddr, 
+void CleanupResources(TensorResources& resources, void* workspaceAddr,
                      aclrtStream stream, int32_t deviceId) {
     if (resources.queryTensor) {
       aclDestroyTensor(resources.queryTensor);
@@ -709,7 +709,7 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     if (resources.actualSeqLengths) {
       aclDestroyIntArray(resources.actualSeqLengths);
     }
-    
+
     if (resources.queryDeviceAddr) {
       aclrtFree(resources.queryDeviceAddr);
     }
@@ -725,20 +725,20 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     if (resources.outDeviceAddr) {
       aclrtFree(resources.outDeviceAddr);
     }
-    
+
     if (workspaceAddr) {
       aclrtFree(workspaceAddr);
     }
     if (stream) {
       aclrtDestroyStream(stream);
     }
-    
+
     aclrtResetDevice(deviceId);
     aclFinalize();
 }
 
 } // namespace
- 
+
 int main() {
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;

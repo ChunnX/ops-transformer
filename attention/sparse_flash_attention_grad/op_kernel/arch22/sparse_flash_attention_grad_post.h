@@ -472,6 +472,9 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
     if constexpr (CAST_DV) {
         uint64_t vBegin = cBlockIdx * vPostBlockFactor * vPostBaseNum;
         uint64_t vEnd = (cBlockIdx + 1) * vPostBlockFactor * vPostBaseNum;
+        if (((cBlockIdx + 1) * vPostBlockFactor * vPostBaseNum) > vPostBlockTotal) {
+            vEnd = vPostBlockTotal;
+        }
         InitIndex(vBegin, 1, s2, d2, d2Align, actual_seq_kvlen_addr);
         for (uint64_t i = vBegin; i < vEnd; i = i + 2 * vPostBaseNum) {
             uint64_t dataSize = i + vPostBaseNum < vPostBlockTotal ? vPostBaseNum : vPostTailNum;
@@ -618,7 +621,7 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
             AscendC::LocalTensor<OUT_TYPE> vecOut = outQueue.template AllocTensor<OUT_TYPE>();
             uint64_t dataSize = i + vPostBaseNum < vPostBlockTotal ? vPostBaseNum : vPostTailNum;
             WaitFlag<HardEvent::V_MTE2>(0);
-            DataCopy(vecIn, dvWorkSpaceGm[i], (dataSize + 7) / 8 * 8); // dataSize(fp32) align 32B
+            DataCopy(vecIn, dvWorkSpaceGm[i], (dataSize + 7) / 8 * 8);
             inQueue.EnQue(vecIn);
             inQueue.template DeQue<float>();
 
@@ -626,7 +629,7 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
             outQueue.EnQue(vecOut);
             outQueue.template DeQue<OUT_TYPE>();
 
-            DataCopy(dvGm[i], vecOut, (dataSize + 15) / 16 * 16); // dataSize(fp16) align 32B
+            DataCopy(dvGm[i], vecOut, (dataSize + 15) / 16 * 16);
             inQueue.FreeTensor(vecIn);
             outQueue.FreeTensor(vecOut);
             SetFlag<HardEvent::V_MTE2>(0);

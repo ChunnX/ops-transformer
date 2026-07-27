@@ -6,12 +6,12 @@ BlockSparseAttention是一个基于CATLASS模板库实现的高性能稀疏注�
 
 ## 功能特性
 
-- **灵活的稀疏块模式**: 支持自定义的x*y块级稀疏模式,通过blockShape参数指定
+- **灵活的稀疏块模式**: 支持自定义的x*y块级稀疏模式，通过blockShape参数指定
 - **多种KV Cache布局**: 支持TND [T, N, D]和BNSD [B, N, S, D]的的KV cache布局
 - **多种Q输入布局**: 支持TND [T, N, D]和BNSD [B, N, S, D]两种Query输入布局
-- **高性能计算**: 基于CATLASS模板库,充分利用昇腾A2硬件特性
+- **高性能计算**: 基于CATLASS模板库，充分利用昇腾A2硬件特性
 - **多精度支持**: 支持FP16和BF16两种精度
-- **非对齐序列**: 支持序列长度不能被块大小整除的场景,自动处理边界情况
+- **非对齐序列**: 支持序列长度不能被块大小整除的场景，自动处理边界情况
 
 ## 接口定义
 
@@ -25,21 +25,21 @@ aclnnStatus aclnnBlockSparseAttentionGetWorkspaceSize(
     const aclTensor   *blockSparseMaskOptional,     // 稀疏Mask
     const aclTensor   *attenMaskOptional,           // Attention mask (当前不支持)
     const aclIntArray *blockShapeOptional,          // 稀疏块形状数组
-    const aclIntArray *actualSeqLengthsOptional,    // 实际Q序列长度 (TND格式时必选)
-    const aclIntArray *actualSeqLengthsKvOptional,  // 实际KV序列长度 (TND格式时必选)
-    const aclTensor   *blockTableOptional,          // Block表 (用于PagedAttention，当前不支持)
-    char *qInputLayout,                             // Query的数据排布格式 (TND/BNSD)
-    char *kvInputLayout,                            // Key/Value的数据排布格式 (TND/BNSD)
+    const aclIntArray *actualSeqLengthsOptional,    // 实际Q序列长度(TND格式时必选)
+    const aclIntArray *actualSeqLengthsKvOptional,  // 实际KV序列长度(TND格式时必选)
+    const aclTensor   *blockTableOptional,          // Block表(用于PagedAttention，当前不支持)
+    char *qInputLayout,                             // Query的数据排布格式(TND/BNSD)
+    char *kvInputLayout,                            // Key/Value的数据排布格式(TND/BNSD)
     int64_t numKeyValueHeads,                       // KV头数
     int64_t maskType,                               // Mask类型
     double scaleValue,                              // 缩放因子
     int64_t innerPrecise,                           // Softmax计算采取的精度级别
-    int64_t blockSize,                              // Block大小 (用于PagedAttention，当前不支持)
-    int64_t preTokens,                              // 滑窗参数 (当前不支持)
-    int64_t nextTokens,                             // 滑窗参数 (当前不支持)
+    int64_t blockSize,                              // Block大小(用于PagedAttention，当前不支持)
+    int64_t preTokens,                              // 滑窗参数(当前不支持)
+    int64_t nextTokens,                             // 滑窗参数(当前不支持)
     int64_t softmaxLseFlag,                         // 是否输出LSE
     aclTensor *attentionOut,                        // 输出tensor
-    aclTensor *softmaxLseOptional,                  // Softmax LSE输出 (可选)
+    aclTensor *softmaxLseOptional,                  // Softmax LSE输出(可选)
     uint64_t *workspaceSize,                        // 返回workspace大小
     aclOpExecutor **executor);                      // 返回executor
 ```
@@ -79,8 +79,8 @@ aclnnStatus aclnnBlockSparseAttention(
 
 ### 输出参数
 
-- **attentionOut**: 注意力输出,shape与query相同
-- **softmaxLse**: Softmax log-sum-exp输出 (可选)
+- **attentionOut**: 注意力输出，shape与query相同
+- **softmaxLse**: Softmax log-sum-exp输出(可选)
 
 ## 使用示例
 
@@ -147,8 +147,8 @@ KV方向: ceil(1024/128)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 
 ## 性能特点
 
-- **内存效率**: 相比密集注意力,显著减少内存使用
-- **计算效率**: 只计算指定的稀疏块,减少计算量
+- **内存效率**: 相比密集注意力，显著减少内存使用
+- **计算效率**: 只计算指定的稀疏块，减少计算量
 - **灵活配置**: 支持任意blockShape的稀疏块配置
 - **硬件优化**: 充分利用昇腾A2的AI Core和Vector Core
 

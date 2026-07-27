@@ -79,10 +79,10 @@ ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo()
     platformInfo_.cvRatio = platformInfo_.aivNum / platformInfo_.aicNum;
     platformInfo_.coreNum = platformInfo_.aivNum;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformInfo_.ubSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, platformInfo_.l0cSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, platformInfo_.l0aSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, platformInfo_.l0bSize);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
 
     platformInfo_.defaultSysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -95,80 +95,21 @@ ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo()
 
 void FlashAttnTilingImpl::InitImplParam()
 {
-    const gert::Tensor *actSeqLenQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
-    const gert::Tensor *actSeqLenKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
-    uint32_t actSeqLenQDims = 0;
-    uint32_t actSeqLenKVDims = 0;
-    actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-    actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-    cuSeqLenQFlag_ = !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
-    cuSeqLenKVFlag_ =
-        !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
+    const gert::Tensor *cuSeqLenQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
+    const gert::Tensor *cuSeqLenKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
+    uint32_t cuSeqLenQDims = 0;
+    uint32_t cuSeqLenKVDims = 0;
+    cuSeqLenQDims = (cuSeqLenQ != nullptr) ? cuSeqLenQ->GetShapeSize() : 0;
+    cuSeqLenKVDims = (cuSeqLenKV != nullptr) ? cuSeqLenKV->GetShapeSize() : 0;
+    cuSeqLenQFlag_ = !((cuSeqLenQDims == 0) || (cuSeqLenQ == nullptr));
+    cuSeqLenKVFlag_ = !((cuSeqLenKVDims == 0) || (cuSeqLenKV == nullptr));
 
     const gert::Tensor *seqUsedQ = faInfo_->opParamInfo.sequsedQ.tensor;
     const gert::Tensor *seqUsedKv = faInfo_->opParamInfo.sequsedKv.tensor;
     uint32_t seqUsedQDims = (seqUsedQ != nullptr) ? seqUsedQ->GetShapeSize() : 0;
     uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
-    seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
-    seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
-}
-
-void FlashAttnTilingImpl::GetWinLeftsRightUp(int64_t cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
-                                             int64_t &winRightsLeftUp)
-{
-}
-
-void FlashAttnTilingImpl::FixParamWithRowInvalid(int64_t &cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
-                                                 int64_t &winRightsLeftUp)
-{
-    // 若出现行无效，需要重新计算winRights，winLefts，cuseqlen，以便正确计算分核核数
-    int64_t winRightsError = (winRightsLeftUp < 0) ? -winRightsLeftUp : 0;
-    winRightsError = winRightsError > cuSeqLength ? cuSeqLength : winRightsError;
-    int64_t winLeftsError = 0;
-    winLeftsError = (cuSeqLength > cuSeqLengthKV + winLeftsLeftUp) ? (cuSeqLength - cuSeqLengthKV - winLeftsLeftUp) : 0;
-    winLeftsError = winLeftsError > cuSeqLength ? cuSeqLength : winLeftsError;
-
-    // 若出现上方行无效，需要重新计算winRights，winLefts，cuseqlen
-    winRightsLeftUp += winRightsError;
-    winLeftsLeftUp -= winRightsError;
-    cuSeqLength -= winRightsError;
-
-    // 若出现下方行无效，需要重新计算cuseqlen
-    cuSeqLength -= winLeftsError;
-}
-
-bool FlashAttnTilingImpl::CheckS1OutSplit()
-{
-    return false;
-
-    // 仅支持非量化，占用2B
-    const int64_t dataTypeSize = 2U;
-    int64_t bnSize = std::min(faInfo_->bSize * faInfo_->n2Size, static_cast<int64_t>(platformInfo_.aicNum));
-
-    // 当所需的L2cache资源的超过系统配置一半时，开启S1外切分核优化L2cache复用率，乘2是经验值，后续进行优化
-    return bnSize * faInfo_->s2Size * (faInfo_->qkHeadDim + faInfo_->vHeadDim) * dataTypeSize * 2 >=
-           platformInfo_.l2Size;
-}
-
-void FlashAttnTilingImpl::SplitOutSeq()
-{
-    uint32_t curCoreNum = platformInfo_.aicNum;
-    uint32_t sOuterSize = sOuterFactor_ * arch35FA::CV_RATIO;
-    int64_t totalSize = 0;
-    for (uint32_t bIdx = 0; bIdx < faInfo_->bSize; bIdx++) {
-        int64_t cuSeqLengthsTmp = cuSeqLengthsQ_[bIdx]; // 用于存放减去行无效后，真实的actseqlen
-        int64_t winLeftsLeftUp = 0;
-        int64_t winRightsLeftUp = 0;
-        GetWinLeftsRightUp(cuSeqLengthsQ_[bIdx], cuSeqLengthsKV_[bIdx], winLeftsLeftUp, winRightsLeftUp);
-        FixParamWithRowInvalid(cuSeqLengthsTmp, cuSeqLengthsKV_[bIdx], winLeftsLeftUp, winRightsLeftUp);
-
-        int64_t outerBlockNums =
-            (cuSeqLengthsTmp + static_cast<int64_t>(sOuterSize) - 1) / static_cast<int64_t>(sOuterSize);
-        totalSize += outerBlockNums * faInfo_->n1Size;
-    }
-
-    int64_t cuUsedCoreNum = std::min(totalSize, static_cast<int64_t>(curCoreNum));
-    tilingData_.baseTiling.flashAttnS1OuterSplitCoreParams.totalSize = totalSize;
+    seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr));
+    seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr));
 }
 
 void FlashAttnTilingImpl::SplitPolicy()
@@ -180,26 +121,33 @@ void FlashAttnTilingImpl::SplitPolicy()
         winLeft = MASK_MODE_INT_MAX;
         winRight = MASK_MODE_INT_MAX;
     }
-    fa_tiling_util::AdjustSinnerAndSouter(
-        static_cast<uint32_t>(faInfo_->vHeadDim), static_cast<uint32_t>(faInfo_->s1Size), faInfo_->s2Size,
-        static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight, static_cast<uint32_t>(faInfo_->qLayout),
-        sOuterFactor_, sInnerFactor_); // 确定tiling切块
-    enableS1OutSplit = CheckS1OutSplit();
-    if (false) {
-        // TODO，S1外切，待适配
-        SplitOutSeq();
-    } else {
-        CalcNumBlocks(platformInfo_.aicNum);
-        flashDecodeFlag_ = true;
-    }
+    fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
+                                          faInfo_->maxSeqQ, faInfo_->maxSeqKv,
+                                          static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
+                                          static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
+    CalcNumBlocks(platformInfo_.aicNum);
+    flashDecodeFlag_ = true;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
-    // config (1-bit), D=128 fixed
-    //   config=0: sOuterFactor=64, sInnerFactor=128
-    //   config=1: sOuterFactor=32, sInnerFactor=256
-    tilingKeyInfo_.config = (sOuterFactor_ == arch35FA::SOUTER_32) ? 1 : 0;
+    // config:
+    //   config=0: D=64,  sOuter=64,  sInner=128
+    //   config=1: D=64,  sOuter=32,  sInner=256
+    //   config=2: D=128, sOuter=64,  sInner=128
+    //   config=3: D=128, sOuter=32,  sInner=256
+    //   config=4: D=256, sOuter=32,  sInner=256
+    if (faInfo_->qkHeadDim == 64) {
+        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
+    } else if (faInfo_->qkHeadDim == 128) {
+        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
+    } else if (faInfo_->qkHeadDim == 256) {
+        tilingKeyInfo_.config = 4;
+    } else {
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)",
+                                               std::to_string(faInfo_->qkHeadDim).c_str(),
+                                               "The value of qkHeadDim(Head num of Q/K) can only be 64/128/256");
+    }
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyLayout()
@@ -223,7 +171,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
     } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
-    } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
+    } else if (faInfo_->kvLayout == FaLayout::PA_NZ) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
     }
 }
@@ -233,7 +181,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
-    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == 3) ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
@@ -317,7 +265,7 @@ void FlashAttnTilingImpl::FillTiling()
 void FlashAttnTilingImpl::ComputeTilingData()
 {
     tilingData_.baseTiling.flashAttnAttenMaskParams.sparseMode = faInfo_->maskMode;
-    tilingKeyInfo_.hasAttenMask = faInfo_->maskMode == 3 ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
 
     if (tilingKeyInfo_.hasAttenMask) {
         uint64_t maskBatch = 1;
@@ -338,7 +286,7 @@ void FlashAttnTilingImpl::ComputeTilingData()
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 1;
         } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 0;
-        } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
+        } else if (faInfo_->kvLayout == FaLayout::PA_NZ) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 2;
         }
     }
@@ -356,8 +304,8 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.dSize = faInfo_->qkHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.scaleValue = faInfo_->softmaxScale;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->bSize : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = faInfo_->kvLayout == FaLayout::TND ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.isKvContinuous = true;
@@ -368,9 +316,10 @@ void FlashAttnTilingImpl::SetFATilingData()
 
     tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = faInfo_->winLeft;
     tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = faInfo_->winRight;
-    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK) ||
-        faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
+    if (faInfo_->winLeft == -1) {
         tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
+    }
+    if (faInfo_->winRight == -1) {
         tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.blockSize = faInfo_->blockSize;
@@ -379,6 +328,44 @@ void FlashAttnTilingImpl::SetFATilingData()
         maxBlockNumPerBatch = faInfo_->opParamInfo.blockTable.tensor->GetStorageShape().GetDim(1);
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
+    tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = CheckNeedInitOutput();
+
+    // kvcache非连续场景: 从tensor stride取偏移值, 连续时stride值即默认值, 不影响
+    if (faInfo_->hasViewStride) {
+        tilingData_.baseTiling.flashAttnBaseParams.keyBnStride = faInfo_->keyBnStride;
+        tilingData_.baseTiling.flashAttnBaseParams.keyN2Stride = faInfo_->keyN2Stride;
+        tilingData_.baseTiling.flashAttnBaseParams.valueBnStride = faInfo_->valueBnStride;
+        tilingData_.baseTiling.flashAttnBaseParams.valueN2Stride = faInfo_->valueN2Stride;
+    }
+}
+
+bool FlashAttnTilingImpl::CheckNeedInitOutput() const
+{
+    // varlen场景可能存在长度为0的batch, 对应行无计算, 必须清零
+    if (seqUsedQFlag_ || seqUsedKvFlag_) {
+        return true;
+    }
+    // TND变长: 各batch的s1/s2比不同, NO_MASK时每行至少算到actSeqLensKv, 有mask时可能存在空行
+    if (faInfo_->qLayout == FaLayout::TND && faInfo_->kvLayout == FaLayout::TND) {
+        return faInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK);
+    }
+    // 非TND固定shape: 按mask模式判断是否存在整行被mask掉的query块
+    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
+        return false;
+    }
+    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
+        // 下三角: s1>s2时首个query块的窗口全在s2负侧
+        return faInfo_->s1Size > faInfo_->s2Size;
+    }
+    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
+        // winRight==-1表示右窗口无限大(被转为MASK_MODE_INT_MAX传给kernel), 每行必有有效S2块
+        if (faInfo_->winRight == -1) {
+            return false;
+        }
+        // 窗口右端=s2Size-s1Size+winRight, s1远大于s2时右端为负, 整行被mask
+        return (faInfo_->s1Size - faInfo_->s2Size) > faInfo_->winRight;
+    }
+    return false;
 }
 
 ge::graphStatus FlashAttnTilingImpl::SetTilingData(FlashAttnTilingData &tilingData)

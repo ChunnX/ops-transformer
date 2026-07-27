@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 #ifndef FLASH_ATTN_PARAM_H
 #define FLASH_ATTN_PARAM_H
 
@@ -24,7 +34,6 @@ struct FlashAttnHostUtParamBase : public HostUtParamBase {
     std::string layout_kv = "BSND";
     std::string layout_out = "BSND";
     int64_t return_softmax_lse = 0;
-    int64_t deterministic = 0;
 
     FlashAttnHostUtParamBase(const csv_map &csvMap) : HostUtParamBase(csvMap)
     {
@@ -38,7 +47,6 @@ struct FlashAttnHostUtParamBase : public HostUtParamBase {
         layout_kv = ReadMap(csvMap, "layout_kv", "BSND");
         layout_out = ReadMap(csvMap, "layout_out", "BSND");
         return_softmax_lse = std::stoll(ReadMap(csvMap, "return_softmax_lse", "0"));
-        deterministic = std::stoll(ReadMap(csvMap, "deterministic", "0"));
     }
 };
 

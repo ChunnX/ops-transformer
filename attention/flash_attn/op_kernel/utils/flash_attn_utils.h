@@ -18,9 +18,6 @@
 
 #include "util.h"
 #include "kernel_operator_list_tensor_intf.h"
-// #include "flash_attn_common_def.h"
-// #include "../../../common/op_kernel/vector_common.h"
-// #include "../../../common/op_kernel/memory_copy.h"
 
 using AscendC::LocalTensor;
 using namespace AscendC;
@@ -28,10 +25,6 @@ using namespace MicroAPI;
 
 
 namespace fa_base_vector {
-// // BLOCK和REPEAT的字节数
-// constexpr uint32_t REPEAT_BLOCK_BYTE = 256U;
-// // BLOCK和REPEAT的FP32元素数
-// constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float);
 
 template <typename T1, typename T2>
 __aicore__ inline T1 Max(T1 a, T2 b)

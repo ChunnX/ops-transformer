@@ -58,6 +58,7 @@ constexpr static uint32_t NEGATIVE_MIN_VAULE_FP16 = 0xFBFF;
 constexpr static uint32_t POSITIVE_MAX_VALUE_FP32 = 0x7F7FFFFF;
 constexpr static uint32_t POSITIVE_MAX_VALUE_FP16 = 0x7BFF;
 constexpr static uint16_t SOFTMAX_CHECK_RES_DEFAULT_VALUE = 0xFFFF;
+constexpr static uint32_t SOFTMAX_CHECK_RES_BITS = sizeof(uint16_t) * 8;
 constexpr static int64_t attenMaskBN2GS1S2 = 0;
 constexpr static int64_t attenMaskBS1S2 = 1;
 constexpr static int64_t attenMaskS1S2 = 2;
@@ -120,25 +121,48 @@ __aicore__ inline bool IsBasicBlockInSoftMax(int32_t srcM, int32_t srcK)
 
 __aicore__ inline bool hasInvalidLine(uint16_t softMaxCheckRes, uint32_t bitIdx)
 {
+    if (bitIdx >= SOFTMAX_CHECK_RES_BITS) {
+        return false;
+    }
     return ((softMaxCheckRes >> bitIdx) & 0x01);
 }
 
 __aicore__ inline void UpdateSoftMaxCheckRes(uint16_t &softMaxCheckRes, uint32_t bitIdx, bool bitValue)
 {
+    if (bitIdx >= SOFTMAX_CHECK_RES_BITS) {
+        return;
+    }
+    uint16_t bitMask = static_cast<uint16_t>(static_cast<uint16_t>(1U) << bitIdx);
     if (bitValue) {
-        softMaxCheckRes |= 1 << bitIdx;
+        softMaxCheckRes |= bitMask;
     } else {
-        softMaxCheckRes &= ~(1 << bitIdx);
+        softMaxCheckRes &= static_cast<uint16_t>(~bitMask);
     }
 }
 
 __aicore__ inline bool IsIncludeInvalidLine(uint16_t softMaxCheckRes, uint32_t bitIdxB, uint32_t bitIdxA = 0)
 {
+    if (bitIdxA >= SOFTMAX_CHECK_RES_BITS || bitIdxB < bitIdxA) {
+        return false;
+    }
+
     if (bitIdxA == 0) {
-        return (softMaxCheckRes & ((1 << bitIdxB) - 1));
+        if (bitIdxB == 0) {
+            return false;
+        }
+        if (bitIdxB >= SOFTMAX_CHECK_RES_BITS) {
+            return softMaxCheckRes;
+        }
+        uint16_t mask = static_cast<uint16_t>((static_cast<uint16_t>(1U) << bitIdxB) - 1);
+        return (softMaxCheckRes & mask);
     } else {
-        uint16_t mask = (1 << (bitIdxB - bitIdxA + 1)) - 1;
-        mask = mask << bitIdxA;
+        uint32_t bitRange = bitIdxB - bitIdxA + 1;
+        uint32_t maxBitRange = SOFTMAX_CHECK_RES_BITS - bitIdxA;
+        bitRange = Min(bitRange, maxBitRange);
+        uint16_t mask = (bitRange == SOFTMAX_CHECK_RES_BITS)
+                            ? SOFTMAX_CHECK_RES_DEFAULT_VALUE
+                            : static_cast<uint16_t>((static_cast<uint16_t>(1U) << bitRange) - 1);
+        mask = static_cast<uint16_t>(mask << bitIdxA);
         return (softMaxCheckRes & mask);
     }
 }

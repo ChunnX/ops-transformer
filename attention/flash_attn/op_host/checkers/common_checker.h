@@ -58,7 +58,6 @@ private:
     ge::graphStatus CheckKVShapeForPageAttention(const FaTilingInfo &faInfo) const;
 
     // --- Attr checks ---
-    ge::graphStatus CheckSingleParaDeterministic(const FaTilingInfo &faInfo);
 
     std::shared_ptr<FaTilingShapeCompare> queryShapeCmp_;
     std::shared_ptr<FaTilingShapeCompare> keyShapeCmp_;

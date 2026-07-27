@@ -17,7 +17,7 @@
 #define OP_KERNEL_ATTENTION_WORKER_COMBINE_SPLIT_H_H
 
 #include "kernel_operator.h"
-#include "common_utils.h"
+#include "attention_worker_combine_common_utils.h"
 
 using namespace AscendC;
 template <typename T>
@@ -30,7 +30,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR schedule_context, GM_ADDR expert_scales, GM_ADDR layer_id, GM_ADDR y,
                                 GM_ADDR next_layer_id);
-                                
+
     __aicore__ inline void Process();
 
 protected:
@@ -287,4 +287,4 @@ __aicore__ inline void KernelAttentionWorkerCombineSplitH<T>::SToVSync()
     WaitFlag<HardEvent::S_V>(eventIDSToV);
 }
 
-#endif  // OP_KERNEL_ATTENTION_WORKER_COMBINE_SPLIT_H_H
+#endif // OP_KERNEL_ATTENTION_WORKER_COMBINE_SPLIT_H_H

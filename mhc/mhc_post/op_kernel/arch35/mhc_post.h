@@ -20,17 +20,12 @@
 #define ASCENDC_MHC_POST_H
 
 #include "kernel_operator.h"
-#include "kernel_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_post_tiling_data.h"
 #include "mhc_post_tiling_key.h"
 
 namespace MhcPost {
 using namespace AscendC;
-
-// Double Buffer configuration - Double Buffer提升Memory Bound算子性能
-constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;  // Double Buffer depth for data tiles
-constexpr uint32_t SINGLE_BUFFER_DEPTH = 1;  // Single Buffer depth for weights
 
 #define TEMPLATE_DECLARE template <typename T, uint16_t USE_PERMANENT_X>
 #define TEMPLATE_ARGS T, USE_PERMANENT_X
@@ -238,7 +233,7 @@ __aicore__ inline void MhcPostKernel<TEMPLATE_ARGS>::CopyInX(int64_t bsIdx, int6
 
     if constexpr (USE_PERMANENT_X == 1) {
         DataCopyExtParams copyParams = {static_cast<uint16_t>(tilingData_->n), static_cast<uint32_t>(dNum * sizeof(T)),
-                                        static_cast<int64_t>((tilingData_->d - dNum) * sizeof(T)), 0, 0};
+                                        static_cast<uint32_t>((tilingData_->d - dNum) * sizeof(T)), 0, 0};
         DataCopyPad(xTileLocal, xGm_[xOffset], copyParams, {false, 0, 0, 0});
     } else {
         DataCopyExtParams copyParams = {1, static_cast<uint32_t>(dNum * sizeof(T)), 0, 0, 0};

@@ -36,9 +36,9 @@ struct C0 {
     static constexpr uint32_t value = 32 / sizeof(T);
 };
 
-static constexpr MicroAPI::CastTrait CAST_S4_TO_F16_TRAIT = {
-    MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
+static constexpr MicroAPI::CastTrait CAST_S4_TO_F16_TRAIT = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
+                                                             MicroAPI::MaskMergeMode::ZEROING,
+                                                             AscendC::RoundMode::UNKNOWN};
 
 template <typename DtypeDst>
 struct Regs {
@@ -64,24 +64,24 @@ struct VfParams {
 
 template <typename DtypeDst>
 struct MainAddr {
-    __local_mem__ DtypeDst* scaleBaseAddr;
-    __local_mem__ DtypeDst* offsetBaseAddr;
-    __local_mem__ int8_t* weightInUbBaseAddr;
-    __local_mem__ DtypeDst* weightOutUbBaseAddr;
+    __local_mem__ DtypeDst *scaleBaseAddr;
+    __local_mem__ DtypeDst *offsetBaseAddr;
+    __local_mem__ int8_t *weightInUbBaseAddr;
+    __local_mem__ DtypeDst *weightOutUbBaseAddr;
 };
 
 template <typename DtypeDst>
 struct TailAddr {
-    __local_mem__ DtypeDst* tailScaleBaseAddr;
-    __local_mem__ DtypeDst* tailOffsetBaseAddr;
-    __local_mem__ int8_t* tailWeightInUbBaseAddr;
-    __local_mem__ DtypeDst* tailWeightOutUbBaseAddr;
+    __local_mem__ DtypeDst *tailScaleBaseAddr;
+    __local_mem__ DtypeDst *tailOffsetBaseAddr;
+    __local_mem__ int8_t *tailWeightInUbBaseAddr;
+    __local_mem__ DtypeDst *tailWeightOutUbBaseAddr;
 };
 
 template <typename DtypeDst, bool hasAntiQuantOffset>
-DEVICE void Dequant(
-    MicroAPI::RegTensor<DtypeDst>& wNzF16, MicroAPI::RegTensor<DtypeDst>& scale, MicroAPI::RegTensor<DtypeDst>& offset,
-    MicroAPI::RegTensor<int4x2_t>& wNzS4, MicroAPI::MaskReg& preg)
+DEVICE void Dequant(MicroAPI::RegTensor<DtypeDst> &wNzF16, MicroAPI::RegTensor<DtypeDst> &scale,
+                    MicroAPI::RegTensor<DtypeDst> &offset, MicroAPI::RegTensor<int4x2_t> &wNzS4,
+                    MicroAPI::MaskReg &preg)
 {
     MicroAPI::Cast<DtypeDst, int4x2_t, CAST_S4_TO_F16_TRAIT>(wNzF16, wNzS4, preg);
     if constexpr (hasAntiQuantOffset) {
@@ -91,8 +91,8 @@ DEVICE void Dequant(
 }
 
 template <typename DtypeDst, bool hasAntiQuantOffset>
-DEVICE void ProcessMainGroup(
-    uint16_t n1Idx, Regs<DtypeDst>& reg, const VfParams& param, MainAddr<DtypeDst>& addr, MicroAPI::MaskReg& preg)
+DEVICE void ProcessMainGroup(uint16_t n1Idx, Regs<DtypeDst> &reg, const VfParams &param, MainAddr<DtypeDst> &addr,
+                             MicroAPI::MaskReg &preg)
 {
     for (uint16_t groupIdx = 0; groupIdx < (uint16_t)param.mainGroupNum; ++groupIdx) {
         MicroAPI::AddrReg aregScale =
@@ -109,32 +109,32 @@ DEVICE void ProcessMainGroup(
             MicroAPI::AddrReg aregWeightIn = MicroAPI::CreateAddrReg<uint8_t>(
                 n1Idx, param.n1SrcExtend, groupIdx, param.groupNumSrcExtend, regIdx, param.innerSrcExtend);
             MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                reg.wNzS4, (__local_mem__ int4x2_t*)(addr.weightInUbBaseAddr), aregWeightIn);
+                reg.wNzS4, (__local_mem__ int4x2_t *)(addr.weightInUbBaseAddr), aregWeightIn);
 
             Dequant<DtypeDst, hasAntiQuantOffset>(reg.wNzF16, reg.scale, reg.offset, reg.wNzS4, preg);
 
             MicroAPI::AddrReg aregWeightOut = MicroAPI::CreateAddrReg<DtypeDst>(
                 n1Idx, param.n1DstExtend, groupIdx, param.groupNumDstExtend, regIdx, param.innerDstExtend);
-            MicroAPI::DataCopy<DtypeDst, MicroAPI::StoreDist::DIST_NORM_B16>(
-                addr.weightOutUbBaseAddr, reg.wNzF16, aregWeightOut, preg);
+            MicroAPI::DataCopy<DtypeDst, MicroAPI::StoreDist::DIST_NORM_B16>(addr.weightOutUbBaseAddr, reg.wNzF16,
+                                                                             aregWeightOut, preg);
         }
     }
 }
 
 template <typename DtypeDst, bool hasAntiQuantOffset>
-DEVICE void ProcessTailGroup(
-    uint16_t n1Idx, Regs<DtypeDst>& reg, const VfParams& param, TailAddr<DtypeDst>& addr, MicroAPI::MaskReg& preg)
+DEVICE void ProcessTailGroup(uint16_t n1Idx, Regs<DtypeDst> &reg, const VfParams &param, TailAddr<DtypeDst> &addr,
+                             MicroAPI::MaskReg &preg)
 {
-    MicroAPI::DataCopy<DtypeDst, MicroAPI::LoadDist::DIST_BLK>(
-        reg.scale, addr.tailScaleBaseAddr + n1Idx * ONE_BLK_ELEM<DtypeDst>::value);
+    MicroAPI::DataCopy<DtypeDst, MicroAPI::LoadDist::DIST_BLK>(reg.scale, addr.tailScaleBaseAddr +
+                                                                              n1Idx * ONE_BLK_ELEM<DtypeDst>::value);
     if constexpr (hasAntiQuantOffset) {
         MicroAPI::DataCopy<DtypeDst, MicroAPI::LoadDist::DIST_BLK>(
             reg.offset, addr.tailOffsetBaseAddr + n1Idx * ONE_BLK_ELEM<DtypeDst>::value);
     }
     for (uint16_t regIdx = 0; regIdx < (uint16_t)param.regNumInTailGroup; ++regIdx) { // 按 128 个数迭代
         MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-            reg.wNzS4, (__local_mem__ int4x2_t*)(addr.tailWeightInUbBaseAddr + n1Idx * param.n1SrcExtend +
-                                                 regIdx * param.innerSrcExtend));
+            reg.wNzS4, (__local_mem__ int4x2_t *)(addr.tailWeightInUbBaseAddr + n1Idx * param.n1SrcExtend +
+                                                  regIdx * param.innerSrcExtend));
         Dequant<DtypeDst, hasAntiQuantOffset>(reg.wNzF16, reg.scale, reg.offset, reg.wNzS4, preg);
         MicroAPI::DataCopy<DtypeDst, MicroAPI::StoreDist::DIST_NORM_B16>(
             addr.tailWeightOutUbBaseAddr + n1Idx * param.n1DstExtend + regIdx * param.innerDstExtend, reg.wNzF16, preg);
@@ -142,7 +142,7 @@ DEVICE void ProcessTailGroup(
 }
 
 template <typename DtypeDst, bool hasAntiQuantOffset>
-DEVICE void AntiQuantComputeKNGroupWeightNzMultiGroupWithoutTail(const VfParams& param, MainAddr<DtypeDst>& mainAddr)
+DEVICE void AntiQuantComputeKNGroupWeightNzMultiGroupWithoutTail(const VfParams &param, MainAddr<DtypeDst> &mainAddr)
 {
     __VEC_SCOPE__
     {
@@ -161,8 +161,8 @@ DEVICE void AntiQuantComputeKNGroupWeightNzMultiGroupWithoutTail(const VfParams&
 }
 
 template <typename DtypeDst, bool hasAntiQuantOffset>
-DEVICE void AntiQuantComputeKNGroupWeightNzMultiGroupWithTail(
-    const VfParams& param, MainAddr<DtypeDst>& mainAddr, TailAddr<DtypeDst>& tailAddr)
+DEVICE void AntiQuantComputeKNGroupWeightNzMultiGroupWithTail(const VfParams &param, MainAddr<DtypeDst> &mainAddr,
+                                                              TailAddr<DtypeDst> &tailAddr)
 {
     __VEC_SCOPE__
     {
@@ -182,9 +182,9 @@ DEVICE void AntiQuantComputeKNGroupWeightNzMultiGroupWithTail(
 }
 
 template <typename DtypeDst, bool hasAntiQuantOffset, uint64_t kUb, uint32_t BufferNum>
-DEVICE void AntiQuantComputeKNGroupWeightNz(
-    LocalTensor<int8_t> const& weightIn, LocalTensor<DtypeDst> const& scale, LocalTensor<DtypeDst> const& offset,
-    LocalTensor<DtypeDst> const& weightOut, uint64_t tileSizeN, uint64_t tileSizeK, uint64_t n, uint64_t groupSize)
+DEVICE void AntiQuantComputeKNGroupWeightNz(LocalTensor<int8_t> const &weightIn, LocalTensor<DtypeDst> const &scale,
+                                            LocalTensor<DtypeDst> const &offset, LocalTensor<DtypeDst> const &weightOut,
+                                            uint64_t tileSizeN, uint64_t tileSizeK, uint64_t n, uint64_t groupSize)
 {
     // 存储 (n1, kUb/k0, k0, n0)
     // 实际 (n1, kTile/k0, k0, n0)
@@ -211,13 +211,13 @@ DEVICE void AntiQuantComputeKNGroupWeightNz(
     uint32_t n1DstExtend =
         CeilAlign(tileSizeK, static_cast<uint64_t>(C0<DtypeDst>::value)) * ONE_BLK_ELEM<DtypeDst>::value * BufferNum;
     // 获取vf使用的地址
-    __local_mem__ DtypeDst* scaleBaseAddr = (__local_mem__ DtypeDst*)scale.GetPhyAddr();
-    __local_mem__ DtypeDst* offsetBaseAddr = nullptr;
+    __local_mem__ DtypeDst *scaleBaseAddr = (__local_mem__ DtypeDst *)scale.GetPhyAddr();
+    __local_mem__ DtypeDst *offsetBaseAddr = nullptr;
     if constexpr (hasAntiQuantOffset) {
-        offsetBaseAddr = (__local_mem__ DtypeDst*)offset.GetPhyAddr();
+        offsetBaseAddr = (__local_mem__ DtypeDst *)offset.GetPhyAddr();
     }
-    __local_mem__ int8_t* weightInUbBaseAddr = (__local_mem__ int8_t*)weightIn.GetPhyAddr();
-    __local_mem__ DtypeDst* weightOutUbBaseAddr = (__local_mem__ DtypeDst*)weightOut.GetPhyAddr();
+    __local_mem__ int8_t *weightInUbBaseAddr = (__local_mem__ int8_t *)weightIn.GetPhyAddr();
+    __local_mem__ DtypeDst *weightOutUbBaseAddr = (__local_mem__ DtypeDst *)weightOut.GetPhyAddr();
 
     uint32_t mainGroupSize = mainGroupNum * groupSize;
 #ifndef __CCE_KT_TEST__
@@ -229,16 +229,16 @@ DEVICE void AntiQuantComputeKNGroupWeightNz(
         AntiQuantComputeKNGroupWeightNzMultiGroupWithoutTail<DtypeDst, hasAntiQuantOffset>(params, mainAddr);
     } else {
         uint16_t regNumInTailGroup = (tileSizeK - mainGroupSize) / (VECTOR_REG_WIDTH / sizeof(DtypeDst) / 16);
-        __local_mem__ DtypeDst* tailScaleBaseAddr = scaleBaseAddr + mainGroupNum * n;
-        __local_mem__ DtypeDst* tailOffsetBaseAddr = nullptr;
+        __local_mem__ DtypeDst *tailScaleBaseAddr = scaleBaseAddr + mainGroupNum * n;
+        __local_mem__ DtypeDst *tailOffsetBaseAddr = nullptr;
         if constexpr (hasAntiQuantOffset) {
             tailOffsetBaseAddr = offsetBaseAddr + mainGroupNum * n;
         }
-        __local_mem__ int8_t* tailWeightInUbBaseAddr = weightInUbBaseAddr + mainGroupSize * (C0<DtypeDst>::value >> 1);
-        __local_mem__ DtypeDst* tailWeightOutUbBaseAddr =
+        __local_mem__ int8_t *tailWeightInUbBaseAddr = weightInUbBaseAddr + mainGroupSize * (C0<DtypeDst>::value >> 1);
+        __local_mem__ DtypeDst *tailWeightOutUbBaseAddr =
             weightOutUbBaseAddr + CeilAlign(mainGroupSize * BLOCK_CUBE, VECTOR_REG_WIDTH) * BufferNum;
-        TailAddr<DtypeDst> tailAddr{
-            tailScaleBaseAddr, tailOffsetBaseAddr, tailWeightInUbBaseAddr, tailWeightOutUbBaseAddr};
+        TailAddr<DtypeDst> tailAddr{tailScaleBaseAddr, tailOffsetBaseAddr, tailWeightInUbBaseAddr,
+                                    tailWeightOutUbBaseAddr};
         params.regNumInTailGroup = regNumInTailGroup;
         AntiQuantComputeKNGroupWeightNzMultiGroupWithTail<DtypeDst, hasAntiQuantOffset>(params, mainAddr, tailAddr);
     }

@@ -18,8 +18,7 @@ using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
 namespace optiling {
-GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context)
-    : GroupedQmmTiling(context)
+GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
 {
     Reset();
 }
@@ -30,10 +29,8 @@ bool GroupedQmmBasicApiTiling::IsCapable()
     if (!IsMicroScaling()) {
         return false;
     }
-    const bool isMxFp8 =
-        inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
-    const bool isMxFp4 =
-        inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2;
+    const bool isMxFp8 = inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
+    const bool isMxFp4 = inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2;
     return isMxFp8 || isMxFp4;
 }
 
@@ -60,7 +57,7 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoOpTiling()
     tilingData_.gmmQuantParams.groupType = static_cast<int8_t>(inputParams_.groupType);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmQuantParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias);
-    PrintQuantParams();
+    OP_LOGD(inputParams_.opName, "%ld", LogQuantParams(tilingData_.gmmQuantParams));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -92,11 +89,6 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
 ge::graphStatus GroupedQmmBasicApiTiling::PostTiling()
 {
     return SaveTilingDataToContext(tilingData_);
-}
-
-void GroupedQmmBasicApiTiling::PrintQuantParams()
-{
-    LogQuantParams(tilingData_.gmmQuantParams);
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::CalL1Tiling()

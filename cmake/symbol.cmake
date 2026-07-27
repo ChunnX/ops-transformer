@@ -34,6 +34,7 @@ function(gen_ophost_symbol)
             runtime
             acl_rt
             -Wl,-Bsymbolic
+            mmpa
     )
 
   target_link_directories(${OPHOST_NAME}
@@ -163,10 +164,11 @@ function(gen_opgraph_symbol)
 endfunction()
 
 function(gen_opapi_symbol)
-  # opapi shared	
-  add_library(${OPAPI_NAME} SHARED	
+  # opapi shared
+  add_library(${OPAPI_NAME} SHARED
     $<$<TARGET_EXISTS:${OPHOST_NAME}_opapi_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opapi_obj>>
     $<$<TARGET_EXISTS:opbuild_gen_aclnn_all>:$<TARGET_OBJECTS:opbuild_gen_aclnn_all>>
+    $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
   )
 
   target_link_libraries(${OPAPI_NAME}
@@ -195,6 +197,11 @@ endfunction()
 function(gen_cust_opapi_symbol)
   #op_api
   set_target_properties(${OPAPI_NAME} PROPERTIES OUTPUT_NAME "cust_opapi")
+
+  target_sources(
+ 	     cust_opapi
+ 	     PUBLIC $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+ 	     )
 
   install(TARGETS ${OPAPI_NAME}
     LIBRARY DESTINATION ${ACLNN_LIB_INSTALL_DIR}
@@ -281,7 +288,7 @@ function(gen_cust_proto_symbol)
 endfunction()
 
 # Collects AICPU_HOST_OBJ_TARGETS (registered by add_aicpu_host_kernel_modules in obj_func.cmake)
-# and links all host OBJECT files into one SHARED library libtransformer_constant_folding_ops.so.
+# and links all host OBJECT files into one SHARED library libopconstant_folding_transformer.so.
 function(gen_aicpu_const_symbol)
   get_property(AICPU_HOST_OBJ_TARGETS GLOBAL PROPERTY AICPU_HOST_OBJ_TARGETS)
   message(STATUS "All host targets: ${AICPU_HOST_OBJ_TARGETS}")
@@ -291,14 +298,14 @@ function(gen_aicpu_const_symbol)
     return()
   endif()
 
-  set(CONST_SO_OUTPUT ${CMAKE_BINARY_DIR}/libtransformer_constant_folding_ops.so)
+  set(CONST_SO_OUTPUT ${CMAKE_BINARY_DIR}/libopconstant_folding_transformer.so)
 
   set(ALL_OBJECTS "")
   foreach(tgt IN LISTS AICPU_HOST_OBJ_TARGETS)
     list(APPEND ALL_OBJECTS $<TARGET_OBJECTS:${tgt}>)
   endforeach()
 
-  message(STATUS "Linking libtransformer_constant_folding_ops.so with host compiler")
+  message(STATUS "Linking libopconstant_folding_transformer.so with host compiler")
   message(STATUS "Objects: ${ALL_OBJECTS}")
   message(STATUS "Output: ${CONST_SO_OUTPUT}")
 
@@ -327,11 +334,11 @@ function(gen_aicpu_const_symbol)
       ${AICPU_HOST_CONST_LIBS}
       -o ${CONST_SO_OUTPUT}
     DEPENDS ${AICPU_HOST_OBJ_TARGETS}
-    COMMENT "Linking libtransformer_constant_folding_ops.so using host compiler"
+    COMMENT "Linking libopconstant_folding_transformer.so using host compiler"
     COMMAND_EXPAND_LISTS
   )
 
-  add_custom_target(transformer_constant_folding_ops_builtin ALL DEPENDS ${CONST_SO_OUTPUT})
+  add_custom_target(opconstant_folding_transformer_builtin ALL DEPENDS ${CONST_SO_OUTPUT})
   install(
     FILES ${CONST_SO_OUTPUT}
     DESTINATION ${AICPU_HOST_KERNEL_IMPL}

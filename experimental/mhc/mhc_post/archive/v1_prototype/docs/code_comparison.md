@@ -1,4 +1,4 @@
-# mhc_post 代码级别正确性证明
+# mhc_post代码级别正确性证明
 
 ## 1. 论文公式
 
@@ -6,16 +6,16 @@
 mhc_post: output[b*s+i, seq, d] = branch_output[b, seq, d] × h_post[i]
 ```
 
-## 2. PyTorch参考实现 (tokenbender/mHC)
+## 2. PyTorch参考实现(tokenbender/mHC)
 
 ```python
 # 来源: hyper_connections_mhc.py depth_connection()
 
 def depth_connection(self, branch_output, residuals, *, beta):
-    # beta 就是 h_post, shape [num_streams]
+    # beta就是h_post, shape [num_streams]
     
     # Step 1: einsum广播乘法
-    # "b ... d, s -> b ... s d" 的含义:
+    # "b ... d, s -> b ... s d"的含义:
     #   - 输入1 branch_output: [batch, seq, dim]
     #   - 输入2 beta: [streams]
     #   - 输出: [batch, seq, streams, dim]
@@ -23,7 +23,7 @@ def depth_connection(self, branch_output, residuals, *, beta):
     output = einsum(branch_output, beta, "b ... d, s -> b ... s d")
     
     # Step 2: reshape合并batch和stream维度
-    # "b ... s d -> (b s) ... d" 的含义:
+    # "b ... s d -> (b s) ... d"的含义:
     #   - 输入: [batch, seq, streams, dim]
     #   - 输出: [batch*streams, seq, dim]
     #   - 计算: out[b*s+i, seq, d] = in[b, seq, i, d]
@@ -32,7 +32,7 @@ def depth_connection(self, branch_output, residuals, *, beta):
     return output
 ```
 
-## 3. CPU参考实现 (我的实现)
+## 3. CPU参考实现(我的实现)
 
 ```cpp
 // 来源: test_mhc_post.cpp mhc_post_cpu()
@@ -54,7 +54,7 @@ void mhc_post_cpu(
             float weight = h_post[s];
             
             // 计算输出的batch索引: b*num_streams + s
-            // 这对应 rearrange "b s -> (b s)" 的语义
+            // 这对应rearrange "b s -> (b s)"的语义
             int64_t out_batch_idx = b * num_streams + s;
             
             // 遍历每个序列位置和维度
@@ -85,7 +85,7 @@ void mhc_post_cpu(
 | `h_post[i]` | `weight = h_post[s]` | 权重只依赖stream索引 |
 | `*` | `output[...] = branch_output[...] * weight` | 简单乘法 |
 
-## 4. NPU Kernel实现 (我的实现)
+## 4. NPU Kernel实现(我的实现)
 
 ```cpp
 // 来源: mhc_post_kernel.cpp
@@ -98,16 +98,16 @@ public:
         int64_t block_idx = GetBlockIdx();
         
         // 解析batch索引和stream索引
-        // 这对应 "(b s)" -> "b, s" 的反向操作
+        // 这对应"(b s)" -> "b, s"的反向操作
         this->batch_idx = block_idx / num_streams;
         this->stream_idx = block_idx % num_streams;
         
         // 输入偏移: 只依赖batch_idx
-        // 对应论文公式中 branch_output[b, ...]
+        // 对应论文公式中branch_output[b, ...]
         int64_t input_offset = this->batch_idx * this->batch_elements;
         
         // 输出偏移: 依赖batch_idx和stream_idx
-        // 对应论文公式中 output[b*s+i, ...]
+        // 对应论文公式中output[b*s+i, ...]
         int64_t output_offset = (this->batch_idx * num_streams + this->stream_idx) * this->batch_elements;
         
         // 设置GM指针...
@@ -115,7 +115,7 @@ public:
     
     __aicore__ inline void LoadWeight() {
         // 加载当前stream的权重
-        // 对应论文公式中 h_post[i]
+        // 对应论文公式中h_post[i]
         this->weight_value = this->gm_h_post.GetValue(this->stream_idx);
     }
     
@@ -158,7 +158,7 @@ public:
 
 ```
 output[b*N + n, s, d] = branch_output[b, s, d] × h_post[n]
-其中 b ∈ [0,B), n ∈ [0,N), s ∈ [0,S), d ∈ [0,D)
+其中b ∈ [0,B), n ∈ [0,N), s ∈ [0,S), d ∈ [0,D)
 ```
 
 **CPU实现等价性:**
@@ -166,13 +166,13 @@ output[b*N + n, s, d] = branch_output[b, s, d] × h_post[n]
 ```cpp
 for b in [0, B):
   for n in [0, N):
-    out_idx = b * N + n          // ← 对应 output[b*N + n, ...]
-    weight = h_post[n]            // ← 对应 h_post[n]
+    out_idx = b * N + n          // ← 对应output[b*N + n, ...]
+    weight = h_post[n]            // ← 对应h_post[n]
     for s in [0, S):
       for d in [0, D):
         output[out_idx, s, d] = branch_output[b, s, d] * weight
         //                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        //                      对应 branch_output[b, s, d] × h_post[n]
+        //                      对应branch_output[b, s, d] × h_post[n]
 ```
 
 **NPU实现等价性:**
@@ -182,14 +182,14 @@ for b in [0, B):
 block_idx ∈ [0, B*N):
   b = block_idx / N               // ← 解析batch索引
   n = block_idx % N               // ← 解析stream索引
-  weight = h_post[n]              // ← 对应 h_post[n]
+  weight = h_post[n]              // ← 对应h_post[n]
   
   // 向量化: 处理整个[S, D]平面
   output[block_idx, :, :] = branch_output[b, :, :] * weight
   //                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  //                        对应 branch_output[b, s, d] × h_post[n]
+  //                        对应branch_output[b, s, d] × h_post[n]
 ```
 
-由于 `block_idx = b * N + n`，所以 `output[block_idx]` 等价于 `output[b*N + n]`
+由于`block_idx = b * N + n`，所以`output[block_idx]`等价于`output[b*N + n]`
 
 因此，NPU实现与论文公式完全等价。

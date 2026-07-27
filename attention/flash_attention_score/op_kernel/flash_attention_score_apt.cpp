@@ -32,7 +32,7 @@ using namespace AscendC;
 
 template<uint8_t KernelTypeKey, uint8_t implMode, uint8_t layout, uint16_t s1TemplateType, uint16_t s2TemplateType,
     uint16_t dTemplateType, uint16_t dvTemplateType, uint8_t pseMode, bool hasAtten, bool hasDrop, bool hasRope,
-    uint8_t outDtype, uint8_t regbase>
+    uint8_t outDtype, uint8_t regbase, bool optionalDn>
 __global__ __aicore__ void
 flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
                       __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
@@ -67,7 +67,7 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
         return;
     } else {
         flash_attention_score_regbase<implMode, layout, s1TemplateType, s2TemplateType, dTemplateType, dvTemplateType,
-            pseMode, hasAtten, hasDrop, hasRope, outDtype, regbase>(query, key, value, pse, dropMask,
+            pseMode, hasAtten, hasDrop, hasRope, outDtype, regbase, optionalDn>(query, key, value, pse, dropMask,
             paddingMask, attenMask, prefix, actualSeqLengths, actualSeqLengthsKv, qStartIdx, kvStartIdx, deqScaleQ,
             deqScaleK, deqScaleV, pScale, queryRope, keyRope, softmaxMax, softmaxSum, softmaxOut, attentionOut, sink,
             workspace, tiling);

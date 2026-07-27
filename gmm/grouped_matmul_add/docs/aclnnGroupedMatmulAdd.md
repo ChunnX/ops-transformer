@@ -26,7 +26,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulAddGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulAdd”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulAddGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulAdd”接口执行计算。
 
 ```c++
 aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSize(
@@ -174,7 +174,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
     <table style="undefined;table-layout: fixed; width: 1150px"> <colgroup>
@@ -249,19 +249,20 @@ aclnnStatus aclnnGroupedMatmulAdd(
 
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - aclnnGroupedMatmulAdd默认确定性实现。
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于INT32的最大值2147483647。
+- x和weight中每一组tensor的最后一维大小都应小于65536。$x$的最后一维指当x不转置时$x$的K轴或当x转置时$x$的M轴。$weight$的最后一维指当weight不转置时$weight$的N轴或当weight转置时$weight$的K轴。
 - 支持的输入类型为：
   - x为FLOAT16、weight为FLOAT16、y为FLOAT32。
   - x为BFLOAT16、weight为BFLOAT16、y为FLOAT32。
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -364,7 +365,7 @@ int CreateAclTensorList(const std::vector<std::vector<int64_t>>& shapes, void** 
 
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -425,7 +426,7 @@ int main() {
   ret = aclnnGroupedMatmulAdd(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulAdd failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

@@ -61,9 +61,16 @@ constexpr uint64_t SYNC_MODE = 4;
 constexpr uint64_t MM2_RES_INTRA_EVENT[2] = {7, 8}; // mm2ResIntraEvent
 constexpr uint64_t MM1_RES_INTRA_EVENT[2] = {9, 10}; //mm1ResIntraEvent
 constexpr uint64_t KB_TO_BYTES = 1024;
+constexpr uint64_t L0A_SIZE = 64;
+constexpr uint64_t L0B_SIZE = 64;
 constexpr uint64_t L0C_SIZE = 256;
 constexpr uint64_t MLA_L0A_SIZE = 64;
-constexpr uint64_t MLA_L0B_SIZE = 64; 
+constexpr uint64_t MLA_L0B_SIZE = 64;
+constexpr uint64_t DOUBLE_BUFFER_NUM = 2;
+constexpr uint64_t COMMON_TEMP_BUF_SIZE = 512;
+constexpr uint64_t POST_QUANT_BUF_SIZE_KB = 2;
+constexpr uint64_t SOFTMAX_ROW_BUF_SIZE = 256;
+constexpr uint64_t SOFTMAX_BRDCST_BUF_SIZE = 2048;
 constexpr uint64_t BASE_SIZE_128 = 128;
 constexpr uint64_t FLOAT_BYTES = 4;
 constexpr uint64_t BT_PP_SIZE = 4;
@@ -103,7 +110,9 @@ __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
 
 template <typename INPUT_T>
 __aicore__ constexpr bool IsFp8WithRope(bool hasRope) {
-    if constexpr (!IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
+    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
+                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
+                  !IsSameType<INPUT_T, hifloat8_t>::value) {
         return false;
     }
     if (hasRope) {
@@ -192,7 +201,14 @@ __aicore__ constexpr bool UbOutCondition(
     return false;
 }
 
-__aicore__ constexpr TPosition GetC2Position(regbaseutil::DTemplateType dTemplateType, bool ubOutCondition, bool isNdS2Size256, bool isMlaFullQuant, bool isMlaNoQuant = false) {
+__aicore__ constexpr TPosition GetC2Position(regbaseutil::DTemplateType dTemplateType,
+                                             bool ubOutCondition, bool isNdS2Size256,
+                                             bool isMlaFullQuant, bool isMlaNoQuant = false,
+                                             bool optionalDn = false)
+{
+    if (optionalDn) {
+        return TPosition::VECCALC;
+    }
     if (isMlaNoQuant) {
         return TPosition::VECCALC;
     }

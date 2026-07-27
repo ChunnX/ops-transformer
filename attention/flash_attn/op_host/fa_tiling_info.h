@@ -49,7 +49,6 @@ const std::string LAYOUT_Q_NAME = "layout_q";
 const std::string LAYOUT_KV_NAME = "layout_kv";
 const std::string LAYOUT_OUT_NAME = "layout_out";
 const std::string RETURN_SOFTMAX_LSE_NAME = "return_softmax_lse";
-const std::string DETERMINISTIC_NAME = "deterministic";
 const std::string ATTN_OUT_NAME = "attn_out";
 const std::string SOFTMAX_LSE_NAME = "softmax_lse";
 
@@ -82,7 +81,6 @@ constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;       // layout_q
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;      // layout_kv
 constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 8;     // layout_out
 constexpr uint32_t ATTR_RETURN_LSE_INDEX = 9;     // return_softmax_lse
-constexpr uint32_t ATTR_DETERMINISTIC_INDEX = 10; // deterministic
 
 // Legacy aliases for backward compatibility
 constexpr uint32_t ATTR_SCALE_INDEX = ATTR_SOFTMAX_SCALE_INDEX;
@@ -106,7 +104,8 @@ constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
 
 enum class MaskMode : int32_t {
     NO_MASK = 0,
-    CAUSAL = 3
+    CAUSAL = 3,
+    BAND = 4
 };
 
 enum class FaLayout : uint32_t {
@@ -115,7 +114,7 @@ enum class FaLayout : uint32_t {
     TND = 2,
     PA_BBND = 3,
     PA_BNBD = 4,
-    PA_Nz = 5,
+    PA_NZ = 5,
     LSE_BNS = 6,
     LSE_NT = 7
 };
@@ -124,7 +123,8 @@ const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},
                                                    {"BNSD", FaLayout::BNSD},
                                                    {"TND", FaLayout::TND},
                                                    {"PA_BBND", FaLayout::PA_BBND},
-                                                   {"PA_BNBD", FaLayout::PA_BNBD}};
+                                                   {"PA_BNBD", FaLayout::PA_BNBD},
+                                                   {"PA_NZ", FaLayout::PA_NZ}};
 
 enum class FaAxis : uint32_t {
     B = 0,
@@ -204,7 +204,6 @@ struct FAParaInfo {
     const char *layoutKV = nullptr;
     const char *layoutOut = nullptr;
     const int64_t *returnSoftMaxLse = nullptr;
-    const int64_t *deterministic = nullptr;
 
     FARequiredParaInfo attnOut = {nullptr, nullptr};
     FARequiredParaInfo lseOut = {nullptr, nullptr};
@@ -254,10 +253,21 @@ public:
 
     // Others Flag
     bool batchContinuousFlag = true;
+    KvStorageMode kvStorageMode = KvStorageMode::BATCH_CONTINUOUS;
     bool softmaxLseFlag = false;
-    bool deterministicFlag = false;
     bool sinksFlag = false;
     bool emptyTensorFlag = false;
+
+    // kvcache strides (tensor v2 view inputs). hasViewStride == false means old opbase
+    // without view info, key/value are guaranteed contiguous.
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
+    bool hasViewStride = true;
+    // 非连续场景下首个非连续维, -1表示连续, 由parser计算供checker复用
+    int32_t keyNonContigDim = -1;
+    int32_t valueNonContigDim = -1;
 
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;

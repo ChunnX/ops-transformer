@@ -497,14 +497,20 @@ TEST_F(TestAclnnMoeDistributeCombineTeardownUnsupportedArch, UnsupportedArchErro
     int64_t commQuantMode = 0;
     int64_t commType = 0;
 
-    auto ut =
-        OP_API_UT(aclnnMoeDistributeCombineTeardown,
-                  INPUT(expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMaskOptional,
-                        sharedExpertXOptional, "moe_distribute_combine_teardown_test_group", epWorldSize, epRankId, moeExpertNum, expertShardType,
-                        sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, ""),
-                  OUTPUT(xOut));
+    auto ut = OP_API_UT(aclnnMoeDistributeCombineTeardown,
+                        INPUT(expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo,
+                              xActiveMaskOptional, sharedExpertXOptional, "moe_distribute_combine_teardown_test_group",
+                              epWorldSize, epRankId, moeExpertNum, expertShardType, sharedExpertNum,
+                              sharedExpertRankNum, globalBs, commQuantMode, commType, ""),
+                        OUTPUT(xOut));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(TestAclnnMoeDistributeCombineTeardown, ExecuteCall)
+{
+    aclnnStatus ret = aclnnMoeDistributeCombineTeardown(nullptr, 0, nullptr, nullptr);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
 }

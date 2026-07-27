@@ -16,7 +16,7 @@
 #ifndef __ADDR_COMPUTE_DET_H__
 #define __ADDR_COMPUTE_DET_H__
 
-#include "common_header.h"
+#include "flash_attention_score_grad_common_header.h"
 using namespace AscendC;
 
 
@@ -372,7 +372,6 @@ private:
 
     __aicore__ inline int32_t InitBNIndex() {
         int32_t recoderS1 = GetRecoderS(s1Idx, dimS1);
-        int32_t recoderS2 = GetRecoderS(s1Idx, dimS2);
         bool updateS1Idx;
         if (sparseMode == 0 || sparseMode == 1) {
             updateS1Idx = (s2Idx == dimS2) ? true : false;

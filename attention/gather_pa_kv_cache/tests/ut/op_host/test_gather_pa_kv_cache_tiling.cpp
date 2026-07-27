@@ -27,8 +27,6 @@ protected:
     }
 };
 
-std::map<std::string, std::string> soc_version_infos = {{"Short_SoC_version", "Ascend910B"}};
-
 TEST_F(GatherPaKvCacheTiling, GatherPaKvCacheTiling_test_case0) {
     struct AddExampleCompileInfo {} compileInfo;
     gert::TilingContextPara tilingContextPara("GatherPaKvCache",
