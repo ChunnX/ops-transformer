@@ -56,19 +56,6 @@ int Ceil(int a, int b)
     return (a + b - 1) / b;
 }
 
-int CalSharaedTmpBufferSize(int tileLength, int KAligned) {
-    int FLOAT_BLOCK_SIZE = 8;
-    int FLOAT_VECTOR_SIZE = 64;
-    int firstMaxRepeat = tileLength * KAligned / FLOAT_VECTOR_SIZE;
-    int iter1OutputCount = firstMaxRepeat; 
-    int reduceSumBufferSize = Ceil(iter1OutputCount, FLOAT_BLOCK_SIZE) * FLOAT_BLOCK_SIZE;
-    std::vector<int64_t> shape_vec = {tileLength, KAligned};
-    int clampMinValue = 0;
-    int clampMaxValue = 0;
-    // GetClampMaxMinTmpSize(shape_vec, 2, false, clampMinValue, clampMaxValue);
-    return std::max(clampMinValue, reduceSumBufferSize);
-}
-
 ge::graphStatus GetWorkspaceSize(gert::TilingContext* context, bool deterministic, bool isHalf, int64_t coreNum)
 {
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
@@ -148,7 +135,7 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
 
     auto attrs = context->GetAttrs();
     float eps = *attrs->GetFloat(0);
-    std::string weightTypeStr = *attrs->GetString(1);
+    char* weightTypeStr = *attrs->GetStr(1);
     int64_t weightType = (weightTypeStr == "probs") ? 1 : 0;
     bool deterministic = context->GetDeterministic() == 1;
     // UB 统一按 fp32 划分
