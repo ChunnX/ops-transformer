@@ -22,8 +22,8 @@
 namespace optiling {
 
 // Constants
-constexpr uint32_t AIC_CORE_NUM = 36U;
-constexpr uint32_t AIV_CORE_NUM = 72U;
+constexpr uint32_t AIC_CORE_NUM = 68U;
+constexpr uint32_t AIV_CORE_NUM = 68U;
 constexpr uint32_t FA_META_SIZE = 1024U;
 using FA_METADATA_T = uint32_t;
 
@@ -36,18 +36,19 @@ constexpr uint32_t HEAD_SECTION_NUM_INDEX = 0U;
 constexpr uint32_t HEAD_IS_FD_INDEX = 1U;
 constexpr uint32_t HEAD_M_BASE_SIZE_INDEX = 2U;
 constexpr uint32_t HEAD_S2_BASE_SIZE_INDEX = 3U;
+constexpr uint32_t HEAD_IS_S1G_INDEX = 4U;
 
 // FA Metadata Index Definitions
-constexpr uint32_t FA_BN2_START_INDEX = 0U;
+constexpr uint32_t FA_BN_START_INDEX = 0U;
 constexpr uint32_t FA_M_START_INDEX = 1U;
 constexpr uint32_t FA_S2_START_INDEX = 2U;
-constexpr uint32_t FA_BN2_END_INDEX = 3U;
+constexpr uint32_t FA_BN_END_INDEX = 3U;
 constexpr uint32_t FA_M_END_INDEX = 4U;
 constexpr uint32_t FA_S2_END_INDEX = 5U;
 constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 6U;
 
 // FD Metadata Index Definitions
-constexpr uint32_t FD_BN2_IDX_INDEX = 0U;
+constexpr uint32_t FD_BN_IDX_INDEX = 0U;
 constexpr uint32_t FD_M_IDX_INDEX = 1U;
 constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 2U;
 constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 3U;

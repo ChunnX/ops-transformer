@@ -15,6 +15,7 @@ if(DEFINED RULE_LAUNCH AND RULE_LAUNCH)
     set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ${RULE_LAUNCH})
 endif()
 
+set(CMAKE_TLS_VERIFY OFF)
 project(cann_ops-transformer)
 
 set(CMAKE_C_FLAGS_RELEASE "")
