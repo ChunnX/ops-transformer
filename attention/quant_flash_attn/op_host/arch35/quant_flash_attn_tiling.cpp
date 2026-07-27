@@ -18,7 +18,7 @@
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "../quant_flash_attn_tiling_utils.h"
+#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_utils.h"
 #include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
 #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
@@ -195,7 +195,6 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyInfo()
     tilingKeyInfo_.hasAttenMask = (qfaInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK));
     UpdateTilingKeyKvLayout();
     tilingKeyInfo_.isFd = flashDecodeFlag_;
-    tilingKeyInfo_.isReconstructTemp = true;
 }
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyQuantMode()
@@ -210,16 +209,14 @@ void QuantFlashAttnTilingImpl::GenTilingKey()
     UpdateTilingKeyInfo();
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config,
                                     tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask,
-                                    tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
-                                    tilingKeyInfo_.isReconstructTemp);
+                                    tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
 
     OP_LOGI(qfaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(qfaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, quantMode: %llu, "
-            "hasAttenMask: %u, kvLayoutType: %llu, isFd: %u, isReconstructTemp: %u.",
+            "hasAttenMask: %u, kvLayoutType: %llu, isFd: %u.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.quantMode,
-            tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
-            tilingKeyInfo_.isReconstructTemp);
+            tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
 }
 
 void QuantFlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
