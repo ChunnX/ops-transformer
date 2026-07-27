@@ -41,6 +41,31 @@ struct EngramCommContext {
     uint32_t channelsPerRank;
 };
 
+struct CoreAssignment {
+    uint32_t assignedRank;
+    uint32_t idxInRankGroup;
+    uint32_t rankGroupSize;
+};
+
+__aicore__ inline CoreAssignment GetCoreAssignment(uint32_t totalBlocks, uint32_t aivId, uint32_t numRanks)
+{
+    CoreAssignment result{numRanks, 0, 0};
+    uint32_t base = totalBlocks / numRanks;
+    uint32_t remainder = totalBlocks % numRanks;
+    uint32_t accumulated = 0;
+    for (uint32_t r = 0; r < numRanks; r++) {
+        uint32_t groupSize = base + ((r < remainder) ? 1U : 0U);
+        if (aivId < accumulated + groupSize) {
+            result.assignedRank = r;
+            result.rankGroupSize = groupSize;
+            result.idxInRankGroup = aivId - accumulated;
+            return result;
+        }
+        accumulated += groupSize;
+    }
+    return result;
+}
+
 } // namespace Mc2Kernel
 
 #endif

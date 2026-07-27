@@ -59,9 +59,6 @@ private:
                                            uint32_t myGroupSize);
     __aicore__ inline void GatherRankTokens(uint32_t ownerRank, uint32_t batchLen, uint32_t compareCntMax,
                                             uint32_t &runningOffset);
-    __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &myRank, uint32_t &myIdxInGroup,
-                                             uint32_t &myGroupSize);
-
     AscendC::TPipe *tpipe_{nullptr};
     GM_ADDR indicesGM_{nullptr};
     GM_ADDR fetchedGM_{nullptr};
@@ -212,27 +209,6 @@ __aicore__ inline void EngramFetchArch35::GatherRankTokens(uint32_t ownerRank, u
     runningOffset += count;
 }
 
-__aicore__ inline void EngramFetchArch35::GetCoreAssignment(uint32_t totalBlocks, uint32_t &myRank,
-                                                            uint32_t &myIdxInGroup, uint32_t &myGroupSize)
-{
-    uint32_t base = totalBlocks / numRanks_;
-    uint32_t remainder = totalBlocks % numRanks_;
-    uint32_t accumulated = 0;
-    for (uint32_t r = 0; r < numRanks_; r++) {
-        uint32_t groupSize = base + ((r < remainder) ? 1U : 0U);
-        if (aivId_ < accumulated + groupSize) {
-            myRank = r;
-            myGroupSize = groupSize;
-            myIdxInGroup = aivId_ - accumulated;
-            return;
-        }
-        accumulated += groupSize;
-    }
-    myRank = numRanks_;
-    myGroupSize = 0;
-    myIdxInGroup = 0;
-}
-
 __aicore__ inline void EngramFetchArch35::ScatterByRank(uint32_t batchLen)
 {
     AscendC::LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
@@ -257,11 +233,8 @@ __aicore__ inline void EngramFetchArch35::ScatterByRank(uint32_t batchLen)
     uint32_t runningOffset = 0;
     uint32_t totalBlocks = AscendC::GetBlockNum();
     if (totalBlocks >= numRanks_) {
-        uint32_t myRank = 0;
-        uint32_t myIdxInGroup = 0;
-        uint32_t myGroupSize = 0;
-        GetCoreAssignment(totalBlocks, myRank, myIdxInGroup, myGroupSize);
-        GatherRankTokens(myRank, batchLen, compareCntMax, runningOffset);
+        auto coreAssign = GetCoreAssignment(totalBlocks, aivId_, numRanks_);
+        GatherRankTokens(coreAssign.assignedRank, batchLen, compareCntMax, runningOffset);
     } else {
         for (uint32_t ownerRank = aivId_; ownerRank < numRanks_; ownerRank += totalBlocks) {
             GatherRankTokens(ownerRank, batchLen, compareCntMax, runningOffset);
@@ -338,8 +311,8 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
     if (cnt == 0) {
         return;
     }
-    uint32_t channelIdx = myIdxInGroup % channelsPerRank_;
-    uint64_t channelHandle = hcommHandleLocal(ownerRank * channelsPerRank_ + channelIdx);
+    uint32_t channelIdxInRank = myIdxInGroup;
+    uint64_t channelHandle = hcommHandleLocal(ownerRank * channelsPerRank_ + channelIdxInRank);
     GM_ADDR remoteBase = (GM_ADDR)commBufferLocal(ownerRank);
     uint32_t pendingReadCount = 0;
     uint32_t threshold = READ_COMMIT_FIRST_THRESHOLD;
@@ -371,14 +344,11 @@ __aicore__ inline void EngramFetchArch35::FetchByRank(uint32_t indicesBatchStart
 {
     uint32_t totalBlocks = AscendC::GetBlockNum();
     if (totalBlocks >= numRanks_) {
-        uint32_t myRank = 0;
-        uint32_t myIdxInGroup = 0;
-        uint32_t myGroupSize = 0;
-        GetCoreAssignment(totalBlocks, myRank, myIdxInGroup, myGroupSize);
-        if (myRank == rankId_) {
-            LocalFetchTokens(indicesBatchStart, myIdxInGroup, myGroupSize);
-        } else if (myRank < numRanks_) {
-            RemoteFetchRank(myRank, indicesBatchStart, myIdxInGroup, myGroupSize);
+        auto coreAssign = GetCoreAssignment(totalBlocks, aivId_, numRanks_);
+        if (coreAssign.assignedRank == rankId_) {
+            LocalFetchTokens(indicesBatchStart, coreAssign.idxInRankGroup, coreAssign.rankGroupSize);
+        } else if (coreAssign.assignedRank < numRanks_ && coreAssign.idxInRankGroup < channelsPerRank_) {
+            RemoteFetchRank(coreAssign.assignedRank, indicesBatchStart, coreAssign.idxInRankGroup, channelsPerRank_);
         }
     } else {
         uint32_t startRank = (aivId_ < numRanks_) ? aivId_ : rankId_;
