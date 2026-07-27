@@ -37,13 +37,6 @@
 using namespace AscendC;
 
 namespace MegaMoeImpl {
-__aicore__ inline uint64_t GetRelayFlagBufferBytes(uint32_t tokenNum)
-{
-    uint64_t validBytes = static_cast<uint64_t>(tokenNum) * sizeof(uint64_t);
-    return (validBytes + static_cast<uint64_t>(ALIGN_32) - 1U) /
-           static_cast<uint64_t>(ALIGN_32) * static_cast<uint64_t>(ALIGN_32);
-}
-
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t, int64_t, int64_t>;
@@ -365,7 +358,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
                                              static_cast<uint64_t>(ALIGN_512));
     sendWorkspaceServerBytes_ =
         static_cast<uint64_t>(ALIGN_32) + static_cast<uint64_t>(m_) * sendWorkspaceMetaBytes_;
-    uint64_t flagSnapshotBytes = GetRelayFlagBufferBytes(m_);
+    uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
     dispatchL2ScratchBytes_ =
         Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<uint64_t>(ALIGN_512));
 }
@@ -401,7 +394,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
             static_cast<int64_t>(ALIGN_32));
         uint32_t copyTmpBytes = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * tokenScaleSize;
-        uint32_t relayFlagBytes = static_cast<uint32_t>(GetRelayFlagBufferBytes(m_));
+        uint32_t relayFlagBytes = Ops::Base::CeilAlign(
+            static_cast<uint32_t>(m_ * sizeof(uint64_t)), static_cast<uint32_t>(ALIGN_32));
         uint32_t relayReceivedBytes = Ops::Base::CeilAlign(
             static_cast<uint32_t>(DISPATCH_WAVE_TILE_M * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
         uint32_t relayAndCopyTmpBytes = (relayFlagBytes > copyTmpBytes ? relayFlagBytes : copyTmpBytes) +
@@ -469,7 +463,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             TPosition::VECCALC, copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
             COPY_TMP_BUFFER_SIZE / sizeof(ActivationType));
     }
-    uint32_t relayFlagTensorSize = static_cast<uint32_t>(GetRelayFlagBufferBytes(m_));
+    uint32_t relayFlagTensorSize = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(m_ * sizeof(uint64_t)), static_cast<uint32_t>(ALIGN_32));
     relayFlagTensor_ = LocalTensor<uint64_t>(TPosition::VECCALC, copyTmpBaseAddr,
                                              relayFlagTensorSize / sizeof(uint64_t));
     uint32_t relayReceivedTensorAddr =
