@@ -14,6 +14,7 @@
 
 import importlib.util
 import sys
+from importlib import metadata
 from pathlib import Path
 
 import torch
@@ -31,7 +32,7 @@ class CaseDataStore:
     def put(self, testcase_name, data):
         if testcase_name is None:
             raise RuntimeError("SparseFlashAttention requires testcase_name for pytest-backed golden")
-        self._cases[str(testcase_name)] = data
+        self._cases = {str(testcase_name): data}
 
     def get(self, testcase_name):
         data = self._cases.get(str(testcase_name)) if testcase_name is not None else None
@@ -45,6 +46,30 @@ class CaseDataStore:
 CASE_DATA = CaseDataStore()
 
 
+def _package_version(*distribution_names):
+    for name in distribution_names:
+        try:
+            return metadata.version(name)
+        except metadata.PackageNotFoundError:
+            continue
+    return "not-installed"
+
+
+def _pytest_load_error(module_path, dependency_path, exc):
+    versions = (
+        f"python={sys.version.split()[0]}, "
+        f"tensorflow={_package_version('tensorflow', 'tensorflow-cpu')}, "
+        f"numpy={_package_version('numpy')}"
+    )
+    return RuntimeError(
+        "Failed to load SparseFlashAttention pytest golden during module execution; "
+        f"module={module_path}; dependency={dependency_path}; {versions}; "
+        "generate_tensor_data imports TensorFlow at module import time. Verify that "
+        "TensorFlow and generate_tensor_data can be imported in this Python/CANN "
+        f"environment. Original error: {type(exc).__name__}: {exc}"
+    )
+
+
 def load_pytest_golden_module():
     """Load the pytest implementation without polluting another operator's imports."""
     global PYTEST_GOLDEN_MODULE
@@ -53,16 +78,20 @@ def load_pytest_golden_module():
 
     pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
     module_path = pytest_dir / "sparse_flash_attention_golden.py"
+    dependency_path = pytest_dir / "generate_tensor_data.py"
+    module_name = "sfa_ttk_pytest_golden"
     saved_generator = sys.modules.pop("generate_tensor_data", None)
     sys.path.insert(0, str(pytest_dir))
     try:
-        spec = importlib.util.spec_from_file_location("sfa_ttk_pytest_golden", module_path)
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {module_path}")
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
-    except Exception:
-        sys.modules.pop("sfa_ttk_pytest_golden", None)
-        raise
+    except Exception as exc:
+        sys.modules.pop(module_name, None)
+        raise _pytest_load_error(module_path, dependency_path, exc) from exc
     finally:
         sys.path.remove(str(pytest_dir))
         sys.modules.pop("generate_tensor_data", None)
