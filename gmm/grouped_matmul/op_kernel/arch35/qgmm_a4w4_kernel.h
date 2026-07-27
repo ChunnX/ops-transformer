@@ -49,7 +49,7 @@
 
 #ifdef A4W4_BLAZE_ENABLED
 #include "blaze/gemm/kernel/kernel_gmm_a4w4.h"  // A8W4 风格 A4W4 kernel (ops-tensor)
-#include "../../grouped_matmul_utils.h"           // GROUPED_MATMUL::GetTensorAddr
+#include "../grouped_matmul_utils.h"           // GROUPED_MATMUL::GetTensorAddr
 #endif
 
 template <class xType, class wType, class biasType, class scaleType, class ptScaleType, class yType,
@@ -110,8 +110,8 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
         ? static_cast<uint32_t>(gmmBaseParams->k / gmmBaseParams->quantGroupNum)
         : 0U;
     const uint32_t quantMode = isPerGroup
-        ? static_cast<uint32_t>(QuantMode::PERGROUP_MODE)
-        : static_cast<uint32_t>(QuantMode::PERCHANNEL_MODE);
+        ? static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERGROUP_MODE)
+        : static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERCHANNEL_MODE);
 
     GMMTiling gmmParams{};
     gmmParams.groupNum = gmmBaseParams->groupNum;
@@ -169,7 +169,7 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     // 4) 组装 Params 各子结构
     // ============================================================
     // WeightPreprocess: int4 weight -> int8 workspace(AIV)。
-    typename Params::WeightPreprocessParams weightPreprocessParams{};
+    typename QgmmKernel::WeightPreprocessParams weightPreprocessParams{};
     weightPreprocessParams.weightGmAddr = weightGmAddr;
     weightPreprocessParams.workspaceGmAddr = int8WeightWsAddr;
     weightPreprocessParams.groupNum = gmmBaseParams->groupNum;
@@ -178,7 +178,7 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     weightPreprocessParams.inputTransposedNz = false;  // TODO: A4W4 NZ weight(transB)时需按 host bFormat 置 true
 
     // XPreprocess: int4 x -> int8 workspace(AIV, A4W4 独有)。
-    typename Params::XPreprocessParams xPreprocessParams{};
+    typename QgmmKernel::XPreprocessParams xPreprocessParams{};
     xPreprocessParams.srcInt4GmAddr = xGmAddr;
     xPreprocessParams.dstInt8GmAddr = int8XWsAddr;
     xPreprocessParams.groupNum = 1UL;                  // X 单 tensor，groupNum=1
