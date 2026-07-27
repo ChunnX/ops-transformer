@@ -153,7 +153,7 @@ public:
         auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
         winContext_ = (__gm__ HcclCombinOpParam *)contextGM0;
         rank = winContext_->rankId;
-        rank_size = winContext_->rankDim;
+        rank_size = winContext_->rankNum;
         for (int i = 0; i < rank_size; i++) {
             buff[i] = (GM_ADDR)winContext_->windowsIn[i];
         }

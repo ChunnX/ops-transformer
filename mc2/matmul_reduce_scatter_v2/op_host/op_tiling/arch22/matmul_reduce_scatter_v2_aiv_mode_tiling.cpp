@@ -50,8 +50,6 @@ constexpr uint32_t OP_TYPE_REDUCE_SCATTER = 7U;
 constexpr uint32_t COUNT_PARAMS_WITH_BIAS = 4;    // [x1, x2, bias, y]
 constexpr uint32_t COUNT_PARAMS_WITHOUT_BIAS = 3; // [x1, x2, y]
 const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITH_BIAS = {
-    {ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16},
-    {ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16},
     {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16},
     {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT16},
     {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT, ge::DT_BF16},
@@ -657,8 +655,6 @@ static int ConvertGeTypeToBiasDTypeKey(ge::DataType type)
 {
     if (type == ge::DT_FLOAT) {
         return TILINGKEY_TPL_FP32;
-    } else if (type == ge::DT_BF16) {
-        return TILINGKEY_TPL_BF16;
     }
     return TILINGKEY_TPL_FP16;
 }
@@ -670,7 +666,7 @@ static void GetTilingKey(uint64_t &tilingKey, const MatmulReduceScatterV2AivMode
     bool isBias = (matrix_bias == nullptr) ? false : true;
     bool isSmallM =
         GetAlgorithmPolicy(info.M, info.N, info.is910C, info.quantFlag) == AlgorithmStrategy::SMALL_M_OPTIMIZED;
-    ge::DataType biasDatatype = context->GetOutputDesc(0)->GetDataType();
+    ge::DataType biasDatatype = ge::DT_FLOAT16;
     if (isBias) {
         auto biasDesc = context->GetOptionalInputDesc(BIAS_INDEX);
         if (biasDesc != nullptr) {
@@ -1221,7 +1217,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     PrintTilingDataInfo(info, tilingData->cocTiling);
 
     // 6. communication
-    uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, aType));
+    uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName, aType));
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
     std::string algConfig = "ReduceScatter=level0:fullmesh";
