@@ -141,8 +141,7 @@ def get_seqused(seq_dim, has_seqused, seqused_tensor, batch_id):
 
 @pl.pipeline.stage
 def gather_k(k_l1_db, k, sparse_indices, gather_nd_db, gather_nz_db, const_info, run_info):
-    half_s2_base_size =  _ceil_div(run_info.s2_base_size, 2)
-    # half_s2_base_size =  32
+    half_s2_base_size = _ceil_div(run_info.s2_base_size, 2)
     first_core_half_s2_base_size = half_s2_base_size
     current_core_half_s2_base_size = first_core_half_s2_base_size
     if const_info.sub_id == 1:
@@ -215,6 +214,7 @@ def compute_qk(q, k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_vec_db, 
     
     pl.move(qk_vec_slot, qk_acc, acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
 
+
 @pl.pipeline.stage
 def compute_qk_dense(q, k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_vec_db, const_info, run_info):
     """QK matmul stage (Cube). Writes qk_vec."""
@@ -278,7 +278,7 @@ def _muls_sel_vf_pse_type1_inner(
     
     tail_offset = repeat_times * 64
     
-    for block_idx in pl.range(0, repeat_times):
+    for _ in pl.range(0, repeat_times):
         for m_idx in pl.range(0, n1_main, un_roll_num):
             vreg_lse0 = vf.load_align(lse_tiles, m_idx, dist=pl.LoadDist.BRC_B32)
             vreg_src0 = vf.load_align(src_tiles, m_idx * TKV)
@@ -393,7 +393,7 @@ def _muls_sel_vf_pse_type1_inner(
         vreg_exp = vf.exp_sub(vreg_muls, vreg_lse, preg_tail)
         vreg_reduce_sum_muls_tail = vf.add(vreg_reduce_sum_muls_tail, vreg_exp, preg_tail)
     
-    for block_idx in pl.range(0, repeat_times):
+    for _ in pl.range(0, repeat_times):
         vreg_reduce_sum_muls = vf.muls(vreg_reduce_sum_muls, p_scalar, preg_full)
         vf.store_align(softmax_l1_tiles, vreg_reduce_sum_muls, preg_full)
     vreg_reduce_sum_muls_tail = vf.muls(vreg_reduce_sum_muls_tail, p_scalar, preg_tail)
@@ -502,7 +502,7 @@ def get_seq_length(seqused_q, seq_q, seq_k, const_info, run_info, used_t1_index)
 def set_preload_info(run_info, preload_info, ki):
     preload_info.ki = ki
     if ki + TKV > run_info.s2_real_size:
-        preload_info.s2_base_size =  run_info.s2_real_size - ki
+        preload_info.s2_base_size = run_info.s2_real_size - ki
     else:
         preload_info.s2_base_size = TKV
     
@@ -513,9 +513,7 @@ def set_preload_info(run_info, preload_info, ki):
         preload_info.t1_offset = run_info.t1_offset
         preload_info.t2_offset = run_info.t2_offset
 
-# ================================================================
-#  Kernel — dynamic rank: inputs are raw pointers, shapes come from tiling
-# ================================================================
+
 @pl.jit(auto_mutex=True,
     tiling_key=SmlaTilingKey,
     datatype={
@@ -697,18 +695,8 @@ def sparse_flash_mla_softmax_l1_norm(
     has_topk_length = tiling.has_topk_length
     
     sq_tiles = tensor_metadata[0]
-    former_core_process_num = tensor_metadata[1]
-    remain_core_process_num = tensor_metadata[2]
-    remain_core_num = tensor_metadata[3]
     num_cores = tensor_metadata[4]
-    if core_id >= num_cores:
-        current_core_proccess_num = 0
-    elif (core_id < total_num_cores - remain_core_num):
-        current_core_proccess_num = former_core_process_num
-    else:
-        current_core_proccess_num = remain_core_process_num
     
-    # sq_tiles = B * Sq
     first_half_g = (tiling.g + 2 - 1) // 2
     second_half_g = tiling.g - first_half_g
     current_half_g = first_half_g
@@ -859,8 +847,8 @@ def sparse_flash_mla_softmax_l1_norm(
             shape=[1, init_per_loop_num], dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1], pad=pl.TilePad.zero)
-        init_ub_src = pl.make_tile_group(type=init_src_tile_type, addrs=VA1, mutex_ids=[2,])
-        init_ub_dst = pl.make_tile_group(type=init_dst_tile_type, addrs=VA1, mutex_ids=[3,])
+        init_ub_src = pl.make_tile_group(type=init_src_tile_type, addrs=VA1, mutex_ids=[2])
+        init_ub_dst = pl.make_tile_group(type=init_dst_tile_type, addrs=VA1, mutex_ids=[3])
         init_ub_src_slot = init_ub_src.current()
         init_ub_dst_slot = init_ub_dst.current()
         pl.set_validshape(init_ub_src_slot, [0, 0])
