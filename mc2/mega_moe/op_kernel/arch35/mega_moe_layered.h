@@ -1675,7 +1675,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBa
 
     AscendC::GlobalTensor<int32_t> tripleGm;
     tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-        params_.workspaceInfo.tripleInfoPtr +
+        params_.workspaceInfo.metaInfoPtr +
         (gmm2State.expertBeforeCnt + currentRow) * META_INFO_SIZE * sizeof(int32_t)));
     AscendC::DataCopy(metaInfoTensor, tripleGm, batchCount * META_INFO_SIZE);
 
