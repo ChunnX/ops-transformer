@@ -147,7 +147,7 @@ def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
 
     return cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size
 
-def apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, cmp_ratio, coff, **kwargs):
+def apply_batch_slice_seeded(x, wkv, wgate, state_cache, state_block_table, ape, cmp_ratio, coff, **kwargs):
     """根据 batch_axis/batch_slice_info/batch_seed 生成切片数据并替换输入。
 
     - batch_axis: 标记每个输入的 batch/seq 轴位置
@@ -242,6 +242,12 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, cmp_ratio, coff, *
                             sliced_shape[axis_pos] = length
                             data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
                             tensor[start:end,:,:]= torch.from_numpy(data).to(tensor.dtype)
+                            cache_shape = list(state_cache.shape)
+                            cache_shape[0] = x.shape[0]
+                            start_idx = start * state_block_table.shape[1]
+                            end_idx = end * state_block_table.shape[1]
+                            cache_data = rng.uniform(lo, hi, size=tuple(cache_shape)).astype(np.float32)
+                            state_cache[start_idx:end_idx,:,:] = torch.from_numpy(cache_data).to(tensor.dtype)
                                                            
 def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
                                 state_block_table=None, cu_seqlens=None, seqused=None,
@@ -261,4 +267,4 @@ def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
                           cmp_ratio_val, start_pos_list,
                           seqused_list, cu_seqlens_list, cache_mode_val, S)
     # batch一致性切片赋值
-    apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, cmp_ratio, coff, **kwargs)
+    apply_batch_slice_seeded(x, wkv, wgate, state_cache, state_block_table, ape, cmp_ratio, coff, **kwargs)
