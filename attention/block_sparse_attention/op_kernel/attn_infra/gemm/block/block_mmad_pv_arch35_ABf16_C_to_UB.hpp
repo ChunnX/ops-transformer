@@ -71,7 +71,6 @@ template <
     class ElementC_,
     class ElementS_,
     class ElementBias_,
-    class ElementS_,
     class TileCopy_,
     class TileMmad_,
     bool transposedMm1>

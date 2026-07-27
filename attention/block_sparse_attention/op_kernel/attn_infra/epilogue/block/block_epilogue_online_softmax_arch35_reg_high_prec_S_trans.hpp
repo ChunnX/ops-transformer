@@ -104,11 +104,7 @@ public:
         // alter nd2nz dst stride (typically 64->65) to alleviate bank conflict
         uint32_t blockStride = mRound / 2 + 1;
         constexpr int16_t vlSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(ElementInput));
-        int16_t nLoops = AscendC::CeilDivision(n, vlSize) - 1;
         uint32_t tailN = (n - 1) % vlSize + 1;
-        int16_t mLoops = AscendC::CeilDivision(m, vlSize) - 1;
-        uint32_t tailM = (m - 1) % vlSize + 1;
-        uint32_t nPadding = (tailN + BLOCK_SIZE_IN_BYTE - 1) / BLOCK_SIZE_IN_BYTE * BLOCK_SIZE_IN_BYTE;
         __ubuf__ ElementOutput *pAddr = (__ubuf__ ElementOutput*) lpUbTensor[ubSBufId].GetPhyAddr();
         __ubuf__ ElementInput *sAddr = (__ubuf__ ElementInput*) lsUbTensor[ubSBufId].GetPhyAddr();
         __ubuf__ float *lastMaxAddr = (__ubuf__ float *)gmUbTensor.GetPhyAddr();
