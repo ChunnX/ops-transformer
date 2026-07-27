@@ -690,7 +690,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             }
         }
         // 校验 ori_topk_length
-        if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) &&
+        if ((socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) &&
             IsTensorExistSmla(oriTopkLengthOptional)) {
             // 校验 ori_topk_length 维度
             dimNum = GetDimNumSmla(oriTopkLengthOptional);
@@ -787,7 +787,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             }
         }
         // 校验 cmp_topk_length
-        if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) &&
+        if ((socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) &&
             IsTensorExistSmla(cmpTopkLengthOptional)) {
             // 校验 cmp_topk_length 维度
             dimNum = GetDimNumSmla(cmpTopkLengthOptional);
