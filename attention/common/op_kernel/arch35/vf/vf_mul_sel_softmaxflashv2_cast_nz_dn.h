@@ -102,7 +102,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-        x_exp_1 = x_exp + 32;
+        x_exp_1 = x_exp + (ubN * 4);
     } else {
         x_exp_1 = x_exp + (ubN * 4);
     }
@@ -485,7 +485,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-        x_exp_1 = x_exp + 32;
+        x_exp_1 = x_exp + (ubN * 4);
     } else {
         x_exp_1 = x_exp + (ubN * 4);
     }
@@ -1767,7 +1767,7 @@ __simd_vf__ inline void ProcessVec1DnCausalVF(__ubuf__ T2 *x_exp, __ubuf__ float
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-        x_exp_1 = x_exp + 32;
+        x_exp_1 = x_exp + (ubN * 4);
     } else {
         x_exp_1 = x_exp + (ubN * 4);
     }
@@ -2268,7 +2268,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-        x_exp_1 = x_exp + 32;
+        x_exp_1 = x_exp + (ubN * 4);
     } else {
         x_exp_1 = x_exp + (ubN * 4);
     }
@@ -2657,7 +2657,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadTailVF(
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-        x_exp_1 = x_exp + 32;
+        x_exp_1 = x_exp + (ubN * 4);
     } else {
         x_exp_1 = x_exp + (ubN * 4);
     }
@@ -3023,7 +3023,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-        x_exp_1 = x_exp + 32;
+        x_exp_1 = x_exp + (ubN * 4);
     } else {
         x_exp_1 = x_exp + (ubN * 4);
     }
@@ -3422,7 +3422,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadTailVF(
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-        x_exp_1 = x_exp + 32;
+        x_exp_1 = x_exp + (ubN * 4);
     } else {
         x_exp_1 = x_exp + (ubN * 4);
     }
