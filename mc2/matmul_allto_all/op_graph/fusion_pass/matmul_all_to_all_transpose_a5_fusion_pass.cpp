@@ -36,7 +36,6 @@ const size_t PERM_SIZE_ONE = 1;
 const size_t PERM_SIZE_TWO = 2;
 const size_t PERM_SIZE_THREE = 3;
 
-
 struct ReplaceGraphInputs {
     ge::es::EsTensorHolder rX1;
     ge::es::EsTensorHolder rX2;
@@ -442,8 +441,8 @@ bool MatmulAllToAllTransposeA5FusionPass::MeetRequirements(const std::unique_ptr
     return true;
 }
 
-ge::fusion::GraphUniqPtr
-MatmulAllToAllTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
+ge::fusion::GraphUniqPtr MatmulAllToAllTransposeA5FusionPass::Replacement(
+    const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Replacement for MatmulAllToAllTransposeA5FusionPass");
     std::vector<ge::fusion::SubgraphInput> subgraphInputs;

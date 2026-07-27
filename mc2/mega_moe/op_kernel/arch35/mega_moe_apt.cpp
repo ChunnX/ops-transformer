@@ -44,10 +44,10 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
-#if defined(ENABLE_TENSOR_API) && defined(ORIG_DTYPE_X) && (ORIG_DTYPE_X == DT_BF16) && defined(ORIG_DTYPE_Y) &&       \
-    (ORIG_DTYPE_Y == DT_BF16) && defined(ORIG_DTYPE_WEIGHT1) &&                                                        \
-    ((ORIG_DTYPE_WEIGHT1 == DT_FLOAT8_E5M2) || (ORIG_DTYPE_WEIGHT1 == DT_FLOAT8_E4M3FN) ||                             \
-     (ORIG_DTYPE_WEIGHT1 == DT_FLOAT4_E2M1)) &&                                                                        \
+#if defined(ENABLE_TENSOR_API) && defined(ORIG_DTYPE_X) && (ORIG_DTYPE_X == DT_BF16) && defined(ORIG_DTYPE_Y) && \
+    (ORIG_DTYPE_Y == DT_BF16) && defined(ORIG_DTYPE_WEIGHT1) && \
+    ((ORIG_DTYPE_WEIGHT1 == DT_FLOAT8_E5M2) || (ORIG_DTYPE_WEIGHT1 == DT_FLOAT8_E4M3FN) || \
+     (ORIG_DTYPE_WEIGHT1 == DT_FLOAT4_E2M1)) && \
     defined(ORIG_DTYPE_WEIGHT2) && (ORIG_DTYPE_WEIGHT2 == ORIG_DTYPE_WEIGHT1)
     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {

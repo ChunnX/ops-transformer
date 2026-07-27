@@ -67,17 +67,9 @@ constexpr size_t BIAS_IDX = 2;
 constexpr uint64_t NMK_N_THERS = 64;
 constexpr uint64_t NMK_M_THERS = 1920;
 
-enum class Mc2CalcType : int32_t {
-    M_BY_BASE_NK,
-    MN_BY_BASE_K
-};
+enum class Mc2CalcType : int32_t { M_BY_BASE_NK, MN_BY_BASE_K };
 
-enum class Mc2MatmulV3Trans : int32_t {
-    NO_TRANS = 0,
-    A_TRANS = 1,
-    B_TRANS = 2,
-    AB_TRANS = 3
-};
+enum class Mc2MatmulV3Trans : int32_t { NO_TRANS = 0, A_TRANS = 1, B_TRANS = 2, AB_TRANS = 3 };
 
 enum class Mc2MixNd2NzType : int32_t {
     V_HEAD_ND2NZ = 0,    // 所有核在头部做nd2nz

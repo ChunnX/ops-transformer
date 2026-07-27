@@ -18,15 +18,9 @@ namespace MoeDistributeCombineAddRmsNormNameSpace {
 
 class MoeDistributeCombineAddRmsNorm : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineAddRmsNorm SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineAddRmsNorm SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeCombineAddRmsNorm TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeCombineAddRmsNorm TearDown" << std::endl; }
 };
 
 // infer shape with bias, success

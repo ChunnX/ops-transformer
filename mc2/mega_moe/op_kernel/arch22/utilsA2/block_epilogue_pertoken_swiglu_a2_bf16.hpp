@@ -101,9 +101,7 @@ public:
         }
     }
 
-    CATLASS_DEVICE ~BlockEpilogue()
-    {
-    }
+    CATLASS_DEVICE ~BlockEpilogue() {}
 
     // 7-arg: per-token dequant + SwiGLU + quant → cast & copy to D.
     // Matches the unified kernel call pattern (receives gmPerTokenScale2

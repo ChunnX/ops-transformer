@@ -21,17 +21,9 @@ namespace optiling {
 namespace mc2_matmul_v3_advanced {
 using Ops::Transformer::OpTiling::GET_TILINGKEY;
 constexpr uint64_t DECIMAL_DIVISOR = 10UL;
-enum class Mc2MatMulV3Trans : std::uint8_t {
-    NO_TRANS = 0,
-    A_TRANS = 1,
-    B_TRANS = 2,
-    AB_TRANS = 3
-};
+enum class Mc2MatMulV3Trans : std::uint8_t { NO_TRANS = 0, A_TRANS = 1, B_TRANS = 2, AB_TRANS = 3 };
 
-enum class Mc2MatMulV3ApiLevel : std::uint8_t {
-    HIGH_LEVEL = 0,
-    BASIC_LEVEL = 1
-};
+enum class Mc2MatMulV3ApiLevel : std::uint8_t { HIGH_LEVEL = 0, BASIC_LEVEL = 1 };
 
 enum class Mc2MatMulV3Model : std::uint8_t {
     BASIC = 0,
@@ -48,11 +40,7 @@ enum class Mc2MatMulV3FullLoad : std::uint8_t {
     AB_FULL_LOAD = 3
 };
 
-enum class Mc2MatMulV3GM2L1 : std::uint8_t {
-    ON_THE_FLY = 0,
-    MOVE_ALIGN = 1,
-    VNCHW_CONV = 2
-};
+enum class Mc2MatMulV3GM2L1 : std::uint8_t { ON_THE_FLY = 0, MOVE_ALIGN = 1, VNCHW_CONV = 2 };
 
 enum class Mc2MatMulV3L0C2Out : std::uint8_t {
     ON_THE_FLY = 0,

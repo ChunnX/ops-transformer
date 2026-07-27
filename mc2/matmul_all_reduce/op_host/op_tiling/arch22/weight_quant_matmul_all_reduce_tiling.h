@@ -52,15 +52,9 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Tiling::Mc2Msg &MutableMc2MsgData() override
-    {
-        return weightQuantMatmulAllReduceTilingData_.msg;
-    }
+    Mc2Tiling::Mc2Msg &MutableMc2MsgData() override { return weightQuantMatmulAllReduceTilingData_.msg; }
 
-    Mc2Tiling::RCSTiling &MutableRCSTilingData() override
-    {
-        return weightQuantMatmulAllReduceTilingData_.param;
-    }
+    Mc2Tiling::RCSTiling &MutableRCSTilingData() override { return weightQuantMatmulAllReduceTilingData_.param; }
 
     AscendC::tiling::TCubeTiling &MutableTCubeTileTilingData() override
     {
@@ -95,8 +89,7 @@ public:
                                     Mc2WeightQuantBatchMatmulV2TilingData &data)
         : Mc2WeightQuantBatchMatmulV2TilingCustom(weightQuantMatmulAllReduceTiling.context_, &data),
           tilingProcesser_(weightQuantMatmulAllReduceTiling)
-    {
-    }
+    {}
     ge::graphStatus GetShapeAttrsInfo() override;
     void PrintTilingInputParam(Mc2WeightQuantBatchMatmulInfo &weightQuantBatchMatmulInfo);
     ge::graphStatus PostTiling() override;

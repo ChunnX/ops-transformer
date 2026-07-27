@@ -119,7 +119,6 @@ public:
 
         InitConstInfo();
 
-
         keyPtr = key;
         valuePtr = value;
 
@@ -460,10 +459,7 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
-    {
-        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
-    }
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo) { cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo); }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {

@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /* !
  * \file matmul_v3_base_tiling_advanced.h
  * \brief
@@ -34,11 +33,8 @@ public:
           compileInfo_(*static_cast<const Mc2MatmulV3CompileInfo *>(cfg.compileInfo)),
           args_(*static_cast<const Mc2MatMulV3Args *>(cfg.args)),
           batchInfo_(static_cast<const Mc2MatMulV3BatchInfo *>(args_.batchInfo))
-    {
-    }
-    ~Mc2MatMulV3BaseTiling() override
-    {
-    }
+    {}
+    ~Mc2MatMulV3BaseTiling() override {}
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override
@@ -78,10 +74,7 @@ protected:
         return workspaceSize; // 20MB workspace for RPC
     };
 
-    uint64_t GetBlockDim() const override
-    {
-        return runInfo_.usedCoreNum;
-    };
+    uint64_t GetBlockDim() const override { return runInfo_.usedCoreNum; };
 
     bool CheckBasicApiTilingKey(uint64_t tilingkey) const
     {

@@ -42,21 +42,16 @@ struct BasicTiling {
     uint64_t calOrder = 0;
 };
 
-enum class BasicTilingMode : uint32_t {
-    BASIC_TILING_MODE = 0,
-    L2_CACHE_TILING_MODE = 1
-};
+enum class BasicTilingMode : uint32_t { BASIC_TILING_MODE = 0, L2_CACHE_TILING_MODE = 1 };
 
 class Mc2QuantBatchMatmulV3BasicTiling : public Mc2QuantBatchMatmulV3Tiling {
 public:
     explicit Mc2QuantBatchMatmulV3BasicTiling(gert::TilingContext *contextIn)
         : Mc2QuantBatchMatmulV3Tiling(contextIn), context(contextIn)
-    {
-    }
+    {}
     Mc2QuantBatchMatmulV3BasicTiling(gert::TilingContext *contextIn, Mc2QuantBatchMatmulV3TilingData *out)
         : Mc2QuantBatchMatmulV3Tiling(contextIn, out), context(contextIn)
-    {
-    }
+    {}
     ~Mc2QuantBatchMatmulV3BasicTiling() override = default;
 
     BasicTiling basicTiling_;

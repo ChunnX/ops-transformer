@@ -25,16 +25,16 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 
 int ndev = 2;
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)

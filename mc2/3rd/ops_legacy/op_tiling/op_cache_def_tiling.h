@@ -243,13 +243,7 @@ struct QuantBatchMatmulRunParas {
     ge::Format cFormat = ge::FORMAT_ND;
 };
 
-enum class QbmmType : uint32_t {
-    Perchannel = 0,
-    Pertoken = 1,
-    KN = 2,
-    Basic = 3,
-    BasicLimit = 4
-};
+enum class QbmmType : uint32_t { Perchannel = 0, Pertoken = 1, KN = 2, Basic = 3, BasicLimit = 4 };
 
 struct WeightQuantBatchMatmulCacheTilingParas {
     uint64_t mSize = 0;

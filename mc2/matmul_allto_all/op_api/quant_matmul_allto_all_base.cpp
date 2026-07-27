@@ -466,7 +466,6 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-
 // 两段式接口
 aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
     const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x1Scale,

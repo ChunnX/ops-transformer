@@ -26,10 +26,7 @@ namespace ascend_ops {
 namespace Add {
 
 // Register the operator's schema
-TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
-{
-    m.def("add(Tensor x, Tensor y) -> Tensor");
-}
+TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m) { m.def("add(Tensor x, Tensor y) -> Tensor"); }
 
 // Meta function implementation of Add
 torch::Tensor add_meta(const torch::Tensor &x, const torch::Tensor &y)
@@ -40,10 +37,7 @@ torch::Tensor add_meta(const torch::Tensor &x, const torch::Tensor &y)
 }
 
 // Register the Meta implementation
-TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m)
-{
-    m.impl("add", add_meta);
-}
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m) { m.impl("add", add_meta); }
 
 std::tuple<int64_t, int64_t, int64_t> calc_tiling_params(int64_t totalLength)
 {
@@ -179,10 +173,7 @@ torch::Tensor add_npu(const torch::Tensor &x, const torch::Tensor &y)
 }
 
 // Register the NPU implementation
-TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
-{
-    m.impl("add", add_npu);
-}
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m) { m.impl("add", add_npu); }
 
 } // namespace Add
 } // namespace ascend_ops

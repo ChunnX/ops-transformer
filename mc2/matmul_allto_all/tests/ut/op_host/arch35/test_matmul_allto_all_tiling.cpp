@@ -31,15 +31,9 @@ struct MatmulAlltoAllCompileInfo {
 
 class MatmulAlltoAllArch35TilingTest : public testing::TestWithParam<MatmulAlltoAllTilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAlltoAllArch35TilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAlltoAllArch35TilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulAlltoAllArch35TilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MatmulAlltoAllArch35TilingTest TearDown." << std::endl; }
 };
 
 TEST_P(MatmulAlltoAllArch35TilingTest, param)

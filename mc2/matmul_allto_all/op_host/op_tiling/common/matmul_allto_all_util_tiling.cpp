@@ -778,8 +778,7 @@ QuantMode MatmulAlltoAllTilingUtil::GetQuantMode(const gert::TilingContext *cont
 Mc2CcTilingConfigBuilder::Mc2CcTilingConfigBuilder(const std::string &groupName, uint32_t opType,
                                                    const std::string &algConfig)
     : mc2CcTilingConfig(groupName, opType, algConfig)
-{
-}
+{}
 
 Mc2CcTilingConfigBuilder &Mc2CcTilingConfigBuilder::withReduceType(const char *opName, AscendC::HcclReduceOp reduceType,
                                                                    ge::DataType dstDataType, ge::DataType srcDataType)
@@ -877,10 +876,7 @@ AscendC::Mc2CcTilingConfig Mc2CcTilingConfigBuilder::build()
     return this->mc2CcTilingConfig;
 }
 
-bool Mc2CcTilingConfigBuilder::isSuccess() const
-{
-    return this->errorSet.empty();
-}
+bool Mc2CcTilingConfigBuilder::isSuccess() const { return this->errorSet.empty(); }
 
 std::string Mc2CcTilingConfigBuilder::errorMsg() const
 {

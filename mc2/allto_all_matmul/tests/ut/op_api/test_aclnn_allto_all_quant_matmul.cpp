@@ -5348,20 +5348,13 @@ TEST_F(test_aclnn_allto_all_quant_matmul, MXQuant_cases_params)
     }
 }
 
-
 namespace AlltoAllMatmulUT {
 
 class AclnnAlltoAllQuantMatmulTest : public testing::TestWithParam<AlltoAllMatmulApiUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllMatmul AclnnAlltoAllQuantMatmulTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllMatmul AclnnAlltoAllQuantMatmulTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AlltoAllMatmul AclnnAlltoAllQuantMatmulTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AlltoAllMatmul AclnnAlltoAllQuantMatmulTest TearDown" << std::endl; }
 };
 
 TEST_P(AclnnAlltoAllQuantMatmulTest, param)

@@ -72,15 +72,9 @@ struct TilingDTypes {
 
 class AlltoAllvQuantGroupedMatMulInfershape : public testing::TestWithParam<TestParams> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllvQuantGroupedMatMulInfershape Test SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllvQuantGroupedMatMulInfershape Test SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AlltoAllvQuantGroupedMatMulInfershape Test TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AlltoAllvQuantGroupedMatMulInfershape Test TearDown" << std::endl; }
 };
 
 std::unordered_map<std::string, std::function<void(TilingParamss &tiling_params, const std::string &value_str)>>
@@ -236,7 +230,6 @@ TEST_P(AlltoAllvQuantGroupedMatMulInfershape, infershape_test)
     std::vector<std::vector<int64_t>> expectOutputShape = {{4096, 4096}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
-
 
 static TestParams test_params[] = {{"Test_sample", {{"permute_out_flag", "true"}}, {}, {}, {}, ge::GRAPH_SUCCESS}};
 

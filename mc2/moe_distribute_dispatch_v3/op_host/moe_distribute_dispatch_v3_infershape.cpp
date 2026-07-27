@@ -314,11 +314,11 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
         }
     } else {
-        if (*tpWorldSize == DIM_TWO)  {
+        if (*tpWorldSize == DIM_TWO) {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
         } else if (hasExpertScales && !IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum +
-                globalBsReal * SEND_COUNT_MEMORY_SIZE * k * (*epWorldSize) / RANK_NUM_PER_NODE);
+            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k *
+                                                                             (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
         }
@@ -346,19 +346,19 @@ static ge::graphStatus CheckQuantMode(const gert::InferDataTypeContext *context,
                                       int64_t yDtype)
 {
     if (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_STATIC) {
-        OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) && (yDtype != static_cast<int64_t>(ge::DT_HIFLOAT8)),
-                    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y",
-                                              Ops::Base::ToString(static_cast<ge::DataType>(yDtype)).c_str(),
-                                              "INT8, HIFLOAT8"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (yDtype != static_cast<int64_t>(ge::DT_INT8)) && (yDtype != static_cast<int64_t>(ge::DT_HIFLOAT8)),
+            OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y",
+                                      Ops::Base::ToString(static_cast<ge::DataType>(yDtype)).c_str(), "INT8, HIFLOAT8"),
+            return ge::GRAPH_FAILED);
     } else if (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERTOKEN) {
         OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) &&
                         (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
                         (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)),
                     OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y",
                                               Ops::Base::ToString(static_cast<ge::DataType>(yDtype)).c_str(),
-                                               "INT8, FLOAT8_E4M3FN, FLOAT8_E5M2"),
-                     return ge::GRAPH_FAILED);
+                                              "INT8, FLOAT8_E4M3FN, FLOAT8_E5M2"),
+                    return ge::GRAPH_FAILED);
     } else if ((static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERGROUP) || IsMxQuantMode(*quantMode)) {
         OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
                         (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&

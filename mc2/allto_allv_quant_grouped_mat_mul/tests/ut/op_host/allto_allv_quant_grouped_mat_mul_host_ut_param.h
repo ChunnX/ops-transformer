@@ -86,7 +86,6 @@ struct AlltoAllvQuantGroupedMatMulTilingUTParam : public AlltoAllvQuantGroupedMa
     gert::TilingContextPara::TensorDescription mm_y = TD_DEFAULT;
     gert::TilingContextPara::TensorDescription permute_out = TD_DEFAULT;
 
-
     AlltoAllvQuantGroupedMatMulTilingUTParam(const csv_map &csvMap)
         : AlltoAllvQuantGroupedMatMulTilingUTParamBase(csvMap)
     {

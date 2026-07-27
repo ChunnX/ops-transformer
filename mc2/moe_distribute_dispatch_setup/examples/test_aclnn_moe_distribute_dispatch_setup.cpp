@@ -38,21 +38,18 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapesize;
 }
 
-static int64_t GetCeil(int64_t a, int64_t b)
-{
-    return (a + b - 1) / b;
-}
+static int64_t GetCeil(int64_t a, int64_t b) { return (a + b - 1) / b; }
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 struct Args {
@@ -553,7 +550,6 @@ int CreateAclcommCmdInfoOutforCombine(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     return ret;
 }
-
 
 int ProcessDispatchSetup(char *hcomEpName, char *hcomTpName, Args &args)
 {

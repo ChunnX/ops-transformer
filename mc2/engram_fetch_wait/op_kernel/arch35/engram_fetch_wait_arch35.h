@@ -13,7 +13,6 @@
  * \brief engram_fetch_wait算子arch35 kernel实现
  */
 
-
 #ifndef ENGRAM_FETCH_WAIT_ARCH35_H
 #define ENGRAM_FETCH_WAIT_ARCH35_H
 

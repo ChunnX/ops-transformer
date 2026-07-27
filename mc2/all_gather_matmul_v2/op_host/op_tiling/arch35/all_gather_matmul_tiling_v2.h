@@ -48,10 +48,7 @@ protected:
 
     CutResult GetTilingResult() override;
 
-    Mc2Tiling::RCSTiling &MutableRCSTilingData()
-    {
-        return allGatherMatmulTilingDataV2_->param;
-    }
+    Mc2Tiling::RCSTiling &MutableRCSTilingData() { return allGatherMatmulTilingDataV2_->param; }
 
     Mc2MatMulV3TilingData &MutableMC2MatmulV3LocalTilingData()
     {

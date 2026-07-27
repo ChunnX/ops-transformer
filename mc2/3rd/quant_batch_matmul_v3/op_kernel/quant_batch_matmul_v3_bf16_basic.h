@@ -22,9 +22,7 @@ namespace AscendC {
 template <TemplateBasicType>
 class BmmBasicDequantBf16 {
 public:
-    __aicore__ inline BmmBasicDequantBf16()
-    {
-    }
+    __aicore__ inline BmmBasicDequantBf16() {}
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale, GM_ADDR bias, GM_ADDR y, GM_ADDR workSpace,
                                 const Mc2QuantBatchMatmulV3TilingData *__restrict tilingData, TPipe *tPipe)
     {
@@ -78,10 +76,7 @@ public:
         End();
     }
 
-    __aicore__ inline UPDATE_TYPE &GetUpdateObj()
-    {
-        return update_;
-    }
+    __aicore__ inline UPDATE_TYPE &GetUpdateObj() { return update_; }
 
 private:
     __aicore__ inline void InitTilingData(const Mc2QuantBatchMatmulV3TilingData *tilingData)

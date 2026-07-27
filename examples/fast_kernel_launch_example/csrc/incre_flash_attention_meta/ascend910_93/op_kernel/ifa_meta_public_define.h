@@ -23,16 +23,7 @@ namespace aicpu::kernels {
 
 inline constexpr uint32_t MAX_CORE_NUM = 50;
 
-enum class Layout {
-    BSH = 0,
-    BSND = 0,
-    BNSD = 1,
-    NZ = 2,
-    TND = 3,
-    NBSD = 4,
-    NTD = 5,
-    BUTT
-};
+enum class Layout { BSH = 0, BSND = 0, BNSD = 1, NZ = 2, TND = 3, NBSD = 4, NTD = 5, BUTT };
 
 struct IncreFlashAttentionMetadata {
     // FA

@@ -26,10 +26,7 @@ std::vector<int64_t> AlltoAllvGmmTilingA3::GetEpWorldSizeOptional() const
     return {8, 16, 32, 64, 128}; // A3限制epWorldSize为{8，16，32，64, 128}
 }
 
-bool AlltoAllvGmmTilingA3::NeedToCheckCounts() const
-{
-    return true;
-}
+bool AlltoAllvGmmTilingA3::NeedToCheckCounts() const { return true; }
 
 ge::graphStatus AlltoAllvGmmTilingFuncA3::AlltoAllvGmmOpTilingFunc(gert::TilingContext *context)
 {

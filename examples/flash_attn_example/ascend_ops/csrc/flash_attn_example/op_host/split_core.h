@@ -29,11 +29,7 @@ namespace split_core {
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
 constexpr uint32_t FD_TOLERANCE_RATIO = 2U;
 
-enum BlockType : uint32_t {
-    NORMAL_BLOCK = 0,
-    TAIL_BLOCK,
-    BLOCK_MAX_TYPE
-};
+enum BlockType : uint32_t { NORMAL_BLOCK = 0, TAIL_BLOCK, BLOCK_MAX_TYPE };
 
 enum class SparseMode : uint8_t {
     DEFAULT_MASK = 0,
@@ -107,10 +103,15 @@ struct CombineResult {
     std::vector<uint32_t> mStart{};
     std::vector<uint32_t> mLen{};
     CombineResult(uint32_t coreNum, uint32_t vecCubeRatio)
-        : combineBN2Idx(coreNum), combineMIdx(coreNum), combineS2SplitNum(coreNum), combineWorkspaceIdx(coreNum),
-          mSize(coreNum), taskIdx(coreNum * vecCubeRatio), mStart(coreNum * vecCubeRatio), mLen(coreNum * vecCubeRatio)
-    {
-    }
+        : combineBN2Idx(coreNum),
+          combineMIdx(coreNum),
+          combineS2SplitNum(coreNum),
+          combineWorkspaceIdx(coreNum),
+          mSize(coreNum),
+          taskIdx(coreNum * vecCubeRatio),
+          mStart(coreNum * vecCubeRatio),
+          mLen(coreNum * vecCubeRatio)
+    {}
 };
 
 struct FAMetaData {
@@ -123,7 +124,11 @@ struct FAMetaData {
     std::vector<uint32_t> firstCombineDataWorkspaceIdx{};
     CombineResult combineRes{0U, 0U};
     FAMetaData(uint32_t coreNum, uint32_t ratio)
-        : vecCubeRatio(ratio), bN2End(coreNum), mEnd(coreNum), s2End(coreNum), firstCombineDataWorkspaceIdx(coreNum),
+        : vecCubeRatio(ratio),
+          bN2End(coreNum),
+          mEnd(coreNum),
+          s2End(coreNum),
+          firstCombineDataWorkspaceIdx(coreNum),
           combineRes(coreNum, ratio) {};
 };
 
@@ -136,8 +141,7 @@ struct SplitInfo {
 
     explicit SplitInfo(uint32_t batchSize)
         : s1GBaseNum(batchSize), s2BaseNum(batchSize), s1GTailSize(batchSize), s2TailSize(batchSize)
-    {
-    }
+    {}
 };
 
 struct CostInfo {
@@ -150,8 +154,7 @@ struct CostInfo {
 
     explicit CostInfo(uint32_t batchSize)
         : bN2CostOfEachBatch(batchSize), bN2BlockOfEachBatch(batchSize), bN2LastBlockCostOfEachBatch(batchSize)
-    {
-    }
+    {}
 };
 
 struct SplitContext {
@@ -162,8 +165,7 @@ struct SplitContext {
 
     explicit SplitContext(const BaseInfo &info, SplitParam param)
         : baseInfo(info), splitParam(param), splitInfo(info.bSize), costInfo(info.bSize)
-    {
-    }
+    {}
 };
 
 struct BatchCache {

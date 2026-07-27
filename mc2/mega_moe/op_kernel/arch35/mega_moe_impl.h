@@ -567,8 +567,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 // 搬入当前 128 子块的权重（首个子块已在循环前预取，跳过）
                 // WaitFlag<V_MTE2> 保证 V 已读完上一轮的 weightUb_，此处覆写安全
                 if (subOff != 0) {
-                    AscendC::DataCopy(swigluOp.weightUb_,
-                                      swigluOp.metaInfoGm_[metaInfoMLoc * INT32_PER_256B],
+                    AscendC::DataCopy(swigluOp.weightUb_, swigluOp.metaInfoGm_[metaInfoMLoc * INT32_PER_256B],
                                       subM * INT32_PER_256B);
                 }
 
@@ -772,12 +771,12 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false>
-__aicore__ inline void
-GroupMatmulSwigluQuant(BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true,
-                                                  EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch> &epilogueOp,
-                       const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-                       const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom,
-                       uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+__aicore__ inline void GroupMatmulSwigluQuant(
+    BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
+                               L1_TILE_N, TopkWeightsPrefetch> &epilogueOp,
+    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint32_t expertBeforeCnt,
+    uint32_t expertIdx = 0)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
     Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom, expertBeforeCnt, expertIdx};
@@ -975,8 +974,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                 // 搬入当前 128 子块的权重（首个子块已在循环前预取，跳过）
                 // WaitFlag<V_MTE2> 保证 V 已读完上一轮的 weightUb_，此处覆写安全
                 if (subOff != 0) {
-                    AscendC::DataCopy(swigluQuantOp.weightUb_,
-                                      swigluQuantOp.metaInfoGm_[metaInfoMLoc * INT32_PER_256B],
+                    AscendC::DataCopy(swigluQuantOp.weightUb_, swigluQuantOp.metaInfoGm_[metaInfoMLoc * INT32_PER_256B],
                                       subM * INT32_PER_256B);
                 }
 
@@ -1206,12 +1204,12 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
           bool IsShared = false>
-__aicore__ inline void
-GroupMatmulSwigluQuantA8W4(BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true,
-                                                      EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch> &swigluQuantOp,
-                           const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-                           const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom,
-                           uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+__aicore__ inline void GroupMatmulSwigluQuantA8W4(
+    BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM, L1_TILE_N,
+                               TopkWeightsPrefetch> &swigluQuantOp,
+    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint32_t expertBeforeCnt,
+    uint32_t expertIdx = 0)
 {
     (void)vecSetSyncCom;
     using SwigluQuantOpType = std::remove_reference_t<decltype(swigluQuantOp)>;
@@ -1225,10 +1223,11 @@ GroupMatmulSwigluQuantA8W4(BlockEpilogueSwigluMxQuant<ElementA, ElementC, Elemen
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false,
           bool IsShared = false>
-__aicore__ inline void
-GroupMatmul2CombineA8W4(const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-                        const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                        uint32_t groupCnt, uint16_t &pingpongIdx, uint32_t groupIdx = 0)
+__aicore__ inline void GroupMatmul2CombineA8W4(const Params &params,
+                                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+                                               const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
+                                               int32_t &vecSetSyncCom2, uint32_t groupCnt, uint16_t &pingpongIdx,
+                                               uint32_t groupIdx = 0)
 {
     (void)vecSetSyncCom2;
     (void)groupIdx;

@@ -29,34 +29,13 @@ class QuantBmmReduceScatterTiling : public MatmulReduceScatterTilingBase {
 public:
     explicit QuantBmmReduceScatterTiling(gert::TilingContext *context);
     ~QuantBmmReduceScatterTiling() override = default;
-    gert::TilingContext *GetContext() const
-    {
-        return context_;
-    }
-    mc2tiling::TilingArgs &GetArgs()
-    {
-        return args_;
-    }
-    const char *GetOpName() const
-    {
-        return opName_;
-    }
-    uint64_t GetMyWorkSpaceSize() const
-    {
-        return myWorkSpaceSize_;
-    }
-    uint64_t SetMyWorkSpaceSize(uint64_t workspaceSize)
-    {
-        return myWorkSpaceSize_ = workspaceSize;
-    }
-    uint64_t GetLibApiWorkSpaceSize() const
-    {
-        return libApiWorkSpaceSize_;
-    }
-    mc2tiling::Mc2QuantMode GetQuantMode() const
-    {
-        return quantMode_;
-    }
+    gert::TilingContext *GetContext() const { return context_; }
+    mc2tiling::TilingArgs &GetArgs() { return args_; }
+    const char *GetOpName() const { return opName_; }
+    uint64_t GetMyWorkSpaceSize() const { return myWorkSpaceSize_; }
+    uint64_t SetMyWorkSpaceSize(uint64_t workspaceSize) { return myWorkSpaceSize_ = workspaceSize; }
+    uint64_t GetLibApiWorkSpaceSize() const { return libApiWorkSpaceSize_; }
+    mc2tiling::Mc2QuantMode GetQuantMode() const { return quantMode_; }
 
 protected:
     bool IsCapable() override;
@@ -128,6 +107,5 @@ private:
     bool isSerial_{false};
 };
 } // namespace optiling
-
 
 #endif //__QUANT_BMM_REDUCE_SCATTER_TILING_H__

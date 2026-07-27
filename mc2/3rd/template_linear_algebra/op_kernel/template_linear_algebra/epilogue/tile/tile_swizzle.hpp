@@ -33,10 +33,7 @@ struct EpilogueIdentityTileSwizzle {
     }
 
     CATLASS_DEVICE
-    uint32_t GetLoops() const
-    {
-        return loopsMN.row() * loopsMN.column();
-    }
+    uint32_t GetLoops() const { return loopsMN.row() * loopsMN.column(); }
 
     CATLASS_DEVICE
     MatrixCoord GetTileCoord(uint32_t loopIdx) const
@@ -67,10 +64,7 @@ struct EpilogueHorizontalTileSwizzle {
     }
 
     CATLASS_DEVICE
-    uint32_t GetLoops() const
-    {
-        return loopsMN.row() * loopsMN.column();
-    }
+    uint32_t GetLoops() const { return loopsMN.row() * loopsMN.column(); }
 
     CATLASS_DEVICE
     MatrixCoord GetTileCoord(uint32_t loopIdx) const

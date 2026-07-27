@@ -30,9 +30,7 @@ struct L2CacheTileArguments {
 
 class MatmulBaseBlockL2Cache : public MatmulBaseBlockMC2 {
 public:
-    __aicore__ inline MatmulBaseBlockL2Cache()
-    {
-    }
+    __aicore__ inline MatmulBaseBlockL2Cache() {}
     __aicore__ inline void UpdateBlockCnt(int32_t mTileIndex, int32_t nTileIndex);
     __aicore__ inline void UpdateBlockParams(int32_t mTileIndex = 0, int32_t nTileIndex = 0);
     __aicore__ inline void Init(Mc2Tiling::RCSTiling &cfg, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
@@ -142,10 +140,7 @@ __aicore__ inline void MatmulBaseBlockL2Cache::InitBlockIndex(uint32_t index)
     GetBlockStartIdx(startIdx, endIdx);
 }
 
-enum SplitType {
-    DEFAULT = 0,
-    L2CACHE = 1
-};
+enum SplitType { DEFAULT = 0, L2CACHE = 1 };
 
 template <SplitType T>
 struct BlockType {

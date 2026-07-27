@@ -102,10 +102,7 @@ __aicore__ inline void MoeV2MrgsortOut::SetOutput(GlobalTensor<int32_t> &gmOutpu
     this->ubOutputInt2 = ubOutput2.ReinterpretCast<int32_t>();
 }
 
-__aicore__ inline void MoeV2MrgsortOut::SetBuffer(LocalTensor<float> &tempBuffer)
-{
-    this->tempBuffer = tempBuffer;
-}
+__aicore__ inline void MoeV2MrgsortOut::SetBuffer(LocalTensor<float> &tempBuffer) { this->tempBuffer = tempBuffer; }
 
 __aicore__ inline void MoeV2MrgsortOut::UpdateMrgParam()
 {

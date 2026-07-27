@@ -48,10 +48,7 @@ public:
         }
     }
 
-    __aicore__ inline int64_t GetTileNum()
-    {
-        return loopFirst_ * loopSecond_;
-    }
+    __aicore__ inline int64_t GetTileNum() { return loopFirst_ * loopSecond_; }
 
     __aicore__ inline BlockShape GetBlockShape(const BlockCoord &blockCoord)
     {

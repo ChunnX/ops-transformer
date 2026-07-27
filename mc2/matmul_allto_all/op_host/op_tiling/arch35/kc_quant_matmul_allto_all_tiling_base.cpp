@@ -45,9 +45,9 @@ bool KcQuantMatmulAllToAllTilingBase::IsCapable()
  */
 ge::graphStatus KcQuantMatmulAllToAllTilingBase::CheckOpInputInfo()
 {
-    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckKcTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckKcQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
@@ -307,9 +307,9 @@ KcQuantMatmulAlltoAllHelper::KcQuantMatmulAlltoAllHelper(
     KcQuantMatmulAllToAllTilingBase &kcQuantMatmulAllToAllTilingBase,
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, uint64_t &mmMvalueLen)
     : Mc2AdaptiveSlidingWindowTiling(kcQuantMatmulAllToAllTilingBase.context_, &data),
-      tilingProcesser_(kcQuantMatmulAllToAllTilingBase), mmLen(mmMvalueLen)
-{
-}
+      tilingProcesser_(kcQuantMatmulAllToAllTilingBase),
+      mmLen(mmMvalueLen)
+{}
 
 /**
  * @brief 打印量化matmul tiling的信息
@@ -508,7 +508,7 @@ CutResult KcQuantMatmulAllToAllTilingBase::GetTilingResult()
                                                         engineType) != ge::GRAPH_SUCCESS) {
         OP_LOGD(opName_, "GetTilingResult: failed to get commMode, default to AICPU.");
     }
-    
+
     uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, SocVersion::SOC950, npuArch_,
                                  QuantMode::KC_QUANT, commMode);
@@ -521,8 +521,7 @@ CutResult KcQuantMatmulAllToAllTilingBase::GetTilingResult()
  */
 KcQuantMatmulAllToAllTilingBase::KcQuantMatmulAllToAllTilingBase(gert::TilingContext *context)
     : MatmulAllToAllTilingBase(context)
-{
-}
+{}
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAll, KcQuantMatmulAllToAllTilingBase,

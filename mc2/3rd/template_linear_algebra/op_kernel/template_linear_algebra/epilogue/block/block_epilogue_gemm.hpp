@@ -65,16 +65,13 @@ public:
         LayoutD layoutD;
 
         CATLASS_HOST_DEVICE
-        Params()
-        {
-        }
+        Params() {}
 
         CATLASS_HOST_DEVICE
         Params(ElementScalar alpha_, ElementScalar beta_, GM_ADDR ptrX_, LayoutX layoutX_, GM_ADDR ptrD_,
                LayoutD layoutD_)
             : alpha(alpha_), beta(beta_), ptrX(ptrX_), layoutX(layoutX_), ptrD(ptrD_), layoutD(layoutD_)
-        {
-        }
+        {}
     };
 
     CATLASS_DEVICE

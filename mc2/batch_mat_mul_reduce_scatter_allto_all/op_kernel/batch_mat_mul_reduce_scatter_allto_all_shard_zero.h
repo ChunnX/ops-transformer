@@ -67,10 +67,7 @@ private:
     __aicore__ inline void AddTransposeAfterRS(uint64_t rsOutOffset, uint64_t biasOffset, uint64_t addTransposeOffset,
                                                uint64_t validELen, uint64_t validCLen, uint64_t validEpIdx,
                                                bool isLocal);
-    __aicore__ inline uint64_t MIN(uint64_t x, uint64_t y)
-    {
-        return (x < y) ? x : y;
-    };
+    __aicore__ inline uint64_t MIN(uint64_t x, uint64_t y) { return (x < y) ? x : y; };
 
     template <typename T>
     __aicore__ inline uint64_t MAX(T x, T y)
@@ -262,7 +259,6 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAllShard0<BMMRSATAT>::InitTi
         hcclDataType = HcclDataType::HCCL_DATA_TYPE_FP16;
     }
 }
-
 
 template <typename BMMRSATAT>
 __aicore__ inline void BatchMatMulReduceScatterAlltoAllShard0<BMMRSATAT>::InitBuffers()
@@ -806,10 +802,11 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAllShard0<BMMRSATAT>::AddTra
 }
 
 template <typename BMMRSATAT>
-__aicore__ inline void
-BatchMatMulReduceScatterAlltoAllShard0<BMMRSATAT>::AddTranspose(uint64_t rsOutOffset, uint64_t biasOffset,
-                                                                uint64_t addTransposeOffset, uint64_t dataCnt,
-                                                                bool isLocal, bool isFirst, bool isLargeH)
+__aicore__ inline void BatchMatMulReduceScatterAlltoAllShard0<BMMRSATAT>::AddTranspose(uint64_t rsOutOffset,
+                                                                                       uint64_t biasOffset,
+                                                                                       uint64_t addTransposeOffset,
+                                                                                       uint64_t dataCnt, bool isLocal,
+                                                                                       bool isFirst, bool isLargeH)
 {
     GlobalTensor<X_T> rsOutStartGM =
         (isLocal ? reduceScatterLocalOutGM[rsOutOffset] : reduceScatterNonLocalOutGM[rsOutOffset]);

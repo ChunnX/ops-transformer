@@ -266,11 +266,7 @@ struct HcclA2CombineOpParam {
     uint64_t aiRMAInfo;       // HcclAiRMAInfo* 单个结构体指针
 };
 
-enum class DBMode : int32_t {
-    INVALID_DB = -1,
-    HW_DB = 0,
-    SW_DB
-};
+enum class DBMode : int32_t { INVALID_DB = -1, HW_DB = 0, SW_DB };
 
 struct HcclAiRMAWQ {
     uint32_t wqn{0};

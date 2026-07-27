@@ -52,8 +52,7 @@ public:
 
     template <SyncType syncType = SyncType::INNER_CORE_SYNC>
     __aicore__ inline void FreeBuffer(Buffer<bufferType, syncType> &buffer)
-    {
-    }
+    {}
 
 private:
     uint32_t offset_ = 0;

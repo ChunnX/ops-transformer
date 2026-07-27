@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /*!
  * \file abs.cpp
  * \brief
@@ -57,7 +56,6 @@ static int32_t CreatMc2Context(HcclComm &comm, int64_t worldSize, int64_t &cclBu
 
     return 0;
 }
-
 
 static int32_t CreateHcclContext(HcclComm &commHandle, void *opArgs, int64_t worldSize, const char *groupName,
                                  std::string algConfig, uint32_t opType)
@@ -126,7 +124,6 @@ std::tuple<at::Tensor, int64_t> update_context(const at::Tensor &x, c10::string_
         return std::make_tuple(output, bufferSize);
     }
 
-
     Mc2ContextStru mc2ContextHost[2];
     int32_t ret = GetMc2Context(mc2ContextHost, ep_world_size, bufferSize, new_group_ep_str.c_str());
     TORCH_CHECK(ret == 0, "GetMc2Context failed, ret", ret);
@@ -143,9 +140,6 @@ std::tuple<at::Tensor, int64_t> update_context(const at::Tensor &x, c10::string_
     return std::make_tuple(output, bufferSize);
 }
 
-TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
-{
-    m.impl("updateContext", update_context);
-}
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m) { m.impl("updateContext", update_context); }
 } // namespace Update_Context
 } // namespace ascend_ops

@@ -19,14 +19,8 @@
 #define GM_ADDR uint8_t *
 class MoeUpdateExpertTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeUpdateExpertTest SetUp\n" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeUpdateExpertTest TearDown\n" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeUpdateExpertTest SetUp\n" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MoeUpdateExpertTest TearDown\n" << std::endl; }
 };
 
 // loadbalance by rank

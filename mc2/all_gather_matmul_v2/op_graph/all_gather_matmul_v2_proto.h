@@ -94,5 +94,4 @@ REG_OP(AllGatherMatmulV2)
     .OP_END_FACTORY_REG(AllGatherMatmulV2)
 } // namespace ge
 
-
 #endif // ALL_GATHER_MATMUL_V2_PROTO_H_

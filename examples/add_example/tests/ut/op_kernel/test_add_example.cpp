@@ -37,10 +37,7 @@ protected:
         system(cmd.c_str());
         system("chmod -R 755 ./add_example_data/");
     }
-    static void TearDownTestCase()
-    {
-        cout << "AddExampleTest TearDown\n" << endl;
-    }
+    static void TearDownTestCase() { cout << "AddExampleTest TearDown\n" << endl; }
 
 private:
     const static std::string rootPath;

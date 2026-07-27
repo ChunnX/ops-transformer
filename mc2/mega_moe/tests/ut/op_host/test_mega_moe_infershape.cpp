@@ -18,15 +18,9 @@ namespace MegaMoeUT {
 
 class MegaMoeInferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MegaMoeInferShapeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MegaMoeInferShapeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MegaMoeInferShapeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MegaMoeInferShapeTest TearDown" << std::endl; }
 };
 
 TEST_F(MegaMoeInferShapeTest, InferShape_H4096_BS128)

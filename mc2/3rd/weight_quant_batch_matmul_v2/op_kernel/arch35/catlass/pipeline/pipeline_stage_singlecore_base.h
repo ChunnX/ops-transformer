@@ -30,15 +30,10 @@ struct PipelineStageSingleCoreBase {
     TEventID backwardEventId[Stages];
 
     DEVICE
-    PipelineStageSingleCoreBase()
-    {
-    }
+    PipelineStageSingleCoreBase() {}
 
     DEVICE
-    void ProducerWait(PipelineState<Stages> const &state) const
-    {
-        ProducerWait(state.index());
-    }
+    void ProducerWait(PipelineState<Stages> const &state) const { ProducerWait(state.index()); }
 
     DEVICE
     void ProducerRelease(PipelineState<Stages> const &state) const
@@ -53,22 +48,13 @@ struct PipelineStageSingleCoreBase {
     }
 
     DEVICE
-    void ConsumerRelease(PipelineState<Stages> const &state) const
-    {
-        ConsumerRelease(state.index());
-    }
+    void ConsumerRelease(PipelineState<Stages> const &state) const { ConsumerRelease(state.index()); }
 
     DEVICE
-    void ProducerWait(uint64_t index) const
-    {
-        WaitFlag<BackwardHardEvent>(backwardEventId[index]);
-    }
+    void ProducerWait(uint64_t index) const { WaitFlag<BackwardHardEvent>(backwardEventId[index]); }
 
     DEVICE
-    void ConsumerRelease(uint64_t index) const
-    {
-        SetFlag<BackwardHardEvent>(backwardEventId[index]);
-    }
+    void ConsumerRelease(uint64_t index) const { SetFlag<BackwardHardEvent>(backwardEventId[index]); }
 
     DEVICE void Clear() const
     {

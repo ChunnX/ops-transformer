@@ -91,7 +91,6 @@ private:
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
 };
 
-
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
 __aicore__ inline void
 MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Init(
@@ -138,9 +137,8 @@ MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllT
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
-__aicore__ inline void
-MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::ProcessTile(
-    uint32_t taskCnt)
+__aicore__ inline void MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType,
+                                                   MatmulAlltoAllTilingDataType>::ProcessTile(uint32_t taskCnt)
 {
     // x1,x2,y,bias,x1_scale主轮地址偏移
     auto &&mc2Tiling_ = tilingData_->quantMatmulAlltoAllTilingInfo;
@@ -195,9 +193,8 @@ MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllT
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
-__aicore__ inline void
-MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::ProcessTail(
-    uint32_t taskCnt)
+__aicore__ inline void MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType,
+                                                   MatmulAlltoAllTilingDataType>::ProcessTail(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->quantMatmulAlltoAllTilingInfo;
 

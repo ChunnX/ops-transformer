@@ -32,9 +32,7 @@ template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK
           const MatmulConfig &MM_CFG = MM_CFG_NO_PRELOAD>
 class Mc2BatchMatMulAswBL1FullLoadKernel {
 public:
-    __aicore__ inline Mc2BatchMatMulAswBL1FullLoadKernel()
-    {
-    }
+    __aicore__ inline Mc2BatchMatMulAswBL1FullLoadKernel() {}
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
                                 GM_ADDR workspaceGM, const void *tilingData, TPipe *pipe);
@@ -44,14 +42,8 @@ public:
 
     __aicore__ inline void Process(uint8_t enAtomic = 0);
 
-    __aicore__ inline void End()
-    {
-        mm_.End();
-    }
-    __aicore__ inline const BLOCK_TYPE GetBlock()
-    {
-        return block_;
-    }
+    __aicore__ inline void End() { mm_.End(); }
+    __aicore__ inline const BLOCK_TYPE GetBlock() { return block_; }
 
 protected:
     BLOCK_TYPE block_;
@@ -75,7 +67,6 @@ protected:
     LocalTensor<B_T> bl1Local_;
 };
 
-
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
 __aicore__ inline void Mc2BatchMatMulAswBL1FullLoadKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR workspaceGM,
@@ -87,11 +78,9 @@ __aicore__ inline void Mc2BatchMatMulAswBL1FullLoadKernel<A_TYPE, B_TYPE, C_TYPE
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2BatchMatMulAswBL1FullLoadKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::InitInputs(GM_ADDR aGM,
-                                                                                                      GM_ADDR bGM,
-                                                                                                      GM_ADDR cGM,
-                                                                                                      GM_ADDR biasGM)
+__aicore__ inline void Mc2BatchMatMulAswBL1FullLoadKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE,
+                                                          MM_CFG>::InitInputs(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM,
+                                                                              GM_ADDR biasGM)
 {
     aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ A_T *>(aGM),
                              block_.params_.aBatchDimAll *

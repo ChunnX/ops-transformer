@@ -98,9 +98,8 @@ AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
-__aicore__ inline void
-AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::ProcessTile(
-    uint32_t taskCnt)
+__aicore__ inline void AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerContextType,
+                                                   AlltoAllMatmulTilingDataType>::ProcessTile(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
     // 复用的变量
@@ -154,9 +153,8 @@ AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
-__aicore__ inline void
-AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::ProcessTail(
-    uint32_t taskCnt)
+__aicore__ inline void AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerContextType,
+                                                   AlltoAllMatmulTilingDataType>::ProcessTail(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
     uint64_t tailMMultiRankK = (uint64_t)mc2Tiling_.tailM * (uint64_t)mc2Tiling_.rankK;

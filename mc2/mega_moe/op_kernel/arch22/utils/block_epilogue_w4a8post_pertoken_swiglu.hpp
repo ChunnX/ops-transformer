@@ -25,7 +25,6 @@
 #include "../template_linear_algebra_v2/detail/callback.hpp"
 #include "get_tensor_addr.hpp"
 
-
 namespace Catlass::Epilogue::Block {
 
 // float scale, dequant per expert
@@ -76,10 +75,12 @@ public:
         CATLASS_DEVICE
         Params(__gm__ ElementPerTokenScale *ptrPerTokenScale_, LayoutPerTokenScale const &layoutPerTokenScale_,
                __gm__ ElementD *ptrD_, LayoutD const &layoutD_, int32_t expertPerRank_)
-            : ptrPerTokenScale(ptrPerTokenScale_), layoutPerTokenScale(layoutPerTokenScale_), ptrD(ptrD_),
-              layoutD(layoutD_), expertPerRank(expertPerRank_)
-        {
-        }
+            : ptrPerTokenScale(ptrPerTokenScale_),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrD(ptrD_),
+              layoutD(layoutD_),
+              expertPerRank(expertPerRank_)
+        {}
     };
 
     CATLASS_DEVICE
@@ -151,15 +152,10 @@ public:
         }
     }
     CATLASS_DEVICE
-    ~BlockEpilogue()
-    {
-    }
+    ~BlockEpilogue() {}
 
     CATLASS_DEVICE
-    void UpdateParams(Params const &params_)
-    {
-        params = params_;
-    }
+    void UpdateParams(Params const &params_) { params = params_; }
 
     // Each tile is 1*7168, each block represents all tokens for one expert: [group[i], 7168]
     CATLASS_DEVICE

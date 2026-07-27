@@ -161,10 +161,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::DoOpTiling()
 }
 
 // 4、计算高阶API的TilingData
-ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
 
 // 5、计算TilingKey
 uint64_t Mc2WeightQuantBatchMatmulV2CustomNzSplitK::GetTilingKey() const

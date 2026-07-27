@@ -3371,15 +3371,9 @@ static MatmulAlltoAllTestParam g_testCases[] = {
 // setup & teardown
 class MatmulAlltoAllA3TilingTest : public testing::TestWithParam<MatmulAlltoAllTestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAlltoAllA3TilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAlltoAllA3TilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulAlltoAllA3TilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MatmulAlltoAllA3TilingTest TearDown." << std::endl; }
 };
 
 // ut
@@ -3468,10 +3462,7 @@ static void TestExecMultiThread(const MatmulAlltoAllTestParam *testCases, size_t
     }
 }
 
-TEST_P(MatmulAlltoAllA3TilingTest, GeneralCasesTest)
-{
-    TestOneParamCase(GetParam());
-}
+TEST_P(MatmulAlltoAllA3TilingTest, GeneralCasesTest) { TestOneParamCase(GetParam()); }
 
 TEST_F(MatmulAlltoAllA3TilingTest, GeneralCasesMultiThread)
 {

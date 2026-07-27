@@ -20,10 +20,7 @@ namespace Mc2MatmulHelper {
 
 constexpr int32_t BASEM_ALIGN_SIZE = 16;
 
-void Mc2MatmulTilingCfg::SetMatMulV3TilingData(Mc2MatMulV3TilingData &tilingData)
-{
-    mc2MmV3TilingData_ = &tilingData;
-}
+void Mc2MatmulTilingCfg::SetMatMulV3TilingData(Mc2MatMulV3TilingData &tilingData) { mc2MmV3TilingData_ = &tilingData; }
 
 void Mc2MatmulTilingCfg::Update(const optiling::Mc2TilingResult &result)
 {
@@ -166,14 +163,8 @@ void Mc2MatmulTilingCfg::DealBaseBlock() const
     mc2MmV3TilingData_->tCubeTiling.baseK = mmv3TilingData_->tCubeTiling.baseK;
 }
 
-void Mc2MatmulTilingCfg::SetRankDim(uint64_t rankDim)
-{
-    rankDim_ = rankDim;
-}
+void Mc2MatmulTilingCfg::SetRankDim(uint64_t rankDim) { rankDim_ = rankDim; }
 
-void Mc2MatmulTilingCfg::SetCommCnt(uint64_t commCnt)
-{
-    commCnt_ = commCnt;
-}
+void Mc2MatmulTilingCfg::SetCommCnt(uint64_t commCnt) { commCnt_ = commCnt; }
 
 } // namespace Mc2MatmulHelper

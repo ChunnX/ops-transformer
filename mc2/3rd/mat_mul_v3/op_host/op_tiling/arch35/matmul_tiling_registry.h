@@ -46,9 +46,7 @@ using Mc2MMTilingClassCase = std::unique_ptr<Mc2MatMulBaseTiling> (*)(gert::Tili
 
 class Mc2MMTilingCases {
 public:
-    explicit Mc2MMTilingCases(std::string opType) : opType_(std::move(opType))
-    {
-    }
+    explicit Mc2MMTilingCases(std::string opType) : opType_(std::move(opType)) {}
 
     template <typename T>
     void AddTiling(int32_t priority)
@@ -61,10 +59,7 @@ public:
                    return);
     }
 
-    const std::map<int32_t, Mc2MMTilingClassCase> &GetTilingCases()
-    {
-        return cases_;
-    }
+    const std::map<int32_t, Mc2MMTilingClassCase> &GetTilingCases() { return cases_; }
 
 private:
     std::map<int32_t, Mc2MMTilingClassCase> cases_;
@@ -167,9 +162,7 @@ private:
 
 class Mc2MMRegister {
 public:
-    explicit Mc2MMRegister(std::string opType) : opType_(std::move(opType))
-    {
-    }
+    explicit Mc2MMRegister(std::string opType) : opType_(std::move(opType)) {}
 
     template <typename T>
     Mc2MMRegister &tiling(int32_t priority, NpuArch npuArch)
@@ -189,9 +182,9 @@ private:
 // opType: 算子名称， className: 注册的 tiling 类,
 // priority: tiling 类的优先级, 越小表示优先级越高, 即被选中的概率越大
 // 取代 MC2_MM_REGISTER_TILING_TEMPLATE , 传入的op_type如果是字符串常量，需要去掉引号
-#define MC2_MM_REGISTER_TILING_TEMPLATE(opType, className, npuArch, priority)                                          \
-    [[maybe_unused]] uint32_t op_impl_register_template_##opType##_##className##_##npuArch##_##priority;               \
-    static Mc2MMRegister __attribute__((unused)) mc2_mm_register_##opType##_##className##_##npuArch##_##priority##_ =  \
+#define MC2_MM_REGISTER_TILING_TEMPLATE(opType, className, npuArch, priority) \
+    [[maybe_unused]] uint32_t op_impl_register_template_##opType##_##className##_##npuArch##_##priority; \
+    static Mc2MMRegister __attribute__((unused)) mc2_mm_register_##opType##_##className##_##npuArch##_##priority##_ = \
         Mc2MMRegister(#opType).tiling<className>(static_cast<int32_t>(priority), NpuArch::npuArch)
 } // namespace optiling
 

@@ -47,7 +47,6 @@ private:
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
 };
 
-
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
 __aicore__ inline void
 KcQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Init(
@@ -94,9 +93,8 @@ KcQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllT
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
-__aicore__ inline void
-KcQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::ProcessTile(
-    uint32_t taskCnt)
+__aicore__ inline void KcQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType,
+                                                   MatmulAlltoAllTilingDataType>::ProcessTile(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->quantMatmulAlltoAllTilingInfo;
     // 复用的中间量
@@ -148,9 +146,8 @@ KcQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllT
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
-__aicore__ inline void
-KcQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::ProcessTail(
-    uint32_t taskCnt)
+__aicore__ inline void KcQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType,
+                                                   MatmulAlltoAllTilingDataType>::ProcessTail(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->quantMatmulAlltoAllTilingInfo;
     // 复用的中间量

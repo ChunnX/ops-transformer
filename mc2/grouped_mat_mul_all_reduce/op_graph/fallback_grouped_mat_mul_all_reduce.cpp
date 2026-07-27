@@ -20,14 +20,7 @@ namespace fallback {
 using namespace ge;
 using namespace gert;
 
-enum GMMAllReduceInOutIdx : size_t {
-    INPUT_X,
-    INPUT_WEIGHT,
-    INPUT_BIAS,
-    INPUT_GROUP_LIST,
-    INPUT_CONTEXT,
-    OUTPUT_Y = 0
-};
+enum GMMAllReduceInOutIdx : size_t { INPUT_X, INPUT_WEIGHT, INPUT_BIAS, INPUT_GROUP_LIST, INPUT_CONTEXT, OUTPUT_Y = 0 };
 
 enum GMMAllReduceAttrIdx : size_t {
     K_SPLIT_ITEM,

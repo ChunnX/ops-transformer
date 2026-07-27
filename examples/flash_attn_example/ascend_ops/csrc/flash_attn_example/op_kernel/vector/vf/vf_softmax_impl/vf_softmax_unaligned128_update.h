@@ -224,13 +224,12 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128VF(
 
 // update, 64 < originN <= 128
 template <typename T, typename T2, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128, bool hasAttn = 0>
-__aicore__ inline void
-ProcessVec1UpdateGeneralImpl128(const LocalTensor<T2> &dstTensor, const LocalTensor<uint8_t> &indexesTensor,
-                                const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
-                                const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-                                const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor,
-                                const LocalTensor<uint8_t> &maskTensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
-                                const uint16_t m, const uint32_t originN, const T scale, const T minValue)
+__aicore__ inline void ProcessVec1UpdateGeneralImpl128(
+    const LocalTensor<T2> &dstTensor, const LocalTensor<uint8_t> &indexesTensor, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
+    const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
+    const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale,
+    const T minValue)
 {
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     const uint32_t blockStride = s1BaseSize >> 1 | 0x1;

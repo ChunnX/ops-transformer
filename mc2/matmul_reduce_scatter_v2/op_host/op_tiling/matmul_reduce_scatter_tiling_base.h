@@ -47,9 +47,7 @@ constexpr static uint64_t REDUCE_SCATTER_V2_HCCL_NUM_LIMIT = 63;
 
 class MatmulReduceScatterTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MatmulReduceScatterTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+    explicit MatmulReduceScatterTilingBase(gert::TilingContext *context) : TilingBaseClass(context) {}
     ~MatmulReduceScatterTilingBase() override = default;
 
     void Reset(gert::TilingContext *context) override
@@ -84,14 +82,8 @@ protected:
     void SetReduceScatterTilingArgsBasicInfo();
     void SetReduceScatterTilingArgs();
     ge::graphStatus SetReduceScatterTilingArgsCommAlgo();
-    virtual ge::graphStatus CheckInput()
-    {
-        return ge::GRAPH_SUCCESS;
-    }
-    inline mc2tiling::TilingArgs GetMc2tilingArgs()
-    {
-        return args_;
-    };
+    virtual ge::graphStatus CheckInput() { return ge::GRAPH_SUCCESS; }
+    inline mc2tiling::TilingArgs GetMc2tilingArgs() { return args_; };
     void SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling,
                          uint32_t &debugMode, uint32_t &dataType);
     void SetMsgDataInfo(const Mc2Tiling::RCSTiling &rcsCfg, const ::TCubeTiling &mmTiling,

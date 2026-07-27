@@ -136,7 +136,6 @@ private:
     uint64_t initRoutingQuantTilingKey;
 };
 
-
 template <MegaMoeClass>
 __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM,
                                                   GM_ADDR topkWeightsGM, GM_ADDR weight1GM, GM_ADDR weight2GM,

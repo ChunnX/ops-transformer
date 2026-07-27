@@ -19,15 +19,9 @@ namespace {
 // inferShape用例 ======================================================================================================
 class AllGatherMatmulV2InferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AllGatherMatmulV2InferShapeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AllGatherMatmulV2InferShapeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AllGatherMatmulV2InferShapeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AllGatherMatmulV2InferShapeTest TearDown" << std::endl; }
 };
 
 TEST_F(AllGatherMatmulV2InferShapeTest, Basic)
@@ -154,14 +148,8 @@ TEST_F(AllGatherMatmulV2InferShapeTest, Perblock)
 // inferDtype用例 ======================================================================================================
 class AllGatherMatmulV2InferDTypeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AllGatherMatmulV2InferDTypeTest SetUp" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "AllGatherMatmulV2InferDTypeTest TearDown" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AllGatherMatmulV2InferDTypeTest SetUp" << std::endl; }
+    static void TearDownTestCase() { std::cout << "AllGatherMatmulV2InferDTypeTest TearDown" << std::endl; }
 };
 
 TEST_F(AllGatherMatmulV2InferDTypeTest, YDtypeEqualX1DtypeFp16)

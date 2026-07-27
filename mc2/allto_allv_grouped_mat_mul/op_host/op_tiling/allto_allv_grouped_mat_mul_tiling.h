@@ -48,9 +48,7 @@ class AlltoAllvGmmTiling : public AlltoAllvGmmTilingBase {
     friend class AlltoAllvGmmTilingHelper;
 
 public:
-    explicit AlltoAllvGmmTiling(gert::TilingContext *context) : AlltoAllvGmmTilingBase(context)
-    {
-    }
+    explicit AlltoAllvGmmTiling(gert::TilingContext *context) : AlltoAllvGmmTilingBase(context) {}
 
     AlltoAllvGmmTilingData *tilingData;
 
@@ -60,14 +58,8 @@ public:
     virtual bool NeedToCheckCounts() const = 0;
 
 protected:
-    bool IsCapable() override
-    {
-        return true;
-    }
-    ge::graphStatus DoOpTiling() override
-    {
-        return ge::GRAPH_SUCCESS;
-    }
+    bool IsCapable() override { return true; }
+    ge::graphStatus DoOpTiling() override { return ge::GRAPH_SUCCESS; }
     ge::graphStatus GetContextAttr(const gert::TilingContext *context);
     ge::graphStatus GetShapeAndFormat(const gert::TilingContext *context);
     ge::graphStatus CheckMKN(const gert::TilingContext *context);
@@ -105,28 +97,12 @@ private:
 
 class AlltoAllvGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {
 public:
-    AlltoAllvGmmTilingHelper(AlltoAllvGmmTiling &parent) : Mc2GroupedQbmmTiling(parent.context_), parent_(parent)
-    {
-    }
-    const Mc2GroupedMatmulTilingData::GMMQuantTilingData &GetAlltoAllvQuantHelperData() const
-    {
-        return tilingData_;
-    }
-    bool AnalyzeAttrs() override
-    {
-        return true;
-    }
-    bool AnalyzeDtype() override
-    {
-        return true;
-    }
-    bool AnalyzeInputs() override
-    {
-        return true;
-    }
-    void Reset() override
-    {
-    }
+    AlltoAllvGmmTilingHelper(AlltoAllvGmmTiling &parent) : Mc2GroupedQbmmTiling(parent.context_), parent_(parent) {}
+    const Mc2GroupedMatmulTilingData::GMMQuantTilingData &GetAlltoAllvQuantHelperData() const { return tilingData_; }
+    bool AnalyzeAttrs() override { return true; }
+    bool AnalyzeDtype() override { return true; }
+    bool AnalyzeInputs() override { return true; }
+    void Reset() override {}
     ge::graphStatus SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB, ge::DataType aDtype,
                                    ge::DataType bDtype, ge::DataType cDtype, uint32_t groupNum);
     ge::graphStatus Process();

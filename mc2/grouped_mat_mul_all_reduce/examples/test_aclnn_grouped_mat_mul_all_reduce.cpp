@@ -66,14 +66,8 @@ vector<int> device_list;
 
 int32_t loop = 1;
 
-void set_device_id(int id)
-{
-    g_dev_id = id;
-}
-int get_device_id(void)
-{
-    return g_dev_id;
-}
+void set_device_id(int id) { g_dev_id = id; }
+int get_device_id(void) { return g_dev_id; }
 
 typedef signed char s8;
 typedef signed short s16;
@@ -84,27 +78,26 @@ typedef unsigned short u16;
 typedef unsigned int u32;
 typedef unsigned long long u64;
 
-#define ACL_CHECK(ret)                                                                                                 \
-    do {                                                                                                               \
-        auto retcode = ret;                                                                                            \
-        if (retcode != ACL_SUCCESS) {                                                                                  \
-            printf("[ERROR] acl interface return err %s:%d, retcode: %d \n", __FILE__, __LINE__, retcode);             \
-            return retcode;                                                                                            \
-        }                                                                                                              \
+#define ACL_CHECK(ret) \
+    do { \
+        auto retcode = ret; \
+        if (retcode != ACL_SUCCESS) { \
+            printf("[ERROR] acl interface return err %s:%d, retcode: %d \n", __FILE__, __LINE__, retcode); \
+            return retcode; \
+        } \
     } while (0)
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
-
 
 struct DataSize {
     u64 min_bytes;
@@ -282,7 +275,6 @@ int CreateTensor_(int i, vector<TensorInfo> &tensorList, map<string, int64_t> &a
     item_type[i] = 1;
     return 0;
 }
-
 
 int CreateTensor(TensorsInfo &config, map<string, int64_t> &addrMap, void *items[], int item_type[], bool copy,
                  int rankId)
@@ -523,7 +515,6 @@ int launchMultiThread(Args &input_args, int32_t *devices, HcclComm *comms, Resou
     b1_json.shape = vector<int64_t>{1024};
     config.b_array.push_back(b0_json);
     config.b_array.push_back(b1_json);
-
 
     TensorInfo group_list_json;
     group_list_json.name = "group_list";

@@ -18,7 +18,6 @@
 
 #include "tiling_base.h"
 
-
 namespace Mc2Tiling {
 
 const static int64_t TILING_KEY_DROPLESS_SORT_ONE_CORE = 10001;
@@ -56,11 +55,7 @@ const static int64_t ONE_CORE_SORT_BUFFER = 6;
 const static int64_t EXPERT_TOKENS_COUNT = 2;
 const static int64_t ONE_CORE_SORT_BUFFER_310P = 24;
 
-
-inline static int64_t CeilLog4(int64_t x)
-{
-    return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR)));
-}
+inline static int64_t CeilLog4(int64_t x) { return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR))); }
 
 inline static int64_t GetPerOrLastValue(int64_t x, int64_t y)
 {
@@ -79,7 +74,6 @@ __aicore__
 {
     return (dividend + divisor - 1) / divisor;
 }
-
 
 struct MoeV2VBSComputeTilingData {
     int64_t needCoreNum = 0;
@@ -136,7 +130,6 @@ struct MoeInitRoutingV2TilingData {
     MoeV2GatherOutComputeTilingData gatherOutComputeParamsOp;
 };
 
-
 class MoeInitRoutingV2TilingBase : public TilingBaseClass {
 public:
     MoeInitRoutingV2TilingData moeInitRoutingTilingData;
@@ -178,7 +171,6 @@ protected:
     const char *opName = "DispatchFFNCombine Tiling Debug";
 };
 
-
 bool MoeInitRoutingV2TilingBase::DoOpTiling()
 {
     sortLoopMaxElement =
@@ -214,7 +206,6 @@ uint64_t MoeInitRoutingV2TilingBase::GetTilingKey() const
     }
     return tilingKey_;
 }
-
 
 void MoeInitRoutingV2TilingBase::ShowTilingData()
 {
@@ -278,7 +269,6 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
             moeInitRoutingTilingData.gatherOutComputeParamsOp.lastCoreLastLoopRows);
 }
 
-
 bool MoeInitRoutingV2TilingBase::GetShapeAttrsInfo(int64_t m, int64_t cols, int64_t topK, int64_t expertCapacity,
                                                    int64_t expertNum, int64_t activateNum, int64_t dropPadMode,
                                                    int64_t expertTokensCountOrCumsumFlag,
@@ -327,7 +317,6 @@ bool MoeInitRoutingV2TilingBase::GetWorkspaceSize()
         sortWorkspaceSize + scatterWorkspaceSize + expertTokenFlagSize + SIZE_16 * LENGTH_1024 * LENGTH_1024;
     return true;
 }
-
 
 void MoeInitRoutingV2TilingBase::Tiling4VBSOneCoreCompute(MoeV2VBSComputeTilingData *tilingData)
 {
@@ -409,7 +398,6 @@ void MoeInitRoutingV2TilingBase::Tiling4SortOutCompute()
     auto tilingData = &moeInitRoutingTilingData.sortOutComputeParamsOp;
     tilingData->oneLoopMaxElements = mrgSortListMaxElement;
 }
-
 
 void MoeInitRoutingV2TilingBase::Tiling4SrcToDstCompute()
 {
@@ -557,7 +545,6 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
         tilingData->lastCoreLoops = ((lastCoreRows + basePerLoopMaxRows - 1) / basePerLoopMaxRows);
     }
 }
-
 
 bool MoeInitRoutingV2TilingBase::IsFullLoad()
 {

@@ -46,10 +46,7 @@ static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId, int64_t nu
 extern "C" {
 #endif
 
-enum NnopbaseHcclServerType {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE
-};
+enum NnopbaseHcclServerType { NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0, NNOPBASE_HCCL_SERVER_TYPE_MTE };
 
 aclnnStatus MoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTensor *x, const aclTensor *topkIdx,
                                          const aclTensor *recvSrcMetadata, const aclTensor *numRecvTokensPerExpert,

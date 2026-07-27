@@ -23,14 +23,8 @@ namespace QuantAllReduceUT {
 
 class QuantAllReduceInfershapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "QuantAllReduceInfershapeTest SetUp." << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "QuantAllReduceInfershapeTest TearDown." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "QuantAllReduceInfershapeTest SetUp." << std::endl; }
+    static void TearDownTestCase() { std::cout << "QuantAllReduceInfershapeTest TearDown." << std::endl; }
 };
 
 // 2D x - K-G量化

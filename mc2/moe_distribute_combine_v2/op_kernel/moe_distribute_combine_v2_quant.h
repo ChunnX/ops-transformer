@@ -399,8 +399,9 @@ public:
 #endif
     }
 
-    __aicore__ inline void DeQuantProcessWithoutExpertScale(LocalTensor<XType>& inLocal,
-        LocalTensor<XType>& outLocal, LocalTensor<float>& sumTensor, LocalTensor<float>& sumFinalTensor)
+    __aicore__ inline void DeQuantProcessWithoutExpertScale(LocalTensor<XType> &inLocal, LocalTensor<XType> &outLocal,
+                                                            LocalTensor<float> &sumTensor,
+                                                            LocalTensor<float> &sumFinalTensor)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         if constexpr (QuantMode == INT8_COMM_QUANT) {

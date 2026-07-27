@@ -23,10 +23,7 @@ using namespace optiling;
 using namespace optiling::mc2_matmul_v3_advanced;
 
 // ------------------------------ ABL1FullLoadExtraCond -------------------------------------------//
-bool ABL1FullLoadExtraCondDefault(uint64_t /* al1SingleCoreSize */, uint64_t /* bl1SingleCoreSize */)
-{
-    return true;
-}
+bool ABL1FullLoadExtraCondDefault(uint64_t /* al1SingleCoreSize */, uint64_t /* bl1SingleCoreSize */) { return true; }
 
 bool ABL1FullLoadExtraCond91095(uint64_t al1SingleCoreSize, uint64_t bl1SingleCoreSize)
 {

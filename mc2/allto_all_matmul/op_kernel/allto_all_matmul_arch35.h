@@ -43,7 +43,6 @@ private:
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
 };
 
-
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
 __aicore__ inline void AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::Init(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR workspaceGM,

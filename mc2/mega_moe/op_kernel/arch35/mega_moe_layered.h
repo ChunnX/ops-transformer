@@ -42,8 +42,8 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, 
                           int64_t, int64_t, int64_t, int64_t>;
 
 // 预留：XType OutputType TopkWeightsType Weight1Type
-#define TemplateMegaMoeTypeClass                                                                                       \
-    typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode,            \
+#define TemplateMegaMoeTypeClass \
+    typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
         int32_t CombineQuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode
 
@@ -839,10 +839,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeToken(GlobalTensor<int32_t> &topkIdsGlobal,
-                                                              int32_t localExpertId, uint32_t tokenIdx,
-                                                              uint32_t tokenStart, uint32_t dedupWordsPerServer)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeToken(
+    GlobalTensor<int32_t> &topkIdsGlobal, int32_t localExpertId, uint32_t tokenIdx, uint32_t tokenStart,
+    uint32_t dedupWordsPerServer)
 {
     for (uint32_t topkIdx = 0; topkIdx < topK_; ++topkIdx) {
         int32_t globalExpertId = topkIdsGlobal.GetValue(tokenIdx * topK_ + topkIdx);
@@ -922,9 +921,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchToken(ui
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline int32_t
-MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateDispatchTokenCnt(uint32_t targetServerForSender, int32_t cursor,
-                                                                int32_t endCount)
+__aicore__ inline int32_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateDispatchTokenCnt(
+    uint32_t targetServerForSender, int32_t cursor, int32_t endCount)
 {
     while (cursor < endCount) {
         uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
@@ -953,9 +951,10 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSyncWith
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKernel(uint32_t senderCoreStart, uint32_t senderCoreNum,
-                                                            uint32_t realComputeCoreNum, int32_t roundTag)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKernel(uint32_t senderCoreStart,
+                                                                                   uint32_t senderCoreNum,
+                                                                                   uint32_t realComputeCoreNum,
+                                                                                   int32_t roundTag)
 {
     __gm__ int32_t *cursorPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchCursorPtr);
     uint32_t senderIdx = blockIdx_ - senderCoreStart;
@@ -1014,9 +1013,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchTokenToR
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFromRmtServer(uint32_t relayRank, uint64_t remoteCopyOffset,
-                                                                   int32_t bufferIdx, uint32_t copyInNum)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFromRmtServer(uint32_t relayRank,
+                                                                                          uint64_t remoteCopyOffset,
+                                                                                          int32_t bufferIdx,
+                                                                                          uint32_t copyInNum)
 {
     GM_ADDR remoteRecordAddr = GetRankWinAddrWithOffset(relayRank, dispatchWinOffset_) + remoteCopyOffset;
     uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
@@ -1111,9 +1111,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32
 //   Phase 3: metaInfo 三元组搬出。
 // ============================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx,
-                                                            int32_t copyStartIdx, int32_t copyNum)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffsetInCore,
+                                                                                   int32_t remoteRankIdx,
+                                                                                   int32_t copyStartIdx,
+                                                                                   int32_t copyNum)
 {
     if (copyNum <= 0) {
         return;

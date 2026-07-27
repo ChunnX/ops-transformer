@@ -23,7 +23,7 @@ using namespace AscendC;
 
 template <Reg::HistogramsType htype, typename T, typename U>
 __simd_vf__ __aicore__ inline void HistogramsVf(__ubuf__ U *dst, __ubuf__ T *src, uint16_t repeatElm,
-                                           uint16_t halfRepeat, uint32_t totalElm, uint16_t repeatTimes)
+                                                uint16_t halfRepeat, uint32_t totalElm, uint16_t repeatTimes)
 {
     Reg::RegTensor<T> srcReg;
     Reg::RegTensor<U> dst0Reg;

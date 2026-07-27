@@ -134,14 +134,8 @@ protected:
                                               const LocalTensor<antiQuantCalType> &scaleComputeBuf, int32_t repeat,
                                               const AntiquantLoopParams &antiquantLoopParams,
                                               const BinaryRepeatParams &repeatParams);
-    __aicore__ inline void NotifyCube()
-    {
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
-    }
-    __aicore__ inline void NotifyVector()
-    {
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_AIC_AIV_FLAG);
-    }
+    __aicore__ inline void NotifyCube() { CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_AIC_FLAG); }
+    __aicore__ inline void NotifyVector() { CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_AIC_AIV_FLAG); }
     template <typename T1, typename T2>
     __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     {
@@ -150,18 +144,9 @@ protected:
         }
         return (a + b - 1) / b;
     };
-    __aicore__ inline void WaitFlagDevLocal(int64_t flagID)
-    {
-        CrossCoreWaitFlag(flagID);
-    }
-    __aicore__ inline void WaitForVector()
-    {
-        WaitFlagDevLocal(SYNC_AIV_AIC_FLAG);
-    }
-    __aicore__ inline void WaitForCube()
-    {
-        WaitFlagDevLocal(SYNC_AIC_AIV_FLAG);
-    }
+    __aicore__ inline void WaitFlagDevLocal(int64_t flagID) { CrossCoreWaitFlag(flagID); }
+    __aicore__ inline void WaitForVector() { WaitFlagDevLocal(SYNC_AIV_AIC_FLAG); }
+    __aicore__ inline void WaitForCube() { WaitFlagDevLocal(SYNC_AIC_AIV_FLAG); }
 
 protected:
     static constexpr uint64_t SYNC_MODE0 = 0;

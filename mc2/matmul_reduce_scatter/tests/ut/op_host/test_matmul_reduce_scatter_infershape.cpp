@@ -16,15 +16,9 @@
 
 class MatmulReduceScatterInfershape : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulReduceScatterInfershape SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulReduceScatterInfershape SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulReduceScatterInfershape TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MatmulReduceScatterInfershape TearDown" << std::endl; }
 };
 
 TEST_F(MatmulReduceScatterInfershape, Basic)

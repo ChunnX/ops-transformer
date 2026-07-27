@@ -54,16 +54,10 @@ struct PipelineStageSingleCoreCopyInAdvance
     }
 
     DEVICE
-    void ProducerRelease(uint64_t index) const
-    {
-        SetFlag<Base::ForwardHardEvent>(forwardEventId[index]);
-    }
+    void ProducerRelease(uint64_t index) const { SetFlag<Base::ForwardHardEvent>(forwardEventId[index]); }
 
     DEVICE
-    void ConsumerWait(uint64_t index) const
-    {
-        WaitFlag<Base::ForwardHardEvent>(forwardEventId[index]);
-    }
+    void ConsumerWait(uint64_t index) const { WaitFlag<Base::ForwardHardEvent>(forwardEventId[index]); }
 
     DEVICE
     void Clear(PipelineState<Stages> &state) const

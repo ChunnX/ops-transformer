@@ -25,18 +25,11 @@ struct ContinuousIterator {
     Index offset = 0;
     Index size = 1; // 避免重复计算
 
-    DEVICE ContinuousIterator()
-    {
-    }
+    DEVICE ContinuousIterator() {}
 
-    DEVICE ContinuousIterator(Index stop) : stop(stop)
-    {
-    }
+    DEVICE ContinuousIterator(Index stop) : stop(stop) {}
 
-    DEVICE ContinuousIterator(Index stop, Index step) : step(step), stop(stop)
-    {
-        UpdateSize();
-    }
+    DEVICE ContinuousIterator(Index stop, Index step) : step(step), stop(stop) { UpdateSize(); }
 
     DEVICE ContinuousIterator(Index start, Index stop, Index step) : step(step), stop(stop), start(start)
     {
@@ -72,40 +65,22 @@ struct ContinuousIterator {
     }
 
     DEVICE
-    bool End()
-    {
-        return curr >= stop;
-    }
+    bool End() { return curr >= stop; }
 
     DEVICE
-    bool End() const
-    {
-        return curr >= stop;
-    }
+    bool End() const { return curr >= stop; }
 
     DEVICE
-    Index Size()
-    {
-        return size;
-    }
+    Index Size() { return size; }
 
     DEVICE
-    Index Size() const
-    {
-        return size;
-    }
+    Index Size() const { return size; }
 
     DEVICE
-    Index operator*()
-    {
-        return curr + offset;
-    }
+    Index operator*() { return curr + offset; }
 
     DEVICE
-    Index operator*() const
-    {
-        return curr + offset;
-    }
+    Index operator*() const { return curr + offset; }
 
     DEVICE void Print(int32_t signal) const
     {
@@ -116,10 +91,7 @@ struct ContinuousIterator {
     }
 
     DEVICE
-    void UpdateSize()
-    {
-        size = curr + step < stop ? step : stop - curr;
-    }
+    void UpdateSize() { size = curr + step < stop ? step : stop - curr; }
 };
 } // namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass
 #endif

@@ -28,10 +28,7 @@ static const std::string OP_NAME = "MoeDistributeCombineSetup";
 
 // SetHCCL_BUFFSIZE
 struct HcclBuffSizeSetter {
-    HcclBuffSizeSetter()
-    {
-        setenv("HCCL_BUFFSIZE", "8000", 1);
-    }
+    HcclBuffSizeSetter() { setenv("HCCL_BUFFSIZE", "8000", 1); }
 };
 static HcclBuffSizeSetter hcclBuffSizeSetter;
 
@@ -2047,15 +2044,9 @@ static MoeDistributeCombineSetupTestParam g_testCases[] = {
 // setup & teardown
 class MoeDistributeCombineSetupArch35TilingTest : public testing::TestWithParam<MoeDistributeCombineSetupTestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineSetupArch35TilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineSetupArch35TilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeCombineSetupArch35TilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeCombineSetupArch35TilingTest TearDown." << std::endl; }
 };
 
 gert::StorageShape make_shape(const std::initializer_list<int64_t> &input_shape)

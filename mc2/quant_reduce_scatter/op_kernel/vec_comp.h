@@ -16,7 +16,6 @@
 #ifndef VEC_COMP_H
 #define VEC_COMP_H
 
-
 #include "adv_api/pad/broadcast.h"
 
 namespace VectorComputeImpl {
@@ -41,10 +40,7 @@ public:
     __aicore__ inline void DequantReduceSum(LocalTensor<XType> &xTensor, LocalTensor<ScalesType> &scaleTensor,
                                             LocalTensor<float> &sumTensor);
     __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock);
-    __aicore__ inline void SetScaleNums(uint32_t n)
-    {
-        scaleNumsPerBlock_ = n;
-    }
+    __aicore__ inline void SetScaleNums(uint32_t n) { scaleNumsPerBlock_ = n; }
 
 private:
     uint32_t xNumPerBlock_{0};

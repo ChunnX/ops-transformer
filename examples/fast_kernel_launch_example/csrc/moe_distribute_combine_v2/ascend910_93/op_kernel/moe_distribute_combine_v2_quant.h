@@ -37,10 +37,7 @@ public:
 
     __aicore__ inline MoeDistributeCombineQuant() = default;
 
-    __aicore__ inline void SetQuantInitParams(uint32_t axisH)
-    {
-        axisH_ = axisH;
-    }
+    __aicore__ inline void SetQuantInitParams(uint32_t axisH) { axisH_ = axisH; }
 
     __aicore__ inline void InitInt8Quant(uint32_t &scaleNum_, uint32_t &hExpandXAlign32Size_,
                                          uint32_t &hFloatAlign256Size_, uint32_t &tokenScaleCnt_)

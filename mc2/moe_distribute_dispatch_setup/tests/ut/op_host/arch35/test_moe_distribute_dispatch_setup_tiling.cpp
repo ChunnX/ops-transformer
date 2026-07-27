@@ -2046,15 +2046,9 @@ static MoeDistributeDispatchSetupTestParam g_testCases[] = {
 
 class MoeDistributeDispatchSetupArch35TilingTest : public testing::TestWithParam<MoeDistributeDispatchSetupTestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeDispatchSetupArch35TilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeDispatchSetupArch35TilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeDispatchSetupArch35TilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeDispatchSetupArch35TilingTest TearDown." << std::endl; }
 };
 
 gert::StorageShape MakeShape(const std::initializer_list<int64_t> &input_shape)

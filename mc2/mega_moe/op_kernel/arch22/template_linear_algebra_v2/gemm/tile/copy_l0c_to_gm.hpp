@@ -18,13 +18,7 @@
 
 namespace Catlass::Gemm::Tile {
 
-enum class ScaleGranularity {
-    UNDEFINED = -1,
-    NO_QUANT = 0,
-    PER_TENSOR,
-    PER_CHANNEL,
-    PER_GROUP
-};
+enum class ScaleGranularity { UNDEFINED = -1, NO_QUANT = 0, PER_TENSOR, PER_CHANNEL, PER_GROUP };
 
 template <class ArchTag, class ElementSrc, class ElementDst,
           ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT>
@@ -187,10 +181,7 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2, ElementAccumulator_, Gemm::GemmType<E
         Params() = default;
 
         CATLASS_HOST_DEVICE
-        Params(float scalar)
-        {
-            scale = scalar;
-        }
+        Params(float scalar) { scale = scalar; }
     };
     Params params;
 

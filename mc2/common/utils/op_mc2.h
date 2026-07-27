@@ -30,11 +30,7 @@ struct ApiParamDef {
     char hostInputInfo[16];
 };
 
-enum class MC2Type : uint32_t {
-    K_MM_ALL_REDUCE,
-    K_ALL_GATHER_MM,
-    K_MM_REDUCE_SCATTER
-};
+enum class MC2Type : uint32_t { K_MM_ALL_REDUCE, K_ALL_GATHER_MM, K_MM_REDUCE_SCATTER };
 
 enum class MC2InputIdx : size_t {
     K_X1,
@@ -49,25 +45,11 @@ enum class MC2InputIdx : size_t {
     K_COMMQUANTSCALE2
 };
 
-enum class MC2V2InputIdx : size_t {
-    K_X1,
-    K_X2,
-    K_BIAS,
-    K_X1SCALE,
-    K_X2SCALE,
-    K_QUNATSCALE
-};
+enum class MC2V2InputIdx : size_t { K_X1, K_X2, K_BIAS, K_X1SCALE, K_X2SCALE, K_QUNATSCALE };
 
-enum class MC2OutputIdx : size_t {
-    K_Y,
-    K_GATHER_OUT,
-    K_AMAX_OUT
-};
+enum class MC2OutputIdx : size_t { K_Y, K_GATHER_OUT, K_AMAX_OUT };
 
-enum class MC2ReduceScatterV2OutputIdx : size_t {
-    K_Y,
-    K_AMAX_OUT
-};
+enum class MC2ReduceScatterV2OutputIdx : size_t { K_Y, K_AMAX_OUT };
 
 enum class MC2AddRmsNormInputIdx : size_t {
     K_X1,
@@ -81,10 +63,7 @@ enum class MC2AddRmsNormInputIdx : size_t {
     K_MAX
 };
 
-enum class MC2AddRmsNormOutputIdx : size_t {
-    K_Y,
-    K_NORM_OUT
-};
+enum class MC2AddRmsNormOutputIdx : size_t { K_Y, K_NORM_OUT };
 
 enum class AllGatherMMAttrIdx : size_t {
     K_GROUP,
@@ -111,14 +90,7 @@ enum class AllGatherMMV2AttrIdx : size_t {
     K_COMM_MODE
 };
 
-enum class MmReduceScatterAttrIdx : size_t {
-    K_GROUP,
-    K_OP,
-    K_TRANS_X1,
-    K_TRANS_X2,
-    K_COMM_TURN,
-    K_RANK_SIZE
-};
+enum class MmReduceScatterAttrIdx : size_t { K_GROUP, K_OP, K_TRANS_X1, K_TRANS_X2, K_COMM_TURN, K_RANK_SIZE };
 
 enum class MmReduceScatterV2AttrIdx : size_t {
     K_GROUP,
@@ -181,13 +153,7 @@ enum class MC2MoeInputIdx : size_t {
     K_BIAS,
 };
 
-enum class MoeDistributeDispatchInputIdx : size_t {
-    K_X,
-    K_EXPERT_IDS,
-    K_SCALES,
-    K_X_ACTIVE_MASK,
-    K_EXPERT_SCALES
-};
+enum class MoeDistributeDispatchInputIdx : size_t { K_X, K_EXPERT_IDS, K_SCALES, K_X_ACTIVE_MASK, K_EXPERT_SCALES };
 
 enum class MoeDistributeDispatchOutputIdx : size_t {
     K_EXPAND_X,
@@ -229,9 +195,7 @@ enum class MoeDistributeCombineInputIdx : size_t {
     K_EXPAND_SCALES
 };
 
-enum class MoeDistributeCombineOutputIdx : size_t {
-    K_Y
-};
+enum class MoeDistributeCombineOutputIdx : size_t { K_Y };
 
 enum class MoeDistributeCombineAttrIdx : size_t {
     K_GROUP_EP,
@@ -271,15 +235,9 @@ enum class BmmReduceScatterAlltoAllAttrIdx : size_t {
     K_IS_TRANS_W
 };
 
-enum class AlltoAllAllGatherBmmOutIdx : size_t {
-    K_Y1,
-    K_Y2,
-    K_Y3
-};
+enum class AlltoAllAllGatherBmmOutIdx : size_t { K_Y1, K_Y2, K_Y3 };
 
-enum class BmmReduceScatterAlltoAllOutIdx : size_t {
-    K_Y
-};
+enum class BmmReduceScatterAlltoAllOutIdx : size_t { K_Y };
 
 enum class AlltoAllvGroupedMatMulInputIdx : size_t {
     K_GMM_X,
@@ -290,11 +248,7 @@ enum class AlltoAllvGroupedMatMulInputIdx : size_t {
     K_MM_WEIGHT
 };
 
-enum class AlltoAllvGroupedMatMulOutputIdx : size_t {
-    K_GMM_Y,
-    K_MM_Y,
-    K_PERMUTE_OUT
-};
+enum class AlltoAllvGroupedMatMulOutputIdx : size_t { K_GMM_Y, K_MM_Y, K_PERMUTE_OUT };
 
 enum class AlltoAllvGroupedMatMulAttrIdx : size_t {
     K_GROUP,
@@ -315,10 +269,7 @@ enum class GroupedMatMulAlltoAllvInputIdx : size_t {
     K_MM_WEIGHT
 };
 
-enum class GroupedMatMulAlltoAllvOutputIdx : size_t {
-    K_Y,
-    K_MM_Y
-};
+enum class GroupedMatMulAlltoAllvOutputIdx : size_t { K_Y, K_MM_Y };
 
 enum class GroupedMatMulAlltoAllvAttrIdx : size_t {
     K_GROUP,

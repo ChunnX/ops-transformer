@@ -50,11 +50,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 
-enum class CommQuantMode : int32_t {
-    NON_QUANT = 0,
-    INT12_QUANT = 1,
-    INT8_QUANT = 2
-};
+enum class CommQuantMode : int32_t { NON_QUANT = 0, INT12_QUANT = 1, INT8_QUANT = 2 };
 
 using CommQuantModeType = std::underlying_type_t<CommQuantMode>;
 } // namespace
@@ -289,10 +285,10 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
     OP_TILING_CHECK(MoeDistributeCombineA2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeCombineA2CheckAttrAndSetTiling(context, info, commQuantMode, isLayered) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeCombineA2CheckAttrAndSetTiling(context, info, commQuantMode, isLayered) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context->GetNodeName(), "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeCombineA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "MoeDistributeCombineA2 GetPlatformInfoAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
@@ -338,14 +334,14 @@ ge::graphStatus MoeDistributeCombineTilingA2A3::MoeDistributeCombineA3TilingChec
     commQuantMode = 0U;
 
     // 获取入参属性
-    OP_TILING_CHECK(GetAttrAndSetTilingData(context, *tilingData, nodeName, groupEp, groupTp, commQuantMode) ==
-                        ge::GRAPH_FAILED,
-                    OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        GetAttrAndSetTilingData(context, *tilingData, nodeName, groupEp, groupTp, commQuantMode) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
 
     // 检查输入输出的dim、format、dataType
-    OP_TILING_CHECK(MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombine(context, nodeName) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombine(context, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
 
     // 检查属性的取值是否合法
     OP_TILING_CHECK(!CheckAttrs(context, *tilingData, nodeName, localMoeExpertNum),

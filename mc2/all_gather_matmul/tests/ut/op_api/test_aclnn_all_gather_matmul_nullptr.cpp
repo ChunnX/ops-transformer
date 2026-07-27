@@ -17,10 +17,7 @@ namespace AllGatherMatmulUT {
 
 class AclnnAllGatherMatmulNullptrTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AllGatherMatmul AclnnAllGatherMatmulNullptrTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AllGatherMatmul AclnnAllGatherMatmulNullptrTest SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {

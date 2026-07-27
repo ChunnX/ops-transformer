@@ -65,9 +65,10 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
 }
 
 template <typename ElementMMadOut2, typename BlockShape>
-__aicore__ inline void
-CombineTokensLayered(uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &metaInfoTensor,
-                     LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape, const Params &params)
+__aicore__ inline void CombineTokensLayered(uint32_t mLoc, uint32_t nLoc, uint32_t n,
+                                            LocalTensor<int32_t> &metaInfoTensor,
+                                            LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape,
+                                            const Params &params)
 {
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     uint32_t actualDataLength = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
@@ -132,12 +133,13 @@ CombineTokensLayered(uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32
 // 返回已完成 rank 数 (本卡 + 0-token)
 // =============================================
 template <typename ElementMMadOut2>
-__aicore__ inline uint32_t
-ComputeRecvTokenCounts(uint32_t startRankId, uint32_t endRankId, uint32_t rankId, uint32_t expertPerRank,
-                       uint32_t worldSize, int64_t maskSlotSize, uint32_t slotCopyStride, uint32_t countWordIdx,
-                       LocalTensor<uint32_t> &slotReadTensor, LocalTensor<uint8_t> &slotCopyTensor,
-                       AscendC::GlobalTensor<uint8_t> &maskSrcGlobal, LocalTensor<int32_t> &totalTokenCnt,
-                       const Params &params)
+__aicore__ inline uint32_t ComputeRecvTokenCounts(uint32_t startRankId, uint32_t endRankId, uint32_t rankId,
+                                                  uint32_t expertPerRank, uint32_t worldSize, int64_t maskSlotSize,
+                                                  uint32_t slotCopyStride, uint32_t countWordIdx,
+                                                  LocalTensor<uint32_t> &slotReadTensor,
+                                                  LocalTensor<uint8_t> &slotCopyTensor,
+                                                  AscendC::GlobalTensor<uint8_t> &maskSrcGlobal,
+                                                  LocalTensor<int32_t> &totalTokenCnt, const Params &params)
 {
     uint32_t completedRank = 0;
     for (uint32_t index = startRankId; index < endRankId; index++) {
@@ -172,10 +174,11 @@ ComputeRecvTokenCounts(uint32_t startRankId, uint32_t endRankId, uint32_t rankId
 // initialCompletedRank: Phase 1 已完成的 rank 数 (本卡 + 0-token)
 // =============================================
 template <typename ElementMMadOut2>
-__aicore__ inline void
-PollNotifyAndSendData(uint32_t startRankId, uint32_t initialCompletedRank, uint32_t processRankNum, uint32_t rankId,
-                      uint32_t maxDataLengthPerBlock, uint32_t maxDataSizePerToken, LocalTensor<int32_t> &sendTokenCnt,
-                      LocalTensor<int32_t> &totalTokenCnt, LocalTensor<int32_t> &sendTensor, const Params &params)
+__aicore__ inline void PollNotifyAndSendData(uint32_t startRankId, uint32_t initialCompletedRank,
+                                             uint32_t processRankNum, uint32_t rankId, uint32_t maxDataLengthPerBlock,
+                                             uint32_t maxDataSizePerToken, LocalTensor<int32_t> &sendTokenCnt,
+                                             LocalTensor<int32_t> &totalTokenCnt, LocalTensor<int32_t> &sendTensor,
+                                             const Params &params)
 {
     uint32_t completedRank = initialCompletedRank;
     uint32_t rankIndex = 0;
@@ -319,7 +322,6 @@ __aicore__ inline void CombineSendTokenToRemote(const Params &params)
     // Phase 3: drain 本核负责的 rank 的 urma 发送
     DrainUrmaConnections(startRankId, endRankId, rankId, params);
 }
-
 
 // =============================================
 // QuantMxFp8：将 bf16 数据量化为 MXFP8 格式

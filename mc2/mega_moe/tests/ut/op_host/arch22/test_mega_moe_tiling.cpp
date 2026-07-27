@@ -24,15 +24,9 @@
 namespace MegaMoeUT {
 class MegaMoeArch22TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MegaMoeArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MegaMoeArch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MegaMoeArch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MegaMoeArch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_F(MegaMoeArch22TilingTest, Test0)

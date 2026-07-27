@@ -32,9 +32,7 @@ struct GemmIdentityBlockSwizzle {
     /// Methods
 
     CATLASS_DEVICE
-    GemmIdentityBlockSwizzle()
-    {
-    }
+    GemmIdentityBlockSwizzle() {}
 
     CATLASS_DEVICE
     GemmIdentityBlockSwizzle(GemmCoord const &problemShape_, MatrixCoord const &tileMN_)
@@ -46,8 +44,7 @@ struct GemmIdentityBlockSwizzle {
     CATLASS_DEVICE
     GemmIdentityBlockSwizzle(GemmCoord const &problemShape_, MatrixCoord const &tileMN_, MatrixCoord const &loopsMN_)
         : problemShape(problemShape_), tileMN(tileMN_), loopsMN(loopsMN_)
-    {
-    }
+    {}
 
     CATLASS_DEVICE
     void Update(GemmCoord const &problemShape_, MatrixCoord const &tileMN_)
@@ -67,16 +64,10 @@ struct GemmIdentityBlockSwizzle {
     }
 
     CATLASS_DEVICE
-    uint32_t GetCoreLoops() const
-    {
-        return loopsMN.row() * loopsMN.column();
-    }
+    uint32_t GetCoreLoops() const { return loopsMN.row() * loopsMN.column(); }
 
     CATLASS_DEVICE
-    uint32_t GetBatchIdx(uint32_t taskIdx)
-    {
-        return taskIdx / (GetCoreLoops());
-    }
+    uint32_t GetBatchIdx(uint32_t taskIdx) { return taskIdx / (GetCoreLoops()); }
 
     CATLASS_DEVICE
     GemmCoord GetBlockCoord(uint32_t taskIdx)
@@ -141,9 +132,7 @@ struct SplitkGemmIdentityBlockSwizzle {
     /// Methods
 
     CATLASS_DEVICE
-    SplitkGemmIdentityBlockSwizzle()
-    {
-    }
+    SplitkGemmIdentityBlockSwizzle() {}
 
     CATLASS_DEVICE
     SplitkGemmIdentityBlockSwizzle(GemmCoord const &problemShape_, GemmCoord const &tileShape_,
@@ -171,16 +160,10 @@ struct SplitkGemmIdentityBlockSwizzle {
     }
 
     CATLASS_DEVICE
-    uint32_t GetCoreLoops() const
-    {
-        return loopsMNK.m() * loopsMNK.n() * splitkFactor;
-    }
+    uint32_t GetCoreLoops() const { return loopsMNK.m() * loopsMNK.n() * splitkFactor; }
 
     CATLASS_DEVICE
-    uint32_t GetBatchIdx(uint32_t taskIdx)
-    {
-        return taskIdx / GetCoreLoops();
-    }
+    uint32_t GetBatchIdx(uint32_t taskIdx) { return taskIdx / GetCoreLoops(); }
 
     CATLASS_DEVICE
     GemmCoord GetBlockCoord(uint32_t taskIdx)

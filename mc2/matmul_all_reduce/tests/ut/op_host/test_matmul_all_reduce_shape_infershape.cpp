@@ -16,10 +16,7 @@ namespace MatmulAllReduceUT {
 
 class InferShapeMatmulAllReduceTest : public testing::TestWithParam<MatmulAllReduceInferShapeUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduce InferShapeMatmulAllReduceTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduce InferShapeMatmulAllReduceTest SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {

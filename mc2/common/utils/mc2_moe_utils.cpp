@@ -18,21 +18,9 @@
 
 namespace Mc2Moe {
 
-enum class EpSize : int64_t {
-    SIZE_2 = 2,
-    SIZE_4 = 4,
-    SIZE_8 = 8,
-    SIZE_16 = 16,
-    SIZE_32 = 32
-};
+enum class EpSize : int64_t { SIZE_2 = 2, SIZE_4 = 4, SIZE_8 = 8, SIZE_16 = 16, SIZE_32 = 32 };
 
-enum class TpSize : int64_t {
-    SIZE_2 = 2,
-    SIZE_4 = 4,
-    SIZE_8 = 8,
-    SIZE_16 = 16,
-    SIZE_32 = 32
-};
+enum class TpSize : int64_t { SIZE_2 = 2, SIZE_4 = 4, SIZE_8 = 8, SIZE_16 = 16, SIZE_32 = 32 };
 
 static const std::vector<ge::DataType> DTYPE_SUPPORT_LIST = {ge::DataType::DT_FLOAT16, ge::DataType::DT_BF16};
 

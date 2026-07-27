@@ -64,15 +64,12 @@ public:
         LayoutD layoutD;
 
         CATLASS_DEVICE
-        Params()
-        {
-        }
+        Params() {}
 
         CATLASS_DEVICE
         Params(GM_ADDR ptrX_, LayoutX const &layoutX_, GM_ADDR ptrD_, LayoutD const &layoutD_)
             : ptrX(ptrX_), layoutX(layoutX_), ptrD(ptrD_), layoutD(layoutD_)
-        {
-        }
+        {}
     };
 
     CATLASS_DEVICE

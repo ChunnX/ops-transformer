@@ -364,10 +364,7 @@ uint64_t Mc2WeightQuantBatchMatmulV2Msd::GetInnerPreciseTilingKey() const
 }
 
 // 4、计算高阶API的TilingData
-ge::graphStatus Mc2WeightQuantBatchMatmulV2Msd::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus Mc2WeightQuantBatchMatmulV2Msd::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
 
 // 5、计算TilingKey
 uint64_t Mc2WeightQuantBatchMatmulV2Msd::GetTilingKey() const

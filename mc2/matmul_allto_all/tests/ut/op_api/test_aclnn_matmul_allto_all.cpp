@@ -23,15 +23,9 @@ using namespace std;
 
 class TestAclnnMatmulAlltoAll : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        cout << "TestAclnnMatmulAlltoAll SetUp" << endl;
-    }
+    static void SetUpTestCase() { cout << "TestAclnnMatmulAlltoAll SetUp" << endl; }
 
-    static void TearDownTestCase()
-    {
-        cout << "TestAclnnMatmulAlltoAll TearDown" << endl;
-    }
+    static void TearDownTestCase() { cout << "TestAclnnMatmulAlltoAll TearDown" << endl; }
 };
 
 // ut用例结构体

@@ -20,14 +20,8 @@
 
 class MoeDistributeDispatchTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeDispatchTest SetUp\n" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeDispatchTest TearDown\n" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeDispatchTest SetUp\n" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MoeDistributeDispatchTest TearDown\n" << std::endl; }
 };
 
 TEST_F(MoeDistributeDispatchTest, MoeDistributeDispatchTest1000)
@@ -59,7 +53,6 @@ TEST_F(MoeDistributeDispatchTest, MoeDistributeDispatchTest1000)
     tilingData->moeDistributeDispatchInfo.reserved2 = false;
     tilingData->moeDistributeDispatchInfo.reserved3 = false;
     tilingData->moeDistributeDispatchInfo.totalUbSize = 196352;
-
 
     uint8_t *x = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *expertIds = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
@@ -135,7 +128,6 @@ TEST_F(MoeDistributeDispatchTest, MoeDistributeDispatchTest2000001000)
     tilingData->moeDistributeDispatchInfo.reserved3 = false;
     tilingData->moeDistributeDispatchInfo.totalUbSize = 196352; //??
 
-
     uint8_t *x = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *expertIds = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *scales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
@@ -210,7 +202,6 @@ TEST_F(MoeDistributeDispatchTest, MoeDistributeDispatchTest2000001002)
     tilingData->moeDistributeDispatchInfo.reserved3 = false;
     tilingData->moeDistributeDispatchInfo.totalUbSize = 196352;
 
-
     uint8_t *x = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *expertIds = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *scales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
@@ -284,7 +275,6 @@ TEST_F(MoeDistributeDispatchTest, MoeDistributeDispatchTest2000001012)
     tilingData->moeDistributeDispatchInfo.reserved2 = false;
     tilingData->moeDistributeDispatchInfo.reserved3 = false;
     tilingData->moeDistributeDispatchInfo.totalUbSize = 192 * 1024; //??
-
 
     uint8_t *x = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *expertIds = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));

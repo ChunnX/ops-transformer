@@ -39,13 +39,14 @@ static uint32_t groupNum_ = 0;
 class GroupedMatmulTiling {
 public:
     template <typename TensorListType, typename OptionalTensorListType, typename OptionalTensorType>
-    static void
-    GroupedMatmulCommonTiling(const TensorListType &x, const TensorListType &weight, const OptionalTensorListType &bias,
-                              const OptionalTensorListType &scale, const OptionalTensorListType &offset,
-                              const OptionalTensorListType &antiquantScale,
-                              const OptionalTensorListType &antiquantOffset, const OptionalTensorType &groupList,
-                              const OptionalTensorListType &perTokenScale, GroupedMatmulTilingData &tilingData,
-                              uint32_t coreNum, uint64_t ubSize)
+    static void GroupedMatmulCommonTiling(const TensorListType &x, const TensorListType &weight,
+                                          const OptionalTensorListType &bias, const OptionalTensorListType &scale,
+                                          const OptionalTensorListType &offset,
+                                          const OptionalTensorListType &antiquantScale,
+                                          const OptionalTensorListType &antiquantOffset,
+                                          const OptionalTensorType &groupList,
+                                          const OptionalTensorListType &perTokenScale,
+                                          GroupedMatmulTilingData &tilingData, uint32_t coreNum, uint64_t ubSize)
     {
         auto shapeGroupList = getGroupListShape(groupList);
         groupNum_ = shapeGroupList[0];
@@ -75,7 +76,6 @@ public:
         tilingData.gmmBaseParams.set_k(maxK_);
         tilingData.gmmBaseParams.set_n(maxN_);
 
-
         tilingData.gmmArray.kList[0] = maxK_;
         tilingData.gmmArray.nList[0] = maxN_;
     }
@@ -89,7 +89,6 @@ public:
         platformInfo.l0ASize = 64 * 1024;
         platformInfo.l0BSize = 64 * 1024;
     }
-
 
     static bool GMMSetMMTiling(GroupedMatmulTilingData &tilingData, uint64_t ubSize_)
     {

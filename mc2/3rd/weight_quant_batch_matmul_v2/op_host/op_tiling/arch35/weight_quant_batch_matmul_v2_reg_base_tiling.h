@@ -36,18 +36,12 @@ public:
 protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
-    ge::graphStatus DoLibApiTiling() override
-    {
-        return ge::GRAPH_SUCCESS;
-    }
+    ge::graphStatus DoLibApiTiling() override { return ge::GRAPH_SUCCESS; }
     uint64_t GetTilingKey() const override;
     ge::graphStatus GetWorkspaceSize() override;
     void PrintCVTilingData(bool debugLevel) const;
     ge::graphStatus PostTiling() override;
-    const Mc2WeightQuantBatchMatmulV2RegBaseTilingData GetTilingData() const
-    {
-        return *tilingData_;
-    }
+    const Mc2WeightQuantBatchMatmulV2RegBaseTilingData GetTilingData() const { return *tilingData_; }
     std::unique_ptr<Mc2WeightQuantBatchMatmulV2RegBaseTilingData> tilingData_ = nullptr;
 
 private:

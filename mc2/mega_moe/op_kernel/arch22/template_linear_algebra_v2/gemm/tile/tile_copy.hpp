@@ -26,7 +26,6 @@
 #include "../../../template_linear_algebra_v2/gemm/tile/cast_fp8_to_fp16.hpp"
 #include "../../../template_linear_algebra_v2/gemm/helper.hpp"
 
-
 namespace Catlass::Gemm::Tile {
 
 template <

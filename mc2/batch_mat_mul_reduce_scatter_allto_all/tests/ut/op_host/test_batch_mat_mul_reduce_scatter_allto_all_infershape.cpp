@@ -16,15 +16,9 @@
 
 class BatchMatMulReduceScatterAlltoAllInfershape : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "BatchMatMulReduceScatterAlltoAllInfershape SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "BatchMatMulReduceScatterAlltoAllInfershape SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "BatchMatMulReduceScatterAlltoAllInfershape TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "BatchMatMulReduceScatterAlltoAllInfershape TearDown" << std::endl; }
 };
 
 // infer shape with bias, success

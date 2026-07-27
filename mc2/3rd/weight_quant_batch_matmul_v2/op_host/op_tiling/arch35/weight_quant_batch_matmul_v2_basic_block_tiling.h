@@ -107,10 +107,7 @@ struct BasicBlockParam {
 
 class Mc2WeightQuantBatchMatmulV2BasicBlockTiling {
 public:
-    Mc2WeightQuantBatchMatmulV2BasicBlockTiling()
-    {
-        Init();
-    }
+    Mc2WeightQuantBatchMatmulV2BasicBlockTiling() { Init(); }
     ~Mc2WeightQuantBatchMatmulV2BasicBlockTiling() = default;
 
     void Init();
@@ -124,10 +121,7 @@ public:
     double GetMte2BW(int64_t baseM, int64_t baseN, int64_t mDim, int64_t nDim) const;
     double GetMte2BWRatio(int64_t baseM, int64_t baseN, int64_t mDim, int64_t nDim) const;
     bool GetBasicBlockTiling();
-    const BasicBlockParam &GetTilingResult() const
-    {
-        return basicBlockParam_;
-    }
+    const BasicBlockParam &GetTilingResult() const { return basicBlockParam_; }
 
 protected:
     void InitBasicBlockParam();
@@ -197,10 +191,7 @@ protected:
                               std::min(param.l1Param.stepN * param.basicBlock.baseN, param.singleN);
     }
 
-    static int64_t GetBFullInnerSize(const BasicBlockParam &param)
-    {
-        return param.transB ? param.kSize : param.nSize;
-    }
+    static int64_t GetBFullInnerSize(const BasicBlockParam &param) { return param.transB ? param.kSize : param.nSize; }
 
     static bool PreferFullloadKInPergroupNKLessCacheline(const BasicBlockParam &param1, const BasicBlockParam &param2,
                                                          bool &result)

@@ -45,7 +45,7 @@ namespace MoeDistributeCombineV2A5MteImpl {
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
-#define A5MteCombineTypeClass                                                                                          \
+#define A5MteCombineTypeClass \
     typename ExpandXType, typename XType, typename ExpandIdxType, uint8_t QuantMode, bool HasAddRmsNorm
 #define A5MteCombineTypeFunc ExpandXType, XType, ExpandIdxType, QuantMode, HasAddRmsNorm
 
@@ -139,10 +139,7 @@ private:
         return Mc2Kernel::GetBaseWindStateAddrByRankId(epWinContext_, rankId, epRankIdOriginal_) + winStatusOffset_;
     }
 
-    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
-    {
-        return (x < y) ? x : y;
-    }
+    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y) { return (x < y) ? x : y; }
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<ExpandXType> expandXGM_;
@@ -406,8 +403,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitIn
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitTilingAttrs(const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitTilingAttrs(
+    const MoeDistributeCombineV2TilingData *tilingData)
 {
     axisBS_ = tilingData->moeDistributeCombineV2Info.bs;
     axisH_ = tilingData->moeDistributeCombineV2Info.h;
@@ -438,9 +435,8 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitTilingAttrs(const MoeDist
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitCommContext(GM_ADDR mc2Context,
-                                                                   const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitCommContext(
+    GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData)
 {
     uint32_t epRankIdHccl{0};
     uint32_t epWorldSizeHccl{0};
@@ -472,9 +468,8 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitCommContext(GM_ADDR mc2Co
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitAttrs(GM_ADDR mc2Context,
-                                                             const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitAttrs(
+    GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData)
 {
     InitTilingAttrs(tilingData);
     InitCommContext(mc2Context, tilingData);
@@ -569,8 +564,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Init(
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline uint32_t
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CalcDispatchBufferNum(uint32_t perDispatchBufBytes)
+__aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CalcDispatchBufferNum(
+    uint32_t perDispatchBufBytes)
 {
     tpipe_->InitBuffer(calEndBuf_, UB_ALIGN);
     uint64_t beginUbAddr = calBeginBuf_.Get<uint8_t>().GetPhyAddr();
@@ -1005,8 +1000,8 @@ __aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CheckP
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline bool
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CheckPackedTokenArriveBatch(uint32_t tokenIndex)
+__aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CheckPackedTokenArriveBatch(
+    uint32_t tokenIndex)
 {
     if (blockCntPerToken_ == 0U) {
         return true;
@@ -1054,9 +1049,8 @@ __aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::NeedWa
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ClearPackedTokenFlags(uint32_t tokenIndex,
-                                                                         LocalTensor<float> flagTensor)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ClearPackedTokenFlags(
+    uint32_t tokenIndex, LocalTensor<float> flagTensor)
 {
     if (blockCntPerToken_ == 0U) {
         return;
@@ -1193,9 +1187,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AddRms
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CalConstExpertAlpha(GlobalTensor<ExpandXType> constExpertAlphaGM,
-                                                                       uint32_t const_expert_idx, float &alphaFloat)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CalConstExpertAlpha(
+    GlobalTensor<ExpandXType> constExpertAlphaGM, uint32_t const_expert_idx, float &alphaFloat)
 {
     LocalTensor<ExpandXType> weightLocal = moeSumQueue_.AllocTensor<ExpandXType>();
     LocalTensor<float> weightFloatLocal = mulBuf_.Get<float>();
@@ -1222,9 +1215,8 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CalConstExpertAlpha(GlobalTen
 
 // 处理常量专家
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx,
-                                                                         float scaleVal)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessConstantExpert(
+    uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal)
 {
     PipeBarrier<PIPE_ALL>();
     LocalTensor<ExpandXType> rowTmpLocal = tokenBuf_.Get<ExpandXType>();
@@ -1338,8 +1330,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
         if (hasExpertScalesFlag_) {
             quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, scaleVal);
         } else {
-            quantInst_.DeQuantProcessWithoutExpertScale(
-                tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_);
+            quantInst_.DeQuantProcessWithoutExpertScale(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_);
         }
     } else {
         Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, processLen);
@@ -1381,9 +1372,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessMoeExpertsLoop(uint32_t tokenIndex, uint32_t tokenIndexOffset,
-                                                                         uint32_t &index)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessMoeExpertsLoop(
+    uint32_t tokenIndex, uint32_t tokenIndexOffset, uint32_t &index)
 {
     float scaleVal = 0.0;
     if ((zeroExpertNum_ + copyExpertNum_ + constExpertNum_) == 0U) {

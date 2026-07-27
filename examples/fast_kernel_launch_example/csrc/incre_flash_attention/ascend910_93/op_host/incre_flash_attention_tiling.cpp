@@ -60,10 +60,7 @@ static uint32_t increGcd(uint32_t a, uint32_t b)
     return increGcd(b, a % b);
 }
 
-constexpr uint64_t RecursiveSum()
-{
-    return 0;
-}
+constexpr uint64_t RecursiveSum() { return 0; }
 
 template <typename T, typename... Args>
 constexpr uint64_t RecursiveSum(T templateId, Args... templateIds)
@@ -293,10 +290,7 @@ bool IFATiling::CheckQuantizationFlags(int32_t sparseMode) const
     return true;
 }
 
-bool IFATiling::CheckActualSeqLengths(int64_t expectedActualSeqLength) const
-{
-    return true;
-}
+bool IFATiling::CheckActualSeqLengths(int64_t expectedActualSeqLength) const { return true; }
 
 bool IFATiling::IsValidFlag3B()
 {
@@ -341,9 +335,7 @@ bool IFATiling::IsValidFlag()
     return CheckCommonConditions(cfg);
 }
 
-void IFATiling::IsFdBalanceCase()
-{
-}
+void IFATiling::IsFdBalanceCase() {}
 
 bool IFATiling::IsBalanceSplitCore()
 {
@@ -465,11 +457,11 @@ custom::graphStatus IFATiling::QKVPreProcess()
     if (numKvHeads_ == 0U) {
         numKvHeads_ = numHeads_;
     }
-    OP_CHECK_IF(((numKvHeads_ > numHeads_) || (numHeads_ % numKvHeads_ != 0U)),
-                OP_LOGE(ifaContext_->opName,
-                        "Attr num_key_value_heads is invalid, n: %u, the key/value's heads num: %u", numHeads_,
-                        numKvHeads_),
-                return custom::graphStatus::GRAPH_FAILED);
+    OP_CHECK_IF(
+        ((numKvHeads_ > numHeads_) || (numHeads_ % numKvHeads_ != 0U)),
+        OP_LOGE(ifaContext_->opName, "Attr num_key_value_heads is invalid, n: %u, the key/value's heads num: %u",
+                numHeads_, numKvHeads_),
+        return custom::graphStatus::GRAPH_FAILED);
     nNumOfQInOneGroup_ = numHeads_ / numKvHeads_;
     groupSplitSize_ = nNumOfQInOneGroup_;
     gOuter_ = 1U;
@@ -1232,32 +1224,32 @@ custom::graphStatus IFATiling::ProcessDequant2() const
 custom::graphStatus IFATiling::CheckKVAntiQuantParamsShapeInPagedAttention(const at::IntArrayRef &inputParaShape) const
 {
     if (antiquantPerHeadFlag_ != 0U) { // per-token-head, [block_num, kv_head_num, block_size]
-        OP_CHECK_IF((inputParaShape[0] != totalBlockNum_),
-                    OP_LOGE(ifaContext_->opName,
-                            "The 1st dim of antiquant parameter should be %u instead of the current %ld",
-                            totalBlockNum_, inputParaShape[0]),
-                    return custom::graphStatus::GRAPH_FAILED);
-        OP_CHECK_IF((inputParaShape[1] != numKvHeads_),
-                    OP_LOGE(ifaContext_->opName,
-                            "The 2nd dim of antiquant parameter should be %u instead of the current %ld", numKvHeads_,
-                            inputParaShape[1]),
-                    return custom::graphStatus::GRAPH_FAILED);
-        OP_CHECK_IF((inputParaShape[2] != blockSize_),
-                    OP_LOGE(ifaContext_->opName,
-                            "The 3rd dim of antiquant parameter should be %u instead of the current %ld", blockSize_,
-                            inputParaShape[2]),
-                    return custom::graphStatus::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (inputParaShape[0] != totalBlockNum_),
+            OP_LOGE(ifaContext_->opName, "The 1st dim of antiquant parameter should be %u instead of the current %ld",
+                    totalBlockNum_, inputParaShape[0]),
+            return custom::graphStatus::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (inputParaShape[1] != numKvHeads_),
+            OP_LOGE(ifaContext_->opName, "The 2nd dim of antiquant parameter should be %u instead of the current %ld",
+                    numKvHeads_, inputParaShape[1]),
+            return custom::graphStatus::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (inputParaShape[2] != blockSize_),
+            OP_LOGE(ifaContext_->opName, "The 3rd dim of antiquant parameter should be %u instead of the current %ld",
+                    blockSize_, inputParaShape[2]),
+            return custom::graphStatus::GRAPH_FAILED);
     } else { // per-token, [block_num, block_size]
-        OP_CHECK_IF((inputParaShape[0] != totalBlockNum_),
-                    OP_LOGE(ifaContext_->opName,
-                            "The 1st dim of antiquant parameter should be %u instead of the current %ld",
-                            totalBlockNum_, inputParaShape[0]),
-                    return custom::graphStatus::GRAPH_FAILED);
-        OP_CHECK_IF((inputParaShape[1] != blockSize_),
-                    OP_LOGE(ifaContext_->opName,
-                            "The 2nd dim of antiquant parameter should be %u instead of the current %ld", blockSize_,
-                            inputParaShape[1]),
-                    return custom::graphStatus::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (inputParaShape[0] != totalBlockNum_),
+            OP_LOGE(ifaContext_->opName, "The 1st dim of antiquant parameter should be %u instead of the current %ld",
+                    totalBlockNum_, inputParaShape[0]),
+            return custom::graphStatus::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (inputParaShape[1] != blockSize_),
+            OP_LOGE(ifaContext_->opName, "The 2nd dim of antiquant parameter should be %u instead of the current %ld",
+                    blockSize_, inputParaShape[1]),
+            return custom::graphStatus::GRAPH_FAILED);
     }
     return custom::graphStatus::GRAPH_SUCCESS;
 }
@@ -1626,10 +1618,7 @@ custom::graphStatus IFATiling::ProcessCvRatio()
     return custom::graphStatus::GRAPH_SUCCESS;
 }
 
-custom::graphStatus IFATiling::ProcessMlaRope()
-{
-    return custom::graphStatus::GRAPH_SUCCESS;
-}
+custom::graphStatus IFATiling::ProcessMlaRope() { return custom::graphStatus::GRAPH_SUCCESS; }
 
 custom::graphStatus IFATiling::Split()
 {
@@ -1722,10 +1711,7 @@ void IFATiling::EndSplitForCurrentCore(const TilingIndexes &tilingIdx, const Seq
     tilingInfo.needUpdate = false;
 }
 
-custom::graphStatus IFATiling::SplitBalanced()
-{
-    return custom::graphStatus::GRAPH_SUCCESS;
-}
+custom::graphStatus IFATiling::SplitBalanced() { return custom::graphStatus::GRAPH_SUCCESS; }
 
 custom::graphStatus IFATiling::SplitUnbalanced()
 {
@@ -2320,10 +2306,7 @@ uint32_t IFATiling::CalcBalanceFDParamNums(const uint32_t actCoreNum) const
     return actCoreNum * 2U * numKvHeads_ * FIA_BALANCE_SG_BASIC_SIZE; // 每个核可能有头规约和尾规约，一共两份规约信息
 }
 
-uint32_t IFATiling::CalcUnbalanceFDParamNums() const
-{
-    return batchSizeQ_ * numHeads_ * kvSplitPart_;
-}
+uint32_t IFATiling::CalcUnbalanceFDParamNums() const { return batchSizeQ_ * numHeads_ * kvSplitPart_; }
 
 custom::graphStatus IFATiling::FillTiling()
 {
@@ -2631,10 +2614,7 @@ custom::graphStatus IFATiling::CalcNumBlocks()
     return custom::graphStatus::GRAPH_SUCCESS;
 }
 
-custom::graphStatus IFATiling::SharedPrefixTiling()
-{
-    return custom::graphStatus::GRAPH_SUCCESS;
-}
+custom::graphStatus IFATiling::SharedPrefixTiling() { return custom::graphStatus::GRAPH_SUCCESS; }
 
 custom::graphStatus IFATiling::FillSysPrefixTiling()
 {
@@ -2674,10 +2654,7 @@ custom::graphStatus IFATiling::CalcSysPrefixWorkSpace()
     return custom::graphStatus::GRAPH_SUCCESS;
 }
 
-custom::graphStatus IFATiling::CalcSysPrefixNumBlocks()
-{
-    return custom::graphStatus::GRAPH_SUCCESS;
-}
+custom::graphStatus IFATiling::CalcSysPrefixNumBlocks() { return custom::graphStatus::GRAPH_SUCCESS; }
 
 custom::graphStatus IFATiling::SplitForLseCombine()
 {

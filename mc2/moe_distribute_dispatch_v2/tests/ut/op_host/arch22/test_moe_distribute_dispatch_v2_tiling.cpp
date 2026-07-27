@@ -25,15 +25,9 @@
 namespace MoeDistributeDispatchV2UT {
 class MoeDistributeDispatchV2Arch22TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeDispatchV2Arch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeDispatchV2Arch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeDispatchV2Arch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeDispatchV2Arch22TilingTest TearDown" << std::endl; }
 };
 
 // normal: share rank
@@ -265,7 +259,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test4)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
-
 
 // normal: share rank
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test5)
@@ -543,7 +536,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test10)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-
 // normal: share rank
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpWorldSize384)
 {
@@ -635,7 +627,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpWorldSize72)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
-
 
 // normal: share rank
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, XActiveMask2dims)
@@ -972,7 +963,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgHierarchy)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-
 // normal: share rank
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgError)
 {
@@ -1018,7 +1008,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgError)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
-
 
 // normal: share rank
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgEmptyWithEnv)
@@ -1070,7 +1059,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgEmptyWithEnv)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-
 // normal: share rank
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmeshWithEnv)
 {
@@ -1116,7 +1104,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmeshWithEnv)
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
-
 
 // normal: share rank
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmeshZeroComputeExpertNotZero)

@@ -32,10 +32,7 @@
 #define IFA_EXTERN_C
 #endif
 namespace custom {
-enum class graphStatus {
-    GRAPH_FAILED = 0,
-    GRAPH_SUCCESS = 1
-};
+enum class graphStatus { GRAPH_FAILED = 0, GRAPH_SUCCESS = 1 };
 } // namespace custom
 
 namespace optiling {
@@ -59,15 +56,9 @@ public:
     custom::graphStatus DoSubOpTiling(IFAContext &ifaContext);
     custom::graphStatus RunBigKernelTiling(IFAContext &context, IncreFlashAttentionTilingDataV2 *tilingData,
                                            bool isWorkspace = false);
-    bool NeedRollBack() const
-    {
-        return passToOldTiling_;
-    }
+    bool NeedRollBack() const { return passToOldTiling_; }
 
-    bool TilingDataBack() const
-    {
-        return !atbRunFlag_;
-    }
+    bool TilingDataBack() const { return !atbRunFlag_; }
     uint32_t GetAntiquantSeqLength() const;
     bool CheckCommonConditions(const ValidityConfigFD &config) const;
     bool CheckBatchAndQSeqSize(const std::vector<int32_t> &validBatchSizes,
@@ -360,7 +351,6 @@ private:
     at::ScalarType inputQType_ = at::ScalarType::Half;  // float16
     at::ScalarType inputKvType_ = at::ScalarType::Half; // float16
     at::ScalarType outputType_ = at::ScalarType::Half;  // float16
-
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;

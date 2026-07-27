@@ -17,15 +17,9 @@ namespace MegaMoeUT {
 
 class MegaMoeArch35TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MegaMoeArch35TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MegaMoeArch35TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MegaMoeArch35TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MegaMoeArch35TilingTest TearDown" << std::endl; }
 };
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)

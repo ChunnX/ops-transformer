@@ -23,9 +23,7 @@ struct TailResplitIterator {
     static constexpr int32_t STAGE_THREE = 2;
     static constexpr int32_t STAGE_END = 3;
 
-    DEVICE TailResplitIterator()
-    {
-    }
+    DEVICE TailResplitIterator() {}
 
     DEVICE
     TailResplitIterator(Index mainBlockCount, Index firstTailBlockCount, Index secondTailBlockCount,
@@ -69,22 +67,13 @@ struct TailResplitIterator {
     }
 
     DEVICE
-    bool End() const
-    {
-        return stage == STAGE_END;
-    }
+    bool End() const { return stage == STAGE_END; }
 
     DEVICE
-    Index Size() const
-    {
-        return size;
-    }
+    Index Size() const { return size; }
 
     DEVICE
-    Index operator*() const
-    {
-        return curr;
-    }
+    Index operator*() const { return curr; }
 
     DEVICE void Print(int32_t signal) const
     {
@@ -95,16 +84,10 @@ struct TailResplitIterator {
     }
 
     DEVICE
-    Index PrevHalfSize()
-    {
-        return prevHalfSize;
-    }
+    Index PrevHalfSize() { return prevHalfSize; }
 
     DEVICE
-    Index PrevHalfSize() const
-    {
-        return prevHalfSize;
-    }
+    Index PrevHalfSize() const { return prevHalfSize; }
 
 private:
     DEVICE void Update()

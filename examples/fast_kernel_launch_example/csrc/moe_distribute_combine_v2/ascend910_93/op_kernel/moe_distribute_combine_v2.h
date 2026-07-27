@@ -98,10 +98,7 @@ private:
         return (GM_ADDR)mc2Context_->epHcclBuffer[rankId] + winStatusOffset_;
     }
 
-    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
-    {
-        return (x < y) ? x : y;
-    }
+    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y) { return (x < y) ? x : y; }
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<ExpandXType> expandXGM_;
@@ -333,8 +330,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitInputAndO
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::InitTilingAttrs(const MoeDistributeCombineV2Info tilingData)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitTilingAttrs(
+    const MoeDistributeCombineV2Info tilingData)
 {
     axisBS_ = tilingData.bs;
     axisH_ = tilingData.h;
@@ -363,8 +360,8 @@ MoeDistributeCombineV2<CombineMC2TypeFunc>::InitTilingAttrs(const MoeDistributeC
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_ADDR mc2Context, const MoeDistributeCombineV2Info tilingData)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(
+    GM_ADDR mc2Context, const MoeDistributeCombineV2Info tilingData)
 {
     InitTilingAttrs(tilingData);
     uint32_t epRankIdHccl{0};
@@ -718,9 +715,10 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAllDispatchInnerCopyAdd(uint32_t toRankId, uint32_t tokenId,
-                                                                               uint32_t topkId, uint32_t tkIndex)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAllDispatchInnerCopyAdd(uint32_t toRankId,
+                                                                                                      uint32_t tokenId,
+                                                                                                      uint32_t topkId,
+                                                                                                      uint32_t tkIndex)
 {
     uint32_t dataCnt = axisH_;
     uint32_t epOffset = tokenId * (axisK_ + sharedExpertNum_) + topkId;
@@ -772,9 +770,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::CustomAdd(Loc
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::PerformanceInfoPerToken(uint32_t tokenIndex, uint64_t performanceTimeStart,
-                                                                    uint32_t beginIndex, LocalTensor<float> stateTensor)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::PerformanceInfoPerToken(
+    uint32_t tokenIndex, uint64_t performanceTimeStart, uint32_t beginIndex, LocalTensor<float> stateTensor)
 {
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     for (uint32_t i = 0; i < flagRcvCount_; i++) {
@@ -866,9 +863,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AddRmsNormAdd
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::CalConstExpertAlpha(GlobalTensor<ExpandXType> constExpertAlphaGM,
-                                                                uint32_t const_expert_idx, float &alphaFloat)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::CalConstExpertAlpha(
+    GlobalTensor<ExpandXType> constExpertAlphaGM, uint32_t const_expert_idx, float &alphaFloat)
 {
     LocalTensor<ExpandXType> weightLocal = moeSumQueue_.AllocTensor<ExpandXType>();
     LocalTensor<float> weightFloatLocal = mulBuf_.Get<float>();

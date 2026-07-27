@@ -2084,15 +2084,9 @@ static AlltoAllMatmulTestParam testCases[] = {
 // setup & teardown
 class AlltoAllMatmulA3TilingTest : public testing::TestWithParam<AlltoAllMatmulTestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllMatmulA3TilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllMatmulA3TilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AlltoAllMatmulA3TilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AlltoAllMatmulA3TilingTest TearDown." << std::endl; }
 };
 
 struct AlltoAllMatmulCompileInfo {
@@ -2175,10 +2169,7 @@ static void TestExecMultiThread(const AlltoAllMatmulTestParam *testCases, size_t
     }
 }
 
-TEST_P(AlltoAllMatmulA3TilingTest, GeneralCases)
-{
-    TestOneParamCase(GetParam());
-}
+TEST_P(AlltoAllMatmulA3TilingTest, GeneralCases) { TestOneParamCase(GetParam()); }
 
 TEST_F(AlltoAllMatmulA3TilingTest, GeneralCasesMultiThread)
 {
@@ -2198,15 +2189,9 @@ static std::string GetCsvPath(const char *file)
 
 class AlltoAllMatmulArch22CsvTilingTest : public testing::TestWithParam<AlltoAllMatmulTilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllMatmulArch22CsvTilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllMatmulArch22CsvTilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AlltoAllMatmulArch22CsvTilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AlltoAllMatmulArch22CsvTilingTest TearDown." << std::endl; }
 };
 
 TEST_P(AlltoAllMatmulArch22CsvTilingTest, csv_param)

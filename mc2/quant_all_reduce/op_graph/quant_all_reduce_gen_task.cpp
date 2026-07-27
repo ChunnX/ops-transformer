@@ -25,7 +25,6 @@
 
 namespace ops {
 
-
 static ge::Status QuantAllReduceCalcOpParam(gert::ExeResGenerationContext *context)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {

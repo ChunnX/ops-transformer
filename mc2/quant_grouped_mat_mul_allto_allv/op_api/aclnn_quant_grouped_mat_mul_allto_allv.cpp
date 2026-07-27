@@ -44,7 +44,6 @@ enum class QuantModeType : int64_t {
     DYN_PERTOKEN_QUANT = 7
 };
 
-
 enum class NnopbaseHcclServerType : uint32_t { // HCCL Server
     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
     NNOPBASE_HCCL_SERVER_TYPE_MTE,

@@ -13,7 +13,6 @@
  * \brief engram_fetch_wait算子kernel入口
  */
 
-
 #include "engram_fetch_wait_arch35.h"
 
 using namespace Mc2Kernel;

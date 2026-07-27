@@ -73,14 +73,8 @@ public:
 
     void SetCommMethodVersion310P();
     void SetMaxStepSize();
-    void SetCommShapeLen(uint64_t len)
-    {
-        commTypeInfo_.commMatrixLen = len;
-    }
-    void SetCommDTypeSize(uint64_t dTypeSize)
-    {
-        commTypeInfo_.commDtypeSize = dTypeSize;
-    }
+    void SetCommShapeLen(uint64_t len) { commTypeInfo_.commMatrixLen = len; }
+    void SetCommDTypeSize(uint64_t dTypeSize) { commTypeInfo_.commDtypeSize = dTypeSize; }
     inline void SetCommDtypeSizeExpansionFraction(uint64_t number)
     {
         commTypeInfo_.commDtypeSizeExpansionFraction = number;
@@ -89,14 +83,8 @@ public:
     {
         return static_cast<double>(commTypeInfo_.commDtypeSize) / commTypeInfo_.commDtypeSizeExpansionFraction;
     }
-    uint64_t GetCommDTypeSize()
-    {
-        return commTypeInfo_.commDtypeSize;
-    }
-    void SetCommTimeFactor(double factor)
-    {
-        commTimeFactor_ = factor;
-    }
+    uint64_t GetCommDTypeSize() { return commTypeInfo_.commDtypeSize; }
+    void SetCommTimeFactor(double factor) { commTimeFactor_ = factor; }
     void ChangeCommTimeFactorByDivision(double factor);
     void SetFullMeshCommTimeFactor();
     void SetRingCommTimeFactor();

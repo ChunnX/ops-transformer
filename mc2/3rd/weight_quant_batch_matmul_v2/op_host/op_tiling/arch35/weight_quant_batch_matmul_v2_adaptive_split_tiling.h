@@ -50,10 +50,7 @@ protected:
     ge::graphStatus DoOpTiling() override;
 
     // 4、计算高阶API的TilingData
-    ge::graphStatus DoLibApiTiling() override
-    {
-        return ge::GRAPH_SUCCESS;
-    }
+    ge::graphStatus DoLibApiTiling() override { return ge::GRAPH_SUCCESS; }
 
     // 5、计算TilingKey
     uint64_t GetTilingKey() const override;

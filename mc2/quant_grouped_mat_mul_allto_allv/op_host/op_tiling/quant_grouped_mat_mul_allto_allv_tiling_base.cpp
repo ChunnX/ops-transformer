@@ -73,24 +73,12 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetWorkspaceSize()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetWorkspaceSize() { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::PostTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
-uint64_t QuantGroupedMatmulAllToAllvTilingBase::GetTilingKey() const
-{
-    return 0;
-}
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::PostTiling() { return ge::GRAPH_SUCCESS; }
+uint64_t QuantGroupedMatmulAllToAllvTilingBase::GetTilingKey() const { return 0; }
 
 QuantModePair QuantGroupedMatmulAllToAllvTilingBase::GetQuantMode(const gert::TilingContext *context,
                                                                   const char *opName)

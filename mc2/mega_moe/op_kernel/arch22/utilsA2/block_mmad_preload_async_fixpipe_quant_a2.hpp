@@ -15,7 +15,6 @@
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_A2_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_A2_HPP
 
-
 #include "../template_linear_algebra_v2/catlass.hpp"
 #include "../template_linear_algebra_v2/arch/resource.hpp"
 #include "../template_linear_algebra_v2/coord.hpp"
@@ -23,7 +22,6 @@
 #include "../template_linear_algebra_v2/gemm/dispatch_policy.hpp"
 #include "../template_linear_algebra_v2/gemm/helper.hpp"
 #include "../utils/dispatch_policy_custom.hpp"
-
 
 namespace Catlass::Gemm::Block {
 

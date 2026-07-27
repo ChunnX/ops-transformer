@@ -18,15 +18,9 @@ namespace AttentionToFFNUT {
 
 class AttentionToFFNArch22TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AttentionToFFNArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AttentionToFFNArch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AttentionToFFNArch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AttentionToFFNArch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_F(AttentionToFFNArch22TilingTest, NoQuantSyncNoActivateMask)

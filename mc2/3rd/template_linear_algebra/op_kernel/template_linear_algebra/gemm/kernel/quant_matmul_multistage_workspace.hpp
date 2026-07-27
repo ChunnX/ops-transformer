@@ -65,22 +65,25 @@ public:
 
         // Methods
         CATLASS_DEVICE
-        Params()
-        {
-        }
+        Params() {}
 
         CATLASS_DEVICE
         Params(GemmCoord problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPerTokenScale_,
                LayoutPerTokenScale layoutPerTokenScale_, GM_ADDR ptrD_, LayoutD layoutD_, GM_ADDR ptrWorkspace_)
-            : problemShape(problemShape_), ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)), layoutA(layoutA_),
-              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
-              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)), layoutScale(layoutScale_),
+            : problemShape(problemShape_),
+              ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)),
+              layoutA(layoutA_),
+              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)),
+              layoutB(layoutB_),
+              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)),
+              layoutScale(layoutScale_),
               ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
-              layoutPerTokenScale(layoutPerTokenScale_), ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)),
-              layoutD(layoutD_), ptrWorkspace(ptrWorkspace_)
-        {
-        }
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)),
+              layoutD(layoutD_),
+              ptrWorkspace(ptrWorkspace_)
+        {}
     };
 
     // Methods
@@ -228,10 +231,7 @@ private:
         AicWaitFunc() = default;
 
         CATLASS_DEVICE
-        void operator()() const
-        {
-            Arch::CrossCoreWaitFlag(ptr->flagAivFinishComputeList[stageId]);
-        }
+        void operator()() const { Arch::CrossCoreWaitFlag(ptr->flagAivFinishComputeList[stageId]); }
 
         MatmulKernel *ptr{nullptr};
         uint32_t stageId;
@@ -244,10 +244,7 @@ private:
         AicSetFunc() = default;
 
         CATLASS_DEVICE
-        void operator()() const
-        {
-            Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(ptr->flagAicFinishStoreList[stageId]);
-        }
+        void operator()() const { Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(ptr->flagAicFinishStoreList[stageId]); }
 
         MatmulKernel *ptr{nullptr};
         uint32_t stageId;

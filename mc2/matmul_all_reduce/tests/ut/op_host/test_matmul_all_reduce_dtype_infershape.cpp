@@ -17,10 +17,7 @@ namespace MatmulAllReduceUT {
 
 class InferDataTypeMatmulAllReduceTest : public testing::TestWithParam<MatmulAllReduceInferDataTypeUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduce InferDataTypeMatmulAllReduceTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduce InferDataTypeMatmulAllReduceTest SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {

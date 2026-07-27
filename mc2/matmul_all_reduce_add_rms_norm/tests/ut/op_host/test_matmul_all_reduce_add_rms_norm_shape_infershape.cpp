@@ -17,14 +17,8 @@ namespace MatmulAllReduceAddRmsNormUT {
 class InferShapeMatmulAllReduceAddRmsNormTest
     : public testing::TestWithParam<MatmulAllReduceAddRmsNormInferShapeUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduceAddRmsNorm InferShape SetUp" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulAllReduceAddRmsNorm InferShape TearDown" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduceAddRmsNorm InferShape SetUp" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MatmulAllReduceAddRmsNorm InferShape TearDown" << std::endl; }
 };
 
 TEST_P(InferShapeMatmulAllReduceAddRmsNormTest, param)

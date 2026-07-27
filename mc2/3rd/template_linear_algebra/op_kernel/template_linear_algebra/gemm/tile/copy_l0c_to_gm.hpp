@@ -14,13 +14,7 @@
 #include "../../gemm/gemm_type.hpp"
 namespace Catlass::Gemm::Tile {
 
-enum class ScaleGranularity {
-    UNDEFINED = -1,
-    NO_QUANT = 0,
-    PER_TENSOR,
-    PER_CHANNEL,
-    PER_GROUP
-};
+enum class ScaleGranularity { UNDEFINED = -1, NO_QUANT = 0, PER_TENSOR, PER_CHANNEL, PER_GROUP };
 
 template <class ArchTag, class ElementSrc, class ElementDst,
           ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT>

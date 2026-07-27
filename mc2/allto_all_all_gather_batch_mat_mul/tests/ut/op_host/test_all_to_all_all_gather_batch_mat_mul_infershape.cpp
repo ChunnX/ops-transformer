@@ -17,15 +17,9 @@
 namespace AlltoAllAllGatherBmmInfershapeUT {
 class AlltoAllAllGatherBmmInfershape : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllAllGatherBmmInfershape SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllAllGatherBmmInfershape SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AlltoAllAllGatherBmmInfershape TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AlltoAllAllGatherBmmInfershape TearDown" << std::endl; }
 };
 
 // infer shape with bias, success
@@ -1022,7 +1016,6 @@ TEST_F(AlltoAllAllGatherBmmInfershape, InferDtype0)
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_FLOAT16);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(2), ge::DT_FLOAT16);
 }
-
 
 // fp16 infer dtype with bias
 TEST_F(AlltoAllAllGatherBmmInfershape, InferDtype1)

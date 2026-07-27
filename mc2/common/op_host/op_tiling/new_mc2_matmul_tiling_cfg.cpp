@@ -157,14 +157,8 @@ void NewMc2MatmulTilingCfg::DealBaseBlock() const
     mc2MmV3TilingData_->matmulTiling.set_baseK(mmv3TilingData_->tCubeTiling.baseK);
 }
 
-void NewMc2MatmulTilingCfg::SetRankDim(uint64_t rankDim)
-{
-    rankDim_ = rankDim;
-}
+void NewMc2MatmulTilingCfg::SetRankDim(uint64_t rankDim) { rankDim_ = rankDim; }
 
-void NewMc2MatmulTilingCfg::SetCommCnt(uint64_t commCnt)
-{
-    commCnt_ = commCnt;
-}
+void NewMc2MatmulTilingCfg::SetCommCnt(uint64_t commCnt) { commCnt_ = commCnt; }
 
 } // namespace Mc2MatmulHelper

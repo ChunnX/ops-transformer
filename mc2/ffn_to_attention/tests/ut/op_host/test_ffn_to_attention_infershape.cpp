@@ -19,15 +19,9 @@ namespace FFNToAttentionUT {
 
 class FFNToAttentionInferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "FFNToAttentionInferShapeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "FFNToAttentionInferShapeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "FFNToAttentionInferShapeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "FFNToAttentionInferShapeTest TearDown" << std::endl; }
 };
 
 TEST_F(FFNToAttentionInferShapeTest, Basic)

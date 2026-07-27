@@ -34,15 +34,9 @@ struct GroupedMatMulAlltoAllvCompileInfo {
 
 class QuantGmmAlltoAllvTilingTest : public testing::TestWithParam<QuantGmmAlltoAllvTilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "QuantGmmAlltoAllvTilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "QuantGmmAlltoAllvTilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "QuantGmmAlltoAllvTilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "QuantGmmAlltoAllvTilingTest TearDown." << std::endl; }
 };
 
 TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling)

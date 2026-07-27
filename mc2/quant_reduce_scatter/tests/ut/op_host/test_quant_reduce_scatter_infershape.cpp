@@ -19,15 +19,9 @@
 
 class QuantReduceScatterInferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "QuantReduceScatterInferShapeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "QuantReduceScatterInferShapeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "QuantReduceScatterInferShapeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "QuantReduceScatterInferShapeTest TearDown" << std::endl; }
 };
 
 TEST_F(QuantReduceScatterInferShapeTest, Basic2D_Rank8)

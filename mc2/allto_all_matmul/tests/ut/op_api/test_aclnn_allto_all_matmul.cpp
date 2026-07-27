@@ -1242,15 +1242,9 @@ namespace AlltoAllMatmulUT {
 
 class AclnnAlltoAllMatmulTest : public testing::TestWithParam<AlltoAllMatmulApiUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllMatmul AclnnAlltoAllMatmulTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllMatmul AclnnAlltoAllMatmulTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AlltoAllMatmul AclnnAlltoAllMatmulTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AlltoAllMatmul AclnnAlltoAllMatmulTest TearDown" << std::endl; }
 };
 
 TEST_P(AclnnAlltoAllMatmulTest, param)

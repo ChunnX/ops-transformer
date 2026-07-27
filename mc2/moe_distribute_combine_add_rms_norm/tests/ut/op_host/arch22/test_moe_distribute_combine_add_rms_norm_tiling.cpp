@@ -47,10 +47,7 @@ struct TilingParams {
 
 class MoeDistributeCombineAddRmsNormArch22TilingTest : public testing::TestWithParam<TestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineAddRmsNormArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineAddRmsNormArch22TilingTest SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {

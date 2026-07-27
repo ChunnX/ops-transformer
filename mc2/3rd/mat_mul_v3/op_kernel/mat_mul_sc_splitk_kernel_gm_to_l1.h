@@ -40,9 +40,7 @@ template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class B
           class BLOCK_TYPE = Mc2MatmulSingleCoreSplitKBaseBlock, const MatmulConfig &MM_CFG = MM_CFG_MDL>
 class Mc2MatMulBaseKernelSingleCoreSplitKGmToL1 {
 public:
-    __aicore__ inline Mc2MatMulBaseKernelSingleCoreSplitKGmToL1()
-    {
-    }
+    __aicore__ inline Mc2MatMulBaseKernelSingleCoreSplitKGmToL1() {}
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
                                 GM_ADDR workspaceGM, const Mc2MatmulV3TilingData *matmulTilingData, TPipe *pipe);
@@ -58,10 +56,7 @@ public:
 
     __aicore__ inline void UnAlignedProcess();
 
-    __aicore__ inline void End()
-    {
-        mm_.End();
-    }
+    __aicore__ inline void End() { mm_.End(); }
 
 protected:
     BLOCK_TYPE block_;
@@ -193,24 +188,26 @@ Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE,
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
           const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE,
-                                          MM_CFG>::InitInputs(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
-                                                              GM_ADDR workspaceGM)
+__aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE,
+                                                                 BLOCK_TYPE, MM_CFG>::InitInputs(GM_ADDR aGM,
+                                                                                                 GM_ADDR bGM,
+                                                                                                 GM_ADDR cGM,
+                                                                                                 GM_ADDR biasGM,
+                                                                                                 GM_ADDR workspaceGM)
 {
     using A_T = typename A_TYPE::T;
     using B_T = typename B_TYPE::T;
     using C_T = typename L0C_TYPE::T;
     using BiasT = typename BIAS_TYPE::T;
-    aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ A_T *>(aGM),
-                             static_cast<uint64_t>(block_.matmulTilingData_->matmulTiling.M) *
-                                 block_.matmulTilingData_->matmulTiling.Ka);
-    bGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ B_T *>(bGM),
-                             static_cast<uint64_t>(block_.matmulTilingData_->matmulTiling.Kb) *
-                                 block_.matmulTilingData_->matmulTiling.N);
-    cGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ C_T *>(cGM),
-                             static_cast<uint64_t>(block_.matmulTilingData_->matmulTiling.M) *
-                                 block_.matmulTilingData_->matmulTiling.N);
+    aGlobal_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ A_T *>(aGM),
+        static_cast<uint64_t>(block_.matmulTilingData_->matmulTiling.M) * block_.matmulTilingData_->matmulTiling.Ka);
+    bGlobal_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ B_T *>(bGM),
+        static_cast<uint64_t>(block_.matmulTilingData_->matmulTiling.Kb) * block_.matmulTilingData_->matmulTiling.N);
+    cGlobal_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ C_T *>(cGM),
+        static_cast<uint64_t>(block_.matmulTilingData_->matmulTiling.M) * block_.matmulTilingData_->matmulTiling.N);
     biasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BiasT *>(biasGM), block_.matmulTilingData_->matmulTiling.N);
 }
 
@@ -275,11 +272,12 @@ __aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE,
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
           const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE,
-                                          MM_CFG>::UpdateGlobalTensor(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM,
-                                                                      GM_ADDR biasGM, GM_ADDR offsetWGM,
-                                                                      GM_ADDR workspaceGM)
+__aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<
+    A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::UpdateGlobalTensor(GM_ADDR aGM, GM_ADDR bGM,
+                                                                                              GM_ADDR cGM,
+                                                                                              GM_ADDR biasGM,
+                                                                                              GM_ADDR offsetWGM,
+                                                                                              GM_ADDR workspaceGM)
 {
     if (GetCurrentBlockIdx() >= block_.matmulTilingData_->matmulTiling.usedCoreNum) {
         return;
@@ -290,10 +288,9 @@ Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE,
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
           const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE,
-                                          MM_CFG>::Process(GM_ADDR cGM, GM_ADDR srcAddr,
-                                                           TBuf<TPosition::VECCALC> &ubBuf)
+__aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<
+    A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Process(GM_ADDR cGM, GM_ADDR srcAddr,
+                                                                                   TBuf<TPosition::VECCALC> &ubBuf)
 {
     block_.InitBlockIndex();
     if ASCEND_IS_AIC {
@@ -437,9 +434,11 @@ __aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE,
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
           const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE,
-                                          MM_CFG>::CopyInAl1(uint32_t mloop, int32_t realK, int32_t kLoop, uint32_t k0)
+__aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE,
+                                                                 BLOCK_TYPE, MM_CFG>::CopyInAl1(uint32_t mloop,
+                                                                                                int32_t realK,
+                                                                                                int32_t kLoop,
+                                                                                                uint32_t k0)
 {
     if constexpr (A_TYPE::format == CubeFormat::ND) {
         CopyInAl1ND(mloop, realK, kLoop, k0);
@@ -450,10 +449,11 @@ Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE,
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
           const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE,
-                                          MM_CFG>::CopyInAl1ND(uint32_t mloop, int32_t realK, int32_t kLoop,
-                                                               uint32_t k0)
+__aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE,
+                                                                 BLOCK_TYPE, MM_CFG>::CopyInAl1ND(uint32_t mloop,
+                                                                                                  int32_t realK,
+                                                                                                  int32_t kLoop,
+                                                                                                  uint32_t k0)
 {
     if ASCEND_IS_AIV {
         return;
@@ -502,10 +502,11 @@ Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE,
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
           const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE,
-                                          MM_CFG>::CopyInAl1NZ(uint32_t mloop, int32_t realK, int32_t kLoop,
-                                                               uint32_t k0)
+__aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE,
+                                                                 BLOCK_TYPE, MM_CFG>::CopyInAl1NZ(uint32_t mloop,
+                                                                                                  int32_t realK,
+                                                                                                  int32_t kLoop,
+                                                                                                  uint32_t k0)
 {
     if ASCEND_IS_AIV {
         return;
@@ -550,10 +551,12 @@ Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE,
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
           const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE,
-                                          MM_CFG>::CopyInBl1(bool bpingflag, int32_t realK, int32_t kLoop,
-                                                             int32_t realN, int32_t nLoop)
+__aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE,
+                                                                 BLOCK_TYPE, MM_CFG>::CopyInBl1(bool bpingflag,
+                                                                                                int32_t realK,
+                                                                                                int32_t kLoop,
+                                                                                                int32_t realN,
+                                                                                                int32_t nLoop)
 {
     if constexpr (B_TYPE::format == CubeFormat::ND) {
         CopyInBl1ND(bpingflag, realK, kLoop, realN, nLoop);
@@ -564,10 +567,12 @@ Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE,
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
           const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE,
-                                          MM_CFG>::CopyInBl1ND(bool bpingflag, int32_t realK, int32_t kLoop,
-                                                               int32_t realN, int32_t nLoop)
+__aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE,
+                                                                 BLOCK_TYPE, MM_CFG>::CopyInBl1ND(bool bpingflag,
+                                                                                                  int32_t realK,
+                                                                                                  int32_t kLoop,
+                                                                                                  int32_t realN,
+                                                                                                  int32_t nLoop)
 {
     if ASCEND_IS_AIV {
         return;
@@ -604,10 +609,12 @@ Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE,
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
           const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE,
-                                          MM_CFG>::CopyInBl1NZ(bool bpingflag, int32_t realK, int32_t kLoop,
-                                                               int32_t realN, int32_t nLoop)
+__aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE,
+                                                                 BLOCK_TYPE, MM_CFG>::CopyInBl1NZ(bool bpingflag,
+                                                                                                  int32_t realK,
+                                                                                                  int32_t kLoop,
+                                                                                                  int32_t realN,
+                                                                                                  int32_t nLoop)
 {
     if ASCEND_IS_AIV {
         return;
@@ -675,10 +682,11 @@ __aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE,
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
           const MatmulConfig &MM_CFG>
-__aicore__ inline void
-Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE,
-                                          MM_CFG>::ProcessBaseMNK(bool lastK, int32_t realK, int32_t nextRealK,
-                                                                  uint64_t kIndex)
+__aicore__ inline void Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE,
+                                                                 BLOCK_TYPE, MM_CFG>::ProcessBaseMNK(bool lastK,
+                                                                                                     int32_t realK,
+                                                                                                     int32_t nextRealK,
+                                                                                                     uint64_t kIndex)
 {
     for (int32_t nloop = 0; nloop < nnloop_; nloop++) {
         bool lastN = nloop == nnloop_ - 1;
@@ -921,19 +929,14 @@ class MatMulSingleCoreSplitKKernelGmToL1 {
     };
 
 public:
-    __aicore__ inline MatMulSingleCoreSplitKKernelGmToL1()
-    {
-    }
+    __aicore__ inline MatMulSingleCoreSplitKKernelGmToL1() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
                                 GM_ADDR workspaceGM, const Mc2MatmulV3TilingData *matmulTilingData, TPipe *pipe);
     __aicore__ inline void UpdateGlobalTensor(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
                                               GM_ADDR workspaceGM);
     __aicore__ inline void Process();
     __aicore__ inline void NNot128AlignProcess();
-    __aicore__ inline void End()
-    {
-        mmcBaseKernel_.End();
-    }
+    __aicore__ inline void End() { mmcBaseKernel_.End(); }
 
 protected:
     using cType = MatmulType<C_TYPE::pos, C_TYPE::format, float, C_TYPE::isTrans>;
@@ -983,9 +986,10 @@ __aicore__ inline void MatMulSingleCoreSplitKKernelGmToL1<A_TYPE, B_TYPE, C_TYPE
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void
-MatMulSingleCoreSplitKKernelGmToL1<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::InitInputs(
-    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR workspaceGM)
+__aicore__ inline void MatMulSingleCoreSplitKKernelGmToL1<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE,
+                                                          MM_CFG>::InitInputs(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM,
+                                                                              GM_ADDR biasGM, GM_ADDR offsetWGM,
+                                                                              GM_ADDR workspaceGM)
 {
     innerParams_.alignedworkspaceGM = reinterpret_cast<GM_ADDR>(
         ((reinterpret_cast<uint64_t>(workspaceGM + MAX_BLOCK_NUM * DEFAULT_BLOCK_LEN * sizeof(int32_t)) + 511) / 512) *

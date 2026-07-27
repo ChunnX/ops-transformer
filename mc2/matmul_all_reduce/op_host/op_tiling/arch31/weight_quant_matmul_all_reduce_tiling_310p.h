@@ -32,8 +32,7 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase {
                                         Mc2WeightQuantBatchMatmulV2NzTilingData &data)
             : Mc2WeightQuantBatchMatmulV2WeightNz(weightQuantMatmulAllReduceTiling.context_, &data),
               tilingProcesser_(weightQuantMatmulAllReduceTiling)
-        {
-        }
+        {}
         ge::graphStatus GetShapeAttrsInfo() override
         {
             OP_LOGI(tilingProcesser_.opName_, "Start assemble input params for matmul tiling");
@@ -138,9 +137,7 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase {
     };
 
 public:
-    explicit WeightQuantMatmulAllReduceTiling310P(gert::TilingContext *context) : MatmulAllReduceTilingBase(context)
-    {
-    }
+    explicit WeightQuantMatmulAllReduceTiling310P(gert::TilingContext *context) : MatmulAllReduceTilingBase(context) {}
 
     ~WeightQuantMatmulAllReduceTiling310P() override = default;
 

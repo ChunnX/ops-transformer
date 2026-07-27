@@ -46,10 +46,7 @@ void RunQuantMatmulAllReduceUt(op::SocVersion soc, const TensorDesc &x1, const T
 
 class AclnnQuantMatmulAllReduceTest : public testing::TestWithParam<MatmulAllReduceApiUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduce AclnnQuantMatmulAllReduceTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduce AclnnQuantMatmulAllReduceTest SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {

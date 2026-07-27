@@ -42,15 +42,9 @@ struct TilingParams {
 
 class QuantGroupedMatMulAlltoAllvInfershapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "QuantGroupedMatMulAlltoAllvInfershapeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "QuantGroupedMatMulAlltoAllvInfershapeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "QuantGroupedMatMulAlltoAllvInfershapeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "QuantGroupedMatMulAlltoAllvInfershapeTest TearDown" << std::endl; }
 };
 
 TEST_F(QuantGroupedMatMulAlltoAllvInfershapeTest, InferDataTypeTest_Normal)

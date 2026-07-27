@@ -23,12 +23,7 @@
 
 namespace AscendC {
 
-enum RANK_MSG_TYPE {
-    RANK_ADDR = 1,
-    RANK_WORK = 2,
-    RANK_ADD_WORK = 3,
-    RANK_END
-};
+enum RANK_MSG_TYPE { RANK_ADDR = 1, RANK_WORK = 2, RANK_ADD_WORK = 3, RANK_END };
 
 constexpr uint32_t AC_MAX_RANK_NUM = 8; // 最大有8个卡
 constexpr uint32_t AC_MAX_AIV = 64;     // 最多有64个AIV

@@ -24,10 +24,7 @@ std::vector<int64_t> AlltoAllvGmmTilingA5::GetEpWorldSizeOptional() const
     return {2, 4, 8, 16, 32, 64}; // A5限制epWorldSize为{2，4，8，16，32，64}
 }
 
-bool AlltoAllvGmmTilingA5::NeedToCheckCounts() const
-{
-    return false;
-}
+bool AlltoAllvGmmTilingA5::NeedToCheckCounts() const { return false; }
 
 ge::graphStatus AlltoAllvGmmTilingFuncA5::AlltoAllvGmmOpTilingFunc(gert::TilingContext *context)
 {

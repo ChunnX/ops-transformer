@@ -131,18 +131,9 @@ public:
     double FindCubeUtilVersion310P() const;
     void ChangeCubeUtilByKAlign();
     void GetMatmulGradient();
-    void SetBatchSize(uint64_t bSize)
-    {
-        mmShapeInfo_.batchSize = bSize;
-    };
-    uint32_t GetBaseM()
-    {
-        return mmShapeInfo_.baseM;
-    };
-    uint32_t GetBaseN()
-    {
-        return mmShapeInfo_.baseN;
-    };
+    void SetBatchSize(uint64_t bSize) { mmShapeInfo_.batchSize = bSize; };
+    uint32_t GetBaseM() { return mmShapeInfo_.baseM; };
+    uint32_t GetBaseN() { return mmShapeInfo_.baseN; };
     // 返回允许切分的最小数据量
     uint64_t GetLinearThresholdLen(uint64_t rankTileNum);
     // 性能预测

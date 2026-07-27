@@ -22,13 +22,14 @@ namespace FaVectorApi {
 #ifndef __CCE_KT_TEST__
 
 template <typename T, typename T2, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128, bool hasAttn = 0>
-__simd_vf__ void
-ProcessVec1NoUpdateGeneralImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T2 *x_expUb, __ubuf__ T *expSumUb, __ubuf__ T *maxUb,
-                                    __ubuf__ T *maxUbStart, __ubuf__ T *srcUb, __ubuf__ uint8_t *indexesUb,
-                                    __ubuf__ uint32_t *maskUb, __ubuf__ uint32_t *maskUbUnroll, const uint32_t nPadding,
-                                    const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN,
-                                    const uint32_t tailN, const float dScale, uint32_t pltOriTailN, uint32_t pltTailN,
-                                    const uint16_t m, const T scale, const T minValue)
+__simd_vf__ void ProcessVec1NoUpdateGeneralImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T2 *x_expUb, __ubuf__ T *expSumUb,
+                                                     __ubuf__ T *maxUb, __ubuf__ T *maxUbStart, __ubuf__ T *srcUb,
+                                                     __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb,
+                                                     __ubuf__ uint32_t *maskUbUnroll, const uint32_t nPadding,
+                                                     const uint32_t blockStride, const uint32_t repeatStride,
+                                                     const uint32_t oriTailN, const uint32_t tailN, const float dScale,
+                                                     uint32_t pltOriTailN, uint32_t pltTailN, const uint16_t m,
+                                                     const T scale, const T minValue)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
@@ -218,13 +219,12 @@ ProcessVec1NoUpdateGeneralImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T2 *x_expUb, __
 
 // no update, 64 < originN <= 128
 template <typename T, typename T2, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128, bool hasAttn = 0>
-__aicore__ inline void
-ProcessVec1NoUpdateGeneralImpl128(const LocalTensor<T2> &dstTensor, const LocalTensor<uint8_t> &indexesTensor,
-                                  const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
-                                  const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-                                  const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor,
-                                  const LocalTensor<uint8_t> &maskTensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
-                                  const uint16_t m, const uint32_t originN, const T scale, const T minValue)
+__aicore__ inline void ProcessVec1NoUpdateGeneralImpl128(
+    const LocalTensor<T2> &dstTensor, const LocalTensor<uint8_t> &indexesTensor, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
+    const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
+    const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale,
+    const T minValue)
 {
     const uint32_t blockStride = s1BaseSize >> 1 | 0x1;
     const uint32_t repeatStride = 1;

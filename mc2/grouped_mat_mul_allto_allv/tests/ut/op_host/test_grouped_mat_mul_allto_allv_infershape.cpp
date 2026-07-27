@@ -68,15 +68,9 @@ struct TilingDTypes {
 
 class GroupedMatMulAlltoAllvInfershape : public testing::TestWithParam<TestParams> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "GroupedMatMulAlltoAllvRuntimeProtoTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "GroupedMatMulAlltoAllvRuntimeProtoTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "GroupedMatMulAlltoAllvRuntimeProtoTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "GroupedMatMulAlltoAllvRuntimeProtoTest TearDown" << std::endl; }
 };
 
 std::unordered_map<std::string, std::function<void(TilingParams &tilingParams, const std::string &valueStr)>>

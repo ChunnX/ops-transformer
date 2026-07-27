@@ -48,8 +48,5 @@ bool MoeDistributeDispatchSetupTilingA3::IsCapable()
     return false;
 }
 
-ge::graphStatus MoeDistributeDispatchSetupTilingA3::DoOpTiling()
-{
-    return MoeDistributeDispatchSetupTilingFuncImpl();
-}
+ge::graphStatus MoeDistributeDispatchSetupTilingA3::DoOpTiling() { return MoeDistributeDispatchSetupTilingFuncImpl(); }
 } // namespace optiling

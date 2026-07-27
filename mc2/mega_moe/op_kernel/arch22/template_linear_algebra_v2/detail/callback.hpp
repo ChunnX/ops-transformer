@@ -34,10 +34,7 @@ struct Callback {
     }
 
     CATLASS_DEVICE
-    operator bool() const
-    {
-        return func != nullptr;
-    }
+    operator bool() const { return func != nullptr; }
 };
 
 template <typename Func>

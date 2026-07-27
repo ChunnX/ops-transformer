@@ -17,14 +17,8 @@
 namespace MoeUpdateExpertInfershapeUT {
 class MoeUpdateExpertInfershape : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeUpdateExpertInfershape SetUp" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeUpdateExpertInfershape TearDown" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeUpdateExpertInfershape SetUp" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MoeUpdateExpertInfershape TearDown" << std::endl; }
 };
 
 TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestShape)
@@ -108,7 +102,6 @@ TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestEnhancedShape)
     std::vector<std::vector<int64_t>> expertOutputShape = {{128, 8}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
-
 
 TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestType)
 {

@@ -57,9 +57,7 @@ constexpr uint64_t HCCL_MAX_COMM_TILES = 62; // 总通信次数上限63, tile+ta
 
 class AllGatherMatmulTilingBase : public TilingBaseClass {
 public:
-    explicit AllGatherMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+    explicit AllGatherMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context) {}
     ~AllGatherMatmulTilingBase() override = default;
 
     void Reset(gert::TilingContext *context) override
@@ -87,10 +85,7 @@ protected:
     void DoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg);
     void PostDoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg, mc2tiling::Mc2QuantMode quantMmMode);
     virtual CutResult GetTilingResult();
-    virtual ge::graphStatus CheckInput()
-    {
-        return ge::GRAPH_SUCCESS;
-    }
+    virtual ge::graphStatus CheckInput() { return ge::GRAPH_SUCCESS; }
 
     void Reset();
 

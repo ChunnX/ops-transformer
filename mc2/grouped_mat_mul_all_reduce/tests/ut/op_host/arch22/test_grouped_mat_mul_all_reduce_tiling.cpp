@@ -23,15 +23,9 @@ namespace GroupedMatMulAllReduceUT {
 
 class GroupedMatMulAllReduceArch22TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "GroupedMatMulAllReduceArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "GroupedMatMulAllReduceArch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "GroupedMatMulAllReduceArch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "GroupedMatMulAllReduceArch22TilingTest TearDown" << std::endl; }
 };
 struct GroupedMatMulAllReduceCompileInfo {
     int32_t totalCoreNum = 0;

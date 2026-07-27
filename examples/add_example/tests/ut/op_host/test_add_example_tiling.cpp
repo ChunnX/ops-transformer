@@ -19,15 +19,9 @@ using namespace ge;
 
 class AddExampleTiling : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AddExampleTiling SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AddExampleTiling SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AddExampleTiling TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AddExampleTiling TearDown" << std::endl; }
 };
 
 std::map<std::string, std::string> soc_version_infos = {{"Short_SoC_version", "Ascend910B"}};

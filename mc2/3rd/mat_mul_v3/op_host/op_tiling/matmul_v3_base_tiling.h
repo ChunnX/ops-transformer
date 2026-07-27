@@ -28,8 +28,7 @@ public:
 public:
     explicit Mc2MatmulV3BaseTiling(gert::TilingContext *context)
         : TilingBaseClass(context), tilingData_(tilingDataSelf_)
-    {
-    }
+    {}
     Mc2MatmulV3BaseTiling(gert::TilingContext *context, Mc2MatmulV3TilingData *tilingData,
                           Mc2TilingCalcSelect tilingSelect = Mc2TilingCalcSelect::BASE)
         : TilingBaseClass(context), tilingData_(*tilingData)
@@ -37,15 +36,10 @@ public:
         InitCompileInfo();
         tilingSelect_ = tilingSelect;
     }
-    ~Mc2MatmulV3BaseTiling() override
-    {
-    }
+    ~Mc2MatmulV3BaseTiling() override {}
 
 protected:
-    bool IsCapable() override
-    {
-        return true;
-    };
+    bool IsCapable() override { return true; };
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
     ge::graphStatus GetPlatformInfo() override;
     // 2、获取INPUT/OUTPUT/ATTR信息

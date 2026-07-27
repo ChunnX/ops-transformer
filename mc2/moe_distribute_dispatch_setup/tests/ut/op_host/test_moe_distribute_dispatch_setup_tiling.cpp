@@ -31,10 +31,7 @@ const std::string OP_NAME = "MoeDistributeDispatchSetup";
 
 // SetHCCL_BUFFSIZE
 struct HcclBuffSizeSetter {
-    HcclBuffSizeSetter()
-    {
-        setenv("HCCL_BUFFSIZE", "8000", 1);
-    }
+    HcclBuffSizeSetter() { setenv("HCCL_BUFFSIZE", "8000", 1); }
 };
 static HcclBuffSizeSetter hcclBuffSizeSetter;
 

@@ -25,24 +25,16 @@
 namespace MC2Tiling {
 class AllToAllMatmulTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit AllToAllMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+    explicit AllToAllMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context) {}
     ~AllToAllMatmulTilingBase() override = default;
 
-    void Reset(gert::TilingContext *context) override
-    {
-        TilingBaseClass::Reset(context);
-    }
+    void Reset(gert::TilingContext *context) override { TilingBaseClass::Reset(context); }
 
 protected:
     ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
-    ge::graphStatus CheckInput()
-    {
-        return ge::GRAPH_SUCCESS;
-    }
+    ge::graphStatus CheckInput() { return ge::GRAPH_SUCCESS; }
     virtual CutResult GetCutResOfCommAndCompute();
     ge::graphStatus TileCommAndCompute();
     void SetUserWorkSpace();

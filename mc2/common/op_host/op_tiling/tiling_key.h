@@ -20,10 +20,7 @@
 namespace Ops {
 namespace Transformer {
 namespace Optiling {
-constexpr uint64_t RecursiveSum()
-{
-    return 0;
-}
+constexpr uint64_t RecursiveSum() { return 0; }
 constexpr uint64_t BASE_MULTIPLIER_SCALE = 10;
 
 template <typename T, typename... Args>
@@ -40,8 +37,8 @@ constexpr uint64_t GET_TILINGKEY(Args... templatedIds)
 }
 
 #ifndef TILINGKEY
-#define TILINGKEY(ub2, ub1, block, dtype, layout, sparse)                                                              \
-    (GER_TILINGKEY(AxisEnum::ub2, AxisEnum::ub1, AxisEnum::block, DtypeEnum::dtype, LayoutEnum::layout,                \
+#define TILINGKEY(ub2, ub1, block, dtype, layout, sparse) \
+    (GER_TILINGKEY(AxisEnum::ub2, AxisEnum::ub1, AxisEnum::block, DtypeEnum::dtype, LayoutEnum::layout, \
                    SparseEnum::sparse))
 #endif
 } // namespace Optiling

@@ -201,10 +201,10 @@ static graphStatus InferMAxisShape(gert::InferShapeContext *context)
                       return GRAPH_FAILED);
             idx++;
         }
-        OPS_CHECK(UpdateShapeYGMMAllReduce(context, INDEX_OUT_Y, xShape->GetDim(0), w0Shape->GetDim(1)) !=
-                      GRAPH_SUCCESS,
-                  VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to update shape of y."),
-                  return GRAPH_FAILED);
+        OPS_CHECK(
+            UpdateShapeYGMMAllReduce(context, INDEX_OUT_Y, xShape->GetDim(0), w0Shape->GetDim(1)) != GRAPH_SUCCESS,
+            VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to update shape of y."),
+            return GRAPH_FAILED);
     }
     return GRAPH_SUCCESS;
 }

@@ -21,14 +21,8 @@
 
 class MoeDistributeDispatchV3Test : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeDispatchV3Test SetUp\n" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeDispatchV3Test TearDown\n" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeDispatchV3Test SetUp\n" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MoeDistributeDispatchV3Test TearDown\n" << std::endl; }
 };
 
 TEST_F(MoeDistributeDispatchV3Test, MoeDistributeDispatchV3Test1000)

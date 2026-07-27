@@ -191,26 +191,11 @@ constexpr uint32_t DEC_UB_UINT8_BLOCK_SIZE = 8192;
 constexpr uint32_t REPEATE_STRIDE_UP_BOUND = 256;
 // repeat stride不能超过256
 
-enum class CalcMode {
-    CALC_MODE_DEFAULT = 0,
-    CALC_MODE_PREFILL = 1
-};
+enum class CalcMode { CALC_MODE_DEFAULT = 0, CALC_MODE_PREFILL = 1 };
 
-enum class LAYOUT {
-    BSH = 0,
-    BSND = 0,
-    BNSD = 1,
-    NZ = 2,
-    TND = 3,
-    NBSD = 4,
-    NTD = 5
-};
+enum class LAYOUT { BSH = 0, BSND = 0, BNSD = 1, NZ = 2, TND = 3, NBSD = 4, NTD = 5 };
 
-enum class AMLAMODE {
-    NORMAL = 0,
-    AMLA = 1,
-    AMLA_3BUF = 2
-};
+enum class AMLAMODE { NORMAL = 0, AMLA = 1, AMLA_3BUF = 2 };
 
 struct TNDFDSplitInfo {
     uint32_t bIdx;
@@ -219,7 +204,6 @@ struct TNDFDSplitInfo {
     uint32_t kvSplitNum; // [B, N2, S1]确定后，kv被切分的份数
     uint64_t combineTaskPrefixSum = 0;
 };
-
 
 template <typename Q_T, typename KV_T, typename OUT_T, typename ORIGIN_T, const bool PAGE_ATTENTION = false,
           const bool FLASH_DECODE = false, LAYOUT LAYOUT_T = LAYOUT::BSH, const uint8_t ANTIQUANT_MODE = 0,
@@ -725,9 +709,7 @@ __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, Local
 template <TPosition pos, uint8_t BUFFER_NUM>
 class BufferManager {
 public:
-    __aicore__ inline BufferManager()
-    {
-    }
+    __aicore__ inline BufferManager() {}
 
     __aicore__ inline void Init()
     {

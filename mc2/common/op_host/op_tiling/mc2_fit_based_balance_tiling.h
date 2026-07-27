@@ -52,9 +52,7 @@ public:
     virtual void SetLongTileLen() {};
     virtual void AdjustLongShortTileLen() {};
 
-    virtual ~Mc2FitBasedBalanceTiling()
-    {
-    }
+    virtual ~Mc2FitBasedBalanceTiling() {}
 };
 
 #endif // __MC2_FIT_BALANCE_TILING_H__

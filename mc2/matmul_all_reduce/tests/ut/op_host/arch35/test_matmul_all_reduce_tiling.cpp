@@ -57,15 +57,9 @@ void RunArch35MatmulAllReduceTilingCase(const gert::TilingContextPara &tilingCon
 
 class MatmulAllReduceArch35TilingTest : public testing::TestWithParam<MatmulAllReduceTilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduceArch35TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduceArch35TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulAllReduceArch35TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MatmulAllReduceArch35TilingTest TearDown" << std::endl; }
 };
 
 TEST_P(MatmulAllReduceArch35TilingTest, param)

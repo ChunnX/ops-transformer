@@ -71,8 +71,8 @@ AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, Contex
 }
 
 template <typename CommunicationType, typename TransposeType, typename ComputationType, typename ContextType>
-__aicore__ inline void
-AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, ContextType>::Process(uint32_t taskCnt)
+__aicore__ inline void AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, ContextType>::Process(
+    uint32_t taskCnt)
 {
     commStage_->PrepareAll(taskCnt);
     uint32_t index;

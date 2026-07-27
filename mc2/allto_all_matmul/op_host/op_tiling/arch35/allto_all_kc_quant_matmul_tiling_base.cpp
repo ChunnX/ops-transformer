@@ -56,9 +56,9 @@ bool AllToAllKcQuantMatmulTilingBase::IsCapable()
  */
 ge::graphStatus AllToAllKcQuantMatmulTilingBase::CheckOpInputInfo()
 {
-    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckKcTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(AllToAllMatmulTilingBase::CheckKcQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
@@ -378,9 +378,9 @@ AlltoAllKcQuantMatmulHelper::AlltoAllKcQuantMatmulHelper(
     AllToAllKcQuantMatmulTilingBase &allToAllKcQuantMatmulTilingBase,
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, uint64_t &mm_mvalue_len)
     : Mc2AdaptiveSlidingWindowTiling(allToAllKcQuantMatmulTilingBase.context_, &data),
-      tilingProcesser_(allToAllKcQuantMatmulTilingBase), mm_len(mm_mvalue_len)
-{
-}
+      tilingProcesser_(allToAllKcQuantMatmulTilingBase),
+      mm_len(mm_mvalue_len)
+{}
 
 /**
  * @brief 打印量化matmul tiling的信息
@@ -622,8 +622,7 @@ void AllToAllKcQuantMatmulTilingBase::SetUserWorkSpace()
  */
 AllToAllKcQuantMatmulTilingBase::AllToAllKcQuantMatmulTilingBase(gert::TilingContext *context)
     : AllToAllMatmulTilingBase(context)
-{
-}
+{}
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllKcQuantMatmulTilingBase,

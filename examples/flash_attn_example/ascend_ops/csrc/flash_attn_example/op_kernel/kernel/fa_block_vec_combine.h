@@ -136,10 +136,7 @@ public:
         this->actualSeqLengthsGm = actualSeqLengthsGm;
         this->keyPtr = key;
     }
-    __aicore__ inline void InitParams()
-    {
-        this->dSizeV_Align = this->Align(constInfo.dSizeV, FP32_REPEAT_ELEMENT_NUM);
-    }
+    __aicore__ inline void InitParams() { this->dSizeV_Align = this->Align(constInfo.dSizeV, FP32_REPEAT_ELEMENT_NUM); }
     __aicore__ inline void InitBuffers(TPipe *pipe)
     {
         if ASCEND_IS_AIV {

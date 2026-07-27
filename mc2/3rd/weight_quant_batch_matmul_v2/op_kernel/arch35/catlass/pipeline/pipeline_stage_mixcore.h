@@ -51,10 +51,7 @@ struct PipelineStageMixCore {
     }
 
     DEVICE
-    static void ProducerRelease()
-    {
-        CrossCoreSetFlag<SyncMode, ProducerPipeline>(FlagId);
-    }
+    static void ProducerRelease() { CrossCoreSetFlag<SyncMode, ProducerPipeline>(FlagId); }
 
     DEVICE
     static void ConsumerWait()
@@ -86,10 +83,7 @@ struct PipelineStageMixCore {
 
 private:
     DEVICE
-    static void ProducerWait()
-    {
-        CrossCoreWaitFlag<SyncMode, ProducerPipeline>(FlagId);
-    }
+    static void ProducerWait() { CrossCoreWaitFlag<SyncMode, ProducerPipeline>(FlagId); }
 };
 } // namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass
 #endif

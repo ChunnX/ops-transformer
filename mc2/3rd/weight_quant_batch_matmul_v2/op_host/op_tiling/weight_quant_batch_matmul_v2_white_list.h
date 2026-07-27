@@ -22,10 +22,7 @@ namespace optiling {
 
 class Mc2WhiteListShape {
 public:
-    bool operator<(const Mc2WhiteListShape &right) const
-    {
-        return memcmp(this, &right, sizeof(Mc2WhiteListShape)) < 0;
-    }
+    bool operator<(const Mc2WhiteListShape &right) const { return memcmp(this, &right, sizeof(Mc2WhiteListShape)) < 0; }
 
     uint64_t mSize_;
     uint64_t kSize_;

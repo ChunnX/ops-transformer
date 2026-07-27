@@ -112,21 +112,9 @@ enum class LayOutTypeEnum {
     LAYOUT_NBSD = 7
 };
 
-enum class FA_LAYOUT : uint32_t {
-    BSH = 0,
-    BSND = 0,
-    BNSD = 1,
-    NZ = 2,
-    TND = 3,
-    NBSD = 4,
-    NTD = 5
-};
+enum class FA_LAYOUT : uint32_t { BSH = 0, BSND = 0, BNSD = 1, NZ = 2, TND = 3, NBSD = 4, NTD = 5 };
 
-enum class FaKernelType : uint8_t {
-    NO_QUANT = 0,
-    ANTI_QUANT,
-    FULL_QUANT
-};
+enum class FaKernelType : uint8_t { NO_QUANT = 0, ANTI_QUANT, FULL_QUANT };
 
 enum class TASK_DEAL_MODE : uint32_t {
     DEAL_ZERO = 0,
@@ -308,10 +296,7 @@ namespace util {
 constexpr uint16_t SHIFT_NUM_6 = 6;
 constexpr uint16_t ADD_NUM_63 = 63;
 
-__aicore__ constexpr uint16_t Align64Func(uint16_t data)
-{
-    return (data + ADD_NUM_63) >> SHIFT_NUM_6 << SHIFT_NUM_6;
-}
+__aicore__ constexpr uint16_t Align64Func(uint16_t data) { return (data + ADD_NUM_63) >> SHIFT_NUM_6 << SHIFT_NUM_6; }
 
 __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
 {

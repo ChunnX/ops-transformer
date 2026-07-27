@@ -30,12 +30,13 @@ using namespace Mc2Tiling;
 using namespace AscendC;
 
 template <uint8_t QuantMode, bool ScaleMode, uint8_t FullMesh, uint8_t CommMode, uint8_t ArchTag>
-__global__ __aicore__ void
-moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
-                           GM_ADDR expertScales, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
-                           GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut,
-                           GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut,
-                           GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales,
+                                                      GM_ADDR xActiveMask, GM_ADDR expertScales, GM_ADDR elasticInfo,
+                                                      GM_ADDR performanceInfo, GM_ADDR expandXOut,
+                                                      GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
+                                                      GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut,
+                                                      GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut,
+                                                      GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
@@ -53,8 +54,9 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
                         epSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
             } else {
-                MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
-                                        Mc2Kernel::UNQUANT, false> op;
+                MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT,
+                                        false>
+                    op;
                 op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
                         epSendCountsOut, workspaceGM, &pipe, &tilingData);
@@ -62,10 +64,10 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
             }
         }
     }
-#elif ((ORIG_DTYPE_X == DT_FLOAT8_E5M2) && (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2)) ||                                 \
-    ((ORIG_DTYPE_X == DT_FLOAT8_E4M3FN) && (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E4M3FN)) ||                               \
-    ((ORIG_DTYPE_X == DT_HIFLOAT8) && (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8)) ||                                         \
-    ((ORIG_DTYPE_X == DT_FLOAT4_E2M1) && (ORIG_DTYPE_EXPAND_X == DT_FLOAT4_E2M1)) ||                                   \
+#elif ((ORIG_DTYPE_X == DT_FLOAT8_E5M2) && (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2)) || \
+    ((ORIG_DTYPE_X == DT_FLOAT8_E4M3FN) && (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E4M3FN)) || \
+    ((ORIG_DTYPE_X == DT_HIFLOAT8) && (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8)) || \
+    ((ORIG_DTYPE_X == DT_FLOAT4_E2M1) && (ORIG_DTYPE_EXPAND_X == DT_FLOAT4_E2M1)) || \
     ((ORIG_DTYPE_X == DT_FLOAT4_E1M2) && (ORIG_DTYPE_EXPAND_X == DT_FLOAT4_E1M2))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_MTE) {
@@ -78,8 +80,9 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
                         epSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
             } else {
-                MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
-                                        Mc2Kernel::UNQUANT, true> op;
+                MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT,
+                                        true>
+                    op;
                 op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
                         epSendCountsOut, workspaceGM, &pipe, &tilingData);
@@ -87,22 +90,24 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
             }
         }
     }
-#elif ((ORIG_DTYPE_EXPAND_X == DT_INT8) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2) ||                                  \
-       (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT4_E2M1) ||                         \
+#elif ((ORIG_DTYPE_EXPAND_X == DT_INT8) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2) || \
+       (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT4_E2M1) || \
        (ORIG_DTYPE_EXPAND_X == DT_FLOAT4_E1M2))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (QuantMode != TILINGKEY_NO_QUANT) {
             if constexpr (CommMode == TILINGKEY_TPL_MTE) {
                 if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
-                    MoeDistributeDispatchV2FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
-                                                    QuantMode, ScaleMode> op;
+                    MoeDistributeDispatchV2FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode,
+                                                    ScaleMode>
+                        op;
                     op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                             expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
                             epSendCountsOut, workspaceGM, &pipe, &tilingData);
                     op.Process();
                 } else {
-                    MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
-                                            QuantMode, ScaleMode> op;
+                    MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode,
+                                            ScaleMode>
+                        op;
                     op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                             expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
                             epSendCountsOut, workspaceGM, &pipe, &tilingData);
@@ -112,20 +117,21 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
             }
         }
     }
-#elif ((ORIG_DTYPE_X == DT_BF16) && (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8)) ||                                           \
+#elif ((ORIG_DTYPE_X == DT_BF16) && (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8)) || \
     ((ORIG_DTYPE_X == DT_FLOAT16) && (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_MTE) {
             if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
-                MoeDistributeDispatchV2FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
-                                                QuantMode, ScaleMode> op;
+                MoeDistributeDispatchV2FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode,
+                                                ScaleMode>
+                    op;
                 op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
                         epSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
             } else {
-                MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
-                                        QuantMode, ScaleMode> op;
+                MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode>
+                    op;
                 op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
                         epSendCountsOut, workspaceGM, &pipe, &tilingData);

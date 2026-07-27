@@ -53,30 +53,16 @@ class AlltoAllvMXQuantGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2Groupe
 public:
     AlltoAllvMXQuantGmmTilingHelper(AlltoAllvMXQuantGmmTiling &AlltoAllvMXQuantGmmTiling)
         : Mc2GroupedQbmmTiling(AlltoAllvMXQuantGmmTiling.context_)
-    {
-    }
-    const Mc2GroupedMatmulTilingData::GMMQuantTilingData &GetAlltoAllvQuantHelperData() const
-    {
-        return tilingData_;
-    }
-    bool AnalyzeAttrs() override
-    {
-        return true;
-    }
-    bool AnalyzeDtype() override
-    {
-        return true;
-    }
-    bool AnalyzeInputs() override
-    {
-        return true;
-    }
-    void Reset() override
-    {
-    }
+    {}
+    const Mc2GroupedMatmulTilingData::GMMQuantTilingData &GetAlltoAllvQuantHelperData() const { return tilingData_; }
+    bool AnalyzeAttrs() override { return true; }
+    bool AnalyzeDtype() override { return true; }
+    bool AnalyzeInputs() override { return true; }
+    void Reset() override {}
     ge::graphStatus SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB);
     ge::graphStatus Process();
     void SetGroupNum(uint32_t groupNum) { gmmGroupNum_ = groupNum; }
+
 private:
     uint32_t gmmGroupNum_ = 1;
 };

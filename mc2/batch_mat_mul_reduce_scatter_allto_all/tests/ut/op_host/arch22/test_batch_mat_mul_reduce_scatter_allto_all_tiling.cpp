@@ -23,10 +23,7 @@ namespace BatchMatMulReduceScatterAlltoAllUT {
 
 class BatchMatMulReduceScatterAlltoAllArch22TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "BatchMatMulReduceScatterAlltoAllArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "BatchMatMulReduceScatterAlltoAllArch22TilingTest SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {

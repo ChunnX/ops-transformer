@@ -31,10 +31,7 @@
 namespace MoeDistributeA2Base {
 class MoeDistributeA2Context {
 public:
-    __aicore__ inline void Init(GM_ADDR hcclContext)
-    {
-        hcclContext_ = (__gm__ HcclA2CombineOpParam *)hcclContext;
-    }
+    __aicore__ inline void Init(GM_ADDR hcclContext) { hcclContext_ = (__gm__ HcclA2CombineOpParam *)hcclContext; }
 
     __aicore__ inline GM_ADDR GetWindowsInAddr(uint32_t rankId) const
     {
@@ -222,10 +219,7 @@ public:
         rdmaDataAddrStart_ = rdmaFlagAddrStart_ + RDMA_STATUS_SIZE;
     }
 
-    __aicore__ inline uint64_t GetMagicValue() const
-    {
-        return magicValue_;
-    }
+    __aicore__ inline uint64_t GetMagicValue() const { return magicValue_; }
 
     // ===== Sender =====
     // Local——本卡，SendBuffer——用来发送的Buffer，Flag——存放Flag

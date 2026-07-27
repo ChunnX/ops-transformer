@@ -22,15 +22,9 @@ namespace AlltoAllAllGatherBmmUT {
 
 class AlltoAllAllGatherBmmArch22TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllAllGatherBmmArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllAllGatherBmmArch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AlltoAllAllGatherBmmArch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AlltoAllAllGatherBmmArch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Test1)

@@ -23,15 +23,9 @@ using namespace ge;
 namespace {
 class GroupedMatMulAllReduceInfershape : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "GroupedMatMulAllReduceInfershape SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "GroupedMatMulAllReduceInfershape SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "GroupedMatMulAllReduceInfershape TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "GroupedMatMulAllReduceInfershape TearDown" << std::endl; }
 };
 
 template <typename T>

@@ -173,10 +173,7 @@ const static std::map<NpuArch, GetL0C2OutFunc> GetL0C2OutFuncMap = {
 };
 
 // ------------------------------ CheckIfDoubleAswt -------------------------------------------//
-bool CheckIfDoubleAswtDefault(const Mc2MatMulV3Args & /* args */, const uint64_t /* batchC */)
-{
-    return false;
-}
+bool CheckIfDoubleAswtDefault(const Mc2MatMulV3Args & /* args */, const uint64_t /* batchC */) { return false; }
 
 bool CheckIfDoubleAswt91095(const Mc2MatMulV3Args &args, const uint64_t batchC)
 {

@@ -84,15 +84,9 @@ static QuantReduceScatterTestParam g_testCases[] = {
 
 class QuantReduceScatterArch22TilingTest : public testing::TestWithParam<QuantReduceScatterTestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "QuantReduceScatterArch22TilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "QuantReduceScatterArch22TilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "QuantReduceScatterArch22TilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "QuantReduceScatterArch22TilingTest TearDown." << std::endl; }
 };
 
 static struct QuantReduceScatterCompileInfo {

@@ -68,10 +68,7 @@ public:
 
     virtual bool DoOpTiling() = 0;
     virtual bool GetWorkspaceSize() = 0;
-    virtual bool PostTiling()
-    {
-        return true;
-    }
+    virtual bool PostTiling() { return true; }
     virtual uint64_t GetTilingKey() const = 0;
     uint32_t blockDim_{0};
     uint64_t workspaceSize_{0};

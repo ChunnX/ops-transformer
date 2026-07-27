@@ -167,13 +167,12 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(__ubuf__ T2 *expUb, __ubuf__ T *exp
 
 // no update, originN <= 64
 template <typename T, typename T2, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128, bool hasAttn = 0>
-__aicore__ inline void
-ProcessVec1NoUpdateImpl64(const LocalTensor<T2> &dstTensor, const LocalTensor<uint8_t> &indexesTensor,
-                          const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
-                          const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-                          const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor,
-                          const LocalTensor<uint8_t> &maskTensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
-                          const uint16_t m, const uint32_t originN, const T scale, const T minValue)
+__aicore__ inline void ProcessVec1NoUpdateImpl64(
+    const LocalTensor<T2> &dstTensor, const LocalTensor<uint8_t> &indexesTensor, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
+    const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
+    const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale,
+    const T minValue)
 {
     __ubuf__ T2 *expUb = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ T *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();

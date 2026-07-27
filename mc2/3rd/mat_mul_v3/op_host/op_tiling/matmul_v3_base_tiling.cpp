@@ -87,9 +87,9 @@ static const int64_t SINGLE_CORE_SPLIT_SMALL_K = 1536;
 static const int64_t SINGLE_CORE_SPLIT_SMALL_MN = 384;
 static const int64_t SINGLE_CORE_SPLIT_LARGE_MN = 49152; // 128 * 384
 
-#define DO_CACL_TILING_ENABLE(func)                                                                                    \
-    if (func) {                                                                                                        \
-        break;                                                                                                         \
+#define DO_CACL_TILING_ENABLE(func) \
+    if (func) { \
+        break; \
     }
 
 inline uint64_t CalBaseSize(uint64_t cnt, uint64_t totalCoreNum, uint64_t size, uint64_t maxBase)
@@ -192,7 +192,6 @@ void Mc2MatmulV3BaseTiling::InitCompileInfo() // 检查输入属性是否支持
     compileInfoInit_ = true;
     compileInfo_ = compileInfo;
 }
-
 
 ge::graphStatus Mc2MatmulV3BaseTiling::GetShapeAttrsInfo() // 检查输入属性是否支持
 {
@@ -602,10 +601,7 @@ ge::graphStatus Mc2MatmulV3BaseTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-bool Mc2MatmulV3BaseTiling::IsPowerOfTwo(uint64_t x) const
-{
-    return x > 0UL && (x & (x - 1UL)) == 0UL;
-}
+bool Mc2MatmulV3BaseTiling::IsPowerOfTwo(uint64_t x) const { return x > 0UL && (x & (x - 1UL)) == 0UL; }
 
 void Mc2MatmulV3BaseTiling::OptimizeLoadBalanceBasicKernel()
 {
@@ -900,7 +896,6 @@ void Mc2MatmulV3BaseTiling::DebugLog(const std::shared_ptr<tuningtiling::Mc2MatM
             inputArgs->reserved_params6, static_cast<int32_t>(inputArgs->trans_a_flag),
             static_cast<int32_t>(inputArgs->trans_b_flag));
 }
-
 
 bool Mc2MatmulV3BaseTiling::TranslateAoeTiling(tuningtiling::TuningTilingDefPtr &tuningTiling)
 {
@@ -1399,49 +1394,45 @@ void Mc2MatmulV3BaseTiling::FormulaicBaseBlockTiling()
 
     // ND场景，不需要ND2NZ操作, 说明数据内存方向的边是256B对齐的
     switch (trans_) {
-        case Mc2MatmulV3Trans::NO_TRANS:
-            {
-                FormulaicTilingNoTrans();
-                break;
-            }
-        case Mc2MatmulV3Trans::A_TRANS:
-            {
-                // [k, m], [k, n], m和n需要256B对齐，k可以任意切分
-                // 如果对齐场景都为MTE2 bound，那非对齐场景的MTE2 bound会更严重，此时多核计算没有意义
-                if (!m256Align_ && !n256Align_) {
-                    // A,B都会做ND2NZ，baseMNK 按照负载均衡分配
-                    BalanceBaseBlockTiling();
-                } else if (!m256Align_) {
-                    // A矩阵做ND2NZ，baseN*depth保证256BYTE对齐，baseM任意切分
-                    runInfo_.baseM = CalBaseSize(nCore, compileInfo_.aicNum, args_.mValue, basicBlockBaseM_);
-                } else if (!n256Align_) {
-                    runInfo_.baseN = CalBaseSize(mCore, compileInfo_.aicNum, args_.nValue, BASIC_BLOCK_SIZE_256);
-                }
-                break;
-            }
-        case Mc2MatmulV3Trans::B_TRANS:
-            {
-                // [m, k], [n, k], k需要256B对齐，m和n可以任意切分
-                // 负载均匀切分
-                CalcBase<Mc2CalcType::MN_BY_BASE_K>(calcMNBasic_);
-                if (!kA256Align_) {
-                    // A,B都会做ND2NZ，baseMNK 按照负载均衡分配
-                    BalanceBaseBlockTiling();
-                }
-                break;
-            }
-        case Mc2MatmulV3Trans::AB_TRANS:
-            {
-                // [k, m], [n, k], m和k需要256B对齐，n可以任意切分
+        case Mc2MatmulV3Trans::NO_TRANS: {
+            FormulaicTilingNoTrans();
+            break;
+        }
+        case Mc2MatmulV3Trans::A_TRANS: {
+            // [k, m], [k, n], m和n需要256B对齐，k可以任意切分
+            // 如果对齐场景都为MTE2 bound，那非对齐场景的MTE2 bound会更严重，此时多核计算没有意义
+            if (!m256Align_ && !n256Align_) {
+                // A,B都会做ND2NZ，baseMNK 按照负载均衡分配
+                BalanceBaseBlockTiling();
+            } else if (!m256Align_) {
+                // A矩阵做ND2NZ，baseN*depth保证256BYTE对齐，baseM任意切分
+                runInfo_.baseM = CalBaseSize(nCore, compileInfo_.aicNum, args_.mValue, basicBlockBaseM_);
+            } else if (!n256Align_) {
                 runInfo_.baseN = CalBaseSize(mCore, compileInfo_.aicNum, args_.nValue, BASIC_BLOCK_SIZE_256);
-                if (!m256Align_ && kB256Align_) {
-                    // A,B都会做ND2NZ，baseMNK 按照负载均衡分配
-                    BalanceBaseBlockTiling();
-                } else if (!m256Align_) {
-                    CalBaseMBaseN(runInfo_.baseM, runInfo_.baseN);
-                }
-                break;
             }
+            break;
+        }
+        case Mc2MatmulV3Trans::B_TRANS: {
+            // [m, k], [n, k], k需要256B对齐，m和n可以任意切分
+            // 负载均匀切分
+            CalcBase<Mc2CalcType::MN_BY_BASE_K>(calcMNBasic_);
+            if (!kA256Align_) {
+                // A,B都会做ND2NZ，baseMNK 按照负载均衡分配
+                BalanceBaseBlockTiling();
+            }
+            break;
+        }
+        case Mc2MatmulV3Trans::AB_TRANS: {
+            // [k, m], [n, k], m和k需要256B对齐，n可以任意切分
+            runInfo_.baseN = CalBaseSize(mCore, compileInfo_.aicNum, args_.nValue, BASIC_BLOCK_SIZE_256);
+            if (!m256Align_ && kB256Align_) {
+                // A,B都会做ND2NZ，baseMNK 按照负载均衡分配
+                BalanceBaseBlockTiling();
+            } else if (!m256Align_) {
+                CalBaseMBaseN(runInfo_.baseM, runInfo_.baseN);
+            }
+            break;
+        }
         default:
             break;
     }
@@ -2699,10 +2690,7 @@ ge::graphStatus Mc2MatmulV3BaseTiling::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t Mc2MatmulV3BaseTiling::GetTilingKey() const
-{
-    return tilingKey_;
-}
+uint64_t Mc2MatmulV3BaseTiling::GetTilingKey() const { return tilingKey_; }
 
 void Mc2MatmulV3BaseTiling::DoTilingKey()
 {

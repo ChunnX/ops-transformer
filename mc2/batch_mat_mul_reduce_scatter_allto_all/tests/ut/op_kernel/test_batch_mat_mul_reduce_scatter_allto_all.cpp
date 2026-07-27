@@ -21,10 +21,7 @@
 
 class BatchMatmulReduceScatterAllToAllTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "batch_mat_mul_reduce_scatter_allto_all_test SetUp\n" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "batch_mat_mul_reduce_scatter_allto_all_test SetUp\n" << std::endl; }
     static void TearDownTestCase()
     {
         std::cout << "batch_mat_mul_reduce_scatter_allto_all_test TearDown\n" << std::endl;

@@ -76,15 +76,9 @@ gert::TilingContextPara BuildFloat16TilingContext(const std::string &reduceOp, u
 
 class MatmulAllReduceArch22TilingTest : public testing::TestWithParam<MatmulAllReduceTilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduceArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduceArch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulAllReduceArch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MatmulAllReduceArch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_P(MatmulAllReduceArch22TilingTest, param)

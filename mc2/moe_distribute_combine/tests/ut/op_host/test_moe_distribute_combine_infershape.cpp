@@ -17,15 +17,9 @@ namespace MoeDistributeCombineInferShapeUT {
 
 class MoeDistributeCombineInfershape : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineInfershape SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineInfershape SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeCombineInfershape TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeCombineInfershape TearDown" << std::endl; }
 };
 
 TEST_F(MoeDistributeCombineInfershape, InferShape0)

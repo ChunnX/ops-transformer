@@ -144,7 +144,6 @@ struct TilingInferredInfo {
     uint32_t tailCnt = 0UL;            // 尾块数量
 };
 
-
 class MatmulAlltoAllTilingUtil {
 public:
     static QuantMode GetQuantMode(const gert::TilingContext *context, const char *opName);

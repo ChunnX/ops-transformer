@@ -425,15 +425,9 @@ static EngramFetchGradTestParam g_testCases[] = {
 
 class EngramFetchGradArch35TilingTest : public testing::TestWithParam<EngramFetchGradTestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "EngramFetchGradArch35TilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "EngramFetchGradArch35TilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "EngramFetchGradArch35TilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "EngramFetchGradArch35TilingTest TearDown." << std::endl; }
 };
 
 static struct EngramFetchGradCompileInfo {

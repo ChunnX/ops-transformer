@@ -29,25 +29,13 @@ struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
     static constexpr size_t size = Catlass::BytesToBits(SIZE) / Catlass::SizeOfBits<T>::value;
 
-    static FORCE_INLINE_AICORE size_t Count(size_t len)
-    {
-        return (len + size - 1) / size;
-    }
+    static FORCE_INLINE_AICORE size_t Count(size_t len) { return (len + size - 1) / size; }
 
-    static FORCE_INLINE_AICORE bool IsAligned(size_t len)
-    {
-        return len % size == 0;
-    }
+    static FORCE_INLINE_AICORE bool IsAligned(size_t len) { return len % size == 0; }
 
-    static FORCE_INLINE_AICORE size_t AlignUp(size_t len)
-    {
-        return (len + size - 1) & ~(size - 1);
-    }
+    static FORCE_INLINE_AICORE size_t AlignUp(size_t len) { return (len + size - 1) & ~(size - 1); }
 
-    static FORCE_INLINE_AICORE size_t AlignDown(size_t len)
-    {
-        return len & ~(size - 1);
-    }
+    static FORCE_INLINE_AICORE size_t AlignDown(size_t len) { return len & ~(size - 1); }
 };
 
 template <typename T>
@@ -85,10 +73,7 @@ __aicore__ inline void SetAndWaitAivSync(uint64_t flag_idx, int32_t pipe_depth =
     FFTSCrossCoreSync<PIPE_MTE3, 0>(flag_idx + pipe_depth);
     WaitEvent(flag_idx + pipe_depth);
 }
-__aicore__ inline void SetAicSync(uint64_t flag_idx)
-{
-    FFTSCrossCoreSync<PIPE_MTE3, 2>(flag_idx);
-}
+__aicore__ inline void SetAicSync(uint64_t flag_idx) { FFTSCrossCoreSync<PIPE_MTE3, 2>(flag_idx); }
 
 template <typename T>
 FORCE_INLINE_AICORE void CopyUbufToGm(__gm__ T *dst, LocalTensor<T> ubTensor, uint16_t nBurst, uint16_t lenBurst,

@@ -56,10 +56,7 @@ struct EngramFetchTestParam {
     std::vector<size_t> expectWorkspaces;
 };
 
-inline std::ostream &operator<<(std::ostream &os, const EngramFetchTestParam &param)
-{
-    return os << param.caseName;
-}
+inline std::ostream &operator<<(std::ostream &os, const EngramFetchTestParam &param) { return os << param.caseName; }
 
 static EngramFetchTestParam g_testCases[] = {
     {"infer_success_bf16_basic",
@@ -681,15 +678,9 @@ static EngramFetchTestParam g_testCases[] = {
 
 class EngramFetchArch35TilingTest : public testing::TestWithParam<EngramFetchTestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "EngramFetchArch35TilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "EngramFetchArch35TilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "EngramFetchArch35TilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "EngramFetchArch35TilingTest TearDown." << std::endl; }
 };
 
 static struct EngramFetchCompileInfo {

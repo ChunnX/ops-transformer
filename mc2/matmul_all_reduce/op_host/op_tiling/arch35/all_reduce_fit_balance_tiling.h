@@ -38,10 +38,7 @@ public:
     void SetLongTileLen() override;
     void SetCommBoundTile();
     void AlignLongTileLen();
-    void SetIsAlign(bool isAlign)
-    {
-        isAlign_ = isAlign;
-    }
+    void SetIsAlign(bool isAlign) { isAlign_ = isAlign; }
     uint64_t Align256(uint64_t value) const;
 
 private:

@@ -21,7 +21,6 @@
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
 
-
 using namespace op;
 using namespace std;
 
@@ -35,10 +34,7 @@ protected:
         cout << "L2AclnnMoeDistributeDispatchV2950Test SetUp" << endl;
     }
 
-    static void TearDownTestCase()
-    {
-        cout << "L2AclnnMoeDistributeDispatchV2950Test TearDown" << endl;
-    }
+    static void TearDownTestCase() { cout << "L2AclnnMoeDistributeDispatchV2950Test TearDown" << endl; }
 };
 
 TEST_F(L2AclnnMoeDistributeDispatchV2950Test, TestGetWorkspaceSize950NonCcu)
@@ -360,14 +356,8 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchV2Execu
 TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchV2GetWorkspaceAscend950NonCcu)
 {
     struct PlatformGuard {
-        PlatformGuard(op::SocVersion target)
-        {
-            op::SetPlatformSocVersion(target);
-        }
-        ~PlatformGuard()
-        {
-            op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-        }
+        PlatformGuard(op::SocVersion target) { op::SetPlatformSocVersion(target); }
+        ~PlatformGuard() { op::SetPlatformSocVersion(op::SocVersion::ASCEND910B); }
     } guard(op::SocVersion::ASCEND950);
     TensorDesc x = TensorDesc({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc expertIds = TensorDesc({8, 8}, ACL_INT32, ACL_FORMAT_ND);

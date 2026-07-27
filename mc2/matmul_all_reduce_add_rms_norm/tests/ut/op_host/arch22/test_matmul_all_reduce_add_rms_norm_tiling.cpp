@@ -34,15 +34,9 @@ std::unique_ptr<gert::TilingContextPara::TensorDescription> CreateTensorShape(ge
 
 class MatmulAllReduceAddRmsNormArch22TilingTest : public testing::TestWithParam<TestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduceAddRmsNormArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduceAddRmsNormArch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulAllReduceAddRmsNormArch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MatmulAllReduceAddRmsNormArch22TilingTest TearDown" << std::endl; }
 };
 
 static void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)

@@ -55,7 +55,6 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);

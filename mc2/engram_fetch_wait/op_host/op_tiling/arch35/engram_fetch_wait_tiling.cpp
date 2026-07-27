@@ -42,10 +42,7 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static void SetTilingKey(gert::TilingContext *context)
-{
-    context->SetTilingKey(0);
-}
+static void SetTilingKey(gert::TilingContext *context) { context->SetTilingKey(0); }
 
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
 {

@@ -28,15 +28,9 @@ namespace MoeDistributeDispatchV3Arch35UT {
 
 class MoeDistributeDispatchV3Arch35TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeDispatchV3Arch35TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeDispatchV3Arch35TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeDispatchV3Arch35TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeDispatchV3Arch35TilingTest TearDown" << std::endl; }
 };
 
 // 共享专家 + TP，与 arch22 Test0 参数一致，仅 SOC 切换为 Ascend950（走 A5 tiling）

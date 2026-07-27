@@ -125,10 +125,7 @@ struct Params {
     CombineCommParams combineCommParams;
 };
 
-enum class AddrUpdateMode : int32_t {
-    GMM1,
-    GMM2
-};
+enum class AddrUpdateMode : int32_t { GMM1, GMM2 };
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
@@ -227,7 +224,6 @@ __aicore__ inline uint64_t GetUrmaCommHandle(__gm__ Mc2MoeContext *mc2Context_, 
     uint32_t index = rankId > epRankId ? rankId - 1 : rankId;
     return mc2Context_->hcommHandle[index];
 }
-
 
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
 __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset)

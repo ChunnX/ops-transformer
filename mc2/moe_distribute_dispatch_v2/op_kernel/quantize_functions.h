@@ -56,10 +56,7 @@ constexpr uint32_t EPS_1E_4_FP32 = 0x38D1B717; // 1e-4 的 FP32 bit pattern，�
 
 using namespace AscendC;
 
-__aicore__ inline constexpr uint32_t GetUbBlockSizeDispatch()
-{
-    return 32U;
-}
+__aicore__ inline constexpr uint32_t GetUbBlockSizeDispatch() { return 32U; }
 
 __aicore__ inline constexpr uint32_t GetVRegSizeDispatch()
 {

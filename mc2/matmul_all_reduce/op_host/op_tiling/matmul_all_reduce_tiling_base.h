@@ -156,22 +156,10 @@ protected:
     ge::graphStatus DoLibApiTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
-    virtual Mc2Tiling::RCSTiling &MutableRCSTilingData()
-    {
-        return tilingData_.param;
-    }
-    virtual Mc2Tiling::Mc2Msg &MutableMc2MsgData()
-    {
-        return tilingData_.msg;
-    }
-    virtual AscendC::tiling::TCubeTiling &MutableTCubeTileTilingData()
-    {
-        return tilingData_.matmulTiling;
-    }
-    virtual AscendC::tiling::TCubeTiling &MutableTCubeTailTilingData()
-    {
-        return tilingData_.tailTiling;
-    }
+    virtual Mc2Tiling::RCSTiling &MutableRCSTilingData() { return tilingData_.param; }
+    virtual Mc2Tiling::Mc2Msg &MutableMc2MsgData() { return tilingData_.msg; }
+    virtual AscendC::tiling::TCubeTiling &MutableTCubeTileTilingData() { return tilingData_.matmulTiling; }
+    virtual AscendC::tiling::TCubeTiling &MutableTCubeTailTilingData() { return tilingData_.tailTiling; }
     ge::graphStatus AnalyzeShapeAttr();
     void PrintTilingData();
     virtual void PrintExtendMatmulTiling([[maybe_unused]] bool isTail) {};

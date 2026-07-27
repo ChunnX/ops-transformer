@@ -766,7 +766,6 @@ void Mc2BatchMatmulV3BaseTiling::DoMultiBatchL1FullLoadTiling()
     return;
 }
 
-
 void Mc2BatchMatmulV3BaseTiling::UpdateMultiBatchNd2nz()
 {
     uint64_t innerSizeA = args_.isATrans ? args_.mValue : args_.kValue;
@@ -971,21 +970,16 @@ void Mc2BatchMatmulV3BaseTiling::DoL1FullLoadTiling()
         return; // currently not support weight NZ
     }
 
-    enum class L1FullLoad {
-        NONE,
-        AL1,
-        BL1
-    };
+    enum class L1FullLoad { NONE, AL1, BL1 };
     const uint64_t totalL1Size = compileInfo_.l1Size + 256; // 256B为预留给rpc使用，单算子不涉及
     auto getL1FullLoad = [totalL1Size](uint64_t aBatchDim, uint64_t bBatchDim,
                                        const Mc2MatmulV3CompileInfo &compileInfo,
                                        const mc2_matmul_v3::Mc2MatmulV3Args &args) -> enum L1FullLoad {
         const bool aNoBatch = aBatchDim <= 1UL; const bool bNoBatch = bBatchDim <= 1UL;
-            if ((aNoBatch == bNoBatch) && !(bNoBatch && !args.isATrans)){
-                // do l1 full-load if and only if exactly 1 matrix has no batch
-                // except for 1 case: (bBatch==1 && !aTrans), where aBatch will be merged into m
-                return L1FullLoad::NONE;
-    }
+        if ((aNoBatch == bNoBatch) && !(bNoBatch && !args.isATrans)){
+            // do l1 full-load if and only if exactly 1 matrix has no batch
+            // except for 1 case: (bBatch==1 && !aTrans), where aBatch will be merged into m
+            return L1FullLoad::NONE;}
     const uint64_t aicoreNum = compileInfo.aicNum;
     auto getMatrixArea = [](uint64_t batch, uint64_t outer, uint64_t inner, int32_t dtypeSize) -> uint64_t {
         const uint64_t c0 = BLOCK_BYTE_SIZE / dtypeSize;
@@ -1057,10 +1051,7 @@ ge::graphStatus Mc2BatchMatmulV3BaseTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t Mc2BatchMatmulV3BaseTiling::GetTilingKey() const
-{
-    return tilingKey_;
-}
+uint64_t Mc2BatchMatmulV3BaseTiling::GetTilingKey() const { return tilingKey_; }
 
 void Mc2BatchMatmulV3BaseTiling::DoTilingKeyCustom()
 {

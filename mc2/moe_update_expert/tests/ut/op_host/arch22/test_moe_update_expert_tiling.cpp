@@ -16,15 +16,9 @@ using namespace std;
 namespace MoeUpdateExpertUT {
 class MoeUpdateExpertArch22TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeUpdateExpertArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeUpdateExpertArch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeUpdateExpertArch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeUpdateExpertArch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_F(MoeUpdateExpertArch22TilingTest, NoTailor)

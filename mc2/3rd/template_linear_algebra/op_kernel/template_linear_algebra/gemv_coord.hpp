@@ -31,10 +31,7 @@ struct GemvShape {
 
     /// Returns a Coord object
     CATLASS_HOST_DEVICE
-    static Coord<2> ToCoord()
-    {
-        return MakeCoord(M, N);
-    }
+    static Coord<2> ToCoord() { return MakeCoord(M, N); }
 };
 
 /// GemvCoord is a structure derived from Coord<2> that specifies a location within the
@@ -54,55 +51,34 @@ struct GemvCoord : public Coord<2, uint32_t> {
 
     /// Default ctor
     CATLASS_HOST_DEVICE
-    GemvCoord()
-    {
-    }
+    GemvCoord() {}
 
     /// Constructs from Coord<2> and a batch
     CATLASS_HOST_DEVICE
-    GemvCoord(Coord<2, Index> const &coord) : Base(coord)
-    {
-    }
+    GemvCoord(Coord<2, Index> const &coord) : Base(coord) {}
 
     /// Helper to construct from M, N coordinates
     CATLASS_HOST_DEVICE
-    GemvCoord(Index m, Index n) : Base(MakeCoord(m, n))
-    {
-    }
+    GemvCoord(Index m, Index n) : Base(MakeCoord(m, n)) {}
 
     /// Returns the GEMV M coordinate (row of the result y)
     CATLASS_HOST_DEVICE
-    Index const &m() const
-    {
-        return this->At(M_INDEX);
-    }
+    Index const &m() const { return this->At(M_INDEX); }
 
     /// Returns reference to the GEMV M coordinate
     CATLASS_HOST_DEVICE
-    Index &m()
-    {
-        return this->At(M_INDEX);
-    }
+    Index &m() { return this->At(M_INDEX); }
 
     /// Returns the GEMV N coordinate (column of the matrix A or the input vector x)
     CATLASS_HOST_DEVICE
-    Index const &n() const
-    {
-        return this->At(N_INDEX);
-    }
+    Index const &n() const { return this->At(N_INDEX); }
 
     /// Returns reference to the GEMV N coordinate
     CATLASS_HOST_DEVICE
-    Index &n()
-    {
-        return this->At(N_INDEX);
-    }
+    Index &n() { return this->At(N_INDEX); }
 
     CATLASS_HOST_DEVICE
-    auto GetCoordMN() const
-    {
-        return this->GetCoordByAxis<M_INDEX, N_INDEX>();
-    }
+    auto GetCoordMN() const { return this->GetCoordByAxis<M_INDEX, N_INDEX>(); }
 };
 
 } // namespace Catlass

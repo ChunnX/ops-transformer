@@ -26,15 +26,9 @@ static const std::string OP_NAME = "MoeDistributeCombineSetup";
 
 class MoeDistributeCombineSetupInferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineSetupInferShapeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineSetupInferShapeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeCombineSetupInferShapeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeCombineSetupInferShapeTest TearDown" << std::endl; }
 };
 
 TEST_F(MoeDistributeCombineSetupInferShapeTest, InferShapeNormal1)

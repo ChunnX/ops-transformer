@@ -37,15 +37,9 @@ const unordered_set<size_t> g_barrierTilingDataMask = {4};
 
 class DistributeBarrierExtendArch35TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "DistributeBarrierExtendArch35TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "DistributeBarrierExtendArch35TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "DistributeBarrierExtendArch35TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "DistributeBarrierExtendArch35TilingTest TearDown" << std::endl; }
 };
 
 TEST_F(DistributeBarrierExtendArch35TilingTest, TestTiling)

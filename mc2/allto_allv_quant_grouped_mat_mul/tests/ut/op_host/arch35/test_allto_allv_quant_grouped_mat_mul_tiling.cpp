@@ -20,15 +20,9 @@ namespace AlltoAllvQuantGroupedMatMulUT {
 class AlltoAllvQuantGroupedMatMulTilingTest
     : public ::testing::TestWithParam<AlltoAllvQuantGroupedMatMulTilingUTParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        cout << "AlltoAllvQuantGroupedMatMulTilingTest SetUp" << endl;
-    }
+    static void SetUpTestCase() { cout << "AlltoAllvQuantGroupedMatMulTilingTest SetUp" << endl; }
 
-    static void TearDownTestCase()
-    {
-        cout << "AlltoAllvQuantGroupedMatMulTilingTest TearDown" << endl;
-    }
+    static void TearDownTestCase() { cout << "AlltoAllvQuantGroupedMatMulTilingTest TearDown" << endl; }
 };
 
 TEST_P(AlltoAllvQuantGroupedMatMulTilingTest, param)

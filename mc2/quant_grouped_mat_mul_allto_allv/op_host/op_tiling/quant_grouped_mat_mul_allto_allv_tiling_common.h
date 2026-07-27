@@ -87,10 +87,7 @@ class QuantGroupedMatmulAllToAllvTilingCommon : public QuantGroupedMatmulAllToAl
 public:
     explicit QuantGroupedMatmulAllToAllvTilingCommon(gert::TilingContext *context)
         : QuantGroupedMatmulAllToAllvTilingBase(context) {};
-    void Reset(gert::TilingContext *context) override
-    {
-        TilingBaseClass::Reset(context);
-    }
+    void Reset(gert::TilingContext *context) override { TilingBaseClass::Reset(context); }
     ~QuantGroupedMatmulAllToAllvTilingCommon() override = default;
 
 protected:

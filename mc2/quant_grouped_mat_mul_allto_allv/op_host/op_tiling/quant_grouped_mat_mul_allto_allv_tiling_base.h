@@ -37,10 +37,7 @@ enum GmmA2AvInputTensorIndex : uint32_t {
     COMM_MODE_INDEX,
 };
 
-enum GmmA2AvOutputTensorIndex : uint32_t {
-    OUTPUT_Y_INDEX = 0,
-    OUTPUT_MM_Y_OPTIONAL_INDEX
-};
+enum GmmA2AvOutputTensorIndex : uint32_t { OUTPUT_Y_INDEX = 0, OUTPUT_MM_Y_OPTIONAL_INDEX };
 
 enum GmmA2AvAttrIndex : uint32_t {
     ATTR_GROUP_INDEX = 0,
@@ -96,7 +93,6 @@ constexpr uint32_t DIM_ONE = 1;
 constexpr uint32_t DIM_TWO = 2;
 constexpr uint32_t DIM_THREE = 3;
 constexpr uint32_t DIM_FOUR = 4;
-
 
 constexpr uint32_t HCCL_CMD_ALLGATHER = 6U;
 constexpr uint32_t HCCL_CMD_ALLTOALLV = 8;

@@ -32,8 +32,7 @@ public:
     NewMc2MatmulTilingCfg(const void *compileInfoIn, const void *argsIn, uint32_t baseMLimit = 0,
                           bool needUpdateIn = true)
         : Mc2MatMulTilingCfg(needUpdateIn, compileInfoIn, argsIn), baseMLimit_(baseMLimit)
-    {
-    }
+    {}
 
     void SetMatMulV3TilingData(optiling::MC2MatmulV3TilingData &tilingData);
     void Update(const optiling::Mc2TilingResult &result) override;

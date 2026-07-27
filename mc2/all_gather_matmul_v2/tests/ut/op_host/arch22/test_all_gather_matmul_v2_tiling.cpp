@@ -19,15 +19,9 @@ namespace all_gather_matmul_v2_ut {
 
 class AllGatherMatmulV2Arch22TilingTest : public testing::TestWithParam<AllGatherMatmulV2TilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AllGatherMatmulV2 Arch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AllGatherMatmulV2 Arch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AllGatherMatmulV2 Arch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AllGatherMatmulV2 Arch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_P(AllGatherMatmulV2Arch22TilingTest, param)
@@ -80,9 +74,6 @@ TEST(AllGatherMatmulV2TilingFuncTest, CeilDevNormal)
     EXPECT_EQ(CeilDev(1, 128), 1);
 }
 
-TEST(AllGatherMatmulV2TilingFuncTest, CeilDevZeroDivisor)
-{
-    EXPECT_EQ(CeilDev(10, 0), 0);
-}
+TEST(AllGatherMatmulV2TilingFuncTest, CeilDevZeroDivisor) { EXPECT_EQ(CeilDev(10, 0), 0); }
 
 } // namespace all_gather_matmul_v2_ut

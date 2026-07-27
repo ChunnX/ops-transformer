@@ -13,10 +13,7 @@
 
 namespace Catlass {
 
-enum class Status {
-    kSuccess,
-    kInvalid
-};
+enum class Status { kSuccess, kInvalid };
 
 } // namespace Catlass
 

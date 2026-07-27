@@ -90,15 +90,9 @@ bool GenWqbmmTiling(const std::string &op_type, const WeightQuantBatchMatmulCach
     }
 }
 #else
-bool TilingPrepareForOpCache(gert::TilingContext * /*context*/)
-{
-    return true;
-}
+bool TilingPrepareForOpCache(gert::TilingContext * /*context*/) { return true; }
 
-bool TilingPrepareForOpCache(gert::TilingParseContext * /*context*/)
-{
-    return true;
-}
+bool TilingPrepareForOpCache(gert::TilingParseContext * /*context*/) { return true; }
 
 bool GenTiling(const std::string & /*op_type*/, const BatchmatmulCompileParas & /*compile_params*/,
                BatchmatmulRunParas & /*run_params*/, CacheTilingData & /*tiling*/, gert::TilingContext * /*context*/)

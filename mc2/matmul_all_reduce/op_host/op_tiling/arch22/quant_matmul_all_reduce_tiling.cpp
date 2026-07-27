@@ -110,10 +110,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::PostTiling()
 
     return ge::GRAPH_SUCCESS;
 }
-Mc2Tiling::Mc2Msg &QuantMatmulAllReduceTiling::MutableMc2MsgData()
-{
-    return quantMatmulAllReduceTilingData_.msg;
-}
+Mc2Tiling::Mc2Msg &QuantMatmulAllReduceTiling::MutableMc2MsgData() { return quantMatmulAllReduceTilingData_.msg; }
 Mc2Tiling::RCSTiling &QuantMatmulAllReduceTiling::MutableRCSTilingData()
 {
     return quantMatmulAllReduceTilingData_.param;
@@ -255,8 +252,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
 }
 QuantMatmulAllReduceTiling::QuantMatmulAllReduceTiling(gert::TilingContext *context)
     : MatmulAllReduceTilingBase(context), quantMatmulAllReduceTilingData_(quantMatmulAllReduceTilingDataSelf_)
-{
-}
+{}
 const gert::Shape QuantTilingTransferHelper::GetX1Shape(const size_t index)
 {
     (void)index;
@@ -281,8 +277,7 @@ const gert::Shape QuantTilingTransferHelper::GetX2Shape(const size_t index)
 QuantMatmulAllReduceTiling::QuantMatmulAllReduceTiling(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo,
                                                        QuantMatmulAllReduceTilingData *out)
     : MatmulAllReduceTilingBase(context, mmrCtxInfo), quantMatmulAllReduceTilingData_(*out)
-{
-}
+{}
 const gert::Shape &QuantTilingTransferHelper::GetScaleShape(const size_t index)
 {
     (void)index;
@@ -370,8 +365,7 @@ QuantTilingTransferHelper::QuantTilingTransferHelper(QuantMatmulAllReduceTiling 
                                                      Mc2QuantBatchMatmulV3TilingData &data)
     : Mc2QuantBatchMatmulV3Tiling(quantMatmulAllReduceTiling.context_, &data),
       tilingProcesser_(quantMatmulAllReduceTiling)
-{
-}
+{}
 
 CutResult QuantMatmulAllReduceTiling::GetTilingResult()
 {
@@ -392,7 +386,6 @@ CutResult QuantMatmulAllReduceTiling::GetTilingResult()
     }
     return mCutAllreduceRes;
 }
-
 
 // 注册带SOC版本Tiling的类
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, QuantMatmulAllReduceTiling,

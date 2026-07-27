@@ -24,10 +24,7 @@ public:
     OpVersionManager(const OpVersionManager &) = delete;
     OpVersionManager &operator=(const OpVersionManager &) = delete;
 
-    static void SetVersion(uint32_t version)
-    {
-        GetInstance().opVersion = version;
-    }
+    static void SetVersion(uint32_t version) { GetInstance().opVersion = version; }
 
     static OpVersionManager &GetInstance()
     {
@@ -35,16 +32,11 @@ public:
         return instance;
     }
 
-    uint32_t GetVersion() const
-    {
-        return opVersion;
-    }
+    uint32_t GetVersion() const { return opVersion; }
 
 private:
     uint32_t opVersion;
-    explicit OpVersionManager(uint32_t version) : opVersion(version)
-    {
-    }
+    explicit OpVersionManager(uint32_t version) : opVersion(version) {}
 };
 
 #endif // __MC2_OPVERSION_MANAGER_H__

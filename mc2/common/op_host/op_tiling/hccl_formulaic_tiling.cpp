@@ -17,15 +17,9 @@
 #include "mc2_log.h"
 #include "hccl_formulaic_tiling.h"
 
-void FormPartition::SetMinLenByMax(uint64_t newLen)
-{
-    tileArgs.minTileLen = std::max(tileArgs.minTileLen, newLen);
-}
+void FormPartition::SetMinLenByMax(uint64_t newLen) { tileArgs.minTileLen = std::max(tileArgs.minTileLen, newLen); }
 
-void FormPartition::SetMinLenByMin(uint64_t newLen)
-{
-    tileArgs.minTileLen = std::min(tileArgs.minTileLen, newLen);
-}
+void FormPartition::SetMinLenByMin(uint64_t newLen) { tileArgs.minTileLen = std::min(tileArgs.minTileLen, newLen); }
 
 void FormPartition::AlignTileLarge()
 {

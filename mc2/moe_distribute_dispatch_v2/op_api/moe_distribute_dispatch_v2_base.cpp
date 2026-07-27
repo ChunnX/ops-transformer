@@ -230,7 +230,6 @@ aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t workspaceSi
     return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);
 }
 
-
 #ifdef __cplusplus
 }
 #endif

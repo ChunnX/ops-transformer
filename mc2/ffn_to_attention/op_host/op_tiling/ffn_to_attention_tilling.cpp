@@ -122,11 +122,11 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, const char *nodeName,
                         "valid group name length"),
                     return false);
     OP_TILING_CHECK(worldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "worldSize"), return false);
-    OP_TILING_CHECK(tokenInfoTableDimNum != TOKEN_INFO_TABLE_DIM_NUM,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenInfoTableShape",
-                                              std::to_string(tokenInfoTableDimNum).c_str(),
-                                              std::to_string(TOKEN_INFO_TABLE_DIM_NUM).c_str()),
-                    return false);
+    OP_TILING_CHECK(
+        tokenInfoTableDimNum != TOKEN_INFO_TABLE_DIM_NUM,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenInfoTableShape", std::to_string(tokenInfoTableDimNum).c_str(),
+                                  std::to_string(TOKEN_INFO_TABLE_DIM_NUM).c_str()),
+        return false);
     OP_TILING_CHECK(tokenDataDimNum != TOKEN_DATA_DIM_NUM,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenDataShape", std::to_string(tokenDataDimNum).c_str(),
                                               std::to_string(TOKEN_DATA_DIM_NUM).c_str()),
@@ -230,11 +230,11 @@ static bool CheckInputDim0Dim1(gert::TilingContext *context, const char *nodeNam
                     return false);
     // 校验输入tokenIds的维度Y
     const int64_t tokenIdsDim0 = tokenIdsShape->GetStorageShape().GetDim(INDEX_ZERO);
-    OP_TILING_CHECK(xDim0 != static_cast<uint64_t>(tokenIdsDim0),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenIds",
-                                              (std::string("dim0=") + std::to_string(tokenIdsDim0)).c_str(),
-                                              (std::string("dim0=") + std::to_string(xDim0)).c_str()),
-                    return false);
+    OP_TILING_CHECK(
+        xDim0 != static_cast<uint64_t>(tokenIdsDim0),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenIds", (std::string("dim0=") + std::to_string(tokenIdsDim0)).c_str(),
+                                  (std::string("dim0=") + std::to_string(xDim0)).c_str()),
+        return false);
     // 校验输入expertOffsets的维度Y
     const int64_t expertOffsetsDim0 = expertOffsetsShape->GetStorageShape().GetDim(INDEX_ZERO);
     OP_TILING_CHECK(xDim0 != static_cast<uint64_t>(expertOffsetsDim0),
@@ -244,11 +244,11 @@ static bool CheckInputDim0Dim1(gert::TilingContext *context, const char *nodeNam
                     return false);
     // 校验输入actualTokenNum的维度1
     const uint64_t actualTokenNumDim0 = actualTokenNumShape->GetStorageShape().GetDim(INDEX_ZERO);
-    OP_TILING_CHECK(actualTokenNumDim0 != 1,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "actualTokenNum",
-                                              (std::string("dim0=") + std::to_string(actualTokenNumDim0)).c_str(),
-                                              "dim0=1"),
-                    return false);
+    OP_TILING_CHECK(
+        actualTokenNumDim0 != 1,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "actualTokenNum",
+                                  (std::string("dim0=") + std::to_string(actualTokenNumDim0)).c_str(), "dim0=1"),
+        return false);
     tilingData.ffnToAttentionInfo.H = xDim1;
     return true;
 }
@@ -380,11 +380,11 @@ static bool CheckInputDataType(gert::TilingContext *context, const char *nodeNam
         auto attnRankTableDesc = context->GetInputDesc(INPUT_ATTN_RANK_TABLE_INDEX);
         OP_TILING_CHECK(attnRankTableDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attnRankTableDesc"),
                         return false);
-        OP_TILING_CHECK(attnRankTableDesc->GetDataType() != ge::DT_INT32,
-                        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "attnRankTable",
-                                                  Ops::Base::ToString(attnRankTableDesc->GetDataType()).c_str(),
-                                                  "INT32"),
-                        return false);
+        OP_TILING_CHECK(
+            attnRankTableDesc->GetDataType() != ge::DT_INT32,
+            OP_LOGE_FOR_INVALID_DTYPE(nodeName, "attnRankTable",
+                                      Ops::Base::ToString(attnRankTableDesc->GetDataType()).c_str(), "INT32"),
+            return false);
     }
 
     return true;
@@ -549,12 +549,12 @@ ge::graphStatus FFNToAttentionTilingFunc(gert::TilingContext *context)
     uint64_t neededSize = 0;
     uint64_t viableWindowSize = 0;
     CalWinSize(*tilingData, neededSize, viableWindowSize);
-    OP_TILING_CHECK(neededSize > viableWindowSize,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "neededSize",
-                        (std::to_string(neededSize) + " > " + std::to_string(viableWindowSize)).c_str(),
-                        "The value of neededSize must not be greater than viable window size"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        neededSize > viableWindowSize,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "neededSize", (std::to_string(neededSize) + " > " + std::to_string(viableWindowSize)).c_str(),
+            "The value of neededSize must not be greater than viable window size"),
+        return ge::GRAPH_FAILED);
 
     // Set WorkSpace
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,

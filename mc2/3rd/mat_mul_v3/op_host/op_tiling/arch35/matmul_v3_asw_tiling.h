@@ -27,10 +27,7 @@ public:
     ~Mc2MatMulV3AswTiling() override = default;
 
 protected:
-    bool IsCapable() override
-    {
-        return true;
-    };
+    bool IsCapable() override { return true; };
 
     ge::graphStatus DoOpTiling() override;
 

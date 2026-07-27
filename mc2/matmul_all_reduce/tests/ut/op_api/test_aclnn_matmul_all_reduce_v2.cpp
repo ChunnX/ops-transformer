@@ -45,15 +45,9 @@ void RunMatmulAllReduceV2Ut(op::SocVersion soc, const TensorDesc &x1, const Tens
 
 class AclnnMatmulAllReduceV2Test : public testing::TestWithParam<MatmulAllReduceApiUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduce AclnnMatmulAllReduceV2Test SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduce AclnnMatmulAllReduceV2Test SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulAllReduce AclnnMatmulAllReduceV2Test TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MatmulAllReduce AclnnMatmulAllReduceV2Test TearDown" << std::endl; }
 };
 
 TEST_P(AclnnMatmulAllReduceV2Test, param)

@@ -51,20 +51,11 @@ public:
         CheckWindowSize(totalWinSize, Mc2Kernel::GetWinSize(epContext_), pipe, exceptionAddr);
     }
 
-    __aicore__ inline GM_ADDR GetStatusDataSpaceGm()
-    {
-        return Mc2Kernel::GetStatusDataSpaceGm(epContext_);
-    }
+    __aicore__ inline GM_ADDR GetStatusDataSpaceGm() { return Mc2Kernel::GetStatusDataSpaceGm(epContext_); }
 
-    __aicore__ inline uint32_t GetEpRankId()
-    {
-        return Mc2Kernel::GetRankId(epContext_);
-    }
+    __aicore__ inline uint32_t GetEpRankId() { return Mc2Kernel::GetRankId(epContext_); }
 
-    __aicore__ inline uint32_t GetEpWorldSize()
-    {
-        return Mc2Kernel::GetRankDim(epContext_);
-    }
+    __aicore__ inline uint32_t GetEpWorldSize() { return Mc2Kernel::GetRankDim(epContext_); }
 
     __aicore__ inline GM_ADDR GetWindAddrByRankId(int32_t rankId, int32_t curRankId)
     {

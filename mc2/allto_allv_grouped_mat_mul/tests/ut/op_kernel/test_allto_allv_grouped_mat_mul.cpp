@@ -26,14 +26,8 @@ struct HcclCombinOpParam {
 };
 class AlltoAllvGroupedMatMulTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllvGroupedMatMulTest SetUp\n" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "AlltoAllvGroupedMatMulTest TearDown\n" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllvGroupedMatMulTest SetUp\n" << std::endl; }
+    static void TearDownTestCase() { std::cout << "AlltoAllvGroupedMatMulTest TearDown\n" << std::endl; }
 };
 
 // shard = 1

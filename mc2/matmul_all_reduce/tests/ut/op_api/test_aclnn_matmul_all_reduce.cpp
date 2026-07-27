@@ -45,10 +45,7 @@ void RunMatmulAllReduceUt(op::SocVersion soc, const TensorDesc &x1, const Tensor
 
 class AclnnMatmulAllReduceTest : public testing::TestWithParam<MatmulAllReduceApiUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduce AclnnMatmulAllReduceTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduce AclnnMatmulAllReduceTest SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {
@@ -110,10 +107,7 @@ TEST_F(AclnnMatmulAllReduceExtraTest, Bf16WithBias)
     RunMatmulAllReduceUt(op::SocVersion::ASCEND910B, x1, x2, bias.ToAclTypeRawPtr(), output, ACLNN_SUCCESS);
 }
 
-TEST_F(AclnnMatmulAllReduceExtraTest, LaunchApiCoverage)
-{
-    (void)aclnnMatmulAllReduce(nullptr, 0, nullptr, nullptr);
-}
+TEST_F(AclnnMatmulAllReduceExtraTest, LaunchApiCoverage) { (void)aclnnMatmulAllReduce(nullptr, 0, nullptr, nullptr); }
 
 TEST_F(AclnnMatmulAllReduceExtraTest, Ascend950LaunchCcuCommMode)
 {

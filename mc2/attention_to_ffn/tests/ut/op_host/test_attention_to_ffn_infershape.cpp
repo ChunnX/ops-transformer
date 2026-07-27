@@ -19,15 +19,9 @@ namespace AttentionToFFNUT {
 
 class AttentionToFFNInferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AttentionToFFNInferShapeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AttentionToFFNInferShapeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AttentionToFFNInferShapeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AttentionToFFNInferShapeTest TearDown" << std::endl; }
 };
 
 TEST_F(AttentionToFFNInferShapeTest, Basic)

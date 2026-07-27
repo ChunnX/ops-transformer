@@ -26,8 +26,8 @@
 #include "lib/matmul_intf.h"
 #include "quant_batch_matmul_v3_tiling_data.h"
 
-#define TemplateBasicType                                                                                              \
-    typename x1Type, typename x2Type, typename scaleType, typename yType, int x1Format, int x2Format, bool aTrans,     \
+#define TemplateBasicType \
+    typename x1Type, typename x2Type, typename scaleType, typename yType, int x1Format, int x2Format, bool aTrans, \
         bool bTrans, class UPDATE_TYPE
 #define TemplateBasicValue x1Type, x2Type, scaleType, yType, x1Format, x2Format, aTrans, bTrans, UPDATE_TYPE
 
@@ -127,10 +127,7 @@ __aicore__ inline T Min(T a, T b)
     return a > b ? b : a;
 }
 
-__aicore__ inline uint64_t Align(uint64_t a, uint64_t b = 16)
-{
-    return (a + b - 1) / b * b;
-}
+__aicore__ inline uint64_t Align(uint64_t a, uint64_t b = 16) { return (a + b - 1) / b * b; }
 
 __aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b)
 {
@@ -140,20 +137,11 @@ __aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b)
     return (a + b - 1) / b;
 }
 
-__aicore__ inline uint64_t Align16(uint64_t num)
-{
-    return (num + 15UL) & 0xFFFFFFFFFFFFFFF0UL;
-}
+__aicore__ inline uint64_t Align16(uint64_t num) { return (num + 15UL) & 0xFFFFFFFFFFFFFFF0UL; }
 
-__aicore__ inline uint64_t Align32(uint64_t num)
-{
-    return (num + 31UL) & 0xFFFFFFFFFFFFFFE0UL;
-}
+__aicore__ inline uint64_t Align32(uint64_t num) { return (num + 31UL) & 0xFFFFFFFFFFFFFFE0UL; }
 
-__aicore__ inline uint64_t Align64(uint64_t num)
-{
-    return (num + 31UL) & 0xFFFFFFFFFFFFFFC0UL;
-}
+__aicore__ inline uint64_t Align64(uint64_t num) { return (num + 31UL) & 0xFFFFFFFFFFFFFFC0UL; }
 
 __aicore__ inline constexpr CubeFormat GetFormat(int format)
 {
@@ -202,7 +190,6 @@ __aicore__ inline constexpr uint32_t GetTaskRation()
     return 1U;
 #endif
 }
-
 
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 template <typename T>

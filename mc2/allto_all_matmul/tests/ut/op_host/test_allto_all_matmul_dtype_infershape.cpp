@@ -17,10 +17,7 @@ namespace AlltoAllMatmulUT {
 
 class InferDataTypeAllToAllMatmulTest : public testing::TestWithParam<AlltoAllMatmulInferDataTypeUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllMatmul InferDataTypeAllToAllMatmulTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllMatmul InferDataTypeAllToAllMatmulTest SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {

@@ -18,15 +18,9 @@ namespace matmul_reduce_scatter_v2_ut {
 
 class MatmulReduceScatterV2Arch35TilingTest : public testing::TestWithParam<MatmulReduceScatterV2TilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulReduceScatterV2 Arch35TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulReduceScatterV2 Arch35TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulReduceScatterV2 Arch35TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MatmulReduceScatterV2 Arch35TilingTest TearDown" << std::endl; }
 };
 
 TEST_P(MatmulReduceScatterV2Arch35TilingTest, param)

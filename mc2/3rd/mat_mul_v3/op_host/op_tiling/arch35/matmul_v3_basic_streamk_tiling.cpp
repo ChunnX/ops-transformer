@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /* !
  * \file matmul_v3_basic_streamk_tiling.cpp
  * \brief
@@ -100,10 +99,7 @@ const static std::map<NpuArch, CheckStreamKDPSKTilingFunc> CheckStreamKDPSKTilin
 };
 
 // ------------------------------ GetL0C2OutFlag -------------------------------------------//
-Mc2MatMulV3L0C2Out GetL0C2OutFlagDefault(const Mc2MatMulV3Args & /* args */)
-{
-    return Mc2MatMulV3L0C2Out::ON_THE_FLY;
-}
+Mc2MatMulV3L0C2Out GetL0C2OutFlagDefault(const Mc2MatMulV3Args & /* args */) { return Mc2MatMulV3L0C2Out::ON_THE_FLY; }
 
 Mc2MatMulV3L0C2Out GetL0C2OutFlag91095(const Mc2MatMulV3Args &args)
 {
@@ -160,10 +156,7 @@ Mc2MatMulV3L0C2Out Mc2MatMulV3BasicStreamKTiling::GetL0C2OutFlag() const
     return iter(args_);
 }
 
-bool Mc2MatMulV3BasicStreamKTiling::IsCapable()
-{
-    return CheckStreamKSKTiling() || CheckStreamKDPSKTiling();
-}
+bool Mc2MatMulV3BasicStreamKTiling::IsCapable() { return CheckStreamKSKTiling() || CheckStreamKDPSKTiling(); }
 
 ge::graphStatus Mc2MatMulV3BasicStreamKTiling::DoOpTiling()
 {

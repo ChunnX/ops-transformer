@@ -141,11 +141,11 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
         xDim0 != topkDim0,
         OP_LOGE(nodeName, "topk_idx dim0 must equal x dim0, but got x dim0=%ld, topk_idx dim0=%ld.", xDim0, topkDim0),
         return false);
-    OP_TILING_CHECK((topkDim1 <= 0) || (topkDim1 > K_MAX) || (topkDim1 > numExperts),
-                    OP_LOGE(nodeName,
-                            "topk_idx dim1(topK) is invalid, should be in (0, min(%ld, num_experts=%ld)], but got %ld.",
-                            K_MAX, numExperts, topkDim1),
-                    return false);
+    OP_TILING_CHECK(
+        (topkDim1 <= 0) || (topkDim1 > K_MAX) || (topkDim1 > numExperts),
+        OP_LOGE(nodeName, "topk_idx dim1(topK) is invalid, should be in (0, min(%ld, num_experts=%ld)], but got %ld.",
+                K_MAX, numExperts, topkDim1),
+        return false);
 
     info.cfg.numTokens = static_cast<uint32_t>(xDim0);
     info.cfg.hidden = static_cast<uint32_t>(xDim1);
@@ -513,13 +513,13 @@ static ge::graphStatus CheckComputeAttr(const gert::TilingContext *context, cons
     OP_TILING_CHECK(doCpuSyncPtr == nullptr, OP_LOGE(nodeName, "doCpuSyncPtr is null."), return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = static_cast<int64_t>(info.cfg.epWorldSize);
-    OP_TILING_CHECK((*numExpertsPtr < MIN_NUM_EXPERTS) || (*numExpertsPtr > MAX_NUM_EXPERTS) ||
-                        (*numExpertsPtr % epWorldSize != 0),
-                    OP_LOGE(nodeName,
-                            "num_experts is invalid, should be in [%ld, %ld] and divisible by ep_world_size, but got "
-                            "num_experts=%ld, ep_world_size=%ld.",
-                            MIN_NUM_EXPERTS, MAX_NUM_EXPERTS, *numExpertsPtr, epWorldSize),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (*numExpertsPtr < MIN_NUM_EXPERTS) || (*numExpertsPtr > MAX_NUM_EXPERTS) || (*numExpertsPtr % epWorldSize != 0),
+        OP_LOGE(nodeName,
+                "num_experts is invalid, should be in [%ld, %ld] and divisible by ep_world_size, but got "
+                "num_experts=%ld, ep_world_size=%ld.",
+                MIN_NUM_EXPERTS, MAX_NUM_EXPERTS, *numExpertsPtr, epWorldSize),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*nmtPtr <= 0),
                     OP_LOGE(nodeName, "num_max_tokens_per_rank must be positive, but got %ld.", *nmtPtr),
                     return ge::GRAPH_FAILED);

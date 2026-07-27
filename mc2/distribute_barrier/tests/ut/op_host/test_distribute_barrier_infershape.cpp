@@ -16,15 +16,9 @@
 
 class DistributeBarrierInfershape : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "DistributeBarrierInfershape SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "DistributeBarrierInfershape SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "DistributeBarrierInfershape TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "DistributeBarrierInfershape TearDown" << std::endl; }
 };
 
 TEST_F(DistributeBarrierInfershape, InferShape0)

@@ -21,14 +21,8 @@
 
 class MoeDistributeCombineV2Test : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineV2Test SetUp\n" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeCombineV2Test TearDown\n" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineV2Test SetUp\n" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MoeDistributeCombineV2Test TearDown\n" << std::endl; }
 };
 
 TEST_F(MoeDistributeCombineV2Test, MoeDistributeCombineV2Test1000)

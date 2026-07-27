@@ -23,7 +23,6 @@ namespace MoeInitRoutingV2 {
 using namespace AscendC;
 using namespace Mc2Tiling;
 
-
 class MoeV2MrgsortOut {
 public:
     __aicore__ inline MoeV2MrgsortOut(){};
@@ -109,10 +108,7 @@ __aicore__ inline void MoeV2MrgsortOut::SetOutput(GlobalTensor<int32_t> &gmOutpu
 #endif
 }
 
-__aicore__ inline void MoeV2MrgsortOut::SetBuffer(LocalTensor<float> &tempBuffer)
-{
-    this->tempBuffer = tempBuffer;
-}
+__aicore__ inline void MoeV2MrgsortOut::SetBuffer(LocalTensor<float> &tempBuffer) { this->tempBuffer = tempBuffer; }
 
 __aicore__ inline void MoeV2MrgsortOut::UpdateMrgParam()
 {

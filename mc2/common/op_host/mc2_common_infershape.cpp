@@ -69,10 +69,10 @@ static void FillMatmulDims(CommParas &commParas, bool isTransA, bool isTransB)
 static ge::graphStatus CheckKDimMatch(const gert::InferShapeContext *context, const CommParas &commParas)
 {
     if (commParas.dimKX1 != commParas.dimKX2) {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "x1.k, x2.k",
-                                               std::to_string(commParas.dimKX1) + ", " +
-                                                   std::to_string(commParas.dimKX2),
-                                               "The values of x1.k and x2.k must be the same");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context->GetNodeName(), "x1.k, x2.k",
+            std::to_string(commParas.dimKX1) + ", " + std::to_string(commParas.dimKX2),
+            "The values of x1.k and x2.k must be the same");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

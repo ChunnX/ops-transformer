@@ -66,8 +66,5 @@ bool MoeDistributeDispatchSetupTilingA5::IsCapable()
     return false;
 }
 
-ge::graphStatus MoeDistributeDispatchSetupTilingA5::DoOpTiling()
-{
-    return MoeDistributeDispatchSetupTilingFuncImpl();
-}
+ge::graphStatus MoeDistributeDispatchSetupTilingA5::DoOpTiling() { return MoeDistributeDispatchSetupTilingFuncImpl(); }
 } // namespace optiling

@@ -17,15 +17,9 @@ namespace MoeDistributeCombineV2UT {
 
 class MoeDistributeCombineV2Arch35TilingTest : public testing::TestWithParam<MoeDistributeCombineV2TilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineV2Arch35TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineV2Arch35TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeCombineV2Arch35TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeCombineV2Arch35TilingTest TearDown" << std::endl; }
 };
 
 TEST_P(MoeDistributeCombineV2Arch35TilingTest, param)

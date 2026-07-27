@@ -28,20 +28,14 @@ template <typename DtypeA, typename DtypeB>
 struct XWeightStride<false, false, DtypeA, DtypeB> {
     // k,m
     // k,n
-    DEVICE decltype(auto) operator()(uint64_t outer, uint64_t k)
-    {
-        return AscendC::Std::make_tuple(_1{}, outer);
-    }
+    DEVICE decltype(auto) operator()(uint64_t outer, uint64_t k) { return AscendC::Std::make_tuple(_1{}, outer); }
 };
 
 template <typename DtypeA, typename DtypeB>
 struct XWeightStride<true, false, DtypeA, DtypeB> {
     // m,k
     // n,k
-    DEVICE decltype(auto) operator()(uint64_t outer, uint64_t k)
-    {
-        return AscendC::Std::make_tuple(k, _1{});
-    }
+    DEVICE decltype(auto) operator()(uint64_t outer, uint64_t k) { return AscendC::Std::make_tuple(k, _1{}); }
 };
 
 template <bool innerK, typename DtypeA, typename DtypeB>

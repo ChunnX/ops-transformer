@@ -62,28 +62,13 @@ public:
         NoCutTiling();                  // 初始化为不切分
     };
 
-    void SetBackTileRatio(double newRatio)
-    {
-        backTileRatio = (newRatio > 0) ? newRatio : backTileRatio;
-    };
+    void SetBackTileRatio(double newRatio) { backTileRatio = (newRatio > 0) ? newRatio : backTileRatio; };
     void SetMinLenByMax(uint64_t newLen);
     void SetMinLenByMin(uint64_t newLen);
-    uint64_t GetMinLen()
-    {
-        return tileArgs.minTileLen;
-    };
-    void SetAlignLength(uint64_t newLen)
-    {
-        tileArgs.mAlignLen = std::max(newLen, ONE);
-    };
-    uint64_t GetAlignLength()
-    {
-        return tileArgs.mAlignLen;
-    };
-    void SetMaxTileCnt(uint64_t newSize)
-    {
-        tileArgs.maxTileCnt = std::max(newSize, ONE);
-    };
+    uint64_t GetMinLen() { return tileArgs.minTileLen; };
+    void SetAlignLength(uint64_t newLen) { tileArgs.mAlignLen = std::max(newLen, ONE); };
+    uint64_t GetAlignLength() { return tileArgs.mAlignLen; };
+    void SetMaxTileCnt(uint64_t newSize) { tileArgs.maxTileCnt = std::max(newSize, ONE); };
 
     // TilingMethods
     void GenerateInitialPartition(bool smallDimAlignUp = false);
@@ -104,9 +89,7 @@ public:
     void CommBoundShortAlign();
     void FitTileLengthContinuous(bool kGreaterThanN, bool largeCalcCommRatio = true, bool soc310Flag = false);
 
-    virtual ~FormPartition()
-    {
-    }
+    virtual ~FormPartition() {}
 };
 
 // 单通信域算子通信轮次切分基类，每个算子各有一个派生类
@@ -144,9 +127,7 @@ public:
     // 调用函数
     void GetTiling();
 
-    virtual ~OneCalcOneCommBase()
-    {
-    }
+    virtual ~OneCalcOneCommBase() {}
 };
 
 #endif // __HCCL_FORMULAIC_TILING_H__

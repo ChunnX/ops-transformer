@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /* !
  * \file matmul_v3_stream_k_tiling.cc
  * \brief
@@ -91,10 +90,7 @@ const static std::map<NpuArch, CheckStreamKDPSKTilingFunc> CheckStreamKDPSKTilin
 };
 
 // ------------------------------ GetL0C2OutFlag -------------------------------------------//
-Mc2MatMulV3L0C2Out GetL0C2OutFlagDefault(const Mc2MatMulV3Args & /* args */)
-{
-    return Mc2MatMulV3L0C2Out::ON_THE_FLY;
-}
+Mc2MatMulV3L0C2Out GetL0C2OutFlagDefault(const Mc2MatMulV3Args & /* args */) { return Mc2MatMulV3L0C2Out::ON_THE_FLY; }
 
 Mc2MatMulV3L0C2Out GetL0C2OutFlag91095(const Mc2MatMulV3Args &args)
 {

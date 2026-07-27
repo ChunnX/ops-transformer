@@ -162,11 +162,11 @@ static ge::graphStatus CheckCommAttrValuesValid(gert::TilingContext *context, co
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpWorldSize", std::to_string(*tpWorldSizePtr).c_str(),
                                               (std::string("[0, ") + std::to_string(MAX_TP_WORLD_SIZE) + "]").c_str()),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*tpWorldSizePtr >= 2,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "tpWorldSize",
-                                                          std::to_string(*tpWorldSizePtr).c_str(),
-                                                          "0 or 1 (TP domain communication is not supported)"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        *tpWorldSizePtr >= 2,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "tpWorldSize", std::to_string(*tpWorldSizePtr).c_str(),
+                                              "0 or 1 (TP domain communication is not supported)"),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*epRankIdPtr < 0) || (*epRankIdPtr >= *epWorldSizePtr),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "epRankId", std::to_string(*epRankIdPtr).c_str(),
                                               (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()),
@@ -197,11 +197,11 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         *expertShardPtr != 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertShardType", std::to_string(*expertShardPtr).c_str(), "0"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*sharedExpertRankNumPtr < 0) || (*sharedExpertRankNumPtr >= *epWorldSizePtr),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertRankNum",
-                                              std::to_string(*sharedExpertRankNumPtr).c_str(),
-                                              (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (*sharedExpertRankNumPtr < 0) || (*sharedExpertRankNumPtr >= *epWorldSizePtr),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertRankNum", std::to_string(*sharedExpertRankNumPtr).c_str(),
+                                  (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         *sharedExpertNumPtr != 1,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", std::to_string(*sharedExpertNumPtr).c_str(), "1"),
@@ -586,11 +586,11 @@ ge::graphStatus MoeDistributeCombineTilingBase::MoeDistributeCombineTilingFunc(g
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandxDesc"),
                     return ge::GRAPH_FAILED);
     // 检查expandX数据类型为DT_INT32
-    OP_TILING_CHECK((expandXDesc->GetDataType() == ge::DT_INT32),
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expandX",
-                                              Ops::Base::ToString(expandXDesc->GetDataType()).c_str(),
-                                              "bf16 or float16"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (expandXDesc->GetDataType() == ge::DT_INT32),
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expandX", Ops::Base::ToString(expandXDesc->GetDataType()).c_str(),
+                                  "bf16 or float16"),
+        return ge::GRAPH_FAILED);
 
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     fe::PlatFormInfos &platformInfo = *platformInfoPtr;
@@ -608,10 +608,7 @@ ge::graphStatus TilingParseForMoeDistributeCombine(gert::TilingParseContext *con
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeCombineTilingBase::DoOpTiling()
-{
-    return MoeDistributeCombineTilingFunc(context_);
-}
+ge::graphStatus MoeDistributeCombineTilingBase::DoOpTiling() { return MoeDistributeCombineTilingFunc(context_); }
 
 ge::graphStatus MoeDistributeCombineTiling(gert::TilingContext *context)
 {
@@ -627,10 +624,7 @@ uint64_t MoeDistributeCombineTilingBase::GetTilingKey() const
     return tilingKey;
 }
 
-bool MoeDistributeCombineTilingBase::IsCapable()
-{
-    return true;
-}
+bool MoeDistributeCombineTilingBase::IsCapable() { return true; }
 
 IMPL_OP_OPTILING(MoeDistributeCombine)
     .Tiling(MoeDistributeCombineTiling)

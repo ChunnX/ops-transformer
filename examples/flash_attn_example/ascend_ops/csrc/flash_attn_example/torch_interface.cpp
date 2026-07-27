@@ -258,10 +258,7 @@ at::Tensor FlashAttnNpu(const at::Tensor &q,        // 查询张量 [B, S, N, D]
     return output;
 }
 
-TORCH_LIBRARY_IMPL(ascend_ops, PrivateUse1, m)
-{
-    m.impl("flash_attn_example", FlashAttnNpu);
-}
+TORCH_LIBRARY_IMPL(ascend_ops, PrivateUse1, m) { m.impl("flash_attn_example", FlashAttnNpu); }
 
 TORCH_LIBRARY(ascend_ops, m)
 {

@@ -132,40 +132,19 @@ public:
         tailWindow_ = mTileNum_ - mainRow_ * mainWindow_;
     }
 
-    __aicore__ inline int64_t GetTileNum()
-    {
-        return tileNum_ * batch_;
-    }
+    __aicore__ inline int64_t GetTileNum() { return tileNum_ * batch_; }
 
-    __aicore__ inline bool Gethf32Flag()
-    {
-        return isHf32_ > 0;
-    }
+    __aicore__ inline bool Gethf32Flag() { return isHf32_ > 0; }
 
-    __aicore__ inline uint64_t GetL1BuferNum_()
-    {
-        return static_cast<uint64_t>(l1BuferNum_);
-    }
+    __aicore__ inline uint64_t GetL1BuferNum_() { return static_cast<uint64_t>(l1BuferNum_); }
 
-    __aicore__ inline bool GetL0cDB()
-    {
-        return l0cDB_ > 1;
-    }
+    __aicore__ inline bool GetL0cDB() { return l0cDB_ > 1; }
 
-    __aicore__ inline bool GetUbDB()
-    {
-        return ubDB_ > 1;
-    }
+    __aicore__ inline bool GetUbDB() { return ubDB_ > 1; }
 
-    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL1Shape()
-    {
-        return {mL1_, nL1_, kL1_, 1};
-    }
+    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL1Shape() { return {mL1_, nL1_, kL1_, 1}; }
 
-    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL0Shape()
-    {
-        return {baseM_, baseN_, baseK_, 1};
-    }
+    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL0Shape() { return {baseM_, baseN_, baseK_, 1}; }
 
     __aicore__ inline int64_t GetBlockNum(ProblemShape shape, int64_t blockNum)
     {

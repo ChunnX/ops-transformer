@@ -20,20 +20,20 @@ using namespace AscendC;
 using namespace matmulReduceScatterV2_aivmode_tiling;
 
 namespace matmulReduceScatterV2_util {
-#define PADDING_ARGS_CALL()                                                                                            \
-    transA, transB, alignedA, alignedB, matrixAM, matrixAK, matrixBK, matrixBN, matrixAMAlign, matrixAKAlign,          \
+#define PADDING_ARGS_CALL() \
+    transA, transB, alignedA, alignedB, matrixAM, matrixAK, matrixBK, matrixBN, matrixAMAlign, matrixAKAlign, \
         matrixBKAlign, matrixBNAlign, gmA, gmB, gmAAlign, gmBAlign
 
-#define DEQUANT_ARGS_CALL()                                                                                            \
-    rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(peerMem),                     \
-        reinterpret_cast<GM_ADDR>(output), reinterpret_cast<GM_ADDR>(biasptr), tileM0, tileN0, pValue, swizzlDirect,   \
+#define DEQUANT_ARGS_CALL() \
+    rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(peerMem), \
+        reinterpret_cast<GM_ADDR>(output), reinterpret_cast<GM_ADDR>(biasptr), tileM0, tileN0, pValue, swizzlDirect, \
         swizzlCount, coreIdx, coreNum, rankIdx, rankSize, calIdx, resource, needPerChannel, needPerToken
 
-#define DEQUANT_ARGS_FUN()                                                                                             \
-    uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale,              \
+#define DEQUANT_ARGS_FUN() \
+    uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale, \
         __gm__ int32_t *workspace, GM_ADDR peerMem, GM_ADDR output, GM_ADDR biasptr, uint32_t tileM0, uint32_t tileN0, \
-        uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount, uint32_t coreIdx, uint32_t coreNum,              \
-        uint32_t rankIdx, uint32_t rankSize, uint32_t calIdx, Arch::Resource<Arch::AtlasA2> resource,                  \
+        uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount, uint32_t coreIdx, uint32_t coreNum, \
+        uint32_t rankIdx, uint32_t rankSize, uint32_t calIdx, Arch::Resource<Arch::AtlasA2> resource, \
         bool needPerChannel = false, bool needPerToken = false
 
 constexpr int32_t MAX_BLOCK_COUNT = 2;
@@ -63,25 +63,13 @@ struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
     static constexpr size_t size = SIZE / sizeof(T);
 
-    static inline __aicore__ size_t Count(size_t len)
-    {
-        return (len + size - 1) / size;
-    }
+    static inline __aicore__ size_t Count(size_t len) { return (len + size - 1) / size; }
 
-    static inline __aicore__ bool IsAligned(size_t len)
-    {
-        return len % size == 0;
-    }
+    static inline __aicore__ bool IsAligned(size_t len) { return len % size == 0; }
 
-    static inline __aicore__ size_t AlignUp(size_t len)
-    {
-        return (len + size - 1) & ~(size - 1);
-    }
+    static inline __aicore__ size_t AlignUp(size_t len) { return (len + size - 1) & ~(size - 1); }
 
-    static inline __aicore__ size_t AlignDown(size_t len)
-    {
-        return len & ~(size - 1);
-    }
+    static inline __aicore__ size_t AlignDown(size_t len) { return len & ~(size - 1); }
 };
 
 template <typename T>
@@ -470,10 +458,12 @@ private:
 
 public:
     __aicore__ explicit CommColumnSplitter(int32_t batchSize, int32_t unitBlocksM, int32_t unitBlocksN, int32_t n_max)
-        : m_batchSize(batchSize), m_unitBlocksM(unitBlocksM), m_unitBlocksN(unitBlocksN),
-          m_totalUnitBlocks(unitBlocksM * unitBlocksN), m_n_max(n_max)
-    {
-    }
+        : m_batchSize(batchSize),
+          m_unitBlocksM(unitBlocksM),
+          m_unitBlocksN(unitBlocksN),
+          m_totalUnitBlocks(unitBlocksM * unitBlocksN),
+          m_n_max(n_max)
+    {}
 
     /**
      * 计算指定任务索引在n维度上的起始位置
@@ -498,20 +488,11 @@ public:
         return ret < m_n_max ? ret : m_n_max;
     }
 
-    __aicore__ inline int32_t getBatchSize() const
-    {
-        return m_batchSize;
-    }
+    __aicore__ inline int32_t getBatchSize() const { return m_batchSize; }
 
-    __aicore__ inline int32_t getUnitBlocksM() const
-    {
-        return m_unitBlocksM;
-    }
+    __aicore__ inline int32_t getUnitBlocksM() const { return m_unitBlocksM; }
 
-    __aicore__ inline int32_t getUnitBlocksN() const
-    {
-        return m_unitBlocksN;
-    }
+    __aicore__ inline int32_t getUnitBlocksN() const { return m_unitBlocksN; }
 };
 
 } // namespace matmulReduceScatterV2_util

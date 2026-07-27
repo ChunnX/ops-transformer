@@ -23,7 +23,6 @@
 #include "lib/matmul_intf.h"
 #include "mat_mul_v3_tiling_data.h"
 
-
 using namespace AscendC;
 using namespace matmul;
 #if defined(__CCE_KT_TEST__)
@@ -84,17 +83,9 @@ constexpr MatmulConfig MM_CFG_MULTI_BATCH_OUT =
     GetNormalConfig(false, false, false, BatchMode::BATCH_LESS_THAN_L1, true, IterateOrder::ORDER_M,
                     ScheduleType::INNER_PRODUCT, true, false, BatchOutMode::MULTI_BATCH);
 
-enum class ND2NZ_SELECT : int32_t {
-    ONLY_A = 1,
-    ONLY_B = 2,
-    BOTH_AB = 3
-};
+enum class ND2NZ_SELECT : int32_t { ONLY_A = 1, ONLY_B = 2, BOTH_AB = 3 };
 
-enum class FIXPIPE_OPT_SELECT : int32_t {
-    BASE = 0,
-    BASE_ENABLE_ALIGNOUT = 1,
-    VEC_NZ2ND_UNALIGNOUT = 2
-};
+enum class FIXPIPE_OPT_SELECT : int32_t { BASE = 0, BASE_ENABLE_ALIGNOUT = 1, VEC_NZ2ND_UNALIGNOUT = 2 };
 
 #if defined(__CCE_KT_TEST__)
 #define SET_G_CORE_TYPE_IS_AIV thread_local int g_coreType = 2
@@ -138,26 +129,17 @@ __aicore__ inline uint64_t MMV3DivCeil(uint64_t a, uint64_t b)
 /**
  * if b is 0, return 0
  */
-__aicore__ inline uint64_t MMV3CeilAlign(uint64_t a, uint64_t b)
-{
-    return MMV3DivCeil(a, b) * b;
-}
+__aicore__ inline uint64_t MMV3CeilAlign(uint64_t a, uint64_t b) { return MMV3DivCeil(a, b) * b; }
 
 /**
  * if b is 0, return a
  */
-__aicore__ inline uint64_t MMV3DivFloor(uint64_t a, uint64_t b)
-{
-    return b == 0 ? a : a / b;
-}
+__aicore__ inline uint64_t MMV3DivFloor(uint64_t a, uint64_t b) { return b == 0 ? a : a / b; }
 
 /**
  * if b is 0, return 0
  */
-__aicore__ inline uint64_t MMV3FloorAlign(uint64_t a, uint64_t b)
-{
-    return b == 0 ? 0 : a / b * b;
-}
+__aicore__ inline uint64_t MMV3FloorAlign(uint64_t a, uint64_t b) { return b == 0 ? 0 : a / b * b; }
 
 __aicore__ inline uint64_t GetCurrentBlockIdx()
 {
@@ -183,10 +165,7 @@ __aicore__ inline uint64_t MMLcm(uint64_t m, uint64_t n)
     return total / m;
 }
 
-__aicore__ inline void WaitFlagDevLocal(int64_t flagID)
-{
-    CrossCoreWaitFlag(flagID);
-}
+__aicore__ inline void WaitFlagDevLocal(int64_t flagID) { CrossCoreWaitFlag(flagID); }
 
 // supportMmadS8S4平台无L2cacheUseInfo，用宏隔离
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102))
@@ -389,7 +368,6 @@ __aicore__ inline void UnAlignedCast32to16V220(__gm__ T *dst, __gm__ float *src,
 }
 
 #endif
-
 
 template <typename T1, typename T2>
 __aicore__ inline void CopyRemovePad(const GlobalTensor<T2> &outputGlobal, const GlobalTensor<T1> &inputGlobal,

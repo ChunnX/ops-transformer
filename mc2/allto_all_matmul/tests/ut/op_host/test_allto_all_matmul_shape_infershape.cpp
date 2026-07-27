@@ -16,15 +16,9 @@ namespace AlltoAllMatmulUT {
 
 class InferShapeTest : public testing::TestWithParam<AlltoAllMatmulInferShapeUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllMatmul InferShapeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllMatmul InferShapeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AlltoAllMatmul InferShapeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AlltoAllMatmul InferShapeTest TearDown" << std::endl; }
 };
 
 TEST_P(InferShapeTest, param)

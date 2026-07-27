@@ -128,7 +128,6 @@ ge::graphStatus Mc2AdaptiveSlidingWindowTiling::GetShapeAttrsInfo()
     return Mc2QuantBatchMatmulV3TilingBase::GetShapeAttrsInfo();
 }
 
-
 ge::graphStatus Mc2AdaptiveSlidingWindowTiling::DoOpTiling()
 {
     OP_LOGD(inputParams_.opName, "DoOpTiling of adaptive sliding window tiling strategy.");

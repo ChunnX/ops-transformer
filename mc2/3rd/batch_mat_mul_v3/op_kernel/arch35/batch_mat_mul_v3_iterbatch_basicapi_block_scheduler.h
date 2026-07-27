@@ -61,20 +61,14 @@ public:
         isHf32_ = params.tilingData->isHf32;
     }
 
-    __aicore__ inline int64_t GetTileNum()
-    {
-        return MMV3DivCeil(b_, iterBatchL1_);
-    }
+    __aicore__ inline int64_t GetTileNum() { return MMV3DivCeil(b_, iterBatchL1_); }
 
     __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetIterBatchTuple()
     {
         return {iterBatchL1_, iterBatchL0_, baseM_, baseN_};
     }
 
-    __aicore__ inline int64_t GetHf32Flag()
-    {
-        return isHf32_;
-    }
+    __aicore__ inline int64_t GetHf32Flag() { return isHf32_; }
 
     __aicore__ inline int64_t GetBlockNum(ProblemShape shape, int64_t blockNum)
     {
@@ -87,15 +81,9 @@ public:
         return tilingBlockNum;
     }
 
-    __aicore__ inline BlockShape GetBlockShape(int64_t tileIdx)
-    {
-        return {m_, n_, k_, b_};
-    }
+    __aicore__ inline BlockShape GetBlockShape(int64_t tileIdx) { return {m_, n_, k_, b_}; }
 
-    __aicore__ inline BlockCoord GetBlockCoord(int tileIdx)
-    {
-        return {0, 0, 0, tileIdx * iterBatchL1_};
-    }
+    __aicore__ inline BlockCoord GetBlockCoord(int tileIdx) { return {0, 0, 0, tileIdx * iterBatchL1_}; }
 };
 
 template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>

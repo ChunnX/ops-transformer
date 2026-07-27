@@ -144,8 +144,8 @@ Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::GetC
 }
 
 template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
-__aicore__ inline void
-Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::Process(uint32_t taskIndex)
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::Process(
+    uint32_t taskIndex)
 {
     GM_ADDR quantInputAddr = context_.quantInputAddr + taskIndex * context_.quantInputAddrOffset;
     GM_ADDR quantOutputAddr = context_.quantOutputAddr + taskIndex * context_.quantOutputAddrOffset;
@@ -586,8 +586,8 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
 
 // fp8DynamicQuant的动态实现
 #ifndef DEFINE_MC2_FP8_DYNAMIC_QUANT_PERTOKEN
-#define DEFINE_MC2_FP8_DYNAMIC_QUANT_PERTOKEN(QuantInputDataType, QuantOutputDataType, DynamicQuantType, isSmallK)     \
-    using DynamicQuantType =                                                                                           \
+#define DEFINE_MC2_FP8_DYNAMIC_QUANT_PERTOKEN(QuantInputDataType, QuantOutputDataType, DynamicQuantType, isSmallK) \
+    using DynamicQuantType = \
         MC2KernelTemplate::Fp8DynamicQuantPertoken<QuantInputDataType, QuantOutputDataType, isSmallK>
 #endif
 } // namespace MC2KernelTemplate

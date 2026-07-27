@@ -66,10 +66,11 @@ public:
         CATLASS_DEVICE
         Params(__gm__ ElementPerTokenScale *ptrPerTokenScale_, LayoutPerTokenScale const &layoutPerTokenScale_,
                __gm__ ElementD *ptrD_, LayoutD const &layoutD_)
-            : ptrPerTokenScale(ptrPerTokenScale_), layoutPerTokenScale(layoutPerTokenScale_), ptrD(ptrD_),
+            : ptrPerTokenScale(ptrPerTokenScale_),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrD(ptrD_),
               layoutD(layoutD_)
-        {
-        }
+        {}
     };
 
     CATLASS_DEVICE
@@ -123,15 +124,10 @@ public:
         }
     }
 
-    CATLASS_DEVICE ~BlockEpilogue()
-    {
-    }
+    CATLASS_DEVICE ~BlockEpilogue() {}
 
     CATLASS_DEVICE
-    void UpdateParams(Params const &params_)
-    {
-        params = params_;
-    }
+    void UpdateParams(Params const &params_) { params = params_; }
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,

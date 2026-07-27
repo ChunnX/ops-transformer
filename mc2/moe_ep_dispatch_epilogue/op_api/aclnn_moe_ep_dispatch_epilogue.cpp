@@ -79,10 +79,7 @@ aclnnStatus aclnnMoeEpDispatchEpilogueGetWorkspaceSize(
                                                  recvSrcMetadata, recvTopkWeights, recvScales, workspaceSize, executor);
 }
 
-enum NnopbaseHcclServerType {
-    NNOPBASE_HCCL_SERVER_TYPE_MTE = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 1
-};
+enum NnopbaseHcclServerType { NNOPBASE_HCCL_SERVER_TYPE_MTE = 0, NNOPBASE_HCCL_SERVER_TYPE_AICPU = 1 };
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 aclnnStatus aclnnMoeEpDispatchEpilogue(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

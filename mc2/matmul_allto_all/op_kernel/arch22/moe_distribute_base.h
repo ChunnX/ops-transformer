@@ -264,11 +264,7 @@ struct HcclA2CombineOpParam {
     uint64_t aiRMAInfo;       // HcclAiRMAInfo* 单个结构体指针
 };
 
-enum class DBMode : int32_t {
-    INVALID_DB = -1,
-    HW_DB = 0,
-    SW_DB
-};
+enum class DBMode : int32_t { INVALID_DB = -1, HW_DB = 0, SW_DB };
 
 struct HcclAiRMAWQ {
     uint32_t wqn{0};
@@ -302,7 +298,6 @@ struct hns_roce_rc_sq_wqe {
     uint32_t rkey;
     uint64_t remoteVA;
 };
-
 
 struct hns_roce_lite_wqe_data_seg {
     uint32_t len;

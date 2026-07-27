@@ -35,10 +35,7 @@ class MxQuantGroupedMatmulAllToAllvTiling : public QuantGroupedMatmulAllToAllvTi
 public:
     explicit MxQuantGroupedMatmulAllToAllvTiling(gert::TilingContext *context)
         : QuantGroupedMatmulAllToAllvTilingCommon(context) {};
-    void Reset(gert::TilingContext *context) override
-    {
-        TilingBaseClass::Reset(context);
-    }
+    void Reset(gert::TilingContext *context) override { TilingBaseClass::Reset(context); }
     ~MxQuantGroupedMatmulAllToAllvTiling() override = default;
 
 protected:

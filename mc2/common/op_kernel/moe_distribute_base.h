@@ -356,11 +356,7 @@ enum class DataplaneMode : uint32_t {
     AIV = 2,
 };
 
-enum class DBMode : int32_t {
-    INVALID_DB = -1,
-    HW_DB = 0,
-    SW_DB
-};
+enum class DBMode : int32_t { INVALID_DB = -1, HW_DB = 0, SW_DB };
 
 struct HcclAiRMAWQ {
     uint32_t wqn{0};
@@ -394,7 +390,6 @@ struct hns_roce_rc_sq_wqe {
     uint32_t rkey;
     uint64_t remoteVA;
 };
-
 
 struct hns_roce_lite_wqe_data_seg {
     uint32_t len;
@@ -439,10 +434,7 @@ __aicore__ inline DataplaneMode GetDataplaneMode(GM_ADDR contextGM0)
     return dataplaneMode;
 }
 
-__aicore__ inline int64_t GetCurrentTimestampUs()
-{
-    return AscendC::GetSystemCycle() / TIME_CYCLE;
-}
+__aicore__ inline int64_t GetCurrentTimestampUs() { return AscendC::GetSystemCycle() / TIME_CYCLE; }
 
 __aicore__ inline void RecordRankCommDuration(AscendC::LocalTensor<int32_t> performanceInfoU32Tensor, uint32_t rankId,
                                               int64_t startTime)
@@ -459,20 +451,11 @@ namespace Mc2Kernel {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A5 implmentation
 using HcclOpParam = HcclCombinOpParam;
 
-__aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam *winContext)
-{
-    return winContext->rankId;
-}
+__aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam *winContext) { return winContext->rankId; }
 
-__aicore__ inline uint32_t GetRankDim(__gm__ HcclOpParam *winContext)
-{
-    return winContext->rankDim;
-}
+__aicore__ inline uint32_t GetRankDim(__gm__ HcclOpParam *winContext) { return winContext->rankDim; }
 
-__aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam *winContext)
-{
-    return winContext->winSize;
-}
+__aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam *winContext) { return winContext->winSize; }
 
 __aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam *winContext)
 {
@@ -493,20 +476,11 @@ __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam *winCo
 #else  // A3 implementation
 using HcclOpParam = HcclOpResParam;
 
-__aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam *winContext)
-{
-    return winContext->localUsrRankId;
-}
+__aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam *winContext) { return winContext->localUsrRankId; }
 
-__aicore__ inline uint32_t GetRankDim(__gm__ HcclOpParam *winContext)
-{
-    return winContext->rankSize;
-}
+__aicore__ inline uint32_t GetRankDim(__gm__ HcclOpParam *winContext) { return winContext->rankSize; }
 
-__aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam *winContext)
-{
-    return winContext->winSize;
-}
+__aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam *winContext) { return winContext->winSize; }
 
 __aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam *winContext)
 {

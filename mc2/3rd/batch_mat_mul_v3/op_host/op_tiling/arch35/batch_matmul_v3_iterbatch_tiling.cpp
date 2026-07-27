@@ -103,9 +103,6 @@ uint64_t Mc2BatchMatMulV3IterBatchTiling::GetTilingKey() const
     return Mc2MatMulV3TilingKey().SetTrans(args_.isATrans, args_.isBTrans).SetModel(iterBatchBiasModel_).GetTilingKey();
 }
 
-uint64_t Mc2BatchMatMulV3IterBatchTiling::GetBlockDim() const
-{
-    return compileInfo_.aicNum;
-}
+uint64_t Mc2BatchMatMulV3IterBatchTiling::GetBlockDim() const { return compileInfo_.aicNum; }
 } // namespace Mc2batch_matmul_v3_advanced
 } // namespace optiling

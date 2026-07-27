@@ -425,9 +425,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::FillTriple(LocalTensor<ExpandXOutType> &xOutTensor,
-                                                                         uint32_t tokenIndex, uint32_t k)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::FillTriple(
+    LocalTensor<ExpandXOutType> &xOutTensor, uint32_t tokenIndex, uint32_t k)
 {
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     LocalTensor<int32_t> xOutTint32 = xOutTensor.template ReinterpretCast<int32_t>();
@@ -492,10 +491,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum,
-                                                                          uint32_t &startTokenId, uint32_t &endTokenId,
-                                                                          uint32_t &sendTokenNum, bool isFront)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SplitToCore(
+    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId, uint32_t &endTokenId, uint32_t &sendTokenNum,
+    bool isFront)
 {
     sendTokenNum = curSendCnt / curUseAivNum;               // 每个aiv需要发送的token数
     uint32_t remainderTokenNum = curSendCnt % curUseAivNum; // 余数
@@ -518,9 +516,8 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SplitToCore(uint32
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SendToSharedExpert(TQue<QuePosition::VECIN, 1> inQueue,
-                                                                                 TBuf<> outBuf)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SendToSharedExpert(
+    TQue<QuePosition::VECIN, 1> inQueue, TBuf<> outBuf)
 {
     LocalTensor<float> outTensorFp32 = outBuf.Get<float>();
     Duplicate<float>(outTensorFp32, float(1), hCommuSize_ * BUFFER_NUM / sizeof(float));
@@ -558,8 +555,8 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SendToSharedExpert
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalExpertSendNum(TBuf<> outBuf, TBuf<> expertMaskBuf)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalExpertSendNum(
+    TBuf<> outBuf, TBuf<> expertMaskBuf)
 {
     uint64_t maskCnt = 0;
     uint32_t mask = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
@@ -587,9 +584,8 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalExpertSendNum(T
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SplitExpertNumToCore(uint32_t &delCurExpertGroupNum,
-                                                                                   uint32_t &groupIdx)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SplitExpertNumToCore(
+    uint32_t &delCurExpertGroupNum, uint32_t &groupIdx)
 {
     sendNum_ = moeExpertNum_ / moeUsedAivNum_;
     remainderExpertNum_ = moeExpertNum_ % moeUsedAivNum_;
@@ -608,9 +604,8 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SplitExpertNumToCo
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SendToMoeExpert(TQue<QuePosition::VECIN, 1> inQueue,
-                                                                              TBuf<> expertMaskBuf, TBuf<> outBuf)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SendToMoeExpert(
+    TQue<QuePosition::VECIN, 1> inQueue, TBuf<> expertMaskBuf, TBuf<> outBuf)
 {
     // 分核
     uint32_t delCurExpertGroupNum, groupIdx, calExpertIdsIdx;
@@ -842,10 +837,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GatherSumRecvCnt(LocalTensor<float> &gatherMaskOutTensor,
-                                                                               LocalTensor<uint32_t> &gatherTmpTensor,
-                                                                               LocalTensor<float> &statusSumOutTensor)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GatherSumRecvCnt(
+    LocalTensor<float> &gatherMaskOutTensor, LocalTensor<uint32_t> &gatherTmpTensor,
+    LocalTensor<float> &statusSumOutTensor)
 {
     gatherTmpTensor.SetValue(0, 2); // 源操作数每个datablock取下标为1的元素
     uint32_t mask = 2;              // 源操作数每个datablock只需要处理两个元素
@@ -882,9 +876,8 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GatherSumRecvCnt(L
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GetCumSum(LocalTensor<int32_t> &outLocal,
-                                                                        uint32_t newAivId)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GetCumSum(
+    LocalTensor<int32_t> &outLocal, uint32_t newAivId)
 {
     outLocal = gatherMaskOutBuf_.Get<int32_t>();
     DataCopyParams sumIntriParams{static_cast<uint16_t>(aivUsedCumSum_), 1, static_cast<uint16_t>(aivUsedCumSum_ - 1),
@@ -1139,9 +1132,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SetValidExpertInfo(uint32_t expInfoSize,
-                                                                                 uint32_t &validNum)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SetValidExpertInfo(
+    uint32_t expInfoSize, uint32_t &validNum)
 {
     // 获取cumSum
     GlobalTensor<int32_t> workspaceGlobal;
@@ -1166,9 +1158,8 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SetValidExpertInfo
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline uint32_t
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CheckDataArriveWithFlag(uint32_t srcExpDataIdx,
-                                                                                      int32_t beginIdx, int32_t copyCnt)
+__aicore__ inline uint32_t MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CheckDataArriveWithFlag(
+    uint32_t srcExpDataIdx, int32_t beginIdx, int32_t copyCnt)
 {
     uint64_t rsvdCnt = 0;
     uint32_t arriveFlagNum = 0;
@@ -1236,8 +1227,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::WaitAndFormatOutput(TBuf<> tBuf, uint32_t validNum)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::WaitAndFormatOutput(
+    TBuf<> tBuf, uint32_t validNum)
 {
     uint32_t index = 0;
     uint32_t finishNum = 0;
@@ -1383,8 +1374,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalValidBSCnt(LocalTensor<bool> maskStrideTensor)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalValidBSCnt(
+    LocalTensor<bool> maskStrideTensor)
 {
     uint64_t rsvdCnt = 0;
     uint32_t mask = axisBS_;
@@ -1417,8 +1408,8 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalValidBSCnt(Loca
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalValidExpIdx(LocalTensor<bool> maskInputTensor)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalValidExpIdx(
+    LocalTensor<bool> maskInputTensor)
 {
     uint32_t mask = expertIdsCnt_;
     uint32_t curMaskCnt = axisBS_ * axisK_;
@@ -1476,8 +1467,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::MaskZeroComputeExpert(uint32_t maskCnt)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::MaskZeroComputeExpert(
+    uint32_t maskCnt)
 {
     LocalTensor<int32_t> expertsIndexTensor = dstExpBuf_.Get<int32_t>();
     int32_t maskTensorInt16Cnt = Ceil(expertIdsCnt_, UB_ALIGN / 2);
@@ -1517,8 +1508,8 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::MaskZeroComputeExp
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void
-MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GenerateGatherMaskTensor(uint32_t maskCnt)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GenerateGatherMaskTensor(
+    uint32_t maskCnt)
 {
     Duplicate<uint32_t>(gatherMaskTensor_, 0, Ceil(expertIdsCnt_, UB_ALIGN));
     PipeBarrier<PIPE_V>();

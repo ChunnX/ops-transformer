@@ -48,16 +48,16 @@ bool AllToAllFpMatmulTilingBase::IsCapable()
  */
 ge::graphStatus AllToAllFpMatmulTilingBase::CheckOpInputInfo()
 {
-    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckNonQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check Dtype failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckShapeInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MatmulAlltoAllTilingUtil::CheckShapeInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check shape input and output shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckAlltoAllOut(context_, opName_) != ge::GRAPH_SUCCESS,
@@ -365,8 +365,7 @@ void AllToAllFpMatmulTilingBase::PrintMMV3TilingData(const std::string &opName, 
 }
 
 AllToAllFpMatmulTilingBase::AllToAllFpMatmulTilingBase(gert::TilingContext *context) : AllToAllMatmulTilingBase(context)
-{
-}
+{}
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllFpMatmulTilingBase, static_cast<int32_t>(NpuArch::DAV_3510),

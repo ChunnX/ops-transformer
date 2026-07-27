@@ -21,15 +21,9 @@ namespace MatmulReduceScatterUT {
 
 class MatmulReduceScatterArch35TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulReduceScatterArch35TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulReduceScatterArch35TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulReduceScatterArch35TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MatmulReduceScatterArch35TilingTest TearDown" << std::endl; }
 };
 
 TEST_F(MatmulReduceScatterArch35TilingTest, Float16_Basic)

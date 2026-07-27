@@ -21,7 +21,6 @@
 #ifndef HCCL_SHMEM_HPP
 #define HCCL_SHMEM_HPP
 
-
 #include "kernel_operator.h"
 #include "const_args.hpp"
 #include "mc2_moe_context.h"
@@ -193,9 +192,7 @@ public:
     std::conditional_t<IS_A2, __gm__ HcclA2CombineOpParam *, __gm__ HcclOpResParam *> WinContext_{nullptr};
     AscendC::LocalTensor<int32_t> ub;
     FORCE_INLINE_AICORE
-    HcclShmem()
-    {
-    }
+    HcclShmem() {}
     FORCE_INLINE_AICORE
     void initShmem(__gm__ Mc2Aclnn::Mc2MoeContext *mc2Context)
     {
@@ -327,33 +324,19 @@ public:
     }
 
     FORCE_INLINE_AICORE
-    size_t SegmentSize() const
-    {
-        return m_segmentSize;
-    }
+    size_t SegmentSize() const { return m_segmentSize; }
 
     FORCE_INLINE_AICORE
-    size_t TailReservedSize() const
-    {
-        return m_tailReservedSize;
-    }
+    size_t TailReservedSize() const { return m_tailReservedSize; }
 
     FORCE_INLINE_AICORE
-    int32_t Rank() const
-    {
-        return m_rank;
-    }
+    int32_t Rank() const { return m_rank; }
 
     FORCE_INLINE_AICORE
-    int32_t RankSize() const
-    {
-        return m_rankSize;
-    }
+    int32_t RankSize() const { return m_rankSize; }
 
     FORCE_INLINE_AICORE
-    ~HcclShmem()
-    {
-    }
+    ~HcclShmem() {}
 
     FORCE_INLINE_AICORE
     void CrossRankSync()

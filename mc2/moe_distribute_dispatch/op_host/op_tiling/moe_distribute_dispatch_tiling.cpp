@@ -184,20 +184,20 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         *expertShardPtr != 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertShardType", std::to_string(*expertShardPtr).c_str(), "0"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*sharedExpertRankNumPtr < 0) || (*sharedExpertRankNumPtr >= *epWorldSizePtr),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertRankNum",
-                                              std::to_string(*sharedExpertRankNumPtr).c_str(),
-                                              (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (*sharedExpertRankNumPtr < 0) || (*sharedExpertRankNumPtr >= *epWorldSizePtr),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertRankNum", std::to_string(*sharedExpertRankNumPtr).c_str(),
+                                  (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*moeExpertNumPtr <= 0) || (*moeExpertNumPtr > MOE_EXPERT_MAX_NUM),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "moeExpertNum", std::to_string(*moeExpertNumPtr).c_str(),
                                               (std::string("(0, ") + std::to_string(MOE_EXPERT_MAX_NUM) + "]").c_str()),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*quantModePtr < static_cast<int64_t>(NO_SCALES)) ||
-                        (*quantModePtr > static_cast<int64_t>(DYNAMIC_SCALES)),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "quantMode", std::to_string(*quantModePtr).c_str(),
-                                              (std::string("[0, ") + std::to_string(DYNAMIC_SCALES) + "]").c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (*quantModePtr < static_cast<int64_t>(NO_SCALES)) || (*quantModePtr > static_cast<int64_t>(DYNAMIC_SCALES)),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "quantMode", std::to_string(*quantModePtr).c_str(),
+                                  (std::string("[0, ") + std::to_string(DYNAMIC_SCALES) + "]").c_str()),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         *sharedExpertNumPtr != 1,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", std::to_string(*sharedExpertNumPtr).c_str(), "1"),
@@ -387,11 +387,11 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
     const gert::StorageShape *expertScalesStorageShape = context->GetOptionalInputShape(EXPERT_SCALES_INDEX);
     if (expertScalesStorageShape != nullptr) {
         const auto &expertScalesShape = expertScalesStorageShape->GetStorageShape();
-        OP_TILING_CHECK(expertScalesShape.GetDimNum() != INPUT_DIM_TWO,
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expert_scales",
-                                                              Ops::Base::ToString(expertScalesShape).c_str(),
-                                                              "expert_scales must be 2D"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            expertScalesShape.GetDimNum() != INPUT_DIM_TWO,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName, "expert_scales", Ops::Base::ToString(expertScalesShape).c_str(), "expert_scales must be 2D"),
+            return ge::GRAPH_FAILED);
         const int64_t expertScalesDim0 = expertScalesShape.GetDim(0);
         const int64_t expertScalesDim1 = expertScalesShape.GetDim(1);
         if ((expertScalesDim0 != expertIdsDim0) || (expertScalesDim1 != expertIdsDim1)) {
@@ -450,9 +450,9 @@ static ge::graphStatus CheckExpertScalesDtypeAndFormat(gert::TilingContext *cont
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expert_scales", dtypeStr.c_str(), "FLOAT");
         return ge::GRAPH_FAILED;
     }
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "expert_scales format is invalid."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName, "expert_scales format is invalid."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -541,11 +541,11 @@ static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, cons
         }
     }
     // 校验通信参数的维度
-    OP_TILING_CHECK(CheckCommTensorShape(context, nodeName, tilingData, isSharedExpert, localMoeExpertNum) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "comm token shape", "invalid",
-                                                          "epRecvCount/tpRecvCount shape validation failed"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        CheckCommTensorShape(context, nodeName, tilingData, isSharedExpert, localMoeExpertNum) != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "comm token shape", "invalid",
+                                              "epRecvCount/tpRecvCount shape validation failed"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -761,10 +761,7 @@ ge::graphStatus MoeDistributeDispatchTilingBase::MoeDistributeDispatchA3A5Tiling
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeDispatchTilingBase::DoOpTiling()
-{
-    return MoeDistributeDispatchTilingFunc(context_);
-}
+ge::graphStatus MoeDistributeDispatchTilingBase::DoOpTiling() { return MoeDistributeDispatchTilingFunc(context_); }
 
 uint64_t MoeDistributeDispatchTilingBase::GetTilingKey() const
 {
@@ -775,10 +772,7 @@ uint64_t MoeDistributeDispatchTilingBase::GetTilingKey() const
     return tilingKey;
 }
 
-bool MoeDistributeDispatchTilingBase::IsCapable()
-{
-    return true;
-}
+bool MoeDistributeDispatchTilingBase::IsCapable() { return true; }
 
 struct MoeDistributeDispatchCompileInfo {};
 ge::graphStatus TilingParseForMoeDistributeDispatch(gert::TilingParseContext *context)

@@ -83,9 +83,7 @@ public:
     }
 
     CATLASS_DEVICE
-    ~BlockEpilogue()
-    {
-    }
+    ~BlockEpilogue() {}
 
     CATLASS_DEVICE
     void SetVecMask(int32_t len)
@@ -107,10 +105,7 @@ public:
     }
 
     CATLASS_DEVICE
-    void SetkvSplitCoreNum(uint32_t kvSplitCoreNum_)
-    {
-        kvSplitCoreNum = kvSplitCoreNum_;
-    }
+    void SetkvSplitCoreNum(uint32_t kvSplitCoreNum_) { kvSplitCoreNum = kvSplitCoreNum_; }
 
     CATLASS_DEVICE
     void SetBlockReduceMask(int32_t len)

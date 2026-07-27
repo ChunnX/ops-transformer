@@ -118,9 +118,7 @@ public:
         GM_ADDR tilingGM{nullptr};
         MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
 
-        CATLASS_HOST_DEVICE Params()
-        {
-        }
+        CATLASS_HOST_DEVICE Params() {}
 
         CATLASS_HOST_DEVICE
         Params(GemmCoord problemShape_, uint32_t EP_, uint32_t listLen_, uint32_t expertPerRank_,
@@ -134,21 +132,43 @@ public:
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
                GM_ADDR tilingGM_ = nullptr)
-            : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
-              maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
-              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
-              layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
-              layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
-              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)), layoutB2(layoutB2_),
+            : problemShape(problemShape_),
+              EP(EP_),
+              listLen(listLen_),
+              expertPerRank(expertPerRank_),
+              maxOutputSize(maxOutputSize_),
+              topK(topK_),
+              initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
+              epilogueCoreNum(epilogueCoreNum_),
+              epilogueGranularity(epilogueGranularity_),
+              swigluLimit(swigluLimit_),
+              contextGM(contextGM_),
+              tilingGM(tilingGM_),
+              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
+              layoutA(layoutA_),
+              layoutA2(layoutA2_),
+              ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
+              layoutB1(layoutB1_),
+              ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
+              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
+              layoutB2(layoutB2_),
               ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
-              ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)), layoutScale1(layoutScale1_),
-              ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)), layoutScale2(layoutScale2_),
-              ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)), layoutD1(layoutD1_), layoutD2(layoutD2_),
-              expertIdx(expertIdx_), moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
+              ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)),
+              layoutScale1(layoutScale1_),
+              ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)),
+              layoutScale2(layoutScale2_),
+              ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)),
+              layoutD1(layoutD1_),
+              layoutD2(layoutD2_),
+              expertIdx(expertIdx_),
+              moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
               moeInitRoutingQuantV2Offset(moeInitRoutingQuantV2Offset_),
-              expertTokensBeforeCapacity(expertTokensBeforeCapacity_), probs(probs_), ptrXActiveMask(ptrXActiveMask_),
-              ptrScales(ptrScales_), ptrWorkspace(ptrWorkspace_), ptrExpertTokenNums(gmExpertTokenNums_),
+              expertTokensBeforeCapacity(expertTokensBeforeCapacity_),
+              probs(probs_),
+              ptrXActiveMask(ptrXActiveMask_),
+              ptrScales(ptrScales_),
+              ptrWorkspace(ptrWorkspace_),
+              ptrExpertTokenNums(gmExpertTokenNums_),
               moeInitRoutingV2TilingData(moeInitRoutingV2TilingData_)
         {
             moeInitRoutingV2TilingData_.vbsComputeParamsOp = moeInitRoutingV2TilingData_.vbsComputeParamsOp;
@@ -179,9 +199,7 @@ public:
         initBuffer(params);
     }
 
-    CATLASS_DEVICE ~MegaMoeKernelA2BF16()
-    {
-    }
+    CATLASS_DEVICE ~MegaMoeKernelA2BF16() {}
 
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE void operator()(Params const &params);
@@ -294,14 +312,14 @@ private:
     //   - flag 槽 64B 独占 cache line（kFlagSlotI32 = 16 个 int32），slotIdx = rank * eR + groupIdx
     // ============================================================
     template <typename T>
-    CATLASS_DEVICE void
-    SendTokensV3(AscendC::GlobalTensor<T> dst, // 目标 rank peer mem（已含 rowStart * copyInNum 偏移）
-                 AscendC::GlobalTensor<T> src, // 本 rank windowsOut（已含 rowSrc * copyInNum 偏移）
-                 int32_t rows,                 // 发送 token 数
-                 uint32_t hiddenSize, int32_t dstEpIdx,
-                 int32_t groupIdx, // 当前专家组轮次（用于 epoch flag 值）
-                 int32_t rowStart, // dst 起始行号（路径 A 写 scale 时使用）
-                 const Params &params)
+    CATLASS_DEVICE void SendTokensV3(
+        AscendC::GlobalTensor<T> dst, // 目标 rank peer mem（已含 rowStart * copyInNum 偏移）
+        AscendC::GlobalTensor<T> src, // 本 rank windowsOut（已含 rowSrc * copyInNum 偏移）
+        int32_t rows,                 // 发送 token 数
+        uint32_t hiddenSize, int32_t dstEpIdx,
+        int32_t groupIdx, // 当前专家组轮次（用于 epoch flag 值）
+        int32_t rowStart, // dst 起始行号（路径 A 写 scale 时使用）
+        const Params &params)
     {
         // rows == 0：无 token 可发，不写 flag，对端 RecvTokensV3 同样 rows2==0 会提前 return
         if (rows == 0)
@@ -1371,9 +1389,7 @@ private:
         __gm__ float *ptrSoftFlagBase;
 
         CATLASS_DEVICE
-        WorkspaceInfo()
-        {
-        }
+        WorkspaceInfo() {}
 
         CATLASS_DEVICE
         WorkspaceInfo(const Params &params)
@@ -1427,9 +1443,7 @@ private:
         static constexpr int64_t kFlagPayloadI32 = 8;
 
         CATLASS_DEVICE
-        PeermemInfo()
-        {
-        }
+        PeermemInfo() {}
 
         CATLASS_DEVICE
         PeermemInfo(const Params &params, const HcclShmem<true> &shmem)

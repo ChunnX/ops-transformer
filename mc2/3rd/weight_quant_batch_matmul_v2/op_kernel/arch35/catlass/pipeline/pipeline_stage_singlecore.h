@@ -49,16 +49,10 @@ struct PipelineStageSingleCore
     }
 
     DEVICE
-    void ProducerRelease(uint64_t index) const
-    {
-        SetFlag<Base::ForwardHardEvent>(forwardEventId_);
-    }
+    void ProducerRelease(uint64_t index) const { SetFlag<Base::ForwardHardEvent>(forwardEventId_); }
 
     DEVICE
-    void ConsumerWait(uint64_t index) const
-    {
-        WaitFlag<Base::ForwardHardEvent>(forwardEventId_);
-    }
+    void ConsumerWait(uint64_t index) const { WaitFlag<Base::ForwardHardEvent>(forwardEventId_); }
 };
 } // namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass
 #endif

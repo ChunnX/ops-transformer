@@ -4009,15 +4009,9 @@ static MoeDistributeCombineTeardownTestParam g_testCases[] = {
 
 class MoeDistributeCombineTeardownTilingTest : public testing::TestWithParam<MoeDistributeCombineTeardownTestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineTeardownTilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineTeardownTilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeCombineTeardownTilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeCombineTeardownTilingTest TearDown." << std::endl; }
 };
 
 static struct MoeDistributeCombineTeardownCompileInfo {

@@ -16,15 +16,9 @@ namespace AllGatherMatmulUT {
 
 class AllGatherMatmulArch22TilingTest : public testing::TestWithParam<AllGatherMatmulTilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AllGatherMatmul Arch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AllGatherMatmul Arch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AllGatherMatmul Arch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AllGatherMatmul Arch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_P(AllGatherMatmulArch22TilingTest, param)

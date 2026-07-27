@@ -162,10 +162,7 @@ void FaTiling::CalcNumBlocks(uint32_t coreNum, ContextParamsForTiling &contextKe
     numBlocks_ = ascendcPlatform->CalcTschBlockDim(usedAivNum, aicNum, aivNum);
 }
 
-void FaTiling::CalcScheduleMode()
-{
-    scheduleMode_ = ScheduleMode::BATCH_MODE;
-}
+void FaTiling::CalcScheduleMode() { scheduleMode_ = ScheduleMode::BATCH_MODE; }
 
 void FaTiling::CalcWorkspaceSize()
 {

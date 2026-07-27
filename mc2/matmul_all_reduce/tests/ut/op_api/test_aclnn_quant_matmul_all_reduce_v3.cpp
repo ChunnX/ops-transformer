@@ -49,10 +49,7 @@ void RunQuantMatmulAllReduceV3Ut(op::SocVersion soc, const TensorDesc &x1, const
 
 class AclnnQuantMatmulAllReduceV3Test : public testing::TestWithParam<MatmulAllReduceApiUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduce AclnnQuantMatmulAllReduceV3Test SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduce AclnnQuantMatmulAllReduceV3Test SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {
@@ -64,11 +61,11 @@ TEST_P(AclnnQuantMatmulAllReduceV3Test, param)
 {
     auto param = GetParam();
     op::SetPlatformSocVersion(param.soc);
-    auto ut = OP_API_UT(aclnnQuantMatmulAllReduceV3,
-                        INPUT(param.x1, param.x2, param.bias, param.x3, param.dequantScale, param.pertokenScale,
-                              param.commQuantScale1, param.commQuantScale2, param.group.c_str(), param.reduceOp.c_str(),
-                              param.commTurn, param.streamMode),
-                        OUTPUT(param.output));
+    auto ut = OP_API_UT(
+        aclnnQuantMatmulAllReduceV3,
+        INPUT(param.x1, param.x2, param.bias, param.x3, param.dequantScale, param.pertokenScale, param.commQuantScale1,
+              param.commQuantScale2, param.group.c_str(), param.reduceOp.c_str(), param.commTurn, param.streamMode),
+        OUTPUT(param.output));
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);

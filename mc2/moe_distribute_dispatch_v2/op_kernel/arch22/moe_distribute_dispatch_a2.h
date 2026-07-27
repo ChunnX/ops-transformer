@@ -53,7 +53,6 @@ __aicore__ inline T2 RoundUp(const T1 val, const T2 align)
     return (static_cast<T2>(val) + align - 1) / align * align;
 }
 
-
 struct TaskInfo {
     uint32_t startTaskId{0};
     uint32_t endTaskId{0};
@@ -76,7 +75,7 @@ struct TaskInfo {
     }
 };
 
-#define TemplateMC2TypeA2Class                                                                                         \
+#define TemplateMC2TypeA2Class \
     typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
 #define TemplateMC2TypeA2Func XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist
 
@@ -426,7 +425,6 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::ZeroCompu
     Not(zeroExpertMaskTensor_, zeroExpertMaskTensor_, Ceil(sendToMoeExpTokenCnt_, BITS16_PER_BLOCK));
 }
 
-
 template <TemplateMC2TypeA2Class>
 __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::QuantProcess(uint32_t expertIndex,
                                                                                     TEventID eventId)
@@ -728,9 +726,8 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::SendToMoe
 }
 
 template <TemplateMC2TypeA2Class>
-__aicore__ inline void
-MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::CopyStatusToADump(LocalTensor<bool> isVisited,
-                                                                  LocalTensor<int32_t> dataFlagLocal)
+__aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::CopyStatusToADump(
+    LocalTensor<bool> isVisited, LocalTensor<int32_t> dataFlagLocal)
 {
     DataCopyExtParams copyFlagParams{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};

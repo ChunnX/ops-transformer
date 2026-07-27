@@ -46,8 +46,8 @@ using namespace padding;
 namespace MatmulReduceScatterV2Impl {
 
 // MMA2A : MatmulAllToAll
-#define TemplateMMReduceScatterV2Class                                                                                 \
-    typename AType, typename BType, typename biasType, typename x2ScaleType, typename cType, bool hasBias,             \
+#define TemplateMMReduceScatterV2Class \
+    typename AType, typename BType, typename biasType, typename x2ScaleType, typename cType, bool hasBias, \
         bool weight_nz, bool TA, bool TB
 #define TemplateMMReduceScatterV2Func AType, BType, biasType, x2ScaleType, cType, hasBias, weight_nz, TA, TB
 

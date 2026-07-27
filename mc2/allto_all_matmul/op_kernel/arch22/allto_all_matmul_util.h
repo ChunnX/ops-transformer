@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /*!
  * \file allto_all_matmul_util.h
  * \brief
@@ -48,25 +47,13 @@ struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
     static constexpr size_t size = Catlass::BytesToBits(SIZE) / Catlass::SizeOfBits<T>::value;
 
-    static __aicore__ inline size_t Count(size_t len)
-    {
-        return (len + size - 1) / size;
-    }
+    static __aicore__ inline size_t Count(size_t len) { return (len + size - 1) / size; }
 
-    static __aicore__ inline bool IsAligned(size_t len)
-    {
-        return len % size == 0;
-    }
+    static __aicore__ inline bool IsAligned(size_t len) { return len % size == 0; }
 
-    static __aicore__ inline size_t AlignUp(size_t len)
-    {
-        return (len + size - 1) & ~(size - 1);
-    }
+    static __aicore__ inline size_t AlignUp(size_t len) { return (len + size - 1) & ~(size - 1); }
 
-    static __aicore__ inline size_t AlignDown(size_t len)
-    {
-        return len & ~(size - 1);
-    }
+    static __aicore__ inline size_t AlignDown(size_t len) { return len & ~(size - 1); }
 };
 
 template <typename T>
@@ -317,10 +304,7 @@ __aicore__ inline void SetAndWaitAivSync(uint64_t flagIdx, int32_t pipeDepth = 2
     AscendC::CrossCoreWaitFlag(flagIdx + pipeDepth);
 }
 
-__aicore__ inline void SetAicSync(uint64_t flagIdx)
-{
-    AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagIdx);
-}
+__aicore__ inline void SetAicSync(uint64_t flagIdx) { AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagIdx); }
 
 template <typename T>
 __aicore__ inline int64_t ElemNumToBytes(int64_t elemNum)

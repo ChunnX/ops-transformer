@@ -18,15 +18,9 @@ namespace MoeDistributeCombineUT {
 
 class MoeDistributeCombineArch22TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineArch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeCombineArch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeCombineArch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_F(MoeDistributeCombineArch22TilingTest, Test0)
@@ -639,7 +633,6 @@ TEST_F(MoeDistributeCombineArch22TilingTest, EpWorldSize72)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
-
 
 TEST_F(MoeDistributeCombineArch22TilingTest, A2Int8Quant)
 {

@@ -84,15 +84,9 @@ std::unordered_map<string, std::function<void(TilingParams &tilingParams, const 
 
 class GroupedMatMulAlltoAllvArch22TilingTest : public testing::TestWithParam<TestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "GroupedMatMulAlltoAllvArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "GroupedMatMulAlltoAllvArch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "GroupedMatMulAlltoAllvArch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "GroupedMatMulAlltoAllvArch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_P(GroupedMatMulAlltoAllvArch22TilingTest, ShapeSize)

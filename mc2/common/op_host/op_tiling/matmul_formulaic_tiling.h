@@ -270,10 +270,7 @@ public:
     explicit MatmulFormulaicTiling(std::string opName) : opName_(opName) {};
     static uint32_t GetRankSize(const char *group);
     void SetWeightFormat(const matmul_tiling::CubeFormat weightFormat);
-    void SetSocVersion(const platform_ascendc::SocVersion &version)
-    {
-        socInfo_.socVersion = version;
-    }
+    void SetSocVersion(const platform_ascendc::SocVersion &version) { socInfo_.socVersion = version; }
     ge::graphStatus GetCubeTiling(TilingArgs &args, AscendC::tiling::TCubeTiling &cubeTiling,
                                   Mc2Tiling::TileL2Tiling &tileL2Tiling);
     ge::graphStatus GetCubeTiling(TilingArgs &args, AscendC::tiling::TCubeTiling &cubeTiling);

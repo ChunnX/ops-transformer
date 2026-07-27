@@ -122,10 +122,9 @@ std::unique_ptr<gert::TilingContextPara::TensorDescription> CreateTensorShape(ge
                                                        dtype, format));
 }
 
-std::vector<gert::TilingContextPara::TensorDescription>
-CreateInputTensors(const TilingParams &tilingParams,
-                   const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmXShape,
-                   const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmWeightShape)
+std::vector<gert::TilingContextPara::TensorDescription> CreateInputTensors(
+    const TilingParams &tilingParams, const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmXShape,
+    const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmWeightShape)
 {
     return {
         {{{tilingParams.BSK, tilingParams.H1}, {tilingParams.BSK, tilingParams.H1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -140,9 +139,8 @@ CreateInputTensors(const TilingParams &tilingParams,
     };
 }
 
-std::vector<gert::TilingContextPara::TensorDescription>
-CreateOutputTensors(const TilingParams &tilingParams,
-                    const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmYShape)
+std::vector<gert::TilingContextPara::TensorDescription> CreateOutputTensors(
+    const TilingParams &tilingParams, const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmYShape)
 {
     auto mmYDesc = (mmYShape->shape_.GetStorageShape().GetDimNum() == 0) ?
                        gert::TilingContextPara::TensorDescription{
@@ -161,15 +159,9 @@ CreateOutputTensors(const TilingParams &tilingParams,
 
 class AlltoAllvGroupedMatMulArch35TilingTest : public testing::TestWithParam<TestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AlltoAllvGroupedMatMulArch35TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AlltoAllvGroupedMatMulArch35TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AlltoAllvGroupedMatMulArch35TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AlltoAllvGroupedMatMulArch35TilingTest TearDown" << std::endl; }
 
 public:
     std::vector<int64_t> sendCounts{128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
@@ -332,7 +324,6 @@ static TestParam testParams[] = {
      ge::GRAPH_FAILED},
     // 不带 MM 场景
     {"Test_no_MM", {{"permuteOutFlag", "true"}, {"isNeedMM", "false"}}, {}, {}, ge::GRAPH_SUCCESS}};
-
 
 INSTANTIATE_TEST_SUITE_P(AlltoAllvGroupedMatMul, AlltoAllvGroupedMatMulArch35TilingTest, testing::ValuesIn(testParams),
                          [](const testing::TestParamInfo<AlltoAllvGroupedMatMulArch35TilingTest::ParamType> &info) {

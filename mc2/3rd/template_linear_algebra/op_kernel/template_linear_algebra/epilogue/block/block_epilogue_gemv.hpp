@@ -73,16 +73,13 @@ public:
 
         // Methods
         CATLASS_HOST_DEVICE
-        Params()
-        {
-        }
+        Params() {}
 
         CATLASS_HOST_DEVICE
         Params(ElementScalar alpha_, ElementScalar beta_, GM_ADDR ptrY_, LayoutC layoutY_, GM_ADDR ptrZ_,
                LayoutZ layoutZ_)
             : alpha(alpha_), beta(beta_), ptrY(ptrY_), layoutY(layoutY_), ptrZ(ptrZ_), layoutZ(layoutZ_)
-        {
-        }
+        {}
     };
 
     CATLASS_DEVICE
@@ -99,10 +96,7 @@ public:
     }
 
     CATLASS_DEVICE
-    ~BlockEpilogue()
-    {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-    }
+    ~BlockEpilogue() { AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0); }
 
     CATLASS_DEVICE
     void operator()(TensorCoord const &blockOffsetMN, TensorCoord const &actualBlockShapeMN,

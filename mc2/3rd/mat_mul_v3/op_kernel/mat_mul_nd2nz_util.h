@@ -28,21 +28,13 @@ constexpr uint64_t BLOCK_SIZE_BYTE = 32;
 constexpr uint64_t REPEAT_TIMES_MAX = 255;
 constexpr uint64_t SINGLE_COPY_SIZE = 256;
 
-
 constexpr uint32_t M_BLOCK_NUM_ELE_LIST[16] = {1, 16, 8, 16, 4, 16, 8, 16, 2, 16, 8, 16, 4, 16, 8, 16};
 constexpr uint32_t GCD_LIST[16] = {16, 1, 2, 1, 4, 1, 2, 1, 8, 1, 2, 1, 4, 1, 2, 1};
 const TransDataTo5HDParams PARA_ONE(false, false, 1, 0, 0);
 
-enum class ND2NZ_DB_TYPE : int32_t {
-    IN_OUTPUT,
-    OUTPUT,
-    NO_DB_REUSE_OUTPUT
-};
+enum class ND2NZ_DB_TYPE : int32_t { IN_OUTPUT, OUTPUT, NO_DB_REUSE_OUTPUT };
 
-enum class Nd2NzMode : int32_t {
-    MULTI_CORE = 0,
-    SINGLE_CORE = 1
-};
+enum class Nd2NzMode : int32_t { MULTI_CORE = 0, SINGLE_CORE = 1 };
 
 template <class T>
 __aicore__ inline void Copy(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal, uint32_t count)

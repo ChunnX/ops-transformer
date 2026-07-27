@@ -64,13 +64,7 @@ public:
 
 protected:
     bool IsCapable() override;
-    enum class FullLoadMode {
-        NONE_AB_K = 0,
-        FULL_AKL1,
-        FULL_BKL1,
-        FULL_K,
-        FULL_K_REORDER_MN
-    };
+    enum class FullLoadMode { NONE_AB_K = 0, FULL_AKL1, FULL_BKL1, FULL_K, FULL_K_REORDER_MN };
 
     ge::Format aFormat;
     ge::Format bFormat;
@@ -83,10 +77,7 @@ protected:
     ge::graphStatus DoOpTiling() override;
     // 4、计算高阶API的TilingData
 
-    ge::graphStatus DoLibApiTiling() override
-    {
-        return ge::GRAPH_SUCCESS;
-    }
+    ge::graphStatus DoLibApiTiling() override { return ge::GRAPH_SUCCESS; }
     // 5、计算TilingKey
     uint64_t GetTilingKey() const override;
     // 6、计算Workspace 大小

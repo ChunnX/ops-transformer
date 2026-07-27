@@ -63,8 +63,7 @@ public:
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, __gm__ int32_t *ptrTokenPerExpert_)
             : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_)
-        {
-        }
+        {}
     };
 
     CATLASS_DEVICE
@@ -102,15 +101,10 @@ public:
         }
     }
     CATLASS_DEVICE
-    ~BlockEpilogue()
-    {
-    }
+    ~BlockEpilogue() {}
 
     CATLASS_DEVICE
-    void UpdateParams(Params const &params_)
-    {
-        params = params_;
-    }
+    void UpdateParams(Params const &params_) { params = params_; }
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,

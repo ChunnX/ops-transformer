@@ -54,12 +54,7 @@ inline ge::graphStatus GetMatmulPara(const gert::OpExecuteContext *host_api_ctx,
     return ge::SUCCESS;
 }
 
-enum class Mc2QuantType : size_t {
-    K_NONE_QUANT,
-    K_WEIGHT_QUANT,
-    K_QUANT,
-    K_INVALID
-};
+enum class Mc2QuantType : size_t { K_NONE_QUANT, K_WEIGHT_QUANT, K_QUANT, K_INVALID };
 
 struct QuantParas {
     aclTensor *antiquant_scale_acl;

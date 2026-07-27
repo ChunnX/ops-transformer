@@ -15,7 +15,6 @@
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_STRUCT_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_STRUCT_H_
 
-
 #ifdef ASCENDC_OP_TEST
 #define IFA_EXTERN_C extern "C"
 #else
@@ -78,12 +77,8 @@ struct TilingIndexes {
     uint32_t s1Idx;
     uint32_t s2Idx;
 
-    TilingIndexes() : bIdx(0U), s1Idx(0U), s2Idx(0U)
-    {
-    }
-    TilingIndexes(uint32_t b, uint32_t s1, uint32_t s2) : bIdx(b), s1Idx(s1), s2Idx(s2)
-    {
-    }
+    TilingIndexes() : bIdx(0U), s1Idx(0U), s2Idx(0U) {}
+    TilingIndexes(uint32_t b, uint32_t s1, uint32_t s2) : bIdx(b), s1Idx(s1), s2Idx(s2) {}
 };
 
 enum class KvCacheLayout : uint32_t {
@@ -125,15 +120,7 @@ enum class IfaSocVersion : uint32_t {
     SOC_ASCEND_950 = 2,
 };
 
-
-enum class IfaLayout : uint32_t {
-    BSH_BSND = 0,
-    BNSD = 1,
-    NZ = 2,
-    TND = 3,
-    NBSD = 4,
-    NTD = 5
-};
+enum class IfaLayout : uint32_t { BSH_BSND = 0, BNSD = 1, NZ = 2, TND = 3, NBSD = 4, NTD = 5 };
 
 enum class IfaAmlaMode : uint32_t {
     DISABLE_AMLA = 0, // 不使能AMLA

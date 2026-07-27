@@ -23,15 +23,9 @@ using namespace std;
 
 class TestAclnnMatmulAlltoAllV2 : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        cout << "TestAclnnMatmulAlltoAllV2 SetUp" << endl;
-    }
+    static void SetUpTestCase() { cout << "TestAclnnMatmulAlltoAllV2 SetUp" << endl; }
 
-    static void TearDownTestCase()
-    {
-        cout << "TestAclnnMatmulAlltoAllV2 TearDown" << endl;
-    }
+    static void TearDownTestCase() { cout << "TestAclnnMatmulAlltoAllV2 TearDown" << endl; }
 };
 
 // ut用例结构体，在V1基础上新增commMode字段

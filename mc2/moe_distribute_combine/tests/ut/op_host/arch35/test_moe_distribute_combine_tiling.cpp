@@ -20,15 +20,9 @@ static constexpr uint64_t kSkipTilingKeyCheck = UINT64_MAX;
 
 class MoeDistributeCombineArch35TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineArch35TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineArch35TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeCombineArch35TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeCombineArch35TilingTest TearDown" << std::endl; }
 };
 
 // Basic success: epWorldSize=8, tpWorldSize=1, shared expert (epRankId < sharedExpertRankNum)

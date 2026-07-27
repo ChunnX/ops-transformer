@@ -91,20 +91,11 @@ public:
         totalMNTileNumInDP_ = mTileNum_ * nTileNum_ - tailMNTileNum;
     }
 
-    __aicore__ inline int64_t GetTotalTileNum()
-    {
-        return tileNum_ * batch_;
-    }
+    __aicore__ inline int64_t GetTotalTileNum() { return tileNum_ * batch_; }
 
-    __aicore__ inline int64_t GetHf32Flag()
-    {
-        return isHf32_;
-    }
+    __aicore__ inline int64_t GetHf32Flag() { return isHf32_; }
 
-    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL1Shape()
-    {
-        return {mL1_, nL1_, kL1_, 1};
-    }
+    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL1Shape() { return {mL1_, nL1_, kL1_, 1}; }
 
     __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetMNKTileNum()
     {
@@ -127,10 +118,7 @@ public:
         return tilingBlockNum;
     }
 
-    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL0Shape()
-    {
-        return {baseM_, baseN_, baseK_, 1};
-    }
+    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL0Shape() { return {baseM_, baseN_, baseK_, 1}; }
 
     __aicore__ inline BlockShape GetSingleCoreShape(int64_t tileIdx)
     {

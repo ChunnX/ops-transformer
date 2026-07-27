@@ -26,15 +26,9 @@ namespace MoeDistributeDispatchV2UT {
 
 class MoeDistributeDispatchV2Arch35TilingTest : public testing::TestWithParam<MoeDistributeDispatchV2TilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeDispatchV2Arch35TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeDispatchV2Arch35TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeDispatchV2Arch35TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeDispatchV2Arch35TilingTest TearDown" << std::endl; }
 };
 
 TEST_P(MoeDistributeDispatchV2Arch35TilingTest, param)

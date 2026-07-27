@@ -16,15 +16,9 @@ namespace MatmulAllReduceUT {
 
 class MatmulAllReduceArch20TilingTest : public testing::TestWithParam<MatmulAllReduceTilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulAllReduceArch20TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulAllReduceArch20TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulAllReduceArch20TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MatmulAllReduceArch20TilingTest TearDown" << std::endl; }
 };
 
 TEST_P(MatmulAllReduceArch20TilingTest, param)

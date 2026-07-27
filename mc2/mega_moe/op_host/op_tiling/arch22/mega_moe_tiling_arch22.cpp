@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #include <vector>
 #include <map>
 #include <algorithm>
@@ -204,11 +203,11 @@ static ge::graphStatus CheckDispatchQuantAttrs(gert::TilingContext *context, con
     } else if (w1DataType == ge::DT_BF16 || w1DataType == ge::DT_FLOAT16) {
         expectedDispatchQuantMode = DISPATCH_QUANT_MODE_NO_QUANT;
     }
-    OP_TILING_CHECK(*dispatchQuantModePtr != expectedDispatchQuantMode,
-                    OP_LOGE(K_INNER_DEBUG,
-                            "dispatch_quant_mode is invalid, should be %ld for weight dataType %d, but got %ld.",
-                            expectedDispatchQuantMode, static_cast<int>(w1DataType), *dispatchQuantModePtr),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        *dispatchQuantModePtr != expectedDispatchQuantMode,
+        OP_LOGE(K_INNER_DEBUG, "dispatch_quant_mode is invalid, should be %ld for weight dataType %d, but got %ld.",
+                expectedDispatchQuantMode, static_cast<int>(w1DataType), *dispatchQuantModePtr),
+        return GRAPH_FAILED);
 
     // dispatch_quant_out_dtype 校验：与 weight 数据类型对应
     if (*dispatchQuantOutDtypePtr != static_cast<int64_t>(ge::DT_UNDEFINED)) {
@@ -251,11 +250,11 @@ static ge::graphStatus CheckNumMaxTokensPerRankAttr(gert::TilingContext *context
             *ptr < bs,
             OP_LOGE(K_INNER_DEBUG, "num_max_tokens_per_rank is invalid, should be >= bs(%ld), but got %ld.", bs, *ptr),
             return GRAPH_FAILED);
-        OP_TILING_CHECK(*ptr < MIN_BS || *ptr > MAX_BS,
-                        OP_LOGE(K_INNER_DEBUG,
-                                "num_max_tokens_per_rank is invalid, should be in [%ld, %ld], but got %ld.", MIN_BS,
-                                MAX_BS, *ptr),
-                        return GRAPH_FAILED);
+        OP_TILING_CHECK(
+            *ptr < MIN_BS || *ptr > MAX_BS,
+            OP_LOGE(K_INNER_DEBUG, "num_max_tokens_per_rank is invalid, should be in [%ld, %ld], but got %ld.", MIN_BS,
+                    MAX_BS, *ptr),
+            return GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -373,9 +372,9 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     }
 
     // 5-6. dispatch_quant_mode && dispatch_quant_out_dtype
-    OP_TILING_CHECK(CheckDispatchQuantAttrs(context, dispatchQuantModePtr, dispatchQuantOutDtypePtr) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(K_INNER_DEBUG, "CheckDispatchQuantAttrs failed."), return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        CheckDispatchQuantAttrs(context, dispatchQuantModePtr, dispatchQuantOutDtypePtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckDispatchQuantAttrs failed."), return GRAPH_FAILED);
     info.dispatchQuantMode = static_cast<uint32_t>(*dispatchQuantModePtr);
     info.dispatchQuantOutDtype = static_cast<uint32_t>(*dispatchQuantOutDtypePtr);
 
@@ -514,11 +513,11 @@ static ge::graphStatus CheckTopkIdsInput(gert::TilingContext *context, const ger
     int64_t topkIdsDim0 = topkIdsStorageShape->GetStorageShape().GetDim(0);
     int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
 
-    OP_TILING_CHECK(topkIdsDim0 != bs,
-                    OP_LOGE(K_INNER_DEBUG,
-                            "topk_ids's dim0 not equal to x's dim0, topk_ids's dim0 = %ld, x's dim0 = %ld.",
-                            topkIdsDim0, bs),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        topkIdsDim0 != bs,
+        OP_LOGE(K_INNER_DEBUG, "topk_ids's dim0 not equal to x's dim0, topk_ids's dim0 = %ld, x's dim0 = %ld.",
+                topkIdsDim0, bs),
+        return GRAPH_FAILED);
     OP_TILING_CHECK(topK < MIN_TOPK || topK > MAX_TOPK,
                     OP_LOGE(K_INNER_DEBUG, "topk_ids's dim1(topK) is invalid, should be in [%ld, %ld], but got %ld.",
                             MIN_TOPK, MAX_TOPK, topK),
@@ -550,11 +549,11 @@ static ge::graphStatus CheckTopkWeightsInput(gert::TilingContext *context,
     int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
     int64_t topkWeightsDim1 = topkWeightsStorageShape->GetStorageShape().GetDim(1);
 
-    OP_TILING_CHECK(topkWeightsDim0 != bs,
-                    OP_LOGE(K_INNER_DEBUG,
-                            "topk_weights's dim0 not equal to x's dim0, topk_weights's dim0 = %ld, x's dim0 = %ld.",
-                            topkWeightsDim0, bs),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        topkWeightsDim0 != bs,
+        OP_LOGE(K_INNER_DEBUG, "topk_weights's dim0 not equal to x's dim0, topk_weights's dim0 = %ld, x's dim0 = %ld.",
+                topkWeightsDim0, bs),
+        return GRAPH_FAILED);
     OP_TILING_CHECK(topkWeightsDim1 != topK,
                     OP_LOGE(K_INNER_DEBUG,
                             "topk_weights's dim1 not equal to topk_ids's dim1, "
@@ -712,11 +711,11 @@ static ge::graphStatus CheckWeight2Input(gert::TilingContext *context, int64_t h
                             HIDDEN_SIZE_ALIGN, N),
                     return GRAPH_FAILED);
 
-    OP_TILING_CHECK(n2 < MIN_INTERMEDIATE_HIDDEN || n2 > MAX_INTERMEDIATE_HIDDEN,
-                    OP_LOGE(K_INNER_DEBUG,
-                            "weight2's dim0(intermediate_hidden) is invalid, should be in [%ld, %ld], but got %ld.",
-                            MIN_INTERMEDIATE_HIDDEN, MAX_INTERMEDIATE_HIDDEN, n2),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        n2 < MIN_INTERMEDIATE_HIDDEN || n2 > MAX_INTERMEDIATE_HIDDEN,
+        OP_LOGE(K_INNER_DEBUG, "weight2's dim0(intermediate_hidden) is invalid, should be in [%ld, %ld], but got %ld.",
+                MIN_INTERMEDIATE_HIDDEN, MAX_INTERMEDIATE_HIDDEN, n2),
+        return GRAPH_FAILED);
 
     for (uint32_t i = 0; i < expertPerRank; i++) {
         auto wTensorI = context->GetDynamicInputTensor(WEIGHT2_INDEX, i);
@@ -884,9 +883,9 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
 
     // ==================== 7. weight2 输入校验 ====================
     ge::DataType w2DataType = ge::DT_UNDEFINED;
-    OP_TILING_CHECK(CheckWeight2Input(context, hiddenSize, N, expertPerRank, w1DataType, w1Format, w2DataType) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(K_INNER_DEBUG, "CheckWeight2Input failed."), return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        CheckWeight2Input(context, hiddenSize, N, expertPerRank, w1DataType, w1Format, w2DataType) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckWeight2Input failed."), return GRAPH_FAILED);
 
     // ==================== 量化权重必须提供 scale 校验 ====================
     // 当 weight1 和 weight2 的类型都为 INT8 或 INT4 时，GMM1/GMM2 需要进行反量化
@@ -938,9 +937,9 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
 
         // ==================== 11. bias2 输入校验 ====================
         // 当 weight1 和 weight2 数据类型都为 INT4 时，bias2 必须存在
-        OP_TILING_CHECK(CheckBiasInput(context, BIAS2_INDEX, "bias2", expertPerRank, hiddenSize, "hiddenSize") !=
-                            ge::GRAPH_SUCCESS,
-                        OP_LOGE(K_INNER_DEBUG, "CheckBiasInput for bias2 failed."), return GRAPH_FAILED);
+        OP_TILING_CHECK(
+            CheckBiasInput(context, BIAS2_INDEX, "bias2", expertPerRank, hiddenSize, "hiddenSize") != ge::GRAPH_SUCCESS,
+            OP_LOGE(K_INNER_DEBUG, "CheckBiasInput for bias2 failed."), return GRAPH_FAILED);
     } else {
         uint32_t bias1ListLen = GetDynamicInputTensorListLen(context, BIAS1_INDEX);
         uint32_t bias2ListLen = GetDynamicInputTensorListLen(context, BIAS2_INDEX);

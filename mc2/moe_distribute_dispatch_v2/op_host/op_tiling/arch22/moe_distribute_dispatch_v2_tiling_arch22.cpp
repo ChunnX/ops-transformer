@@ -258,11 +258,11 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(const gert::
     }
     if (*epWorldSizePtr <= 0 || *epWorldSizePtr > maxEpWorldSizeA2 ||
         ((*epWorldSizePtr > RANK_NUM_PER_NODE_A2) && (*epWorldSizePtr % RANK_NUM_PER_NODE_A2 != 0))) {
-        OP_LOGE_FOR_INVALID_VALUE(K_INNER_DEBUG, "epWorldSize", std::to_string(*epWorldSizePtr).c_str(),
-                                  (std::string("[1,") + std::to_string(maxEpWorldSizeA2) +
-                                   "], and must be a multiple of " + std::to_string(RANK_NUM_PER_NODE_A2) + " when > " +
-                                   std::to_string(RANK_NUM_PER_NODE_A2))
-                                      .c_str());
+        OP_LOGE_FOR_INVALID_VALUE(
+            K_INNER_DEBUG, "epWorldSize", std::to_string(*epWorldSizePtr).c_str(),
+            (std::string("[1,") + std::to_string(maxEpWorldSizeA2) + "], and must be a multiple of " +
+             std::to_string(RANK_NUM_PER_NODE_A2) + " when > " + std::to_string(RANK_NUM_PER_NODE_A2))
+                .c_str());
         return GRAPH_FAILED;
     }
     if (epRankIdPtr == nullptr) {

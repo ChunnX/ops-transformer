@@ -18,15 +18,9 @@ namespace FFNToAttentionUT {
 
 class FFNToAttentionArch22TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "FFNToAttentionArch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "FFNToAttentionArch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "FFNToAttentionArch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "FFNToAttentionArch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_F(FFNToAttentionArch22TilingTest, NoRankTable)
@@ -180,7 +174,6 @@ TEST_F(FFNToAttentionArch22TilingTest, RankTableTokenIdsInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-
 TEST_F(FFNToAttentionArch22TilingTest, RankTableExpertNumoffsetIdsInvalid)
 {
     struct FFNToAttentionCompileInfo {
@@ -230,7 +223,6 @@ TEST_F(FFNToAttentionArch22TilingTest, RankTableActualtokenNumInvalid)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
-
 
 TEST_F(FFNToAttentionArch22TilingTest, RankTableBsInvalid)
 {

@@ -35,5 +35,4 @@ struct MoeCommContext {
 };
 } // namespace Mc2Aclnn
 
-
 #endif // MC2_MOE_CONTEXT_H

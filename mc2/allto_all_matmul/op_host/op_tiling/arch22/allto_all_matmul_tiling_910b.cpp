@@ -119,25 +119,13 @@ struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
     static constexpr size_t size = SIZE / sizeof(T);
 
-    static __aicore__ inline size_t Count(size_t len)
-    {
-        return (len + size - 1) / size;
-    }
+    static __aicore__ inline size_t Count(size_t len) { return (len + size - 1) / size; }
 
-    static __aicore__ inline bool IsAligned(size_t len)
-    {
-        return len % size == 0;
-    }
+    static __aicore__ inline bool IsAligned(size_t len) { return len % size == 0; }
 
-    static __aicore__ inline size_t AlignUp(size_t len)
-    {
-        return (len + size - 1) & ~(size - 1);
-    }
+    static __aicore__ inline size_t AlignUp(size_t len) { return (len + size - 1) & ~(size - 1); }
 
-    static __aicore__ inline size_t AlignDown(size_t len)
-    {
-        return len & ~(size - 1);
-    }
+    static __aicore__ inline size_t AlignDown(size_t len) { return len & ~(size - 1); }
 };
 
 template <typename T>
@@ -943,11 +931,11 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
         OP_TILING_CHECK((x2ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "x2Scale"),
                         return ge::GRAPH_FAILED);
         ge::DataType x2ScaleDtype = x2ScaleTensorDesc->GetDataType();
-        OP_TILING_CHECK(x2ScaleDtype != ge::DT_FLOAT,
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x2Scale",
-                                                              Ops::Base::ToString(x2ScaleDtype).c_str(),
-                                                              "The dtype of x2Scale must be FLOAT"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            x2ScaleDtype != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x2Scale", Ops::Base::ToString(x2ScaleDtype).c_str(),
+                                                  "The dtype of x2Scale must be FLOAT"),
+            return ge::GRAPH_FAILED);
         if (info.isSmoothQuant) {
             OP_TILING_CHECK((x1ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "x1Scale"),
                             return ge::GRAPH_FAILED);
@@ -965,20 +953,20 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
         OP_TILING_CHECK((x1ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "x1Scale"),
                         return ge::GRAPH_FAILED);
         ge::DataType x1ScaleDtype = x1ScaleTensorDesc->GetDataType();
-        OP_TILING_CHECK(x1ScaleDtype != ge::DT_FLOAT,
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1Scale",
-                                                              Ops::Base::ToString(x1ScaleDtype).c_str(),
-                                                              "The dtype of x1Scale must be FLOAT"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            x1ScaleDtype != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1Scale", Ops::Base::ToString(x1ScaleDtype).c_str(),
+                                                  "The dtype of x1Scale must be FLOAT"),
+            return ge::GRAPH_FAILED);
 
         OP_TILING_CHECK((x2ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "x2Scale"),
                         return ge::GRAPH_FAILED);
         ge::DataType x2ScaleDtype = x2ScaleTensorDesc->GetDataType();
-        OP_TILING_CHECK(x2ScaleDtype != ge::DT_FLOAT,
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x2Scale",
-                                                              Ops::Base::ToString(x2ScaleDtype).c_str(),
-                                                              "The dtype of x2Scale must be FLOAT"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            x2ScaleDtype != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x2Scale", Ops::Base::ToString(x2ScaleDtype).c_str(),
+                                                  "The dtype of x2Scale must be FLOAT"),
+            return ge::GRAPH_FAILED);
         quantType = TILINGKEY_TPL_A4W4;
     }
     // A16W4检测
@@ -986,11 +974,11 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
         OP_TILING_CHECK((x2ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "x2Scale"),
                         return ge::GRAPH_FAILED);
         ge::DataType x2ScaleDtype = x2ScaleTensorDesc->GetDataType();
-        OP_TILING_CHECK(x2ScaleDtype != ge::DT_FLOAT,
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x2Scale",
-                                                              Ops::Base::ToString(x2ScaleDtype).c_str(),
-                                                              "The dtype of x2Scale must be FLOAT"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            x2ScaleDtype != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x2Scale", Ops::Base::ToString(x2ScaleDtype).c_str(),
+                                                  "The dtype of x2Scale must be FLOAT"),
+            return ge::GRAPH_FAILED);
         if (info.isSmoothQuant) {
             OP_TILING_CHECK((x1ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "x1Scale"),
                             return ge::GRAPH_FAILED);
@@ -1066,12 +1054,12 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
     // 校验维度数目是否合法
     uint64_t x1DimNum = x1Shape->GetStorageShape().GetDimNum();
     uint64_t x2DimNum = x2Shape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK((x1DimNum != 2 || x2DimNum != 2),
-                    OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-                        opName_, "x1 and x2",
-                        (std::to_string(x1DimNum) + "D and " + std::to_string(x2DimNum) + "D").c_str(),
-                        "The shape dims of x1 and x2 must be 2D"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x1DimNum != 2 || x2DimNum != 2),
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            opName_, "x1 and x2", (std::to_string(x1DimNum) + "D and " + std::to_string(x2DimNum) + "D").c_str(),
+            "The shape dims of x1 and x2 must be 2D"),
+        return ge::GRAPH_FAILED);
 
     info.M = x1Shape->GetStorageShape().GetDim(0);
     info.K = x1Shape->GetStorageShape().GetDim(1);
@@ -1169,11 +1157,11 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
     const gert::StorageShape *biasShape = context_->GetOptionalInputShape(INPUT_BIAS_INDEX);
     if (biasShape != nullptr) {
         uint64_t biasShapeDimNum = biasShape->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK((biasShapeDimNum != 1),
-                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "bias",
-                                                                 (std::to_string(biasShapeDimNum) + "D").c_str(),
-                                                                 "The shape dim of bias must be 1D"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (biasShapeDimNum != 1),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "bias", (std::to_string(biasShapeDimNum) + "D").c_str(),
+                                                     "The shape dim of bias must be 1D"),
+            return ge::GRAPH_FAILED);
         uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK((biasDim0 != info.N),
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -1496,9 +1484,9 @@ ge::graphStatus AlltoAllMatmulTiling910b::DoOpTiling()
     auto cclRet = mc2tiling::GetCclBufferSize(group, &hcclBuffSize, opName_);
     if (cclRet == ge::GRAPH_SUCCESS) {
         OP_TILING_CHECK(hcclBuffSize < MAX_BUFF_BYTES,
-            OP_LOGE(opName_, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
-                hcclBuffSize, MAX_BUFF_BYTES, MAX_BUFF_BYTES / MB_BYTES),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE(opName_, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
+                                hcclBuffSize, MAX_BUFF_BYTES, MAX_BUFF_BYTES / MB_BYTES),
+                        return ge::GRAPH_FAILED);
     } else {
         OP_LOGW(opName_, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
     }
@@ -1658,9 +1646,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::PostTiling()
  *
  * @param context
  */
-AlltoAllMatmulTiling910b::AlltoAllMatmulTiling910b(gert::TilingContext *context) : AllToAllMatmulTilingBase(context)
-{
-}
+AlltoAllMatmulTiling910b::AlltoAllMatmulTiling910b(gert::TilingContext *context) : AllToAllMatmulTilingBase(context) {}
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(AlltoAllMatmul, AlltoAllMatmulTiling910b,

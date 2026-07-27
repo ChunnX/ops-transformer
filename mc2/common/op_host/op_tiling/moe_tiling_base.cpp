@@ -29,23 +29,11 @@ ge::graphStatus MoeTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeTilingBase::GetShapeAttrsInfo()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus MoeTilingBase::GetShapeAttrsInfo() { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus MoeTilingBase::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus MoeTilingBase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus MoeTilingBase::GetWorkspaceSize()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus MoeTilingBase::GetWorkspaceSize() { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus MoeTilingBase::PostTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus MoeTilingBase::PostTiling() { return ge::GRAPH_SUCCESS; }
 } // namespace optiling

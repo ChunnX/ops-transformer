@@ -39,25 +39,13 @@ struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
     static constexpr size_t size = SIZE / sizeof(T);
 
-    static __aicore__ inline size_t Count(size_t len)
-    {
-        return (len + size - 1) / size;
-    }
+    static __aicore__ inline size_t Count(size_t len) { return (len + size - 1) / size; }
 
-    static __aicore__ inline bool IsAligned(size_t len)
-    {
-        return len % size == 0;
-    }
+    static __aicore__ inline bool IsAligned(size_t len) { return len % size == 0; }
 
-    static __aicore__ inline size_t AlignUp(size_t len)
-    {
-        return (len + size - 1) & ~(size - 1);
-    }
+    static __aicore__ inline size_t AlignUp(size_t len) { return (len + size - 1) & ~(size - 1); }
 
-    static __aicore__ inline size_t AlignDown(size_t len)
-    {
-        return len & ~(size - 1);
-    }
+    static __aicore__ inline size_t AlignDown(size_t len) { return len & ~(size - 1); }
 };
 
 class CommBase {
@@ -121,10 +109,7 @@ public:
         WaitEvent(flag_idx + pipe_depth);
     }
 
-    __aicore__ inline void SetAicSync(uint64_t flag_idx)
-    {
-        FFTSCrossCoreSync<PIPE_MTE3, 2>(flag_idx);
-    }
+    __aicore__ inline void SetAicSync(uint64_t flag_idx) { FFTSCrossCoreSync<PIPE_MTE3, 2>(flag_idx); }
 
     template <typename T>
     __aicore__ inline void CopyGmToUbufAlignB16(LocalTensor<T> ubTensor, __gm__ T *src, uint16_t nBurst,

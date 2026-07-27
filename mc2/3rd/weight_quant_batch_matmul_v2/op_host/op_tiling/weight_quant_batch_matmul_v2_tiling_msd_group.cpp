@@ -87,11 +87,11 @@ bool Mc2WeightQuantBatchMatmulV2TilingMsdGroup::IsCapable()
                             matmulInfoPtr_->groupSize, maxNSize, matmulInfoPtr_->mSize, matmulInfoPtr_->kSize,
                             matmulInfoPtr_->nSize),
                     return false);
-    OP_TILING_CHECK(matmulInfoPtr_->kSize % matmulInfoPtr_->groupSize != 0 || matmulInfoPtr_->nSize % 64 != 0,
-                    OP_LOGI(opName_,
-                            "k should align to GroupSize[%lu], n should align to [64], but k is [%ld] and n is [%lu]",
-                            matmulInfoPtr_->groupSize, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize),
-                    return false);
+    OP_TILING_CHECK(
+        matmulInfoPtr_->kSize % matmulInfoPtr_->groupSize != 0 || matmulInfoPtr_->nSize % 64 != 0,
+        OP_LOGI(opName_, "k should align to GroupSize[%lu], n should align to [64], but k is [%ld] and n is [%lu]",
+                matmulInfoPtr_->groupSize, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize),
+        return false);
     OP_TILING_CHECK(matmulInfoPtr_->transA || matmulInfoPtr_->transB || matmulInfoPtr_->cDtype == ge::DT_INT8,
                     OP_LOGI(opName_, "MSD group not support trans_a, trans_b or quant"), return false);
     if (matmulInfoPtr_->bDtype == ge::DT_INT4) {

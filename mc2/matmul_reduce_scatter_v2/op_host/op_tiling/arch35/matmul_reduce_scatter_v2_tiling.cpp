@@ -131,9 +131,9 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoMatmulV3Tiling(Mc2MatmulHelper::M
     tilingCfg.SetRankDim(args_.rankDim);
     OP_LOGD(opName_, "execte DoMatmulV3Tiling!");
     tilingCfg.SetMatMulV3TilingData(tilingData);
-    OP_TILING_CHECK(Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_, tilingCfg, registerCfg) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "do tiling failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_, tilingCfg, registerCfg) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName_, "do tiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

@@ -160,11 +160,11 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
                     OP_LOGE(nodeName, "num_recv_tokens_per_expert dims must be 1, but got %lu.",
                             numRecvPerExpertShape->GetStorageShape().GetDimNum()),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(numRecvPerExpertShape->GetStorageShape().GetDim(0) !=
-                        static_cast<int64_t>(info.cfg.numLocalExperts),
-                    OP_LOGE(nodeName, "num_recv_tokens_per_expert dim0 must equal num_local_experts=%u, but got %ld.",
-                            info.cfg.numLocalExperts, numRecvPerExpertShape->GetStorageShape().GetDim(0)),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        numRecvPerExpertShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.numLocalExperts),
+        OP_LOGE(nodeName, "num_recv_tokens_per_expert dim0 must equal num_local_experts=%u, but got %ld.",
+                info.cfg.numLocalExperts, numRecvPerExpertShape->GetStorageShape().GetDim(0)),
+        return ge::GRAPH_FAILED);
 
     const gert::StorageShape *topkWeightsShape = context->GetInputShape(TOPK_WEIGHTS_INDEX);
     bool hasTopkWeights = (topkWeightsShape != nullptr);
@@ -290,13 +290,13 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
         (*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
         OP_LOGE(nodeName, "ep_rank_id is invalid, should be in [0, %ld), but got %ld.", epWorldSize, *epRankIdPtr),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*numExpertsPtr < MIN_NUM_EXPERTS) || (*numExpertsPtr > MAX_NUM_EXPERTS) ||
-                        (*numExpertsPtr % epWorldSize != 0),
-                    OP_LOGE(nodeName,
-                            "num_experts is invalid, should be in [%ld, %ld] and divisible by ep_world_size, but got "
-                            "num_experts=%ld, ep_world_size=%ld.",
-                            MIN_NUM_EXPERTS, MAX_NUM_EXPERTS, *numExpertsPtr, epWorldSize),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (*numExpertsPtr < MIN_NUM_EXPERTS) || (*numExpertsPtr > MAX_NUM_EXPERTS) || (*numExpertsPtr % epWorldSize != 0),
+        OP_LOGE(nodeName,
+                "num_experts is invalid, should be in [%ld, %ld] and divisible by ep_world_size, but got "
+                "num_experts=%ld, ep_world_size=%ld.",
+                MIN_NUM_EXPERTS, MAX_NUM_EXPERTS, *numExpertsPtr, epWorldSize),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*nmtPtr <= 0, OP_LOGE(nodeName, "num_max_tokens_per_rank must be positive, but got %ld.", *nmtPtr),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*cclBufferSizePtr <= 0,
@@ -312,10 +312,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     return ge::GRAPH_SUCCESS;
 }
 
-static uint64_t AlignUpWin(const uint64_t data)
-{
-    return (data + COMM_ALIGN - 1) / COMM_ALIGN * COMM_ALIGN;
-}
+static uint64_t AlignUpWin(const uint64_t data) { return (data + COMM_ALIGN - 1) / COMM_ALIGN * COMM_ALIGN; }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCombineInfo &info, const char *nodeName)
 {

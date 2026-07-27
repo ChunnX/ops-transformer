@@ -82,10 +82,7 @@ public:
     };
 
     __aicore__ inline ExceptionDump() = default;
-    __aicore__ inline ExceptionDump(GM_ADDR baseAddr, GM_ADDR tilingAddr)
-    {
-        Init(baseAddr, tilingAddr);
-    }
+    __aicore__ inline ExceptionDump(GM_ADDR baseAddr, GM_ADDR tilingAddr) { Init(baseAddr, tilingAddr); }
 
     __aicore__ inline void Init(GM_ADDR baseAddr, GM_ADDR tilingAddr)
     {

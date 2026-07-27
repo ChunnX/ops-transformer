@@ -133,10 +133,7 @@ void HCCLPerformanceModel::SetMaxStepSize()
     commTypeInfo_.maxStepSize = 1;
 }
 
-uint64_t HCCLPerformanceModel::GetMaxStepSize()
-{
-    return commTypeInfo_.maxStepSize;
-}
+uint64_t HCCLPerformanceModel::GetMaxStepSize() { return commTypeInfo_.maxStepSize; }
 
 uint64_t HCCLPerformanceModel::GetLinearThresholdLen()
 {

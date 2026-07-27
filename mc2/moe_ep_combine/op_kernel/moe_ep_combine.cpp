@@ -27,7 +27,6 @@ using namespace MoeEpCombineImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-
 template <uint32_t HasTopkWeight, uint32_t ArchTag>
 __global__ __aicore__ void moe_ep_combine(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
                                           GM_ADDR numRecvPerExpert, GM_ADDR topkWeights, GM_ADDR bias0, GM_ADDR bias1,

@@ -27,11 +27,7 @@ public:
         : optiling::MoeTilingBase(context), nodeName_(context->GetNodeName()) {};
 
 protected:
-    enum TensorType {
-        INPUT = 0,
-        OUTPUT = 1,
-        OPTIONINPUT = 2
-    };
+    enum TensorType { INPUT = 0, OUTPUT = 1, OPTIONINPUT = 2 };
 
     ge::graphStatus DoOpTiling() override;
     bool IsCapable() override;

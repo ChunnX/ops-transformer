@@ -58,9 +58,9 @@ bool AllToAllMxQuantMatmulTilingBase::IsCapable()
  */
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckOpInputInfo()
 {
-    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMxTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckX2Transpose(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
@@ -246,12 +246,12 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(cons
     if (x1Dtype == ge::DT_FLOAT4_E2M1 || x2Dtype == ge::DT_FLOAT4_E2M1) {
         isMxFp4_ = true;
         matmulQuantType_ = QuantType::MXFP4_QUANT;
-        OP_TILING_CHECK((x1Dtype != x2Dtype),
-                        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                            opName, "x1 and x2",
-                            (Ops::Base::ToString(x1Dtype) + " and " + Ops::Base::ToString(x2Dtype)).c_str(),
-                            "If mxfp4 quant mode is used, the dtypes of x1 and x2 must be float4_e2m1."),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (x1Dtype != x2Dtype),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                opName, "x1 and x2", (Ops::Base::ToString(x1Dtype) + " and " + Ops::Base::ToString(x2Dtype)).c_str(),
+                "If mxfp4 quant mode is used, the dtypes of x1 and x2 must be float4_e2m1."),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -268,9 +268,9 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
                                                                        const char *opName,
                                                                        const OpAttrIndexSchema &indexSchema)
 {
-    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckShapeInfo(context, opName, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName, "Tiling common info check shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MatmulAlltoAllTilingUtil::CheckShapeInfo(context, opName, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName, "Tiling common info check shape failed."), return ge::GRAPH_FAILED);
     const gert::StorageShape *x1Shape = context->GetInputShape(INPUT_X1_INDEX);
     const gert::StorageShape *x2Shape = context->GetInputShape(INPUT_X2_INDEX);
     const gert::StorageShape *x1ScaleShape = context->GetOptionalInputShape(INPUT_X1_SCALE_INDEX);
@@ -283,26 +283,26 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     uint64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t x1ScaleDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
     uint64_t x2ScaleDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK((x1Dim1 % MX_SCALE_ALIGN != 0),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1",
-                                                          Ops::Base::ToString(x1Shape->GetStorageShape()).c_str(),
-                                                          "The dim(k) of x1 must be divisible by 64."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2Dim1 % MX_SCALE_ALIGN != 0),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2",
-                                                          Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
-                                                          "The dim(k) of x2 must be divisible by 64."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x1ScaleDimNum != DIM_THREE),
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "x1Scale",
-                                                             (std::to_string(x1ScaleDimNum) + "D").c_str(),
-                                                             "The shape dim of x1Scale must be 3D."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2ScaleDimNum != DIM_THREE),
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "x2Scale",
-                                                             (std::to_string(x2ScaleDimNum) + "D").c_str(),
-                                                             "The shape dim of x2Scale must be 3D."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x1Dim1 % MX_SCALE_ALIGN != 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1", Ops::Base::ToString(x1Shape->GetStorageShape()).c_str(),
+                                              "The dim(k) of x1 must be divisible by 64."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x2Dim1 % MX_SCALE_ALIGN != 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2", Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
+                                              "The dim(k) of x2 must be divisible by 64."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x1ScaleDimNum != DIM_THREE),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "x1Scale", (std::to_string(x1ScaleDimNum) + "D").c_str(),
+                                                 "The shape dim of x1Scale must be 3D."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x2ScaleDimNum != DIM_THREE),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "x2Scale", (std::to_string(x2ScaleDimNum) + "D").c_str(),
+                                                 "The shape dim of x2Scale must be 3D."),
+        return ge::GRAPH_FAILED);
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     int64_t rankDim = 0;
@@ -636,9 +636,9 @@ AlltoAllMxQuantMatmulHelper::AlltoAllMxQuantMatmulHelper(
     AllToAllMxQuantMatmulTilingBase &allToAllMxQuantMatmulTilingBase,
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, uint64_t &mmMvalueLen_)
     : Mc2AdaptiveSlidingWindowTiling(allToAllMxQuantMatmulTilingBase.context_, &data),
-      tilingProcesser_(allToAllMxQuantMatmulTilingBase), mmLen_(mmMvalueLen_)
-{
-}
+      tilingProcesser_(allToAllMxQuantMatmulTilingBase),
+      mmLen_(mmMvalueLen_)
+{}
 
 /**
  * @brief 打印量化matmul tiling的信息
@@ -874,8 +874,7 @@ void AllToAllMxQuantMatmulTilingBase::SetUserWorkSpace()
  */
 AllToAllMxQuantMatmulTilingBase::AllToAllMxQuantMatmulTilingBase(gert::TilingContext *context)
     : AllToAllMatmulTilingBase(context)
-{
-}
+{}
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllMxQuantMatmulTilingBase,

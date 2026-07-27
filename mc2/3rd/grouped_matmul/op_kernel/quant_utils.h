@@ -19,7 +19,7 @@
 #include "grouped_matmul_utils.h"
 #include "lib/matmul_intf.h"
 
-#define LOCAL_TEMPLATE_CLASS_PARAMS                                                                                    \
+#define LOCAL_TEMPLATE_CLASS_PARAMS \
     template <class xType, class wType, class biasType, class scaleType, class yType, CubeFormat wFormat, bool aTrans, \
               bool bTrans>
 #define LOCAL_TEMPLATE_FUNC_PARAMS xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans
@@ -85,10 +85,7 @@ __aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b)
     return (a + b - 1) / b;
 }
 
-__aicore__ inline uint64_t Align(uint64_t a, uint64_t b)
-{
-    return CeilDiv(a, b) * b;
-}
+__aicore__ inline uint64_t Align(uint64_t a, uint64_t b) { return CeilDiv(a, b) * b; }
 
 template <typename T>
 __aicore__ inline constexpr bool IsMxType()

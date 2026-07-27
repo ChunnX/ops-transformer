@@ -16,12 +16,7 @@
 #ifndef _RAC_SERVET_STUB_H_
 #define _RAC_SERVET_STUB_H_
 
-enum RANK_MSG_TYPE {
-    RANK_ADDR = 1,
-    RANK_WORK = 2,
-    RANK_ADD_WORK = 3,
-    RANK_END
-};
+enum RANK_MSG_TYPE { RANK_ADDR = 1, RANK_WORK = 2, RANK_ADD_WORK = 3, RANK_END };
 
 constexpr uint32_t AC_MAX_RANK_NUM = 8; // 最大有8个卡
 constexpr uint32_t AC_MAX_AIV = 16;     // 最多有64个AIC
@@ -137,15 +132,11 @@ struct HcclAicpuOpParam2 {
 
 template <typename T, typename U>
 struct same_type {
-    enum {
-        value = 0
-    };
+    enum { value = 0 };
 };
 template <typename T>
 struct same_type<T, T> {
-    enum {
-        value = 1
-    };
+    enum { value = 1 };
 };
 template <class T>
 __aicore__ inline HcclDataType GetDataType()
@@ -182,34 +173,20 @@ public:
     int lastCnt;
     int lastReadCnt;
 
-    __aicore__ inline void Init(GM_ADDR win, uint8_t debugMode)
-    {
-    }
+    __aicore__ inline void Init(GM_ADDR win, uint8_t debugMode) {}
 
-    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx)
-    {
-    }
+    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx) {}
 
-    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx, uint32_t usedCoreNum)
-    {
-    }
+    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx, uint32_t usedCoreNum) {}
 
-    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx, uint32_t usedCoreNum, uint32_t curTurn)
-    {
-    }
+    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx, uint32_t usedCoreNum, uint32_t curTurn) {}
 
-    __aicore__ inline void TurnNotifyRunA8W8Bf16(uint32_t blockIdx, uint32_t usedCoreNum, uint32_t curTurn)
-    {
-    }
+    __aicore__ inline void TurnNotifyRunA8W8Bf16(uint32_t blockIdx, uint32_t usedCoreNum, uint32_t curTurn) {}
 
     // 等待aicpu执行完成1次任务
-    __aicore__ inline void TurnWait(uint32_t turn)
-    {
-    }
+    __aicore__ inline void TurnWait(uint32_t turn) {}
 
-    __aicore__ inline void SetQueue()
-    {
-    }
+    __aicore__ inline void SetQueue() {}
 };
 
 #endif // _RAC_SERVET_STUB_H_

@@ -124,12 +124,13 @@ __aicore__ inline void UpdateExpSumAndExpMax(const LocalTensor<T> &expSumTensor,
 
 template <typename T, typename T2, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
           OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAttn = 0>
-__aicore__ inline void
-ProcessVec1Update(const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
-                  const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-                  const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor,
-                  const LocalTensor<uint8_t> &maskTensor, const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m,
-                  const uint32_t originN, const T scale, const T minValue)
+__aicore__ inline void ProcessVec1Update(const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf,
+                                         const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+                                         const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
+                                         const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor,
+                                         const LocalTensor<uint8_t> &maskTensor,
+                                         const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m,
+                                         const uint32_t originN, const T scale, const T minValue)
 {
     if constexpr (oriNRange == EQ_128) {
         LocalTensor<uint8_t> indexesTensor;
@@ -172,12 +173,13 @@ ProcessVec1Update(const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, con
  */
 template <typename T, typename T2, bool isUpdate = false, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
           OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAttn = 0>
-__aicore__ inline void
-ProcessVec1Vf(const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
-              const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-              const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor,
-              const LocalTensor<uint8_t> &maskTensor, const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m,
-              const uint32_t originN, const T scale, const T minValue)
+__aicore__ inline void ProcessVec1Vf(const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf,
+                                     const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+                                     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
+                                     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor,
+                                     const LocalTensor<uint8_t> &maskTensor,
+                                     const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m,
+                                     const uint32_t originN, const T scale, const T minValue)
 {
     static_assert(IsSameType<T, float>::value, "VF softmax, T must be float");
     static_assert(IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value,

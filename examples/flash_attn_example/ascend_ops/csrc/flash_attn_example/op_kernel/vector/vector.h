@@ -61,10 +61,7 @@ enum LAYOUT_Q {
     SG,
 };
 
-enum class UbInputFormat {
-    GS1 = 0,
-    S1G = 1
-};
+enum class UbInputFormat { GS1 = 0, S1G = 1 };
 
 struct InvalidRowParams {
     uint64_t actS1Size;

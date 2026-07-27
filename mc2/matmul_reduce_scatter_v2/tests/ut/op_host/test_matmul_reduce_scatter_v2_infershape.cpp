@@ -20,14 +20,8 @@ namespace {
 // inferShape用例 ======================================================================================================
 class MatmulReduceScatterV2InferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulReduceScatterV2InferShapeTest SetUp" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulReduceScatterV2InferShapeTest TearDown" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulReduceScatterV2InferShapeTest SetUp" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MatmulReduceScatterV2InferShapeTest TearDown" << std::endl; }
 };
 
 TEST_F(MatmulReduceScatterV2InferShapeTest, Basic)
@@ -161,14 +155,8 @@ TEST_F(MatmulReduceScatterV2InferShapeTest, Perblock)
 // inferDtype用例 ======================================================================================================
 class MatmulReduceScatterV2InferDTypeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulReduceScatterV2InferDTypeTest SetUp" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulReduceScatterV2InferDTypeTest TearDown" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulReduceScatterV2InferDTypeTest SetUp" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MatmulReduceScatterV2InferDTypeTest TearDown" << std::endl; }
 };
 
 // TEST_F(MatmulReduceScatterV2InferDTypeTest, y_dtype_equal_x1_dtype_fp16)
@@ -187,7 +175,6 @@ protected:
 //     ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
 //     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), x1Type);
 // }
-
 
 // TEST_F(MatmulReduceScatterV2InferDTypeTest, y_dtype_equal_x1_dtype_bf16)
 // {
@@ -270,14 +257,8 @@ TEST_F(MatmulReduceScatterV2InferShapeTest, AmaxOutEnabled)
 // TilingParse回调测试
 class MatmulReduceScatterV2TilingParseTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MatmulReduceScatterV2TilingParseTest SetUp" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MatmulReduceScatterV2TilingParseTest TearDown" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MatmulReduceScatterV2TilingParseTest SetUp" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MatmulReduceScatterV2TilingParseTest TearDown" << std::endl; }
 };
 
 TEST_F(MatmulReduceScatterV2TilingParseTest, TilingParse_Success)

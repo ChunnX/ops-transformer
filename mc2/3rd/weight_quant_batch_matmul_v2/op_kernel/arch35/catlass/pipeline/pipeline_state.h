@@ -17,10 +17,7 @@
 namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass {
 
 namespace detail {
-constexpr bool IsPowerOfTwo(int n)
-{
-    return (n & (n - 1)) == 0;
-}
+constexpr bool IsPowerOfTwo(int n) { return (n & (n - 1)) == 0; }
 } // namespace detail
 template <uint8_t Stages_>
 struct PipelineState {
@@ -30,16 +27,10 @@ struct PipelineState {
     uint64_t count_ = 0;
 
     DEVICE
-    uint64_t index() const
-    {
-        return index_;
-    }
+    uint64_t index() const { return index_; }
 
     DEVICE
-    uint64_t count() const
-    {
-        return count_;
-    }
+    uint64_t count() const { return count_; }
 
     DEVICE
     void operator++()

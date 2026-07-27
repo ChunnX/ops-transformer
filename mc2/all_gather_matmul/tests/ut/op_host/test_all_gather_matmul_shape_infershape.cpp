@@ -16,15 +16,9 @@ namespace AllGatherMatmulUT {
 
 class AllGatherMatmulInferShapeTest : public testing::TestWithParam<AllGatherMatmulInferShapeUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AllGatherMatmul InferShapeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AllGatherMatmul InferShapeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "AllGatherMatmul InferShapeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "AllGatherMatmul InferShapeTest TearDown" << std::endl; }
 };
 
 TEST_P(AllGatherMatmulInferShapeTest, param)

@@ -53,10 +53,7 @@ struct QuantAllReduceTestParam {
     uint64_t mc2TilingDataReservedLen;
 };
 
-inline std::ostream &operator<<(std::ostream &os, const QuantAllReduceTestParam &param)
-{
-    return os << param.caseName;
-}
+inline std::ostream &operator<<(std::ostream &os, const QuantAllReduceTestParam &param) { return os << param.caseName; }
 
 // 构造ut用例：这里可以按照正常用例/异常用例分开声明
 // expectWorkspaces = 16 * 1024 * 1024
@@ -86,15 +83,9 @@ static QuantAllReduceTestParam g_testCases[] = {
 // setup & teardown
 class QuantAllReduceArch22TilingTest : public testing::TestWithParam<QuantAllReduceTestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "QuantAllReduceArch22TilingTest SetUp." << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "QuantAllReduceArch22TilingTest SetUp." << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "QuantAllReduceArch22TilingTest TearDown." << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "QuantAllReduceArch22TilingTest TearDown." << std::endl; }
 };
 
 static struct QuantAllReduceCompileInfo {

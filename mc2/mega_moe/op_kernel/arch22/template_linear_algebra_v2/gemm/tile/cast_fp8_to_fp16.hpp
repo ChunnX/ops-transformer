@@ -51,9 +51,7 @@ struct TileCastFp8ToFp16Dequant {
     };
 
     CATLASS_DEVICE
-    TileCastFp8ToFp16Dequant()
-    {
-    }
+    TileCastFp8ToFp16Dequant() {}
 
     CATLASS_DEVICE
     TileCastFp8ToFp16Dequant(Arch::Resource<ArchTag> &resource, Params const &params_) : params(params_)

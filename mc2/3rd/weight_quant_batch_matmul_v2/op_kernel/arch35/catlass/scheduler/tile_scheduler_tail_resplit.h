@@ -63,13 +63,9 @@ public:
     template <typename ProblemShape, typename TilingShape,
               AscendC::Std::enable_if_t<AscendC::Std::is_tuple_v<TilingShape>, bool> = true>
     DEVICE TileSchedulerTailResplit(ProblemShape const &problemShape, TilingShape const &tiling)
-    {
-    }
+    {}
 
-    DEVICE bool IsValid()
-    {
-        return !mIter.End() && !nIter.End();
-    }
+    DEVICE bool IsValid() { return !mIter.End() && !nIter.End(); }
 
     DEVICE void FetchNextWork()
     {
@@ -84,45 +80,21 @@ public:
         }
     }
 
-    DEVICE ContinuousIterator<uint64_t> MIter()
-    {
-        return mIter;
-    }
+    DEVICE ContinuousIterator<uint64_t> MIter() { return mIter; }
 
-    DEVICE const ContinuousIterator<uint64_t> MIter() const
-    {
-        return mIter;
-    }
+    DEVICE const ContinuousIterator<uint64_t> MIter() const { return mIter; }
 
-    DEVICE ContinuousIterator<uint64_t> &MIterRef()
-    {
-        return mIter;
-    }
+    DEVICE ContinuousIterator<uint64_t> &MIterRef() { return mIter; }
 
-    DEVICE const ContinuousIterator<uint64_t> &MIterRef() const
-    {
-        return mIter;
-    }
+    DEVICE const ContinuousIterator<uint64_t> &MIterRef() const { return mIter; }
 
-    DEVICE TailResplitIterator<uint64_t> NIter()
-    {
-        return nIter;
-    }
+    DEVICE TailResplitIterator<uint64_t> NIter() { return nIter; }
 
-    DEVICE const TailResplitIterator<uint64_t> NIter() const
-    {
-        return nIter;
-    }
+    DEVICE const TailResplitIterator<uint64_t> NIter() const { return nIter; }
 
-    DEVICE TailResplitIterator<uint64_t> &NIterRef()
-    {
-        return nIter;
-    }
+    DEVICE TailResplitIterator<uint64_t> &NIterRef() { return nIter; }
 
-    DEVICE const TailResplitIterator<uint64_t> &NIterRef() const
-    {
-        return nIter;
-    }
+    DEVICE const TailResplitIterator<uint64_t> &NIterRef() const { return nIter; }
 
     DEVICE void Print() const
     {

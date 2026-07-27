@@ -17,10 +17,7 @@ namespace AllGatherMatmulUT {
 
 class AclnnAllGatherMatmulTest : public testing::TestWithParam<AllGatherMatmulApiUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "AllGatherMatmul AclnnAllGatherMatmulTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "AllGatherMatmul AclnnAllGatherMatmulTest SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {

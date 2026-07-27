@@ -35,7 +35,6 @@ struct TileCopyTlaExt {
 #include "copy_l1_to_bt.hpp"
 #include "../helper.hpp"
 
-
 namespace Catlass::Gemm::Tile {
 
 template <

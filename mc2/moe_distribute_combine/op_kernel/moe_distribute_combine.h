@@ -84,10 +84,7 @@ private:
                dataState_ * WIN_STATE_OFFSET;
     }
 
-    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
-    {
-        return (x < y) ? x : y;
-    }
+    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y) { return (x < y) ? x : y; }
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<ExpandXType> expandXGM_;

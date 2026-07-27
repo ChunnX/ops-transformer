@@ -62,12 +62,7 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-enum class CommType : uint64_t {
-    AI_CPU = 0,
-    CCU,
-    AIV,
-    INVALID
-};
+enum class CommType : uint64_t { AI_CPU = 0, CCU, AIV, INVALID };
 
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
@@ -75,10 +70,7 @@ extern "C" void *NnopbaseGetUserHandle(void *executor);
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-static inline bool IsAscend950(void)
-{
-    return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
-}
+static inline bool IsAscend950(void) { return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510; }
 
 static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, CommType commModeEnum)
 {

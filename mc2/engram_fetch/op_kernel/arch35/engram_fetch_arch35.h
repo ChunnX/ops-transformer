@@ -13,7 +13,6 @@
  * \brief engram_fetch算子arch35 kernel实现
  */
 
-
 #ifndef ENGRAM_FETCH_ARCH35_H
 #define ENGRAM_FETCH_ARCH35_H
 
