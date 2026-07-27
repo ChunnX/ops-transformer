@@ -1,4 +1,22 @@
-// license
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file all_to_all_mx_matmul_udma_impl.h
+ * \brief AlltoAll MX Quant Matmul — 通信+计算融合实现
+ *
+ * Run():
+ *   AIV: RunAllToAll()  根据通信轮次下发通信任务和通知AIC通信已完成
+ *   AIC: RunMatmul()    等待通信完成后开始cube计算
+ */
+
 
 #pragma once
 
@@ -39,10 +57,10 @@ using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
  * 4. 计算与通信逻辑合并于此类，便于精细化流水线控制。
  */
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-class AllToAllQuantMatmulHcommImpl {
+class AllToAllQuantMatmulUdmaImpl {
 public:
-  __aicore__ inline AllToAllQuantMatmulHcommImpl() {};
-  __aicore__ inline ~AllToAllQuantMatmulHcommImpl() {}
+  __aicore__ inline AllToAllQuantMatmulUdmaImpl() {};
+  __aicore__ inline ~AllToAllQuantMatmulUdmaImpl() {}
 
   /**
    * @brief 初始化算子状态和参数
@@ -63,7 +81,6 @@ public:
   using TypeScaleA = ::fp8_e8m0_t;
   using TypeScaleB = ::fp8_e8m0_t;
   static constexpr int32_t SCALE_C0 = 2;
-  static constexpr uint16_t MTE1_MTE2_EVENT_FLAG = 6;
 
   // Layout 定义
   using LayoutA = typename AscendC::Std::conditional_t<TransA, AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>;
@@ -99,20 +116,20 @@ public:
 
 private:
   // ---------------- 通信相关组件与参数 ----------------
-  __gm__ CommUbmemContext* syncBuffer_{};
-  __gm__ CommUdmaContext* udmaCtx_{};
+  __gm__ CommUbmemContext* syncBuffer_{nullptr};
+  __gm__ CommUdmaContext* udmaCtx_{nullptr};
   CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier> allToAllA_;
   CollectiveComm<
     CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier> allToAllScaleA_;
-  TeamBarrier teamBarrier_;
+  TeamBarrier teamBarrier_{0};
 
   struct BaseParams {
-    GM_ADDR selfWinAddr{}; // 通信窗口地址
-    GM_ADDR aGm{};
-    GM_ADDR scaleAGm{};
-    GM_ADDR bGm{};
-    GM_ADDR scaleBGm{};
-    GM_ADDR cGm{};
+    GM_ADDR selfWinAddr{nullptr}; // 通信窗口地址
+    GM_ADDR aGm{nullptr};
+    GM_ADDR scaleAGm{nullptr};
+    GM_ADDR bGm{nullptr};
+    GM_ADDR scaleBGm{nullptr};
+    GM_ADDR cGm{nullptr};
 
     uint32_t rankId{0};
     int32_t  commTurn{0};     // 总流水步数
@@ -142,7 +159,7 @@ private:
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::Init(
+__aicore__ inline void AllToAllQuantMatmulUdmaImpl<AType, BType, CType, TransA, TransB>::Init(
   __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM, GM_ADDR scaleBGM, GM_ADDR cGM,
   const allToAllMatmulTilingData *tilingData)
 {
@@ -167,22 +184,18 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
   auto commScaleBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset); // 用512B
   ubOffset += COMM_WORKSPACE_SIZE;
   auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
-
   teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
 
   allToAllA_.Init(udmaCtx_, teamBarrier_, tilingData->commTilingData, baseParams_.aGm, commBuf.Get(),
     baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
-
-  uint64_t scaleKLen = baseParams_.scaleKaSize / sizeof(TypeScaleA);
-  CommTilingData commTilingDataScaleA = tilingData->commTilingData;
-  commTilingDataScaleA.nonSplitAxisSize = scaleKLen;
   
-  allToAllScaleA_.Init(udmaCtx_, teamBarrier_, commTilingDataScaleA, baseParams_.scaleAGm, commScaleBuf.Get(),
+  allToAllScaleA_.Init(udmaCtx_, teamBarrier_, tilingData->scaleCommTilingData, baseParams_.scaleAGm, commScaleBuf.Get(),
     baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()), baseParams_.rankSize * baseParams_.rankDataBytes);
+  AscendC::SyncAll<true>(); // 确保所有核已完成初始化
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::Run()
+__aicore__ inline void AllToAllQuantMatmulUdmaImpl<AType, BType, CType, TransA, TransB>::Run()
 {
   if ASCEND_IS_AIV {
     RunAllToAll(); // AIV 通信
@@ -201,13 +214,14 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::RunAllToAll()
+__aicore__ inline void AllToAllQuantMatmulUdmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAll()
 {
   for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
+    // 必选保证baseParams_.rankSize <= BlockNum
     if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
       allToAllScaleA_.Commit();
       allToAllA_.Commit();
-      allToAllA_.Wait();
+      allToAllA_.Wait(); // scale的通信和a矩阵的通信使用同一channel，因此只需要wait一次
     }
 
     AscendC::SyncAll<true>();
@@ -223,7 +237,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::InitBaseParams(
+__aicore__ inline void AllToAllQuantMatmulUdmaImpl<AType, BType, CType, TransA, TransB>::InitBaseParams(
   const allToAllMatmulTilingData *tilingData)
 {
   baseParams_.headMSize = tilingData->commTilingData.splitAxisTileSize;
@@ -240,7 +254,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::SetupParams(
+__aicore__ inline void AllToAllQuantMatmulUdmaImpl<AType, BType, CType, TransA, TransB>::SetupParams(
   const QuantMatmulTilingData* mmTile, Params& out, MatmulMode matmulMode)
 {
   ProblemShape problemShape{mmTile->m, mmTile->n, mmTile->k, 1UL};
@@ -276,7 +290,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::RunLocalMatmul()
+__aicore__ inline void AllToAllQuantMatmulUdmaImpl<AType, BType, CType, TransA, TransB>::RunLocalMatmul()
 {
   Params localParams;
   SetupParams(&tilingData_->tileQbmmTilingData, localParams, MatmulMode::LOCAL);
@@ -284,7 +298,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::RunMatmul()
+__aicore__ inline void AllToAllQuantMatmulUdmaImpl<AType, BType, CType, TransA, TransB>::RunMatmul()
 {
   Params params;
   MatmulMode mode = (tilingData_->localMatmul == 2) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
@@ -298,59 +312,3 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 }
 
 } // namespace Apace
-
-[[bisheng::core_ratio(1, 1)]]
-__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E4M3_Udma(
-                          __gm__ CommContext *hcommCtx,
-                           GM_ADDR aGM, GM_ADDR scaleAGM,
-                           GM_ADDR bGM, GM_ADDR scaleBGM,
-                           GM_ADDR cGM,
-                           allToAllMatmulTilingData tilingData)
-{
-  KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-  Apace::AllToAllQuantMatmulHcommImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;
-  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
-  impl.Run();
-}
-
-[[bisheng::core_ratio(1, 1)]]
-__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE5M2E5M2_Udma(
-                          __gm__ CommContext *hcommCtx,
-                           GM_ADDR aGM, GM_ADDR scaleAGM,
-                           GM_ADDR bGM, GM_ADDR scaleBGM,
-                           GM_ADDR cGM,
-                           allToAllMatmulTilingData tilingData)
-{
-  KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-  Apace::AllToAllQuantMatmulHcommImpl<fp8_e5m2_t, fp8_e5m2_t, bfloat16_t, false, true> impl;
-  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
-  impl.Run();
-}
-
-[[bisheng::core_ratio(1, 1)]]
-__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E5M2_Udma(
-                          __gm__ CommContext *hcommCtx,
-                           GM_ADDR aGM, GM_ADDR scaleAGM,
-                           GM_ADDR bGM, GM_ADDR scaleBGM,
-                           GM_ADDR cGM,
-                           allToAllMatmulTilingData tilingData)
-{
-  KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-  Apace::AllToAllQuantMatmulHcommImpl<fp8_e4m3fn_t, fp8_e5m2_t, bfloat16_t, false, true> impl;
-  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
-  impl.Run();
-}
-
-[[bisheng::core_ratio(1, 1)]]
-__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE5M2E4M3_Udma(
-                          __gm__ CommContext *hcommCtx,
-                           GM_ADDR aGM, GM_ADDR scaleAGM,
-                           GM_ADDR bGM, GM_ADDR scaleBGM,
-                           GM_ADDR cGM,
-                           allToAllMatmulTilingData tilingData)
-{
-  KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-  Apace::AllToAllQuantMatmulHcommImpl<fp8_e5m2_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;
-  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
-  impl.Run();
-}

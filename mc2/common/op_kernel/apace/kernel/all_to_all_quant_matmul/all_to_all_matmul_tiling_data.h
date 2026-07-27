@@ -16,6 +16,7 @@
 
 struct allToAllMatmulTilingData {
     CommTilingData commTilingData;
+    CommTilingData scaleCommTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     uint32_t localMatmul{0}; // 是否使能local块计算先行，0：不使能；1：使能atomiadd
 };
