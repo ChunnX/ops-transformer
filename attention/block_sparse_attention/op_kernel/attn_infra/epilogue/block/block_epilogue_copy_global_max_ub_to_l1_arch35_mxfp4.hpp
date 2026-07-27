@@ -53,7 +53,7 @@ public:
     {
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         AscendC::LocalTensor<ElementLocalGlobalMax> &localGlobalMax = localGlobalMaxUBTensor[tileInfo.tileMaxIdx];
-        // 如果当前s2只有一个softmax，就另外一个核不用做同步操作
+        // 如果当前kvs只有一个softmax，就另外一个核不用做同步操作
         if (tileInfo.kvsFirstTileStartVecCore != subBlockIdx && tileInfo.isTileGoupFirstTile) {
             auto l1TlaTile = tla::GetTile(l1GlocalMaxTensorTla,
                 tla::MakeCoord(1 - subBlockIdx, 0),
