@@ -247,7 +247,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t
                 query, key, value, pse_shift, attenMask, blocktable, attentionOut, softmaxLse,
                 actualSeqLengths, actualSeqLengthsKV, user, tiling, learnableSink);
         #elif TILING_KEY_VAR == QF16_KVF16_OUTF16_NOLSEOUT_TND_NOCACHE_CAUSALMASK_SPLITFUSE_TILING
-        printf("hello wangsong!! fused_infer_attention_score.cpp kernel is here \n");
         SplitFuse::FAInfer<layout::ColumnMajor, layout::RowMajor,
             half, half, float, false, false, FaiKernel::MaskType::MASK_CAUSAL, FaiKernel::inputLayout::TND>(
             query, key, value, pse_shift, attenMask, blocktable, attentionOut, softmaxLse,
