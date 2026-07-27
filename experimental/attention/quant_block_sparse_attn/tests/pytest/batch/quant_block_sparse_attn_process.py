@@ -147,7 +147,7 @@ def _prepare_metadata(test_data):
     return _call_npu_quant_block_sparse_attn_metadata(test_data)
 
 
-def _call_npu_quant_block_sparse_attn(test_data, device_id):
+def _call_npu_quant_block_sparse_attn(test_data, device_id, normalize_output=True):
     _check_runtime_available()
     torch_npu.npu.set_device(device_id)
     inputs = test_data["input"]
@@ -186,6 +186,8 @@ def _call_npu_quant_block_sparse_attn(test_data, device_id):
     )
     torch_npu.npu.synchronize()
     del kv_cache_storage
+    if not normalize_output:
+        return output
     return _normalize_npu_output(output, inputs["return_softmax_lse"])
 
 
@@ -236,3 +238,7 @@ def test_quant_block_sparse_attn_process_graph(test_data, device_id=0):
 def test_quant_block_sparse_attn_process_ci(test_data, device_id=0):
     npu_result = _call_npu_quant_block_sparse_attn(test_data, device_id)
     return npu_result, _golden_output(test_data)
+
+
+def test_quant_block_sparse_attn_process_perf(test_data, device_id=0):
+    return _call_npu_quant_block_sparse_attn(test_data, device_id, normalize_output=False)

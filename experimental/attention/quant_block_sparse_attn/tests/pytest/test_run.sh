@@ -62,11 +62,14 @@ run_batch_single() {
     export QBSA_BATCH_CASE_INDEX="$case_index"
     export BSA_TESTCASE_PATH="$testcase_dir"
     export BSA_RESULT_PATH="result_batch_single_${case_index}.xlsx"
+    export BSA_SKIP_CPU_GOLDEN=1
+    export BSA_SKIP_RESULT_COMPARE=1
 
     echo "===== 执行指定CSV单条用例 ====="
     echo "CSV文件: $joined_csv"
     echo "用例行号: $case_index"
     echo "用例目录: $BSA_TESTCASE_PATH"
+    echo "性能模式: 跳过CPU golden生成和结果比对"
 
     echo -e "\n===== 第一步：生成指定用例PT ====="
     python3 -m pytest -rA -s $BSA_PT_SAVE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning

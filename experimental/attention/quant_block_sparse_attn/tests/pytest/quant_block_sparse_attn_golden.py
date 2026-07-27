@@ -559,7 +559,7 @@ def save_test_case(input_data, output_dir):
     return input_filepath
 
 
-def generate_and_save_testdata(params, save_pt=False, save_path=""):
+def generate_and_save_testdata(params, save_pt=False, save_path="", generate_golden=True):
     case = _normalize_params(params)
     check_valid_param.check_valid_param(case)
 
@@ -616,19 +616,11 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     case["FLOPS"], case["MFU*时间"] = _log_cube_compute_amount(
         case["Testcase_Name"], case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
 
-    attention_out, softmax_lse = _reference_attention(
-        case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
-        sparse_indices, sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, q_lengths, kv_lengths)
-
     max_seqlen_q = max(q_lengths)
     max_seqlen_kv = max(kv_lengths)
     case["max_seqlen_q"] = max_seqlen_q
     case["max_seqlen_kv"] = max_seqlen_kv
 
-    golden = {
-        "attention_out": attention_out,
-        "softmax_lse": softmax_lse,
-    }
     input_data = {
         "Testcase_Name": case["Testcase_Name"],
         "params": case,
@@ -673,10 +665,17 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "mask_mode": case["mask_mode"],
             "return_softmax_lse": case["return_softmax_lse"],
         },
-        "golden": golden,
-        "cpu_output": attention_out,
-        "cpu_softmax_lse": softmax_lse,
     }
+    if generate_golden:
+        attention_out, softmax_lse = _reference_attention(
+            case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
+            sparse_indices, sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, q_lengths, kv_lengths)
+        input_data["golden"] = {
+            "attention_out": attention_out,
+            "softmax_lse": softmax_lse,
+        }
+        input_data["cpu_output"] = attention_out
+        input_data["cpu_softmax_lse"] = softmax_lse
 
     if save_pt:
         save_test_case(input_data, save_path)

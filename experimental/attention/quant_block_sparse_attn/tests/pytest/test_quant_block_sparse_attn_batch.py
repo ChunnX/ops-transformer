@@ -16,14 +16,13 @@ from pathlib import Path
 import pytest
 import torch
 
-import result_compare_method
-import utils
 from batch import quant_block_sparse_attn_process
 
 
 TESTCASE_PATH = os.environ.get("BSA_TESTCASE_PATH", "bsa_testcase")
 RESULT_PATH = Path(os.environ.get("BSA_RESULT_PATH", "result.xlsx"))
 DEVICE_ID = 0
+SKIP_RESULT_COMPARE = os.environ.get("BSA_SKIP_RESULT_COMPARE", "").upper() in ("1", "TRUE", "YES")
 
 
 def _testcase_files():
@@ -44,6 +43,19 @@ def _testcase_files():
 
 def bsa(testcase_file):
     test_data = torch.load(testcase_file, map_location="cpu")
+    if SKIP_RESULT_COMPARE:
+        try:
+            quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_perf(
+                test_data, device_id=DEVICE_ID)
+        except pytest.skip.Exception:
+            raise
+        except Exception as error:
+            pytest.fail(f"case failed: {test_data['Testcase_Name']}, NPU ERROR: {error}")
+        return
+
+    import result_compare_method
+    import utils
+
     try:
         npu_result, cpu_result = quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
             test_data, device_id=DEVICE_ID)

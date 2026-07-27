@@ -22,6 +22,7 @@ from quant_block_sparse_attn_paramset_batch import ENABLED_PARAMS
 
 
 SAVE_PATH = os.environ.get("BSA_TESTCASE_PATH", "bsa_testcase")
+GENERATE_GOLDEN = os.environ.get("BSA_SKIP_CPU_GOLDEN", "").upper() not in ("1", "TRUE", "YES")
 
 
 def _parse_value(value):
@@ -72,7 +73,8 @@ def bsa(param_combinations, case_id, force_regenerate=False):
     if not force_regenerate and os.path.isfile(pt_filepath):
         pytest.skip(f"test case already exists, skip generation: {pt_filepath}")
 
-    quant_block_sparse_attn_golden.generate_and_save_testdata(params, save_pt=True, save_path=SAVE_PATH)
+    quant_block_sparse_attn_golden.generate_and_save_testdata(
+        params, save_pt=True, save_path=SAVE_PATH, generate_golden=GENERATE_GOLDEN)
 
 
 @pytest.mark.ci
