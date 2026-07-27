@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
-"""General correctness and performance tests for ``0721.py``.
+"""Contract-oriented correctness and performance tests for ``0721.py``.
 
-Every selected case runs both TileLang and the official torch_npu operator.
-The default suite covers all documented shapes and K values.  All variable
-floating-point inputs use BF16.  The operator contract still requires FP32
-softmax statistics and INT32 sparse indices.
+The complete suite contains 45 BSND cases and five TND cases.  It covers the
+documented B/S1/K values without constructing infeasible full-cartesian
+workspaces.  Every selected case runs both TileLang and the official operator.
+All variable floating-point inputs use BF16; softmax statistics are FP32 and
+sparse indices are INT32.
+
+The current TileLang TND implementation accepts one flattened sequence only,
+so the five TND cases intentionally use B=1.  Multi-batch ragged TND is an
+operator capability gap rather than a test-input gap.
 
 Examples:
   python test_0721_general.py
   python test_0721_general.py --suite smoke
-  python test_0721_general.py --case bsnd_k4096
-  python test_0721_general.py --no-bench
+  python test_0721_general.py --suite core --no-bench
+  python test_0721_general.py --suite stress --no-bench
+  python test_0721_general.py --case bsnd_b1_s1_64_k_4096
+  python test_0721_general.py --case tnd_s1_512_k_4096 --no-bench
 """
 
 from __future__ import annotations
 
 import argparse
+import gc
 import math
 import os
 import sys
@@ -40,7 +48,7 @@ WARMUP_ITERS = 3
 BENCH_ITERS = 10
 
 
-def _case(name: str, *, suite: str = "official", **kwargs: Any) -> Dict[str, Any]:
+def _case(name: str, *, suite: str = "core", **kwargs: Any) -> Dict[str, Any]:
     config: Dict[str, Any] = {
         "name": name,
         "suite": suite,
@@ -61,31 +69,144 @@ def _case(name: str, *, suite: str = "official", **kwargs: Any) -> Dict[str, Any
     return config
 
 
-# K=2048 shape/layout coverage cases.
-OFFICIAL_CASES = [
-    _case("bsnd_baseline"),
-    _case("bsnd_batch2", B=2, S1=4),
-    _case("bsnd_s2_unaligned", S1=8, S2=2305, N1=64, Nidx1=16),
-    _case("bsnd_n1_64_nidx32", S1=8, N1=64, Nidx1=32),
-    _case("bsnd_n1_32_nidx8", S1=16, N1=32, Nidx1=8),
-    _case("tnd_s1_16", S1=16, layout="TND"),
+S1_VALUES = (1, 64, 512, 1024, 2048)
+K_VALUES = (1024, 2048, 4096, 5120, 8192)
+HEAD_CONFIGS = (
+    {"N1": 128, "Nidx1": 64},
+    {"N1": 64, "Nidx1": 32},
+    {"N1": 32, "Nidx1": 16},
+    {"N1": 32, "Nidx1": 8},
+)
+
+# A full B/S1/K cartesian product contains 100 cases and includes multi-TiB
+# workspaces.  This 45-case BSND covering set keeps high B and high S1 apart.
+_GRID_S2_OVERRIDES = {
+    (1, 1024): 1281,
+    (1, 4096): 1025,
+    (64, 2048): 2305,
+    (64, 5120): 2305,
+    (512, 8192): 1025,
+    (1024, 4096): 1281,
+    (2048, 5120): 2305,
+}
+
+
+def _head_config(batch: int, s1: int, k: int, ordinal: int) -> Dict[str, int]:
+    # Keep large workspace cases focused on B/S1/K coverage instead of heads.
+    if batch * s1 * k >= 4 * 1024 * 1024:
+        return HEAD_CONFIGS[-1]
+    return HEAD_CONFIGS[ordinal % len(HEAD_CONFIGS)]
+
+
+def _make_b1_grid_cases() -> List[Dict[str, Any]]:
+    cases: List[Dict[str, Any]] = []
+    for s1_index, s1 in enumerate(S1_VALUES):
+        for k_index, k in enumerate(K_VALUES):
+            s2 = _GRID_S2_OVERRIDES.get((s1, k), max(s1, k))
+            cases.append(
+                _case(
+                    f"bsnd_b1_s1_{s1}_k_{k}",
+                    suite="core",
+                    B=1,
+                    S1=s1,
+                    S2=s2,
+                    K=k,
+                    **_head_config(1, s1, k, s1_index + k_index),
+                )
+            )
+    return cases
+
+
+_B4_CASE_SPECS = (
+    (1, 1024, 1024),
+    (1, 8192, 1024),
+    (64, 1024, 1281),
+    (64, 4096, 2049),
+    (512, 1024, 1024),
+    (512, 2048, 2305),
+    (1024, 1024, 1024),
+    (1024, 2048, 1281),
+    (2048, 1024, 2048),
+    (2048, 2048, 2305),
+)
+
+
+def _make_b4_cases() -> List[Dict[str, Any]]:
+    return [
+        _case(
+            f"bsnd_b4_s1_{s1}_k_{k}",
+            suite="core",
+            B=4,
+            S1=s1,
+            S2=s2,
+            K=k,
+            **_head_config(4, s1, k, ordinal),
+        )
+        for ordinal, (s1, k, s2) in enumerate(_B4_CASE_SPECS)
+    ]
+
+
+_B64_CASE_SPECS = (
+    (1, 1024, 1024),
+    (1, 2048, 1024),
+    (1, 4096, 1024),
+    (64, 1024, 1024),
+    (64, 8192, 1024),
+)
+
+
+def _make_batch_stress_cases() -> List[Dict[str, Any]]:
+    cases = [
+        _case(
+            f"bsnd_b64_s1_{s1}_k_{k}",
+            suite="stress",
+            B=64,
+            S1=s1,
+            S2=s2,
+            K=k,
+            **_head_config(64, s1, k, ordinal),
+        )
+        for ordinal, (s1, k, s2) in enumerate(_B64_CASE_SPECS)
+    ]
+    cases.extend(
+        _case(
+            f"bsnd_b256_s1_1_k_{k}",
+            suite="stress",
+            B=256,
+            S1=1,
+            S2=1024,
+            K=k,
+            **HEAD_CONFIGS[-1],
+        )
+        for k in K_VALUES
+    )
+    return cases
+
+
+TND_CASES = [
+    _case("tnd_s1_1_k_1024", suite="tnd", S1=1, S2=1024, K=1024, **HEAD_CONFIGS[0], layout="TND"),
+    _case("tnd_s1_64_k_2048", suite="tnd", S1=64, S2=2305, K=2048, **HEAD_CONFIGS[1], layout="TND"),
+    _case("tnd_s1_512_k_4096", suite="tnd", S1=512, S2=4097, K=4096, **HEAD_CONFIGS[2], layout="TND"),
+    _case("tnd_s1_1024_k_5120", suite="tnd", S1=1024, S2=1281, K=5120, **HEAD_CONFIGS[3], layout="TND"),
+    _case("tnd_s1_2048_k_8192", suite="tnd", S1=2048, S2=2305, K=8192, **HEAD_CONFIGS[3], layout="TND"),
 ]
 
-# The interface document specifies K=1024..8192 in 1024 increments.  K=2048
-# is already covered above; every remaining value is compared with official.
-SPEC_CASES = [
-    _case("bsnd_k1024", suite="spec", S1=8, S2=1537, N1=64, Nidx1=32, K=1024),
-    _case("bsnd_k3072", suite="spec", S1=4, S2=3329, N1=32, Nidx1=8, K=3072),
-    _case("bsnd_k4096", suite="spec", S1=4, S2=4096, K=4096),
-    _case("bsnd_k5120", suite="spec", S1=2, S2=5120, N1=64, Nidx1=16, K=5120),
-    _case("bsnd_k6144", suite="spec", S1=2, S2=6144, K=6144),
-    _case("bsnd_k7168", suite="spec", S2=7168, N1=64, Nidx1=32, K=7168),
-    _case("bsnd_k8192", suite="spec", S2=8192, K=8192),
-]
-
-SMOKE_CASE_NAMES = ("bsnd_baseline", "bsnd_s2_unaligned", "tnd_s1_16")
-ALL_CASES = OFFICIAL_CASES + SPEC_CASES
+CORE_CASES = _make_b1_grid_cases() + _make_b4_cases()
+STRESS_CASES = _make_batch_stress_cases()
+BSND_CASES = CORE_CASES + STRESS_CASES
+SMOKE_CASE_NAMES = (
+    "bsnd_b1_s1_1_k_1024",
+    "bsnd_b1_s1_64_k_2048",
+    "bsnd_b4_s1_64_k_4096",
+    "bsnd_b256_s1_1_k_1024",
+    "tnd_s1_1_k_1024",
+)
+ALL_CASES = BSND_CASES + TND_CASES
 CASE_BY_NAME = {case["name"]: case for case in ALL_CASES}
+assert len(BSND_CASES) == 45
+assert len(TND_CASES) == 5
+assert len(ALL_CASES) == 50
+assert len(CASE_BY_NAME) == len(ALL_CASES)
 
 
 def _validate_case(case: Dict[str, Any]) -> None:
@@ -319,48 +440,67 @@ def _print_metrics(metrics: Dict[str, Dict[str, float]]) -> None:
         )
 
 
+def _brief_metrics(metrics: Dict[str, Dict[str, float]]) -> str:
+    return " ".join(
+        f"{name}={metrics[name]['mean_rel']:.2e}"
+        for name in ("dQueryIndex", "dKeyIndex", "dWeights", "Loss")
+    )
+
+
 def _case_summary(case: Dict[str, Any]) -> str:
     return (
-        f"layout={case['layout']} B={case['B']} S1={case['S1']} S2={case['S2']} "
+        f"suite={case['suite']} layout={case['layout']} B={case['B']} S1={case['S1']} S2={case['S2']} "
         f"N1={case['N1']} Nidx1={case['Nidx1']} K={case['K']} "
         "dtype=bfloat16"
     )
 
 
+def _release_case_memory() -> None:
+    """Release tensors from the previous case before compiling the next one."""
+    gc.collect()
+    torch.npu.empty_cache()
+
+
 def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
-    print(f"\n{'=' * 88}\n[{index}] {case['name']}: {_case_summary(case)}")
+    case_prefix = f"[{index:02d}] {case['name']}"
+    if args.verbose:
+        print(f"\n{'=' * 88}\n{case_prefix}: {_case_summary(case)}")
     MODULE._clear_caches()
     torch.npu.synchronize()
 
     try:
         inputs = make_inputs(case, args.seed + index)
     except Exception as exc:
-        print(f"  INPUT FAIL: {exc}")
+        print(f"{case_prefix} INPUT FAIL: {exc}")
         return "FAIL"
 
     try:
         tilelang_outputs = _call_tilelang(inputs, case)
         torch.npu.synchronize()
-        print("  TileLang: completed")
+        if args.verbose:
+            print("  TileLang: completed")
     except Exception as exc:
-        print(f"  TileLang FAIL: {exc}")
+        print(f"{case_prefix} TileLang FAIL: {exc}")
         return "FAIL"
 
     try:
         official_outputs = _call_official(inputs, case)
         torch.npu.synchronize()
-        print("  Official: completed")
+        if args.verbose:
+            print("  Official: completed")
     except Exception as exc:
-        print(f"  Official FAIL: {exc}")
+        print(f"{case_prefix} Official FAIL: {exc}")
         return "FAIL"
 
     try:
         metrics, passed = _compare_outputs(tilelang_outputs, official_outputs)
-        _print_metrics(metrics)
         status = "PASS" if passed else "FAIL"
-        print(f"  Precision: {status} (mean relative tolerance={REL_TOLERANCE:.1e})")
+        if args.verbose or not passed:
+            _print_metrics(metrics)
+        if not args.summary_only:
+            print(f"{case_prefix} {status} {_brief_metrics(metrics)}")
     except Exception as exc:
-        print(f"  PRECISION FAIL: {exc}")
+        print(f"{case_prefix} PRECISION FAIL: {exc}")
         status = "FAIL"
 
     if args.bench:
@@ -372,16 +512,16 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
                 lambda: _call_official(inputs, case), args.warmup, args.iters
             )
             print(
-                f"  TileLang: avg={tl_avg * 1e3:.3f}ms med={tl_med * 1e3:.3f}ms "
-                f"min={tl_min * 1e3:.3f}ms"
+                f"{case_prefix} bench tl_med={tl_med * 1e3:.3f}ms "
+                f"off_med={off_med * 1e3:.3f}ms ratio={off_med / tl_med:.2f}x"
             )
-            print(
-                f"  Official: avg={off_avg * 1e3:.3f}ms med={off_med * 1e3:.3f}ms "
-                f"min={off_min * 1e3:.3f}ms"
-            )
-            print(f"  Ratio (official/tilelang median): {off_med / tl_med:.2f}x")
+            if args.verbose:
+                print(
+                    f"  TileLang: avg={tl_avg * 1e3:.3f}ms min={tl_min * 1e3:.3f}ms; "
+                    f"Official: avg={off_avg * 1e3:.3f}ms min={off_min * 1e3:.3f}ms"
+                )
         except Exception as exc:
-            print(f"  BENCHMARK FAIL: {exc}")
+            print(f"{case_prefix} BENCHMARK FAIL: {exc}")
             status = "FAIL"
 
     return status
@@ -395,26 +535,31 @@ def _select_cases(args: argparse.Namespace) -> Iterable[Dict[str, Any]]:
         return [CASE_BY_NAME[name] for name in args.case]
     if args.suite == "smoke":
         return [CASE_BY_NAME[name] for name in SMOKE_CASE_NAMES]
-    if args.suite == "official":
-        return OFFICIAL_CASES
-    if args.suite == "spec":
-        return SPEC_CASES
+    if args.suite == "core":
+        return CORE_CASES
+    if args.suite == "stress":
+        return STRESS_CASES
+    if args.suite == "tnd":
+        return TND_CASES
     return ALL_CASES
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite", choices=("smoke", "official", "spec", "all"), default="all")
+    parser.add_argument("--suite", choices=("smoke", "core", "stress", "tnd", "all"), default="all")
     parser.add_argument("--case", action="append", help="Run exactly this named case; can be repeated")
     parser.add_argument(
         "--bench",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Benchmark both implementations after comparison (default: enabled)",
+        default=False,
+        help="Benchmark both implementations after comparison (default: disabled)",
     )
     parser.add_argument("--warmup", type=int, default=WARMUP_ITERS)
     parser.add_argument("--iters", type=int, default=BENCH_ITERS)
     parser.add_argument("--seed", type=int, default=42)
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument("--verbose", action="store_true", help="Print full per-case diagnostics")
+    output_group.add_argument("--summary-only", action="store_true", help="Print only failures and final totals")
     args = parser.parse_args()
     if args.warmup < 0 or args.iters < 1:
         parser.error("--warmup must be non-negative and --iters must be at least one")
@@ -426,21 +571,19 @@ def main() -> int:
     if os.environ.get("SLIG_DEBUG", "0") == "1" or os.environ.get("SLIG_PROFILE", "0") == "1":
         print("WARNING: SLIG_DEBUG/SLIG_PROFILE is enabled; disable it for benchmark numbers.")
     selected_cases = list(_select_cases(args))
-    print(f"0721 general test: suite={args.suite}, cases={len(selected_cases)}, benchmark={args.bench}")
-    print(
-        "Supported test contract: BF16 variable inputs/weights, FP32 softmax stats, INT32 sparse indices, "
-        "sparse_mode=3, N2=Nidx2=1, DQuery=512, DQueryIndex=128."
-    )
+    if not args.summary_only:
+        print(f"0721 general test: suite={args.suite}, cases={len(selected_cases)}, benchmark={args.bench}")
 
     results: List[Tuple[str, str]] = []
     for index, case in enumerate(selected_cases):
         results.append((case["name"], run_case(case, args, index)))
+        _release_case_memory()
 
-    print(f"\n{'=' * 88}\nSummary")
-    for name, status in results:
-        print(f"  {status:<10} {name}")
     failures = [name for name, status in results if status == "FAIL"]
-    print(f"  failures={len(failures)}")
+    passed_count = len(results) - len(failures)
+    print(f"Summary: total={len(results)} pass={passed_count} fail={len(failures)}")
+    if failures:
+        print(f"Failed: {', '.join(failures)}")
     return 1 if failures else 0
 
 
