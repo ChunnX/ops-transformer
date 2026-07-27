@@ -164,8 +164,8 @@ public:
 
     const ConstInfoX &constInfo;
     T negativeFloatScalar;
-    float pScaleValue { 1.0f };
-    bool isSkipMask { false };
+    float pScaleValue {1.0f};
+    bool isSkipMask {false};
     bool isSkipCompute{false};
     uint32_t minValue { NEGATIVE_MIN_VALUE_FP32 };
 
@@ -313,7 +313,7 @@ public:
     {
         int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
-            maskLine = ComputeMaskLineDN(runInfo, 0, subLoop);
+            maskLine = ComputeMaskLineDN(runInfo, subLoop);
         }
         if (isSkipCompute) {
             maskLine = -256;
