@@ -329,8 +329,7 @@ private:
     {
         uint32_t rankId = resources.context.rankId;
         constexpr uint32_t handleArraySize = 72U;
-        resources.context.channelsPerRank = (handleArraySize + resources.context.rankSize - 1U) /
-                                            resources.context.rankSize;
+        resources.context.channelsPerRank = static_cast<uint32_t>(CeilDiv(handleArraySize, resources.context.rankSize));
         if (resources.context.channelsPerRank == 0U) {
             resources.context.channelsPerRank = 1U;
         }
@@ -744,9 +743,8 @@ private:
     int64_t engramNumEntries_ = 0;
     at::ScalarType engramDtype_ = at::kBFloat16;
 
-    static inline bool destroyed_ = false;
-    static inline bool engramWriteCalled_ = false;
-    static inline std::atomic<bool> engramFetchInProgress_{false};
+    bool destroyed_ = false;
+    bool engramWriteCalled_ = false;
     aclrtStream commStream_ = nullptr;
 };
 
@@ -754,8 +752,6 @@ private:
 ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes)
     : groupName_(groupName), engramNumCpuBytes_(numCpuBytes)
 {
-    destroyed_ = false;
-    engramWriteCalled_ = false;
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
 }
@@ -847,18 +843,12 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
 at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
                                       int64_t numEntries, int64_t dtypeEnum)
 {
-    TORCH_CHECK(!destroyed_, "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance");
-    TORCH_CHECK(engramWriteCalled_, "engram_fetch must be called after at least one engram_write");
-    TORCH_CHECK(!engramFetchInProgress_.load(),
-                "Cannot call engram_fetch while previous fetch callback is pending, "
-                "please invoke the callback function returned by the previous engram_fetch first");
     auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
     auto fetched = at::empty({numTokens, hiddenSize}, at::TensorOptions().dtype(dtype).device(indices.device()));
     if (numTokens == 0) {
         return fetched;
     }
-    engramFetchInProgress_.store(true);
     ACLNN_CMD(aclnnEngramFetch, context, indices, hiddenSize, numEntries, fetched);
     return fetched;
 }
@@ -870,7 +860,6 @@ at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor &context, const at::T
         return fetched;
     }
     ACLNN_CMD(aclnnEngramFetchWait, context, fetched);
-    engramFetchInProgress_.store(false);
     return fetched;
 }
 
@@ -934,7 +923,6 @@ void ElasticBuffer::Destroy()
     moeContextTensor_ = at::Tensor();
 
     destroyed_ = true;
-    engramFetchInProgress_.store(false);
 }
 
 // GetEngramStorageSizeHint - calculate recommended CPU buffer size (static method)

@@ -193,6 +193,7 @@ class ElasticBuffer:
         self._engram_hidden_size = None
         self._engram_num_entries = None
         self._engram_dtype_int = None
+        self._engram_fetch_in_progress = False
 
     @staticmethod
     def get_engram_storage_size_hint(
@@ -353,6 +354,11 @@ class ElasticBuffer:
                 "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance")
         if self._engram_context_tensor is None:
             raise RuntimeError("engram_fetch must be called after at least one engram_write")
+        if self._engram_fetch_in_progress:
+            raise RuntimeError(
+                "Cannot call engram_fetch while previous fetch callback is pending, "
+                "please invoke the callback function returned by the previous engram_fetch first")
+        self._engram_fetch_in_progress = True
         fetched = torch.ops.cann_ops_transformer.engram_fetch(
             self._engram_context_tensor, indices,
             self._engram_hidden_size, self._engram_num_entries, self._engram_dtype_int
@@ -360,6 +366,7 @@ class ElasticBuffer:
         context = self._engram_context_tensor
         def _wait():
             result = torch.ops.cann_ops_transformer.engram_fetch_wait(context, fetched)
+            self._engram_fetch_in_progress = False
             return result
         return _wait
 
@@ -546,6 +553,7 @@ class ElasticBuffer:
         self._engram_hidden_size = None
         self._engram_num_entries = None
         self._engram_dtype_int = None
+        self._engram_fetch_in_progress = False
 
     def _ensure_moe_config(self):
         moe_args = (self._num_max_tokens_per_rank, self._hidden, self._num_topk)
