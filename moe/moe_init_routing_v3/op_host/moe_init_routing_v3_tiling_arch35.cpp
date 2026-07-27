@@ -1952,7 +1952,7 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutMxFP8NoQuantCompute()
             Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
                 NUM_TWO) / NUM_TWO / static_cast<int64_t>(sizeof(int32_t));
 
-    perLoopParams.xCopyInQueueBufferNum = 2;
+    perLoopParams.xCopyInQueueBufferNum = DOUBLE_BUFFER;
     // 当能搬入一整行时，ub才可能充足，才可能适合匹配多buffers的场景
     if (perLoopParams.perLoopMaxIndicesElements > 0) {
         int64_t rowIdxSize = NUM_TWO * static_cast<int64_t>(sizeof(int32_t)) *
