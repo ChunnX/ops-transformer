@@ -215,16 +215,21 @@ public:
             m_rankSize = WinContext_->rankSize;
         }
         m_segmentSize = WinContext_->winSize;
-        // 尾部同时容纳：
-        // 1. [0, rankSize * STATE_OFFSET) 的 per-rank 同步状态；
-        // 2. [SELF_STATE_OFFSET, SELF_STATE_OFFSET + SELF_STATE_REGION_SIZE)
-        //    的 per-block 本轮状态。
-        // 当前支持的最大 rankSize 为 128，per-rank 区最多 64KB，不会与
-        // 256KB 起始的 self-state 区重叠。
-        m_tailReservedSize =
-            static_cast<size_t>(SYNC_STATE_RESERVED_SIZE) > static_cast<size_t>(m_rankSize) * STATE_OFFSET ?
-                static_cast<size_t>(SYNC_STATE_RESERVED_SIZE) :
-                static_cast<size_t>(m_rankSize) * STATE_OFFSET;
+        if constexpr (IS_A2) {
+            // A2 只使用按 rank 分配的 CrossRankSync 状态区。
+            m_tailReservedSize = static_cast<size_t>(m_rankSize) * STATE_OFFSET;
+        } else {
+            // A3 尾部同时容纳：
+            // 1. [0, rankSize * STATE_OFFSET) 的 per-rank 同步状态；
+            // 2. [SELF_STATE_OFFSET, SELF_STATE_OFFSET + SELF_STATE_REGION_SIZE)
+            //    的 per-block 本轮状态。
+            // 当前支持的最大 rankSize 为 128，per-rank 区最多 64KB，不会与
+            // 256KB 起始的 self-state 区重叠。
+            m_tailReservedSize =
+                static_cast<size_t>(SYNC_STATE_RESERVED_SIZE) > static_cast<size_t>(m_rankSize) * STATE_OFFSET ?
+                    static_cast<size_t>(SYNC_STATE_RESERVED_SIZE) :
+                    static_cast<size_t>(m_rankSize) * STATE_OFFSET;
+        }
     }
 
     FORCE_INLINE_AICORE
