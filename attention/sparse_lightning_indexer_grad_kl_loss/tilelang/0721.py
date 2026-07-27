@@ -44,14 +44,16 @@ DQUERY_INDEX = 128
 _kernel_cache = {}
 _workspace_cache = {}
 _full_valid_aux_cache = {}
+_tail_aux_cache = {}
 _debug_dump_done = False
 
 
 def _clear_caches():
-    global _kernel_cache, _workspace_cache, _full_valid_aux_cache
+    global _kernel_cache, _workspace_cache, _full_valid_aux_cache, _tail_aux_cache
     _kernel_cache.clear()
     _workspace_cache.clear()
     _full_valid_aux_cache.clear()
+    _tail_aux_cache.clear()
 
 
 pass_configs = {
@@ -252,8 +254,13 @@ def tilelang_grad_kl_loss_single_kernel(
     launch_core_num,
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
     full_valid=False, k_scatter_exec=None,
+    source_s2=None, sparse_k_stride=None,
 ):
+    source_s2 = S2 if source_s2 is None else source_s2
+    sparse_k_stride = K if sparse_k_stride is None else sparse_k_stride
     k_scatter_exec = K if k_scatter_exec is None else k_scatter_exec
+    assert 0 < source_s2 <= S2
+    assert sparse_k_stride >= K
     assert 0 < k_scatter_exec <= K
     assert k_scatter_exec % V2_SCATTER_BATCH == 0
     s1_block = BLOCK_M
@@ -633,6 +640,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_cross_flag(C1_TO_V1_SY_FLAGS[1])
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
+                valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
                 if vector_id == 0:
                     # P 和 SY 在不同 AIV 上运行。将两者的分配限定在各自分支内，
                     # 使 UB planner 可以重用相同的空间。
@@ -657,7 +665,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(v1_p_sum, v1_p_sum, v1_p_partial[0:N1])
                     for n_idx in T.serial(n_num):
                         n_start = n_idx * n_block
-                        valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
                         T.wait_flag("v", "mte2", 1)
                         T.wait_flag("mte3", "v", 0)
                         if n_start < valid_k_size:
@@ -666,7 +673,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                         n_start:n_start + n_block],
                                 v1_p_bmm1,
                             )
-                            if not full_valid:
+                            if not full_valid and n_start + n_block > valid_k_size:
                                 T.copy(
                                     ValidKMask[bz_task, s1_id, n_start:n_start + n_block],
                                     v1_p_valid,
@@ -826,7 +833,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("v", "mte2", 3)
                     for n_idx in T.serial(n_num):
                         n_start = n_idx * n_block
-                        valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
                         if n_start < valid_k_size:
                             T.wait_flag("v", "mte2", 3)
                             T.copy(
@@ -834,7 +840,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                         n_start:n_start + n_block],
                                 v1_sy_storage[0:Nidx1, 0:n_block],
                             )
-                            if not full_valid:
+                            if not full_valid and n_start + n_block > valid_k_size:
                                 T.copy(
                                     ValidKMask[bz_task, s1_id, n_start:n_start + n_block],
                                     v1_sy_chunk,
@@ -1795,15 +1801,15 @@ def tilelang_grad_kl_loss_single_kernel(
     @T.prim_func
     def main(
         # 输入：0-11
-        SparseIndices: T.Tensor((B, S1, Nidx2, K), "int32"),
+        SparseIndices: T.Tensor((B, S1, Nidx2, sparse_k_stride), "int32"),
         KRealSize: T.Tensor(k_real_size_shape, "int32"),
         ValidKMask: T.Tensor(valid_k_mask_shape, calc_dtype),
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
         QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),
-        Key: T.Tensor((B, S2, N2, DQuery), input_dtype),
-        KeyRope: T.Tensor((B, S2, N2, d_rope), input_dtype),
+        Key: T.Tensor((B, source_s2, N2, DQuery), input_dtype),
+        KeyRope: T.Tensor((B, source_s2, N2, d_rope), input_dtype),
         QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
-        KeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype),
+        KeyIndex: T.Tensor((B, source_s2, Nidx2, DQueryIndex), input_dtype),
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
@@ -2149,6 +2155,52 @@ def _get_full_valid_aux_inputs(
     return cached
 
 
+def _get_tail_aux_inputs(
+    device: torch.device,
+    calc_dtype: torch.dtype,
+    host_query_lengths: list[int],
+    host_key_lengths: list[int],
+    batch_size: int,
+    query_length: int,
+    top_k: int,
+    execution_k: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """缓存 host 可见长度对应的尾块元数据，避免每次调用启动 NPU 预处理算子。"""
+    cache_key = (
+        device,
+        calc_dtype,
+        tuple(host_query_lengths),
+        tuple(host_key_lengths),
+        batch_size,
+        query_length,
+        top_k,
+        execution_k,
+    )
+    cached = _tail_aux_cache.get(cache_key)
+    if cached is None:
+        real_sizes = [
+            [
+                min(top_k, max(0, key_len - query_len + query_pos + 1))
+                for query_pos in range(query_length)
+            ]
+            for query_len, key_len in zip(host_query_lengths, host_key_lengths)
+        ]
+        k_real_size = torch.tensor(
+            real_sizes,
+            dtype=torch.int32,
+            device=device,
+        )
+        valid_k_mask = (
+            torch.arange(execution_k, dtype=torch.int32, device=device).view(
+                1, 1, execution_k
+            )
+            < k_real_size.unsqueeze(-1)
+        ).to(calc_dtype).contiguous()
+        cached = (k_real_size, valid_k_mask)
+        _tail_aux_cache[cache_key] = cached
+    return cached
+
+
 # ==============================================================================
 # BSND 布局主入口
 # ==============================================================================
@@ -2200,6 +2252,8 @@ def sparse_lightning_indexer_grad_kl_loss(
     DQuery = tiling.DQuery
     DQueryIndex = tiling.DQueryIndex
     K = tiling.K
+    source_s2 = S2
+    sparse_k_stride = K
 
     input_dtype = query.dtype
     calc_dtype_str = "float"
@@ -2223,29 +2277,6 @@ def sparse_lightning_indexer_grad_kl_loss(
                 query.device, torch.float32, B, S1, K
             )
         else:
-            if actual_seq_lengths_query is not None:
-                actual_q_len = (
-                    torch.tensor(actual_seq_lengths_query, dtype=torch.int32, device=query.device)
-                    if isinstance(actual_seq_lengths_query, list)
-                    else actual_seq_lengths_query.to(device=query.device, dtype=torch.int32)
-                )
-            else:
-                actual_q_len = torch.full((B,), S1, dtype=torch.int32, device=query.device)
-
-            if actual_seq_lengths_key is not None:
-                actual_k_len = (
-                    torch.tensor(actual_seq_lengths_key, dtype=torch.int32, device=query.device)
-                    if isinstance(actual_seq_lengths_key, list)
-                    else actual_seq_lengths_key.to(device=query.device, dtype=torch.int32)
-                )
-            else:
-                actual_k_len = torch.full((B,), S2, dtype=torch.int32, device=query.device)
-
-            query_positions = torch.arange(S1, dtype=torch.int32, device=query.device)
-            k_real_size = (
-                actual_k_len.unsqueeze(1) - actual_q_len.unsqueeze(1) + query_positions + 1
-            ).clamp_(min=0, max=K).contiguous()
-
             k_exec, k_scatter_exec = _derive_execution_widths(
                 actual_seq_lengths_query,
                 actual_seq_lengths_key,
@@ -2254,23 +2285,61 @@ def sparse_lightning_indexer_grad_kl_loss(
                 S2,
                 K,
             )
-            if k_exec < K:
-                sparse_indices = sparse_indices[..., :k_exec].contiguous()
-                K = k_exec
+            top_k = K
+            K = k_exec
+            host_query_lengths = _host_sequence_lengths(
+                actual_seq_lengths_query, S1, B
+            )
+            host_key_lengths = _host_sequence_lengths(
+                actual_seq_lengths_key, S2, B
+            )
+            if host_query_lengths is not None and host_key_lengths is not None:
+                k_real_size, valid_k_mask = _get_tail_aux_inputs(
+                    query.device,
+                    torch.float32,
+                    host_query_lengths,
+                    host_key_lengths,
+                    B,
+                    S1,
+                    top_k,
+                    K,
+                )
+            else:
+                if actual_seq_lengths_query is not None:
+                    actual_q_len = actual_seq_lengths_query.to(
+                        device=query.device, dtype=torch.int32
+                    )
+                else:
+                    actual_q_len = torch.full(
+                        (B,), S1, dtype=torch.int32, device=query.device
+                    )
 
-            valid_k_mask = (
-                torch.arange(K, dtype=torch.int32, device=query.device).view(1, 1, K)
-                < k_real_size.unsqueeze(-1)
-            ).to(torch.float32).contiguous()
+                if actual_seq_lengths_key is not None:
+                    actual_k_len = actual_seq_lengths_key.to(
+                        device=query.device, dtype=torch.int32
+                    )
+                else:
+                    actual_k_len = torch.full(
+                        (B,), S2, dtype=torch.int32, device=query.device
+                    )
+
+                query_positions = torch.arange(
+                    S1, dtype=torch.int32, device=query.device
+                )
+                k_real_size = (
+                    actual_k_len.unsqueeze(1)
+                    - actual_q_len.unsqueeze(1)
+                    + query_positions
+                    + 1
+                ).clamp_(min=0, max=top_k).contiguous()
+                valid_k_mask = (
+                    torch.arange(K, dtype=torch.int32, device=query.device).view(
+                        1, 1, K
+                    )
+                    < k_real_size.unsqueeze(-1)
+                ).to(torch.float32).contiguous()
 
         S2_pad = (S2 + VECTOR_BASEN - 1) // VECTOR_BASEN * VECTOR_BASEN
-        if S2_pad > S2:
-            key = torch.nn.functional.pad(key, (0, 0, 0, 0, 0, S2_pad - S2, 0, 0))
-            key_index = torch.nn.functional.pad(key_index, (0, 0, 0, 0, 0, S2_pad - S2, 0, 0))
-            if key_rope is not None:
-                key_rope = torch.nn.functional.pad(
-                    key_rope, (0, 0, 0, 0, 0, S2_pad - S2, 0, 0)
-                )
 
         if weights.dtype == torch.float32:
             weights = weights.to(input_dtype)
@@ -2298,7 +2367,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         if query_rope is None:
             query_rope = torch.zeros(B, S1, N1, 0, dtype=input_dtype, device=query.device)
         if key_rope is None:
-            key_rope = torch.zeros(B, S2_pad, N2, 0, dtype=input_dtype, device=query.device)
+            key_rope = torch.zeros(B, source_s2, N2, 0, dtype=input_dtype, device=query.device)
         if d_rope > d_rope_orig and d_rope_orig > 0:
             pad_len = d_rope - d_rope_orig
             query_rope = torch.nn.functional.pad(query_rope, (0, pad_len))
@@ -2324,8 +2393,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         ) * 128
 
         cache_key = (
-            B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2,
-            DQuery, DQueryIndex, K, k_scatter_exec, core_count, d_rope,
+            B, S1, S2_pad, source_s2, N1, N2, G, Nidx1, Nidx2,
+            DQuery, DQueryIndex, K, sparse_k_stride, k_scatter_exec, core_count, d_rope,
             input_dtype_str, calc_dtype_str, scale_value, block_n, full_valid,
         )
 
@@ -2335,7 +2404,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             func = tilelang_grad_kl_loss_single_kernel(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
-                full_valid, k_scatter_exec,
+                full_valid, k_scatter_exec, source_s2, sparse_k_stride,
             )
 
             # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
@@ -2443,8 +2512,8 @@ def sparse_lightning_indexer_grad_kl_loss(
                 )
 
             expected_gk, expected_gki, expected_gkr = _preprocess_gather(
-                key, key_index, key_rope, sparse_indices,
-                B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, query.dtype,
+                key, key_index, key_rope, sparse_indices[..., :K],
+                B, S1, source_s2, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, query.dtype,
             )
             if d_rope_orig > 0 and d_rope > d_rope_orig:
                 expected_gkr = torch.nn.functional.pad(
