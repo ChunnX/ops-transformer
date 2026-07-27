@@ -110,7 +110,7 @@ public:
 
     template <class TensorL1P>
     __aicore__ inline
-    void operator()(TensorL1P &l1PTensorTla, GemmCoord &actualBlockShape, TileInfo &tileInfo)
+    void operator()(TensorL1P &l1PTensorTla, GemmCoord &actualBlockShape, TileInfo const &tileInfo)
     {
         uint32_t spBuffIdx = GetSPBufferIdx(tileInfo.loop);
         // 跨 tile 同步: 每个 vec core 都需要一个跨 tile 的同步
@@ -205,7 +205,7 @@ public:
 
     template <class TensorDst, class TensorSrc>
     __aicore__ inline
-    void CopyPUBToPL1(TensorDst const &l1PTensorTla, TensorSrc const &ubPTensorTla, TileInfo &tileInfo, uint32_t actQsTile, uint32_t spBuffIdx)
+    void CopyPUBToPL1(TensorDst const &l1PTensorTla, TensorSrc const &ubPTensorTla, TileInfo const &tileInfo, uint32_t actQsTile, uint32_t spBuffIdx)
     {
         uint32_t pUBTlaMSize = tla::get<0>(ubPTensorTla.shape());
         uint32_t pUBTlaNSize = tla::get<1>(ubPTensorTla.shape());
@@ -214,11 +214,11 @@ public:
             // qs=128, kvs=256 整块搬运
             AscendC::DataCopyParams repeatParams;
             repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize); // UB的物理P一整行256B, 包含P的逻辑视图4行
-            repeatParams.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2);
-            repeatParams.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2);
+            repeatParams.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            repeatParams.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
             repeatParams.dstStride = 0;
 
-            auto pUBTensorTlaTile = GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize, pUBTlaNSize/2));
+            auto pUBTensorTlaTile = GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize, pUBTlaNSize / 2));
             auto srcOffset = pUBTensorTlaTile.layout()(pUBTensorTlaTile.coord());
 
             AscendC::DataCopy(l1PTensorTla.data(), pUBTensorTlaTile.data()[srcOffset], repeatParams);
@@ -227,8 +227,8 @@ public:
             // 低位搬运
             AscendC::DataCopyParams repeatParams1;
             repeatParams1.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (MXFP4::UB_P_QS_MAJOR_BYTE / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图低位(高位)地址8行
-            repeatParams1.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2);
-            repeatParams1.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2);
+            repeatParams1.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            repeatParams1.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
             repeatParams1.dstStride = 0;
 
             auto pUBTensorTlaTile1 = tla::GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2));
@@ -238,8 +238,8 @@ public:
             // 高位搬运
             AscendC::DataCopyParams repeatParams2;
             repeatParams2.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (MXFP4::UB_P_QS_MAJOR_BYTE / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图高位(低位)地址8行
-            repeatParams2.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2);
-            repeatParams2.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2);
+            repeatParams2.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            repeatParams2.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
             repeatParams2.dstStride = 0;
 
             uint32_t pL1NHalfSize = tla::get<1, 0>(ubPTensorTla.shape());
@@ -251,6 +251,7 @@ public:
             }
             auto pUBTensorTlaTile2 = tla::GetTile(pUBTensorTlaTile1, tla::MakeCoord(pUBTlaMSize / 2, 0u), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2)); // 遗留
             auto pl1TensorTlaTile = tla::GetTile(l1PTensorTla, tla::MakeCoord(xL1P, yL1P), tla::MakeShape(MXFP4::KVS_BASE_SIZE, pL1NHalfSize));
+
             auto srcOffset2 = pUBTensorTlaTile2.layout()(pUBTensorTlaTile2.coord());
             auto dstOffset2 = pl1TensorTlaTile.layout()(pl1TensorTlaTile.coord());
             AscendC::DataCopy(pl1TensorTlaTile.data()[dstOffset2], pUBTensorTlaTile2.data()[srcOffset2], repeatParams2);
