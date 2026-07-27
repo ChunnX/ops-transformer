@@ -1,8 +1,8 @@
-# aclnnMoeInitRoutingV3	
+# aclnnMoeInitRoutingV3
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_init_routing_v3)
 
-## 产品支持情况	
+## 产品支持情况
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
@@ -56,7 +56,7 @@
     </tr>
   </table>
   </ol>
-- 计算公式：  
+- 计算公式：
 
   1.对输入expertIdx做排序，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx：
 
@@ -76,7 +76,7 @@
       $$
       expandedRowIdxOut[sortedRowIdx[i]]=i
       $$
-      
+
   3.对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensCountOrCumsumOutOptional：
 
     $$
@@ -89,7 +89,7 @@
      $$
      quantResult=round((x∗scaleOptional)+offsetOptional)
      $$
-     
+
     - 动态quant：
         - 若不输入scale：
 
@@ -112,7 +112,7 @@
             $$
 
         - 当quantMode为13时，动态量化使用对称量化范围[-8, 7]，scale计算中的分母为7，量化结果沿H维每两个INT4值打包为1个字节。
-  
+
   5.若活跃的expert范围为全专家范围时，按照Scatter索引搬运token；反之按照Gather索引搬运token。在dropPadMode为1时将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。得出expandedXOut：
     - 非量化场景
       - 按照Scatter索引搬运
@@ -148,36 +148,36 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeInitRoutingV3GetWorkspaceSize”接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV3”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeInitRoutingV3GetWorkspaceSize”接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV3”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(
-  const aclTensor   *x, 
-  const aclTensor   *expertIdx, 
-  const aclTensor   *scaleOptional, 
-  const aclTensor   *offsetOptional, 
-  int64_t            activeNum, 
-  int64_t            expertCapacity, 
-  int64_t            expertNum, 
-  int64_t            dropPadMode, 
-  int64_t            expertTokensNumType, 
-  bool               expertTokensNumFlag, 
-  int64_t            quantMode, 
-  const aclIntArray *activeExpertRangeOptional, 
-  int64_t            rowIdxType, 
+  const aclTensor   *x,
+  const aclTensor   *expertIdx,
+  const aclTensor   *scaleOptional,
+  const aclTensor   *offsetOptional,
+  int64_t            activeNum,
+  int64_t            expertCapacity,
+  int64_t            expertNum,
+  int64_t            dropPadMode,
+  int64_t            expertTokensNumType,
+  bool               expertTokensNumFlag,
+  int64_t            quantMode,
+  const aclIntArray *activeExpertRangeOptional,
+  int64_t            rowIdxType,
   const aclTensor   *expandedXOut,
   const aclTensor   *expandedRowIdxOut,
   const aclTensor   *expertTokensCountOrCumsumOut,
-  const aclTensor   *expandedScaleOut, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *expandedScaleOut,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV3(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -471,10 +471,10 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-    
+
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 319px">
   <col style="width: 144px">
@@ -524,7 +524,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
     - activeNum等于NUM_ROWS*K。
     - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32，表示对activeExpertRangeOptional范围内的expert按H维广播smooth scale；offsetOptional不输入。
     - expertTokensNumType为0或1时，expertTokensCountOrCumsumOut的shape为[expertEnd-expertStart]；expertTokensNumType为2时，expertTokensCountOrCumsumOut的shape为[expertNum, 2]。
-    
+
 ## aclnnMoeInitRoutingV3
 
 - **参数说明：**
@@ -566,7 +566,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -604,7 +604,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

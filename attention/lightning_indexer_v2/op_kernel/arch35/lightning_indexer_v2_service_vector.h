@@ -30,6 +30,7 @@ constexpr uint32_t TRUNK_LEN_16K = 16384;
 constexpr uint32_t TRUNK_LEN_8K = 8192;
 constexpr uint32_t TRUNK_LEN_4K = 4096;
 constexpr uint32_t TRUNK_LEN_2K = 2048;
+constexpr uint32_t TRUNK_LEN_1K = 1024;
 constexpr uint32_t TOPK_LEN_7K = 7168;
 constexpr uint32_t TOPK_LEN_5K = 5120;
 
@@ -86,6 +87,7 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT2 = EVENT_ID3;
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
     static constexpr uint32_t MTE3_V_EVENT = EVENT_ID6;
+    static constexpr uint32_t M_BASIC_BLOCK = 128;
 
 private:
     // ================================Local Buffer区====================================
@@ -142,10 +144,10 @@ private:
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
+    pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(M_BASIC_BLOCK, 2) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) *
-                     LIV2Common::Align((uint64_t)gSize_, (uint64_t)16) * sizeof(W_T));
+                     UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>();
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
@@ -195,7 +197,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitParams(const st
     returnValueFlag = constInfo.returnValueFlag;
     blockId_ = GetBlockIdx();
     trunkLen_ = constInfo.topk > TOPK_LEN_5K ?
-                (constInfo.topk > TOPK_LEN_7K ? TRUNK_LEN_2K : TRUNK_LEN_4K) : TRUNK_LEN_8K;
+                (constInfo.topk > TOPK_LEN_7K ? TRUNK_LEN_1K : TRUNK_LEN_4K) : TRUNK_LEN_8K;
     topkCount_ = constInfo.topk;
     topkOp_.Init(topkCount_, trunkLen_);
     topkCountAlign256_ = LIV2Common::Align(constInfo.topk, (uint64_t)256); // topkCount对齐到256
@@ -320,22 +322,25 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
     int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
     DataCopyPadExtParams<W_T> padWeightsParams{true, 0, 0, 0};
     DataCopyExtParams qwDataCopyExtParams;
-    qwDataCopyExtParams.blockCount = 1;
-    qwDataCopyExtParams.blockLen = curAivS1ProcNum * gSize_ * sizeof(W_T);
+    qwDataCopyExtParams.blockCount = curAivS1ProcNum;
+    qwDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
     qwDataCopyExtParams.srcStride = 0;
-    qwDataCopyExtParams.dstStride = (gSizeAlign16 - gSize_) * sizeof(W_T);
-    DataCopyPad(weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSizeAlign16],
+    qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qwDataCopyExtParams.blockLen) / 32;
+    DataCopyPad(weightUB_[(info.loop % 2) * (UB_BANK_STRIDE / sizeof(W_T))],
                 weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
     SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
     WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
+    auto qkVLStride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / 2 * M_BASIC_BLOCK;
     for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
         liV2Vector1::MulWeightAndReduceSum(
                 vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_],
-                resMm1UB_[(info.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ +
-                            s1IdxTmp * gSize_ * s2BaseSize_],
-                weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSizeAlign16 + s1IdxTmp * gSizeAlign16],
+                resMm1UB_[(info.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T)) +
+                          s1IdxTmp * gSize_ * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T))],
+                qkVLStride,
+                weightUB_[(info.loop % 2) * (UB_BANK_STRIDE / sizeof(float)) +
+                          s1IdxTmp * (UB_BANK_DEPTH_STRIDE / sizeof(W_T))],
                 gSize_);
     }
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));

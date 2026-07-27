@@ -16,10 +16,10 @@
 ## 功能说明
 
 - 算子功能：MoE计算中，对输入x做Sigmoid、SoftMax或者SqrtSoftplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
-- 计算公式：                                                                                                                           
-   
-  **Step 1: 归一化**                                                                                                                 
-                
+- 计算公式：
+
+  **Step 1: 归一化**
+
   根据normType对输入x做归一化：
 
 $$
@@ -110,29 +110,29 @@ $$
 
 ```Cpp
 aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
-  const aclTensor *x, 
-  const aclTensor *biasOptional, 
-  int64_t          k, 
-  int64_t          kGroup, 
-  int64_t          groupCount, 
-  int64_t          groupSelectMode, 
-  int64_t          renorm, 
-  int64_t          normType, 
-  bool             outFlag, 
-  double           routedScalingFactor, 
-  double           eps, 
-  const aclTensor *yOut, 
-  const aclTensor *expertIdxOut, 
-  const aclTensor *outOut, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *x,
+  const aclTensor *biasOptional,
+  int64_t          k,
+  int64_t          kGroup,
+  int64_t          groupCount,
+  int64_t          groupSelectMode,
+  int64_t          renorm,
+  int64_t          normType,
+  bool             outFlag,
+  double           routedScalingFactor,
+  double           eps,
+  const aclTensor *yOut,
+  const aclTensor *expertIdxOut,
+  const aclTensor *outOut,
+  uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnMoeGatingTopK(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -323,11 +323,11 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>-</td>
     </tr>
   </tbody>
-  </table>  
+  </table>
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -366,7 +366,7 @@ aclnnStatus aclnnMoeGatingTopK(
       计算输入参数的值不满足要求。<br />
       </td>
     </tr>
-  </tbody></table>  
+  </tbody></table>
 
 ## aclnnMoeGatingTopK
 
@@ -409,7 +409,7 @@ aclnnStatus aclnnMoeGatingTopK(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -417,7 +417,7 @@ aclnnStatus aclnnMoeGatingTopK(
   - aclnnMoeGatingTopK默认确定性实现。
 
 * 输入shape限制：
-    * x最后一维（即专家数）要求不大于2048。 
+    * x最后一维（即专家数）要求不大于2048。
 * 输入值域限制：
     * 要求1 <= k <= x_shape[-1] / groupCount * kGroup。
     * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
@@ -431,7 +431,7 @@ aclnnStatus aclnnMoeGatingTopK(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
@@ -524,13 +524,13 @@ int main() {
   void* outAddr = nullptr;
   void* expertIdOutAddr = nullptr;
   void* normOutAddr = nullptr;
-  
+
   aclTensor* input = nullptr;
   aclTensor* bias = nullptr;
   aclTensor* out = nullptr;
   aclTensor* expertIdOut = nullptr;
   aclTensor* normOut = nullptr;
-  
+
   std::vector<float> inputHostData = GenerateRandomFloats(GetShapeSize(inputShape));
   std::vector<float> biasHostData = GenerateRandomFloats(GetShapeSize(biasShape));
   std::vector<float> outHostData(GetShapeSize(outShape));

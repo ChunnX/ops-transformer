@@ -37,10 +37,8 @@ template <typename T>
 class FiaKernelEmptyTensor {
 public:
     __aicore__ inline FiaKernelEmptyTensor(){};
-    __aicore__ inline void Init(__gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *softmaxLse,
-                                const FusedInferAttentionScoreEmptyTensorTilingData *__restrict tiling,
-                                TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+                                const FusedInferAttentionScoreEmptyTensorTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
 protected:
@@ -84,7 +82,8 @@ __aicore__ inline void FiaKernelEmptyTensor<T>::Process()
                 uint64_t tailLseSize = totalLseSize - tmpBlockIdx * singleCoreLseSize;
                 uint64_t singleInitOutputLseSize = tailLseSize < singleCoreLseSize ? tailLseSize : singleCoreLseSize;
                 if (singleInitOutputLseSize > 0) {
-                matmul::InitOutput<float>(softmaxLseGm[tmpBlockIdx * singleCoreLseSize], singleInitOutputLseSize, lseInitValue);
+                    matmul::InitOutput<float>(softmaxLseGm[tmpBlockIdx * singleCoreLseSize], singleInitOutputLseSize,
+                                              lseInitValue);
                 }
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
@@ -94,11 +93,9 @@ __aicore__ inline void FiaKernelEmptyTensor<T>::Process()
 }
 
 template <typename T>
-__aicore__ inline void FiaKernelEmptyTensor<T>::Init(
-                                __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *softmaxLse,
-                                const FusedInferAttentionScoreEmptyTensorTilingData *__restrict tiling,
-                                TPipe *tPipe)
+__aicore__ inline void
+FiaKernelEmptyTensor<T>::Init(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+                              const FusedInferAttentionScoreEmptyTensorTilingData *__restrict tiling, TPipe *tPipe)
 {
     pipe = tPipe;
     // init tiling data

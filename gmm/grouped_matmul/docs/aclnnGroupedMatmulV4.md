@@ -23,7 +23,7 @@
   相较于[GroupedMatmulV3](aclnnGroupedMatmulV3.md)接口，**此接口新增：**
     - 支持groupListOptional中数值为分组轴上每组大小。
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-      - 支持静态量化（pertensor+perchannel）（量化方式请参见[量化介绍](../../../docs/zh/context/量化介绍.md)，下同）BFLOAT16和FLOAT16输出，带激活及不带激活场景
+      - 支持静态量化（pertensor+perchannel）（量化方式请参见[量化介绍](../../../docs/zh/context/quant_mode_introduction.md)，下同）BFLOAT16和FLOAT16输出，带激活及不带激活场景
       - 支持动态量化（pertoken+perchannel）BFLOAT16和FLOAT16输出，带激活及不带激活场景。
       - 支持伪量化weight是INT4的输入，不带激活场景，支持perchannel和pergroup两种模式。
     - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -81,7 +81,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulV4GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulV4”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulV4GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulV4”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulV4GetWorkspaceSize(
@@ -97,7 +97,7 @@ aclnnStatus aclnnGroupedMatmulV4GetWorkspaceSize(
   const aclTensorList *activationInputOptional,
   const aclTensorList *activationQuantScaleOptional,
   const aclTensorList *activationQuantOffsetOptional,
-  int64_t              splitItem, 
+  int64_t              splitItem,
   int64_t              groupType,
   int64_t              groupListType,
   int64_t              actType,
@@ -381,7 +381,7 @@ aclnnStatus aclnnGroupedMatmulV4(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一阶段接口完成入参校验，出现以下场景时报错：
 
@@ -466,7 +466,7 @@ aclnnStatus aclnnGroupedMatmulV4(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 场景分类
 
@@ -551,15 +551,15 @@ aclnnStatus aclnnGroupedMatmulV4(
 - 确定性计算：
 
   - aclnnGroupedMatmulV4默认确定性实现。
-  
+
 <details>
 <summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></summary>
 
   - **公共约束**
   <a id="公共约束"></a>
-    - x和weight若需要转置，转置对应的tensor必须[非连续](../../../docs/zh/context/非连续的Tensor.md)。
+    - x和weight若需要转置，转置对应的tensor必须[非连续](../../../docs/zh/context/non_contiguous_tensor.md)。
     - x和weight中每一组tensor的最后一维大小都应小于65536。$x_i$的最后一维指当x不转置时$x_i$的K轴或当x转置时$x_i$的M轴。$weight_i$的最后一维指当weight不转置时$weight_i$的N轴或当weight转置时$weight_i$的K轴。
-    - 当weight[数据格式](../../../docs/zh/context/数据格式.md)为FRACTAL_NZ格式时，要求weight的Shape满足FRACTAL_NZ格式要求。
+    - 当weight[数据格式](../../../docs/zh/context/data_format.md)为FRACTAL_NZ格式时，要求weight的Shape满足FRACTAL_NZ格式要求。
     - perTokenScaleOptional：一般情况下，只支持1维且长度与x的M相同。仅支持x、weight、out均为单tensor（TensorList长度为1）场景。
     - groupListOptional：当输出中TensorList的长度为1时，groupListOptional约束了输出数据的有效部分，groupListOptional中未指定的部分将不会参与更新。
     - groupListType为0时要求groupListOptional中数值为非负单调非递减数列，表示分组轴大小的cumsum结果（累积和），groupListType为1时要求groupListOptional中数值为非负数列，表示分组轴上每组大小，groupListType为2时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，详见[groupListOptional配置示例](#grouplistoptional配置示例)。
@@ -991,7 +991,7 @@ aclnnStatus aclnnGroupedMatmulV4(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```c++
 #include <iostream>

@@ -367,7 +367,7 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePostQuantOffsetPerBatch(bool checkPo
                                    0) ||
                                   (nextTokensPerbatch < 0))),
         OP_LOGE(opName_,
-                "When sparse mode = %d, output dtype is int8, the output's dequant offset "
+                "When sparse mode = %d, output dtype is INT8, the output's dequant offset "
                 "is not null or empty tensor, "
                 "preTokens = %ld and nextTokens = %ld, some rows of the matrix do not "
                 "participate in the calculation, "
@@ -392,7 +392,7 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePostQuant() const
     OP_CHECK_IF(
         (fiaInfo_.sparseMode == SPARSE_MODE_BAND && (fiaInfo_.preToken < 0 || fiaInfo_.nextToken < 0)),
         OP_LOGE(opName_,
-                "When output type is int8, sparse mode = 4, preTokens (%ld) or nextTokens (%ld) cannot be negative.",
+                "When output type is INT8, sparse mode = 4, preTokens (%ld) or nextTokens (%ld) cannot be negative.",
                 fiaInfo_.preToken, fiaInfo_.nextToken),
         return ge::GRAPH_FAILED);
     bool checkPostQuantOffset =
@@ -514,7 +514,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLearnableSink() const
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((opParamInfo_.learnableSink.desc->GetDataType() != ge::DT_BF16),
-            OP_LOGE(opName_, "When learnable_sink enable, sink dtype must be bf16!"),
+            OP_LOGE(opName_, "When learnable_sink enable, sink dtype must be BFLOAT16!"),
             return ge::GRAPH_FAILED);
             
     return ge::GRAPH_SUCCESS;

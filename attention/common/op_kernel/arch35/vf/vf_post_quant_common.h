@@ -24,9 +24,9 @@ static constexpr MicroAPI::CastTrait castTraitP0 = {MicroAPI::RegLayout::ZERO, M
 static constexpr MicroAPI::CastTrait castTraitP1 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                                     MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_HYBRID};
 
-template<typename T, typename OUTPUT_T>
+template <typename T, typename OUTPUT_T>
 __simd_callee__ inline void CastToOutputFromMul(RegTensor<half> &vregCastB16, RegTensor<OUTPUT_T> &vregCast,
-    RegTensor<T> &vregMul, MaskReg &mask)
+                                                RegTensor<T> &vregMul, MaskReg &mask)
 {
     if constexpr (!IsSameType<OUTPUT_T, int8_t>::value) {
         if constexpr (IsSameType<OUTPUT_T, hifloat8_t>::value) {
@@ -40,9 +40,9 @@ __simd_callee__ inline void CastToOutputFromMul(RegTensor<half> &vregCastB16, Re
     }
 }
 
-template<typename T, typename OUTPUT_T>
+template <typename T, typename OUTPUT_T>
 __simd_callee__ inline void CastToOutputFromAdd(RegTensor<half> &vregCastB16, RegTensor<OUTPUT_T> &vregCast,
-    RegTensor<T> &vregAdd, MaskReg &mask)
+                                                RegTensor<T> &vregAdd, MaskReg &mask)
 {
     if constexpr (!IsSameType<OUTPUT_T, int8_t>::value) {
         if constexpr (IsSameType<OUTPUT_T, hifloat8_t>::value) {
@@ -56,9 +56,9 @@ __simd_callee__ inline void CastToOutputFromAdd(RegTensor<half> &vregCastB16, Re
     }
 }
 
-template<typename T, typename POSTQUANT_PARAMS_T>
+template <typename T, typename POSTQUANT_PARAMS_T>
 __simd_callee__ inline void LoadScaleParam(RegTensor<T> &vScale, RegTensor<POSTQUANT_PARAMS_T> &vScaleTmp,
-    __ubuf__ POSTQUANT_PARAMS_T *scaleUb, uint32_t offset, MaskReg &mask)
+                                           __ubuf__ POSTQUANT_PARAMS_T *scaleUb, uint32_t offset, MaskReg &mask)
 {
     if constexpr (IsSameType<POSTQUANT_PARAMS_T, T>::value) {
         LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_NORM>(vScale, scaleUb + offset);
@@ -68,9 +68,9 @@ __simd_callee__ inline void LoadScaleParam(RegTensor<T> &vScale, RegTensor<POSTQ
     }
 }
 
-template<typename T, typename POSTQUANT_PARAMS_T>
+template <typename T, typename POSTQUANT_PARAMS_T>
 __simd_callee__ inline void LoadOffsetParam(RegTensor<T> &vOffset, RegTensor<POSTQUANT_PARAMS_T> &vOffsetTmp,
-    __ubuf__ POSTQUANT_PARAMS_T *offsetUb, uint32_t offset, MaskReg &mask)
+                                            __ubuf__ POSTQUANT_PARAMS_T *offsetUb, uint32_t offset, MaskReg &mask)
 {
     if constexpr (IsSameType<POSTQUANT_PARAMS_T, T>::value) {
         LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_NORM>(vOffset, offsetUb + offset);

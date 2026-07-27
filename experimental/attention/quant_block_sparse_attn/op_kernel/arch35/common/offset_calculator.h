@@ -248,9 +248,10 @@ public:
         this->maxblockNumPerBatch = maxblockNumPerBatch;
     }
 
-    __aicore__ inline int32_t GetBlockIdx(uint32_t bIdx, uint32_t blockIdxInBatch) const
+    __aicore__ inline int32_t GetBlockIdx(uint32_t bIdx, uint64_t blockIdxInBatch) const
     {
-        return blockTableGm.GetValue(bIdx * maxblockNumPerBatch + blockIdxInBatch);
+        uint64_t blockTableOffset = static_cast<uint64_t>(bIdx) * maxblockNumPerBatch + blockIdxInBatch;
+        return blockTableGm.GetValue(blockTableOffset);
     }
 
 private:

@@ -210,6 +210,22 @@ TEST_F(QuantBlockSparseAttnTilingArch35, tiling_mask_mode_0)
     ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs(128, 128, 0)), true);
 }
 
+TEST_F(QuantBlockSparseAttnTilingArch35, tiling_mask_mode_0_without_atten_mask)
+{
+    auto inputs = MakeValidInputs();
+    inputs[14] = EmptyInput;
+
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs(128, 128, 0)), true);
+}
+
+TEST_F(QuantBlockSparseAttnTilingArch35, tiling_mask_mode_3_without_atten_mask)
+{
+    auto inputs = MakeValidInputs();
+    inputs[14] = EmptyInput;
+
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs(128, 128, 3)), false);
+}
+
 TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_query_dtype)
 {
     auto inputs = MakeValidInputs();
@@ -230,7 +246,7 @@ TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_mask_mode)
 
 TEST_F(QuantBlockSparseAttnTilingArch35, tiling_bsnd_layout)
 {
-    ExpectTilingResult(BuildTilingPara(MakeBSNDInputs(), MakeValidOutputs(), MakeAttrsEx("BSND", 0)), true);
+    ExpectTilingResult(BuildTilingPara(MakeBSNDInputs(), MakeValidOutputs(), MakeAttrsEx("BSND", 0)), false);
 }
 
 TEST_F(QuantBlockSparseAttnTilingArch35, tiling_ntd_layout)
@@ -273,7 +289,7 @@ TEST_F(QuantBlockSparseAttnTilingArch35, tiling_hifloat8_dtype)
     inputs[1] = TensorDesc({{4, 4, 128, 128}, {4, 4, 128, 128}}, ge::DT_HIFLOAT8, ge::FORMAT_ND);
     inputs[2] = TensorDesc({{4, 4, 128, 128}, {4, 4, 128, 128}}, ge::DT_HIFLOAT8, ge::FORMAT_ND);
 
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), true);
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
 }
 
 TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_query_layout_mismatch)

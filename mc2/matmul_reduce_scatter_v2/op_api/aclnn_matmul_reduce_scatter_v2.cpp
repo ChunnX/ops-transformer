@@ -469,10 +469,10 @@ static bool MatmulReduceScatterV2IsWeightNZFormat(const aclTensor *x2)
     aclFormat format = aclFormat::ACL_FORMAT_UNDEFINED;
     aclGetFormat(x2, &format);
     if (format == aclFormat::ACL_FORMAT_ND) {
-        OP_LOGD("MatmulReduceScatterV2, Recieved weight format is ACL_FORMAT_ND");
+        OP_LOGD("MatmulReduceScatterV2, Received weight format is ACL_FORMAT_ND");
     }
     if (format == aclFormat::ACL_FORMAT_FRACTAL_NZ) {
-        OP_LOGD("MatmulReduceScatterV2, Recieved weight format is ACL_FORMAT_FRACTAL_NZ");
+        OP_LOGD("MatmulReduceScatterV2, Received weight format is ACL_FORMAT_FRACTAL_NZ");
         uint64_t storageShapeDimNum = x2->GetStorageShape().GetDimNum();
         OP_LOGD("MatmulReduceScatterV2, Shape is %lu", storageShapeDimNum);
         const uint64_t transdataNzDim = 4U;

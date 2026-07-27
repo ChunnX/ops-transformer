@@ -386,7 +386,15 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     int32_t remainingSparseBlocks = runParam.actSparseLen - static_cast<int32_t>(s2LoopCount * 2);
     runInfo.sparseBlkIdx1 = remainingSparseBlocks > 0 ? sparseIndicesGm.GetValue(sparseLoopCountOffset) : -1;
     runInfo.sparseBlkIdx2 = remainingSparseBlocks > 1 ? sparseIndicesGm.GetValue(sparseLoopCountOffset + 1) : -1;
-    if (runInfo.sparseBlkIdx1 < 0) {
+    if constexpr (isPa) {
+        if (runInfo.sparseBlkIdx1 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch)) {
+            runInfo.sparseBlkIdx1 = -1;
+        }
+        if (runInfo.sparseBlkIdx2 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch)) {
+            runInfo.sparseBlkIdx2 = -1;
+        }
+    }
+    if ((runInfo.sparseBlkIdx1 < 0) || (runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize >= runParam.actualS2Size)) {
         runInfo.s2SparseBlk1RealSize = 0;
         runInfo.s2SparseBlk1RealAlignedSize = 0;
         runInfo.sparseBlk1PartialMask = false;
@@ -397,7 +405,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
         runInfo.s2SparseBlk1RealSize = constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk1RealSize;
     }
-    if (runInfo.sparseBlkIdx2 < 0) {
+    if ((runInfo.sparseBlkIdx2 < 0) || (runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize >= runParam.actualS2Size)) {
         runInfo.s2SparseBlk2RealSize = 0;
         runInfo.s2SparseBlk2RealAlignedSize = 0;
         runInfo.sparseBlk2PartialMask = false;
@@ -448,7 +456,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     runInfo.n2oIdx = runParam.n2oIdx;
     runInfo.goIdx = runParam.goIdx;
     runInfo.multiCoreInnerIdx = multiCoreInnerIdx;
-    runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
+    runInfo.multiCoreIdxMod2 = static_cast<uint64_t>(multiCoreInnerIdx) & 1;
     runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
 
     // sparseIndices 相关计算
@@ -460,7 +468,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     runInfo.actSparseLen = runParam.actSparseLen;
 
     runInfo.taskId = taskId;
-    runInfo.taskIdMod2 = taskId & 1;
+    runInfo.taskIdMod2 = static_cast<uint64_t>(taskId) & 1;
     runInfo.taskIdMod3 = taskId % 3;
     runInfo.s2LoopLimit = s2LoopLimit;
 
@@ -526,16 +534,15 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     int32_t actualCoreNums = this->sharedParams.coreNum;
-    if (this->aicIdx >= actualCoreNums) {
+    if (this->aicIdx >= actualCoreNums || static_cast<uint32_t>(this->aicIdx) >= BSA_FA_AIC_CORE_NUM) {
         return;
     }
-    // 以下数据从metadata中获取
-    uint32_t bn1StartIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_BN1_START_INDEX);
-    uint32_t bn1EndIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_BN1_END_INDEX);
-    uint32_t s1StartIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_S1_START_INDEX);
-    uint32_t s1EndIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_S1_END_INDEX);
-    if (s1EndIdx != 0U) {
-        bn1EndIdx++;
+
+    uint32_t sectionNum = GetBsaSectionNum(metadataGm);
+    uint32_t lastValidSectionIdx =
+        GetBsaLastValidSectionIdx(metadataGm, sectionNum, static_cast<uint32_t>(this->aicIdx));
+    if (lastValidSectionIdx == sectionNum) {
+        return;
     }
 
     int64_t s2LoopLimit;
@@ -546,77 +553,98 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
 
     int64_t multiCoreInnerIdx = 1;
     uint64_t sparseBase = 0;
-    for (uint32_t bn1Idx = bn1StartIdx; bn1Idx < bn1EndIdx; ++bn1Idx) {
-        bool lastBN = (bn1Idx == bn1EndIdx - 1);
-        runParam.boIdx = bn1Idx / this->constInfo.n1Size;
-        runParam.n1oIdx = bn1Idx % this->constInfo.n1Size;
-        runParam.n2oIdx = runParam.n1oIdx / constInfo.gSize;
-        runParam.goIdx = runParam.n1oIdx % constInfo.gSize;
-        ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, this->attenMaskInfo, this->keyGm,
-                                                    this->prefixSeqQlenAddr, this->prefixSeqKvlenAddr);
-        ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, s1StartIdx, s1EndIdx, bn1Idx == bn1StartIdx,
-                                                    lastBN);
-        int64_t temps1End = lastBN ? (runParam.s1LoopEnd + 3) : runParam.s1LoopEnd;
-        bool notLastThreeLoop = true;
-        bool notLastTwoLoop = true;
-        for (int64_t s1Index = runParam.s1LoopStart; s1Index < temps1End; ++s1Index) {
-            if (lastBN) {
-                UpdateLoopFlagsBasedOnS1Index(s1Index - runParam.s1LoopEnd, notLast, notLastTwoLoop, notLastThreeLoop);
-            }
-            if (notLastThreeLoop) {
-                runParam.s1oIdx = s1Index;
-                ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, s1Index, this->prefixSeqQlenAddr);
-                bool s2NoNeedCalc =
-                    ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, sparseSeqLenGm, s1Index);
-                if (s2NoNeedCalc) {
-                    continue;
+    for (uint32_t sectionIdx = 0U; sectionIdx < sectionNum; ++sectionIdx) {
+        BsaFaCoreMetadata coreMetadata =
+            GetBsaCoreMetadata(metadataGm, sectionIdx, static_cast<uint32_t>(this->aicIdx));
+        if (coreMetadata.coreEnable == 0U) {
+            continue;
+        }
+        uint32_t bn1StartIdx = coreMetadata.bn1StartIdx;
+        uint32_t bn1EndIdx = coreMetadata.bn1EndIdx;
+        uint32_t s1StartIdx = coreMetadata.s1StartIdx;
+        uint32_t s1EndIdx = coreMetadata.s1EndIdx;
+        if (s1EndIdx != 0U) {
+            bn1EndIdx++;
+        }
+        if (bn1EndIdx <= bn1StartIdx) {
+            continue;
+        }
+
+        for (uint32_t bn1Idx = bn1StartIdx; bn1Idx < bn1EndIdx; ++bn1Idx) {
+            bool sectionLastBN = (bn1Idx == bn1EndIdx - 1);
+            bool coreLastBN = sectionLastBN && (sectionIdx == lastValidSectionIdx);
+            runParam.boIdx = bn1Idx / this->constInfo.n1Size;
+            runParam.n1oIdx = bn1Idx % this->constInfo.n1Size;
+            runParam.n2oIdx = runParam.n1oIdx / constInfo.gSize;
+            runParam.goIdx = runParam.n1oIdx % constInfo.gSize;
+            ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, this->attenMaskInfo, this->keyGm,
+                                                        this->prefixSeqQlenAddr, this->prefixSeqKvlenAddr);
+            ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, s1StartIdx, s1EndIdx,
+                                                        bn1Idx == bn1StartIdx, sectionLastBN);
+            int64_t temps1End = coreLastBN ? (runParam.s1LoopEnd + 3) : runParam.s1LoopEnd;
+            bool notLastThreeLoop = true;
+            bool notLastTwoLoop = true;
+            for (int64_t s1Index = runParam.s1LoopStart; s1Index < temps1End; ++s1Index) {
+                if (coreLastBN) {
+                    UpdateLoopFlagsBasedOnS1Index(s1Index - runParam.s1LoopEnd, notLast, notLastTwoLoop,
+                                                  notLastThreeLoop);
                 }
-                sparseBase = (static_cast<uint64_t>(runParam.boIdx) * constInfo.n1Size + runParam.n1oIdx) *
-                                 constInfo.maxQb * constInfo.maxKb +
-                             static_cast<uint64_t>(s1Index) * constInfo.maxKb;
-            }
-            s2LoopLimit = notLastThreeLoop ? runParam.s2LoopEndIdx - 1 : 0;
-            for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if (notLastThreeLoop) {
-                    RunInfo &runInfo1 = runInfo[taskId & 3];
-                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx,
-                                     sparseBase);
-                    if ASCEND_IS_AIC {
-                        this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
+                    runParam.s1oIdx = s1Index;
+                    ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, s1Index,
+                                                             this->prefixSeqQlenAddr);
+                    bool s2NoNeedCalc =
+                        ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, sparseSeqLenGm, s1Index);
+                    if (s2NoNeedCalc) {
+                        continue;
                     }
+                    sparseBase = (static_cast<uint64_t>(runParam.boIdx) * constInfo.n1Size + runParam.n1oIdx) *
+                                     constInfo.maxQb * constInfo.maxKb +
+                                 static_cast<uint64_t>(s1Index) * constInfo.maxKb;
                 }
-                if (likely(taskId > 0 && notLastTwoLoop)) {
-                    if ASCEND_IS_AIV {
-                        auto &runInfo3 = runInfo[(taskId + 3) & 3];
-                        this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
-                                                   this->constInfo);
-                    }
-                }
-                if (likely(taskId > 1 && notLast)) {
-                    if ASCEND_IS_AIC {
-                        RunInfo &runInfo2 = runInfo[(taskId + 2) & 3];
-                        if constexpr (bmm2Write2Ub) {
-                            this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo2,
-                                                        this->constInfo);
-                        } else {
-                            this->cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo2,
-                                                        this->constInfo);
+                s2LoopLimit = notLastThreeLoop ? runParam.s2LoopEndIdx - 1 : 0;
+                for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
+                    if (notLastThreeLoop) {
+                        RunInfo &runInfo1 = runInfo[static_cast<uint64_t>(taskId) & 3];
+                        this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx,
+                                         sparseBase);
+                        if ASCEND_IS_AIC {
+                            this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
                         }
                     }
-                }
-                if (likely(taskId > 2)) {
-                    if ASCEND_IS_AIV {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) & 3];
-                        if constexpr (bmm2Write2Ub) {
-                            this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
-                        } else {
-                            this->vecBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo3, this->constInfo);
+                    if (likely(taskId > 0 && notLastTwoLoop)) {
+                        if ASCEND_IS_AIV {
+                            auto &runInfo3 = runInfo[static_cast<uint64_t>(taskId + 3) & 3];
+                            this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
+                                                       this->constInfo);
                         }
                     }
+                    if (likely(taskId > 1 && notLast)) {
+                        if ASCEND_IS_AIC {
+                            RunInfo &runInfo2 = runInfo[static_cast<uint64_t>(taskId + 2) & 3];
+                            if constexpr (bmm2Write2Ub) {
+                                this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo2,
+                                                            this->constInfo);
+                            } else {
+                                this->cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo2,
+                                                            this->constInfo);
+                            }
+                        }
+                    }
+                    if (likely(taskId > 2)) {
+                        if ASCEND_IS_AIV {
+                            RunInfo &runInfo3 = runInfo[static_cast<uint64_t>(taskId + 1) & 3];
+                            if constexpr (bmm2Write2Ub) {
+                                this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
+                            } else {
+                                this->vecBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo3, this->constInfo);
+                            }
+                        }
+                    }
+                    ++taskId;
                 }
-                ++taskId;
+                ++multiCoreInnerIdx;
             }
-            ++multiCoreInnerIdx;
         }
     }
 }
