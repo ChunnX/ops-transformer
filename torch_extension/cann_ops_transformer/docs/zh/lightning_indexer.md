@@ -170,8 +170,8 @@ cann_ops_transformer.lightning_indexer(
 <!-- npu="A3,910b" id7 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
-  - 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
-  - 当layout_k为PA_BBND时，必须传入sequsedKOptional；当layout_k不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
+  - 当前不支持seqused_q、output_idx_offset、max_seqlen_q功能，不建议传入这些参数。
+  - 当layout_k为PA_BBND时，必须传入seqused_k；当layout_k不为PA_BBND时，不支持seqused_k功能，不建议传入该参数。
 <!-- end id7 -->
 <!-- npu="950" id8 -->
 - <term>Ascend 950PR/Ascend 950DT</term>:
