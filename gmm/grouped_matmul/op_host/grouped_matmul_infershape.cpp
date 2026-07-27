@@ -1515,17 +1515,14 @@ static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext* context
         }
     }
     GMMAttrs gmmAttrs{GMM_X_Y_SEPARATED, 0, GMM_NO_SPLIT, false, false, 0, 0};
-    OP_CHECK_IF(GetAttrsValue(context, gmmAttrs) != GRAPH_SUCCESS,
+    OP_CHECK_IF(GetAttrsValue(context, gmmAttrs) != GRAPH_SUCCESS || CheckAttrs(context, gmmAttrs) != GRAPH_SUCCESS,
               OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return GRAPH_FAILED);
-    OP_CHECK_IF(CheckAttrs(context, gmmAttrs) != GRAPH_SUCCESS,
-              OP_LOGE(context->GetNodeName(), "Failed to check attrs."), return GRAPH_FAILED);
 
     size_t numX = 0;  // init numX
     size_t numWeight = 0;  // init numWeight
     int64_t lenGroupList = 0;  // init lenGroupList
     size_t numY = context->GetComputeNodeOutputNum();
-    auto getNumRet = GetNumOfInputs(context, numX, numWeight, lenGroupList);
-    if (getNumRet == GRAPH_SUCCESS) {  // check input shape value inside
+    if (GetNumOfInputs(context, numX, numWeight, lenGroupList) == GRAPH_SUCCESS) {  // check input shape value inside
         GMMParamsInfo paramsInfo{numX, numWeight, numY, lenGroupList, 0, 0, 0, 0, 0, PlatformID::UNKNOWN};
         OP_CHECK_IF(GetGroupSize(context, paramsInfo) != GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "check groupNum failed"), return GRAPH_FAILED);
@@ -1535,8 +1532,7 @@ static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext* context
                   OP_LOGE(context->GetNodeName(), "CheckParamDifferentGroupType failed."), return GRAPH_FAILED);
     } else {
         OP_CHECK_IF(CheckDimNum(context, numX, GMM_MIN_FM_DIM, "x") != GRAPH_SUCCESS,  // check dim number of tensors
-                  OP_LOGE(context->GetNodeName(), "Dim num of tensor in tensorList x is invalid."),
-                  return GRAPH_FAILED);
+                  OP_LOGE(context->GetNodeName(), "Dim num of tensor in tensorList x is invalid."), return GRAPH_FAILED);
     }
 
     const gert::Shape* x0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_X, 0);
@@ -1560,6 +1556,7 @@ static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext* context
     outputParams.numWeight = numWeight;
     OP_CHECK_IF(GMMSetOutputShape(context, gmmAttrs, outputParams, x0Shape, w0Shape) != GRAPH_SUCCESS,
               OP_LOGE(context->GetNodeName(), "GMMSetOutputShape failed"), return GRAPH_FAILED);
+              
     return GRAPH_SUCCESS;
 }
 
