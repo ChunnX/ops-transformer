@@ -142,7 +142,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>FLOAT16、BFLOAT16</td>
                 <td>ND</td>
                 <td>(B,S1,N1,D)、(T1,N1,D)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>k</td>
@@ -158,7 +158,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>FLOAT16、BFLOAT16</td>
                 <td>ND</td>
                 <td>(B,S2,N2,D)、(T2,N2,D)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>w</td>
@@ -168,7 +168,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>FLOAT32</td>
                 <td>ND</td>
                 <td>(B,S1,N1)、(T1,N1)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>attnSoftmaxL1Norm</td>
@@ -184,7 +184,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>FLOAT32</td>
                 <td>ND</td>
                 <td>(B,S1,N2,S2)、(T1,N2,maxSeqLenK)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>softmaxLse</td>
@@ -200,7 +200,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>FLOAT32</td>
                 <td>ND</td>
                 <td>(B,N2,S1)、(N2,T1)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>cuSeqLensQOptional</td>
@@ -210,7 +210,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B+1,)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>cuSeqLensKOptional</td>
@@ -220,7 +220,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B+1,)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>seqUsedQOptional</td>
@@ -230,7 +230,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>seqUsedKOptional</td>
@@ -240,7 +240,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>cmpResidualKOptional</td>
@@ -250,17 +250,17 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>metadataOptional</td>
                 <td>可选输入</td>
                 <td>由aclnnDenseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
-                <td>传入后kernel将使用metadata中的分核切分。</td>
+                <td>传入后kernel将使用metadata中的分核切分，必须传入。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(x,)</td>
-                <td>x</td>
+                <td>√</td>
             </tr>
             <tr>
                 <td>layoutQ</td>
@@ -462,6 +462,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
   - 当layoutQ为TND时，需要传入cuSeqLensQOptional；当layoutK为TND时，需要传入cuSeqLensKOptional。
   - attnSoftmaxL1Norm的维度为(B,S1,N2,S2)或(T1,N2,maxSeqLenK)，覆盖全部key的目标分布。
   - softmaxLse由DenseLightningIndexerSoftmaxLse算子预先计算提供，维度为(B,N2,S1)或(N2,T1)，用于数值稳定计算。
+  - metadata输入必须传入，用于计算分核信息。
 
     <table style="undefined;table-layout: fixed; width: 942px">
         <colgroup>
