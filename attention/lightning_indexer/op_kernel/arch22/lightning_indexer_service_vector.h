@@ -324,6 +324,8 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             LocalTensor<float> reduceOutInner = reduceOutBuff[s2BaseSize_];
             PipeBarrier<PIPE_V>();
             LocalTensor<float> reduceCacheBuf = outQueue_.AllocTensor<float>();
+            Duplicate<float>(reduceCacheBuf, 0.0f, s2BaseSize_);
+            PipeBarrier<PIPE_V>();
             if (constInfo_.isSparseCountOver2K) {
                 WaitFlag<HardEvent::V_MTE2>(EVENTID_V_TO_MTE2_TMPUB);
             }
@@ -361,10 +363,9 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
 
             if (constInfo_.radixTotalBatch > 0) {
             // RadixTopK path: write scoreB16Gm, skip Sort+MergeSort
-            // Fix cuRealAcSeq for TND (actS1=0 causes wrong cuRealAcSeq in ProcessVec)
             int32_t radixCuRealAcSeq = cuRealAcSeq;
             if (constInfo_.qSeqSize == 0 && constInfo_.attenMaskFlag) {
-                radixCuRealAcSeq = info.actS2Size - (info.actS2Size - cuS1Idx) + 1;
+                radixCuRealAcSeq = info.actS2Size - (info.actS1Size - cuS1Idx) + 1;
             }
             int32_t radixCuS2Len = cuBaseS2Idx + s2BaseSize_ >= radixCuRealAcSeq ?
                 radixCuRealAcSeq - cuBaseS2Idx : s2BaseSize_;
@@ -381,7 +382,6 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 PipeBarrier<PIPE_V>();
             }
             // Replace +1e30 (MM1 cube L0C uninitialized garbage) with -1e30
-            // so radix (largest=true) excludes it instead of selecting it
             PipeBarrier<PIPE_V>();
             {
                 event_t eVS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
@@ -397,18 +397,18 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 SetFlag<HardEvent::S_V>(eSV);
                 WaitFlag<HardEvent::S_V>(eSV);
             }
+            // DEBUG: overwrite ALL with -1e30
+            Duplicate<float>(reduceOutInner, -1.0e30f, s2BaseSize_);
+            PipeBarrier<PIPE_V>();
             {
                 PipeBarrier<PIPE_V>();
-                // Use indiceOutOffset/sparseCount + cuS1Idx as row index to match ProcessRadixTopK's batchId
-                // (cuS1Idx alone is 0,1,2 for every batch when s1BaseSize > qSeqSize, causing overwrites)
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
                 uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
-                AscendC::DataCopyParams dcParams;
-                dcParams.blockCount = 1;
-                dcParams.blockLen = s2BaseSize_ * sizeof(float);
-                dcParams.srcStride = 0;
-                dcParams.dstStride = 0;
-                DataCopyPad(scoreB16Gm[scoreOffset], reduceOutInner, dcParams);
+                event_t eVM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+                SetFlag<HardEvent::V_MTE3>(eVM);
+                WaitFlag<HardEvent::V_MTE3>(eVM);
+                DataCopyPad(scoreB16Gm[scoreOffset], reduceOutInner, DataCopyExtParams{
+                    static_cast<uint16_t>(1), static_cast<uint32_t>(s2BaseSize_ * sizeof(float)), 0, 0, 0});
             }
             } // end if radixCuS2Len > 0
             } else {
