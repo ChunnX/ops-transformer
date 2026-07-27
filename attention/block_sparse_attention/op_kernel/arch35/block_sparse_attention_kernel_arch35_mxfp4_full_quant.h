@@ -179,6 +179,7 @@ public:
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
         half dstTypeMax = static_cast<half>(dstTypeMax_);
         EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, dstTypeMax);
+        EpilogueCopyGlobalMaxUbToL1 epilogueCopyGlobalMaxUbToL1(resource);
         // EpilogueRescaleO epilogueRescaleO(resource);
  #endif	 
 
@@ -236,7 +237,7 @@ public:
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
                     }
-                    ComputeMm2(delay20TileInfo);
+                    // ComputeMm2(delay20TileInfo);
 
                     // todo,这里有点问题，如果在bsnd和tnd场景下
                     // [tla化] V 的 GM 张量：ColumnMajor(D, S2)，故 rows=embed_、cols=kvBaseTile_。
@@ -331,7 +332,8 @@ public:
                     if (curTileInfo.isUpdatePScale) {
                         auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(2, EpMXFP4::QS_BASE_SIZE);
                         auto l1GMaxTensorTla = tla::MakeTensor(l1LocalGlobalMaxTensor[curTileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionL1{});
-                        CopyGMaxUbToL1(curTileInfo);
+                        // CopyGMaxUbToL1(curTileInfo);
+                        epilogueCopyGlobalMaxUbToL1(l1GMaxTensorTla, curTileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
                     }
 #endif
