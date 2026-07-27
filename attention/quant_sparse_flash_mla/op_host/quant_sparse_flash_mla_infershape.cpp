@@ -27,9 +27,9 @@ constexpr uint32_t QUERY_INPUT_INDEX = 0;
 ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
 {
     OP_CHECK_IF(context == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantSparseFlashMla", "InferShapeContext",
-            "InferShapeContext is nullptr"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantSparseFlashMla", "InferShapeContext",
+                                                         "InferShapeContext is nullptr"),
+                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     gert::Shape *attentionOutShape = context->GetOutputShape(0);
@@ -83,7 +83,5 @@ ge::graphStatus InferDataTypeQuantSparseFlashMla(gert::InferDataTypeContext *con
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(QuantSparseFlashMla)
-    .InferShape(InferShapeQuantSparseFlashMla)
-    .InferDataType(InferDataTypeQuantSparseFlashMla);
+IMPL_OP(QuantSparseFlashMla).InferShape(InferShapeQuantSparseFlashMla).InferDataType(InferDataTypeQuantSparseFlashMla);
 } // namespace ops
