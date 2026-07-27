@@ -82,6 +82,9 @@ public:
         cuSeqlensKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensKv);
         seqUsedQGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ);
         seqUsedKvGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv);
+        // 预取序列长度元数据，重叠 InitBuffers 期间的 HBM 延迟。
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(cuSeqlensQ), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(cuSeqlensKv), 0);
         InitConstInfo();
         InitMMResBuf();
         cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
