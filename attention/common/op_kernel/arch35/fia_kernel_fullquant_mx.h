@@ -16,6 +16,8 @@
 #ifndef FIA_KERNEL_FULLQUANT_MX_H_
 #define FIA_KERNEL_FULLQUANT_MX_H_
 
+#define DUMP_STAGE_V1
+
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mx.h"
 #include "fia_block_vec_fullquant_mx.h"
