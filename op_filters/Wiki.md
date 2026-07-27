@@ -37,8 +37,8 @@ flowchart TD
     SOCF --> N
     N --> O["Step 7: 输出与最终过滤<br>1. 获取算子信息<br>2. arch 裁剪和SOC 类型过滤<br>4. 算子白名单屏蔽whitelist_ops.txt中的算子<br>输出需要测试的算子名"]
     O --> SOCOUT{"指定了 --soc？"}
-    SOCOUT -- 是 --> MERGE{"SOC = ascend950 且<br>存在 moe_distribute* 算子？"}
-    MERGE -- 是 --> OUT2["输出 matched_keywords.txt<br>moe_distribute* 合并为单个 moe_distribute<br>"]
+    SOCOUT -- 是 --> MERGE{"SOC = ascend950 且<br>存在 moe_distribute* 或 moe_ep* 算子？"}
+    MERGE -- 是 --> OUT2["输出 matched_keywords.txt<br>moe_distribute* 合并为单个 moe_distribute<br>moe_ep* 合并为单个 moe_ep"]
     MERGE -- 否 --> OUT1["输出 matched_keywords.txt<br>每行一个算子名"]
     SOCOUT -- 否 --> OUT0["仅输出 op_tests.json"]
 ```
@@ -49,7 +49,7 @@ flowchart TD
 
 本节通过三个场景演示完整的过滤流程，覆盖全部 24 条过滤规则：
 
-- **场景 A：部分测试** - 使用 `--soc ascend950`，演示算子级提取、arch 混合、SOC 过滤、反向依赖、白名单屏蔽、moe_distribute 合并等核心规则
+- **场景 A：部分测试** - 使用 `--soc ascend950`，演示算子级提取、arch 混合、SOC 过滤、反向依赖、白名单屏蔽、moe_distribute/moe_ep 合并等核心规则
 - **场景 B：全量测试** - 演示非 mc2 路径、common 变更、3rd 变更三种全量触发条件
 - **场景 C：无测试** - 演示 Step 1 白名单全部命中和 Step 2 忽略规则全部命中两种空输出情况
 
@@ -113,7 +113,7 @@ op_tests.json（按产品分组，不合并）：
 }
 ```
 
-matched_keywords.txt（ascend950 下 moe_distribute* 合并为单个 moe_distribute，对应 op_step7_output.py 第 460-465 行）：
+matched_keywords.txt（ascend950 下 moe_distribute* 合并为单个 moe_distribute、moe_ep* 合并为单个 moe_ep，对应 op_step7_output.py ASCEND950_MERGE_PREFIXES 配置第 45-48 行及 _merge_prefix_ops 第 452-483 行）：
 
 ```
 all_gather_matmul
@@ -121,6 +121,8 @@ distribute_barrier
 matmul_reduce_scatter
 moe_distribute
 ```
+
+> 注：本场景输入未包含 moe_ep_* 算子，故输出中无 moe_ep 合并项。若输入含 moe_ep_* 算子（如 moe_ep_dispatch、moe_ep_combine、moe_ep_dispatch_epilogue），在 ascend950 SOC 下同样会合并为单个 `moe_ep`，与 moe_distribute 遵循相同的合并规则（ASCEND950_MERGE_PREFIXES = {"moe_distribute": "moe_distribute", "moe_ep": "moe_ep"}）。其他 SOC（如 ascend910b、ascend910_93）不执行任何前缀合并。
 
 **备注**：
 
@@ -131,6 +133,8 @@ moe_distribute
 3. **Step 3 非 mc2 检测（规则 6）**：Step 3 的非 mc2 目录检测仅在独立脚本模式触发。主流程中，路径不以 `mc2/` 开头的文件在 Step 1 后即被拦截触发全量测试（见场景 B.1）。
 
 4. **attention/moe/gmm 前缀提取（规则 10）与不在 dependency_data 忽略（规则 17）**：`extract_op_name` 函数（op_step5_extractor.py 第 62 行）支持 `mc2/`、`attention/`、`moe/`、`gmm/` 四种前缀提取算子名。但在主流程中，`attention/`、`moe/`、`gmm/` 开头的路径不以 `mc2/` 开头，会在 Step 1 后的 mc2 外部检测中触发全量测试，不会走到 Step 5。这两个规则仅在独立运行 `op_step5_extractor.py` 时生效：此时能从这些前缀提取算子名，但提取出的算子（如 `flash_attention_score`、`moe_init_routing`、`grouped_matmul`）不在 `result.json` 中，会在 Step 7.1 被忽略（op_step7_output.py 第 112-113 行）。
+
+5. **ascend950 前缀合并规则**：当 `--soc ascend950` 时，所有以 `moe_distribute` 开头的算子（如 moe_distribute_dispatch、moe_distribute_combine）合并为单个 `moe_distribute`，所有以 `moe_ep` 开头的算子（如 moe_ep_dispatch、moe_ep_combine、moe_ep_dispatch_epilogue）合并为单个 `moe_ep`（对应 op_step7_output.py ASCEND950_MERGE_PREFIXES 配置第 45-48 行、_merge_prefix_ops 第 452-483 行）。合并由 `ASCEND950_MERGE_PREFIXES = {"moe_distribute": "moe_distribute", "moe_ep": "moe_ep"}` 驱动，仅对 ascend950 SOC 生效；其他 SOC（如 ascend910b、ascend910_93）不执行任何前缀合并，每个算子名独占一行。
 
 ### 3.2 场景 B：全量测试
 
