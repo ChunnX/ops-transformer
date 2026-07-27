@@ -82,12 +82,9 @@ const constexpr size_t SPLIT_BS_GAMMA_BUFFER_LENGTH = 256;
 const constexpr size_t SPLIT_ND_GAMMA_BUFFER_LENGTH = 2048;
 const constexpr uint32_t LOW_API_ALIGN_BYTES = 32;
 const constexpr uint32_t LOW_API_FLOAT_ALIGN = LOW_API_ALIGN_BYTES / sizeof(float);
-const constexpr uint32_t LOW_API_M_UB_SIZE = 16;
 const constexpr uint32_t LOW_API_M_L1_SIZE = 32;
 const constexpr uint32_t LOW_API_K_UB_SIZE = 256;
 const constexpr uint32_t LOW_API_K_L1_SIZE = 256;
-const constexpr uint32_t LOW_API_ROW_INNER_FACTOR = 8;
-const constexpr uint32_t LOW_API_D_FACTOR = 1024;
 const constexpr uint32_t LOW_API_BUFFER_POOL0_SIZE = 64 * 1024;
 const constexpr uint32_t LOW_API_BUFFER_POOL1_SIZE = 96 * 1024;
 // Keep automatic M-K routing inside the range covered by the generalized
@@ -662,20 +659,10 @@ void MhcPreBaseTiling::FillBsTilingData()
         return static_cast<uint32_t>(((value + align - 1U) / align) * align);
     };
     uint32_t fusionAlign = roundUp(matN_, LOW_API_FLOAT_ALIGN);
-    uint32_t nAlign = roundUp(N_, LOW_API_FLOAT_ALIGN);
     tilingData_.set_mL1Size(LOW_API_M_L1_SIZE);
-    tilingData_.set_mUbSize(LOW_API_M_UB_SIZE);
     tilingData_.set_kUbSize(LOW_API_K_UB_SIZE);
     tilingData_.set_kL1Size(LOW_API_K_L1_SIZE);
-    tilingData_.set_rowInnerFactor(LOW_API_ROW_INNER_FACTOR);
-    tilingData_.set_dFactor(LOW_API_D_FACTOR);
-    tilingData_.set_dLoop(static_cast<uint32_t>((D_ + LOW_API_D_FACTOR - 1U) / LOW_API_D_FACTOR));
-    uint32_t tailD = static_cast<uint32_t>(D_ % LOW_API_D_FACTOR);
-    tilingData_.set_tailDFactor(tailD == 0 ? LOW_API_D_FACTOR : tailD);
     tilingData_.set_fusionAlign(fusionAlign);
-    tilingData_.set_nAlign(nAlign);
-    tilingData_.set_bufferPool0Size(LOW_API_BUFFER_POOL0_SIZE);
-    tilingData_.set_bufferPool1Size(LOW_API_BUFFER_POOL1_SIZE);
 }
 
 void MhcPreBaseTiling::FillMkTilingData()
@@ -706,12 +693,8 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_multCoreSplitKSize(static_cast<uint32_t>(splitK));
     tilingData_.set_mL1Size(static_cast<uint32_t>(mL1Size));
     tilingData_.set_kL1Size(static_cast<uint32_t>(kL1Size));
-    tilingData_.set_mUbSize(static_cast<uint32_t>(ceilDiv(mL1Size, 2)));
     tilingData_.set_kUbSize(static_cast<uint32_t>(kL1Size));
     tilingData_.set_fusionAlign(static_cast<uint32_t>(fusionAlign));
-    tilingData_.set_nAlign(static_cast<uint32_t>(roundUp(N_, LOW_API_FLOAT_ALIGN)));
-    tilingData_.set_bufferPool0Size(LOW_API_BUFFER_POOL0_SIZE);
-    tilingData_.set_bufferPool1Size(LOW_API_BUFFER_POOL1_SIZE);
     uint64_t stage2RowsPerCore = roundUp(
         ceilDiv(totalLength_, aivBlockDim_), LOW_API_FLOAT_ALIGN);
     uint64_t stage2UsedAivNum = std::min<uint64_t>(
