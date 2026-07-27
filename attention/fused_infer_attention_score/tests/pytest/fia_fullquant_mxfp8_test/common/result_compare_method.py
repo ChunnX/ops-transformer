@@ -154,7 +154,7 @@ def check_result(expect, npu_result):
     if err_idx.numel() > 0:
         out_shape = np.array(npu_result.squeeze().shape)
         if out_shape.prod() == real_data.numel() and out_shape.size >= 2:
-            sample_n = min(err_idx.numel(), 5000)
+            sample_n = min(err_idx.numel(), 200000)
             coords = np.array(np.unravel_index(err_idx[:sample_n].tolist(), tuple(out_shape)))
             logger.info('ErrorAxis shape=%s err_total=%d first_fail_idx=%d',
                         list(out_shape), err_idx.numel(), err_idx[0].item())
@@ -163,6 +163,20 @@ def check_result(expect, npu_result):
                 logger.info('  axis%d(size=%d): %d/%d values have error, range=[%d,%d]',
                             axis, out_shape[axis], len(uniq), out_shape[axis],
                             int(uniq[0]), int(uniq[-1]))
+            ffi = err_idx[0].item()
+            for j in range(max(0, ffi - 4), min(real_data.numel(), ffi + 8)):
+                logger.info('  BoundaryDump idx=%d expect=%.7f real=%.7f diff=%.7f',
+                            j, float(expect_data[j]), float(real_data[j]),
+                            abs(float(expect_data[j]) - float(real_data[j])))
+            ratios = []
+            for j in range(ffi, min(real_data.numel(), ffi + 32)):
+                e = float(expect_data[j])
+                r = float(real_data[j])
+                if abs(e) > 1e-6 and abs(r) > 1e-6:
+                    ratios.append(r / e)
+            if ratios:
+                logger.info('  RatioDump real/expect for first 32 fail: %s', 
+                            ['%.3f' % x for x in ratios])
 
     if expect_data.dtype == torch.bool:
         expect_data = expect_data.to(torch.int8)
