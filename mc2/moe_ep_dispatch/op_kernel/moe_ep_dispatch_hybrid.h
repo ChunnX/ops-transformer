@@ -389,7 +389,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         Ceil(numScaleoutRanks_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN / sizeof(int32_t);
     // GM workspace perRankCount: 每 rank 512B (state + dstRankRecvNum), 与 direct 一致
     cntPerRankSizeAlign512_ = epWorldSize_ * WIN_ADDR_ALIGN;
-    moeNumPerRankAlign_ = Ceil(moeExpertNumPerRank_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
+    moeNumPerRankAlign_ = Ceil(moeExpertNumPerRank_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     moeExpertNumAlign_ = Ceil(moeExpertNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     moeNumPerRankAlign512_ = Ceil(moeExpertNumPerRank_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     perGroupTokenNum_ = PER_GROUP_SIZE / sizeof(int16_t) / axisK_;
@@ -891,11 +891,11 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SetRecvNumPerExpert()
 {
-    uint32_t recvExpertSizeAlign = Ceil(moeExpertNumPerRank_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t recvExpertSizeAlign = moeNumPerRankAlign_;
     uint32_t recvExpertAlign = recvExpertSizeAlign / sizeof(int32_t);
     uint32_t serverRankCount = epWorldSize_;
     tpipe_->InitBuffer(recvCntBuf_, serverRankCount * recvExpertSizeAlign);
-    tpipe_->InitBuffer(numRecvPerExpertBuf_, moeNumPerRankAlign_);
+    tpipe_->InitBuffer(numRecvPerExpertBuf_, 2 * moeNumPerRankAlign_);
     tpipe_->InitBuffer(recvTempBuf_, UB_ALIGN);
     numRecvPerExpertTensor_ = numRecvPerExpertBuf_.Get<int64_t>();
     LocalTensor<int32_t> recvTensorInt32 = recvCntBuf_.Get<int32_t>();

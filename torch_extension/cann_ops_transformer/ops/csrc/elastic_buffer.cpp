@@ -814,6 +814,19 @@ int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
 
 int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const
 {
+    const char *debugNetworkMode = std::getenv("MOE_EP_DEBUG_FORCE_NETWORK_MODE");
+    if (debugNetworkMode != nullptr && debugNetworkMode[0] != '\0') {
+        if ((std::strcmp(debugNetworkMode, "0") == 0) || (std::strcmp(debugNetworkMode, "direct") == 0) ||
+            (std::strcmp(debugNetworkMode, "DIRECT") == 0)) {
+            return NETWORK_DIRECT;
+        }
+        if ((std::strcmp(debugNetworkMode, "1") == 0) || (std::strcmp(debugNetworkMode, "hybrid") == 0) ||
+            (std::strcmp(debugNetworkMode, "HYBRID") == 0)) {
+            return NETWORK_HYBRID;
+        }
+        TORCH_CHECK(false, "invalid MOE_EP_DEBUG_FORCE_NETWORK_MODE=", debugNetworkMode,
+                    ", expected 0/direct or 1/hybrid");
+    }
     return (epWorldSize / rankNumPerServer > 1) ? NETWORK_HYBRID : NETWORK_DIRECT;
 }
 
@@ -1061,7 +1074,7 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
                           cachedRouteScaleoutSlot.has_value() && cachedRouteScaleupMask.has_value() &&
                           cachedRouteScaleupSlot.has_value();
     TORCH_CHECK(!anyCachedRoute || allCachedRoute, "cached route tensors must be all present or all absent");
-    bool hybridCached = anyCached && topoType == NETWORK_HYBRID && (epWorldSize / rankNumPerServer) > 1;
+    bool hybridCached = anyCached && topoType == NETWORK_HYBRID;
     TORCH_CHECK(!hybridCached || allCachedRoute, "hybrid cached dispatch requires all cached route tensors");
 
     auto xSize = x.sizes();

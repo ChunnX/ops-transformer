@@ -66,7 +66,7 @@ static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId, int64_t nu
                           cachedRouteScaleoutSlot != nullptr && cachedRouteScaleupMask != nullptr &&
                           cachedRouteScaleupSlot != nullptr;
     CHECK_RET(!anyCachedRoute || allCachedRoute, ACLNN_ERR_PARAM_INVALID);
-    bool hybridCachedMode = cachedMode && topoType == HYBRID_MODE && (epWorldSize / rankNumPerServer) > 1;
+    bool hybridCachedMode = cachedMode && topoType == HYBRID_MODE;
     CHECK_RET(!hybridCachedMode || allCachedRoute, ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
