@@ -29,9 +29,15 @@ constexpr int8_t TASK_C1 = 1;
 constexpr int8_t TASK_V1 = 2;
 constexpr int8_t TASK_C2 = 3;
 
-enum class DLILayout { BSND = 0, TND = 1 };
+enum class DLILayout {
+    BSND = 0,
+    TND = 1
+};
 
-enum class DLISparseMode { DefaultMask = 0, RightDown = 3 };
+enum class DLISparseMode {
+    DefaultMask = 0,
+    RightDown = 3
+};
 
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
@@ -202,12 +208,14 @@ constexpr uint8_t SYNC_C3_TO_V3_FLAG = 15;
 constexpr uint8_t SYNC_C3_TO_V3_DETER_MTE2_FLAG = 6;
 constexpr uint8_t SYNC_C3_TO_V3_DETER_SA_FLAG = 0;
 
-template <typename T> __aicore__ inline T CeilDiv(T num, T rnd)
+template <typename T>
+__aicore__ inline T CeilDiv(T num, T rnd)
 {
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
 
-template <typename T> __aicore__ inline T AlignTo(const T n, const T alignSize)
+template <typename T>
+__aicore__ inline T AlignTo(const T n, const T alignSize)
 {
     if (alignSize == 0) {
         return 0;
@@ -215,67 +223,70 @@ template <typename T> __aicore__ inline T AlignTo(const T n, const T alignSize)
     return (n + alignSize - 1) & (~(alignSize - 1));
 }
 
-#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
-    X(INPUT_T)                           \
-    X(OUT_T)                             \
+#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X)                                                                               \
+    X(INPUT_T)                                                                                                         \
+    X(OUT_T)                                                                                                           \
     X(T)
 
-#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                  \
-    X(Layout_Q, DLILayout, DLILayout::TND)                 \
-    X(Layout_KT, DLILayout, DLILayout::TND)                \
-    X(SparseMode, DLISparseMode, DLISparseMode::RightDown) \
-    X(HasCuSeqlensQ, bool, false)                          \
-    X(HasCuSeqlensK, bool, false)                          \
-    X(HasSequsedQ, bool, false)                            \
-    X(HasSequsedK, bool, false)                            \
-    X(HasCmpResidualK, bool, false)                        \
+#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                                                                              \
+    X(Layout_Q, DLILayout, DLILayout::TND)                                                                             \
+    X(Layout_KT, DLILayout, DLILayout::TND)                                                                            \
+    X(SparseMode, DLISparseMode, DLISparseMode::RightDown)                                                             \
+    X(HasCuSeqlensQ, bool, false)                                                                                      \
+    X(HasCuSeqlensK, bool, false)                                                                                      \
+    X(HasSequsedQ, bool, false)                                                                                        \
+    X(HasSequsedK, bool, false)                                                                                        \
+    X(HasCmpResidualK, bool, false)                                                                                    \
     X(Deterministic, bool, false)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,
 #define GEN_CONST_PARAM(name, type, default_val) type(name) = (default_val),
-#define TEMPLATES_DEF                                                                                                 \
-    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM)CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = \
+#define TEMPLATES_DEF                                                                                                  \
+    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = \
                   true>
 
 /* 2. 生成不带带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
-#define TEMPLATES_DEF_NO_DEFAULT                                     \
-    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
-        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+#define TEMPLATES_DEF_NO_DEFAULT                                                                                       \
+    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF)                                                   \
+                  CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
 /* 3. 生成有默认值, 不带ChildClass的Args */
 #define GEN_ARG_NAME(name, ...) name,
-#define TEMPLATE_ARGS                           \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME)end
+#define TEMPLATE_ARGS                                                                                                  \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME)                                                                        \
+    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 /* 4. 生成BASE的有默认值的Template, BASE带ChildClass */
-#define TEMPLATES_DEF_BASE         \
-    template <typename ChildClass, \
-        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM)CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
+#define TEMPLATES_DEF_BASE                                                                                             \
+    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM)                                       \
+                                       CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
 
 /* 5. 生成BASE的没有默认值的Template, BASE带ChildClass */
-#define TEMPLATES_DEF_BASE_NO_DEFAULT                                                     \
-    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
-        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+#define TEMPLATES_DEF_BASE_NO_DEFAULT                                                                                  \
+    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF)                              \
+                                       CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
 /* 6. 生成BASE的BaseArgs, BASE带ChildClass */
-#define TEMPLATE_BASE_ARGS \
-    ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME)CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
+#define TEMPLATE_BASE_ARGS                                                                                             \
+    ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
-template <typename T1, typename T2> __aicore__ inline T1 Max(T1 a, T2 b)
+template <typename T1, typename T2>
+__aicore__ inline T1 Max(T1 a, T2 b)
 {
     return (a < b) ? (b) : (a);
 }
 
-template <typename T1, typename T2> __aicore__ inline T1 Min(T1 a, T2 b)
+template <typename T1, typename T2>
+__aicore__ inline T1 Min(T1 a, T2 b)
 {
     return (a > b) ? (b) : (a);
 }
 
-template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
+template <typename T>
+__aicore__ inline size_t BlockAlign(size_t s)
 {
     if constexpr (IsSameType<T, int4b_t>::value) {
         return (s + 63) / 64 * 64;

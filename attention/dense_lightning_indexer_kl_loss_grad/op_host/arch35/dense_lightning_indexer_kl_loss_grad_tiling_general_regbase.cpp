@@ -72,7 +72,8 @@ static constexpr int64_t SPARSE_MODE_SIZE_0 = 0;
 static constexpr int64_t SPARSE_COUNT_SIZE_2048 = 2048;
 
 
-template <typename T> static auto AlignUp(T num1, T num2) -> T
+template <typename T>
+static auto AlignUp(T num1, T num2) -> T
 {
     if (num2 == 0) {
         return 0;
@@ -83,7 +84,8 @@ template <typename T> static auto AlignUp(T num1, T num2) -> T
     return (num1 + num2 - 1) / num2 * num2;
 }
 
-template <typename T> static auto CeilDivision(T num1, T num2) -> T
+template <typename T>
+static auto CeilDivision(T num1, T num2) -> T
 {
     if (num2 == 0) {
         return 0;
@@ -91,7 +93,8 @@ template <typename T> static auto CeilDivision(T num1, T num2) -> T
     return (num1 + num2 - 1) / num2;
 }
 
-template <typename T> static auto CeilDiv(const T n1, const T n2) -> T
+template <typename T>
+static auto CeilDiv(const T n1, const T n2) -> T
 {
     if (n1 == 0) {
         return 0;
@@ -110,7 +113,8 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::ValidateReq
     OP_CHECK_IF(queryDesc == nullptr, OP_LOGE(opName, "query must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(keyDesc == nullptr, OP_LOGE(opName, "key must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(weightDesc == nullptr, OP_LOGE(opName, "weight must be provided."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(attnSoftmaxL1NormDesc == nullptr, OP_LOGE(opName, "attnSoftmaxL1Norm must be provided."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attnSoftmaxL1NormDesc == nullptr, OP_LOGE(opName, "attnSoftmaxL1Norm must be provided."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(lseDesc == nullptr, OP_LOGE(opName, "lse must be provided."), return ge::GRAPH_FAILED);
 
     auto metadataTensor = context_->GetOptionalInputTensor(METADATA_INPUT_INDEX);
@@ -121,13 +125,15 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::ValidateReq
 }
 
 ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutShape(gert::Shape &inputshape,
-    const char *inputName, gert::Shape &outputshape)
+                                                                                   const char *inputName,
+                                                                                   gert::Shape &outputshape)
 {
     if (layoutQuery[DIM_NUM_0] == 'T' && layoutQuery[DIM_NUM_1] == 'N' && layoutQuery[DIM_NUM_2] == 'D') {
         if (inputshape.GetDim(DIM_NUM_0) != outputshape.GetDim(DIM_NUM_0) ||
             inputshape.GetDim(DIM_NUM_1) != outputshape.GetDim(DIM_NUM_1) ||
             inputshape.GetDim(DIM_NUM_2) != outputshape.GetDim(DIM_NUM_2)) {
-            OP_LOGE(context_,
+            OP_LOGE(
+                context_,
                 "DenseLightningIndexerKLLossGrad Input %s [%ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld]",
                 inputName, inputshape.GetDim(DIM_NUM_0), inputshape.GetDim(DIM_NUM_1), inputshape.GetDim(DIM_NUM_2),
                 inputName, outputshape.GetDim(DIM_NUM_0), outputshape.GetDim(DIM_NUM_1), outputshape.GetDim(DIM_NUM_2));
@@ -138,7 +144,8 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutSha
             inputshape.GetDim(DIM_NUM_1) != outputshape.GetDim(DIM_NUM_1) ||
             inputshape.GetDim(DIM_NUM_2) != outputshape.GetDim(DIM_NUM_2) ||
             inputshape.GetDim(DIM_NUM_3) != outputshape.GetDim(DIM_NUM_3)) {
-            OP_LOGE(context_,
+            OP_LOGE(
+                context_,
                 "DenseLightningIndexerKLLossGrad Input %s [%ld, %ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, "
                 "%ld, %ld]",
                 inputName, inputshape.GetDim(DIM_NUM_0), inputshape.GetDim(DIM_NUM_1), inputshape.GetDim(DIM_NUM_2),
@@ -167,11 +174,13 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutPut
 
     size_t layoutLen = strlen(layoutQuery);
     OP_CHECK_IF(queryIndexShape.GetDimNum() != layoutLen || keyIndexShape.GetDimNum() != layoutLen ||
-        attnSoftmaxL1Shape.GetDimNum() != layoutLen,
-        OP_LOGE(opName, "Invalid data, inputdata q shapelen [%ld] k shapelen [%ld] attnSoftmaxL1Norm shapelen [%ld] "
-        "is not equal to layoutQuery [%s] len[%ld].",
-        queryIndexShape.GetDimNum(), keyIndexShape.GetDimNum(), attnSoftmaxL1Shape.GetDimNum(), layoutQuery, layoutLen),
-        return false);
+                    attnSoftmaxL1Shape.GetDimNum() != layoutLen,
+                OP_LOGE(opName,
+                        "Invalid data, inputdata q shapelen [%ld] k shapelen [%ld] attnSoftmaxL1Norm shapelen [%ld] "
+                        "is not equal to layoutQuery [%s] len[%ld].",
+                        queryIndexShape.GetDimNum(), keyIndexShape.GetDimNum(), attnSoftmaxL1Shape.GetDimNum(),
+                        layoutQuery, layoutLen),
+                return false);
 
     auto qIdxDimNum = queryIndexShape.GetDimNum();
     if (qIdxDimNum != dQueryIndexShape.GetDimNum() ||
@@ -179,9 +188,8 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutPut
         queryIndexShape.GetDim(DIM_NUM_1) != dQueryIndexShape.GetDim(DIM_NUM_1) ||
         (qIdxDimNum > DIM_NUM_2 && queryIndexShape.GetDim(DIM_NUM_2) != dQueryIndexShape.GetDim(DIM_NUM_2)) ||
         (qIdxDimNum > DIM_NUM_3 && queryIndexShape.GetDim(DIM_NUM_3) != dQueryIndexShape.GetDim(DIM_NUM_3))) {
-        OP_LOGE(context_,
-            "DenseLightningIndexerKLLossGrad Input queryIndex %s is not equal to Output dQueryIndex %s",
-            Ops::Base::ToString(queryIndexShape).c_str(), Ops::Base::ToString(dQueryIndexShape).c_str());
+        OP_LOGE(context_, "DenseLightningIndexerKLLossGrad Input queryIndex %s is not equal to Output dQueryIndex %s",
+                Ops::Base::ToString(queryIndexShape).c_str(), Ops::Base::ToString(dQueryIndexShape).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -191,20 +199,17 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutPut
         keyIndexShape.GetDim(DIM_NUM_1) != dKeyIndexShape.GetDim(DIM_NUM_1) ||
         (kIdxDimNum > DIM_NUM_2 && keyIndexShape.GetDim(DIM_NUM_2) != dKeyIndexShape.GetDim(DIM_NUM_2)) ||
         (kIdxDimNum > DIM_NUM_3 && keyIndexShape.GetDim(DIM_NUM_3) != dKeyIndexShape.GetDim(DIM_NUM_3))) {
-        OP_LOGE(context_,
-            "DenseLightningIndexerKLLossGrad Input keyIndex %s is not equal to Output dKeyIndex %s",
-            Ops::Base::ToString(keyIndexShape).c_str(), Ops::Base::ToString(dKeyIndexShape).c_str());
+        OP_LOGE(context_, "DenseLightningIndexerKLLossGrad Input keyIndex %s is not equal to Output dKeyIndex %s",
+                Ops::Base::ToString(keyIndexShape).c_str(), Ops::Base::ToString(dKeyIndexShape).c_str());
         return ge::GRAPH_FAILED;
     }
 
     auto wDimNum = weightsShape.GetDimNum();
-    if (wDimNum != dWeightsShape.GetDimNum() ||
-        weightsShape.GetDim(DIM_NUM_0) != dWeightsShape.GetDim(DIM_NUM_0) ||
+    if (wDimNum != dWeightsShape.GetDimNum() || weightsShape.GetDim(DIM_NUM_0) != dWeightsShape.GetDim(DIM_NUM_0) ||
         weightsShape.GetDim(DIM_NUM_1) != dWeightsShape.GetDim(DIM_NUM_1) ||
         (wDimNum > DIM_NUM_2 && weightsShape.GetDim(DIM_NUM_2) != dWeightsShape.GetDim(DIM_NUM_2))) {
-        OP_LOGE(context_,
-            "DenseLightningIndexerKLLossGrad Input weights %s is not equal to Output dWeights %s",
-            Ops::Base::ToString(weightsShape).c_str(), Ops::Base::ToString(dWeightsShape).c_str());
+        OP_LOGE(context_, "DenseLightningIndexerKLLossGrad Input weights %s is not equal to Output dWeights %s",
+                Ops::Base::ToString(weightsShape).c_str(), Ops::Base::ToString(dWeightsShape).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -215,8 +220,8 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutPut
         (attnSoftmaxDimNum > DIM_NUM_2 && attnSoftmaxL1Shape.GetDim(DIM_NUM_2) != softmaxOutShape.GetDim(DIM_NUM_2)) ||
         (attnSoftmaxDimNum > DIM_NUM_3 && attnSoftmaxL1Shape.GetDim(DIM_NUM_3) != softmaxOutShape.GetDim(DIM_NUM_3))) {
         OP_LOGE(context_,
-            "DenseLightningIndexerKLLossGrad Input attnSoftmaxL1Norm %s is not equal to Output softmaxOut %s",
-            Ops::Base::ToString(attnSoftmaxL1Shape).c_str(), Ops::Base::ToString(softmaxOutShape).c_str());
+                "DenseLightningIndexerKLLossGrad Input attnSoftmaxL1Norm %s is not equal to Output softmaxOut %s",
+                Ops::Base::ToString(attnSoftmaxL1Shape).c_str(), Ops::Base::ToString(softmaxOutShape).c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -285,27 +290,28 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeAttrs()
     cmpRatio = *cmpRatioPtr;
     deterministic = (context_->GetDeterministic() == 1);
     OP_CHECK_IF(strcmp(layoutQuery, "TND") != 0 && strcmp(layoutQuery, "BSND") != 0,
-        OP_LOGE(opName, "LayoutQ only support TND or BSND, now LayoutQ is %s.", layoutQuery), return false);
+                OP_LOGE(opName, "LayoutQ only support TND or BSND, now LayoutQ is %s.", layoutQuery), return false);
     OP_CHECK_IF(strcmp(layoutKey, "TND") != 0 && strcmp(layoutKey, "BSND") != 0,
-        OP_LOGE(opName, "LayoutK only support TND or BSND, now LayoutK is %s.", layoutKey), return false);
+                OP_LOGE(opName, "LayoutK only support TND or BSND, now LayoutK is %s.", layoutKey), return false);
     OP_CHECK_IF(strcmp(layoutQuery, layoutKey) != 0,
-        OP_LOGE(opName,
-        "Layout of Query and Key need to be consistent, but now layoutQuery is %s and layoutKey is %s.",
-        layoutQuery, layoutKey),
-        return false);
-    OP_CHECK_IF((sparseMode != SPARSE_MODE_SIZE_3 && sparseMode != SPARSE_MODE_SIZE_0),
+                OP_LOGE(opName,
+                        "Layout of Query and Key need to be consistent, but now layoutQuery is %s and layoutKey is %s.",
+                        layoutQuery, layoutKey),
+                return false);
+    OP_CHECK_IF(
+        (sparseMode != SPARSE_MODE_SIZE_3 && sparseMode != SPARSE_MODE_SIZE_0),
         OP_LOGE(opName, " The value of mask_mode is [%ld], but currently only supports mode [0,3].", sparseMode),
         return false);
     OP_CHECK_IF((cmpRatio < CMP_RATIO_1 || cmpRatio > CMP_RATIO_128),
-        OP_LOGE(opName, " The value of cmpRatio is [%ld], but currently only supports ranging from 1 to 128.",
-        cmpRatio),
-        return false);
+                OP_LOGE(opName, " The value of cmpRatio is [%ld], but currently only supports ranging from 1 to 128.",
+                        cmpRatio),
+                return false);
     OP_CHECK_IF((sparseMode == SPARSE_MODE_SIZE_3 && cmpRatio != 1 && cmpResidualK == nullptr),
-        OP_LOGE(opName, " cmp_residual_k is required when mask_mode is 3 with cmp_ratio not equal to 1!"),
-        return false);
+                OP_LOGE(opName, " cmp_residual_k is required when mask_mode is 3 with cmp_ratio not equal to 1!"),
+                return false);
 
     OP_LOGD(context_, "attrs: layout_query[%s] layout_key[%s] mask_mode[%ld] cmp_ratio[%ld].", layoutQuery, layoutKey,
-        sparseMode, cmpRatio);
+            sparseMode, cmpRatio);
 
     if (CheckOutPut() == ge::GRAPH_FAILED) {
         return false;
@@ -314,7 +320,10 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeAttrs()
 }
 
 bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDimLayout(const gert::Shape &queryIndexShape,
-    const gert::Shape &keyIndexShape, const gert::Shape &weightsShape, const gert::Shape &attnSoftmaxL1Shape, size_t layoutLen)
+                                                                           const gert::Shape &keyIndexShape,
+                                                                           const gert::Shape &weightsShape,
+                                                                           const gert::Shape &attnSoftmaxL1Shape,
+                                                                           size_t layoutLen)
 {
     if (layoutLen == 3UL) {
         if (layoutQuery[0] == 'T' && layoutQuery[1] == 'N' && layoutQuery[2] == 'D') {
@@ -330,14 +339,15 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDimLayout(const
             n1Size = queryIndexShape.GetDim(1);
             n2Size = keyIndexShape.GetDim(1);
             OP_CHECK_IF(n1Size < 1 || n1Size > 128,
-                OP_LOGE(opName, "Inputshape N Size of Query should be range in 1~128, but got %ld.", n1Size),
-                return false);
+                        OP_LOGE(opName, "Inputshape N Size of Query should be range in 1~128, but got %ld.", n1Size),
+                        return false);
             OP_CHECK_IF(n2Size != 1, OP_LOGE(opName, "Inputshape N Size of Key should be 1, but got %ld.", n2Size),
-                return false);
+                        return false);
             gSizeQueryIndex = queryIndexShape.GetDim(1) / n2Size;
             dSizeQueryIndex = queryIndexShape.GetDim(2);
             OP_CHECK_IF(dSizeQueryIndex != 128,
-                OP_LOGE(opName, "Inputshape D Size should be 128, but got %ld.", dSizeQueryIndex), return false);
+                        OP_LOGE(opName, "Inputshape D Size should be 128, but got %ld.", dSizeQueryIndex),
+                        return false);
             maxSeqlenK = attnSoftmaxL1Shape.GetDim(2);
             tilingData->baseParams.set_maxSeqlenK(static_cast<uint32_t>(maxSeqlenK));
             topKRange = TopKRangeRegbase::RANGE_0_2K;
@@ -352,20 +362,22 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDimLayout(const
             n1Size = queryIndexShape.GetDim(2);
             n2Size = keyIndexShape.GetDim(2);
             OP_CHECK_IF(bSize < SIZE_1,
-                OP_LOGE(opName, "Inputshape B Size should be greater than 0, but got %ld.", bSize), return false);
-            OP_CHECK_IF(s1Size < SIZE_1,
-                OP_LOGE(opName, "Query s1Size should be greater than 0, but got %ld.", s1Size), return false);
-            OP_CHECK_IF(s2Size < SIZE_1,
-                OP_LOGE(opName, "Query s2Size should be greater than 0, but got %ld.", s2Size), return false);
+                        OP_LOGE(opName, "Inputshape B Size should be greater than 0, but got %ld.", bSize),
+                        return false);
+            OP_CHECK_IF(s1Size < SIZE_1, OP_LOGE(opName, "Query s1Size should be greater than 0, but got %ld.", s1Size),
+                        return false);
+            OP_CHECK_IF(s2Size < SIZE_1, OP_LOGE(opName, "Query s2Size should be greater than 0, but got %ld.", s2Size),
+                        return false);
             OP_CHECK_IF(n1Size < 1 || n1Size > 128,
-                OP_LOGE(opName, "Inputshape N Size of Query should be range in 1~128, but got %ld.", n1Size),
-                return false);
+                        OP_LOGE(opName, "Inputshape N Size of Query should be range in 1~128, but got %ld.", n1Size),
+                        return false);
             OP_CHECK_IF(n2Size != 1, OP_LOGE(opName, "Inputshape N Size of Key should be 1, but got %ld.", n2Size),
-                return false);
+                        return false);
             gSizeQueryIndex = queryIndexShape.GetDim(2) / n2Size;
             dSizeQueryIndex = queryIndexShape.GetDim(3);
             OP_CHECK_IF(dSizeQueryIndex != 128,
-                OP_LOGE(opName, "Inputshape D Size should be 128, but got %ld.", dSizeQueryIndex), return false);
+                        OP_LOGE(opName, "Inputshape D Size should be 128, but got %ld.", dSizeQueryIndex),
+                        return false);
             maxSeqlenK = attnSoftmaxL1Shape.GetDim(3);
             tilingData->baseParams.set_maxSeqlenK(static_cast<uint32_t>(maxSeqlenK));
             topKRange = TopKRangeRegbase::RANGE_0_2K;
@@ -412,19 +424,19 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDtype()
         same16 = true;
     } else {
         OP_LOGW(context_, "InputDtype is not same.: queryDtype[%s], keyDtype[%s]",
-            ge::TypeUtils::DataTypeToSerialString(queryDtype).c_str(),
-            ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str());
+                ge::TypeUtils::DataTypeToSerialString(queryDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str());
         same16 = false;
     }
     if (weightsDtype == ge::DT_FLOAT && softmaxLseDtype == ge::DT_FLOAT && attnSoftmaxL1Dtype == ge::DT_FLOAT) {
         same32 = true;
     } else {
         OP_LOGW(context_,
-            "InputDtype is fault: weightsDtype must be float32, but[%s]; softmaxLseDtype must be int32, but[%s]; "
-            "attnSoftmaxL1Dtype must be float32, but[%s].",
-            ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str(),
-            ge::TypeUtils::DataTypeToSerialString(softmaxLseDtype).c_str(),
-            ge::TypeUtils::DataTypeToSerialString(attnSoftmaxL1Dtype).c_str());
+                "InputDtype is fault: weightsDtype must be float32, but[%s]; softmaxLseDtype must be int32, but[%s]; "
+                "attnSoftmaxL1Dtype must be float32, but[%s].",
+                ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(softmaxLseDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(attnSoftmaxL1Dtype).c_str());
         same32 = false;
     }
     // 所有类型不满足返回false
@@ -432,12 +444,12 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDtype()
         return false;
     }
     OP_LOGW(context_, "InputDtype: queryDtype[%s], keyDtype[%s],",
-        ge::TypeUtils::DataTypeToSerialString(queryDtype).c_str(),
-        ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str());
+            ge::TypeUtils::DataTypeToSerialString(queryDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str());
     OP_LOGW(context_, "weightsDtype[%s], softmaxLseDtype[%s], attnSoftmaxL1Dtype[%s].",
-        ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str(),
-        ge::TypeUtils::DataTypeToSerialString(softmaxLseDtype).c_str(),
-        ge::TypeUtils::DataTypeToSerialString(attnSoftmaxL1Dtype).c_str());
+            ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(softmaxLseDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(attnSoftmaxL1Dtype).c_str());
     return true;
 }
 
@@ -457,67 +469,78 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::CrossShapeVerify()
         int64_t t2Len = keyIndexShape[0];
         int64_t n2Len = keyIndexShape[1];
         // 验证T1
-        OP_CHECK_IF(weightsShape[0] != t1Len || softmaxLseShape[1] != t1Len || attnSoftmaxL1Shape[0] != t1Len,
+        OP_CHECK_IF(
+            weightsShape[0] != t1Len || softmaxLseShape[1] != t1Len || attnSoftmaxL1Shape[0] != t1Len,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify T1 is failed, the value of query_index[0],"
-            "weights[0], softmax_lse[1] and attn_softmax_l1_norm[0]"
-            "are respectively (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
-            queryIndexShape[0], weightsShape[0], softmaxLseShape[1], attnSoftmaxL1Shape[0]),
+                                        "CrossShapeVerify T1 is failed, the value of query_index[0],"
+                                        "weights[0], softmax_lse[1] and attn_softmax_l1_norm[0]"
+                                        "are respectively (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
+                                        queryIndexShape[0], weightsShape[0], softmaxLseShape[1], attnSoftmaxL1Shape[0]),
             return false);
-        // 验证N Query数字是否正确        
+        // 验证N Query数字是否正确
         OP_CHECK_IF(queryIndexShape[1] < NQUERYINDEX_SIZE_1 || queryIndexShape[1] > NQUERYINDEX_SIZE_128,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, shape N of query_index must be >= 1 and <= 128, but the value of query_index[1] "
-            "is (%ld)",
-            queryIndexShape[1]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                                "CrossShapeVerify failed, shape N of query_index must be >= 1 and <= "
+                                                "128, but the value of query_index[1] "
+                                                "is (%ld)",
+                                                queryIndexShape[1]),
+                    return false);
         // 验证N Index
         OP_CHECK_IF(queryIndexShape[1] != weightsShape[1],
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify N index is failed, the value of query_index[1] and weights[1] are respectively (%ld), "
-            "(%ld). Their values should be equal.",
-            queryIndexShape[1], weightsShape[1]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                                "CrossShapeVerify N index is failed, the value of query_index[1] and "
+                                                "weights[1] are respectively (%ld), "
+                                                "(%ld). Their values should be equal.",
+                                                queryIndexShape[1], weightsShape[1]),
+                    return false);
         // 验证N2 数字是否正确
         OP_CHECK_IF(keyIndexShape[1] != NKEYINDEX_SIZE_1,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, N2 must be 1, but the value of key_index[1] is (%ld).", keyIndexShape[1]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName, "CrossShapeVerify failed, N2 must be 1, but the value of key_index[1] is (%ld).",
+                        keyIndexShape[1]),
+                    return false);
         OP_CHECK_IF(softmaxLseShape[0] != NKEYINDEX_SIZE_1,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, N2 must be 1, but the value of softmaxLseShape[0] is (%ld).",
-            softmaxLseShape[0]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName, "CrossShapeVerify failed, N2 must be 1, but the value of softmaxLseShape[0] is (%ld).",
+                        softmaxLseShape[0]),
+                    return false);
         OP_CHECK_IF(attnSoftmaxL1Shape[1] != NKEYINDEX_SIZE_1,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, N2 must be 1, but the value of attn_softmax_l1_norm[1] is (%ld).",
-            attnSoftmaxL1Shape[1]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName,
+                        "CrossShapeVerify failed, N2 must be 1, but the value of attn_softmax_l1_norm[1] is (%ld).",
+                        attnSoftmaxL1Shape[1]),
+                    return false);
         // 验证N2
         OP_CHECK_IF(softmaxLseShape[0] != keyIndexShape[1] || attnSoftmaxL1Shape[1] != keyIndexShape[1],
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify N2 is failed, the value of key_index[1], softmaxLseShape[0] and attn_softmax_l1_norm[1] "
-            "are respectively (%ld), (%ld), (%ld). Their values should be equal.",
-            keyIndexShape[1], softmaxLseShape[0], attnSoftmaxL1Shape[1]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                                "CrossShapeVerify N2 is failed, the value of key_index[1], "
+                                                "softmaxLseShape[0] and attn_softmax_l1_norm[1] "
+                                                "are respectively (%ld), (%ld), (%ld). Their values should be equal.",
+                                                keyIndexShape[1], softmaxLseShape[0], attnSoftmaxL1Shape[1]),
+                    return false);
         // 验证D 数字是否正确
-        OP_CHECK_IF(queryIndexShape[2] != DINDEX_SIZE_128,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, shape D of query_index must be 128, but the value of query_index[2] is (%ld)",
-            queryIndexShape[2]),
+        OP_CHECK_IF(
+            queryIndexShape[2] != DINDEX_SIZE_128,
+            OPS_REPORT_VECTOR_INNER_ERR(
+                opName,
+                "CrossShapeVerify failed, shape D of query_index must be 128, but the value of query_index[2] is (%ld)",
+                queryIndexShape[2]),
             return false);
-        OP_CHECK_IF(keyIndexShape[2] != DINDEX_SIZE_128,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, shape D of key_index must be 128, but the value of key_index[2] is (%ld)",
-            keyIndexShape[2]),
+        OP_CHECK_IF(
+            keyIndexShape[2] != DINDEX_SIZE_128,
+            OPS_REPORT_VECTOR_INNER_ERR(
+                opName,
+                "CrossShapeVerify failed, shape D of key_index must be 128, but the value of key_index[2] is (%ld)",
+                keyIndexShape[2]),
             return false);
         // 验证D
         OP_CHECK_IF(keyIndexShape[2] != queryIndexShape[2],
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify query_index-key_index shape D is failed, the value of query_index[2] and key_index[2] "
-            "are respectively (%ld), (%ld). Their values should be equal.",
-            queryIndexShape[2], keyIndexShape[2]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                                "CrossShapeVerify query_index-key_index shape D is failed, the value "
+                                                "of query_index[2] and key_index[2] "
+                                                "are respectively (%ld), (%ld). Their values should be equal.",
+                                                queryIndexShape[2], keyIndexShape[2]),
+                    return false);
     } else if (layoutQuery[0] == 'B' && layoutQuery[1] == 'S' && layoutQuery[2] == 'N' && layoutQuery[3] == 'D') {
         int64_t bLen = queryIndexShape[0];
         int64_t s1Len = queryIndexShape[1];
@@ -527,77 +550,87 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::CrossShapeVerify()
 
         // 验证B
         OP_CHECK_IF(keyIndexShape[0] != bLen || weightsShape[0] != bLen || softmaxLseShape[0] != bLen ||
-            attnSoftmaxL1Shape[0] != bLen,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify shape B is failed, the value of query_index[0],"
-            "key_index[0], weights[0], softmaxLseShape[0] and attn_softmax_l1_norm[0]"
-            "are respectively (%ld), (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
-            bLen, keyIndexShape[0], weightsShape[0], softmaxLseShape[0], attnSoftmaxL1Shape[0]),
-            return false);
+                        attnSoftmaxL1Shape[0] != bLen,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName,
+                        "CrossShapeVerify shape B is failed, the value of query_index[0],"
+                        "key_index[0], weights[0], softmaxLseShape[0] and attn_softmax_l1_norm[0]"
+                        "are respectively (%ld), (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
+                        bLen, keyIndexShape[0], weightsShape[0], softmaxLseShape[0], attnSoftmaxL1Shape[0]),
+                    return false);
         // 验证s1
-        OP_CHECK_IF(weightsShape[1] != s1Len ||
-            softmaxLseShape[2] != s1Len ||
-            attnSoftmaxL1Shape[1] != s1Len,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify S1 is failed, the value of query_index[1], weights[1],"
-            "softmaxLseShape[2] and attn_softmax_l1_norm[1] are respectively (%ld), (%ld), (%ld), (%ld)."
-            "Their values should be equal.",
-            s1Len, weightsShape[1], softmaxLseShape[2], attnSoftmaxL1Shape[1]),
-            return false);
+        OP_CHECK_IF(weightsShape[1] != s1Len || softmaxLseShape[2] != s1Len || attnSoftmaxL1Shape[1] != s1Len,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName,
+                        "CrossShapeVerify S1 is failed, the value of query_index[1], weights[1],"
+                        "softmaxLseShape[2] and attn_softmax_l1_norm[1] are respectively (%ld), (%ld), (%ld), (%ld)."
+                        "Their values should be equal.",
+                        s1Len, weightsShape[1], softmaxLseShape[2], attnSoftmaxL1Shape[1]),
+                    return false);
         // 验证N Query数字是否正确
         OP_CHECK_IF(n1Len < NQUERYINDEX_SIZE_1 || n1Len > NQUERYINDEX_SIZE_128,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, shape N of query_index must be >= 1 and <= 128, but the value of query_index[2]"
-            "is (%ld)",
-            n1Len),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                                "CrossShapeVerify failed, shape N of query_index must be >= 1 and <= "
+                                                "128, but the value of query_index[2]"
+                                                "is (%ld)",
+                                                n1Len),
+                    return false);
         // 验证N Index
         OP_CHECK_IF(weightsShape[2] != n1Len,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify N index is failed, the value of query_index[2] and weights[2] are respectively (%ld), "
-            "(%ld). Their values should be equal.",
-            n1Len, weightsShape[2]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                                "CrossShapeVerify N index is failed, the value of query_index[2] and "
+                                                "weights[2] are respectively (%ld), "
+                                                "(%ld). Their values should be equal.",
+                                                n1Len, weightsShape[2]),
+                    return false);
         // 验证N2 数字是否正确
         OP_CHECK_IF(keyIndexShape[2] != NKEYINDEX_SIZE_1,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, N2 must be 1, but the value of key_index[2] is (%ld).", keyIndexShape[2]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName, "CrossShapeVerify failed, N2 must be 1, but the value of key_index[2] is (%ld).",
+                        keyIndexShape[2]),
+                    return false);
         OP_CHECK_IF(softmaxLseShape[1] != NKEYINDEX_SIZE_1,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, N2 must be 1, but the value of softmaxLseShape[1] is (%ld).",
-            softmaxLseShape[1]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName, "CrossShapeVerify failed, N2 must be 1, but the value of softmaxLseShape[1] is (%ld).",
+                        softmaxLseShape[1]),
+                    return false);
         OP_CHECK_IF(attnSoftmaxL1Shape[2] != NKEYINDEX_SIZE_1,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, N2 must be 1, but the value of attn_softmax_l1_norm[2] is (%ld).",
-            attnSoftmaxL1Shape[2]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName,
+                        "CrossShapeVerify failed, N2 must be 1, but the value of attn_softmax_l1_norm[2] is (%ld).",
+                        attnSoftmaxL1Shape[2]),
+                    return false);
         // 验证N2
         OP_CHECK_IF(softmaxLseShape[1] != n2Len || attnSoftmaxL1Shape[2] != n2Len,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify N2 is failed, the value of key_index[2], softmaxLseShape[1] and attn_softmax_l1_norm[2] "
-            "are respectively (%ld), (%ld), (%ld). Their values should be equal.",
-            n2Len, softmaxLseShape[1], attnSoftmaxL1Shape[2]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                                "CrossShapeVerify N2 is failed, the value of key_index[2], "
+                                                "softmaxLseShape[1] and attn_softmax_l1_norm[2] "
+                                                "are respectively (%ld), (%ld), (%ld). Their values should be equal.",
+                                                n2Len, softmaxLseShape[1], attnSoftmaxL1Shape[2]),
+                    return false);
         // 验证D 数字是否正确
-        OP_CHECK_IF(queryIndexShape[3] != DINDEX_SIZE_128,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, shape D of query_index must be 128, but the value of query_index[3] is (%ld)",
-            queryIndexShape[3]),
+        OP_CHECK_IF(
+            queryIndexShape[3] != DINDEX_SIZE_128,
+            OPS_REPORT_VECTOR_INNER_ERR(
+                opName,
+                "CrossShapeVerify failed, shape D of query_index must be 128, but the value of query_index[3] is (%ld)",
+                queryIndexShape[3]),
             return false);
-        OP_CHECK_IF(keyIndexShape[3] != DINDEX_SIZE_128,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, shape D of key_index must be 128, but the value of key_index[3] is (%ld)",
-            keyIndexShape[3]),
+        OP_CHECK_IF(
+            keyIndexShape[3] != DINDEX_SIZE_128,
+            OPS_REPORT_VECTOR_INNER_ERR(
+                opName,
+                "CrossShapeVerify failed, shape D of key_index must be 128, but the value of key_index[3] is (%ld)",
+                keyIndexShape[3]),
             return false);
         // 验证D
         OP_CHECK_IF(keyIndexShape[3] != queryIndexShape[3],
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify query_index-key_index shape D is failed, the value of query_index[3] and key_index[3] "
-            "are respectively (%ld), (%ld). Their values should be equal.",
-            queryIndexShape[3], keyIndexShape[3]),
-            return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                                "CrossShapeVerify query_index-key_index shape D is failed, the value "
+                                                "of query_index[3] and key_index[3] "
+                                                "are respectively (%ld), (%ld). Their values should be equal.",
+                                                queryIndexShape[3], keyIndexShape[3]),
+                    return false);
     }
     return true;
 }
@@ -613,11 +646,11 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeLayout()
     size_t layoutLen = strlen(layoutQuery);
     OP_CHECK_IF(!CrossShapeVerify(), OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify Failed"), return false);
     OP_CHECK_IF(!AnalyzeDimLayout(queryIndexShape, keyIndexShape, weightsShape, attnSoftmaxL1Shape, layoutLen),
-        OP_LOGE(opName, "Layout %s data analyze failed.", layoutQuery), return false);
+                OP_LOGE(opName, "Layout %s data analyze failed.", layoutQuery), return false);
     OP_CHECK_IF(gSizeQueryIndex == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "gSizeQueryIndex is zero"), return false);
     OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "n2Size is zero"), return false);
     OP_CHECK_IF(dSizeQueryIndex <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "dSizeQueryIndex is not support <= 0"),
-        return false);
+                return false);
     return true;
 }
 
@@ -644,7 +677,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetPlatform
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize);
     }
     OP_LOGI(context_, "get platform from compileInfo.aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) l0cSize(%lu).",
-        aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
+            aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -662,7 +695,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetShapeAtt
     OP_CHECK_IF(CheckContext() != ge::GRAPH_SUCCESS, OP_LOGE(opName, "invalid context."), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(!AnalyzeAttrs() || !AnalyzeDtype() || !AnalyzeLayout(),
-        OP_LOGE(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
+                OP_LOGE(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
     // 将基本输入参数传给tilingdata
     dlikGradBaseParams_->set_bSize(bSize);
     dlikGradBaseParams_->set_t1Size(t1Size);
@@ -676,10 +709,10 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetShapeAtt
     dlikGradBaseParams_->set_cmpRatio(cmpRatio);
 
     OP_LOGW(context_,
-        "INPUTPARAM bsize:[%ld], n2Size:[%ld], gSizeQueryIndex:[%ld],"
-        "s1Size:[%ld], s2Size:[%ld], dSizeQueryIndex:[%ld],"
-        "sparseMode:[%ld], cmpRatio:[%ld].",
-        bSize, n2Size, gSizeQueryIndex, s1Size, s2Size, dSizeQueryIndex, sparseMode, cmpRatio);
+            "INPUTPARAM bsize:[%ld], n2Size:[%ld], gSizeQueryIndex:[%ld],"
+            "s1Size:[%ld], s2Size:[%ld], dSizeQueryIndex:[%ld],"
+            "sparseMode:[%ld], cmpRatio:[%ld].",
+            bSize, n2Size, gSizeQueryIndex, s1Size, s2Size, dSizeQueryIndex, sparseMode, cmpRatio);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -731,32 +764,32 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoCastTilin
     int64_t dAlign16 = (dlikGradBaseParams_->get_dSizeQueryIndex() + 15) >> 4 << 4;
     // query
     int64_t allNumQuery = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
-        dlikGradBaseParams_->get_gSizeQueryIndex() * dlikGradBaseParams_->get_s1Size() * dAlign16;
-    int64_t allNumS2 = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
-        dlikGradBaseParams_->get_s2Size();
+                          dlikGradBaseParams_->get_gSizeQueryIndex() * dlikGradBaseParams_->get_s1Size() * dAlign16;
+    int64_t allNumS2 =
+        dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() * dlikGradBaseParams_->get_s2Size();
     // TND时候要按照真实的query的num数计算
     if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
         allNumQuery = dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() *
-            dlikGradBaseParams_->get_gSizeQueryIndex() * dAlign16;
+                      dlikGradBaseParams_->get_gSizeQueryIndex() * dAlign16;
         allNumS2 = dlikGradBaseParams_->get_t2Size() * dlikGradBaseParams_->get_n2Size();
     }
     int64_t allNumKey = allNumS2 * dAlign16;
     // weight
     int64_t allNumWeight = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
-        dlikGradBaseParams_->get_s1Size() * dlikGradBaseParams_->get_gSizeQueryIndex();
+                           dlikGradBaseParams_->get_s1Size() * dlikGradBaseParams_->get_gSizeQueryIndex();
     // TND时候要按照真实的cmp_softmax_l1的num数计算
     if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
         allNumWeight = dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() *
-            dlikGradBaseParams_->get_gSizeQueryIndex();
+                       dlikGradBaseParams_->get_gSizeQueryIndex();
     }
 
     // softmaxOut
     int64_t allNumSoftmaxOut = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_s1Size() *
-        dlikGradBaseParams_->get_n2Size() * dlikGradBaseParams_->get_maxSeqlenK();
+                               dlikGradBaseParams_->get_n2Size() * dlikGradBaseParams_->get_maxSeqlenK();
     // TND时候要按照真实的softmaxOut的num数计算
     if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
-        allNumSoftmaxOut =
-            dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() * dlikGradBaseParams_->get_maxSeqlenK();
+        allNumSoftmaxOut = dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() *
+                           dlikGradBaseParams_->get_maxSeqlenK();
     }
     uint32_t typeSize = B16;
     uint32_t usedCoreNum = aivNum;
@@ -770,14 +803,14 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoCastTilin
     int64_t nzReservedSize = 0;
     int64_t curPostCoexNode = postNzCoexNode;
     postUbBaseSize = (aicoreParams_.ubSize - 2 * nzReservedSize) / curPostCoexNode / // 开DB预留2份nzReservedSize
-        BASE_LEN_256 * BASE_LEN_256;
+                     BASE_LEN_256 * BASE_LEN_256;
     OP_LOGI(context_, "DoCastTiling postUbBaseSize: %ld.", postUbBaseSize);
     qPostBaseNum = 128 * 128;
     OP_LOGI(context_, "DoCastTiling qPostBaseNum: %ld.", qPostBaseNum);
 
     OP_CHECK_IF(qPostBaseNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "qPostBaseNum is 0."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(usedCoreNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "castUsedCoreNum is 0."),
-        return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
 
     int64_t qPreBlockFactor = (allNumQuery + usedCoreNum - 1) / usedCoreNum;
     int64_t qPreBlockTotal = (allNumQuery + qPreBlockFactor - 1) / qPreBlockFactor;
@@ -892,9 +925,10 @@ uint64_t DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetTilingKey() con
         hasCmpResidualK = false;
     }
     return GET_TPL_TILING_KEY(static_cast<uint8_t>(topKRange), static_cast<uint8_t>(tilingKeyLayout),
-        static_cast<uint8_t>(tilingKeyLayout), static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(hasCuSeqlensQ),
-        static_cast<uint8_t>(hasCuSeqlensK), static_cast<uint8_t>(hasSequsedQ), static_cast<uint8_t>(hasSequsedK),
-        static_cast<uint8_t>(hasCmpResidualK), static_cast<uint8_t>(deterministic));
+                              static_cast<uint8_t>(tilingKeyLayout), static_cast<uint8_t>(sparseMode),
+                              static_cast<uint8_t>(hasCuSeqlensQ), static_cast<uint8_t>(hasCuSeqlensK),
+                              static_cast<uint8_t>(hasSequsedQ), static_cast<uint8_t>(hasSequsedK),
+                              static_cast<uint8_t>(hasCmpResidualK), static_cast<uint8_t>(deterministic));
 }
 
 ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspaceSize()
@@ -903,11 +937,11 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspac
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     int64_t s2BlockSize = 8192;
     int64_t bmm3Size = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
-        dlikGradBaseParams_->get_s2Size() * dSizeQueryIndex * sizeof(float);
+                       dlikGradBaseParams_->get_s2Size() * dSizeQueryIndex * sizeof(float);
     // TND时候要按照真实的query的num数计算
     if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
-        bmm3Size = dlikGradBaseParams_->get_t2Size() * dlikGradBaseParams_->get_n2Size() *
-            dSizeQueryIndex * sizeof(float);
+        bmm3Size =
+            dlikGradBaseParams_->get_t2Size() * dlikGradBaseParams_->get_n2Size() * dSizeQueryIndex * sizeof(float);
     }
     int64_t bmm3WorkSpace = s2BlockSize * dlikGradBaseParams_->get_n2Size() * dSizeQueryIndex * sizeof(float);
     int64_t reduceSumOffset = BLOCK_SIZE * sizeof(float) * 2;
@@ -924,7 +958,6 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspac
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(DenseLightningIndexerKLLossGrad,
-                DenseLightningIndexerKLLossGradTilingGeneralRegbase,
-                static_cast<int32_t>(NpuArch::DAV_3510), 1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(DenseLightningIndexerKLLossGrad, DenseLightningIndexerKLLossGradTilingGeneralRegbase,
+                                   static_cast<int32_t>(NpuArch::DAV_3510), 1);
 } // namespace optiling
