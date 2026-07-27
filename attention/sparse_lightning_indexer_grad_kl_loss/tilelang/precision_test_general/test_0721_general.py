@@ -587,6 +587,93 @@ def _print_batch_diagnostics(
         print(f"  batch={batch_id} {' '.join(values)}")
 
 
+def _per_query_normalized_errors(
+    actual: torch.Tensor, expected: torch.Tensor
+) -> List[float]:
+    """按 S1 维归约，一次性取回全部 query 的归一化误差。"""
+    actual_f32 = actual.float()
+    expected_f32 = expected.float()
+    reduce_dims = (0,) + tuple(range(2, actual_f32.dim()))
+    difference_norm = torch.sqrt(
+        torch.sum((actual_f32 - expected_f32) ** 2, dim=reduce_dims)
+    )
+    reference_norm = torch.sqrt(
+        torch.sum(expected_f32 ** 2, dim=reduce_dims)
+    )
+    return (difference_norm / (reference_norm + 1e-6)).cpu().tolist()
+
+
+def _print_query_diagnostics(
+    case: Dict[str, Any],
+    tilelang_outputs: Sequence[torch.Tensor],
+    official_outputs: Sequence[torch.Tensor],
+) -> None:
+    """定位多 query task 的首个错误轮次，不展开无法逐 task 拆分的 dKey。"""
+    if case["layout"] != "BSND":
+        print("  query诊断：TND 输出已展平，本轮仅对 BSND 做逐 query 定位")
+        return
+
+    k_exec = _execution_k(case)
+    s2_padded = math.ceil(case["S2"] / 128) * 128
+    schedule = MODULE._make_task_schedule(
+        case["B"],
+        case["S1"],
+        s2_padded,
+        k_exec,
+        MODULE._get_aicore_count(),
+    )
+    launch_cores = schedule.launch_core_num
+    valid_lengths = _valid_k_lengths(case)
+    dq_actual, dw_actual = tilelang_outputs[0], tilelang_outputs[2]
+    dq_expected, dw_expected = official_outputs[0], official_outputs[2]
+
+    dq_query_errors = _per_query_normalized_errors(dq_actual, dq_expected)
+    dw_query_errors = _per_query_normalized_errors(dw_actual, dw_expected)
+    query_metrics = [
+        (query_id, dq_query_errors[query_id], dw_query_errors[query_id])
+        for query_id in range(case["S1"])
+    ]
+
+    failed_queries = [
+        values for values in query_metrics
+        if max(values[1], values[2]) > REL_TOLERANCE
+    ]
+    first_failed = failed_queries[0][0] if failed_queries else None
+    print(
+        f"  query诊断：launch_cores={launch_cores} "
+        f"tasks_per_core={schedule.tasks_per_core} "
+        f"first_failed={first_failed} failed={len(failed_queries)}/{case['S1']}"
+    )
+
+    checkpoints = {0, 1, case["S1"] - 2, case["S1"] - 1}
+    for boundary in range(launch_cores, case["S1"], launch_cores):
+        checkpoints.update((boundary - 1, boundary, boundary + 1))
+    if first_failed is not None:
+        checkpoints.update((first_failed - 1, first_failed, first_failed + 1))
+    checkpoints = sorted(query_id for query_id in checkpoints if 0 <= query_id < case["S1"])
+
+    for query_id in checkpoints:
+        _, dq_norm_rel, dw_norm_rel = query_metrics[query_id]
+        print(
+            f"    q={query_id:4d} round={query_id // launch_cores:2d} "
+            f"core={query_id % launch_cores:2d} kReal={valid_lengths[query_id]:5d} "
+            f"dQ_norm={dq_norm_rel:.2e} dW_norm={dw_norm_rel:.2e}"
+        )
+
+    worst_queries = sorted(
+        query_metrics,
+        key=lambda values: max(values[1], values[2]),
+        reverse=True,
+    )[: min(10, case["S1"])]
+    print(
+        "  query最差："
+        + ", ".join(
+            f"q{query_id}(dQ={dq_norm_rel:.1e},dW={dw_norm_rel:.1e})"
+            for query_id, dq_norm_rel, dw_norm_rel in worst_queries
+        )
+    )
+
+
 def _release_case_memory() -> None:
     """Release tensors from the previous case before compiling the next one."""
     gc.collect()
@@ -631,6 +718,7 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
             _print_metrics(metrics)
         if args.diagnose:
             _print_batch_diagnostics(case, tilelang_outputs, official_outputs)
+            _print_query_diagnostics(case, tilelang_outputs, official_outputs)
         # 保持普通运行日志简洁：通过的用例只由下面的性能行表示，失败用例
         # 则保留精度指标。
         if not passed or (not args.bench and not args.summary_only):
@@ -695,7 +783,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup", type=int, default=WARMUP_ITERS)
     parser.add_argument("--iters", type=int, default=BENCH_ITERS)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--diagnose", action="store_true", help="Print per-batch normalized error diagnostics")
+    parser.add_argument("--diagnose", action="store_true", help="打印逐 batch 和逐 query 的归一化误差诊断")
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument("--verbose", action="store_true", help="Print full per-case diagnostics")
     output_group.add_argument(
@@ -716,6 +804,8 @@ def main() -> int:
     args = parse_args()
     if os.environ.get("SLIG_DEBUG", "0") == "1" or os.environ.get("SLIG_PROFILE", "0") == "1":
         print("WARNING: SLIG_DEBUG/SLIG_PROFILE is enabled; disable it for benchmark numbers.")
+    if os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1":
+        print("WARNING: SLIG_SERIAL_TASK_PIPELINE=1，当前使用串行 task 诊断版本，禁止用于性能测试。")
     selected_cases = list(_select_cases(args))
     if not args.summary_only:
         print(

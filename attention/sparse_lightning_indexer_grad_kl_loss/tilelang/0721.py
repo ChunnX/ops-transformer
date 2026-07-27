@@ -254,7 +254,7 @@ def tilelang_grad_kl_loss_single_kernel(
     launch_core_num,
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
     full_valid=False, k_scatter_exec=None,
-    source_s2=None, sparse_k_stride=None,
+    source_s2=None, sparse_k_stride=None, serial_task_pipeline=False,
 ):
     source_s2 = S2 if source_s2 is None else source_s2
     sparse_k_stride = K if sparse_k_stride is None else sparse_k_stride
@@ -291,6 +291,9 @@ def tilelang_grad_kl_loss_single_kernel(
     task_count = B * S1
     launch_core_num = max(launch_core_num, 1)
     tasks_per_core = ceil_div(task_count, launch_core_num)
+    # 诊断版本将跨 task 流水延迟从 1 改为 0，使 V0/C1/V1/C2 在同一轮
+    # 处理同一个 task。task 内的 AIC/AIV 依赖仍由原有 cross flag 保证。
+    task_pipeline_lag = 0 if serial_task_pipeline else TASK_PIPELINE_DEPTH - 1
     total_aiv_num = launch_core_num * 2
     # 官方 16 KiB scatter UB 在 ping/pong 之间平均划分：
     # 16 行 × 128 个 FP32 值 × 4 字节 = 每个槽位 8 KiB。
@@ -1844,7 +1847,7 @@ def tilelang_grad_kl_loss_single_kernel(
         LossOut: T.Tensor((1,), calc_dtype),
     ):
         with T.Kernel(launch_core_num, is_npu=True) as (cid, vid):
-            for pipe_iter in T.serial(tasks_per_core + TASK_PIPELINE_DEPTH - 1):
+            for pipe_iter in T.serial(tasks_per_core + task_pipeline_lag):
                 if pipe_iter < tasks_per_core:
                     task_current = pipe_iter * launch_core_num + cid
                     if task_current < task_count:
@@ -1865,8 +1868,8 @@ def tilelang_grad_kl_loss_single_kernel(
                             vid,
                         )
 
-                if pipe_iter >= 1:
-                    task_prev_iter = pipe_iter - 1
+                if pipe_iter >= task_pipeline_lag:
+                    task_prev_iter = pipe_iter - task_pipeline_lag
                     if task_prev_iter < tasks_per_core:
                         task_prev = task_prev_iter * launch_core_num + cid
                         if task_prev < task_count:
@@ -2362,6 +2365,9 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         _PROFILE = os.environ.get("SLIG_PROFILE", "0") == "1"
         _DEBUG_REQUESTED = os.environ.get("SLIG_DEBUG", "0") == "1"
+        _SERIAL_TASK_PIPELINE = (
+            os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1"
+        )
         _GATHER_SENTINEL = 123.0
 
         if _PROFILE:
@@ -2412,6 +2418,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             B, S1, S2_pad, source_s2, N1, N2, G, Nidx1, Nidx2,
             DQuery, DQueryIndex, K, sparse_k_stride, k_scatter_exec, core_count, d_rope,
             input_dtype_str, calc_dtype_str, scale_value, block_n, full_valid,
+            _SERIAL_TASK_PIPELINE,
         )
 
         if cache_key in _kernel_cache:
@@ -2421,6 +2428,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
+                _SERIAL_TASK_PIPELINE,
             )
 
             # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
