@@ -7,11 +7,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-# ruff: noqa: F401
-
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_token_permute import moe_token_permute
-from .mega_moe import get_symm_buffer_for_mega_moe, mega_moe
+from .mega_moe import (
+    get_symm_buffer_for_mega_moe,
+    mega_moe
+)
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
 from .mixed_quant_sparse_flash_mla import (

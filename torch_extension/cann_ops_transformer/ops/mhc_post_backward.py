@@ -149,7 +149,7 @@ class MhcPostBackwardOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         return (
-            "mhc_post_backward(Tensor grad_output, Tensor x, Tensor h_res, Tensor h_out, Tensor h_post) -> "
+            "mhc_post_backward(Tensor gradOutput, Tensor x, Tensor hRes, Tensor hOut, Tensor hPost) -> "
             "(Tensor, Tensor, Tensor, Tensor)"
         )
 
