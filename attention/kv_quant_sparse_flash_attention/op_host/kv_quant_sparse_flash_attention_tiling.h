@@ -365,6 +365,7 @@ private:
     uint32_t headDimAlign_ = 0;
     uint32_t mBaseSize_ = 128;
     uint32_t mFdBaseSize_ = 8;
+    bool vectorizeFlag_ = false;
 
     QSFATilingInfo *qsfaInfo_ = nullptr;
 };
