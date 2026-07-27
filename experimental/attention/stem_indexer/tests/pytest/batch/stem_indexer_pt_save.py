@@ -113,7 +113,10 @@ def row_to_case(row):
             case[column] = str(value).strip().upper()
         else:
             case[column] = str(value).strip()
-    if case["topk_score_precision"] not in (1, 2):
+    if (
+        case["expected_result"] != "FAIL"
+        and case["topk_score_precision"] not in (1, 2)
+    ):
         raise ValueError(
             f"{case['case_id']} topk_score_precision must be 1(uint32) or 2(uint16), "
             f"but got {case['topk_score_precision']}"

@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include "tiling_case_executor.h"
@@ -41,13 +42,16 @@ struct StemIndexerCompileInfo {};
 std::vector<TensorDesc> MakeValidInputs(int64_t batch = 2, int64_t qHeads = 32, int64_t kvHeads = 4, int64_t maxQb = 8,
                                         int64_t maxKb = 16, int64_t flattenDim = 2048)
 {
+    static std::vector<int32_t> validQSeqLens(64, 128);
+    static std::vector<int32_t> validKvSeqLens(64, 128);
+    static std::vector<int32_t> validNumPromptTokens(64, 128);
     return {
         {{{batch, qHeads, maxQb, flattenDim}, {batch, qHeads, maxQb, flattenDim}}, ge::DT_BF16, ge::FORMAT_ND},
         {{{batch, kvHeads, maxKb, flattenDim}, {batch, kvHeads, maxKb, flattenDim}}, ge::DT_BF16, ge::FORMAT_ND},
         {{{batch, kvHeads, maxKb}, {batch, kvHeads, maxKb}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{batch}, {batch}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{batch}, {batch}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{batch}, {batch}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{batch}, {batch}}, ge::DT_INT32, ge::FORMAT_ND, true, validQSeqLens.data()},
+        {{{batch}, {batch}}, ge::DT_INT32, ge::FORMAT_ND, true, validKvSeqLens.data()},
+        {{{batch}, {batch}}, ge::DT_INT32, ge::FORMAT_ND, true, validNumPromptTokens.data()},
         {{{2048}, {2048}}, ge::DT_INT32, ge::FORMAT_ND},
     };
 }
@@ -124,6 +128,45 @@ TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_topk_score_precision_inva
         false);
 }
 
+TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_num_prompt_tokens_less_than_kv_seq_lens)
+{
+    static int32_t invalidNumPromptTokens[] = {127, 128};
+    auto inputs = MakeValidInputs();
+    inputs[5].constValue_ = invalidNumPromptTokens;
+
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
+}
+
+TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_seq_len_negative)
+{
+    static int32_t invalidQSeqLens[] = {-1, 128};
+    static int32_t invalidKvSeqLens[] = {128, -1};
+    static int32_t invalidNumPromptTokens[] = {-1, 128};
+
+    auto inputs = MakeValidInputs();
+    inputs[3].constValue_ = invalidQSeqLens;
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
+
+    inputs = MakeValidInputs();
+    inputs[4].constValue_ = invalidKvSeqLens;
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
+
+    inputs = MakeValidInputs();
+    inputs[5].constValue_ = invalidNumPromptTokens;
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
+}
+
+TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_seq_len_zero)
+{
+    static int32_t zeroSeqLens[] = {0, 128};
+
+    auto inputs = MakeValidInputs();
+    inputs[3].constValue_ = zeroSeqLens;
+    inputs[4].constValue_ = zeroSeqLens;
+    inputs[5].constValue_ = zeroSeqLens;
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), true);
+}
+
 TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_qflat_dtype_invalid)
 {
     auto inputs = MakeValidInputs();
@@ -175,6 +218,10 @@ TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_alpha_invalid)
     auto attrs = MakeValidAttrs();
     attrs[3] = OpAttr("alpha", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f));
 
+    ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), attrs), false);
+
+    attrs[3] =
+        OpAttr("alpha", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::quiet_NaN()));
     ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), attrs), false);
 }
 

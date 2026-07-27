@@ -13,6 +13,8 @@
  * \brief
  */
 
+#include <cmath>
+
 #include "stem_indexer_tiling.h"
 
 #include "../op_kernel/stem_indexer_template_tiling_key.h"
@@ -135,8 +137,10 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
         *opParamInfo_.windowSize != WINDOW_SIZE_LIMIT,
         OP_LOGE(opName_, "window_size only supports %u, but got %ld.", WINDOW_SIZE_LIMIT, *opParamInfo_.windowSize),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF((*opParamInfo_.alpha <= ALPHA_MIN) || (*opParamInfo_.alpha > ALPHA_MAX),
-                OP_LOGE(opName_, "alpha should be in (%f, %f], but got %f.", ALPHA_MIN, ALPHA_MAX, *opParamInfo_.alpha),
+    OP_CHECK_IF(std::isnan(*opParamInfo_.alpha) || (*opParamInfo_.alpha <= ALPHA_MIN) ||
+                    (*opParamInfo_.alpha > ALPHA_MAX),
+                OP_LOGE(opName_, "alpha should be in (%f, %f] and not NaN, but got %f.", ALPHA_MIN, ALPHA_MAX,
+                        *opParamInfo_.alpha),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateMedium, K_BLOCK_NUM_RATE_MEDIUM_LIMIT),
                 OP_LOGE(opName_, "k_block_num_rate_medium only supports %f, but got %f.", K_BLOCK_NUM_RATE_MEDIUM_LIMIT,
@@ -334,6 +338,45 @@ ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus StemIndexerInfoParser::CheckSeqLenValues() const
+{
+    const gert::Tensor *qSeqLensTensor = context_->GetInputTensor(Q_SEQ_LENS_INDEX);
+    const gert::Tensor *kvSeqLensTensor = context_->GetInputTensor(KV_SEQ_LENS_INDEX);
+    const gert::Tensor *numPromptTokensTensor = context_->GetInputTensor(NUM_PROMPT_TOKENS_INDEX);
+    OP_CHECK_IF(qSeqLensTensor == nullptr || kvSeqLensTensor == nullptr || numPromptTokensTensor == nullptr,
+                OP_LOGE(opName_, "q_seq_lens, kv_seq_lens or num_prompt_tokens tensor is nullptr."),
+                return ge::GRAPH_FAILED);
+
+    const int32_t *qSeqLensData = qSeqLensTensor->GetData<int32_t>();
+    const int32_t *kvSeqLensData = kvSeqLensTensor->GetData<int32_t>();
+    const int32_t *numPromptTokensData = numPromptTokensTensor->GetData<int32_t>();
+    OP_CHECK_IF(qSeqLensData == nullptr || kvSeqLensData == nullptr || numPromptTokensData == nullptr,
+                OP_LOGE(opName_, "q_seq_lens, kv_seq_lens or num_prompt_tokens data is nullptr."),
+                return ge::GRAPH_FAILED);
+
+    for (uint32_t batchIdx = 0U; batchIdx < bSize_; ++batchIdx) {
+        OP_CHECK_IF(qSeqLensData[batchIdx] < 0,
+                    OP_LOGE(opName_, "q_seq_lens[%u](%d) should be greater than or equal to 0.", batchIdx,
+                            qSeqLensData[batchIdx]),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(kvSeqLensData[batchIdx] < 0,
+                    OP_LOGE(opName_, "kv_seq_lens[%u](%d) should be greater than or equal to 0.", batchIdx,
+                            kvSeqLensData[batchIdx]),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(numPromptTokensData[batchIdx] < 0,
+                    OP_LOGE(opName_, "num_prompt_tokens[%u](%d) should be greater than or equal to 0.", batchIdx,
+                            numPromptTokensData[batchIdx]),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            numPromptTokensData[batchIdx] < kvSeqLensData[batchIdx],
+            OP_LOGE(opName_,
+                    "num_prompt_tokens[%u](%d) should be greater than or equal to kv_seq_lens[%u](%d).",
+                    batchIdx, numPromptTokensData[batchIdx], batchIdx, kvSeqLensData[batchIdx]),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 void StemIndexerInfoParser::GenerateInfo(StemIndexerTilingInfo &stemInfo)
 {
     stemInfo.opName = opName_;
@@ -376,7 +419,8 @@ ge::graphStatus StemIndexerInfoParser::ParseAndCheck(StemIndexerTilingInfo &stem
         return ge::GRAPH_FAILED;
     }
     if (GetAndCheckInOutDataType() != ge::GRAPH_SUCCESS || CheckShapeDim() != ge::GRAPH_SUCCESS ||
-        GetBaseShapeInfo() != ge::GRAPH_SUCCESS || ValidateInputShapesMatch() != ge::GRAPH_SUCCESS) {
+        GetBaseShapeInfo() != ge::GRAPH_SUCCESS || ValidateInputShapesMatch() != ge::GRAPH_SUCCESS ||
+        CheckSeqLenValues() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     GenerateInfo(stemInfo);

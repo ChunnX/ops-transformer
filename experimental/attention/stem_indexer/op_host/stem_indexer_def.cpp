@@ -25,16 +25,19 @@ public:
         this->Input("vbias").ParamType(REQUIRED).DataType({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND}).AutoContiguous();
         this->Input("q_seq_lens")
             .ParamType(REQUIRED)
+            .ValueDepend(OPTIONAL)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("kv_seq_lens")
             .ParamType(REQUIRED)
+            .ValueDepend(OPTIONAL)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("num_prompt_tokens")
             .ParamType(REQUIRED)
+            .ValueDepend(OPTIONAL)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();

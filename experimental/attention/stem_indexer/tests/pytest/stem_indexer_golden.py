@@ -76,7 +76,10 @@ def dtype_from_name(dtype_name):
 
 def get_topk_score_precision(case):
     precision = int(case.get("topk_score_precision", DEFAULT_TOPK_SCORE_PRECISION))
-    if precision not in TOPK_SCORE_TYPE_BY_PRECISION:
+    if (
+        case.get("expected_result", "PASS") != "FAIL"
+        and precision not in TOPK_SCORE_TYPE_BY_PRECISION
+    ):
         raise ValueError(
             f"topk_score_precision must be 1(uint32) or 2(uint16), but got {precision}"
         )

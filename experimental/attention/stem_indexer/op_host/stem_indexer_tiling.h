@@ -182,6 +182,7 @@ public:
     ge::graphStatus CheckShapeDim();
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus ValidateInputShapesMatch();
+    ge::graphStatus CheckSeqLenValues() const;
     ge::graphStatus ParseAndCheck(StemIndexerTilingInfo &stemInfo);
     void GenerateInfo(StemIndexerTilingInfo &stemInfo);
 
