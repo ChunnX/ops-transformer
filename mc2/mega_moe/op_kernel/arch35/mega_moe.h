@@ -2213,7 +2213,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx, vecSetSyncCom);
     }
 
-    kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
+    kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         EndGMM2Sync(vecSetSyncCom, gmm2PingPongIdx_);
     }
@@ -2222,7 +2222,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
     }
-    kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+    kernelTiming_.StopAccumulatedTiming(TIMING_COMBINE);
 
     // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
     if (sharedExpertNum_ > 0) {
