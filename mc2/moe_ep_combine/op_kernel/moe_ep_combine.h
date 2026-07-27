@@ -58,7 +58,7 @@ constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t DCCI_OFFSET = 64U;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
-constexpr uint32_t MAX_CHANNELS_PER_RANK = 64U; // 增大上限，支持每个核独占channel
+constexpr uint32_t MAX_CHANNELS_PER_RANK = 32U; // 每个卡32个channel，每两个核共享一个channel
 constexpr size_t MASK_CALC_NEED_WORKSPACE = 20UL * 1024UL;
 
 template <TemplateMoeEpCombineTypeClass>
@@ -353,9 +353,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     if (actualA_ == 0 || epWorldSize_ == 0 || aivNum_ == 0) {
         return;
     }
-        uint32_t activeAivNum = aivNum_;
-    if (activeAivNum > channelsPerRank_) {
-        activeAivNum = channelsPerRank_;
+            uint32_t activeAivNum = aivNum_;
+    uint32_t maxActiveAivNum = channelsPerRank_ * 2; // 每两个核共享一个 channel
+    if (activeAivNum > maxActiveAivNum) {
+        activeAivNum = maxActiveAivNum;
     }
     if (aivId_ >= activeAivNum) {
         return;
@@ -370,8 +371,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         return;
     }
 
-    // 通道选择：每个核独占一个 channel
-    uint32_t channelIndex = aivId_;
+    // 通道选择：每两个核共享一个 channel
+    uint32_t channelIndex = aivId_ / 2;
     Duplicate<uint32_t>(statusTensor_, (uint32_t)1, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);

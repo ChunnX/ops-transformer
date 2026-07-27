@@ -56,7 +56,7 @@ constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
 constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int DIM_TWO = 2;
-constexpr uint32_t MOE_MAX_CHANNELS_PER_RANK = 64U; // 增大上限，支持每个核独占channel
+constexpr uint32_t MOE_MAX_CHANNELS_PER_RANK = 32U; // 每个卡32个channel，每两个核共享一个channel
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
 
 // RAII guard for multi-step host buffer allocation
