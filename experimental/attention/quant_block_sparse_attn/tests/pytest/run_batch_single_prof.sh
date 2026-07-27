@@ -119,6 +119,7 @@ import sys
 
 manifest, index, case_name, status, op_summary, log_path = sys.argv[1:]
 exists = os.path.exists(manifest)
+exists = exists and os.path.getsize(manifest) > 0
 with open(manifest, "a", encoding="utf-8", newline="") as f:
     writer = csv.writer(f)
     if not exists:
@@ -234,6 +235,14 @@ OUTPUT_DIR=$(resolve_output_dir "$OUTPUT_ARG")
 mkdir -p "$OUTPUT_DIR"
 
 MANIFEST="$OUTPUT_DIR/summary_manifest.csv"
+python3 - "$MANIFEST" "$OUTPUT_DIR/quant_block_sparse_attn_summary.csv" <<'PY'
+import os
+import sys
+
+for path in sys.argv[1:]:
+    if os.path.exists(path):
+        os.unlink(path)
+PY
 
 echo "pytest目录: $SCRIPT_DIR"
 echo "CSV文件: $CSV_PATH"
@@ -249,4 +258,5 @@ for ((case_index = 1; case_index <= CASE_END; case_index++)); do
 done
 
 echo "批量执行完成，失败数量: $failed_count"
+python3 "$SCRIPT_DIR/aggregate_batch_single_prof.py" "$OUTPUT_DIR"
 exit "$failed_count"
