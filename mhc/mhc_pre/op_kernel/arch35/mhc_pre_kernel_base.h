@@ -17,7 +17,6 @@
 #define MHC_PRE_KERNEL_BASE_H_
 
 #include "kernel_operator.h"
-#include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_utils.h"
 
@@ -26,7 +25,6 @@ namespace MhcPre {
 constexpr uint32_t MHC_PRE_IMPL_MODE_FP32 = 0U;
 constexpr uint32_t MHC_PRE_IMPL_MODE_HF32 = 1U;
 
-using namespace matmul;
 using namespace AscendC;
 
 struct InitParams {
@@ -54,10 +52,6 @@ constexpr MicroAPI::CastTrait ctHalf2Fp32Zero = {MicroAPI::RegLayout::ZERO, Micr
                                                  MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 constexpr MicroAPI::DivSpecificMode divMode = {MicroAPI::MaskMergeMode::ZEROING, true};
 
-using aT = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using bT = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
-using cT = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using MT = matmul::MatmulImpl<aT, bT, cT>;
 #endif  // MHC_PRE_COMMON_DEFINED
 
 struct MatrixInfo {
@@ -221,7 +215,7 @@ public:
     static constexpr float kOneValue = 1.0f;
     static constexpr float kTwoValue = 2.0f;
 
-    __aicore__ inline MhcPreKernelBase(MT &matmul) : mm(matmul) {}
+    __aicore__ inline MhcPreKernelBase() = default;
 
     __aicore__ inline void InitPipeAndCoreIdx(TPipe *pipe)
     {
@@ -917,7 +911,6 @@ public:
     }
 
 protected:
-    MT &mm;
     MNConfig mnConfig_;
     uint32_t coreNum_;
     uint64_t totalLength_;

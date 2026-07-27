@@ -17,7 +17,6 @@
 #define MHC_PRE_SPLIT_ND_H_
 
 #include "kernel_operator.h"
-#include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_utils.h"
 #include "mhc_pre_kernel_base.h"
@@ -55,7 +54,6 @@ template <class T, class P, int8_t HAS_RESI>
 class MhcPreKernelSplitND : public MhcPreKernelBase<T, P> {
 public:
     using Base = MhcPreKernelBase<T, P>;
-    using Base::mm;
     using Base::mnConfig_;
     using Base::coreNum_;
     using Base::totalLength_;
@@ -121,7 +119,7 @@ public:
 
     static constexpr int8_t kHasResi = HAS_RESI;
 
-    __aicore__ inline MhcPreKernelSplitND(MT &matmul) : Base(matmul) {}
+    __aicore__ inline MhcPreKernelSplitND() = default;
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void Process();
     __aicore__ inline void AICProcess();

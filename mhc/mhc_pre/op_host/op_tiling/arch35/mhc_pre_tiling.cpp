@@ -57,16 +57,8 @@ const constexpr uint32_t V1_CHUNK_D_SIZE = 5120;
 const constexpr uint32_t CHUNK_T_CALC_FACTOR = 32;
 const constexpr uint64_t D_MIN = 16;
 const constexpr uint64_t D_MAX = 16384;
-const constexpr uint32_t L0_B_SIZE = 8 * 1024;
-const constexpr uint32_t FLOAT_ELE_SIZE = 8;
 const constexpr uint32_t KERNEL_WIDTH = 8;
 
-const constexpr uint32_t DB_L0C = 2;
-const constexpr uint32_t DB_L0A = 2;
-const constexpr uint32_t DB_L0B = 2;
-const constexpr uint32_t STEP_K = 1;
-const constexpr uint32_t DEPTH_K = 2;
-const constexpr uint32_t STEP_MN = 1;
 
 const constexpr size_t WORKSPACE_MULT_A = 2;
 const constexpr size_t WORKSPACE_MULT_B = 192;
@@ -84,7 +76,6 @@ const constexpr int64_t IMPL_MODE_HF32 = 1;
 
 const constexpr uint64_t DECODE_BS_THRESHOLD = 256;
 const constexpr uint32_t DECODE_CHUNK_T_SIZE = 2;
-const constexpr uint32_t DECODE_ALIGN_16 = 16;
 const constexpr size_t DECODE_WORKSPACE_ALIGN = 32;
 const constexpr size_t SPLIT_BS_GAMMA_BUFFER_LENGTH = 256;
 const constexpr size_t SPLIT_ND_GAMMA_BUFFER_LENGTH = 2048;
@@ -571,7 +562,7 @@ ge::graphStatus MhcPreBaseTiling::ParseInputAndAttr()
 }
 ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
 {
-    uint64_t ubSize, l1Size, l0CSize;
+    uint64_t ubSize;
 
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -582,9 +573,6 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize);
-    mm_.SetBufferSpace(l1Size, l0CSize, ubSize);
     blockDim_ = ascendcPlatform.GetCoreNumAic();
     aivBlockDim_ = ascendcPlatform.GetCoreNumAiv();
 
@@ -728,34 +716,6 @@ void MhcPreBaseTiling::FillMkTilingData()
 
 void MhcPreBaseTiling::FillTilingData()
 {
-    tilingData_.matmulTiling.set_dbL0C(DB_L0C);
-    tilingData_.matmulTiling.set_dbL0A(DB_L0A);
-    tilingData_.matmulTiling.set_dbL0B(DB_L0B);
-    tilingData_.matmulTiling.set_stepKa(STEP_K);
-    tilingData_.matmulTiling.set_stepKb(STEP_K);
-    tilingData_.matmulTiling.set_depthA1(DEPTH_K);
-    tilingData_.matmulTiling.set_depthB1(DEPTH_K);
-    tilingData_.matmulTiling.set_stepM(STEP_MN);
-    tilingData_.matmulTiling.set_stepN(STEP_MN);
-
-    uint32_t baseM;
-    uint32_t baseN;
-    uint32_t baseK;
-
-    if (tilingMode_ == TilingMode::SPLIT_ND) {
-        baseN = (matN_ + DECODE_ALIGN_16 - 1) / DECODE_ALIGN_16 * DECODE_ALIGN_16;
-        baseK = L0_B_SIZE / baseN / FLOAT_ELE_SIZE * KERNEL_WIDTH;
-        baseM = L0_B_SIZE / baseK / DECODE_ALIGN_16 * DECODE_ALIGN_16;
-    } else {
-        baseM = chunkTSize_;
-        baseN = baseM;
-        baseK = L0_B_SIZE / baseN / FLOAT_ELE_SIZE * KERNEL_WIDTH;
-    }
-
-    tilingData_.matmulTiling.set_baseM(baseM);
-    tilingData_.matmulTiling.set_baseN(baseN);
-    tilingData_.matmulTiling.set_baseK(baseK);
-
     uint32_t coreNum = tilingMode_ == TilingMode::SPLIT_M_K ?
         std::min(blockDim_, aivBlockDim_ / 2U) : blockDim_;
     tilingData_.set_coreNum(coreNum);
@@ -843,19 +803,6 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
         return ge::GRAPH_FAILED;
     }
 
-    mm_.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, false);
-    mm_.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, true);
-    mm_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
-    mm_.SetBias(false);
-    mm_.SetDim(1);
-    mm_.SetShape(matM_, matN_, matK_);
-    mm_.SetOrgShape(matM_, matN_, matK_);
-    if (mm_.GetTiling(tilingData_.matmulTiling) == -1) {
-        OP_LOGE_WITHOUT_REPORT(context_->GetNodeName(),
-                               "Matmul tiling generation failed, totalLength=%lu, matM=%lu",
-                               totalLength_, matM_);
-        return ge::GRAPH_FAILED;
-    }
 
     return ge::GRAPH_SUCCESS;
 }
