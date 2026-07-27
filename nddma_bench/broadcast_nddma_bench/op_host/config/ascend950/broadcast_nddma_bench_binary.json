@@ -1,0 +1,167 @@
+{
+    "op_type": "BroadcastNddmaBench",
+    "op_list": [
+        {
+            "bin_filename": "BroadcastNddmaBench_fp32",
+            "inputs": [
+                {
+                    "name": "x",
+                    "index": 0,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "y",
+                    "index": 0,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "is_mte3",
+                    "dtype": "int",
+                    "value": 1
+                },
+                {
+                    "name": "scene",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "dim2",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "dim3",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "dim4",
+                    "dtype": "int",
+                    "value": 0
+                }
+            ]
+        },
+        {
+            "bin_filename": "BroadcastNddmaBench_fp16",
+            "inputs": [
+                {
+                    "name": "x",
+                    "index": 0,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "y",
+                    "index": 0,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "is_mte3",
+                    "dtype": "int",
+                    "value": 1
+                },
+                {
+                    "name": "scene",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "dim2",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "dim3",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "dim4",
+                    "dtype": "int",
+                    "value": 0
+                }
+            ]
+        },
+        {
+            "bin_filename": "BroadcastNddmaBench_int8",
+            "inputs": [
+                {
+                    "name": "x",
+                    "index": 0,
+                    "dtype": "int8",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "y",
+                    "index": 0,
+                    "dtype": "int8",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "is_mte3",
+                    "dtype": "int",
+                    "value": 1
+                },
+                {
+                    "name": "scene",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "dim2",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "dim3",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "dim4",
+                    "dtype": "int",
+                    "value": 0
+                }
+            ]
+        }
+    ]
+}
