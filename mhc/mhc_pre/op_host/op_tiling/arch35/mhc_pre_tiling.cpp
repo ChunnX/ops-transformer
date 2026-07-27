@@ -78,13 +78,43 @@ const constexpr uint32_t SCHEDULE_MODE = 1;
 
 const constexpr float DEFAULT_NORM_EPS = 1e-6f;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
+const constexpr uint32_t IMPL_MODE_ATTR_INDEX = 3;
+const constexpr int64_t IMPL_MODE_FP32 = 0;
+const constexpr int64_t IMPL_MODE_HF32 = 1;
 
-const constexpr uint64_t DECODE_BS_THRESHOLD = 512;
+const constexpr uint64_t DECODE_BS_THRESHOLD = 256;
 const constexpr uint32_t DECODE_CHUNK_T_SIZE = 2;
 const constexpr uint32_t DECODE_ALIGN_16 = 16;
 const constexpr size_t DECODE_WORKSPACE_ALIGN = 32;
 const constexpr size_t SPLIT_BS_GAMMA_BUFFER_LENGTH = 256;
 const constexpr size_t SPLIT_ND_GAMMA_BUFFER_LENGTH = 2048;
+const constexpr uint32_t LOW_API_ALIGN_BYTES = 32;
+const constexpr uint32_t LOW_API_FLOAT_ALIGN = LOW_API_ALIGN_BYTES / sizeof(float);
+const constexpr uint32_t LOW_API_M_UB_SIZE = 16;
+const constexpr uint32_t LOW_API_M_L1_SIZE = 32;
+const constexpr uint32_t LOW_API_K_UB_SIZE = 256;
+const constexpr uint32_t LOW_API_K_L1_SIZE = 256;
+const constexpr uint32_t LOW_API_ROW_INNER_FACTOR = 8;
+const constexpr uint32_t LOW_API_D_FACTOR = 1024;
+const constexpr uint32_t LOW_API_BUFFER_POOL0_SIZE = 64 * 1024;
+const constexpr uint32_t LOW_API_BUFFER_POOL1_SIZE = 96 * 1024;
+// Keep automatic M-K routing inside the range covered by the generalized
+// precision and performance sweeps. ND and BS remain available as fallbacks
+// and for future shape-specific routing outside this validated domain.
+const constexpr uint64_t M_K_MAX_VALIDATED_TOTAL_LENGTH = 10240;
+const constexpr uint64_t M_K_MIN_MAT_K = 512;
+const constexpr int32_t BATCH_CONSISTENCY_LEVEL = 3;
+const constexpr uint64_t M_K_FP32_L1_MIN_TOTAL_LENGTH = 512;
+const constexpr uint64_t M_K_N8_L1_MAX_TOTAL_LENGTH = 1536;
+const constexpr uint32_t M_K_M_L1_MAX_SIZE = 256;
+const constexpr uint32_t M_K_SPLIT_ALIGN = 256;
+const constexpr uint32_t M_K_A_L1_ELEMENT_COUNT = 128 * 256;
+const constexpr uint32_t M_K_B_L1_ELEMENT_COUNT = 128 * 256;
+const constexpr uint32_t M_K_K_L1_MAX_SIZE = 1024;
+const constexpr uint32_t M_K_K_L1_ALIGN = 128;
+const constexpr size_t M_K_WORKSPACE_ALIGN = 512;
+const constexpr uint32_t M_K_USE_L1_STAGE = 0;
+const constexpr uint32_t M_K_USE_GM_STAGE = 1;
 
 static constexpr size_t OUT_H_IN_INDEX = 0;
 static constexpr size_t OUT_H_POST_INDEX = 1;
@@ -161,6 +191,7 @@ ge::graphStatus MhcPreBaseTiling::GetInputShape()
 }
 ge::graphStatus MhcPreBaseTiling::CheckDescAndShape()
 {
+    // gamma is optional; skip checks according to hasGamma_.
     size_t maxInputIdx = GetLastRequiredInputIndex();
     for (size_t i = 0; i <= maxInputIdx; i++) {
         auto desc = context_->GetInputDesc(i);
@@ -199,6 +230,7 @@ ge::graphStatus MhcPreBaseTiling::CheckDescAndShape()
 }
 ge::graphStatus MhcPreBaseTiling::CheckShapePositive()
 {
+    // gamma is optional; skip checks according to hasGamma_.
     size_t maxInputIdx = GetLastRequiredInputIndex();
     for (size_t i = 0; i <= maxInputIdx; i++) {
         auto shape = context_->GetInputShape(i)->GetStorageShape();
@@ -513,6 +545,7 @@ ge::graphStatus MhcPreBaseTiling::ParseInputAndAttr()
     if (InitPlatformMemory() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    // GetInputShape fills hasGamma_ and dimension parameters before checks.
     if (GetInputShape() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -553,8 +586,9 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize);
     mm_.SetBufferSpace(l1Size, l0CSize, ubSize);
     blockDim_ = ascendcPlatform.GetCoreNumAic();
+    aivBlockDim_ = ascendcPlatform.GetCoreNumAiv();
 
-    ubSize_ = ubSize; // 保存UB大小供后续校验使用
+    ubSize_ = ubSize; // Save UB size for later validation
 
     return ge::GRAPH_SUCCESS;
 }
@@ -588,9 +622,116 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
     auto hcEpsPtr = attrs->GetAttrPointer<float>(2);
     hcEps_ = (hcEpsPtr != nullptr) ? *hcEpsPtr : DEFAULT_HC_EPS;
 
+    auto implModePtr = attrs->GetAttrPointer<int64_t>(IMPL_MODE_ATTR_INDEX);
+    int64_t implMode = (implModePtr != nullptr) ? *implModePtr : IMPL_MODE_FP32;
+    if (implMode != IMPL_MODE_FP32 && implMode != IMPL_MODE_HF32) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "op_impl_mode",
+                                              std::to_string(implMode).c_str(),
+                                              "op_impl_mode must be 0 (FP32) or 1 (HF32)");
+        return ge::GRAPH_FAILED;
+    }
+    implMode_ = static_cast<uint32_t>(implMode);
+
     return ge::GRAPH_SUCCESS;
 }
 
+
+bool MhcPreBaseTiling::CanUseLowApiBs() const
+{
+    bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
+    return tilingMode_ == TilingMode::SPLIT_BS && supportedN;
+}
+
+bool MhcPreBaseTiling::CanUseMk() const
+{
+    bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
+    return supportedN && totalLength_ <= M_K_MAX_VALIDATED_TOTAL_LENGTH &&
+           matK_ >= M_K_MIN_MAT_K &&
+           context_->GetDeterministicLevel() != BATCH_CONSISTENCY_LEVEL;
+}
+
+uint32_t MhcPreBaseTiling::SelectMkStage() const
+{
+    // Stable msprof measurements favor direct UB-to-L1 staging for large-M
+    // FP32 and small-M N=8. GM staging is the robust default elsewhere.
+    bool useL1Stage = (implMode_ == IMPL_MODE_FP32 && totalLength_ >= M_K_FP32_L1_MIN_TOTAL_LENGTH) ||
+                      (N_ == N_VALID_VALUES[2] && totalLength_ < M_K_N8_L1_MAX_TOTAL_LENGTH);
+    return useL1Stage ? M_K_USE_L1_STAGE : M_K_USE_GM_STAGE;
+}
+
+void MhcPreBaseTiling::FillLowApiTilingData()
+{
+    auto roundUp = [](uint64_t value, uint64_t align) -> uint32_t {
+        return static_cast<uint32_t>(((value + align - 1U) / align) * align);
+    };
+    uint32_t fusionAlign = roundUp(matN_, LOW_API_FLOAT_ALIGN);
+    uint32_t nAlign = roundUp(N_, LOW_API_FLOAT_ALIGN);
+    tilingData_.set_mL1Size(LOW_API_M_L1_SIZE);
+    tilingData_.set_mUbSize(LOW_API_M_UB_SIZE);
+    tilingData_.set_kUbSize(LOW_API_K_UB_SIZE);
+    tilingData_.set_kL1Size(LOW_API_K_L1_SIZE);
+    tilingData_.set_rowInnerFactor(LOW_API_ROW_INNER_FACTOR);
+    tilingData_.set_dFactor(LOW_API_D_FACTOR);
+    tilingData_.set_dLoop(static_cast<uint32_t>((D_ + LOW_API_D_FACTOR - 1U) / LOW_API_D_FACTOR));
+    uint32_t tailD = static_cast<uint32_t>(D_ % LOW_API_D_FACTOR);
+    tilingData_.set_tailDFactor(tailD == 0 ? LOW_API_D_FACTOR : tailD);
+    tilingData_.set_fusionAlign(fusionAlign);
+    tilingData_.set_nAlign(nAlign);
+    tilingData_.set_bufferPool0Size(LOW_API_BUFFER_POOL0_SIZE);
+    tilingData_.set_bufferPool1Size(LOW_API_BUFFER_POOL1_SIZE);
+}
+
+void MhcPreBaseTiling::FillMkTilingData()
+{
+    auto ceilDiv = [](uint64_t value, uint64_t divisor) -> uint64_t {
+        return (value + divisor - 1U) / divisor;
+    };
+    auto roundUp = [&ceilDiv](uint64_t value, uint64_t align) -> uint64_t {
+        return ceilDiv(value, align) * align;
+    };
+
+    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
+    uint64_t mDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
+    uint64_t singleCoreM = roundUp(ceilDiv(totalLength_, mDim), AscendC::BLOCK_CUBE);
+    uint64_t kDim = activeCoreNum / mDim;
+    uint64_t splitK = roundUp(ceilDiv(matK_, kDim), M_K_SPLIT_ALIGN);
+    uint64_t actualKBlockNum = ceilDiv(matK_, splitK);
+    uint64_t mL1Size = std::min<uint64_t>(M_K_M_L1_MAX_SIZE, singleCoreM);
+    uint64_t fusionAlign = roundUp(matN_, LOW_API_FLOAT_ALIGN);
+    uint64_t kL1Size = std::min<uint64_t>(M_K_A_L1_ELEMENT_COUNT / mL1Size,
+        M_K_B_L1_ELEMENT_COUNT / fusionAlign);
+    kL1Size = std::min<uint64_t>(kL1Size, M_K_K_L1_MAX_SIZE);
+    kL1Size = std::max<uint64_t>(M_K_K_L1_ALIGN,
+                                 kL1Size / M_K_K_L1_ALIGN * M_K_K_L1_ALIGN);
+
+    tilingData_.set_cubeBlockDimM(static_cast<uint32_t>(mDim));
+    tilingData_.set_cubeBlockDimK(static_cast<uint32_t>(actualKBlockNum));
+    tilingData_.set_multCoreSplitKSize(static_cast<uint32_t>(splitK));
+    tilingData_.set_mL1Size(static_cast<uint32_t>(mL1Size));
+    tilingData_.set_kL1Size(static_cast<uint32_t>(kL1Size));
+    tilingData_.set_mUbSize(static_cast<uint32_t>(ceilDiv(mL1Size, 2)));
+    tilingData_.set_kUbSize(static_cast<uint32_t>(kL1Size));
+    tilingData_.set_fusionAlign(static_cast<uint32_t>(fusionAlign));
+    tilingData_.set_nAlign(static_cast<uint32_t>(roundUp(N_, LOW_API_FLOAT_ALIGN)));
+    tilingData_.set_bufferPool0Size(LOW_API_BUFFER_POOL0_SIZE);
+    tilingData_.set_bufferPool1Size(LOW_API_BUFFER_POOL1_SIZE);
+    uint64_t stage2RowsPerCore = roundUp(
+        ceilDiv(totalLength_, aivBlockDim_), LOW_API_FLOAT_ALIGN);
+    uint64_t stage2UsedAivNum = std::min<uint64_t>(
+        aivBlockDim_, ceilDiv(totalLength_, stage2RowsPerCore));
+    tilingData_.set_stage2UsedAivNum(static_cast<uint32_t>(stage2UsedAivNum));
+    tilingData_.set_stage2RowsPerCore(static_cast<uint32_t>(stage2RowsPerCore));
+
+    size_t partialMmBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * matN_ * sizeof(float);
+    size_t partialRmsBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * sizeof(float);
+    size_t mmOffset = 0;
+    size_t rmsOffset = roundUp(partialMmBytes, M_K_WORKSPACE_ALIGN);
+    size_t finalOffset = roundUp(rmsOffset + partialRmsBytes, M_K_WORKSPACE_ALIGN);
+    tilingData_.set_mkWorkspaceMmOffset(static_cast<uint32_t>(mmOffset));
+    tilingData_.set_mkWorkspaceRmsOffset(static_cast<uint32_t>(rmsOffset));
+    tilingData_.set_mkWorkspaceFinalOffset(static_cast<uint32_t>(finalOffset));
+    tilingData_.set_mkUseGmStage(SelectMkStage());
+}
 
 void MhcPreBaseTiling::FillTilingData()
 {
@@ -622,7 +763,9 @@ void MhcPreBaseTiling::FillTilingData()
     tilingData_.matmulTiling.set_baseN(baseN);
     tilingData_.matmulTiling.set_baseK(baseK);
 
-    tilingData_.set_coreNum(blockDim_);
+    uint32_t coreNum = tilingMode_ == TilingMode::SPLIT_M_K ?
+        std::min(blockDim_, aivBlockDim_ / 2U) : blockDim_;
+    tilingData_.set_coreNum(coreNum);
     tilingData_.set_totalLength(totalLength_);
     tilingData_.set_nD(matK_);
     tilingData_.set_fusionSize(matN_);
@@ -635,16 +778,36 @@ void MhcPreBaseTiling::FillTilingData()
     tilingData_.set_outFlag(outFlag_);
     tilingData_.set_hasGamma(hasGamma_);
     tilingData_.set_hasResi(hasResi_);
+    tilingData_.set_implMode(implMode_);
 
     float scaleMean = 1.0f / static_cast<float>(matK_);
     tilingData_.set_scaleMean(scaleMean);
+
+    if (tilingMode_ == TilingMode::LOW_API_BS) {
+        FillLowApiTilingData();
+    } else if (tilingMode_ == TilingMode::SPLIT_M_K) {
+        FillMkTilingData();
+    }
 }
 
 ge::graphStatus MhcPreBaseTiling::TilingProcess()
 {
+    // Start from the retained ND/BS implementations. M-K overrides this only
+    // in its validated domain; special shapes can add explicit ND/BS routing
+    // here later without removing either implementation.
     tilingMode_ = (totalLength_ <= DECODE_BS_THRESHOLD) ? TilingMode::SPLIT_ND : TilingMode::SPLIT_BS;
+    if (CanUseLowApiBs()) {
+        tilingMode_ = TilingMode::LOW_API_BS;
+    }
+    if (CanUseMk()) {
+        tilingMode_ = TilingMode::SPLIT_M_K;
+        FillMkTilingData();
+    }
 
-    if (tilingMode_ == TilingMode::SPLIT_ND) {
+    if (tilingMode_ == TilingMode::SPLIT_M_K) {
+        chunkTSize_ = tilingData_.get_mL1Size();
+        v1ChunkDSize_ = V1_CHUNK_D_SIZE;
+    } else if (tilingMode_ == TilingMode::SPLIT_ND) {
         chunkTSize_ = DECODE_CHUNK_T_SIZE;
         v1ChunkDSize_ = V1_CHUNK_D_SIZE;
     } else {
@@ -659,7 +822,15 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
     size_t userWorkspaceSize;
     size_t systemWorkspaceSize = SYSTEM_WORKSPACE;
 
-    if (tilingMode_ == TilingMode::SPLIT_ND) {
+    if (tilingMode_ == TilingMode::SPLIT_M_K) {
+        size_t finalBytes = outFlag_ ? 0U : static_cast<size_t>(totalLength_) * matN_ * sizeof(float);
+        size_t mkXStageBytes = tilingData_.get_mkUseGmStage() == 0U ? 0U :
+            static_cast<size_t>(tilingData_.get_cubeBlockDimM()) *
+            tilingData_.get_cubeBlockDimK() * 2U *
+            tilingData_.get_mL1Size() * tilingData_.get_kL1Size() * sizeof(float);
+        userWorkspaceSize = static_cast<size_t>(tilingData_.get_mkWorkspaceFinalOffset()) +
+                            finalBytes + mkXStageBytes;
+    } else if (tilingMode_ == TilingMode::SPLIT_ND) {
         size_t xFloatWorkspaceSizeRaw = static_cast<size_t>(matM_) * static_cast<size_t>(matK_) * sizeof(float);
         size_t xFloatWorkspaceSize =
             (xFloatWorkspaceSizeRaw + DECODE_WORKSPACE_ALIGN - 1U) / DECODE_WORKSPACE_ALIGN * DECODE_WORKSPACE_ALIGN;
@@ -709,6 +880,8 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
 
     if (tilingMode_ == TilingMode::SPLIT_BS) {
         fixedBufferSize = 80 * 1024 * doubleBufferCount + 20 * 1024 * doubleBufferCount + 40 * 1024;
+    } else if (tilingMode_ == TilingMode::LOW_API_BS || tilingMode_ == TilingMode::SPLIT_M_K) {
+        fixedBufferSize = LOW_API_BUFFER_POOL0_SIZE + LOW_API_BUFFER_POOL1_SIZE;
     } else {
         fixedBufferSize = 80 * 1024 * doubleBufferCount + 16 * 1024 * doubleBufferCount + 20 * 1024;
     }
@@ -717,13 +890,13 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
 
     if (outFlag_) {
         size_t invRmsSize =
-            (tilingMode_ == TilingMode::SPLIT_BS) ? (chunkTSize_ / 2) * floatSize : ((chunkTSize_ + 1) / 2) * floatSize;
+            (tilingMode_ == TilingMode::SPLIT_ND) ? ((chunkTSize_ + 1) / 2) * floatSize : (chunkTSize_ / 2) * floatSize;
         dynamicBufferSize += invRmsSize;
     }
 
     if (hasGamma_) {
-        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_BS) ? SPLIT_BS_GAMMA_BUFFER_LENGTH
-                                                                         : SPLIT_ND_GAMMA_BUFFER_LENGTH;
+        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_ND) ? SPLIT_ND_GAMMA_BUFFER_LENGTH
+                                                                         : SPLIT_BS_GAMMA_BUFFER_LENGTH;
         dynamicBufferSize += gammaBufferLength * floatSize;
     }
 

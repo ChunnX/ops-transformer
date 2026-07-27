@@ -24,7 +24,9 @@ namespace optiling {
 
 enum class TilingMode : uint8_t {
     SPLIT_BS = 0,
-    SPLIT_ND = 1
+    SPLIT_ND = 1,
+    LOW_API_BS = 2,
+    SPLIT_M_K = 3
 };
 
 BEGIN_TILING_DATA_DEF(MhcPreTilingData)
@@ -43,6 +45,28 @@ TILING_DATA_FIELD_DEF(uint64_t, D);
 TILING_DATA_FIELD_DEF(float, normEps);
 TILING_DATA_FIELD_DEF(float, hcEps);
 TILING_DATA_FIELD_DEF(float, scaleMean);
+TILING_DATA_FIELD_DEF(uint32_t, mL1Size);
+TILING_DATA_FIELD_DEF(uint32_t, mUbSize);
+TILING_DATA_FIELD_DEF(uint32_t, kUbSize);
+TILING_DATA_FIELD_DEF(uint32_t, kL1Size);
+TILING_DATA_FIELD_DEF(uint32_t, rowInnerFactor);
+TILING_DATA_FIELD_DEF(uint32_t, dFactor);
+TILING_DATA_FIELD_DEF(uint32_t, dLoop);
+TILING_DATA_FIELD_DEF(uint32_t, tailDFactor);
+TILING_DATA_FIELD_DEF(uint32_t, fusionAlign);
+TILING_DATA_FIELD_DEF(uint32_t, nAlign);
+TILING_DATA_FIELD_DEF(uint32_t, bufferPool0Size);
+TILING_DATA_FIELD_DEF(uint32_t, bufferPool1Size);
+TILING_DATA_FIELD_DEF(uint32_t, cubeBlockDimM);
+TILING_DATA_FIELD_DEF(uint32_t, cubeBlockDimK);
+TILING_DATA_FIELD_DEF(uint32_t, multCoreSplitKSize);
+TILING_DATA_FIELD_DEF(uint32_t, mkWorkspaceMmOffset);
+TILING_DATA_FIELD_DEF(uint32_t, mkWorkspaceRmsOffset);
+TILING_DATA_FIELD_DEF(uint32_t, mkWorkspaceFinalOffset);
+TILING_DATA_FIELD_DEF(uint32_t, mkUseGmStage);
+TILING_DATA_FIELD_DEF(uint32_t, stage2UsedAivNum);
+TILING_DATA_FIELD_DEF(uint32_t, stage2RowsPerCore);
+TILING_DATA_FIELD_DEF(uint32_t, implMode);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPre, MhcPreTilingData);
@@ -115,11 +139,17 @@ protected:
     void FillTilingData();
     ge::graphStatus TilingProcess();
     ge::graphStatus CheckUbBufferSize();
+    void FillLowApiTilingData();
+    void FillMkTilingData();
+    bool CanUseLowApiBs() const;
+    bool CanUseMk() const;
+    uint32_t SelectMkStage() const;
     size_t GetLastRequiredInputIndex() const;
 
 private:
     MhcPreTilingData tilingData_;
     uint32_t blockDim_ = 32; // AIC
+    uint32_t aivBlockDim_ = 64;
     uint64_t totalLength_ = 0;
     uint64_t m_ = 0;
     uint64_t ubSize_ = 0;
@@ -136,6 +166,7 @@ private:
     uint32_t hasGamma_ = 0;
     uint32_t chunkTSize_ = 0;
     uint32_t v1ChunkDSize_ = 0;
+    uint32_t implMode_ = 0;
     TilingMode tilingMode_ = TilingMode::SPLIT_BS;
     uint32_t hasResi_ = 1;
 
