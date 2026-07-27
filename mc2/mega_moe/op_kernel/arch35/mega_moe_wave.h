@@ -83,14 +83,7 @@ public:
     };
     using QuantOutType = typename QuantTraits<QuantMode>::OutType;
     using QuantScaleOutType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
-    // The wave schedule owns every MTE A8W8 specialization. W4 remains on the
-    // two-loop path selected in mega_moe_apt.cpp.
-    static constexpr bool SUPPORTS_WAVE =
-        !Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value &&
-        !Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value;
-    // Keep the class declaration well-formed while an unsupported specialization is queried for SUPPORTS_WAVE.
-    using ActivationType =
-        typename std::conditional<SUPPORTS_WAVE, QuantOutType, fp8_e4m3fn_t>::type;
+    using ActivationType = QuantOutType;
     struct ExpertLoopState {
         TupleShape problemShape;
         BlockOffset baseOffset;
@@ -113,8 +106,6 @@ private:
     __aicore__ inline DispatchBufferConfig DispatchBuffInit();
     __aicore__ inline SendMaskBufferConfig SendAndQuantBuffInit();
     __aicore__ inline void ResetFlagList();
-    __aicore__ inline void ResetGmm2NoQuantReadyCounters();
-    __aicore__ inline void ResetGmm2CombineSyncCounters();
     __aicore__ inline void SendMaskCal(const SendMaskBufferConfig &bufferConfig);
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t &sendCnt);
     __aicore__ inline void DispatchExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx,
@@ -503,14 +494,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SendAndQuantBuffInit()
 
     // 与 route batch 无关的固定占用
     uint64_t totalFlagInt32 =
-        static_cast<uint64_t>(expertPerRank_) *
-        (static_cast<uint64_t>(swigluFlagSlotsPerExpert_) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
-         static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_));
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        uint64_t combineSyncSlotElementCount = params_.tilingData->combineSyncSlotCountPerExpert * moeExpertPerRank_ *
-                                               static_cast<uint64_t>(INT_CACHELINE);
-        totalFlagInt32 = totalFlagInt32 > combineSyncSlotElementCount ? totalFlagInt32 : combineSyncSlotElementCount;
-    }
+        static_cast<uint64_t>(CalcMegaMoeFlagWorkspaceSize(params_.tilingData) / sizeof(int32_t));
     uint32_t resetElementCountPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
     resetBatchElementCount_ = resetElementCountPerCore < static_cast<uint32_t>(DISPATCH_RESET_BATCH) ?
                                   static_cast<int32_t>(resetElementCountPerCore) :
@@ -581,8 +565,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SendAndQuantBuffInit()
 
 // ===============================================================================================
 // ResetFlagList：对本卡workSpace上的Flag位分批清零（封顶到 DISPATCH_RESET_BATCH），
-//   包括 flagSwiGluToGmm2Ptr & flagDispatchToGmm1Ptr & flagSendCntCalToUpdParamsPtr。
-//   GMM2 后处理的 mode-specific counters 由独立函数清零。
+//   从 flagSwiGluToGmm2Ptr 起一次覆盖全部连续 flag，包括 mode-specific GMM2 counters。
 // ===============================================================================================
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ResetFlagList()
@@ -590,15 +573,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ResetFlagList()
     if constexpr (g_coreType == AIC) {
         return;
     }
-    // workSpace Flag 清零
-    // 总数 = SwiGluToGmm2(expertPerRank * swigluFlagSlotsPerExpert_)
-    //        + DispatchToGmm1(expertPerRank * dispatchFlagSlotsPerExpert_)
-    //        + SendCntCalToUpdParams(expertPerRank * aicNum_ * INT_CACHELINE)
     swigluToGmm2FlagGm_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
-    // 只清理路由专家的 flag，共享专家的 flag 由 ProcessSharedExpert 自行管理
-    int32_t flagNum = static_cast<int32_t>(moeExpertPerRank_) *
-                      (swigluFlagSlotsPerExpert_ + dispatchFlagSlotsPerExpert_ +
-                       static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_));
+    int32_t flagNum =
+        static_cast<int32_t>(CalcMegaMoeFlagWorkspaceSize(params_.tilingData) / sizeof(int32_t));
     int32_t coreLen, coreOffset;
     TilingByCore(flagNum, coreLen, coreOffset, 1);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
@@ -628,11 +605,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ResetFlagList()
                                                0U, 0U, 0U};
             DataCopyPad(statusGm[statusCoreOffset + resetElementOffset], resetTensor_, statusCopyParams);
         }
-    }
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        ResetGmm2NoQuantReadyCounters();
-    } else {
-        ResetGmm2CombineSyncCounters();
     }
 }
 
@@ -1455,64 +1427,6 @@ template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline uint64_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Gmm2NoQuantReadySlotStride() const
 {
     return static_cast<uint64_t>(blockNum_) * static_cast<uint64_t>(INT_CACHELINE);
-}
-
-// =================================================================================================
-// Reset the per-AIC arrival lines. Only physical AIV1 participates, with one
-// worker owning each complete slot so all reduction padding is initialized.
-// =================================================================================================
-template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ResetGmm2NoQuantReadyCounters()
-{
-    if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ != 1) {
-            return;
-        }
-        uint32_t logicalAiv1Idx = aivCoreIdx_ / 2U;
-        uint32_t logicalAiv1Num = blockAivNum_ / 2U;
-        if (logicalAiv1Num == 0U) {
-            return;
-        }
-        uint32_t resetElements = static_cast<uint32_t>(Gmm2NoQuantReadySlotStride());
-        // The general resetTensor_ may be smaller than one complete ready slot.
-        LocalTensor<int32_t> zeroLine(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR, resetElements);
-        Duplicate<int32_t>(zeroLine, 0, resetElements);
-        SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-
-        GlobalTensor<int32_t> readyGm;
-        readyGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr));
-        for (uint32_t slot = logicalAiv1Idx; slot < expertPerRank_; slot += logicalAiv1Num) {
-            uint64_t slotOffset = static_cast<uint64_t>(slot) * Gmm2NoQuantReadySlotStride();
-            DataCopy(readyGm[slotOffset], zeroLine, resetElements);
-        }
-    }
-}
-
-// Reset the per-expert GMM2 tile-completion counters used by AIV1-only
-// combine quantization. All physical AIVs share the reset work; only AIV1
-// consumes the counters after the local all-core synchronization.
-template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ResetGmm2CombineSyncCounters()
-{
-    int32_t totalCounters = static_cast<int32_t>(params_.tilingData->combineSyncSlotCountPerExpert * moeExpertPerRank_ *
-                                                 static_cast<uint64_t>(INT_CACHELINE));
-    int32_t coreLen, coreOffset;
-    TilingByCore(totalCounters, coreLen, coreOffset);
-    GlobalTensor<int32_t> countersGm;
-    countersGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-        params_.workspaceInfo.gmm2CombineSyncCounterPtr));
-    if (coreLen > 0) {
-        SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-        for (int32_t resetElementOffset = 0; resetElementOffset < coreLen;
-             resetElementOffset += resetBatchElementCount_) {
-            int32_t currentBatchElementCount = coreLen - resetElementOffset < resetBatchElementCount_ ?
-                                                   coreLen - resetElementOffset :
-                                                   resetBatchElementCount_;
-            DataCopyExtParams resetCopyParams{
-                1U, static_cast<uint32_t>(currentBatchElementCount * sizeof(int32_t)), 0U, 0U, 0U};
-            DataCopyPad(countersGm[coreOffset + resetElementOffset], resetTensor_, resetCopyParams);
-        }
-    }
 }
 
 // AIC fan-in publication.  Every AIC contributes once for the selected slot,
@@ -2618,7 +2532,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
 {
-    static_assert(SUPPORTS_WAVE, "MegaMoeWave only supports generic A8W8");
+    static_assert(!Std::IsSame<ActivationType, fp4x2_e2m1_t>::value &&
+                      !Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value,
+                  "MegaMoeWave only supports A8W8");
 
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();

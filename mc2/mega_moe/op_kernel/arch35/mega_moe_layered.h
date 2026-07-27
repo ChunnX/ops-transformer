@@ -85,7 +85,6 @@ private:
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void UnpermuteBuffInit();
     __aicore__ inline void ResetFlagList();
-    __aicore__ inline void ResetGmm2CombineSyncCounters();
     __aicore__ inline void SendMaskCal();
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t &sendCnt);
     __aicore__ inline void MetaInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId);
@@ -208,6 +207,7 @@ private:
     uint32_t topKWeightsTempAddr_ = 0;
     uint32_t sharedExpertNum_ = 0;
     uint32_t moeExpertPerRank_ = 0;
+    int32_t resetBatchElementCount_ = 0;
 
     static constexpr uint32_t A_ELEMS_PER_BYTE = Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
     static constexpr uint32_t B_ELEMS_PER_BYTE = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value ? 2U : 1U;
@@ -286,10 +286,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     blockNumPerRank_ = tilingData->blockNumPerEP;
     maxOutputSize_ = tilingData->maxOutputSize;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
-    maxWavesPerExpert_ = static_cast<int32_t>(
-        Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_), static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256)));
-    dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(
-        Ops::Base::CeilAlign(static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
+    maxWavesPerExpert_ =
+        static_cast<int32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
+    dispatchFlagSlotsPerExpert_ = maxWavesPerExpert_ * INT_CACHELINE;
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
@@ -502,18 +501,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     LocalTensor<uint8_t> hcommTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
     hcomm_.Init(hcommTensor_, ALIGN_512);
 
-    // 计算 resetTensor 大小（与原逻辑一致）
     uint64_t totalFlagInt32 =
-        static_cast<uint64_t>(expertPerRank_) *
-        (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
-         static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_)); // 64 * (16 + 256 + 16 * 28) = 46080
-    int64_t tokenGroupResetSize = static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE;
-    totalFlagInt32 = (static_cast<int64_t>(totalFlagInt32) > tokenGroupResetSize) ?
-                         static_cast<int64_t>(totalFlagInt32) :
-                         tokenGroupResetSize;
+        static_cast<uint64_t>(CalcMegaMoeFlagWorkspaceSize(params_.tilingData) / sizeof(int32_t));
     uint32_t resetNumPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
+    resetBatchElementCount_ = resetNumPerCore < static_cast<uint32_t>(DISPATCH_RESET_BATCH) ?
+                                  static_cast<int32_t>(resetNumPerCore) :
+                                  DISPATCH_RESET_BATCH;
     uint32_t resetTensorSize =
-        Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore), static_cast<uint64_t>(INT32_PER_256B)) *
+        Ops::Base::CeilAlign(static_cast<uint64_t>(resetBatchElementCount_),
+                             static_cast<uint64_t>(INT32_PER_256B)) *
         sizeof(int32_t);
 
     // 分轮次参数计算：UB 预算扣除固定开销后，求解最大 roundSendTotalNum_
@@ -574,7 +570,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
 }
 
 // ===============================================================================================
-// ResetFlagList：对本卡workSpace上对于Flag位的清理，包括flagSwiGluToGmm2Ptr & flagDispatchToGmm1Ptr
+// ResetFlagList：从 flagSwiGluToGmm2Ptr 起一次覆盖全部连续 flag。
 // ===============================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
@@ -582,22 +578,21 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if constexpr (g_coreType == AIC) {
         return;
     }
-    // workSpace Flag 清零
-    // 总数 = SwiGluToGmm2(expertPerRank * INT_CACHELINE) + DispatchToGmm1(expertPerRank * dispatchFlagSlotsPerExpert_)
-    //        + SendCntCalToUpdParams(expertPerRank * aicNum_ * INT_CACHELINE)
     swigluToGmm2FlagGm_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
     int32_t flagNum =
-        static_cast<int32_t>(moeExpertPerRank_) * (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_ +
-                                                static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_));
+        static_cast<int32_t>(CalcMegaMoeFlagWorkspaceSize(params_.tilingData) / sizeof(int32_t));
     int32_t coreLen, coreOffset;
     TilingByCore(flagNum, coreLen, coreOffset, 1);
-    DataCopyExtParams rankSyncCopyParams{1U, static_cast<uint32_t>(coreLen * sizeof(int32_t)), 0U, 0U, 0U};
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-    if (coreLen != 0) {
-        DataCopyPad(swigluToGmm2FlagGm_[coreOffset], resetTensor_, rankSyncCopyParams);
+    for (int32_t resetElementOffset = 0; resetElementOffset < coreLen;
+         resetElementOffset += resetBatchElementCount_) {
+        int32_t currentBatchElementCount = coreLen - resetElementOffset < resetBatchElementCount_ ?
+                                               coreLen - resetElementOffset :
+                                               resetBatchElementCount_;
+        DataCopyExtParams resetCopyParams{
+            1U, static_cast<uint32_t>(currentBatchElementCount * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(swigluToGmm2FlagGm_[coreOffset + resetElementOffset], resetTensor_, resetCopyParams);
     }
-    // combine量化模式下TokenGroupCompleteFlag清零
-    ResetGmm2CombineSyncCounters();
 }
 
 // ==================================================
@@ -1310,7 +1305,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::MetaInfoCalAndDi
                         int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
                         int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
                         int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
-                        AtomicAdd(flagBase + w, int32_t(hi - lo));
+                        AtomicAdd(flagBase + static_cast<int64_t>(w) * INT_CACHELINE, int32_t(hi - lo));
                     }
                 }
                 accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
@@ -1508,27 +1503,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateSharedGlob
     }
     gmmAddrInfo.swigluToGmm2Flag = nullptr;
     gmmAddrInfo.dispatchToGmm1Flag = nullptr;
-}
-
-// =============================================
-// ResetGmm2CombineSyncCounters：重置 GMM2→Combine 同步计数器
-// =============================================
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetGmm2CombineSyncCounters()
-{
-    if constexpr (g_coreType == AIV) {
-        int32_t totalCounters = static_cast<int32_t>(params_.tilingData->combineSyncSlotCountPerExpert *
-                                                     moeExpertPerRank_ * static_cast<uint64_t>(INT_CACHELINE));
-        int32_t coreLen, coreOffset;
-        TilingByCore(totalCounters, coreLen, coreOffset);
-        GlobalTensor<int32_t> gmm2CombineSyncCounterGm;
-        gmm2CombineSyncCounterGm.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
-        if (coreLen > 0) {
-            Duplicate(resetTensor_, 0, coreLen);
-            SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-            DataCopy(gmm2CombineSyncCounterGm[coreOffset], resetTensor_, coreLen);
-        }
-    }
 }
 
 // =============================================
