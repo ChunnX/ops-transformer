@@ -24,6 +24,10 @@ namespace optiling {
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureWinKV() const
 {
+    if (perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        return ge::GRAPH_SUCCESS;
+    }
     OP_CHECK_IF(oriWinLeft_ != 127, // 127:当前不泛化
         OP_LOGE(opName_, "oriWinLeft_ only support 127, but got %u", oriWinLeft_),
         return ge::GRAPH_FAILED);
