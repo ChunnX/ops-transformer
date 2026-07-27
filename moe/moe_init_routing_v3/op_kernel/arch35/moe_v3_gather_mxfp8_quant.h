@@ -56,6 +56,9 @@ __simd_vf__ inline void vfComputeAmax(__ubuf__ T *xAddr, __ubuf__ uint16_t *amax
     UnalignReg uReg;
 
     for (uint16_t i = 0; i < vfLoopNum; i++) {
+        // uint32_t curXOffset = static_cast<uint32_t>(i) * vlForT * 2;
+        // uint32_t curXElemNum = (xElemNum > curXOffset) ? (xElemNum - curXOffset) : 0;
+        // curXElemNum = (curXElemNum > vlForT * 2) ? (vlForT * 2) : curXElemNum;
         mask0 = UpdateMask<T>(xElemNum);
         mask1 = UpdateMask<T>(xElemNum);
         MaskDeInterleave<T>(mask0, mask1, mask0, mask1);
@@ -140,6 +143,12 @@ __simd_vf__ inline void vfComputeRoundScale(__ubuf__ uint16_t *amaxInAddr, __ubu
     MaskReg maskInfBF16, maskZero, maskLowExp, maskSpecialMin, maskMantHigh, maskClamp;
 
     for (uint16_t i = 0; i < vfLoopNum; i++) {
+        // uint32_t curScaleOffset = static_cast<uint32_t>(i) * vlForT;
+        // uint32_t curScaleElemNum = (scaleElemNum > curScaleOffset) ? (scaleElemNum - curScaleOffset) : 0;
+        // curScaleElemNum = (curScaleElemNum > vlForT) ? vlForT : curScaleElemNum;
+        // uint32_t curValidScaleElemNum =
+        //     (validScaleElemNum > curScaleOffset) ? (validScaleElemNum - curScaleOffset) : 0;
+        // curValidScaleElemNum = (curValidScaleElemNum > vlForT) ? vlForT : curValidScaleElemNum;
         maskLoop = UpdateMask<uint16_t>(scaleElemNum);
         maskValid = UpdateMask<uint16_t>(validScaleElemNum);
         // 拷入vfComputeAmax算好的amax
@@ -228,6 +237,20 @@ __simd_vf__ inline void vfComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t *invS
     MaskReg maskAllB32 = CreateMask<float, MaskPattern::ALL>();
 
     for (uint16_t i = 0; i < vfLoopNum; i++) {
+        // uint32_t curXOffset = static_cast<uint32_t>(i) * vlForT * 2;
+        // uint32_t curXElemNum = (xElemNum > curXOffset) ? (xElemNum - curXOffset) : 0;
+        // curXElemNum = (curXElemNum > vlForT * 2) ? (vlForT * 2) : curXElemNum;
+        // uint32_t xQuant0ElemNum = curXElemNum;
+        // xQuant0ElemNum = (xQuant0ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant0ElemNum;
+        // uint32_t xQuant1ElemNum = (curXElemNum > OUT_ELE_NUM_ONE_BLK) ?
+        //     (curXElemNum - OUT_ELE_NUM_ONE_BLK) : 0;
+        // xQuant1ElemNum = (xQuant1ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant1ElemNum;
+        // uint32_t xQuant2ElemNum = (curXElemNum > OUT_ELE_NUM_ONE_BLK * 2) ?
+        //     (curXElemNum - OUT_ELE_NUM_ONE_BLK * 2) : 0;
+        // xQuant2ElemNum = (xQuant2ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant2ElemNum;
+        // uint32_t xQuant3ElemNum = (curXElemNum > OUT_ELE_NUM_ONE_BLK * 3) ?
+        //     (curXElemNum - OUT_ELE_NUM_ONE_BLK * 3) : 0;
+        // xQuant3ElemNum = (xQuant3ElemNum > OUT_ELE_NUM_ONE_BLK) ? OUT_ELE_NUM_ONE_BLK : xQuant3ElemNum;
         maskXQuant0B32 = UpdateMask<float>(xElemNum);
         maskXQuant1B32 = UpdateMask<float>(xElemNum);
         maskXQuant2B32 = UpdateMask<float>(xElemNum);
@@ -368,6 +391,8 @@ private:
     int64_t lastLoopScaleCols_;
     int64_t indicesOffset_;
     int64_t rowIdxType_ = 0;
+    int64_t perLoopColsVfAlign_;
+    int64_t perLoopScaleColsVfAlign_;
 
     uint16_t fp8Emax_ = 0;
 
@@ -406,11 +431,11 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Init(GM_ADDR xA
 
     // perrows * 2 * 2 * 4 expandRowIdx + sortedExpertId
     pipe_->InitBuffer(sortedRowIdxInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopRows_, sizeof(int32_t)));
-    pipe_->InitBuffer(xInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(T)));
-    pipe_->InitBuffer(xQuantOutQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_ / 4, sizeof(int8_t)) * 4);
-    pipe_->InitBuffer(mxScaleOutQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopScaleCols_, sizeof(int8_t)));
-    pipe_->InitBuffer(maxExpBuffer_, AlignBytes(perLoopScaleCols_, sizeof(T)));
-    pipe_->InitBuffer(invScaleBuffer_, AlignBytes(perLoopScaleCols_, sizeof(T)));
+    pipe_->InitBuffer(xInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopColsVfAlign_, sizeof(T)));
+    pipe_->InitBuffer(xQuantOutQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopColsVfAlign_, sizeof(int8_t)));
+    pipe_->InitBuffer(mxScaleOutQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopScaleColsVfAlign_, sizeof(int8_t)));
+    pipe_->InitBuffer(maxExpBuffer_, AlignBytes(perLoopScaleColsVfAlign_, sizeof(uint16_t)));
+    pipe_->InitBuffer(invScaleBuffer_, AlignBytes(perLoopScaleColsVfAlign_, sizeof(uint16_t)));
     if constexpr (IsSameType<U, fp8_e4m3fn_t>::value) {
         fp8Emax_ = MXFP8_E4M3_EMAX;
     } else {
@@ -463,6 +488,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTilin
     perLoopScaleCols_ = perLoopCols_ / MX_BLOCK_SIZE; // perLoopCols_在tiling侧计算，已经对齐到32的整数倍了
     lastLoopValidScaleCols_ = validScaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
     lastLoopScaleCols_ = scaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
+    perLoopColsVfAlign_ = Ops::Base::CeilAlign<int64_t>(perLoopCols_, vlForB16_ * 2);
+    perLoopScaleColsVfAlign_ = Ops::Base::CeilAlign<int64_t>(perLoopScaleCols_, vlForB16_);
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
@@ -573,6 +600,9 @@ template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols)
 {
     LocalTensor<T> inLocal = xInQueue_.AllocTensor<T>();
+    if (loopCols < perLoopColsVfAlign_) {
+        Duplicate(inLocal, static_cast<T>(0), static_cast<int32_t>(perLoopColsVfAlign_));
+    }
     DataCopyExtParams copyInParam = {1, static_cast<uint32_t>(loopCols * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams = {false, 0, 0, 0};
     int64_t loopColsTail = loopCols % MX_BLOCK_SIZE;
