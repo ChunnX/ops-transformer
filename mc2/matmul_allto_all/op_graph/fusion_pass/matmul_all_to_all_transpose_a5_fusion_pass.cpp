@@ -36,7 +36,6 @@ const size_t PERM_SIZE_ONE = 1;
 const size_t PERM_SIZE_TWO = 2;
 const size_t PERM_SIZE_THREE = 3;
 
-
 struct ReplaceGraphInputs {
     ge::es::EsTensorHolder rX1;
     ge::es::EsTensorHolder rX2;
@@ -399,7 +398,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
 
 std::vector<ge::fusion::PatternUniqPtr> MatmulAllToAllTransposeA5FusionPass::Patterns()
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter Patterns for MatmulAllToAllTransposeA5FusionPass");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "CUSTOM_VERIFY: Patterns() called, pass loaded!");
     bool hasBias = true;
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
     patternGraphs.emplace_back(MakePatternForTranspose(hasBias));
@@ -411,39 +410,39 @@ std::vector<ge::fusion::PatternUniqPtr> MatmulAllToAllTransposeA5FusionPass::Pat
 
 bool MatmulAllToAllTransposeA5FusionPass::MeetRequirements(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter MeetRequirements for MatmulAllToAllTransposeA5FusionPass");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "CUSTOM_VERIFY: MeetRequirements called!");
 
     // 9.0.0 版本前运行降级stage 空跑
     int32_t geCompilerVersion = 0;
     aclsysGetVersionNum("ge_compiler", &geCompilerVersion);
     if (geCompilerVersion < GRAPH_FUSION_SUPPORT_VERSION) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Skip in MeetRequirements when cann version not compatible.");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "CUSTOM_VERIFY: NOT fused, cann version too old.");
         return false;
     }
 
     // 是否ascend950
     if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Check target platform fail!");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "CUSTOM_VERIFY: NOT fused, target platform is not A5.");
         return false;
     }
 
     // 是否mx quant
     if (!IsMXQuantMode(matchResult)) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Quant mode is not MX QUANT, fusion will be skipped.");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "CUSTOM_VERIFY: NOT fused, quant mode is not MX QUANT.");
         return false;
     }
 
     // 是否transpose 条件吻合
     if (!IsTransposePermValid(matchResult)) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Transpose permutation is not valid.");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "CUSTOM_VERIFY: NOT fused, transpose perm is invalid.");
         return false;
     }
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Found One pattern that meets requirements");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "CUSTOM_VERIFY: FUSED success!");
     return true;
 }
 
-ge::fusion::GraphUniqPtr
-MatmulAllToAllTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
+ge::fusion::GraphUniqPtr MatmulAllToAllTransposeA5FusionPass::Replacement(
+    const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Replacement for MatmulAllToAllTransposeA5FusionPass");
     std::vector<ge::fusion::SubgraphInput> subgraphInputs;
