@@ -301,7 +301,9 @@ def tilelang_grad_kl_loss_single_kernel(
     v2_base_batches_per_core = v2_total_batches // launch_core_num
     v2_tail_batch_cores = v2_total_batches % launch_core_num
     v2_k_padded = K
-    k_real_size_shape = (1,) if full_valid else (B, S1)
+    # 宏收集阶段会校验条件表达式两侧的 BufferRegion。即使 full-valid
+    # 最终不会生成 GetValue，也必须保留可被 [b, s] 合法索引的二维形状。
+    k_real_size_shape = (B, S1)
     valid_k_mask_shape = (1,) if full_valid else (B, S1, K)
     dkey_output_rows = B * S2
     assert dkey_output_rows % 32 == 0, (
