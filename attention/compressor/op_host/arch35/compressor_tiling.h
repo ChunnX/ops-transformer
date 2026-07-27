@@ -56,9 +56,12 @@ constexpr uint32_t CMP_RATIO_ATTR_INDEX = 0;
 constexpr uint32_t COFF_ATTR_INDEX = 1;
 constexpr uint32_t CACHE_MODE_ATTR_INDEX = 2;
 constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 3;
+constexpr uint32_t GRAD_ENABLED_ATTR_INDEX = 4;
 
 // OUTPUT
 constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;
+constexpr uint32_t SOFTMAX_SCORE_OUTPUT_INDEX = 2;
+constexpr uint32_t KV_OUTPUT_INDEX = 3;
 
 constexpr uint32_t COMPRESSOR_DIM_NUM_1 = 1;
 constexpr uint32_t COMPRESSOR_DIM_NUM_2 = 2;
@@ -97,28 +100,34 @@ static const std::string CMP_KV_NAME = "cmp_kv";
 static std::string DataTypeToSerialString(ge::DataType type);
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {X_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
-    {WKV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
-    {WGATE_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
-    {STATE_CACHE_NAME, {ge::DT_FLOAT}},
-    {APE_NAME, {ge::DT_FLOAT}},
-    {STATE_BLOCK_TABLE_NAME, {ge::DT_INT32}},
-    {CU_SEQLENS_NAME, {ge::DT_INT32}},
-    {SEQUSED_NAME, {ge::DT_INT32}},
-    {START_POS_NAME, {ge::DT_INT32}},
-    {CMP_KV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}}};
+    {X_NAME,                  {ge::DT_BF16, ge::DT_FLOAT16}},
+    {WKV_NAME,                {ge::DT_BF16, ge::DT_FLOAT16}},
+    {WGATE_NAME,              {ge::DT_BF16, ge::DT_FLOAT16}},
+    {STATE_CACHE_NAME,        {ge::DT_FLOAT}},
+    {APE_NAME,                {ge::DT_FLOAT}},
+    {STATE_BLOCK_TABLE_NAME,  {ge::DT_INT32}},
+    {CU_SEQLENS_NAME,         {ge::DT_INT32}},
+    {SEQUSED_NAME,            {ge::DT_INT32}},
+    {START_POS_NAME,          {ge::DT_INT32}},
+    {CMP_KV_NAME,             {ge::DT_BF16, ge::DT_FLOAT16}},
+    {"softmax_score",          {ge::DT_FLOAT}},
+    {"kv",                     {ge::DT_FLOAT}}
+};
 
 const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
-    {X_NAME, {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
-    {WKV_NAME, {COMPRESSOR_DIM_NUM_2}},
-    {WGATE_NAME, {COMPRESSOR_DIM_NUM_2}},
-    {STATE_CACHE_NAME, {COMPRESSOR_DIM_NUM_3}},
-    {APE_NAME, {COMPRESSOR_DIM_NUM_2}},
-    {STATE_BLOCK_TABLE_NAME, {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_1}},
-    {CU_SEQLENS_NAME, {COMPRESSOR_DIM_NUM_1}},
-    {SEQUSED_NAME, {COMPRESSOR_DIM_NUM_1}},
-    {START_POS_NAME, {COMPRESSOR_DIM_NUM_1}},
-    {CMP_KV_NAME, {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}}};
+    {X_NAME,                  {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
+    {WKV_NAME,                {COMPRESSOR_DIM_NUM_2}},
+    {WGATE_NAME,              {COMPRESSOR_DIM_NUM_2}},
+    {STATE_CACHE_NAME,        {COMPRESSOR_DIM_NUM_3}},
+    {APE_NAME,                {COMPRESSOR_DIM_NUM_2}},
+    {STATE_BLOCK_TABLE_NAME,  {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_1}},
+    {CU_SEQLENS_NAME,         {COMPRESSOR_DIM_NUM_1}},
+    {SEQUSED_NAME,            {COMPRESSOR_DIM_NUM_1}},
+    {START_POS_NAME,          {COMPRESSOR_DIM_NUM_1}},
+    {CMP_KV_NAME,             {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
+    {"softmax_score",          {COMPRESSOR_DIM_NUM_3, COMPRESSOR_DIM_NUM_4}},
+    {"kv",                     {COMPRESSOR_DIM_NUM_3, COMPRESSOR_DIM_NUM_4}}
+};
 
 static const std::map<std::string, uint32_t> LAYOUT_DIM_MAP = {
     {"BSH", COMPRESSOR_DIM_NUM_3},
@@ -216,11 +225,14 @@ struct CompressorContext {
     OptionalParaInfo seqUsed;
     OptionalParaInfo startPos;
     RequiredParaInfo cmpKv;
+    RequiredParaInfo softmaxScore;
+    RequiredParaInfo kv;
 
     const int *coff;
     const int *cmpRatio;
     const int *cacheMode;
     const int *stateCacheStrideDim0;
+    const bool *gradEnabled;
     TemplateId templateId;
 
     ge::DataType dtype = ge::DT_BF16;
@@ -281,6 +293,8 @@ private:
     ge::graphStatus CheckSingleParaSeqused() const;
     ge::graphStatus CheckSingleParaStartPos() const;
     ge::graphStatus CheckSingleParaCmpKv() const;
+    ge::graphStatus CheckSingleParaSoftmaxScore() const;
+    ge::graphStatus CheckSingleParaKv() const;
     ge::graphStatus CheckSingleParaCmpRatio() const;
     ge::graphStatus CheckSingleParaCoff() const;
     ge::graphStatus CheckSingleParaCacheMode() const;
