@@ -181,7 +181,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
                 expanded_x = at::empty({expert_num, expert_capacity, h}, x.options().dtype(output_dtype));
             }
         } else {
-            expanded_scale_len = (active_num <= 0) ? bs * k : std::min<int64_t>(active_num, bs * k);
+            expanded_scale_len = bs * k;
             switch (quant_mode) {
                 case QUANT_MODE_MXFP8_E5M2:
                     expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kFloat8_e5m2));
