@@ -30,11 +30,11 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnDenseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
-    const aclTensor* cuSeqlensQOptional, const aclTensor* cuSeqlensKOptional, const aclTensor* sequsedQOptional,
-    const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, int64_t batchSize, int64_t maxSeqlenQ,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional, int64_t batchSize, int64_t maxSeqlenQ,
     int64_t maxSeqlenK, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, char *layoutQOptional,
-    char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, const aclTensor* metadata, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, const aclTensor *metadata, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     if (workspaceSize == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "workspaceSize is nullptr");
@@ -58,10 +58,10 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     const std::string socVersion = npuInfo.GetSocLongVersion();
 
-    auto ret = ParamsCheckDli(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
-                              cmpResidualKOptional, batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim,
-                              layoutQOptional, layoutKOptional, maskMode, cmpRatio, metadata, aicCoreNum,
-                              aivCoreNum, socVersion);
+    auto ret =
+        ParamsCheckDli(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional, cmpResidualKOptional,
+                       batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, layoutQOptional,
+                       layoutKOptional, maskMode, cmpRatio, metadata, aicCoreNum, aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
@@ -118,7 +118,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
 }
 
 aclnnStatus aclnnDenseLightningIndexerKLLossGradMetadata(void *workspace, uint64_t workspaceSize,
-    aclOpExecutor *executor, aclrtStream stream)
+                                                         aclOpExecutor *executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnDenseLightningIndexerKLLossGradMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
