@@ -195,9 +195,21 @@ static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t *xBuf, uin
         }
     }
 
-    // 7. Compute tiling data (matches gen_tiling.py)
+    // 7. Compute tiling data (matches tiling.cpp logic)
     int64_t total = B * S * D;
     int64_t blockLen = total / 8;
+    constexpr int64_t ubSize = 196608; // 192KB on ascend910b
+    size_t typeSize = sizeof(T);
+    int64_t maxTileElts = (ubSize - static_cast<uint64_t>(D / 2) * typeSize) / (3ULL * typeSize);
+    int64_t posPerBlock = blockLen / D;
+    int64_t posPerTile = maxTileElts / D;
+    if (posPerTile <= 0)
+        posPerTile = 1;
+    if (posPerTile > posPerBlock)
+        posPerTile = posPerBlock;
+    int64_t tileNum = (posPerBlock + posPerTile - 1) / posPerTile;
+    int64_t tileLength = posPerTile * D;
+
     double rrt = pow(freqBase, -2.0 / tb);
     double rrh = pow(freqBase, -2.0 / hb);
     double rrw = pow(freqBase, -2.0 / wb);
@@ -211,7 +223,9 @@ static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t *xBuf, uin
     td->W = W;
     td->tBand = tb;
     td->hBand = hb;
-    td->tileNum = 1;
+    td->wBand = wb;
+    td->tileNum = tileNum;
+    td->tileLength = tileLength;
     td->blockLength = blockLen;
     td->freqBase = freqBase;
     td->rT = static_cast<float>(rrt);
