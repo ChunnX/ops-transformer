@@ -65,6 +65,7 @@ def _case(name: str, *, suite: str = "core", **kwargs: Any) -> Dict[str, Any]:
         "d_rope": 64,
         "K": 2048,
         "layout": "BSND",
+        "kind": "coverage",
     }
     config.update(kwargs)
     return config
@@ -192,6 +193,54 @@ TND_CASES = [
     _case("tnd_s1_2048_k_8192", suite="tnd", S1=2048, S2=2305, K=8192, **HEAD_CONFIGS[3], layout="TND"),
 ]
 
+
+ISOLATION_CASES = [
+    _case(
+        "isolate_valid_b1_s1_64_k_1024",
+        suite="isolate",
+        kind="valid-k",
+        B=1,
+        S1=64,
+        S2=1087,
+        N1=32,
+        Nidx1=16,
+        K=1024,
+    ),
+    _case(
+        "isolate_tail_b1_s1_1_k_4096",
+        suite="isolate",
+        kind="tail-k",
+        B=1,
+        S1=1,
+        S2=1025,
+        N1=32,
+        Nidx1=16,
+        K=4096,
+    ),
+    _case(
+        "isolate_valid_b4_s1_1_k_1024",
+        suite="isolate",
+        kind="valid-k",
+        B=4,
+        S1=1,
+        S2=1024,
+        N1=32,
+        Nidx1=16,
+        K=1024,
+    ),
+    _case(
+        "isolate_valid_b4_s1_64_k_1024",
+        suite="isolate",
+        kind="valid-k",
+        B=4,
+        S1=64,
+        S2=1087,
+        N1=32,
+        Nidx1=16,
+        K=1024,
+    ),
+]
+
 CORE_CASES = _make_b1_grid_cases() + _make_b4_cases()
 STRESS_CASES = _make_batch_stress_cases()
 BSND_CASES = CORE_CASES + STRESS_CASES
@@ -203,11 +252,11 @@ SMOKE_CASE_NAMES = (
     "tnd_s1_1_k_1024",
 )
 ALL_CASES = BSND_CASES + TND_CASES
-CASE_BY_NAME = {case["name"]: case for case in ALL_CASES}
+CASE_BY_NAME = {case["name"]: case for case in ALL_CASES + ISOLATION_CASES}
 assert len(BSND_CASES) == 45
 assert len(TND_CASES) == 5
 assert len(ALL_CASES) == 50
-assert len(CASE_BY_NAME) == len(ALL_CASES)
+assert len(CASE_BY_NAME) == len(ALL_CASES) + len(ISOLATION_CASES)
 
 
 def _validate_case(case: Dict[str, Any]) -> None:
@@ -229,6 +278,21 @@ def _validate_case(case: Dict[str, Any]) -> None:
         raise ValueError(f"{case['name']}: K must be in [1024, 8192] and divisible by 1024")
     if case["S1"] < 1 or case["S2"] < case["S1"]:
         raise ValueError(f"{case['name']}: require S2 >= S1 >= 1 for causal sparse indices")
+
+
+def _valid_k_lengths(case: Dict[str, Any]) -> List[int]:
+    return [
+        min(case["K"], max(case["S2"] - case["S1"] + query_id + 1, 0))
+        for query_id in range(case["S1"])
+    ]
+
+
+def _tail_summary(case: Dict[str, Any]) -> Tuple[int, int, int]:
+    valid_lengths = _valid_k_lengths(case)
+    valid_min = min(valid_lengths)
+    valid_max = max(valid_lengths)
+    invalid_per_batch = sum(case["K"] - valid_length for valid_length in valid_lengths)
+    return valid_min, valid_max, invalid_per_batch * case["B"]
 
 
 def _make_sparse_indices(case: Dict[str, Any], seed: int) -> torch.Tensor:
@@ -403,10 +467,12 @@ def _compare_tensor(name: str, actual: torch.Tensor, expected: torch.Tensor) -> 
             f"Official={expected_f32.numel() - expected_finite.sum().item()})"
         )
     difference = (actual_f32 - expected_f32).abs()
+    reference_norm = torch.norm(expected_f32).item()
     return {
         "max_abs": difference.max().item(),
         "mean_abs": difference.mean().item(),
         "mean_rel": (difference / (expected_f32.abs() + 1e-6)).mean().item(),
+        "norm_rel": torch.linalg.vector_norm(difference).item() / (reference_norm + 1e-6),
     }
 
 
@@ -428,6 +494,7 @@ def _compare_outputs(
         "max_abs": loss_abs,
         "mean_abs": loss_abs,
         "mean_rel": loss_abs / (loss_expected.abs().item() + 1e-6),
+        "norm_rel": loss_abs / (torch.norm(loss_expected).item() + 1e-6),
     }
     passed = all(value["mean_rel"] <= REL_TOLERANCE for value in metrics.values())
     return metrics, passed
@@ -437,7 +504,8 @@ def _print_metrics(metrics: Dict[str, Dict[str, float]]) -> None:
     for name, values in metrics.items():
         print(
             f"  {name:<12} max_abs={values['max_abs']:.6e} "
-            f"mean_abs={values['mean_abs']:.6e} mean_rel={values['mean_rel']:.6e}"
+            f"mean_abs={values['mean_abs']:.6e} mean_rel={values['mean_rel']:.6e} "
+            f"norm_rel={values['norm_rel']:.6e}"
         )
 
 
@@ -449,11 +517,33 @@ def _brief_metrics(metrics: Dict[str, Dict[str, float]]) -> str:
 
 
 def _case_summary(case: Dict[str, Any]) -> str:
+    valid_min, valid_max, invalid_count = _tail_summary(case)
     return (
-        f"suite={case['suite']} layout={case['layout']} B={case['B']} S1={case['S1']} S2={case['S2']} "
+        f"suite={case['suite']} kind={case['kind']} layout={case['layout']} B={case['B']} S1={case['S1']} S2={case['S2']} "
         f"N1={case['N1']} Nidx1={case['Nidx1']} K={case['K']} "
-        "dtype=bfloat16"
+        f"valid_k=[{valid_min},{valid_max}] invalid={invalid_count} dtype=bfloat16"
     )
+
+
+def _print_batch_diagnostics(
+    case: Dict[str, Any], tilelang_outputs: Sequence[torch.Tensor], official_outputs: Sequence[torch.Tensor]
+) -> None:
+    if case["layout"] != "BSND":
+        return
+    output_names = ("dQueryIndex", "dKeyIndex", "dWeights")
+    for batch_id in range(case["B"]):
+        values = []
+        for name, actual, expected in zip(output_names, tilelang_outputs[:3], official_outputs[:3]):
+            actual_batch = actual[batch_id].float()
+            expected_batch = expected[batch_id].float()
+            finite = torch.isfinite(actual_batch).all().item() and torch.isfinite(expected_batch).all().item()
+            if finite:
+                difference = (actual_batch - expected_batch).abs()
+                relative = torch.norm(difference).item() / (torch.norm(expected_batch).item() + 1e-6)
+                values.append(f"{name}={relative:.2e}")
+            else:
+                values.append(f"{name}=nonfinite")
+        print(f"  batch={batch_id} {' '.join(values)}")
 
 
 def _release_case_memory() -> None:
@@ -498,6 +588,8 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
         status = "PASS" if passed else "PRECISION_FAIL"
         if args.verbose:
             _print_metrics(metrics)
+        if args.diagnose:
+            _print_batch_diagnostics(case, tilelang_outputs, official_outputs)
         # Keep the normal 50-case run compact: a passing case is represented
         # by its benchmark line below, while every failure keeps its metrics.
         if not passed or (not args.bench and not args.summary_only):
@@ -544,12 +636,14 @@ def _select_cases(args: argparse.Namespace) -> Iterable[Dict[str, Any]]:
         return STRESS_CASES
     if args.suite == "tnd":
         return TND_CASES
+    if args.suite == "isolate":
+        return ISOLATION_CASES
     return ALL_CASES
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite", choices=("smoke", "core", "stress", "tnd", "all"), default="all")
+    parser.add_argument("--suite", choices=("smoke", "core", "stress", "tnd", "isolate", "all"), default="all")
     parser.add_argument("--case", action="append", help="Run exactly this named case; can be repeated")
     parser.add_argument(
         "--bench",
@@ -560,6 +654,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup", type=int, default=WARMUP_ITERS)
     parser.add_argument("--iters", type=int, default=BENCH_ITERS)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--diagnose", action="store_true", help="Print per-batch normalized error diagnostics")
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument("--verbose", action="store_true", help="Print full per-case diagnostics")
     output_group.add_argument(
@@ -571,6 +666,8 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.warmup < 0 or args.iters < 1:
         parser.error("--warmup must be non-negative and --iters must be at least one")
+    if args.diagnose:
+        args.bench = False
     return args
 
 
