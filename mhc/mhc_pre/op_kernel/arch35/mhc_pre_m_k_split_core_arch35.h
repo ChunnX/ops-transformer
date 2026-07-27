@@ -2,7 +2,7 @@
 #define MHC_PRE_M_K_SPLIT_CORE_ARCH35_H
 
 #include "mhc_pre_cube_compute_arch35.h"
-#include "mhc_pre_split_bs.h"
+#include "mhc_pre_bs_common.h"
 
 namespace MhcPre {
 
@@ -378,9 +378,9 @@ __aicore__ inline void MhcPreMkVFReducePartials(const LocalTensor<float>& mmOutL
 }
 
 template <class T, class P, int8_t HAS_RESI>
-class MhcPreKernelMKPart1 : public MhcPreKernelSplitBS<T, P, HAS_RESI> {
+class MhcPreKernelMKPart1 : public MhcPreKernelBsCommon<T, P, HAS_RESI> {
 public:
-    using Parent = MhcPreKernelSplitBS<T, P, HAS_RESI>;
+    using Parent = MhcPreKernelBsCommon<T, P, HAS_RESI>;
 
     __aicore__ inline explicit MhcPreKernelMKPart1(MT &matmul) : Parent(matmul) {}
 
@@ -679,9 +679,9 @@ private:
 };
 
 template <class T, class P, int8_t HAS_RESI>
-class MhcPreKernelMKPart2 : public MhcPreKernelSplitBS<T, P, HAS_RESI> {
+class MhcPreKernelMKPart2 : public MhcPreKernelBsCommon<T, P, HAS_RESI> {
 public:
-    using Parent = MhcPreKernelSplitBS<T, P, HAS_RESI>;
+    using Parent = MhcPreKernelBsCommon<T, P, HAS_RESI>;
 
     __aicore__ inline explicit MhcPreKernelMKPart2(MT &matmul) : Parent(matmul) {}
 
