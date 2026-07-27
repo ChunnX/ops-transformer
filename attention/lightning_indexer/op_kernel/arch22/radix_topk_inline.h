@@ -16,12 +16,6 @@ static constexpr int16_t RDX_XOR = 0x8000;
 #define RDX_S_V_SYNC() do { event_t _e = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V)); \
     SetFlag<HardEvent::S_V>(_e); WaitFlag<HardEvent::S_V>(_e); } while(0)
 
-#define RDX_UB2UB(dst, src, count) do { \
-    uint32_t _c = (count); \
-    DataCopy(dst, src, _c > 2048 ? 2048 : _c); \
-    if (_c > 2048) { DataCopy(dst[2048], src[2048], _c - 2048); } \
-} while(0)
-
 template <typename T = void>
 __aicore__ inline void InlineRadixTopK(
     TPipe *pipe,
@@ -48,19 +42,15 @@ __aicore__ inline void InlineRadixTopK(
     if (tailTileLen_ == 0) { tailTileLen_ = tileLen_; }
     uint32_t tileNumAlign_ = (tileNum_ + 7) / 8 * 8;
 
-    TBuf<TPosition::VECCALC> xBufPing;
-    TBuf<TPosition::VECCALC> xBufPong;
+    TBuf<TPosition::VECCALC> xBuf;
     TBuf<TPosition::VECCALC> outValueBuf;
     TBuf<TPosition::VECCALC> outIndexBuf;
     TBuf<TPosition::VECCALC> globalHistBuf;
     TBuf<TPosition::VECCALC> tileTopKBuf;
     TBuf<TPosition::VECCALC> tempBuf;
-    TBuf<TPosition::VECCALC> scoreCacheBuf;
 
     pipe->Reset();
-    uint32_t xBufSize = tileLenAlign_ * sizeof(float) + tileLenAlign_ * sizeof(bfloat16_t) + 64;
-    pipe->InitBuffer(xBufPing, xBufSize);
-    pipe->InitBuffer(xBufPong, xBufSize);
+    pipe->InitBuffer(xBuf, tileLenAlign_ * sizeof(float) + tileLenAlign_ * sizeof(bfloat16_t) + 64);
     pipe->InitBuffer(outValueBuf, tileLenAlign_ * sizeof(float) + 64);
     pipe->InitBuffer(outIndexBuf, tileLenAlign_ * sizeof(int32_t) + 64);
     pipe->InitBuffer(globalHistBuf, RDX_BINS * sizeof(int32_t) + 64);
@@ -68,16 +58,20 @@ __aicore__ inline void InlineRadixTopK(
     uint32_t cmpMaskSize = (tileLenAlign_ + 7) / 8 * 8;
     uint32_t tileHistSize = tileNumAlign_ * RDX_BINS * sizeof(int32_t);
     pipe->InitBuffer(tempBuf, tileHistSize + cmpMaskSize + 64);
-    // Cache all score data in UB to avoid repeated GM reads (8 rounds + 1 extraction = 9 reads)
-    uint32_t scoreCacheSize = sortLenAlign * sizeof(float);
-    pipe->InitBuffer(scoreCacheBuf, scoreCacheSize + 64);
 
     GlobalTensor<float> xGm;
     xGm.SetGlobalBuffer((__gm__ float *)scoreGmAddr);
     GlobalTensor<int32_t> indexGm;
     indexGm.SetGlobalBuffer((__gm__ int32_t *)indicesGmAddr);
 
-    // outValueBuf: signMask, mask, tempHalf
+    // xBuf: float at offset 0, bf16 at offset tileLenAlign_*2 (bfloat16 elements) = tileLenAlign_*4 bytes
+    LocalTensor<float> xLocalFp32 = xBuf.Get<float>();
+    LocalTensor<int32_t> xLocalInt32 = xLocalFp32.template ReinterpretCast<int32_t>();
+    LocalTensor<bfloat16_t> xLocalB16Base = xBuf.Get<bfloat16_t>();
+    LocalTensor<bfloat16_t> xLocalB16 = xLocalB16Base[tileLenAlign_ * 2];  // byte offset = tileLenAlign_*4
+    LocalTensor<int16_t> xLocalInt16 = xLocalB16.template ReinterpretCast<int16_t>();
+
+    // outValueBuf: signMask, mask, tempHalf — separate from xBuf
     LocalTensor<int16_t> signMaskTensor = outValueBuf.Get<int16_t>();
     LocalTensor<int32_t> maskTensor = outValueBuf.Get<int32_t>();
     LocalTensor<half> tempHalf = outValueBuf.Get<half>();
@@ -91,7 +85,6 @@ __aicore__ inline void InlineRadixTopK(
 
     LocalTensor<int32_t> globalHist = globalHistBuf.Get<int32_t>();
     LocalTensor<int32_t> tileTopK = tileTopKBuf.Get<int32_t>();
-    LocalTensor<float> scoreCache = scoreCacheBuf.Get<float>();
 
     int16_t involvedMask16_ = 0;
     int16_t andMask16_ = static_cast<int16_t>(0xC000);  // signed: arithmetic shift accumulates
@@ -107,13 +100,6 @@ __aicore__ inline void InlineRadixTopK(
 
     event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
 
-    // One-time load all score data from GM to UB cache
-    DataCopyPad(scoreCache, xGm, DataCopyExtParams{
-        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * sortLen), 0, 0, 0},
-        DataCopyPadExtParams<float>{true, 0, 0, 0});
-    SetFlag<HardEvent::MTE2_V>(mte2ToV);
-    WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-
     for (int32_t roundId = RDX_ROUNDS - 1; roundId >= 0; roundId--) {
         // ClearHist
         if (roundId == static_cast<int32_t>(RDX_ROUNDS) - 1) {
@@ -126,57 +112,53 @@ __aicore__ inline void InlineRadixTopK(
             globalHistBoundaryNum_ = static_cast<int32_t>((tileNum_ - 1) * tileLen_ + tailTileLen_);
             RDX_S_V_SYNC();
         } else {
-            // Vectorized ClearHist: tileHist[0..tileNum_) = tileHist[boundaryBin] - tileHist[boundaryBinPrev]
+            RDX_V_S_SYNC();
             if (boundaryBin < static_cast<int32_t>(RDX_BINS) - 1) {
-                Sub<int32_t>(tileHist, tileHist[boundaryBin * tileNumAlign_],
-                             tileHist[boundaryBinPrev * tileNumAlign_], tileNumAlign_);
+                for (uint32_t i = 0; i < tileNum_; i++) {
+                    tileHist.SetValue(i, tileHist.GetValue(boundaryBin * tileNumAlign_ + i) -
+                                         tileHist.GetValue(boundaryBinPrev * tileNumAlign_ + i));
+                }
             } else {
-                DataCopy(tileHist, tileHist[boundaryBin * tileNumAlign_], tileNumAlign_);
+                for (uint32_t i = 0; i < tileNum_; i++) {
+                    tileHist.SetValue(i, tileHist.GetValue(boundaryBin * tileNumAlign_ + i));
+                }
             }
-            PipeBarrier<PIPE_V>();
+            RDX_S_V_SYNC();
         }
 
-        // Vectorized clear: globalHist and tileHist[1..BINS-1]
-        Duplicate<int32_t>(globalHist, 0, RDX_BINS);
-        Duplicate<int32_t>(tileHist[tileNumAlign_], 0, tileNumAlign_ * (RDX_BINS - 1));
-        PipeBarrier<PIPE_V>();
-        RDX_V_S_SYNC();
-        if (tailTileLen_ != tileLen_) {
-            tileHist.SetValue(tileNum_ - 1, static_cast<int32_t>(tailTileLen_));
-        }
-        globalHistBoundaryNum_ = static_cast<int32_t>((tileNum_ - 1) * tileLen_ + tailTileLen_);
-        // Initialize scalar globalHist accumulators (avoid per-tile GetValue)
-        int32_t gh[4] = {globalHistBoundaryNum_, 0, 0, 0};
         RDX_S_V_SYNC();
-
-        // Ping-Pong tile loop: overlap UB→UB DataCopy with V computation
-        // Prefetch first tile to xBufPing
-        RDX_UB2UB(xBufPing.Get<float>(), scoreCache[0], tileLenAlign_);
-        SetFlag<HardEvent::MTE2_V>(mte2ToV);
-        bool pingPongFlag = true;
+        globalHist.SetValue(0, globalHistBoundaryNum_);
+        for (uint32_t i = 1; i < RDX_BINS; i++) {
+            globalHist.SetValue(i, 0);
+        }
+        for (uint32_t i = tileNumAlign_; i < tileNumAlign_ * RDX_BINS; i++) {
+            tileHist.SetValue(i, 0);
+        }
+        RDX_S_V_SYNC();
 
         for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
             uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
             if (curTileLen == 0) { continue; }
 
-            // Select current and next buffer
-            TBuf<TPosition::VECCALC>& curBuf = pingPongFlag ? xBufPing : xBufPong;
-            TBuf<TPosition::VECCALC>& nextBuf = pingPongFlag ? xBufPong : xBufPing;
-
-            // Prefetch next tile (overlap with current tile's V computation)
-            if (tileId < tileNum_ - 1) {
-                RDX_UB2UB(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
-            }
-
-            // Wait for current tile data ready
+            // CopyIn: float data from GM to xLocalFp32
+            DataCopyPad(xLocalFp32, xGm[tileId * tileLen_], DataCopyExtParams{
+                static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * curTileLen), 0, 0, 0},
+                DataCopyPadExtParams<float>{true, 0, 0, 0});
+            SetFlag<HardEvent::MTE2_V>(mte2ToV);
             WaitFlag<HardEvent::MTE2_V>(mte2ToV);
 
-            // Get LocalTensor from current buffer
-            LocalTensor<float> xLocalFp32 = curBuf.Get<float>();
-            LocalTensor<int32_t> xLocalInt32 = xLocalFp32.template ReinterpretCast<int32_t>();
-            LocalTensor<bfloat16_t> xLocalB16Base = curBuf.Get<bfloat16_t>();
-            LocalTensor<bfloat16_t> xLocalB16 = xLocalB16Base[tileLenAlign_ * 2];
-            LocalTensor<int16_t> xLocalInt16 = xLocalB16.template ReinterpretCast<int16_t>();
+            // Replace +1e30 (invalid MM1 padding) with -inf before Cast(float->bf16)
+            // -inf in bf16 = 0xFF80, TwiddleInB16 -> 0x0000 (smallest), radix excludes it
+            // Use Mins to clamp: valid scores are in [-300, 300] range, +1e30 -> 300
+            // Then bf16(300) negated = -300, which is at boundary but distinguishable from valid scores
+            // Actually, better: use Compares to find +1e30 positions and replace with -inf
+            // But 910B has no Select. Use Mins with a value that becomes 0x0000 after twiddle.
+            // float 1e30 -> bf16 0x7149 -> negated as half is NaN (exp overflow)
+            // float 200 -> bf16 0x43B0 -> negated -200 -> twiddle = 0x???? (small, excluded)
+            // Use Maxs to clamp negative values, Mins to clamp positive values
+            // But Mins produced 0 before. Let me try with explicit float literal.
+            Mins<float, true>(xLocalFp32, xLocalFp32, (float)200.0, curTileLen);
+            PipeBarrier<PIPE_V>();
 
             // Cast float -> bf16 into xLocalB16 (xBuf back, no overlap with xLocalFp32 in front)
             Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
@@ -210,6 +192,8 @@ __aicore__ inline void InlineRadixTopK(
             PipeBarrier<PIPE_V>();
 
             // CalcCumsumHistogram: Cast int16 -> float -> int32, compare int32 (matching math repo)
+            RDX_V_S_SYNC();
+            RDX_S_V_SYNC();
             Cast(xLocalFp32, xLocalInt16Cast, RoundMode::CAST_NONE, curTileLen);
             PipeBarrier<PIPE_V>();
             Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
@@ -229,24 +213,15 @@ __aicore__ inline void InlineRadixTopK(
                            true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
                 RDX_V_S_SYNC();
                 cumSumOne += static_cast<int32_t>(rsvdCnt);
-                tileHist[binMask * tileNumAlign_].SetValue(tileId, cumSumOne);
-                gh[binMask] += cumSumOne;
-            }
 
-            // Signal next tile data ready, flip ping-pong flag
-            if (tileId < tileNum_ - 1) {
-                SetFlag<HardEvent::MTE2_V>(mte2ToV);
+                tileHist[binMask * tileNumAlign_].SetValue(tileId, cumSumOne);
+                globalHist.SetValue(binMask, globalHist.GetValue(binMask) + cumSumOne);
+                RDX_S_V_SYNC();
             }
-            pingPongFlag = !pingPongFlag;
         }
 
-        // Write globalHist from scalar accumulators (already in S after tile loop)
-        globalHist.SetValue(0, gh[0]);
-        globalHist.SetValue(1, gh[1]);
-        globalHist.SetValue(2, gh[2]);
-        globalHist.SetValue(3, gh[3]);
-
-        // FindBoundaryBin (all S ops, no sync needed between S operations)
+        // FindBoundaryBin
+        RDX_V_S_SYNC();
         boundaryBin = -1;
         boundaryBinPrev = -1;
         for (int32_t binMask = RDX_BINS - 1; binMask >= 0; binMask--) {
@@ -259,27 +234,32 @@ __aicore__ inline void InlineRadixTopK(
 
         involvedMask16_ = involvedMask16_ |
             (static_cast<int16_t>(boundaryBin) << (roundId * RDX_BITS));
+        RDX_S_V_SYNC();
 
+        // Update globalHistBoundaryNum_ for next round's ClearHist
+        RDX_V_S_SYNC();
         globalHistBoundaryNum_ = globalHist.GetValue(boundaryBin);
         if (boundaryBin < static_cast<int32_t>(RDX_BINS) - 1) {
             globalHistBoundaryNum_ -= globalHist.GetValue(boundaryBinPrev);
         }
-
-        int32_t globalHistBoundary = globalHist.GetValue(boundaryBin);
-        int32_t globalHistBoundaryPrev = (boundaryBinPrev < static_cast<int32_t>(RDX_BINS))
-                                         ? globalHist.GetValue(boundaryBinPrev) : 0;
         RDX_S_V_SYNC();
 
-        // AddTileHistToTileTopK (vectorized: tileTopK += tileHist[bin])
-        if (globalHistBoundary == remainK_) {
-            Add<int32_t>(tileTopK, tileTopK, tileHist[boundaryBin * tileNumAlign_], tileNumAlign_);
-            PipeBarrier<PIPE_V>();
-            totalDefinitelyInTopK_ += globalHistBoundary;
+        // AddTileHistToTileTopK
+        RDX_V_S_SYNC();
+        if (globalHist.GetValue(boundaryBin) == remainK_) {
+            for (uint32_t i = 0; i < tileNum_; i++) {
+                tileTopK.SetValue(i, tileTopK.GetValue(i) +
+                    tileHist.GetValue(boundaryBin * tileNumAlign_ + i));
+            }
+            totalDefinitelyInTopK_ += globalHist.GetValue(boundaryBin);
         } else if (boundaryBinPrev < static_cast<int32_t>(RDX_BINS)) {
-            Add<int32_t>(tileTopK, tileTopK, tileHist[boundaryBinPrev * tileNumAlign_], tileNumAlign_);
-            PipeBarrier<PIPE_V>();
-            totalDefinitelyInTopK_ += globalHistBoundaryPrev;
+            for (uint32_t i = 0; i < tileNum_; i++) {
+                tileTopK.SetValue(i, tileTopK.GetValue(i) +
+                    tileHist.GetValue(boundaryBinPrev * tileNumAlign_ + i));
+            }
+            totalDefinitelyInTopK_ += globalHist.GetValue(boundaryBinPrev);
         }
+        RDX_S_V_SYNC();
 
         remainK_ = static_cast<int32_t>(kValue) - totalDefinitelyInTopK_;
 
@@ -308,10 +288,9 @@ __aicore__ inline void InlineRadixTopK(
         if (remainK_ == 0 || roundId == 0) break;
     }
 
-    // Compute coreTopKOffset (vectorized ReduceSum)
+    // Compute coreTopKOffset
     RDX_V_S_SYNC();
     int32_t coreTopKOffset = 0;
-    // tileNum_ is small (<=16 for 8192/512), scalar sum is fast enough
     for (uint32_t i = 0; i < tileNum_; i++) {
         coreTopKOffset += tileTopK.GetValue(i);
     }
@@ -322,154 +301,55 @@ __aicore__ inline void InlineRadixTopK(
     bfloat16_t boundaryBf16 = *reinterpret_cast<bfloat16_t *>(&boundaryNumber16);
     float boundaryFloat = AscendC::Cast(boundaryBf16);
 
-    // Reuse outValueBuf for vecIndex during extraction
-    LocalTensor<int32_t> vecIndex = outValueBuf.Get<int32_t>();
-
-    // Generate sequential index [0, 1, 2, ..., tileLen_-1] once (reused for all tiles)
-    RDX_S_V_SYNC();
-    for (uint32_t i = 0; i < tileLen_; i++) {
-        vecIndex.SetValue(i, static_cast<int32_t>(i));
-    }
-    RDX_S_V_SYNC();
-
-    event_t vToMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
-    event_t mte3ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
-    bool mte3Pending = false;
-
     uint32_t writeOffset = 0;
-    RDX_UB2UB(xBufPing.Get<float>(), scoreCache[0], tileLenAlign_);
-    SetFlag<HardEvent::MTE2_V>(mte2ToV);
-    bool ppFlag = true;
-
     for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
         RDX_V_S_SYNC();
         int32_t curTileK = tileTopK.GetValue(tileId);
         RDX_S_V_SYNC();
-        if (curTileK <= 0) {
-            if (tileId < tileNum_ - 1) {
-                TBuf<TPosition::VECCALC>& nextBuf = ppFlag ? xBufPong : xBufPing;
-                RDX_UB2UB(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
-            }
-            WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-            if (tileId < tileNum_ - 1) {
-                SetFlag<HardEvent::MTE2_V>(mte2ToV);
-            }
-            ppFlag = !ppFlag;
-            continue;
-        }
-
-        if (mte3Pending) {
-            WaitFlag<HardEvent::MTE3_V>(mte3ToV);
-            mte3Pending = false;
-        }
+        if (curTileK <= 0) { continue; }
 
         uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
-        TBuf<TPosition::VECCALC>& curBuf = ppFlag ? xBufPing : xBufPong;
-        TBuf<TPosition::VECCALC>& nextBuf = ppFlag ? xBufPong : xBufPing;
-        if (tileId < tileNum_ - 1) {
-            RDX_UB2UB(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
-        }
+
+        // CopyIn float data, Cast to bf16 in xLocalB16
+        DataCopyPad(xLocalFp32, xGm[tileId * tileLen_], DataCopyExtParams{
+            static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * curTileLen), 0, 0, 0},
+            DataCopyPadExtParams<float>{true, 0, 0, 0});
+        SetFlag<HardEvent::MTE2_V>(mte2ToV);
         WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-
-        LocalTensor<float> xLocalFp32 = curBuf.Get<float>();
-        LocalTensor<bfloat16_t> xLocalB16Base = curBuf.Get<bfloat16_t>();
-        LocalTensor<bfloat16_t> xLocalB16 = xLocalB16Base[tileLenAlign_ * 2];
-
-        Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
+        Mins<float, true>(xLocalFp32, xLocalFp32, (float)200.0, curTileLen);
         PipeBarrier<PIPE_V>();
-        Cast(xLocalFp32, xLocalB16, RoundMode::CAST_NONE, curTileLen);
+        Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
         PipeBarrier<PIPE_V>();
 
         int32_t tileOffset = static_cast<int32_t>(tileId * tileLen_);
-        uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(int32_t) - 1) /
-            (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
 
-        // GT pass
-        Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, boundaryFloat,
-            AscendC::CMPMODE::GT, curTileLenAlign32);
-        PipeBarrier<PIPE_V>();
-
-        uint64_t gtCnt = 0;
-        GatherMask(outIndexLocal, vecIndex, cmpMaskTensor.template ReinterpretCast<uint32_t>(),
-                   true, curTileLen, {1, 1, 0, 0}, gtCnt);
-        PipeBarrier<PIPE_V>();
+        // Scalar GT + EQ: read each bf16 score, compare with boundary (select largest)
         RDX_V_S_SYNC();
-        uint32_t gtCount = static_cast<uint32_t>(gtCnt);
-        if (gtCount > static_cast<uint32_t>(curTileK)) { gtCount = static_cast<uint32_t>(curTileK); }
-
-        if (gtCount > 0) {
-            RDX_S_V_SYNC();
-            Adds(outIndexLocal, outIndexLocal, tileOffset, gtCount);
-            SetFlag<HardEvent::V_MTE3>(vToMte3);
-            WaitFlag<HardEvent::V_MTE3>(vToMte3);
-            DataCopyPad(indexGm[writeOffset], outIndexLocal, DataCopyExtParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * gtCount), 0, 0, 0});
-            SetFlag<HardEvent::MTE3_V>(mte3ToV);
-            mte3Pending = true;
-            writeOffset += gtCount;
-            curTileK -= static_cast<int32_t>(gtCount);
-        }
-
-        if (curTileK > 0) {
-            if (mte3Pending) {
-                WaitFlag<HardEvent::MTE3_V>(mte3ToV);
-                mte3Pending = false;
-            }
-            Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, boundaryFloat,
-                AscendC::CMPMODE::EQ, curTileLenAlign32);
-            PipeBarrier<PIPE_V>();
-
-            uint64_t eqCnt = 0;
-            GatherMask(outIndexLocal, vecIndex, cmpMaskTensor.template ReinterpretCast<uint32_t>(),
-                       true, curTileLen, {1, 1, 0, 0}, eqCnt);
-            PipeBarrier<PIPE_V>();
-            RDX_V_S_SYNC();
-            uint32_t eqCount = static_cast<uint32_t>(eqCnt);
-            if (eqCount > static_cast<uint32_t>(curTileK)) { eqCount = static_cast<uint32_t>(curTileK); }
-
-            if (eqCount > 0) {
-                RDX_S_V_SYNC();
-                Adds(outIndexLocal, outIndexLocal, tileOffset, eqCount);
-                SetFlag<HardEvent::V_MTE3>(vToMte3);
-                WaitFlag<HardEvent::V_MTE3>(vToMte3);
-                DataCopyPad(indexGm[writeOffset], outIndexLocal, DataCopyExtParams{
-                    static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * eqCount), 0, 0, 0});
-                SetFlag<HardEvent::MTE3_V>(mte3ToV);
-                mte3Pending = true;
-                writeOffset += eqCount;
-                curTileK -= static_cast<int32_t>(eqCount);
+        for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
+            bfloat16_t score = xLocalB16.GetValue(i);
+            float scoreFloat = AscendC::Cast(score);
+            if (scoreFloat > boundaryFloat) {
+                indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
+                writeOffset++;
+                curTileK--;
             }
         }
-
-        if (tileId < tileNum_ - 1) {
-            SetFlag<HardEvent::MTE2_V>(mte2ToV);
+        for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
+            bfloat16_t score = xLocalB16.GetValue(i);
+            float scoreFloat = AscendC::Cast(score);
+            if (scoreFloat == boundaryFloat) {
+                indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
+                writeOffset++;
+                curTileK--;
+            }
         }
-        ppFlag = !ppFlag;
+        RDX_S_V_SYNC();
     }
 
-    // Fill remaining with -1
-    if (mte3Pending) {
-        WaitFlag<HardEvent::MTE3_V>(mte3ToV);
-        mte3Pending = false;
-    }
-    uint32_t remainCount = kValue - writeOffset;
-    if (remainCount > 0) {
-        Duplicate<int32_t>(outIndexLocal, static_cast<int32_t>(-1), remainCount);
-        PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_MTE3>(vToMte3);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3);
-        DataCopyPad(indexGm[writeOffset], outIndexLocal, DataCopyExtParams{
-            static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * remainCount), 0, 0, 0});
-        SetFlag<HardEvent::MTE3_V>(mte3ToV);
-        mte3Pending = true;
+    for (uint32_t i = writeOffset; i < kValue; i++) {
+        indexGm.SetValue(i, -1);
     }
 
-    if (mte3Pending) {
-        WaitFlag<HardEvent::MTE3_V>(mte3ToV);
-    }
-
-    GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3);
-    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToV);
     GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(mte2ToV);
 }
 

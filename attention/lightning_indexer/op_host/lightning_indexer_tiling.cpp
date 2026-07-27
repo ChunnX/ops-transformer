@@ -1147,18 +1147,14 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     tilingData_.set_scoreB16GmOffset(scoreB16GmOffset);
     tilingData_.set_radixWsOffset(radixWsOffset);
     tilingData_.set_radixAivNum(aivNumTotal);
-    // For RadixTopK: totalBatch = total Q rows * n2Size
-    // BSND: totalBatch = bSize * s1Size * n2Size
-    // TND:  totalBatch = q_t_size * n2Size (q_t_size = query shape dim(0))
+    // For RadixTopK: totalBatch = bSize * actS1Size * n2Size
+    // For TND, s1Size=0, use s2Size as actS1Size (single batch case)
     uint32_t actS1ForRadix = static_cast<uint32_t>(tilingInfo->s1Size);
-    uint32_t radixTotalBatch;
-    if (actS1ForRadix == 0 && tilingInfo->opParamInfo.query.shape != nullptr) {
-        // TND layout: total Q tokens from query shape dim(0)
-        uint32_t totalQ = static_cast<uint32_t>(tilingInfo->opParamInfo.query.shape->GetStorageShape().GetDim(0));
-        radixTotalBatch = totalQ * tilingInfo->n2Size;
-    } else {
-        radixTotalBatch = tilingInfo->bSize * actS1ForRadix * tilingInfo->n2Size;
+    if (actS1ForRadix == 0) {
+        // TND layout: use actual seq length
+        actS1ForRadix = static_cast<uint32_t>(tilingInfo->s2Size);  // s2Size is actKSize, but for TND single batch s1=s2
     }
+    uint32_t radixTotalBatch = tilingInfo->bSize * actS1ForRadix * tilingInfo->n2Size;
     tilingData_.set_radixTotalBatch(radixTotalBatch);
     OP_LOGI(context_->GetNodeName(), "radixTopK: blockDim=%u, aivNumTotal=%u, radixTotalBatch=%u, actS1ForRadix=%u, s1Size=%u, s2Size=%u",
         blockDim, aivNumTotal, radixTotalBatch, actS1ForRadix, tilingInfo->s1Size, tilingInfo->s2Size);
