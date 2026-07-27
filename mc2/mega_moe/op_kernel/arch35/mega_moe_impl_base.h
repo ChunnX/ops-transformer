@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_imp_base.h
- * \brief
+ * \brief MegaMoE GMM tile、对齐尺寸和固定 UB 地址常量。
  */
 
 #ifndef MEGA_MOE_IMP_BASE_H
@@ -18,17 +18,22 @@
 
 namespace MegaMoeImpl {
 constexpr uint32_t ALIGN32 = 32U;
+// L1_TILE_M/N/K 的单位都是“矩阵元素个数”，不是字节：
+// GMM1 以 256 行为一个 Dispatch wave；非量化 GMM2 为降低单块 UB 占用，可使用 128 行 tile。
 constexpr uint32_t L1_TILE_M_256 = 256;
 constexpr uint32_t L1_TILE_M_128 = 128;
 constexpr uint32_t L1_TILE_N = 256;
 constexpr uint32_t L1_TILE_K = 256;
 constexpr uint32_t L0_TILE_K = 128;
 constexpr uint32_t SCALE_K_L1_RATE = 2;
+// GMM1 的 N 维按 [gate, up] 两半组织；SwiGLU 将 2F 列合并成 F 列，所以相关地址公式除以 2。
 constexpr uint32_t SWIGLU_N_HALF = 2;
 constexpr uint32_t MAX_SINGLE_MN_256_256 = 256 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = (MAX_SINGLE_MN_256_256 + 31U) / ALIGN32 * ALIGN32;
 constexpr uint32_t MAX_SINGLE_MN_128_256 = 128 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U) / ALIGN32 * ALIGN32;
+// LocalTensor 构造函数的 address 参数是 UB 字节偏移；
+// 这里预留固定 scratch 区存当前 GMM2 tile 的 tripleInfo。
 constexpr uint32_t TRIPLE_TENSOR_ADDR = 200U * 1024U; // triple tensor 在 UB 中的起始地址
 } // namespace MegaMoeImpl
 #endif

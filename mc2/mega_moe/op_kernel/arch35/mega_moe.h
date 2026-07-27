@@ -140,7 +140,10 @@ private:
     int32_t maxWavesPerExpert_ = 0;
     uint32_t blockNum_ = GetBlockNum();
     uint32_t blockAivNum_ = GetBlockNum() * 2;
+    // mixed kernel 中 GetBlockIdx() 对 AIC/AIV 的编号口径不同；
+    // 除以 task ratio 得到共享同一任务的逻辑 block。
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
+    // 同一逻辑 block 的两个 AIV 分别是 subBlock 0/1；代码用它们拆分 epilogue 与 Dispatch 工作。
     uint32_t aivCoreIdx_ = GetBlockIdx();
     uint32_t subBlockIdx_ = GetSubBlockIdx();
     uint32_t mxQuantScaleNumAlignPerToken_ = 0;
@@ -504,6 +507,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
         int32_t currentBatchElementCount = coreLen - resetElementOffset < resetBatchElementCount_ ?
                                                coreLen - resetElementOffset :
                                                resetBatchElementCount_;
+        // DataCopyExtParams 的五项依次为 {blockCount, blockLen(Byte), srcStride, dstStride, rsv}。
+        // resetTensor_ 到 GM 是一个连续块，所以 blockCount=1；
+        // 只有一个块时两侧 stride 不参与寻址，均置 0。
+        // 最后一个 0 是必须保持为 0 的保留字段。U 表示 unsigned 字面量，
+        // 用来匹配结构体的无符号字段类型。
         DataCopyExtParams rankSyncCopyParams{1U, static_cast<uint32_t>(currentBatchElementCount * sizeof(int32_t)), 0U,
                                              0U, 0U};
         DataCopyPad(swigluToGmm2FlagGm_[coreOffset + resetElementOffset], resetTensor_, rankSyncCopyParams);
@@ -580,6 +588,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
     srcGlobalTensor.SetGlobalBuffer((__gm__ int32_t *)params_.expertIdxGmAddr);
     GlobalTensor<uint8_t> dstGlobalTensor;
     int32_t maskSliceBytesFull = sendRouteItemsPerBatch_ / 8;
+    // DataCopyPadExtParams 顺序是 {isPad, leftPadding, rightPadding, paddingValue}。
+    // 此处不要求自定义填充值，后三项均为 0；
+    // 末 batch 的对齐尾部不会被后续 validLen 范围消费。
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0};
 
     // per-expert 跨 batch 累加器清零
@@ -611,6 +622,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
 
         // 加载本 batch 的 topk
         SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
+        // 这也是 {blockCount, blockLen, srcStride, dstStride, rsv}：
+        // topkIds[batchStart : batchStart+validLen] 在 GM 中连续，
+        // 故一次搬 1 个、长度 validLen*4 Byte 的块；
+        // 单块不存在“相邻块间隔”，src/dst stride 都是 0，最后的 0 是保留字段。
+        // U 只是 C++ 的 unsigned 字面量后缀，用于匹配结构体字段类型，
+        // 不表示额外的硬件单位。
         DataCopyExtParams loadParams{1U, static_cast<uint32_t>(validLen * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(topkIdsTensor_, srcGlobalTensor[batchStart], loadParams, loadPad);
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
@@ -631,6 +648,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
             // the mask bits produced for the padded tail.
             CompareScalar(maskBuf, topkIdsTensor_, globalExpertId, AscendC::CMPMODE::EQ, sendRouteItemsPerBatch_);
             uint64_t batchMatchedRouteCount = 0;
+            // GatherMaskParams 的四项是 {src0BlockStride, repeatTimes, src0RepeatStride, src1RepeatStride}。
+            // src0 连续读取且 Counter 模式的 mask=validLen 已限定总元素数，因此只需 1 次 repeat，
+            // 两个 repeatStride 在这里不会参与下一轮寻址，置 0。
             GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true, static_cast<uint32_t>(validLen),
                        {1, 1, 0, 0}, batchMatchedRouteCount);
 
@@ -677,10 +697,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
     uint32_t H = k_;
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     GlobalTensor<uint8_t> dstGlobalTensor;
+    // DataCopyParams/DataCopyPadParams 同样按“块数、每块字节数、源/目的 stride”描述搬运；
+    // 每个 token 的 H 个 BF16 在 GM 中连续，且不需要左右 padding，
+    // 所以都是单块、零 stride/零 padding。
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(H * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
+    // 输出记录把已对齐的量化 data 与 scale 当成一个连续字节块写入通信窗口。
     DataCopyExtParams xCopyOutParams = {1U, static_cast<uint32_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
                                         0U, 0U, 0U};
+    // MTE3_MTE2 事件表示“上一轮写 GM 已释放该 UB 槽，下一轮可以再次从 GM 读入”。
+    // 两个 ping-pong 槽初始都为空闲，所以进入循环前先各置位一次；
+    // 事件只在本 AIV 内生效。
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < currentNum; index++) {
@@ -743,8 +770,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
     cntSrcGlobal.SetGlobalBuffer((__gm__ int32_t *)(params_.peermemInfo.maskRecvPtr +
                                                     static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
                                                     maskAlignSize_));
+    // 从每个 [mask|count] 槽只取末尾 4B count：blockCount=worldSize，blockLen=4B。
+    // 源在 GM，srcStride 以 Byte 计，因此跳过“本 count 之后到下一槽 count 之前”的
+    // maskSlotSize-4 Byte。目的在 UB，dstStride 以 32B datablock 计，
+    // 置 0 会让每个 4B count 的对齐结果紧邻落在 rank*32B。
     DataCopyExtParams cntCopyParams{static_cast<uint16_t>(worldSize_), static_cast<uint32_t>(sizeof(int32_t)),
                                     static_cast<uint32_t>(maskSlotSize_ - sizeof(int32_t)), 0U, 0U};
+    // {isPad, leftPadding, rightPadding, paddingValue}；
+    // true/0/0/0 让硬件只补齐对齐尾部，不改 count 两侧。
     DataCopyPadExtParams<int32_t> cntPad{true, 0U, 0U, 0U};
     DataCopyPad(sendCntTensor_, cntSrcGlobal, cntCopyParams, cntPad);
 
@@ -832,6 +865,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int3
         uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
         DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+        // 每条 tripleInfo 固定占 32B=8*int32，只有前三项有 MTE 返回语义；
+        // 其余槽位留给对齐/分层通信。
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
@@ -956,6 +991,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
             // GatherMask 根据 mask 压缩本 batch 的全局 route index，并返回当前 batch 的命中数量。
             CreateVecIndex(topkIndexTensor_, batchRouteBegin, recvRouteItemsPerBatch_);
             uint64_t batchMatchedRouteCount = 0; // 当前 batch 中 mask=1 的 route item 数
+            // 参数 {1,1,0,0} 表示 src0 datablock 连续、repeatTimes=1、无跨 repeat 跳距；
+            // true 打开 Counter 模式，validRouteCount 是本 batch 真正参与筛选的 route item 总数。
             GatherMask(validTopkIndexTensor_, topkIndexTensor_, maskBatchU32Tensor_, true,
                        static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
             SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
@@ -1016,9 +1053,13 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
         uint64_t n = Get<N_VALUE>(state.problemShape);
         uint64_t k = Get<K_VALUE>(state.problemShape);
         state.expertBeforeCnt += m;
+        // 这里推进的是“前一个专家占用的元素数”，不是 Byte；
+        // UpdateGlobalBuffer 再乘对应 sizeof(T)。
+        // A/B/C 的 elemsPerByte 在 FP4 时为 2，所以除以 2 才是打包后的实际存储元素/字节跨度。
         Get<IDX_A_OFFSET>(state.baseOffset) += m * k / A_ELEMS_PER_BYTE;
         Get<IDX_B_OFFSET>(state.baseOffset) += n * k / B_ELEMS_PER_BYTE;
-        // only splitM
+        // MX scale 沿 K 分组；
+        // scaleK 是前一专家每一行（或每一权重列）实际占用的 scale 元素数。
         auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_A_SCALE_OFFSET>(state.baseOffset) += m * scaleK;
         Get<IDX_B_SCALE_OFFSET>(state.baseOffset) += n * scaleK;
@@ -1041,6 +1082,9 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
             __gm__ int32_t *sendCntFlag = (__gm__ int32_t *)params_.workspaceInfo.flagSendCntCalToUpdParamsPtr +
                                           static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
                                           static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+            // flag 由另一个 AIV 通过 AtomicAdd 写 GM；
+            // ReadGmByPassDCache 避免本 core 反复读到缓存旧值。
+            // 内层约 100 cycle 的空转是轮询退避，减少对同一 GM cache line 的持续访问压力。
             while (AscendC::ReadGmByPassDCache(sendCntFlag) == 0) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {
@@ -1207,6 +1251,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(const GM
 
     __gm__ int32_t *myCounterAddr = (__gm__ int32_t *)gmm2CombineSyncCounter.GetPhyAddr() +
                                     expertIdx * blockAivNum_ * INT_CACHELINE + aivCoreIdx_ * INT_CACHELINE;
+    // 每个 (expert, AIV) 独占 16 个 int32=64B 的槽，避免多个 AtomicAdd 热点共享 cache line。
+    // counter 每完成一个 N tile 加 1；
+    // 等于 nTilesPerGroup 才说明本 256 行组的所有 H 列均已写完。
     while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup) {
         int64_t st = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - st < 100) {
@@ -1248,6 +1295,8 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteLoadWeights(int32_t coreOffset, int32
     if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
         GlobalTensor<float> topKWeightsGlobalTensor_;
         topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float *)params_.probsGmAddr);
+        // topkWeights 的逻辑布局是 [bs, topK]；
+        // 一个 token batch 在 GM 中连续，因此仍是单块零 stride 搬运。
         DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(batchTokenCount * topK_ * sizeof(float)), 0U, 0U, 0U};
         DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
         DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[(coreOffset + batchTokenOffset) * topK_], copyParams,
@@ -1445,10 +1494,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
         return;
     }
     __gm__ int32_t *syncRank = (__gm__ int32_t *)(params_.peermemInfo.rankSyncInWorldPtr);
+    // 前 48 KiB 存 rank 间信号；其后每个 AIV 用独立 64B cache line 保存自己的 barrier 代数。
+    // 每次同步把代数加 1，避免重复调用时把上一轮遗留的相同 flag 误判为本轮完成。
     __gm__ int32_t *syncCount =
         (__gm__ int32_t *)(params_.peermemInfo.rankSyncInWorldPtr + 48 * 1024 + aivCoreIdx_ * 64);
     int count = ReadGmByPassDCache(syncCount) + 1;
     for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
+        // 每个发送 rank 占 16*int32=64B；
+        // 当前 AIV 只负责 i=aivCoreIdx_+k*blockAivNum_ 的目标 rank 子集。
         __gm__ int32_t *syncRemoteAddr = (__gm__ int32_t *)(winRankAddr_[i]) + rankId_ * 16;
         WriteGmByPassDCache(syncRemoteAddr, count);
         auto syncCheck = syncRank + i * 16;
@@ -1547,6 +1600,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     TupleShape initShape;
     Get<N_VALUE>(initShape) = hiddenDim_;
     Get<K_VALUE>(initShape) = k_;
+    // 14 个 0 分别初始化 IDX_A_OFFSET ... IDX_GMM2_OFFSET 的地址游标；第 4 槽当前保留未用。
+    // Dispatch 与 GMM1 各复制一份 state，
+    // 是为了让 Dispatch(e+1) 预取时不提前推进 GMM1(e) 的地址。
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     ExpertLoopState dispatchState{initShape, initOffset, 0};
     ExpertLoopState gmm1State{initShape, initOffset, 0};

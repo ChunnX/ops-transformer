@@ -36,6 +36,8 @@ namespace MegaMoeImpl {
 // AIC 负责矩阵乘；AIV 负责权重预处理、SwiGLU/量化、Combine 以及同步。
 // GMM1 将 [M_e, H] 映射为两路 [M_e, F]，AIV 用 SwiGLU 合成为 [M_e, F]；
 // GMM2 再投影为 [M_e, H]。M_e 是某个本地专家收到的路由项数，整个专家 FFN 中保持不变。
+// <3, 1> 中 3 是一次 swizzle 的 tile 跨度，1 表示 N-first；
+// 它只改变 tile 遍历顺序，不改变矩阵结果。
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
 // =================================================================================================
 // ComputeCoreGrouping：计算当前 core 所属的 group 及其在 group 内的位置
@@ -122,6 +124,10 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
         __gm__ int32_t *flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
+        // flag 保存“该 wave 已写好的行数”而非 bool；
+        // 尾 wave 不满 256 行，所以目标值必须用实际剩余行数。
+        // Dispatch 由多个 AIV 分片 AtomicAdd；
+        // 绕过 DCache 轮询才能及时看到所有分片的累计结果。
         while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
@@ -134,6 +140,8 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
                                                                               static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
         __gm__ int32_t *flagValueAddr = gmmAddrInfo.swigluToGmm2Flag;
+        // SwiGLU 每写完一个 GMM1 tile 加 1；
+        // 达到 scheduler 的 tile 总数，才代表该专家全部 GMM2 输入可见。
         while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
@@ -264,15 +272,20 @@ struct Config {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
         if constexpr (Policy::IS_GMM1) {
+            // initShape 保存的是 GMM1 的 [M, 2F, H]。
             config.n = Get<N_VALUE>(problemShape);
             config.k = Get<K_VALUE>(problemShape);
         } else {
+            // GMM2 复用同一 shape：输入 K=F=(2F)/2，输出 N=H。
             config.n = Get<K_VALUE>(problemShape);
             config.k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
         }
         config.outputN = Policy::IS_GMM1 ? config.n / SWIGLU_N_HALF : config.n;
         config.blockNum = GetBlockNum();
+        // mixed kernel 的 AIC/AIV 共享逻辑 block 编号；
+        // task ratio 将物理 core 编号折算到同一编号空间。
         config.blockIdx = GetBlockIdx() / GetTaskRation();
+        // scale layout 每 64 个 K 元素占 2 个槽，等效为每 32 个 K 元素一个 scale。
         config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         if constexpr (!IsA8W4) {
             if constexpr (Policy::IS_GMM1) {
@@ -317,6 +330,8 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
     constexpr uint32_t ubBufSize = Policy::IS_GMM1 ?
                                        MAX_SINGLE_MN_ALIGN32_NUM_256 :
                                        ((CombineQuantMode == COMBINE_NO_QUANT) ? MAX_SINGLE_MN_ALIGN32_NUM_128 : 0);
+    // 这是同一块 UB 的两个固定字节区，不是两个动态分配；
+    // AIC/AIV 用 ping-pong flag 约束复用时机。
     int64_t ubOffsetFirst = 0;
     int64_t ubOffsetSecond = static_cast<int64_t>(ubBufSize) * sizeof(ElementC);
     auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), workSet.layouts.c);
@@ -419,6 +434,9 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
 
         Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape),
                                                                      Get<N_VALUE>(actualShape), 0, 0};
+        // epilogueOffset 前两项分别是量化输出和 scale 输出的元素偏移；
+        // 后四项是接口预留坐标。
+        // mLoc 选择专家内的行，nLoc 选择 F 维 tile，scale 偏移则按 MX K 分组换算。
         Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
             mLoc * config.outputN + nLoc,
             mLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
@@ -542,6 +560,9 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
         {config.m, config.outputN, config.k},
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
+    // 每个逻辑 block 按 loopIdx += blockNum 领取 tile。startBlockIdx 跨专家累计前序 tileNum，
+    // 把下一专家的首 tile 轮转到后续 block，
+    // 避免每个专家都固定从 block 0 开始而造成负载偏斜。
     uint32_t startLoopIdx =
         (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
 
@@ -732,7 +753,8 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
         WaitForAicGmTileReady();
-        // Acknowledge before processing so AIC can issue the next tile concurrently.
+        // 先 ACK 表示 AIV 已接管当前 GM tile，AIC 随即可以生产下一 tile；
+        // 并不表示当前 epilogue 已完成。
         NotifyAicGmTileAccepted();
         AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
@@ -782,7 +804,8 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, 
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
         WaitForAicGmTileReady();
-        // Acknowledge before processing so AIC can issue the next tile concurrently.
+        // 先 ACK 表示 AIV 已接管当前 GM tile，AIC 随即可以生产下一 tile；
+        // 并不表示当前 Combine 已完成。
         NotifyAicGmTileAccepted();
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));

@@ -287,10 +287,14 @@ BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyOutputFromUb2Gm(
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
+    // DataCopyExtParams 顺序为 {blockCount, blockLen(Byte), srcStride, dstStride, rsv}；
+    // 本函数把 blockCount 个矩阵行一次性搬出，
+    // 所以与 mega_moe.h 中“单连续块”的 {1,...} 不同。
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
     ub2GmParams.blockCount = blockCount; // 128
     if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
                   AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
+        // FP4 每 Byte 打包两个元素，因此行长度、GM 行间隔和起始元素偏移都要除以 2。
         ub2GmParams.blockLen = singleN_ >> 1;
         ub2GmParams.dstStride = (n_ - singleN_) >> 1;
         offset = offset >> 1;
@@ -298,6 +302,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         uint64_t nDstUbAligned =
             Ops::Base::CeilAlign(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(AscendC::ONE_BLK_SIZE));
         ub2GmParams.blockLen = singleN_; // 256
+        // UB 侧 srcStride 单位是 32B datablock，GM 侧 dstStride 单位是 Byte。
+        // 前者跳过 UB 行尾对齐 padding，后者跳到完整输出矩阵下一行的相同 nLoc。
         ub2GmParams.srcStride = (nDstUbAligned - singleN_) / AscendC::ONE_BLK_SIZE;
         ub2GmParams.dstStride = n_ - singleN_;
     }
@@ -312,6 +318,9 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     auto blockScaleN = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
                        MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
     // scale layout in UB is already compact: (mSize, blockScaleN). Compact copy avoids (mSize*8)->(mSize,32).
+    // 每个 block 是一行 scale：blockCount=行数，blockLen=该 tile 每行的 scale Byte 数。
+    // UB 行本来就是紧密排列，所以 srcStride=0；
+    // GM 行还要跨过本 tile 之外的 scale，故设置 dstStride。
     ub2GmParams.blockCount = blockCount; // 128
     ub2GmParams.blockLen = blockScaleN;  // 8
     ub2GmParams.srcStride = 0;

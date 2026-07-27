@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_base.h
- * \brief
+ * \brief MegaMoE 的共享参数、通信窗口布局及 AIC/AIV 同步辅助函数。
  */
 
 #ifndef MEGA_MOE_BASE_H
@@ -31,6 +31,7 @@ struct Mc2MoeContext {
 };
 
 struct GMMAddrInfo {
+    // a/b 与 aScale/bScale 总是成对传给 MX GMM；scale 不是可选的通信附属数据。
     GM_ADDR aGlobal;
     GM_ADDR bGlobal;
     GM_ADDR aScaleGlobal;
@@ -122,6 +123,7 @@ enum class AddrUpdateMode : int32_t {
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
+    // “Cube/Vector”表示同一 mixed block 内的 AIC/AIV，不是不同 rank；value 只选择本地 flag 槽。
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
 }
 
@@ -189,6 +191,8 @@ __aicore__ inline void EndGMM2Sync(int32_t &vecSetSyncCom, uint16_t gmm2PingPong
 
 __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t &coreOffset, int32_t align = ALIGN_32)
 {
+    // mixed kernel 每个逻辑 block 配 2 个 AIV，所以向量任务按 GetBlockNum()*2 份切分。
+    // align=1 表示按元素精确切分；默认 align=32 则让每个非尾分片的起点满足 32 元素对齐。
     int32_t coreIdx = GetBlockIdx();
     int32_t coreNum = GetBlockNum() * 2; // 取到vec核总数
     int32_t lenPerCore = Ops::Base::CeilDiv(static_cast<uint32_t>(totalLen), static_cast<uint32_t>(coreNum));
@@ -205,6 +209,8 @@ __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t 
 
 __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp_val)
 {
+    // 轮询的是其他 core/rank 更新的 GM 信号，绕过 DCache 才能观察到最新值；
+    // 这不是 SetFlag/WaitFlag 本地事件。
     do {
         if (ReadGmByPassDCache(sig_addr) == cmp_val) {
             return;
@@ -227,6 +233,8 @@ __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t off
 
 __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
 {
+    // weight1/weight2 是 TensorList 描述符而非裸数据指针：首个 uint64_t 给出地址表的字节偏移，
+    // 右移 3 等价于除以 sizeof(uint64_t)，retPtr[index] 才是第 index 个专家张量的真实 GM 地址。
     __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorPtr);
     uint64_t tensorPtrOffset = *dataAddr;
     __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);

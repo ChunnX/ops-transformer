@@ -26,9 +26,15 @@
 #include "mega_moe_impl_base.h"
 
 namespace {
+// Shape/Coord 没有具名字段，Get<I>() 通过以下下标访问 M、N、K。
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
+// BlockOffset 保存的不是裸 GM 字节地址：
+// 张量槽使用存储元素偏移，FLAG 槽使用专家序号，M 槽使用行数。
+// UpdateGlobalBuffer 再按各槽语义换算地址。
+// FP4 一个字节打包两个元素，data/weight 偏移需除以 elemsPerByte。
+// 下标 4 在当前布局中未使用。
 constexpr uint64_t IDX_A_OFFSET = 0UL;
 constexpr uint64_t IDX_B_OFFSET = 1UL;
 constexpr uint64_t IDX_A_SCALE_OFFSET = 2UL;
@@ -42,6 +48,8 @@ constexpr uint64_t IDX_Y2_OFFSET = 10UL;
 constexpr uint64_t IDX_M_OFFSET = 11UL;
 constexpr uint64_t IDX_GMM1_OFFSET = 12UL;
 constexpr uint64_t IDX_GMM2_OFFSET = 13UL;
+// 名称容易误读：常量值 8 使本实现的记录跨度为 8*4=32 Byte；
+// tripleInfo 也按这个实际跨度对齐。
 constexpr uint64_t INT32_PER_256B = 8U;
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
@@ -59,6 +67,7 @@ constexpr int64_t ALIGN_32 = 32LL;
 constexpr int64_t ALIGN_128 = 128LL;
 constexpr int64_t ALIGN_256 = 256LL;
 constexpr int64_t ALIGN_512 = 512LL;
+// GM 同步槽按 64B cache line 隔离；以 int32 为寻址单位时，一条 cache line 是 16 个元素。
 constexpr int32_t INT_CACHELINE = 16;
 constexpr int32_t MAX_AICORE_NUM = 36;
 // wave-grain dispatch flag: must match MegaMoeImpl::L1_TILE_M

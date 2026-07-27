@@ -50,6 +50,9 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
+    // DataCopyExtParams 是 {blockCount, blockLen(Byte), srcStride, dstStride, rsv}。
+    // 虽然 tile 有 lenTile 行，这里仍设 blockCount=1：每行 tripleInfo 可能指向不同 rank/token/topK，
+    // 无法用一次规则 stride 搬运，必须在循环里为每行重新计算远端 GM 地址。
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
     ub2GmParams.blockCount = 1;
     ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2); // N_VALUE是当前tile块的n长度
@@ -59,6 +62,10 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
         uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
         uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
         uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
+        // 每个 rank 的对称通信窗口布局相同，
+        // 所以只需保留 combineSendPtr 相对窗口基址的 offset，
+        // 再将该 offset 加到目标 rank 的窗口基址上；
+        // 这里得到的是目标 rank 的 expandedX 起点。
         gmRemoteD.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
         // expandedX 的逻辑坐标为 [tokenIdx, topkIdx, hiddenOffset]，故无需再按专家 ID 查找目的位置。
@@ -439,6 +446,9 @@ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curR
 
     uint64_t dstBaseOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSize;
 
+    // QuantOutType 是 1B FP8，quantTokenSize=n+nScale 既是元素数也是 Byte 数。
+    // 每条路由仍写一个连续块：{1, quantTokenSize, 0, 0, 0} 中
+    // 两个 stride 对单块无效，末项是保留字段。
     AscendC::DataCopyExtParams singleCopyParams{1, static_cast<uint32_t>(quantTokenSize), 0, 0, 0};
     AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
 }
@@ -465,8 +475,13 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
 
     using Fp8Type = typename std::conditional<QuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t, fp8_e5m2_t>::type;
 
+    // 一个 ping-pong 槽由“32 元素对齐的 BF16 输入 + FP8 data/scale 输出”组成；
+    // LocalTensor<T> 以 T 元素寻址，所以把两部分总字节数除以 sizeof(T)。
     uint32_t singleTokenElems = (nAlign32 * sizeof(T) + quantTokenSizeBytes) / sizeof(T);
+    // {isPad, leftPadding, rightPadding, paddingValue}：
+    // 不指定左右填充值；量化只读取前 n 个有效元素。
     DataCopyPadExtParams<T> copyPadParams{false, 0U, 0U, 0U};
+    // 从 GMM2 GM 取一行连续的 n 个 T：{1 block, n*sizeof(T) Byte, 0 src stride, 0 dst stride, 0 rsv}。
     AscendC::DataCopyExtParams gm2UbParams{static_cast<uint16_t>(1), static_cast<uint32_t>(n * sizeof(T)), 0, 0, 0};
 
     for (uint32_t i = 0; i < tokenCount; i++) {

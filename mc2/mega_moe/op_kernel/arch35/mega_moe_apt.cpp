@@ -45,6 +45,9 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
                                     GM_ADDR bias2, GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR yOut,
                                     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    // bias1/bias2 是公共算子接口保留形参，当前 Arch35 GMM 路径未下传使用；
+    // scales 虽传入 Init，当前 MTE 实现也不读取它。
+    // 真正参与 MX GMM 的 scale 是 weightScales1/2 与运行时生成的激活 scale。
     InitSocState();
     // 每个逻辑 block 由 1 个 AIC（矩阵乘）和 2 个 AIV（路由、向量处理、通信控制）协作完成。
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
