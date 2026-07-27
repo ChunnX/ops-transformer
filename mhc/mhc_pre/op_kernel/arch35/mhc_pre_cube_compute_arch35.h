@@ -12,7 +12,6 @@ constexpr static uint64_t MHC_PRE_LOW_API_SPLIT_M_ALIGN = 2;
 constexpr static uint64_t MHC_PRE_LOW_API_L1_ALLOC_SIZE = 512 * 1024;
 constexpr static uint64_t MHC_PRE_LOW_API_L1_BUF_NUM = 2;
 constexpr static uint64_t MHC_PRE_LOW_API_L1_BUF_OFFSET = 128 * 256;
-constexpr static int MHC_PRE_LOW_API_SYNC_MODE4 = 4;
 
 class MhcPreCubeCompute {
 public:

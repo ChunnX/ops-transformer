@@ -19,12 +19,14 @@ namespace MhcPreUtils {
 
 constexpr uint32_t UB_ALIGN_SIZE = 32;
 
-constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
-constexpr uint16_t FLAG_ID_MAX = 16;
-constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
-constexpr uint16_t AIV_SYNC_AIC_FLAG = 6; 
-constexpr uint16_t VEC0_FLAG_ID_OFFSET = 0;
-constexpr uint16_t VEC1_FLAG_ID_OFFSET = FLAG_ID_MAX;
+// AIV0 produces preprocessed X, AIC consumes it and returns the staging slot,
+// then AIC publishes the matmul result to AIV1. The second subblock uses the
+// same logical flags at SUBBLOCK_FLAG_OFFSET.
+constexpr uint8_t CROSS_CORE_SYNC_MODE = 4;
+constexpr uint16_t SUBBLOCK_FLAG_OFFSET = 16;
+constexpr uint16_t X_READY_FLAG = 8;
+constexpr uint16_t X_CONSUMED_FLAG = 9;
+constexpr uint16_t MM_READY_FLAG = 10;
 
 template <typename T>
 __aicore__ inline T Max(T a, T b) {
