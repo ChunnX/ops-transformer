@@ -30,7 +30,9 @@ using namespace std;
 static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
 {
     if (seqLen <= 1) {
-        T = 1; H = 1; W = seqLen;
+        T = 1;
+        H = 1;
+        W = seqLen;
         return;
     }
     int64_t maxDim = min(128LL, (int64_t)sqrt((double)seqLen));
@@ -47,7 +49,9 @@ static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
             }
         }
     }
-    T = 1; H = 1; W = seqLen;
+    T = 1;
+    H = 1;
+    W = seqLen;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,8 +81,8 @@ static void ComputeBandDimsHelper(int64_t headDim, int64_t &tBand, int64_t &hBan
 // Matches the Python gen_data.py / gen_tiling.py logic with seed=42
 // ---------------------------------------------------------------------------
 template <typename T>
-static void GenerateTestData(int64_t B, int64_t S, int64_t D,
-                             uint8_t *xBuf, uint8_t *cosSinBuf, uint8_t *goldenBuf, uint8_t *tilingBuf)
+static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t *xBuf, uint8_t *cosSinBuf, uint8_t *goldenBuf,
+                             uint8_t *tilingBuf)
 {
     const int64_t halfD = D / 2;
     const float freqBase = 10000.0f;
@@ -102,9 +106,12 @@ static void GenerateTestData(int64_t B, int64_t S, int64_t D,
     double rw = pow(freqBase, -2.0 / wb);
 
     std::vector<double> thetaT(halfTb), thetaH(halfHb), thetaW(halfWb);
-    for (int64_t k = 0; k < halfTb; k++) thetaT[k] = pow(rt, k);
-    for (int64_t k = 0; k < halfHb; k++) thetaH[k] = pow(rh, k);
-    for (int64_t k = 0; k < halfWb; k++) thetaW[k] = pow(rw, k);
+    for (int64_t k = 0; k < halfTb; k++)
+        thetaT[k] = pow(rt, k);
+    for (int64_t k = 0; k < halfHb; k++)
+        thetaH[k] = pow(rh, k);
+    for (int64_t k = 0; k < halfWb; k++)
+        thetaW[k] = pow(rw, k);
 
     // 4. Generate x with fixed seed 42 (matches Python's np.random.default_rng(42))
     std::mt19937 rng(42);
@@ -313,8 +320,8 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp16_3d_002)
             maxDiff = diff;
         if (diff > 5e-2f) { // relaxed tolerance for half precision
             if (utPass)
-                std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << static_cast<float>(golden[i]) << " diff "
-                          << diff << std::endl;
+                std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp "
+                          << static_cast<float>(golden[i]) << " diff " << diff << std::endl;
             utPass = false;
         }
     }
