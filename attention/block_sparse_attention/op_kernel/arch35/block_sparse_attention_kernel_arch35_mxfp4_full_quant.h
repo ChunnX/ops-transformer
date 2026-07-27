@@ -50,7 +50,7 @@ public:
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
     using ElementGroupMax = typename EpilogueComputePScale::ElementGroupMax;
-    using ElementPScale = typename EpilogueComputePScale::ElementScale;
+    using ElementPScale = typename EpilogueComputePScale::ElementPScale;
     using ElementLocalGlobalMax = typename EpilogueCopyGlobalMaxUbToL1::ElementLocalGlobalMax;
 
     using LayoutQ = layout::RowMajor;
@@ -62,6 +62,7 @@ public:
     using LayoutLse = layout::RowMajor;
     using LayoutOTmp = layout::RowMajor;
     using LayoutLocalGlobalMax = typename EpilogueCopyGlobalMaxUbToL1::LayoutLocalGlobalMax;
+    using LayoutPScale = typename EpilogueComputePScale::LayoutPScale;
     using LayoutSparseIdx = layout::RowMajor;
     using LayoutSparseCount = layout::RowMajor;
 
@@ -170,6 +171,9 @@ public:
         auto ubSLayoutTla = tla::MakeLayout<ElementS, LayoutS>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE * 2);
         auto ubSTensorTla = tla::MakeTensor(ubSTensor[0], ubSLayoutTla, Arch::PositionUB{});
 
+        auto l1PScaleLayoutTla = tla::MakeLayout<ElementPScale, LayoutPScale>(GmMXFP4::L1_P_SCALE_BUF_CNT, GmMXFP4::L1_P_SCALE_BUF_SIZE);
+        auto l1PScaleTensorTla = tla::MakeTensor(l1PScaleTensor[0], l1PScaleLayoutTla, Arch::PositionL1{});
+
  #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
@@ -180,6 +184,7 @@ public:
         half dstTypeMax = static_cast<half>(dstTypeMax_);
         EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, dstTypeMax);
         EpilogueCopyGlobalMaxUbToL1 epilogueCopyGlobalMaxUbToL1(resource);
+        EpilogueComputePScale epilogueComputePScale(resource);
         // EpilogueRescaleO epilogueRescaleO(resource);
  #endif	 
 
@@ -298,7 +303,8 @@ public:
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB + 16);
                     } else {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
-                        UpdatePScale(delay3TileInfo);
+                        // UpdatePScale(delay3TileInfo);
+                        epilogueComputePScale(l1PScaleTensorTla, delay3TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2);
                     }
                 }
