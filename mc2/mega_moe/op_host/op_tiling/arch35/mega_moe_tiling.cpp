@@ -730,10 +730,14 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
     }
 
     uint64_t logicalCoreCount = tilingData->blockAivNum;
+    bool useAiv1OnlyWaveCombine =
+        tilingData->topoType == TOPO_TYPE_MTE &&
+        (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        // A8W4/A4W4 每两个 AIV 配对，只有 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ || useAiv1OnlyWaveCombine) {
+        // 配对路径和 A8W8 wave 均只让 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
         logicalCoreCount /= 2U;
     }
     // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。
@@ -765,8 +769,7 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
         ops::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(DISPATCH_WAVE_TILE_M));
     bool useWavePipeline = tilingData->topoType == TOPO_TYPE_MTE &&
                            (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) &&
-                           tilingData->combineQuantMode == COMBINE_NO_QUANT;
+                            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
     int64_t dispatchFlagSlotsPerExpert =
         useWavePipeline ?

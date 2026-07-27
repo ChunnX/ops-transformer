@@ -62,8 +62,8 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     defined(ORIG_DTYPE_WEIGHT2) && (ORIG_DTYPE_WEIGHT2 == ORIG_DTYPE_WEIGHT1)
     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-            // Shared experts use the same A8W8 compute path and can follow the
-            // wave schedule. W4 and combine-quant remain on the two-loop path.
+            // Shared experts and combine quantization use the same A8W8 wave
+            // schedule. Only W4 configurations remain on the two-loop path.
             using WaveOp = MegaMoeWave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
                                        CombineQuantOutType, WEIGHT1_INTERLEAVED>;
             if constexpr (WaveOp::SUPPORTS_WAVE) {

@@ -402,10 +402,17 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
     auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), workSet.layouts.c);
 
     const auto &config = workSet.config;
+    using ProblemConfig = std::remove_reference_t<decltype(config)>;
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
     if constexpr (!Policy::IS_GMM1 && CombineQuantMode != COMBINE_NO_QUANT && !IsShared) {
-        uint32_t logicalCoreCount = config.blockNum * 2U;
+        // The wave path reserves AIV0 for the direct-UB GMM1 epilogue, so
+        // combine quantization is distributed over the paired AIV1 cores.
+        // Legacy generic A8W8 keeps its existing all-AIV distribution.
+        uint32_t logicalCoreCount = config.blockNum;
+        if constexpr (!ProblemConfig::USE_WAVE_FLAG_LAYOUT) {
+            logicalCoreCount *= 2U;
+        }
         groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
     }
 
@@ -438,7 +445,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 WaitForVector();
             }
         } else {
-            if constexpr (std::remove_reference_t<decltype(config)>::USE_WAVE_FLAG_LAYOUT) {
+            if constexpr (ProblemConfig::USE_WAVE_FLAG_LAYOUT) {
                 uint32_t waveIdx = mLoc / L1_TILE_M_256;
                 if (waveIdx != lastWaveWaited) {
                     WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
