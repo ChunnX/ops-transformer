@@ -17,6 +17,7 @@
 #define GROUPED_MATMUL_HOST_UTIL_H
 
 #include <map>
+#include <cstdint>
 
 namespace GroupedMatmul {
 constexpr uint32_t X_INDEX = 0;
