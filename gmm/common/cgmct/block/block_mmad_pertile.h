@@ -268,11 +268,14 @@ BlockMmadGmm<QGMM_BLOCK_MMAD_FUNC_LOCAL_PARAMS>::operator()(const TupleShape &ac
     if (orderAL1BL1_) {
         for (uint64_t kOuter = 0; kOuter < Get<MNK_K>(problemShape_); kOuter += maxStepK_) {
             isTailAL1 = (kOuter + maxStepK_) >= Get<MNK_K>(problemShape_);
+            AscendC::print("1111");
+            AscendC::PrintTimeStamp(50);
             CopyInA1Nd2Nz(aGlobal, kOuter, isTailAL1);
             for (uint64_t kInner = kOuter;
                  kInner < AscendC::Std::min(kOuter + maxStepK_, static_cast<uint64_t>(Get<MNK_K>(problemShape_)));
                  kInner += minStepK_) {
                 isTailBL1 = (kInner + minStepK_) >= Get<MNK_K>(problemShape_);
+                AscendC::PrintTimeStamp(50);
                 CopyInB1Nd2Nz(bGlobal, kInner, isTailBL1);
                 uint64_t kAL1Offset = kInner - kOuter;
                 AicBaseMadProcess(aL1PingPongID_ == 0 ? aL1Ping_ : aL1Pong_, bL1PingPongID_ == 0 ? bL1Ping_ : bL1Pong_,
@@ -286,11 +289,13 @@ BlockMmadGmm<QGMM_BLOCK_MMAD_FUNC_LOCAL_PARAMS>::operator()(const TupleShape &ac
     } else {
         for (uint64_t kOuter = 0; kOuter < Get<MNK_K>(problemShape_); kOuter += maxStepK_) {
             isTailBL1 = (kOuter + maxStepK_) >= Get<MNK_K>(problemShape_);
+            AscendC::print("2222");
             CopyInB1Nd2Nz(bGlobal, kOuter, isTailBL1);
             for (uint64_t kInner = kOuter;
                  kInner < AscendC::Std::min(kOuter + maxStepK_, static_cast<uint64_t>(Get<MNK_K>(problemShape_)));
                  kInner += minStepK_) {
                 isTailAL1 = (kInner + minStepK_) >= Get<MNK_K>(problemShape_);
+                AscendC::PrintTimeStamp(50);
                 CopyInA1Nd2Nz(aGlobal, kInner, isTailAL1);
                 uint64_t kBL1Offset = kInner - kOuter;
                 AicBaseMadProcess(aL1PingPongID_ == 0 ? aL1Ping_ : aL1Pong_, bL1PingPongID_ == 0 ? bL1Ping_ : bL1Pong_,

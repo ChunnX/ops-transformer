@@ -17,6 +17,7 @@ if (BUILD_OPEN_PROJECT)
         OPTIONS --cce-auto-sync=off
                 -Wno-deprecated-declarations
                 -Werror
+                -DASCENDC_TIME_STAMP_ON
     )
     if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
