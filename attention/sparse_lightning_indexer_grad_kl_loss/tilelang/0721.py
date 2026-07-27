@@ -652,7 +652,11 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(v1_p_sum, v1_p_sum, v1_p_partial[0:N1])
                     for n_idx in T.serial(n_num):
                         n_start = n_idx * n_block
-                        valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
+                        # 避免条件表达式同时保留两个分支的 BufferRegion：
+                        # full-valid specialization 的 KRealSize 仅是 1 元素占位。
+                        valid_k_size = K
+                        if not full_valid:
+                            valid_k_size = KRealSize[bz_task, s1_id]
                         T.wait_flag("v", "mte2", 1)
                         T.wait_flag("mte3", "v", 0)
                         if n_start < valid_k_size:
@@ -821,7 +825,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("v", "mte2", 3)
                     for n_idx in T.serial(n_num):
                         n_start = n_idx * n_block
-                        valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
+                        valid_k_size = K
+                        if not full_valid:
+                            valid_k_size = KRealSize[bz_task, s1_id]
                         if n_start < valid_k_size:
                             T.wait_flag("v", "mte2", 3)
                             T.copy(
@@ -1518,7 +1524,9 @@ def tilelang_grad_kl_loss_single_kernel(
                 s1_task = task_id % S1
                 # 每个 task 仅读取一次真实 K 长度。尾块路径只让拥有的 AIV
                 # 搬运到 16 行对齐的有效终点，例如 1025 -> 1040。
-                valid_k_size = K if full_valid else KRealSize[bz_task, s1_task]
+                valid_k_size = K
+                if not full_valid:
+                    valid_k_size = KRealSize[bz_task, s1_task]
                 # TileLang 的宏符号收集不追踪 Python 静态分支内新定义的
                 # 名称，因此先无条件给出 full-valid 配额；尾块路径仅覆写它。
                 task_vector_batch_count = vector_batch_count
