@@ -251,8 +251,11 @@ def tilelang_grad_kl_loss_single_kernel(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
     launch_core_num,
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
-    full_valid=False,
+    full_valid=False, k_scatter_exec=None,
 ):
+    k_scatter_exec = K if k_scatter_exec is None else k_scatter_exec
+    assert 0 < k_scatter_exec <= K
+    assert k_scatter_exec % V2_SCATTER_BATCH == 0
     s1_block = BLOCK_M
     n_block = block_n
     k_block = BLOCK_K
@@ -285,7 +288,9 @@ def tilelang_grad_kl_loss_single_kernel(
     # 官方 16 KiB scatter UB 在 ping/pong 之间平均划分：
     # 16 行 × 128 个 FP32 值 × 4 字节 = 每个槽位 8 KiB。
     v2_scatter_batch = V2_SCATTER_BATCH
-    v2_total_batches = K // v2_scatter_batch
+    # V2 不需要搬运 Cube 计算宽度 K 中的无效尾部。该宽度在主机侧静态
+    # 确定，因此 T.serial 能直接生成收缩后的固定上界。
+    v2_total_batches = k_scatter_exec // v2_scatter_batch
     v2_base_batches_per_core = v2_total_batches // launch_core_num
     v2_tail_batch_cores = v2_total_batches % launch_core_num
     v2_k_padded = K
@@ -1522,29 +1527,13 @@ def tilelang_grad_kl_loss_single_kernel(
             for task_id in T.serial(task_count):
                 bz_task = task_id // S1
                 s1_task = task_id % S1
-                # 每个 task 仅读取一次真实 K 长度。尾块路径只让拥有的 AIV
-                # 搬运到 16 行对齐的有效终点，例如 1025 -> 1040。
+                # 每个 task 仅读取一次真实 K 长度，仅用于保护本 task 的
+                # atomic scatter。V2 DMA 范围由编译期 k_scatter_exec 决定。
                 valid_k_size = K
                 if not full_valid:
                     valid_k_size = KRealSize[bz_task, s1_task]
-                # TileLang 的宏符号收集不追踪 Python 静态分支内新定义的
-                # 名称，因此先无条件给出 full-valid 配额；尾块路径仅覆写它。
-                task_vector_batch_count = vector_batch_count
-                if not full_valid:
-                    task_scatter_batches = (
-                        valid_k_size + v2_scatter_batch - 1
-                    ) // v2_scatter_batch
-                    task_vector_batch_end = T.min(
-                        vector_batch_start + vector_batch_count,
-                        task_scatter_batches,
-                    )
-                    task_vector_batch_count = T.if_then_else(
-                        task_vector_batch_end > vector_batch_start,
-                        task_vector_batch_end - vector_batch_start,
-                        0,
-                    )
 
-                if task_vector_batch_count > 0:
+                if vector_batch_count > 0:
                     T.wait_flag("mte3", "mte2", 6)
                     T.copy(
                         dk_matmul_partial[
@@ -1557,10 +1546,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     )
                     T.set_flag("mte2", "mte3", 6)
 
-                    for batch_id in T.serial(task_vector_batch_count):
+                    for batch_id in T.serial(vector_batch_count):
                         current_slot = batch_id % 2
                         next_slot = (batch_id + 1) % 2
-                        if batch_id + 1 < task_vector_batch_count:
+                        if batch_id + 1 < vector_batch_count:
                             next_k_start = (
                                 aiv_k_start
                                 + (batch_id + 1) * v2_scatter_batch
@@ -2076,14 +2065,19 @@ def _host_sequence_lengths(
     return None
 
 
-def _derive_k_exec(
+def _derive_execution_widths(
     actual_query_lengths: Optional[torch.Tensor],
     actual_key_lengths: Optional[torch.Tensor],
     batch_size: int,
     query_length: int,
     key_length: int,
     top_k: int,
-) -> int:
+) -> Tuple[int, int]:
+    """返回 Cube 执行宽度与 V2 scatter 执行宽度。
+
+    两个宽度都只依赖主机可见的长度。若长度仅在 NPU 上可见，不能为了
+    取得 maxRealK 引入同步，保守地让二者均退化为原始 K。
+    """
     host_query_lengths = _host_sequence_lengths(
         actual_query_lengths, query_length, batch_size
     )
@@ -2091,18 +2085,23 @@ def _derive_k_exec(
         actual_key_lengths, key_length, batch_size
     )
     if host_query_lengths is None or host_key_lengths is None:
-        return top_k
+        return top_k, top_k
     if len(host_query_lengths) != batch_size or len(host_key_lengths) != batch_size:
-        return top_k
+        return top_k, top_k
 
     max_real_k = max(
         min(top_k, max(0, key_len - query_len + query_length))
         for query_len, key_len in zip(host_query_lengths, host_key_lengths)
     )
-    return max(
+    k_exec = max(
         S2_WORKSPACE,
         ceil_div(max_real_k, S2_WORKSPACE) * S2_WORKSPACE,
     )
+    k_scatter_exec = max(
+        V2_SCATTER_BATCH,
+        ceil_div(max_real_k, V2_SCATTER_BATCH) * V2_SCATTER_BATCH,
+    )
+    return k_exec, min(k_scatter_exec, k_exec)
 
 
 def _is_static_full_valid(
@@ -2213,6 +2212,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             S2,
             K,
         )
+        k_scatter_exec = K
         if full_valid:
             # 该 specialization 不读取这两个输入，使用缓存的最小占位张量即可。
             k_real_size, valid_k_mask = _get_full_valid_aux_inputs(
@@ -2242,7 +2242,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 actual_k_len.unsqueeze(1) - actual_q_len.unsqueeze(1) + query_positions + 1
             ).clamp_(min=0, max=K).contiguous()
 
-            k_exec = _derive_k_exec(
+            k_exec, k_scatter_exec = _derive_execution_widths(
                 actual_seq_lengths_query,
                 actual_seq_lengths_key,
                 B,
@@ -2321,7 +2321,7 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         cache_key = (
             B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2,
-            DQuery, DQueryIndex, K, core_count, d_rope,
+            DQuery, DQueryIndex, K, k_scatter_exec, core_count, d_rope,
             input_dtype_str, calc_dtype_str, scale_value, block_n, full_valid,
         )
 
@@ -2331,7 +2331,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             func = tilelang_grad_kl_loss_single_kernel(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
-                full_valid,
+                full_valid, k_scatter_exec,
             )
 
             # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
