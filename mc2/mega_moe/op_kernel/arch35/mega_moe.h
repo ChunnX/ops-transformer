@@ -2097,7 +2097,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
     // Dispatch includes local preparation, quantization, routing metadata and
     // all synchronization required before an expert can consume its tokens.
-    kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
+    if constexpr (g_coreType == AIV) {
+        kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
+    }
 
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
@@ -2123,9 +2125,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     if (sharedExpertNum_ > 0) {
-        kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+        if constexpr (g_coreType == AIV) {
+            kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+        }
         ProcessSharedExpertGmm1(initShape, initOffset);
-        kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
+        if constexpr (g_coreType == AIV) {
+            kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
+        }
         SyncAll<false>();
     }
 
@@ -2176,9 +2182,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
-        kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+        if constexpr (g_coreType == AIV) {
+            kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+        }
         GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, localExpertId, vecSetSyncCom);
-        kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
+        if constexpr (g_coreType == AIV) {
+            kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
+        }
     }
 
     // prefetch 路径：epilogue 完成所有 expert 后写 allDone，AIC 轮询后继续
@@ -2213,7 +2223,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             ExpertTokenNumCopyOut();
         }
     }
-    kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+    if constexpr (g_coreType == AIV) {
+        kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+    }
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     vecSetSyncCom = 0;
