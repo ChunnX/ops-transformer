@@ -98,10 +98,14 @@ const constexpr uint32_t LOW_API_ROW_INNER_FACTOR = 8;
 const constexpr uint32_t LOW_API_D_FACTOR = 1024;
 const constexpr uint32_t LOW_API_BUFFER_POOL0_SIZE = 64 * 1024;
 const constexpr uint32_t LOW_API_BUFFER_POOL1_SIZE = 96 * 1024;
-// Boundary sweeps on 36 AIC cores favor M-K through M=1536 and BS from M=2048.
-const constexpr uint64_t M_K_MAX_TOTAL_LENGTH = 1536;
-const constexpr uint64_t M_K_MIN_TOTAL_LENGTH = 64;
+// Keep automatic M-K routing inside the range covered by the generalized
+// precision and performance sweeps. ND and BS remain available as fallbacks
+// and for future shape-specific routing outside this validated domain.
+const constexpr uint64_t M_K_MAX_VALIDATED_TOTAL_LENGTH = 10240;
 const constexpr uint64_t M_K_MIN_MAT_K = 512;
+const constexpr int32_t BATCH_CONSISTENCY_LEVEL = 3;
+const constexpr uint64_t M_K_FP32_L1_MIN_TOTAL_LENGTH = 512;
+const constexpr uint64_t M_K_N8_L1_MAX_TOTAL_LENGTH = 1536;
 const constexpr uint32_t M_K_M_L1_MAX_SIZE = 256;
 const constexpr uint32_t M_K_SPLIT_ALIGN = 256;
 const constexpr uint32_t M_K_A_L1_ELEMENT_COUNT = 128 * 256;
@@ -109,6 +113,7 @@ const constexpr uint32_t M_K_B_L1_ELEMENT_COUNT = 128 * 256;
 const constexpr uint32_t M_K_K_L1_MAX_SIZE = 1024;
 const constexpr uint32_t M_K_K_L1_ALIGN = 128;
 const constexpr size_t M_K_WORKSPACE_ALIGN = 512;
+const constexpr uint32_t M_K_USE_L1_STAGE = 0;
 const constexpr uint32_t M_K_USE_GM_STAGE = 1;
 
 static constexpr size_t OUT_H_IN_INDEX = 0;
@@ -640,10 +645,18 @@ bool MhcPreBaseTiling::CanUseLowApiBs() const
 bool MhcPreBaseTiling::CanUseMk() const
 {
     bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
-    return supportedN && totalLength_ >= M_K_MIN_TOTAL_LENGTH && totalLength_ <= M_K_MAX_TOTAL_LENGTH &&
+    return supportedN && totalLength_ <= M_K_MAX_VALIDATED_TOTAL_LENGTH &&
            matK_ >= M_K_MIN_MAT_K &&
-           context_->GetDeterministic() != 1 &&
-           context_->GetDeterministicLevel() != 2;
+           context_->GetDeterministicLevel() != BATCH_CONSISTENCY_LEVEL;
+}
+
+uint32_t MhcPreBaseTiling::SelectMkStage() const
+{
+    // Stable msprof measurements favor direct UB-to-L1 staging for large-M
+    // FP32 and small-M N=8. GM staging is the robust default elsewhere.
+    bool useL1Stage = (implMode_ == IMPL_MODE_FP32 && totalLength_ >= M_K_FP32_L1_MIN_TOTAL_LENGTH) ||
+                      (N_ == N_VALID_VALUES[2] && totalLength_ < M_K_N8_L1_MAX_TOTAL_LENGTH);
+    return useL1Stage ? M_K_USE_L1_STAGE : M_K_USE_GM_STAGE;
 }
 
 void MhcPreBaseTiling::FillLowApiTilingData()
@@ -717,7 +730,7 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_mkWorkspaceMmOffset(static_cast<uint32_t>(mmOffset));
     tilingData_.set_mkWorkspaceRmsOffset(static_cast<uint32_t>(rmsOffset));
     tilingData_.set_mkWorkspaceFinalOffset(static_cast<uint32_t>(finalOffset));
-    tilingData_.set_mkUseGmStage(M_K_USE_GM_STAGE);
+    tilingData_.set_mkUseGmStage(SelectMkStage());
 }
 
 void MhcPreBaseTiling::FillTilingData()
@@ -779,6 +792,9 @@ void MhcPreBaseTiling::FillTilingData()
 
 ge::graphStatus MhcPreBaseTiling::TilingProcess()
 {
+    // Start from the retained ND/BS implementations. M-K overrides this only
+    // in its validated domain; special shapes can add explicit ND/BS routing
+    // here later without removing either implementation.
     tilingMode_ = (totalLength_ <= DECODE_BS_THRESHOLD) ? TilingMode::SPLIT_ND : TilingMode::SPLIT_BS;
     if (CanUseLowApiBs()) {
         tilingMode_ = TilingMode::LOW_API_BS;
