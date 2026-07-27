@@ -58,16 +58,16 @@ public:
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
 
-    static constexpr uint64_t M_BASIC_BLOCK = 96;
+    static constexpr uint64_t M_BASIC_BLOCK = 64;
     static constexpr uint64_t S2_BASIC_BLOCK = 256;
 
-    static constexpr uint64_t M_BASIC_BLOCK_L1 = 96;
+    static constexpr uint64_t M_BASIC_BLOCK_L1 = 64;
     static constexpr uint64_t D_BASIC_BLOCK_L1 = 512;
-    static constexpr uint64_t S2_BASIC_BLOCK_L1 = 32;
+    static constexpr uint64_t S2_BASIC_BLOCK_L1 = 64;
 
-    static constexpr uint64_t M_BASIC_BLOCK_L0 = 96;
-    static constexpr uint64_t D_BASIC_BLOCK_L0 = 128;
-    static constexpr uint64_t S2_BASIC_BLOCK_L0 = 32;
+    static constexpr uint64_t M_BASIC_BLOCK_L0 = 64;
+    static constexpr uint64_t D_BASIC_BLOCK_L0 = 256;
+    static constexpr uint64_t S2_BASIC_BLOCK_L0 = 64;
 
     static constexpr uint64_t BF16_BLOCK_CUBE = 16;
     static constexpr uint32_t PIPE_M_BARRIER_THRESHOLD = 10U;

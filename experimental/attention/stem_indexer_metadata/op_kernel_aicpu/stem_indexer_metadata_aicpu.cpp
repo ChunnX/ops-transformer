@@ -19,7 +19,7 @@
 #include <cmath>
 #include "stem_indexer_metadata_aicpu.h"
 
-#define KERNEL_STATUS_OK            0
+#define KERNEL_STATUS_OK 0
 #define KERNEL_STATUS_PARAM_INVALID 1
 
 namespace aicpu {
@@ -45,14 +45,11 @@ bool StemIndexerMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
 
-    bool requiredAttrs = GetAttrValue(ctx, "q_heads", numHeadsQ_) &&
-                         GetAttrValue(ctx, "kv_heads", numHeadsKv_) &&
-                         GetAttrValue(ctx, "causal", causal_) &&
-                         GetAttrValue(ctx, "stem_block_size", stemBlockSize_) &&
-                         GetAttrValue(ctx, "window_size", windowSize_) &&
-                         GetAttrValue(ctx, "soc_version", socVersion_) &&
-                         GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
-                         GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
+    bool requiredAttrs =
+        GetAttrValue(ctx, "q_heads", numHeadsQ_) && GetAttrValue(ctx, "kv_heads", numHeadsKv_) &&
+        GetAttrValue(ctx, "causal", causal_) && GetAttrValue(ctx, "stem_block_size", stemBlockSize_) &&
+        GetAttrValue(ctx, "window_size", windowSize_) && GetAttrValue(ctx, "soc_version", socVersion_) &&
+        GetAttrValue(ctx, "aic_core_num", aicCoreNum_) && GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
     if (!requiredAttrs) {
         return false;
     }
@@ -129,12 +126,10 @@ std::vector<int64_t> StemIndexerMetadataCpuKernel::GetTensorDataAsInt64(Tensor *
 
 bool StemIndexerMetadataCpuKernel::BalanceSchedule(SectionStreamKResult &result)
 {
-    DeviceInfo deviceInfo {};
-    StemIndexerBaseInfo baseInfo {};
-    load_balance::SectionStreamKParam param {};
-    auto success = GenerateDeviceInfo(deviceInfo) &&
-                   GenerateBaseInfo(baseInfo) &&
-                   GenerateSectionStreamKParam(param);
+    DeviceInfo deviceInfo{};
+    StemIndexerBaseInfo baseInfo{};
+    load_balance::SectionStreamKParam param{};
+    auto success = GenerateDeviceInfo(deviceInfo) && GenerateBaseInfo(baseInfo) && GenerateSectionStreamKParam(param);
     if (!success) {
         return KERNEL_STATUS_PARAM_INVALID;
     }
@@ -155,8 +150,8 @@ bool StemIndexerMetadataCpuKernel::GenerateBaseInfo(StemIndexerBaseInfo &baseInf
     KERNEL_CHECK_NULLPTR(qSeqLens_, false, "q_seq_len is nullptr!");
     KERNEL_CHECK_NULLPTR(kvSeqLens_, false, "kv_seq_len is nullptr!");
     KERNEL_CHECK_FALSE(qSeqLens_->NumElements() == kvSeqLens_->NumElements(), false,
-        "q_seq_len(%ld) has different length with kv_seq_len(%ld)",
-        qSeqLens_->NumElements(), kvSeqLens_->NumElements());
+                       "q_seq_len(%ld) has different length with kv_seq_len(%ld)", qSeqLens_->NumElements(),
+                       kvSeqLens_->NumElements());
 
     size_t batchSize = qSeqLens_->NumElements();
 
@@ -168,7 +163,7 @@ bool StemIndexerMetadataCpuKernel::GenerateBaseInfo(StemIndexerBaseInfo &baseInf
     baseInfo.headDim = headDim_;
     baseInfo.attenMaskFlag = causal_;
     baseInfo.sparseMode = (causal_) ? static_cast<uint32_t>(load_balance::SparseMode::RIGHT_DOWN_CAUSAL) :
-        static_cast<uint32_t>(load_balance::SparseMode::BUTT);
+                                      static_cast<uint32_t>(load_balance::SparseMode::BUTT);
     baseInfo.preToken = -1;
     baseInfo.nextToken = -1;
     baseInfo.layoutQuery = load_balance::Layout::BUTT;
@@ -191,8 +186,8 @@ bool StemIndexerMetadataCpuKernel::GenerateBaseInfo(StemIndexerBaseInfo &baseInf
 
 bool StemIndexerMetadataCpuKernel::GenerateSectionStreamKParam(load_balance::SectionStreamKParam &param)
 {
-    param.l2Byte = 0U;
-    param.mBaseSize = 96;   // 96: Fix mBaseSize
+    param.l2Byte = 96468992;
+    param.mBaseSize = 64;   // 64: Fix mBaseSize
     param.s2BaseSize = 256; // 256: Fix s2BaseSize
     param.fdOn = false;
     return true;
@@ -243,7 +238,7 @@ bool StemIndexerMetadataCpuKernel::GenMetadata(SectionStreamKResult &result)
         sliMetadata.SetFaMetadata(i, optiling::SLI_S2_END_INDEX, faResult.s2End[i]);
         // FA idx
         sliMetadata.SetFaMetadata(i, optiling::SLI_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
-                                 faResult.firstFdDataWorkspaceIdx[i]);
+                                  faResult.firstFdDataWorkspaceIdx[i]);
     }
     KERNEL_LOG_ERROR("Assign FD");
     // FD Metadata Generate
