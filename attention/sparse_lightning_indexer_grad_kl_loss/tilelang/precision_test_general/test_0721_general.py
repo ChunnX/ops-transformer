@@ -86,7 +86,7 @@ HEAD_CONFIGS = (
 )
 
 # 完整的 B/S1/K 笛卡尔积包含 100 个用例，并会产生不可行的工作区。
-# 原始 45 个 BSND 覆盖用例将高 B 和高 S1 分开；下面由
+# 精简后的 44 个 BSND 覆盖用例将高 B 和高 S1 分开；下面由
 # RESOURCE_EXCLUDED_CASES 移除已知的设备内存失败用例。
 _GRID_S2_OVERRIDES = {
     (1, 1024): 1281,
@@ -174,7 +174,7 @@ def _make_b4_cases() -> List[Dict[str, Any]]:
 
 
 _B64_CASE_SPECS = (
-    (1, 1024, 1024),
+    # B=64/S1=1 已由 K=2048、4096 覆盖，K=1024 也由 S1=64 覆盖。
     (1, 2048, 1024),
     (1, 4096, 1024),
     (64, 1024, 1024),
@@ -280,9 +280,9 @@ SMOKE_CASE_NAMES = (
 ALL_CASES = BSND_CASES + TND_CASES
 CASE_BY_NAME = {case["name"]: case for case in ALL_CASES + ISOLATION_CASES}
 assert len(RESOURCE_EXCLUDED_CASES) == 9
-assert len(BSND_CASES) == 37
+assert len(BSND_CASES) == 36
 assert len(TND_CASES) == 4
-assert len(ALL_CASES) == 41
+assert len(ALL_CASES) == 40
 assert len(CASE_BY_NAME) == len(ALL_CASES) + len(ISOLATION_CASES)
 
 
