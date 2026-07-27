@@ -28,7 +28,7 @@ class StemOamPrepPagedKvOpBuilder(OpBuilder):
         return [
             "stem_oam_prep_paged_kv(Tensor kCache, Tensor vCache, Tensor kvIndices, "
             "int[] kvSeqLens, Tensor kScaleCache, Tensor vScale, "
-            "double lambdaMag, int cacheLayout, int kvBlockSize, "
+            "float lambdaMag, int cacheLayout, int kvBlockSize, "
             "int stemBlockSize, int stemStride) -> (Tensor, Tensor)"
         ]
 

@@ -30,8 +30,15 @@ public:
             .DataType({ge::DT_FLOAT8_E4M3FN})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("kvIndices").ParamType(REQUIRED).DataType({ge::DT_INT32}).Format({ge::FORMAT_ND});
-        this->Input("kvSeqLens").ParamType(REQUIRED).DataType({ge::DT_INT32}).Format({ge::FORMAT_ND}).ValueDepend(OPTIONAL);
+        this->Input("kvIndices")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT32})
+            .Format({ge::FORMAT_ND});
+        this->Input("kvSeqLens")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT32})
+            .Format({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL);
         this->Input("kScaleCache")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
