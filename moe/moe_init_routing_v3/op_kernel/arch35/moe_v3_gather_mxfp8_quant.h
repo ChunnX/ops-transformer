@@ -368,6 +368,8 @@ private:
     int64_t lastLoopScaleCols_;
     int64_t indicesOffset_;
     int64_t rowIdxType_ = 0;
+    int64_t perLoopColsVfAlign_;
+    int64_t perLoopScaleColsVfAlign_;
 
     uint16_t fp8Emax_ = 0;
 
@@ -406,11 +408,11 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Init(GM_ADDR xA
 
     // perrows * 2 * 2 * 4 expandRowIdx + sortedExpertId
     pipe_->InitBuffer(sortedRowIdxInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopRows_, sizeof(int32_t)));
-    pipe_->InitBuffer(xInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(T)));
-    pipe_->InitBuffer(xQuantOutQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_ / 4, sizeof(int8_t)) * 4);
-    pipe_->InitBuffer(mxScaleOutQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopScaleCols_, sizeof(int8_t)));
-    pipe_->InitBuffer(maxExpBuffer_, AlignBytes(perLoopScaleCols_, sizeof(T)));
-    pipe_->InitBuffer(invScaleBuffer_, AlignBytes(perLoopScaleCols_, sizeof(T)));
+    pipe_->InitBuffer(xInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopColsVfAlign_, sizeof(T)));
+    pipe_->InitBuffer(xQuantOutQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopColsVfAlign_, sizeof(int8_t)));
+    pipe_->InitBuffer(mxScaleOutQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopScaleColsVfAlign_, sizeof(int8_t)));
+    pipe_->InitBuffer(maxExpBuffer_, AlignBytes(perLoopScaleColsVfAlign_, sizeof(uint16_t)));
+    pipe_->InitBuffer(invScaleBuffer_, AlignBytes(perLoopScaleColsVfAlign_, sizeof(uint16_t)));
     if constexpr (IsSameType<U, fp8_e4m3fn_t>::value) {
         fp8Emax_ = MXFP8_E4M3_EMAX;
     } else {
@@ -463,6 +465,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTilin
     perLoopScaleCols_ = perLoopCols_ / MX_BLOCK_SIZE; // perLoopCols_在tiling侧计算，已经对齐到32的整数倍了
     lastLoopValidScaleCols_ = validScaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
     lastLoopScaleCols_ = scaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
+    perLoopColsVfAlign_ = Ops::Base::CeilAlign<int64_t>(perLoopCols_, vlForB16_ * 2);
+    perLoopScaleColsVfAlign_ = Ops::Base::CeilAlign<int64_t>(perLoopScaleCols_, vlForB16_);
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
@@ -573,6 +577,9 @@ template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols)
 {
     LocalTensor<T> inLocal = xInQueue_.AllocTensor<T>();
+    if (loopCols < perLoopColsVfAlign_) {
+        Duplicate(inLocal, static_cast<T>(0), static_cast<int32_t>(perLoopColsVfAlign_));
+    }
     DataCopyExtParams copyInParam = {1, static_cast<uint32_t>(loopCols * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams = {false, 0, 0, 0};
     int64_t loopColsTail = loopCols % MX_BLOCK_SIZE;
