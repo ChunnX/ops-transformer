@@ -791,9 +791,8 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                                    uint32_t groupCnt, uint16_t &pingpongIdx, uint32_t groupIdx = 0)
+                                    uint32_t groupCnt, uint16_t &pingpongIdx)
 {
-    (void)groupIdx;
     Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
@@ -832,10 +831,6 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
         uint32_t logicalCoreCount = config.blockNum;
         groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
     }
-    // Layered GMM2 is consumed through group counters; only paths with an AIV1 GM epilogue use this sequence.
-    constexpr bool hasAiv1GmEpilogue =
-        Policy::IS_GMM1 || (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered);
-
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -878,6 +873,9 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
             }
         }
+        // Layered 路径 GMM2 输出由 ProcessCombine 通过 group sync counter 读取，不走 Aiv1 GM tile 通知。
+        constexpr bool hasAiv1GmEpilogue =
+            Policy::IS_GMM1 || (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered);
         if constexpr (hasAiv1GmEpilogue) {
             if constexpr (Policy::IS_GMM1 && TopkWeightsPrefetch) {
                 // prefetch 软同步：写 tile 状态位通知 AIV1（roundTag = expertIdx + 1）
