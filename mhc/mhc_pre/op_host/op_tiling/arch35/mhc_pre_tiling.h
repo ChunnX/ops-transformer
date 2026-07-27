@@ -25,7 +25,6 @@ namespace optiling {
 enum class TilingMode : uint8_t {
     SPLIT_BS = 0,
     SPLIT_ND = 1,
-    LOW_API_BS = 2,
     SPLIT_M_K = 3
 };
 
@@ -139,9 +138,8 @@ protected:
     void FillTilingData();
     ge::graphStatus TilingProcess();
     ge::graphStatus CheckUbBufferSize();
-    void FillLowApiTilingData();
+    void FillBsTilingData();
     void FillMkTilingData();
-    bool CanUseLowApiBs() const;
     bool CanUseMk() const;
     uint32_t SelectMkStage() const;
     size_t GetLastRequiredInputIndex() const;

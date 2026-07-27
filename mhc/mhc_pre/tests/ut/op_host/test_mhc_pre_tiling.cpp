@@ -399,7 +399,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case07_B256_S1024_n4_d2048_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 2;
+    int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -453,7 +453,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case08_B20_S4096_n6_d1024_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 2;
+    int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -777,7 +777,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case14_B16_S1024_n6_d128_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 2;
+    int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -885,7 +885,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case16_B2_S32768_n4_d512_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 2;
+    int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -939,7 +939,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case17_B48_S512_n6_d2048_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 2;
+    int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -993,7 +993,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case18_B12_S1536_n8_d1536_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 2;
+    int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1101,7 +1101,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case20_B1024_S32_n6_d768_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 2;
+    int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1481,7 +1481,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case27_OutFlag1_LongSeq_BSND_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 2;
+    int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1532,7 +1532,7 @@ TEST_F(MhcPreTiling, Ut_Check_LowApi_N4_SplitBS_HasResi_Gamma)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 2;
+    int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1588,7 +1588,7 @@ TEST_F(MhcPreTiling, Ut_Check_LowApi_N6_SplitBS)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 2;
+    int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1977,7 +1977,7 @@ TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_Boundary)
     CheckMkGeneralizedTiling(1536U, 4U, 6144U, 3);
     CheckMkGeneralizedTiling(2048U, 4U, 5120U, 3);
     CheckMkGeneralizedTiling(10240U, 4U, 5120U, 3);
-    CheckMkGeneralizedTiling(10241U, 4U, 5120U, 2);
+    CheckMkGeneralizedTiling(10241U, 4U, 5120U, 0);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N6_KTail)

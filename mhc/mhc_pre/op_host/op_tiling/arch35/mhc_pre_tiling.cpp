@@ -635,13 +635,6 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
     return ge::GRAPH_SUCCESS;
 }
 
-
-bool MhcPreBaseTiling::CanUseLowApiBs() const
-{
-    bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
-    return tilingMode_ == TilingMode::SPLIT_BS && supportedN;
-}
-
 bool MhcPreBaseTiling::CanUseMk() const
 {
     bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
@@ -659,7 +652,7 @@ uint32_t MhcPreBaseTiling::SelectMkStage() const
     return useL1Stage ? M_K_USE_L1_STAGE : M_K_USE_GM_STAGE;
 }
 
-void MhcPreBaseTiling::FillLowApiTilingData()
+void MhcPreBaseTiling::FillBsTilingData()
 {
     auto roundUp = [](uint64_t value, uint64_t align) -> uint32_t {
         return static_cast<uint32_t>(((value + align - 1U) / align) * align);
@@ -783,8 +776,8 @@ void MhcPreBaseTiling::FillTilingData()
     float scaleMean = 1.0f / static_cast<float>(matK_);
     tilingData_.set_scaleMean(scaleMean);
 
-    if (tilingMode_ == TilingMode::LOW_API_BS) {
-        FillLowApiTilingData();
+    if (tilingMode_ == TilingMode::SPLIT_BS) {
+        FillBsTilingData();
     } else if (tilingMode_ == TilingMode::SPLIT_M_K) {
         FillMkTilingData();
     }
@@ -792,13 +785,9 @@ void MhcPreBaseTiling::FillTilingData()
 
 ge::graphStatus MhcPreBaseTiling::TilingProcess()
 {
-    // Start from the retained ND/BS implementations. M-K overrides this only
-    // in its validated domain; special shapes can add explicit ND/BS routing
-    // here later without removing either implementation.
+    // ND remains available for small-K and shape-specific fallbacks. SPLIT_BS
+    // is the low-level implementation; the legacy high-level kernel is gone.
     tilingMode_ = (totalLength_ <= DECODE_BS_THRESHOLD) ? TilingMode::SPLIT_ND : TilingMode::SPLIT_BS;
-    if (CanUseLowApiBs()) {
-        tilingMode_ = TilingMode::LOW_API_BS;
-    }
     if (CanUseMk()) {
         tilingMode_ = TilingMode::SPLIT_M_K;
         FillMkTilingData();
@@ -878,9 +867,7 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     const size_t floatSize = sizeof(float);
     const size_t doubleBufferCount = 2;
 
-    if (tilingMode_ == TilingMode::SPLIT_BS) {
-        fixedBufferSize = 80 * 1024 * doubleBufferCount + 20 * 1024 * doubleBufferCount + 40 * 1024;
-    } else if (tilingMode_ == TilingMode::LOW_API_BS || tilingMode_ == TilingMode::SPLIT_M_K) {
+    if (tilingMode_ == TilingMode::SPLIT_BS || tilingMode_ == TilingMode::SPLIT_M_K) {
         fixedBufferSize = LOW_API_BUFFER_POOL0_SIZE + LOW_API_BUFFER_POOL1_SIZE;
     } else {
         fixedBufferSize = 80 * 1024 * doubleBufferCount + 16 * 1024 * doubleBufferCount + 20 * 1024;
