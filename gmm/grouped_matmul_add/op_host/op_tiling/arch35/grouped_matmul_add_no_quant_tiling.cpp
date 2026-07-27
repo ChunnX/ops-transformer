@@ -71,7 +71,7 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
     }
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
         context->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%d", groupType_).c_str(),
-        Ops::Transformer::Gmm::FormatString("The value of %s cannot be %d", "groupType", groupType_).c_str());
+        Ops::Transformer::Gmm::FormatString("The value of %s must be in %s", "groupType", "{2}").c_str());
     return false;
 }
 
