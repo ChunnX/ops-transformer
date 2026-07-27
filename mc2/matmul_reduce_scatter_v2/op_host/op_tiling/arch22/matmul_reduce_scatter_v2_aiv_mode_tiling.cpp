@@ -1221,7 +1221,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     PrintTilingDataInfo(info, tilingData->cocTiling);
 
     // 6. communication
-    uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, aType));
+    uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName, aType));
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
     std::string algConfig = "ReduceScatter=level0:fullmesh";
