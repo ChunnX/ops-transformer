@@ -708,6 +708,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 {
     LocalTensor<uint32_t> gatherIndexTensor =
         topkIdsBuf_.GetWithOffset<uint32_t>(UB_STRIDE, epWorldSize_ * UB_ALIGN);
+    SyncFunc<AscendC::HardEvent::V_S>(); // 前序 Vector 计算复用 topkIdsBuf_，完成后才能写 gather index
     gatherIndexTensor.SetValue(0, 2U); // 源操作数每个datablock取下标为1的元素
     uint32_t compactMask = 2U;
     uint64_t reservedCount = 0UL;
