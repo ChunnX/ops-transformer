@@ -91,7 +91,7 @@ public:
                 Mxfp4VF::computeOnlyScale<false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm, static_cast<uint16_t>(subBlockIdx));
             }
-            AscendC::PipeBarrier<AscendC::PIPE_V>();
+            AscendC::PipeBarrier<PIPE_V>();
             return;
         }
 
