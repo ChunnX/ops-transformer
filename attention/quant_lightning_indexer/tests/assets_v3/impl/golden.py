@@ -20,7 +20,7 @@ from ttk.utilities import numpy_to_torch_tensor, torch_to_numpy_tensor
 
 
 def _load_e2e_golden():
-    name = "qli_ttk_kernel_e2e_golden"
+    name = "qli_ttk_golden"
     if name in sys.modules:
         return sys.modules[name]
     path = Path(__file__).resolve().parents[2] / "assets" / "impl" / "golden.py"
