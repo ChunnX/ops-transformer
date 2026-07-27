@@ -16,13 +16,192 @@
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "test_rotary_position_embedding3d.h"
-#include "data_utils.h"
 #include "../../../op_kernel/rotary_position_embedding3d.cpp"
-#include "rotary_position_embedding3d_data/test_data.inc"
 
 #include <cstdint>
+#include <cmath>
+#include <random>
 
 using namespace std;
+
+// ---------------------------------------------------------------------------
+// Helper: factor video dims (matches FactorVideoDims in tiling.cpp)
+// ---------------------------------------------------------------------------
+static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
+{
+    if (seqLen <= 1) {
+        T = 1; H = 1; W = seqLen;
+        return;
+    }
+    int64_t maxDim = min(128LL, (int64_t)sqrt((double)seqLen));
+    for (int64_t w = maxDim; w >= 1; w--) {
+        if (seqLen % w == 0) {
+            int64_t rest = seqLen / w;
+            for (int64_t h = min(128LL, (int64_t)sqrt((double)rest)); h >= 1; h--) {
+                if (rest % h == 0) {
+                    T = rest / h;
+                    H = h;
+                    W = w;
+                    return;
+                }
+            }
+        }
+    }
+    T = 1; H = 1; W = seqLen;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: compute 2:1:1 band dims (matches ComputeBandDims in tiling.cpp)
+// ---------------------------------------------------------------------------
+static void ComputeBandDimsHelper(int64_t headDim, int64_t &tBand, int64_t &hBand, int64_t &wBand)
+{
+    int64_t bandEach = headDim / 3;
+    if (bandEach % 2 != 0) {
+        bandEach -= 1;
+    }
+    tBand = bandEach;
+    hBand = bandEach;
+    wBand = headDim - tBand - hBand;
+    if (wBand % 2 != 0) {
+        wBand -= 1;
+        tBand += 1;
+        if (tBand % 2 != 0) {
+            tBand -= 1;
+            hBand += 1;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helper: generate test data (x, cos_sin, golden, tiling) into pre-allocated buffers
+// Matches the Python gen_data.py / gen_tiling.py logic with seed=42
+// ---------------------------------------------------------------------------
+template <typename T>
+static void GenerateTestData(int64_t B, int64_t S, int64_t D,
+                             uint8_t *xBuf, uint8_t *cosSinBuf, uint8_t *goldenBuf, uint8_t *tilingBuf)
+{
+    const int64_t halfD = D / 2;
+    const float freqBase = 10000.0f;
+
+    // 1. Factor video dims
+    int64_t T, H, W;
+    FactorVideoDims(S, T, H, W);
+    int64_t hw = H * W;
+    int64_t wv = W;
+
+    // 2. Compute band dims
+    int64_t tb, hb, wb;
+    ComputeBandDimsHelper(D, tb, hb, wb);
+    int64_t halfTb = tb / 2;
+    int64_t halfHb = hb / 2;
+    int64_t halfWb = wb / 2;
+
+    // 3. Frequency tables
+    double rt = pow(freqBase, -2.0 / tb);
+    double rh = pow(freqBase, -2.0 / hb);
+    double rw = pow(freqBase, -2.0 / wb);
+
+    std::vector<double> thetaT(halfTb), thetaH(halfHb), thetaW(halfWb);
+    for (int64_t k = 0; k < halfTb; k++) thetaT[k] = pow(rt, k);
+    for (int64_t k = 0; k < halfHb; k++) thetaH[k] = pow(rh, k);
+    for (int64_t k = 0; k < halfWb; k++) thetaW[k] = pow(rw, k);
+
+    // 4. Generate x with fixed seed 42 (matches Python's np.random.default_rng(42))
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<float> dist(-3.0f, 3.0f);
+    T *x = reinterpret_cast<T *>(xBuf);
+    for (int64_t i = 0; i < B * S * D; i++) {
+        x[i] = static_cast<T>(dist(rng));
+    }
+
+    // 5. Compute cos_sin
+    T *cs = reinterpret_cast<T *>(cosSinBuf);
+    for (int64_t batch = 0; batch < B; batch++) {
+        for (int64_t pos = 0; pos < S; pos++) {
+            int64_t tCoord = pos / hw;
+            int64_t rem = pos % hw;
+            int64_t iCoord = rem / wv;
+            int64_t jCoord = rem % wv;
+
+            for (int64_t k = 0; k < halfTb; k++) {
+                double a = tCoord * thetaT[k];
+                cs[batch * S * D + pos * D + k] = static_cast<T>(cos(a));
+                cs[batch * S * D + pos * D + halfD + k] = static_cast<T>(sin(a));
+            }
+            for (int64_t k = 0; k < halfHb; k++) {
+                double a = iCoord * thetaH[k];
+                cs[batch * S * D + pos * D + halfTb + k] = static_cast<T>(cos(a));
+                cs[batch * S * D + pos * D + halfD + halfTb + k] = static_cast<T>(sin(a));
+            }
+            for (int64_t k = 0; k < halfWb; k++) {
+                double a = jCoord * thetaW[k];
+                cs[batch * S * D + pos * D + halfTb + halfHb + k] = static_cast<T>(cos(a));
+                cs[batch * S * D + pos * D + halfD + halfTb + halfHb + k] = static_cast<T>(sin(a));
+            }
+        }
+    }
+
+    // 6. Compute golden (in float, then cast to T for storage to match golden file format)
+    T *golden = reinterpret_cast<T *>(goldenBuf);
+    for (int64_t batch = 0; batch < B; batch++) {
+        for (int64_t pos = 0; pos < S; pos++) {
+            int64_t tCoord = pos / hw;
+            int64_t rem = pos % hw;
+            int64_t iCoord = rem / wv;
+            int64_t jCoord = rem % wv;
+
+            for (int64_t k = 0; k < halfTb; k++) {
+                double a = tCoord * thetaT[k];
+                double c = cos(a), sn = sin(a);
+                double xl = static_cast<double>(x[batch * S * D + pos * D + k]);
+                double xr = static_cast<double>(x[batch * S * D + pos * D + halfD + k]);
+                golden[batch * S * D + pos * D + k] = static_cast<T>(xl * c - xr * sn);
+                golden[batch * S * D + pos * D + halfD + k] = static_cast<T>(xl * sn + xr * c);
+            }
+            for (int64_t k = 0; k < halfHb; k++) {
+                double a = iCoord * thetaH[k];
+                double c = cos(a), sn = sin(a);
+                int64_t off = halfTb + k;
+                double xl = static_cast<double>(x[batch * S * D + pos * D + off]);
+                double xr = static_cast<double>(x[batch * S * D + pos * D + halfD + off]);
+                golden[batch * S * D + pos * D + off] = static_cast<T>(xl * c - xr * sn);
+                golden[batch * S * D + pos * D + halfD + off] = static_cast<T>(xl * sn + xr * c);
+            }
+            for (int64_t k = 0; k < halfWb; k++) {
+                double a = jCoord * thetaW[k];
+                double c = cos(a), sn = sin(a);
+                int64_t off = halfTb + halfHb + k;
+                double xl = static_cast<double>(x[batch * S * D + pos * D + off]);
+                double xr = static_cast<double>(x[batch * S * D + pos * D + halfD + off]);
+                golden[batch * S * D + pos * D + off] = static_cast<T>(xl * c - xr * sn);
+                golden[batch * S * D + pos * D + halfD + off] = static_cast<T>(xl * sn + xr * c);
+            }
+        }
+    }
+
+    // 7. Compute tiling data (matches gen_tiling.py)
+    int64_t total = B * S * D;
+    int64_t blockLen = total / 8;
+    double rrt = pow(freqBase, -2.0 / tb);
+    double rrh = pow(freqBase, -2.0 / hb);
+    double rrw = pow(freqBase, -2.0 / wb);
+
+    RotaryPositionEmbedding3dTilingData *td = reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tilingBuf);
+    td->totalLength = total;
+    td->headDim = D;
+    td->seqLen = S;
+    td->T = T;
+    td->H = H;
+    td->W = W;
+    td->tBand = tb;
+    td->hBand = hb;
+    td->tileNum = 1;
+    td->blockLength = blockLen;
+    td->freqBase = freqBase;
+    td->rT = static_cast<float>(rrt);
+    td->rH = static_cast<float>(rrh);
+    td->rW = static_cast<float>(rrw);
+}
 
 class rotary_position_embedding3d_test : public testing::Test {
 protected:
@@ -52,14 +231,10 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_001)
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    memcpy(x, kX_case_2_4_8, inputXByteSize);
-    memcpy(cos_sin, kCosSin_case_2_4_8, inputCosSinByteSize);
-    memcpy(tiling, kTiling_case_2_4_8, tilingDataSize);
+    uint8_t *goldenBuf = new uint8_t[outputZByteSize];
+    GenerateTestData<float>(B, S, D, x, cos_sin, goldenBuf, tiling);
     RotaryPositionEmbedding3dTilingData *tilingDatafromBin =
         reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tiling);
-
-    char *path_ = get_current_dir_name();
-    string path(path_);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(0);
@@ -72,8 +247,7 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_001)
     // Verify against golden reference
     float *z_f32 = (float *)z;
     size_t numElts = outputZByteSize / sizeof(float);
-    std::vector<float> golden(numElts);
-    memcpy(golden.data(), kGolden_case_2_4_8, outputZByteSize);
+    float *golden = reinterpret_cast<float *>(goldenBuf);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
@@ -95,7 +269,7 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_001)
     AscendC::GmFree(z);
     AscendC::GmFree(workspace);
     AscendC::GmFree(tiling);
-    free(path_);
+    delete[] goldenBuf;
 }
 
 // [4, 16, 64] float16 — 大尺寸 fp16 测试
@@ -114,14 +288,10 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp16_3d_002)
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    memcpy(x, kX_case_4_16_64, inputXByteSize);
-    memcpy(cos_sin, kCosSin_case_4_16_64, inputCosSinByteSize);
-    memcpy(tiling, kTiling_case_4_16_64, tilingDataSize);
+    uint8_t *goldenBuf = new uint8_t[outputZByteSize];
+    GenerateTestData<half>(B, S, D, x, cos_sin, goldenBuf, tiling);
     RotaryPositionEmbedding3dTilingData *tilingDatafromBin =
         reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tiling);
-
-    char *path_ = get_current_dir_name();
-    string path(path_);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(1);
@@ -134,17 +304,16 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp16_3d_002)
     // Verify against golden reference
     float *z_f32 = (float *)z;
     size_t numElts = outputZByteSize / sizeof(float);
-    std::vector<float> golden(numElts);
-    memcpy(golden.data(), kGolden_case_4_16_64, outputZByteSize);
+    half *golden = reinterpret_cast<half *>(goldenBuf);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
-        float diff = fabsf(z_f32[i] - golden[i]);
+        float diff = fabsf(z_f32[i] - static_cast<float>(golden[i]));
         if (diff > maxDiff)
             maxDiff = diff;
         if (diff > 5e-2f) { // relaxed tolerance for half precision
             if (utPass)
-                std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << golden[i] << " diff "
+                std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << static_cast<float>(golden[i]) << " diff "
                           << diff << std::endl;
             utPass = false;
         }
@@ -157,7 +326,7 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp16_3d_002)
     AscendC::GmFree(z);
     AscendC::GmFree(workspace);
     AscendC::GmFree(tiling);
-    free(path_);
+    delete[] goldenBuf;
 }
 
 // [1, 32, 128] float32 — 单 batch 大 sequence 测试
@@ -176,14 +345,10 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_003)
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    memcpy(x, kX_case_1_32_128, inputXByteSize);
-    memcpy(cos_sin, kCosSin_case_1_32_128, inputCosSinByteSize);
-    memcpy(tiling, kTiling_case_1_32_128, tilingDataSize);
+    uint8_t *goldenBuf = new uint8_t[outputZByteSize];
+    GenerateTestData<float>(B, S, D, x, cos_sin, goldenBuf, tiling);
     RotaryPositionEmbedding3dTilingData *tilingDatafromBin =
         reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tiling);
-
-    char *path_ = get_current_dir_name();
-    string path(path_);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(0);
@@ -196,8 +361,7 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_003)
     // Verify against golden reference
     float *z_f32 = (float *)z;
     size_t numElts = outputZByteSize / sizeof(float);
-    std::vector<float> golden(numElts);
-    memcpy(golden.data(), kGolden_case_1_32_128, outputZByteSize);
+    float *golden = reinterpret_cast<float *>(goldenBuf);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
@@ -219,5 +383,5 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_003)
     AscendC::GmFree(z);
     AscendC::GmFree(workspace);
     AscendC::GmFree(tiling);
-    free(path_);
+    delete[] goldenBuf;
 }
