@@ -1896,7 +1896,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
 {
     if constexpr (!IsShared && g_coreType == AIV) {
         if constexpr (ENABLE_A8W4) {
-            if (subBlockIdx_ == 1) {
+            if (subBlockIdx_ == 0) {
+                kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
+            } else {
                 kernelTiming_.StartAccumulatedTiming(TIMING_SWIGLU_QUANT);
             }
         } else if (subBlockIdx_ == 0) {
@@ -1973,7 +1975,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
 
     if constexpr (!IsShared && g_coreType == AIV) {
         if constexpr (ENABLE_A8W4) {
-            if (subBlockIdx_ == 1) {
+            if (subBlockIdx_ == 0) {
+                kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+            } else {
                 kernelTiming_.StopAccumulatedTiming(TIMING_SWIGLU_QUANT);
             }
         } else if (subBlockIdx_ == 0) {
@@ -1994,19 +1998,11 @@ MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmA
                                                          uint32_t expertIdx, int32_t &vecSetSyncCom)
 {
     Mc2Kernel::KernelTiming *gmm2Timing = nullptr;
-    bool combineTimingEnabled = false;
     if constexpr (!IsShared) {
         gmm2Timing = &kernelTiming_;
-        if constexpr (g_coreType == AIV) {
-            if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-                combineTimingEnabled = subBlockIdx_ == 1;
-            } else {
-                combineTimingEnabled = true;
-            }
-            if (combineTimingEnabled) {
-                kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
-            }
-        }
+    }
+    if constexpr (!IsShared && g_coreType == AIV) {
+        kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
     }
 
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
@@ -2033,9 +2029,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmA
         ProcessCombine(gmmAddrInfo, state, expertIdx);
     }
     if constexpr (!IsShared && g_coreType == AIV) {
-        if (combineTimingEnabled) {
-            kernelTiming_.StopAccumulatedTiming(TIMING_COMBINE);
-        }
+        kernelTiming_.StopAccumulatedTiming(TIMING_COMBINE);
     }
 }
 
@@ -2043,6 +2037,16 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1(const TupleShape &initShape,
                                                                                  const BlockOffset &initOffset)
 {
+    int32_t sharedGmm1AivTimingSlot = TIMING_DISPATCH;
+    if constexpr (g_coreType == AIV) {
+        if constexpr (ENABLE_A8W4) {
+            sharedGmm1AivTimingSlot = subBlockIdx_ == 0 ? TIMING_DISPATCH : TIMING_SWIGLU_QUANT;
+        } else if (subBlockIdx_ == 0) {
+            sharedGmm1AivTimingSlot = TIMING_SWIGLU_QUANT;
+        }
+        kernelTiming_.StartAccumulatedTiming(sharedGmm1AivTimingSlot);
+    }
+
     sharedEpilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
                             params_.workspaceInfo.sharedExpertSwigluScalePtr, nullptr, nullptr, nullptr, nullptr,
                             nullptr, params_.tilingData->clampLimit});
@@ -2059,12 +2063,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
     }
     EndSync(vecSetSyncCom);
     startBlockIdx_ = 0; // 共享专家GMM1修改了startBlockIdx_，重置给GMM1使用
+    if constexpr (g_coreType == AIV) {
+        kernelTiming_.StopAccumulatedTiming(sharedGmm1AivTimingSlot);
+    }
 }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2(const TupleShape &initShape,
                                                                                  const BlockOffset &initOffset)
 {
+    if constexpr (g_coreType == AIV) {
+        kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
+    }
+
     GMMAddrInfo sharedGmm2AddrInfo;
     ExpertLoopState sharedGmm2State{initShape, initOffset, 0};
     int32_t vecSetSyncCom = 0;
@@ -2076,6 +2087,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
         GroupMatmulWithCombine<true>(sharedGmm2AddrInfo, sharedGmm2State, sharedIdx, vecSetSyncCom);
     }
     SyncAll<false>();
+    if constexpr (g_coreType == AIV) {
+        kernelTiming_.StopAccumulatedTiming(TIMING_COMBINE);
+    }
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -2111,8 +2125,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     if (sharedExpertNum_ > 0) {
         kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
         ProcessSharedExpertGmm1(initShape, initOffset);
-        SyncAll<false>();
         kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
+        SyncAll<false>();
     }
 
     CrossRankSyncInWorldSize();
