@@ -301,6 +301,10 @@ public:
         }
 
         const uint32_t vecMSize = runInfo.actVecMSize;
+        const uint32_t loopIdx = runInfo.loop % (PRELOAD_N + 1U);
+        const uint32_t mLoopIdx = runInfo.mLoop % (PRELOAD_N + 1U);
+        const bool isFirstS2Loop = runInfo.isFirstS2Loop;
+        const bool isLastS2Loop = runInfo.isLastS2Loop;
         const int64_t vec2CalcSize = static_cast<int64_t>(vecMSize) * dTemplateAlign64;
         LocalTensor<MM_T> vec2ResUb = stage2OutBuf_.template Get<MM_T>();
         LocalTensor<MM_T> mmRes = bmm2ResBuf.template GetTensor<MM_T>();
@@ -312,27 +316,27 @@ public:
         //                         bmm2ShapeInfo);
         // }
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
-        if (unlikely(runInfo.isFirstS2Loop)) {
+        if (unlikely(isFirstS2Loop)) {
             // 首个 S2 tile 直接作为累计值。
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
-            LocalTensor<MM_T> expUb = softmaxExpBuf_[runInfo.loop % (PRELOAD_N + 1U)].template Get<MM_T>();
-            if (!runInfo.isLastS2Loop) {
+            LocalTensor<MM_T> expUb = softmaxExpBuf_[loopIdx].template Get<MM_T>();
+            if (!isLastS2Loop) {
                 // 中间 tile 保留 fp32 累计值。
                 FlashUpdateNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             } else {
                 // 最后一个 tile 完成 update 与归一化。
-                LocalTensor<float> sumUb = softmaxSumBuf_[runInfo.mLoop % (PRELOAD_N + 1U)].template Get<float>();
+                LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
                 FlashUpdateLastNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             }
         }
         bmm2ResBuf.SetCrossCore();
-        if (runInfo.isLastS2Loop) {
-            if (unlikely(runInfo.isFirstS2Loop)) {
+        if (isLastS2Loop) {
+            if (unlikely(isFirstS2Loop)) {
                 // 单 tile 场景单独归一化。
-                LocalTensor<float> sumUb = softmaxSumBuf_[runInfo.mLoop % (PRELOAD_N + 1U)].template Get<float>();
+                LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
                 LastDivNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64>(
                     vec2ResUb, vec2ResUb, sumUb, vecMSize, static_cast<uint16_t>(dTemplateAlign64), 1.0f);
             }

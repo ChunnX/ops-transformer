@@ -38,7 +38,6 @@ public:
     using INPUT_T = inputType;
     using SCALE_T = fp8_e8m0_t;
     using MM_T = mmType;
-    using OUTPUT_T = outputType;
     using MxBmm2Buf = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
     static constexpr bool USE_DN = useDn;

@@ -367,12 +367,8 @@ private:
         MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
         uint32_t mLoop = 0U;
-        // 当前 64/128 block 分别得到 8/4；上下界只在主循环外判断一次，保留后续 block size 扩展能力。
-        const uint32_t rawSparseBlocksPerTask = S2_BASE / constInfo.kvSparseBlockSize;
-        const uint32_t sparseBlocksPerTask =
-            rawSparseBlocksPerTask == 0U ? 1U :
-            (rawSparseBlocksPerTask > regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK ?
-                 regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK : rawSparseBlocksPerTask);
+        // S2_BASE=512, kvSparseBlockSize=64/128(host 侧已拦截), 结果必为 8 或 4。
+        const uint32_t sparseBlocksPerTask = S2_BASE / constInfo.kvSparseBlockSize;
         // metadata 可包含多个 section；每个 section 为当前 AIC 提供一段独立的 BN1/S1 边界。
         const uint32_t sectionNum = GetBsaSectionNum(metadataGm);
         for (uint32_t sectionIdx = 0U; sectionIdx < sectionNum; ++sectionIdx) {
