@@ -30,38 +30,33 @@ namespace l0op {
 // 注册算子类型
 OP_TYPE_REGISTER(MhcPostBackward);
 
-const std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> MhcPostBackwardAICore(const aclTensor* gradOutput,
-    const aclTensor* x, const aclTensor* hRes,
-    const aclTensor* hOut, const aclTensor* hPost,
-    aclTensor* gradX, aclTensor* gradHres,
-    aclTensor* gradHout, aclTensor* gradHpost,
-    aclOpExecutor* executor)
+const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *>
+MhcPostBackwardAICore(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes, const aclTensor *hOut,
+                      const aclTensor *hPost, aclTensor *gradX, aclTensor *gradHres, aclTensor *gradHout,
+                      aclTensor *gradHpost, aclOpExecutor *executor)
 {
     L0_DFX(MhcPostBackwardAICore, gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost);
 
     // 使用框架宏 ADD_TO_LAUNCHER_LIST_AICORE，将算子加入任务队列
-    auto retAicore = ADD_TO_LAUNCHER_LIST_AICORE(
-        MhcPostBackward,
-        OP_INPUT(gradOutput, x, hRes, hOut, hPost),
-        OP_OUTPUT(gradX, gradHres, gradHout, gradHpost));
+    auto retAicore = ADD_TO_LAUNCHER_LIST_AICORE(MhcPostBackward, OP_INPUT(gradOutput, x, hRes, hOut, hPost),
+                                                 OP_OUTPUT(gradX, gradHres, gradHout, gradHpost));
     if (retAicore != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MhcPostBackward launch kernel failed.");
-        return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*>(nullptr, nullptr, nullptr, nullptr);
+        return std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *>(nullptr, nullptr, nullptr, nullptr);
     }
-    return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*>(gradX, gradHres, gradHout, gradHpost);
+    return std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *>(gradX, gradHres, gradHout, gradHpost);
 }
 
-const std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> MhcPostBackward(const aclTensor* gradOutput,
-    const aclTensor* x, const aclTensor* hRes,
-    const aclTensor* hOut, const aclTensor* hPost,
-    aclOpExecutor* executor)
+const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *>
+MhcPostBackward(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes, const aclTensor *hOut,
+                const aclTensor *hPost, aclOpExecutor *executor)
 {
     L0_DFX(MhcPostBackward, gradOutput, x, hRes, hOut, hPost);
 
     // 根据输入x的shape分配输出tensor
     auto gradX = executor->AllocTensor(x->GetViewShape(), x->GetDataType(), x->GetViewFormat());
-    aclTensor* gradHres = nullptr;
-    const aclTensor* hResInput = hRes;
+    aclTensor *gradHres = nullptr;
+    const aclTensor *hResInput = hRes;
     if (hRes != nullptr) {
         gradHres = executor->AllocTensor(hRes->GetViewShape(), hRes->GetDataType(), hRes->GetViewFormat());
     } else {

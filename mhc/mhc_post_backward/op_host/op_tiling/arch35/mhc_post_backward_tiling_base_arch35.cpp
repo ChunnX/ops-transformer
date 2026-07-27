@@ -147,11 +147,12 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::GetShapeAttrsInfo()
         if (desc == nullptr || shape == nullptr) {
             OP_LOGI(context_, "  input[%zu]: desc=%p, shape=%p", i, desc, shape);
         } else {
-            const auto& s = shape->GetStorageShape();
+            const auto &s = shape->GetStorageShape();
             std::string shapeStr = "[";
             for (size_t d = 0; d < s.GetDimNum(); d++) {
                 shapeStr += std::to_string(s.GetDim(d));
-                if (d + 1 < s.GetDimNum()) shapeStr += ",";
+                if (d + 1 < s.GetDimNum())
+                    shapeStr += ",";
             }
             shapeStr += "]";
             OP_LOGI(context_, "  input[%zu]: dtype=%d, shape=%s, shapeSize=%ld", i,
