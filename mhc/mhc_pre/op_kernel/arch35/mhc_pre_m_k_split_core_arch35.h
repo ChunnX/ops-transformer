@@ -382,7 +382,7 @@ class MhcPreKernelMKPart1 : public MhcPreKernelBsCommon<T, P, HAS_RESI> {
 public:
     using Parent = MhcPreKernelBsCommon<T, P, HAS_RESI>;
 
-    __aicore__ inline explicit MhcPreKernelMKPart1(MT &matmul) : Parent(matmul) {}
+    __aicore__ inline MhcPreKernelMKPart1() = default;
 
     __aicore__ inline void Init(InitParams initParams)
     {
@@ -683,7 +683,7 @@ class MhcPreKernelMKPart2 : public MhcPreKernelBsCommon<T, P, HAS_RESI> {
 public:
     using Parent = MhcPreKernelBsCommon<T, P, HAS_RESI>;
 
-    __aicore__ inline explicit MhcPreKernelMKPart2(MT &matmul) : Parent(matmul) {}
+    __aicore__ inline MhcPreKernelMKPart2() = default;
 
     __aicore__ inline void Init(InitParams initParams)
     {

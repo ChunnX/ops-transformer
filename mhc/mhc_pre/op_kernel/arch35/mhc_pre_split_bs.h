@@ -11,7 +11,7 @@ class MhcPreKernelSplitBS : public MhcPreKernelBsCommon<T, P, HAS_RESI> {
 public:
     using Parent = MhcPreKernelBsCommon<T, P, HAS_RESI>;
 
-    __aicore__ inline explicit MhcPreKernelSplitBS(MT &matmul) : Parent(matmul) {}
+    __aicore__ inline MhcPreKernelSplitBS() = default;
 
     __aicore__ inline void Init(InitParams initParams)
     {
