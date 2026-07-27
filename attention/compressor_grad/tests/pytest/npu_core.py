@@ -1,0 +1,186 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ======================================================================================================================
+
+"""NPU 后端 — compressor 反向 (compressor_grad) 自动调用测试。
+
+通过 torch.autograd 自动调用 compressor_grad:
+1. 前向调用 compressor op，启用 requires_grad
+2. 用上游梯度 d_cpm_kv 构造 loss
+3. loss.backward() 自动触发 _compressor_backward → compressor_grad 算子
+4. 收集 x / wkv / wgate / ape 的梯度输出
+
+"""
+
+import torch
+from typing import Any, Dict, Optional
+
+try:
+    import torch_npu  # noqa: F401
+    _HAS_TORCH_NPU = True
+except ImportError:
+    _HAS_TORCH_NPU = False
+
+from cann_ops_transformer.ops.compressor import compressor
+
+
+class NPUBackend:
+    """compressor_grad NPU 后端 — 通过 autograd 自动调用反向算子。
+
+    用法:
+
+        backend = NPUBackend(device_id=0)
+        grads = backend.compute(inputs)
+        # grads["d_x"], grads["d_wkv"], grads["d_wgate"], grads["d_ape"]
+    """
+
+    name = "npu"
+
+    def __init__(self, device_id: int = 0):
+        self._device_id = device_id
+        self._device = torch.device(f"npu:{device_id}")
+        self._compressor_fn = None
+        if _HAS_TORCH_NPU:
+            torch.npu.set_device(device_id)
+
+    @property
+    def device(self) -> torch.device:
+        return self._device
+
+    def is_available(self) -> bool:
+        return _HAS_TORCH_NPU
+
+    def clear_cache(self):
+        if _HAS_TORCH_NPU:
+            torch.npu.empty_cache()
+
+    def compute(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """通过 compressor 前向 + autograd backward 调用 compressor_grad。
+
+        通路说明:
+        - torch.ops.cann_ops_transformer._compressor_forward 返回
+          (cmp_kv, softmax_score, kv) 并注册了 autograd SetupContext。
+        - backward 中调用 _compressor_backward → csrc CompressorBwd
+          即 compressor_grad 算子，自动计算 d_x/d_wkv/d_wgate/d_ape。
+
+        Args:
+            inputs:
+                x:             输入张量   [T, H] 或 [B, S, H]
+                wkv:          KV 投影权重 (coff * D, H)
+                wgate:          Gate 投影权重 (coff * D, H)
+                state_cache:   state cache (block_num, block_size, 2*coff*D) 
+                ape:           位置编码   (cmp_ratio, coff * D)
+                block_table:   cache 模式 1 的 block table
+                cmp_ratio:     压缩率 (默认 4)
+                coff:          重叠因子 (默认 1)
+                cache_mode:    cache 模式 (默认 1)
+                input_layout:  "BSH" 或 "TH"
+                cu_seqlens:    TH 布局下的累积序列长度
+                seqused:       每个 batch 的序列已用长度
+                start_pos:     起始位置
+                d_cpm_kv:     上游梯度 ∂Loss/∂cmp_kv — 用于 backward
+        Returns:
+            d_x:        x 的梯度 ∂Loss/∂x
+            d_wkv:     wkv 的梯度 ∂Loss/∂wkv
+            d_wgate:     wgate 的梯度 ∂Loss/∂wgate
+            d_ape:      ape 的梯度 ∂Loss/∂ape
+        """
+        x = inputs["x"]
+        wkv = inputs["wkv"]
+        wgate = inputs["wgate"]
+        state_cache = inputs["state_cache"]
+        ape = inputs["ape"]
+        d_cpm_kv = inputs["d_cpm_kv"]
+
+        cmp_ratio = inputs.get("cmp_ratio", 4)
+        coff = inputs.get("coff", 1)
+        cache_mode = inputs.get("cache_mode", 1)
+        layout = inputs.get("input_layout", "BSH")
+
+        cu_seqlens = inputs.get("cu_seqlens")
+        seqused = inputs.get("seqused")
+        start_pos = inputs.get("start_pos")
+        block_table = inputs.get("block_table") if cache_mode == 1 else None
+
+        x = x.to(self._device).detach()
+        wkv = wkv.to(self._device).detach()
+        wgate = wgate.to(self._device).detach()
+        state_cache = state_cache.to(self._device)
+        ape = ape.to(self._device)
+        d_cpm_kv = d_cpm_kv.to(self._device)
+
+        cu_seqlens = cu_seqlens.to(self._device) if cu_seqlens is not None else None
+        seqused = seqused.to(self._device) if seqused is not None else None
+        start_pos = start_pos.to(self._device) if start_pos is not None else None
+        block_table = block_table.to(self._device) if block_table is not None else None
+
+        # 设置 requires_grad 以启用 autograd 反向传播
+        x.requires_grad_(True)
+        wkv.requires_grad_(True)
+        wgate.requires_grad_(True)
+        ape.requires_grad_(True)
+
+        # 调用 compressor 公共函数 (只返回 cmp_kv)
+        cmp_kv = self._forward(
+            x=x, wkv=wkv, wgate=wgate,
+            state_cache=state_cache, w_pos_embd=ape,
+            state_block_table=block_table,
+            cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
+            cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode,
+        )
+        torch.npu.synchronize()
+
+        # 用上游梯度 d_cpm_kv 构造 loss → backward 自动调用 compressor_grad
+        loss = (cmp_kv * d_cpm_kv).sum()
+        loss.backward()
+        torch.npu.synchronize()
+
+        d_x = x.grad
+        d_wkv = wkv.grad
+        d_wgate = wgate.grad
+        d_ape = ape.grad
+
+        if d_x is None:
+            d_x = torch.zeros_like(x)
+        if d_wkv is None:
+            d_wkv = torch.zeros_like(wkv)
+        if d_wgate is None:
+            d_wgate = torch.zeros_like(wgate)
+        if d_ape is None:
+            d_ape = torch.zeros(cmp_ratio, wkv.size(0), device=self._device, dtype=torch.float32)
+
+        return {
+            "d_x": d_x,
+            "d_wkv": d_wkv,
+            "d_wgate": d_wgate,
+            "d_ape": d_ape,
+        }
+
+    def _forward(self, x, wkv, wgate, state_cache, w_pos_embd,
+                 state_block_table=None, cu_seqlens=None, seqused=None,
+                 start_pos=None, cmp_ratio=4, coff=1, cache_mode=1):
+        """前向通路: 调用 torch_extension 版 compressor 公共入口。
+
+        torch_extension/cann_ops_transformer/ops/compressor.py:196-228
+        定义 compressor() 包装 _compressor_forward，后者返回 (cmp_kv, softmax, kv)，
+        并注册 autograd SetupContext → backward 中自动调用 CompressorBwd。
+        """
+
+        cmp_kv = compressor(
+            x, wkv, wgate, state_cache, w_pos_embd,
+            cmp_ratio=cmp_ratio,
+            state_block_table=state_block_table,
+            cu_seqlens=cu_seqlens,
+            seqused=seqused,
+            start_pos=start_pos,
+            coff=coff,
+            cache_mode=cache_mode,
+        )
+        return cmp_kv
