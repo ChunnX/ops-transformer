@@ -47,7 +47,7 @@ if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from op_filters.utils import setup_logging, read_file_lines, load_dependency_json, normalize_path
     from op_filters.op_step1_whitelist import filter_whitelist
-    from op_filters.op_step2_ignored import filter_ignored
+    from op_filters.op_step2_ignored import filter_ignored, is_markdown_file
     from op_filters.op_step3_non_mc2 import filter_non_mc2
     from op_filters.op_step4_common_3rd import filter_common_3rd
     from op_filters.op_step5_extractor import extract_operators, filter_ops_by_soc
@@ -57,7 +57,7 @@ if __name__ == "__main__" and __package__ is None:
 else:
     from .utils import setup_logging, read_file_lines, load_dependency_json, normalize_path
     from .op_step1_whitelist import filter_whitelist
-    from .op_step2_ignored import filter_ignored
+    from .op_step2_ignored import filter_ignored, is_markdown_file
     from .op_step3_non_mc2 import filter_non_mc2
     from .op_step4_common_3rd import filter_common_3rd
     from .op_step5_extractor import extract_operators, filter_ops_by_soc
@@ -192,6 +192,19 @@ def main() -> int:
         logger.info(f"白名单过滤后剩余 {len(filtered_files)} 个变更文件:")
         for f in filtered_files:
             logger.info(f"  剩余文件: {f}")
+        
+        # Pre-filter .md files before the mc2-external check so that a
+        # non-mc2 markdown file (e.g. README.md, docs/*.md) does not get
+        # mistaken for an mc2-external change and trigger a full test run.
+        # Step 2 (filter_ignored) also drops .md files, but it runs after
+        # the mc2-external check, so we must strip them here.
+        md_files = [f for f in filtered_files if is_markdown_file(f)]
+        if md_files:
+            filtered_files = [f for f in filtered_files if not is_markdown_file(f)]
+            logger.info("=" * 60)
+            logger.info(f"提前忽略 {len(md_files)} 个 .md 文件（避免误触发全量测试）")
+            for f in md_files:
+                logger.info(f"  忽略 .md: {f}")
         
         mc2_external_files = [f for f in filtered_files
                               if not (normalize_path(f).startswith("mc2/")
