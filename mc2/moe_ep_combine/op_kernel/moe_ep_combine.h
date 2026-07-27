@@ -58,7 +58,6 @@ constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t DCCI_OFFSET = 64U;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
-constexpr uint32_t MAX_CHANNELS_PER_RANK = 8U;
 constexpr size_t MASK_CALC_NEED_WORKSPACE = 20UL * 1024UL;
 
 template <TemplateMoeEpCombineTypeClass>
@@ -89,8 +88,7 @@ private:
 
     __aicore__ inline uint64_t GetCommHandle(uint32_t rankId, uint32_t channelIndex)
     {
-        uint32_t index = rankId > rankId_ ? rankId - 1 : rankId;
-        return hcommHandle_[index * channelsPerRank_ + channelIndex];
+        return hcommHandle_[rankId * channelsPerRank_ + channelIndex];
     }
     __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId, uint64_t offset)
     {
@@ -233,17 +231,16 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
     channelsPerRank_ = mc2Context_->channelsPerRank;
-    if (channelsPerRank_ == 0 || channelsPerRank_ > MAX_CHANNELS_PER_RANK) {
+    if (channelsPerRank_ == 0) {
         channelsPerRank_ = 1;
     }
-    uint32_t remoteRankNum = (epWorldSize_ > 0) ? (epWorldSize_ - 1) : 0;
-    if (remoteRankNum > 0 && channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / remoteRankNum) {
+    if (epWorldSize_ > 0 && channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_) {
         channelsPerRank_ = 1;
     }
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
-    uint32_t handleCount = remoteRankNum * channelsPerRank_;
+    uint32_t handleCount = epWorldSize_ * channelsPerRank_;
     for (uint32_t i = 0; i < handleCount; ++i) {
         hcommHandle_[i] = mc2Context_->hcommHandle[i];
     }
@@ -366,19 +363,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     uint32_t targetRank = epWorldSize_;
     uint32_t coreIndexInGroup = 0;
     uint32_t groupSize = 1;
-    uint32_t startRankId = 0;
-    uint32_t endRankId = epWorldSize_;
-    uint32_t rankNum = epWorldSize_;
     if (splitRankTokens) {
         // Split cores by rank first. The cores in one rank group use fixed, distinct channels.
         GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
         if (targetRank >= epWorldSize_ || groupSize == 0) {
-            return;
-        }
-    } else {
-        // There are more ranks than cores. Give every core a contiguous rank range and use one channel per rank.
-        SplitToCore(epWorldSize_, activeAivNum, startRankId, endRankId, rankNum);
-        if (startRankId >= endRankId || rankNum == 0) {
             return;
         }
     }
@@ -419,8 +407,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                 if (currentRankTokenIndex % groupSize != coreIndexInGroup) {
                     continue;
                 }
-            } else if (src_rank < static_cast<int32_t>(startRankId) ||
-                       src_rank >= static_cast<int32_t>(endRankId)) {
+            } else if (static_cast<uint32_t>(src_rank) % activeAivNum != aivId_) {
                 continue;
             }
             uint64_t slotOffset = (static_cast<uint64_t>(src_token_idx) * topK_ + src_topK_idx) * perSlotBytes_;
