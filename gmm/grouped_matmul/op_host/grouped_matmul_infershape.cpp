@@ -255,30 +255,30 @@ static ge::graphStatus GetAttrsValue(T context, GMMAttrs &gmmAttrs)
     OP_LOGI(context->GetNodeName(), "Attr dtype = %ld", gmmAttrs.outputDtype);
 
     const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(GMM_INDEX_ATTR_TUNING_CONFIG);
-    gmmAttrs.tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ?	 
-                            (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0] : 0;	 
+    gmmAttrs.tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ?
+                            (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0] : 0;
     OP_LOGI(context->GetNodeName(), "Attr tuningConfig = %ld", gmmAttrs.tuningConfig); 
 
-    const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_TYPE);	 
-    OP_CHECK_NULL_WITH_CONTEXT(context, groupTypePtr);	 
-    gmmAttrs.groupType = *groupTypePtr;	 
+    const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_TYPE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, groupTypePtr);
+    gmmAttrs.groupType = *groupTypePtr;
     OP_LOGI(context->GetNodeName(), "Attr groupType = %ld", gmmAttrs.groupType); 
 
-    const bool *transposeWPtr = attrs->GetAttrPointer<bool>(GMM_INDEX_ATTR_TRANSPOSE_W);	 
-    OP_CHECK_NULL_WITH_CONTEXT(context, transposeWPtr);	 
-    gmmAttrs.transposeWeight = *transposeWPtr;	 
+    const bool *transposeWPtr = attrs->GetAttrPointer<bool>(GMM_INDEX_ATTR_TRANSPOSE_W);
+    OP_CHECK_NULL_WITH_CONTEXT(context, transposeWPtr);
+    gmmAttrs.transposeWeight = *transposeWPtr;
     OP_LOGI(context->GetNodeName(), "Attr isWeightTransposed = %d", gmmAttrs.transposeWeight); 
 
-    const bool *transposeXPtr = attrs->GetAttrPointer<bool>(GMM_INDEX_ATTR_TRANSPOSE_X);	 
-    OP_CHECK_NULL_WITH_CONTEXT(context, transposeXPtr);	 
-    gmmAttrs.transposeX = *transposeXPtr;	 
+    const bool *transposeXPtr = attrs->GetAttrPointer<bool>(GMM_INDEX_ATTR_TRANSPOSE_X);
+    OP_CHECK_NULL_WITH_CONTEXT(context, transposeXPtr);
+    gmmAttrs.transposeX = *transposeXPtr;
     OP_LOGI(context->GetNodeName(), "Attr isXTransposed = %d", gmmAttrs.transposeX); 
 
-    const int64_t *activeType = attrs->GetInt(GMM_INDEX_ATTR_ACT_TYPE);	 
-    OP_CHECK_NULL_WITH_CONTEXT(context, activeType);	 
-    gmmAttrs.activeType = *activeType;	 
+    const int64_t *activeType = attrs->GetInt(GMM_INDEX_ATTR_ACT_TYPE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, activeType);
+    gmmAttrs.activeType = *activeType;
     OP_LOGI(context->GetNodeName(), "Attr activeType = %ld", gmmAttrs.activeType); 
-    return GRAPH_SUCCESS;	 
+    return GRAPH_SUCCESS;
  }
 
 static ge::graphStatus CheckAttrs(gert::InferShapeContext* context, GMMAttrs& gmmAttrs) {
@@ -316,6 +316,7 @@ static ge::graphStatus GetNumOfInputs(const gert::InferShapeContext* context, si
         }
         ++numX;
     }
+    OP_LOGI(context->GetNodeName(), "numX = %lu", numX);
 
     while (true) {
         shape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, numWeight);
@@ -330,6 +331,7 @@ static ge::graphStatus GetNumOfInputs(const gert::InferShapeContext* context, si
         }
         ++numWeight;
     }
+    OP_LOGI(context->GetNodeName(), "numWeight = %lu", numWeight);
 
     const gert::Tensor* groupListTensor = context->GetOptionalInputTensor(GMM_INDEX_IN_GROUP_LIST);
     if (groupListTensor != nullptr) {
@@ -338,6 +340,7 @@ static ge::graphStatus GetNumOfInputs(const gert::InferShapeContext* context, si
             res = GRAPH_FAILED;
         }
     }
+    OP_LOGI(context->GetNodeName(), "lenGroupList = %ld", lenGroupList);
 
     return res;
 }
