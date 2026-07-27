@@ -694,8 +694,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             if (s2LoopNum == 1) {
                 uint32_t validS2LenAlign = QLIV2Common::Align(validS2Len, (int32_t)256);
                 Duplicate(mrgValueLocal_[validS2Len / 256 * 256], zero, validS2LenAlign - validS2Len / 256 * 256);
-                SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
-                WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
+                SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
+                WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
                 copyInParams.blockLen = validS2Len * sizeof(SCORE_T); // byte
                 AscendC::DataCopyPadExtParams<SCORE_T> padParams{true, 0, 0, 0};
                 AscendC::DataCopyPad(mrgValueLocal_,
@@ -742,16 +742,16 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                         // 把topk剩余对齐到256的部分刷0
                         Duplicate(mrgValueLocal_[topkCount_ / 64 * 64 + 64], zero,
                             topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
-                        SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
-                        WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
+                        SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
+                        WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
                     }
                     copyInParams.blockLen = validTrunkLen * sizeof(SCORE_T); // byte
                     // TOPK 直方图一次必须计算256，输入处理数据需要和256对齐
                     if ((topkCountAlign256_ + validTrunkLen) % 256 != 0) {
                         Duplicate(mrgValueLocal_[topkCountAlign256_ + validTrunkLen / 256 * 256], zero,
                             QLIV2Common::Align(validTrunkLen, (uint32_t)256) - validTrunkLen / 256 * 256);
-                        SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
-                        WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
+                        SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
+                        WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
                     }
                     WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
                     AscendC::DataCopyPad(mrgValueLocal_[topkCountAlign256_], scoreGm[offset], copyInParams, padParams);
@@ -770,8 +770,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             }
             // LD或returnValue场景需要将score搬入scoreOutLocal_
             if (info.isNeedLD || returnValueFlag) {
-                SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
-                WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
                 copyInParams.blockLen = QLIV2Common::Align(validS2Len, (int32_t)32) * sizeof(SCORE_T);
                 AscendC::DataCopyPad(scoreOutLocal_,
                     scoreGm[vecOffset * QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)
@@ -805,7 +803,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                 indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
 
             if (returnValueFlag) {
-                PipeBarrier<PIPE_V>();
+                WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
                 vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
                 // 无效值刷-inf
                 if (validS2Len < topkCount_) {
@@ -823,6 +821,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                             constInfo_.NEG_INF_BFLOAT,
                             topkCount_ - (validS2Len / 16 * 16 + 64));
                 }
+                SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
 
