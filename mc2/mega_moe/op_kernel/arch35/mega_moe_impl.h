@@ -173,16 +173,14 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
             }
         }
     } else {
-        if constexpr (Config::SOURCE_GMM1_INTERLEAVED) {
+        if constexpr (Config::USE_WAVE_FLAG_LAYOUT) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
             uint32_t waveStart = waveIdx * L1_TILE_M_256;
             uint32_t waveM = waveStart + L1_TILE_M_256 > config.m ? config.m - waveStart : L1_TILE_M_256;
+            constexpr uint32_t sourceNFactor = Config::SOURCE_GMM1_INTERLEAVED ? SWIGLU_N_HALF : 1U;
             uint32_t targetLoops = Ops::Base::CeilDiv(waveM, L1_TILE_M_256) *
-                                   Ops::Base::CeilDiv(config.k * SWIGLU_N_HALF, L1_TILE_N);
-            uint64_t flagOffset = waveIdx;
-            if constexpr (Config::USE_WAVE_FLAG_LAYOUT) {
-                flagOffset *= INT_CACHELINE;
-            }
+                                   Ops::Base::CeilDiv(config.k * sourceNFactor, L1_TILE_N);
+            uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
             __gm__ int32_t *flagValueAddr = gmmAddrInfo.swigluToGmm2Flag + flagOffset;
             while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                 int64_t st = AscendC::GetSystemCycle();
@@ -441,7 +439,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 }
             }
         } else {
-            if constexpr (std::remove_reference_t<decltype(config)>::SOURCE_GMM1_INTERLEAVED) {
+            if constexpr (std::remove_reference_t<decltype(config)>::USE_WAVE_FLAG_LAYOUT) {
                 uint32_t waveIdx = mLoc / L1_TILE_M_256;
                 if (waveIdx != lastWaveWaited) {
                     WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
@@ -768,7 +766,7 @@ template <typename ElementA, typename EpilogueElementA, typename ElementB, typen
           bool IsGmm1Interleaved = false, bool UseWaveFlagLayout = false>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true,
-                               IsGmm1Interleaved> &epilogueOp,
+                               IsGmm1Interleaved, UseWaveFlagLayout> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint16_t &pingpongIdx)
 {

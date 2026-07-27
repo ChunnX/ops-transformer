@@ -314,7 +314,7 @@ private:
     static constexpr uint32_t C_ELEMS_PER_BYTE = Std::IsSame<SwigluQuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
 
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t, QuantScaleOutType,
-                                                     QuantScaleOutType, true, GMM1_INTERLEAVED>;
+                                                     QuantScaleOutType, true, GMM1_INTERLEAVED, true>;
     BlockEpilogue epilogueOp_;
     BlockEpilogue sharedEpilogueOp_;
 };
