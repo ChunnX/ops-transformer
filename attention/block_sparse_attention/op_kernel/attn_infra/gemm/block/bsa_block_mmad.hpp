@@ -42,6 +42,7 @@ template <
     class ElementA,
     class ElementB,
     class ElementC,
+    class ElementS,
     class ElementBias = void,
     class TileCopy = Gemm::Tile::PackedTileCopyTla<typename DispatchPolicy::ArchTag, ElementA, layout::RowMajor,
         ElementB, layout::RowMajor, ElementC, layout::RowMajor, ElementBias>,

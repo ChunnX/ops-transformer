@@ -69,6 +69,7 @@ template <
     class ElementA_,
     class ElementB_,
     class ElementC_,
+    class ElementS_,
     class ElementBias_,
     class ElementS_,
     class TileCopy_,
@@ -83,6 +84,7 @@ struct BlockMmadTla<
     ElementA_,
     ElementB_,
     ElementC_,
+    ElementS_,
     ElementBias_,
     TileCopy_,
     TileMmad_>

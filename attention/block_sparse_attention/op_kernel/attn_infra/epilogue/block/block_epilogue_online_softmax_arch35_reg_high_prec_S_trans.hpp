@@ -43,44 +43,13 @@ public:
     using LayoutOutput = typename OutputType_::Layout;
     using LayoutInput = LayoutS_;
 
-    static constexpr uint32_t BLOCK_SIZE_IN_BYTE = 32;
-    static constexpr uint32_t REPEAT_SIZE_IN_BYTE = 256;
-    static constexpr uint32_t FLOAT_BLOCK_SIZE = 8;
-    static constexpr uint32_t FLOAT_VECTOR_SIZE = 64;
-    static constexpr uint32_t HALF_VECTOR_SIZE = 128;
-    static constexpr uint32_t BLOCK_SIZE = 16;
-    static constexpr uint32_t UB_UINT8_VECTOR_SIZE = 1024;
-    static constexpr uint32_t UB_UINT8_BLOCK_SIZE = 32768;
-    static constexpr uint32_t VECTOR_SIZE = 128;
-    static constexpr uint32_t MAX_UB_S_ELEM_NUM = 8192;
-    static constexpr uint32_t MAX_UB_P_ELEM_NUM = 8320;
-    static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
-    static constexpr uint32_t ELE_NUM_PER_C0 = 16;
-    static constexpr uint32_t ELE_NUM_PER_C0_FP8 = 32;
-
-    static constexpr uint32_t REDUCE_UB_SIZE = 1024;
-    static constexpr uint32_t ROW_OPS_SPEC_MASK_32 = 32;
-    static constexpr uint32_t ROW_OPS_SPEC_MASK_8 = 8;
-    static constexpr uint32_t ROW_OPS_SPEC_MASK_4 = 4;
-    static constexpr uint32_t ROW_OPS_SPEC_MASK_2 = 2;
-    static constexpr uint32_t MAX_ROW_NUM_SUB_CORE = 256;
-    static constexpr int64_t UB_FLOAT_LINE_SIZE = 64;
-
-    static constexpr uint32_t SPLIT_COL_IDX_2 = 2;
-    static constexpr uint32_t SPLIT_COL_IDX_3 = 3;
-    static constexpr ElementInput MIN_VALUE = -65504.0f;
-    static constexpr uint32_t HALF_REP_SIZE = 128;
-    static constexpr uint32_t FLOAT_REP_SIZE = 64;
-    static constexpr uint32_t BLOCK_REP_SIZE = 8;
-    static constexpr uint32_t REPEAT_STRIDE = 1;
     static constexpr uint32_t C0_NUM_PER_FRACTAL = 16;
-    static constexpr uint32_t SM_ROW_MAX_ELEM_NUM = 128;
-    static constexpr uint32_t SM_COL_MAX_ELEM_NUM = 64;
-    static constexpr uint32_t SM_VREG_SIZE = 256 / sizeof(ElementInput);
+    static constexpr uint32_t ELE_NUM_PER_C0 = 16;
+
     static constexpr uint32_t UB_S_P_BUF_STAGES = 2;
     static constexpr uint32_t UB_DM_BUF_MAX_STAGES = 3;
 
-    static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value;
+    static constexpr ElementInput MIN_VALUE = -65504.0f;
 
     __aicore__ inline
     BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_, UBufTileHelper &uBufTileHelper)
@@ -225,8 +194,7 @@ public:
         // AscendC::printf("tkd llUbTensor\n");
         // AscendC::DumpTensor(llUbTensor, 0, 16);
 
-        uint32_t curNRound = FULL_QUANT_FP8 ? RoundUp(n, ELE_NUM_PER_C0_FP8) : nRound;
-        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, curNRound);
+        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, nRound);
         auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId],
             ubPLayoutTla, Arch::PositionUB{});
         auto ubPTensorTlaTile = GetTile(ubPTensorTla,
@@ -236,7 +204,7 @@ public:
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
         
         AscendC::DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = FULL_QUANT_FP8 ? curNRound / ELE_NUM_PER_C0_FP8 : curNRound / ELE_NUM_PER_C0; // 分两次搬运
+        dataCopyParams.blockCount = nRound / ELE_NUM_PER_C0; // 分两次搬运
         dataCopyParams.blockLen = mRound / 2;
         dataCopyParams.srcStride = 1;
         dataCopyParams.dstStride = mRound / 2;
@@ -323,7 +291,6 @@ private:
         MaskReg pregTailN = UpdateMask<float>(tailN);
         uint32_t twoVecLenCombined = 128;
         MaskReg pregFp16VL128 = UpdateMask<uint16_t>(twoVecLenCombined);
-        MaskReg pregFp8VL128 = UpdateMask<uint8_t>(twoVecLenCombined);
         __ubuf__ ElementP *exp0Ub = expUb;
         __ubuf__ ElementP *exp1Ub = expUb + (mRound * 4);
 
@@ -378,23 +345,15 @@ private:
             LoadAlign(src2Vreg, srcUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
             LoadAlign(src3Vreg, srcUb + mRound * s2BaseSize / 2 + mRound * s2BaseSize / 4 + i * s2BaseSize);
 
-            if constexpr (mTileNum >= MAligendTileNum::Zero) {
-                Muls(src0Vreg, src0Vreg, dScale, pregTailN);
-                FusedExpSub(exp0Vreg32, src0Vreg, max0Vreg, pregTailN);
-            }
-            if constexpr (mTileNum >= MAligendTileNum::Zero) {
-                Muls(src1Vreg, src1Vreg, dScale, pregTailN);
+            Muls(src0Vreg, src0Vreg, dScale, pregTailN);
+            Muls(src1Vreg, src1Vreg, dScale, pregTailN);
+            Muls(src2Vreg, src2Vreg, dScale, pregTailN);
+            Muls(src3Vreg, src3Vreg, dScale, pregTailN);
 
-                FusedExpSub(exp1Vreg32, src1Vreg, max0Vreg, pregTailN);
-            }
-            if constexpr (mTileNum >= MAligendTileNum::Zero) {
-                Muls(src2Vreg, src2Vreg, dScale, pregTailN);
-                FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
-            }
-            if constexpr (mTileNum >= MAligendTileNum::Zero) {
-                Muls(src3Vreg, src3Vreg, dScale, pregTailN);
-                FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
-            }
+            FusedExpSub(exp0Vreg32, src0Vreg, max0Vreg, pregTailN);
+            FusedExpSub(exp1Vreg32, src1Vreg, max0Vreg, pregTailN);
+            FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
+            FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
 
             Cast<ElementP, float, castTraitZeroROUND>(exp0Vreg16, exp0Vreg32, pregFull);
             Cast<ElementP, float, castTraitZeroROUND>(exp2Vreg16, exp2Vreg32, pregFull);
@@ -429,25 +388,15 @@ private:
                 LoadAlign(src2Vreg, srcUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
                 LoadAlign(src3Vreg, srcUb + mRound * s2BaseSize / 2 + mRound * s2BaseSize / 4 + i * s2BaseSize);
 
-                if constexpr (mTileNum >= MAligendTileNum::Zero) {
-                    Muls(src0Vreg, src0Vreg, dScale, pregTailN);
-                    FusedExpSub(exp0Vreg32, src0Vreg, max0Vreg, pregTailN);
-                }
+                Muls(src0Vreg, src0Vreg, dScale, pregTailN);
+                Muls(src1Vreg, src1Vreg, dScale, pregTailN);
+                Muls(src2Vreg, src2Vreg, dScale, pregTailN);
+                Muls(src3Vreg, src3Vreg, dScale, pregTailN);
 
-                if constexpr (mTileNum >= MAligendTileNum::Zero) {
-                    Muls(src1Vreg, src1Vreg, dScale, pregTailN);
-                    FusedExpSub(exp1Vreg32, src1Vreg, max0Vreg, pregTailN);
-                }
-
-                if constexpr (mTileNum >= MAligendTileNum::Zero) {
-                    Muls(src2Vreg, src2Vreg, dScale, pregTailN);
-                    FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
-                }
-
-                if constexpr (mTileNum >= MAligendTileNum::Zero) {
-                    Muls(src3Vreg, src3Vreg, dScale, pregTailN);
-                    FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
-                }
+                FusedExpSub(exp0Vreg32, src0Vreg, max0Vreg, pregTailN);
+                FusedExpSub(exp1Vreg32, src1Vreg, max0Vreg, pregTailN);
+                FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
+                FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
 
                 Cast<ElementP, float, castTraitZeroROUND>(exp0Vreg16, exp0Vreg32, pregFull);
                 Cast<ElementP, float, castTraitZeroROUND>(exp2Vreg16, exp2Vreg32, pregFull);

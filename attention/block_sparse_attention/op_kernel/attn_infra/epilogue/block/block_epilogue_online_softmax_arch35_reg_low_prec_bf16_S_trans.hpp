@@ -43,41 +43,11 @@ public:
     using LayoutOutput = typename OutputType_::Layout;
     using LayoutInput = LayoutS_;
 
-    static constexpr uint32_t BLOCK_SIZE_IN_BYTE = 32;
-    // static constexpr uint32_t REPEAT_SIZE_IN_BYTE = 256;
-    // static constexpr uint32_t FLOAT_BLOCK_SIZE = 8;
-    // static constexpr uint32_t FLOAT_VECTOR_SIZE = 64;
-    // static constexpr uint32_t HALF_VECTOR_SIZE = 128;
-    // static constexpr uint32_t BLOCK_SIZE = 16;
-    // static constexpr uint32_t UB_UINT8_VECTOR_SIZE = 1024;
-    // static constexpr uint32_t UB_UINT8_BLOCK_SIZE = 32768;
-    // static constexpr uint32_t VECTOR_SIZE = 128;
-    // static constexpr uint32_t MAX_UB_S_ELEM_NUM = 8192;
-    // static constexpr uint32_t MAX_UB_P_ELEM_NUM = 8320;
-    // static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
+    static constexpr uint32_t C0_NUM_PER_FRACTAL = 16;
     static constexpr uint32_t ELE_NUM_PER_C0 = 16;
     static constexpr uint32_t ELE_NUM_PER_C0_FP8 = 32;
     static constexpr uint32_t ELE_NUM_PER_DATABLOCK = 32 / sizeof(ElementOutput);
 
-    // static constexpr uint32_t REDUCE_UB_SIZE = 1024;
-    // static constexpr uint32_t ROW_OPS_SPEC_MASK_32 = 32;
-    // static constexpr uint32_t ROW_OPS_SPEC_MASK_8 = 8;
-    // static constexpr uint32_t ROW_OPS_SPEC_MASK_4 = 4;
-    // static constexpr uint32_t ROW_OPS_SPEC_MASK_2 = 2;
-    // static constexpr uint32_t MAX_ROW_NUM_SUB_CORE = 256;
-    // static constexpr int64_t UB_FLOAT_LINE_SIZE = 64;
-
-    // static constexpr uint32_t SPLIT_COL_IDX_2 = 2;
-    // static constexpr uint32_t SPLIT_COL_IDX_3 = 3;
-    // static constexpr half MIN_VALUE = -65504.0f;
-    // static constexpr uint32_t HALF_REP_SIZE = 128;
-    // static constexpr uint32_t FLOAT_REP_SIZE = 64;
-    // static constexpr uint32_t BLOCK_REP_SIZE = 8;
-    // static constexpr uint32_t REPEAT_STRIDE = 1;
-    static constexpr uint32_t C0_NUM_PER_FRACTAL = 16;
-    // static constexpr uint32_t SM_ROW_MAX_ELEM_NUM = 128;
-    // static constexpr uint32_t SM_COL_MAX_ELEM_NUM = 64;
-    // static constexpr uint32_t SM_VREG_SIZE = 256 / sizeof(ElementInput);
     static constexpr uint32_t UB_S_P_BUF_STAGES = 2;
     static constexpr uint32_t UB_DM_BUF_MAX_STAGES = 3;
 
@@ -137,16 +107,9 @@ public:
         uint32_t m = actualBlockShape.n();
         uint16_t mRound = RoundUp(m, C0_NUM_PER_FRACTAL);
         uint16_t nRound = FULL_QUANT_FP8 ? RoundUp(n, ELE_NUM_PER_C0_FP8) : RoundUp(n, ELE_NUM_PER_C0);
-        // alter nd2nz dst stride (typically 64->65) to alleviate bank conflict
         uint32_t blockStride = mRound + 1;
         constexpr int16_t vlSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(ElementInput));
-        int32_t nLoops = AscendC::CeilDivision(n, vlSize) - 1;
         uint32_t tailN = (n - 1) % vlSize + 1;
-        uint32_t tailNOdd = tailN / 2 ;
-        uint32_t tailNEven = tailNOdd + tailN % 2;
-        int32_t mLoops = AscendC::CeilDivision(m, vlSize) - 1;
-        uint32_t tailM = (m - 1) % vlSize + 1;
-        uint32_t nPadding = (tailN + BLOCK_SIZE_IN_BYTE - 1) / BLOCK_SIZE_IN_BYTE * BLOCK_SIZE_IN_BYTE;
         uint16_t s2BaseSize = 64;
 
         uint32_t mAlignedTile = mRound / 2;
@@ -222,7 +185,7 @@ public:
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
         AscendC::DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = nRound / 16; // 分两次搬运
+        dataCopyParams.blockCount = nRound / 16;
         dataCopyParams.blockLen = mRound;
         dataCopyParams.srcStride = 1;
         dataCopyParams.dstStride = 0;
@@ -251,9 +214,9 @@ public:
     }
 
 private:
-    bfloat16_t scaleValue;
-    AscendC::LocalTensor<bfloat16_t> lsUbTensor[UB_S_P_BUF_STAGES];
-    AscendC::LocalTensor<bfloat16_t> lpUbTensor[UB_S_P_BUF_STAGES];
+    ElementInput scaleValue;
+    AscendC::LocalTensor<ElementInput> lsUbTensor[UB_S_P_BUF_STAGES];
+    AscendC::LocalTensor<ElementOutput> lpUbTensor[UB_S_P_BUF_STAGES];
     AscendC::LocalTensor<float> gmUbTensor;
     AscendC::LocalTensor<float> glUbTensor;
     AscendC::LocalTensor<float> dmUbTensor[UB_DM_BUF_MAX_STAGES];

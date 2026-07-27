@@ -167,7 +167,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
         ArchTag, ElementQ, layout::RowMajor, ElementK, layout::ColumnMajor, ElementS, LayoutS,
         void, mm1L0C2UBMode>;
     using BlockMmadQK = Gemm::Block::BlockMmadTla<
-        DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK, ElementS, void, TileCopyQK>;
+        DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK, ElementS, void, void, TileCopyQK>;
    // online softmax
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa<transposedMm1>;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
@@ -246,7 +246,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
                                                          LayoutS, void, mm1L0C2UBMode, false,
                                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;
     using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
-                                                  ElementS, void, TileCopyQK>;
+                                                  ElementS, void, void, TileCopyQK>;
     // online softmax
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa<transposedMm1>;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
@@ -262,7 +262,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
                                           void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false,
                                           Gemm::Tile::ScaleGranularity::PER_TENSOR>;
     using BlockMmadPV = Gemm::Block::BlockMmadTla<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV,
-                                                  ElementOTmp, void, TileCopyPV>;
+                                                  ElementOTmp, void, void, TileCopyPV>;
     // rescale o
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat, transposedMm1>;
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<ArchTag, ElementO, LayoutO, LayoutOTmp>;
