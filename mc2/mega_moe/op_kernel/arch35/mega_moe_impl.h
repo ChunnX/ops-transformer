@@ -877,6 +877,7 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
             }
         }
+        constexpr bool hasAiv1GmEpilogue = Policy::IS_GMM1 || (CombineQuantMode == COMBINE_NO_QUANT && !IsShared);
         if constexpr (hasAiv1GmEpilogue) {
             if constexpr (Policy::IS_GMM1 && TopkWeightsPrefetch) {
                 // prefetch 软同步：写 tile 状态位通知 AIV1（roundTag = expertIdx + 1）
@@ -1204,9 +1205,8 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
                                     decltype(gmScaleB), decltype(l0cOutGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, l0cOutGm};
     GroupMatmulExecA8W4<CombineQuantMode, Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared, IsLayered,
-                        WorkSetType, decltype(config), TopkWeightsPrefetch>(workSet, params, gmmAddrInfo, config,
-                                                                            startLoopIdx, tileNum, gmTileSequence,
-                                                                            args);
+                        WorkSetType, decltype(config), TopkWeightsPrefetch>(
+        workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, args);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
