@@ -18,6 +18,7 @@
 #include "test_rotary_position_embedding3d.h"
 #include "data_utils.h"
 #include "../../../op_kernel/rotary_position_embedding3d.cpp"
+#include "rotary_position_embedding3d_data/test_data.inc"
 
 #include <cstdint>
 
@@ -51,21 +52,14 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_001)
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    system("cp -r ../../../../../experimental/posembedding/rotary_position_embedding3d/tests/ut/op_kernel/"
-           "rotary_position_embedding3d_data ./");
-    system("chmod -R 755 ./rotary_position_embedding3d_data/");
-    system("cd ./rotary_position_embedding3d_data/ && rm -rf ./*bin");
-    system("cd ./rotary_position_embedding3d_data/ && python3 gen_data.py 2 4 8 float32");
-    system("cd ./rotary_position_embedding3d_data/ && python3 gen_tiling.py case_2_4_8");
-
-    char *path_ = get_current_dir_name();
-    string path(path_);
+    memcpy(x, kX_case_2_4_8, inputXByteSize);
+    memcpy(cos_sin, kCosSin_case_2_4_8, inputCosSinByteSize);
+    memcpy(tiling, kTiling_case_2_4_8, tilingDataSize);
     RotaryPositionEmbedding3dTilingData *tilingDatafromBin =
         reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tiling);
 
-    ReadFile(path + "/rotary_position_embedding3d_data/x.bin", inputXByteSize, x, inputXByteSize);
-    ReadFile(path + "/rotary_position_embedding3d_data/cos_sin.bin", inputCosSinByteSize, cos_sin, inputCosSinByteSize);
-    ReadFile(path + "/rotary_position_embedding3d_data/tiling.bin", tilingDataSize, tilingDatafromBin, tilingDataSize);
+    char *path_ = get_current_dir_name();
+    string path(path_);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(0);
@@ -79,8 +73,7 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_001)
     float *z_f32 = (float *)z;
     size_t numElts = outputZByteSize / sizeof(float);
     std::vector<float> golden(numElts);
-    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t *)golden.data(),
-             outputZByteSize);
+    memcpy(golden.data(), kGolden_case_2_4_8, outputZByteSize);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
@@ -121,21 +114,14 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp16_3d_002)
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    system("cp -r ../../../../../experimental/posembedding/rotary_position_embedding3d/tests/ut/op_kernel/"
-           "rotary_position_embedding3d_data ./");
-    system("chmod -R 755 ./rotary_position_embedding3d_data/");
-    system("cd ./rotary_position_embedding3d_data/ && rm -rf ./*bin");
-    system("cd ./rotary_position_embedding3d_data/ && python3 gen_data.py 4 16 64 float16");
-    system("cd ./rotary_position_embedding3d_data/ && python3 gen_tiling.py case_4_16_64");
-
-    char *path_ = get_current_dir_name();
-    string path(path_);
+    memcpy(x, kX_case_4_16_64, inputXByteSize);
+    memcpy(cos_sin, kCosSin_case_4_16_64, inputCosSinByteSize);
+    memcpy(tiling, kTiling_case_4_16_64, tilingDataSize);
     RotaryPositionEmbedding3dTilingData *tilingDatafromBin =
         reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tiling);
 
-    ReadFile(path + "/rotary_position_embedding3d_data/x.bin", inputXByteSize, x, inputXByteSize);
-    ReadFile(path + "/rotary_position_embedding3d_data/cos_sin.bin", inputCosSinByteSize, cos_sin, inputCosSinByteSize);
-    ReadFile(path + "/rotary_position_embedding3d_data/tiling.bin", tilingDataSize, tilingDatafromBin, tilingDataSize);
+    char *path_ = get_current_dir_name();
+    string path(path_);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(1);
@@ -149,8 +135,7 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp16_3d_002)
     float *z_f32 = (float *)z;
     size_t numElts = outputZByteSize / sizeof(float);
     std::vector<float> golden(numElts);
-    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t *)golden.data(),
-             outputZByteSize);
+    memcpy(golden.data(), kGolden_case_4_16_64, outputZByteSize);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
@@ -191,21 +176,14 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_003)
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    system("cp -r ../../../../../experimental/posembedding/rotary_position_embedding3d/tests/ut/op_kernel/"
-           "rotary_position_embedding3d_data ./");
-    system("chmod -R 755 ./rotary_position_embedding3d_data/");
-    system("cd ./rotary_position_embedding3d_data/ && rm -rf ./*bin");
-    system("cd ./rotary_position_embedding3d_data/ && python3 gen_data.py 1 32 128 float32");
-    system("cd ./rotary_position_embedding3d_data/ && python3 gen_tiling.py case_1_32_128");
-
-    char *path_ = get_current_dir_name();
-    string path(path_);
+    memcpy(x, kX_case_1_32_128, inputXByteSize);
+    memcpy(cos_sin, kCosSin_case_1_32_128, inputCosSinByteSize);
+    memcpy(tiling, kTiling_case_1_32_128, tilingDataSize);
     RotaryPositionEmbedding3dTilingData *tilingDatafromBin =
         reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tiling);
 
-    ReadFile(path + "/rotary_position_embedding3d_data/x.bin", inputXByteSize, x, inputXByteSize);
-    ReadFile(path + "/rotary_position_embedding3d_data/cos_sin.bin", inputCosSinByteSize, cos_sin, inputCosSinByteSize);
-    ReadFile(path + "/rotary_position_embedding3d_data/tiling.bin", tilingDataSize, tilingDatafromBin, tilingDataSize);
+    char *path_ = get_current_dir_name();
+    string path(path_);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(0);
@@ -219,8 +197,7 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_003)
     float *z_f32 = (float *)z;
     size_t numElts = outputZByteSize / sizeof(float);
     std::vector<float> golden(numElts);
-    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t *)golden.data(),
-             outputZByteSize);
+    memcpy(golden.data(), kGolden_case_1_32_128, outputZByteSize);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
