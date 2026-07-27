@@ -23,8 +23,6 @@
 using namespace AscendC;
 
 enum class BSALayout : uint32_t {
-    BSND = 0,
-    BNSD = 1,
     TND = 2,
     PA_BNSD = 3,
     PA_BSND = 4,
@@ -33,7 +31,6 @@ enum class BSALayout : uint32_t {
 
 enum class BSADType : uint32_t {
     FP8_E4M3FN = 0,
-    HIF8 = 1,
 };
 
 enum class BSAMaskMode : uint32_t {

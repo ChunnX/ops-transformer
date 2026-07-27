@@ -707,6 +707,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSlotStar
     uint32_t copyNumPerGroup = perGroupSizeAlign_ * 2 / epWorldSizeAlign_;
     LocalTensor<int32_t> counterTmpTensor = topkIdsBuf_.Get<int32_t>();
     Duplicate<int32_t>(slotIdxPerRankTensor_, 0, epWorldSize_);
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     for (uint32_t i = 0; i < groupCnt; i++) {
         uint32_t copyNum = (i == groupCnt - 1) ? (aivId_ - copyNumPerGroup * i) : copyNumPerGroup;
         uint32_t gmOffset = i * copyNumPerGroup * counterAlign512_;

@@ -31,7 +31,6 @@ DATA_RANGE_RIGHT = 2
 quant_param_range_left = DATA_RANGE_LEFT / -1  # = 2.0
 quant_param_range_right = DATA_RANGE_RIGHT / 1  # = 2.0
 
-
 class GeneralizedSFAQuant:
     def __init__(
         self,
@@ -65,7 +64,13 @@ class GeneralizedSFAQuant:
         ori_win_left,
         ori_win_right,
         template_run_mode,
+        q_descale_val,
+        ori_kv_descale_val,
+        cmp_kv_descale_val,
     ):
+        self.q_descale_val = q_descale_val
+        self.ori_kv_descale_val = ori_kv_descale_val
+        self.cmp_kv_descale_val = cmp_kv_descale_val
         self.layout_q = layout_q
         self.layout_kv = layout_kv
         self.q_type = q_type
@@ -217,7 +222,15 @@ class GeneralizedSFAQuant:
                         v_tile = k_tile.clone()
                         # MM1
                         mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
-                        scale_res = mm1_res * self.softmax_scale
+                        # scale过程与NPU一致 保证精度统一
+                        is_cmp_tile = (i_S2 >= ori_s2_loop_time)
+                        if is_cmp_tile:
+                            combined_scale = self.softmax_scale * self.q_descale_val * self.cmp_kv_descale_val
+                            cur_v_descale = self.cmp_kv_descale_val
+                        else:
+                            combined_scale = self.softmax_scale * self.q_descale_val * self.ori_kv_descale_val
+                            cur_v_descale = self.ori_kv_descale_val
+                        scale_res = mm1_res * combined_scale
 
                         # 更新 score_max
                         score_max_pre = score_max.clone()
@@ -237,6 +250,7 @@ class GeneralizedSFAQuant:
 
                         # MM2
                         mm2_res = torch.matmul(acc_s_cast, v_tile)
+                        mm2_res = mm2_res * cur_v_descale
                         acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
 
                     acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
@@ -258,7 +272,7 @@ class GeneralizedSFAQuant:
         s2_sparse = list()
         cur_cmp_act_kv = math.floor(cur_act_kv / self.cmp_ratio)
         threshold = 0
-        if self.cmp_mask_mode == 3:
+        if self.cmp_mask_mode == 3 or self.cmp_mask_mode == 0:
             threshold = math.floor((cur_act_kv - cur_act_q + i_S1 + 1) / self.cmp_ratio)
         valid_count = min(self.K, math.ceil(threshold / sparse_block_size))
         for i_valid in range(valid_count):
@@ -289,7 +303,7 @@ class GeneralizedSFAQuant:
 
     def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_act_kv, cur_act_q):
         threshold = 0
-        if self.cmp_mask_mode == 3:
+        if self.cmp_mask_mode == 3 or self.cmp_mask_mode == 0:
             threshold = (cur_act_kv - cur_act_q + i_S1 + 1) // self.cmp_ratio
         empty_flag = True
         k_sparse = []
@@ -483,13 +497,13 @@ def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, cmp_restored_len, sequs
         cur_act_q = seqused_q[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(S1):
-                if cmp_mask_mode == 3:
+                if cmp_mask_mode == 3 or cmp_mask_mode == 0:
                     cur_valid_s2_max = math.floor(
                         (cur_restored - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
                 else:
                     raise ValueError(
-                        f"cmp_mask_mode only support 3, which is {cmp_mask_mode}"
+                        f"cmp_mask_mode only support 0 and 3, which is {cmp_mask_mode}"
                     )
 
                 valid_blocks_max = max(0, cur_valid_s2_max)
@@ -511,10 +525,13 @@ def gen_cmp_sparse_indices_tnd(
         cur_restored = cmp_restored_len[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
-                if cmp_mask_mode == 3:
-                    # causal mask计算：原始KV空间中的可见长度转换为压缩block数量
+                if cmp_mask_mode == 3 or cmp_mask_mode == 0:
                     cur_valid_s2_max = math.floor(
                         (cur_restored - cur_act_q + i_S1 + 1) / cmp_ratio
+                    )
+                else:
+                    raise ValueError(
+                        f"cmp_mask_mode only support 0 and 3, which is {cmp_mask_mode}"
                     )
 
                 valid_blocks_max = max(0, cur_valid_s2_max)
@@ -549,7 +566,7 @@ def _gen_hif8_q_tensor(shape):
         np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT, shape).astype(np.float32)
     )
     q_npu = torch.tensor(trans_float_tensor_to_hifuint8(q_))
-    q = torch.tensor(trans_hifuint8_tensor_to_float(q_npu)) * scale
+    q = torch.tensor(trans_hifuint8_tensor_to_float(q_npu))
     return q, q_npu, scale
 
 
@@ -570,8 +587,6 @@ def _gen_hif8_kv_tensor(B, N2, max_s2, dim):
     k_bnsd = torch.tensor(trans_hifuint8_tensor_to_float(k_bnsd_npu))
     k_bnsd_npu = torch.tensor(k_bnsd_npu)
 
-    # golden 计算用: * scale
-    k_bnsd = k_bnsd * scale
     return k_bnsd, k_bnsd_npu, scale
 
 
@@ -807,7 +822,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     template_run_mode = params["template_run_mode"]
     topk_value_mode = params.get("topk_value_mode", 1)
     return_softmax_lse = params.get("return_softmax_lse", False)
-    qkv_quant_mode = params.get("qkv_quant_mode", False)
+    quant_mode = params.get("quant_mode", False)
     isSink = params.get("isSink", True)
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
@@ -818,7 +833,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         if seqused_cmp_kv is not None
         else None
     )
-    assert qkv_quant_mode == 1, f"qkv_quant_mode only support 1, but got {qkv_quant_mode}"
+    assert quant_mode == 1, f"quant_mode only support 1, but got {quant_mode}"
     # generate q (hifp8FullQuant)
     if layout_q == "BSND":
         q, q_npu, q_descale = _gen_hif8_q_tensor((B, S1, N1, D))
@@ -966,6 +981,9 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         ori_win_left,
         ori_win_right,
         template_run_mode,
+        q_descale_val=q_descale.item(),
+        ori_kv_descale_val=ori_kv_descale.item(),
+        cmp_kv_descale_val=cmp_kv_descale.item() if cmp_kv_descale is not None else None,
     )
     cpu_result = test_qsmla.forward(
         q,
@@ -1032,7 +1050,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "max_seqlen_cmp_kv": max_seqlen_cmp_kv,
             "topk": K if template_run_mode == "CSA" else 0,
             "cmp_ratio": cmp_ratio if template_run_mode != "SWA" else 1,
-            "qkv_quant_mode": qkv_quant_mode,
+            "quant_mode": quant_mode,
             "ori_mask_mode": ori_mask_mode,
             "cmp_mask_mode": cmp_mask_mode,
             "ori_win_left": ori_win_left,
@@ -1061,7 +1079,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "ori_kv_descale": ori_kv_descale,
             "cmp_kv_descale": cmp_kv_descale,
             "softmax_scale": softmax_scale,
-            "qkv_quant_mode": qkv_quant_mode,
+            "quant_mode": quant_mode,
             "cmp_ratio": cmp_ratio if template_run_mode != "SWA" else 1,
             "ori_mask_mode": ori_mask_mode,
             "cmp_mask_mode": cmp_mask_mode,

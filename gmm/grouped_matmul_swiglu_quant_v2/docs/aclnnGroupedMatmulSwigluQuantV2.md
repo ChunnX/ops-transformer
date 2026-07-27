@@ -18,7 +18,7 @@
 - 接口功能：融合GroupedMatmul、dequant、swiglu和quant，详细解释见计算公式。
 
   相较于[aclnnGroupedMatmulSwigluQuant](../../grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuant.md)接口，**此接口新增：**
-    
+
     - <term>Ascend 950PR/Ascend 950DT</term>：
       - 新增了MXFP8、MXFP4、Pertoken量化场景。
       - 参数weight, weightScale, weightAssistMatrix的字段类型变为tensorlist，请根据实际情况选择合适的接口。
@@ -89,7 +89,7 @@
     <details>
     <summary>MSD场景A8W4（A指激活矩阵，W指权重矩阵，8指INT8数据类型，4指INT4数据类型）：</summary>
     <a id="MSD场景A8W4"></a>
-    
+
       - **定义**：
         * **⋅** 表示矩阵乘法。
         * **⊙** 表示逐元素乘法。
@@ -268,53 +268,53 @@
         * $Q\_scale∈\mathbb{R}^{M}$：量化缩放因子。
       - **计算过程**
         - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList)]$
-   
+
            - 2.根据分组确定的入参进行如下计算：
-   
+
              $C_{i} = (X_{i}\cdot W_{i} )\odot xScale_{i} \odot wScale_{i}$
-   
+
              $C_{i,act}, gate_{i} = split(C_{i})$
-   
+
              $S_{i}=Swish(C_{i,act})\odot gate_{i}$，其中$Swish(x)=\frac{x}{1+e^{-x}}$
-             
+
              其中，$xScale_{i}$代表的是对应token对应的量化因子
            - 3.量化输出结果
-   
+
              $Q\_scale_{i} = \frac{max(|S_{i}|)}{max(type)}$
-   
+
              $Q_{i} = \lfloor \frac{S_{i}}{Q\_scale_{i}} \rceil$
     </details>
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulSwigluQuantV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulSwigluQuantV2”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
-    const aclTensor     *x, 
-    const aclTensorList *weight, 
+    const aclTensor     *x,
+    const aclTensorList *weight,
     const aclTensorList *weightScale,
-    const aclTensorList *weightAssistMatrix, 
-    const aclTensor     *bias, 
-    const aclTensor     *xScale, 
-    const aclTensor     *smoothScale, 
-    const aclTensor     *groupList, 
-    int64_t              dequantMode, 
-    int64_t              dequantDtype, 
-    int64_t              quantMode,  
-    int64_t              groupListType, 
-    const aclIntArray   *tuningConfig, 
-    aclTensor           *output, 
-    aclTensor           *outputScale, 
-    uint64_t            *workspaceSize, 
+    const aclTensorList *weightAssistMatrix,
+    const aclTensor     *bias,
+    const aclTensor     *xScale,
+    const aclTensor     *smoothScale,
+    const aclTensor     *groupList,
+    int64_t              dequantMode,
+    int64_t              dequantDtype,
+    int64_t              quantMode,
+    int64_t              groupListType,
+    const aclIntArray   *tuningConfig,
+    aclTensor           *output,
+    aclTensor           *outputScale,
+    uint64_t            *workspaceSize,
     aclOpExecutor       **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -558,8 +558,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       - weight和weightScale目前仅支持tensorlist长度为1。
 
   - **返回值**
-    
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
     <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
@@ -629,7 +629,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -867,7 +867,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         - MX量化场景下，当输入为fp8数据类型时，需满足N为2对齐；当输入为fp4数据类型时，需满足N为4对齐。
         - MXFP4场景不支持K=2。
         - MXFP4场景需满足K为偶数。
-    
+
     - Pertoken量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
           <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
@@ -949,7 +949,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
@@ -991,7 +991,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     }
 
     template <typename T>
-    int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, 
+    int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape,
                         void** deviceAddr, aclDataType dataType, aclFormat formatType, aclTensor** tensor) {
         auto size = GetShapeSize(shape) * sizeof(T);
         // 调用aclrtMalloc申请device侧内存
@@ -1114,7 +1114,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         ret = aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
             x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList, dequantMode, dequantDtype,
             quantMode, groupListType, tuningConfig, output, outputScale, &workspaceSize, &executor);
-        CHECK_RET(ret == ACL_SUCCESS, 
+        CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
         // 根据第一段接口计算出的workspaceSize申请device内存
         void* workspaceAddr = nullptr;
@@ -1124,7 +1124,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         }
         // 调用aclnnGroupedMatmulSwigluQuantV2第二段接口
         ret = aclnnGroupedMatmulSwigluQuantV2(workspaceAddr, workspaceSize, executor, stream);
-        CHECK_RET(ret == ACL_SUCCESS, 
+        CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("aclnnGroupedMatmulSwigluQuantV2 failed. ERROR: %d\n", ret); return ret);
 
         // 4.（固定写法）同步等待任务执行结束
@@ -1252,7 +1252,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     }
 
     template <typename T>
-    int CreateAclTensorList(const std::vector<std::vector<T>>& hostData, const std::vector<std::vector<int64_t>>& shapes, 
+    int CreateAclTensorList(const std::vector<std::vector<T>>& hostData, const std::vector<std::vector<int64_t>>& shapes,
                             void** deviceAddr, aclDataType dataType, aclTensorList** tensor) {
         int size = shapes.size();
         aclTensor* tensors[size];
@@ -1280,7 +1280,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         aclFinalize();
     }
 
-    int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream) 
+    int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream)
     {
         auto ret = Init(deviceId, &stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
@@ -1326,7 +1326,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         std::vector<int8_t> outputScaleHostData(M * CeilDiv((N / 2), 64) * 2, 1);
         std::vector<int64_t> tuningConfigData = {1};
         aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigData.data(), 1);
-        
+
         int64_t quantMode = 2;
         int64_t dequantMode = 2;
         int64_t dequantDtype = 0;
@@ -1346,7 +1346,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList*)> weightTensorListPtr(weight, aclDestroyTensorList);
         std::unique_ptr<void, aclError (*)(void*)> weightDeviceAddrPtr(weightDeviceAddr, aclrtFree);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        
+
         // 创建weightScale aclTensorList
         std::vector<std::vector<int8_t>> weightScaleHostDataList = {weightScaleHostData};
         std::vector<std::vector<int64_t>> weightScaleShapeList = {weightScaleShape};
@@ -1385,7 +1385,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 
         // 3. 调用CANN算子库API
         // 调用aclnnGroupedMatmulSwigluQuantV2第一段接口
-        ret = aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(x, weight, weightScale, nullptr, nullptr, xScale, nullptr, groupList, 
+        ret = aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(x, weight, weightScale, nullptr, nullptr, xScale, nullptr, groupList,
                                                             dequantMode, dequantDtype, quantMode, groupListType, nullptr, output, outputScale, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
         // 根据第一段接口计算出的workspaceSize申请device内存

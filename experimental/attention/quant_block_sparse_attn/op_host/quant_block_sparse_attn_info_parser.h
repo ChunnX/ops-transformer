@@ -135,7 +135,6 @@ struct QuantBlockSparseAttnTilingInfo {
     uint32_t layoutQValue = 0;
     bool returnSoftmaxLseVal = false;
 
-    bool isBSND = false;
     bool isGqa = false;
 };
 

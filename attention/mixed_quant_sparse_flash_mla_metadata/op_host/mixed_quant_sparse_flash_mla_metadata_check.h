@@ -185,6 +185,13 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BBND!");
         return ACLNN_ERR_PARAM_INVALID;
     }
+    // 非PA场景下（layout_kv != PA_BBND），layout_q必须与layout_kv相同
+    if (strcmp(layoutKvOptional, "PA_BBND") != 0 &&
+        strcmp(layoutQOptional, layoutKvOptional) != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_kv is not PA_BBND, layout_q should be the same as layout_kv, "
+            "but got %s and %s", layoutQOptional, layoutKvOptional);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 核数校验
     if (aicCoreNum == 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AIC num should be larger than 0, but got %u", aicCoreNum);
@@ -240,10 +247,10 @@ aclnnStatus CheckExistenceMqsmla(const aclTensor *cuSeqlensQOptional, const aclT
             }
         }
         // seqused_ori_kv 存在性校验
-        if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
+        if ((oriMaskMode != 0 || oriTopk == 0) && strcmp(layoutKvOptional, "PA_BBND") == 0) {
             if (!IsTensorExistMqsmla(sequsedOriKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is PA_BBND, "
-                    "seqused_ori_kv must be provided!");
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_mask_mode != 0 or ori_topk == 0, and "
+                    "layout_kv is PA_BBND, seqused_ori_kv must be provided!");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -266,10 +273,10 @@ aclnnStatus CheckExistenceMqsmla(const aclTensor *cuSeqlensQOptional, const aclT
             }
         }
         // seqused_cmp_kv 存在性校验
-        if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
+        if ((cmpMaskMode != 0 || cmpTopk == 0) && strcmp(layoutKvOptional, "PA_BBND") == 0) {
             if (!IsTensorExistMqsmla(sequsedCmpKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is PA_BBND, "
-                    "seqused_cmp_kv must be provided!");
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_mask_mode != 0 or cmp_topk == 0, and "
+                    "layout_kv is PA_BBND, seqused_cmp_kv must be provided!");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }

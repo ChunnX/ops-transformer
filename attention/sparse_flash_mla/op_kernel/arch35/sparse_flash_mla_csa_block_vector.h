@@ -571,21 +571,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
             if constexpr (!IS_SPLIT_G) {
                 sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
             } else {
-                switch (constInfo.aivIdx % 4) {
-                    case 0:
-                        sinksOffset = 0;
-                        break;
-                    case 1:
-                        sinksOffset = 32;
-                        break;
-                    case 2:
-                        sinksOffset = 64;
-                        break;
-                    case 3:
-                        sinksOffset = 96;
-                        break;
-                    default:
-                        break;
+                sinksOffset = runInfo.goIdx;
+                if (constInfo.subBlockIdx == 1) {
+                    sinksOffset += runInfo.firstHalfMRealSize;
                 }
             }
             LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();

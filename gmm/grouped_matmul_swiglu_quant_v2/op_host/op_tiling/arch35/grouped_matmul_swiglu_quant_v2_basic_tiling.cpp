@@ -613,14 +613,17 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
 
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckCoreNum() const
 {
-    auto aicNum = context_->GetCompileInfo<GMMSwigluV2CompileInfo>()->aicNum_;
-    auto aivNum = context_->GetCompileInfo<GMMSwigluV2CompileInfo>()->aivNum_;
-    OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+    auto compileInfo = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
+    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams_.opName, "compileInfo is nullptr."), return false);
+    auto aicNum = compileInfo->aicNum_;
+    auto aivNum = compileInfo->aivNum_;
+    OP_CHECK_IF(aicNum == 0,
+                OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
                 return false);
-    OP_CHECK_IF(
-        aivNum != GmmConstant::CORE_RATIO * aicNum,
-        OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
-        return false);
+    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
+                OP_LOGE(inputParams_.opName,
+                        "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+                return false);
     return true;
 }
 
