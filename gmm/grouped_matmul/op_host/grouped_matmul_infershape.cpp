@@ -14,6 +14,8 @@
  * \brief
  */
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 
 #include "register/op_impl_registry.h"
 #include "log/log.h"
@@ -26,22 +28,6 @@ using namespace ge;
 namespace ops {
 
 static std::set<std::string> GmmDavidSupportSoc = {"Ascend950"};
-
-static const std::string& GetShortSocVersion()
-{
-    static std::string shortSocVersion;
-    static bool initialized = false;
-    if (!initialized) {
-        fe::PlatFormInfos platformInfo;
-        fe::OptionalInfos optionalInfo;
-        if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo) ==
-            ge::GRAPH_SUCCESS) {
-            platformInfo.GetPlatformRes("version", "Short_SoC_version", shortSocVersion);
-        }
-        initialized = true;
-    }
-    return shortSocVersion;
-}
 
 enum class PlatformID : std::uint8_t {
     UNKNOWN,
@@ -778,7 +764,11 @@ static ge::graphStatus CheckFunctionParamsForShape(gert::InferShapeContext* cont
     }
     fe::PlatFormInfos platformInfo;
     fe::OptionalInfos optionalInfo;
+    auto _start = std::chrono::high_resolution_clock::now();
     auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
+    auto _end = std::chrono::high_resolution_clock::now();
+    auto _dur = std::chrono::duration_cast<std::chrono::microseconds>(_end - _start).count();
+    printf("[%s] GetPlatformInfoWithOutSocVersion cost %ld us\n", __func__, _dur); fflush(stdout);
     std::string shortSocVersion;
     if (ret == ge::GRAPH_SUCCESS) {
         platformInfo.GetPlatformRes("version", "Short_SoC_version", shortSocVersion);
@@ -919,7 +909,11 @@ static ge::graphStatus CheckCaseNoSplit(gert::InferShapeContext* context, bool t
                                         const GMMParamsInfo& paramsInfo) {
     fe::PlatFormInfos platformInfo;
     fe::OptionalInfos optionalInfo;
+    auto _start = std::chrono::high_resolution_clock::now();
     auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
+    auto _end = std::chrono::high_resolution_clock::now();
+    auto _dur = std::chrono::duration_cast<std::chrono::microseconds>(_end - _start).count();
+    printf("[%s] GetPlatformInfoWithOutSocVersion cost %ld us\n", __func__, _dur); fflush(stdout);
     std::string shortSocVersion;
     if (ret == ge::GRAPH_SUCCESS) {
         platformInfo.GetPlatformRes("version", "Short_SoC_version", shortSocVersion);
@@ -990,7 +984,11 @@ static ge::graphStatus CheckInnerAxisOfTensorList(const gert::InferShapeContext*
                                                   int64_t innerAxisDimId, size_t checkNum) {
     fe::PlatFormInfos platformInfo;
     fe::OptionalInfos optionalInfo;
+    auto _start = std::chrono::high_resolution_clock::now();
     auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
+    auto _end = std::chrono::high_resolution_clock::now();
+    auto _dur = std::chrono::duration_cast<std::chrono::microseconds>(_end - _start).count();
+    printf("[%s] GetPlatformInfoWithOutSocVersion cost %ld us\n", __func__, _dur); fflush(stdout);
     std::string shortSocVersion;
     if (ret == ge::GRAPH_SUCCESS) {
         platformInfo.GetPlatformRes("version", "Short_SoC_version", shortSocVersion);
@@ -1014,7 +1012,11 @@ static ge::graphStatus CheckShapeSameLengthTensorList(gert::InferShapeContext* c
                                                       const std::vector<std::string> tensorType, uint64_t groupNum) {
     fe::PlatFormInfos platformInfo;
     fe::OptionalInfos optionalInfo;
+    auto _start = std::chrono::high_resolution_clock::now();
     auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
+    auto _end = std::chrono::high_resolution_clock::now();
+    auto _dur = std::chrono::duration_cast<std::chrono::microseconds>(_end - _start).count();
+    printf("[%s] GetPlatformInfoWithOutSocVersion cost %ld us\n", __func__, _dur); fflush(stdout);
     std::string shortSocVersion;
     if (ret == ge::GRAPH_SUCCESS) {
         platformInfo.GetPlatformRes("version", "Short_SoC_version", shortSocVersion);
@@ -1063,7 +1065,11 @@ static ge::graphStatus CheckShapeDiffLengthTensorList(gert::InferShapeContext* c
                                                       uint64_t groupNum) {
     fe::PlatFormInfos platformInfo;
     fe::OptionalInfos optionalInfo;
+    auto _start = std::chrono::high_resolution_clock::now();
     auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
+    auto _end = std::chrono::high_resolution_clock::now();
+    auto _dur = std::chrono::duration_cast<std::chrono::microseconds>(_end - _start).count();
+    printf("[%s] GetPlatformInfoWithOutSocVersion cost %ld us\n", __func__, _dur); fflush(stdout);
     std::string shortSocVersion;
     if (ret == ge::GRAPH_SUCCESS) {
         platformInfo.GetPlatformRes("version", "Short_SoC_version", shortSocVersion);
@@ -1512,9 +1518,14 @@ static graphStatus IsDavidQuantGMMByShape(T context) {
 
 static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext* context) {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    auto funcStart = std::chrono::high_resolution_clock::now();
     fe::PlatFormInfos platformInfo;
     fe::OptionalInfos optionalInfo;
+    auto _start = std::chrono::high_resolution_clock::now();
     auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
+    auto _end = std::chrono::high_resolution_clock::now();
+    auto _dur = std::chrono::duration_cast<std::chrono::microseconds>(_end - _start).count();
+    printf("[%s] GetPlatformInfoWithOutSocVersion cost %ld us\n", __func__, _dur); fflush(stdout);
     std::string shortSocVersion;
     if (ret == ge::GRAPH_SUCCESS) {
         platformInfo.GetPlatformRes("version", "Short_SoC_version", shortSocVersion);
@@ -1573,6 +1584,10 @@ static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext* context
     OP_CHECK_IF(GMMSetOutputShape(context, gmmAttrs, outputParams, x0Shape, w0Shape) != GRAPH_SUCCESS,
               OP_LOGE(context->GetNodeName(), "GMMSetOutputShape failed"), return GRAPH_FAILED);
               
+    auto funcEnd = std::chrono::high_resolution_clock::now();
+    printf("[%s] total cost %ld us\n", __func__,
+           std::chrono::duration_cast<std::chrono::microseconds>(funcEnd - funcStart).count());
+    fflush(stdout);
     return GRAPH_SUCCESS;
 }
 
@@ -1675,7 +1690,11 @@ static graphStatus CheckGroupedMatmulAntiQuantForDtype(gert::InferDataTypeContex
 static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext* context) {
     fe::PlatFormInfos platformInfo;
     fe::OptionalInfos optionalInfo;
+    auto _start = std::chrono::high_resolution_clock::now();
     graphStatus ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
+    auto _end = std::chrono::high_resolution_clock::now();
+    auto _dur = std::chrono::duration_cast<std::chrono::microseconds>(_end - _start).count();
+    printf("[%s] GetPlatformInfoWithOutSocVersion cost %ld us\n", __func__, _dur); fflush(stdout);
     std::string shortSocVersion;
     if (ret == ge::GRAPH_SUCCESS) {
         platformInfo.GetPlatformRes("version", "Short_SoC_version", shortSocVersion);
@@ -1685,8 +1704,6 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext* conte
         OP_LOGW(context->GetNodeName(), "Cannot get platform info.");
         return GRAPH_SUCCESS;
     } else {
-        platform = (shortSocVersion.find("310P") != std::string::npos) ?
-                    PlatformID::ASCEND310P : (shortSocVersion.find("950") != std::string::npos) ?
         platform = (shortSocVersion.find("310P") != std::string::npos) ?
                     PlatformID::ASCEND310P : (shortSocVersion.find("950") != std::string::npos) ?
                     PlatformID::ASCEND950 : PlatformID::ASCEND910B;
@@ -1704,7 +1721,7 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext* conte
     if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) { return GRAPH_SUCCESS; }
     if ((xDtype == DataType::DT_BF16 || xDtype == DataType::DT_FLOAT16 || xDtype == DataType::DT_FLOAT) &&
         xDtype == weightDtype) {  // nonquant
-        return CheckNonQuantMatmulParams(context, xDtype, weightDtype);
+        return CheckNonQuantMatmulParams(platformInfo, context, xDtype, weightDtype);
     }
     if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
         // quant
