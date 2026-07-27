@@ -1364,8 +1364,8 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensShape()
     }
     if (sfaShapeSizeKv != bSize_) {
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "actualSeqLengths", std::to_string(sfaShapeSizeKv),
-                                                  "The shape size of actualSeqLengths should be equal to batch size " +
-                                                      std::to_string(bSize_));
+            "The shape size of actualSeqLengths should be equal to batch size " +
+            std::to_string(bSize_));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1485,7 +1485,7 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantLayout() const
     OP_CHECK_IF(
         std::find(sfaLayoutSupportList.begin(), sfaLayoutSupportList.end(), layoutQuery) == sfaLayoutSupportList.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_query", layoutQuery.c_str(),
-            "layoutQuery only supports BSND/TND"),
+            "layoutQuery only supports BSND or TND"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -2056,9 +2056,9 @@ ge::graphStatus SFAInfoParser::GetRopeHeadDim()
 {
     if (queryShape_.GetDimNum() != queryRopeShape_.GetDimNum()) {
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(opName_, "query and query_rope",
-                                                  std::to_string(queryShape_.GetDimNum()) + " , " +
-                                                      std::to_string(queryRopeShape_.GetDimNum()),
-                                                  "The dimensions of query and query_rope should be equal");
+            std::to_string(queryShape_.GetDimNum()) + " and " +
+            std::to_string(queryRopeShape_.GetDimNum()),
+            "The dimensions of query and query_rope should be equal");
         return ge::GRAPH_PARAM_INVALID;
     }
     ropeHeadDim_ = GetAxisNum(queryRopeShape_, SFAAxis::D, qLayout_);
