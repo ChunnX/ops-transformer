@@ -352,7 +352,7 @@ ge::graphStatus LIInfoParser::GetAndCheckInOutDataType()
         return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF((inputQType_ != weightsType_),
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key, and weights",
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key and weights",
                 LIDataTypeToSerialString(inputQType_) + ", " + LIDataTypeToSerialString(inputKType_) +
                 "and " + LIDataTypeToSerialString(inputKType_),
                 "The dtype of query, key, and weights must be same"),
@@ -360,7 +360,7 @@ ge::graphStatus LIInfoParser::GetAndCheckInOutDataType()
     } else {
         if (weightsType_ != ge::DT_FLOAT) {
             OP_CHECK_IF((inputQType_ != weightsType_),
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key, and weights",
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key and weights",
                     LIDataTypeToSerialString(inputQType_) + ", " + LIDataTypeToSerialString(inputKType_) +
                     "and " + LIDataTypeToSerialString(inputKType_),
                     "The dtype of query, key, and weights must be same"),
