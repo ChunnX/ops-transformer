@@ -532,8 +532,7 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
     // PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND: 从0轴开始检查
     // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
     // Non-PA_BBND: check starts from axis 0
-    size_t checkStartIdx = (npuArch_ == NpuArch::DAV_3510 && kLayout_ == DataLayout::BnBsND) ?
-                            1 : 0;
+    size_t checkStartIdx = kLayout_ == DataLayout::BnBsND ? 1 : 0;
     if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
         auto &shape = opParamInfo_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
@@ -552,7 +551,7 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
     }
 
     OP_CHECK_IF(keyNonContiguous,
-        OP_LOGE(opName_, "key only support non-continuous keying on the 0-axis."),
+        OP_LOGE(opName_, "key only support non-continuous keying on the 0-axis with PA_BSND layout."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1015,12 +1014,16 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
     liInfo.inputQLayout = qLayout_;
     liInfo.inputKLayout = kLayout_;
 
-    if (!keyStridesVec_.empty()) {
-        liInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
-    } else if (layOutKeyStr == "PA_BSND") {
-        liInfo.keyStride0 = blockSize_ * n2Size_ * headDim_;
+    if (npuArch_ != NpuArch::DAV_3510) {
+        liInfo.keyStride0 = 0;  // 910无需使用stride
     } else {
-        liInfo.keyStride0 = 0;  // 非PA无需使用stride
+        if (!keyStridesVec_.empty()) {
+            liInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
+        } else if (layOutKeyStr == "PA_BSND") {
+            liInfo.keyStride0 = blockSize_ * n2Size_ * headDim_;
+        } else {
+            liInfo.keyStride0 = 0;  // 非PA无需使用stride
+        }
     }
 }
 ge::graphStatus LIInfoParser::CheckFeatureMlaNoQuantShape() const
