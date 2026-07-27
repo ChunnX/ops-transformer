@@ -856,6 +856,15 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 s_BLOCKS[i] = si_new
                 m_BLOCKS[i] = m_block_j
 
+            import os
+            cache_dir = os.path.join(os.path.dirname(__file__), "golden_cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            p_save_path = os.path.join(cache_dir, "golden_P_ij_drop.pt")
+            torch.save(P_ij_drop.cpu(), p_save_path)
+            logger.info("[GOLDEN P] saved P_ij_drop to %s, shape=%s, min=%.6f, max=%.6f, zeros=%d",
+                        p_save_path, P_ij_drop.shape, P_ij_drop.min().item(),
+                        P_ij_drop.max().item(), (P_ij_drop == 0).sum().item())
+
     out = torch.cat(o_BLOCKS, dim=2)
     out_sum = torch.cat(s_BLOCKS, dim=2)
     out = out / (out_sum + EPSILON)
