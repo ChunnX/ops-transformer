@@ -2393,7 +2393,8 @@ static aclnnStatus TransWeightToNzCheckAlign(gmm::GroupedMatmulParams &gmmParams
     } else if (weight->GetDataType() == DataType::DT_INT4) {
         k_align = gmmParams.transposeWeight ? k % ALIGN_NZ_4BIT_N == 0 : k % ALIGN_NZ_K == 0;
         n_align = gmmParams.transposeWeight ? n % ALIGN_NZ_K == 0 : n % ALIGN_NZ_4BIT_N == 0;
-    } else if (weight->GetDataType() == DataType::DT_FLOAT4_E2M1 &&
+    } else if ((weight->GetDataType() == DataType::DT_FLOAT4_E2M1 ||
+                weight->GetDataType() == DataType::DT_FLOAT4_E1M2) &&
                (xDtype == DataType::DT_FLOAT16 || xDtype == DataType::DT_BF16 ||
                 xDtype == DataType::DT_FLOAT8_E4M3FN)) {
         k_align = k % ALIGN_NZ_4BIT_K == 0;
@@ -2770,12 +2771,13 @@ static aclnnStatus CheckWeightQuantGMMWeightNz(DataType x1Dtype, DataType weight
             opName, "x, weight, y", gmm::dTypeToString(x1Dtype).c_str(), gmm::dTypeToString(weightDtype).c_str(),
             gmm::dTypeToString(yDtype).c_str());
         return ACLNN_SUCCESS;
-    } else if (x1Dtype == DataType::DT_FLOAT8_E4M3FN && weightDtype == DataType::DT_FLOAT4_E2M1) {
+    } else if (x1Dtype == DataType::DT_FLOAT8_E4M3FN &&
+               (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2)) {
         CHECK_COND(
             yDtype == DataType::DT_BF16 || yDtype == DataType::DT_FLOAT16, ACLNN_ERR_PARAM_INVALID,
             "In op [%s], when MxA8W4 antiquant, the data types of [%s...] are mismatched, the reason is: [x dtype "
             "%s, weight dtype %s, y dtype %s]. Constraint:[supported x-weight-y combination is "
-            "Fp8_e4m3fn-Fp4_e2m1-BF16/Fp16].",
+            "Fp8_e4m3fn-Fp4_e2m1/Fp4_e1m2-BF16/Fp16].",
             opName, "x, weight, y", gmm::dTypeToString(x1Dtype).c_str(), gmm::dTypeToString(weightDtype).c_str(),
             gmm::dTypeToString(yDtype).c_str());
         return ACLNN_SUCCESS;
