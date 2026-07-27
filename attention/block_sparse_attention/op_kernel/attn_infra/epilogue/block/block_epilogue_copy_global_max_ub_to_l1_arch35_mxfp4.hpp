@@ -49,7 +49,7 @@ public:
 
     template <class TensorL1GlobalMax>
     __aicore__ inline
-    void operator()(TensorL1GlobalMax &l1GlocalMaxTensorTla, TileInfo &tileInfo)
+    void operator()(TensorL1GlobalMax const &l1GlocalMaxTensorTla, TileInfo const &tileInfo)
     {
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         AscendC::LocalTensor<ElementLocalGlobalMax> &localGlobalMax = localGlobalMaxUBTensor[tileInfo.tileMaxIdx];
