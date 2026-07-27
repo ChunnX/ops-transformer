@@ -186,21 +186,13 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           for (int32_t k_outer = 0; k_outer < 4; ++k_outer) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
             for (int32_t lane = 0; lane < 16; ++lane) {
-              int32_t valid_k_size = KRealSize.GetValue(cid);
               int32_t sparse_idx = SparseIndices.GetValue((((((pipe_iter * 32768) + (cid * 4096)) + (k_outer * 1024)) + (vid * 512)) + lane));
-              if ((((k_outer * 1024) + (vid * 512)) + lane) < valid_k_size) {
-                if (0 <= sparse_idx) {
-                  tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[(lane * 512)], Key[(((pipe_iter * 5242880) + (cid * 655360)) + (sparse_idx * 512))], 655360, 1, 512, bfloat16_t(0.000000e+00f));
-                  tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[(lane * 128)], KeyIndex[(((pipe_iter * 1310720) + (cid * 163840)) + (sparse_idx * 128))], 163840, 1, 128, bfloat16_t(0.000000e+00f));
-                  tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[(lane * 128)], KeyRope[(((pipe_iter * 1310720) + (cid * 163840)) + (sparse_idx * 128))], 163840, 1, 128, bfloat16_t(0.000000e+00f));
-                }
-                if (sparse_idx < 0) {
-                  tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 512>(v0_key_ub[(lane * 512)], v0_zero_key[0], 1, 512, 512, 1, 512, 512);
-                  tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 128>(v0_ki_ub[(lane * 128)], v0_zero_ki[0], 1, 128, 128, 1, 128, 128);
-                  tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 128>(v0_rope_ub[(lane * 128)], v0_zero_rope[0], 1, 128, 128, 1, 128, 128);
-                }
+              if (0 <= sparse_idx) {
+                tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[(lane * 512)], Key[(((pipe_iter * 5242880) + (cid * 655360)) + (sparse_idx * 512))], 655360, 1, 512, bfloat16_t(0.000000e+00f));
+                tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[(lane * 128)], KeyIndex[(((pipe_iter * 1310720) + (cid * 163840)) + (sparse_idx * 128))], 163840, 1, 128, bfloat16_t(0.000000e+00f));
+                tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[(lane * 128)], KeyRope[(((pipe_iter * 1310720) + (cid * 163840)) + (sparse_idx * 128))], 163840, 1, 128, bfloat16_t(0.000000e+00f));
               }
-              if (valid_k_size <= (((k_outer * 1024) + (vid * 512)) + lane)) {
+              if (sparse_idx < 0) {
                 tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 512>(v0_key_ub[(lane * 512)], v0_zero_key[0], 1, 512, 512, 1, 512, 512);
                 tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 128>(v0_ki_ub[(lane * 128)], v0_zero_ki[0], 1, 128, 128, 1, 128, 128);
                 tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 128>(v0_rope_ub[(lane * 128)], v0_zero_rope[0], 1, 128, 128, 1, 128, 128);
@@ -211,21 +203,13 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               if (chunk_id < 31) {
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(((chunk_id + 1) % 2));
                 for (int32_t lane_1 = 0; lane_1 < 16; ++lane_1) {
-                  int32_t valid_k_size_1 = KRealSize.GetValue(cid);
                   int32_t sparse_idx_1 = SparseIndices.GetValue((((((((pipe_iter * 32768) + (cid * 4096)) + (k_outer * 1024)) + (vid * 512)) + (chunk_id * 16)) + lane_1) + 16));
-                  if ((((((k_outer * 1024) + (vid * 512)) + (chunk_id * 16)) + lane_1) + 16) < valid_k_size_1) {
-                    if (0 <= sparse_idx_1) {
-                      tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[((((chunk_id + 1) % 2) * 8192) + (lane_1 * 512))], Key[(((pipe_iter * 5242880) + (cid * 655360)) + (sparse_idx_1 * 512))], 655360, 1, 512, bfloat16_t(0.000000e+00f));
-                      tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], KeyIndex[(((pipe_iter * 1310720) + (cid * 163840)) + (sparse_idx_1 * 128))], 163840, 1, 128, bfloat16_t(0.000000e+00f));
-                      tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], KeyRope[(((pipe_iter * 1310720) + (cid * 163840)) + (sparse_idx_1 * 128))], 163840, 1, 128, bfloat16_t(0.000000e+00f));
-                    }
-                    if (sparse_idx_1 < 0) {
-                      tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 512>(v0_key_ub[((((chunk_id + 1) % 2) * 8192) + (lane_1 * 512))], v0_zero_key[0], 1, 512, 512, 1, 512, 512);
-                      tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 128>(v0_ki_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], v0_zero_ki[0], 1, 128, 128, 1, 128, 128);
-                      tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 128>(v0_rope_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], v0_zero_rope[0], 1, 128, 128, 1, 128, 128);
-                    }
+                  if (0 <= sparse_idx_1) {
+                    tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[((((chunk_id + 1) % 2) * 8192) + (lane_1 * 512))], Key[(((pipe_iter * 5242880) + (cid * 655360)) + (sparse_idx_1 * 512))], 655360, 1, 512, bfloat16_t(0.000000e+00f));
+                    tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], KeyIndex[(((pipe_iter * 1310720) + (cid * 163840)) + (sparse_idx_1 * 128))], 163840, 1, 128, bfloat16_t(0.000000e+00f));
+                    tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], KeyRope[(((pipe_iter * 1310720) + (cid * 163840)) + (sparse_idx_1 * 128))], 163840, 1, 128, bfloat16_t(0.000000e+00f));
                   }
-                  if (valid_k_size_1 <= (((((k_outer * 1024) + (vid * 512)) + (chunk_id * 16)) + lane_1) + 16)) {
+                  if (sparse_idx_1 < 0) {
                     tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 512>(v0_key_ub[((((chunk_id + 1) % 2) * 8192) + (lane_1 * 512))], v0_zero_key[0], 1, 512, 512, 1, 512, 512);
                     tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 128>(v0_ki_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], v0_zero_ki[0], 1, 128, 128, 1, 128, 128);
                     tl::ascend::copy_ub_to_ub<bfloat16_t, bfloat16_t, 128>(v0_rope_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], v0_zero_rope[0], 1, 128, 128, 1, 128, 128);
@@ -386,10 +370,10 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Max(v1_p_sum[0], v1_p_sum[0], v1_p_partial[0], 32);
             for (int32_t n_idx = 0; n_idx < 32; ++n_idx) {
-              int32_t valid_k_size_2 = KRealSize.GetValue((((pipe_iter * 8) + cid) - 8));
+              int32_t valid_k_size = KRealSize.GetValue((((pipe_iter * 8) + cid) - 8));
               AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(1);
               AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-              if ((n_idx * 128) < valid_k_size_2) {
+              if ((n_idx * 128) < valid_k_size) {
                 tl::ascend::copy_gm_to_ub<float, 128, 32>(v1_p_bmm1[0], bmm1Res[((((pipe_iter * 1048576) + (cid * 131072)) + (n_idx * 128)) - 1048576)], 4096, 32, 128, 0.000000e+00f);
                 tl::ascend::copy_gm_to_ub<float, 128>(v1_p_valid[0], ValidKMask[((((pipe_iter * 32768) + (cid * 4096)) + (n_idx * 128)) - 32768)], 4096, 1, 128, 0.000000e+00f);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(1);
@@ -412,7 +396,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
                   tl::ascend::div_mask<float>(v1_p_bmm1[(p_col_chunk_1 * 64)], v1_p_bmm1[(p_col_chunk_1 * 64)], v1_p_tmp[0], 0xFFFFFFFFFFFFFFFF, 0, 32, 1, 1, 0, 16, 16, 1);
                 }
                 AscendC::PipeBarrier<PIPE_V>();
-                if (valid_k_size_2 < ((n_idx * 128) + 128)) {
+                if (valid_k_size < ((n_idx * 128) + 128)) {
                   for (int32_t p_mask_row = 0; p_mask_row < 32; ++p_mask_row) {
                     AscendC::Mul(v1_p_bmm1[(p_mask_row * 128)], v1_p_bmm1[(p_mask_row * 128)], v1_p_valid[0], 128);
                   }
@@ -455,8 +439,8 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             tl::ascend::Fill<float>(v1_sy_max[0], -CUDART_INF_F, 1);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(3);
             for (int32_t n_idx_1 = 0; n_idx_1 < 32; ++n_idx_1) {
-              int32_t valid_k_size_3 = KRealSize.GetValue((((pipe_iter * 8) + cid) - 8));
-              if ((n_idx_1 * 128) < valid_k_size_3) {
+              int32_t valid_k_size_1 = KRealSize.GetValue((((pipe_iter * 8) + cid) - 8));
+              if ((n_idx_1 * 128) < valid_k_size_1) {
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
                 tl::ascend::copy_gm_to_ub<float, 128, 16>(v1_sy_storage[0], bmm2Res[((((pipe_iter * 524288) + (cid * 65536)) + (n_idx_1 * 128)) - 524288)], 4096, 16, 128, 0.000000e+00f);
                 tl::ascend::copy_gm_to_ub<float, 128>(v1_sy_chunk[0], ValidKMask[((((pipe_iter * 32768) + (cid * 4096)) + (n_idx_1 * 128)) - 32768)], 4096, 1, 128, 0.000000e+00f);
@@ -465,7 +449,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
                 AscendC::Mul(v1_sy_storage[0], v1_sy_storage[0], v1_sy_weight_2d[0], 2048);
                 AscendC::PipeBarrier<PIPE_V>();
                 tl::ascend::reduce_sum<float,  16,  128,  0>(v1_sy_reduce[0], v1_sy_storage[0], tmp_ub[0], true);
-                if (valid_k_size_3 < ((n_idx_1 * 128) + 128)) {
+                if (valid_k_size_1 < ((n_idx_1 * 128) + 128)) {
                   AscendC::CompareScalar(v1_sy_valid_mask[0], v1_sy_chunk[0], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
                   AscendC::PipeBarrier<PIPE_V>();
 AscendC::Select<float, float>(v1_sy_reduce[0], v1_sy_valid_mask[0], v1_sy_reduce[0], static_cast<float>(-1.000000e+30f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
@@ -700,8 +684,8 @@ AscendC::Select<float, float>(v1_bw_bmm2[0], v1_bw_mask[0], v1_bw_rg[0], static_
       for (int32_t pair_idx = 0; pair_idx < 8; ++pair_idx) {
         int32_t sparse_idx0 = SparseIndices.GetValue(((((cid * 512) + (vid * 256)) + (batch_id * 16)) + (pair_idx * 2)));
         int32_t sparse_idx1 = SparseIndices.GetValue((((((cid * 512) + (vid * 256)) + (batch_id * 16)) + (pair_idx * 2)) + 1));
-        int32_t valid_k_size_4 = KRealSize.GetValue(0);
-        if (((((cid * 512) + (vid * 256)) + (batch_id * 16)) + (pair_idx * 2)) < valid_k_size_4) {
+        int32_t valid_k_size_2 = KRealSize.GetValue(0);
+        if (((((cid * 512) + (vid * 256)) + (batch_id * 16)) + (pair_idx * 2)) < valid_k_size_2) {
           if (0 <= sparse_idx0) {
             if ((batch_id % 2) == 0) {
               tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0 * 128)], v2_dk_batch_ping[(pair_idx * 256)], 163840, ((sparse_idx0 <= 1279) ? 1 : 0), 128);
@@ -710,7 +694,7 @@ AscendC::Select<float, float>(v1_bw_bmm2[0], v1_bw_mask[0], v1_bw_rg[0], static_
             }
           }
         }
-        if ((((((cid * 512) + (vid * 256)) + (batch_id * 16)) + (pair_idx * 2)) + 1) < valid_k_size_4) {
+        if ((((((cid * 512) + (vid * 256)) + (batch_id * 16)) + (pair_idx * 2)) + 1) < valid_k_size_2) {
           if (0 <= sparse_idx1) {
             if ((batch_id % 2) == 0) {
               tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1 * 128)], v2_dk_batch_ping[((pair_idx * 256) + 128)], 163840, ((sparse_idx1 <= 1279) ? 1 : 0), 128);
