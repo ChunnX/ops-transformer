@@ -404,7 +404,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
+    <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，并额外融合了Loss计算功能输出。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -1244,7 +1244,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>基于用Sinkhorn-Knopp迭代算法将超连接的混合矩阵投影到双随机矩阵流形，以此稳定深度网络信号传播、解决梯度消失 / 爆炸问题</td>
+    <td>基于Sinkhorn-Knopp迭代算法将超连接的混合矩阵投影到双随机矩阵流形，以此稳定深度网络信号传播、解决梯度消失 / 爆炸问题</td>
   </tr>
   <tr>
     <td>mhc</td>
@@ -1274,7 +1274,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向</td>
+    <td>mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向计算。</td>
   </tr>
   <tr>
     <td>mhc</td>

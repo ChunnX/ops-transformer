@@ -124,7 +124,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>在Sparse Flash Attention的基础上支持了[Per-Token-Head-Tile-128量化]输入。</td>
+    <td>在Sparse Flash Attention的基础上支持了`Per-Token-Head-Tile-128量化`输入。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -484,7 +484,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）。</td>
+    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllv通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllv通信，最后将接收的数据整合（乘权重再相加）。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -494,7 +494,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加），之后完成Add + RmsNorm融合。</td>
+    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllv通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllv通信，最后将接收的数据整合（乘权重再相加），之后完成Add + RmsNorm融合。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -524,7 +524,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）。</td>
+    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllv通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllv通信，最后将接收的数据整合（乘权重再相加）。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -534,7 +534,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）。</td>
+    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllv通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllv通信，最后将接收的数据整合（乘权重再相加）。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -544,7 +544,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
+    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AlltoAllv通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AlltoAllv通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -574,7 +574,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
+    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AlltoAllv通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AlltoAllv通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -584,7 +584,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
+    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AlltoAllv通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AlltoAllv通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
