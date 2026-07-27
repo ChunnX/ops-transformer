@@ -1,0 +1,369 @@
+{
+  "schemaVersion": 1,
+  "kind": "aclnn_extract_plan",
+  "target": {
+    "interfaceName": "aclnnFFN",
+    "operatorDir": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn"
+  },
+  "usage": {
+    "purpose": "减少 extract 阶段首轮工具探索耗时",
+    "sourceOfTruth": "源码和原始 evidence 优先；本计划只提供读取路线，不替代源码核验",
+    "requiredEvidenceFiles": [
+      "cross_dir",
+      "chip_evidence",
+      "error_codes"
+    ]
+  },
+  "keyFiles": [
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_graph/fallback_ffn.cpp",
+      "source": "cross_dir",
+      "sourceLine": 29,
+      "reason": "跨目录/include 候选文件，按 evidence 说明核验"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_infershape.cpp",
+      "source": "cross_dir",
+      "sourceLine": 31,
+      "reason": "host/proto 文件，优先用于 infer shape、注册和 host 校验分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_tiling.cpp",
+      "source": "cross_dir",
+      "sourceLine": 32,
+      "reason": "host/proto 文件，优先用于 infer shape、注册和 host 校验分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_tiling.h",
+      "source": "cross_dir",
+      "sourceLine": 37,
+      "reason": "host/proto 文件，优先用于 infer shape、注册和 host 校验分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.h",
+      "source": "cross_dir",
+      "sourceLine": 38,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/ffn.cpp",
+      "source": "cross_dir",
+      "sourceLine": 40,
+      "reason": "host/proto 文件，优先用于 infer shape、注册和 host 校验分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_def.cpp",
+      "line": 163,
+      "source": "chip_evidence",
+      "sourceLine": 24,
+      "reason": "OP_TYPE_REGISTER/_def.cpp，优先用于 dtype/format/产品支持分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_def.cpp",
+      "line": 164,
+      "source": "chip_evidence",
+      "sourceLine": 37,
+      "reason": "OP_TYPE_REGISTER/_def.cpp，优先用于 dtype/format/产品支持分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_def.cpp",
+      "line": 240,
+      "source": "chip_evidence",
+      "sourceLine": 50,
+      "reason": "OP_TYPE_REGISTER/_def.cpp，优先用于 dtype/format/产品支持分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_def.cpp",
+      "line": 243,
+      "source": "chip_evidence",
+      "sourceLine": 63,
+      "reason": "OP_TYPE_REGISTER/_def.cpp，优先用于 dtype/format/产品支持分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_def.cpp",
+      "line": 244,
+      "source": "chip_evidence",
+      "sourceLine": 76,
+      "reason": "OP_TYPE_REGISTER/_def.cpp，优先用于 dtype/format/产品支持分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_tiling.cpp",
+      "line": 591,
+      "source": "chip_evidence",
+      "sourceLine": 91,
+      "reason": "host/proto 文件，优先用于 infer shape、注册和 host 校验分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/aclnn_ffn.cpp",
+      "line": 719,
+      "source": "chip_evidence",
+      "sourceLine": 104,
+      "reason": "aclnn 接口文件，优先用于原型/参数/运行时校验分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/aclnn_ffn.cpp",
+      "line": 755,
+      "source": "chip_evidence",
+      "sourceLine": 117,
+      "reason": "aclnn 接口文件，优先用于原型/参数/运行时校验分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/aclnn_ffn.cpp",
+      "line": 787,
+      "source": "chip_evidence",
+      "sourceLine": 130,
+      "reason": "aclnn 接口文件，优先用于原型/参数/运行时校验分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/aclnn_ffn.cpp",
+      "line": 986,
+      "source": "chip_evidence",
+      "sourceLine": 143,
+      "reason": "aclnn 接口文件，优先用于原型/参数/运行时校验分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+      "line": 17,
+      "source": "chip_evidence",
+      "sourceLine": 158,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+      "line": 75,
+      "source": "chip_evidence",
+      "sourceLine": 184,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+      "line": 80,
+      "source": "chip_evidence",
+      "sourceLine": 210,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+      "line": 110,
+      "source": "chip_evidence",
+      "sourceLine": 236,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+      "line": 168,
+      "source": "chip_evidence",
+      "sourceLine": 262,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+      "line": 185,
+      "source": "chip_evidence",
+      "sourceLine": 288,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+      "line": 203,
+      "source": "chip_evidence",
+      "sourceLine": 314,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+      "line": 214,
+      "source": "chip_evidence",
+      "sourceLine": 340,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+      "line": 225,
+      "source": "chip_evidence",
+      "sourceLine": 366,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+      "line": 250,
+      "source": "chip_evidence",
+      "sourceLine": 392,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    },
+    {
+      "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn_nonquant_nz.h",
+      "line": 324,
+      "source": "chip_evidence",
+      "sourceLine": 457,
+      "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+    }
+  ],
+  "recommendedToolCalls": {
+    "read_file_around_batch": {
+      "items": [
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/aclnn_ffn.cpp",
+          "line": 719,
+          "before": 60,
+          "after": 80,
+          "reason": "aclnn 接口文件，优先用于原型/参数/运行时校验分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/aclnn_ffn.cpp",
+          "line": 755,
+          "before": 60,
+          "after": 80,
+          "reason": "aclnn 接口文件，优先用于原型/参数/运行时校验分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/aclnn_ffn.cpp",
+          "line": 787,
+          "before": 60,
+          "after": 80,
+          "reason": "aclnn 接口文件，优先用于原型/参数/运行时校验分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/aclnn_ffn.cpp",
+          "line": 986,
+          "before": 60,
+          "after": 80,
+          "reason": "aclnn 接口文件，优先用于原型/参数/运行时校验分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_def.cpp",
+          "line": 163,
+          "before": 60,
+          "after": 80,
+          "reason": "OP_TYPE_REGISTER/_def.cpp，优先用于 dtype/format/产品支持分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_def.cpp",
+          "line": 164,
+          "before": 60,
+          "after": 80,
+          "reason": "OP_TYPE_REGISTER/_def.cpp，优先用于 dtype/format/产品支持分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_def.cpp",
+          "line": 240,
+          "before": 60,
+          "after": 80,
+          "reason": "OP_TYPE_REGISTER/_def.cpp，优先用于 dtype/format/产品支持分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_def.cpp",
+          "line": 243,
+          "before": 60,
+          "after": 80,
+          "reason": "OP_TYPE_REGISTER/_def.cpp，优先用于 dtype/format/产品支持分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_def.cpp",
+          "line": 244,
+          "before": 60,
+          "after": 80,
+          "reason": "OP_TYPE_REGISTER/_def.cpp，优先用于 dtype/format/产品支持分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn_nonquant_nz.h",
+          "line": 324,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+          "line": 17,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+          "line": 75,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+          "line": 80,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+          "line": 110,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+          "line": 168,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+          "line": 185,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+          "line": 203,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+          "line": 214,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+          "line": 225,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_kernel/ffn.cpp",
+          "line": 250,
+          "before": 60,
+          "after": 80,
+          "reason": "kernel 文件，优先用于芯片宏分支和实现约束分析"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/ffn_tiling.cpp",
+          "line": 591,
+          "before": 60,
+          "after": 80,
+          "reason": "host/proto 文件，优先用于 infer shape、注册和 host 校验分析"
+        }
+      ]
+    },
+    "extract_function_batch": {
+      "items": [
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/aclnn_ffn.cpp",
+          "functionName": "aclnnFFNGetWorkspaceSize",
+          "reason": "目标两段式 GetWorkspaceSize 接口实现"
+        },
+        {
+          "path": "m:/Users/c60107599/Desktop/code/ops-transformertorch2/ffn/ffn/op_host/op_api/aclnn_ffn.cpp",
+          "functionName": "aclnnFFN",
+          "reason": "目标 ACLNN 接口实现"
+        }
+      ]
+    }
+  }
+}
