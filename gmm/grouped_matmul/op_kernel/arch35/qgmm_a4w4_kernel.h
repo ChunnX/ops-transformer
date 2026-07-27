@@ -38,6 +38,15 @@
 #include "grouped_matmul_tiling_data_apt.h"
 #include "tensor_api/tensor.h"
 
+// 使能 Blaze 桥接: 走 ops-tensor kernel_gmm_a4w4.h 真分支(非安全桩)。
+// 默认代码层开启; 可由编译选项 -UA4W4_BLAZE_ENABLED 关闭。
+// 前置条件(任一不满足则桥接不被编译调用, 见 grouped_matmul_apt.cpp:39-41):
+//   IS_BLAZE=true(CANN devkit>9.0) && V310_GMM_QUANT_A4W4 &&
+//   KERNEL_TYPE==GMM_A4W4_MIX。A4W4 Blaze kernel
+#ifndef A4W4_BLAZE_ENABLED
+#define A4W4_BLAZE_ENABLED
+#endif
+
 #ifdef A4W4_BLAZE_ENABLED
 #include "blaze/gemm/kernel/kernel_gmm_a4w4.h"  // A8W4 风格 A4W4 kernel (ops-tensor)
 #include "../../grouped_matmul_utils.h"           // GROUPED_MATMUL::GetTensorAddr
