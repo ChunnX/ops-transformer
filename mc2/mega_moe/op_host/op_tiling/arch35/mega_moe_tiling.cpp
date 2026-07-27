@@ -58,6 +58,8 @@ const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
 const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
 const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
+const static uint8_t ACT_MODE_SWIGLU = 0U;
+const static uint8_t ACT_MODE_TANH = 1U;
 } // namespace
 
 void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nodeName)
@@ -110,6 +112,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
+    OP_LOGD(nodeName, "actMode is %u", tilingData->actMode);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -226,6 +229,7 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
     auto activationClampPtr = attrs->GetAttrPointer<float>((config.attrActivationClampIndex));
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertNum"),
                     return ge::GRAPH_FAILED);
@@ -249,6 +253,12 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     OP_TILING_CHECK(*activationClampPtr < 0 || std::isnan(*activationClampPtr),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp", std::to_string(*activationClampPtr).c_str(),
                                               "should be >= 0 and not NAN"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(activationPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activation"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(std::strcmp(activationPtr, "swiglu") != 0 && std::strcmp(activationPtr, "tanh") != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
+                                              "should be 'swiglu' or 'tanh'"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -450,6 +460,13 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
     tilingData->clampLimit = *activationClampPtr;
 
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
+    if (std::strcmp(activationPtr, "tanh") == 0) {
+        tilingData->actMode = ACT_MODE_TANH;
+    } else {
+        tilingData->actMode = ACT_MODE_SWIGLU;
+    }
+
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
     int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
     int64_t moeExpertPerRank = moeExpertNum / static_cast<int64_t>(tilingData->epWorldSize);
@@ -488,6 +505,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     // GMM1 tile 状态位区每 expert 的 tile 上限（仅 prefetch 软同步路径使用）
     // outputN = hiddenDim / SWIGLU_N_HALF(2)，tileM=L1_TILE_M_256(256)，tileN=L1_TILE_N(256)
     // INT_CACHELINE=16：每 expert 的状态位按 16 对齐，与 kernel 侧 dispatchFlagSlotsPerExpert 一致
+    tilingData->maxTilesPerExpert = 0;
     if (tilingData->topkWeightsPrefetch == 1) {
         int64_t outputN = static_cast<int64_t>(tilingData->hiddenDim) / 2;
         int64_t maxTilesM = ops::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(256));
