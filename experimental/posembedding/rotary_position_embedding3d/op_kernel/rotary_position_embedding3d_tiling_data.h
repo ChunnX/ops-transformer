@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #ifndef ROTARY_POSITION_EMBEDDING3D_TILING_DATA_H
 #define ROTARY_POSITION_EMBEDDING3D_TILING_DATA_H
 
