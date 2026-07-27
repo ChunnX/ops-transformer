@@ -557,8 +557,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(),
                                     (int32_t)(zero + outputIdxOffset), validS2Len);
             if (returnValueFlag) {
-                SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
-                WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
                 copyInParams.blockLen = LIV2Common::Align(validS2Len, (int32_t)32) * sizeof(uint32_t);
                 AscendC::DataCopyPad(scoreOutLocal_,
                             scoreGm[vecOffset * LIV2Common::Align(
@@ -588,7 +586,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
                              indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
-        SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         
         // 是否返回Value值
         if (returnValueFlag) {
@@ -623,6 +620,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
             AscendC::DataCopyPad(valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
                 valueOutLocal_, copyOutValueParams);
         }
+        SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     }
 }
 }  // namespace LIKernel
