@@ -16,10 +16,7 @@
 
 class RotaryPositionEmbedding3dInfershape : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "RotaryPositionEmbedding3dInfershape Proto Test SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "RotaryPositionEmbedding3dInfershape Proto Test SetUp" << std::endl; }
 
     static void TearDownTestCase()
     {

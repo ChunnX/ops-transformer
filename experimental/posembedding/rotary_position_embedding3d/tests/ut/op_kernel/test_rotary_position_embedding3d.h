@@ -27,7 +27,7 @@ inline void InitRotaryPositionEmbedding3dTilingData(uint8_t *tiling, RotaryPosit
     memcpy(const_data, tiling, sizeof(RotaryPositionEmbedding3dTilingData));
 }
 
-#define GET_TILING_DATA(tilingData, tilingPointer)                                                                     \
-    RotaryPositionEmbedding3dTilingData tilingData;                                                                    \
+#define GET_TILING_DATA(tilingData, tilingPointer) \
+    RotaryPositionEmbedding3dTilingData tilingData; \
     InitRotaryPositionEmbedding3dTilingData(tilingPointer, &tilingData)
 #endif

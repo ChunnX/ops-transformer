@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include "rotary_position_embedding3d.h"
 
 template <uint32_t schMode>
