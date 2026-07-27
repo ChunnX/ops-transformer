@@ -37,6 +37,16 @@ __aicore__ inline uint64_t CeilDivU64(uint64_t a, uint64_t b)
   return (a + b - 1) / b;
 }
 
+template <typename T>
+constexpr uint64_t GetX1HcclDataType()
+{
+  if constexpr (AscendC::IsSameType<T, float8_e5m2_t>::value) {
+    return AscendC::HCCL_DATA_TYPE_FP8E5M2;
+  } else {
+    return AscendC::HCCL_DATA_TYPE_FP8E4M3;
+  }
+}
+
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 class AllToAllMxQuantMatmulImpl {
@@ -66,9 +76,8 @@ private:
 
 public:
   __aicore__ inline AllToAllMxQuantMatmulImpl(AlltoAllMatmulTilingDataType *tilingData,
-                                              AscendC::TPipe *tPipe, uint64_t x1HcclDataType)
-      : tilingData_(tilingData), tPipe_(tPipe),
-        x1HcclDataType_(x1HcclDataType) {}
+                                              AscendC::TPipe *tPipe)
+      : tilingData_(tilingData), tPipe_(tPipe) {}
 
   __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
                               GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR workspaceGM);
@@ -97,15 +106,16 @@ private:
   GM_ADDR commX1ScaleGM1_;
   GM_ADDR commOutGM_;
 
-  uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
-  uint64_t x1HcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E4M3;
-
+  static constexpr uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
+  static constexpr uint64_t x1HcclDataType_ = GetX1HcclDataType<X1Type>();
   uint32_t rankId_{0};
+  uint32_t rankDim_{0};
+  uint64_t splitAxisSize_{0};
   uint64_t rankForComm_{0};
   uint32_t scaleKPerRank_{0};
 
   static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
-  static constexpr uint64_t NUM_TWO = 2UL;
+  static constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2UL;
   static constexpr uint64_t ALIGN_NUM = 512UL;
 
   __aicore__ inline void RunAllToAll();
@@ -121,7 +131,9 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
     GM_ADDR workspaceGM)
 {
-  auto &&mc2Tiling = tilingData_->alltoAllQuantMatmulTilingInfo;
+  auto &&commTiling = tilingData_->commTilingData;
+  splitAxisSize_ = commTiling.splitAxisTileSize * commTiling.splitAxisTileCnt +
+                   commTiling.splitAxisTailSize * commTiling.splitAxisTailCnt;
   x1_ = x1;
   x2_ = x2;
   y_ = y;
@@ -130,14 +142,14 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
   x2Scale_ = x2_scale;
   workspaceGM_ = workspaceGM;
   commX1ScaleGM1_ = workspaceGM;
-  uint64_t x1ScaleLen = CeilDivU64(mc2Tiling.rankK, MXFP_GROUP_SIZE) * NUM_TWO *
-    static_cast<uint64_t>(mc2Tiling.rankM) * sizeof(AscendC::fp8_e8m0_t);
+  uint64_t x1ScaleLen = CeilDivU64(commTiling.nonSplitAxisSize, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE *
+                        static_cast<uint64_t>(splitAxisSize_) * sizeof(AscendC::fp8_e8m0_t);
   x1ScaleLen = CeilDivU64(x1ScaleLen, ALIGN_NUM) * ALIGN_NUM;
   commOutGM_ = workspaceGM + x1ScaleLen;
-
-  rankForComm_ = mc2Tiling.rankK / mc2Tiling.rankDim;
-  scaleKPerRank_ = static_cast<uint32_t>(
-    CeilDivU64(mc2Tiling.rankK / mc2Tiling.rankDim, MXFP_GROUP_SIZE) * NUM_TWO);
+  hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
+  hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
+  rankId_ = hccl_.GetRankId();
+  rankDim_ = hccl_.GetRankDim();
 
   if ASCEND_IS_AIC {
     return;
@@ -146,32 +158,33 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
     return;
   }
 
-  hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
-  hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
-  rankId_ = hccl_.GetRankId();
+  rankForComm_ = commTiling.nonSplitAxisSize / rankDim_;
+  scaleKPerRank_ = static_cast<uint32_t>(CeilDivU64(rankForComm_, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE);
 
-  if (mc2Tiling.tileCnt > 0 || mc2Tiling.tailCnt > 0) {
-    uint64_t dataStrideCount = static_cast<uint64_t>(mc2Tiling.rankM) * rankForComm_;
-    uint64_t scaleSendCount = static_cast<uint64_t>(mc2Tiling.rankM) * scaleKPerRank_;
+  if (commTiling.splitAxisTileCnt > 0 || commTiling.splitAxisTailCnt > 0) {
+    uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * rankForComm_;
+    uint64_t scaleSendCount = static_cast<uint64_t>(splitAxisSize_) * scaleKPerRank_;
     scaleHandle_ = hccl_.template AlltoAll<true>(
-      x1Scale_, commX1ScaleGM1_, scaleSendCount, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
+      x1Scale_, commX1ScaleGM1_,
+      scaleSendCount, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
       scaleSendCount, 1);
 
-    if (mc2Tiling.tileCnt > 0) {
-      uint64_t headSendCount = static_cast<uint64_t>(mc2Tiling.tileM) * rankForComm_;
+    if (commTiling.splitAxisTileCnt > 0) {
+      uint64_t headSendCount = static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankForComm_;
       dataHeadHandle_ = hccl_.template AlltoAll<true>(
-        x1_, commOutGM_, headSendCount, static_cast<AscendC::HcclDataType>(x1HcclDataType_),
-        dataStrideCount, static_cast<uint8_t>(mc2Tiling.tileCnt));
+        x1_, commOutGM_,
+        headSendCount, static_cast<AscendC::HcclDataType>(x1HcclDataType_),
+        dataStrideCount, static_cast<uint8_t>(commTiling.splitAxisTileCnt));
     }
 
-    if (mc2Tiling.tailCnt > 0) {
-      uint64_t headOffset = 
-        static_cast<uint64_t>(mc2Tiling.tileCnt) * mc2Tiling.tileM * rankForComm_ * sizeof(X1Type);
-      uint64_t tailSendCount = static_cast<uint64_t>(mc2Tiling.tailM) * rankForComm_;
+    if (commTiling.splitAxisTailCnt > 0) {
+      uint64_t headOffset = static_cast<uint64_t>(commTiling.splitAxisTileCnt) * 
+                            commTiling.splitAxisTileSize * rankForComm_ * sizeof(X1Type);
+      uint64_t tailSendCount = static_cast<uint64_t>(commTiling.splitAxisTailSize) * rankForComm_;
       dataTailHandle_ = hccl_.template AlltoAll<true>(
-        x1_ + headOffset, commOutGM_ + headOffset, tailSendCount,
-        static_cast<AscendC::HcclDataType>(x1HcclDataType_),
-        dataStrideCount, static_cast<uint8_t>(mc2Tiling.tailCnt));
+        x1_ + headOffset, commOutGM_ + headOffset,
+        tailSendCount, static_cast<AscendC::HcclDataType>(x1HcclDataType_),
+        dataStrideCount, static_cast<uint8_t>(commTiling.splitAxisTailCnt));
     }
   }
 }
@@ -182,27 +195,12 @@ __aicore__ inline void
 AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, IsMxFp4>::Run()
 {
-  if (tilingData_ == nullptr) {
-    return;
-  }
-  auto &&mc2Tiling = tilingData_->alltoAllQuantMatmulTilingInfo;
-  if (mc2Tiling.rankDim == 0) {
-    return;
-  }
-  if (mc2Tiling.tileCnt == 0 && mc2Tiling.tailCnt == 0) {
-    return;
-  }
-
   if ASCEND_IS_AIV {
     RunAllToAll();
   }
 
   if ASCEND_IS_AIC {
     MatmulProcess();
-  }
-
-  if (notifyFlag_) {
-    hccl_.Finalize();
   }
 }
 
@@ -212,30 +210,26 @@ __aicore__ inline void
 AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, IsMxFp4>::RunAllToAll()
 {
-  auto &&mc2Tiling = tilingData_->alltoAllQuantMatmulTilingInfo;
+  auto &&commTiling = tilingData_->commTilingData;
 
-  if (notifyFlag_) {
-    hccl_.Wait(scaleHandle_);
-  }
+  hccl_.Wait(scaleHandle_);
 
   uint32_t tileIdx = 0;
-  for (uint32_t i = 0; i < mc2Tiling.tileCnt; ++i) {
-    if (notifyFlag_) {
-      hccl_.Wait(dataHeadHandle_);
-    }
+  for (uint32_t i = 0; i < commTiling.splitAxisTileCnt; ++i) {
+    hccl_.Wait(dataHeadHandle_);
     AscendC::SyncAll<true>();
-    AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(tileIdx);
+    AscendC::CrossCoreSetFlag<0x2, PIPE_MTE2>(tileIdx);
     tileIdx++;
   }
 
-  for (uint32_t i = 0; i < mc2Tiling.tailCnt; ++i) {
-    if (notifyFlag_) {
-      hccl_.Wait(dataTailHandle_);
-    }
+  for (uint32_t i = 0; i < commTiling.splitAxisTailCnt; ++i) {
+    hccl_.Wait(dataTailHandle_);
     AscendC::SyncAll<true>();
-    AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(tileIdx);
+    AscendC::CrossCoreSetFlag<0x2, PIPE_MTE2>(tileIdx);
     tileIdx++;
   }
+
+  hccl_.Finalize();
 }
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
@@ -244,7 +238,7 @@ __aicore__ inline void
 AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, IsMxFp4>::SetupParams(Params &out)
 {
-  auto &&mc2Tiling = tilingData_->alltoAllQuantMatmulTilingInfo;
+  auto &&commTiling = tilingData_->commTilingData;
   const auto &mmTile = tilingData_->tileQbmmTilingData;
 
   ProblemShape problemShape{mmTile.m, mmTile.n, mmTile.k, 1UL};
@@ -257,9 +251,9 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
   mmadParams.cGmAddr = y_;
   mmadParams.biasGmAddr = bias_;
 
-  LocalParams localParams{rankId_, mc2Tiling.rankDim, mc2Tiling.rankM, x1_, x1Scale_,
-                          tilingData_->localMatmul, mc2Tiling.rankDim, MatmulMode::REMOTE,
-                          mc2Tiling.tileM};
+  LocalParams localParams{rankId_, rankDim_, splitAxisSize_, x1_, x1Scale_,
+                          tilingData_->localMatmul, rankDim_, MatmulMode::REMOTE,
+                          static_cast<uint32_t>(commTiling.splitAxisTileSize)};
 
   L1Params l1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1,
                     mmTile.nBufferNum};
