@@ -23,9 +23,7 @@ namespace NsRotaryPositionEmbedding3d {
 template <typename T>
 class RotaryPositionEmbedding3d {
 public:
-    __aicore__ inline RotaryPositionEmbedding3d()
-    {
-    }
+    __aicore__ inline RotaryPositionEmbedding3d() {}
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR z, GM_ADDR,
                                 const RotaryPositionEmbedding3dTilingData *td);
     __aicore__ inline void Process();
