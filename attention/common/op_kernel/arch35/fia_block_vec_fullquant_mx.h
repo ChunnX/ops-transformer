@@ -408,13 +408,6 @@ public:
                      {4, s2BaseSizeCur / 4, s2BaseSizeCur / 4 + 2, 0});
         }
         //-----------------------------------------------------------------
-#ifdef DUMP_STAGE_V1
-        {
-            GlobalTensor<INPUT_T> dumpGm;
-            dumpGm.SetGlobalBuffer((__gm__ INPUT_T *)this->attentionOutGm.GetAddr());
-            DataCopy(dumpGm, stage1CastTensor, mBaseSize * (s2BaseSize >> 1) / 2);
-        }
-#endif
         this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
 
         if (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
