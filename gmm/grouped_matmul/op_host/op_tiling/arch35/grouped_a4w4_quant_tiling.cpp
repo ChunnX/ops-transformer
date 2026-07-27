@@ -61,6 +61,7 @@ void GroupedA4W4QuantTiling::Reset()
     int8WeightWs_ = 0;
     int8XWs_ = 0;
     mmOutWs_ = 0;
+    perTokenScaleFillWs_ = 0;
 }
 
 bool GroupedA4W4QuantTiling::IsCapable()
@@ -403,10 +404,6 @@ ge::graphStatus GroupedA4W4QuantTiling::CalL1Tiling()
 
 ge::graphStatus GroupedA4W4QuantTiling::CalL1Depth(uint64_t leftL1Size)
 {
-    constexpr ge::DataType cubeDtype = ge::DT_INT8;  // int4->int8 后 Cube 按 int8 算
-    uint64_t baseASize = GetSizeWithDataType(static_cast<uint64_t>(a4w4Tiling_.baseM) * a4w4Tiling_.baseK, cubeDtype);
-    uint64_t baseBSize = GetSizeWithDataType(static_cast<uint64_t>(a4w4Tiling_.baseN) * a4w4Tiling_.baseK, cubeDtype);
-
     // L0A/L0B 容量校验（双缓冲 dbL0A=dbL0B=2）：baseM·baseK·1·2 ≤ L0A, baseN·baseK·1·2 ≤ L0B
     OP_CHECK_IF(static_cast<uint64_t>(a4w4Tiling_.baseM) * a4w4Tiling_.baseK * DB_SIZE > aicoreParams_.l0aSize,
                 OP_LOGE(context_->GetNodeName(), "A4W4 L0A overflow: need=%lu cap=%lu.",
@@ -417,17 +414,57 @@ ge::graphStatus GroupedA4W4QuantTiling::CalL1Depth(uint64_t leftL1Size)
                         static_cast<uint64_t>(a4w4Tiling_.baseN) * a4w4Tiling_.baseK * DB_SIZE, aicoreParams_.l0bSize),
                 return ge::GRAPH_FAILED);
 
-    uint64_t baseL1Size = baseASize + baseBSize;
-    OP_CHECK_IF(leftL1Size < baseL1Size,
-                OP_LOGE(context_->GetNodeName(), "A4W4 L1 overflow: free=%lu need=%lu.", leftL1Size, baseL1Size),
-                return ge::GRAPH_FAILED);
+    // L1 depth 反推：对齐 block_mmad_a8w8_fixpipe_quant.h 的 fixed-tile 物理布局。
+    // block L1 布局为 L1_BUFFER_NUM=2 stage，每 stage = AlignUp(A,32)+AlignUp(B,32)+scale（A+B 共享一个 stage，
+    // 每 half L1 放一个 stage），约束 GetL1StageBytes(stepKa·baseK, stepKb·baseK) ≤ l1Size/2。
+    // 物理足迹公式 SOURCE: ops-tensor include/blaze/gemm/utils/a8w4_fixed_tile_resource.h (逐字一致，合并 identical)。
+    // 修正原 floorEven(leftL1/2/线性baseA) 在 NZ 对齐+scale+2 stage 下超 L1 ~4KB 的问题（@950 原 stepKa=8/stepKb=4 超）。
+    constexpr uint64_t CUBE_BLOCK = 16UL;
+    constexpr uint64_t INT8_C0 = 32UL;
+    constexpr uint64_t DATA_BLOCK_BYTES = 32UL;
+    constexpr uint64_t L1_BUFFER_NUM = 2UL;
+    constexpr uint64_t elemBytes = 1UL;                          // int4->int8 后 cube 按 int8
+    constexpr uint64_t scaleElemBytes = sizeof(uint64_t);        // weight scale uint64
+    auto AlignUpL = [](uint64_t v, uint64_t a) -> uint64_t { return (v + a - 1UL) / a * a; };
+    // transA=false: AlignUp(baseM,16)·AlignUp(kAL1,32); transB=false: AlignUp(kBL1,32)·AlignUp(baseN,16)
+    auto GetAL1Bytes = [&](uint64_t kAL1) -> uint64_t {
+        return AlignUpL(a4w4Tiling_.baseM, CUBE_BLOCK) * AlignUpL(kAL1, INT8_C0) * elemBytes; };
+    auto GetBL1Bytes = [&](uint64_t kBL1) -> uint64_t {
+        return AlignUpL(kBL1, INT8_C0) * AlignUpL(a4w4Tiling_.baseN, CUBE_BLOCK) * elemBytes; };
+    auto GetScaleL1Bytes = [&]() -> uint64_t {
+        return AlignUpL(a4w4Tiling_.baseN * scaleElemBytes, DATA_BLOCK_BYTES); };
+    auto GetL1StageBytes = [&](uint64_t kAL1, uint64_t kBL1) -> uint64_t {
+        return AlignUpL(GetAL1Bytes(kAL1), DATA_BLOCK_BYTES) +
+               AlignUpL(GetBL1Bytes(kBL1), DATA_BLOCK_BYTES) + GetScaleL1Bytes(); };  // isBias=false
 
-    // 非全载：L1 对半分，floorEven（双缓冲），来源 推导_Tiling参数.md §4.1
-    auto floorEven = [](uint64_t v) { return v / static_cast<uint64_t>(DB_SIZE) * static_cast<uint64_t>(DB_SIZE); };
-    a4w4Tiling_.depthA1 = floorEven(leftL1Size / 2UL / baseASize);  // 950: 16
-    a4w4Tiling_.depthB1 = floorEven(leftL1Size / 2UL / baseBSize);  // 950: 8
-    a4w4Tiling_.stepKa = a4w4Tiling_.depthA1 / DB_SIZE;             // 8
-    a4w4Tiling_.stepKb = a4w4Tiling_.depthB1 / DB_SIZE;             // 4
+    const uint64_t halfL1 = leftL1Size / L1_BUFFER_NUM;
+    const uint64_t baseAPhys = GetAL1Bytes(a4w4Tiling_.baseK);   // 单 baseK 份 A 物理大小
+    const uint64_t baseBPhys = GetBL1Bytes(a4w4Tiling_.baseK);
+    auto floorEven = [](uint64_t v) -> uint64_t { return v / static_cast<uint64_t>(DB_SIZE) * static_cast<uint64_t>(DB_SIZE); };
+    // 候选上界（沿原对半分思想），再降档满足 stage ≤ halfL1
+    uint64_t depthA1 = floorEven(halfL1 / baseAPhys);
+    uint64_t depthB1 = floorEven(halfL1 / baseBPhys);
+    while (depthA1 >= DB_SIZE && depthB1 >= DB_SIZE) {
+        uint64_t stepKa = depthA1 / DB_SIZE;
+        uint64_t stepKb = depthB1 / DB_SIZE;
+        if (GetL1StageBytes(stepKa * a4w4Tiling_.baseK, stepKb * a4w4Tiling_.baseK) <= halfL1) {
+            break;
+        }
+        if (baseAPhys * depthA1 >= baseBPhys * depthB1) {  // 降占用大的一侧
+            depthA1 -= DB_SIZE;
+        } else {
+            depthB1 -= DB_SIZE;
+        }
+    }
+    OP_CHECK_IF(depthA1 < DB_SIZE || depthB1 < DB_SIZE,
+                OP_LOGE(context_->GetNodeName(),
+                        "A4W4 L1 overflow: cannot fit one fixed-tile stage. baseM=%u baseN=%u baseK=%u halfL1=%lu.",
+                        a4w4Tiling_.baseM, a4w4Tiling_.baseN, a4w4Tiling_.baseK, halfL1),
+                return ge::GRAPH_FAILED);
+    a4w4Tiling_.depthA1 = depthA1;
+    a4w4Tiling_.depthB1 = depthB1;
+    a4w4Tiling_.stepKa = depthA1 / DB_SIZE;
+    a4w4Tiling_.stepKb = depthB1 / DB_SIZE;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -445,6 +482,10 @@ ge::graphStatus GroupedA4W4QuantTiling::CalWorkspaceA4W4()
     int8XWs_ = static_cast<uint64_t>(a4w4Tiling_.m) * a4w4Tiling_.k * sizeof(int8_t);  // m=totalM (single x)
     mmOutWs_ = static_cast<uint64_t>(A4W4_MMOUT_PIPELINE) * a4w4Tiling_.baseM * a4w4Tiling_.baseN *
                a4w4Tiling_.usedCoreNum * sizeof(uint16_t);
+    // F3: perTokenScale 可选兜底。isPerTokenQuant=0 (无 perTokenScale 输入) 时构造全 1 段 (totalM·float),
+    //     epilogue 正常 mul (乘 1 等价跳过), 保持 A8W4 epilogue 逐字同步不改。
+    perTokenScaleFillWs_ = (a4w4Tiling_.isPerTokenQuant == 0U)
+        ? static_cast<uint64_t>(a4w4Tiling_.m) * sizeof(float) : 0UL;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -455,10 +496,10 @@ ge::graphStatus GroupedA4W4QuantTiling::GetWorkspaceSize()
                 return ge::GRAPH_FAILED);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
-    // 布局: [sys 16MB][int8WeightWs][int8XWs][mmOutWs]
-    workspaces[0] = SYS_WORKSPACE_SIZE + int8WeightWs_ + int8XWs_ + mmOutWs_;
-    OP_LOGI(context_->GetNodeName(), "A4W4 workspace: int8Weight=%lu int8X=%lu mmOut=%lu total=%lu",
-            int8WeightWs_, int8XWs_, mmOutWs_, workspaces[0]);
+    // 布局: [sys 16MB][int8WeightWs][int8XWs][mmOutWs][perTokenScaleFillWs?]  (?=isPerTokenQuant=0)
+    workspaces[0] = SYS_WORKSPACE_SIZE + int8WeightWs_ + int8XWs_ + mmOutWs_ + perTokenScaleFillWs_;
+    OP_LOGI(context_->GetNodeName(), "A4W4 workspace: int8Weight=%lu int8X=%lu mmOut=%lu perTokenFill=%lu total=%lu",
+            int8WeightWs_, int8XWs_, mmOutWs_, perTokenScaleFillWs_, workspaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 

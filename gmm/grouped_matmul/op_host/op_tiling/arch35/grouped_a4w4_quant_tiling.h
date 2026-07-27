@@ -107,6 +107,7 @@ private:
     uint64_t int8WeightWs_ = 0;
     uint64_t int8XWs_ = 0;      // ★ x int4->int8 预转换 workspace (m·k·1B, m=totalM single x)
     uint64_t mmOutWs_ = 0;
+    uint64_t perTokenScaleFillWs_ = 0;  // F3: isPerTokenQuant=0 时全 1 perTokenScale 兜底段 (m·float)
     // mList_/kList_/nList_ shadow base's private same-named (base private, derived inaccessible)
     int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
     int32_t kList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
