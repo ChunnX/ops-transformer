@@ -26,35 +26,35 @@ namespace load_balance {
 
 /******************************** CLASS DEF  ********************************/
 
-template<class T>
+template <class T>
 using Range = std::pair<T, T>;
 
-template<class T, size_t ROW, size_t COL>
+template <class T, size_t ROW, size_t COL>
 using Table = std::array<std::array<T, COL>, ROW>;
 
-using CostFunc = std::function<int64_t(uint32_t, uint32_t)>;       // The cost function of the algo
+using CostFunc = std::function<int64_t(uint32_t, uint32_t)>; // The cost function of the algo
 
 enum class SocVersion : uint32_t {
     BUTT
 };
 
 struct DeviceInfo {
-    uint32_t aicCoreMaxNum { 0U };      // At most amount of aic core would be turned on, this is not final used number
-    uint32_t aicCoreMinNum { 0U };      // At least amount of aic core would be turned on, this is not final used number
-    uint32_t aivCoreMaxNum { 0U };      // At most amount of aiv core would be turned on, this is not final used number
-    uint32_t aivCoreMinNum { 0U };      // At least amount of aiv core would be turned on, this is not final used number
-    SocVersion version { SocVersion::BUTT };
+    uint32_t aicCoreMaxNum{0U}; // At most amount of aic core would be turned on, this is not final used number
+    uint32_t aicCoreMinNum{0U}; // At least amount of aic core would be turned on, this is not final used number
+    uint32_t aivCoreMaxNum{0U}; // At most amount of aiv core would be turned on, this is not final used number
+    uint32_t aivCoreMinNum{0U}; // At least amount of aiv core would be turned on, this is not final used number
+    SocVersion version{SocVersion::BUTT};
 };
 
 struct GeneralBalanceParam {
-    uint32_t mBaseSize { 1U };              // At least one
-    uint32_t s2BaseSize { 1U };             // At least one
-    int64_t faToleranceRatio { 2U };        // Larger the value, the smaller the tolerance is
-    bool fdOn { true };                     // Turn on to activate FD
-    int64_t fdTolerance { 0U };             // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
-                                            // full_block_cost is costFunc(mBaseSize, s2BaseSize)
-    int64_t fdLeastBlock { 0U };            // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
-    CostFunc costFunc { nullptr };          // Customize cost func. Set nullptr to use default cost func
+    uint32_t mBaseSize{1U};       // At least one
+    uint32_t s2BaseSize{1U};      // At least one
+    int64_t faToleranceRatio{2U}; // Larger the value, the smaller the tolerance is
+    bool fdOn{true};              // Turn on to activate FD
+    int64_t fdTolerance{0U};      // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
+                                  // full_block_cost is costFunc(mBaseSize, s2BaseSize)
+    int64_t fdLeastBlock{0U};     // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
+    CostFunc costFunc{nullptr};   // Customize cost func. Set nullptr to use default cost func
 };
 
 enum class SparseMode : uint8_t {
@@ -89,17 +89,17 @@ enum class DataType : uint8_t {
 };
 
 /******************************** UTIL FUNC ********************************/
-template<class T>
+template <class T>
 inline T CeilDiv(T a, T b)
 {
     static_assert(std::is_integral_v<T>, "must be integer type");
     if (b == 0) {
         return 0;
     }
-    return a / b + (a % b != 0 ? 1 : 0);        // avoid overflow
+    return a / b + (a % b != 0 ? 1 : 0); // avoid overflow
 }
 
-template<class T>
+template <class T>
 inline T FloorDiv(T a, T b)
 {
     if (b == 0) {
@@ -108,7 +108,7 @@ inline T FloorDiv(T a, T b)
     return a / b;
 }
 
-template<class T>
+template <class T>
 inline T SafeFloorDiv(T a, T b, T val)
 {
     static_assert(std::is_integral_v<T>, "must be integer type");
@@ -118,45 +118,45 @@ inline T SafeFloorDiv(T a, T b, T val)
     return a / b;
 }
 
-template<typename T>
+template <typename T>
 inline T AddOne(T val)
 {
     static_assert(std::is_integral_v<T>, "must be integer type");
     return val + 1;
 }
 
-template<typename T>
+template <typename T>
 inline T MinusOne(T val)
 {
     static_assert(std::is_integral_v<T>, "must be integer type");
     return val - 1;
 }
 
-template<typename T>
+template <typename T>
 inline T ToOpenInterval(T val)
 {
     return AddOne(val);
 }
 
-template<typename T>
+template <typename T>
 inline T ToClosedInterval(T val)
 {
     return MinusOne(val);
 }
 
-template<typename T>
+template <typename T>
 inline T IndexToNum(T val)
 {
     return AddOne(val);
 }
 
-template<typename T>
+template <typename T>
 inline T NumToIndex(T val)
 {
     return MinusOne(val);
 }
 
-template<typename T>
+template <typename T>
 T Clip(T value, T minValue, T maxValue)
 {
     if (value < minValue) {
@@ -168,7 +168,7 @@ T Clip(T value, T minValue, T maxValue)
     return value;
 }
 
-template<typename T>
+template <typename T>
 inline bool IsWithinTolerance(T limit, T tolerance, T value)
 {
     return limit + tolerance >= value;
@@ -176,15 +176,9 @@ inline bool IsWithinTolerance(T limit, T tolerance, T value)
 
 static inline Layout ConvertToLayout(const std::string &layoutStr)
 {
-    static std::unordered_map<std::string, Layout> layoutTable {
-        { "BSND",  Layout::BSND },
-        { "BNSD",  Layout::BNSD },
-        { "BSH",   Layout::BSH },
-        { "NBSD",  Layout::NBSD },
-        { "TND",   Layout::TND },
-        { "NTD",   Layout::NTD },
-        { "PA_NZ", Layout::PA_NZ }
-    };
+    static std::unordered_map<std::string, Layout> layoutTable{
+        {"BSND", Layout::BSND}, {"BNSD", Layout::BNSD}, {"BSH", Layout::BSH},    {"NBSD", Layout::NBSD},
+        {"TND", Layout::TND},   {"NTD", Layout::NTD},   {"PA_NZ", Layout::PA_NZ}};
     if (layoutTable.find(layoutStr) != layoutTable.end()) {
         return layoutTable[layoutStr];
     }
@@ -206,5 +200,5 @@ static inline uint32_t GetDataTypeByteSize(DataType type)
     }
 }
 
-}
+} // namespace load_balance
 #endif

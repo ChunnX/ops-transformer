@@ -476,12 +476,13 @@ attention:
       - attention/recurrent_gated_delta_rule/docs
       - attention/recurrent_gated_delta_rule/README.md
     ut_cov_exclude:
-      - attention/recurrent_gated_delta_rule
+      - attention/recurrent_gated_delta_rule/tests
     test:
       examples: True
       ut: True
     options:
       - recurrent_gated_delta_rule
+
   flash_attn:
     module: True
     src:
@@ -1722,6 +1723,7 @@ mc2:
         - mc2/moe_distribute_combine_v2/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_v2
         - moe_distribute_dispatch_v3

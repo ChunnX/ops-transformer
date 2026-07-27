@@ -106,4 +106,10 @@
 
 ## 约束说明
 
-- 当前不支持用户直接调用
+- 当前不支持用户通过aclnn直接调用。
+
+## 调用说明
+
+| 调用方式 | 样例代码 | 说明 |
+| ---- | ---- | ---- |
+| 图模式调用 | [test_geir_swin_transformer_ln_qkv.cpp](examples/test_geir_swin_transformer_ln_qkv.cpp) | 通过[算子IR](op_graph/swin_transformer_ln_qkv_proto.h)构图方式调用SwinTransformerLnQKV算子。 |

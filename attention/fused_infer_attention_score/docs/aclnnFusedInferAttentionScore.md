@@ -17,8 +17,8 @@
 
 - 接口功能：适配decode & prefill场景的FlashAttention算子，既可以支持prefill计算场景（PromptFlashAttention），也可支持decode计算场景（IncreFlashAttention）。
 
-  **说明：** 
-  
+  **说明：**
+
   decode场景下特有KV Cache：KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为kv缓存（KV Cache）。
 - 计算公式：
 
@@ -40,41 +40,41 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedInferAttentionScoreGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScore”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFusedInferAttentionScoreGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScore”接口执行计算。
 
 ```cpp
  aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
-     const aclTensor     *query, 
-     const aclTensorList *key, 
-     const aclTensorList *value, 
+     const aclTensor     *query,
+     const aclTensorList *key,
+     const aclTensorList *value,
      const aclTensor     *pseShift,
-     const aclTensor     *attenMask, 
-     const aclIntArray   *actualSeqLengths, 
+     const aclTensor     *attenMask,
+     const aclIntArray   *actualSeqLengths,
      const aclIntArray   *actualSeqLengthsKv,
-     const aclTensor     *deqScale1, 
-     const aclTensor     *quantScale1, 
-     const aclTensor     *deqScale2, 
+     const aclTensor     *deqScale1,
+     const aclTensor     *quantScale1,
+     const aclTensor     *deqScale2,
      const aclTensor     *quantScale2,
-     const aclTensor     *quantOffset2, 
-     const aclTensor     *antiquantScale, 
+     const aclTensor     *quantOffset2,
+     const aclTensor     *antiquantScale,
      const aclTensor     *antiquantOffset,
-     const aclTensor     *blockTable, 
-     const aclTensor     *queryPaddingSize, 
-     const aclTensor     *kvPaddingSize, 
+     const aclTensor     *blockTable,
+     const aclTensor     *queryPaddingSize,
+     const aclTensor     *kvPaddingSize,
      int64_t              numHeads,
-     double               scaleValue, 
-     int64_t              preTokens, 
-     int64_t              nextTokens, 
-     char                *inputLayout, 
+     double               scaleValue,
+     int64_t              preTokens,
+     int64_t              nextTokens,
+     char                *inputLayout,
      int64_t              numKeyValueHeads,
-     int64_t              sparseMode, 
-     int64_t              innerPrecise, 
-     int64_t              blockSize, 
-     int64_t              antiquantMode, 
+     int64_t              sparseMode,
+     int64_t              innerPrecise,
+     int64_t              blockSize,
+     int64_t              antiquantMode,
      bool                 softmaxLseFlag,
-     const aclTensor     *attentionOut, 
-     const aclTensor     *softmaxLse, 
-     uint64_t            *workspaceSize, 
+     const aclTensor     *attentionOut,
+     const aclTensor     *softmaxLse,
+     uint64_t            *workspaceSize,
      aclOpExecutor       **executor)
 ```
 
@@ -91,15 +91,15 @@ aclnnStatus aclnnFusedInferAttentionScore(
 - **参数说明**
 
     <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1497px"><colgroup> 
-     <col style="width: 150px"> 
-     <col style="width: 120px"> 
-     <col style="width: 300px"> 
-     <col style="width: 330px"> 
-     <col style="width: 212px"> 
-     <col style="width: 100px">  
-     <col style="width: 140px">  
-     <col style="width: 145px">  
+    <table style="undefined;table-layout: fixed; width: 1497px"><colgroup>
+     <col style="width: 150px">
+     <col style="width: 120px">
+     <col style="width: 300px">
+     <col style="width: 330px">
+     <col style="width: 212px">
+     <col style="width: 100px">
+     <col style="width: 140px">
+     <col style="width: 145px">
      </colgroup>
     <thead>
       <tr>
@@ -148,7 +148,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>输入</td>
         <td>位置编码</td>
         <td><ul><li>不支持空tensor。</li>
-        <li>不使用该功能时可传入nullptr。</li>    
+        <li>不使用该功能时可传入nullptr。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
@@ -283,7 +283,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>ND</td>
         <td>1-4</td>
         <td>-</td>
-      </tr> 
+      </tr>
     <tr>
        <td>blockTable</td>
         <td>输入</td>
@@ -295,7 +295,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>2</td>
         <td>-</td>
       </tr>
-      <tr> 
+      <tr>
        <td>queryPaddingSize</td>
         <td>输入</td>
         <td>表示Query中每个batch的数据是否右对齐，且右对齐的个数是多少。</td>
@@ -307,7 +307,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>1</td>
         <td>-</td>
       </tr>
-      <tr> 
+      <tr>
        <td>kvPaddingSize</td>
         <td>输入</td>
         <td>表示key/value中每个batch的数据是否右对齐，且右对齐的个数是多少。</td>
@@ -317,7 +317,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>ND</td>
         <td>1</td>
         <td>-</td>
-      </tr>    
+      </tr>
       <tr>
         <td>numHeads</td>
         <td>输入</td>
@@ -349,7 +349,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-      </tr>      
+      </tr>
       <tr>
         <td>nextTokens</td>
         <td>输入</td>
@@ -437,7 +437,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-      </tr>       
+      </tr>
       <tr>
         <td>attentionOut</td>
         <td>输出</td>
@@ -483,10 +483,10 @@ aclnnStatus aclnnFusedInferAttentionScore(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 280px">
   <col style="width: 119px">
@@ -520,7 +520,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
 ## aclnnFusedInferAttentionScore
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
   <col style="width: 128px">
@@ -558,7 +558,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -795,7 +795,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
       </tbody>
       </table>
       </div>
-    
+
     - query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
 
   - 参数sparseMode当前仅支持值为0、1、2、3、4的场景，取其它值时会报错。
@@ -803,7 +803,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
     - sparseMode = 0时，attenMask如果为空指针，或者在左padding场景传入attenMask，则忽略入参preTokens、nextTokens。
     - sparseMode = 2、3、4时，attenMask的shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048，且需要用户保证传入的attenMask为下三角，attenMask为nullptr或者传入的shape不正确报错。
     - sparseMode = 1、2、3的场景忽略入参preTokens、nextTokens并按照相关规则赋值。
-    
+
   - kvCache反量化的合成参数场景仅支持query为FLOAT16时，将INT8类型的key和value反量化到FLOAT16。入参key/value的datarange与入参antiquantScale的datarange乘积范围在（-1，1）范围内，高性能模式可以保证精度，否则需要开启高精度模式来保证精度。
 
   - page attention场景：
@@ -818,21 +818,21 @@ aclnnStatus aclnnFusedInferAttentionScore(
     - page attention的开启场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
       - 传入attenMask时，如mask shape为(B, 1, Q_S, KV_S)
       - 传入pseShift时，如pseShift shape为(B, N, Q_S, KV_S)
-    
+
   - query左padding场景：
 
     - query的搬运起点计算公式为：Q_S - queryPaddingSize - actualSeqLengths。query的搬运终点计算公式为：Q_S - queryPaddingSize。其中query的搬运起点不能小于0，终点不能大于Q_S，否则结果将不符合预期。
     - 场景kvPaddingSize小于0时将被置为0。
     - 场景需要与actualSeqLengths参数一起开启，否则默认为query右padding场景。
     - 场景不支持PageAttention，不能与blockTable参数一起开启。
-    
+
   - kv左padding场景：
 
     - key和value的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengthsKv。key和value的搬运终点计算公式为：KV_S - kvPaddingSize。其中key和value的搬运起点不能小于0，终点不能大于KV_S，否则结果将不符合预期。
     - kvPaddingSize小于0时将被置为0。
     - 需要与actualSeqLengthsKv参数一起开启，否则默认为kv右padding场景。
     - 不支持PageAttention，不能与blockTable参数一起开启。
-    
+
   - 输出为int8时，quantScale2和quantOffset2为per-channel时，暂不支持左padding、Ring Attention或者D非32Byte对齐的场景。
 
   - 输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。
@@ -842,7 +842,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
     - 支持query数据类型为FLOAT16或BFLOAT16或INT8场景下使用该功能。
     - query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。
     - Q_S需大于等于query的S长度，KV_S需大于等于key的S长度。
-    
+
   - 输出为INT8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部开启）：
 
   - sparseMode = 0，attenMask如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - preTokens > 0或nextTokens < 0时，满足拦截条件
@@ -877,7 +877,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>

@@ -37,8 +37,7 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0>
 class FiaBlockVecFlashDecode {
 public:
     // =================================类型定义区=================================
@@ -326,8 +325,7 @@ protected:
         uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
         if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
-            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT,
-                 dealRowCount * this->dSizeV_Align);
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT, dealRowCount * this->dSizeV_Align);
         } else {
             Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
                  dealRowCount * this->dSizeV_Align);
@@ -405,8 +403,8 @@ protected:
     }
 
 public:
-    __aicore__ inline void LoadLseAndPreloadData(uint32_t startRow, uint32_t actualGSplitSize,
-        uint64_t taskOffset, uint32_t reduceMLoop, uint32_t reduceGlobaLoop)
+    __aicore__ inline void LoadLseAndPreloadData(uint32_t startRow, uint32_t actualGSplitSize, uint64_t taskOffset,
+                                                 uint32_t reduceMLoop, uint32_t reduceGlobaLoop)
     {
         WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
         CopyLseIn(startRow, actualGSplitSize, taskOffset, reduceMLoop);
@@ -432,28 +430,26 @@ public:
             uint32_t mOffset = taskInfo.gS1Idx + startRow;
             if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
                 uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
-                uint64_t bN2Offset =
-                    prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                    actualGSplitSize, constInfo);
+                uint64_t bN2Offset = prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
+                DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                           constInfo);
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                 uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                 uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                uint64_t bN2Offset =
-                    prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                    actualGSplitSize, constInfo, s1Size);
+                uint64_t bN2Offset = prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
+                DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                           constInfo, s1Size);
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
                 uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
-                                        taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
+                                     taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
                 DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                    actualGSplitSize, constInfo);
+                                                            actualGSplitSize, constInfo);
             } else { // BNSD
                 uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
-                                        taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
+                                     taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
                 uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
                 DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                    actualGSplitSize, constInfo, qActSeqLens);
+                                                            actualGSplitSize, constInfo, qActSeqLens);
             }
         }
     }
@@ -518,12 +514,11 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0>
 class FiaBlockVecFlashDecodeDummy {
 public:
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-    __aicore__ inline FiaBlockVecFlashDecodeDummy(ConstInfoX &constInfo) {};
+    __aicore__ inline FiaBlockVecFlashDecodeDummy(ConstInfoX &constInfo){};
 };
 
 } // namespace BaseApi

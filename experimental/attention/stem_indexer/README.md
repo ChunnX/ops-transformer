@@ -42,6 +42,7 @@
 | k_block_num_bias_medium      | 可选属性      | 中等长度序列的TopK预算偏置，默认值30。 | INT32          | -         |
 | k_block_num_rate_large      | 可选属性      | 长序列的TopK预算系数，默认值0.1。 | FLOAT32          | -         |
 | k_block_num_bias_large      | 可选属性      | 长序列的TopK预算偏置，默认值30。 | INT32          | -         |
+| topk_score_precision      | 可选属性      | TopK内部score精度：1表示uint32，2表示uint16，默认值1。 | INT32          | -         |
 | sparse_indices     | 输出      | 选中的key block索引，shape为`[B, q_heads, max_Qb, max_Kb]`，仅前`sparse_seq_len`项有效，尾部无效区以-1填充。 | INT32          | ND         |
 | sparse_seq_len           | 输出      | 每个query block选中的块数，shape为`[B, q_heads, max_Qb]`。 | INT32         | ND          |
 
@@ -62,9 +63,9 @@
 -   单算子模式调用
     ```python
     import torch
-    import torch_npu
+    import TorchNPU
     import numpy as np
-    import custom_ops   # 注册 torch.ops.custom.npu_stem_indexer(_metadata) 并挂载到 torch_npu
+    import custom_ops   # 注册 torch.ops.custom.npu_stem_indexer(_metadata) 并挂载到 TorchNPU
 
     b = 4
     q_heads = 64
@@ -99,7 +100,8 @@
         causal=True, stem_block_size=stem_block_size, stem_stride=stem_stride, alpha=1.0,
         initial_blocks=4, window_size=4,
         k_block_num_rate_medium=0.2, k_block_num_bias_medium=30,
-        k_block_num_rate_large=0.1, k_block_num_bias_large=30)
+        k_block_num_rate_large=0.1, k_block_num_bias_large=30,
+        topk_score_precision=1)
     ```
 
 更多使用示例见[pytest示例](./tests/pytest/README.md)。
