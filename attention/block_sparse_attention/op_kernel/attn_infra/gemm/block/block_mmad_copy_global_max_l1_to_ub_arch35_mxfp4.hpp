@@ -45,8 +45,76 @@ public:
 
     static constexpr uint32_t L0_STAGES = DispatchPolicy::L0_STAGES;
 
-    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource) {}
+    // L1 各区单份字节数（fp4 两元素占 1 字节；scale 为 E8M0，每 32 元素 1 字节）
+    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                                          // Q 数据：8K
+    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(AscendC::fp8_e8m0_t); // Q-scale：0.5K
+    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                                         // KV/V 数据：32K
+    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(AscendC::fp8_e8m0_t);// KV/V-scale：2K
+    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                                          // P 数据：16K
+    static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(AscendC::fp8_e8m0_t); // P-scale：1.25K
+    static constexpr uint32_t L1_Q_BUFCNT = 2;    // Q 区份数
+    static constexpr uint32_t L1_KV_BUFCNT = 2;   // KV/V 区份数（2+2 方案：PV 2 槽 ping-pong，QK 另 2 槽独立）
+    static constexpr uint32_t L1_P_BUFCNT = 20;   // P 区份数
+
+    static constexpr uint32_t L1_SINGLE_GLOBAL_MAX_SIZE = 128;
+    static constexpr uint32_t L1_GLOBAL_MAX_SIZE = 256 * sizeof(half);
+    static constexpr uint32_t L1_GLOBAL_MAX_BUFCNT = 4;
+
+    static constexpr uint8_t  VEC0 = 0;
+    static constexpr uint8_t  VEC1 = 1;
+
+    static constexpr uint32_t SUB_VEC_NUM = 2;
+    static constexpr uint32_t BLOCK_SIZE = 32;
+
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource) {
+        // L1 区域顺序（与 QFA 一致）：P 数据 | P-scale | Q 数据 | Q-scale | KV(=V) 数据 | KV(=V)-scale
+        uint32_t addrL1Start = 0;
+        addrL1Start += L1_P_SIZE * L1_P_BUFCNT;
+        addrL1Start += L1_P_DESCALE_SIZE * L1_P_BUFCNT;
+        addrL1Start += L1_Q_SIZE * L1_Q_BUFCNT;
+        addrL1Start += L1_Q_DESCALE_SIZE * L1_Q_BUFCNT;
+        addrL1Start += L1_KV_SIZE * L1_KV_BUFCNT;
+        addrL1Start += L1_KV_DESCALE_SIZE * L1_KV_BUFCNT;
+        // localGlobalMaxL1 = 256*4
+        for (uint32_t i = 0; i < L1_GLOBAL_MAX_BUFCNT; i++) {
+            localGlobalMaxL1[i] = resource.l1Buf.template GetBufferByByte<ElementLocalGlobalMax>(addrL1Start + L1_GLOBAL_MAX_SIZE * i);
+        }
+    }
     __aicore__ inline ~BlockMmadTla() {}
+
+    template <class TensorGMaxUb,class TileInfoT>
+    __aicore__ inline
+    void operator()(TensorGMaxUb &gMaxUbTensor, TileInfoT &delay3TileInfo)
+    {
+        AscendC::PRINTF("CopyGMaxL1ToUb \n");
+        uint32_t blockCount = static_cast<uint32_t>(tla::get<0>(gMaxUbTensor.shape()));
+        uint32_t blockLenPerSubVec = static_cast<uint32_t>(tla::get<1>(gMaxUbTensor.shape())) / SUB_VEC_NUM / BLOCK_SIZE * sizeof(ElementLocalGlobalMax);
+
+        // [TODO] 此处也是假数据
+        AscendC::InitConstValueParams<ElementLocalGlobalMax> localGlobalMaxL1FillParams(1, static_cast<uint16_t>(L1_GLOBAL_MAX_SIZE * L1_GLOBAL_MAX_BUFCNT  * sizeof(ElementLocalGlobalMax) / BLOCK_SIZE ), 0, static_cast<half>(1.865));
+        AscendC::Fill(localGlobalMaxL1[0], localGlobalMaxL1FillParams);          // localGlobalMaxL1 数据
+        AscendC::PipeBarrier<PIPE_MTE2>();
+
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(7);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(7);
+
+        AscendC::LocalTensor<ElementLocalGlobalMax> localGlobalMax0 = localGlobalMaxL1[delay3TileInfo.tileMaxIdx];
+        AscendC::LocalTensor<ElementLocalGlobalMax> localGlobalMax1 = localGlobalMaxL1[delay3TileInfo.tileMaxIdx][L1_SINGLE_GLOBAL_MAX_SIZE];
+        AscendC::LocalTensor<ElementLocalGlobalMax> peerGlobalMax = gMaxUbTensor.data();
+
+        AscendC::DataCopyParams intriParams;
+        intriParams.blockCount = static_cast<uint16_t>(blockCount); // 连续数据块个数为1
+        intriParams.blockLen = static_cast<uint16_t>(blockLenPerSubVec); // 连续数据块长度，单位为DataBlock，此处长度为128个half元素
+        intriParams.srcGap = 0; // 源操作数做连续搬运
+        intriParams.dstGap = 0; // 目的操作数连续排布
+        AscendC::DataCopyL1ToUB<ElementLocalGlobalMax, VEC0>(peerGlobalMax, localGlobalMax0, intriParams);
+        AscendC::DataCopyL1ToUB<ElementLocalGlobalMax, VEC1>(peerGlobalMax, localGlobalMax1, intriParams);
+    }
+
+protected:
+    // MXFP4 专用：E8M0 scale 的 L1 buffer（V-scale 4 份，P-scale 20 份）+ MX 版 L1->L0 拷贝器
+    AscendC::LocalTensor<half> localGlobalMaxL1[L1_GLOBAL_MAX_BUFCNT];
+
 };
 
 }  // namespace NpuArch::Gemm::Block
