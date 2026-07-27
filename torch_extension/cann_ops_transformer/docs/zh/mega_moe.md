@@ -1216,9 +1216,10 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     offsetTensor         = winInTensorSize
                         + (quant ? num_max_tokens_per_rank × num_topk × 4B : 0)
 
-    // sync flags（仅CrossRankSync）
-    offsetFlag           = ep_world_size × 512B
-    ```
+        // sync flags
+        syncStateReservedSize = 512KB
+        offsetFlag            = max(ep_world_size × 512B, syncStateReservedSize)
+        ```
     <!-- end id12 -->
 
      **Ascend 950PR/Ascend 950DT：**
