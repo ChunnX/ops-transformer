@@ -39,6 +39,14 @@ if __name__ == "__main__" and __package__ is None:
 else:
     from .utils import setup_logging, read_file_lines, load_dependency_json
 
+# Config-driven prefix merge table for ascend950 SOC.
+# Each entry maps a name prefix to the single merged name that replaces all
+# ops whose names start with that prefix.
+ASCEND950_MERGE_PREFIXES: Dict[str, str] = {
+    "moe_distribute": "moe_distribute",
+    "moe_ep": "moe_ep",
+}
+
 
 def transform_to_product_grouped(data: List[Dict]) -> Dict[str, List[str]]:
     """
@@ -441,6 +449,40 @@ def write_output_json(data: List[Dict], output_path: str, logger: logging.Logger
         raise
 
 
+def _merge_prefix_ops(
+    op_names: List[str],
+    merge_prefixes: Dict[str, str],
+    logger: logging.Logger
+) -> List[str]:
+    """
+    Merge ops matching any prefix in merge_prefixes into a single name.
+
+    For each (prefix, merged_name) pair - iterated in sorted prefix order for
+    deterministic logging - all op names starting with the prefix are removed
+    and replaced by a single merged_name entry. One info log line is emitted
+    per prefix that matched at least one op.
+
+    Args:
+        op_names: List of op names to merge (result is always sorted).
+        merge_prefixes: Mapping of name prefix -> merged name.
+        logger: Logger for info messages.
+
+    Returns:
+        Sorted list of op names with prefix-matched ops collapsed into
+        their merged names.
+    """
+    result = list(op_names)
+    for prefix in sorted(merge_prefixes.keys()):
+        merged_name = merge_prefixes[prefix]
+        matched = [n for n in result if n.startswith(prefix)]
+        if matched:
+            result = [n for n in result if not n.startswith(prefix)]
+            result.append(merged_name)
+            logger.info(f"ascend950 SOC: 合并 {matched} 为单个 {merged_name}")
+    result.sort()
+    return result
+
+
 def write_soc_json(data: List[Dict], soc_name: str, output_dir: str, logger: logging.Logger) -> str:
     """
     写入适配 SOC 类型的算子列表文件，每行一个算子名称。
@@ -458,11 +500,7 @@ def write_soc_json(data: List[Dict], soc_name: str, output_dir: str, logger: log
         op_names = sorted([op_info["op_name"] for op_info in data])
         
         if soc_name == "ascend950":
-            moe_distribute_names = [n for n in op_names if n.startswith("moe_distribute")]
-            if moe_distribute_names:
-                op_names = [n for n in op_names if not n.startswith("moe_distribute")] + ["moe_distribute"]
-                op_names.sort()
-                logger.info(f"ascend950 SOC: 合并 {moe_distribute_names} 为单个 moe_distribute")
+            op_names = _merge_prefix_ops(op_names, ASCEND950_MERGE_PREFIXES, logger)
         
         output_path = str(Path(output_dir) / "matched_keywords.txt")
         output_path_obj = Path(output_path)
