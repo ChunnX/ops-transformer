@@ -48,7 +48,7 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, 
 
 enum MegaMoeTimingSlot : int32_t {
     TIMING_DISPATCH = 0,
-    TIMING_GMM1 = 1,
+    TIMING_GROUP_MATMUL = 1,
     TIMING_SWIGLU_QUANT = 2,
     TIMING_GMM2 = 3,
     TIMING_COMBINE = 4
@@ -1894,6 +1894,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
                                                                                     uint32_t expertIdx,
                                                                                     int32_t &vecSetSyncCom)
 {
+    if constexpr (!IsShared) {
+        if constexpr (g_coreType == AIC) {
+            kernelTiming_.StartAccumulatedTiming(TIMING_GROUP_MATMUL);
+        } else if constexpr (ENABLE_A8W4) {
+            if (subBlockIdx_ == 0) {
+                kernelTiming_.StartAccumulatedTiming(TIMING_GROUP_MATMUL);
+            } else {
+                kernelTiming_.StartAccumulatedTiming(TIMING_SWIGLU_QUANT);
+            }
+        } else if (subBlockIdx_ == 0) {
+            kernelTiming_.StartAccumulatedTiming(TIMING_SWIGLU_QUANT);
+        }
+    }
+
     if constexpr (g_coreType == AIV) {
         AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
             Get<IDX_C_OFFSET>(state.baseOffset),
@@ -1960,6 +1974,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
         }
     }
 
+    if constexpr (!IsShared) {
+        if constexpr (g_coreType == AIC) {
+            kernelTiming_.StopAccumulatedTiming(TIMING_GROUP_MATMUL);
+        } else if constexpr (ENABLE_A8W4) {
+            if (subBlockIdx_ == 0) {
+                kernelTiming_.StopAccumulatedTiming(TIMING_GROUP_MATMUL);
+            } else {
+                kernelTiming_.StopAccumulatedTiming(TIMING_SWIGLU_QUANT);
+            }
+        } else if (subBlockIdx_ == 0) {
+            kernelTiming_.StopAccumulatedTiming(TIMING_SWIGLU_QUANT);
+        }
+    }
+
 }
 
 // ===============================================================
@@ -1972,6 +2000,16 @@ __aicore__ inline void
 MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                                          uint32_t expertIdx, int32_t &vecSetSyncCom)
 {
+    int32_t timingSlot = TIMING_COMBINE;
+    if constexpr (!IsShared) {
+        if constexpr (g_coreType == AIC) {
+            timingSlot = TIMING_GMM2;
+        } else if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
+            timingSlot = subBlockIdx_ == 0 ? TIMING_GMM2 : TIMING_COMBINE;
+        }
+        kernelTiming_.StartAccumulatedTiming(timingSlot);
+    }
+
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t,
                                              QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch,
@@ -1993,6 +2031,9 @@ MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmA
 
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV && !IsShared) {
         ProcessCombine(gmmAddrInfo, state, expertIdx);
+    }
+    if constexpr (!IsShared) {
+        kernelTiming_.StopAccumulatedTiming(timingSlot);
     }
 }
 
@@ -2038,18 +2079,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
-    int32_t gmm1TimingSlot = TIMING_SWIGLU_QUANT;
-    int32_t gmm2TimingSlot = TIMING_COMBINE;
-    if constexpr (g_coreType == AIC) {
-        gmm1TimingSlot = TIMING_GMM1;
-        gmm2TimingSlot = TIMING_GMM2;
-    } else if constexpr (ENABLE_A8W4) {
-        gmm1TimingSlot = subBlockIdx_ == 0 ? TIMING_GMM1 : TIMING_SWIGLU_QUANT;
-        gmm2TimingSlot = subBlockIdx_ == 0 ? TIMING_GMM2 : TIMING_COMBINE;
-    } else if constexpr (ENABLE_A4W4) {
-        gmm2TimingSlot = subBlockIdx_ == 0 ? TIMING_GMM2 : TIMING_COMBINE;
-    }
-
     // Dispatch includes local preparation, quantization, routing metadata and
     // all synchronization required before an expert can consume its tokens.
     kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
@@ -2079,10 +2108,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     if (sharedExpertNum_ > 0) {
         kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
-        kernelTiming_.StartAccumulatedTiming(gmm1TimingSlot);
         ProcessSharedExpertGmm1(initShape, initOffset);
         SyncAll<false>();
-        kernelTiming_.StopAccumulatedTiming(gmm1TimingSlot);
         kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
     }
 
@@ -2129,24 +2156,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
 
         // GMM1 consumer 消费 expert e。
-        kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
-        kernelTiming_.StartAccumulatedTiming(gmm1TimingSlot);
         if (!UpdateGroupParams<AddrUpdateMode::GMM1>(gmm1State, localExpertId, curSendCnt)) {
-            kernelTiming_.StopAccumulatedTiming(gmm1TimingSlot);
-            kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
+        kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
         GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, localExpertId, vecSetSyncCom);
-        kernelTiming_.StopAccumulatedTiming(gmm1TimingSlot);
         kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
     }
-    kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
 
     // prefetch 路径：epilogue 完成所有 expert 后写 allDone，AIC 轮询后继续
     // 非 prefetch 路径：沿用 EndSync 硬同步
     // A8W4 的 epilogue 在 AIV1 执行，generic 在 AIV0 执行
-    kernelTiming_.StartAccumulatedTiming(gmm1TimingSlot);
     if constexpr (TopkWeightsPrefetch) {
         if constexpr (g_coreType == AIV) {
             constexpr uint32_t epilogueSubIdx = ENABLE_A8W4 ? 1 : 0;
@@ -2170,9 +2191,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     } else {
         EndSync(vecSetSyncCom);
     }
-    kernelTiming_.StopAccumulatedTiming(gmm1TimingSlot);
 
-    kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
             ExpertTokenNumCopyOut();
@@ -2181,7 +2200,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
-    kernelTiming_.StartAccumulatedTiming(gmm2TimingSlot);
     vecSetSyncCom = 0;
     GMMAddrInfo gmm2AddrInfo;
     ExpertLoopState gmm2State{initShape, initOffset, 0};
@@ -2194,6 +2212,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
         GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx, vecSetSyncCom);
     }
+
+    kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         EndGMM2Sync(vecSetSyncCom, gmm2PingPongIdx_);
     }
@@ -2202,18 +2222,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
     }
+    kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
 
     // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
     if (sharedExpertNum_ > 0) {
         ProcessSharedExpertGmm2(initShape, initOffset);
     }
-    kernelTiming_.StopAccumulatedTiming(gmm2TimingSlot);
 
-    // Combine includes final cross-rank synchronization, unpermute and output
-    // bookkeeping so the five stages cover the complete business process.
+    // Cross-rank synchronization belongs to dispatch; combine starts after it.
+    if constexpr (g_coreType == AIV) {
+        kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
+        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+        kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+    }
+
     kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
     if constexpr (g_coreType == AIV) {
-        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
