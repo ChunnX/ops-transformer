@@ -9,10 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_token_permute import moe_token_permute
-from .mega_moe import (
-    get_symm_buffer_for_mega_moe,
-    mega_moe
-)
+from .mega_moe import get_symm_buffer_for_mega_moe, mega_moe
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
 from .mixed_quant_sparse_flash_mla import (
@@ -24,6 +21,10 @@ from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
 from .sparse_lightning_indexer_kl_loss_grad import (
     sparse_lightning_indexer_kl_loss_grad,
     sparse_lightning_indexer_kl_loss_grad_metadata,
+)
+from .dense_lightning_indexer_kl_loss_grad import (
+    dense_lightning_indexer_kl_loss_grad,
+    dense_lightning_indexer_kl_loss_grad_metadata,
 )
 from .lightning_indexer import lightning_indexer, lightning_indexer_metadata
 from .quant_lightning_indexer import (
