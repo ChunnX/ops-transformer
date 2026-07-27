@@ -58,7 +58,8 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16MxFp4NZ() const
 
 bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsMxA8W4NZ() const
 {
-    return xDtype_ == ge::DT_FLOAT8_E4M3FN && weightDtype_ == ge::DT_FLOAT4_E2M1;
+    return xDtype_ == ge::DT_FLOAT8_E4M3FN &&
+           (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT4_E1M2);
 }
 
 bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W8ND() const
