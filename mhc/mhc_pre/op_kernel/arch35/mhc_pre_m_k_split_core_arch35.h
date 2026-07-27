@@ -412,10 +412,12 @@ public:
 
         if ASCEND_IS_AIC {
             mmService_.Init(this->implMode_);
-            CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
-            CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG + FLAG_ID_MAX);
-            CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
-            CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG + FLAG_ID_MAX);
+            // Seed two availability tokens for each subblock because X staging
+            // is ping-ponged. Every later token is returned after AIC consumes X.
+            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG);
+            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG);
+            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
         }
         if ASCEND_IS_AIV {
             uint32_t rowCapacity = (this->tiling_->mL1Size + 1U) / 2U;
@@ -487,9 +489,9 @@ private:
             mmService_.CopyInB1Nd2Nz(this->matrixInfo_.nD, currentK, this->matrixInfo_.fusionSize,
                 this->phiGm_[kOffset], currentBL1);
             if (UseGmStage()) {
-                CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(SYNC_AIV_AIC_FLAG);
-                CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(
-                    SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
+                CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MhcPreUtils::X_READY_FLAG);
+                CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
+                    MhcPreUtils::X_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
                 uint64_t stageSlotElements =
                     static_cast<uint64_t>(this->tiling_->mL1Size) * this->tiling_->kL1Size;
                 uint64_t stageOffset =
@@ -497,9 +499,9 @@ private:
                 mmService_.CopyInA1Nd2Nz(mReal, currentK, this->tiling_->kL1Size,
                     xStageGm_[stageOffset], currentAL1);
             } else {
-                CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
-                CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(
-                    SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
+                CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_READY_FLAG);
+                CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                    MhcPreUtils::X_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
             }
 
             bool isFirst = kOffset == kStart;
@@ -511,11 +513,11 @@ private:
                 isFirst, isLast, currentAL1, currentBL1);
             if (isLast) {
                 mmService_.CopyOut(mmPartialLocal_);
-                CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_FIX>(SYNC_AIC_AIV_MM_FLAG);
-                CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_FIX>(SYNC_AIC_AIV_MM_FLAG + FLAG_ID_MAX);
+                CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_FIX>(MhcPreUtils::MM_READY_FLAG);
+                CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_FIX>(MhcPreUtils::MM_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
             }
-            CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
-            CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG + FLAG_ID_MAX);
+            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG);
+            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
             aL1BufferId ^= 1U;
         }
     }
@@ -531,8 +533,8 @@ private:
         this->globalOffsetM_ = mStart;
         if (rowCount == 0U) {
             for (uint32_t kOffset = kStart; kOffset < kEnd; kOffset += this->tiling_->kL1Size) {
-                CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
-                CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
+                CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_CONSUMED_FLAG);
+                CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_READY_FLAG);
             }
             this->invRmsOutQueue_.FreeTensor(this->invRmsUb_);
             return;
@@ -552,7 +554,7 @@ private:
         for (uint32_t kOffset = kStart; kOffset < kEnd; kOffset += this->tiling_->kL1Size) {
             uint32_t currentK = AscendC::Std::min(
                 static_cast<uint64_t>(this->tiling_->kL1Size), static_cast<uint64_t>(kEnd - kOffset));
-            CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
+            CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_CONSUMED_FLAG);
 
             LocalTensor<T> currentXLocal = this->xInQueue_.template DeQue<T>();
             LocalTensor<P> xFloatLocal = this->outQueue_.template AllocTensor<P>();
@@ -632,13 +634,13 @@ private:
                     aL1_[aL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET + dstRowOffset], copyParams);
                 SetFlag<HardEvent::MTE3_V>(eventId);
             }
-            CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
+            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_READY_FLAG);
             aL1BufferId ^= 1U;
         }
         if (!UseGmStage()) {
             WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
         }
-        CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_MM_FLAG);
+        CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::MM_READY_FLAG);
         DataCopyExtParams mmCopyParams;
         mmCopyParams.blockCount = static_cast<uint16_t>(rowCount);
         mmCopyParams.blockLen = this->matrixInfo_.fusionSize * sizeof(P);
@@ -672,10 +674,6 @@ private:
     LocalTensor<P> bL1_;
     LocalTensor<P> nd2NzLocal_;
     MhcPreCubeCompute mmService_;
-    static constexpr uint64_t SYNC_AIV_AIC_FLAG = 8;
-    static constexpr uint64_t SYNC_AIC_AIV_FLAG = 9;
-    static constexpr uint64_t SYNC_AIC_AIV_MM_FLAG = 10;
-    static constexpr uint64_t FLAG_ID_MAX = 16;
 };
 
 template <class T, class P, int8_t HAS_RESI>
