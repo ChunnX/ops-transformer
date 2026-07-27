@@ -29,7 +29,7 @@ namespace ge {
  *
  * @par Inputs:
  * @li q: Variable-length Q tensor (all batch tokens concatenated). Shape [total_tokens, H_q, D].
- *        Last dim D must equal stemBlockSize (default 128).
+ *        Last dim D must equal 128.
  *        Supported data types: DT_FLOAT8_E4M3FN.
  * @li qSeqLens: Per-batch Q sequence lengths. Shape [batch]. Data type: DT_INT64.
  *               Value depend: tiling reads actual values to compute max_Qb.
@@ -39,8 +39,8 @@ namespace ge {
  *             Required when q is FLOAT8_E4M3FN.
  *
  * @par Attributes:
- * @li stemBlockSize: Optional. Stem block size (B).  Must be  32.
- * @li stemStride: Optional. Stem stride (S). Must be  16.
+ * @li stemBlockSize: Optional. Stem block size (B).  Must be 128.
+ * @li stemStride: Optional. Stem stride (S). Must be 16.
  *
  * @par Outputs:
  * @li qFlat: Flattened Q output for OAM score computation. Shape [batch, H_q, max_Qb, kflat_dim].
@@ -50,8 +50,6 @@ namespace ge {
  * @attention Constraints:
  * @code{.c}
  * - q last dim D must equal 128 (hardcoded DIM_QK).
- * - stemBlockSize % 32 == 0, stemBlockSize <= 256.
- * - stemStride % 16 == 0, stemStride <= 64, stemStride <= stemBlockSize.
  * - cuSeqLensQ length must be batch + 1, monotonically increasing, starting at 0.
  * - When q is FLOAT8_E4M3FN, qScale is mandatory.
  * - Batch max = 1024.
