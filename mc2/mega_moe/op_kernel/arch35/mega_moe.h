@@ -1898,9 +1898,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
         if constexpr (g_coreType == AIC) {
             kernelTiming_.StartAccumulatedTiming(TIMING_GROUP_MATMUL);
         } else if constexpr (ENABLE_A8W4) {
-            if (subBlockIdx_ == 0) {
-                kernelTiming_.StartAccumulatedTiming(TIMING_GROUP_MATMUL);
-            } else {
+            if (subBlockIdx_ == 1) {
                 kernelTiming_.StartAccumulatedTiming(TIMING_SWIGLU_QUANT);
             }
         } else if (subBlockIdx_ == 0) {
@@ -1978,9 +1976,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
         if constexpr (g_coreType == AIC) {
             kernelTiming_.StopAccumulatedTiming(TIMING_GROUP_MATMUL);
         } else if constexpr (ENABLE_A8W4) {
-            if (subBlockIdx_ == 0) {
-                kernelTiming_.StopAccumulatedTiming(TIMING_GROUP_MATMUL);
-            } else {
+            if (subBlockIdx_ == 1) {
                 kernelTiming_.StopAccumulatedTiming(TIMING_SWIGLU_QUANT);
             }
         } else if (subBlockIdx_ == 0) {
@@ -2001,13 +1997,16 @@ MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmA
                                                          uint32_t expertIdx, int32_t &vecSetSyncCom)
 {
     int32_t timingSlot = TIMING_COMBINE;
+    bool timingEnabled = true;
     if constexpr (!IsShared) {
         if constexpr (g_coreType == AIC) {
             timingSlot = TIMING_GMM2;
         } else if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-            timingSlot = subBlockIdx_ == 0 ? TIMING_GMM2 : TIMING_COMBINE;
+            timingEnabled = subBlockIdx_ == 1;
         }
-        kernelTiming_.StartAccumulatedTiming(timingSlot);
+        if (timingEnabled) {
+            kernelTiming_.StartAccumulatedTiming(timingSlot);
+        }
     }
 
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
@@ -2033,7 +2032,9 @@ MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmA
         ProcessCombine(gmmAddrInfo, state, expertIdx);
     }
     if constexpr (!IsShared) {
-        kernelTiming_.StopAccumulatedTiming(timingSlot);
+        if (timingEnabled) {
+            kernelTiming_.StopAccumulatedTiming(timingSlot);
+        }
     }
 }
 
