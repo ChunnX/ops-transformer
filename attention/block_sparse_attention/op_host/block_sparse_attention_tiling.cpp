@@ -756,8 +756,8 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
         uint32_t specificNumHeads = parameterIndex == Q_DEQUANT_SCALE_INDEX ? numHeads_ : kvHeads_;
         uint32_t specificMaxBlockNum = parameterIndex == Q_DEQUANT_SCALE_INDEX ? maxQBlockNum_ : maxKvBlockNum_;
         std::string shapeDescription = parameterIndex == Q_DEQUANT_SCALE_INDEX ?
-                                           "(batch, numHeads, CeilDiv(maxQSeqlen, blockShapeX), 1)" :
-                                           "(batch, numKVHeads, CeilDiv(maxKvSeqlen, blockShapeY), 1)";
+                                           "(totalQToken, numHeads, maxQBlockNum, 1)" :
+                                           "(totalKVToken, numKVHeads, maxKVBlockNum, 1)";
 
         if (dequantScaleBatch != batch_ || dequantScaleNumHeads != specificNumHeads ||
             dequantScaleBlockNum != specificMaxBlockNum || dequantScaleLastDim != NUM_1) {
