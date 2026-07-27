@@ -135,7 +135,11 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
         auto shapeD2 = valueShape->GetDim(3);
         attentionOutShape->SetDim(3, shapeD2);
     } else if (inputLayoutStr == "BSH" || inputLayoutStr == "SBH" ) {
-        auto N1 = *headNum;
+        if (queryShape->GetDim(DIM_NUM_2) == -1 || keryShape->GetDim(DIM_NUM_2) == -1 || valueShape->GetDim(DIM_NUM_2) == -1) {
+	attentionOutShape->SetDim(DIM_NUM_2, -1);
+	return GRAPH_SUCCESS; 
+	}
+	auto N1 = *headNum;
         if (N1 == 0) {
             attentionOutShape->SetDim(DIM_NUM_2, 0);
             return GRAPH_SUCCESS;
