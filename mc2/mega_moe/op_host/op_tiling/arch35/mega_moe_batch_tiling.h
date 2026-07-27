@@ -30,7 +30,7 @@ inline uint64_t CeilDiv(uint64_t value, uint64_t divisor)
 inline uint32_t CalcExpertsPerBatch(uint32_t bs, uint32_t topK, uint32_t expertPerRank, uint32_t hiddenDim,
                                     uint32_t h, uint32_t aicNum)
 {
-    if (expertPerRank == 0U || aicNum == 0U) {
+    if (expertPerRank == 0U || h == 0U || aicNum == 0U) {
         return 1U;
     }
 
@@ -42,9 +42,14 @@ inline uint32_t CalcExpertsPerBatch(uint32_t bs, uint32_t topK, uint32_t expertP
     uint64_t limitingTilesPerExpert = std::max<uint64_t>(
         1U, std::min(gmm1TilesPerExpert, gmm2TilesPerExpert));
     uint64_t expertsToFillAic = CeilDiv(aicNum, limitingTilesPerExpert);
+    uint64_t expertsPerBatch = std::max<uint64_t>(
+        1U, std::min<uint64_t>(MEGA_MOE_MAX_EXPERTS_PER_BATCH,
+                               std::min<uint64_t>(expertPerRank, expertsToFillAic)));
+    // Deepen the wave when GMM1's gate+up width exceeds GMM2's output width.
+    expertsPerBatch *= CeilDiv(hiddenDim, h);
     return static_cast<uint32_t>(std::max<uint64_t>(
         1U, std::min<uint64_t>(MEGA_MOE_MAX_EXPERTS_PER_BATCH,
-                               std::min<uint64_t>(expertPerRank, expertsToFillAic))));
+                               std::min<uint64_t>(expertPerRank, expertsPerBatch))));
 }
 } // namespace MegaMoeBatchTiling
 } // namespace optiling
