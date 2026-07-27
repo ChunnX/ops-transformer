@@ -24,6 +24,7 @@
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0_mx_a5.hpp"
 #include "../../../tla/layout.hpp"
 #include "../../../tla/tensor.hpp"
+#include "block_mmad_arch35_utils.hpp"
 
 namespace NpuArch::Gemm::Block {
 template <
@@ -81,7 +82,6 @@ public:
     static constexpr uint32_t L0_TILE_K = tla::get<2>(L0TileShape_{});
 
 
-    static constexpr uint32_t mBaseSize = 128;     // [#9] M 方向基准 tile（对应 QFA mBaseSize），用于 pad 满块判断
 
     // mode4 核间同步：AIC 侧对两个 AIV 各用一个 flagId，第二个 = 第一个 + 16
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;
@@ -102,85 +102,39 @@ public:
     static constexpr uint32_t PV_L0C_EVENT0 = KV_EVENT0;   // = 4
 
     // L1 各区单份字节数（fp4 两元素占 1 字节；scale 为 E8M0，每 32 元素 1 字节）
-    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                                          // Q 数据：8K
-    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(AscendC::fp8_e8m0_t); // Q-scale：0.5K
-    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                                         // KV/V 数据：32K
-    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(AscendC::fp8_e8m0_t);// KV/V-scale：2K
-    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                                          // P 数据：16K
-    static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(AscendC::fp8_e8m0_t); // P-scale：1.25K
-    static constexpr uint32_t L1_Q_BUFCNT = 2;    // Q 区份数
-    static constexpr uint32_t L1_KV_BUFCNT = 2;   // KV/V 区份数（2+2 方案：PV 2 槽 ping-pong，QK 另 2 槽独立）
-    static constexpr uint32_t L1_P_BUFCNT = 20;   // P 区份数
 
-    // L0 各区单份字节数
-    static constexpr uint32_t QK_L0A_SIZE = 128 * 128 / 2;              // QK 用 L0A：8K
-    static constexpr uint32_t QK_L0B_SIZE = 128 * 128 / 2;              // QK 用 L0B：8K
-    static constexpr uint32_t QK_L0C_SIZE = 128 * 128 * sizeof(float);  // QK 用 L0C：64K
-    static constexpr uint32_t QK_L0AB_BUFCNT = 2;
-    static constexpr uint32_t QK_L0C_BUFCNT = 2;
-    static constexpr uint32_t PV_L0A_SIZE = 256 * (128 + 16) / 2;             // PV 用 L0A(=V, D+16 行)：18K
-    static constexpr uint32_t PV_L0B_SIZE = 256 * (128 + 16) / 2;            // PV 用 L0B(=P)：18K
-    static constexpr uint32_t PV_L0C_SIZE = (128 + 16) * 128 * sizeof(float); // PV 用 L0C(=Oᵀ)：72K
-    static constexpr uint32_t V_SCALE_L0A_SIZE = (256 / 64) * ((128 + 16) / 16) * 32 ;
-    static constexpr uint32_t P_SCALE_L0B_SIZE = (256 / 64) * ((128 + 16) / 16) * 32 ;
     
-    static constexpr uint32_t PV_L0AB_BUFCNT = 2;                    // mm2 L0A/B 双缓冲
-    static constexpr uint32_t PV_L0C_BUFCNT = 1;                     // mm2 L0C 单缓冲（原地累加）
-
     static constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
 
     __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource) {
         // L1 区域顺序（与 QFA 一致）：P 数据 | P-scale | Q 数据 | Q-scale | KV(=V) 数据 | KV(=V)-scale
         uint32_t addrL1Start = 0;
-        // P 数据：l1BTensor(B=P)，L1_P_SIZE * 20 = 320K
-        for (uint32_t i = 0; i < L1_P_BUFCNT; i++) {
-            l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(addrL1Start + L1_P_SIZE * i);
+        // P 数据：l1BTensor(B=P)，MXFP4::L1_P_BUF_SIZE * 20 = 320K
+        for (uint32_t i = 0; i < MXFP4::L1_P_BUF_CNT; i++) {
+            l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(MXFP4::L1_P_BUF_OFFSET + MXFP4::L1_P_BUF_SIZE * i);
         }
-        addrL1Start += L1_P_SIZE * L1_P_BUFCNT;
 
-        // P-scale：l1BScaleTensor，起始记为 pScaleBase，占 L1_P_DESCALE_SIZE * 20 = 25K
-        uint32_t pScaleBase = addrL1Start;
-        addrL1Start += L1_P_DESCALE_SIZE * L1_P_BUFCNT;
-
-        // Q 数据：PV 不用，仅占位以对齐后续偏移（16K）
-        addrL1Start += L1_Q_SIZE * L1_Q_BUFCNT;
-
-        // Q-scale：PV 不用，仅占位（1K）
-        addrL1Start += L1_Q_DESCALE_SIZE * L1_Q_BUFCNT;
-
-        // KV/V 数据：l1ATensor(A=V)，L1_KV_SIZE * 4 = 128K
-        for (uint32_t i = 0; i < L1_KV_BUFCNT; i++) {
-            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(addrL1Start + L1_KV_SIZE * i);
-        }
-        addrL1Start += L1_KV_SIZE * L1_KV_BUFCNT;
-
-        // KV/V-scale：l1AScaleTensor(V-scale)，起始记为 vScaleBase，占 L1_KV_DESCALE_SIZE * 4 = 8K
-        uint32_t vScaleBase = addrL1Start;
-        addrL1Start += L1_KV_DESCALE_SIZE * L1_KV_BUFCNT;
-
-        for (uint32_t i = 0; i < L1_P_BUFCNT; i++) {
-            l1BScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(pScaleBase + L1_P_DESCALE_SIZE * i);
-        }
-        for (uint32_t i = 0; i < L1_KV_BUFCNT; i++) {
-            l1AScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(vScaleBase + L1_KV_DESCALE_SIZE * i);
+        for (uint32_t i = 0; i < MXFP4::L1_P_SCALE_BUF_CNT; i++) {
+            l1BScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(MXFP4::L1_P_SCALE_BUF_OFFSET + MXFP4::L1_P_SCALE_BUF_SIZE * i);
         }
         
-        // L0A：跳过 QK 区(8K*2)，PV 区取 L0_STAGES 份 ping-pong —— l0ATensor(A=V)
-        uint32_t addrL0AStart = QK_L0A_SIZE * QK_L0AB_BUFCNT;
-        for (uint32_t i = 0; i < L0_STAGES; i++) {
-            l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(addrL0AStart + PV_L0A_SIZE * i);
+        for (uint32_t i = 0; i < MXFP4::L1_KV_BUF_CNT; i++) {
+            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(MXFP4::L1_KV_BUF_OFFSET + MXFP4::L1_KV_BUF_SIZE * i);
         }
 
-        // L0B：跳过 QK 区(8K*2)，PV 区取 L0_STAGES 份 ping-pong —— l0BTensor(B=P)
-        uint32_t addrL0BStart = QK_L0B_SIZE * QK_L0AB_BUFCNT;
-        for (uint32_t i = 0; i < L0_STAGES; i++) {
-            l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(addrL0BStart + PV_L0B_SIZE * i);
+        for (uint32_t i = 0; i < MXFP4::L1_KV_DESCALE_BUF_CNT; i++) {
+            l1AScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(MXFP4::L1_KV_DESCALE_BUF_OFFSET + MXFP4::L1_KV_DESCALE_BUF_SIZE * i);
         }
 
-        // L0C：跳过 QK 区后取 1 份（不 ping-pong）。字节偏移 = QK_L0C_SIZE*QK_L0C_BUFCNT = 128K，
-        //      与 QFA addrL0CStart 一致（累加的就是字节地址，不能再 /sizeof(float)）。
-        uint32_t addrL0CStart = QK_L0C_SIZE * QK_L0C_BUFCNT;
-        l0CTensor[0] = resource.l0CBuf.template GetBufferByByte<float>(addrL0CStart);
+        for (uint32_t i = 0; i < MXFP4::L0A_PV_BUF_CNT; i++) {
+            l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(MXFP4::L0A_PV_BUF_OFFSET + MXFP4::L0A_PV_BUF_SIZE * i);
+        }
+
+        for (uint32_t i = 0; i < MXFP4::L0B_PV_BUF_CNT; i++) {
+            l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(MXFP4::L0B_PV_BUF_OFFSET + MXFP4::L0B_PV_BUF_SIZE * i);
+        }
+
+        l0CTensor[0] = resource.l0CBuf.template GetBufferByByte<float>(MXFP4::L0C_PV_BUF_OFFSET);
 
         // ====================== Event 预置（对应 QFA AllocEventID）======================
         AllocEventID();
@@ -238,7 +192,7 @@ public:
                                      uint32_t embedReal)
     {
         // s2Base 取整 tile S2Base(=256)，用于推导 P-scale srcStride（原硬编码 5 的来源）。
-        // [TODO] s2Base 应由调用方/TileShape 传入，此处暂以 256 占位（与 L1_P_SIZE 排布一致）。
+        // [TODO] s2Base 应由调用方/TileShape 传入，此处暂以 256 占位（与 MXFP4::L1_P_BUF_SIZE 排布一致）。
         constexpr uint32_t s2Base = 256;
         copyL1ToL0BMx(
             l0BTensor[l0BBufId],
@@ -454,26 +408,19 @@ public:
         AscendC::InitConstValueParams<uint16_t> vFillParams(1, static_cast<uint16_t>(PV_L0A_SIZE / 32 ), 0, 0x6666);
         AscendC::Fill(l1ATensor[l1ABufId].template ReinterpretCast<uint16_t>(), vFillParams);          // V 数据
         AscendC::PipeBarrier<PIPE_MTE2>();
-        AscendC::InitConstValueParams<uint16_t> vscaleFillParams(1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
+        AscendC::InitConstValueParams<uint16_t> vscaleFillParams(1, static_cast<uint16_t>(MXFP4::V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
         AscendC::Fill(l1AScaleTensor[l1ABufId].template ReinterpretCast<uint16_t>(), vscaleFillParams); // V scale
         AscendC::PipeBarrier<PIPE_MTE2>();
-        AscendC::InitConstValueParams<uint16_t> pFillParams(1, static_cast<uint16_t>(L1_P_SIZE / 32), 0, 0x6666);
-        AscendC::InitConstValueParams<uint16_t> pscaleFillParams(1, static_cast<uint16_t>(L1_P_DESCALE_SIZE / 32), 0, 0x7d7d);
+        AscendC::InitConstValueParams<uint16_t> pFillParams(1, static_cast<uint16_t>(MXFP4::L1_P_BUF_SIZE / 32), 0, 0x6666);
+        AscendC::InitConstValueParams<uint16_t> pscaleFillParams(1, static_cast<uint16_t>(MXFP4::L1_P_SCALE_BUF_SIZE / 32), 0, 0x7d7d);
         // P/P-scale：填满全部 20 槽（确保假数据可观测，任意 pSlot 都有数据）
         // [TODO]BSA stub 阶段需要，生产阶段删
-        for (uint32_t i = 0; i < L1_P_BUFCNT; i++) {
+        for (uint32_t i = 0; i < MXFP4::L1_P_BUF_CNT; i++) {
             AscendC::Fill(l1BTensor[i].template ReinterpretCast<uint16_t>(), pFillParams);           // P 数据
             AscendC::PipeBarrier<PIPE_MTE2>();
             AscendC::Fill(l1BScaleTensor[i].template ReinterpretCast<uint16_t>(), pscaleFillParams); // P scale
             AscendC::PipeBarrier<PIPE_MTE2>();
         }
-
-        // // [TODO] 此处也是假数据
-        // for (uint32_t i = 0; i < L1_GLOBAL_MAX_BUFCNT; i++) {
-        //     AscendC::InitConstValueParams<half> localGlobalMaxL1FillParams(1, static_cast<uint16_t>(L1_GLOBAL_MAX_SIZE * 2  / 32 ), 0, static_cast<half>(1));
-        //     AscendC::Fill(localGlobalMaxL1[i], localGlobalMaxL1FillParams);          // localGlobalMaxL1 数据
-        //     AscendC::PipeBarrier<PIPE_MTE2>();
-        // }
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
@@ -482,39 +429,39 @@ public:
             // seed 装载：把 V 的全部 D+16 行(含 rowsum seed)非转置装入 L0A。
             // --- 对照 QFA InitL0BufferForReduceSum() (quant_flash_attn_block_cube_dn.h:675) ---
             //   QFA: Fill kvL1(0x6666)+kvDescale(0x7d7d) → 循环 2 次 LoadData pvL0A（两份 ping-pong L0A）。
-            //   [#3] 本处改为循环 PV_L0AB_BUFCNT(=2) 次，seed 两个 L0A 槽，配合 ping-pong。
-            AscendC::LoadData2DParamsV2 loadData2DParamsA;
-            loadData2DParamsA.mStartPosition = 0;
-            loadData2DParamsA.kStartPosition = 0;
-            loadData2DParamsA.mStep = (128 + 16) / 16;   // m = D+16
-            loadData2DParamsA.kStep = 256 / 64;              // k = S2（对齐 64），与 mmad k 一致
-            loadData2DParamsA.srcStride = loadData2DParamsA.mStep;
-            loadData2DParamsA.dstStride = loadData2DParamsA.mStep;
-            loadData2DParamsA.ifTranspose = false;             // 不转置
+            //   [#3] 本处改为循环 MXFP4::L0A_PV_BUF_CNT(=2) 次，seed 两个 L0A 槽，配合 ping-pong。
+        AscendC::LoadData2DParamsV2 loadData2DParamsA;
+        loadData2DParamsA.mStartPosition = 0;
+        loadData2DParamsA.kStartPosition = 0;
+        loadData2DParamsA.mStep = (128 + 16) / 16;   // m = D+16
+        loadData2DParamsA.kStep = 256 / 64;              // k = S2（对齐 64），与 mmad k 一致
+        loadData2DParamsA.srcStride = loadData2DParamsA.mStep;
+        loadData2DParamsA.dstStride = loadData2DParamsA.mStep;
+        loadData2DParamsA.ifTranspose = false;             // 不转置
 
-            AscendC::LoadData2DMxParams loadData2DMXParamsA;
-            loadData2DMXParamsA.xStartPosition = 0;
-            loadData2DMXParamsA.yStartPosition = 0;
-            loadData2DMXParamsA.xStep = (128 + 16) / 16; // x = m = D+16
-            loadData2DMXParamsA.yStep = 256 / 64;            // y = k = S2（对齐 64）
-            loadData2DMXParamsA.srcStride = loadData2DMXParamsA.yStep;
-            loadData2DMXParamsA.dstStride = loadData2DMXParamsA.yStep;
+        AscendC::LoadData2DMxParams loadData2DMXParamsA;
+        loadData2DMXParamsA.xStartPosition = 0;
+        loadData2DMXParamsA.yStartPosition = 0;
+        loadData2DMXParamsA.xStep = (128 + 16) / 16; // x = m = D+16
+        loadData2DMXParamsA.yStep = 256 / 64;            // y = k = S2（对齐 64）
+        loadData2DMXParamsA.srcStride = loadData2DMXParamsA.yStep;
+        loadData2DMXParamsA.dstStride = loadData2DMXParamsA.yStep;
 
-            // [#3] 循环 seed 两个 L0A 槽（对应 QFA for(i<2)），Wait/Set M_MTE1 配合 ping-pong
-            //   src 用 l1ATensor[l1ABufId]（当前 slot，与 QFA kvL1[kvBufId] 一致）
-            for (uint32_t i = 0; i < PV_L0AB_BUFCNT; i++) {
-                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-                LoadData(l0ATensor[pvL0abBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
-                        l1ATensor[l1ABufId].template ReinterpretCast<fp4x2_e2m1_t>(),
-                        l1AScaleTensor[l1ABufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
-                        loadData2DParamsA, loadData2DMXParamsA);
-                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-                pvL0abBufId = (pvL0abBufId + 1) % PV_L0AB_BUFCNT;
-            }
-            AscendC::PipeBarrier<PIPE_ALL>();
+        // [#3] 循环 seed 两个 L0A 槽（对应 QFA for(i<2)），Wait/Set M_MTE1 配合 ping-pong
+        //   src 用 l1ATensor[l1ABufId]（当前 slot，与 QFA kvL1[kvBufId] 一致）
+        for (uint32_t i = 0; i < MXFP4::L0A_PV_BUF_CNT; i++) {
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
+            LoadData(l0ATensor[pvL0abBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
+                    l1ATensor[l1ABufId].template ReinterpretCast<fp4x2_e2m1_t>(),
+                    l1AScaleTensor[l1ABufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
+                    loadData2DParamsA, loadData2DMXParamsA);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
+            pvL0abBufId = (pvL0abBufId + 1) % MXFP4::L0A_PV_BUF_CNT;
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
         // [#10b] 释放 V L1 当前 slot 给下次 gather（与开头的 Wait 配对），轮转
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
-        l1ABufId = (l1ABufId + 1) % L1_KV_BUFCNT;
+        l1ABufId = (l1ABufId + 1) % MXFP4::L1_KV_BUF_CNT;
     }
 
     __aicore__ inline void PadPS2NotAlign64(uint32_t s2Align64, uint32_t s2Align32, uint32_t embedReal, uint32_t pSlot)
@@ -522,7 +469,7 @@ public:
         // 补零量 = align64 - align32
         AscendC::InitConstValueParams<uint16_t> PL1InitParams(1, static_cast<uint16_t>(s2Align64 - s2Align32), 0, 0x0000);
         AscendC::Fill(l1BTensor[pSlot][s2Align32 * 64].template ReinterpretCast<uint16_t>(), PL1InitParams);
-        if (embedReal == mBaseSize) {  // [#9] 满块 M 才补第二个 plane（sub1 的 P 半块）
+        if (embedReal == MXFP4::mBaseSize) {  // [#9] 满块 M 才补第二个 plane（sub1 的 P 半块）
             AscendC::Fill(l1BTensor[pSlot][2 * s2Align32 * 64 + (s2Align64 - s2Align32) * 64].template ReinterpretCast<uint16_t>(), PL1InitParams);
         }
     }
@@ -565,7 +512,7 @@ public:
         // [#4] V L1 四路轮转：l1ABufId 是成员变量（0..3）
         // P L1 用 delay20TileInfo.loop % 20 轮转（对应 QFA info.loop % 20），
         //   P 由 vector 推送到此槽，block 从此槽读。P L1 不走 event 同步（靠 delay20 调度）
-        uint32_t pSlot = delay20TileInfo.loop % L1_P_BUFCNT;
+        uint32_t pSlot = delay20TileInfo.loop % MXFP4::L1_P_BUF_CNT;
         // [验证] P L1 槽位轮转
         AscendC::printf("[P-CHK] loop=%u pSlot=%u\n", (unsigned)delay20TileInfo.loop, (unsigned)pSlot);
         // l1ABufId 是成员变量，不再 local 声明
@@ -574,8 +521,6 @@ public:
         uint32_t s2Align32 = RoundUp(curBaseTileSize, 32);
         uint32_t s1Align128 = RoundUp(rowNum, 128);
         
- 
-
         uint32_t mMmad = embedReal + 16;   // m = D+16（含 rowsum seed 行）
         uint32_t nMmad = s1Align128;           // n = M
         uint32_t kMmad = s2Align64;        // k = S2（对齐 64）
@@ -661,7 +606,7 @@ public:
 
         // [#3] Mmad 完成 → 释放 L0A/B 槽给下次（M_MTE1：M→MTE1），轮转
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
-        pvL0abBufId = (pvL0abBufId + 1) % PV_L0AB_BUFCNT;
+        pvL0abBufId = (pvL0abBufId + 1) % MXFP4::L0A_PV_BUF_CNT;
         AscendC::DumpTensor(l0CTensor[0], 123, 128);
         // AscendC::DumpTensor(l0CTensor[1024], 124, 128);
         AscendC::DumpTensor(l0CTensor[0][1024 * 2], 125, 128);
@@ -677,7 +622,7 @@ public:
         //   必须在 isLastSecondKvsTile 之前：re-seed 的 InitL0BufferForReduceSum 会 Wait 新 slot 的
         //   MTE1_MTE2，需要这里先 Set 当前 slot + 轮转到新 slot
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
-        l1ABufId = (l1ABufId + 1) % L1_KV_BUFCNT;
+        l1ABufId = (l1ABufId + 1) % MXFP4::L1_KV_BUF_CNT;
 
         if (delay20TileInfo.isLastSecondKvsTile) {
             InitL0BufferForReduceSum();  // 倒数第二块 → re-seed L0A +16=1.0 给最后块 rowsum
@@ -690,16 +635,16 @@ public:
 
 protected:
     // L1：V 用 KV 区 4 份，P 用 P 区 20 份
-    AscendC::LocalTensor<ElementA> l1ATensor[L1_KV_BUFCNT];
-    AscendC::LocalTensor<ElementB> l1BTensor[L1_P_BUFCNT];
+    AscendC::LocalTensor<ElementA> l1ATensor[MXFP4::L1_KV_BUF_CNT];
+    AscendC::LocalTensor<ElementB> l1BTensor[MXFP4::L1_P_BUF_CNT];
     // L0：A/B 各 L0_STAGES 份 ping-pong，C 只用 1 份
-    AscendC::LocalTensor<ElementA> l0ATensor[PV_L0AB_BUFCNT];
-    AscendC::LocalTensor<ElementB> l0BTensor[PV_L0AB_BUFCNT];
-    AscendC::LocalTensor<float> l0CTensor[PV_L0C_BUFCNT];
+    AscendC::LocalTensor<ElementA> l0ATensor[MXFP4::L0A_PV_BUF_CNT];
+    AscendC::LocalTensor<ElementB> l0BTensor[MXFP4::L0A_PV_BUF_CNT];
+    AscendC::LocalTensor<float> l0CTensor[MXFP4::L0C_PV_BUF_CNT];
 
     // MXFP4 专用：E8M0 scale 的 L1 buffer（V-scale 4 份，P-scale 20 份）+ MX 版 L1->L0 拷贝器
-    AscendC::LocalTensor<uint8_t> l1AScaleTensor[L1_KV_BUFCNT];
-    AscendC::LocalTensor<uint8_t> l1BScaleTensor[L1_P_BUFCNT];
+    AscendC::LocalTensor<uint8_t> l1AScaleTensor[MXFP4::L1_KV_BUF_CNT];
+    AscendC::LocalTensor<uint8_t> l1BScaleTensor[MXFP4::L1_P_BUF_CNT];
 
     // [改造-新增] policy functor 成员（原文件只有裸 tensor）。
     TileMmad tileMmad;                 // fp4 Mmad（3 参，scale 已在 L1->L0 烘焙）
