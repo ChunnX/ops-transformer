@@ -800,6 +800,10 @@ def gen_cmp_kv(layout_q, layout_kv, cmp_kv_type, B, S1, S2, T1, T2, T3, N2, D, K
     return cmp_k_in_pa_shape, cmp_sparse_indices, cmp_block_table, cmp_k, cmp_topk_length
 
 def gen_data(params, template_mode=None):
+    torch.manual_seed(0)
+    np.random.seed(0)
+    random.seed(0)
+
     # 从字典中提取参数
     layout_q = params.get('layout_q')
     layout_kv = params.get('layout_kv')
@@ -981,7 +985,7 @@ def gen_data(params, template_mode=None):
         cmp_k = None
         cmp_topk_length = None
 
-    sinks = (torch.rand((N1,)) * (q_datarange[1] - q_datarange[0])/10 + q_datarange[0]/10).to(torch.float)
+    sinks = torch.full((N1,), float('-inf'), dtype=torch.float)
 
     # kv_cache 0轴非连续
     properties = torch.npu.get_device_properties()

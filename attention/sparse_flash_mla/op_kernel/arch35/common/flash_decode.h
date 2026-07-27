@@ -207,13 +207,15 @@ __aicore__ inline void StageVec2PartialOAndWait(const S2SplitFdStagingLayout &la
 // D_ALIGN is a compile-time constant (e.g. 512) used by ReduceFinalRes_const_VF.
 // workspaceNum must match the number of contiguous slots allocated by the host and emitted by metadata.
 template <typename T, int64_t D_ALIGN>
-__aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
+__aicore__ inline void ReduceWithLse(const S2SplitFdStagingLayout &layout,
     __gm__ uint8_t *stagingBase, int64_t workspaceIdx, int64_t workspaceNum,
     int64_t fdMOffset, int64_t mNum, int64_t dValid,
     LocalTensor<T> &accumulatedO, LocalTensor<float> &lseExpUb,
     LocalTensor<float> &blockMaxUb, LocalTensor<float> &blockSumUb,
-    LocalTensor<T> &partialOFp32,
-    uint8_t vToMte2Id0, uint8_t vToMte2Id1, uint8_t mte2ToVId)
+    LocalTensor<T> &partialOFp32, bool softmaxLseFlag,
+    GlobalTensor<T> &softmaxLseGm, int64_t softmaxLseOffset,
+    uint8_t vToMte2Id0, uint8_t vToMte2Id1, uint8_t mte2ToVId,
+    uint8_t vToMte3LseOutId, uint8_t mte3ToVLseOutId)
 {
     constexpr int64_t OUTPUT_ELEMS_PER_BLOCK = FD_BUFFER_SIZE_BYTE_32B / sizeof(float);
     int64_t attenOutElems = layout.StagingAttenOutElems();
@@ -252,8 +254,20 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
 
         LocalTensor<T> sinkUb;
         FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
-                                   dealRowCount, workspaceNum, false, false);
+                                   dealRowCount, workspaceNum, softmaxLseFlag, false);
         PipeBarrier<PIPE_V>();
+        if (softmaxLseFlag) {
+            DataCopyExtParams lseParams;
+            lseParams.blockCount = static_cast<uint16_t>(dealRowCount);
+            lseParams.blockLen = sizeof(float);
+            lseParams.srcStride = 0;
+            lseParams.dstStride = 0;
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+            SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+            DataCopyPad(softmaxLseGm[softmaxLseOffset + startRow], lseExpUb, lseParams);
+            SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        }
 
         LocalTensor<T> chunkAccumO = accumulatedO[startRow * D_ALIGN];
         int64_t outSrcOffset = (fdMOffset + startRow) * dValid;
@@ -279,6 +293,22 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
         SetFlag<HardEvent::V_MTE2>(vToMte2Id0);
         startRow += layout.chunkRows;
     }
+}
+
+template <typename T, int64_t D_ALIGN>
+__aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
+    __gm__ uint8_t *stagingBase, int64_t workspaceIdx, int64_t workspaceNum,
+    int64_t fdMOffset, int64_t mNum, int64_t dValid,
+    LocalTensor<T> &accumulatedO, LocalTensor<float> &lseExpUb,
+    LocalTensor<float> &blockMaxUb, LocalTensor<float> &blockSumUb,
+    LocalTensor<T> &partialOFp32,
+    uint8_t vToMte2Id0, uint8_t vToMte2Id1, uint8_t mte2ToVId)
+{
+    GlobalTensor<T> unusedSoftmaxLseGm;
+    ReduceWithLse<T, D_ALIGN>(layout, stagingBase, workspaceIdx, workspaceNum,
+        fdMOffset, mNum, dValid, accumulatedO, lseExpUb, blockMaxUb, blockSumUb,
+        partialOFp32, false, unusedSoftmaxLseGm, 0,
+        vToMte2Id0, vToMte2Id1, mte2ToVId, 0, 0);
 }
 
 // FD UB reduction: reduce max/sum and partial O that are already resident in UB.
