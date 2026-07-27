@@ -224,7 +224,7 @@ cann_ops_transformer.sparse_flash_mla_grad(
 | has_ori_kv | bool | 可选 | 表示是否传入ori_kv，默认值为true。 | bool | - |
 | has_cmp_kv | bool | 可选 | 表示是否传入cmp_kv，默认值为true。 | bool | - |
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品、Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持seqused_q、seqused_ori_kv、seqused_cmp_kv、ori_topk_length、cmp_topk_length，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持seqused_q、seqused_ori_kv、seqused_cmp_kv、ori_topk_length、cmp_topk_length，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0。
 
 ## 返回值说明
 
