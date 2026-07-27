@@ -79,6 +79,8 @@ public:
     GlobalTensor<float> softmaxLseGm;
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
+    __gm__ uint8_t *attentionOutGm = nullptr;
+    uint32_t dumpCount = 0;
 
     ConstInfoX constInfo;
 
@@ -128,6 +130,7 @@ public:
 
         keyPtr = key;
         valuePtr = value;
+        attentionOutGm = attentionOut;
 
         actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, constInfo.actualSeqLenSize);
         qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
@@ -546,9 +549,24 @@ public:
         if (loop >= PRELOAD_N) {
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
+#ifdef DUMP_STAGE_V1
+                    auto &pBuf = this->l1PBuffers.Get();
+                    pBuf.WaitCrossCore();
+                    auto pTensor = pBuf.template GetTensor<INPUT_T>();
+                    GlobalTensor<INPUT_T> dumpGm;
+                    uint64_t dumpOffset = dumpCount * mBaseSize * (s2BaseSize >> 1);
+                    dumpGm.SetGlobalBuffer((__gm__ INPUT_T *)(attentionOutGm + dumpOffset * sizeof(INPUT_T)));
+                    DataCopy(dumpGm, pTensor, mBaseSize * (s2BaseSize >> 1));
+                    PipeBarrier<ALL>();
+                    pBuf.SetCrossCore();
+                    dumpCount++;
+#else
                     ComputeMm2(runInfoNegN);
+#endif
                 } else {
+#ifndef DUMP_STAGE_V1
                     ComputeVec2(runInfoNegN);
+#endif
                 }
                 runInfoNegN.isValid = false;
             }
