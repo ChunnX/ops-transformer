@@ -2229,15 +2229,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         ProcessSharedExpertGmm2(initShape, initOffset);
     }
 
-    // Cross-rank synchronization belongs to dispatch; combine starts after it.
-    if constexpr (g_coreType == AIV) {
-        kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
-        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
-    }
-
     kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
     if constexpr (g_coreType == AIV) {
+        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
