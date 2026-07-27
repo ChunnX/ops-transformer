@@ -513,8 +513,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
                 "The dtype of block_table must be int32"), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor != nullptr,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "block_table",
-                        Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "block_table",
                         "when key layout is not PA_BSND, input block_table must be null"),
                     return ge::GRAPH_FAILED);
     }
@@ -820,7 +819,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                 ((opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
                 (opParamInfo_.blockTable.tensor != nullptr &&
                 opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_)),
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query actual_seq_lengths_key and block_table",
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query, actual_seq_lengths_key and block_table",
                 Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
                 Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()) + " and " +
                 Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()),
@@ -885,7 +884,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                     opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
                     (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_)),
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_,
-                "query, weights, actual_seq_lengths_key, and sparse_indices",
+                "query, weights, actual_seq_lengths_key and sparse_indices",
                 Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
                 Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + ", " +
                 Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()) + " and " +
