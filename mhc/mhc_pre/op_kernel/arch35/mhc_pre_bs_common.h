@@ -24,7 +24,6 @@
 
 namespace MhcPre {
 
-using namespace matmul;
 using namespace AscendC;
 
 template <class T, class P, int8_t HAS_RESI>

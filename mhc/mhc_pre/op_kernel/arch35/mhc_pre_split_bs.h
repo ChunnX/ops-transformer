@@ -54,31 +54,33 @@ public:
             }
 
             for (uint32_t offsetNd = 0; offsetNd < this->matrixInfo_.nD; offsetNd += this->ND_LENGTH) {
+                // Two X staging slots are free initially. From the third slice on,
+                // AIV waits until AIC returns the slot through X_CONSUMED_FLAG.
                 if ASCEND_IS_AIV {
                     uint32_t curNdLen = MhcPreUtils::Min(this->ND_LENGTH, this->matrixInfo_.nD - offsetNd);
                     if (this->vectorCount_ >= 2) {
-                        AscendC::CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
+                        AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_CONSUMED_FLAG);
                     }
                     this->V0Prologue(curNdLen, offsetNd);
-                    CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
+                    CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_READY_FLAG);
                     this->vectorCount_++;
                 }
 
                 if ASCEND_IS_AIC {
-                    AscendC::CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(SYNC_AIV_AIC_FLAG);
-                    AscendC::CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(
-                        SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
+                    AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MhcPreUtils::X_READY_FLAG);
+                    AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
+                        MhcPreUtils::X_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
                     AICProcessLowApi(offsetNd);
-                    CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(SYNC_AIC_AIV_FLAG);
-                    CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(
-                        SYNC_AIC_AIV_FLAG + FLAG_ID_MAX);
+                    CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MhcPreUtils::X_CONSUMED_FLAG);
+                    CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
+                        MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
                 }
             }
             this->mmCount_++;
             if ASCEND_IS_AIC {
-                CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_FIX>(SYNC_AIC_AIV_MM_FLAG);
-                CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_FIX>(
-                    SYNC_AIC_AIV_MM_FLAG + FLAG_ID_MAX);
+                CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_FIX>(MhcPreUtils::MM_READY_FLAG);
+                CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_FIX>(
+                    MhcPreUtils::MM_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
             }
 
             if ASCEND_IS_AIV {
@@ -187,7 +189,7 @@ private:
 
     __aicore__ inline void AIV1ProcessDirect()
     {
-        AscendC::CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_V>(SYNC_AIC_AIV_MM_FLAG);
+        AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_V>(MhcPreUtils::MM_READY_FLAG);
         if (this->vectorOffset_.singleCoreM == 0) {
             return;
         }
@@ -272,10 +274,6 @@ private:
     LocalTensor<float> aL1_;
     LocalTensor<float> bL1_;
     LocalTensor<float> mmXLocal_;
-    static constexpr uint64_t SYNC_AIV_AIC_FLAG = 8;
-    static constexpr uint64_t SYNC_AIC_AIV_FLAG = 9;
-    static constexpr uint64_t SYNC_AIC_AIV_MM_FLAG = 10;
-    static constexpr uint64_t FLAG_ID_MAX = 16;
 };
 
 } // namespace MhcPre
