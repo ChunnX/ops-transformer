@@ -33,9 +33,12 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistenceKv() const
     if (kvLayout_ == QSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
     }  else if (kvLayout_ == QSMLALayout::PA_BBND) {
-        OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-            OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null."),
-            return ge::GRAPH_FAILED);
+        if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
+            perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
+                OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null."),
+                return ge::GRAPH_FAILED);
+        }
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
             OP_LOGE(opName_, "when layout_kv is PA_BBND, oriBlockTable must not be null."),
             return ge::GRAPH_FAILED);
@@ -50,18 +53,9 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistence()
         ge::GRAPH_SUCCESS != CheckHCAExistence() ||
         ge::GRAPH_SUCCESS != CheckCSAExistence() ||
         ge::GRAPH_SUCCESS != CheckCmpRatioExistence() ||
-        ge::GRAPH_SUCCESS != CheckUnrequiredParaExistence() ||
         ge::GRAPH_SUCCESS != CheckParaExistenceKv()) {
         return ge::GRAPH_FAILED;
     }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QSMLATilingCheck::CheckUnrequiredParaExistence() const
-{
-    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor != nullptr || opParamInfo_.oriSparseIndices.desc != nullptr,
-                OP_LOGE(opName_, "oriSparseIndices is not supported now, it must be nullptr."),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -107,9 +101,6 @@ ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
 
 ge::graphStatus QSMLATilingCheck::CheckSWAExistence()
 {
-    if (perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
-        return ge::GRAPH_SUCCESS;
-    }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.oriBlockTable.tensor == nullptr &&
         kvLayout_ == QSMLALayout::PA_BBND,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "oriBlockTable",
