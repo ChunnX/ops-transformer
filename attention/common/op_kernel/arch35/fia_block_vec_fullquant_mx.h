@@ -310,7 +310,7 @@ public:
     {
         int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
-            maskLine = computeMaskLineDN(runInfo, 0, subLoop);
+            maskLine = ComputeMaskLineDN(runInfo, subLoop);
         }
         if (isSkipCompute) {
             maskLine = -256;
@@ -1111,14 +1111,13 @@ public:
         }
     }
 
-    __aicore__ inline int64_t computeMaskLineDN(RunInfoX &runInfo, uint32_t vecMIdx, uint32_t subLoop)
+    __aicore__ inline int64_t ComputeMaskLineDN(RunInfoX &runInfo, uint32_t subLoop)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             s2RealSize = subLoop == 0 ? s2SplitSize : runInfo.actSingleLoopS2Size - s2SplitSize;
         }
-
         int64_t nextToken = static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(runInfo.actS1Size);
         uint32_t s1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
         uint32_t s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
