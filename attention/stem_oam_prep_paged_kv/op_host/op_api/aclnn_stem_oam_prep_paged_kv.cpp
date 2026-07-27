@@ -39,6 +39,19 @@ extern "C" {
 static const std::initializer_list<op::DataType> KV_CACHE_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
 static const std::initializer_list<op::DataType> KV_SCALE_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 
+constexpr int64_t KV_BLOCK_SIZE_64 = 64;
+constexpr int64_t KV_BLOCK_SIZE_128 = 128;
+constexpr int64_t STEM_BLOCK_SIZE_ALIGN = 32;
+constexpr int64_t STEM_BLOCK_SIZE_MAX = 256;
+constexpr int64_t STEM_STRIDE_ALIGN = 16;
+constexpr int64_t STEM_STRIDE_MAX = 64;
+constexpr int64_t CACHE_LAYOUT_A = 0;
+constexpr int64_t CACHE_LAYOUT_B = 1;
+constexpr size_t KV_CACHE_DIM_NUM = 4;
+constexpr size_t SHAPE_DIM_0 = 0;
+constexpr size_t SHAPE_DIM_1 = 1;
+constexpr size_t SHAPE_DIM_2 = 2;
+
 
 inline static bool CheckNull(const aclTensor* kCache, const aclTensor* vCache, const aclTensor* kvIndices,
                              const aclTensor* kScaleCache, const aclTensor* vScale, const aclTensor* kFlat,
@@ -81,23 +94,26 @@ inline static bool CheckShape(const aclTensor* kCache, const aclTensor* vCache, 
     auto kCacheShape = kCache->GetViewShape();
     auto vCacheShape = vCache->GetViewShape();
     auto kScaleCacheShape = kScaleCache->GetViewShape();
-    if (kCacheShape.GetDimNum() != 4 || vCacheShape.GetDimNum() != 4 || kScaleCacheShape.GetDimNum() != 4) {
+    if (kCacheShape.GetDimNum() != KV_CACHE_DIM_NUM || vCacheShape.GetDimNum() != KV_CACHE_DIM_NUM ||
+        kScaleCacheShape.GetDimNum() != KV_CACHE_DIM_NUM) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kCache/vCache/kScaleCache must be 4D, got kCache dimNum=%zu, "
                 "vCache dimNum=%zu, kScaleCache dimNum=%zu.",
                 kCacheShape.GetDimNum(), vCacheShape.GetDimNum(), kScaleCacheShape.GetDimNum());
         return false;
     }
-    if (cacheLayout == 0 && (kScaleCacheShape.GetDim(1) != kvBlockSize || kScaleCacheShape.GetDim(2) != vScale->GetViewShape().GetDim(0))) {
+    if (cacheLayout == CACHE_LAYOUT_A && (kScaleCacheShape.GetDim(SHAPE_DIM_1) != kvBlockSize ||
+        kScaleCacheShape.GetDim(SHAPE_DIM_2) != vScale->GetViewShape().GetDim(SHAPE_DIM_0))) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cacheLayout=0 requires kScaleCacheShape[1]=kvBlockSize(%ld) and "
                 "kScaleCacheShape[2]=H_kv(%ld), got kScaleCacheShape[1]=%ld, kScaleCacheShape[2]=%ld.",
-                kvBlockSize, vScale->GetViewShape().GetDim(0),
-                kScaleCacheShape.GetDim(1), kScaleCacheShape.GetDim(2));
+                kvBlockSize, vScale->GetViewShape().GetDim(SHAPE_DIM_0),
+                kScaleCacheShape.GetDim(SHAPE_DIM_1), kScaleCacheShape.GetDim(SHAPE_DIM_2));
         return false;
-    } else if (cacheLayout == 1 && (kScaleCacheShape.GetDim(2) != kvBlockSize || kScaleCacheShape.GetDim(1) != vScale->GetViewShape().GetDim(0))) {
+    } else if (cacheLayout == CACHE_LAYOUT_B && (kScaleCacheShape.GetDim(SHAPE_DIM_2) != kvBlockSize ||
+               kScaleCacheShape.GetDim(SHAPE_DIM_1) != vScale->GetViewShape().GetDim(SHAPE_DIM_0))) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cacheLayout=1 requires kScaleCacheShape[2]=kvBlockSize(%ld) and "
                 "kScaleCacheShape[1]=H_kv(%ld), got kScaleCacheShape[1]=%ld, kScaleCacheShape[2]=%ld.",
-                kvBlockSize, vScale->GetViewShape().GetDim(0),
-                kScaleCacheShape.GetDim(1), kScaleCacheShape.GetDim(2));
+                kvBlockSize, vScale->GetViewShape().GetDim(SHAPE_DIM_0),
+                kScaleCacheShape.GetDim(SHAPE_DIM_1), kScaleCacheShape.GetDim(SHAPE_DIM_2));
         return false;
     }
     return true;
@@ -105,13 +121,15 @@ inline static bool CheckShape(const aclTensor* kCache, const aclTensor* vCache, 
 
 inline static bool CheckAttr(int64_t stemBlockSize, int64_t stemStride)
 {
-    if (stemBlockSize % 32 != 0 || stemBlockSize > 256) {
+    if (stemBlockSize % STEM_BLOCK_SIZE_ALIGN != 0 || stemBlockSize > STEM_BLOCK_SIZE_MAX) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "stemBlockSize must be multiple of 32 and <=256, got %ld.",
                 stemBlockSize);
         return false;
     }
-    if (stemStride % 16 != 0 || stemStride > 64 || stemStride > stemBlockSize) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "stemStride must be multiple of 16, <=64, and <=stemBlockSize(%ld), got %ld.",
+    if (stemStride % STEM_STRIDE_ALIGN != 0 || stemStride > STEM_STRIDE_MAX || stemStride > stemBlockSize ||
+        stemBlockSize % stemStride != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "stemStride must be multiple of 16, <=64, <=stemBlockSize(%ld), "
+                "and stemBlockSize must be divisible by stemStride, got %ld.",
                 stemBlockSize, stemStride);
         return false;
     }

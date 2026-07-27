@@ -28,6 +28,40 @@ namespace optiling {
 
 constexpr uint64_t MAX_KV_PADDED = 262144;
 
+constexpr int64_t DIM_QK = 128;
+constexpr int64_t KV_BLOCK_SIZE_64 = 64;
+constexpr int64_t KV_BLOCK_SIZE_128 = 128;
+constexpr int64_t STEM_BLOCK_SIZE_ALIGN = 32;
+constexpr int64_t STEM_BLOCK_SIZE_MAX = 256;
+constexpr int64_t STEM_STRIDE_ALIGN = 16;
+constexpr int64_t STEM_STRIDE_MAX = 64;
+constexpr int64_t CACHE_LAYOUT_A = 0;
+constexpr int64_t CACHE_LAYOUT_B = 1;
+constexpr int64_t KV_CACHE_DIM_NUM = 4;
+constexpr int64_t V_SCALE_DIM_NUM = 1;
+constexpr int64_t STRIDE_DIM_NUM = 4;
+
+constexpr size_t INPUT_KCACHE_INDEX = 0;
+constexpr size_t INPUT_VCACHE_INDEX = 1;
+constexpr size_t INPUT_KV_INDICES_INDEX = 2;
+constexpr size_t INPUT_KV_SEQ_LENS_INDEX = 3;
+constexpr size_t INPUT_K_SCALE_CACHE_INDEX = 4;
+constexpr size_t INPUT_V_SCALE_INDEX = 5;
+constexpr size_t INPUT_COUNT = 6;
+
+constexpr size_t ATTR_LAMBDA_MAG_INDEX = 0;
+constexpr size_t ATTR_CACHE_LAYOUT_INDEX = 1;
+constexpr size_t ATTR_KV_BLOCK_SIZE_INDEX = 2;
+constexpr size_t ATTR_STEM_BLOCK_SIZE_INDEX = 3;
+constexpr size_t ATTR_STEM_STRIDE_INDEX = 4;
+
+constexpr size_t OUTPUT_KFLAT_INDEX = 0;
+
+constexpr size_t DIM_0 = 0;
+constexpr size_t DIM_1 = 1;
+constexpr size_t DIM_2 = 2;
+constexpr size_t DIM_3 = 3;
+
 struct StemOamPrepPagedKvCompileInfo {
     uint32_t coreNum = 0;
     uint64_t ubSize = 0;
@@ -50,6 +84,7 @@ protected:
     ge::graphStatus PostTiling() override;
     void DumpTilingInfo() override;
 
+    ge::graphStatus CheckParams();
     ge::graphStatus ContinuousStridesCompute(gert::Shape &shape, gert::Stride &stride, size_t idx);
     ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &inputStride, size_t idx);
 private:
@@ -57,13 +92,13 @@ private:
 
     int64_t batchSize_ = 0;
     int64_t numKvHeads_ = 0;
-    int64_t kvLayout_ = 0;
-    int64_t kvBlockSize_ = 64;
-    int64_t stemBlocks_ = 128;
-    uint32_t stemStride_ = 16;
+    int64_t kvLayout_ = CACHE_LAYOUT_A;
+    int64_t kvBlockSize_ = KV_BLOCK_SIZE_64;
+    int64_t stemBlocks_ = STEM_BLOCK_SIZE_MAX;
+    uint32_t stemStride_ = STEM_STRIDE_ALIGN;
     float lambdaMag_ = 0.3f;
-    int64_t maxKvBlockSize_ = 0;
-    int64_t dimQk_ = 128;
+    int64_t maxKvBlocks_ = 0;
+    int64_t dimQk_ = DIM_QK;
     int64_t maxKb_ = 0;
     int64_t kflatDim_ = 0;
     int64_t rVal_ = 0;
