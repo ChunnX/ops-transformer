@@ -159,8 +159,9 @@ struct WorkspaceInfo {
         metaInfoPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
+        // 以下三组 flag 仅由路由 MoE 专家使用；共享专家路径不使用这些 flag。
         flagSwiGluToGmm2Ptr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+        workspaceSize += SIZE_INT_32 * tilingData->moeExpertPerRank * INT_CACHELINE;
 
         flagDispatchToGmm1Ptr = base + workspaceSize;
         // wave-grain dispatch flag: per expert allocate one slot per wave,
@@ -169,11 +170,11 @@ struct WorkspaceInfo {
         int64_t maxWavesPerExpert = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), dispatchTileM);
         int64_t dispatchFlagSlotsPerExpert =
             Ops::Base::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
+        workspaceSize += SIZE_INT_32 * tilingData->moeExpertPerRank * dispatchFlagSlotsPerExpert;
 
         // 每(expert, aiCore)单独占一个cache_line
         flagSendCntCalToUpdParamsPtr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->expertPerRank * tilingData->aicNum;
+        workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->moeExpertPerRank * tilingData->aicNum;
 
         // Keep the per-AIC ready sequence contiguous with the preceding flags so ResetFlagList can clear all of them
         // with the same MTE reset pass. Each sequence occupies one 64B cacheline.
