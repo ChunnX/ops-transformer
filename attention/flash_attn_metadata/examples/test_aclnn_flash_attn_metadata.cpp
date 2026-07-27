@@ -69,11 +69,11 @@ static void DumpMeta(void* data) {
         printf("sectionIdx:%d\n",sectionId);
         for (size_t i = 0; i < AIC_CORE_NUM; ++i) {
             // FA start
-            printf("bn2 start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX));
+            printf("bn start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN_START_INDEX));
             printf("m start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX));
             printf("s2 start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX));
             // FA end
-            printf("bn2 end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX));
+            printf("bn end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN_END_INDEX));
             printf("m end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX));
             printf("s2 end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX));
             // FA idx
@@ -83,7 +83,7 @@ static void DumpMeta(void* data) {
 
         // FD Metadata Generate
         for (size_t i = 0; i < AIV_CORE_NUM; ++i) {
-            printf("bn2 idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX));
+            printf("bn idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_BN_IDX_INDEX));
             printf("m idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX));
             printf("fd workspace idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX));
             printf("fd workspace num: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX));
@@ -136,7 +136,7 @@ int main() {
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
     int32_t batchSize = 4; // N
     int32_t numHeads = 32; // N
-    int32_t numKeyValueHeads = numHeads;
+    int32_t numKeyValueHeads = 4;
     int32_t qS = 1;
     int32_t kvS = 8192;
     int32_t headDim = 128;

@@ -197,25 +197,25 @@ public:
     }
 
 public:
-    uint32_t batchSize{0U};
-    uint32_t queryHeadNum{0U};
-    uint32_t querySeqSize{0U};
-    uint32_t kvHeadNum{0U};
-    uint32_t kvSeqSize{0U};
-    uint32_t headDim{64U};
-    bool attenMaskFlag{false};
-    uint32_t sparseMode{0U};
-    uint32_t preToken{0U};
-    uint32_t nextToken{0U};
-    bool isCumulativeQuerySeq{false};
-    bool isCumulativeKvSeq{false};
-    std::vector<int64_t> actualQuerySeqSize{};
-    std::vector<int64_t> actualKvSeqSize{};
-    Layout layoutQuery{Layout::BSND};
-    Layout layoutKv{Layout::BSND};
-    DataType queryType{DataType::FP16};
-    DataType kvType{DataType::FP16};
+    uint32_t batchSize { 0U };
+    uint32_t queryHeadNum { 0U };
+    uint32_t querySeqSize { 0U };
+    uint32_t kvHeadNum { 0U };
+    uint32_t kvSeqSize { 0U };
+    uint32_t headDim { 64U };
+    bool attenMaskFlag { false };
+    uint32_t sparseMode { 0U };
+    uint32_t preToken { 0U };
+    uint32_t nextToken { 0U };
+    bool isCumulativeQuerySeq { false };
+    bool isCumulativeKvSeq { false };
+    std::vector<int64_t> actualQuerySeqSize {};
+    std::vector<int64_t> actualKvSeqSize {};
+    Layout layoutQuery { Layout::BSND };
+    Layout layoutKv { Layout::BSND };
+    DataType queryType { DataType::FP16 };
+    DataType kvType { DataType::FP16 };
 };
 
-} // namespace load_balance
+}
 #endif // BASE_INFO_H

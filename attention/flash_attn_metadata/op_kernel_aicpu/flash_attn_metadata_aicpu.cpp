@@ -218,6 +218,7 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     param.fdTolerance = 10;                  // 10: tolerance block
     param.fdLeastBlock = 3;                  // 3: least block
     param.fdOn = true;
+    param.outputLayout = load_balance::OutputLayout::BN1_S1;
 }
 
 void FlashAttnMetadataCpuKernel::InitBaseInfo()
@@ -249,9 +250,11 @@ bool FlashAttnMetadataCpuKernel::BalanceSchedule(load_balance::SectionStreamKRes
 
 bool FlashAttnMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult &splitRes)
 {
+    bool isS1G = (param.outputLayout == load_balance::OutputLayout::BN2_S1G);
     detail::FaMetadata faMetadata(metadata_->GetData(), splitRes.sectionNum);
     faMetadata.Clear();         // set to all 0
 
+    faMetadata.SetHeadMetadata(HEAD_IS_S1G_INDEX, isS1G ? 1U : 0U);
     faMetadata.SetHeadMetadata(HEAD_SECTION_NUM_INDEX, splitRes.sectionNum);
     faMetadata.SetHeadMetadata(HEAD_M_BASE_SIZE_INDEX, mBaseSize_);
     faMetadata.SetHeadMetadata(HEAD_S2_BASE_SIZE_INDEX, s2BaseSize_);
@@ -266,15 +269,15 @@ bool FlashAttnMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult 
         for (uint32_t aicIdx = 0; aicIdx < faRes.usedCoreNum; ++aicIdx) {
             auto &prevFaRes = (secIdx == 0U) ? dummyHead : splitRes.sectionFaResult[secIdx - 1U];
             auto prevLastCore = (secIdx == 0U) ? 0U : prevFaRes.usedCoreNum - 1U;
-            FA_METADATA_T bn2Start = (aicIdx == 0) ? prevFaRes.bN2End[prevLastCore] : faRes.bN2End[aicIdx - 1U];
-            FA_METADATA_T mStart = (aicIdx == 0) ? prevFaRes.gS1End[prevLastCore] : faRes.gS1End[aicIdx - 1U];
+            FA_METADATA_T bnStart = (aicIdx == 0) ? prevFaRes.bNEnd[prevLastCore] : faRes.bNEnd[aicIdx - 1U];
+            FA_METADATA_T mStart = (aicIdx == 0) ? prevFaRes.mEnd[prevLastCore] : faRes.mEnd[aicIdx - 1U];
             FA_METADATA_T s2Start = (aicIdx == 0) ? prevFaRes.s2End[prevLastCore] : faRes.s2End[aicIdx - 1U];
 
-            faMetadata.SetFaMetadata(secIdx, aicIdx, FA_BN2_START_INDEX, bn2Start);
+            faMetadata.SetFaMetadata(secIdx, aicIdx, FA_BN_START_INDEX, bnStart);
             faMetadata.SetFaMetadata(secIdx, aicIdx, FA_M_START_INDEX,   mStart);
             faMetadata.SetFaMetadata(secIdx, aicIdx, FA_S2_START_INDEX,  s2Start);
-            faMetadata.SetFaMetadata(secIdx, aicIdx, FA_BN2_END_INDEX,   faRes.bN2End[aicIdx]);
-            faMetadata.SetFaMetadata(secIdx, aicIdx, FA_M_END_INDEX,     faRes.gS1End[aicIdx]);
+            faMetadata.SetFaMetadata(secIdx, aicIdx, FA_BN_END_INDEX,   faRes.bNEnd[aicIdx]);
+            faMetadata.SetFaMetadata(secIdx, aicIdx, FA_M_END_INDEX,     faRes.mEnd[aicIdx]);
             faMetadata.SetFaMetadata(secIdx, aicIdx, FA_S2_END_INDEX,    faRes.s2End[aicIdx]);
             faMetadata.SetFaMetadata(secIdx, aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
                 faRes.firstFdDataWorkspaceIdx[aicIdx]);
@@ -283,8 +286,8 @@ bool FlashAttnMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult 
         auto &fdRes = splitRes.sectionFdResult[secIdx];
         for (uint32_t aivIdx = 0; aivIdx < fdRes.usedVecNum; ++aivIdx) {
             uint32_t t = fdRes.taskIdx[aivIdx];
-            faMetadata.SetFdMetadata(secIdx, aivIdx, FD_BN2_IDX_INDEX,       fdRes.bN2Idx[t]);
-            faMetadata.SetFdMetadata(secIdx, aivIdx, FD_M_IDX_INDEX,         fdRes.gS1Idx[t]);
+            faMetadata.SetFdMetadata(secIdx, aivIdx, FD_BN_IDX_INDEX,       fdRes.bNIdx[t]);
+            faMetadata.SetFdMetadata(secIdx, aivIdx, FD_M_IDX_INDEX,         fdRes.mIdx[t]);
             faMetadata.SetFdMetadata(secIdx, aivIdx, FD_WORKSPACE_IDX_INDEX, fdRes.workspaceIdx[t]);
             faMetadata.SetFdMetadata(secIdx, aivIdx, FD_WORKSPACE_NUM_INDEX, fdRes.s2SplitNum[t]);
             faMetadata.SetFdMetadata(secIdx, aivIdx, FD_M_START_INDEX,       fdRes.mStart[aivIdx]);
