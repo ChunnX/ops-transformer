@@ -79,19 +79,14 @@ public:
     using Base::biasInQue_;
     using Base::tmpBuff_;
     using Base::alphaBuf_;
-    using Base::inputBuff_;
     using Base::hPreBuff_;
     using Base::hPostBuff_;
-    using Base::hResBuff_;
     using Base::alphaInUb_;
     using Base::biasInUb_;
     using Base::matmulRes_;
     using Base::xLocal_;
     using Base::invRmsUb_;
     using Base::gammaUb_;
-    using Base::preOffsetBuf_;
-    using Base::postOffsetBuf_;
-    using Base::resOffsetBuf_;
     using Base::pipe_;
     using Base::matrixInfo_;
     using Base::vectorOffset_;
@@ -107,10 +102,6 @@ public:
     using Base::mmCount_;
     using Base::vec1Count_;
     using Base::eleNumPerVf_;
-    using Base::kAlphaCombBaseOffset;
-    using Base::kAlphaCombIndex;
-    using Base::kAlphaPostIndex;
-    using Base::kAlphaPreIndex;
     using Base::kDoubleBufferCount;
     using Base::kSingleBufferCount;
     using Base::kSupportedN4;
@@ -126,7 +117,6 @@ public:
     __aicore__ inline void InitLocalBuffers();
     __aicore__ inline void VectorComputeOffset();
     __aicore__ inline void AIVPreLoad();
-    __aicore__ inline void AIV1GetHSliceOffset();
     template <bool hasGamma, bool isFirstND>
     __aicore__ inline void VFDoV0ProcessXInSingleReduce(__ubuf__ P *xDst, __ubuf__ P *invRmsDst,
         __ubuf__ T *xIn, __ubuf__ P *gamma, uint16_t mSize, uint16_t nSize);
@@ -252,31 +242,11 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::InitLocalBuffers()
     alphaInUb_ = alphaBuf_.template Get<P>();
 
     uint64_t buffOffset = 0;
-    preOffsetBuf_ = tmpBuff_.template GetWithOffset<uint32_t>(uint32_t(N_ * V1_BASE_T), buffOffset);
-    buffOffset += N_ * V1_BASE_T * sizeof(uint32_t);
-    buffOffset = Ceil(buffOffset, 32) * 32;
-
-    postOffsetBuf_ = tmpBuff_.template GetWithOffset<uint32_t>(uint32_t(N_ * V1_BASE_T), buffOffset);
-    buffOffset += N_ * V1_BASE_T * sizeof(uint32_t);
-    buffOffset = Ceil(buffOffset, 32) * 32;
-
-    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-        resOffsetBuf_ = tmpBuff_.template GetWithOffset<uint32_t>(uint32_t(N_ * N_ * V1_BASE_T), buffOffset);
-        buffOffset += N_ * N_ * V1_BASE_T * sizeof(uint32_t);
-        buffOffset = Ceil(buffOffset, 32) * 32;
-    }
-
     hPreBuff_ = tmpBuff_.template GetWithOffset<P>(uint32_t(V1_BASE_T * N_), buffOffset);
     buffOffset += V1_BASE_T * N_ * sizeof(P);
     buffOffset = Ceil(buffOffset, 32) * 32;
 
     hPostBuff_ = tmpBuff_.template GetWithOffset<P>(uint32_t(V1_BASE_T * N_), buffOffset);
-    buffOffset += V1_BASE_T * N_ * sizeof(P);
-    buffOffset = Ceil(buffOffset, 32) * 32;
-
-    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-        hResBuff_ = tmpBuff_.template GetWithOffset<P>(uint32_t(V1_BASE_T * N_ * N_), buffOffset);
-    }
 }
 
 template <class T, class P, int8_t HAS_RESI>
@@ -315,51 +285,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::Process()
 template <class T, class P, int8_t HAS_RESI>
 __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIVPreLoad()
 {
-    invRmsUb_ = invRmsOutQueue_.template AllocTensor<P>();
-    AIV1GetHSliceOffset();
-
-    float alphaPre = alphaGm_.GetValue(kAlphaPreIndex);
-    float alphaPost = alphaGm_.GetValue(kAlphaPostIndex);
-    for (uint64_t i = 0; i < N_; ++i) {
-        alphaInUb_.SetValue(i, alphaPre);
-        alphaInUb_.SetValue(i + N_, alphaPost);
-    }
-    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-        float alphaComb = alphaGm_.GetValue(kAlphaCombIndex);
-        for (uint64_t i = 0; i < N_; ++i) {
-            for (uint64_t j = 0; j < N_; ++j) {
-                alphaInUb_.SetValue((kAlphaCombBaseOffset + i) * N_ + j, alphaComb);
-            }
-        }
-    }
-    this->BiasCopyIn();
-    biasInUb_ = biasInQue_.template DeQue<P>();
-}
-
-template <class T, class P, int8_t HAS_RESI>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1GetHSliceOffset()
-{
-    uint32_t offset1 = 0;
-    uint32_t offset2 = 0;
-    uint32_t offset3 = 0;
-    uint32_t curOffset = 0;
-    for (uint32_t i = 0; i < V1_BASE_T; i++) {
-        for (uint32_t j = 0; j < N_; j++) {
-            preOffsetBuf_.SetValue(offset1++, curOffset * sizeof(P));
-            curOffset++;
-        }
-        for (uint32_t j = 0; j < N_; j++) {
-            postOffsetBuf_.SetValue(offset2++, curOffset * sizeof(P));
-            curOffset++;
-        }
-        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            uint32_t nSquare = N_ * N_;
-            for (uint32_t j = 0; j < nSquare; j++) {
-                resOffsetBuf_.SetValue(offset3++, curOffset * sizeof(P));
-                curOffset++;
-            }
-        }
-    }
+    Base::AIVPreLoad();
 }
 
 template <class T, class P, int8_t HAS_RESI>
@@ -577,19 +503,17 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Process(uint64_t
     }
     AscendC::CrossCoreWaitFlag(SYNC_CtoV1);
     uint64_t lenT = 0;
-    uint64_t lenD = 0;
     uint64_t singleCoreOffset = 0;
     for (int offsetT = vectorOffset_.offsetMStart; offsetT < vectorOffset_.offsetMEnd; offsetT += V1_BASE_T) {
         lenT = V1_BASE_T < vectorOffset_.offsetMEnd - offsetT ? V1_BASE_T : vectorOffset_.offsetMEnd - offsetT;
-        lenD = v1ChunkDSize_;
         AIV1Prologue(offsetT, lenT, singleCoreOffset);
 
         this->AIV1ProcessHPost(offsetT, lenT);
         
         this->AIV1ProcessHPre(offsetT, lenT);
-        this->AIV1ProcessHIn(offsetT, lenT, lenD); 
+        this->AIV1ProcessHInBatched(offsetT, lenT, kXInQueueBufferBytes, kOutQueueBufferBytes);
 
-        singleCoreOffset += V1_BASE_T;
+        singleCoreOffset += lenT;
     }
 }
 
@@ -598,13 +522,6 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Prologue(
     uint64_t offsetT, uint64_t lenT, uint64_t singleCoreOffset)
 {
     uint64_t offset = globalOffsetM_ + offsetT;
-    uint64_t HMixOffset = 0;
-    
-    if (outFlag_) {
-        HMixOffset = (globalOffsetM_ + offsetT) * mnConfig_.n;
-    } else {
-        HMixOffset = mnConfig_.singleCoreM * mnConfig_.singleCoreN * ((vec1Count_ % 2) * coreNum_ + coreIdx_) + offsetT * mnConfig_.n;
-    }
     HMixProcess(offsetT, lenT);
 
     matmulRes_ = xInQueue_.template DeQue<P>(); 
@@ -613,55 +530,25 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Prologue(
         hResOutLocal = outQueue_.template AllocTensor<P>();
     }
 
-    __ubuf__ P* matmulPtr = (__ubuf__ P*)matmulRes_.GetPhyAddr();
-    __ubuf__ P* invRmsPtr = (__ubuf__ P*)invRmsUb_.GetPhyAddr();
-    __ubuf__ P* biasInPtr = (__ubuf__ P*)biasInUb_.GetPhyAddr();
-    __ubuf__ P* alphaInPtr = (__ubuf__ P*)alphaInUb_.GetPhyAddr();
-    __ubuf__ P* hPreBuffPtr = (__ubuf__ P*)hPreBuff_.GetPhyAddr();
-    __ubuf__ P* hPostBuffPtr = (__ubuf__ P*)hPostBuff_.GetPhyAddr();
-
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<P> matmulResReg;
-        MicroAPI::RegTensor<P> invRmsReg;
-        MicroAPI::RegTensor<P> invRmsBroadReg;
-        MicroAPI::RegTensor<P> biasInReg;
-        MicroAPI::RegTensor<P> alphaInReg;
-
-        for (uint16_t tIdx = 0; tIdx < static_cast<uint16_t>(lenT); tIdx++) {
-            MicroAPI::Load<P>(invRmsReg, invRmsPtr + singleCoreOffset + tIdx);
-
-            uint32_t loopCntPerN = (mnConfig_.n + eleNumPerVf_ - 1) / eleNumPerVf_;
-            uint32_t curLen = mnConfig_.n;
-            for (uint16_t vfBlockIdx = 0; vfBlockIdx < (uint16_t)loopCntPerN; vfBlockIdx++) {
-                uint32_t maskOffset = tIdx * mnConfig_.n + vfBlockIdx * eleNumPerVf_;
-                uint32_t alphaOffset = vfBlockIdx * eleNumPerVf_;
-                uint32_t biasOffset = vfBlockIdx * eleNumPerVf_;
-                uint32_t curOffset =
-                    MhcPreUtils::Min(mnConfig_.n - vfBlockIdx * eleNumPerVf_, static_cast<uint64_t>(eleNumPerVf_));
-                MicroAPI::MaskReg curMask = MicroAPI::UpdateMask<P>(curLen);
-
-                MicroAPI::Load<P>(matmulResReg, matmulPtr + maskOffset);
-                MicroAPI::Load<P>(biasInReg, biasInPtr + biasOffset);
-                MicroAPI::Load<P>(alphaInReg, alphaInPtr + alphaOffset);
-
-                MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, curMask);
-                MicroAPI::Mul(matmulResReg, matmulResReg, invRmsBroadReg, curMask);
-
-                MicroAPI::Mul(matmulResReg, matmulResReg, alphaInReg, curMask);
-
-                MicroAPI::Add(matmulResReg, matmulResReg, biasInReg, curMask);
-
-                MicroAPI::Store<P>(matmulPtr + maskOffset, matmulResReg, curOffset);
-            }
-        }
+    if (N_ == 4U) {
+        MhcPreVFPostSegments<P, 4U, HAS_RESI == MHC_PRE_HAS_RESI>(
+            hPreBuff_, hPostBuff_, hResOutLocal, matmulRes_, invRmsUb_,
+            alphaInUb_, biasInUb_, static_cast<uint16_t>(lenT),
+            static_cast<uint32_t>(singleCoreOffset), mnConfig_.n);
+    } else if (N_ == 6U) {
+        MhcPreVFPostSegments<P, 6U, HAS_RESI == MHC_PRE_HAS_RESI>(
+            hPreBuff_, hPostBuff_, hResOutLocal, matmulRes_, invRmsUb_,
+            alphaInUb_, biasInUb_, static_cast<uint16_t>(lenT),
+            static_cast<uint32_t>(singleCoreOffset), mnConfig_.n);
+    } else {
+        MhcPreVFPostSegments<P, 8U, HAS_RESI == MHC_PRE_HAS_RESI>(
+            hPreBuff_, hPostBuff_, hResOutLocal, matmulRes_, invRmsUb_,
+            alphaInUb_, biasInUb_, static_cast<uint16_t>(lenT),
+            static_cast<uint32_t>(singleCoreOffset), mnConfig_.n);
     }
+    PipeBarrier<PIPE_V>();
 
-    Gather(hPreBuff_, matmulRes_, preOffsetBuf_, uint32_t(0), lenT * N_);
-    Gather(hPostBuff_, matmulRes_, postOffsetBuf_, uint32_t(0), lenT * N_);
     if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-        Gather(hResOutLocal, matmulRes_, resOffsetBuf_, uint32_t(0), lenT * N_ * N_);
-        PipeBarrier<PIPE_V>();
         outQueue_.EnQue(hResOutLocal);
         hResOutLocal = outQueue_.template DeQue<P>();
         DataCopyExtParams copyParams;
@@ -671,10 +558,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Prologue(
         copyParams.dstStride = uint32_t(0);
         DataCopyPad(hResGm_[offset * N_ * N_], hResOutLocal, copyParams);
         outQueue_.FreeTensor(hResOutLocal);
-    } else {
-        PipeBarrier<PIPE_V>();
-    }
     xInQueue_.FreeTensor(matmulRes_);
+    }
 }
 
 template <class T, class P, int8_t HAS_RESI>

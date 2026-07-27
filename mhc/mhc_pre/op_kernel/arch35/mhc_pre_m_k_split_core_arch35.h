@@ -713,7 +713,7 @@ public:
                 this->vectorOffset_.singleCoreM = this->curSingleT_;
                 this->vectorOffset_.offsetMStart = localMStart;
                 this->vectorOffset_.offsetMEnd = localMStart + this->curSingleT_;
-                this->AIVPreLoad(false);
+                this->AIVPreLoad();
             }
         }
     }

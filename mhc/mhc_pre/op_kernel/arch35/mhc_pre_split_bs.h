@@ -31,7 +31,7 @@ public:
 
         if ASCEND_IS_AIV {
             this->coreIdx_ = GetBlockIdx() / this->kDoubleBufferCount;
-            this->AIVPreLoad(false);
+            this->AIVPreLoad();
         }
         if ASCEND_IS_AIC {
             this->pipe_->InitBuffer(l1Buffer_, MHC_PRE_LOW_API_L1_ALLOC_SIZE);
