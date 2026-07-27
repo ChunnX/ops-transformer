@@ -1226,6 +1226,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
     std::string algConfig = "ReduceScatter=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig, reduceType, dataType, dataType);
+    mc2CcTilingConfig.SetCommEngine(mc2tiling::AIV_ENGINE);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
                     OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2InitTiling GetTiling failed."),
                     return ge::GRAPH_FAILED);

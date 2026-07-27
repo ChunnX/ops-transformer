@@ -9,6 +9,10 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)  # custom
+    # Ascend950 reuses the arch22 AIV implementation.
+    set(matmul_reduce_scatter_v2_ascend950_arch_directory arch22 CACHE INTERNAL
+        "matmul_reduce_scatter_v2 ascend950 arch")
+
     target_sources(op_host_aclnnInner PRIVATE
         matmul_reduce_scatter_v2_def.cpp
     )
@@ -20,7 +24,6 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(matmul_reduce_scatter_v2_depends mc2/common mc2/3rd PARENT_SCOPE)
-    set(matmul_reduce_scatter_v2_apt_depends mc2/common mc2/3rd PARENT_SCOPE)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令

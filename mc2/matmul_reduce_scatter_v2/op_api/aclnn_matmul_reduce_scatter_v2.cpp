@@ -85,9 +85,11 @@ static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, CommType co
     if ((executor == nullptr) || (NnopbaseSetHcclServerType == nullptr)) {
         return;
     }
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    const auto npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
+    if (((npuArch == NpuArch::DAV_2201) || (npuArch == NpuArch::DAV_3510)) &&
+        (commModeEnum == CommType::AIV)) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    } else if (npuArch == NpuArch::DAV_3510) {
         switch (commModeEnum) {
             case CommType::AI_CPU:
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
@@ -150,6 +152,8 @@ static bool CheckDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclT
 
 static const std::initializer_list<op::DataType> AIV_MODE_INPUT_SUPPORT_LIST = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_INT8};
+static const std::initializer_list<op::DataType> A5_AIV_MODE_INPUT_SUPPORT_LIST = {
+    op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> AIV_MODE_BIAS_SUPPORT_LIST = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> AIV_MODE_OUTPUT_SUPPORT_TYPE = {op::DataType::DT_FLOAT16,
@@ -158,8 +162,13 @@ static bool CheckAivModeDtypeValid(const aclTensor *x1, const aclTensor *x2, con
                                    const aclTensor *output)
 {
     // 检查x1、x2、output的数据类型是否在算子的支持列表内
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, AIV_MODE_INPUT_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, AIV_MODE_INPUT_SUPPORT_LIST, return false);
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(x1, A5_AIV_MODE_INPUT_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(x2, A5_AIV_MODE_INPUT_SUPPORT_LIST, return false);
+    } else {
+        OP_CHECK_DTYPE_NOT_SUPPORT(x1, AIV_MODE_INPUT_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(x2, AIV_MODE_INPUT_SUPPORT_LIST, return false);
+    }
     if (bias != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, AIV_MODE_BIAS_SUPPORT_LIST, return false);
     }
@@ -219,6 +228,19 @@ static aclnnStatus CheckAndSetCommMode(const char *commMode, CommType &commModeE
     } else {
         OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "commMode", commMode,
                                   "\"ccu\" or \"ai_cpu\"");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckAivModeCommMode(const char *commMode)
+{
+    if (commMode == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "[aclnnMatmulReduceScatterV2GetWorkspaceSize] commMode must not be nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (strcmp(commMode, "aiv") != 0) {
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "commMode", commMode, "aiv");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -492,6 +514,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(
     OP_LOGD("aclnnMatmulReduceScatterV2GetWorkspaceSizeAivMode start");
     auto ret_param = CheckAivModeParams(x1, x2, bias, streamMode, output);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
+    auto retCommMode = CheckAivModeCommMode(commMode);
+    CHECK_RET(retCommMode == ACLNN_SUCCESS, retCommMode);
 
     bool transposeX1 = Ops::Transformer::IsTransposeLastTwoDims(x1);
     bool transposeX2 = Ops::Transformer::IsTransposeLastTwoDims(x2);
@@ -500,8 +524,9 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     (void)MatmulReduceScatterV2IsWeightNZFormat(x2);
     CHECK_RET(CheckShape(x1, x2, transposeX1), ACLNN_ERR_PARAM_INVALID);
-    // 【A2、A3】检查x2矩阵非连续合法性
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    // A2/A5 AIV 路径要求未转置的 x2 连续。
+    const auto npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
+    if ((npuArch == NpuArch::DAV_2201) || (npuArch == NpuArch::DAV_3510)) {
         if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSizeAivMode", "x2",
                                                   "non-contiguous", "x2 without transpose must be contiguous.");
@@ -529,12 +554,10 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor *x1, cons
                                                        uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     aclnnStatus ret = ACLNN_ERR_INNER;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        ret = matmulReduceScatterV2GetWorkSpaceSizeA5(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
-                                                      reduceOp, commTurn, streamMode, groupSize, commMode, output,
-                                                      amaxOutOptional, workspaceSize, executor);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-        OP_LOGD("[MatmulReduceScatterV2] NpuArch is 2201, support aiv commmode only.");
+    const auto npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
+    if ((npuArch == NpuArch::DAV_2201) || (npuArch == NpuArch::DAV_3510)) {
+        OP_LOGD("[MatmulReduceScatterV2] NpuArch is %u, support aiv commmode only.",
+                static_cast<uint32_t>(npuArch));
         ret = matmulReduceScatterV2GetWorkSpaceSizeAivMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
                                                            reduceOp, commTurn, streamMode, groupSize, commMode, output,
                                                            amaxOutOptional, workspaceSize, executor);
@@ -556,11 +579,8 @@ aclnnStatus aclnnMatmulReduceScatterV2(void *workspace, uint64_t workspaceSize, 
     }
 
     CommType commModeEnum = CommType::INVALID;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        void *arg = NnopbaseGetUserHandle(executor);
-        uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
-        commModeEnum = static_cast<CommType>(handleVal);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    const auto npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
+    if ((npuArch == NpuArch::DAV_2201) || (npuArch == NpuArch::DAV_3510)) {
         commModeEnum = CommType::AIV;
     }
 

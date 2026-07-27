@@ -100,21 +100,7 @@ public:
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
         this->Attr("is_amax_out").AttrType(OPTIONAL).Bool(false);
         this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
-        this->Attr("comm_mode").AttrType(REQUIRED).String("ai_cpu");
-
-        OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("jitCompile.flag", "static_false") // 动态shape,复用二进制,后续图支持后修改
-            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
-            .ExtendCfgInfo("opFile.value", "matmul_reduce_scatter_v2_apt");
-        this->AICore().AddConfig("ascend950", aicore_config);
-        this->MC2().HcclGroup("group");
+        this->Attr("comm_mode").AttrType(REQUIRED).String("aiv");
 
         OpAICoreConfig aicore_config_910b;
         aicore_config_910b.Input("x1")
@@ -224,6 +210,7 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
         this->AICore().AddConfig("ascend910b", aicore_config_910b);
         this->AICore().AddConfig("ascend910_93", aicore_config_910b);
+        this->AICore().AddConfig("ascend950", aicore_config_910b);
         this->MC2().HcclGroup("group");
     }
 };
