@@ -15,7 +15,6 @@
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 #include "arch35/mhc_pre_kernel_base.h"
 #include "arch35/mhc_pre_split_bs.h"
-#include "arch35/mhc_pre_split_bs_low_api.h"
 #include "arch35/mhc_pre_m_k_split_core_arch35.h"
 #include "arch35/mhc_pre_split_nd.h"
 #include "arch35/mhc_pre_tiling_key.h"
@@ -35,33 +34,15 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     if constexpr (TILING_MODE == MHC_PRE_SPLIT_BS) {
-        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
-                                  h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
-            MT mm;
-            mm.Init(&tilingData.matmulTiling, &pipe);
-            MhcPreKernelSplitBS<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> op(mm);
-            op.Init(initParams);
-            op.Process();
-        } else {
-            InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
-                                  h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
-            MT mm;
-            mm.Init(&tilingData.matmulTiling, &pipe);
-            MhcPreKernelSplitBS<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op(mm);
-            op.Init(initParams);
-            op.Process();
-        }
-    } else if constexpr (TILING_MODE == MHC_PRE_LOW_API_BS) {
         InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
                               h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
         MT mm;
         if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            MhcPreKernelSplitBSLowApi<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> op(mm);
+            MhcPreKernelSplitBS<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> op(mm);
             op.Init(initParams);
             op.Process();
         } else {
-            MhcPreKernelSplitBSLowApi<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op(mm);
+            MhcPreKernelSplitBS<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op(mm);
             op.Init(initParams);
             op.Process();
         }
