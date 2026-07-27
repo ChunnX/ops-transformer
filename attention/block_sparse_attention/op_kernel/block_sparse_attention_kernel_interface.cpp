@@ -309,6 +309,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using ElementP = InDtype; // fp4x2_e2m1_t
     using ElementScale = uint8_t; // e8m0
     using ElementOTmp = REDtype; // float
+    using ElementDm = REDtype;
     using ElementO = Otype; // bfloat16_t / fp16
     using ElementGroupMax = SMDtype;
     using ElementLocalGlobalMax = SMDtype;
@@ -319,7 +320,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using LayoutS = layout::RowMajor;
     // P is actually zN on UB(src), since there is no nd2nz in MTE1
     using LayoutPDummy = layout::zN;
-    using LayoutPScale = layout::zZ;
+    using LayoutPScale = layout::RowMajor;
     using LayoutV = layout::RowMajor;
     using LayoutO = layout::RowMajor;
     // OTmp is rowMajor on UB(dst)
@@ -349,7 +350,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     // compute PScale from group max: 输入 ElementGroupMax, 输出 PScaleType
     using DispatchPolicyComputePScale = Epilogue::EpilogueComputePScaleBsa<transposedMm1, mxQuantMode>;
     using EpilogueComputePScale = Epilogue::Block::BlockEpilogue<
-        DispatchPolicyComputePScale, ElementGroupMax, PScaleType>;
+        DispatchPolicyComputePScale, ElementGroupMax, ElementDm, PScaleType>;
     // copy global max from UB to L1: 输入 ElementLocalGlobalMax
     using DispatchPolicyCopyGlobalMaxUbToL1 = Epilogue::EpilogueCopyGlobalMaxUbToL1Bsa;
     using EpilogueCopyGlobalMaxUbToL1 = Epilogue::Block::BlockEpilogue<
