@@ -82,6 +82,17 @@ public:
         cuSeqlensKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensKv);
         seqUsedQGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ);
         seqUsedKvGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv);
+        // 预取控制流元数据，重叠 InitBuffers 期间的 HBM 延迟。
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(cuSeqlensQ), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(cuSeqlensKv), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(seqUsedQ), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(seqUsedKv), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(metadata), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(sparseIndices), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t *>(sparseSeqLen), 0);
+        sparseIndicesPtr_ = sparseIndices;
+        sparseSeqLenPtr_ = sparseSeqLen;
+        metadataPtr_ = metadata;
         InitConstInfo();
         InitMMResBuf();
         cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
@@ -387,6 +398,13 @@ private:
                 continue;
             }
 
+            // 预取下一个 section 的 metadata，重叠内层循环计算。
+            if (sectionIdx + 1U < sectionNum) {
+                const uint64_t nextMetaByteOffset =
+                    GetBsaCoreMetadataOffset(sectionIdx + 1U, constInfo.aicIdx) * sizeof(int32_t);
+                dc_preload(reinterpret_cast<__gm__ uint64_t *>(metadataPtr_ + nextMetaByteOffset), 0);
+            }
+
             for (uint32_t bn1Idx = bn1StartIdx; bn1Idx < bn1EndIdx; ++bn1Idx) {
                 const uint32_t bIdx = bn1Idx / constInfo.realN2Size;
                 const uint32_t n1Idx = bn1Idx % constInfo.realN2Size;
@@ -405,6 +423,14 @@ private:
                     if (unlikely(sparseLen <= 0)) {
                         continue;
                     }
+                    // 预取下一个 query block 的 sparseSeqLen，重叠 s2LoopIdx 内层循环。
+                    if (s1OuterIdx + 1U < s1LoopEnd) {
+                        const uint64_t nextSparseLenIdx =
+                            (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) * constInfo.maxQb +
+                            s1OuterIdx + 1U;
+                        dc_preload(reinterpret_cast<__gm__ uint64_t *>(
+                            sparseSeqLenPtr_ + nextSparseLenIdx * sizeof(int32_t)), 0);
+                    }
                     // sparseBase 指向 sparseIndices[B,N1,Qb,0]。
                     const uint64_t sparseBase =
                         (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) * constInfo.maxQb *
@@ -420,6 +446,12 @@ private:
                         FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
                                     actualS2Size, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount, sparseBase,
                                     !hasValidS2Task);
+                        // 预取下一个 task 的 sparseIndices，重叠 ExecuteTask 计算。
+                        if (s2LoopIdx + sparseBlocksPerTask <= s2LoopEnd) {
+                            const uint64_t nextSparseIdx = sparseBase + s2LoopIdx + sparseBlocksPerTask;
+                            dc_preload(reinterpret_cast<__gm__ uint64_t *>(
+                                sparseIndicesPtr_ + nextSparseIdx * sizeof(int32_t)), 0);
+                        }
                         if (likely(runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U)) {
                             ExecuteTask(loop, taskRunInfo);
                             hasValidS2Task = true;
@@ -452,6 +484,9 @@ private:
     GlobalTensor<int32_t> cuSeqlensKvGm;
     GlobalTensor<int32_t> seqUsedQGm;
     GlobalTensor<int32_t> seqUsedKvGm;
+    __gm__ uint8_t *sparseIndicesPtr_ = nullptr;
+    __gm__ uint8_t *sparseSeqLenPtr_ = nullptr;
+    __gm__ uint8_t *metadataPtr_ = nullptr;
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
