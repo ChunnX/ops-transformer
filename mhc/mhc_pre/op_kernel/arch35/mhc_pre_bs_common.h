@@ -56,19 +56,14 @@ public:
     using Base::biasInQue_;
     using Base::tmpBuff_;
     using Base::alphaBuf_;
-    using Base::inputBuff_;
     using Base::hPreBuff_;
     using Base::hPostBuff_;
-    using Base::hResBuff_;
     using Base::alphaInUb_;
     using Base::biasInUb_;
     using Base::matmulRes_;
     using Base::xLocal_;
     using Base::invRmsUb_;
     using Base::gammaUb_;
-    using Base::preOffsetBuf_;
-    using Base::postOffsetBuf_;
-    using Base::resOffsetBuf_;
     using Base::pipe_;
     using Base::matrixInfo_;
     using Base::vectorOffset_;
@@ -150,13 +145,7 @@ __aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitUbBuffers(bool 
     pipe_->InitBuffer(alphaBuf_, parameterBufferBytes);
     alphaInUb_ = alphaBuf_.template Get<P>();
 
-    preOffsetBuf_ = tmpBuff_.template GetWithOffset<uint32_t>(uint32_t(mnConfig_.n * V1_BASE_T), 0);
-    postOffsetBuf_ = preOffsetBuf_[N_ * V1_BASE_T];
-    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-        resOffsetBuf_ = postOffsetBuf_[N_ * V1_BASE_T];
-    }
-    uint64_t buffOffset =
-        mnConfig_.n * V1_BASE_T * sizeof(uint32_t) + (curSingleT_ / 2) * sizeof(uint32_t);
+    uint64_t buffOffset = 0;
     hPreBuff_ = tmpBuff_.template GetWithOffset<P>(uint32_t(V1_BASE_T * N_), buffOffset);
     buffOffset += V1_BASE_T * N_ * sizeof(P);
 
