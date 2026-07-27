@@ -1568,7 +1568,6 @@ static bool CheckFAIDSizePA5Dim(int64_t tempD, const gert::Shape *tempKShape,
 
 static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr, const int64_t tempD)
 {
-    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u ", 0);
     bool isPageAttention = context.GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
     auto tempAttnMaskShape = context.GetOptionalInputShape(ATTEN_MASK_INDEX);
     auto qDataType = context.GetInputDesc(QUERY_INDEX)->GetDataType();
@@ -1601,18 +1600,15 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
         !((sparseMode == 0) && (tempAttnMaskShape != nullptr));
     bool nonMhaConditions = !isMha && (innerPrecise == 0);
 
-    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u ", 1);
     if (!(inputLayoutStr == "TND" && isLearnableSinkFlag && !isRopeSplitMla &&
         sparseModeSupported && (nonMhaConditions || mhaConditions))) {
         return false;
     }
-    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u ", 2);
 
     if (!isPageAttention) {
         return CheckFAIDSizeNoPA(tempD, tempK->GetStorageShape().GetDim(DIM_2),
                                  tempV->GetStorageShape().GetDim(DIM_2));
     } else if (kvDimNum == 3U) {
-        OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u", 3);
         return CheckFAIDSizePA3Dim(tempD, &tempK->GetStorageShape(), &tempV->GetStorageShape(), kvHeadNum);
     } else if (kvDimNum == 5U) {
         return CheckFAIDSizePA5Dim(tempD, &tempK->GetStorageShape(), &tempV->GetStorageShape());
@@ -2238,7 +2234,6 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     // 是否路由到IFA
     bool usingIFA = IsUsingIFA(*context, inputLayoutStr, queryD, queryS);
     bool usingFAI = IsUsingFAI(*context, inputLayoutStr, queryD);
-    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! TilingFusedInferAttentionScore IsUsingFAI is %u ", usingFAI);
     if (usingFAI) {
         OP_CHECK_IF(TilingProcess4SplitFuse(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for split fuse failed"),

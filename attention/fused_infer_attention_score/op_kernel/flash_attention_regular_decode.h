@@ -98,8 +98,6 @@ namespace SplitFuse {
             uint32_t qTileCeil = fATilingData->qTileCeil;
             uint32_t maxKvStackLen = fATilingData->maxKvStackLen;
             uint32_t workSpaceBlockSize = qTileCeil * maxKvStackLen;
-            printf("hello wangsong!! flash_attention_regular_decode.h runMainLoop workSpaceBlockSize is %d\n",
-                   workSpaceBlockSize);
             AscendC::GlobalTensor<ElementQ> gQ;
             gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
             AscendC::ListTensorDesc keyListTensorDescInit((__gm__ void*)params.k);

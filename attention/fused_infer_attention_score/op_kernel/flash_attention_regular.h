@@ -123,8 +123,6 @@ namespace SplitFuse {
             qTileCeil = fATilingData->qTileCeil;
             maxKvStackLen = fATilingData->maxKvStackLen;
             uint32_t workSpaceBlockSize = qTileCeil * maxKvStackLen;
-            printf("hello wangsong!! flash_attention_regular.h runMainLoop workSpaceBlockSize is %d\n",
-                   workSpaceBlockSize);
 
             AscendC::GlobalTensor<ElementQ> gQ;
             gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
