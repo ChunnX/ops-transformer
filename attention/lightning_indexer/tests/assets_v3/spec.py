@@ -1,0 +1,54 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+"""Raw Kernel TestSpec adapter for LightningIndexer."""
+
+import importlib.util
+import sys
+from pathlib import Path
+
+
+ASSET_IMPL_DIR = Path(__file__).with_name("impl")
+
+
+def load_impl_module(stem):
+    name = f"li_ttk_kernel_{stem}"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = ASSET_IMPL_DIR / f"{stem}.py"
+    module_spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(module_spec)
+    sys.modules[name] = module
+    try:
+        module_spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+
+golden_module = load_impl_module("golden")
+inputs_module = load_impl_module("inputs")
+
+
+class LightningIndexerKernelSpec:
+    golden = golden_module.cpu_lightning_indexer_kernel
+    customize_inputs = inputs_module.generate_lightning_indexer_kernel_inputs
+    tolerance = {
+        "float16": {"standard": "stat_rel_err"},
+        "bfloat16": {"standard": "stat_rel_err"},
+    }
+
+
+__spec__ = {
+    "lightning_indexer": "LightningIndexerKernelSpec",
+}

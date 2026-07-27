@@ -13,6 +13,7 @@
 """TestSpec adapter for SparseFlashAttention assets."""
 
 import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -20,10 +21,18 @@ ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
 
 def load_impl_module(stem):
+    name = f"sfa_ttk_{stem}"
+    if name in sys.modules:
+        return sys.modules[name]
     path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(f"sfa_assets_impl_{stem}_{abs(hash(path))}", path)
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
     return module
 
 
@@ -33,7 +42,7 @@ inputs_module = load_impl_module("inputs")
 
 class SparseFlashAttentionSpec:
     golden = golden_module.cpu_sparse_flash_attention
-    customize_inputs = inputs_module.generate_valid_sparse_indices
+    customize_inputs = inputs_module.generate_sfa_inputs
     tolerance = {
         "float16": {"standard": "stat_rel_err"},
         "bfloat16": {"standard": "stat_rel_err"},

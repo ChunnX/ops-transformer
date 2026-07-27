@@ -675,7 +675,8 @@ def compute_golden(input_tensor_dict, params):
     def _to_cpu_float32_tensor(val):
         if torch.is_tensor(val):
             if val.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
-                return val.float().cpu()
+                # A3 does not support the FP8-to-FP32 cast on device.
+                return val.cpu().float()
             return val.cpu().float()
         return val
 
