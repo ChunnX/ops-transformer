@@ -99,6 +99,7 @@ struct MoeInitRoutingV3Arch35TilingData {
     int64_t actualExpertNum{0};
     int64_t quantMode{0};
     int64_t rowIdxType{0};
+    int64_t useGatherCopy{0};
     int64_t isInputScale{0};
     int64_t isInputOffset{0};
     int64_t expertNum{0};

@@ -368,6 +368,7 @@ private:
     int64_t lastLoopScaleCols_;
     int64_t indicesOffset_;
     int64_t rowIdxType_ = 0;
+    int64_t useGatherCopy_ = 0;
 
     uint16_t fp8Emax_ = 0;
 
@@ -400,8 +401,25 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Init(GM_ADDR xA
 
     xInGm_.SetGlobalBuffer((__gm__ T *)xAddr);
     expandedXOutGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedXAddr);
-    sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
-                                    Align(perCoreRow_, sizeof(int32_t)));
+    if (useGatherCopy_) {
+        if (rowIdxType_ == SCATTER) {
+            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) +
+                                                blockIdx_ * perCoreRow_,
+                                            Align(perCoreRow_, sizeof(int32_t)));
+        } else {
+            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
+                                            Align(perCoreRow_, sizeof(int32_t)));
+        }
+    } else {
+        if (rowIdxType_ == SCATTER) {
+            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
+                                            Align(perCoreRow_, sizeof(int32_t)));
+        } else {
+            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) +
+                                                blockIdx_ * perCoreRow_,
+                                            Align(perCoreRow_, sizeof(int32_t)));
+        }
+    }
     expandedScaleOutGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedScaleAddr);
 
     // perrows * 2 * 2 * 4 expandRowIdx + sortedExpertId
@@ -429,6 +447,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTilin
     n_ = tilingData->n;
     k_ = tilingData->k;
     rowIdxType_ = tilingData->rowIdxType;
+    useGatherCopy_ = tilingData->useGatherCopy;
 
     // core split
     int64_t actualExpertNum_ = tilingData->actualExpertNum;
@@ -436,7 +455,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTilin
                                             Align(actualExpertNum_, sizeof(int32_t)),
                                         1);
     int64_t scanRowCount = n_ * k_;
-    if (rowIdxType_ == SCATTER) {
+    if (!useGatherCopy_) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
             expertTotalCountGm_);
         scanRowCount = expertTotalCountGm_.GetValue(0);
@@ -472,7 +491,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Process()
         currentLoopRows_ = perLoopRows_;
         for (int64_t loop = 0; loop < rowLoops_ - 1; loop++) {
             CopyInExpandedExpertIdx(loop);
-            if (rowIdxType_ == SCATTER) {
+            if (!useGatherCopy_) {
                 ScatterCopyExpandedXandMXQuant(loop);
             } else {
                 GatherCopyExpandedXandMXQuant(loop);
@@ -481,7 +500,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Process()
 
         currentLoopRows_ = lastLoopRows_;
         CopyInExpandedExpertIdx(rowLoops_ - 1);
-        if (rowIdxType_ == SCATTER) {
+        if (!useGatherCopy_) {
             ScatterCopyExpandedXandMXQuant(rowLoops_ - 1);
         } else {
             GatherCopyExpandedXandMXQuant(rowLoops_ - 1);
@@ -539,6 +558,19 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::GatherCopyExpan
         int64_t currentLoopLastRow = (globalSortIdx + currentLoopRows_ - 1) / k_;
 
         for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
+            bool hasValidOut = false;
+            while (curLoopRow < currentLoopRows_ && globalSortIdx / k_ == row) {
+                if (indicesLocal.GetValue(curLoopRow) >= 0) {
+                    hasValidOut = true;
+                    break;
+                }
+                curLoopRow++;
+                globalSortIdx++;
+            }
+            if (!hasValidOut) {
+                continue;
+            }
+
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
             CopyIn(row, j, loopCols);
             Compute(loopCols, loopScaleCols, loopValidScaleCols);
