@@ -1568,6 +1568,7 @@ static bool CheckFAIDSizePA5Dim(int64_t tempD, const gert::Shape *tempKShape,
 
 static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr, const int64_t tempD)
 {
+    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u ", 0);
     bool isPageAttention = context.GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
     auto tempAttnMaskShape = context.GetOptionalInputShape(ATTEN_MASK_INDEX);
     auto qDataType = context.GetInputDesc(QUERY_INDEX)->GetDataType();
@@ -1600,18 +1601,18 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
         !((sparseMode == 0) && (tempAttnMaskShape != nullptr));
     bool nonMhaConditions = !isMha && (innerPrecise == 0);
 
-    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u ", 0);
+    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u ", 1);
     if (!(inputLayoutStr == "TND" && isLearnableSinkFlag && !isRopeSplitMla &&
         sparseModeSupported && (nonMhaConditions || mhaConditions))) {
         return false;
     }
-    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u ", 1);
+    OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u ", 2);
 
     if (!isPageAttention) {
         return CheckFAIDSizeNoPA(tempD, tempK->GetStorageShape().GetDim(DIM_2),
                                  tempV->GetStorageShape().GetDim(DIM_2));
     } else if (kvDimNum == 3U) {
-        OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u ", 2);
+        OP_LOGD("FusedInferAttentionScore", "hello wangsong!! IsUsingFAI is %u", 3);
         return CheckFAIDSizePA3Dim(tempD, &tempK->GetStorageShape(), &tempV->GetStorageShape(), kvHeadNum);
     } else if (kvDimNum == 5U) {
         return CheckFAIDSizePA5Dim(tempD, &tempK->GetStorageShape(), &tempV->GetStorageShape());
