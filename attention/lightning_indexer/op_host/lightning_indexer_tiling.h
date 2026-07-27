@@ -26,11 +26,7 @@
 #include "op_host/tiling_util.h"
 namespace optiling {
 // ------------------公共定义--------------------------
-enum class DataLayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    BnBsND = 2
-};
+enum class DataLayout : uint32_t { BSND = 0, TND = 1, BnBsND = 2 };
 
 struct TilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
@@ -50,7 +46,7 @@ constexpr uint32_t WEIGTHS_INDEX = 2;
 constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 3;
 constexpr uint32_t ACTUAL_SEQ_K_INDEX = 4;
 constexpr uint32_t BLOCK_TABLE_INDEX = 5;
-//Outputs Index
+// Outputs Index
 constexpr uint32_t LIGHTNING_INDEXER = 0;
 constexpr uint32_t LIGHTNING_VALUES = 1;
 // Attributes Index
@@ -162,9 +158,7 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class LIInfoParser {
 public:
-    explicit LIInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit LIInfoParser(gert::TilingContext *context) : context_(context) {}
     ~LIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -238,7 +232,7 @@ public:
 // ---------------算子Tiling类---------------
 class LightningIndexerTiling {
 public:
-    explicit LightningIndexerTiling(gert::TilingContext *context) : context_(context){};
+    explicit LightningIndexerTiling(gert::TilingContext *context) : context_(context) {};
     ge::graphStatus DoTiling(LITilingInfo *tilingInfo);
 
 private:
