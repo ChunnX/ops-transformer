@@ -56,7 +56,6 @@ constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
 constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int DIM_TWO = 2;
-constexpr uint32_t MOE_MAX_CHANNELS_PER_RANK = 8U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
 
 // RAII guard for multi-step host buffer allocation
@@ -608,8 +607,10 @@ private:
                     "Invalid HCCL rank size ", rankDim);
         uint32_t remoteRankNum = rankDim - 1;
         uint32_t maxChannelsByCapacity = HCCL_MAX_RANK_SIZE / remoteRankNum;
-        // Eight channels let eight AIVs send to the same peer independently.
-        context.channelsPerRank = std::min(MOE_MAX_CHANNELS_PER_RANK, maxChannelsByCapacity);
+        // Reserve enough channels to split the maximum possible AIV count by rank first. The capacity limit keeps
+        // all compact remote-rank handles inside hcommHandle.
+        uint32_t channelsNeededPerRank = (HCCL_MAX_RANK_SIZE + rankDim - 1) / rankDim;
+        context.channelsPerRank = std::min(channelsNeededPerRank, maxChannelsByCapacity);
         TORCH_CHECK(context.channelsPerRank > 0, "No HCCL channel capacity for rank size ", rankDim);
         uint32_t channelNum = remoteRankNum * context.channelsPerRank;
         std::vector<HcclChannelDesc> channelDesc(channelNum);
