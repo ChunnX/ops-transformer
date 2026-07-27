@@ -12,11 +12,11 @@
  * \file test_grouped_a4w4_quant_arch35_pergroup_tiling.cpp
  * \brief Host tiling UT for GroupedA4W4Quant (INT4×INT4) pergroup groupSize 约束。
  *
- * 验证 GMM_A5_A4W4_PERGROUPSIZE_CONSTRAINT.md §3 PlanA：
- *   - groupSize ∈ {128 的整数倍} 且整除 K -> tiling 成功，quantGroupNum = K/groupSize，baseK=128
- *     覆盖 256/512/128（大 groupSize 合法且精度更优，不锁死 128）。
- *   - groupSize 非 128 倍数（即便为 32 倍数）-> tiling 失败（A1：grouped_a4w4_quant_tiling.cpp
- *     的 (k/G) % A4W4_QUANT_GROUP_SIZE 校验，A4W4_QUANT_GROUP_SIZE=128）。
+ * 验证 GMM_A5_A4W4_PERGROUPSIZE_CONSTRAINT.md §3 偶数规格：
+ *   - groupSize ∈ {偶数} 且整除 K -> tiling 成功，quantGroupNum = K/groupSize，baseK=128
+ *     覆盖 256/512/128（128 倍数）、192/64（32 倍数非 128）、2（最小偶数非 32 倍数）。
+ *   - groupSize 奇数 -> tiling 失败（A1：grouped_a4w4_quant_tiling.cpp
+ *     的 (k/G) % A4W4_QUANT_GROUP_SIZE 校验，A4W4_QUANT_GROUP_SIZE=2）。
  *   - perchannel（scale 2D）对照：quantGroupNum=1。
  *
  * 路由：TilingGMM 在 npuArch==DAV_3510 && xDType==DT_INT4 && weightDtype==DT_INT4 时走
@@ -185,19 +185,51 @@ TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, pergroupGroupSize128BaselineAcc
     EXPECT_EQ(p->baseK, 128U);
 }
 
-// PlanA 拒绝：groupSize=192（32 倍数但非 128 倍数）。K=960 % G=5 == 0（过 K%G 校验），
-// 但 (K/G)=192 % 128 != 0 -> A1 校验拒绝。PlanB 待验证，未启用。
-TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, pergroupGroupSize192NotMultipleOf128Rejected)
+// 偶数规格接受：groupSize=192（32 倍数非 128 倍数，偶数）。K=960 % G=5 == 0，(K/G)=192 为偶数 -> 接受。
+// quantGroupNum = 960/192 = 5，baseK=128。
+TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, pergroupGroupSize192EvenAccepted)
 {
     TilingInfo info;
-    EXPECT_FALSE(RunA4W4Tiling(128, /*k=*/960, 256, 2, /*groupSize=*/192, true, info));
+    ASSERT_TRUE(RunA4W4Tiling(128, /*k=*/960, 256, 2, /*groupSize=*/192, true, info));
+    const auto *p = GetA4W4Params(info);
+    EXPECT_EQ(p->quantGroupNum, 5U);   // G = 960/192
+    EXPECT_EQ(p->baseK, 128U);
 }
 
-// PlanA 拒绝：groupSize=64（<128，32 倍数但非 128 倍数）。K=512 % G=8 == 0，(K/G)=64 % 128 != 0 -> A1 拒绝。
-TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, pergroupGroupSize64NotMultipleOf128Rejected)
+// 偶数规格接受：groupSize=64（<128，32 倍数，偶数）。K=512 % G=8 == 0，(K/G)=64 为偶数 -> 接受。
+// quantGroupNum = 512/64 = 8，baseK=128。
+TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, pergroupGroupSize64EvenAccepted)
 {
     TilingInfo info;
-    EXPECT_FALSE(RunA4W4Tiling(128, /*k=*/512, 256, 2, /*groupSize=*/64, true, info));
+    ASSERT_TRUE(RunA4W4Tiling(128, /*k=*/512, 256, 2, /*groupSize=*/64, true, info));
+    const auto *p = GetA4W4Params(info);
+    EXPECT_EQ(p->quantGroupNum, 8U);   // G = 512/64
+    EXPECT_EQ(p->baseK, 128U);
+}
+
+// 偶数规格接受：groupSize=2（最小偶数，非 32 倍数）。K=1024 % G=512 == 0，(K/G)=2 为偶数 -> 接受。
+// quantGroupNum = 1024/2 = 512，baseK=128。注意：groupSize=2 非 32 倍数，L0B ZN 末步对齐为 deferred
+TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, pergroupGroupSize2MinEvenAccepted)
+{
+    TilingInfo info;
+    ASSERT_TRUE(RunA4W4Tiling(128, /*k=*/1024, 256, 2, /*groupSize=*/2, true, info));
+    const auto *p = GetA4W4Params(info);
+    EXPECT_EQ(p->quantGroupNum, 512U);   // G = 1024/2
+    EXPECT_EQ(p->baseK, 128U);
+}
+
+// 偶数规格拒绝：groupSize=3（奇数）。K=192 % G=64 == 0（过 K%G 校验），(K/G)=3 非偶数 -> A1 拒绝。
+TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, pergroupGroupSize3OddRejected)
+{
+    TilingInfo info;
+    EXPECT_FALSE(RunA4W4Tiling(128, /*k=*/192, 256, 2, /*groupSize=*/3, true, info));
+}
+
+// 偶数规格拒绝：groupSize=129（>128 奇数）。K=4128 % G=32 == 0，(K/G)=129 非偶数 -> A1 拒绝。
+TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, pergroupGroupSize129OddRejected)
+{
+    TilingInfo info;
+    EXPECT_FALSE(RunA4W4Tiling(128, /*k=*/4128, 256, 2, /*groupSize=*/129, true, info));
 }
 
 // 对照：perchannel（scale 2D [E,N]）-> quantGroupNum=1，baseK=min(K,128)=128。

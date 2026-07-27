@@ -25,7 +25,7 @@
 
 namespace optiling {
 
-constexpr uint32_t A4W4_QUANT_GROUP_SIZE = 128U;    // int8 baseK 对齐粒度（c0=32 倍数，L0B 约束）
+constexpr uint32_t A4W4_QUANT_GROUP_SIZE = 2U;    // groupSize 对齐粒度:偶数(2 的倍数)。原 128(PlanA)已放宽为偶数
 constexpr uint32_t A4W4_BASE_M_950 = 128U;
 constexpr uint32_t A4W4_BASE_N_950 = 256U;          // 950 L0C=256KB 支持 baseM·baseN=32768（dbL0C=2）
 constexpr uint32_t A4W4_VEC_BASE_M_950 = 16U;

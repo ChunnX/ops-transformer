@@ -215,11 +215,12 @@ bool GroupedA4W4QuantTiling::AnalyzeA4W4()
                     OP_LOGE(context_->GetNodeName(), "A4W4 pergroup: k(%lu) must be divisible by G(%lu).",
                             inputParams_.kSize, g),
                     return false);
-        // PlanA: groupSize(=k/G) 必须为 128 倍数（baseK 对齐粒度，c0=32 倍数，L0B 约束）。
-        // 详见 GMM_A5_A4W4_PERGROUPSIZE_CONSTRAINT.md §3。PlanB(放宽到 32 倍数)待验证，未启用。
+        // groupSize(=k/G) 须为偶数(2 的倍数)。原 128 倍数(PlanA)已放宽为偶数。
+        // baseK=128 固定(L0 步进粒度,与 groupSize 解耦),kernel 用 Min(128, groupSize) 实际步进。
+        // 风险:groupSize 非 32 倍数时 L0B ZN copy 末步对齐未验证
         OP_CHECK_IF((inputParams_.kSize / g) % A4W4_QUANT_GROUP_SIZE != 0,
-                    OP_LOGE(context_->GetNodeName(), "A4W4 pergroup: k/G(%lu) must be multiple of %u.",
-                            inputParams_.kSize / g, A4W4_QUANT_GROUP_SIZE),
+                    OP_LOGE(context_->GetNodeName(), "A4W4 pergroup: k/G(%lu) must be even (multiple of 2).",
+                            inputParams_.kSize / g),
                     return false);
         a4w4Tiling_.quantGroupNum = static_cast<uint32_t>(g);
     } else if (scaleDimNum == 2U) {
