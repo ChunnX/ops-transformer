@@ -53,14 +53,17 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(HAS_CU_SEQLENS_Q, 0, 1), ASCENDC_TPL_BOOL_SEL(HAS_CU_SEQLENS_K, 0, 1),
                          ASCENDC_TPL_BOOL_SEL(HAS_SEQUSED_Q, 0, 1), ASCENDC_TPL_BOOL_SEL(HAS_SEQUSED_K, 0, 1),
                          ASCENDC_TPL_BOOL_SEL(HAS_CMP_RESIDUAL_K, 0, 1), ASCENDC_TPL_BOOL_SEL(DETERMINISTIC, 0, 1),
-                         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::DenseLightningIndexerGradRegBaseTilingData))
+                         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::DenseLightningIndexerGradRegBaseTilingData)
+                        )
 
-        ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(TOPK_RANGE, ASCENDC_TPL_UI_LIST, 0),
-                             ASCENDC_TPL_UINT_SEL(LAYOUT_Q, ASCENDC_TPL_UI_LIST, 1),
-                             ASCENDC_TPL_UINT_SEL(LAYOUT_KT, ASCENDC_TPL_UI_LIST, 1),
-                             ASCENDC_TPL_UINT_SEL(SPARSE_MODE, ASCENDC_TPL_UI_LIST, 0, 3),
-                             ASCENDC_TPL_BOOL_SEL(HAS_CU_SEQLENS_Q, 0, 1), ASCENDC_TPL_BOOL_SEL(HAS_CU_SEQLENS_K, 0, 1),
-                             ASCENDC_TPL_BOOL_SEL(HAS_SEQUSED_Q, 0, 1), ASCENDC_TPL_BOOL_SEL(HAS_SEQUSED_K, 0, 1),
-                             ASCENDC_TPL_BOOL_SEL(HAS_CMP_RESIDUAL_K, 0, 1), ASCENDC_TPL_BOOL_SEL(DETERMINISTIC, 0, 1),
-                             ASCENDC_TPL_TILING_STRUCT_SEL(optiling::DenseLightningIndexerGradRegBaseTilingData)));
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(TOPK_RANGE, ASCENDC_TPL_UI_LIST, 0),
+                            ASCENDC_TPL_UINT_SEL(LAYOUT_Q, ASCENDC_TPL_UI_LIST, 1),
+                            ASCENDC_TPL_UINT_SEL(LAYOUT_KT, ASCENDC_TPL_UI_LIST, 1),
+                            ASCENDC_TPL_UINT_SEL(SPARSE_MODE, ASCENDC_TPL_UI_LIST, 0, 3),
+                            ASCENDC_TPL_BOOL_SEL(HAS_CU_SEQLENS_Q, 0, 1), ASCENDC_TPL_BOOL_SEL(HAS_CU_SEQLENS_K, 0, 1),
+                            ASCENDC_TPL_BOOL_SEL(HAS_SEQUSED_Q, 0, 1), ASCENDC_TPL_BOOL_SEL(HAS_SEQUSED_K, 0, 1),
+                            ASCENDC_TPL_BOOL_SEL(HAS_CMP_RESIDUAL_K, 0, 1), ASCENDC_TPL_BOOL_SEL(DETERMINISTIC, 0, 1),
+                            ASCENDC_TPL_TILING_STRUCT_SEL(optiling::DenseLightningIndexerGradRegBaseTilingData)
+                        )
+);
 #endif // TEMPLATE_TILING_KEY
