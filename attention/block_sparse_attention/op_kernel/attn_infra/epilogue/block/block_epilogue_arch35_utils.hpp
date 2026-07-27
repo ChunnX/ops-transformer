@@ -89,7 +89,7 @@ namespace MXFP4 {
     static constexpr uint32_t UB_INDEX_SIZE = 256;
     static constexpr uint32_t UB_INDEX_OFFSET = 247 * KB_SIZE + 768;
 
-    // 同步eventID
+    // vec同步eventID
     static constexpr uint64_t SYNC_VEC1_RES_BUF0_FLAG = 0;
     static constexpr uint64_t SYNC_VEC1_RES_BUF1_FLAG = 1;
     static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF0_FLAG = 2;
