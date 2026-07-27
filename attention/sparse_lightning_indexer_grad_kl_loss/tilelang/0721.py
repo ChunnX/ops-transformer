@@ -309,7 +309,6 @@ def tilelang_grad_kl_loss_single_kernel(
     @T.macro
     def vector0_gather_task(
         SparseIndices,
-        KRealSize,
         Key,
         KeyRope,
         KeyIndex,
@@ -362,20 +361,13 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte3", "mte2", 0)
                     for lane in T.serial(GATHER_CHUNK_SIZE):
                         k_id = aiv_start + lane
-                        valid_k_size = KRealSize[bz_task, s1_id]
                         sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
-                        if k_id < valid_k_size:
-                            if sparse_idx >= 0:
-                                T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
-                                T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
-                                if d_rope > 0:
-                                    T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
-                            if sparse_idx < 0:
-                                T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
-                                T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
-                                if d_rope > 0:
-                                    T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
-                        if k_id >= valid_k_size:
+                        if sparse_idx >= 0:
+                            T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                            T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
+                            if d_rope > 0:
+                                T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
+                        if sparse_idx < 0:
                             T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
                             T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
                             if d_rope > 0:
@@ -390,20 +382,13 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.wait_flag("mte3", "mte2", nxt)
                             for lane in T.serial(GATHER_CHUNK_SIZE):
                                 k_id = next_start + lane
-                                valid_k_size = KRealSize[bz_task, s1_id]
                                 sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
-                                if k_id < valid_k_size:
-                                    if sparse_idx >= 0:
-                                        T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[nxt, lane, 0:DQuery])
-                                        T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
-                                        if d_rope > 0:
-                                            T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
-                                    if sparse_idx < 0:
-                                        T.copy(v0_zero_key, v0_key_ub[nxt, lane, 0:DQuery])
-                                        T.copy(v0_zero_ki, v0_ki_ub[nxt, lane, 0:DQueryIndex])
-                                        if d_rope > 0:
-                                            T.copy(v0_zero_rope, v0_rope_ub[nxt, lane, 0:d_rope])
-                                if k_id >= valid_k_size:
+                                if sparse_idx >= 0:
+                                    T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[nxt, lane, 0:DQuery])
+                                    T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                                    if d_rope > 0:
+                                        T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
+                                if sparse_idx < 0:
                                     T.copy(v0_zero_key, v0_key_ub[nxt, lane, 0:DQuery])
                                     T.copy(v0_zero_ki, v0_ki_ub[nxt, lane, 0:DQueryIndex])
                                     if d_rope > 0:
@@ -3166,7 +3151,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         s1_current = task_current % S1
                         vector0_gather_task(
                             SparseIndices,
-                            KRealSize,
                             Key,
                             KeyRope,
                             KeyIndex,
