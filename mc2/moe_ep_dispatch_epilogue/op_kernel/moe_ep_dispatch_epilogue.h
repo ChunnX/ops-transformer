@@ -308,13 +308,29 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(epWorldSize_), 1U, 0U,
                                             static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN)};
 
+    uint64_t pollCount = 0UL;
+    AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u aiv=%u ready_wait_begin expected=%d\n",
+                    epRankId_, aivId_, commpareFlag);
     while (sumOfFlag != commpareFlag) {
         DataCopy(ubWaitStatus_, statusGMTensor, statusCopyParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(ubWaitSum_, ubWaitStatus_, shape, true);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = ubWaitSum_.GetValue(0);
+        pollCount++;
+        if (sumOfFlag != commpareFlag &&
+            (pollCount == 1UL || (pollCount & 0xFFFFFFUL) == 0UL)) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u ready_wait polls=%lu sum=%d\n",
+                            epRankId_, pollCount, sumOfFlag);
+            for (uint32_t srcRankId = 0U; srcRankId < epWorldSize_; srcRankId++) {
+                AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u ready_state srcRank=%u state=%d\n",
+                                epRankId_, srcRankId,
+                                ubWaitStatus_.GetValue(srcRankId * UB_ALIGN / sizeof(int32_t)));
+            }
+        }
     }
+    AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u aiv=%u ready_wait_done polls=%lu\n",
+                    epRankId_, aivId_, pollCount);
     Duplicate<int32_t>(ubWaitStatus_, 0, epWorldSize_ * UB_ALIGN / sizeof(int32_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(statusGMTensor, ubWaitStatus_, clearStatusCopyParams);
@@ -325,10 +341,24 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 {
     if constexpr (!IsCached) {
         ComputePrefixSums();
+        if (aivId_ == 0U || aivId_ + 1U == aivNum_) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u aiv=%u ready_sync_enter cached=0\n",
+                            epRankId_, aivId_);
+        }
         WaitDispatch();
         SyncAll<true>();
+        if (aivId_ == 0U || aivId_ + 1U == aivNum_) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u aiv=%u ready_sync_exit cached=0\n",
+                            epRankId_, aivId_);
+        }
         CountHits();
+        if (aivId_ == 0U || aivId_ + 1U == aivNum_) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u aiv=%u hit_sync_enter\n", epRankId_, aivId_);
+        }
         SyncAll<true>();
+        if (aivId_ == 0U || aivId_ + 1U == aivNum_) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u aiv=%u hit_sync_exit\n", epRankId_, aivId_);
+        }
 
         uint32_t totalHits = 0;
         for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
@@ -338,10 +368,26 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         if (totalHits != 0) {
             CopyFromWindowByExpert();
         }
+        if (aivId_ == 0U || aivId_ + 1U == aivNum_) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u aiv=%u process_done cached=0 hits=%u\n",
+                            epRankId_, aivId_, totalHits);
+        }
     } else {
+        if (aivId_ == 0U || aivId_ + 1U == aivNum_) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u aiv=%u ready_sync_enter cached=1\n",
+                            epRankId_, aivId_);
+        }
         WaitDispatch();
         SyncAll<true>();
+        if (aivId_ == 0U || aivId_ + 1U == aivNum_) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u aiv=%u ready_sync_exit cached=1\n",
+                            epRankId_, aivId_);
+        }
         CopyFromWindowByCachedMeta();
+        if (aivId_ == 0U || aivId_ + 1U == aivNum_) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue rank=%u aiv=%u process_done cached=1\n",
+                            epRankId_, aivId_);
+        }
     }
 }
 
@@ -458,7 +504,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         if (aivId_ == 0U) {
             AscendC::PRINTF("epilogue recv: srcRank=%u srcRankBase=%lu winDataOffset=%lu "
                             "perSlotBytes=%u slotCnt=%d\n",
-                            rankId, static_cast<uint64_t>(srcRankBase), winDataOffset_, perSlotBytes_, slotCnt);
+                            rankId, reinterpret_cast<uint64_t>(srcRankBase), winDataOffset_, perSlotBytes_, slotCnt);
         }
         GM_ADDR firstSlotAddrThisAiv = srcRankBase + (int64_t)slotStart * perSlotBytes_;
         GlobalTensor<int32_t> srcMetaGm;
@@ -512,6 +558,15 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             for (uint32_t i = 0; i < hitCnt; i++) {
                 int64_t globalRow = ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET);
                 uint32_t topkIdx = static_cast<uint32_t>(ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET));
+                if (globalRow == 0 || globalRow == 63 || globalRow == 64 || globalRow == 65) {
+                    uint32_t firstPayloadByte =
+                        static_cast<uint32_t>(tokenOut.template ReinterpretCast<uint8_t>().GetValue(0));
+                    AscendC::PRINTF("[MOE_EP_ROW] dstRank=%u aiv=%u row=%lu winSrcRank=%u "
+                                    "metaSrcRank=%d token=%d topk=%u slot=%u xByte0=%u\n",
+                                    epRankId_, aivId_, static_cast<uint64_t>(globalRow), rankId,
+                                    srcRankMeta, tokenIdxMeta, topkIdx, slotStart + localSlot,
+                                    firstPayloadByte);
+                }
 
                 DataCopyPad(recvXGm_[globalRow * axisH_], tokenOut, tokenCopyParams);
                 if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -618,6 +673,14 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         tokenQueue_.EnQue(tokenTensor);
         LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
         uint32_t globalRow = startId + i;
+        if (globalRow == 0U || globalRow == 63U || globalRow == 64U || globalRow == 65U) {
+            uint32_t firstPayloadByte =
+                static_cast<uint32_t>(tokenOut.template ReinterpretCast<uint8_t>().GetValue(0));
+            AscendC::PRINTF("[MOE_EP_ROW] dstRank=%u aiv=%u row=%u cachedSrcRank=%d "
+                            "topk=%d slot=%d xByte0=%u\n",
+                            epRankId_, aivId_, globalRow, srcRankId, srcTopkIdx, slotIdx,
+                            firstPayloadByte);
+        }
         DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], tokenOut, tokenCopyParams);
         if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
             DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};

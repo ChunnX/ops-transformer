@@ -699,7 +699,13 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         DataCopyPad(sendCntGMTensor_[expertCntOffset], sendCntPerExpertTensor_, expertCntCopyParams);
         PipeBarrier<PIPE_MTE3>(); // workspace 清零完成后，其他核才能开始 AtomicAdd
     }
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u reset_count_sync_enter\n", epRankId_, aivId_);
+    }
     SyncAll<true>();
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u reset_count_sync_exit\n", epRankId_, aivId_);
+    }
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -790,11 +796,17 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, epRankId_, dstRankId);
 
     // 远端 使用URMA发送 count + state
+    AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u count_payload_begin dstRank=%u\n",
+                    epRankId_, aivId_, dstRankId);
     hcomm_.WriteNbi(commHandle, remoteCountAddr, srcWorkspaceAddr,
                     static_cast<uint64_t>(moeExpertNumPerRank_ * sizeof(int32_t)));
     hcomm_.Drain(commHandle);
+    AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u count_payload_done dstRank=%u\n",
+                    epRankId_, aivId_, dstRankId);
     hcomm_.WriteNbi(commHandle, notifyAddr, sendCntWorkspaceAddr_ + dstRankId * WIN_ADDR_ALIGN, sizeof(uint64_t));
     hcomm_.Drain(commHandle);
+    AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u count_notify_done dstRank=%u\n",
+                    epRankId_, aivId_, dstRankId);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -872,6 +884,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         topkIdsBuf_.GetWithOffset<float>(serverRankCount * UB_STRIDE, serverRankCount * UB_ALIGN);
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
+    uint64_t pollCount = 0UL;
+    AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u recv_count_wait_begin expected=%d\n",
+                    epRankId_, aivId_, compareFlag);
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待本核上轮计数器清0(buf 复用)
     while (sumOfFlag != compareFlag) {      // 状态位check
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
@@ -879,7 +894,20 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, serverRankCount, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = numRecvPerRankTensor_.GetValue(0);
+        pollCount++;
+        if (sumOfFlag != compareFlag &&
+            (pollCount == 1UL || (pollCount & 0xFFFFFFUL) == 0UL)) {
+            AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u recv_count_wait polls=%lu sum=%d\n",
+                            epRankId_, pollCount, sumOfFlag);
+            for (uint32_t srcRankId = 0U; srcRankId < serverRankCount; srcRankId++) {
+                AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u recv_count_state srcRank=%u state=%d\n",
+                                epRankId_, srcRankId,
+                                recvCounterTensor.GetValue(srcRankId * UB_STRIDE));
+            }
+        }
     }
+    AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u recv_count_wait_done polls=%lu\n",
+                    epRankId_, aivId_, pollCount);
     SetRecvNumPerExpert();                // 计算本卡上各专家接收的token总数
     SetRecvNumPerRank(recvCounterTensor); // 计算本端接收来自各卡的token总数
     // status clear
@@ -1262,6 +1290,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)(notifyAddr));
         statusGMTensor.SetValue(0, static_cast<int32_t>(1));
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(statusGMTensor);
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u local_ready_done dstRank=%u slots=%u\n",
+                        epRankId_, aivId_, dstRankId, sendTokenNum);
         return; //  本端slot已经写入win
     }
 
@@ -1279,12 +1309,20 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         AscendC::PRINTF("dispatch send: srcRank=%u dstRank=%u sendTokenNum=%u winDataOffset=%lu "
                         "dstRankWinOffset=%lu srcWorkspaceOffset=%lu\n",
                         epRankId_, dstRankId, sendTokenNum, winDataOffset_, dstRankWinOffset, srcWorkspaceOffset);
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u payload_drain_begin dstRank=%u bytes=%lu\n",
+                        epRankId_, aivId_, dstRankId, sendDataSize);
         MoeEpDispatchBase::WriteRemoteWindowByChunks(hcomm_, commHandle, remoteWinAddr, localWorkspaceAddr,
                                                      sendDataSize);
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u payload_drain_done dstRank=%u\n",
+                        epRankId_, aivId_, dstRankId);
     }
+    AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u ready_drain_begin dstRank=%u slots=%u\n",
+                    epRankId_, aivId_, dstRankId, sendTokenNum);
     hcomm_.WriteNbi(commHandle, notifyAddr, sendCntWorkspaceAddr_ + dstRankId * WIN_ADDR_ALIGN,
                     static_cast<uint64_t>(sizeof(uint64_t)));
     hcomm_.Drain(commHandle);
+    AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u ready_drain_done dstRank=%u\n",
+                    epRankId_, aivId_, dstRankId);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1818,6 +1856,20 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 
     // count 阶段已经按 token 分核生成 counter，这里只计算本核 slot 前缀。
     GetSlotStartNum();
+    if constexpr (!IsCached) {
+        for (uint32_t dstRankId = 0U; dstRankId < epWorldSize_; dstRankId++) {
+            uint64_t counterOffset = static_cast<uint64_t>(aivId_) * counterAlign512_ + dstRankId;
+            int32_t localSlotCount =
+                ReadGmByPassDCache((__gm__ int32_t *)scaleupCounterAddr_ + counterOffset);
+            if (localSlotCount > 0) {
+                int32_t slotStart = slotIdxPerRankTensor_.GetValue(dstRankId);
+                AscendC::PRINTF("[MOE_EP_SLOT] rank=%u aiv=%u dstRank=%u tokenRange=[%u,%u) "
+                                "slotRange=[%d,%d) count=%d\n",
+                                epRankId_, aivId_, dstRankId, startTokenId_, endTokenId_,
+                                slotStart, slotStart + localSlotCount, localSlotCount);
+            }
+        }
+    }
 
     for (uint32_t tokenId = startTokenId_; tokenId < endTokenId_; ++tokenId) {
         uint32_t topkOffset = tokenId * axisK_;
@@ -1846,15 +1898,30 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::PrepareDispatchPayloads()
 {
     CalSendCnt();
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u count_sync_enter\n", epRankId_, aivId_);
+    }
     SyncAll<true>();
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u count_sync_exit\n", epRankId_, aivId_);
+    }
 
     ExchangeCount();
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u count_exchange_done\n", epRankId_, aivId_);
+    }
     GetRecvCount();
     PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
 
     SendPhase();
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u payload_sync_enter\n", epRankId_, aivId_);
+    }
     SyncAll<true>();
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u payload_sync_exit\n", epRankId_, aivId_);
+    }
 
     // 通信初始化
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
@@ -1867,16 +1934,32 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 {
     // 先完成本超节点内直发和到远端 proxy 的聚合发送。
     WriteToRemoteWindow();
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u scaleup_send_done\n", epRankId_, aivId_);
+    }
     SendScaleoutPayloadsToProxy();
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u transfer_sync_enter\n", epRankId_, aivId_);
+    }
     // 等待所有发送核完成后，再执行目标 rank fanout 和接收区确认。
     SyncAll<true>(); // fanout 按目标 rank 分核使用 HCOMM，先等待其他 AIV 完成发送
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u transfer_sync_exit\n", epRankId_, aivId_);
+    }
     FanoutReceivedScaleoutPayloads();
+    if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u process_done\n", epRankId_, aivId_);
+    }
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        if (aivId_ == 0U || aivId_ == 1U || aivId_ + 1U == aivNum_) {
+            AscendC::PRINTF("[MOE_EP_TRACE] dispatch rank=%u aiv=%u process_begin cached=%u\n",
+                            epRankId_, aivId_, static_cast<uint32_t>(IsCached));
+        }
         PrepareDispatchPayloads();
         TransferDispatchPayloads();
     }
