@@ -47,22 +47,11 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, 
                           int64_t, int64_t, int64_t, int64_t>;
 
 enum MegaMoeTimingSlot : int32_t {
-    TIMING_TOTAL = 0,
-    TIMING_LOCAL_QUANT = 1,
-    TIMING_SEND_MASK = 2,
-    TIMING_DISPATCH = 3,
-    TIMING_GMM1 = 4,
-    TIMING_SWIGLU_QUANT = 5,
-    TIMING_SHARED_INPUT_COPY = 6,
-    TIMING_PHASE1_SYNC = 7,
-    TIMING_SHARED_GMM1_SWIGLU = 8,
-    TIMING_PRE_DISPATCH_SYNC = 9,
-    TIMING_EXPERT_TOKEN_NUMS = 10,
-    TIMING_GMM2 = 11,
-    TIMING_SHARED_GMM2 = 12,
-    TIMING_PRE_UNPERMUTE_SYNC = 13,
-    TIMING_UNPERMUTE = 14,
-    TIMING_COMBINE = 15
+    TIMING_DISPATCH = 0,
+    TIMING_GMM1 = 1,
+    TIMING_SWIGLU_QUANT = 2,
+    TIMING_GMM2 = 3,
+    TIMING_COMBINE = 4
 };
 
 // 预留：XType OutputType TopkWeightsType Weight1Type
@@ -1905,20 +1894,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
                                                                                     uint32_t expertIdx,
                                                                                     int32_t &vecSetSyncCom)
 {
-    if constexpr (!IsShared) {
-        if constexpr (g_coreType == AIC) {
-            kernelTiming_.StartAccumulatedTiming(TIMING_GMM1);
-        } else if constexpr (ENABLE_A8W4) {
-            if (subBlockIdx_ == 0) {
-                kernelTiming_.StartAccumulatedTiming(TIMING_GMM1);
-            } else {
-                kernelTiming_.StartAccumulatedTiming(TIMING_SWIGLU_QUANT);
-            }
-        } else if (subBlockIdx_ == 0) {
-            kernelTiming_.StartAccumulatedTiming(TIMING_SWIGLU_QUANT);
-        }
-    }
-
     if constexpr (g_coreType == AIV) {
         AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
             Get<IDX_C_OFFSET>(state.baseOffset),
@@ -1985,19 +1960,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
         }
     }
 
-    if constexpr (!IsShared) {
-        if constexpr (g_coreType == AIC) {
-            kernelTiming_.StopAccumulatedTiming(TIMING_GMM1);
-        } else if constexpr (ENABLE_A8W4) {
-            if (subBlockIdx_ == 0) {
-                kernelTiming_.StopAccumulatedTiming(TIMING_GMM1);
-            } else {
-                kernelTiming_.StopAccumulatedTiming(TIMING_SWIGLU_QUANT);
-            }
-        } else if (subBlockIdx_ == 0) {
-            kernelTiming_.StopAccumulatedTiming(TIMING_SWIGLU_QUANT);
-        }
-    }
 }
 
 // ===============================================================
@@ -2010,22 +1972,6 @@ __aicore__ inline void
 MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                                          uint32_t expertIdx, int32_t &vecSetSyncCom)
 {
-    if constexpr (!IsShared) {
-        if constexpr (g_coreType == AIC) {
-            kernelTiming_.StartAccumulatedTiming(TIMING_GMM2);
-        } else if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-            if (subBlockIdx_ == 0) {
-                kernelTiming_.StartAccumulatedTiming(TIMING_GMM2);
-            } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
-            }
-        } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            if (subBlockIdx_ == 0) {
-                kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
-            }
-        }
-    }
-
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t,
                                              QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch,
@@ -2045,38 +1991,8 @@ MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmA
         }
     }
 
-    if constexpr (!IsShared) {
-        if constexpr (g_coreType == AIC) {
-            kernelTiming_.StopAccumulatedTiming(TIMING_GMM2);
-        } else if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-            if (subBlockIdx_ == 0) {
-                kernelTiming_.StopAccumulatedTiming(TIMING_GMM2);
-            } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                kernelTiming_.StopAccumulatedTiming(TIMING_COMBINE);
-            }
-        } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            if (subBlockIdx_ == 0) {
-                kernelTiming_.StopAccumulatedTiming(TIMING_COMBINE);
-            }
-        }
-    }
-
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV && !IsShared) {
-        if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-            if (subBlockIdx_ == 1) {
-                kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
-            }
-        } else {
-            kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
-        }
         ProcessCombine(gmmAddrInfo, state, expertIdx);
-        if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-            if (subBlockIdx_ == 1) {
-                kernelTiming_.StopAccumulatedTiming(TIMING_COMBINE);
-            }
-        } else {
-            kernelTiming_.StopAccumulatedTiming(TIMING_COMBINE);
-        }
     }
 }
 
@@ -2122,7 +2038,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
-    kernelTiming_.StartTiming(TIMING_TOTAL);
+    int32_t gmm1TimingSlot = TIMING_SWIGLU_QUANT;
+    int32_t gmm2TimingSlot = TIMING_COMBINE;
+    if constexpr (g_coreType == AIC) {
+        gmm1TimingSlot = TIMING_GMM1;
+        gmm2TimingSlot = TIMING_GMM2;
+    } else if constexpr (ENABLE_A8W4) {
+        gmm1TimingSlot = subBlockIdx_ == 0 ? TIMING_GMM1 : TIMING_SWIGLU_QUANT;
+        gmm2TimingSlot = subBlockIdx_ == 0 ? TIMING_GMM2 : TIMING_COMBINE;
+    } else if constexpr (ENABLE_A4W4) {
+        gmm2TimingSlot = subBlockIdx_ == 0 ? TIMING_GMM2 : TIMING_COMBINE;
+    }
+
+    // Dispatch includes local preparation, quantization, routing metadata and
+    // all synchronization required before an expert can consume its tokens.
+    kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
 
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
@@ -2131,34 +2061,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SendMaskBufferConfig sendMaskBufferConfig = SendAndQuantBuffInit();
 
     // Phase 1: 量化 + 共享专家输入拆分 + mask/reset (AIV)
-    if constexpr (g_coreType == AIV) {
-        kernelTiming_.StartTiming(TIMING_LOCAL_QUANT);
-    }
     QuantProcessInRank();              // 对本卡token的量化
-    if constexpr (g_coreType == AIV) {
-        kernelTiming_.StopTiming(TIMING_LOCAL_QUANT);
-        kernelTiming_.StartTiming(TIMING_SEND_MASK);
-    }
     SendMaskCal(sendMaskBufferConfig); // 源卡按所有全局专家算 mask 并推送到目标专家卡
-    if constexpr (g_coreType == AIV) {
-        kernelTiming_.StopTiming(TIMING_SEND_MASK);
-    }
     ResetFlagList();                   // 清理workSpace空间上的flag位
     if (sharedExpertNum_ > 0) {
-        if constexpr (g_coreType == AIV) {
-            kernelTiming_.StartTiming(TIMING_SHARED_INPUT_COPY);
-        }
         SharedExpertCopyInput();
-        if constexpr (g_coreType == AIV) {
-            kernelTiming_.StopTiming(TIMING_SHARED_INPUT_COPY);
-        }
     }
-    kernelTiming_.StartTiming(TIMING_PHASE1_SYNC);
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>(); // aic需要等待flag位reset清理完成
-    kernelTiming_.StopTiming(TIMING_PHASE1_SYNC);
 
     // Phase 1.5: 共享专家 GMM1+SwiGLU (前移, 在 MoE 之前执行, 复用 MoE 函数)
     TupleShape initShape;
@@ -2166,19 +2078,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     if (sharedExpertNum_ > 0) {
-        kernelTiming_.StartTiming(TIMING_SHARED_GMM1_SWIGLU);
+        kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+        kernelTiming_.StartAccumulatedTiming(gmm1TimingSlot);
         ProcessSharedExpertGmm1(initShape, initOffset);
         SyncAll<false>();
-        kernelTiming_.StopTiming(TIMING_SHARED_GMM1_SWIGLU);
+        kernelTiming_.StopAccumulatedTiming(gmm1TimingSlot);
+        kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
     }
 
-    if constexpr (g_coreType == AIV) {
-        kernelTiming_.StartTiming(TIMING_PRE_DISPATCH_SYNC);
-    }
     CrossRankSyncInWorldSize();
-    if constexpr (g_coreType == AIV) {
-        kernelTiming_.StopTiming(TIMING_PRE_DISPATCH_SYNC);
-    }
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBufferConfig dispatchBufferConfig = DispatchBuffInit();
@@ -2198,13 +2106,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 预调度 expert 0。
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
-            kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
             SendCntCal(0, nextSendCnt);
             if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, 0, nextSendCnt)) {
                 UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState);
                 MetaInfoCalAndDispatch(dispatchAddrInfo, 0, dispatchBufferConfig);
             }
-            kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
         }
     }
 
@@ -2214,26 +2120,33 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         // Prefetch dispatch expert e+1，与当前 GMM1 consumer expert e 并发。
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1 && localExpertId + 1 < moeExpertPerRank_) {
-                kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
                 SendCntCal(localExpertId + 1, nextSendCnt);
                 if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, localExpertId + 1, nextSendCnt)) {
                     UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState);
                     MetaInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1, dispatchBufferConfig);
                 }
-                kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
             }
         }
 
         // GMM1 consumer 消费 expert e。
+        kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+        kernelTiming_.StartAccumulatedTiming(gmm1TimingSlot);
         if (!UpdateGroupParams<AddrUpdateMode::GMM1>(gmm1State, localExpertId, curSendCnt)) {
+            kernelTiming_.StopAccumulatedTiming(gmm1TimingSlot);
+            kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
         GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, localExpertId, vecSetSyncCom);
+        kernelTiming_.StopAccumulatedTiming(gmm1TimingSlot);
+        kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
     }
+    kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
+
     // prefetch 路径：epilogue 完成所有 expert 后写 allDone，AIC 轮询后继续
     // 非 prefetch 路径：沿用 EndSync 硬同步
     // A8W4 的 epilogue 在 AIV1 执行，generic 在 AIV0 执行
+    kernelTiming_.StartAccumulatedTiming(gmm1TimingSlot);
     if constexpr (TopkWeightsPrefetch) {
         if constexpr (g_coreType == AIV) {
             constexpr uint32_t epilogueSubIdx = ENABLE_A8W4 ? 1 : 0;
@@ -2257,15 +2170,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     } else {
         EndSync(vecSetSyncCom);
     }
+    kernelTiming_.StopAccumulatedTiming(gmm1TimingSlot);
+
+    kernelTiming_.StartAccumulatedTiming(TIMING_DISPATCH);
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
-            kernelTiming_.StartTiming(TIMING_EXPERT_TOKEN_NUMS);
             ExpertTokenNumCopyOut();
-            kernelTiming_.StopTiming(TIMING_EXPERT_TOKEN_NUMS);
         }
     }
+    kernelTiming_.StopAccumulatedTiming(TIMING_DISPATCH);
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
+    kernelTiming_.StartAccumulatedTiming(gmm2TimingSlot);
     vecSetSyncCom = 0;
     GMMAddrInfo gmm2AddrInfo;
     ExpertLoopState gmm2State{initShape, initOffset, 0};
@@ -2289,27 +2205,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
     if (sharedExpertNum_ > 0) {
-        kernelTiming_.StartTiming(TIMING_SHARED_GMM2);
         ProcessSharedExpertGmm2(initShape, initOffset);
-        kernelTiming_.StopTiming(TIMING_SHARED_GMM2);
     }
+    kernelTiming_.StopAccumulatedTiming(gmm2TimingSlot);
 
-    // 4. 本卡数据Unpermute
+    // Combine includes final cross-rank synchronization, unpermute and output
+    // bookkeeping so the five stages cover the complete business process.
+    kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
     if constexpr (g_coreType == AIV) {
-        kernelTiming_.StartTiming(TIMING_PRE_UNPERMUTE_SYNC);
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        kernelTiming_.StopTiming(TIMING_PRE_UNPERMUTE_SYNC);
-
-        kernelTiming_.StartTiming(TIMING_UNPERMUTE);
         Unpermute();
-        kernelTiming_.StopTiming(TIMING_UNPERMUTE);
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 
-    kernelTiming_.StopTiming(TIMING_TOTAL);
     uint64_t timingOutputBytes =
         static_cast<uint64_t>(aicNum_ + blockAivNum_) * Mc2Kernel::KernelTiming::BYTES_PER_CORE;
     uint64_t yOutputBytes = static_cast<uint64_t>(m_) * k_ * sizeof(OutputType);
+    kernelTiming_.StopAccumulatedTiming(TIMING_COMBINE);
     if (yOutputBytes >= timingOutputBytes) {
         kernelTiming_.WriteTimingToOutput(GetBlockIdx(), true, static_cast<int32_t>(aicNum_));
     }

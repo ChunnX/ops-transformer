@@ -74,7 +74,7 @@ public:
 
     __aicore__ inline void WriteTimingToOutput(int32_t coreId, bool isAicActivated = false, int32_t aicNum = 0)
     {
-        AscendC::PipeBarrier<AscendC::PIPE_ALL>();
+        AscendC::PipeBarrier<PIPE_ALL>();
         if (isAicActivated) {
             AscendC::SyncAll<false>();
         } else {
