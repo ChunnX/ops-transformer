@@ -1519,9 +1519,10 @@ def tilelang_grad_kl_loss_single_kernel(
                 # 每个 task 仅读取一次真实 K 长度。尾块路径只让拥有的 AIV
                 # 搬运到 16 行对齐的有效终点，例如 1025 -> 1040。
                 valid_k_size = K if full_valid else KRealSize[bz_task, s1_task]
-                if full_valid:
-                    task_vector_batch_count = vector_batch_count
-                else:
+                # TileLang 的宏符号收集不追踪 Python 静态分支内新定义的
+                # 名称，因此先无条件给出 full-valid 配额；尾块路径仅覆写它。
+                task_vector_batch_count = vector_batch_count
+                if not full_valid:
                     task_scatter_batches = (
                         valid_k_size + v2_scatter_batch - 1
                     ) // v2_scatter_batch
