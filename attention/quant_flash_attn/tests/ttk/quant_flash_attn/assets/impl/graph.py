@@ -117,7 +117,9 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             )
 
         p_scale_val = (
-            float(p_scale.item()) if isinstance(p_scale, torch.Tensor) else float(p_scale)
+            float(p_scale.item())
+            if isinstance(p_scale, torch.Tensor)
+            else float(p_scale)
         )
 
         cu_seqlens_q_list = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
@@ -225,7 +227,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            dequant_scale_v=inputs["dequant_scale_v"],
+            v_descale=inputs["dequant_scale_v"],
             mask_mode=int(inputs["sparse_mode"]),
             layout_q=layout_q,
             layout_q_descale=inputs["layout_q_descale"],
