@@ -17,7 +17,7 @@
     * `dense_lightning_indexer_kl_loss_grad_metadata`：用于在主算子前生成分核 metadata，输出结果需要作为 `dense_lightning_indexer_kl_loss_grad` 的 `metadata` 输入传入。
 
 - 计算公式：
-  
+
     Indexer logits可表示为：
 
    $$
