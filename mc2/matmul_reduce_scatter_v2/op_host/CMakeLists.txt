@@ -47,6 +47,8 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS --cce-auto-sync=off
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
+                    -DCATLASS_EPILOGUE_BLOCK_EPILOGUE_DEQUANT_HPP
+                    -DCATLASS_EPILOGUE_TILE_TILE_PERBLOCK_QUANT_HPP
                     -DCATLASS_ARCH=3510
                     "-I${MATMUL_REDUCE_SCATTER_V2_CATLASS_INCLUDE_DIR}"
         )
