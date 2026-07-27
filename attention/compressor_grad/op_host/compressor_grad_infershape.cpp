@@ -20,14 +20,11 @@ namespace ops {
     constexpr uint32_t TOKEN_X_INPUT_INDEX = 0;
     constexpr uint32_t WEIGHT_KV_INPUT_INDEX = 1;
     constexpr uint32_t WEIGHT_WGATE_INPUT_INDEX = 2;
-
-    constexpr uint32_t STATE_CACHE_INPUT_INDEX = 3;
-
-    constexpr uint32_t APE_INPUT_INDEX = 4;
+    constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3; 
+    constexpr uint32_t SOFTMAX_SCORE_INPUT_INDEX = 4;
+    constexpr uint32_t KV_INPUT_INDEX = 5;
 
     // INPUT(OPTION)
-    constexpr uint32_t STATE_BLOCK_TABLE_INPUT_INDEX = 5;
-
     constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 6;
     constexpr uint32_t SEQ_USED_INPUT_INDEX = 7;
     constexpr uint32_t START_POS_INPUT_INDEX = 8;
@@ -35,17 +32,18 @@ namespace ops {
     // ATTR
     constexpr uint32_t CMP_RATIO_ATTR_INDEX = 0;
     constexpr uint32_t COFF_ATTR_INDEX = 1;
-    constexpr uint32_t CACHE_MODE_ATTR_INDEX = 2;
-    constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 3;
 
     // OUTPUT
-    constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;
+    constexpr uint32_t D_X_OUTPUT_INDEX = 0;
+    constexpr uint32_t D_WKV_OUTPUT_INDEX = 1;
+    constexpr uint32_t D_WGATE_OUTPUT_INDEX = 2;
+    constexpr uint32_t D_APE_OUTPUT_INDEX = 3;
 
     // ATTR DEFAULT VALUE
     constexpr uint32_t CMP_RATIO_VALUE = 4;
     constexpr uint32_t COFF_VALUE = 1;
 
-struct CompressorProtoShapeParam {
+struct CompressorGradProtoShapeParam {
     bool isBsMerge { false };
     int64_t B { 0 };
     int64_t T { 0 };
@@ -65,7 +63,7 @@ constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
 
-ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, CompressorProtoShapeParam &shapeParam)
+ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext* context, CompressorGradProtoShapeParam &shapeParam)
 {
     auto xShape = context->GetRequiredInputShape(TOKEN_X_INPUT_INDEX);      // (B, S, H) | (T, H)
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
@@ -73,24 +71,6 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
     OP_CHECK_NULL_WITH_CONTEXT(context, wkvShape);
     auto wgateShape = context->GetRequiredInputShape(WEIGHT_WGATE_INPUT_INDEX);  // (coff * D, H)
     OP_CHECK_NULL_WITH_CONTEXT(context, wgateShape);
-    // (block_num, block_size, 2 * coff * D) | (B, token_size, 2 * coff * D)
-    auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, stateCacheShape);
-
-    auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);    // (r, coff * D)
-    OP_CHECK_NULL_WITH_CONTEXT(context, apeShape);
-
-    // (B, sMax/block_size) | (B, )
-    auto stateBlockTableShape = context->GetOptionalInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, stateBlockTableShape);
-    if (xShape->GetDimNum() == DIM_NUM_2) {
-        auto cuSeqlensShape = context->GetOptionalInputShape(CU_SEQ_LEN_INPUT_INDEX);    // (B+1,)
-        OP_CHECK_NULL_WITH_CONTEXT(context, cuSeqlensShape);
-    }
-    auto seqUsedShape = context->GetOptionalInputShape(SEQ_USED_INPUT_INDEX);    // (B,)
-    OP_CHECK_NULL_WITH_CONTEXT(context, seqUsedShape);
-    auto startPosShape = context->GetOptionalInputShape(START_POS_INPUT_INDEX);    // (B,)
-    OP_CHECK_NULL_WITH_CONTEXT(context, startPosShape);
 
     auto attr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);
@@ -120,56 +100,86 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapeParam, gert::InferShapeContext* context)
+ge::graphStatus SetCompressorGradShapeDim(const CompressorGradProtoShapeParam &shapeParam, gert::InferShapeContext* context)
 {
     // query: (B, S, N, Hckv) | (T, N, Hckv)
-    auto cmpKvShape = context->GetOutputShape(CMP_KV_OUTPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, cmpKvShape);
+    auto dxShape = context->GetOutputShape(D_X_OUTPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, dxShape);
+
+    // query: (B, S, N, Hckv) | (T, N, Hckv)
+    auto dWkvShape = context->GetOutputShape(D_WKV_OUTPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, dWkvShape);
+
+    auto dWgateShape = context->GetOutputShape(D_WGATE_OUTPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, dWgateShape);
+
+    auto dApeShape = context->GetOutputShape(D_APE_OUTPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, dApeShape);
+
     auto attr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);
+    const int64_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
+    int64_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
+    const int64_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
+    int64_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
     // Set output shape
     if (!shapeParam.isBsMerge) {
-        cmpKvShape->SetDimNum(DIM_NUM_3);                   // (B, Sr, H)
-        cmpKvShape->SetDim(DIM_INDEX_0, shapeParam.B);
-        cmpKvShape->SetDim(DIM_INDEX_1, shapeParam.Sr);
-        cmpKvShape->SetDim(DIM_INDEX_2, shapeParam.D);
+        dxShape->SetDimNum(DIM_NUM_3);                   // (B, S, H)
+        dxShape->SetDim(DIM_INDEX_0, shapeParam.B);
+        dxShape->SetDim(DIM_INDEX_1, shapeParam.S);
+        dxShape->SetDim(DIM_INDEX_2, shapeParam.H);
     } else {
-        cmpKvShape->SetDimNum(DIM_NUM_2);                   // (T, N, Hckv)
-        cmpKvShape->SetDim(DIM_INDEX_0, shapeParam.Sr);
-        cmpKvShape->SetDim(DIM_INDEX_1, shapeParam.D);
+        dxShape->SetDimNum(DIM_NUM_2);                   // (T, H)
+        dxShape->SetDim(DIM_INDEX_0, shapeParam.T);
+        dxShape->SetDim(DIM_INDEX_1, shapeParam.H);
     }
 
+    dWkvShape->SetDimNum(DIM_NUM_2);                   // (coff*D, H)
+    dWkvShape->SetDim(DIM_INDEX_0, shapeParam.D * coff);                   // (coff*D, H)
+    dWkvShape->SetDim(DIM_INDEX_1, shapeParam.H);                   // (coff*D, H)
+
+    dWgateShape->SetDimNum(DIM_NUM_2);                   // (coff*D, H)
+    dWgateShape->SetDim(DIM_INDEX_0, shapeParam.D * coff);                   // (coff*D, H)
+    dWgateShape->SetDim(DIM_INDEX_1, shapeParam.H);                   // (coff*D, H)
+
+    dApeShape->SetDimNum(DIM_NUM_2);                   // (coff*D, H)
+    dApeShape->SetDim(DIM_INDEX_0, cmpRatio);                   // (coff*D, H)
+    dApeShape->SetDim(DIM_INDEX_1, shapeParam.D * coff);                   // (coff*D, H)
+
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeCompressor(gert::InferDataTypeContext* context)
+ge::graphStatus InferDataTypeCompressorGrad(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "Context is nullptr."),
                return ge::GRAPH_FAILED);
-    OP_LOGI(context->GetNodeName(), "Enter Compressor inferDataType impl.");
+    OP_LOGI(context->GetNodeName(), "Enter CompressorGrad inferDataType impl.");
 
-    context->SetOutputDataType(CMP_KV_OUTPUT_INDEX, context->GetRequiredInputDataType(TOKEN_X_INPUT_INDEX));
+    context->SetOutputDataType(D_X_OUTPUT_INDEX, context->GetRequiredInputDataType(TOKEN_X_INPUT_INDEX));
+    context->SetOutputDataType(D_WKV_OUTPUT_INDEX, context->GetRequiredInputDataType(TOKEN_X_INPUT_INDEX));
+    context->SetOutputDataType(D_WGATE_OUTPUT_INDEX, context->GetRequiredInputDataType(TOKEN_X_INPUT_INDEX));
+    context->SetOutputDataType(D_WGATE_OUTPUT_INDEX, context->GetRequiredInputDataType(D_CMP_KV_INPUT_INDEX));
 
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferShapeCompressor(gert::InferShapeContext* context)
+ge::graphStatus InferShapeCompressorGrad(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "Context is nullptr."),
                return ge::GRAPH_FAILED);
-    OP_LOGI(context->GetNodeName(), "Enter Compressor infershape impl.");
+    OP_LOGI(context->GetNodeName(), "Enter CompressorGrad infershape impl.");
 
-    CompressorProtoShapeParam shapeParam {};
-    auto apiRet = GetCompressorShapeDim(context, shapeParam);
+    CompressorGradProtoShapeParam shapeParam {};
+    auto apiRet = GetCompressorGradShapeDim(context, shapeParam);
     OP_CHECK_IF((apiRet != GRAPH_SUCCESS),  OP_LOGE(context->GetNodeName(), "Context get input shape failed"),
         return ge::GRAPH_FAILED);
 
-    apiRet = SetCompressorShapeDim(shapeParam, context);
+    apiRet = SetCompressorGradShapeDim(shapeParam, context);
     OP_CHECK_IF((apiRet != GRAPH_SUCCESS), OP_LOGE(context->GetNodeName(), "Context set output shape failed"),
         return ge::GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(Compressor).InferShape(InferShapeCompressor).InferDataType(InferDataTypeCompressor);
+IMPL_OP_INFERSHAPE(CompressorGrad).InferShape(InferShapeCompressorGrad).InferDataType(InferDataTypeCompressorGrad);
 }  // namespace ops
