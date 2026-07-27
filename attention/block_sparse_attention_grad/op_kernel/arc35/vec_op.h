@@ -16,16 +16,17 @@ namespace BSA_ARC35 {
 struct EvenCoreInfo {
     uint32_t data_size{0};        // 总共需要处理的元素个数
     uint32_t start_idx{0};        // 每个core处理的起始idx
-    uint32_t len{0};              // 每个core处理的元素个数
+    uint32_t len{0};              // 每个core处理的元素个�?
     uint32_t loop_num{0};         // 每个core需要循环的次数
     uint32_t max_process_size{0}; // 每个core单次循环最大处理的元素个数
-    uint32_t align_tail{0};       // 每个core处理的对齐尾块, tail = align_tail + pad_tail
+    uint32_t align_tail{0};       // 每个core处理的对齐尾�? tail = align_tail + pad_tail
     uint32_t pad_tail{0};         // 每个core处理的pad尾块, tail = align_tail + pad_tail
 };
 
 template <typename BSA_TYPE>
 class VecOp {
     using INPUT_TYPE = typename BSA_TYPE::input_type;
+    using OUTPUT_TYPE = typename BSA_TYPE::output_type;
     static constexpr uint32_t INPUT_LAYOUT = BSA_TYPE::input_layout;
     using TILING_CLASS = typename BSA_TYPE::tiling_class;
     static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
@@ -63,8 +64,8 @@ private:
 
     LocalTensor<float> vec_in_ping_;
     LocalTensor<float> vec_in_pong_;
-    LocalTensor<INPUT_TYPE> vec_out_ping_;
-    LocalTensor<INPUT_TYPE> vec_out_pong_;
+    LocalTensor<OUTPUT_TYPE> vec_out_ping_;
+    LocalTensor<OUTPUT_TYPE> vec_out_pong_;
     // sftg
     LocalTensor<INPUT_TYPE> dy_in_ping_;
     LocalTensor<INPUT_TYPE> dy_in_pong_;
@@ -338,9 +339,9 @@ public:
         SET_FLAG(V, MTE2, event_id);
     }
 
-    __aicore__ inline void SendVecPost(const GlobalTensor<INPUT_TYPE> &dq_out_gm,
-                                       const GlobalTensor<INPUT_TYPE> &dk_out_gm,
-                                       const GlobalTensor<INPUT_TYPE> &dv_out_gm,
+    __aicore__ inline void SendVecPost(const GlobalTensor<OUTPUT_TYPE> &dq_out_gm,
+                                       const GlobalTensor<OUTPUT_TYPE> &dk_out_gm,
+                                       const GlobalTensor<OUTPUT_TYPE> &dv_out_gm,
                                        const GlobalTensor<float> &dq_workspace, const GlobalTensor<float> &dk_workspace,
                                        const GlobalTensor<float> &dv_workspace, const TILING_CLASS *tilingData,
                                        TBuf<TPosition::VECCALC> &ub_buffer)
@@ -353,10 +354,10 @@ public:
         ub_offset += POST_TILE_LEN * sizeof(float);
         vec_in_pong_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
         ub_offset += POST_TILE_LEN * sizeof(float);
-        vec_out_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(POST_TILE_LEN, ub_offset);
-        ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
-        vec_out_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(POST_TILE_LEN, ub_offset);
-        ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
+        vec_out_ping_ = ub_buffer.GetWithOffset<OUTPUT_TYPE>(POST_TILE_LEN, ub_offset);
+        ub_offset += POST_TILE_LEN * sizeof(OUTPUT_TYPE);
+        vec_out_pong_ = ub_buffer.GetWithOffset<OUTPUT_TYPE>(POST_TILE_LEN, ub_offset);
+        ub_offset += POST_TILE_LEN * sizeof(OUTPUT_TYPE);
         SET_FLAG(MTE3, MTE2, event_ping_);
         SET_FLAG(MTE3, MTE2, event_pong_);
 
@@ -415,7 +416,7 @@ private:
         LocalTensor<float> dy_out_tensor = sftg_ping_pong_idx ? dy_out_ping_ : dy_out_pong_;
         LocalTensor<float> attention_out_tensor = sftg_ping_pong_idx ? attention_out_ping_ : attention_out_pong_;
         LocalTensor<float> sftg_front_tensor = sftg_ping_pong_idx ? sftg_front_ping_ : sftg_front_pong_;
-        uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个数
+        uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个�?
         uint32_t src_stride;
         if constexpr (INPUT_LAYOUT == BSND) {
             src_stride = q_head_num_ * head_dim_;
@@ -474,7 +475,7 @@ private:
     }
 
     template <bool MULS>
-    __aicore__ inline void ComputeVecPost(const GlobalTensor<INPUT_TYPE> &dst_tensor,
+    __aicore__ inline void ComputeVecPost(const GlobalTensor<OUTPUT_TYPE> &dst_tensor,
                                           const GlobalTensor<float> &src_tensor, const EvenCoreInfo &info,
                                           uint32_t &post_ping_pong_idx)
     {
@@ -483,7 +484,7 @@ private:
         }
 
         LocalTensor<float> vecIn;
-        LocalTensor<INPUT_TYPE> vecOut;
+        LocalTensor<OUTPUT_TYPE> vecOut;
         uint32_t process_size = info.max_process_size;
 
         for (uint32_t i = 0; i < info.loop_num; i++) {
@@ -543,7 +544,7 @@ private:
 
             SET_FLAG(V, MTE3, EVENT_ID0);
             WAIT_FLAG(V, MTE3, EVENT_ID0);
-            copyParam.blockLen = info.pad_tail * sizeof(INPUT_TYPE);
+            copyParam.blockLen = info.pad_tail * sizeof(OUTPUT_TYPE);
             DataCopyPad(dst_tensor[gm_offset], vecOut, copyParam);
             SET_FLAG(MTE3, MTE2, event_id);
             post_ping_pong_idx = 1 - post_ping_pong_idx;
@@ -624,7 +625,7 @@ private:
         info.loop_num = CeilDiv<uint32_t>(info.len, max_process_size);
 
         uint32_t tail = info.len % max_process_size;
-        // 由于DataCopyPad最多处理65535，因此tail部分分成align_tail和pad_tail计算
+        // 由于DataCopyPad最多处�?5535，因此tail部分分成align_tail和pad_tail计算
         if (tail == 0) {
             info.align_tail = max_process_size;
             info.pad_tail = 0;
@@ -639,7 +640,7 @@ private:
     {
         /*
          * function: Copy lse from global memory to local memory
-         * input shape：(b, n, s, 1) or (t, n, 1)
+         * input shape�?b, n, s, 1) or (t, n, 1)
          * out shape:   (s, 8)
          * dtype:       float
          */

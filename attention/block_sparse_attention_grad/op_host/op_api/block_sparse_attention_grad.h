@@ -28,6 +28,9 @@ const std::array<const aclTensor *, 3> BlockSparseAttentionGrad(
     const aclIntArray *blockShapeOptional,
     const aclIntArray *actualSeqLengthsOptional,
     const aclIntArray *actualSeqLengthsKvOptional,
+    const aclTensor *qDequantScaleOptional,
+    const aclTensor *kDequantScaleOptional,
+    const aclTensor *vDequantScaleOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -39,5 +42,4 @@ const std::array<const aclTensor *, 3> BlockSparseAttentionGrad(
 
 } // namespace l0op
 
-#endif  // BLOCK_SPARSE_ATTENTION_GRAD_H
-
+#endif // BLOCK_SPARSE_ATTENTION_GRAD_H

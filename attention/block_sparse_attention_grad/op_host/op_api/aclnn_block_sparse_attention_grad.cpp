@@ -41,6 +41,9 @@ struct BSAGParams {
     const aclTensor *attenMaskOptional = nullptr;
     const aclIntArray *actualSeqLengthsOptional = nullptr;
     const aclIntArray *actualSeqLengthsKvOptional = nullptr;
+    const aclTensor *qDequantScaleOptional = nullptr;
+    const aclTensor *kDequantScaleOptional = nullptr;
+    const aclTensor *vDequantScaleOptional = nullptr;
     char *qInputLayout;
     char *kvInputLayout;
     const aclIntArray *blockShapeOptional;
@@ -105,7 +108,7 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
     CHECK_RET(CheckMandatoryTensors(params.attentionOutGrad, params.query, params.key, params.value,
                                     params.attentionOut, params.softmaxLse, params.blockSparseMaskOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
-    // dtype检查
+    // dtype检�?
     DataType qDtype = params.query->GetDataType();
     DataType kDtype = params.key->GetDataType();
     DataType vDtype = params.value->GetDataType();
@@ -116,17 +119,25 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
     DataType dqDtype = params.dqOut->GetDataType();
     DataType dkDtype = params.dkOut->GetDataType();
     DataType dvDtype = params.dvOut->GetDataType();
-    CHECK_COND(qDtype == ACL_FLOAT16 || qDtype == ACL_BF16, ACLNN_ERR_PARAM_INVALID, "The dtype of query is not support.");
+    CHECK_COND(qDtype == ACL_FLOAT16 || qDtype == ACL_BF16 || qDtype == ACL_FLOAT8_E4M3FN,
+               ACLNN_ERR_PARAM_INVALID, "The dtype of query is not support.");
     CHECK_COND(qDtype == kDtype, ACLNN_ERR_PARAM_INVALID, "key dtype error.");
     CHECK_COND(qDtype == vDtype, ACLNN_ERR_PARAM_INVALID, "value dtype error.");
     CHECK_COND(attnOutDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "attentionOut dtype must match query dtype.");
     CHECK_COND(gradDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "attentionOutGrad dtype must match query dtype.");
     CHECK_COND(lseDtype == ACL_FLOAT, ACLNN_ERR_PARAM_INVALID, "softmaxLse dtype must be FLOAT32.");
     CHECK_COND(maskDtype == ACL_BOOL || maskDtype == ACL_UINT8, ACLNN_ERR_PARAM_INVALID, "blockSparseMask dtype must be BOOL or UINT8.");
-    CHECK_COND(dqDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dqOut dtype must match query dtype.");
-    CHECK_COND(dkDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dkOut dtype must match query dtype.");
-    CHECK_COND(dvDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dvOut dtype must match query dtype.");
-    // format检查
+    if (qDtype == ACL_FLOAT8_E4M3FN) {
+        CHECK_COND(dqDtype == ACL_FLOAT16 || dqDtype == ACL_BF16, ACLNN_ERR_PARAM_INVALID,
+                   "dqOut dtype must be FLOAT16 or BF16 when query is FP8.");
+        CHECK_COND(dkDtype == dqDtype, ACLNN_ERR_PARAM_INVALID, "dkOut dtype must match dqOut dtype.");
+        CHECK_COND(dvDtype == dqDtype, ACLNN_ERR_PARAM_INVALID, "dvOut dtype must match dqOut dtype.");
+    } else {
+        CHECK_COND(dqDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dqOut dtype must match query dtype.");
+        CHECK_COND(dkDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dkOut dtype must match query dtype.");
+        CHECK_COND(dvDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dvOut dtype must match query dtype.");
+    }
+    // format检�?
     if (params.query->GetStorageFormat() != ge::FORMAT_ND ||
         params.key->GetStorageFormat() != ge::FORMAT_ND ||
         params.value->GetStorageFormat() != ge::FORMAT_ND ||
@@ -139,7 +150,7 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
         params.dvOut->GetStorageFormat() != ge::FORMAT_ND) {
         OP_LOGW("Format of input is not ND, this format may lead to precision failure.");
     }
-    // shape检查
+    // shape检�?
     auto queryShape = params.query->GetViewShape();
     auto keyShape = params.key->GetViewShape();
     auto valueShape = params.value->GetViewShape();
@@ -220,6 +231,30 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
     return ParseBlockShape(params.blockShapeOptional);
 }
 
+static aclnnStatus ValidateFp8DequantScale(const BSAGParams& params)
+{
+    DataType qDtype = params.query->GetDataType();
+    if (qDtype != ACL_FLOAT8_E4M3FN) {
+        CHECK_RET(params.qDequantScaleOptional == nullptr, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(params.kDequantScaleOptional == nullptr, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(params.vDequantScaleOptional == nullptr, ACLNN_ERR_PARAM_INVALID);
+        return ACLNN_SUCCESS;
+    }
+
+    CHECK_RET(params.qDequantScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(params.kDequantScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(params.vDequantScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+
+    CHECK_COND(params.qDequantScaleOptional->GetDataType() == ACL_FLOAT, ACLNN_ERR_PARAM_INVALID,
+               "qDequantScale dtype must be FLOAT32.");
+    CHECK_COND(params.kDequantScaleOptional->GetDataType() == ACL_FLOAT, ACLNN_ERR_PARAM_INVALID,
+               "kDequantScale dtype must be FLOAT32.");
+    CHECK_COND(params.vDequantScaleOptional->GetDataType() == ACL_FLOAT, ACLNN_ERR_PARAM_INVALID,
+               "vDequantScale dtype must be FLOAT32.");
+
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus MakeContiguous(const aclTensor *&dout,
                                   const aclTensor *&query,
                                   const aclTensor *&key,
@@ -228,6 +263,9 @@ static aclnnStatus MakeContiguous(const aclTensor *&dout,
                                   const aclTensor *&softmaxLse,
                                   const aclTensor *&blockSparseMaskOptional,
                                   const aclTensor *&attenMaskOptional,
+                                  const aclTensor *&qDequantScale,
+                                  const aclTensor *&kDequantScale,
+                                  const aclTensor *&vDequantScale,
                                   aclOpExecutor *executor)
 {
     dout = l0op::Contiguous(dout, executor);
@@ -256,6 +294,19 @@ static aclnnStatus MakeContiguous(const aclTensor *&dout,
         CHECK_RET(attenMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
+    if (qDequantScale != nullptr) {
+        qDequantScale = l0op::Contiguous(qDequantScale, executor);
+        CHECK_RET(qDequantScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (kDequantScale != nullptr) {
+        kDequantScale = l0op::Contiguous(kDequantScale, executor);
+        CHECK_RET(kDequantScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (vDequantScale != nullptr) {
+        vDequantScale = l0op::Contiguous(vDequantScale, executor);
+        CHECK_RET(vDequantScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
     return ACLNN_SUCCESS;
 }
 
@@ -278,6 +329,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
     const aclIntArray *blockShapeOptional,
     const aclIntArray *actualSeqLengthsOptional,
     const aclIntArray *actualSeqLengthsKvOptional,
+    const aclTensor *qDequantScaleOptional,
+    const aclTensor *kDequantScaleOptional,
+    const aclTensor *vDequantScaleOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -302,6 +356,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
     bsag_params.attenMaskOptional = attenMaskOptional;
     bsag_params.actualSeqLengthsOptional = actualSeqLengthsOptional;
     bsag_params.actualSeqLengthsKvOptional = actualSeqLengthsKvOptional;
+    bsag_params.qDequantScaleOptional = qDequantScaleOptional;
+    bsag_params.kDequantScaleOptional = kDequantScaleOptional;
+    bsag_params.vDequantScaleOptional = vDequantScaleOptional;
     bsag_params.qInputLayout = qInputLayout;
     bsag_params.kvInputLayout = kvInputLayout;
     bsag_params.blockShapeOptional = blockShapeOptional;
@@ -313,6 +370,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
     bsag_params.dkOut = dk;
     bsag_params.dvOut = dv;
     aclnnStatus ret = ValidateParams(bsag_params);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
+    ret = ValidateFp8DequantScale(bsag_params);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -336,19 +397,21 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
         }
     }
 
-    ret = MakeContiguous(dout, query, key, value, attentionOut, softmaxLse,blockSparseMaskOptional, attenMaskOptional, executorImpl);
+    ret = MakeContiguous(dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional, attenMaskOptional,
+                         qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
 
     string qInputLayoutStr = ConvertLayoutString(qInputLayout);
     string kvInputLayoutStr = ConvertLayoutString(kvInputLayout);
-    
-    auto outputs = l0op::BlockSparseAttentionGrad(dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional, 
-                                                  attenMaskOptional, blockShapeOptional,actualSeqLengthsOptional, actualSeqLengthsKvOptional,
-                                                  const_cast<char*>(qInputLayoutStr.c_str()), 
-                                                  const_cast<char*>(kvInputLayoutStr.c_str()), numKeyValueHeads,
-                                                  maskType, scaleValue, preTokens, nextTokens, executorImpl);
+
+    auto outputs = l0op::BlockSparseAttentionGrad(
+        dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional, attenMaskOptional,
+        blockShapeOptional, actualSeqLengthsOptional, actualSeqLengthsKvOptional, qDequantScaleOptional,
+        kDequantScaleOptional, vDequantScaleOptional, const_cast<char *>(qInputLayoutStr.c_str()),
+        const_cast<char *>(kvInputLayoutStr.c_str()), numKeyValueHeads, maskType, scaleValue, preTokens, nextTokens,
+        executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr || outputs[2] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockSparseAttentionGrad returned nullptr outputs.");
         return ACLNN_ERR_INNER_NULLPTR;
@@ -379,4 +442,3 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
 #ifdef __cplusplus
 }
 #endif
-

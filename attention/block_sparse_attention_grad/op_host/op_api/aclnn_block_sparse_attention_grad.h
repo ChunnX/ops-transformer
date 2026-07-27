@@ -18,9 +18,9 @@ extern "C" {
 #endif
 
 /**
- * @brief aclnnBlockSparseAttentionGrad的第一段接口,根据具体的计算流程,计算workspace大小
+ * @brief aclnnBlockSparseAttentionGrad的第一段接�?根据具体的计算流�?计算workspace大小
  * @domain aclnn_ops_infer
- * 
+ *
  * @param [in] dout: attention out 梯度输入
  * @param [in] query: Query tensor输入
  * @param [in] key: Key tensor输入
@@ -30,8 +30,8 @@ extern "C" {
  * @param [in] blockSparseMaskOptional: 稀疏块索引 [T, headNum, maxKvBlockNum]
  * @param [in] attenMaskOptional: Attention mask (只支持传入nullptr)
  * @param [in] blockShapeOptional: 稀疏块形状数组 [blockShapeX, blockShapeY]
- * @param [in] actualSeqLengthsOptional: 实际序列长度Q (在qInputLayout为“TND”时必选)
- * @param [in] actualSeqLengthsKvOptional: 实际序列长度KV (在kvInputLayout为“TND”时必选)
+ * @param [in] actualSeqLengthsOptional: 实际序列长度Q (在qInputLayout为“TND”时必�?
+ * @param [in] actualSeqLengthsKvOptional: 实际序列长度KV (在kvInputLayout为“TND”时必�?
  * @param [in] qInputLayout: Query输入layout ("TND", "BNSD")
  * @param [in] kvInputLayout: KV输入layout ("TND", "BNSD")
  * @param [in] numKeyValueHeads: KV头数
@@ -43,7 +43,7 @@ extern "C" {
  * @param [out] dk: Attention输出tensor
  * @param [out] dv: Attention输出tensor
  * @param [out] workspaceSize: 返回计算所需workspace大小
- * @param [out] executor: 返回op执行器
+ * @param [out] executor: 返回op执行�?
  * @return aclnnStatus: 返回状态码
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGradGetWorkspaceSize(
@@ -58,6 +58,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
     const aclIntArray *blockShapeOptional,
     const aclIntArray *actualSeqLengthsOptional,
     const aclIntArray *actualSeqLengthsKvOptional,
+    const aclTensor *qDequantScaleOptional,
+    const aclTensor *kDequantScaleOptional,
+    const aclTensor *vDequantScaleOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -73,11 +76,11 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
 
 /**
  * @brief aclnnBlockSparseAttentionGrad的第二段接口,用于执行计算
- * 
+ *
  * @param [in] workspace: 工作空间地址
  * @param [in] workspaceSize: 工作空间大小
- * @param [in] executor: op执行器
- * @param [in] stream: acl stream流
+ * @param [in] executor: op执行�?
+ * @param [in] stream: acl stream�?
  * @return aclnnStatus: 返回状态码
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad(
@@ -90,5 +93,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
 }
 #endif
 
-#endif  // ACLNN_BLOCK_SPARSE_ATTENTION_GRAD_H
-
+#endif // ACLNN_BLOCK_SPARSE_ATTENTION_GRAD_H

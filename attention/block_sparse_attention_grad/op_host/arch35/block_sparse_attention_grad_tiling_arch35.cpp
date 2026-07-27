@@ -43,7 +43,7 @@ bool IsSameShape(Args... shapes)
 ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vector<int32_t> &k_shape,
                            const std::vector<int32_t> &v_shape, const int32_t q_group, gert::TilingContext *context)
 {
-    /* function: 根据固定格式传入shape检查输入是否符合要求
+    /* function: 根据固定格式传入shape检查输入是否符合要�?
      * shape：[b, n, s, d]
      */
     if (!IsSameShape(q_shape[0], k_shape[0], v_shape[0])) {
@@ -69,7 +69,6 @@ public:
     {
     }
 
-
 protected:
     bool IsCapable() override
     {
@@ -78,8 +77,9 @@ protected:
             return false;
         }
 
-        if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16) {
-            OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad only support DT_FLOAT16 and DT_BF16.");
+        if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16 && dataType_ != ge::DT_FLOAT8_E4M3FN) {
+            OP_LOGE(context_->GetNodeName(),
+                    "BlockSparseAttentionGrad only support DT_FLOAT16, DT_BF16 and DT_FLOAT8_E4M3FN.");
             return false;
         }
 
@@ -92,6 +92,26 @@ protected:
             OP_LOGE(context_->GetNodeName(),
                     "BlockSparseAttentionGrad only support blockShapeX_ and blockShapeY_ be multiple of 64.");
             return false;
+        }
+
+        if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+            constexpr int64_t FP8_BLOCK_X = 128;
+            constexpr int64_t FP8_BLOCK_Y_MULTIPLE = 256;
+            if (blockShapeX_ != FP8_BLOCK_X) {
+                OP_LOGE(context_->GetNodeName(),
+                        "FP8 mode requires blockShapeX == 128, but got %ld.", blockShapeX_);
+                return false;
+            }
+            if (blockShapeY_ % FP8_BLOCK_Y_MULTIPLE != 0) {
+                OP_LOGE(context_->GetNodeName(),
+                        "FP8 mode requires blockShapeY %% 256 == 0, but got %ld.", blockShapeY_);
+                return false;
+            }
+            if (outputDataType_ != ge::DT_FLOAT16 && outputDataType_ != ge::DT_BF16) {
+                OP_LOGE(context_->GetNodeName(),
+                        "FP8 mode requires output dtype to be DT_FLOAT16 or DT_BF16.");
+                return false;
+            }
         }
 
         return true;
@@ -125,6 +145,15 @@ protected:
             return ge::GRAPH_FAILED;
         } else {
             dataType_ = qInputDesc->GetDataType();
+        }
+
+        if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+            auto dqOutputDesc = context_->GetOutputDesc(0);
+            if (dqOutputDesc == nullptr) {
+                OP_LOGE(context_->GetNodeName(), "dq output desc is null");
+                return ge::GRAPH_FAILED;
+            }
+            outputDataType_ = dqOutputDesc->GetDataType();
         }
 
         if (strcmp(qInputLayout, kvInputLayout) != 0) {
@@ -268,14 +297,14 @@ protected:
 
     ge::graphStatus DoLibApiTiling() override
     {
-        // softmaxGrad tiling，一次最多处理16K个元素个数
+        // softmaxGrad tiling，一次最多处�?6K个元素个�?
         constexpr uint32_t element_num = 8 * 1024;
         uint32_t process_s1_size = element_num / head_dim_;
         auto input_shape = ge::Shape({process_s1_size, head_dim_});
         uint32_t tmp_space_size = AscendC::GetSoftMaxGradMaxTmpSize(input_shape, sizeof(float), true, true);
         AscendC::SoftMaxGradTilingFunc(input_shape, sizeof(float), tmp_space_size,
                                        tilingData_.softmaxGradFrontTilingData, true);
-        tilingData_.set_sftgTmpSpaceSize(tmp_space_size); // 元素个数=8K时需要50K的临时空间
+        tilingData_.set_sftgTmpSpaceSize(tmp_space_size); // 元素个数=8K时需�?0K的临时空�?
         return ge::GRAPH_SUCCESS;
     }
 
@@ -326,15 +355,11 @@ protected:
     uint64_t GetTilingKey() const override
     {
         uint64_t default_key = 1000;
-        /*
-         *  000: BF16 BSND
-         *  001: FP16 BSND
-         *  010: BF16 BNSD
-         *  011: FP16 BNSD
-         *  100: BF16 TND
-         *  101: FP16 TND
-         */
-        default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
+        if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+            default_key = (outputDataType_ == ge::DT_BF16) ? 1020 : 1010;
+        } else {
+            default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
+        }
 
         if (strcmp(layout_, BSND_STR) == 0) {
             default_key += 0b000;
@@ -350,7 +375,8 @@ protected:
 private:
     const char *layout_;
     ge::DataType dataType_;
-    uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
+    ge::DataType outputDataType_ = ge::DT_FLOAT16;
+    uint64_t tilingKey_ = 1000; // arc35 默认tilingkey�?000开�?
     BlockSparseAttentionGradTilingDataArch35 tilingData_;
     static constexpr const char *BSND_STR = "BSND";
     static constexpr const char *BNSD_STR = "BNSD";
@@ -367,7 +393,6 @@ private:
     int32_t max_q_seq_len_ = 0;
     int32_t max_kv_seq_len_ = 0;
 };
-
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(BlockSparseAttentionGrad, BlockSparseAttentionGradArch35Tiling,
                                    static_cast<int32_t>(NpuArch::DAV_3510), 1);

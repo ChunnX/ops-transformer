@@ -51,20 +51,21 @@ struct RunTimeInfo {
     int32_t last_kv_seq_sum{0};
     int32_t cur_q_seq_len{0};
     int32_t cur_kv_seq_len{0};
-    int32_t need_compute{0};     // 是否存在任务需要计算
+    int32_t need_compute{0};     // 是否存在任务需要计�?
     int32_t need_copy_kv{0};     // 是否需要copy kv
     int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
     int32_t is_singlekv_last{0};
-    int64_t s1Len{0};      // 当前计算的q_seq的长度
-    int64_t s2Len{0};      // 当前计算的kv_seq的长度
-    int64_t s1LenAlign{0}; // 当前计算的q_seq的16对齐的长度
-    int64_t s2LenAlign{0}; // 当前计算的kv_seq的16对齐的长度
+    int64_t s1Len{0};      // 当前计算的q_seq的长�?
+    int64_t s2Len{0};      // 当前计算的kv_seq的长�?
+    int64_t s1LenAlign{0}; // 当前计算的q_seq�?6对齐的长�?
+    int64_t s2LenAlign{0}; // 当前计算的kv_seq�?6对齐的长�?
     int64_t queryGmOffset{0}; // query gm offset
     int64_t keyGmOffset{0};   // key gm offset
     int64_t lseGmOffset{0};   // lse gm offset
     int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
+    int64_t qDequantScaleOffset{0}; // q dequant scale gm offset
+    int64_t kDequantScaleOffset{0}; // k/v dequant scale gm offset
 };
-
 
 inline __aicore__ uint32_t max(const uint32_t a, const uint32_t b)
 {
@@ -141,7 +142,6 @@ __aicore__ inline int64_t GetSftgGmOffset(int64_t lastBatchSum, int64_t current_
     }
 }
 
-
 __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t batch_idx, const int64_t n1_idx,
                                     const int64_t q_block_idx, const int64_t kv_block_idx,
                                     __gm__ uint8_t *block_sparse_mask)
@@ -153,7 +153,6 @@ __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t b
     bool is_valid = block_sparse_mask[offset];
     return is_valid;
 }
-
 
 __aicore__ inline int32_t GetBlockLen(int32_t start_idx, int32_t end_idx, int32_t max_len)
 {
