@@ -58,6 +58,7 @@ constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t DCCI_OFFSET = 64U;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
+constexpr uint32_t MAX_CHANNELS_PER_RANK = 8U;
 constexpr size_t MASK_CALC_NEED_WORKSPACE = 20UL * 1024UL;
 
 template <TemplateMoeEpCombineTypeClass>
@@ -240,7 +241,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
     channelsPerRank_ = mc2Context_->channelsPerRank;
-    if (channelsPerRank_ == 0) {
+    if (channelsPerRank_ == 0 || channelsPerRank_ > MAX_CHANNELS_PER_RANK) {
         channelsPerRank_ = 1;
     }
     uint32_t remoteRankNum = (epWorldSize_ > 0) ? (epWorldSize_ - 1) : 0;
