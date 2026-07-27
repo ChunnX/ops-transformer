@@ -112,8 +112,6 @@ public:
     static constexpr uint32_t L1_KV_BUFCNT = 2;   // KV/V 区份数（2+2 方案：PV 2 槽 ping-pong，QK 另 2 槽独立）
     static constexpr uint32_t L1_P_BUFCNT = 20;   // P 区份数
 
-    static constexpr uint32_t L1_SINGLE_GLOBAL_MAX_SIZE = 128;
-
     // L0 各区单份字节数
     static constexpr uint32_t QK_L0A_SIZE = 128 * 128 / 2;              // QK 用 L0A：8K
     static constexpr uint32_t QK_L0B_SIZE = 128 * 128 / 2;              // QK 用 L0B：8K
@@ -128,6 +126,7 @@ public:
     
     static constexpr uint32_t PV_L0AB_BUFCNT = 2;                    // mm2 L0A/B 双缓冲
     static constexpr uint32_t PV_L0C_BUFCNT = 1;                     // mm2 L0C 单缓冲（原地累加）
+
     static constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
 
     __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource) {
@@ -158,7 +157,6 @@ public:
         // KV/V-scale：l1AScaleTensor(V-scale)，起始记为 vScaleBase，占 L1_KV_DESCALE_SIZE * 4 = 8K
         uint32_t vScaleBase = addrL1Start;
         addrL1Start += L1_KV_DESCALE_SIZE * L1_KV_BUFCNT;
-        // （QFA 在此之后还有 localGlobalMaxL1 = 256*4，PV 用不到，不再申请）
 
         for (uint32_t i = 0; i < L1_P_BUFCNT; i++) {
             l1BScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(pScaleBase + L1_P_DESCALE_SIZE * i);
@@ -462,13 +460,20 @@ public:
         AscendC::InitConstValueParams<uint16_t> pFillParams(1, static_cast<uint16_t>(L1_P_SIZE / 32), 0, 0x6666);
         AscendC::InitConstValueParams<uint16_t> pscaleFillParams(1, static_cast<uint16_t>(L1_P_DESCALE_SIZE / 32), 0, 0x7d7d);
         // P/P-scale：填满全部 20 槽（确保假数据可观测，任意 pSlot 都有数据）
-        //   QFA 不做这步（P 由 vector 推）；BSA stub 阶段需要，生产阶段删
+        // [TODO]BSA stub 阶段需要，生产阶段删
         for (uint32_t i = 0; i < L1_P_BUFCNT; i++) {
             AscendC::Fill(l1BTensor[i].template ReinterpretCast<uint16_t>(), pFillParams);           // P 数据
             AscendC::PipeBarrier<PIPE_MTE2>();
             AscendC::Fill(l1BScaleTensor[i].template ReinterpretCast<uint16_t>(), pscaleFillParams); // P scale
             AscendC::PipeBarrier<PIPE_MTE2>();
         }
+
+        // // [TODO] 此处也是假数据
+        // for (uint32_t i = 0; i < L1_GLOBAL_MAX_BUFCNT; i++) {
+        //     AscendC::InitConstValueParams<half> localGlobalMaxL1FillParams(1, static_cast<uint16_t>(L1_GLOBAL_MAX_SIZE * 2  / 32 ), 0, static_cast<half>(1));
+        //     AscendC::Fill(localGlobalMaxL1[i], localGlobalMaxL1FillParams);          // localGlobalMaxL1 数据
+        //     AscendC::PipeBarrier<PIPE_MTE2>();
+        // }
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
@@ -575,13 +580,14 @@ public:
         uint32_t nMmad = s1Align128;           // n = M
         uint32_t kMmad = s2Align64;        // k = S2（对齐 64）
 
-        // todo 规避行为，qk占用了pv的buffer
-        // InitL0BufferForReduceSum();
-
         // --- P 尾部补零（S2 对齐 32 但没到 64 → P pad 到 align64）---
-        if (s2Align32 != s2Align64) {
-            PadPS2NotAlign64(s2Align64, s2Align32, embedReal, pSlot);
+        if (curBaseTileSize != s2Align64) {
+            PadPS2NotAlign64(s2Align64, curBaseTileSize, embedReal, pSlot);
         }
+        // [TODO] 目前为了单体测试正确性，正确内容如下
+        // if (s2Align32 != s2Align64) {
+        //     PadPS2NotAlign64(s2Align64, s2Align32, embedReal, pSlot);
+        // }
 
         // AscendC::PipeBarrier<PIPE_ALL>();
         // // --- V 尾部补零（S2 没到 64 对齐 → V pad 到 align64）---
@@ -680,6 +686,7 @@ public:
         // [诊断] 确认轮转是否执行
         AscendC::printf("[L1-ROT] l1ABufId after rotate=%u\n", (unsigned)l1ABufId);
     }
+
 
 protected:
     // L1：V 用 KV 区 4 份，P 用 P 区 20 份

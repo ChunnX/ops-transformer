@@ -178,6 +178,7 @@ public:
         coreIdx = AscendC::GetBlockIdx();
         // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
         BlockMmadPV blockMmadPV(resource);
+        BlockMmadCopyGlobalMaxL1ToUB blockGMaxL1ToUb(resource);
  #endif	 
  #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
@@ -299,12 +300,14 @@ public:
                         auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(1, EpMXFP4::KVS_BASE_SIZE);
                         auto l1GMaxTensorTla = tla::MakeTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionUB{});
                         CopyGMaxL1ToUb(delay3TileInfo);
+                        blockGMaxL1ToUb(l1GMaxTensorTla, delay3TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB + 16);
                     } else {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
                         // UpdatePScale(delay3TileInfo);
                         epilogueComputePScale(l1PScaleTensorTla, delay3TileInfo);
+                        AscendC::DumpTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], 168, 128);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2);
                     }
                 }
