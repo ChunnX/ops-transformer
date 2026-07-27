@@ -139,7 +139,8 @@ public:
     {
         auto tensorA = tla::MakeTensor(gmA, MakeTlaLayout<ElementA>(layoutA), Arch::PositionGM{});
         auto tensorB = tla::MakeTensor(gmB, MakeTlaLayout<ElementB>(layoutB), Arch::PositionGM{});
-        auto tensorC = tla::MakeTensor(gmC, MakeTlaLayout<ElementC>(layoutC), Arch::PositionGM{});
+        auto layoutBlockC = layoutC.GetTileLayout(actualShape.GetCoordMN());
+        auto tensorC = tla::MakeTensor(gmC, tla::MakeLayoutFromTag(layoutBlockC), Arch::PositionGM{});
         auto layoutBias = tla::MakeLayout(actualShape.n());
         auto tensorBias = tla::MakeTensor(gmBias, layoutBias, Arch::PositionGM{});
         impl_(tensorA, tensorB, tensorC, actualShape, tensorBias);
@@ -153,7 +154,8 @@ private:
     {
         auto tensorA = tla::MakeTensor(gmA, MakeTlaLayout<ElementA>(layoutA), Arch::PositionGM{});
         auto tensorB = tla::MakeTensor(gmB, MakeTlaLayout<ElementB>(layoutB), Arch::PositionGM{});
-        auto tensorC = tla::MakeTensor(gmC, MakeTlaLayout<ElementC>(layoutC), Arch::PositionGM{});
+        auto layoutBlockC = layoutC.GetTileLayout(actualShape.GetCoordMN());
+        auto tensorC = tla::MakeTensor(gmC, tla::MakeLayoutFromTag(layoutBlockC), Arch::PositionGM{});
         impl_(tensorA, tensorB, tensorC, actualShape);
     }
 
