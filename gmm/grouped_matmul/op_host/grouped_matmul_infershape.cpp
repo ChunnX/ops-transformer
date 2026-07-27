@@ -247,32 +247,39 @@ static ge::graphStatus GetAttrsValue(T context, GMMAttrs &gmmAttrs)
     const int64_t *splitItemPtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_SPLIT_ITEM);
     OP_CHECK_NULL_WITH_CONTEXT(context, splitItemPtr);
     gmmAttrs.splitItem = *splitItemPtr;
+    OP_LOGI(context->GetNodeName(), "Attr splitItem = %ld", gmmAttrs.splitItem);
 
     const int64_t *dtypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_OUTPUT_DTYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, dtypePtr);
     gmmAttrs.outputDtype = *dtypePtr;
+    OP_LOGI(context->GetNodeName(), "Attr dtype = %ld", gmmAttrs.outputDtype);
 
     const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(GMM_INDEX_ATTR_TUNING_CONFIG);
-    gmmAttrs.tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ?
-                            (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0] : 0;
+    gmmAttrs.tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ?	 
+                            (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0] : 0;	 
+    OP_LOGI(context->GetNodeName(), "Attr tuningConfig = %ld", gmmAttrs.tuningConfig); 
 
-    const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_TYPE);
-    OP_CHECK_NULL_WITH_CONTEXT(context, groupTypePtr);
-    gmmAttrs.groupType = *groupTypePtr;
+    const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_TYPE);	 
+    OP_CHECK_NULL_WITH_CONTEXT(context, groupTypePtr);	 
+    gmmAttrs.groupType = *groupTypePtr;	 
+    OP_LOGI(context->GetNodeName(), "Attr groupType = %ld", gmmAttrs.groupType); 
 
-    const bool *transposeWPtr = attrs->GetAttrPointer<bool>(GMM_INDEX_ATTR_TRANSPOSE_W);
-    OP_CHECK_NULL_WITH_CONTEXT(context, transposeWPtr);
-    gmmAttrs.transposeWeight = *transposeWPtr;
+    const bool *transposeWPtr = attrs->GetAttrPointer<bool>(GMM_INDEX_ATTR_TRANSPOSE_W);	 
+    OP_CHECK_NULL_WITH_CONTEXT(context, transposeWPtr);	 
+    gmmAttrs.transposeWeight = *transposeWPtr;	 
+    OP_LOGI(context->GetNodeName(), "Attr isWeightTransposed = %d", gmmAttrs.transposeWeight); 
 
-    const bool *transposeXPtr = attrs->GetAttrPointer<bool>(GMM_INDEX_ATTR_TRANSPOSE_X);
-    OP_CHECK_NULL_WITH_CONTEXT(context, transposeXPtr);
-    gmmAttrs.transposeX = *transposeXPtr;
+    const bool *transposeXPtr = attrs->GetAttrPointer<bool>(GMM_INDEX_ATTR_TRANSPOSE_X);	 
+    OP_CHECK_NULL_WITH_CONTEXT(context, transposeXPtr);	 
+    gmmAttrs.transposeX = *transposeXPtr;	 
+    OP_LOGI(context->GetNodeName(), "Attr isXTransposed = %d", gmmAttrs.transposeX); 
 
-    const int64_t *activeType = attrs->GetInt(GMM_INDEX_ATTR_ACT_TYPE);
-    OP_CHECK_NULL_WITH_CONTEXT(context, activeType);
-    gmmAttrs.activeType = *activeType;
-    return GRAPH_SUCCESS;
-}
+    const int64_t *activeType = attrs->GetInt(GMM_INDEX_ATTR_ACT_TYPE);	 
+    OP_CHECK_NULL_WITH_CONTEXT(context, activeType);	 
+    gmmAttrs.activeType = *activeType;	 
+    OP_LOGI(context->GetNodeName(), "Attr activeType = %ld", gmmAttrs.activeType); 
+    return GRAPH_SUCCESS;	 
+ }
 
 static ge::graphStatus CheckAttrs(gert::InferShapeContext* context, GMMAttrs& gmmAttrs) {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
