@@ -27,9 +27,10 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitZero = {
 };
 template <typename T, typename INPUT_T, bool isAlign>
 __simd_vf__ inline void ProcessVec2BasicVF(__ubuf__ INPUT_T *dstUb, __ubuf__ T *dwUb, __ubuf__ T *srcUb,
-    __ubuf__ T *softmaxReduceSumUb, __ubuf__ T *weightUb, __ubuf__ T *reduceSumUb, __ubuf__ T *reduceSumOtherUb,
-    __ubuf__ T *reluUb, __ubuf__ T *lseUb, uint32_t regCnt, uint32_t tailSize, uint32_t nIndexSize,
-    uint32_t nBaseSize, uint32_t repeatSize, uint32_t blockStride)
+                                           __ubuf__ T *softmaxReduceSumUb, __ubuf__ T *weightUb,
+                                           __ubuf__ T *reduceSumUb, __ubuf__ T *reduceSumOtherUb, __ubuf__ T *reluUb,
+                                           __ubuf__ T *lseUb, uint32_t regCnt, uint32_t tailSize, uint32_t nIndexSize,
+                                           uint32_t nBaseSize, uint32_t repeatSize, uint32_t blockStride)
 {
     RegTensor<float> vreg_input_x1;
     RegTensor<float> vreg_input_x2;
@@ -136,7 +137,7 @@ __simd_vf__ inline void ProcessVec2BasicVF(__ubuf__ INPUT_T *dstUb, __ubuf__ T *
             }
         }
         Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_out_dw, vreg_output_dw,
-            preg_all_b32);
+                                                                                          preg_all_b32);
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_dst, (__ubuf__ T *&)dwUb);
         Add(vreg_dst, vreg_out_dw, vreg_dst, preg_all_b32);
         StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)dwUb), vreg_dst, ureg_dst, 1);
@@ -146,9 +147,11 @@ __simd_vf__ inline void ProcessVec2BasicVF(__ubuf__ INPUT_T *dstUb, __ubuf__ T *
 
 template <typename T, typename INPUT_T, bool isAlign>
 __aicore__ inline void ProcessVec2Vf(const LocalTensor<INPUT_T> &dstTensor, const LocalTensor<T> &dwTensor,
-    const LocalTensor<T> &srcTensor, const LocalTensor<T> &softmaxReduceTensor, const LocalTensor<T> &weightTensor,
-    const LocalTensor<T> &reduceSumTensor, const LocalTensor<T> &reduceSumOtherTensor, const LocalTensor<T> &reluTensor,
-     const LocalTensor<T> &lseTensor, const uint32_t m, const uint32_t nIndexSize, const uint32_t nBaseSize)
+                                     const LocalTensor<T> &srcTensor, const LocalTensor<T> &softmaxReduceTensor,
+                                     const LocalTensor<T> &weightTensor, const LocalTensor<T> &reduceSumTensor,
+                                     const LocalTensor<T> &reduceSumOtherTensor, const LocalTensor<T> &reluTensor,
+                                     const LocalTensor<T> &lseTensor, const uint32_t m, const uint32_t nIndexSize,
+                                     const uint32_t nBaseSize)
 {
     uint32_t alignCnt = m >> 6;
     uint32_t tailSize = m - (m >> 6 << 6);
@@ -168,15 +171,17 @@ __aicore__ inline void ProcessVec2Vf(const LocalTensor<INPUT_T> &dstTensor, cons
         __ubuf__ INPUT_T *dstUb =
             (__ubuf__ INPUT_T *)dstTensor.GetPhyAddr() + (regCnt * nIndexSize) * (s2BaseSize >> 1);
         ProcessVec2BasicVF<T, INPUT_T, true>(dstUb, dwUb, srcUb, softmaxReduceSumUb, weightUb, reduceSumUb,
-        reduceSumOtherUb, reluUb, lseUb, regCnt, tailSize, nIndexSize, nBaseSize, repeatSize, blockStride);
+                                             reduceSumOtherUb, reluUb, lseUb, regCnt, tailSize, nIndexSize, nBaseSize,
+                                             repeatSize, blockStride);
     }
     if constexpr (!isAlign) {
         __ubuf__ INPUT_T *dstUb =
             (__ubuf__ INPUT_T *)dstTensor.GetPhyAddr() + (alignCnt * nIndexSize) * (s2BaseSize >> 1);
         ProcessVec2BasicVF<T, INPUT_T, false>(dstUb, dwUb, srcUb, softmaxReduceSumUb, weightUb, reduceSumUb,
-        reduceSumOtherUb, reluUb, lseUb, alignCnt, tailSize, nIndexSize, nBaseSize, repeatSize, blockStride);
+                                              reduceSumOtherUb, reluUb, lseUb, alignCnt, tailSize, nIndexSize,
+                                              nBaseSize, repeatSize, blockStride);
     }
 }
-} // namespace
+} // namespace AscendC
 
 #endif // VF_PROCESS_VEC2_H
