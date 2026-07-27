@@ -286,21 +286,23 @@ def _batch_consistency_check(npu_outputs, kwargs):
                     if is_th:
                         headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
                         compare_len = (stop - start - headSize) // cmp_ratio
-                        start_idx = start // cmp_ratio if headSize == cmp_ratio else (start + headSize) // cmp_ratio
+                        start_idx = start // cmp_ratio if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
                         slice_output = npu_np[start_idx:(start_idx+compare_len),:]
                     else:
                         if axis_idx == 1:
                             headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
                             compare_len = (stop - start - headSize) // cmp_ratio
-                            start_idx = start // cmp_ratio if headSize == cmp_ratio else (start + headSize) // cmp_ratio
+                            start_idx = start // cmp_ratio if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
+                            print(start_idx)
+                            print(compare_len)
+                            print(headSize)
                             slice_output = npu_np[0,start_idx:(start_idx+compare_len),:]
                         else:
-                            start_idx = start // cmp_ratio
-                            compare_len = (stop - start) // cmp_ratio
-                            slice_output = npu_np[start_idx:(start_idx+compare_len),:]                                                    
+                            slice_output = npu_np[start:stop,:,:]                                                    
 
                     if kl not in _BATCH_CONSISTENCY_CACHE:
-                        _BATCH_CONSISTENCY_CACHE[kl] = {
+                        dl = '_'.join(kl.split('_')[:2])
+                        _BATCH_CONSISTENCY_CACHE[dl] = {
                             'base': slice_output.copy(),
                             'comparisons': []
                         }
