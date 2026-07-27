@@ -551,17 +551,7 @@ public:
         if (loop >= PRELOAD_N) {
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
-#ifdef DUMP_STAGE_V1
-                    auto &pBuf = this->l1PBuffers.Get();
-                    pBuf.WaitCrossCore();
-                    auto pTensor = pBuf.template GetTensor<INPUT_T>();
-                    GlobalTensor<INPUT_T> dumpGm;
-                    uint64_t dumpOffset = dumpCount * mBaseSize * (s2BaseSize >> 1);
-                    dumpGm.SetGlobalBuffer((__gm__ INPUT_T *)(attentionOutGm + dumpOffset * sizeof(INPUT_T)));
-                    DataCopy(dumpGm, pTensor, mBaseSize * (s2BaseSize >> 1));
-                    pBuf.SetCrossCore();
-                    dumpCount++;
-#else
+#ifndef DUMP_STAGE_V1
                     ComputeMm2(runInfoNegN);
 #endif
                 } else {
