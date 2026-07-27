@@ -915,6 +915,15 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     info.cntWinStateOffset = 0UL;
     info.slotWinStateOffset = cntWinStateSize;
     info.winDataOffset = info.scaleupFinalRecvDataOffset;
+    OP_LOGI(nodeName,
+            "dispatch layout: mode=%u rankPerServer=%u scaleoutRanks=%u "
+            "nmt=%u perSlot=%u scaleoutSlot=%u slotState=%lu "
+            "scaleoutData=%lu scaleupData=%lu winData=%lu",
+            info.networkMode, info.rankSizePerServer, info.numScaleoutRanks,
+            info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes,
+            info.scaleoutSlotAlignedBytes, info.slotWinStateOffset,
+            info.scaleoutRecvDataOffset, info.scaleupFinalRecvDataOffset,
+            info.winDataOffset);
     OP_LOGD(nodeName, "windowSize = %lu", maxWindowSize);
     return ge::GRAPH_SUCCESS;
 }

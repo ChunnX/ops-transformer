@@ -1276,6 +1276,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         GM_ADDR remoteWinAddr =
             MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset;
         GM_ADDR localWorkspaceAddr = slotWorkspaceAddr_ + srcWorkspaceOffset;
+        AscendC::PRINTF("dispatch send: srcRank=%u dstRank=%u sendTokenNum=%u winDataOffset=%lu "
+                        "dstRankWinOffset=%lu srcWorkspaceOffset=%lu\n",
+                        epRankId_, dstRankId, sendTokenNum, winDataOffset_, dstRankWinOffset, srcWorkspaceOffset);
         MoeEpDispatchBase::WriteRemoteWindowByChunks(hcomm_, commHandle, remoteWinAddr, localWorkspaceAddr,
                                                      sendDataSize);
     }
