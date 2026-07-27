@@ -40,7 +40,7 @@
     C128A：\left[kv\_state, score\_state\right] = X @ \left[W^{KV}, W^{Gate}\right]
     $$
 
-    1. 计算分组加法：
+    2. 计算分组加法：
 
     $$
     C4A：score\_state_i^\prime = \left[score\_state_{\left[4(i-1)+1:4i,:\right]}^a; score\_state_{\left[4i+1:4(i+1),:\right]}^b\right] + Ape,~i=1,2,\cdots, \frac{s}{4};
@@ -50,7 +50,7 @@
     C128A：score\_state_i^\prime = score\_state_{\left[128(i-1)+1:128i,:\right]} + Ape,~i=1,2,\cdots, \frac{s}{128};
     $$
 
-    1. 计算分组Softmax：
+    3. 计算分组Softmax：
 
     $$
     C4A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{4};
@@ -60,7 +60,7 @@
     C128A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{128};
     $$
 
-    1. 计算Hadamard乘积：
+    4. 计算Hadamard乘积：
 
     $$
     C4A：(S_H)_i = S_i^\prime \odot \left[kv\_state^a_{\left[4(i-1)+1:4i,:\right]} ;kv\_state^b_{\left[4i+1:4(i+1),:\right]}\right],~i=1,2,\cdots, \frac{s}{4};
@@ -70,7 +70,7 @@
     C128A：S_H = S_i^\prime \odot kv\_state;
     $$
 
-    1. 沿着压缩轴分组求和：
+    5. 沿着压缩轴分组求和：
 
     $$
     C4A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};
