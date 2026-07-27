@@ -50,7 +50,7 @@ public:
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
 
     static constexpr uint32_t DB = 2;
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
+    static constexpr uint32_t PRELOAD_N = 1; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
     static constexpr bool HAS_DROP = false;                             // 不支持drop mask
@@ -148,6 +148,7 @@ public:
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        RunInfoX runInfo)
     {
+        printf("debug, mla ProcessVec1\n");
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
@@ -643,20 +644,17 @@ public:
 
     __aicore__ inline void SoftmaxInitBuffer()
     {
-        tPipe->InitBuffer(softmaxSumBuf[0], 256); // [64, 1]
-        tPipe->InitBuffer(softmaxSumBuf[1], 256); // [64, 1]
-        tPipe->InitBuffer(softmaxSumBuf[2], 256); // [64, 1]
+        tPipe->InitBuffer(softmaxSumBuf[0], 128); // [32, 1]
+        tPipe->InitBuffer(softmaxSumBuf[1], 128); // [64, 1]
 
-        tPipe->InitBuffer(softmaxMaxBuf[0], 256); // [64, 1]
-        tPipe->InitBuffer(softmaxMaxBuf[1], 256); // [64, 1]
-        tPipe->InitBuffer(softmaxMaxBuf[2], 256); // [64, 1]
+        tPipe->InitBuffer(softmaxMaxBuf[0], 128); // [64, 1]
+        tPipe->InitBuffer(softmaxMaxBuf[1], 128); // [64, 1]
 
-        tPipe->InitBuffer(softmaxExpBuf[0], 256); // [64, 1]
-        tPipe->InitBuffer(softmaxExpBuf[1], 256); // [64, 1]
-        tPipe->InitBuffer(softmaxExpBuf[2], 256); // [64, 1]
+        tPipe->InitBuffer(softmaxExpBuf[0], 128); // [64, 1]
+        tPipe->InitBuffer(softmaxExpBuf[1], 128); // [64, 1]
 
-        tPipe->InitBuffer(maxBrdcst, 1, 2048); // [64, 8]
-        tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
+        tPipe->InitBuffer(maxBrdcst, 1, 1024); // [32, 8]
+        tPipe->InitBuffer(sumBrdcst, 1, 1024); // [32, 8]
     }
 
     __aicore__ inline void InitBuffers()
