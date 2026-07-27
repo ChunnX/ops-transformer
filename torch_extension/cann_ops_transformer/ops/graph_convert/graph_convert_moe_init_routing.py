@@ -17,7 +17,7 @@ try:
     from torchair._ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
     from torchair._ge_concrete_graph.supported_declaration import Support
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
-    from torchair.ge._ge_graph import auto_convert_to_tensor
+    from torchair.ge._ge_graph import DataType, auto_convert_to_tensor
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge import attr
     from typing import Optional
@@ -134,9 +134,7 @@ if _TORCHAIR_AVAILABLE:
         x_dtype: int = None,
         meta_outputs: TensorSpec = None):
 
-        active_num_tensor = None
-        if active_num > 0:
-            active_num_tensor = ge.Const(active_num, dtype=torch.int64)
+        active_num_tensor = ge.Const(active_num, dtype=DataType.DT_INT64)
 
         return MoeInitRoutingV4(
             x=x,
