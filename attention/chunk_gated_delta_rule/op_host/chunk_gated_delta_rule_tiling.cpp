@@ -129,22 +129,23 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     int64_t dv = tilingData_.dv;
     int64_t dk = tilingData_.dk;
     int64_t s = tilingData_.maxGroupLength;
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s;                                   // gCumExp (FP32)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kCumDecay (BF16)
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s;     // gCumExp (FP32)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kCumDecay (BF16)
     if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                           // vInner (FP32)
-        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                            // vInnerBf16 (BF16, for stage3)
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv; // vInner (FP32)
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;  // vInnerBf16 (BF16, for stage3)
     } else {
-        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                            // vInner (BF16)
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // vInner (BF16)
     }
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // qPrime (BF16)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                               // attnInter (BF16, arch22 compat)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kg (BF16)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * c;                                // qkt (BF16)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // qPrime (BF16)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // attnInter (BF16, arch22 compat)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kg (BF16)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * c;  // qkt (BF16)
     if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk;                           // stateBf16Wk (BF16, arch35)
+        tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // stateBf16Wk (BF16, arch35)
     } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-        tilingData_.interWorkspaceSz += sizeHigh * tilingData_.b * nv * dv * dk;         // highState_ (arch22: kernel unconditionally advances offset)
+        tilingData_.interWorkspaceSz +=
+            sizeHigh * tilingData_.b * nv * dv * dk; // highState_ (arch22: kernel unconditionally advances offset)
     }
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
 
@@ -174,12 +175,11 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize);
     mm_.SetBufferSpace(l1Size, l0CSize, ubSize);
-    mm_.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                 matmul_tiling::DataType::DT_BFLOAT16, true);
-    mm_.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                 matmul_tiling::DataType::DT_BFLOAT16, true);
-    mm_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                 matmul_tiling::DataType::DT_BFLOAT16);
+    mm_.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_BFLOAT16,
+                 true);
+    mm_.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_BFLOAT16,
+                 true);
+    mm_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_BFLOAT16);
     mm_.SetBias(false);
     mm_.SetDim(1);
     mm_.SetShape(baseM, baseN, baseK);
@@ -352,12 +352,10 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
 
     auto betaDtype = context_->GetInputDesc(BETA_INDEX)->GetDataType();
     auto stateDtype = context_->GetInputDesc(STATE_INDEX)->GetDataType();
-    OP_CHECK_IF(betaDtype != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "beta dtype should be bfloat16"),
+    OP_CHECK_IF(betaDtype != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "beta dtype should be bfloat16"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(stateDtype != ge::DT_BF16 && stateDtype != ge::DT_FLOAT,
-                OP_LOGE(context_->GetNodeName(), "state dtype should be bfloat16 or float32"),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "state dtype should be bfloat16 or float32"), return ge::GRAPH_FAILED);
     if (stateDtype == ge::DT_FLOAT && socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
         OP_LOGE(context_->GetNodeName(), "FP32 state is only supported on Ascend950");
         return ge::GRAPH_FAILED;
@@ -379,7 +377,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
     OP_CHECK_IF(outDtype != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "output dtype should be bfloat16"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(finalStateDtype != ge::DT_BF16 && finalStateDtype != ge::DT_FLOAT,
-                OP_LOGE(context_->GetNodeName(), "final_state dtype should be bfloat16 or float32"), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "final_state dtype should be bfloat16 or float32"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(stateDtype != finalStateDtype,
                 OP_LOGE(context_->GetNodeName(),
                         "initial_state and final_state must have the same dtype, got initial_state=%d, final_state=%d",
@@ -560,7 +559,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::GetScale()
     return ge::GRAPH_SUCCESS;
 }
 
- ge::graphStatus ChunkGatedDeltaRuleTiling::GetStrides()
+ge::graphStatus ChunkGatedDeltaRuleTiling::GetStrides()
 {
     auto strideState = context_->GetInputStride(STATE_INDEX);
     if (strideState != nullptr && strideState->GetDimNum() == STATE_DIM_NUM) {

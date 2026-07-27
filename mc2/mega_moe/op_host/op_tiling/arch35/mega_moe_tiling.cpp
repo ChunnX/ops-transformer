@@ -75,6 +75,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             tilingData->topoType);
     OP_LOGD(nodeName, "mode: groupedMatmulMode=%u, combineQuantMode=%ld, clampLimit=%f",
             static_cast<uint32_t>(tilingData->groupedMatmulMode), tilingData->combineQuantMode, tilingData->clampLimit);
+    OP_LOGD(nodeName, "combineSync: slotCountPerExpert=%lu", tilingData->combineSyncSlotCountPerExpert);
 
     const auto &dispatchConfig = tilingData->dispatchBufferConfig;
     OP_LOGD(nodeName, "dispatch: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, copyBufferBytes=%u",
@@ -108,6 +109,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.tokensPerBatch, unpermuteTailChunkConfig.inputBufferCount,
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
+    OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -117,7 +119,7 @@ void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "swigluQuantDataPtr:         %ld\n", info->swigluQuantDataPtr);
     OP_LOGD(nodeName, "swigluQuantScalePtr:        %ld\n", info->swigluQuantScalePtr);
     OP_LOGD(nodeName, "expertRevTokenNumsPtr:      %ld\n", info->expertRevTokenNumsPtr);
-    OP_LOGD(nodeName, "tripleInfoPtr:              %ld\n", info->tripleInfoPtr);
+    OP_LOGD(nodeName, "metaInfoPtr:                %ld\n", info->metaInfoPtr);
     OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
@@ -202,8 +204,10 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
     int64_t topoType = TILINGKEY_TPL_MTE;
+    int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
 
-    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType);
+    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType,
+                              topkWeightsType);
 }
 
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, MegaMoeConfig &config,
@@ -311,6 +315,11 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     uint32_t dataBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256)) * sizeof(int8_t);
     uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
     uint32_t tokenBytes = ops::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+    if (*attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex)) == 1) {
+        uint32_t weightBytes =
+            ops::CeilAlign(static_cast<uint32_t>(topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+        tokenBytes = ops::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+    }
     int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
     // combineSend Size
     int64_t combineSendSize = ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512);
@@ -411,6 +420,16 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                                               "shared expert only support MTE topo type"),
                     return ge::GRAPH_FAILED);
 
+    int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
+    OP_TILING_CHECK(topkWeightsType != 0 && topkWeightsType != 1,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "topkWeightsType", std::to_string(topkWeightsType).c_str(),
+                                              "only support 0(disabled) or 1(enabled)"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(topkWeightsType == 1 && *topoTypePtr == TILINGKEY_TPL_URMA,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "topkWeightsType", "1",
+                                              "topk_weights_type=1 is not supported with URMA topology"),
+                    return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -466,6 +485,17 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
 
+    // GMM1 tile 状态位区每 expert 的 tile 上限（仅 prefetch 软同步路径使用）
+    // outputN = hiddenDim / SWIGLU_N_HALF(2)，tileM=L1_TILE_M_256(256)，tileN=L1_TILE_N(256)
+    // INT_CACHELINE=16：每 expert 的状态位按 16 对齐，与 kernel 侧 dispatchFlagSlotsPerExpert 一致
+    if (tilingData->topkWeightsPrefetch == 1) {
+        int64_t outputN = static_cast<int64_t>(tilingData->hiddenDim) / 2;
+        int64_t maxTilesM = ops::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(256));
+        int64_t maxTilesN = ops::CeilDiv(outputN, static_cast<int64_t>(256));
+        tilingData->maxTilesPerExpert =
+            static_cast<uint32_t>(ops::CeilAlign(maxTilesM * maxTilesN, static_cast<int64_t>(16)));
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -489,6 +519,11 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
         ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
     uint32_t quantScaleBytes = (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
     uint32_t copyBufferBytes = ops::CeilAlign(quantTokenBytes + quantScaleBytes, static_cast<uint32_t>(ALIGN_32));
+    if (tilingData->topkWeightsPrefetch == 1) {
+        uint32_t weightBytes =
+            ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+        copyBufferBytes = ops::CeilAlign(copyBufferBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+    }
     bufferConfig.copyBufferBytes = copyBufferBytes;
 
     // fixedBufferBytes 包含 expertTokenCntTensor_、cumsumInfoTensor_、sendCntTensor_ 和 expertTokenNumsOutTensor_。
@@ -679,6 +714,27 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
     return bufferConfig;
 }
 
+static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
+{
+    if (tilingData->combineQuantMode == COMBINE_NO_QUANT || tilingData->moeExpertPerRank == 0U) {
+        return 0U;
+    }
+
+    uint64_t logicalCoreCount = tilingData->blockAivNum;
+    if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+        // A8W4/A4W4 每两个 AIV 配对，只有 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
+        logicalCoreCount /= 2U;
+    }
+    // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。
+    uint64_t maxTokenCountForOneExpert = static_cast<uint64_t>(tilingData->bs) * tilingData->epWorldSize;
+    uint64_t maxTokenGroupCountForOneExpert =
+        ops::CeilDiv(maxTokenCountForOneExpert, static_cast<uint64_t>(COMBINE_TOKEN_GROUP_SIZE));
+    // Workspace 在路由结果产生前分配，因此每个本卡 MoE expert 都按独立最坏情况预留 slot。
+    return std::max(maxTokenGroupCountForOneExpert, logicalCoreCount);
+}
+
 static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *context, MegaMoeConfig &config,
                                                 MegaMoeTilingData *tilingData, uint32_t availableUbBytes)
 {
@@ -694,31 +750,34 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     tilingData->dispatchBufferConfig =
         CalcDispatchBufferConfig(tilingData, activationElementsPerByte, availableUbBytes);
 
+    tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
+
     int64_t maxWavesPerExpert =
-        (static_cast<int64_t>(tilingData->maxOutputSize) + DISPATCH_WAVE_TILE_M - 1) / DISPATCH_WAVE_TILE_M;
+        (static_cast<int64_t>(tilingData->maxOutputSize) + static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256) - 1) /
+        static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256);
     int64_t dispatchFlagSlotsPerExpert = (maxWavesPerExpert + INT_CACHELINE - 1) / INT_CACHELINE * INT_CACHELINE;
     uint64_t totalFlagElementCount =
         static_cast<uint64_t>(tilingData->expertPerRank) *
         (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert) +
          static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
     if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-        uint64_t combineFlagElementCount = static_cast<uint64_t>(tilingData->expertPerRank) * tilingData->blockAivNum *
+        uint64_t combineFlagElementCount = tilingData->combineSyncSlotCountPerExpert * tilingData->moeExpertPerRank *
                                            static_cast<uint64_t>(INT_CACHELINE);
         totalFlagElementCount = std::max(totalFlagElementCount, combineFlagElementCount);
     }
     uint32_t resetElementCountPerCore =
-        static_cast<uint32_t>((totalFlagElementCount + tilingData->blockAivNum - 1U) / tilingData->blockAivNum);
+        static_cast<uint32_t>(ops::CeilDiv(totalFlagElementCount, static_cast<uint64_t>(tilingData->blockAivNum)));
     uint32_t resetBatchElementCount = std::min(resetElementCountPerCore, static_cast<uint32_t>(DISPATCH_RESET_BATCH));
     uint32_t resetTensorBytes =
         ops::CeilAlign(resetBatchElementCount, static_cast<uint32_t>(INT32_PER_256B)) * sizeof(int32_t);
     uint32_t quantTokenBytes =
         ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
-    uint32_t quantOutputBufferBytes = quantTokenBytes + (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
+    uint32_t quantOutputBufferBytes = quantTokenBytes + ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
     // sendCntAccTensor_ 按本卡 weight 容量分配，与 kernel 地址布局一致；实际 mask push 次数按 routed MoE
     // expert 数计算，不包含共享专家和未参与路由的预留 weight。
     uint32_t maxExpertCountPerCore =
-        (tilingData->epWorldSize * tilingData->expertPerRank + tilingData->blockAivNum - 1U) / tilingData->blockAivNum;
+        ops::CeilDiv(tilingData->epWorldSize * tilingData->expertPerRank, tilingData->blockAivNum);
     uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
         static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
     // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
@@ -758,8 +817,8 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     // FP32 可直接搬入计算 buffer；其他已支持类型按实际元素大小预留转换中转区。
     uint32_t topKWeightsConversionElementBytes =
         topKWeightsDataType == ge::DT_FLOAT ? 0U : static_cast<uint32_t>(ge::GetSizeByDataType(topKWeightsDataType));
-    uint32_t fullTokenChunkSize = (tilingData->bs + tilingData->blockAivNum - 1U) / tilingData->blockAivNum;
-    uint32_t activeCoreCount = (tilingData->bs + fullTokenChunkSize - 1U) / fullTokenChunkSize;
+    uint32_t fullTokenChunkSize = ops::CeilDiv(tilingData->bs, tilingData->blockAivNum);
+    uint32_t activeCoreCount = ops::CeilDiv(tilingData->bs, fullTokenChunkSize);
     uint32_t tailTokenChunkSize = tilingData->bs - (activeCoreCount - 1U) * fullTokenChunkSize;
     bool tailIsFullTokenChunk = tailTokenChunkSize == fullTokenChunkSize;
     tilingData->unpermuteFullTokenChunkCoreCount = tailIsFullTokenChunk ? activeCoreCount : activeCoreCount - 1U;
@@ -1542,6 +1601,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     tilingData->blockAivNum = aivNum;
     auto attrs = context->GetAttrs();
     tilingData->topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    tilingData->topkWeightsPrefetch =
+        static_cast<int32_t>(*attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex)));
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
                                               (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),

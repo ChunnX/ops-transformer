@@ -24,7 +24,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnMixedQuantSparseFlashMlaMetadata"执行计算
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnMixedQuantSparseFlashMlaMetadata"执行计算
 
 ``` cpp
 aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
@@ -421,7 +421,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -497,7 +497,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -521,7 +521,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ``` cpp
 #include <iostream>
@@ -645,7 +645,7 @@ struct ArgContext {
     Tensor metadata {};
 };
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape) 
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -654,7 +654,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-aclnnStatus Init(int32_t deviceId, aclrtStream* stream) 
+aclnnStatus Init(int32_t deviceId, aclrtStream* stream)
 {
     // 固定写法，初始化
     auto ret = aclInit(nullptr);
@@ -666,7 +666,7 @@ aclnnStatus Init(int32_t deviceId, aclrtStream* stream)
     return ACL_SUCCESS;
 }
 
-void Finalize(int32_t deviceId, aclrtStream stream) 
+void Finalize(int32_t deviceId, aclrtStream stream)
 {
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
@@ -821,7 +821,7 @@ int main() {
     ret = aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
         context.cuSeqlensQOptional.data, context.cuSeqlensOriKvOptional.data, context.cuSeqlensCmpKvOptional.data,
         context.sequsedQOptional.data, context.sequsedOriKvOptional.data, context.sequsedCmpKvOptional.data,
-        context.cmpResidualKvOptional.data, context.oriTopkLengthOptional.data, context.cmpTopkLengthOptional.data, 
+        context.cmpResidualKvOptional.data, context.oriTopkLengthOptional.data, context.cmpTopkLengthOptional.data,
         context.numHeadsQ, context.numHeadsKv, context.headDim, context.quantMode, context.batchSize,
         context.maxSeqlenQ, context.maxSeqlenOriKv, context.maxSeqlenCmpKv, context.oriTopk, context.cmpTopk,
         context.ropeHeadDim, context.cmpRatio, context.oriMaskMode, context.cmpMaskMode, context.oriWinLeft,
@@ -840,7 +840,7 @@ int main() {
             workspaceAddr = nullptr;
         }
     });
-    
+
     // 调用aclnnMixedQuantSparseFlashMlaMetadata第二段接口
     ret = aclnnMixedQuantSparseFlashMlaMetadata(workspaceAddr, workspaceSize, executor, stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnMixedQuantSparseFlashMlaMetadata failed. ERROR: %d\n", ret);

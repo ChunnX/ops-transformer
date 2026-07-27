@@ -15,6 +15,7 @@ DEFAULT_CHUNK_SIZE = 64
 
 # 用例
 # name, B, seqlen, Nv, Nk, Dv, Dk, has_g, scale, data_type, state_data_type, is_contiguous
+# fmt: off
 A5_REDLINE_CASES = [
     ("ARC-001", 1, 2048, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.bfloat16, True),
     ("ARC-002", 1, 4096, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.bfloat16, True),
@@ -55,7 +56,9 @@ A5_REDLINE_CASES = [
     ("ARC-037", 1, 32768, 48, 16, 128, 128, True, 1.0, torch.bfloat16, torch.bfloat16, True),
     ("ARC-038", 1, 32768, 16, 16, 128, 128, True, 1.0, torch.bfloat16, torch.bfloat16, True),
 ]
+# fmt: on
 
+# fmt: off
 A5_STC_CASES = [
     ("ASC-001", 2, 4096, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.bfloat16, True),
     ("ASC-002", 4, 8192, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.bfloat16, True),
@@ -92,15 +95,21 @@ A5_STC_CASES = [
     ("ASC-033", 1, 128, 3, 3, 128, 128, True, 1.0, torch.bfloat16, torch.bfloat16, True),
     ("ASC-034", 4, 2000, 2, 2, 16, 16, True, 1.0, torch.bfloat16, torch.bfloat16, True),
 ]
+# fmt: on
+
 
 def _gen_fp32_cases(cases, suffix="-FP32"):
-    return [(name + suffix, B, s, Nv, Nk, Dv, Dk, g, scale, dt, torch.float32, ic)
-            for name, B, s, Nv, Nk, Dv, Dk, g, scale, dt, _, ic in cases]
+    return [
+        (name + suffix, B, s, Nv, Nk, Dv, Dk, g, scale, dt, torch.float32, ic)
+        for name, B, s, Nv, Nk, Dv, Dk, g, scale, dt, _, ic in cases
+    ]
 
 
 def _gen_noncontiguous_cases(cases, suffix="-NC"):
-    return [(name + suffix, B, s, Nv, Nk, Dv, Dk, g, scale, dt, sdt, False)
-            for name, B, s, Nv, Nk, Dv, Dk, g, scale, dt, sdt, _ in cases]
+    return [
+        (name + suffix, B, s, Nv, Nk, Dv, Dk, g, scale, dt, sdt, False)
+        for name, B, s, Nv, Nk, Dv, Dk, g, scale, dt, sdt, _ in cases
+    ]
 
 
 def _expand(cases):
@@ -110,22 +119,39 @@ def _expand(cases):
 
 def _convert_cases(cases):
     result = []
-    for _name, B, seqlen, Nv, Nk, Dv, Dk, has_g, _scale, data_type, state_dtype, is_contiguous in cases:
-        result.append({
-            "_name": [_name],
-            "B": [B],
-            "seqlen": [list(seqlen)] if isinstance(seqlen, (list, tuple)) else [seqlen],
-            "nk": [Nk],
-            "nv": [Nv],
-            "dk": [Dk],
-            "dv": [Dv],
-            "chunk_size": [DEFAULT_CHUNK_SIZE],
-            "data_type": [data_type],
-            "state_data_type": [state_dtype],
-            "has_g": [has_g],
-            "is_contiguous": [is_contiguous],
-            "pt_path": [""],
-        })
+    for (
+        _name,
+        B,
+        seqlen,
+        Nv,
+        Nk,
+        Dv,
+        Dk,
+        has_g,
+        _scale,
+        data_type,
+        state_dtype,
+        is_contiguous,
+    ) in cases:
+        result.append(
+            {
+                "_name": [_name],
+                "B": [B],
+                "seqlen": [list(seqlen)]
+                if isinstance(seqlen, (list, tuple))
+                else [seqlen],
+                "nk": [Nk],
+                "nv": [Nv],
+                "dk": [Dk],
+                "dv": [Dv],
+                "chunk_size": [DEFAULT_CHUNK_SIZE],
+                "data_type": [data_type],
+                "state_data_type": [state_dtype],
+                "has_g": [has_g],
+                "is_contiguous": [is_contiguous],
+                "pt_path": [""],
+            }
+        )
     return result
 
 

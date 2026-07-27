@@ -211,10 +211,6 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
         OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > 1024,
             OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be in range (0, %u].",
             oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(oriBlockSize_ % 16 > 0,
-            OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be 16-aligned.",
-            oriBlockSize_), return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(dSizeOriKvInput_ != 512, // 512: 当前不支持泛化
@@ -248,10 +244,6 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > 1024,
                 OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%u) should be in range (0, %u].",
                 cmpBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
-
-            OP_CHECK_IF(cmpBlockSize_ % 16 > 0,
-                OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%u) should be 16-aligned.",
-                cmpBlockSize_), return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;

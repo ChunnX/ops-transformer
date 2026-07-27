@@ -16,21 +16,21 @@
 ## 功能说明
 
 - 算子功能：对输入x进行量化，分组矩阵乘以及反量化，[aclnnQuantGroupedMatmulDequant](./aclnnQuantGroupedMatmulDequant.md)接口的weightNZ特化版本。
-- 计算公式：  
+- 计算公式：
   1.若输入smoothScaleOptional，则
-  
+
   $$
       x = x\cdot scale_{smooth}
   $$
 
   2.若不输入xScaleOptional，则为动态量化，需要计算x量化系数
-  
+
   $$
       scale_{x}=row\_max(abs(x))/max_{quantDataType}
   $$
 
   3.量化
-  
+
   $$
       x_{quantized}=round(x/scale_{x})
   $$
@@ -68,7 +68,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnQuantGroupedMatmulDequantWeightNZGetWorkspaceSize"接口获取入参并根据流程计算所需workspace大小，再调用"aclnnQuantGroupedMatmulDequantWeightNZ"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnQuantGroupedMatmulDequantWeightNZGetWorkspaceSize"接口获取入参并根据流程计算所需workspace大小，再调用"aclnnQuantGroupedMatmulDequantWeightNZ"接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnQuantGroupedMatmulDequantWeightNZGetWorkspaceSize(
@@ -260,7 +260,7 @@ aclnnStatus aclnnQuantGroupedMatmulDequantWeightNZ(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
 
@@ -335,7 +335,7 @@ aclnnStatus aclnnQuantGroupedMatmulDequantWeightNZ(
 
 - **返回值**
 
-  aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -347,7 +347,7 @@ aclnnStatus aclnnQuantGroupedMatmulDequantWeightNZ(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

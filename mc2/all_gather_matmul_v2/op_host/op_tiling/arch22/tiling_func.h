@@ -56,7 +56,7 @@ inline T AlignUp(T len, T size)
 {
     return (len + size - 1) & ~(size - 1);
 }
-static bool IsMatrixAligned(const int64_t &m, const int64_t &n, const bool &transpose, int nElemAlign)
+inline bool IsMatrixAligned(uint32_t m, uint32_t n, bool transpose, uint32_t nElemAlign)
 {
     return (transpose ? m : n) % nElemAlign == 0;
 }
@@ -79,7 +79,7 @@ constexpr int32_t LCAL_BUFF_BYTES = 204 * 1024 * 1024;
 constexpr int32_t FLAG_BUFF_BYTES = 5 * 512 * 1024;
 constexpr int32_t INPUT_DTYPE = 2;
 constexpr int32_t MIN_P_VALUE = 1;
-constexpr int32_t MAX_BLOCK_COUNT = 2;
+constexpr uint32_t MAX_BLOCK_COUNT = 2;
 
 // Tiling Code Mask
 constexpr int32_t COMMDATASPLIT_MASK = 0b11111;
