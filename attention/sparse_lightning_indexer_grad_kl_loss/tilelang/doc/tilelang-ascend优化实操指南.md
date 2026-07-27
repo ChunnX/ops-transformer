@@ -45,6 +45,29 @@ SetFlag / WaitFlag / CrossCoreSetFlag / CrossCoreWaitFlag
 PipeBarrier / SyncAll
 ```
 
+### 2.1 禁止在 kernel 路径使用 Python 三元表达式
+
+当前 TileLang-Ascend 后端不支持将 Python 三元表达式可靠地降级为 kernel
+中的运行时条件选择。尤其不能用它在编译期常量和 Tensor 标量之间选择值：
+
+```python
+# 禁止：可能被错误地折叠为 K，丢失 KRealSize 的 GetValue 和边界保护。
+valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
+```
+
+这类问题通常不会触发 Python 或 TileLang 编译错误，但生成的 AscendC 会缺少
+`KRealSize.GetValue(...)`，使 tail 分支退化为完整 K 路径。若无效列仍被
+`ValidKMask` 置零，精度甚至可能继续通过，从而把问题伪装成性能回退。
+
+处理原则：
+
+1. 将 full-valid 与 tail-protected 拆成独立的编译期 kernel/macro 路径；
+2. tail 路径直接读取 `KRealSize[b, s]`，不要与常量写在同一三元表达式中；
+3. 需要运行时选择时，使用 TileLang 支持的显式 `if`/`T.if_then_else`，并确认
+   其两侧 buffer shape、对齐和 DMA 范围均合法；
+4. 每次修改后检查生成 C++：tail 版本必须出现预期的 `GetValue`，full-valid
+   版本则不应出现该读取或 `ValidKMask` DMA。
+
 ## 3. 建立可信基线
 
 ### 3.1 基线必须同时包含

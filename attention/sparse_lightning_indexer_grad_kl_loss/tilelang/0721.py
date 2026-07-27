@@ -657,11 +657,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(v1_p_sum, v1_p_sum, v1_p_partial[0:N1])
                     for n_idx in T.serial(n_num):
                         n_start = n_idx * n_block
-                        # 避免条件表达式同时保留两个分支的 BufferRegion：
-                        # full-valid specialization 的 KRealSize 仅是 1 元素占位。
-                        valid_k_size = K
-                        if not full_valid:
-                            valid_k_size = KRealSize[bz_task, s1_id]
+                        valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
                         T.wait_flag("v", "mte2", 1)
                         T.wait_flag("mte3", "v", 0)
                         if n_start < valid_k_size:
@@ -830,9 +826,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("v", "mte2", 3)
                     for n_idx in T.serial(n_num):
                         n_start = n_idx * n_block
-                        valid_k_size = K
-                        if not full_valid:
-                            valid_k_size = KRealSize[bz_task, s1_id]
+                        valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
                         if n_start < valid_k_size:
                             T.wait_flag("v", "mte2", 3)
                             T.copy(
@@ -1529,9 +1523,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 s1_task = task_id % S1
                 # 每个 task 仅读取一次真实 K 长度，仅用于保护本 task 的
                 # atomic scatter。V2 DMA 范围由编译期 k_scatter_exec 决定。
-                valid_k_size = K
-                if not full_valid:
-                    valid_k_size = KRealSize[bz_task, s1_task]
+                valid_k_size = K if full_valid else KRealSize[bz_task, s1_task]
 
                 if vector_batch_count > 0:
                     T.wait_flag("mte3", "mte2", 6)
@@ -2132,13 +2124,25 @@ def _is_static_full_valid(
 def _get_full_valid_aux_inputs(
     device: torch.device,
     calc_dtype: torch.dtype,
+    batch_size: int,
+    query_length: int,
+    top_k: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """返回 full-valid specialization 未使用的最小占位输入，并跨调用复用。"""
-    cache_key = (device, calc_dtype)
+    """返回 full-valid specialization 的安全占位输入，并跨调用复用。
+
+    TileLang 会校验条件表达式的两个 BufferRegion；即使 full-valid 代码生成
+    最终不会读取 KRealSize，也必须给该形状提供合法的二维占位张量。
+    """
+    cache_key = (device, calc_dtype, batch_size, query_length, top_k)
     cached = _full_valid_aux_cache.get(cache_key)
     if cached is None:
         cached = (
-            torch.empty((1,), dtype=torch.int32, device=device),
+            torch.full(
+                (batch_size, query_length),
+                top_k,
+                dtype=torch.int32,
+                device=device,
+            ),
             torch.empty((1,), dtype=calc_dtype, device=device),
         )
         _full_valid_aux_cache[cache_key] = cached
@@ -2216,7 +2220,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         if full_valid:
             # 该 specialization 不读取这两个输入，使用缓存的最小占位张量即可。
             k_real_size, valid_k_mask = _get_full_valid_aux_inputs(
-                query.device, torch.float32
+                query.device, torch.float32, B, S1, K
             )
         else:
             if actual_seq_lengths_query is not None:
