@@ -71,16 +71,16 @@ constexpr uint32_t ATTN_MASK_INDEX = 9;
 constexpr uint32_t METADATA_INDEX = 10;
 
 // Attributes Index
-constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0;  // softmax_mode (scaleValue)
-constexpr uint32_t ATTR_MASK_MODE_INDEX = 1;      // mask_mode
-constexpr uint32_t ATTR_WIN_LEFT_INDEX = 2;       // win_left (preToken)
-constexpr uint32_t ATTR_WIN_RIGHT_INDEX = 3;      // win_right (nextToken)
-constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 4;   // max_seqlen_q
-constexpr uint32_t ATTR_MAX_SEQLEN_KV_INDEX = 5;  // max_seqlen_kv
-constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;       // layout_q
-constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;      // layout_kv
-constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 8;     // layout_out
-constexpr uint32_t ATTR_RETURN_LSE_INDEX = 9;     // return_softmax_lse
+constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0; // softmax_mode (scaleValue)
+constexpr uint32_t ATTR_MASK_MODE_INDEX = 1;     // mask_mode
+constexpr uint32_t ATTR_WIN_LEFT_INDEX = 2;      // win_left (preToken)
+constexpr uint32_t ATTR_WIN_RIGHT_INDEX = 3;     // win_right (nextToken)
+constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 4;  // max_seqlen_q
+constexpr uint32_t ATTR_MAX_SEQLEN_KV_INDEX = 5; // max_seqlen_kv
+constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;      // layout_q
+constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;     // layout_kv
+constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 8;    // layout_out
+constexpr uint32_t ATTR_RETURN_LSE_INDEX = 9;    // return_softmax_lse
 
 // Legacy aliases for backward compatibility
 constexpr uint32_t ATTR_SCALE_INDEX = ATTR_SOFTMAX_SCALE_INDEX;
@@ -119,12 +119,9 @@ enum class FaLayout : uint32_t {
     LSE_NT = 7
 };
 
-const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},
-                                                   {"BNSD", FaLayout::BNSD},
-                                                   {"TND", FaLayout::TND},
-                                                   {"PA_BBND", FaLayout::PA_BBND},
-                                                   {"PA_BNBD", FaLayout::PA_BNBD},
-                                                   {"PA_NZ", FaLayout::PA_NZ}};
+const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},       {"BNSD", FaLayout::BNSD},
+                                                   {"TND", FaLayout::TND},         {"PA_BBND", FaLayout::PA_BBND},
+                                                   {"PA_BNBD", FaLayout::PA_BNBD}, {"PA_NZ", FaLayout::PA_NZ}};
 
 enum class FaAxis : uint32_t {
     B = 0,
