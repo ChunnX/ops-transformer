@@ -282,8 +282,6 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
   Params localParams;
   SetupParams(&tilingData_->tileQbmmTilingData, localParams, MatmulMode::LOCAL);
   quantMatmulKernelImpl_(localParams);
-  AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
-  AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
