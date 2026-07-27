@@ -321,8 +321,19 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         tokenBytes = ops::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
     }
     int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
-    // combineSend Size
-    int64_t combineSendSize = ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512);
+    // combineSend Size —— data-as-flag 布局（真值源见 op_kernel/arch35/mega_moe_workspace_info.h）：
+    //   每个发送块尾部附 COMBINE_FLAG_BYTES 的 flag，与数据在同一次 DataCopyPad 中发出。
+    //   非量化：slot = CeilDiv(h, COMBINE_BLOCK_N) 个 [COMBINE_BLOCK_N*yDtypeSize 数据 | flag]
+    //   量化：  slot = [CeilAlign(h + CeilDiv(h,32), 32) 量化数据 | flag]
+    //   此校验点尚未定型 combineQuantMode，取两者较大值，保证两条路径都放得下。
+    int64_t combineBlockCnt = ops::CeilDiv(h, static_cast<int64_t>(COMBINE_BLOCK_N));
+    int64_t slotBytesNoQuant =
+        combineBlockCnt * (static_cast<int64_t>(COMBINE_BLOCK_N) * yDtypeSize + static_cast<int64_t>(COMBINE_FLAG_BYTES));
+    int64_t slotBytesQuant =
+        ops::CeilAlign(h + ops::CeilDiv(h, static_cast<int64_t>(ALIGN_32)), static_cast<int64_t>(ALIGN_32)) +
+        static_cast<int64_t>(COMBINE_FLAG_BYTES);
+    int64_t combineSlotBytes = std::max(slotBytesNoQuant, slotBytesQuant);
+    int64_t combineSendSize = ops::CeilAlign(bs * topK * combineSlotBytes, ALIGN_512);
     int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
@@ -645,8 +656,14 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
         return bufferConfig;
     }
 
-    uint32_t bf16SlotBytes = static_cast<uint32_t>(
-        ops::CeilAlign(static_cast<uint64_t>(tilingData->h) * sizeof(uint16_t), static_cast<uint64_t>(ALIGN_32)));
+    // data-as-flag：非量化路径下 Unpermute 用带 srcStride 的 DataCopyPad 跳过 flag，把各块数据拼回 UB，
+    // 单 slot 需容纳 CeilAlign(h, COMBINE_BLOCK_N) 个 bf16 元素（尾块 padding 一并读入，不参与计算）。
+    uint64_t bf16SlotElems =
+        (tilingData->combineQuantMode == COMBINE_NO_QUANT) ?
+            ops::CeilAlign(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(COMBINE_BLOCK_N)) :
+            static_cast<uint64_t>(tilingData->h);
+    uint32_t bf16SlotBytes =
+        static_cast<uint32_t>(ops::CeilAlign(bf16SlotElems * sizeof(uint16_t), static_cast<uint64_t>(ALIGN_32)));
     uint32_t fp32SlotBytes = static_cast<uint32_t>(
         ops::CeilAlign(static_cast<uint64_t>(tilingData->h) * sizeof(float), static_cast<uint64_t>(ALIGN_32)));
     // dataSlotBytes 是同一 token 的 BF16 搬入区和 FP32 计算区之和。
@@ -678,9 +695,28 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
                            static_cast<uint64_t>(ALIGN_32)));
     }
 
-    // bytesBeforeInputBuffers 包含 weight、scale 和一个累加/输出 data slot。
+    // data-as-flag：Unpermute 另需 flag 抠取区 + CompareScalar bitmask + batch 内 token 完成状态位。
+    // 这些同样占 UB，必须先从预算扣掉，否则 ring 深度与 weight batch 会被高估而写越界。
+    uint32_t flagBlockCntPerToken =
+        (tilingData->combineQuantMode == COMBINE_NO_QUANT) ?
+            static_cast<uint32_t>(ops::CeilDiv(static_cast<uint64_t>(tilingData->h),
+                                               static_cast<uint64_t>(COMBINE_BLOCK_N))) :
+            1U;
+    uint32_t flagCompareCount = static_cast<uint32_t>(
+        ops::CeilAlign(static_cast<uint64_t>(tilingData->topK) * flagBlockCntPerToken * COMBINE_FLAG_FLOAT_NUM,
+                       static_cast<uint64_t>(UNPERMUTE_FLAG_CMP_ALIGN)));
+    uint32_t flagCheckBytes =
+        static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(flagCompareCount) * sizeof(float),
+                                             static_cast<uint64_t>(ALIGN_32))) +
+        static_cast<uint32_t>(
+            ops::CeilAlign(static_cast<uint64_t>(flagCompareCount) / 8U, static_cast<uint64_t>(ALIGN_32)));
+    uint32_t tokenDoneBytes = static_cast<uint32_t>(ops::CeilAlign(
+        static_cast<uint64_t>(bufferConfig.tokensPerBatch) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
+
+    // bytesBeforeInputBuffers 包含 weight、scale、flag 检查区和一个累加/输出 data slot。
     uint32_t bytesBeforeInputBuffers = bufferConfig.topKWeightsBufferBytes +
-                                       bufferConfig.topKWeightsConversionBufferBytes + scaleBytes + dataSlotBytes;
+                                       bufferConfig.topKWeightsConversionBufferBytes + scaleBytes + dataSlotBytes +
+                                       flagCheckBytes + tokenDoneBytes;
     uint32_t inputBufferBudgetBytes =
         availableUbBytes > bytesBeforeInputBuffers ? availableUbBytes - bytesBeforeInputBuffers : 0U;
     bufferConfig.inputBufferCount = static_cast<int32_t>(inputBufferBudgetBytes / dataSlotBytes);
@@ -692,12 +728,15 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
 
     // Stage 2：固定 ring 深度，用剩余 UB 扩大 weight batch。
     if (baseTokensPerBatch < coreTokenCount) {
-        // fixedBytes 包含 scale、一个累加/输出 slot 和已经选中的所有输入 slot。
-        uint32_t fixedBytes = scaleBytes + (static_cast<uint32_t>(bufferConfig.inputBufferCount) + 1U) * dataSlotBytes;
+        // fixedBytes 包含 scale、flag 检查区、一个累加/输出 slot 和已经选中的所有输入 slot。
+        uint32_t fixedBytes = scaleBytes + flagCheckBytes +
+                              (static_cast<uint32_t>(bufferConfig.inputBufferCount) + 1U) * dataSlotBytes;
         // weightBudgetBytes 是 FP32 weight 及可选转换中转区可使用的 UB。
         uint32_t weightBudgetBytes = availableUbBytes - fixedBytes - UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES;
+        // 每 token 除 weight 外还要一个 int32 的完成状态位（data-as-flag 乱序轮转用）。
         uint32_t weightBytesPerToken =
-            tilingData->topK * (static_cast<uint32_t>(sizeof(float)) + topKWeightsConversionElementBytes);
+            tilingData->topK * (static_cast<uint32_t>(sizeof(float)) + topKWeightsConversionElementBytes) +
+            static_cast<uint32_t>(sizeof(int32_t));
         uint32_t expandedTokensPerBatch = std::min(weightBudgetBytes / weightBytesPerToken, coreTokenCount);
         if (expandedTokensPerBatch > static_cast<uint32_t>(bufferConfig.tokensPerBatch)) {
             bufferConfig.tokensPerBatch = static_cast<int32_t>(expandedTokensPerBatch);

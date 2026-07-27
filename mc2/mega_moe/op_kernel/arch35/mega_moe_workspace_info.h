@@ -74,6 +74,26 @@ constexpr uint32_t SYNC_EVENT_ID2 = 2;
 constexpr uint32_t SYNC_EVENT_ID3 = 3;
 constexpr uint32_t SYNC_EVENT_ID4 = 4;
 constexpr uint32_t SYNC_EVENT_ID5 = 5;
+// Unpermute 的输入 ring 用 event id [0, MAX_UNPERMUTE_INPUT_BUFFER_COUNT)=[0,6)，
+// data-as-flag 的 flag 检查另占一个更高的 id，避免与 ring 的 V_MTE2/MTE2_V/S_V 撞车。
+constexpr uint32_t SYNC_EVENT_ID6 = 6;
+constexpr uint32_t UNPERMUTE_FLAG_CMP_ALIGN = 64U; // CompareScalar 比较长度须为 64 的倍数（1 个 u64 bitmask 字）
+
+// =====================================================================================
+// Combine "data as flag" 布局常量 —— host tiling 与 kernel 共用的唯一真值源。
+//   combineSend 区不再是 [bs][topK][h] 紧密排布，而是按发送块切分，每块尾部附一份 flag：
+//     非量化：slot = CeilDiv(h, COMBINE_BLOCK_N) 个 [COMBINE_BLOCK_N*sizeof(T) 数据 | 32B flag]
+//     量化：  slot = [CeilAlign(h + h/32, 32) 量化数据 | 32B flag]
+//   数据与 flag 在同一次 DataCopyPad 中发出（flag 在块尾，可见时数据必然已可见），
+//   Unpermute 靠 flag 判定到达，取代 Unpermute 前的 CrossRankSyncInWorldSize 全卡同步。
+//   改动 COMBINE_BLOCK_N 必须同步 MegaMoeImpl::L1_TILE_N（impl_base.h 有 static_assert 兜底）。
+// =====================================================================================
+constexpr uint32_t COMBINE_FLAG_BYTES = 32U;    // flag 区字节数（1 个 UB block，DataCopy 最小粒度）
+constexpr uint32_t COMBINE_FLAG_FLOAT_NUM = 8U; // COMBINE_FLAG_BYTES / sizeof(float)
+constexpr float COMBINE_FLAG_ARRIVED = 1.0f;    // 到达标记值（与 moe_distribute_combine_v2 一致）
+constexpr uint32_t COMBINE_BLOCK_N = 256U;      // 非量化路径的发送块 N 长度，须等于 MegaMoeImpl::L1_TILE_N
+static_assert(MegaMoeImpl::L1_TILE_N == COMBINE_BLOCK_N,
+              "COMBINE_BLOCK_N must match MegaMoeImpl::L1_TILE_N: combineSend slot layout depends on it");
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t SIZE_BF_16 = 2U;

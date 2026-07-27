@@ -102,6 +102,8 @@ private:
     template <AddrUpdateMode Mode>
     __aicore__ inline void UpdateSharedGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     __aicore__ inline void Unpermute();
+    __aicore__ inline bool CheckCombineTokenArrived(int32_t tokenIdx);
+    __aicore__ inline void ResetCombineFlags();
     __aicore__ inline UnpermuteBufferConfig UnpermuteBuffInit();
     __aicore__ inline void UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset, int32_t batchTokenCount,
                                                 LocalTensor<bfloat16_t> &tempLocal);
@@ -195,7 +197,16 @@ private:
     uint32_t copyTmpBaseAddr_ = 0;
     // ProcessCombine wave 流水参数：只依赖 k_(常量), InitCombineBuffers 算一次, 免每 expert 重算
     uint32_t combineNTilesPerGroup_ = 0;      // CeilDiv(k_, L1_TILE_N)
-    uint32_t combineQuantTokenSizeBytes_ = 0; // CeilAlign(k_ + CeilDiv(k_,MXFP_SCALE_GROUP_NUM), ALIGN_32)
+    uint32_t combineQuantTokenSizeBytes_ = 0; // CeilAlign(k_ + CeilDiv(k_,MXFP_SCALE_GROUP_NUM), ALIGN_32) + flag(32B)
+
+    // data-as-flag：Unpermute 靠 combineSend 区各块尾部的 flag 判定 token 是否到达，
+    // 取代 Unpermute 前的 CrossRankSyncInWorldSize 全卡软同步。
+    uint32_t combineSlotBytes_ = 0;         // 一个 (token,topk) slot 的字节数（含其内所有 flag 区）
+    uint32_t combineBlockCntPerToken_ = 0;  // 非量化路径 slot 内的 N 方向块数；量化路径恒为 1
+    uint32_t combineFlagStrideBytes_ = 0;   // 相邻两个 flag 之间跳过的数据字节数
+    uint32_t combineFlagBlockCnt_ = 0;      // 一个 token 需检查的 flag 块数 = topK * blockCntPerToken
+    uint32_t combineFlagFloatNum_ = 0;      // = combineFlagBlockCnt_ * COMBINE_FLAG_FLOAT_NUM
+    uint32_t combineFlagCompareCount_ = 0;  // combineFlagFloatNum_ 向上取整到 64（CompareScalar 要求）
 
     // 大 BS route batch、ring buffer 和 reset batch 成员
     int32_t sendRouteItemsPerBatch_ = 0; // SendMaskCal 每个 batch 处理的 route item 数
@@ -238,6 +249,9 @@ private:
     LocalTensor<float> fp32ScaleTensor_;
     LocalTensor<bfloat16_t> bf16ScaleTensor_;
     LocalTensor<bfloat16_t> topKWeightsBf16Tensor_; // Unpermute bf16 weight 搬运中转
+    LocalTensor<float> combineFlagTensor_;          // Unpermute flag 检查：从 GM 抠出的 flag 值
+    LocalTensor<uint8_t> combineFlagCmpTensor_;     // CompareScalar 输出的 bitmask
+    LocalTensor<int32_t> tokenDoneTensor_;          // 当前 batch 内各 token 的完成状态（乱序处理用）
 
     // GMM2 走 A8W4 且 QuantMode 为 a4w4（E2M1）时，SwigluQuant 输出需提升为 fp8_e4m3fn_t。
     // 同时当 Weight2 非 fp4 但 QuantMode==E2M1 时（generic GMM2 路径），也需 promotion，
@@ -560,6 +574,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         ResetGmm2CombineSyncCounters();
     }
+
+    // data-as-flag：清本卡 combineSend 区的到达 flag。此处早于 Process 中 dispatch 前的
+    // CrossRankSyncInWorldSize，由那次同步保证"本卡清完"先于"任何远端卡开始写本卡 combine 结果"。
+    ResetCombineFlags();
 
     // prefetch 路径：清理 GMM1 tile 状态位区（含 allDone slot），避免上一轮残留导致软同步误判
     if constexpr (TopkWeightsPrefetch) {
@@ -1445,7 +1463,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitCombineBuffers()
         uint32_t nAlign32 = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_32));
         uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
         // 下面两个只依赖 k_ 的量提成员, 供 ProcessCombine 每 expert 复用(原先每次调用重算)
-        combineQuantTokenSizeBytes_ = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
+        // data-as-flag：量化 slot 尾部追加 32B flag 区，与数据一次发出，供 Unpermute 判到达。
+        combineQuantTokenSizeBytes_ = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32)) +
+                                      COMBINE_FLAG_BYTES;
         combineNTilesPerGroup_ = Ops::Base::CeilDiv(k_, L1_TILE_N);
         uint32_t singleTokenBytes = nAlign32 * sizeof(bfloat16_t) + combineQuantTokenSizeBytes_;
         combineUbTensorSize_ = (singleTokenBytes * 2) / sizeof(bfloat16_t);
@@ -1519,7 +1539,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(const GM
             (gmm2State.expertBeforeCnt + groupTokenStart + tokenOffsetWithinGroup) * META_INFO_SIZE * sizeof(int32_t)));
         AscendC::DataCopy(metaInfoTensor, metaInfoGm, tokenCountForCore * META_INFO_SIZE);
         PipeBarrier<PIPE_MTE2>();
-        MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t>(
+        MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true>(
             groupTokenStart + tokenOffsetWithinGroup, tokenCountForCore, k_, expertIdx, rankId_,
             gmmAddrInfo.gmm2OutGlobal, params_, metaInfoTensor, combineUbTensorSize_, offset,
             combineQuantTokenSizeBytes_);
@@ -1575,19 +1595,27 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_
         TEventID event = static_cast<TEventID>(inputBufferIdx);
         LocalTensor<bfloat16_t> dataInBf16 = dataResTensor_[(inputBufferIdx + 1) * bufferConfig.bf16SlotElementCount];
         LocalTensor<float> dataInFp32 = dataResFp32Tensor_[(inputBufferIdx + 1) * bufferConfig.fp32SlotElementCount];
+        // data-as-flag 布局：slot 内数据被 flag 区分隔，用带 srcStride 的 DataCopyPad 跳过 flag 读回连续数据。
+        uint64_t slotElemOffset = (static_cast<uint64_t>(tokenIdx) * topK_ + expId) * combineSlotBytes_ /
+                                  static_cast<uint32_t>(sizeof(bfloat16_t));
+        DataCopyPadExtParams<bfloat16_t> slotPadParams{false, 0U, 0U, 0U};
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+            // blockCnt 个 [数据 512B | flag 32B]，srcStride 跳过 flag；UB 侧紧密拼回 blockCnt*L1_TILE_N 个元素，
+            // 其中前 k_ 个为有效数据（尾块 padding 排在末尾，不参与后续计算）。
+            DataCopyExtParams slotCopyParams{static_cast<uint16_t>(combineBlockCntPerToken_), combineFlagStrideBytes_,
+                                             COMBINE_FLAG_BYTES, 0U, 0U};
             WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-            DataCopy(dataInBf16, expandedX[(static_cast<uint64_t>(tokenIdx) * topK_ + expId) * k_], k_);
+            DataCopyPad(dataInBf16, expandedX[slotElemOffset], slotCopyParams, slotPadParams);
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
             Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
         } else {
             uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
             uint32_t quantTokenSize = k_ + nScale;
-            uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
+            // 量化 slot 只有一块，flag 在尾部，读前 quantTokenSize 字节即可。
+            DataCopyExtParams slotCopyParams{1U, quantTokenSize, 0U, 0U, 0U};
             WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-            DataCopy(dataInBf16, expandedX[(static_cast<uint64_t>(tokenIdx) * topK_ + expId) * quantEleNum],
-                     quantEleNum);
+            DataCopyPad(dataInBf16, expandedX[slotElemOffset], slotCopyParams, slotPadParams);
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
             using Fp8Type =
@@ -1691,7 +1719,137 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit()
         tempAddr += fp32ScaleBufAlign;
     }
 
+    // ---- data-as-flag：combineSend slot 布局推导 + flag 检查 buffer ----
+    // 非量化：slot = blockCnt 个 [数据 L1_TILE_N*2B | flag 32B]；量化：slot = [量化数据 | flag 32B]。
+    // 一个 token 的 topK 个 slot 在 GM 上连续，且所有 flag 块的间隔恒为 combineFlagStrideBytes_，
+    // 因此该 token 的全部 flag 可由一次带 srcStride 的 DataCopyPad 抠出。
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        combineBlockCntPerToken_ = Ops::Base::CeilDiv(k_, MegaMoeImpl::L1_TILE_N);
+        combineFlagStrideBytes_ = MegaMoeImpl::L1_TILE_N * static_cast<uint32_t>(sizeof(bfloat16_t));
+        combineSlotBytes_ = combineBlockCntPerToken_ * (combineFlagStrideBytes_ + COMBINE_FLAG_BYTES);
+    } else {
+        uint32_t nScaleForSlot = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
+        combineBlockCntPerToken_ = 1U;
+        combineSlotBytes_ = Ops::Base::CeilAlign(k_ + nScaleForSlot, static_cast<uint32_t>(ALIGN_32)) +
+                            COMBINE_FLAG_BYTES;
+        combineFlagStrideBytes_ = combineSlotBytes_ - COMBINE_FLAG_BYTES;
+    }
+    combineFlagBlockCnt_ = static_cast<uint32_t>(topK_) * combineBlockCntPerToken_;
+    combineFlagFloatNum_ = combineFlagBlockCnt_ * COMBINE_FLAG_FLOAT_NUM;
+    combineFlagCompareCount_ =
+        Ops::Base::CeilAlign(combineFlagFloatNum_, static_cast<uint32_t>(UNPERMUTE_FLAG_CMP_ALIGN));
+
+    uint32_t flagBufBytes = Ops::Base::CeilAlign(
+        combineFlagCompareCount_ * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    combineFlagTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, flagBufBytes / sizeof(float));
+    tempAddr += flagBufBytes;
+    uint32_t flagCmpBytes = Ops::Base::CeilAlign(combineFlagCompareCount_ / 8U, static_cast<uint32_t>(ALIGN_32));
+    combineFlagCmpTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, tempAddr, flagCmpBytes);
+    tempAddr += flagCmpBytes;
+    uint32_t tokenDoneBytes =
+        Ops::Base::CeilAlign(static_cast<uint32_t>(tokensPerBatch) * static_cast<uint32_t>(sizeof(int32_t)),
+                             static_cast<uint32_t>(ALIGN_32));
+    tokenDoneTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tempAddr, tokenDoneBytes / sizeof(int32_t));
+    tempAddr += tokenDoneBytes;
+
+    // 整块清零一次：轮询期间 DataCopyPad 只覆盖前 combineFlagFloatNum_ 个元素，
+    // 其后的对齐 padding 保持 0，作为 CompareScalar 扫描的天然终止哨兵。
+    Duplicate<float>(combineFlagTensor_, 0.0f, combineFlagCompareCount_);
+    PipeBarrier<PIPE_V>();
+
     return bufferConfig;
+}
+
+// ===============================================================
+// CheckCombineTokenArrived：判定 tokenIdx 的 topK 份 combine 结果是否全部到达。
+//   把该 token 名下所有块的块尾 flag 一次抠进 UB，与 COMBINE_FLAG_ARRIVED 逐元素比较，
+//   用 ScalarGetSFFValue 找第一个不匹配位；全部匹配才算到达。
+//   未到达的块其 flag 仍是 ResetCombineFlags 清出的 0，不会误判。
+// ===============================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::CheckCombineTokenArrived(int32_t tokenIdx)
+{
+    GlobalTensor<float> flagGlobal;
+    uint64_t flagBaseBytes = static_cast<uint64_t>(tokenIdx) * topK_ * combineSlotBytes_ + combineFlagStrideBytes_;
+    flagGlobal.SetGlobalBuffer(
+        reinterpret_cast<__gm__ float *>(params_.peermemInfo.combineSendPtr + flagBaseBytes));
+
+    // 注：combineFlagTensor_ 已在 UnpermuteBuffInit 中整块清零。DataCopyPad 每次覆盖前
+    // combineFlagFloatNum_ 个元素，其后到 combineFlagCompareCount_ 的对齐 padding 恒为 0，
+    // 正好让 ScalarGetSFFValue 停在 combineFlagFloatNum_ 处，故此处无需重复 Duplicate。
+    DataCopyExtParams flagCopyParams{static_cast<uint16_t>(combineFlagBlockCnt_), COMBINE_FLAG_BYTES,
+                                     combineFlagStrideBytes_, 0U, 0U};
+    DataCopyPadExtParams<float> flagPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(combineFlagTensor_, flagGlobal, flagCopyParams, flagPadParams);
+    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID6>();
+    CompareScalar(combineFlagCmpTensor_, combineFlagTensor_, COMBINE_FLAG_ARRIVED,
+                  AscendC::CMPMODE::EQ, combineFlagCompareCount_);
+    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID6>();
+
+    LocalTensor<uint64_t> cmpU64Tensor = combineFlagCmpTensor_.template ReinterpretCast<uint64_t>();
+    uint32_t maskWordCnt = combineFlagCompareCount_ / UNPERMUTE_FLAG_CMP_ALIGN;
+    uint32_t arrivedCnt = 0U;
+    for (uint32_t i = 0U; i < maskWordCnt; ++i) {
+        uint64_t cmpMask = cmpU64Tensor.GetValue(i);
+        int64_t firstInvalidIdx = ScalarGetSFFValue<0>(cmpMask);
+        if (firstInvalidIdx == -1) {
+            arrivedCnt += UNPERMUTE_FLAG_CMP_ALIGN;
+        } else {
+            arrivedCnt += static_cast<uint32_t>(firstInvalidIdx);
+            break;
+        }
+    }
+    return arrivedCnt >= combineFlagFloatNum_;
+}
+
+// ===============================================================
+// ResetCombineFlags：把本卡 combineSend 区所有 slot 的 flag 清零。
+//   在 Process 阶段 1 的 ResetFlagList 中调用——早于 dispatch 前那次 CrossRankSyncInWorldSize，
+//   因此该同步保证"本卡清完"先于"任何远端卡开始往本卡写 combine 结果"，无需额外同步。
+//   只清 flag（带 dstStride 跳过数据区），不清数据，成本约为清整个区的 1/17。
+// ===============================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetCombineFlags()
+{
+    uint32_t blockCntPerToken;
+    uint32_t slotBytes;
+    uint32_t flagStrideBytes;
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        blockCntPerToken = Ops::Base::CeilDiv(k_, MegaMoeImpl::L1_TILE_N);
+        flagStrideBytes = MegaMoeImpl::L1_TILE_N * static_cast<uint32_t>(sizeof(bfloat16_t));
+        slotBytes = blockCntPerToken * (flagStrideBytes + COMBINE_FLAG_BYTES);
+    } else {
+        uint32_t nScaleForSlot = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
+        blockCntPerToken = 1U;
+        slotBytes = Ops::Base::CeilAlign(k_ + nScaleForSlot, static_cast<uint32_t>(ALIGN_32)) +
+                    COMBINE_FLAG_BYTES;
+        flagStrideBytes = slotBytes - COMBINE_FLAG_BYTES;
+    }
+    // 本卡待接收的 flag 块总数：m_ 个 token × topK 份 × 每份 blockCnt 块，按核均分。
+    int32_t totalFlagBlocks = static_cast<int32_t>(m_) * topK_ * static_cast<int32_t>(blockCntPerToken);
+    int32_t coreLen, coreOffset;
+    TilingByCore(totalFlagBlocks, coreLen, coreOffset, 1);
+    if (coreLen == 0) {
+        return;
+    }
+    GlobalTensor<int32_t> flagGm;
+    flagGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.peermemInfo.combineSendPtr));
+    // flag 块在 GM 上等距分布（间隔 = 数据区 + flag 区），用 dstStride 跳过数据区批量清零。
+    uint32_t blockStrideBytes = flagStrideBytes + COMBINE_FLAG_BYTES;
+    // 每批清多少个 flag 块受 resetTensor_ 容量限制：一块 32B = INT32_PER_256B 个 int32。
+    int32_t flagBlocksPerBatch = resetBatchElementCount_ / static_cast<int32_t>(INT32_PER_256B);
+    if (flagBlocksPerBatch < 1) {
+        flagBlocksPerBatch = 1;
+    }
+    SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
+    for (int32_t done = 0; done < coreLen; done += flagBlocksPerBatch) {
+        int32_t cnt = (coreLen - done) < flagBlocksPerBatch ? (coreLen - done) : flagBlocksPerBatch;
+        uint64_t firstFlagBytes =
+            static_cast<uint64_t>(coreOffset + done) * blockStrideBytes + flagStrideBytes;
+        DataCopyExtParams flagResetParams{static_cast<uint16_t>(cnt), COMBINE_FLAG_BYTES, 0U,
+                                          flagStrideBytes, 0U};
+        DataCopyPad(flagGm[firstFlagBytes / sizeof(int32_t)], resetTensor_, flagResetParams);
+    }
 }
 
 // ===============================================================
@@ -1761,19 +1919,38 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
             SetFlag<AscendC::HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
         }
-        for (int32_t localIdx = 0; localIdx < batchTokenCount; localIdx++) {
-            int32_t tokenIdx = coreOffset + batchTokenOffset + localIdx;
-            UnpermuteProcessToken(tokenIdx, localIdx, expandedX, bufferConfig);
-            // 共享专家结果累加（直接加，不乘 topk_weight）
-            if (sharedExpertNum_ > 0) {
-                UnpermuteSharedExpert(tokenIdx, localIdx, bufferConfig);
+        // data-as-flag：不再有 Unpermute 前的全卡同步，改为在 batch 内非阻塞轮转——
+        // 扫一遍未完成的 token，谁的 topK 份 combine 结果先到齐就先算谁，没到的直接跳过下轮再看，
+        // 从而把"等远端数据"与"算已到达 token"重叠，而不是所有卡一起等最慢的那张。
+        // tokenDoneTensor_ 由 Vector(Duplicate) 写、Scalar(Get/SetValue) 读写：
+        // 进入前等上一 batch 的 Scalar 访问收尾(S→V)，Duplicate 后再让 Scalar 可见(V→S)。
+        SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID6>();
+        Duplicate<int32_t>(tokenDoneTensor_, 0, batchTokenCount);
+        SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID3>();
+        int32_t doneCount = 0;
+        while (doneCount < batchTokenCount) {
+            for (int32_t localIdx = 0; localIdx < batchTokenCount; localIdx++) {
+                if (tokenDoneTensor_.GetValue(localIdx) != 0) {
+                    continue;
+                }
+                int32_t tokenIdx = coreOffset + batchTokenOffset + localIdx;
+                if (!CheckCombineTokenArrived(tokenIdx)) {
+                    continue;
+                }
+                tokenDoneTensor_.SetValue(localIdx, 1);
+                doneCount++;
+                UnpermuteProcessToken(tokenIdx, localIdx, expandedX, bufferConfig);
+                // 共享专家结果累加（直接加，不乘 topk_weight）
+                if (sharedExpertNum_ > 0) {
+                    UnpermuteSharedExpert(tokenIdx, localIdx, bufferConfig);
+                }
+                // MTE2 使用独立输入槽，可与上一 token 的 MTE3 输出重叠；仅在覆盖输出槽前等待 MTE3 读完。
+                WaitFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
+                Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
+                SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
+                DataCopy(output[static_cast<uint64_t>(tokenIdx) * k_], dataResTensor_, k_);
+                SetFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
             }
-            // MTE2 使用独立输入槽，可与上一 token 的 MTE3 输出重叠；仅在覆盖输出槽前等待 MTE3 读完。
-            WaitFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
-            Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
-            SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
-            DataCopy(output[static_cast<uint64_t>(tokenIdx) * k_], dataResTensor_, k_);
-            SetFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
         }
         for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
@@ -2160,8 +2337,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
 
     // 4. 本卡数据Unpermute
+    // data-as-flag：原先此处有 CrossRankSyncInWorldSize() 全卡软同步来确认 combine send 完成，
+    // 现已删除——combine 的数据与 flag 一起发出，Unpermute 直接按 flag 判定每个 token 是否到达，
+    // 各卡不再互相等待，本卡先到的 token 可立即参与累加。
     if constexpr (g_coreType == AIV) {
-        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);

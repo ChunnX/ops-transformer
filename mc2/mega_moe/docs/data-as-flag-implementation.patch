@@ -1,0 +1,1587 @@
+commit 163bbfc92e21cf0e572e775ae593a7c7af386b4a
+Author: yanhf <yanhaifeng5@huawei.com>
+Date:   Mon Jul 27 20:18:40 2026 +0800
+
+    combine data flag
+
+diff --git a/mc2/mega_moe/docs/DESIGN.md b/mc2/mega_moe/docs/DESIGN.md
+new file mode 100644
+index 000000000..55fa4722b
+--- /dev/null
++++ b/mc2/mega_moe/docs/DESIGN.md
+@@ -0,0 +1,605 @@
++# mega_moe "combine data as flag" 性能优化设计方案
++
++## 1. 概述
++
++### 1.1 优化目标
++
++删除 `mega_moe.h:2164` 的 `CrossRankSyncInWorldSize()` 调用，替换为"数据和 flag 一起发"的异步同步机制，使 Unpermute 能根据 flag 判断每个 slot 的数据是否已到达，实现极致性能。
++
++### 1.2 关键事实（已确认）
++
++| 事实 | 来源 |
++|------|------|
++| NO_QUANT 路径：一个 slot 的 h 维数据被拆成 `ceil(h/L1_TILE_N)` 个 n-tile 分多次 `DataCopyPad` 写入远端 combineSendPtr | `mega_moe_combine_send.h:55-64` |
++| QUANT 路径：每个 slot 整 token 一次 `DataCopyPad` 发 quantTokenSize=n+nScale | `mega_moe_combine_send.h:434-437` |
++| combineSendPtr 由 `PeermemInfo` 构造函数在 `combineSendPtr = base + offset` 处计算，无显式大小声明，用窗口剩余空间 | `mega_moe_base.h:98` |
++| ResetFlagList() 在 Phase1 清零 workspace flag 区，且其后有 `SyncAll<false>` 和 `CrossRankSyncInWorldSize(2050)` | `mega_moe.h:2031, 2038, 2050` |
++| Unpermute 读本卡 slot 的完整 h 维数据（一次连续 `DataCopy`） | `mega_moe.h:1580` |
++| ProcessCombine 等待 gmm2CombineSyncCounter 满足后，通过 `CombineTokenGroup` 调用 `CombineQuantizedTokens` 发送量化数据 | `mega_moe.h:1492, mega_moe_combine_send.h:420-438` |
++| ProcessCombine 仅在 `CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV && !IsShared` 时调用 | `mega_moe.h:1976` |
++| 非量化路径：`AivGmm2PostGeneric` → `CombineTokens`；量化路径：`ProcessCombine` → `CombineTokenGroup` → `CombineQuantizedTokens` | `mega_moe_impl.h:650-651, 1082-1083` + `mega_moe.h:1522-1525` |
++
++### 1.3 推荐方案：方案 B（独立 Flag 区）
++
++**结论：采用方案 B（独立 Flag 区），不采用方案 A（480+32 split-block 融合 co-send）。**
++
++| 维度 | 方案 A（split-block 融合 co-send） | 方案 B（独立 Flag 区） |
++|------|-----------------------------------|----------------------|
++| 数据布局改动 | 需改 combineSendPtr 布局为每 slot 分块（每块 480B 数据 + 32B flag） | 数据布局保持连续不变 |
++| Unpermute 读法 | 需改 UnpermuteProcessToken 为分块读 flag 区 + 批量 DataCopy | UnpermuteProcessToken 读法不变 |
++| 改动文件数 | 4+（combine_send + base + tiling + Unpermute） | 3（combine_send + tiling + Unpermute） |
++| 量化/非量化统一 | 需为 QUANT 路径单独处理（flag 数=1） | 统一：flag 数 = nTiles（QUANT 时 nTiles=1，退化为单 flag） |
++| 风险 | 数据布局改动大，Unpermute 读法改动引入 bug 风险高 | 改动集中在 combine send 侧，Unpermute 改动极小 |
++
++**方案 B 的核心优势**：改动集中在 combine send 侧（Stage3），Unpermute 侧改动极小（仅加 poll 逻辑），且天然支持 QUANT 路径（QUANT 时 nTiles=1，退化为单 flag check）。
++
++---
++
++## 2. Flag 区布局设计
++
++### 2.1 Flag 区布局图
++
++```
++combineSendPtr (原数据区起始)
++  ↓
++  ┌─────────────────────────────────────┐
++  │         combineSendData 区          │  size = bs * topK * h * sizeof(bf16)  (NO_QUANT)
++  │         (连续数据，地址不变)          │  size = bs * topK * quantTokenSize     (QUANT)
++  └─────────────────────────────────────┘
++  ↓ 紧接着（ALIGN_512 对齐）
++  ┌─────────────────────────────────────┐
++  │         combineSendFlag 区           │  新增
++  │  [slot0_nTile0][slot0_nTile1]...   │
++  │  [slot1_nTile0][slot1_nTile1]...   │
++  │  ...                                │
++  └─────────────────────────────────────┘
++```
++
++### 2.2 Flag 区大小公式
++
++```cpp
++// NO_QUANT 路径
++uint32_t nTilesPerSlot = Ops::Base::CeilDiv(h, L1_TILE_N);  // L1_TILE_N = 256
++uint32_t flagCountPerSlot = nTilesPerSlot;  // 每个 slot 一个 flag per n-tile
++uint64_t flagCountTotal = static_cast<uint64_t>(bs) * topK * flagCountPerSlot;
++
++// QUANT 路径
++uint32_t nTilesPerSlot = 1;  // 整 token 一次写
++uint64_t flagCountTotal = static_cast<uint64_t>(bs) * topK;  // 每个 slot 一个 flag
++
++// Flag 区总大小（两种路径统一公式，取 max）
++uint64_t combineSendFlagSize = flagCountTotal * sizeof(int32_t);
++```
++
++### 2.3 Flag 区偏移公式
++
++```cpp
++// combineSendFlagPtr 在 PeermemInfo 构造函数中的偏移
++offset += Ops::Base::CeilAlign(                          // 数据区对齐
++    static_cast<int64_t>(bs) * static_cast<int64_t>(topK) * static_cast<int64_t>(h) * sizeof(bf16_t),
++    static_cast<int64_t>(ALIGN_512));
++combineSendFlagPtr = base + offset;  // 新增
++offset += Ops::Base::CeilAlign(
++    static_cast<int64_t>(flagCountTotal) * static_cast<int64_t>(sizeof(int32_t)),
++    static_cast<int64_t>(ALIGN_512));
++```
++
++---
++
++## 3. 内存序安全性论证
++
++### 3.1 两次传输安全性分析
++
++**问题**：若用两次独立的 `DataCopyPad`（先 data、后 flag），能否保证接收端先看到 data 再看到 flag？
++
++**结论：在 Ascend 950（DAV 3510）架构下，两次传输可以保证顺序，**但需要满足以下条件：
++
++1. **同一 DataCopy 操作内**：MTE 保证同一个操作的写入顺序
++2. **跨 DataCopy 操作**：需要 `PipeBarrier<PIPE_MTE3>` 强制同步
++
++**安全性论证**：
++
++```
++发送端执行流：
++DataCopyPad(gmRemoteData[...], data, ...);    // Step 1: 发送数据
++PipeBarrier<PIPE_MTE3>();                     // Step 2: 等待 MTE3 发送完成
++DataCopyPad(gmRemoteFlag[...], flag, ...);     // Step 3: 发送 flag
++
++接收端 poll 逻辑：
++1. 读 flag 区（通过 ReadGmByPassDCache）
++2. CompareScalar 与 1 比较
++3. 若 flag==1，说明数据已到达（因为 flag 在 data 之后写入）
++```
++
++**关键点**：
++- `PipeBarrier<PIPE_MTE3>()` 确保第一次 `DataCopyPad` 完成后再发起第二次
++- MTE 硬件保证同一源地址的写操作按程序顺序到达目的地
++- Flag 写成功后，说明数据写操作已经完成（即使接收端 poll 时数据可能还在 MTE pipeline 中，但 flag==1 保证了最终一致性）
++
++### 3.2 本卡 token 的特殊性
++
++**本卡 token（toRankId == rankId）**：通过 `GetRankWinAddrWithOffset` 获取本卡窗口地址，写入本地窗口。
++
++- 本地写：无需跨 RDMA，内存顺序由 CPU/AIC 内存模型保证
++- Flag 也写本卡窗口：`combineSendFlagPtr` 区域
++- Unpermute 读本卡窗口：flag 和数据都在同一地址空间，天然有序
++
++---
++
++## 4. 具体改动点
++
++### 4.1 文件 1: `mega_moe_base.h`
++
++**改动位置**：`PeermemInfo` 构造函数（约第 45-100 行）
++
++**改动内容**：
++
++```cpp
++struct PeermemInfo {
++    GM_ADDR rankSyncInWorldPtr;
++    GM_ADDR maskRecvPtr;
++    GM_ADDR quantTokenScalePtr;
++    GM_ADDR dispatchRecivePtr;
++    GM_ADDR combineSendPtr;
++    GM_ADDR combineSendFlagPtr;  // 新增：flag 区指针
++
++    __aicore__ inline PeermemInfo() = default;
++
++    // 新增构造函数变体或修改现有构造函数
++    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData,
++                                  uint32_t elemsPerByte = 1, uint32_t serverNum = 1,
++                                  uint32_t flagCountTotal = 0)  // 新增参数
++    {
++        // ... 现有代码保持不变，直到 combineSendPtr 计算 ...
++        combineSendPtr = base + offset;
++
++        // ========== 新增：计算 flag 区 ==========
++        // Flag 区紧跟数据区，ALIGN_512 对齐
++        offset = Ops::Base::CeilAlign(
++            static_cast<int64_t>(tilingData->bs) *
++            static_cast<int64_t>(tilingData->topK) *
++            static_cast<int64_t>(tilingData->h) *
++            static_cast<int64_t>(sizeof(bf16_t)),
++            static_cast<int64_t>(ALIGN_512));
++
++        combineSendFlagPtr = base + offset;
++        // Flag 区大小按 32B 对齐（int32_t）
++        offset += Ops::Base::CeilAlign(
++            static_cast<int64_t>(flagCountTotal) * static_cast<int64_t>(sizeof(int32_t)),
++            static_cast<int64_t>(ALIGN_32));
++    }
++};
++```
++
++**注意事项**：
++- `combineSendFlagPtr` 在现有 `combineSendPtr` 之后
++- 需要传入 `flagCountTotal` 参数（由 host 侧 tiling 计算）
++
++---
++
++### 4.2 文件 2: `mega_moe_tiling.cpp`
++
++**改动位置 1**：`PrintPeermemInfo` 函数（约第 128-152 行）
++
++**改动内容**：
++
++```cpp
++void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
++{
++    // ... 现有打印保持不变 ...
++
++    int64_t combineSendSize = sendTotalNum * tilingData->h * 2;  // sizeof(bf16_t)
++    OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
++
++    // ========== 新增：打印 flag 区信息 ==========
++    uint32_t nTilesPerSlot = Ops::Base::CeilDiv(tilingData->h, L1_TILE_N);
++    uint64_t flagCountTotal = static_cast<uint64_t>(tilingData->bs) *
++                               static_cast<uint64_t>(tilingData->topK) *
++                               static_cast<uint64_t>(nTilesPerSlot);
++    int64_t combineSendFlagSize = Ops::Base::CeilAlign(
++        static_cast<int64_t>(flagCountTotal) * static_cast<int64_t>(sizeof(int32_t)),
++        static_cast<int64_t>(ALIGN_32));
++    OP_LOGD(nodeName, "combineSendFlagSize: {%ld}\n", combineSendFlagSize);
++
++    OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n",
++            rankSyncInWorldSize + maskRecvSize + quantTokenScaleSize + combineSendSize + combineSendFlagSize);
++}
++```
++
++**改动位置 2**：`MegaMoeTilingData` 构造相关代码
++
++**改动内容**：在 `MegaMoeTilingData` 中增加 `combineSendFlagPtr` 的赋值（需要找到 `PeermemInfo` 构造的位置）。
++
++```cpp
++// 在 tiling.cpp 中找到类似如下的代码并修改：
++PeermemInfo peermemInfo(baseAddr, tilingData, elemsPerByte, serverNum);
++
++// 新增：传入 flagCountTotal
++uint32_t nTilesPerSlot = ops::CeilDiv(tilingData->h, L1_TILE_N);
++uint64_t flagCountTotal = static_cast<uint64_t>(tilingData->bs) *
++                           static_cast<uint64_t>(tilingData->topK) *
++                           static_cast<uint64_t>(nTilesPerSlot);
++PeermemInfo peermemInfo(baseAddr, tilingData, elemsPerByte, serverNum, flagCountTotal);
++
++tilingData->combineSendPtr = peermemInfo.combineSendPtr;
++tilingData->combineSendFlagPtr = peermemInfo.combineSendFlagPtr;  // 新增
++```
++
++---
++
++### 4.3 文件 3: `mega_moe.h`
++
++#### 4.3.1 修改 `Params` 结构体（如果需要）
++
++如果 `Params` 中需要添加 `combineSendFlagPtr`，但通常 `PeermemInfo` 已经包含，可以通过 `params.peermemInfo.combineSendFlagPtr` 访问。
++
++#### 4.3.2 修改 `ResetFlagList()` 函数
++
++**改动位置**：约第 534-582 行
++
++**改动内容**：在 Phase1 清零 workspace flag 区时，同时清零 combineSendFlagPtr 区。
++
++```cpp
++template <TemplateMegaMoeTypeClass>
++__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
++{
++    if constexpr (g_coreType == AIC) {
++        return;
++    }
++
++    // ========== 现有：清零 workspace flag 区 ==========
++    swigluToGmm2FlagGm_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
++    // ... 现有清零逻辑保持不变 ...
++
++    // ========== 新增：清零 combineSendFlagPtr 区 ==========
++    {
++        GlobalTensor<int32_t> combineFlagGm;
++        combineFlagGm.SetGlobalBuffer((__gm__ int32_t *)params_.peermemInfo.combineSendFlagPtr);
++
++        uint32_t nTilesPerSlot = Ops::Base::CeilDiv(k_, L1_TILE_N);
++        uint64_t flagCountTotal = static_cast<uint64_t>(bs_) *
++                                   static_cast<uint64_t>(topK_) *
++                                   static_cast<uint64_t>(nTilesPerSlot);
++
++        int32_t coreLen, coreOffset;
++        TilingByCore(static_cast<int32_t>(flagCountTotal), coreLen, coreOffset, 1);
++
++        for (int32_t resetElementOffset = 0; resetElementOffset < coreLen;
++             resetElementOffset += resetBatchElementCount_) {
++            int32_t currentBatchElementCount = coreLen - resetElementOffset < resetBatchElementCount_ ?
++                                               coreLen - resetElementOffset :
++                                               resetBatchElementCount_;
++            DataCopyExtParams flagCopyParams{1U,
++                static_cast<uint32_t>(currentBatchElementCount * sizeof(int32_t)), 0U, 0U, 0U};
++            DataCopyPad(combineFlagGm[coreOffset + resetElementOffset], resetTensor_, flagCopyParams);
++        }
++    }
++
++    // ... 后续代码保持不变 ...
++}
++```
++
++**清零时机安全性**：
++- `ResetFlagList()` 在 Phase1 调用（约 2031 行）
++- 之后有 `SyncAll<false>`（2038）和 `CrossRankSyncInWorldSize()`（2050）
++- Stage3 combine send 在 2050 之后执行
++- 因此清零一定在所有远端 combine send 写入之前完成，保证 flag 区的干净初始状态
++
++#### 4.3.3 修改 `UnpermuteProcessToken()` 函数
++
++**改动位置**：约第 1565-1622 行
++
++**改动内容**：在读取 slot 数据之前，poll 该 slot 的 flag。
++
++```cpp
++template <TemplateMegaMoeTypeClass>
++__aicore__ inline void
++MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
++                                                        const GlobalTensor<bfloat16_t> &expandedX,
++                                                        const UnpermuteBufferConfig &bufferConfig)
++{
++    uint32_t nTilesPerSlot = Ops::Base::CeilDiv(k_, L1_TILE_N);
++
++    // ========== 新增：Poll slot flags ==========
++    GlobalTensor<int32_t> flagGm;
++    flagGm.SetGlobalBuffer((__gm__ int32_t *)params_.peermemInfo.combineSendFlagPtr);
++
++    // Poll 逻辑：等待该 slot 的所有 n-tile flags 都为 1
++    for (int32_t tileIdx = 0; tileIdx < nTilesPerSlot; ++tileIdx) {
++        uint64_t flagOffset = (static_cast<uint64_t>(tokenIdx) * topK_ + 0) * nTilesPerSlot + tileIdx;
++        // 实际实现中需要对 topK_ 个 slot 都做 poll，这里简化展示
++        // Poll 等待逻辑（忙等 100 cycle 模式）
++        while (AscendC::ReadGmByPassDCache(&flagGm[flagOffset]) != 1) {
++            int64_t waitStartCycle = AscendC::GetSystemCycle();
++            while (AscendC::GetSystemCycle() - waitStartCycle < 100) {
++                // busy wait
++            }
++        }
++    }
++
++    // 现有逻辑保持不变
++    for (int32_t expId = 0; expId < topK_; ++expId) {
++        // ... 现有累加逻辑 ...
++    }
++}
++```
++
++**Poll 优化建议**：
++- 每 token 一次性 poll 该 token 的 `topK_ * nTilesPerSlot` 个 flags，而不是逐个 poll
++- 使用 `TilingByCore` 分核处理，每个核处理一段 token
++- Flag 区可以按 token 批量读取，减少 GM 访问次数
++
++---
++
++### 4.4 文件 4: `mega_moe_combine_send.h`
++
++#### 4.4.1 修改 `CombineTokens()` 函数
++
++**改动位置**：约第 42-65 行
++
++**改动内容**：在发送数据后，发送 flag。
++
++```cpp
++template <typename ElementMMadOut2, typename BlockShape>
++__aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n,
++                                     LocalTensor<int32_t> &metaInfoTensor,
++                                     LocalTensor<ElementMMadOut2> &l0cOutUbGMM2,
++                                     BlockShape &actualBlockShape,
++                                     const Params &params)
++{
++    int32_t lenTile = Get<M_VALUE>(actualBlockShape);
++    AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
++    uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
++    AscendC::GlobalTensor<int32_t> gmRemoteFlag;
++    uint64_t gmFlagBaseOffset = params.peermemInfo.combineSendFlagPtr - params.peermemInfo.rankSyncInWorldPtr;
++
++    uint32_t nTilesPerSlot = Ops::Base::CeilDiv(n, L1_TILE_N);
++
++    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
++    ub2GmParams.blockCount = 1;
++    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
++
++    AscendC::DataCopyExtParams flagParams{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
++
++    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
++    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
++
++    for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
++        uint32_t toRankId = metaInfoTensor.GetValue(tileIdx * 8);
++        uint32_t tokenIdx = metaInfoTensor.GetValue(tileIdx * 8 + 1);
++        uint32_t topkIdx = metaInfoTensor.GetValue(tileIdx * 8 + 2);
++
++        // 当前 n-tile 的 tile 索引（在 slot 内）
++        uint32_t currentTileIdx = nLoc / L1_TILE_N;
++
++        // 计算 flag 偏移：slot 内第 currentTileIdx 个 tile 的 flag
++        uint64_t flagOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) *
++                                nTilesPerSlot + currentTileIdx;
++
++        // 设置数据目标地址
++        gmRemoteD.SetGlobalBuffer(
++            reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
++        uint64_t gmDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n + nLoc;
++
++        // 设置 flag 目标地址
++        gmRemoteFlag.SetGlobalBuffer(
++            reinterpret_cast<__gm__ int32_t *>(GetRankWinAddrWithOffset(toRankId, gmFlagBaseOffset)));
++
++        // 发送数据
++        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)],
++                             ub2GmParams);
++
++        // 等待数据发送完成
++        AscendC::PipeBarrier<AscendC::PIPE_MTE3>();
++
++        // 发送 flag（值为 1）
++        LocalTensor<int32_t> flagTensor;  // 需要从 UB 分配
++        AscendC::Duplicate(flagTensor, 1, 1);  // flag 值 = 1
++        AscendC::DataCopyPad(gmRemoteFlag[flagOffset], flagTensor, flagParams);
++    }
++}
++```
++
++**注意事项**：
++- `flagTensor` 需要从 UB 分配，实际实现中可以在循环外分配一个 int32_t 的 UB tensor
++- `PipeBarrier<PIPE_MTE3>()` 确保数据发送完成后才发送 flag
++
++#### 4.4.2 修改 `CombineQuantizedTokens()` 函数
++
++**改动位置**：约第 419-438 行
++
++**改动内容**：QUANT 路径也需要发送 flag（值为 1）。
++
++```cpp
++template <typename QuantOutType>
++__aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
++                                              uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t> &metaInfoTensor,
++                                              LocalTensor<QuantOutType> &ubQuant, const Params &params)
++{
++    int64_t quantTokenSize = n + nScale;
++    uint32_t toRankId = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + RANK_ID);
++    uint32_t tokenIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOKEN_ID);
++    uint32_t topkIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOPK_INDEX);
++
++    AscendC::GlobalTensor<QuantOutType> gmRemoteD;
++    uint64_t gmRemoteOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
++    __gm__ void *dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset);
++    gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType *>(dstPeermemPtr));
++
++    uint64_t dstBaseOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSize;
++
++    AscendC::DataCopyExtParams singleCopyParams{1, static_cast<uint32_t>(quantTokenSize), 0, 0, 0};
++    AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
++
++    // ========== 新增：发送 flag ==========
++    AscendC::PipeBarrier<AscendC::PIPE_MTE3>();
++
++    AscendC::GlobalTensor<int32_t> gmRemoteFlag;
++    uint64_t gmFlagOffset = params.peermemInfo.combineSendFlagPtr - params.peermemInfo.rankSyncInWorldPtr;
++    gmRemoteFlag.SetGlobalBuffer(
++        reinterpret_cast<__gm__ int32_t *>(GetRankWinAddrWithOffset(toRankId, gmFlagOffset)));
++
++    // QUANT 路径每个 slot 只有一个 flag（nTilesPerSlot = 1）
++    uint64_t flagDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx);
++    LocalTensor<int32_t> flagTensor;  // 从 UB 分配
++    AscendC::Duplicate(flagTensor, 1, 1);
++    AscendC::DataCopyExtParams flagParams{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
++    AscendC::DataCopyPad(gmRemoteFlag[flagDstOffset], flagTensor, flagParams);
++}
++```
++
++---
++
++### 4.5 文件 5: `mega_moe_workspace_info.h`
++
++**可能需要新增字段**：`combineSendFlagPtr`
++
++如果 `PeermemInfo` 还没有 `combineSendFlagPtr` 字段，需要在此文件中添加。
++
++---
++
++## 5. Host Tiling 改动
++
++### 5.1 需要改动的位置
++
++| 文件 | 位置 | 改动内容 |
++|------|------|----------|
++| `mega_moe_tiling.cpp` | `PrintPeermemInfo` | 新增 flag 区打印 |
++| `mega_moe_tiling.cpp` | `PeermemInfo` 构造处 | 传入 `flagCountTotal` 参数 |
++| `mega_moe_tiling.h` | `MegaMoeTilingData` 结构体 | 新增 `combineSendFlagPtr` 字段 |
++
++### 5.2 Flag 区大小对窗口容量的影响
++
++**现有窗口容量**：`cclBufferSize`（由用户/框架传入）
++
++**新增 Flag 区大小**：
++```
++combineSendFlagSize = bs * topK * nTilesPerSlot * sizeof(int32_t)
++                   = bs * topK * ceil(h / 256) * 4 bytes
++```
++
++**扩窗检查**：在 `MegaMoeA2A3CheckHcclBuffSize` 中检查 `cclBufferSize` 是否足够容纳新增的 flag 区。
++
++```cpp
++// 在 CalcLeastCclBufferSize 或 Check 函数中新增
++int64_t flagCountTotal = static_cast<int64_t>(bs) *
++                          static_cast<int64_t>(topK) *
++                          static_cast<int64_t>(ops::CeilDiv(h, L1_TILE_N));
++int64_t combineSendFlagSize = ops::CeilAlign(flagCountTotal * sizeof(int32_t), ALIGN_32);
++
++int64_t leastCclBufferSize = CalcLeastCclBufferSize(...) + combineSendFlagSize;
++```
++
++---
++
++## 6. 删除 CrossRankSyncInWorldSize 的改动
++
++### 6.1 改动位置
++
++**文件**：`mega_moe.h`，约第 2163-2166 行
++
++**现有代码**：
++```cpp
++if constexpr (g_coreType == AIV) {
++    CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
++    Unpermute();
++}
++```
++
++**改为**：
++```cpp
++if constexpr (g_coreType == AIV) {
++    Unpermute();  // 直接调用，flag poll 在 UnpermuteProcessToken 内部完成
++}
++```
++
++### 6.2 AIC/AIV 同步影响分析
++
++| 同步点 | 现有逻辑 | 删除后逻辑 | 影响 |
++|--------|----------|------------|------|
++| 2050 `CrossRankSyncInWorldSize()` | 保留 | 保留 | 无变化 |
++| 2152 `PipeBarrier<PIPE_ALL>` + `SyncAll<true>` | Stage3 结束后同步 | 保持不变 | 无变化 |
++| 2164 `CrossRankSyncInWorldSize()` | 删除 | 不再需要 | Unpermute 依赖 flag poll 保证数据到达 |
++
++**结论**：删除 2164 行的 `CrossRankSyncInWorldSize()` 后，同步逻辑仍然正确：
++- `SyncAll<true>`（2154）确保 Stage3 完成
++- Unpermute 内部的 flag poll 确保数据已到达
++- 无需补充额外的 AIC/AIV 同步
++
++---
++
++## 7. 风险点与验证要点
++
++### 7.1 功能正确性验证
++
++| 验证项 | 验证方法 |
++|--------|----------|
++| NO_QUANT 路径 flag 正确性 | 多 rank 并发执行，对比 Unpermute 输出与 golden reference |
++| QUANT 路径 flag 正确性 | MXFP8 E5M2/E4M3 量化路径验证 |
++| 本卡 token flag 正确性 | 单 rank 场景验证 |
++| Flag 复位正确性 | 多次 launch 后验证 flag 区初始状态 |
++| 性能提升验证 | 对比删除前后的端到端延迟 |
++
++### 7.2 潜在风险
++
++| 风险 | 缓解措施 |
++|------|----------|
++| Flag poll 死锁 | 使用有限次数的重试 + 超时 fallback 到 `CrossRankSyncInWorldSize()` |
++| 窗口容量不足 | 在 tiling 检查中增加 `cclBufferSize` 下限 |
++| 内存序问题 | 确保 `PipeBarrier<PIPE_MTE3>` 在 data 和 flag 传输之间 |
++| Flag 区对齐 | 使用 ALIGN_32（int32_t）和 ALIGN_512（与其他区一致） |
++
++### 7.3 性能验证
++
++| 指标 | 测量方法 |
++|------|----------|
++| 端到端延迟 | 多次 launch 测量平均延迟 |
++| 同步开销 | 移除 `CrossRankSyncInWorldSize()` 后的延迟减少量 |
++| Flag poll 开销 | 在 Unpermute 中添加 profiling 点 |
++| 内存带宽 | 使用 `npu-smi` 或 profiling 工具测量 |
++
++---
++
++## 8. 改动文件清单
++
++| 序号 | 文件路径 | 改动类型 | 改动概要 |
++|------|----------|----------|----------|
++| 1 | `op_kernel/arch35/mega_moe_base.h` | 修改 | `PeermemInfo` 新增 `combineSendFlagPtr` |
++| 2 | `op_kernel/arch35/mega_moe_tiling.h` | 修改 | `MegaMoeTilingData` 新增字段 |
++| 3 | `op_host/op_tiling/arch35/mega_moe_tiling.cpp` | 修改 | 计算 flag 区大小，传入 PeermemInfo |
++| 4 | `op_kernel/arch35/mega_moe_combine_send.h` | 修改 | `CombineTokens` 和 `CombineQuantizedTokens` 发送 flag |
++| 5 | `op_kernel/arch35/mega_moe.h` | 修改 | `ResetFlagList` 清零 flag 区；`UnpermuteProcessToken` poll flag；删除 `CrossRankSyncInWorldSize()` |
++
++---
++
++## 9. 开发计划
++
++### Phase 1: 环境与框架准备
++- [ ] 确认 CANN 版本和硬件平台（Ascend 950 / DAV 3510）
++- [ ] 搭建开发环境和测试框架
++
++### Phase 2: Host Tiling 改动
++- [ ] 修改 `PeermemInfo` 构造函数，增加 `combineSendFlagPtr`
++- [ ] 修改 `MegaMoeTilingData` 结构体，增加 `combineSendFlagPtr` 字段
++- [ ] 修改 `mega_moe_tiling.cpp`，计算并赋值 flag 区指针
++- [ ] 修改 `CalcLeastCclBufferSize`，增加 flag 区大小检查
++
++### Phase 3: Kernel Flag 发送改动
++- [ ] 修改 `CombineTokens()`，在数据发送后发送 flag
++- [ ] 修改 `CombineQuantizedTokens()`，在数据发送后发送 flag
++
++### Phase 4: Kernel Flag 接收改动
++- [ ] 修改 `ResetFlagList()`，清零 combineSendFlagPtr 区
++- [ ] 修改 `UnpermuteProcessToken()`，在读取数据前 poll flag
++- [ ] 删除 `Process()` 中的 `CrossRankSyncInWorldSize()` 调用（2164 行）
++
++### Phase 5: 功能验证
++- [ ] NO_QUANT 路径功能验证
++- [ ] QUANT 路径（MXFP8 E5M2/E4M3）功能验证
++- [ ] 多 rank 并发验证
++- [ ] 多次 launch 稳定性验证
++
++### Phase 6: 性能验证
++- [ ] 端到端延迟对比测试
++- [ ] Flag poll 开销分析
++- [ ] 内存带宽利用率分析
+diff --git a/mc2/mega_moe/docs/DESIGN_V2.md b/mc2/mega_moe/docs/DESIGN_V2.md
+new file mode 100644
+index 000000000..7c6382dd6
+--- /dev/null
++++ b/mc2/mega_moe/docs/DESIGN_V2.md
+@@ -0,0 +1,170 @@
++# mega_moe "combine data as flag" 优化 —— 修正设计（V2，融合单次传输）
++
++> 本文档**取代** DESIGN.md 中的"方案 B（独立 flag 区 + 两次传输）"。
++> 用户明确要求："数据和 flag **一起发**"= **单次传输**同时携带 data 与 flag，
++> 而不是"先发数据、再发状态"。这与参考实现 moe_distribute_combine_v2 一致，
++> 且从物理上杜绝"flag 先于 data 到达"的写序风险（同一次写，天然有序）。
++
++## 0. 核心原则（不可违背）
++1. flag 必须与它所标记的数据在**同一次 DataCopy/DataCopyPad 传输**中写到远端窗口。
++   ⇒ flag 在目的地址上必须**紧邻**其数据（一个 slot / 一个 block 内 = [data | flag]）。
++2. 因为 flag 紧邻 data，combineSendPtr 的 slot 布局改变，Unpermute 读取端必须相应改为
++   "跳过 flag 的 strided 读" + "读前 poll flag"。这是融合方案不可避免的代价。
++3. 删除 mega_moe.h:2164 的 `CrossRankSyncInWorldSize()`（保留 2050 那个）。
++
++## 1. 参考实现的融合机制（moe_distribute_combine_v2_a5_mte.h）
++- 每 token 占 `blockCntPerToken_` 个 **512B block**，每 block = **480B data + 32B flag**。
++  `SPLIT_BLOCK_SIZE=512, SPLIT_BLOCK_DATA_SIZE=480, SPLIT_BLOCK_FLAG_SIZE=32`（第 52-55 行）。
++- 发送端（第 926-935 行）：
++  1. `Duplicate(padFlag, 1.0, 整个 token 的所有 block)` —— 把 data 区和 flag 区**全部填 1.0**；
++  2. `Copy(...)` 只把真实 data 覆盖进每个 block 的 **480B data 区**（flag 区保持 1.0）；
++  3. `DataCopy(dst, padFlag, blockCntPerToken_*512)` —— **一次**把 [data|flag]*N 发到远端。
++- 接收端（第 958-1005 行）：`DataCopyPad` 带 `srcStride=480` **只读 32B flag 区**，
++  `CompareScalar(==1.0)` + SFF 找首个未到达，全部==1.0 才算到达。
++- 复位：`ClearPackedTokenFlags` 用 `Duplicate(0)` + strided `DataCopyPad(stride=480)` 只写 flag 区。
++
++## 2. mega_moe 的两条 combine 路径与融合改造
++
++### 2.1 slot / block 布局（融合后）
++定义（kernel 与 host 必须一致）：
++```
++FLAG_BYTES = 32                     // 每个 block 的 flag 区（32B 对齐，放 1 个 int32 magic，其余留空）
++L1_TILE_N  = 256                    // n-tile 元素数（bf16），= 512B
++```
++
++#### NO_QUANT（主路径，bf16）
++- 一个 slot(token 的一个 topk 副本) 的 h 维被拆成 `nTiles = ceil(h / L1_TILE_N)` 个 n-tile，
++  由 CombineTokens 分多次（可能不同核）写入。每个 n-tile 独立成一个 block：
++```
++blockDataBytes = L1_TILE_N * sizeof(bf16) = 512   // 满 tile；尾 tile 实际元素更少，但 block 仍按满 tile 预留
++blockBytes     = blockDataBytes + FLAG_BYTES = 544
++slotBytes      = nTiles * blockBytes
++combineSend 区总大小(NO_QUANT) = bs * topK * slotBytes
++```
++  block 内布局：`[512B data(256 bf16)] [32B flag]`。尾 tile 的 data 有效元素 = h - (nTiles-1)*256，
++  其余 data 字节为无效填充（Unpermute 只累加前 h 个有效元素，天然忽略）。
++- **目的偏移**（远端窗口，元素/字节）：
++```
++slotBase(bytes)  = (tokenIdx * topK + topkIdx) * slotBytes
++blockBase(bytes) = slotBase + currentTileIdx * blockBytes    // currentTileIdx = nLoc / L1_TILE_N
++dataDst(bytes)   = blockBase                                  // data 写在 block 头部
++flag 在同一次传输里，位于 data 之后 32B，无需单独地址
++```
++
++#### QUANT（MXFP8 E5M2/E4M3）
++- 一个 slot 整 token 一次写，`quantTokenSize = n + nScale`（字节）。只需 1 个 flag：
++```
++slotBytesQ = CeilAlign(quantTokenSize, 32) + FLAG_BYTES
++combineSend 区总大小(QUANT) = bs * topK * slotBytesQ
++```
++  block 内布局：`[quantTokenSize data] [pad 到 32B 对齐] [32B flag]`。
++- host 侧 combineSend 区按 **max(NO_QUANT, QUANT 两种公式)** 预留（编译期 CombineQuantMode 已知，
++  可只按当前 mode 算；但 PeermemInfo 依赖 tilingData->combineQuantMode 分支即可）。
++
++### 2.2 magic 值与复位
++- magic = int32 `1`（与参考的 1.0 等价；这里用 int32 更直观，Unpermute 用 int32 比较）。
++- 复位：每次 launch 前，在 `ResetFlagList()`（Phase1，2050 前）**清零本卡 combineSend 区的所有 flag 位**
++  （strided 写 0，跳过 data 区）。由 2038 `SyncAll<false>` + 2050 `CrossRankSyncInWorldSize` 保证：
++  任何远端 stage3 combine 写入本卡窗口之前，本卡 flag 已清零。⇒ 无需 ping-pong / generation。
++- 也可直接把整个 combineSend 区清零（简单但带宽大）。**推荐 strided 只清 flag**，量小。
++
++## 3. 发送端改造（mega_moe_combine_send.h）
++
++### 3.1 CombineTokens（NO_QUANT，约 42-65 行）—— 每 n-tile 融合发送
++关键：需要一个 UB 暂存 `[512B data | 32B flag]`（544B），一次 DataCopyPad 发出。
++```cpp
++// 循环外：申请 UB 暂存块（1 个 block = 544B），flag 区预置 magic
++//   sendUb : LocalTensor<bf16>, 长度 = (blockDataBytes+FLAG_BYTES)/sizeof(bf16) = 272 (bf16)
++//   将 sendUb 的 flag 区(尾 16 个 bf16 = 32B) 重解释为 int32 并置 1（或用 Duplicate 整块=magic 再覆盖 data）
++for (tileIdx : lenTile) {
++    toRankId/tokenIdx/topkIdx = metaInfo...
++    currentTileIdx = nLoc / L1_TILE_N;
++    validN = Get<N_VALUE>(actualBlockShape);          // 本 tile 有效元素(尾 tile < 256)
++    // 1) 把本 tile 的 data 从 l0cOutUbGMM2 复制到 sendUb 的 data 区(前 512B)
++    //    (V 流水 Copy / DataCopy UB->UB)；flag 区保持 magic
++    // 2) 一次性发到远端： blockBase(bytes) = ((tokenIdx*topK+topkIdx)*nTiles + currentTileIdx)*blockBytes
++    //    DataCopyPad(gmRemote[blockBase/elem], sendUb, {1, blockBytes, 0,0,0});   // data+flag 一次传输
++}
++```
++> 注意：源必须先把 data 放进 sendUb 再连 flag 一起发；不能直接从 l0cOutUbGMM2 发（那样 flag 不相邻）。
++> 若嫌 UB->UB 拷贝开销，可像参考那样：Duplicate(sendUb 整块=magic) 后仅 Copy data 区，
++> 但每 tile 一次 Duplicate 也是开销，权衡后 UB->UB 直接拷 data + 预置一次 flag 更省。
++> **flag 区在循环内不被 data 覆盖，故只需在循环外预置一次 magic。**
++
++### 3.2 CombineQuantizedTokens（QUANT，约 419-438 行）—— 整 token 融合发送
++```cpp
++// ubQuant 后面紧跟 32B flag（同一 UB 连续），flag 置 magic
++// slotBase(bytes) = (tokenIdx*topK+topkIdx)*slotBytesQ
++// DataCopyPad(gmRemote[slotBase/elem], ubQuantWithFlag, {1, CeilAlign(quantTokenSize,32)+FLAG_BYTES, 0,0,0});
++```
++> 需确认 ubQuant 所在 UB 之后有 32B 余量可放 flag（否则单独 UB 拼一份）。
++
++### 3.3 本卡 token（toRankId==rankId）
++非 layered CombineTokens 无显式本卡分支——本卡 token 也走 GetRankWinAddrWithOffset 到自身窗口，
++融合写法一致（本地写，flag 与 data 同一次传输，天然有序）。
++
++## 4. 接收端改造（mega_moe.h Unpermute / UnpermuteProcessToken，约 1565-1622）
++
++### 4.1 poll flag（读数据前）
++每 token 对 topK 个 slot、每 slot nTiles 个 flag（QUANT 时 1 个）做 poll：
++```cpp
++// flag 地址：combineSendPtr 视为 byte 基址
++// NO_QUANT: flagByteOff = ((tokenIdx*topK+expId)*nTiles + tileIdx)*blockBytes + blockDataBytes
++// QUANT   : flagByteOff = (tokenIdx*topK+expId)*slotBytesQ + CeilAlign(quantTokenSize,32)
++// 忙等（参考 ProcessCombine:1492）：
++while (ReadGmByPassDCache(flagAddr) != MAGIC) { spin ~100 cycles; }
++```
++优化：一次性把该 token 的 topK*nTiles 个 flag 用带 stride 的 DataCopyPad 读进 UB，
++CompareScalar(==MAGIC) 判断全部到达，未到则重读（参考 CheckPackedFlagRangeArrive 的做法）。
++
++### 4.2 strided 读 data（跳过 flag）
++原来 `DataCopy(dataInBf16, expandedX[(tokenIdx*topK+expId)*k_], k_)` 一次连续读 h。
++融合后 data 被 flag 隔断，需按 block strided 读：
++```cpp
++// NO_QUANT: 每 block 有效 data = min(L1_TILE_N, h - tileIdx*L1_TILE_N) 个 bf16，
++//   block 间隔 blockBytes、data 段 blockDataBytes。
++// 用 DataCopyPad blockCount=nTiles, blockLen=blockDataBytes, srcStride=(blockBytes-blockDataBytes)=FLAG_BYTES,
++//   一次把 nTiles 个 data 段 gather 进连续 UB(去掉 flag 空洞)，得到 h(+尾部填充) 个 bf16，再走原累加逻辑。
++//   注意尾 tile 只有 validN 有效，gather 到的 UB 前 h 个即为真实 token，其余忽略。
++// QUANT: 一次 DataCopy quantEleNum(=quantTokenSize/2) 连续读(flag 在其后，不影响)，再 DeQuant。
++```
++> QUANT 因 data 段连续（flag 在尾部），读法几乎不变，仅 slot 步长从 quantEleNum 变 slotBytesQ/2。
++> NO_QUANT 的 strided gather 是本方案主要改动点，务必用 ST 精度用例验证 gather 偏移/尾 tile 正确。
++
++## 5. host tiling 改造（mega_moe_tiling.cpp / mega_moe_tiling.h）
++1. `PeermemInfo`（mega_moe_base.h）combineSend 区大小改为融合布局：
++   - NO_QUANT: `bs*topK*nTiles*blockBytes`（blockBytes=544）
++   - QUANT   : `bs*topK*slotBytesQ`
++   按 `tilingData->combineQuantMode` 分支，512 对齐。**不再新增独立 flag 区指针**。
++2. host 侧保证 HCCL 窗口（cclBufferSize / peermem 窗口）容量 ≥ 融合后 combineSend 区
++   （比原 bs*topK*h*2 增大 FLAG_BYTES/blockDataBytes ≈ 6.25%(NO_QUANT)）。
++   找到 cclBufferSize 下限检查/计算处同步更新，避免越界。
++3. PrintPeermemInfo 打印新大小。
++4. Unpermute 读侧用到的 nTiles/blockBytes/slotBytesQ 若需 host 下发，加 tilingData 字段；
++   否则 kernel 端由 h/L1_TILE_N/combineQuantMode 现算（推荐现算，减少 host 改动）。
++
++## 6. 删除全卡同步（mega_moe.h:2162-2166）
++```cpp
++if constexpr (g_coreType == AIV) {
++    // CrossRankSyncInWorldSize();  // 删除：改由 Unpermute 内 flag poll 保证到达
++    Unpermute();
++}
++```
++2154 已有 `SyncAll<true>` 保证 stage3 本卡计算完成；跨卡到达由 flag poll 保证。AIC 侧无需补同步。
++
++## 7. 风险与验证
++- **写序安全**：融合单次传输从根本上保证 flag 不早于 data 到达（同一次写）。这是选融合的核心原因。
++- **尾 tile / gather 偏移**：NO_QUANT strided gather 最易错，重点 ST 精度验证（多种 h：整除/非整除 256）。
++- **复位时机**：确认 ResetFlagList 清 flag 在 2050 前完成、覆盖整个 combineSend flag 区。
++- **窗口容量**：确认 host 扩窗，避免融合后越界踩踏。
++- **多卡精度**：本优化是跨卡同步优化，必须多 rank/多卡 ST 验证（单卡测不出写序问题）。
++- **性能**：对比删除 CrossRankSyncInWorldSize 前后端到端延迟；关注 NO_QUANT UB->UB 拷贝与 strided 读开销。
++
++## 8. 改动文件清单
++| 文件 | 改动 |
++|------|------|
++| op_kernel/arch35/mega_moe_base.h | PeermemInfo：combineSend 区改融合布局大小（按 combineQuantMode 分支）|
++| op_host/op_tiling/arch35/mega_moe_tiling.cpp | combineSend 区大小/打印/窗口容量检查更新 |
++| op_kernel/arch35/mega_moe_tiling.h | 如需下发 nTiles/blockBytes 字段（可选，推荐 kernel 现算）|
++| op_kernel/arch35/mega_moe_combine_send.h | CombineTokens / CombineQuantizedTokens：data+flag 融合单次发送 |
++| op_kernel/arch35/mega_moe.h | ResetFlagList 清 flag；UnpermuteProcessToken：poll flag + strided 读 data；删 2164 全卡同步 |
+diff --git a/mc2/mega_moe/docs/PLAN.md b/mc2/mega_moe/docs/PLAN.md
+new file mode 100644
+index 000000000..a23931923
+--- /dev/null
++++ b/mc2/mega_moe/docs/PLAN.md
+@@ -0,0 +1,136 @@
++# mega_moe "combine data as flag" 性能优化开发计划
++
++## 1. 需求概述
++
++### 1.1 背景
++
++当前 `mega_moe` 算子在 Combine 阶段（Stage3）发送完成后，需要调用 `CrossRankSyncInWorldSize()` 进行全卡软同步，等待所有 rank 的 combine send 完成后再执行 Unpermute。这个同步操作引入了不必要的性能开销。
++
++### 1.2 优化目标
++
++通过"数据和 flag 一起发"的机制，让 Unpermute 根据 flag 判断每个 slot 的数据是否已到达，从而消除 `CrossRankSyncInWorldSize()` 调用，提升端到端性能。
++
++### 1.3 优化范围
++
++- **删除**：第 2164 行的 `CrossRankSyncInWorldSize()`（combine send 后、Unpermute 前的全卡同步）
++- **保留**：第 2050 行的 `CrossRankSyncInWorldSize()`（dispatch 前）
++- **路径**：主要优化 `COMBINE_NO_QUANT` 路径，同时保证量化路径功能正确
++
++---
++
++## 2. 技术方案概述
++
++### 2.1 方案选择
++
++**采用方案 B（独立 Flag 区）**：
++
++- 数据布局保持不变（连续存储）
++- 新增独立 flag 区，存放每个 n-tile 的到达标志
++- 发送端每发送一个 n-tile 的数据后，发送对应的 flag（值为 1）
++- 接收端 Unpermute 在读取数据前，poll 对应 slot 的所有 flags
++
++### 2.2 关键数据
++
++| 参数 | 含义 | 计算公式 |
++|------|------|----------|
++| `nTilesPerSlot` | 每个 slot 的 n-tile 数量 | `CeilDiv(h, L1_TILE_N)` |
++| `flagCountTotal` | Flag 区总元素数 | `bs * topK * nTilesPerSlot` |
++| `combineSendFlagSize` | Flag 区总大小 | `CeilAlign(flagCountTotal * sizeof(int32_t), ALIGN_32)` |
++
++---
++
++## 3. 测试用例
++
++### 3.1 功能测试用例
++
++| 用例 ID | 用例名称 | 输入配置 | 预期结果 |
++|---------|----------|----------|----------|
++| TC-001 | NO_QUANT 单 rank | bs=8, topK=2, h=2048, epWorldSize=1 | Unpermute 输出正确，无 crash |
++| TC-002 | NO_QUANT 多 rank | bs=8, topK=2, h=2048, epWorldSize=8 | Unpermute 输出正确，与 golden reference 对齐 |
++| TC-003 | NO_QUANT 大 batch | bs=64, topK=8, h=4096, epWorldSize=8 | 功能正确，性能提升显著 |
++| TC-004 | QUANT E5M2 单 rank | bs=8, topK=2, h=2048, combineQuantMode=MXFP8_E5M2 | Unpermute 输出正确 |
++| TC-005 | QUANT E5M2 多 rank | bs=8, topK=2, h=2048, epWorldSize=8, combineQuantMode=MXFP8_E5M2 | 功能正确 |
++| TC-006 | QUANT E4M3 多 rank | bs=8, topK=2, h=2048, epWorldSize=8, combineQuantMode=MXFP8_E4M3 | 功能正确 |
++| TC-007 | 多次 launch 稳定性 | 同一配置连续 launch 10 次 | 每次输出一致，无残留 flag 影响 |
++
++### 3.2 性能测试用例
++
++| 用例 ID | 用例名称 | 测量指标 | 预期结果 |
++|---------|----------|----------|----------|
++| PT-001 | NO_QUANT 延迟对比 | 端到端延迟 | 移除同步后延迟降低 10%+ |
++| PT-002 | QUANT 延迟对比 | 端到端延迟 | 功能正确，性能持平或提升 |
++| PT-003 | Flag poll 开销 | Unpermute 阶段耗时 | Poll 开销 < 5% 总延迟 |
++
++---
++
++## 4. 阶段检查项
++
++### Phase 1: 环境准备（预计 1 天）
++
++| 检查项 | 完成标准 | 验证方法 |
++|--------|----------|----------|
++| 环境可用 | CANN 版本确认，NPU 可用 | `npu-smi` 查询设备 |
++| 编译环境 | 交叉编译工具链可用 | 编译通过 |
++| 测试框架 | ST/L0 测试可执行 | 运行现有测试 |
++
++### Phase 2: Host Tiling 改动（预计 1 天）
++
++| 检查项 | 完成标准 | 验证方法 |
++|--------|----------|----------|
++| `combineSendFlagPtr` 新增 | PeermemInfo 包含新字段 | 代码审查 |
++| Flag 大小计算 | `flagCountTotal` 计算正确 | 调试打印验证 |
++| 窗口容量检查 | `cclBufferSize` 下限更新 | 边界值测试 |
++
++### Phase 3: Kernel Flag 发送（预计 2 天）
++
++| 检查项 | 完成标准 | 验证方法 |
++|--------|----------|----------|
++| `CombineTokens` 发送 flag | 每个 n-tile 发送后发送 flag | 调试打印验证 flag 值 |
++| `CombineQuantizedTokens` 发送 flag | 每个 slot 发送后发送 flag | 调试打印验证 |
++| Flag 值正确 | Flag = 1 | 调试打印验证 |
++
++### Phase 4: Kernel Flag 接收（预计 2 天）
++
++| 检查项 | 完成标准 | 验证方法 |
++|--------|----------|----------|
++| `ResetFlagList` 清零 flag | Flag 区初始值为 0 | 调试打印验证 |
++| `UnpermuteProcessToken` poll | Poll 逻辑正确实现 | 功能测试验证 |
++| 删除同步调用 | 第 2164 行调用已删除 | 代码审查 |
++
++### Phase 5: 功能验证（预计 2 天）
++
++| 检查项 | 完成标准 | 验证方法 |
++|--------|----------|----------|
++| NO_QUANT 正确性 | 输出与 golden reference 对齐 | atol/rtol 验证 |
++| QUANT 正确性 | 输出与 golden reference 对齐 | atol/rtol 验证 |
++| 多次 launch 稳定 | 10 次连续 launch 输出一致 | 重复性测试 |
++
++### Phase 6: 性能验证（预计 1 天）
++
++| 检查项 | 完成标准 | 验证方法 |
++|--------|----------|----------|
++| 延迟降低 | 端到端延迟降低 10%+ | Profiling 数据 |
++| Flag poll 开销 | Poll 开销可接受 | Profiling 数据 |
++| 无性能回退 | 无新增热点 | Profiling 数据 |
++
++---
++
++## 5. 风险登记
++
++| 风险 ID | 风险描述 | 概率 | 影响 | 缓解措施 |
++|---------|----------|------|------|----------|
++| R-001 | Flag poll 死锁 | 低 | 高 | 超时 fallback 到 CrossRankSyncInWorldSize |
++| R-002 | 窗口容量不足 | 中 | 中 | 扩大 cclBufferSize 下限 |
++| R-003 | 内存序问题 | 低 | 高 | 使用 PipeBarrier 确保顺序 |
++| R-004 | 量化路径 flag 不一致 | 低 | 高 | 充分测试量化路径 |
++
++---
++
++## 6. 交付物清单
++
++| 交付物 | 说明 | 验收标准 |
++|--------|------|----------|
++| DESIGN.md | 技术设计文档 | 完整、准确、可执行 |
++| PLAN.md | 开发计划文档 | 阶段清晰、检查项明确 |
++| 代码改动 | 5 个文件的修改 | 功能测试通过、性能达标 |
++| 测试报告 | 功能+性能测试结果 | 所有用例通过 |
+diff --git a/mc2/mega_moe/op_host/op_tiling/arch35/mega_moe_tiling.cpp b/mc2/mega_moe/op_host/op_tiling/arch35/mega_moe_tiling.cpp
+index eefb7e5e2..07aae6917 100644
+--- a/mc2/mega_moe/op_host/op_tiling/arch35/mega_moe_tiling.cpp
++++ b/mc2/mega_moe/op_host/op_tiling/arch35/mega_moe_tiling.cpp
+@@ -321,8 +321,19 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
+         tokenBytes = ops::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+     }
+     int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+-    // combineSend Size
+-    int64_t combineSendSize = ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512);
++    // combineSend Size —— data-as-flag 布局（真值源见 op_kernel/arch35/mega_moe_workspace_info.h）：
++    //   每个发送块尾部附 COMBINE_FLAG_BYTES 的 flag，与数据在同一次 DataCopyPad 中发出。
++    //   非量化：slot = CeilDiv(h, COMBINE_BLOCK_N) 个 [COMBINE_BLOCK_N*yDtypeSize 数据 | flag]
++    //   量化：  slot = [CeilAlign(h + CeilDiv(h,32), 32) 量化数据 | flag]
++    //   此校验点尚未定型 combineQuantMode，取两者较大值，保证两条路径都放得下。
++    int64_t combineBlockCnt = ops::CeilDiv(h, static_cast<int64_t>(COMBINE_BLOCK_N));
++    int64_t slotBytesNoQuant =
++        combineBlockCnt * (static_cast<int64_t>(COMBINE_BLOCK_N) * yDtypeSize + static_cast<int64_t>(COMBINE_FLAG_BYTES));
++    int64_t slotBytesQuant =
++        ops::CeilAlign(h + ops::CeilDiv(h, static_cast<int64_t>(ALIGN_32)), static_cast<int64_t>(ALIGN_32)) +
++        static_cast<int64_t>(COMBINE_FLAG_BYTES);
++    int64_t combineSlotBytes = std::max(slotBytesNoQuant, slotBytesQuant);
++    int64_t combineSendSize = ops::CeilAlign(bs * topK * combineSlotBytes, ALIGN_512);
+     int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
+     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
+     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
+@@ -645,8 +656,14 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
+         return bufferConfig;
+     }
+ 
+-    uint32_t bf16SlotBytes = static_cast<uint32_t>(
+-        ops::CeilAlign(static_cast<uint64_t>(tilingData->h) * sizeof(uint16_t), static_cast<uint64_t>(ALIGN_32)));
++    // data-as-flag：非量化路径下 Unpermute 用带 srcStride 的 DataCopyPad 跳过 flag，把各块数据拼回 UB，
++    // 单 slot 需容纳 CeilAlign(h, COMBINE_BLOCK_N) 个 bf16 元素（尾块 padding 一并读入，不参与计算）。
++    uint64_t bf16SlotElems =
++        (tilingData->combineQuantMode == COMBINE_NO_QUANT) ?
++            ops::CeilAlign(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(COMBINE_BLOCK_N)) :
++            static_cast<uint64_t>(tilingData->h);
++    uint32_t bf16SlotBytes =
++        static_cast<uint32_t>(ops::CeilAlign(bf16SlotElems * sizeof(uint16_t), static_cast<uint64_t>(ALIGN_32)));
+     uint32_t fp32SlotBytes = static_cast<uint32_t>(
+         ops::CeilAlign(static_cast<uint64_t>(tilingData->h) * sizeof(float), static_cast<uint64_t>(ALIGN_32)));
+     // dataSlotBytes 是同一 token 的 BF16 搬入区和 FP32 计算区之和。
+@@ -678,9 +695,28 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
+                            static_cast<uint64_t>(ALIGN_32)));
+     }
+ 
+-    // bytesBeforeInputBuffers 包含 weight、scale 和一个累加/输出 data slot。
++    // data-as-flag：Unpermute 另需 flag 抠取区 + CompareScalar bitmask + batch 内 token 完成状态位。
++    // 这些同样占 UB，必须先从预算扣掉，否则 ring 深度与 weight batch 会被高估而写越界。
++    uint32_t flagBlockCntPerToken =
++        (tilingData->combineQuantMode == COMBINE_NO_QUANT) ?
++            static_cast<uint32_t>(ops::CeilDiv(static_cast<uint64_t>(tilingData->h),
++                                               static_cast<uint64_t>(COMBINE_BLOCK_N))) :
++            1U;
++    uint32_t flagCompareCount = static_cast<uint32_t>(
++        ops::CeilAlign(static_cast<uint64_t>(tilingData->topK) * flagBlockCntPerToken * COMBINE_FLAG_FLOAT_NUM,
++                       static_cast<uint64_t>(UNPERMUTE_FLAG_CMP_ALIGN)));
++    uint32_t flagCheckBytes =
++        static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(flagCompareCount) * sizeof(float),
++                                             static_cast<uint64_t>(ALIGN_32))) +
++        static_cast<uint32_t>(
++            ops::CeilAlign(static_cast<uint64_t>(flagCompareCount) / 8U, static_cast<uint64_t>(ALIGN_32)));
++    uint32_t tokenDoneBytes = static_cast<uint32_t>(ops::CeilAlign(
++        static_cast<uint64_t>(bufferConfig.tokensPerBatch) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
++
++    // bytesBeforeInputBuffers 包含 weight、scale、flag 检查区和一个累加/输出 data slot。
+     uint32_t bytesBeforeInputBuffers = bufferConfig.topKWeightsBufferBytes +
+-                                       bufferConfig.topKWeightsConversionBufferBytes + scaleBytes + dataSlotBytes;
++                                       bufferConfig.topKWeightsConversionBufferBytes + scaleBytes + dataSlotBytes +
++                                       flagCheckBytes + tokenDoneBytes;
+     uint32_t inputBufferBudgetBytes =
+         availableUbBytes > bytesBeforeInputBuffers ? availableUbBytes - bytesBeforeInputBuffers : 0U;
+     bufferConfig.inputBufferCount = static_cast<int32_t>(inputBufferBudgetBytes / dataSlotBytes);
+@@ -692,12 +728,15 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
+ 
+     // Stage 2：固定 ring 深度，用剩余 UB 扩大 weight batch。
+     if (baseTokensPerBatch < coreTokenCount) {
+-        // fixedBytes 包含 scale、一个累加/输出 slot 和已经选中的所有输入 slot。
+-        uint32_t fixedBytes = scaleBytes + (static_cast<uint32_t>(bufferConfig.inputBufferCount) + 1U) * dataSlotBytes;
++        // fixedBytes 包含 scale、flag 检查区、一个累加/输出 slot 和已经选中的所有输入 slot。
++        uint32_t fixedBytes = scaleBytes + flagCheckBytes +
++                              (static_cast<uint32_t>(bufferConfig.inputBufferCount) + 1U) * dataSlotBytes;
+         // weightBudgetBytes 是 FP32 weight 及可选转换中转区可使用的 UB。
+         uint32_t weightBudgetBytes = availableUbBytes - fixedBytes - UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES;
++        // 每 token 除 weight 外还要一个 int32 的完成状态位（data-as-flag 乱序轮转用）。
+         uint32_t weightBytesPerToken =
+-            tilingData->topK * (static_cast<uint32_t>(sizeof(float)) + topKWeightsConversionElementBytes);
++            tilingData->topK * (static_cast<uint32_t>(sizeof(float)) + topKWeightsConversionElementBytes) +
++            static_cast<uint32_t>(sizeof(int32_t));
+         uint32_t expandedTokensPerBatch = std::min(weightBudgetBytes / weightBytesPerToken, coreTokenCount);
+         if (expandedTokensPerBatch > static_cast<uint32_t>(bufferConfig.tokensPerBatch)) {
+             bufferConfig.tokensPerBatch = static_cast<int32_t>(expandedTokensPerBatch);
+diff --git a/mc2/mega_moe/op_kernel/arch35/mega_moe.h b/mc2/mega_moe/op_kernel/arch35/mega_moe.h
+index a635a3005..35d607422 100644
+--- a/mc2/mega_moe/op_kernel/arch35/mega_moe.h
++++ b/mc2/mega_moe/op_kernel/arch35/mega_moe.h
+@@ -102,6 +102,8 @@ private:
+     template <AddrUpdateMode Mode>
+     __aicore__ inline void UpdateSharedGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
+     __aicore__ inline void Unpermute();
++    __aicore__ inline bool CheckCombineTokenArrived(int32_t tokenIdx);
++    __aicore__ inline void ResetCombineFlags();
+     __aicore__ inline UnpermuteBufferConfig UnpermuteBuffInit();
+     __aicore__ inline void UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset, int32_t batchTokenCount,
+                                                 LocalTensor<bfloat16_t> &tempLocal);
+@@ -195,7 +197,16 @@ private:
+     uint32_t copyTmpBaseAddr_ = 0;
+     // ProcessCombine wave 流水参数：只依赖 k_(常量), InitCombineBuffers 算一次, 免每 expert 重算
+     uint32_t combineNTilesPerGroup_ = 0;      // CeilDiv(k_, L1_TILE_N)
+-    uint32_t combineQuantTokenSizeBytes_ = 0; // CeilAlign(k_ + CeilDiv(k_,MXFP_SCALE_GROUP_NUM), ALIGN_32)
++    uint32_t combineQuantTokenSizeBytes_ = 0; // CeilAlign(k_ + CeilDiv(k_,MXFP_SCALE_GROUP_NUM), ALIGN_32) + flag(32B)
++
++    // data-as-flag：Unpermute 靠 combineSend 区各块尾部的 flag 判定 token 是否到达，
++    // 取代 Unpermute 前的 CrossRankSyncInWorldSize 全卡软同步。
++    uint32_t combineSlotBytes_ = 0;         // 一个 (token,topk) slot 的字节数（含其内所有 flag 区）
++    uint32_t combineBlockCntPerToken_ = 0;  // 非量化路径 slot 内的 N 方向块数；量化路径恒为 1
++    uint32_t combineFlagStrideBytes_ = 0;   // 相邻两个 flag 之间跳过的数据字节数
++    uint32_t combineFlagBlockCnt_ = 0;      // 一个 token 需检查的 flag 块数 = topK * blockCntPerToken
++    uint32_t combineFlagFloatNum_ = 0;      // = combineFlagBlockCnt_ * COMBINE_FLAG_FLOAT_NUM
++    uint32_t combineFlagCompareCount_ = 0;  // combineFlagFloatNum_ 向上取整到 64（CompareScalar 要求）
+ 
+     // 大 BS route batch、ring buffer 和 reset batch 成员
+     int32_t sendRouteItemsPerBatch_ = 0; // SendMaskCal 每个 batch 处理的 route item 数
+@@ -238,6 +249,9 @@ private:
+     LocalTensor<float> fp32ScaleTensor_;
+     LocalTensor<bfloat16_t> bf16ScaleTensor_;
+     LocalTensor<bfloat16_t> topKWeightsBf16Tensor_; // Unpermute bf16 weight 搬运中转
++    LocalTensor<float> combineFlagTensor_;          // Unpermute flag 检查：从 GM 抠出的 flag 值
++    LocalTensor<uint8_t> combineFlagCmpTensor_;     // CompareScalar 输出的 bitmask
++    LocalTensor<int32_t> tokenDoneTensor_;          // 当前 batch 内各 token 的完成状态（乱序处理用）
+ 
+     // GMM2 走 A8W4 且 QuantMode 为 a4w4（E2M1）时，SwigluQuant 输出需提升为 fp8_e4m3fn_t。
+     // 同时当 Weight2 非 fp4 但 QuantMode==E2M1 时（generic GMM2 路径），也需 promotion，
+@@ -561,6 +575,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
+         ResetGmm2CombineSyncCounters();
+     }
+ 
++    // data-as-flag：清本卡 combineSend 区的到达 flag。此处早于 Process 中 dispatch 前的
++    // CrossRankSyncInWorldSize，由那次同步保证"本卡清完"先于"任何远端卡开始写本卡 combine 结果"。
++    ResetCombineFlags();
++
+     // prefetch 路径：清理 GMM1 tile 状态位区（含 allDone slot），避免上一轮残留导致软同步误判
+     if constexpr (TopkWeightsPrefetch) {
+         GlobalTensor<int32_t> statusGm;
+@@ -1445,7 +1463,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitCombineBuffers()
+         uint32_t nAlign32 = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_32));
+         uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
+         // 下面两个只依赖 k_ 的量提成员, 供 ProcessCombine 每 expert 复用(原先每次调用重算)
+-        combineQuantTokenSizeBytes_ = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
++        // data-as-flag：量化 slot 尾部追加 32B flag 区，与数据一次发出，供 Unpermute 判到达。
++        combineQuantTokenSizeBytes_ = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32)) +
++                                      COMBINE_FLAG_BYTES;
+         combineNTilesPerGroup_ = Ops::Base::CeilDiv(k_, L1_TILE_N);
+         uint32_t singleTokenBytes = nAlign32 * sizeof(bfloat16_t) + combineQuantTokenSizeBytes_;
+         combineUbTensorSize_ = (singleTokenBytes * 2) / sizeof(bfloat16_t);
+@@ -1519,7 +1539,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(const GM
+             (gmm2State.expertBeforeCnt + groupTokenStart + tokenOffsetWithinGroup) * META_INFO_SIZE * sizeof(int32_t)));
+         AscendC::DataCopy(metaInfoTensor, metaInfoGm, tokenCountForCore * META_INFO_SIZE);
+         PipeBarrier<PIPE_MTE2>();
+-        MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t>(
++        MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true>(
+             groupTokenStart + tokenOffsetWithinGroup, tokenCountForCore, k_, expertIdx, rankId_,
+             gmmAddrInfo.gmm2OutGlobal, params_, metaInfoTensor, combineUbTensorSize_, offset,
+             combineQuantTokenSizeBytes_);
+@@ -1575,19 +1595,27 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_
+         TEventID event = static_cast<TEventID>(inputBufferIdx);
+         LocalTensor<bfloat16_t> dataInBf16 = dataResTensor_[(inputBufferIdx + 1) * bufferConfig.bf16SlotElementCount];
+         LocalTensor<float> dataInFp32 = dataResFp32Tensor_[(inputBufferIdx + 1) * bufferConfig.fp32SlotElementCount];
++        // data-as-flag 布局：slot 内数据被 flag 区分隔，用带 srcStride 的 DataCopyPad 跳过 flag 读回连续数据。
++        uint64_t slotElemOffset = (static_cast<uint64_t>(tokenIdx) * topK_ + expId) * combineSlotBytes_ /
++                                  static_cast<uint32_t>(sizeof(bfloat16_t));
++        DataCopyPadExtParams<bfloat16_t> slotPadParams{false, 0U, 0U, 0U};
+         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
++            // blockCnt 个 [数据 512B | flag 32B]，srcStride 跳过 flag；UB 侧紧密拼回 blockCnt*L1_TILE_N 个元素，
++            // 其中前 k_ 个为有效数据（尾块 padding 排在末尾，不参与后续计算）。
++            DataCopyExtParams slotCopyParams{static_cast<uint16_t>(combineBlockCntPerToken_), combineFlagStrideBytes_,
++                                             COMBINE_FLAG_BYTES, 0U, 0U};
+             WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+-            DataCopy(dataInBf16, expandedX[(static_cast<uint64_t>(tokenIdx) * topK_ + expId) * k_], k_);
++            DataCopyPad(dataInBf16, expandedX[slotElemOffset], slotCopyParams, slotPadParams);
+             SetFlag<AscendC::HardEvent::MTE2_V>(event);
+             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+             Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
+         } else {
+             uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
+             uint32_t quantTokenSize = k_ + nScale;
+-            uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
++            // 量化 slot 只有一块，flag 在尾部，读前 quantTokenSize 字节即可。
++            DataCopyExtParams slotCopyParams{1U, quantTokenSize, 0U, 0U, 0U};
+             WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+-            DataCopy(dataInBf16, expandedX[(static_cast<uint64_t>(tokenIdx) * topK_ + expId) * quantEleNum],
+-                     quantEleNum);
++            DataCopyPad(dataInBf16, expandedX[slotElemOffset], slotCopyParams, slotPadParams);
+             SetFlag<AscendC::HardEvent::MTE2_V>(event);
+             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+             using Fp8Type =
+@@ -1691,9 +1719,139 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit()
+         tempAddr += fp32ScaleBufAlign;
+     }
+ 
++    // ---- data-as-flag：combineSend slot 布局推导 + flag 检查 buffer ----
++    // 非量化：slot = blockCnt 个 [数据 L1_TILE_N*2B | flag 32B]；量化：slot = [量化数据 | flag 32B]。
++    // 一个 token 的 topK 个 slot 在 GM 上连续，且所有 flag 块的间隔恒为 combineFlagStrideBytes_，
++    // 因此该 token 的全部 flag 可由一次带 srcStride 的 DataCopyPad 抠出。
++    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
++        combineBlockCntPerToken_ = Ops::Base::CeilDiv(k_, MegaMoeImpl::L1_TILE_N);
++        combineFlagStrideBytes_ = MegaMoeImpl::L1_TILE_N * static_cast<uint32_t>(sizeof(bfloat16_t));
++        combineSlotBytes_ = combineBlockCntPerToken_ * (combineFlagStrideBytes_ + COMBINE_FLAG_BYTES);
++    } else {
++        uint32_t nScaleForSlot = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
++        combineBlockCntPerToken_ = 1U;
++        combineSlotBytes_ = Ops::Base::CeilAlign(k_ + nScaleForSlot, static_cast<uint32_t>(ALIGN_32)) +
++                            COMBINE_FLAG_BYTES;
++        combineFlagStrideBytes_ = combineSlotBytes_ - COMBINE_FLAG_BYTES;
++    }
++    combineFlagBlockCnt_ = static_cast<uint32_t>(topK_) * combineBlockCntPerToken_;
++    combineFlagFloatNum_ = combineFlagBlockCnt_ * COMBINE_FLAG_FLOAT_NUM;
++    combineFlagCompareCount_ =
++        Ops::Base::CeilAlign(combineFlagFloatNum_, static_cast<uint32_t>(UNPERMUTE_FLAG_CMP_ALIGN));
++
++    uint32_t flagBufBytes = Ops::Base::CeilAlign(
++        combineFlagCompareCount_ * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
++    combineFlagTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, flagBufBytes / sizeof(float));
++    tempAddr += flagBufBytes;
++    uint32_t flagCmpBytes = Ops::Base::CeilAlign(combineFlagCompareCount_ / 8U, static_cast<uint32_t>(ALIGN_32));
++    combineFlagCmpTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, tempAddr, flagCmpBytes);
++    tempAddr += flagCmpBytes;
++    uint32_t tokenDoneBytes =
++        Ops::Base::CeilAlign(static_cast<uint32_t>(tokensPerBatch) * static_cast<uint32_t>(sizeof(int32_t)),
++                             static_cast<uint32_t>(ALIGN_32));
++    tokenDoneTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tempAddr, tokenDoneBytes / sizeof(int32_t));
++    tempAddr += tokenDoneBytes;
++
++    // 整块清零一次：轮询期间 DataCopyPad 只覆盖前 combineFlagFloatNum_ 个元素，
++    // 其后的对齐 padding 保持 0，作为 CompareScalar 扫描的天然终止哨兵。
++    Duplicate<float>(combineFlagTensor_, 0.0f, combineFlagCompareCount_);
++    PipeBarrier<PIPE_V>();
++
+     return bufferConfig;
+ }
+ 
++// ===============================================================
++// CheckCombineTokenArrived：判定 tokenIdx 的 topK 份 combine 结果是否全部到达。
++//   把该 token 名下所有块的块尾 flag 一次抠进 UB，与 COMBINE_FLAG_ARRIVED 逐元素比较，
++//   用 ScalarGetSFFValue 找第一个不匹配位；全部匹配才算到达。
++//   未到达的块其 flag 仍是 ResetCombineFlags 清出的 0，不会误判。
++// ===============================================================
++template <TemplateMegaMoeTypeClass>
++__aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::CheckCombineTokenArrived(int32_t tokenIdx)
++{
++    GlobalTensor<float> flagGlobal;
++    uint64_t flagBaseBytes = static_cast<uint64_t>(tokenIdx) * topK_ * combineSlotBytes_ + combineFlagStrideBytes_;
++    flagGlobal.SetGlobalBuffer(
++        reinterpret_cast<__gm__ float *>(params_.peermemInfo.combineSendPtr + flagBaseBytes));
++
++    // 注：combineFlagTensor_ 已在 UnpermuteBuffInit 中整块清零。DataCopyPad 每次覆盖前
++    // combineFlagFloatNum_ 个元素，其后到 combineFlagCompareCount_ 的对齐 padding 恒为 0，
++    // 正好让 ScalarGetSFFValue 停在 combineFlagFloatNum_ 处，故此处无需重复 Duplicate。
++    DataCopyExtParams flagCopyParams{static_cast<uint16_t>(combineFlagBlockCnt_), COMBINE_FLAG_BYTES,
++                                     combineFlagStrideBytes_, 0U, 0U};
++    DataCopyPadExtParams<float> flagPadParams{false, 0U, 0U, 0U};
++    DataCopyPad(combineFlagTensor_, flagGlobal, flagCopyParams, flagPadParams);
++    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID6>();
++    CompareScalar(combineFlagCmpTensor_, combineFlagTensor_, COMBINE_FLAG_ARRIVED,
++                  AscendC::CMPMODE::EQ, combineFlagCompareCount_);
++    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID6>();
++
++    LocalTensor<uint64_t> cmpU64Tensor = combineFlagCmpTensor_.template ReinterpretCast<uint64_t>();
++    uint32_t maskWordCnt = combineFlagCompareCount_ / UNPERMUTE_FLAG_CMP_ALIGN;
++    uint32_t arrivedCnt = 0U;
++    for (uint32_t i = 0U; i < maskWordCnt; ++i) {
++        uint64_t cmpMask = cmpU64Tensor.GetValue(i);
++        int64_t firstInvalidIdx = ScalarGetSFFValue<0>(cmpMask);
++        if (firstInvalidIdx == -1) {
++            arrivedCnt += UNPERMUTE_FLAG_CMP_ALIGN;
++        } else {
++            arrivedCnt += static_cast<uint32_t>(firstInvalidIdx);
++            break;
++        }
++    }
++    return arrivedCnt >= combineFlagFloatNum_;
++}
++
++// ===============================================================
++// ResetCombineFlags：把本卡 combineSend 区所有 slot 的 flag 清零。
++//   在 Process 阶段 1 的 ResetFlagList 中调用——早于 dispatch 前那次 CrossRankSyncInWorldSize，
++//   因此该同步保证"本卡清完"先于"任何远端卡开始往本卡写 combine 结果"，无需额外同步。
++//   只清 flag（带 dstStride 跳过数据区），不清数据，成本约为清整个区的 1/17。
++// ===============================================================
++template <TemplateMegaMoeTypeClass>
++__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetCombineFlags()
++{
++    uint32_t blockCntPerToken;
++    uint32_t slotBytes;
++    uint32_t flagStrideBytes;
++    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
++        blockCntPerToken = Ops::Base::CeilDiv(k_, MegaMoeImpl::L1_TILE_N);
++        flagStrideBytes = MegaMoeImpl::L1_TILE_N * static_cast<uint32_t>(sizeof(bfloat16_t));
++        slotBytes = blockCntPerToken * (flagStrideBytes + COMBINE_FLAG_BYTES);
++    } else {
++        uint32_t nScaleForSlot = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
++        blockCntPerToken = 1U;
++        slotBytes = Ops::Base::CeilAlign(k_ + nScaleForSlot, static_cast<uint32_t>(ALIGN_32)) +
++                    COMBINE_FLAG_BYTES;
++        flagStrideBytes = slotBytes - COMBINE_FLAG_BYTES;
++    }
++    // 本卡待接收的 flag 块总数：m_ 个 token × topK 份 × 每份 blockCnt 块，按核均分。
++    int32_t totalFlagBlocks = static_cast<int32_t>(m_) * topK_ * static_cast<int32_t>(blockCntPerToken);
++    int32_t coreLen, coreOffset;
++    TilingByCore(totalFlagBlocks, coreLen, coreOffset, 1);
++    if (coreLen == 0) {
++        return;
++    }
++    GlobalTensor<int32_t> flagGm;
++    flagGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.peermemInfo.combineSendPtr));
++    // flag 块在 GM 上等距分布（间隔 = 数据区 + flag 区），用 dstStride 跳过数据区批量清零。
++    uint32_t blockStrideBytes = flagStrideBytes + COMBINE_FLAG_BYTES;
++    // 每批清多少个 flag 块受 resetTensor_ 容量限制：一块 32B = INT32_PER_256B 个 int32。
++    int32_t flagBlocksPerBatch = resetBatchElementCount_ / static_cast<int32_t>(INT32_PER_256B);
++    if (flagBlocksPerBatch < 1) {
++        flagBlocksPerBatch = 1;
++    }
++    SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
++    for (int32_t done = 0; done < coreLen; done += flagBlocksPerBatch) {
++        int32_t cnt = (coreLen - done) < flagBlocksPerBatch ? (coreLen - done) : flagBlocksPerBatch;
++        uint64_t firstFlagBytes =
++            static_cast<uint64_t>(coreOffset + done) * blockStrideBytes + flagStrideBytes;
++        DataCopyExtParams flagResetParams{static_cast<uint16_t>(cnt), COMBINE_FLAG_BYTES, 0U,
++                                          flagStrideBytes, 0U};
++        DataCopyPad(flagGm[firstFlagBytes / sizeof(int32_t)], resetTensor_, flagResetParams);
++    }
++}
++
+ // ===============================================================
+ // UnpermuteSharedExpert：共享专家结果累加到当前 token 的 fp32 累加器
+ // ===============================================================
+@@ -1761,19 +1919,38 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
+         for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
+             SetFlag<AscendC::HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
+         }
+-        for (int32_t localIdx = 0; localIdx < batchTokenCount; localIdx++) {
+-            int32_t tokenIdx = coreOffset + batchTokenOffset + localIdx;
+-            UnpermuteProcessToken(tokenIdx, localIdx, expandedX, bufferConfig);
+-            // 共享专家结果累加（直接加，不乘 topk_weight）
+-            if (sharedExpertNum_ > 0) {
+-                UnpermuteSharedExpert(tokenIdx, localIdx, bufferConfig);
++        // data-as-flag：不再有 Unpermute 前的全卡同步，改为在 batch 内非阻塞轮转——
++        // 扫一遍未完成的 token，谁的 topK 份 combine 结果先到齐就先算谁，没到的直接跳过下轮再看，
++        // 从而把"等远端数据"与"算已到达 token"重叠，而不是所有卡一起等最慢的那张。
++        // tokenDoneTensor_ 由 Vector(Duplicate) 写、Scalar(Get/SetValue) 读写：
++        // 进入前等上一 batch 的 Scalar 访问收尾(S→V)，Duplicate 后再让 Scalar 可见(V→S)。
++        SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID6>();
++        Duplicate<int32_t>(tokenDoneTensor_, 0, batchTokenCount);
++        SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID3>();
++        int32_t doneCount = 0;
++        while (doneCount < batchTokenCount) {
++            for (int32_t localIdx = 0; localIdx < batchTokenCount; localIdx++) {
++                if (tokenDoneTensor_.GetValue(localIdx) != 0) {
++                    continue;
++                }
++                int32_t tokenIdx = coreOffset + batchTokenOffset + localIdx;
++                if (!CheckCombineTokenArrived(tokenIdx)) {
++                    continue;
++                }
++                tokenDoneTensor_.SetValue(localIdx, 1);
++                doneCount++;
++                UnpermuteProcessToken(tokenIdx, localIdx, expandedX, bufferConfig);
++                // 共享专家结果累加（直接加，不乘 topk_weight）
++                if (sharedExpertNum_ > 0) {
++                    UnpermuteSharedExpert(tokenIdx, localIdx, bufferConfig);
++                }
++                // MTE2 使用独立输入槽，可与上一 token 的 MTE3 输出重叠；仅在覆盖输出槽前等待 MTE3 读完。
++                WaitFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
++                Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
++                SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
++                DataCopy(output[static_cast<uint64_t>(tokenIdx) * k_], dataResTensor_, k_);
++                SetFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
+             }
+-            // MTE2 使用独立输入槽，可与上一 token 的 MTE3 输出重叠；仅在覆盖输出槽前等待 MTE3 读完。
+-            WaitFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
+-            Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
+-            SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
+-            DataCopy(output[static_cast<uint64_t>(tokenIdx) * k_], dataResTensor_, k_);
+-            SetFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
+         }
+         for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
+             WaitFlag<AscendC::HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
+@@ -2160,8 +2337,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
+     }
+ 
+     // 4. 本卡数据Unpermute
++    // data-as-flag：原先此处有 CrossRankSyncInWorldSize() 全卡软同步来确认 combine send 完成，
++    // 现已删除——combine 的数据与 flag 一起发出，Unpermute 直接按 flag 判定每个 token 是否到达，
++    // 各卡不再互相等待，本卡先到的 token 可立即参与累加。
+     if constexpr (g_coreType == AIV) {
+-        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+         Unpermute();
+     }
+     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+diff --git a/mc2/mega_moe/op_kernel/arch35/mega_moe_combine_send.h b/mc2/mega_moe/op_kernel/arch35/mega_moe_combine_send.h
+index e6a262520..2e0356b71 100644
+--- a/mc2/mega_moe/op_kernel/arch35/mega_moe_combine_send.h
++++ b/mc2/mega_moe/op_kernel/arch35/mega_moe_combine_send.h
+@@ -39,17 +39,84 @@ constexpr uint32_t tokenLenIndex = 4;
+ constexpr uint32_t tokenActualLenIndex = 5;
+ constexpr uint32_t flagIndex = 7;
+ 
++// 每个 N 方向 tile 块在 GM 上的字节数：数据区按 COMBINE_BLOCK_N 定长（尾块不足处为 padding），块尾附 flag。
++// 放在本文件而非 mega_moe_impl_base.h —— 后者会被 host tiling 编译，那里没有 __aicore__。
++template <typename T>
++__aicore__ inline constexpr uint32_t CombineBlockBytes()
++{
++    return COMBINE_BLOCK_N * sizeof(T) + COMBINE_FLAG_BYTES;
++}
++
++// =============================================
++// InitCombineSendFlagBuf: 把 AIV 侧 [数据|flag] 拼接区整块铺成 COMBINE_FLAG_ARRIVED。
++//   之后每轮只覆盖各行的数据区（≤ L1_TILE_N*sizeof(T) 字节），块尾 32B flag 区永不被覆盖，
++//   故 flag 恒有效，无需每个 tile 重铺。调用点在 AivGmm2PostGeneric 的 tile 循环之前。
++// =============================================
++template <typename ElementMMadOut2>
++__aicore__ inline void InitCombineSendFlagBuf(uint32_t maxTileM)
++{
++    constexpr uint32_t blockBytes = CombineBlockBytes<ElementMMadOut2>();
++    LocalTensor<float> sendBufF(TPosition::VECCALC, MegaMoeImpl::COMBINE_SEND_BUF_ADDR,
++                                maxTileM * blockBytes / sizeof(float));
++    AscendC::Duplicate<float>(sendBufF, COMBINE_FLAG_ARRIVED, maxTileM * blockBytes / sizeof(float));
++}
++
++// =============================================
++// CombineTokens: 把 GMM2 的一个 N 方向 tile 按 token 发回各自源卡。
++//   每个 tile 块在远端 slot 内的布局 = [数据区 L1_TILE_N*sizeof(T) | flag 区 32B]，
++//   数据与 flag 在同一次 DataCopyPad 中发出——flag 位于块尾，接收侧看到 flag 时数据必然已可见，
++//   接收侧(Unpermute)据此判定到达，无需 CrossRankSyncInWorldSize 全卡同步。
++//   发送长度固定为整块 blockBytes（尾块数据不满也发满），保证 flag 始终落在块尾固定偏移。
++// =============================================
+ template <typename ElementMMadOut2, typename BlockShape>
+ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &metaInfoTensor,
+                                      LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape,
+                                      const Params &params)
+ {
+     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
++    uint32_t nValue = Get<N_VALUE>(actualBlockShape); // N_VALUE是当前tile块的n长度
++    constexpr uint32_t blockBytes = CombineBlockBytes<ElementMMadOut2>();
++    constexpr uint32_t blockElems = blockBytes / sizeof(ElementMMadOut2);
++    uint32_t dataBytes = nValue * sizeof(ElementMMadOut2);
++    uint32_t blockIdxInToken = nLoc / MegaMoeImpl::L1_TILE_N; // 该 tile 在 token 内的块序号
++    uint32_t blockCntPerToken =
++        Ops::Base::CeilDiv(n, MegaMoeImpl::L1_TILE_N); // 一个 token 被切成多少个 N 方向块
++
++    // 数据 UB→UB 摆进拼接区：每行写入 [行首, 行首+dataBytes)，块尾 flag 区保持 InitCombineSendFlagBuf 铺好的值。
++    LocalTensor<ElementMMadOut2> sendBuf(TPosition::VECCALC, MegaMoeImpl::COMBINE_SEND_BUF_ADDR,
++                                         lenTile * blockElems);
++    LocalTensor<float> sendBufF = sendBuf.template ReinterpretCast<float>();
++    LocalTensor<float> srcF = l0cOutUbGMM2.template ReinterpretCast<float>();
++    constexpr uint32_t floatPerRepeat = 64U; // 一次 Copy repeat 处理 256B
++    uint32_t rowFloats = dataBytes / sizeof(float);
++    uint32_t dstRowFloats = blockBytes / sizeof(float);
++    if (dataBytes % ALIGN_32 == 0) {
++        // 快路径：源行距 32B 对齐，一次 Copy 覆盖全部 lenTile 行
++        uint16_t dstRepStride = static_cast<uint16_t>(blockBytes / ALIGN_32);
++        uint16_t srcRepStride = static_cast<uint16_t>(dataBytes / ALIGN_32);
++        for (uint32_t off = 0; off < rowFloats; off += floatPerRepeat) {
++            uint64_t maskCnt = (rowFloats - off) < floatPerRepeat ? (rowFloats - off) : floatPerRepeat;
++            AscendC::Copy(sendBufF[off], srcF[off], maskCnt, static_cast<uint8_t>(lenTile),
++                          {1, 1, dstRepStride, srcRepStride});
++        }
++    } else {
++        // 兜底：源行距非 32B 对齐无法用 repeat stride 表达，逐行搬（repeat=1 时 repStride 不生效）
++        for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
++            for (uint32_t off = 0; off < rowFloats; off += floatPerRepeat) {
++                uint64_t maskCnt = (rowFloats - off) < floatPerRepeat ? (rowFloats - off) : floatPerRepeat;
++                AscendC::Copy(sendBufF[tileIdx * dstRowFloats + off], srcF[tileIdx * rowFloats + off], maskCnt, 1,
++                              {1, 1, 8, 8});
++            }
++        }
++    }
++    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
++    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
++
+     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
+     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
+     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
+     ub2GmParams.blockCount = 1;
+-    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2); // N_VALUE是当前tile块的n长度
++    ub2GmParams.blockLen = blockBytes; // 数据 + flag 一次发出
+     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+     AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
+@@ -58,9 +125,11 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
+         uint32_t topkIdx = metaInfoTensor.GetValue(tileIdx * 8 + 2);
+         gmRemoteD.SetGlobalBuffer(
+             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
+-        uint64_t gmDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n + nLoc;
+-        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)],
+-                             ub2GmParams);
++        uint64_t gmDstOffset =
++            ((static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * blockCntPerToken +
++             blockIdxInToken) *
++            blockElems;
++        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], sendBuf[tileIdx * blockElems], ub2GmParams);
+     }
+ }
+ 
+@@ -416,12 +485,14 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType> &inLocal, LocalTensor<flo
+ // =============================================
+ // CombineQuantizedTokens：将量化后的 token 发送到目标 rank
+ // =============================================
++// 量化 combine 路径下一个 token 整体一次发出，故每个 slot 只需一份 flag：
++//   slot 布局 = [量化数据区 quantSlotBytes-32 | flag 区 32B]，数据与 flag 同一次 DataCopyPad 发出。
+ template <typename QuantOutType>
+ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
+                                               uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t> &metaInfoTensor,
+-                                              LocalTensor<QuantOutType> &ubQuant, const Params &params)
++                                              LocalTensor<QuantOutType> &ubQuant, const Params &params,
++                                              uint32_t quantSlotBytes)
+ {
+-    int64_t quantTokenSize = n + nScale;
+     uint32_t toRankId = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + RANK_ID);
+     uint32_t tokenIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOKEN_ID);
+     uint32_t topkIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOPK_INDEX);
+@@ -431,16 +502,19 @@ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curR
+     __gm__ void *dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset);
+     gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType *>(dstPeermemPtr));
+ 
+-    uint64_t dstBaseOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSize;
++    uint64_t dstBaseOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantSlotBytes;
+ 
+-    AscendC::DataCopyExtParams singleCopyParams{1, static_cast<uint32_t>(quantTokenSize), 0, 0, 0};
++    AscendC::DataCopyExtParams singleCopyParams{1, quantSlotBytes, 0, 0, 0};
+     AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
+ }
+ 
+ // =============================================
+ // CombineTokenGroup：处理一个 token group 的 Combine 操作，从 GMM2 输出读取数据，量化后发送到目标 rank
++//   DataAsFlag=true（非 layered 路径）：slot 尾部带 32B flag，与数据一次发出，接收侧靠 flag 判到达；
++//     此时 quantTokenSizeBytes 已含 flag 区（见 InitCombineBuffers）。
++//   DataAsFlag=false（layered 路径）：保持原布局与原发送长度 n+nScale，行为不变。
+ // =============================================
+-template <uint8_t QuantMode, typename T>
++template <uint8_t QuantMode, typename T, bool DataAsFlag = false>
+ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCount, uint32_t n, uint32_t groupIdx,
+                                          uint32_t rankId, GM_ADDR gmm2OutAddr, const Params &params,
+                                          LocalTensor<int32_t> &metaInfoTensor, int64_t ubTensorSize, int64_t offset,
+@@ -463,6 +537,21 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
+     DataCopyPadExtParams<T> copyPadParams{false, 0U, 0U, 0U};
+     AscendC::DataCopyExtParams gm2UbParams{static_cast<uint16_t>(1), static_cast<uint32_t>(n * sizeof(T)), 0, 0, 0};
+ 
++    // 发送长度：data-as-flag 路径按含 flag 的 slot 定长发；layered 路径保持原来的 n+nScale。
++    uint32_t slotBytes = DataAsFlag ? quantTokenSizeBytes : static_cast<uint32_t>(n + nScale);
++    if constexpr (DataAsFlag) {
++        // quantTokenSizeBytes 已含块尾 32B flag 区（见 InitCombineBuffers）。
++        // 量化输出 QuantMxFp8 只写 [0, n+nScale)，flag 区不会被覆盖，故两个 pingpong 槽各铺一次即可。
++        uint32_t flagFloatOffset = (quantTokenSizeBytes - COMBINE_FLAG_BYTES) / sizeof(float);
++        for (uint32_t pp = 0; pp < 2; pp++) {
++            LocalTensor<float> slotF =
++                combineUbTensor[pp * singleTokenElems + nAlign32].template ReinterpretCast<float>();
++            AscendC::Duplicate<float>(slotF[flagFloatOffset], COMBINE_FLAG_ARRIVED,
++                                      COMBINE_FLAG_FLOAT_NUM);
++        }
++        SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
++    }
++
+     for (uint32_t i = 0; i < tokenCount; i++) {
+         uint32_t pingPong = i % 2;
+         LocalTensor<T> ubBf16 = combineUbTensor[pingPong * singleTokenElems];
+@@ -479,7 +568,8 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
+ 
+         // MTE3: send to GM
+         LocalTensor<Fp8Type> ubQuantDataFp8 = ubQuantData.template ReinterpretCast<Fp8Type>();
+-        CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantDataFp8, params);
++        CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantDataFp8, params,
++                                        slotBytes);
+     }
+ 
+     // Wait for all MTE3 operations to complete
+diff --git a/mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h b/mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h
+index 25c7f613b..f85af18c0 100644
+--- a/mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h
++++ b/mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h
+@@ -626,6 +626,11 @@ __aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
+     LocalTensor<ElementC> l0cOutUbGMM2First(TPosition::VECIN, ubOffsetFirst, L1_TILE_M_128 * L1_TILE_N);
+     LocalTensor<ElementC> l0cOutUbGMM2Second(TPosition::VECIN, ubOffsetSecond, L1_TILE_M_128 * L1_TILE_N);
+ 
++    // data-as-flag：把 [数据|flag] 拼接区的 flag 铺好，循环内只覆盖数据区，flag 恒有效。
++    if constexpr (!IsLayered) {
++        MegaMoeCombineImpl::InitCombineSendFlagBuf<ElementC>(L1_TILE_M_128);
++    }
++
+     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += workSet.config.blockNum) {
+         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
+         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
+@@ -1053,6 +1058,10 @@ template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename
+ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params, uint32_t groupCnt,
+                                        const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+ {
++    // data-as-flag：本路径仅在 COMBINE_NO_QUANT 下调用（tileM 恒为 L1_TILE_M_128），
++    // 先铺好 [数据|flag] 拼接区的 flag，循环内只覆盖数据区。
++    MegaMoeCombineImpl::InitCombineSendFlagBuf<ElementC>(L1_TILE_M_128);
++
+     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+         auto actualShape = scheduler.GetBlockShape(blockCoord);
+diff --git a/mc2/mega_moe/op_kernel/arch35/mega_moe_impl_base.h b/mc2/mega_moe/op_kernel/arch35/mega_moe_impl_base.h
+index bd1614458..e11f446be 100644
+--- a/mc2/mega_moe/op_kernel/arch35/mega_moe_impl_base.h
++++ b/mc2/mega_moe/op_kernel/arch35/mega_moe_impl_base.h
+@@ -30,5 +30,12 @@ constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = (MAX_SINGLE_MN_256_256 + 31U)
+ constexpr uint32_t MAX_SINGLE_MN_128_256 = 128 * 256;
+ constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U) / ALIGN32 * ALIGN32;
+ constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U; // metaInfo tensor 在 UB 中的起始地址
++
++// Combine "data as flag"：AIV 侧 [数据|flag] 拼接 buffer 的 UB 起始地址。
++//   l0cOutUbGMM2 双 buffer 占 [0,128K)，META_INFO_TENSOR_ADDR 在 200K，故 [128K,200K) 可用。
++//   布局常量的唯一真值源在 mega_moe_workspace_info.h（host tiling 也要用）。
++//   注意：本文件被 mega_moe_workspace_info.h 提前 include，且会被 host tiling 编译，
++//         故这里只能放 constexpr，不能放带 __aicore__ 的函数，也不能引用 workspace_info.h 的常量。
++constexpr uint32_t COMBINE_SEND_BUF_ADDR = 128U * 1024U;
+ } // namespace MegaMoeImpl
+ #endif // MEGA_MOE_IMP_BASE_H
+diff --git a/mc2/mega_moe/op_kernel/arch35/mega_moe_workspace_info.h b/mc2/mega_moe/op_kernel/arch35/mega_moe_workspace_info.h
+index d046931b0..7d9f49a93 100644
+--- a/mc2/mega_moe/op_kernel/arch35/mega_moe_workspace_info.h
++++ b/mc2/mega_moe/op_kernel/arch35/mega_moe_workspace_info.h
+@@ -74,6 +74,26 @@ constexpr uint32_t SYNC_EVENT_ID2 = 2;
+ constexpr uint32_t SYNC_EVENT_ID3 = 3;
+ constexpr uint32_t SYNC_EVENT_ID4 = 4;
+ constexpr uint32_t SYNC_EVENT_ID5 = 5;
++// Unpermute 的输入 ring 用 event id [0, MAX_UNPERMUTE_INPUT_BUFFER_COUNT)=[0,6)，
++// data-as-flag 的 flag 检查另占一个更高的 id，避免与 ring 的 V_MTE2/MTE2_V/S_V 撞车。
++constexpr uint32_t SYNC_EVENT_ID6 = 6;
++constexpr uint32_t UNPERMUTE_FLAG_CMP_ALIGN = 64U; // CompareScalar 比较长度须为 64 的倍数（1 个 u64 bitmask 字）
++
++// =====================================================================================
++// Combine "data as flag" 布局常量 —— host tiling 与 kernel 共用的唯一真值源。
++//   combineSend 区不再是 [bs][topK][h] 紧密排布，而是按发送块切分，每块尾部附一份 flag：
++//     非量化：slot = CeilDiv(h, COMBINE_BLOCK_N) 个 [COMBINE_BLOCK_N*sizeof(T) 数据 | 32B flag]
++//     量化：  slot = [CeilAlign(h + h/32, 32) 量化数据 | 32B flag]
++//   数据与 flag 在同一次 DataCopyPad 中发出（flag 在块尾，可见时数据必然已可见），
++//   Unpermute 靠 flag 判定到达，取代 Unpermute 前的 CrossRankSyncInWorldSize 全卡同步。
++//   改动 COMBINE_BLOCK_N 必须同步 MegaMoeImpl::L1_TILE_N（impl_base.h 有 static_assert 兜底）。
++// =====================================================================================
++constexpr uint32_t COMBINE_FLAG_BYTES = 32U;    // flag 区字节数（1 个 UB block，DataCopy 最小粒度）
++constexpr uint32_t COMBINE_FLAG_FLOAT_NUM = 8U; // COMBINE_FLAG_BYTES / sizeof(float)
++constexpr float COMBINE_FLAG_ARRIVED = 1.0f;    // 到达标记值（与 moe_distribute_combine_v2 一致）
++constexpr uint32_t COMBINE_BLOCK_N = 256U;      // 非量化路径的发送块 N 长度，须等于 MegaMoeImpl::L1_TILE_N
++static_assert(MegaMoeImpl::L1_TILE_N == COMBINE_BLOCK_N,
++              "COMBINE_BLOCK_N must match MegaMoeImpl::L1_TILE_N: combineSend slot layout depends on it");
+ constexpr int64_t SIZE_INT_8 = 1U;
+ constexpr int64_t SIZE_INT_32 = 4U;
+ constexpr int64_t SIZE_BF_16 = 2U;
