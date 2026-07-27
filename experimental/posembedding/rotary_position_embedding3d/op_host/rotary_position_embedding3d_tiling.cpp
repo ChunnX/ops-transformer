@@ -27,12 +27,13 @@ struct CompileInfo {};
 
 static void ComputeBandDims(int64_t headDim, int64_t &tBand, int64_t &hBand, int64_t &wBand)
 {
-    int64_t bandEach = headDim / 3;
-    if (bandEach % 2 != 0) {
-        bandEach -= 1;
+    // 2:1:1 ratio: T = D/2, H = D/4, W = D/4, all even
+    int64_t unit = headDim / 4;
+    if (unit % 2 != 0) {
+        unit -= 1;
     }
-    tBand = bandEach;
-    hBand = bandEach;
+    tBand = unit * 2;
+    hBand = unit;
     wBand = headDim - tBand - hBand;
     if (wBand % 2 != 0) {
         wBand -= 1;
@@ -41,6 +42,14 @@ static void ComputeBandDims(int64_t headDim, int64_t &tBand, int64_t &hBand, int
             tBand -= 1;
             hBand += 1;
         }
+    }
+    if (hBand % 2 != 0) {
+        hBand -= 1;
+        tBand += 1;
+    }
+    if (tBand % 2 != 0) {
+        tBand -= 1;
+        hBand += 1;
     }
 }
 
