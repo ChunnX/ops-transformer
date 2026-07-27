@@ -517,7 +517,7 @@ function(gen_norm_symbol)
 
 endfunction()
 
-# custom 包 fusion pass 载体（参照 ops-nn gen_cust_proto_symbol 做法）：
+# custom 包 fusion pass 载体：
 # graph_plugin_obj 直接链入 cust_proto（libcust_opsproto_rt2.0.so），
 # GE 加载 vendor 包 op_proto .so 时 REG_FUSION_PASS 静态注册生效，标准安装流开箱即用
 function(gen_cust_graph_plugin_symbol)
