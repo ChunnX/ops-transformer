@@ -794,9 +794,8 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                                    uint32_t groupCnt, uint16_t &pingpongIdx, uint32_t groupIdx = 0)
+                                    uint32_t groupCnt, uint16_t &pingpongIdx)
 {
-    (void)groupIdx;
     Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
@@ -1236,12 +1235,11 @@ GroupMatmulSwigluQuantA8W4(BlockEpilogueSwigluMxQuant<ElementA, ElementC, Elemen
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false,
           bool IsShared = false>
-__aicore__ inline void
-GroupMatmul2CombineA8W4(const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-                        const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
-                        uint32_t groupCnt, uint16_t &pingpongIdx, uint32_t groupIdx = 0)
+__aicore__ inline void GroupMatmul2CombineA8W4(const Params &params,
+                                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+                                               const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
+                                               int32_t &gmTileSequence, uint32_t groupCnt, uint16_t &pingpongIdx)
 {
-    (void)groupIdx;
     Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx};
     Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
                                 ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
