@@ -130,17 +130,18 @@ private:
     __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                                   uint32_t expertIdx, int32_t &vecSetSyncCom);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
-                                       uint32_t &endTokenId, uint32_t &sendTokenNum);
-    __aicore__ inline bool BuildCombineRankInfo(uint32_t expertIdx, uint32_t mExpert, uint32_t startRankId,
-                                                uint32_t processRankNum, int64_t &offset,
-                                                LocalTensor<int32_t> &rankInfoTensor, uint32_t &totalTokensToProcess,
-                                                uint32_t &batchBaseOffset);
+                                        uint32_t &endTokenId, uint32_t &sendTokenNum);
+    __aicore__ inline bool BuildCombineRankInfo(uint32_t expertIdx, uint32_t mExpert,
+                                                uint32_t startRankId, uint32_t processRankNum,
+                                                int64_t &offset, LocalTensor<int32_t> &rankInfoTensor,
+                                                uint32_t &totalTokensToProcess, uint32_t &batchBaseOffset);
     __aicore__ inline void ProcessCombineGroups(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
                                                 uint32_t expertIdx, uint32_t &startRankId, uint32_t &endRankId);
     __aicore__ inline void ProcessCombineBatch(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
                                                uint32_t expertIdx, uint32_t rankIndex,
                                                LocalTensor<int32_t> &rankInfoTensor, uint32_t processRankNum,
-                                               uint32_t batchBaseOffset, int64_t &offset, uint32_t &totalProcessed);
+                                               uint32_t batchBaseOffset, int64_t &offset,
+                                               uint32_t &totalProcessed);
     __aicore__ inline void DrainCombineChannels(uint32_t startRankId, uint32_t endRankId);
 
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
@@ -1538,7 +1539,8 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::InitCombineBuffers()
 {
     if constexpr (g_coreType == AIV) {
-        LocalTensor<uint8_t> hcommTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
+        LocalTensor<uint8_t> hcommTensor_ =
+                LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
         hcomm_.Init(hcommTensor_, ALIGN_512);
         uint32_t nAlign32 = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_32));
         uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
@@ -1549,10 +1551,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::InitCombineBuffe
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum,
-                                                                            uint32_t &startTokenId,
-                                                                            uint32_t &endTokenId,
-                                                                            uint32_t &sendTokenNum)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SplitToCore(
+    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
+    uint32_t &endTokenId, uint32_t &sendTokenNum)
 {
     uint32_t coreIdForGrouping = aivCoreIdx_;
     uint32_t totalCoresForGrouping = curUseAivNum;
@@ -1566,11 +1567,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SplitToCore(uint
         coreIdForGrouping = aivCoreIdx_ / 2;
         totalCoresForGrouping = curUseAivNum / 2;
     }
-    sendTokenNum = curSendCnt / totalCoresForGrouping;               // 每个aiv需要发送的token数
-    uint32_t remainderTokenNum = curSendCnt % totalCoresForGrouping; // 余数
+    sendTokenNum = curSendCnt / totalCoresForGrouping;                // 每个aiv需要发送的token数
+    uint32_t remainderTokenNum = curSendCnt % totalCoresForGrouping;  // 余数
     uint32_t newAivId = coreIdForGrouping;
-    startTokenId = sendTokenNum * newAivId; // 每个aiv发送时的起始rankid
-    if (newAivId < remainderTokenNum) {     // 前remainderRankNum个aiv需要多发1个卡的数据
+    startTokenId = sendTokenNum * newAivId;  // 每个aiv发送时的起始rankid
+    if (newAivId < remainderTokenNum) {      // 前remainderRankNum个aiv需要多发1个卡的数据
         sendTokenNum += 1;
         startTokenId += newAivId;
     } else {
@@ -1586,12 +1587,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SplitToCore(uint
 // =============================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::BuildCombineRankInfo(
-    uint32_t expertIdx, uint32_t mExpert, uint32_t startRankId, uint32_t processRankNum, int64_t &offset,
-    LocalTensor<int32_t> &rankInfoTensor, uint32_t &totalTokensToProcess, uint32_t &batchBaseOffset)
+    uint32_t expertIdx, uint32_t mExpert, uint32_t startRankId, uint32_t processRankNum,
+    int64_t &offset, LocalTensor<int32_t> &rankInfoTensor, uint32_t &totalTokensToProcess,
+    uint32_t &batchBaseOffset)
 {
     // 定位 mask slot 基址：每个 expert 有 worldSize_ 个 slot
-    uint64_t maskSlotOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdx) * worldSize_ * maskSlotSize_;
-    __gm__ uint8_t *maskSlotBase = (__gm__ uint8_t *)(GetRankWinAddrWithOffset(rankId_, maskSlotOffset));
+    uint64_t maskSlotOffset = maskWinOffset_ +
+        static_cast<uint64_t>(expertIdx) * worldSize_ * maskSlotSize_;
+    __gm__ uint8_t *maskSlotBase =
+        (__gm__ uint8_t *)(GetRankWinAddrWithOffset(rankId_, maskSlotOffset));
 
     // cumsum 本核范围之前的所有 rank
     uint32_t cumsumBeforeRange = 0;
@@ -1602,8 +1606,8 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::BuildCombineRank
     }
 
     // 分配 rankInfoTensor : layout [startRow_0..N | tokenCnt_0..N | processedCnt_0..N]
-    uint32_t rankInfoSize = Ops::Base::CeilAlign(static_cast<int64_t>(processRankNum * 3 * sizeof(int32_t)),
-                                                 static_cast<int64_t>(ALIGN_32));
+    uint32_t rankInfoSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(processRankNum * 3 * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     rankInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC, offset, rankInfoSize / sizeof(int32_t));
     offset += rankInfoSize;
 
@@ -1612,7 +1616,8 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::BuildCombineRank
     totalTokensToProcess = 0;
     for (uint32_t i = 0; i < processRankNum; i++) {
         uint32_t r = startRankId + i;
-        __gm__ int32_t *cntAddr = reinterpret_cast<__gm__ int32_t *>(maskSlotBase + r * maskSlotSize_ + maskAlignSize_);
+        __gm__ int32_t *cntAddr =
+            reinterpret_cast<__gm__ int32_t *>(maskSlotBase + r * maskSlotSize_ + maskAlignSize_);
         int32_t cnt = AscendC::ReadGmByPassDCache(cntAddr);
         rankInfoTensor.SetValue(i, cumsumBeforeRange + cumsumInRange); // startRow
         rankInfoTensor.SetValue(processRankNum + i, cnt);              // tokenCnt
@@ -1634,14 +1639,15 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::BuildCombineRank
 // =============================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBatch(
-    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx, uint32_t rankIndex,
-    LocalTensor<int32_t> &rankInfoTensor, uint32_t processRankNum, uint32_t batchBaseOffset, int64_t &offset,
-    uint32_t &totalProcessed)
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx,
+    uint32_t rankIndex, LocalTensor<int32_t> &rankInfoTensor, uint32_t processRankNum,
+    uint32_t batchBaseOffset, int64_t &offset, uint32_t &totalProcessed)
 {
     constexpr bool IsQuant = CombineQuantMode != COMBINE_NO_QUANT;
     uint32_t mExpert = Get<M_VALUE>(gmm2State.problemShape);
     uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
-    uint32_t quantTokenSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
+    uint32_t quantTokenSizeBytes =
+        Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
 
     // 从 rankInfoTensor 读取当前 rank 的进度信息
     uint32_t startRow = rankInfoTensor.GetValue(rankIndex);
@@ -1663,19 +1669,21 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBa
 
     // 加载 triple info 到 UB（复用 VECIN 空间，每次 batch 覆盖）
     offset = batchBaseOffset;
-    LocalTensor<int32_t> metaInfoTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, batchCount * META_INFO_SIZE);
-    offset += batchCount * META_INFO_SIZE * sizeof(int32_t);
+    LocalTensor<int32_t> tripleTensor =
+        LocalTensor<int32_t>(TPosition::VECIN, offset, batchCount * TRIPLE_SIZE);
+    offset += batchCount * TRIPLE_SIZE * sizeof(int32_t);
 
     AscendC::GlobalTensor<int32_t> tripleGm;
-    tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.metaInfoPtr +
-                                                                (gmm2State.expertBeforeCnt + currentRow) *
-                                                                    META_INFO_SIZE * sizeof(int32_t)));
-    AscendC::DataCopy(metaInfoTensor, tripleGm, batchCount * META_INFO_SIZE);
+    tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+        params_.workspaceInfo.tripleInfoPtr +
+        (gmm2State.expertBeforeCnt + currentRow) * TRIPLE_SIZE * sizeof(int32_t)));
+    AscendC::DataCopy(tripleTensor, tripleGm, batchCount * TRIPLE_SIZE);
 
     // 执行 combine 并发送
     MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(
-        currentRow, batchCount, k_, expertIdx, rankId_, gmmAddrInfo.gmm2OutGlobal, params_, metaInfoTensor,
-        combineUbTensorSize_, offset, quantTokenSizeBytes);
+        currentRow, batchCount, k_, expertIdx, rankId_,
+        gmmAddrInfo.gmm2OutGlobal, params_, tripleTensor, combineUbTensorSize_,
+        offset, quantTokenSizeBytes);
 
     // 更新进度
     rankInfoTensor.SetValue(2 * processRankNum + rankIndex, processedCnt + batchCount);
@@ -1688,11 +1696,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBa
 //                       ProcessCombineBatch 批量处理。
 // =============================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineGroups(const GMMAddrInfo &gmmAddrInfo,
-                                                                                     const ExpertLoopState &gmm2State,
-                                                                                     uint32_t expertIdx,
-                                                                                     uint32_t &startRankId,
-                                                                                     uint32_t &endRankId)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineGroups(
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx,
+    uint32_t &startRankId, uint32_t &endRankId)
 {
     int64_t offset = ALIGN_512;
     uint32_t processRankNum = 0;
@@ -1705,8 +1711,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineGr
     LocalTensor<int32_t> rankInfoTensor;
     uint32_t totalTokensToProcess = 0;
     uint32_t batchBaseOffset = 0;
-    if (!BuildCombineRankInfo(expertIdx, mExpert, startRankId, processRankNum, offset, rankInfoTensor,
-                              totalTokensToProcess, batchBaseOffset)) {
+    if (!BuildCombineRankInfo(expertIdx, mExpert, startRankId, processRankNum,
+                               offset, rankInfoTensor, totalTokensToProcess, batchBaseOffset)) {
         return;
     }
     AscendC::SetCtrlSpr<60, 60>(0);
@@ -1717,7 +1723,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineGr
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         logicalCoreCount = blockAivNum_ / 2;
     }
-    MegaMoeImpl::GroupSyncSlotLayout slotLayout = MegaMoeImpl::CalcGroupSyncSlotLayout(mExpert, logicalCoreCount);
+    MegaMoeImpl::GroupSyncSlotLayout slotLayout =
+        MegaMoeImpl::CalcGroupSyncSlotLayout(mExpert, logicalCoreCount);
     __gm__ int32_t *expertCounterBase = (__gm__ int32_t *)gmmAddrInfo.gmm2CombineSyncCounter;
 
     uint32_t rankIndex = 0;
@@ -1736,10 +1743,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineGr
         uint32_t firstSyncSlot = 0;
         uint32_t syncSlotCount = 0;
         MegaMoeImpl::GetGroupSyncSlotRange(targetGroup, slotLayout, firstSyncSlot, syncSlotCount);
-        __gm__ int32_t *counterAddr = MegaMoeImpl::GetCombineSyncCounterAddress(expertCounterBase, firstSyncSlot);
+        __gm__ int32_t *counterAddr =
+            MegaMoeImpl::GetCombineSyncCounterAddress(expertCounterBase, firstSyncSlot);
 
         if (AscendC::ReadGmByPassDCache(counterAddr) >= static_cast<int32_t>(nTilesPerGroup)) {
-            ProcessCombineBatch(gmmAddrInfo, gmm2State, expertIdx, rankIndex, rankInfoTensor, processRankNum,
+            ProcessCombineBatch(gmmAddrInfo, gmm2State, expertIdx,
+                                rankIndex, rankInfoTensor, processRankNum,
                                 batchBaseOffset, offset, totalProcessed);
         }
         rankIndex = (rankIndex + 1) % processRankNum;
@@ -1750,8 +1759,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineGr
 // DrainCombineChannels：Phase 3 — 冲刷本核负责的所有远端 rank 的 URMA 通道。
 // =============================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DrainCombineChannels(uint32_t startRankId,
-                                                                                     uint32_t endRankId)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DrainCombineChannels(
+    uint32_t startRankId, uint32_t endRankId)
 {
     for (uint32_t dr = startRankId; dr < endRankId; ++dr) {
         if (dr == rankId_) {
@@ -1767,14 +1776,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DrainCombineChan
 //                 再执行 row-group 级 CombineRowGroup。
 // =============================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(const GMMAddrInfo &gmmAddrInfo,
-                                                                               const ExpertLoopState &gmm2State,
-                                                                               uint32_t expertIdx)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx)
 {
+    // Phase 1 + Phase 2 由 ProcessCombineGroups 内部完成
     uint32_t startRankId = 0;
     uint32_t endRankId = 0;
     ProcessCombineGroups(gmmAddrInfo, gmm2State, expertIdx, startRankId, endRankId);
 
+    // ── Phase 3：冲刷 URMA 通道 ──
     if (expertIdx == expertPerRank_ - 1) {
         DrainCombineChannels(startRankId, endRankId);
     }
@@ -2147,13 +2157,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithS
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
             params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                                                QuantScaleOutType, QuantScaleOutType, true, MegaMoeImpl::L1_TILE_M_256,
-                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
+                                                QuantScaleOutType, QuantScaleOutType, true,
+                                                MegaMoeImpl::L1_TILE_M_256, MegaMoeImpl::L1_TILE_M_256, false,
+                                                IsShared>(
                 epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, 0);
         } else {
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                                                QuantScaleOutType, QuantScaleOutType, false, MegaMoeImpl::L1_TILE_M_256,
-                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
+                                                QuantScaleOutType, QuantScaleOutType, false,
+                                                MegaMoeImpl::L1_TILE_M_256, MegaMoeImpl::L1_TILE_M_256, false,
+                                                IsShared>(
                 epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, 0);
         }
     }
@@ -2174,8 +2186,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithC
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t,
                                              QuantScaleOutType, QuantScaleOutType, MegaMoeImpl::L1_TILE_M_256, false,
                                              IsShared, true>(params_, state.problemShape, gmmAddrInfo, startBlockIdx_,
-                                                             vecSetSyncCom, state.expertBeforeCnt, gmm2PingPongIdx_,
-                                                             expertIdx);
+                                                       vecSetSyncCom, state.expertBeforeCnt, gmm2PingPongIdx_,
+                                                       expertIdx);
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {

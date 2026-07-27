@@ -212,7 +212,7 @@ class SymmBuffer:
                 "Ascend910_93": "kfc",
                 "Ascend950": "channel",
             },
-            customCclBufferSize=required_ccl_buffer_size,
+            customCclBufferSize=required_ccl_buffer_size * 2,
         )
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size

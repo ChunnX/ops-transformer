@@ -91,7 +91,7 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
             SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID4>();
         }
     }
-
+    
     if (IsQuantized || toRankId == rankId) {
         uint64_t dstOffset = toRankId == rankId ? dstBaseOffset : 0;
         AscendC::DataCopyPad(gmLocalD[dstOffset], ubQuant, singleCopyParams);
@@ -100,7 +100,7 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
 
     if (toRankId != rankId) {
         uint64_t channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, toRankId, rankId);
-        GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset) + dstBaseOffset * sizeof(DataType);
+        GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId,gmRemoteOffset) + dstBaseOffset * sizeof(DataType);
         params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr, quantTokenSize * sizeof(DataType));
     }
 }
