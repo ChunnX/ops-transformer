@@ -16,3 +16,6 @@ foreach(SUB_DIR ${CURRENT_DIRS})
         add_subdirectory(${SUB_DIR})
     endif()
 endforeach()
+target_include_directories(grouped_matmul PRIVATE 
+    -DASCENDC_TIME_STAMP_ON
+)
