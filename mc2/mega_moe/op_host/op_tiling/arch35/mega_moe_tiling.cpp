@@ -58,6 +58,10 @@ const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
 const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
 const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
+const static uint8_t ACT_MODE_SWIGLU = 0U;
+const static uint8_t ACT_MODE_SITU = 1U;
+const static uint8_t ACT_SUB_MODE_DEFAULT = 0U;
+const static uint8_t ACT_SUB_MODE_LINEAR = 1U;
 } // namespace
 
 void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nodeName)
@@ -110,6 +114,10 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
+    OP_LOGD(nodeName, "actMode is %u", tilingData->actMode);
+    OP_LOGD(nodeName, "actSubMode is %u", tilingData->actSubMode);
+    OP_LOGD(nodeName, "activationAlpha is %f", tilingData->activationAlpha);
+    OP_LOGD(nodeName, "activationBeta is %f", tilingData->activationBeta);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -227,6 +235,9 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
     auto activationClampPtr = attrs->GetAttrPointer<float>((config.attrActivationClampIndex));
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
+    auto activationAlphaPtr = attrs->GetAttrPointer<float>((config.attrActivationAlphaIndex));
+    auto activationBetaPtr = attrs->GetAttrPointer<float>((config.attrActivationBetaIndex));
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertNum"),
                     return ge::GRAPH_FAILED);
@@ -251,6 +262,30 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp", std::to_string(*activationClampPtr).c_str(),
                                               "should be >= 0 and not NAN"),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(activationPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activation"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(std::strcmp(activationPtr, "swiglu") != 0 && std::strcmp(activationPtr, "situ") != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr, "should be 'swiglu' or 'situ'"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(activationAlphaPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationAlpha"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*activationAlphaPtr == 0.0f || std::isnan(*activationAlphaPtr),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationAlpha", std::to_string(*activationAlphaPtr).c_str(),
+                                              "should not be 0 and not NAN"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(activationBetaPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationBeta"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*activationBetaPtr == 0.0f || std::isnan(*activationBetaPtr),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationBeta", std::to_string(*activationBetaPtr).c_str(),
+                                              "should not be 0 and not NAN"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        std::strcmp(activationPtr, "swiglu") == 0 && (*activationAlphaPtr != 1.0f || *activationBetaPtr != 1.0f),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation",
+                                  "swiglu does not support activation_alpha/activation_beta, "
+                                  "please set them to 1.0 or use activation='situ'",
+                                  ""),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -421,6 +456,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                                               "shared expert only support MTE topo type"),
                     return ge::GRAPH_FAILED);
 
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
+    OP_TILING_CHECK(*topoTypePtr == TOPO_TYPE_URMA && std::strcmp(activationPtr, "situ") == 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
+                                              "situ activation is not supported with URMA topology, please use swiglu"),
+                    return ge::GRAPH_FAILED);
+
     int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
     OP_TILING_CHECK(topkWeightsType != 0 && topkWeightsType != 1,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "topkWeightsType", std::to_string(topkWeightsType).c_str(),
@@ -442,6 +483,8 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     auto activationClampPtr = attrs->GetAttrPointer<float>((config.attrActivationClampIndex));
+    auto activationAlphaPtr = attrs->GetAttrPointer<float>((config.attrActivationAlphaIndex));
+    auto activationBetaPtr = attrs->GetAttrPointer<float>((config.attrActivationBetaIndex));
 
     tilingData->epWorldSize = *epWorldSizePtr;
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ? *maxRecvTokenNumPtr :
@@ -450,6 +493,22 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
     tilingData->clampLimit = *activationClampPtr;
+    tilingData->activationAlpha = *activationAlphaPtr;
+    tilingData->activationBeta = *activationBetaPtr;
+
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    if (std::strcmp(activationPtr, "situ") == 0 && *topoTypePtr != TOPO_TYPE_URMA) {
+        tilingData->actMode = ACT_MODE_SITU;
+        if (*activationAlphaPtr != 1.0f) {
+            tilingData->actSubMode = ACT_SUB_MODE_LINEAR;
+        } else {
+            tilingData->actSubMode = ACT_SUB_MODE_DEFAULT;
+        }
+    } else {
+        tilingData->actMode = ACT_MODE_SWIGLU;
+        tilingData->actSubMode = ACT_SUB_MODE_DEFAULT;
+    }
 
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
     int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
@@ -489,6 +548,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     // GMM1 tile 状态位区每 expert 的 tile 上限（仅 prefetch 软同步路径使用）
     // outputN = hiddenDim / SWIGLU_N_HALF(2)，tileM=L1_TILE_M_256(256)，tileN=L1_TILE_N(256)
     // INT_CACHELINE=16：每 expert 的状态位按 16 对齐，与 kernel 侧 dispatchFlagSlotsPerExpert 一致
+    tilingData->maxTilesPerExpert = 0;
     if (tilingData->topkWeightsPrefetch == 1) {
         int64_t outputN = static_cast<int64_t>(tilingData->hiddenDim) / 2;
         int64_t maxTilesM = ops::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(256));
