@@ -74,7 +74,7 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     using QgmmBlockMmad = Blaze::Gemm::Block::BlockMmad<
         DispatchPolicy, AType, LayoutA, BTypeTuple, LayoutB, CType, LayoutC, BiasType, LayoutC>;
     // A4W4 复用 A8W4 epilogue(withOffset=false 分支: 只做 fixpipeResult×perTokenScale, 无 offset/rowSum)。
-    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueGmmA4W4<YType, CType>;
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueGmmA8W4<YType, CType>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
     using QgmmKernel =
         Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, QgmmBlockMmad, BlockEpilogue, BlockScheduler>;
@@ -120,6 +120,7 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     gmmParams.dbL0C = static_cast<uint8_t>(mmTilingData->dbL0C);
     gmmParams.withOffset = 0U;  // A4W4 对称量化(offset=null, 无 xRowSum 修正)
     gmmParams.groupListType = gmmBaseParams->groupListType;
+    gmmParams.isPerTokenQuant = static_cast<uint8_t>(gmmBaseParams->isPerTokenQuant);  // F3: Run prologue 据此填全 1
 
     // ============================================================
     // 2) workspace 偏移(host 布局 [SYS 16MB][int8WeightWs][int8XWs][mmOutWs])
@@ -127,14 +128,20 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     //   CalWorkspaceA4W4 同款公式重算。SYS_WORKSPACE_SIZE 与 host(grouped_matmul_host_util.h)一致=16MB。
     // ============================================================
     constexpr uint64_t A4W4_SYS_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;  // 与 host SYS_WORKSPACE_SIZE 一致
+    constexpr uint64_t A4W4_MMOUT_PIPELINE = 4UL;  // 与 host A4W4_MMOUT_PIPELINE 一致
     // int4->int8 展开后体积: int4(0.5B/元素) -> int8(1B/元素)。weight[E,K,N], x[M,K]。
     const uint64_t int8WeightWs = static_cast<uint64_t>(gmmBaseParams->groupNum) *
                                   static_cast<uint64_t>(gmmBaseParams->k) * gmmBaseParams->n;  // int8 字节
     const uint64_t int8XWs = static_cast<uint64_t>(gmmBaseParams->m) *
                              static_cast<uint64_t>(gmmBaseParams->k);  // int8 字节
+    const uint64_t mmOutWs = A4W4_MMOUT_PIPELINE * gmmBaseParams->baseM * gmmBaseParams->baseN *
+                             gmmBaseParams->coreNum * sizeof(uint16_t);
     GM_ADDR int8WeightWsAddr = workspace + A4W4_SYS_WORKSPACE_SIZE;
     GM_ADDR int8XWsAddr = int8WeightWsAddr + int8WeightWs;
     GM_ADDR mmOutWsAddr = int8XWsAddr + int8XWs;  // cube FixPipe 输出 / AIV epilogue 读
+    // F3: isPerTokenQuant=0 时 perTokenScale 兜底段 (mmOut 之后, totalM·float)。
+    //     桥接仅切换 perTokenScaleGmAddr 指向此段; 全 1 填充在 kernel_gmm_a4w4.h::Run prologue。
+    GM_ADDR perTokenScaleFillWsAddr = mmOutWsAddr + mmOutWs;
 
     // ============================================================
     // 3) GM 地址透传(single x/w/y)
@@ -144,7 +151,10 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     GM_ADDR weightGmAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<int8_t>(0, weight));
     GM_ADDR yGmAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
     GM_ADDR scaleGmAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleType>(0, scale));
-    GM_ADDR perTokenScaleGmAddr = perTokenScale;
+    // F3: isPerTokenQuant=0 (无 perTokenScale 输入) 时用 workspace 全 1 段, epilogue 正常 mul (乘 1)。
+    //     保持 A8W4 epilogue 逐字同步不改。全 1 填充见下方 §3.5 (AIV, gmm(params) 前)。
+    GM_ADDR perTokenScaleGmAddr = (gmmBaseParams->isPerTokenQuant == 0U)
+        ? perTokenScaleFillWsAddr : perTokenScale;
 
     // ============================================================
     // 4) 组装 Params 各子结构
@@ -196,6 +206,10 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     params.epilogueParams = epilogueParams;
     params.groupListGmAddr = groupList;
     params.gmmParams = gmmParams;
+
+    // F3: perTokenScale 兜底全 1 填充已移入 kernel_gmm_a4w4.h::Run prologue (x preprocess 后,
+    //     用同一 pipe, 避免 TPipe 实例冲突)。桥接仅负责 workspace 段预留 + perTokenScaleGmAddr
+    //     切换 (isPerTokenQuant=0 时指向 fillWsAddr) + isPerTokenQuant 透传。
 
     QgmmKernel gmm;
     gmm(params);
