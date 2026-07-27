@@ -150,14 +150,16 @@ public:
             kScale = qkScaleStaging[qHeadNum_ * qScaleNtdHeadStride];
         }
 
-        if constexpr (Q_QUANT_MODE == QKV_K_SCALE_Q_QUANT_MODE_NO_QUANT) {
-            QuantQMropeToBf16(tile, qkAfterCubeUb);
-            SetAndWaitQkToMte3Ready();
-            StoreQMropeOutputs(tile, qkAfterCubeUb);
-        } else {
-            QuantQToFp8(tile, qkAfterCubeUb, qkScaleStaging);
-            SetAndWaitQkToMte3Ready();
-            StoreQOutputs(tile, qkAfterCubeUb, qkScaleStaging);
+        if constexpr (!DIRECT_MROPE_Q_OUT) {
+            if constexpr (Q_QUANT_MODE == QKV_K_SCALE_Q_QUANT_MODE_NO_QUANT) {
+                QuantQMropeToBf16(tile, qkAfterCubeUb);
+                SetAndWaitQkToMte3Ready();
+                StoreQMropeOutputs(tile, qkAfterCubeUb);
+            } else {
+                QuantQToFp8(tile, qkAfterCubeUb, qkScaleStaging);
+                SetAndWaitQkToMte3Ready();
+                StoreQOutputs(tile, qkAfterCubeUb, qkScaleStaging);
+            }
         }
 
         if constexpr (K_QUANT_MODE == QKV_K_SCALE_K_QUANT_MODE_INT8) {
@@ -179,6 +181,10 @@ private:
         QKV_K_SCALE_QK_NZ_SCATTER_INDEX_TABLE_ELEMENTS;
     static constexpr bool QKV_IS_TND = QKV_LAYOUT == QKV_K_SCALE_LAYOUT_TND;
     static constexpr bool Q_OUT_IS_TND = Q_OUT_LAYOUT == QKV_K_SCALE_LAYOUT_TND;
+    static constexpr bool DIRECT_MROPE_Q_OUT =
+        (QKV_IS_TND && ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE && Q_OUT_IS_TND &&
+         K_QUANT_MODE == QKV_K_SCALE_K_QUANT_MODE_INT8 &&
+         Q_QUANT_MODE == QKV_K_SCALE_Q_QUANT_MODE_NO_QUANT);
 
     static constexpr uint32_t EVT_MTE2_TO_PIPE_V_INPUT_READY = 0U;
     static constexpr uint32_t EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE = 0U;
@@ -669,6 +675,7 @@ private:
     __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
     {
         qkvGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.qkv);
+        qkvGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
         qGammaGm_.SetGlobalBuffer((__gm__ float *)tensors.qGamma);
         kGammaGm_.SetGlobalBuffer((__gm__ float *)tensors.kGamma);
         cosSinGm_.SetGlobalBuffer((__gm__ float *)tensors.cosSin);
