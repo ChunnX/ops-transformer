@@ -332,7 +332,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
     uint64_t dispatchWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 2 * epWorldSize * COMM_ALIGN;
     uint64_t combineWinStateSize =
-        static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) * COMM_ALIGN + epWorldSize * COMM_ALIGN;
+        epWorldSize * static_cast<uint64_t>(*nmtPtr) * COMM_ALIGN + epWorldSize * COMM_ALIGN;
     uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t topKAlign = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint64_t dispatchWinDataSize = epWorldSize * static_cast<uint64_t>(*nmtPtr) *
@@ -382,7 +382,7 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     uint64_t perWinDataNeed = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) *
                               static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(info.cfg.perSlotBytes);
     uint64_t perWinStateNeed = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) *
-                               static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(UB_ALIGN);
+                               static_cast<uint64_t>(info.cfg.epWorldSize) * static_cast<uint64_t>(UB_ALIGN);
     info.localWsSizeDataPerRank = perWinDataNeed;
     info.localWsSizeStatusPerRank = perWinStateNeed;
     uint64_t stashBytes = static_cast<uint64_t>(info.cfg.epWorldSize) * (perWinDataNeed + perWinStateNeed);
