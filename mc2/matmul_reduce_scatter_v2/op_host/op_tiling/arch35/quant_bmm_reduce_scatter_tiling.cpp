@@ -194,14 +194,14 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckMxScaleDim(const gert::Storage
     uint64_t x2ScaleDim1 = static_cast<uint64_t>(x2ScaleShape->GetStorageShape().GetDim(1));
     uint64_t x2ScaleDim2 = static_cast<uint64_t>(x2ScaleShape->GetStorageShape().GetDim(2));
 
-    OP_TILING_CHECK(
-        (x1ScaleDim0 != x1Dim0) || (x1ScaleDim1 != x1Dim1DivMxFp8Size) || (x1ScaleDim2 != EVEN_ALIGN),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale",
-                                              ("(" + std::to_string(x1ScaleDim0) + ", " + std::to_string(x1ScaleDim1) +
-                                               ", " + std::to_string(x1ScaleDim2) + ")")
-                                                  .c_str(),
-                                              "The shape of x1Scale must be (x1Dim0, ceilDiv(x1Dim1, 64), EVEN_ALIGN)"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x1ScaleDim0 != x1Dim0) || (x1ScaleDim1 != x1Dim1DivMxFp8Size) || (x1ScaleDim2 != EVEN_ALIGN),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "x1Scale",
+                        ("(" + std::to_string(x1ScaleDim0) + ", " + std::to_string(x1ScaleDim1) + ", " +
+                         std::to_string(x1ScaleDim2) + ")")
+                            .c_str(),
+                        "The shape of x1Scale must be (%lu, %lu, %lu)", x1Dim0, x1Dim1DivMxFp8Size, EVEN_ALIGN),
+                    return ge::GRAPH_FAILED);
 
     bool isTransposeB = *context_->GetAttrs()->GetAttrPointer<bool>(TRANSPOSEB_INDEX);
     bool nIsOne = (x1Dim1 == x2Dim0) ? (x2Dim1 == 1) : (x2Dim0 == 1);
@@ -215,7 +215,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckMxScaleDim(const gert::Storage
                                 ("(" + std::to_string(x2ScaleDim0) + ", " + std::to_string(x2ScaleDim1) + ", " +
                                  std::to_string(x2ScaleDim2) + ")")
                                     .c_str(),
-                                "The shape of x2Scale must be (x2Dim0, ceilDiv(x2Dim1, 64), EVEN_ALIGN)"),
+                                "The shape of x2Scale must be (%lu, %lu, %lu)", x2Dim0, x2Dim1DivMxFp8Size, EVEN_ALIGN),
                             return ge::GRAPH_FAILED);
         } else {
             OP_TILING_CHECK((x2ScaleDim0 != x2Dim0DivMxFp8Size) || (x2ScaleDim1 != x2Dim1) ||
@@ -225,7 +225,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckMxScaleDim(const gert::Storage
                                 ("(" + std::to_string(x2ScaleDim0) + ", " + std::to_string(x2ScaleDim1) + ", " +
                                  std::to_string(x2ScaleDim2) + ")")
                                     .c_str(),
-                                "The shape of x2Scale must be (ceilDiv(x2Dim0, 64), x2Dim1, EVEN_ALIGN)"),
+                                "The shape of x2Scale must be (%lu, %lu, %lu)", x2Dim0DivMxFp8Size, x2Dim1, EVEN_ALIGN),
                             return ge::GRAPH_FAILED);
         }
     }
@@ -465,7 +465,9 @@ void QuantBmmReduceScatterTiling::SetScene()
                         ("x1Scale=" + std::to_string(x1ScaleShape->GetStorageShape().GetDimNum()) +
                          "D, x2Scale=" + std::to_string(x2ScaleShape->GetStorageShape().GetDimNum()) + "D")
                             .c_str(),
-                        "The shapes of x1Scale and x2Scale must be the same"),
+                        "The current shape combination does not match any scenario."
+                        "(PerTensor scenario: [x1Scale=1D, x2Scale=1D]; "
+                        "PerBlock scenario: [x1Scale=2D, x2Scale=2D]; MXFP scenario: [x1Scale=3D, x2Scale=3D])"),
                     return);
 
     if ((x1ScaleShape->GetStorageShape().GetDimNum() == PERTENSOR_SCALE_DIM) &&
