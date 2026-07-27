@@ -157,7 +157,11 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     cfg.rankID = rankId_;
     MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
     auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
-    GM_ADDR ownRedirectGM = (debugMode_ == 0) ? cGM_ : nullptr;
+    // own-redirect 与 host tiling 的 SetSkipLocalRankCopy 是同一决策的两个投影, 谓词必须逐条对齐:
+    // 少一个条件本端贡献被重复累加, 多一个条件本端贡献丢失。见 matmul_reduce_scatter_v2_tiling.cpp。
+    const bool ownRedirect = (TPL_COMM_MODE == TPL_CCU_COMM_MODE) &&
+                             (cfg.rankDim == OWN_REDIRECT_RANK_DIM) && (debugMode_ == 0);
+    GM_ADDR ownRedirectGM = ownRedirect ? cGM_ : nullptr;
     mmv3.Init(aGM_, bGM_, tempGM, biasGM_, ownRedirectGM, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
     uint64_t sliceM = static_cast<uint64_t>(tiling.tCubeTiling.M) / cfg.rankDim;
     auto recvCount = sliceM * static_cast<uint64_t>(tiling.tCubeTiling.N);

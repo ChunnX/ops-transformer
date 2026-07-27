@@ -445,9 +445,15 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for quant_bmm_reduce_scatter_tiling.");
     }
-    // pertensor own-redirect(debugMode==0)已把 own 直写输出, RS 跳过 own 本地拷贝
-    // 仅 pertensor/mxfp8(走 Pertensor caller, 已 wire own-redirect)才 skip=1; perblock 无 own-redirect 保持 skip=0 全量reduce
-    mc2CcTilingConfig.SetSkipLocalRankCopy((quantMode_ != mc2tiling::Mc2QuantMode::PERBLOCK_MODE && mc2tiling::Mc2TilingUtils::GetDebugMode() == 0) ? 1 : 0);
+    // own-redirect 与 skip-own 是同一决策的两个投影, 必须同时成立(条件与 bf16 版一致, 另加量化模式约束):
+    //   生产者 own-redirect: matmul 把本 rank 分片直写输出 cGM(quant_bmm_reduce_scatter_fp8_hif8.h)
+    //   消费者 skip-own:     RS 跳过本卡拷贝(hcomm CcuContextReduceScatterMeshMem2Mem1D::DoReduceScatter)
+    // perblock 未接 own-redirect, 必须保持 skip=0 走全量 reduce。改动此谓词时必须同步改 kernel 侧同名谓词。
+    const bool ownRedirect = (commMode_ == TPL_CCU_COMM_MODE) &&
+                             (args_.rankDim == OWN_REDIRECT_RANK_DIM) &&
+                             (quantMode_ != mc2tiling::Mc2QuantMode::PERBLOCK_MODE) &&
+                             (mc2tiling::Mc2TilingUtils::GetDebugMode() == 0);
+    mc2CcTilingConfig.SetSkipLocalRankCopy(ownRedirect ? 1 : 0);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
                     return ge::GRAPH_FAILED);
