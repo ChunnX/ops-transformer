@@ -101,9 +101,13 @@ public:
     BufferManager<BufferType::GM> gmBufferManager;
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
 
+    // bmm2结果只用单buffer。三处必须同时按这个常量走：InitMMResBuf预留的字节数、
+    // Bmm2ResBuffSel选择的buffer策略、以及ProcessMainLoop的流水级数
+    static constexpr bool bmm2ResSingleBuffer = (useDn && isFp8) || hasAtten;
+
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    using bmm2ResBufferType = typename Bmm2ResBuffSel<useDn, isFp8>::Type;
+    using bmm2ResBufferType = typename Bmm2ResBuffSel<useDn, isFp8, hasAtten>::Type;
     bmm2ResBufferType bmm2Buffers;
 
     // mm2左矩阵P
@@ -248,13 +252,16 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     PipeBarrier<PIPE_ALL>();
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     PipeBarrier<PIPE_ALL>();
+    // 预留的字节数决定BufferManager能切出几块，buffer策略决定实际切几块，两者不一致时
+    // 多切出来的那块会和bmm1的区域重叠
     if constexpr (bmm2Write2Ub) {
-        if constexpr (!(useDn && isFp8)) {
+        if constexpr (!bmm2ResSingleBuffer) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
             PipeBarrier<PIPE_ALL>();
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         } else {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
+            PipeBarrier<PIPE_ALL>();
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         }
     } else {

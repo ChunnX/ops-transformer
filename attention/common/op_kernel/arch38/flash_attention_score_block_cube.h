@@ -99,11 +99,13 @@ struct L0CBuffSel {
 };
 
 /* ============确定bmm2ResBuffer的类型============= */
-template <bool useDn, bool isFp8>
+// 这里的单buffer条件必须与InitMMResBuf中bmm2ResSingleBuffer的取值完全一致，
+// 策略切几块和BufferManager预留几块不匹配时，多出来的那块会和bmm1的区域重叠
+template <bool useDn, bool isFp8, bool hasAtten>
 struct Bmm2ResBuffSel {
-    using Type =
-        std::conditional_t<(useDn && isFp8), BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                           BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
+    using Type = std::conditional_t<((useDn && isFp8) || hasAtten),
+                                    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
 };
 
 TEMPLATES_DEF
@@ -1067,12 +1069,13 @@ FABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(Buffer<BufferType::UB, SyncType::CROSS
     mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
 
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
-    fixpipeParams.nSize =
-        (runInfo.s2RealSize + 7) >>
-        3 << 3; // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
-    fixpipeParams.mSize =
-        (runInfo.s1RealSize + 1) >>
-        1 << 1; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
+    // NZ2ND搬到UB时，nSize和mSize乘以sizeof(T)都必须是32B整数倍，且nSize要和dstStride一致，
+    // 否则硬件报fixp_illegal_cfg。s2按基本块整块搬出(nSize == dstStride == s2BaseSize)，
+    // s1尾块向上对齐到分形边界，多出的行列是脏数据，由vector侧按真实size剔除
+    constexpr uint32_t fixpAlign = 32 / sizeof(T);
+    fixpipeParams.nSize = s2BaseSize; // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n // 128
+    fixpipeParams.mSize = (static_cast<uint32_t>(runInfo.s1RealSize) + fixpAlign - 1) / fixpAlign *
+                          fixpAlign; // L0C上的bmm1结果矩阵M方向的size大小 // 128
     fixpipeParams.srcStride =
         ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔),
                                                 // 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移

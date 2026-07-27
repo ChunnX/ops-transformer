@@ -42,7 +42,9 @@ public:
     static constexpr uint32_t vec1ScmBlockFp32 = s1BaseSize * 4;
     static constexpr uint32_t vec1ScmBlockFp8 = s1BaseSize * 16;
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
-    static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
+    static constexpr uint32_t vec1Srcstride = s1BaseSize + 1; // 无subblock再分块，vec1算完整的S1基本块，+1错开bank
+    // NZ排布，(s2BaseSize/16)个分形，每个分形vec1Srcstride行、每行一个32B block
+    static constexpr uint32_t stage1OutQueSize = (s2BaseSize / 16) * vec1Srcstride * 32;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
@@ -347,24 +349,24 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
     LocalTensor<float> null;
     if (runInfo.s2LoopCount == 0) {
         if (runInfo.s2RealSize == 128) {
-            SoftmaxFlashV510_VF<T, INPUT_T, false, 1, s1BaseSize, s2BaseSize>(
+            SoftmaxFlashV510_VF<T, INPUT_T, false, 1, s1BaseSize, s2BaseSize, hasAtten>(
                 stage1CastTensor, sumUb, maxUb, expUb, mmRes, sumUb, maxUb, attenMaskUb, pseUb, apiTmpBuffer,
                 runInfo.s1RealSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
                 constInfo.quantScalePValue);
         } else {
-            SoftmaxFlashV510_VF<T, INPUT_T, false, 2, s1BaseSize, s2BaseSize>(
+            SoftmaxFlashV510_VF<T, INPUT_T, false, 2, s1BaseSize, s2BaseSize, hasAtten>(
                 stage1CastTensor, sumUb, maxUb, expUb, mmRes, sumUb, maxUb, attenMaskUb, pseUb, apiTmpBuffer,
                 runInfo.s1RealSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
                 constInfo.quantScalePValue);
         }
     } else {
         if (runInfo.s2RealSize == 128) {
-            SoftmaxFlashV510_VF<T, INPUT_T, true, 1, s1BaseSize, s2BaseSize>(
+            SoftmaxFlashV510_VF<T, INPUT_T, true, 1, s1BaseSize, s2BaseSize, hasAtten>(
                 stage1CastTensor, sumUb, maxUb, expUb, mmRes, sumUb, maxUb, attenMaskUb, pseUb, apiTmpBuffer,
                 runInfo.s1RealSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
                 constInfo.quantScalePValue);
         } else {
-            SoftmaxFlashV510_VF<T, INPUT_T, true, 2, s1BaseSize, s2BaseSize>(
+            SoftmaxFlashV510_VF<T, INPUT_T, true, 2, s1BaseSize, s2BaseSize, hasAtten>(
                 stage1CastTensor, sumUb, maxUb, expUb, mmRes, sumUb, maxUb, attenMaskUb, pseUb, apiTmpBuffer,
                 runInfo.s1RealSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
                 constInfo.quantScalePValue);
@@ -455,6 +457,13 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2(mm2ResPos
         ProcessVec2OnUbRegbaseV2(mmRes, runInfo, constInfo);
     }
     return;
+}
+
+TEMPLATES_DEF_BASE_NO_DEFAULT
+__aicore__ inline int64_t FABlockVecBase<TEMPLATE_BASE_ARGS>::ComputeOffsetForSoftmax(RunInfo<isInfer> &runInfo,
+                                                                                      const int64_t vec2S1Idx)
+{
+    return vec2S1Idx * runInfo.vec2S1BaseSize;
 }
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
@@ -593,9 +602,16 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPipe
 {
     SoftmaxInitBuffer();
     tPipe->InitBuffer(stage2OutBuf, 128 * dTemplateAlign64 * sizeof(T));
-    tPipe->InitBuffer(stage1OutQue[0], 1, 16640);
-    tPipe->InitBuffer(stage1OutQue[1], 1, 16640);
+    tPipe->InitBuffer(stage1OutQue[0], 1, stage1OutQueSize);
+    tPipe->InitBuffer(stage1OutQue[1], 1, stage1OutQueSize);
     tPipe->InitBuffer(commonTBuf, 512); // 实际上只需要512Bytes
+    if constexpr (hasAtten) {
+        // mask为uint8，无subblock再分块，vec1算完整的S1基本块，故按s1BaseSize行、行stride为s2BaseSize分配；
+        // band/prefix模式下[1-taskIdMod2]还会作为Pre缓冲，故两块都需分配
+        constexpr uint32_t attenMaskUbSize = s1BaseSize * s2BaseSize;
+        tPipe->InitBuffer(attenMaskInQue[0], 1, attenMaskUbSize);
+        tPipe->InitBuffer(attenMaskInQue[1], 1, attenMaskUbSize);
+    }
     GetDerived()->InitUniqueLocalBuffer(constInfo);
 
     mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
