@@ -75,8 +75,6 @@ public:
     {
         if ASCEND_IS_AIV {
             tPipe_ = pipe;
-            // 预取 pScale 标量，重叠后续 SetGlobalBuffer 与 buffer 初始化。
-            dc_preload(reinterpret_cast<__gm__ uint64_t *>(pScale), 0);
             attentionOutGm_.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
             if constexpr (HAS_LSE) {
                 softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
