@@ -95,6 +95,18 @@ public:
     using BiasStorageElement = std::conditional_t<std::is_void_v<ElementBias>, uint8_t, ElementBias>;
 
 private:
+    template <class Element, class LayoutTag>
+    CATLASS_DEVICE static auto MakeTlaLayout(LayoutTag const &layoutTag)
+    {
+        if constexpr (std::is_same_v<LayoutTag, layout::zN> || std::is_same_v<LayoutTag, layout::nZ>) {
+            return tla::MakeLayout<Element, LayoutTag>(layoutTag.orgShape(0), layoutTag.orgShape(1));
+        } else if constexpr (std::is_same_v<LayoutTag, layout::VectorLayout>) {
+            return tla::MakeLayout(layoutTag.shape(0));
+        } else {
+            return tla::MakeLayout<Element, LayoutTag>(layoutTag.shape(0), layoutTag.shape(1));
+        }
+    }
+
     using TlaL1TileShape = tla::Shape<tla::Int<L1TileShape::M>, tla::Int<L1TileShape::N>, tla::Int<L1TileShape::K>>;
     using TlaL0TileShape = tla::Shape<tla::Int<L0TileShape::M>, tla::Int<L0TileShape::N>, tla::Int<L0TileShape::K>>;
     using TlaTileCopy = Gemm::Tile::PackedTileCopyTla<
@@ -125,10 +137,10 @@ public:
         AscendC::GlobalTensor<ElementC> const &gmC, LayoutC const &layoutC,
         AscendC::GlobalTensor<BiasStorageElement> const &gmBias, GemmCoord const &actualShape)
     {
-        auto tensorA = tla::MakeTensor(gmA, tla::MakeLayoutFromTag(layoutA), Arch::PositionGM{});
-        auto tensorB = tla::MakeTensor(gmB, tla::MakeLayoutFromTag(layoutB), Arch::PositionGM{});
-        auto tensorC = tla::MakeTensor(gmC, tla::MakeLayoutFromTag(layoutC), Arch::PositionGM{});
-        auto layoutBias = tla::MakeLayoutFromTag(layout::VectorLayout(actualShape.n()));
+        auto tensorA = tla::MakeTensor(gmA, MakeTlaLayout<ElementA>(layoutA), Arch::PositionGM{});
+        auto tensorB = tla::MakeTensor(gmB, MakeTlaLayout<ElementB>(layoutB), Arch::PositionGM{});
+        auto tensorC = tla::MakeTensor(gmC, MakeTlaLayout<ElementC>(layoutC), Arch::PositionGM{});
+        auto layoutBias = tla::MakeLayout(actualShape.n());
         auto tensorBias = tla::MakeTensor(gmBias, layoutBias, Arch::PositionGM{});
         impl_(tensorA, tensorB, tensorC, actualShape, tensorBias);
     }
@@ -139,9 +151,9 @@ private:
         AscendC::GlobalTensor<ElementB> const &gmB, LayoutB const &layoutB,
         AscendC::GlobalTensor<ElementC> const &gmC, LayoutC const &layoutC, GemmCoord const &actualShape)
     {
-        auto tensorA = tla::MakeTensor(gmA, tla::MakeLayoutFromTag(layoutA), Arch::PositionGM{});
-        auto tensorB = tla::MakeTensor(gmB, tla::MakeLayoutFromTag(layoutB), Arch::PositionGM{});
-        auto tensorC = tla::MakeTensor(gmC, tla::MakeLayoutFromTag(layoutC), Arch::PositionGM{});
+        auto tensorA = tla::MakeTensor(gmA, MakeTlaLayout<ElementA>(layoutA), Arch::PositionGM{});
+        auto tensorB = tla::MakeTensor(gmB, MakeTlaLayout<ElementB>(layoutB), Arch::PositionGM{});
+        auto tensorC = tla::MakeTensor(gmC, MakeTlaLayout<ElementC>(layoutC), Arch::PositionGM{});
         impl_(tensorA, tensorB, tensorC, actualShape);
     }
 
