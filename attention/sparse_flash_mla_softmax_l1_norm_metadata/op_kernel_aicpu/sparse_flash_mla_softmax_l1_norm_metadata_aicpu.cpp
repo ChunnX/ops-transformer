@@ -47,8 +47,7 @@ bool SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::Prepare(CpuKernelContext &ctx
     topkLength_ = ctx.Input(5);
     metadata_ = ctx.Output(0);
 
-    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
-                         GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
+    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) && GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
                          GetAttrValue(ctx, "head_dim", headDim_);
     if (!requiredAttrs) {
         return false;
@@ -105,13 +104,12 @@ bool SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::ParamsCheck()
         return false;
     }
     if (numHeadsQ_ <= 0 || numHeadsK_ <= 0 || headDim_ <= 0) {
-        KERNEL_LOG_ERROR("num_heads_q/num_heads_k/head_dim must be positive, but got nq=%ld nk=%ld d=%ld",
-                         numHeadsQ_, numHeadsK_, headDim_);
+        KERNEL_LOG_ERROR("num_heads_q/num_heads_k/head_dim must be positive, but got nq=%ld nk=%ld d=%ld", numHeadsQ_,
+                         numHeadsK_, headDim_);
         return false;
     }
     if (numHeadsQ_ % numHeadsK_ != 0) {
-        KERNEL_LOG_ERROR("num_heads_q must be divisible by num_heads_k, but got nq=%ld nk=%ld",
-                         numHeadsQ_, numHeadsK_);
+        KERNEL_LOG_ERROR("num_heads_q must be divisible by num_heads_k, but got nq=%ld nk=%ld", numHeadsQ_, numHeadsK_);
         return false;
     }
     if (bSize_ <= 0) {
@@ -123,8 +121,7 @@ bool SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::ParamsCheck()
         return false;
     }
     if (s1Size_ < 0 || s2Size_ < 0) {
-        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be non-negative, but got q=%ld k=%ld",
-                         s1Size_, s2Size_);
+        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be non-negative, but got q=%ld k=%ld", s1Size_, s2Size_);
         return false;
     }
     if (maskMode_ != static_cast<int64_t>(SmlaSparseMode::NO_MASK) &&
@@ -144,26 +141,22 @@ bool SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::ParamsCheck()
         KERNEL_LOG_ERROR("cu_seqlens_k must be provided for TND layout.");
         return false;
     }
-    if (IsTensorValid(cuSeqLensQuery_) &&
-        cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) != bSize_ + 1) {
+    if (IsTensorValid(cuSeqLensQuery_) && cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) != bSize_ + 1) {
         KERNEL_LOG_ERROR("cu_seqlens_q length must be batch_size + 1, but got %ld and batch_size=%ld.",
                          cuSeqLensQuery_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
-    if (IsTensorValid(cuSeqLensKey_) &&
-        cuSeqLensKey_->GetTensorShape()->GetDimSize(0) != bSize_ + 1) {
+    if (IsTensorValid(cuSeqLensKey_) && cuSeqLensKey_->GetTensorShape()->GetDimSize(0) != bSize_ + 1) {
         KERNEL_LOG_ERROR("cu_seqlens_k length must be batch_size + 1, but got %ld and batch_size=%ld.",
                          cuSeqLensKey_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
-    if (IsTensorValid(seqUsedQuery_) &&
-        seqUsedQuery_->GetTensorShape()->GetDimSize(0) != bSize_) {
+    if (IsTensorValid(seqUsedQuery_) && seqUsedQuery_->GetTensorShape()->GetDimSize(0) != bSize_) {
         KERNEL_LOG_ERROR("seqused_q length must be batch_size, but got %ld and batch_size=%ld.",
                          seqUsedQuery_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
-    if (IsTensorValid(seqUsedKey_) &&
-        seqUsedKey_->GetTensorShape()->GetDimSize(0) != bSize_) {
+    if (IsTensorValid(seqUsedKey_) && seqUsedKey_->GetTensorShape()->GetDimSize(0) != bSize_) {
         KERNEL_LOG_ERROR("seqused_k length must be batch_size, but got %ld and batch_size=%ld.",
                          seqUsedKey_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
@@ -180,6 +173,8 @@ bool SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::ParamsCheck()
     return true;
 }
 
-static const char *kernelType = "SparseFlashMlaSoftmaxL1NormMetadata";
-REGISTER_CPU_KERNEL(kernelType, SparseFlashMlaSoftmaxL1NormMetadataCpuKernel);
+namespace {
+    static const char *kernelType = "SparseFlashMlaSoftmaxL1NormMetadata";
+    REGISTER_CPU_KERNEL(kernelType, SparseFlashMlaSoftmaxL1NormMetadataCpuKernel);
+}
 } // namespace aicpu

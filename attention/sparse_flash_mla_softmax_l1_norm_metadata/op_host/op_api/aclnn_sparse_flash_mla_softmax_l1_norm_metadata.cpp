@@ -27,33 +27,18 @@
 extern "C" {
 #endif
 
-static aclnnStatus ParamsCheck(const aclTensor* metadata)
+static aclnnStatus ParamsCheck(const aclTensor *metadata)
 {
     CHECK_RET(metadata != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize(
-    const aclTensor* cuSeqLensQOptional,
-    const aclTensor* cuSeqLensKOptional,
-    const aclTensor* seqUsedQOptional,
-    const aclTensor* seqUsedKOptional,
-    const aclTensor* cmpResidualKOptional,
-    const aclTensor* topkLengthOptional,
-    int64_t batchSize,
-    int64_t maxSeqLenQ,
-    int64_t maxSeqLenK,
-    int64_t numHeadsQ,
-    int64_t numHeadsK,
-    int64_t headDim,
-    int64_t topk,
-    int64_t cmpRatio,
-    int64_t maskMode,
-    char *layoutQ,
-    char *layoutK,
-    const aclTensor* metadata,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensKOptional, const aclTensor *seqUsedQOptional,
+    const aclTensor *seqUsedKOptional, const aclTensor *cmpResidualKOptional, const aclTensor *topkLengthOptional,
+    int64_t batchSize, int64_t maxSeqLenQ, int64_t maxSeqLenK, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim,
+    int64_t topk, int64_t cmpRatio, int64_t maskMode, char *layoutQ, char *layoutK, const aclTensor *metadata,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnSparseFlashMlaSoftmaxL1NormMetadata,
                    DFX_IN(cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional,
@@ -72,32 +57,32 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize(
     std::string socVersionStr = npuInfo.GetSocLongVersion();
     const char *socVersion = socVersionStr.c_str();
 
-    const aclTensor* cuSeqLensQContiguous = nullptr;
+    const aclTensor *cuSeqLensQContiguous = nullptr;
     if (cuSeqLensQOptional != nullptr) {
         cuSeqLensQContiguous = l0op::Contiguous(cuSeqLensQOptional, uniqueExecutor.get());
         CHECK_RET(cuSeqLensQContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-    const aclTensor* cuSeqLensKContiguous = nullptr;
+    const aclTensor *cuSeqLensKContiguous = nullptr;
     if (cuSeqLensKOptional != nullptr) {
         cuSeqLensKContiguous = l0op::Contiguous(cuSeqLensKOptional, uniqueExecutor.get());
         CHECK_RET(cuSeqLensKContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-    const aclTensor* seqUsedQContiguous = nullptr;
+    const aclTensor *seqUsedQContiguous = nullptr;
     if (seqUsedQOptional != nullptr) {
         seqUsedQContiguous = l0op::Contiguous(seqUsedQOptional, uniqueExecutor.get());
         CHECK_RET(seqUsedQContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-    const aclTensor* seqUsedKContiguous = nullptr;
+    const aclTensor *seqUsedKContiguous = nullptr;
     if (seqUsedKOptional != nullptr) {
         seqUsedKContiguous = l0op::Contiguous(seqUsedKOptional, uniqueExecutor.get());
         CHECK_RET(seqUsedKContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-    const aclTensor* cmpResidualKContiguous = nullptr;
+    const aclTensor *cmpResidualKContiguous = nullptr;
     if (cmpResidualKOptional != nullptr) {
         cmpResidualKContiguous = l0op::Contiguous(cmpResidualKOptional, uniqueExecutor.get());
         CHECK_RET(cmpResidualKContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-    const aclTensor* topkLengthContiguous = nullptr;
+    const aclTensor *topkLengthContiguous = nullptr;
     if (topkLengthOptional != nullptr) {
         topkLengthContiguous = l0op::Contiguous(topkLengthOptional, uniqueExecutor.get());
         CHECK_RET(topkLengthContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -114,9 +99,10 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus
-aclnnSparseFlashMlaSoftmaxL1NormMetadata(void *workspace, uint64_t workspaceSize,
-                                          aclOpExecutor *executor, aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(void *workspace,
+                                                                                            uint64_t workspaceSize,
+                                                                                            aclOpExecutor *executor,
+                                                                                            aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnSparseFlashMlaSoftmaxL1NormMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
