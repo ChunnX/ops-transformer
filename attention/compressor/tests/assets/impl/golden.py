@@ -161,7 +161,7 @@ def cpu_compressor(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
         x_cpu, wkv_cpu, wgate_cpu, state_cache_cpu, ape_cpu, block_table,
         cmp_ratio, coff, cache_mode, start_pos_list, cu_seqlens_list, seqused_list,
     )
-
+    is_th = x_cpu.dim() == 2
     _GOLDEN_CONTEXT['cmp_kv_mask'] = cmp_kv_mask
     _GOLDEN_CONTEXT['update_kv'] = update_kv
     _GOLDEN_CONTEXT['update_score'] = update_score
@@ -169,7 +169,7 @@ def cpu_compressor(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
     _GOLDEN_CONTEXT['cmp_ratio'] = cmp_ratio
     _GOLDEN_CONTEXT['start_pos_list'] = start_pos_list
     _GOLDEN_CONTEXT['seqused_list'] = seqused_list
-    _GOLDEN_CONTEXT['coff'] = coff
+    _GOLDEN_CONTEXT['is_th'] = is_th
 
     return [
         cmp_kv,

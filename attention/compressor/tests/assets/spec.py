@@ -47,7 +47,7 @@ class CompressorSpec:
         kwargs['start_pos_list'] = ctx.get('start_pos_list')
         kwargs['seqused_list'] = ctx.get('seqused_list')
         kwargs['cmp_ratio'] = ctx.get('cmp_ratio')
-        kwargs['coff'] = ctx.get('coff')
+        kwargs['is_th'] = ctx.get('is_th')
         return compare_module.compare(*outputs, **kwargs)
 
 __spec__ = {

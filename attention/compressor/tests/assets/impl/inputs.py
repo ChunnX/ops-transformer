@@ -228,15 +228,16 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, cmp_ratio, coff, *
                     if is_th:
                         sliced_shape[axis_pos] = step
                         data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
-                        tensor[start:end,:]= torch.from_numpy(data).to(tensor.dtype)
+                        for left in range(start,end,step):
+                            right = left + step if (left + step) <= end else end
+                            tensor[left:right,:]= torch.from_numpy(data[:(right-left),:]).to(tensor.dtype)
                     else:
                         if axis_pos == 1:
                             sliced_shape[0] = 1
                             sliced_shape[axis_pos] = step
                             data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
-                            for i in range(start,end,step):
-                                left = i
-                                right = i+step if (i + step)<=end else end
+                            for left in range(start,end,step):
+                                right = left + step if (left + step) <= end else end
                                 tensor[0, left:right,:]= torch.from_numpy(data[:,:(right-left),:]).to(tensor.dtype)
                         else:
                             sliced_shape[axis_pos] = step
@@ -247,18 +248,22 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, cmp_ratio, coff, *
                         if start < cmp_ratio:
                             print("slice neead support pertoken size > cmpratio")
                             continue
-                        sliced_shape[axis_pos] = step + cmp_ratio
+                        sliced_shape[axis_pos] = step
                         data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
-                        tensor[(start - cmp_ratio):end,:]= torch.from_numpy(data).to(tensor.dtype)
+                        for left in range(start - cmp_ratio,end,step):
+                            right = left + step if (left + step) <= end else end                        
+                            tensor[left:right,:]= torch.from_numpy(data[:(right-left),:]).to(tensor.dtype)
                     else:
                         if axis_pos == 1:
                             if start < cmp_ratio:
                                 print("slice neead support pertoken size > cmpratio")
                                 continue
                             sliced_shape[0] = 1
-                            sliced_shape[axis_pos] = step + cmp_ratio
+                            sliced_shape[axis_pos] = step
                             data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
-                            tensor[0,start:end,:]= torch.from_numpy(data).to(tensor.dtype)
+                            for left in range(start - cmp_ratio,end,step):
+                                right = left + step if (left + step) <= end else end
+                                tensor[0, left:right,:]= torch.from_numpy(data[:,:(right-left),:]).to(tensor.dtype)
                         else:
                             sliced_shape[axis_pos] = step
                             data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
