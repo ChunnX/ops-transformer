@@ -230,7 +230,7 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
             expanded_x_dim_list = [expert_num, expert_capacity, h]
             expanded_scale_dim_list = [expert_num * expert_capacity]
         else:
-            num_expanded_rows = bs * k if active_num <= 0 else min(active_num, bs * k)
+            num_expanded_rows = bs * k
             expanded_x_dim_list = [num_expanded_rows, x.size(1)]
             if quant_mode in [2, 3]:
                 scale_cols = (h + MXQUANT_BLOCK_SIZE - 1) // MXQUANT_BLOCK_SIZE
@@ -309,8 +309,7 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
                 if drop_pad_mode == 1:
                     topk_weight_rows = expert_num * expert_capacity
                 else:
-                    num_expanded_rows = bs * k if active_num <= 0 else min(active_num, bs * k)
-                    topk_weight_rows = num_expanded_rows
+                    topk_weight_rows = bs * k
                 expanded_topk_weight = x.new_empty((topk_weight_rows, 1), dtype=torch.float32)
             else:
                 expanded_topk_weight = x.new_empty((0,), dtype=torch.float32)
