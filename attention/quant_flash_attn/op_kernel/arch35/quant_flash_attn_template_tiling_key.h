@@ -17,7 +17,7 @@
 #define TEMPLATE_TILING_KEY_QUANT_FLASH_ATTN_H_
 
 #include "ascendc/host_api/tiling/template_argument.h"
-#include "../utils/quant_flash_attn_common_def.h"
+#include "quant_flash_attn_common_def.h"
 #include "../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
 #include "quant_flash_attn_tiling_data.h"
 
@@ -49,9 +49,6 @@ ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
     //    IsFd
     //    false / true
     ASCENDC_TPL_BOOL_DECL(IsFd, false, true),
-    //    IsReconstructTemp
-    //    false / true
-    ASCENDC_TPL_BOOL_DECL(IsReconstructTemp, false, true),
 );
 
 ASCENDC_TPL_SEL(
@@ -67,7 +64,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST,
             KvLayoutType_NO_PA, KvLayoutType_PA_BNBD, KvLayoutType_PA_NZ),
         ASCENDC_TPL_BOOL_SEL(IsFd, false),
-        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
         ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)
     ),
 );
