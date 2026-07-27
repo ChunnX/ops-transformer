@@ -104,6 +104,7 @@ private:
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx, int32_t copyStartIdx,
                                               int32_t copyNum);
+    __aicore__ inline void ResetContiguousGm(GM_ADDR dstAddr, uint64_t sizeBytes);
     __aicore__ inline void ResetDispatchState();
     __aicore__ inline void DispatchTokenToRmtServer(int32_t localExpertId);
     __aicore__ inline void DispatchComputeKernel(int32_t localExpertId, uint32_t realComputeCoreNum, int32_t roundTag);
@@ -196,6 +197,7 @@ private:
     uint64_t sendWorkspaceServerBytes_ = 0;
     uint64_t dispatchL2ScratchBytes_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
+    uint32_t resetBatchElementCount_ = 0; // resetTensor_ 单批可搬运的 int32_t 元素数
     int32_t compareCount_ = 0;
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
     uint32_t topKWeightsChunkLen_ = 0;
@@ -535,6 +537,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     uint32_t resetTensorSize =
         Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore), static_cast<uint64_t>(INT32_PER_256B)) *
         sizeof(int32_t);
+    resetBatchElementCount_ = resetTensorSize / sizeof(int32_t);
 
     // 分轮次参数计算：UB 预算扣除固定开销后，求解最大 roundSendTotalNum_
     // round 张量: topkIds(R*4) + 2*maskSlot(CeilAlign(R/8,32)+32) + gatherOut(R*4)
@@ -790,41 +793,50 @@ __aicore__ inline uint64_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::RelayFlagOff
 }
 
 template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetContiguousGm(GM_ADDR dstAddr, uint64_t sizeBytes)
+{
+    if (sizeBytes == 0 || resetBatchElementCount_ == 0) {
+        return;
+    }
+    GlobalTensor<int32_t> dstGm;
+    dstGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(dstAddr));
+
+    uint64_t totalElements = sizeBytes / sizeof(int32_t);
+    uint64_t elementsPerCore = Ops::Base::CeilDiv(totalElements, static_cast<uint64_t>(blockAivNum_));
+    elementsPerCore = Ops::Base::CeilAlign(elementsPerCore, static_cast<uint64_t>(INT32_PER_256B));
+    uint64_t coreOffset = static_cast<uint64_t>(aivCoreIdx_) * elementsPerCore;
+    if (coreOffset >= totalElements) {
+        return;
+    }
+
+    uint64_t coreElements = totalElements - coreOffset;
+    coreElements = coreElements < elementsPerCore ? coreElements : elementsPerCore;
+    for (uint64_t resetOffset = 0; resetOffset < coreElements; resetOffset += resetBatchElementCount_) {
+        uint64_t remainingElements = coreElements - resetOffset;
+        uint32_t currentElements =
+            static_cast<uint32_t>(remainingElements < static_cast<uint64_t>(resetBatchElementCount_) ?
+                                      remainingElements :
+                                      static_cast<uint64_t>(resetBatchElementCount_));
+        DataCopyExtParams copyParams{1U, static_cast<uint32_t>(currentElements * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(dstGm[coreOffset + resetOffset], resetTensor_, copyParams);
+    }
+}
+
+template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetDispatchState()
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
 
-    for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
-        __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
-                                                                      SendWorkspaceServerOffset(serverIdx));
-        WriteGmByPassDCache(countPtr, int32_t(0));
-    }
-    uint32_t sendRecordNum = serverNum_ * m_;
-    for (uint32_t idx = aivCoreIdx_; idx < sendRecordNum; idx += blockAivNum_) {
-        uint32_t serverIdx = idx / m_;
-        uint32_t slotIdx = idx - serverIdx * m_;
-        uint64_t metaOffset =
-            SendWorkspaceServerOffset(serverIdx) + ALIGN_32 + static_cast<uint64_t>(slotIdx) * sendWorkspaceMetaBytes_;
-        __gm__ int32_t *metaPtr =
-            reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr + metaOffset);
-        WriteGmByPassDCache(metaPtr + 1, int32_t(0));
-    }
-    __gm__ int32_t *cursorPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchCursorPtr);
-    for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
-        WriteGmByPassDCache(cursorPtr + serverIdx, int32_t(0));
-    }
-    __gm__ int32_t *donePtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchDonePtr);
-    for (uint32_t idx = aivCoreIdx_; idx < blockNum_; idx += blockAivNum_) {
-        WriteGmByPassDCache(donePtr + idx, int32_t(0));
-    }
-    uint32_t relayFlagNum = serverNum_ * m_;
-    for (uint32_t idx = aivCoreIdx_; idx < relayFlagNum; idx += blockAivNum_) {
-        __gm__ uint64_t *readyFlag = reinterpret_cast<__gm__ uint64_t *>(params_.peermemInfo.dispatchFlagPtr +
-                                                                         static_cast<uint64_t>(idx) * sizeof(uint64_t));
-        WriteGmByPassDCache(readyFlag, uint64_t(0));
-    }
+    // count 与 meta state 原本是离散位置；tokenId 和 padding 可一并清零后，整个 L1 comm 区连续。
+    ResetContiguousGm(params_.workspaceInfo.dispatchL1CommPtr,
+                      static_cast<uint64_t>(serverNum_) * sendWorkspaceServerBytes_);
+    // cursor、done 和 relay ready flag 各自在独立地址区内连续，不跨逻辑分配合并。
+    ResetContiguousGm(params_.workspaceInfo.dispatchCursorPtr, static_cast<uint64_t>(serverNum_) * sizeof(int32_t));
+    ResetContiguousGm(params_.workspaceInfo.dispatchDonePtr, static_cast<uint64_t>(blockNum_) * sizeof(int32_t));
+    ResetContiguousGm(params_.peermemInfo.dispatchFlagPtr,
+                      static_cast<uint64_t>(serverNum_) * static_cast<uint64_t>(m_) * sizeof(uint64_t));
 }
 
 template <TemplateMegaMoeTypeClass>
