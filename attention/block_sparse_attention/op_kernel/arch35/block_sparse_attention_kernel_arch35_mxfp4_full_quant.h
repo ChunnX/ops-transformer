@@ -290,7 +290,7 @@ public:
                     if ASCEND_IS_AIC {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1 + 16);
-                        auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(1, CV_Q_BASE_TILE);
+                        auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(1, EpMXFP4::KVS_BASE_SIZE);
                         auto l1GMaxTensorTla = tla::MakeTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionUB{});
                         CopyGMaxL1ToUb(delay3TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
@@ -313,26 +313,28 @@ public:
                 if ASCEND_IS_AIC {
                     AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                     // todo mm1
-                    auto curUBSTensorTla = GetTile(ubSTensorTla, MakeCoord(0, CV_Q_BASE_TILE * mm1ResBufId), MakeShape(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE));
+                    auto curUBSTensorTla = GetTile(ubSTensorTla, MakeCoord(0, EpMXFP4::QS_BASE_SIZE * mm1ResBufId), MakeShape(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE));
 
                     ComputeMm1(curTileInfo);
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                 } else {
+#ifdef __DAV_VEC__
                     if (subBlockIdx == AscendC::GetSubBlockIdx()) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
-                        uint32_t l1PBufId = curTileInfo.loop % L1_P_BUF_CNT;
+                        uint32_t l1PBufId = curTileInfo.loop % GmMXFP4::L1_P_BUF_CNT;
                         auto l1PLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutP>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE / 2);
                         auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
-                        GemmCoord actualBlockShapeQK{curTileInfo.kvsActBaseTile, curTileInfo.qsActBaseTile, embed_};
+                        GemmCoord actualBlockShapeQK{curTileInfo.kvsActBaseTile, curTaskInfo.qsActBaseTile, embed_};
                         epilogueOnlineSoftmax(l1PTensorTla, actualBlockShapeQK, curTileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
                     }
                     if (curTileInfo.isUpdatePScale) {
-                        auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(2, CV_Q_BASE_TILE);
+                        auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(2, EpMXFP4::QS_BASE_SIZE);
                         auto l1GMaxTensorTla = tla::MakeTensor(l1LocalGlobalMaxTensor[curTileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionL1{});
                         CopyGMaxUbToL1(curTileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
                     }
+#endif
                 }
             }
 
@@ -704,8 +706,8 @@ public:
             (taskInfo.gatheredKvSeqlen - (taskInfo.taskTileNum - 1) * kvBaseTile_) : kvBaseTile_;
         // PV 稀疏 gather 用：当前 tile 在 task 内 gather 后的 KV base tile 序号
         info.pvGatheredKvSTileIdx = curTaskTileIdx;
-        info.kvsActBaseTileAlign32 = (info.info.kvsActBaseTile + 31) / 32;
-        info.kvsActBaseTileAlign64 = (info.info.kvsActBaseTile + 63) / 64;;
+        info.kvsActBaseTileAlign32 = (info.kvsActBaseTile + 31) / 32;
+        info.kvsActBaseTileAlign64 = (info.kvsActBaseTile + 63) / 64;;
     }
 
     
