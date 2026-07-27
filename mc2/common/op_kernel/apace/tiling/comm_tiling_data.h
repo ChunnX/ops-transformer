@@ -44,10 +44,10 @@
  * - 字节大小 = 元素个数 * sizeof(dtype)
  */
 struct CommTilingData {
-    uint64_t splitAxisTileSize;     // 切分轴头块大小（元素个数）
-    uint64_t splitAxisTileCnt;      // 切分轴头块数量
-    uint64_t splitAxisTailSize;     // 切分轴尾块大小（元素个数）
-    uint64_t splitAxisTailCnt;      // 切分轴尾块数量
-    uint64_t nonSplitAxisSize;      // 非切分轴数据块大小（元素个数，所有内轴乘积）
+    uint64_t splitAxisTileSize{0};     // 切分轴头块大小（元素个数）
+    uint64_t splitAxisTileCnt{0};      // 切分轴头块数量
+    uint64_t splitAxisTailSize{0};     // 切分轴尾块大小（元素个数）
+    uint64_t splitAxisTailCnt{0};      // 切分轴尾块数量
+    uint64_t nonSplitAxisSize{0};      // 非切分轴数据块大小（元素个数，所有内轴乘积）
 };
 
