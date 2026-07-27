@@ -56,7 +56,9 @@ static void ComputeBandDims(int64_t headDim, int64_t &tBand, int64_t &hBand, int
 static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
 {
     if (seqLen <= 1) {
-        T = 1; H = 1; W = seqLen;
+        T = 1;
+        H = 1;
+        W = seqLen;
         return;
     }
     int64_t maxDim = seqLen < 128 ? seqLen : 128LL;
@@ -74,7 +76,9 @@ static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
             }
         }
     }
-    T = 1; H = 1; W = seqLen;
+    T = 1;
+    H = 1;
+    W = seqLen;
 }
 
 static ge::graphStatus GetPlatformInfo(gert::TilingContext *context, uint64_t &ubSize, int64_t &coreNum)
@@ -130,7 +134,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     ComputeBandDims(headDim, tBand, hBand, wBand);
 
     // Compute video dims
-    int64_t T, H, W;
+    int64_t T;
+    int64_t H;
+    int64_t W;
     FactorVideoDims(seqLen, T, H, W);
 
     // Compute block/tile params matching kernel logic
@@ -182,7 +188,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParse(gert::TilingParseContext *) { return ge::GRAPH_SUCCESS; }
+static ge::graphStatus TilingParse(gert::TilingParseContext *)
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 IMPL_OP_OPTILING(RotaryPositionEmbedding3d).Tiling(TilingFunc).TilingParse<CompileInfo>(TilingParse);
 } // namespace optiling
