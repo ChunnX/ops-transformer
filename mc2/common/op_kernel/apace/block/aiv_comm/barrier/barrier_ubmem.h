@@ -50,9 +50,8 @@ private:
     __gm__ CommUbmemContext* ctx_;
     uint32_t totalJobs_;
     uint32_t jobIndex_;
-    int32_t count_;
 
-    __aicore__ inline void BarrierCrossDevice();
+    __aicore__ inline void BarrierCrossDevice(int32_t count);
 };
 
 __aicore__ inline void TeamBarrier::Init(
@@ -88,10 +87,10 @@ __aicore__ inline void TeamBarrier::Execute()
         Te::Copy(copyGM2UB, ubTmp, teamSyncGmTensor);
         SetFlag<HardEvent::MTE2_S>(1);
         WaitFlag<HardEvent::MTE2_S>(1);
-        count_ = ubTmp[Te::MakeCoord(0, 0)] + 1;
-        BarrierCrossDevice();
+        int32_t count = ubTmp[Te::MakeCoord(0, 0)] + 1;
+        BarrierCrossDevice(count);
 
-        ubTmp[Te::MakeCoord(0, 0)] = count_;
+        ubTmp[Te::MakeCoord(0, 0)] = count;
         SetFlag<HardEvent::S_MTE3>(1);
         WaitFlag<HardEvent::S_MTE3>(1);
         Te::Copy(copyUB2GM, teamSyncGmTensor, ubTmp);
@@ -100,7 +99,7 @@ __aicore__ inline void TeamBarrier::Execute()
     }
 }
 
-__aicore__ inline void TeamBarrier::BarrierCrossDevice()
+__aicore__ inline void TeamBarrier::BarrierCrossDevice(int32_t count)
 {
     uint32_t nranks = ctx_->rankSize;
     uint32_t myRank = ctx_->rankId;
@@ -115,7 +114,7 @@ __aicore__ inline void TeamBarrier::BarrierCrossDevice()
     auto gmFlag = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>((__gm__ int32_t*)(localFlag)),
         Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, BARRIER_FLAG_ELEMS));
-    ubTmp[Te::MakeCoord(0, 0)] = count_;
+    ubTmp[Te::MakeCoord(0, 0)] = count;
     SetFlag<HardEvent::S_MTE3>(1);
     WaitFlag<HardEvent::S_MTE3>(1);
     Te::Copy(copyUB2GM, gmFlag, ubTmp);
@@ -136,7 +135,7 @@ __aicore__ inline void TeamBarrier::BarrierCrossDevice()
             Te::Copy(copyGM2UB, ubTmp, gmRemote);
             SetFlag<HardEvent::MTE2_S>(1);
             WaitFlag<HardEvent::MTE2_S>(1);
-            if (ubTmp[Te::MakeCoord(0, 0)] >= count_) {
+            if (ubTmp[Te::MakeCoord(0, 0)] >= count) {
                 break;
             }
         } while (true);

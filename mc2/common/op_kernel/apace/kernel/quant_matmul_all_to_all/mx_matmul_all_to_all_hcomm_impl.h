@@ -107,6 +107,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Ru
   if ASCEND_IS_AIC {
     qbmm_.MatmulProcess();
     if constexpr (LocalDelay) {
+      AscendC::PipeBarrier<PIPE_ALL>();
       qbmm_.LocalCompute();
     }
   }

@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include "kernel_tiling/kernel_tiling.h"
 #include "../../tiling/quant_matmul_tiling_data.h"
 #include "../../tiling/comm_tiling_data.h"
 #include "../../block/aiv_comm/collective_comm_context.h"
@@ -24,4 +25,13 @@ struct allToAllMatmulTilingData {
 struct CommContext {
     Apace::AivComm::CommUdmaContext udmaCtx;
     Apace::AivComm::CommUbmemContext ubmemCtx;
+};
+
+// Ccu通信MX量化tiling结构体
+struct ccuAllToAllMatmulTilingData {
+    Mc2InitTiling mc2InitTiling;
+    Mc2CcTiling mc2CcTiling;
+    CommTilingData commTilingData;
+    QuantMatmulTilingData tileQbmmTilingData;
+    uint32_t localMatmul{0};
 };

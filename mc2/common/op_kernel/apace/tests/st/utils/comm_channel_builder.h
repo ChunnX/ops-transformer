@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include "acl/acl.h"
 #include "acl/acl_rt.h"
 #include "hccl/hccl.h"
@@ -33,13 +34,15 @@ enum class ChannelMode {
     UBMEM
 };
 
+template <ChannelMode Mode> struct CommCtxTrait;
+template <> struct CommCtxTrait<ChannelMode::URMA>  { using type = Apace::AivComm::CommUdmaContext; };
+template <> struct CommCtxTrait<ChannelMode::UBMEM> { using type = Apace::AivComm::CommUbmemContext; };
+
+template <ChannelMode DataChannelMode = ChannelMode::URMA,
+          ChannelMode BarrierChannelMode = ChannelMode::UBMEM>
 class CommChannelBuilder {
 public:
-    explicit CommChannelBuilder(HcclComm comm) : comm_(comm)
-    {
-        HcclGetRankId(comm_, &rankId_);
-        HcclGetRankSize(comm_, &rankNum_);
-    }
+    explicit CommChannelBuilder(HcclComm comm) : comm_(comm) {}
 
     /*!
      * \brief 获取 rankId
@@ -52,67 +55,115 @@ public:
     uint32_t GetRankSize() const { return rankNum_; }
 
     /*!
-     * \brief 申请+注册+建链一块 buffer，填充外部 context 对应字段
+     * \brief 使用 HCCL 内置 buffer + 建链，填充外部 context 对应字段
      * \param [in]  mode         通信方式 (URMA / UBMEM)
-     * \param [in]  useHcclBuf   是否使用 HCCL 内置 buffer (false 则自己 malloc)
-     * \param [in]  bufSize      buffer 大小 (useHcclBuf=false 时有效)
      * \param [in]  memTag       内存标签
-     * \param [out] localAddr    context 中本地地址字段的引用
      * \param [out] channels     context 中 channel 数组字段的指针 (不需要则传 nullptr)
-     * \param [out] remoteAddrs  context 中远端地址数组字段的指针
+     * \param [out] remoteAddrs  context 中远端地址数组字段
      * \return true 成功, false 失败
      */
     bool AllocRegAndBuildChannels(
-        ChannelMode mode, bool useHcclBuf, uint64_t bufSize, const char* memTag,
+        ChannelMode mode, const char* memTag,
         uint64_t* channels, uint64_t* remoteAddrs)
     {
         ::CommProtocol protocol = (mode == ChannelMode::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP
                                                            : ::CommProtocol::COMM_PROTOCOL_UB_MEM;
 
         void* buf = nullptr;
-        HcclMemHandle memHandle = nullptr;
-        if (useHcclBuf) {
-            uint64_t hcclBufSize = 0;
-            if (HcclGetHcclBuffer(comm_, &buf, &hcclBufSize) != ::HCCL_SUCCESS || buf == nullptr) {
-                return false;
-            }
-            if (aclrtMemset(buf, hcclBufSize, 0, hcclBufSize) != ACL_SUCCESS) {
-                return false;
-            }
-        } else {
-            ASC_CHECK(AllocAndRegisterMem(bufSize, memTag, buf, memHandle));
+        uint64_t hcclBufSize = 0;
+        if (HcclGetHcclBuffer(comm_, &buf, &hcclBufSize) != ::HCCL_SUCCESS || buf == nullptr) {
+            return false;
+        }
+        if (aclrtMemset(buf, hcclBufSize, 0, hcclBufSize) != ACL_SUCCESS) {
+            return false;
         }
         remoteAddrs[rankId_] = reinterpret_cast<uint64_t>(buf);
 
-        return BuildChannels(mode, useHcclBuf, protocol, memHandle, memTag, channels, remoteAddrs);
+        return BuildChannels(mode, true, protocol, nullptr, memTag, channels, remoteAddrs);
+    }
+
+    /*!
+     * \brief 由 HCCL engine 申请 device 内存，建立 data/barrier channel 并拷贝 context，返回 device 地址
+     * \param [in] hostCtx     host 端 context 起始地址（用于 HcclEngineCtxCopy）
+     * \param [in] ctxSize     context 大小（字节）
+     * \param [in] ctxTag      引擎标签（同一 tag 可复用已创建的 context）
+     * \param [in] dataCtx     data channel context 指针（类型由 DataChannelMode 决定）
+     * \param [in] barrierCtx  barrier channel context 指针（类型由 BarrierChannelMode 决定，可为 nullptr）
+     * \return device 端 context 地址，失败返回 nullptr
+     *
+     * \note HcclEngineCtxGet 命中已存在 context 时直接复用，跳过建链与字段填充；
+     *       rankId/rankSize 赋值及 channel 建立仅在新建路径中执行。
+     *       调用方应在本函数返回后对 rank 间做一次 barrier，确保所有 channel 握手完成。
+     */
+    void* CreateDeviceContext(void* hostCtx, uint64_t ctxSize, const char* ctxTag,
+                              typename CommCtxTrait<DataChannelMode>::type* dataCtx,
+                              typename CommCtxTrait<BarrierChannelMode>::type* barrierCtx = nullptr)
+    {
+        constexpr uint64_t BARRIER_BUF_SIZE = 2UL * 1024 * 1024;
+        uint64_t totalSize = (barrierCtx != nullptr) ? ctxSize + BARRIER_BUF_SIZE : ctxSize;
+
+        void* devCtx = nullptr;
+        CommEngine engine = static_cast<CommEngine>(BUILDER_COMM_ENGINE_AIV);
+        uint64_t existingSize = 0;
+        if (HcclEngineCtxGet(comm_, ctxTag, engine, &devCtx, &existingSize) == HCCL_SUCCESS) {
+            return devCtx;
+        }
+
+        if (HcclEngineCtxCreate(comm_, ctxTag, engine, totalSize, &devCtx) != HCCL_SUCCESS) {
+            return nullptr;
+        }
+
+        if (HcclGetRankId(comm_, &rankId_) != HCCL_SUCCESS) {
+            return nullptr;
+        }
+        if (HcclGetRankSize(comm_, &rankNum_) != HCCL_SUCCESS) {
+            return nullptr;
+        }
+
+        dataCtx->rankId = rankId_;
+        dataCtx->rankSize = rankNum_;
+        std::string dataBufTag = std::string(ctxTag) + "dataBuf";
+        uint64_t* channelHandles = nullptr;
+        if constexpr (DataChannelMode == ChannelMode::URMA) {
+            channelHandles = dataCtx->channelHandles;
+        }
+        if (!AllocRegAndBuildChannels(DataChannelMode, dataBufTag.c_str(),
+                                      channelHandles, dataCtx->commBufferAddrs)) {
+            return nullptr;
+        }
+
+        if (barrierCtx != nullptr) {
+            barrierCtx->rankId = rankId_;
+            barrierCtx->rankSize = rankNum_;
+            void* barrierBuf = reinterpret_cast<void*>(
+                reinterpret_cast<uintptr_t>(devCtx) + ctxSize);
+            CommMem regMem = {};
+            regMem.type = COMM_MEM_TYPE_DEVICE;
+            regMem.addr = barrierBuf;
+            regMem.size = BARRIER_BUF_SIZE;
+            std::string syncBufTag = std::string(ctxTag) + "syncBuf";
+            HcclMemHandle memHandle = nullptr;
+            if (HcclCommMemReg(comm_, syncBufTag.c_str(), &regMem, &memHandle) != HCCL_SUCCESS) {
+                return nullptr;
+            }
+            barrierCtx->commBufferAddrs[barrierCtx->rankId] = reinterpret_cast<uint64_t>(barrierBuf);
+            if (!BuildChannels(BarrierChannelMode, false,
+                               (BarrierChannelMode == ChannelMode::URMA)
+                                   ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP
+                                   : ::CommProtocol::COMM_PROTOCOL_UB_MEM,
+                               memHandle, syncBufTag.c_str(),
+                               nullptr, barrierCtx->commBufferAddrs)) {
+                return nullptr;
+            }
+        }
+
+        if (HcclEngineCtxCopy(comm_, engine, ctxTag, hostCtx, ctxSize, 0) != HCCL_SUCCESS) {
+            return nullptr;
+        }
+        return devCtx;
     }
 
 private:
-    bool AllocAndRegisterMem(uint64_t bufSize, const char* memTag,
-                             void*& buf, HcclMemHandle& memHandle)
-    {
-        buf = nullptr;
-        memHandle = nullptr;
-        if (aclrtMalloc(&buf, bufSize, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_SUCCESS) {
-            return false;
-        }
-        if (aclrtMemset(buf, bufSize, 0, bufSize) != ACL_SUCCESS) {
-            aclrtFree(buf);
-            buf = nullptr;
-            return false;
-        }
-
-        CommMem regMem = {};
-        regMem.type = COMM_MEM_TYPE_DEVICE;
-        regMem.addr = buf;
-        regMem.size = bufSize;
-        if (HcclCommMemReg(comm_, memTag, &regMem, &memHandle) != ::HCCL_SUCCESS || memHandle == nullptr) {
-            aclrtFree(buf);
-            buf = nullptr;
-            return false;
-        }
-        return true;
-    }
 
     bool BuildChannels(ChannelMode mode, bool useHcclBuf,
                        ::CommProtocol protocol, HcclMemHandle memHandle,

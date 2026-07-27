@@ -42,11 +42,11 @@ private:
 
         GM_ADDR dstAddr;
         if constexpr (Layout == CommAddrLayout::CONTIGUOUS) {
-            dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
-                this->slotByteOffset_ + this->udmaCtx_->rankId * tileByteSize;
+            dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +	 
+                this->slotByteOffset_ - this->currentTileIdx_ * tileByteSize + this->udmaCtx_->rankId * tileByteSize;
         } else {
             dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
-                this->chunkByteOffset_ + this->tileByteOffset_;
+                this->udmaCtx_->rankId * this->chunkBytes_ + this->tileByteOffset_;
         }
 
         this->comm_.WriteNbi(
@@ -55,10 +55,9 @@ private:
 
     __aicore__ inline void DoWait(uint32_t targetRankId)
     {
-        if (targetRankId == this->udmaCtx_->rankId) {
-            return;
+        if (targetRankId != this->udmaCtx_->rankId) {
+            this->comm_.Drain(static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]));
         }
-        this->comm_.Drain(this->udmaCtx_->channelHandles[targetRankId]);
         this->barrier_.Execute();
     }
 
