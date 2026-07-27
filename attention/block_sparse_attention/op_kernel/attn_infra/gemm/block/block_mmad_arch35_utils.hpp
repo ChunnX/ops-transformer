@@ -38,12 +38,14 @@ namespace MXFP4 {
     static constexpr uint32_t L1_Q_DESCALE_BUF_OFFSET = 361 * KB_SIZE;
 
     // kvL1Tensor: 32K, 512*D*sizeof(e2m1), BUFCNT=4
-    static constexpr uint32_t L1_KV_BUF_CNT = 4;
+    // todo 先用2块，避免qk、pv同步冲突
+    static constexpr uint32_t L1_KV_BUF_CNT = 2;
     static constexpr uint32_t L1_KV_BUF_SIZE = 32 * KB_SIZE;
     static constexpr uint32_t L1_KV_BUF_OFFSET = 362 * KB_SIZE;
 
     // kvDescaleL1Tensor: 2K, 512*D/32*sizeof(e8m0), BUFCNT=4
-    static constexpr uint32_t L1_KV_DESCALE_BUF_CNT = 4;
+    // todo 先用2块，避免qk、pv同步冲突
+    static constexpr uint32_t L1_KV_DESCALE_BUF_CNT = 2;
     static constexpr uint32_t L1_KV_DESCALE_BUF_SIZE = 2 * KB_SIZE;
     static constexpr uint32_t L1_KV_DESCALE_BUF_OFFSET = 490 * KB_SIZE;
 
@@ -51,6 +53,35 @@ namespace MXFP4 {
     static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_CNT = 4;
     static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_SIZE = 512;
     static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_OFFSET = 498 * KB_SIZE;
+
+    static constexpr uint32_t L0A_QK_BUF_CNT = 2;
+    static constexpr uint32_t L0A_QK_BUF_SIZE = 8 * KB_SIZE;
+    static constexpr uint32_t L0A_QK_BUF_OFFSET = 0;
+
+    static constexpr uint32_t L0A_PV_BUF_CNT = 2;
+    static constexpr uint32_t L0A_PV_BUF_SIZE = 18 * KB_SIZE;
+    static constexpr uint32_t L0A_PV_BUF_OFFSET = 16 * KB_SIZE;
+
+    static constexpr uint32_t L0B_QK_BUF_CNT = 2;
+    static constexpr uint32_t L0B_QK_BUF_SIZE = 8 * KB_SIZE;
+    static constexpr uint32_t L0B_QK_BUF_OFFSET = 0;
+
+    static constexpr uint32_t L0B_PV_BUF_CNT = 2;
+    static constexpr uint32_t L0B_PV_BUF_SIZE = 18 * KB_SIZE;
+    static constexpr uint32_t L0B_PV_BUF_OFFSET = 16 * KB_SIZE;
+
+    static constexpr uint32_t L0C_QK_BUF_CNT = 2;
+    static constexpr uint32_t L0C_QK_BUF_SIZE = 64 * KB_SIZE;
+    static constexpr uint32_t L0C_QK_BUF_OFFSET = 0;
+
+    static constexpr uint32_t L0C_PV_BUF_CNT = 1;
+    static constexpr uint32_t L0C_PV_BUF_SIZE = 72 * KB_SIZE;
+    static constexpr uint32_t L0C_PV_BUF_OFFSET = 64 * KB_SIZE;
+
+    static constexpr uint32_t V_SCALE_L0A_SIZE = (256 / 64) * ((128 + 16) / 16) * 32 ;
+
+    static constexpr uint32_t mBaseSize = 128;     // [#9] M 方向基准 tile（对应 QFA mBaseSize），用于 pad 满块判断
+
 }  // namespace MXFP4
 
 }  // namespace NpuArch::Gemm::Block
