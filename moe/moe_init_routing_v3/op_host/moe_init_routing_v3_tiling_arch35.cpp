@@ -344,11 +344,11 @@ private:
     bool NeedQuantTempWorkspace() const
     {
         return (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&
-            quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ == QUANT_MODE_MXFP8_E5M2 &&
-            quantMode_ == QUANT_MODE_MXFP8_E4M3FN && quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 &&
-            quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN && quantMode_ == QUANT_MODE_FP8_GROUP_E5M2 &&
-            quantMode_ == QUANT_MODE_FP8_GROUP_E4M3FN && quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E5M2 &&
-            quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E4M3FN);
+            quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ != QUANT_MODE_MXFP8_E5M2 &&
+            quantMode_ != QUANT_MODE_MXFP8_E4M3FN && quantMode_ != QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 &&
+            quantMode_ != QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN && quantMode_ != QUANT_MODE_FP8_GROUP_E5M2 &&
+            quantMode_ != QUANT_MODE_FP8_GROUP_E4M3FN && quantMode_ != QUANT_MODE_FP8_GROUP_AMAX_E5M2 &&
+            quantMode_ != QUANT_MODE_FP8_GROUP_AMAX_E4M3FN);
     }
 
     // 辅助工具函数
@@ -2097,7 +2097,9 @@ int64_t MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopFP8GroupQuant(int
     int64_t xInSize = AlignBytes(perLoopCols, inputXDtypeSize_);
     int64_t xOutSize = AlignBytes(perLoopCols, sizeof(uint8_t));
     int64_t scaleSize = AlignBytes(Ops::Base::CeilDiv(perLoopCols, FP8_GROUP_SIZE), sizeof(float));
-    return (availUbSize_ / DOUBLE_BUFFER - (xInSize + xOutSize + scaleSize)) / static_cast<int64_t>(sizeof(int32_t));
+    int64_t tmpBufSize = std::max(scaleSize, REG_SIZE);
+    return (availUbSize_ / DOUBLE_BUFFER - (xInSize + xOutSize + scaleSize + tmpBufSize * NUM_TWO)) /
+           static_cast<int64_t>(sizeof(int32_t));
 }
 
 void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutFP8Quant()
