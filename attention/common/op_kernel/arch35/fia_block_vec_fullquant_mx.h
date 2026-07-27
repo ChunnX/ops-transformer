@@ -310,7 +310,11 @@ public:
     {
         int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
+<<<<<<< HEAD
             maskLine = ComputeMaskLineDN(runInfo, subLoop);
+=======
+            maskLine = computeMaskLineDN(runInfo, 0, subLoop);
+>>>>>>> c068dc7c7b90e085867ec6d0215ade1d7091044f
         }
         if (isSkipCompute) {
             maskLine = -256;
