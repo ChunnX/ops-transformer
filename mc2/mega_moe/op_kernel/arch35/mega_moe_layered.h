@@ -467,7 +467,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     uint32_t relayReceivedTensorAddr =
         copyTmpBaseAddr + (relayFlagTensorSize > copyTmpTotalSize ? relayFlagTensorSize : copyTmpTotalSize);
     uint32_t relayReceivedTensorSize = Ops::Base::CeilAlign(
-        static_cast<uint32_t>(DISPATCH_WAVE_TILE_M * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
+        static_cast<uint32_t>(MegaMoeImpl::L1_TILE_M_256 * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
     relayReceivedTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, relayReceivedTensorAddr, relayReceivedTensorSize / sizeof(int32_t));
     // Tensor用处：Level1DispatchUrma 中按 (targetServer, localTokenIdx) 去重。
@@ -1197,7 +1197,7 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRemoteRelay(int32_t rowDs
     }
 
     SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID4>();
-    Duplicate<int32_t>(relayReceivedTensor_, 0, static_cast<int32_t>(DISPATCH_WAVE_TILE_M));
+    Duplicate<int32_t>(relayReceivedTensor_, 0, static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256));
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
 
     uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
@@ -1224,7 +1224,7 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRemoteRelay(int32_t rowDs
             if (relayReceivedTensor_.GetValue(copyIdx) != int32_t(0)) {
                 continue;
             }
-            int32_t tokenIndex = tripleTensor_[copyIdx * INT32_PER_256B].GetValue(TOKEN_ID);
+            int32_t tokenIndex = metaInfoTensor_[copyIdx * INT32_PER_256B].GetValue(TOKEN_ID);
             if (relayFlagTensor_.GetValue(tokenIndex) != uint64_t(1)) {
                 continue;
             }
@@ -1275,9 +1275,9 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffset
     for (int32_t i = 0; i < copyNum; ++i) {
         int32_t topkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + i);
         int32_t tokenIndex = topkIndex / topK_;
-        tripleTensor_[i * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
-        tripleTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
-        tripleTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
+        metaInfoTensor_[i * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
+        metaInfoTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
+        metaInfoTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
     }
 
     if (relayRank == rankId_) {
