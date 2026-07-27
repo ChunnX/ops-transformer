@@ -33,6 +33,19 @@
         output=ReduceScatter((x1Scale*x2Scale)*(x1@x2) + bias_{optional})
         $$
 
+### MXFP8 support on Ascend 950
+
+When `x1` and `x2` are `FLOAT8_E4M3FN` or `FLOAT8_E5M2`, the operator performs MX dequantization during the
+matrix multiplication and communicates the dequantized `FLOAT16` or `BFLOAT16` result. Both input types may be mixed.
+This mode is available only on Ascend 950 and has the following requirements:
+
+- `x1Scale` and `x2Scale` are required `FLOAT8_E8M0` tensors in ND format.
+- For `x1=[M,K]`, `x1Scale` has shape `[M,ceil(K/64),2]`.
+- For non-transposed `x2=[K,N]`, `x2Scale` has shape `[ceil(K/64),N,2]`; for transposed `x2=[N,K]`, it has shape
+  `[N,ceil(K/64),2]`.
+- `bias`, when present, is `FLOAT32`; `quantScale` and `amaxOut` are not supported.
+- `blockSize` is `0`; `groupSize` is `0` or `4295032864` (the packed value for `[1,1,32]`).
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMatmulReduceScatterV2GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMatmulReduceScatterV2`接口执行计算。

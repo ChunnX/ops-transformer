@@ -152,21 +152,18 @@ TEST_F(MatmulReduceScatterV2AclnnTest, 16BitTrans)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(MatmulReduceScatterV2AclnnTest, E4m3fnNotSupport)
+TEST_F(MatmulReduceScatterV2AclnnTest, MxFp8NotSupportOnArch22)
 {
     TensorDesc x1 = TensorDesc({256, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2 = TensorDesc({256, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc bias = TensorDesc({32}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc x1Scale = TensorDesc({2, 2}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc x2Scale = TensorDesc({2, 2}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc quantScale = TensorDesc({256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 256}, ACL_FLOAT8_E5M2, ACL_FORMAT_ND);
+    TensorDesc x1Scale = TensorDesc({256, 4, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({4, 256, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc output = TensorDesc({256, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc amaxOut = TensorDesc({256, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(
         aclnnMatmulReduceScatterV2,
-        INPUT(x1, x2, nullptr, x1Scale, x2Scale, quantScale, 0, "test_group", "sum", 8, 1, 549764202624, "aiv"),
-        OUTPUT(output, amaxOut));
+        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_group", "sum", 8, 1, 0, "aiv"),
+        OUTPUT(output, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -564,14 +561,49 @@ TEST_F(MatmulReduceScatterV2Arch35AivModeTest, Fp16UsesAivInterface)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(MatmulReduceScatterV2Arch35AivModeTest, RejectsFormerArch35Fp8Type)
+TEST_F(MatmulReduceScatterV2Arch35AivModeTest, SupportsMxFp8Type)
 {
     TensorDesc x1 = TensorDesc({256, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2 = TensorDesc({256, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 256}, ACL_FLOAT8_E5M2, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc x1Scale = TensorDesc({256, 4, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({4, 256, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc output = TensorDesc({256, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(
         aclnnMatmulReduceScatterV2,
+        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_group", "sum", 8, 1, 4295032864LL, "aiv"),
+        OUTPUT(output, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(MatmulReduceScatterV2Arch35AivModeTest, RejectsMxFp8WithoutScale)
+{
+    TensorDesc x1 = TensorDesc({256, 256}, ACL_FLOAT8_E5M2, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({256, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(
+        aclnnMatmulReduceScatterV2,
         INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_group", "sum", 8, 1, 0, "aiv"),
+        OUTPUT(output, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(MatmulReduceScatterV2Arch35AivModeTest, RejectsMxFp8FloatScale)
+{
+    TensorDesc x1 = TensorDesc({256, 256}, ACL_FLOAT8_E5M2, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 256}, ACL_FLOAT8_E5M2, ACL_FORMAT_ND);
+    TensorDesc x1Scale = TensorDesc({256, 4, 2}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({4, 256, 2}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({256, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(
+        aclnnMatmulReduceScatterV2,
+        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_group", "sum", 8, 1, 0, "aiv"),
         OUTPUT(output, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;

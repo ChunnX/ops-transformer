@@ -23,18 +23,19 @@ namespace ge {
 * @brief Fusion op of matmul and reduce scatter v2.
 * @par Inputs:
 * six inputs, including:
-* @li x1: A matrix tensor. The type supports float16, bfloat16 and int8. The format supports
+* @li x1: A matrix tensor. The type supports float16, bfloat16, int8, float8_e4m3fn and float8_e5m2. The format supports
 ND. The x1 only supports two dimensions in current version, for example (M, K). The x1 doesn't support transposed.
-* @li x2: A matrix tensor. The type supports float16, bfloat16 and int8. The x2 only
+* @li x2: A matrix tensor. The type supports float16, bfloat16, int8, float8_e4m3fn and float8_e5m2. The x2 only
 supports two dimensions in current version, for example (K, N). The x2 supports transposed and non-transposed. The K
 value in x2 should be same as the K value in x1 when x2 is non-transposed, and the K value should be in range [256,
 65535).
 * @li bias: An optional tensor in ND format. For int8 inputs its type supports float16, bfloat16 and float32; for
-float16 or bfloat16 inputs its type supports the corresponding input type or float32. \n
-* @li x1_scale: An optional float32 tensor in ND format. It must be nullptr for float16/bfloat16 inputs and has shape
-(M, 1) in the int8 per-token scenario. \n
-* @li x2_scale: An optional float32 or int64 tensor in ND format. It must be nullptr for float16/bfloat16 inputs and has
-shape (1, N) in the int8 per-channel scenario. int64 is supported only when y is float16. \n
+float16 or bfloat16 inputs its type supports the corresponding input type or float32. For MXFP8 inputs it must be
+float32. \n
+* @li x1_scale: An optional float32 or float8_e8m0 tensor in ND format. In MXFP8 mode it is required and has shape
+(M, ceil(K / 64), 2). \n
+* @li x2_scale: An optional float32, int64 or float8_e8m0 tensor in ND format. In MXFP8 mode it is required and has
+shape (ceil(K / 64), N, 2), or (N, ceil(K / 64), 2) when x2 is transposed. \n
 * @li quant_scale: A matrix tensor. The type supports float32. The format supports ND. The quant_scale only supports one
 dimension and only one element, for example (1,). The quant_scale only supports nullptr in current version. \n
 *
@@ -53,7 +54,8 @@ version.
 * @li rank_size: An int. Number of rank num. Default: "0". The rank_size only supports 2/4/8 in current version.
 * @li block_size: An int. Number of values in the M, N directions in y correspond to one dequantization coefficient.
 Default: "0". The block_size only supports 0 in current version.
-* @li group_size: An int. Reserved attribute. Default: "0". Only 0 is supported in current version. \n
+* @li group_size: An int. Reserved attribute. Default: "0". MXFP8 also accepts 4295032864, the packed value for
+[1, 1, 32]. \n
 * @li is_amax_out: A bool. whether the output of amax_out is supported . Default: "false". If True, supports output
 amax_out.
 * @li y_dtype: An int. The y_dtype only supports 1(float16)/27(bfloat16) in current version. \n
@@ -67,11 +69,11 @@ x1. The format supports ND. The y is two dimensions, for example (M/rank_size, N
 one element, for example (1,). The amax_out only supports nullptr in current version. \n
 */
 REG_OP(MatmulReduceScatterV2)
-    .INPUT(x1, TensorType({DT_FLOAT16, DT_BF16, DT_INT8}))
-    .INPUT(x2, TensorType({DT_FLOAT16, DT_BF16, DT_INT8}))
+    .INPUT(x1, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
+    .INPUT(x2, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
     .OPTIONAL_INPUT(bias, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT}))
-    .OPTIONAL_INPUT(x1_scale, TensorType({DT_FLOAT}))
-    .OPTIONAL_INPUT(x2_scale, TensorType({DT_FLOAT, DT_INT64}))
+    .OPTIONAL_INPUT(x1_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(x2_scale, TensorType({DT_FLOAT, DT_INT64, DT_FLOAT8_E8M0}))
     .OPTIONAL_INPUT(quant_scale, TensorType({DT_FLOAT}))
     .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16}))
     .OUTPUT(amax_out, TensorType({DT_FLOAT}))

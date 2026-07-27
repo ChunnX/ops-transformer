@@ -31,13 +31,20 @@ const char *K_INNER_DEBUG = "MatmulReduceScatterV2AivMode Tiling Debug";
 constexpr uint32_t ATTR_GROUP_INDEX = 0;
 constexpr uint32_t ATTR_IS_TRANS_A = 2;
 constexpr uint32_t ATTR_IS_TRANS_B = 3;
+constexpr uint32_t ATTR_BLOCK_SIZE = 6;
+constexpr uint32_t ATTR_GROUP_SIZE = 7;
+constexpr int64_t MX_GROUP_SIZE = 4295032864LL; // [M, N, K] = [1, 1, 32]
+constexpr uint32_t MX_SCALE_PACK = 2;
+constexpr uint32_t MX_SCALE_STORAGE_GROUP = 64;
 constexpr uint64_t INIT_TILINGKEY = 10000U;
 constexpr uint32_t A_INDEX = 0;
 constexpr uint32_t B_INDEX = 1;
 constexpr uint32_t BIAS_INDEX = 2;
 constexpr uint32_t X1_SCALE_INDEX = 3;
 constexpr uint32_t X2_SCALE_INDEX = 4;
+constexpr uint32_t QUANT_SCALE_INDEX = 5;
 constexpr uint32_t C_INDEX = 0;
+constexpr uint32_t AMAX_OUT_INDEX = 1;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
 constexpr uint64_t CCL_BUFFER_MIN_BYTES = 200ULL * 1024 * 1024; // 校验HCCL BUFF空间大小
@@ -57,12 +64,28 @@ const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITH_BIAS = {
     {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT, ge::DT_BF16},
     {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT, ge::DT_FLOAT16},
     {ge::DT_INT8, ge::DT_INT8, ge::DT_BF16, ge::DT_BF16},
-    {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_FLOAT16}};
+    {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_FLOAT16},
+    {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT, ge::DT_FLOAT16},
+    {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT, ge::DT_BF16},
+    {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT, ge::DT_FLOAT16},
+    {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT, ge::DT_BF16},
+    {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT, ge::DT_FLOAT16},
+    {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT, ge::DT_BF16},
+    {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT, ge::DT_FLOAT16},
+    {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT, ge::DT_BF16}};
 const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITHOUT_BIAS = {
     {ge::DT_BF16, ge::DT_BF16, ge::DT_BF16},
     {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16},
     {ge::DT_INT8, ge::DT_INT8, ge::DT_BF16},
-    {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16}};
+    {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16},
+    {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT16},
+    {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16},
+    {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT16},
+    {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_BF16},
+    {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT16},
+    {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16},
+    {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT16},
+    {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_BF16}};
 
 std::map<int, std::vector<std::vector<int>>> g_matmulReduceScatterA2FourRankINT8CodeMap = {
     {59785264, {{-1, 1536, -1, 7168, -1, 1536}}},
@@ -599,6 +622,91 @@ static ge::graphStatus MatmulReduceScatterV2CheckDtypeAndSetTiling(const gert::T
     }
 }
 
+static bool IsMxFp8Type(ge::DataType dtype)
+{
+    return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2;
+}
+
+static ge::graphStatus MatmulReduceScatterV2CheckMxFp8Params(const gert::TilingContext *context,
+                                                             const MatmulReduceScatterV2AivModeInfo &info,
+                                                             const std::string &socVersion)
+{
+    const char *nodeName = context->GetNodeName();
+    OP_TILING_CHECK(socVersion != "Ascend950",
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "x1/x2", "MXFP8",
+                                                          "MXFP8 is supported only on Ascend950"),
+                    return ge::GRAPH_FAILED);
+
+    auto x1Desc = context->GetInputDesc(A_INDEX);
+    auto x2Desc = context->GetInputDesc(B_INDEX);
+    auto x1ScaleDesc = context->GetOptionalInputDesc(X1_SCALE_INDEX);
+    auto x2ScaleDesc = context->GetOptionalInputDesc(X2_SCALE_INDEX);
+    auto x1ScaleShape = context->GetOptionalInputShape(X1_SCALE_INDEX);
+    auto x2ScaleShape = context->GetOptionalInputShape(X2_SCALE_INDEX);
+    OP_TILING_CHECK(x1ScaleDesc == nullptr || x2ScaleDesc == nullptr || x1ScaleShape == nullptr ||
+                        x2ScaleShape == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "x1Scale/x2Scale"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(x1ScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0 ||
+                        x2ScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0,
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "x1Scale/x2Scale",
+                                                          "not both FLOAT8_E8M0",
+                                                          "MXFP8 scales must both be FLOAT8_E8M0"),
+                    return ge::GRAPH_FAILED);
+
+    auto x1Format = static_cast<ge::Format>(ge::GetPrimaryFormat(x1Desc->GetStorageFormat()));
+    auto x2Format = static_cast<ge::Format>(ge::GetPrimaryFormat(x2Desc->GetStorageFormat()));
+    auto x1ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));
+    auto x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleDesc->GetStorageFormat()));
+    OP_TILING_CHECK(x1Format != ge::FORMAT_ND || x2Format != ge::FORMAT_ND || x1ScaleFormat != ge::FORMAT_ND ||
+                        x2ScaleFormat != ge::FORMAT_ND,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "x1/x2/x1Scale/x2Scale", "non-ND",
+                                                          "MXFP8 supports ND format only"),
+                    return ge::GRAPH_FAILED);
+
+    const gert::Shape &scaleAShape = x1ScaleShape->GetStorageShape();
+    const gert::Shape &scaleBShape = x2ScaleShape->GetStorageShape();
+    OP_TILING_CHECK(scaleAShape.GetDimNum() != 3 || scaleBShape.GetDimNum() != 3,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x1Scale/x2Scale", "not 3D",
+                                                          "MXFP8 scale tensors must be 3D"),
+                    return ge::GRAPH_FAILED);
+
+    const int64_t scaleK = (static_cast<int64_t>(info.K) + MX_SCALE_STORAGE_GROUP - 1) / MX_SCALE_STORAGE_GROUP;
+    OP_TILING_CHECK(scaleAShape.GetDim(0) != info.M || scaleAShape.GetDim(1) != scaleK ||
+                        scaleAShape.GetDim(2) != MX_SCALE_PACK,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x1Scale", "unexpected shape",
+                                                          "expected [M, ceil(K / 64), 2]"),
+                    return ge::GRAPH_FAILED);
+    const bool invalidScaleB = info.isTransposeB ?
+                                   (scaleBShape.GetDim(0) != info.N || scaleBShape.GetDim(1) != scaleK ||
+                                    scaleBShape.GetDim(2) != MX_SCALE_PACK) :
+                                   (scaleBShape.GetDim(0) != scaleK || scaleBShape.GetDim(1) != info.N ||
+                                    scaleBShape.GetDim(2) != MX_SCALE_PACK);
+    OP_TILING_CHECK(invalidScaleB,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "x2Scale", "unexpected shape",
+                        info.isTransposeB ? "expected [N, ceil(K / 64), 2]" : "expected [ceil(K / 64), N, 2]"),
+                    return ge::GRAPH_FAILED);
+
+    auto attrs = context->GetAttrs();
+    auto blockSize = attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE);
+    auto groupSize = attrs->GetAttrPointer<int64_t>(ATTR_GROUP_SIZE);
+    OP_TILING_CHECK(blockSize == nullptr || groupSize == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "blockSize/groupSize"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*blockSize != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "blockSize", std::to_string(*blockSize).c_str(), "0"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*groupSize != 0 && *groupSize != MX_GROUP_SIZE,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "groupSize", std::to_string(*groupSize).c_str(),
+                                              "0 or 4295032864 ([1, 1, 32])"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context->GetOptionalInputDesc(QUANT_SCALE_INDEX) != nullptr ||
+                        context->GetOutputShape(AMAX_OUT_INDEX) != nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "quantScale/amaxOut", "non-null",
+                                                          "MXFP8 does not support output quantization"),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus MatmulReduceScatterV2GetPlatformInfoAndSetTiling(const gert::TilingContext *context,
                                                                         MatmulReduceScatterV2AivModeInfo &info)
 {
@@ -620,6 +728,9 @@ const std::map<ge::DataType, int64_t> D_TYPE_SIZE_MAP = {
     {ge::DT_FLOAT16, 2},
     {ge::DT_FLOAT, 4},
     {ge::DT_INT8, 1},
+    {ge::DT_FLOAT8_E4M3FN, 1},
+    {ge::DT_FLOAT8_E5M2, 1},
+    {ge::DT_FLOAT8_E8M0, 1},
 };
 
 static uint32_t AlignUp(uint32_t len, uint32_t size)
@@ -668,8 +779,9 @@ static void GetTilingKey(uint64_t &tilingKey, const MatmulReduceScatterV2AivMode
 {
     const gert::StorageShape *matrix_bias = context->GetOptionalInputShape(BIAS_INDEX);
     bool isBias = (matrix_bias == nullptr) ? false : true;
-    bool isSmallM =
-        GetAlgorithmPolicy(info.M, info.N, info.is910C, info.quantFlag) == AlgorithmStrategy::SMALL_M_OPTIMIZED;
+    bool isSmallM = !info.mxFp8Flag &&
+                    GetAlgorithmPolicy(info.M, info.N, info.is910C, info.quantFlag) ==
+                        AlgorithmStrategy::SMALL_M_OPTIMIZED;
     ge::DataType biasDatatype = context->GetOutputDesc(0)->GetDataType();
     if (isBias) {
         auto biasDesc = context->GetOptionalInputDesc(BIAS_INDEX);
@@ -1096,6 +1208,7 @@ static void PrintTilingDataInfo(MatmulReduceScatterV2AivModeInfo &info, CoCTilin
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.aAlignSize %lu", info.aAlignSize);
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.bAlignSize %lu", info.bAlignSize);
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.quantFlag %d", info.quantFlag);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.mxFp8Flag %d", info.mxFp8Flag);
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.is910C %d", info.is910C);
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.isX2ScaleTypeInt64 %d", info.isX2ScaleTypeInt64);
 
@@ -1171,6 +1284,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     auto cType = context->GetOutputDesc(0)->GetDataType();
     info.quantFlag =
         (aType == ge::DT_INT8) && (bType == ge::DT_INT8) && (cType == ge::DT_BF16 || cType == ge::DT_FLOAT16);
+    info.mxFp8Flag = IsMxFp8Type(aType) && IsMxFp8Type(bType);
 
     // 3. 配置平台信息，GetTilingKey
     info.is910C = false;
@@ -1181,6 +1295,11 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
     if (socVersion == "Ascend910_93") {
         info.is910C = true;
+    }
+    if (info.mxFp8Flag) {
+        OP_TILING_CHECK(MatmulReduceScatterV2CheckMxFp8Params(context, info, socVersion) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(context->GetNodeName(), "MatmulReduceScatterV2 aivMode Invalid MXFP8 params."),
+                        return ge::GRAPH_FAILED);
     }
 
     // 4. set tilingKey
@@ -1203,7 +1322,8 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
         }
     }
 
-    if (GetAlgorithmPolicy(info.M, info.N, info.is910C, info.quantFlag) == AlgorithmStrategy::SMALL_M_OPTIMIZED) {
+    if (!info.mxFp8Flag &&
+        GetAlgorithmPolicy(info.M, info.N, info.is910C, info.quantFlag) == AlgorithmStrategy::SMALL_M_OPTIMIZED) {
         SetTilingData_SmallM(tilingData->cocTiling, info, rankSize);
         OP_TILING_CHECK(
             checkAndResetTilingData_SmallM(tilingData->cocTiling, info, context, rankSize) != ge::GRAPH_SUCCESS,

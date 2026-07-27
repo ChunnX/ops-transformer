@@ -61,6 +61,9 @@ public:
 
 protected:
     static constexpr bool quantFlag = (std::is_same<AType, int8_t>::value) && (std::is_same<BType, int8_t>::value);
+    static constexpr bool mxFp8Flag =
+        (std::is_same_v<AType, float8_e4m3_t> || std::is_same_v<AType, float8_e5m2_t>) &&
+        (std::is_same_v<BType, float8_e4m3_t> || std::is_same_v<BType, float8_e5m2_t>);
     __aicore__ inline void Padding();
     __aicore__ inline void StartBeforeFirstStep();
     __aicore__ inline void EndFirstStep();
@@ -69,6 +72,8 @@ private:
     __aicore__ inline void AIVInit();
     __aicore__ inline void AICInit();
     __aicore__ inline void CatlassMatmul();
+    __aicore__ inline void CatlassStandardMatmul();
+    __aicore__ inline void CatlassMxFp8Matmul();
     __aicore__ inline void AIVComm();
     __aicore__ inline void Dequant(int32_t calIdx, uint64_t flagIdx);
     __aicore__ inline void FirstStepInOut(int32_t actual_move_size, __gm__ cType *input, int32_t move_offset,
@@ -166,6 +171,119 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
 
 template <TemplateMMReduceScatterV2Class, typename Derived>
 __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func, Derived>::CatlassMatmul()
+{
+    if constexpr (mxFp8Flag) {
+        CatlassMxFp8Matmul();
+    } else {
+        CatlassStandardMatmul();
+    }
+}
+
+template <TemplateMMReduceScatterV2Class, typename Derived>
+__aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func, Derived>::CatlassMxFp8Matmul()
+{
+#if defined(CATLASS_ARCH) && CATLASS_ARCH == 3510
+    if ASCEND_IS_AIC {
+        int32_t peer_mem_m = m0 * loop_num_per_comm * MAX_BLOCK_COUNT;
+        uint32_t layout_b_row = TB ? static_cast<uint32_t>(k_align) : static_cast<uint32_t>(k);
+        uint32_t layout_b_col = TB ? static_cast<uint32_t>(n) : static_cast<uint32_t>(n_align);
+        using ArchTag = MatmulReduceScatterArchTag;
+        constexpr bool ENABLE_UNIT_FLAG = false;
+        constexpr bool aicCalBias = hasBias;
+        using ElementA = AType;
+        using ElementB = BType;
+        using ElementC = cType;
+        using ElementBias = biasType;
+        using ElementMxScale = x2ScaleType;
+        using LayoutA = layout::RowMajor;
+        using LayoutB = std::conditional_t<TB, layout::ColumnMajor, layout::RowMajor>;
+        using LayoutC = layout::RowMajor;
+        using LayoutBias = layout::VectorLayout;
+
+        LayoutA layoutA{static_cast<uint32_t>(m), static_cast<uint32_t>(k_align)};
+        LayoutB layoutB{layout_b_row, layout_b_col};
+        LayoutC layoutC{static_cast<uint32_t>(m / rank_size), static_cast<uint32_t>(n)};
+        LayoutC layoutPeerMem{static_cast<uint32_t>(peer_mem_m), static_cast<uint32_t>(n0)};
+        LayoutBias layoutBias{static_cast<uint32_t>(n)};
+        GemmCoord processSize{static_cast<uint32_t>(m), static_cast<uint32_t>(n), static_cast<uint32_t>(k)};
+
+        using DispatchPolicy = Gemm::MatmulReduceScatterMxDispatchPolicy<ENABLE_UNIT_FLAG>;
+        using AType_ = Gemm::GemmType<ElementA, LayoutA>;
+        using BType_ = Gemm::GemmType<ElementB, LayoutB>;
+        using CType_ = Gemm::GemmType<ElementC, LayoutC>;
+        using BiasType_ = std::conditional_t<aicCalBias, Gemm::GemmType<ElementBias, LayoutBias>, void>;
+
+        if (m0 == TILE_SHAPE_128) {
+            using L1TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, TILE_SHAPE_256>;
+            using L0TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, TILE_SHAPE_128>;
+            using BlockMmadOpt = Gemm::Block::MatmulReduceScatterMxBlockMmadAscend950<
+                DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, ElementMxScale>;
+            using MatmulKernel =
+                Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias, true>;
+            typename MatmulKernel::Params params{
+                processSize,
+                reinterpret_cast<GM_ADDR>(gm_a_src),
+                layoutA,
+                reinterpret_cast<GM_ADDR>(gm_b_src),
+                layoutB,
+                reinterpret_cast<GM_ADDR>(biasGM_),
+                reinterpret_cast<GM_ADDR>(cGM_),
+                layoutC,
+                nullptr,
+                layout::VectorLayout{static_cast<uint32_t>(n)},
+                reinterpret_cast<GM_ADDR>(gm_peer_mem),
+                layoutPeerMem,
+                nullptr,
+                p_value,
+                swizzl_count,
+                swizzl_direct,
+                DequantType::DEQUANT_TYPE_UNDEFINED,
+                rank,
+                rank_size,
+                false,
+                reinterpret_cast<GM_ADDR>(perTokenScaleGM_),
+                reinterpret_cast<GM_ADDR>(perChannelScaleGM_)};
+            MatmulKernel matmulOp;
+            matmulOp(params);
+        } else {
+            using L1TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, TILE_SHAPE_256>;
+            using L0TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, TILE_SHAPE_128>;
+            using BlockMmadOpt = Gemm::Block::MatmulReduceScatterMxBlockMmadAscend950<
+                DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, ElementMxScale>;
+            using MatmulKernel =
+                Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias, true>;
+            typename MatmulKernel::Params params{
+                processSize,
+                reinterpret_cast<GM_ADDR>(gm_a_src),
+                layoutA,
+                reinterpret_cast<GM_ADDR>(gm_b_src),
+                layoutB,
+                reinterpret_cast<GM_ADDR>(biasGM_),
+                reinterpret_cast<GM_ADDR>(cGM_),
+                layoutC,
+                nullptr,
+                layout::VectorLayout{static_cast<uint32_t>(n)},
+                reinterpret_cast<GM_ADDR>(gm_peer_mem),
+                layoutPeerMem,
+                nullptr,
+                p_value,
+                swizzl_count,
+                swizzl_direct,
+                DequantType::DEQUANT_TYPE_UNDEFINED,
+                rank,
+                rank_size,
+                false,
+                reinterpret_cast<GM_ADDR>(perTokenScaleGM_),
+                reinterpret_cast<GM_ADDR>(perChannelScaleGM_)};
+            MatmulKernel matmulOp;
+            matmulOp(params);
+        }
+    }
+#endif
+}
+
+template <TemplateMMReduceScatterV2Class, typename Derived>
+__aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func, Derived>::CatlassStandardMatmul()
 {
     if ASCEND_IS_AIC {
         bool need_fixpipe = quantFlag && isX2ScaleTypeInt64 && std::is_same<cType, half>::value;

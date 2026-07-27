@@ -36,7 +36,18 @@ using namespace AscendC;
 using namespace matmulReduceScatterV2_aivmode_tiling;
 using namespace matmulReduceScatterV2_util;
 namespace Catlass::Gemm::Kernel {
-template <class PrologueA, class PrologueB, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, bool HasBias>
+template <bool IsMxFp8, class BlockMmad>
+struct MatmulReduceScatterMxScaleElement {
+    using type = uint8_t;
+};
+
+template <class BlockMmad>
+struct MatmulReduceScatterMxScaleElement<true, BlockMmad> {
+    using type = typename BlockMmad::ElementMxScaleA;
+};
+
+template <class PrologueA, class PrologueB, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, bool HasBias,
+          bool IsMxFp8 = false>
 class MatmulReduceScatterAivMode : public CommBase {
 public:
     using BlockMmad = BlockMmad_;
@@ -104,6 +115,8 @@ public:
         int32_t rankIdx;
         int32_t rankSize;
         bool needFixpipe;
+        GM_ADDR ptrMxScaleA;
+        GM_ADDR ptrMxScaleB;
 
         // Methods
         CATLASS_HOST_DEVICE
@@ -116,12 +129,12 @@ public:
                GM_ADDR ptrBias_, GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrScale_, LayoutScale layoutScale_,
                GM_ADDR ptrPeerMem_, LayoutC layoutPeerMem_, GM_ADDR ptrWorkSpace_, int32_t pValue_,
                int32_t swizzlCount_, int32_t swizzlDirect_, DequantType dequantType_, int32_t rankIdx_,
-               int32_t rankSize_, bool needFixpipe_)
+               int32_t rankSize_, bool needFixpipe_, GM_ADDR ptrMxScaleA_ = nullptr, GM_ADDR ptrMxScaleB_ = nullptr)
             : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
               ptrBias(ptrBias_), ptrC(ptrC_), layoutC(layoutC_), ptrScale(ptrScale_), layoutScale(layoutScale_),
               ptrPeerMem(ptrPeerMem_), layoutPeerMem(layoutPeerMem_), ptrWorkSpace(ptrWorkSpace_), pValue(pValue_),
               swizzlCount(swizzlCount_), swizzlDirect(swizzlDirect_), dequantType(dequantType_), rankIdx(rankIdx_),
-              rankSize(rankSize_), needFixpipe(needFixpipe_)
+              rankSize(rankSize_), needFixpipe(needFixpipe_), ptrMxScaleA(ptrMxScaleA_), ptrMxScaleB(ptrMxScaleB_)
         {
         }
     };
@@ -277,6 +290,14 @@ public:
         gmPeerMem.SetGlobalBuffer((__gm__ ElementC *)params.ptrPeerMem);
         gmWorkSpace.SetGlobalBuffer((__gm__ ElementC *)params.ptrWorkSpace);
 
+        using ElementMxScale = typename MatmulReduceScatterMxScaleElement<IsMxFp8, BlockMmad>::type;
+        AscendC::GlobalTensor<ElementMxScale> gmMxScaleA;
+        AscendC::GlobalTensor<ElementMxScale> gmMxScaleB;
+        if constexpr (IsMxFp8) {
+            gmMxScaleA.SetGlobalBuffer((__gm__ ElementMxScale *)params.ptrMxScaleA);
+            gmMxScaleB.SetGlobalBuffer((__gm__ ElementMxScale *)params.ptrMxScaleB);
+        }
+
         BlockMmad blockMmad(resource);
         int32_t matmulBlockSize = L1TileShape::M * L1TileShape::N;
         for (int32_t matmulCalIdx = 0; matmulCalIdx < calCount; matmulCalIdx++) {
@@ -304,6 +325,16 @@ public:
                 MatrixCoord matmulOffsetC{matmulBlockLocCoord.m(), matmulBlockLocCoord.n()};
                 int64_t matmulGmOffsetA = matmulGmABlockSt + params.layoutA.GetOffset(offsetA);
                 int64_t matmulGmOffsetB = params.layoutB.GetOffset(offsetB);
+                uint32_t mxScaleK = CeilDiv<MX_SCALE_GROUP_NUM>(params.problemShape.k());
+                uint32_t mxScaleKAligned = RoundUp<MX_SCALE_COPY_GROUP_NUM>(mxScaleK);
+                int64_t matmulGmOffsetMxScaleA =
+                    (static_cast<int64_t>(matmulDstRankIdx) * finalM + matmulBlockLocCoord.m()) * mxScaleKAligned;
+                int64_t matmulGmOffsetMxScaleB;
+                if constexpr (std::is_same_v<LayoutB, layout::ColumnMajor>) {
+                    matmulGmOffsetMxScaleB = static_cast<int64_t>(matmulBlockLocCoord.n()) * mxScaleKAligned;
+                } else {
+                    matmulGmOffsetMxScaleB = matmulBlockLocCoord.n();
+                }
                 int64_t matmulGmOffsetC;
                 LayoutC layoutGmDst;
                 AscendC::GlobalTensor<ElementC> gmDst;
@@ -327,10 +358,24 @@ public:
                                       matmulBlockSize;
                 }
                 if constexpr (HasBias) {
-                    blockMmad(gmA[matmulGmOffsetA], params.layoutA, gmB[matmulGmOffsetB], params.layoutB,
-                              gmDst[matmulGmOffsetC], layoutGmDst, gmBias[matmulBlockLocCoord.n()],
-                              matmulBlockSizeCoord);
+                    if constexpr (IsMxFp8) {
+                        blockMmad(gmA[matmulGmOffsetA], params.layoutA, gmB[matmulGmOffsetB], params.layoutB,
+                                  gmDst[matmulGmOffsetC], layoutGmDst, gmMxScaleA[matmulGmOffsetMxScaleA],
+                                  gmMxScaleB[matmulGmOffsetMxScaleB], mxScaleK, params.problemShape.n(),
+                                  gmBias[matmulBlockLocCoord.n()], matmulBlockSizeCoord);
+                    } else {
+                        blockMmad(gmA[matmulGmOffsetA], params.layoutA, gmB[matmulGmOffsetB], params.layoutB,
+                                  gmDst[matmulGmOffsetC], layoutGmDst, gmBias[matmulBlockLocCoord.n()],
+                                  matmulBlockSizeCoord);
+                    }
                 } else {
+                    if constexpr (IsMxFp8) {
+                        blockMmad(gmA[matmulGmOffsetA], params.layoutA, gmB[matmulGmOffsetB], params.layoutB,
+                                  gmDst[matmulGmOffsetC], layoutGmDst, gmMxScaleA[matmulGmOffsetMxScaleA],
+                                  gmMxScaleB[matmulGmOffsetMxScaleB], mxScaleK, params.problemShape.n(),
+                                  matmulBlockSizeCoord);
+                        continue;
+                    }
                     bool matmulIsFirstBlock = matmulLoopIdx == coreIdx;
                     bool matmulHasNextBlock = false;
                     GemmCoord nextBlockLocCoord;

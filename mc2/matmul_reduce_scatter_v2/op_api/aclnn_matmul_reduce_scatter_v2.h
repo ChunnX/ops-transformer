@@ -29,11 +29,13 @@ extern "C" {
  * 算子功能：实现mm + reduceScatter融合计算
  * @brief aclnnMatmulReduceScatter的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
- * @param [in] x1: matmul左矩阵，数据类型支持：float16, bfloat16, int8。
- * @param [in] x2: matmul右矩阵，数据类型支持：float16, bfloat16, int8。
+ * @param [in] x1: matmul左矩阵，数据类型支持：float16, bfloat16, int8, float8_e4m3fn, float8_e5m2。
+ * @param [in] x2: matmul右矩阵，数据类型支持：float16, bfloat16, int8, float8_e4m3fn, float8_e5m2。
  * @param [in] bias: 偏置，数据类型支持：float16, bfloat16, float32。
- * @param [in] x1Scale: matmul左矩阵反量化scale，数据类型支持：float16, bfloat16, float32。
- * @param [in] x2Scale: matmul右矩阵反量化scale，数据类型支持：float16, bfloat16, float32。
+ * @param [in] x1Scale: matmul左矩阵反量化scale，数据类型支持：float16, bfloat16, float32；MXFP8场景必选，
+ * 数据类型为float8_e8m0。
+ * @param [in] x2Scale: matmul右矩阵反量化scale，数据类型支持：float16, bfloat16, float32；MXFP8场景必选，
+ * 数据类型为float8_e8m0。
  * @param [in] quantScale: 输出矩阵量化scale，数据类型支持：float32。
  * @param [in] blockSize: 一个量化系数在output不同轴对应的值的数量, 默认值: 0。
  * @param [in] group: 标识列组的字符串。

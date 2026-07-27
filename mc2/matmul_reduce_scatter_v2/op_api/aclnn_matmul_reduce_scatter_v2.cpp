@@ -40,6 +40,7 @@ static constexpr int64_t NUM_ACL_STOP_ON_FAILURE = 1;
 static constexpr int64_t TWO_DIMS = 2;
 static constexpr int64_t KVALUE_MIN = 256;
 static constexpr int64_t KVALUE_MAX = 65535;
+static constexpr int64_t MX_GROUP_SIZE = 4295032864LL; // [M, N, K] = [1, 1, 32]
 
 enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_MTE = 1
@@ -73,11 +74,18 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
 }
 
 static const std::initializer_list<op::DataType> AIV_MODE_INPUT_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_INT8};
+    op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_INT8, op::DataType::DT_FLOAT8_E4M3FN,
+    op::DataType::DT_FLOAT8_E5M2};
 static const std::initializer_list<op::DataType> AIV_MODE_BIAS_SUPPORT_LIST = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> AIV_MODE_OUTPUT_SUPPORT_TYPE = {op::DataType::DT_FLOAT16,
                                                                                  op::DataType::DT_BF16};
+
+static bool IsMxFp8Type(op::DataType dtype)
+{
+    return dtype == op::DataType::DT_FLOAT8_E4M3FN || dtype == op::DataType::DT_FLOAT8_E5M2;
+}
+
 static bool CheckAivModeDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
                                    const aclTensor *output)
 {
@@ -88,6 +96,86 @@ static bool CheckAivModeDtypeValid(const aclTensor *x1, const aclTensor *x2, con
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, AIV_MODE_BIAS_SUPPORT_LIST, return false);
     }
     OP_CHECK_DTYPE_NOT_SUPPORT(output, AIV_MODE_OUTPUT_SUPPORT_TYPE, return false);
+
+    const bool isMxX1 = IsMxFp8Type(x1->GetDataType());
+    const bool isMxX2 = IsMxFp8Type(x2->GetDataType());
+    if (isMxX1 || isMxX2) {
+        if (!isMxX1 || !isMxX2) {
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                "aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1/x2",
+                (std::string(op::ToString(x1->GetDataType()).GetString()) + "/" +
+                 op::ToString(x2->GetDataType()).GetString())
+                    .c_str(),
+                "MXFP8 requires both x1 and x2 to be FLOAT8_E4M3FN or FLOAT8_E5M2.");
+            return false;
+        }
+        if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1/x2",
+                                                  "MXFP8", "MXFP8 is supported only on DAV_3510.");
+            return false;
+        }
+        if (bias != nullptr && bias->GetDataType() != op::DataType::DT_FLOAT) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "bias",
+                                                  op::ToString(bias->GetDataType()).GetString(),
+                                                  "MXFP8 bias must be FLOAT32.");
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool CheckMxFp8Params(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
+                             const aclTensor *x2Scale, const aclTensor *quantScale, int64_t blockSize,
+                             int64_t groupSize, const aclTensor *amaxOutOptional)
+{
+    if (!IsMxFp8Type(x1->GetDataType()) && !IsMxFp8Type(x2->GetDataType())) {
+        return true;
+    }
+    if (x1Scale == nullptr || x2Scale == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1Scale/x2Scale",
+                                              "nullptr", "MXFP8 requires both scale tensors.");
+        return false;
+    }
+    if (x1Scale->GetDataType() != op::DataType::DT_FLOAT8_E8M0 ||
+        x2Scale->GetDataType() != op::DataType::DT_FLOAT8_E8M0) {
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            "aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1Scale/x2Scale",
+            (std::string(op::ToString(x1Scale->GetDataType()).GetString()) + "/" +
+             op::ToString(x2Scale->GetDataType()).GetString())
+                .c_str(),
+            "MXFP8 scales must both be FLOAT8_E8M0.");
+        return false;
+    }
+    if (blockSize != 0) {
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "blockSize",
+                                  std::to_string(blockSize).c_str(), "0");
+        return false;
+    }
+    if (groupSize != 0 && groupSize != MX_GROUP_SIZE) {
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "groupSize",
+                                  std::to_string(groupSize).c_str(), "0 or 4295032864 ([1, 1, 32])");
+        return false;
+    }
+    if (quantScale != nullptr || amaxOutOptional != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "quantScale/amaxOut",
+                                              "non-nullptr", "MXFP8 does not support output quantization.");
+        return false;
+    }
+    aclFormat x1Format = aclFormat::ACL_FORMAT_UNDEFINED;
+    aclFormat x2Format = aclFormat::ACL_FORMAT_UNDEFINED;
+    aclFormat x1ScaleFormat = aclFormat::ACL_FORMAT_UNDEFINED;
+    aclFormat x2ScaleFormat = aclFormat::ACL_FORMAT_UNDEFINED;
+    aclGetFormat(x1, &x1Format);
+    aclGetFormat(x2, &x2Format);
+    aclGetFormat(x1Scale, &x1ScaleFormat);
+    aclGetFormat(x2Scale, &x2ScaleFormat);
+    if (x1Format != aclFormat::ACL_FORMAT_ND || x2Format != aclFormat::ACL_FORMAT_ND ||
+        x1ScaleFormat != aclFormat::ACL_FORMAT_ND || x2ScaleFormat != aclFormat::ACL_FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize",
+                                              "x1/x2/x1Scale/x2Scale", "non-ND",
+                                              "MXFP8 supports ND format only.");
+        return false;
+    }
     return true;
 }
 
@@ -194,6 +282,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     auto retCommMode = CheckAivModeCommMode(commMode);
     CHECK_RET(retCommMode == ACLNN_SUCCESS, retCommMode);
+    CHECK_RET(CheckMxFp8Params(x1, x2, x1Scale, x2Scale, quantScale, blockSize, groupSize, amaxOutOptional),
+              ACLNN_ERR_PARAM_INVALID);
 
     bool transposeX1 = Ops::Transformer::IsTransposeLastTwoDims(x1);
     bool transposeX2 = Ops::Transformer::IsTransposeLastTwoDims(x2);

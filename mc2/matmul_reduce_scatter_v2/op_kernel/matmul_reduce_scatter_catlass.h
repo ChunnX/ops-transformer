@@ -25,6 +25,7 @@
 #include "catlass/arch/arch.hpp"
 #include "catlass/arch/resource.hpp"
 #include "catlass/gemm/block/block_mmad.hpp"
+#include "catlass/gemm/block/block_mmad_mx_tla.hpp"
 #include "catlass/gemm/dispatch_policy.hpp"
 #include "catlass/gemm/tile/tile_copy.hpp"
 #include "tla/layout.hpp"
@@ -52,6 +53,9 @@ struct MatmulReduceScatterPreloadPolicy : public MmadBase<MatmulReduceScatterArc
 #if defined(CATLASS_ARCH) && CATLASS_ARCH == 3510
 template <bool HAS_BIAS_, bool ENABLE_UNIT_FLAG_ = false, bool ENABLE_SHUFFLE_K_ = false>
 using MatmulReduceScatterDispatchPolicy = MmadPingpong<MatmulReduceScatterArchTag, ENABLE_UNIT_FLAG_>;
+
+template <bool ENABLE_UNIT_FLAG_ = false>
+using MatmulReduceScatterMxDispatchPolicy = MmadMx<MatmulReduceScatterArchTag, ENABLE_UNIT_FLAG_>;
 #else
 template <bool HAS_BIAS_, bool ENABLE_UNIT_FLAG_ = false, bool ENABLE_SHUFFLE_K_ = false>
 using MatmulReduceScatterDispatchPolicy = std::conditional_t<
@@ -157,6 +161,112 @@ private:
         auto layoutBlockC = layoutC.GetTileLayout(actualShape.GetCoordMN());
         auto tensorC = tla::MakeTensor(gmC, tla::MakeLayoutFromTag(layoutBlockC), Arch::PositionGM{});
         impl_(tensorA, tensorB, tensorC, actualShape);
+    }
+
+    Impl impl_;
+};
+
+// MXFP8 block adapter. Scale tensors keep the public packed physical shape
+// [*, ceil(K / 64), 2], while MakeMxScaleLayout exposes the logical K/32
+// grouping required by Ascend950 MX MMAD.
+template <
+    class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class AType_, class BType_, class CType_,
+    class BiasType_, class ElementMxScale_>
+class MatmulReduceScatterMxBlockMmadAscend950 {
+public:
+    using DispatchPolicy = DispatchPolicy_;
+    using ArchTag = typename DispatchPolicy::ArchTag;
+    using L1TileShape = L1TileShape_;
+    using L0TileShape = L0TileShape_;
+    using ElementA = typename AType_::Element;
+    using LayoutA = typename AType_::Layout;
+    using ElementB = typename BType_::Element;
+    using LayoutB = typename BType_::Layout;
+    using ElementC = typename CType_::Element;
+    using LayoutC = typename CType_::Layout;
+    using ElementBias = typename MatmulReduceScatterBiasElement<BiasType_>::type;
+    using ElementMxScaleA = ElementMxScale_;
+    using ElementMxScaleB = ElementMxScale_;
+    using BiasStorageElement = std::conditional_t<std::is_void_v<ElementBias>, uint8_t, ElementBias>;
+
+private:
+    template <class Element, class LayoutTag>
+    CATLASS_DEVICE static auto MakeTlaLayout(LayoutTag const &layoutTag)
+    {
+        if constexpr (std::is_same_v<LayoutTag, layout::zN> || std::is_same_v<LayoutTag, layout::nZ>) {
+            return tla::MakeLayout<Element, LayoutTag>(layoutTag.orgShape(0), layoutTag.orgShape(1));
+        } else {
+            return tla::MakeLayout<Element, LayoutTag>(layoutTag.shape(0), layoutTag.shape(1));
+        }
+    }
+
+    using TlaL1TileShape = tla::Shape<tla::Int<L1TileShape::M>, tla::Int<L1TileShape::N>, tla::Int<L1TileShape::K>>;
+    using TlaL0TileShape = tla::Shape<tla::Int<L0TileShape::M>, tla::Int<L0TileShape::N>, tla::Int<L0TileShape::K>>;
+    using LayoutMxScaleA = decltype(
+        tla::MakeMxScaleLayout<ElementMxScaleA, LayoutA, false>(uint32_t{}, uint32_t{}));
+    using LayoutMxScaleB = decltype(
+        tla::MakeMxScaleLayout<ElementMxScaleB, LayoutB, true>(uint32_t{}, uint32_t{}));
+    using TlaTileCopy = Gemm::Tile::PackedMxTileCopyTla<
+        ArchTag, ElementA, LayoutA, ElementB, LayoutB, ElementMxScaleA, LayoutMxScaleA, ElementMxScaleB,
+        LayoutMxScaleB, ElementC, LayoutC, ElementBias>;
+    using Impl = BlockMmadTla<
+        DispatchPolicy, TlaL1TileShape, TlaL0TileShape, ElementA, ElementB, ElementC, ElementBias, TlaTileCopy>;
+
+public:
+    CATLASS_DEVICE explicit MatmulReduceScatterMxBlockMmadAscend950(Arch::Resource<ArchTag> &resource)
+        : impl_(resource)
+    {}
+
+    CATLASS_DEVICE void operator()(
+        AscendC::GlobalTensor<ElementA> const &gmA, LayoutA const &layoutA,
+        AscendC::GlobalTensor<ElementB> const &gmB, LayoutB const &layoutB,
+        AscendC::GlobalTensor<ElementC> const &gmC, LayoutC const &layoutC,
+        AscendC::GlobalTensor<ElementMxScaleA> const &gmMxScaleA,
+        AscendC::GlobalTensor<ElementMxScaleB> const &gmMxScaleB, uint32_t mxScaleK, uint32_t matrixN,
+        GemmCoord const &actualShape)
+    {
+        Run(gmA, layoutA, gmB, layoutB, gmC, layoutC, gmMxScaleA, gmMxScaleB, mxScaleK, matrixN, actualShape);
+    }
+
+    CATLASS_DEVICE void operator()(
+        AscendC::GlobalTensor<ElementA> const &gmA, LayoutA const &layoutA,
+        AscendC::GlobalTensor<ElementB> const &gmB, LayoutB const &layoutB,
+        AscendC::GlobalTensor<ElementC> const &gmC, LayoutC const &layoutC,
+        AscendC::GlobalTensor<ElementMxScaleA> const &gmMxScaleA,
+        AscendC::GlobalTensor<ElementMxScaleB> const &gmMxScaleB, uint32_t mxScaleK, uint32_t matrixN,
+        AscendC::GlobalTensor<BiasStorageElement> const &gmBias, GemmCoord const &actualShape)
+    {
+        auto tensorA = tla::MakeTensor(gmA, MakeTlaLayout<ElementA>(layoutA), Arch::PositionGM{});
+        auto tensorB = tla::MakeTensor(gmB, MakeTlaLayout<ElementB>(layoutB), Arch::PositionGM{});
+        auto layoutBlockC = layoutC.GetTileLayout(actualShape.GetCoordMN());
+        auto tensorC = tla::MakeTensor(gmC, tla::MakeLayoutFromTag(layoutBlockC), Arch::PositionGM{});
+        auto layoutScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, LayoutA, false>(actualShape.m(), mxScaleK);
+        auto layoutScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, LayoutB, true>(mxScaleK, matrixN);
+        auto tensorScaleA = tla::MakeTensor(gmMxScaleA, layoutScaleA, Arch::PositionGM{});
+        auto tensorScaleB = tla::MakeTensor(gmMxScaleB, layoutScaleB, Arch::PositionGM{});
+        auto layoutBias = tla::MakeLayout(actualShape.n());
+        auto tensorBias = tla::MakeTensor(gmBias, layoutBias, Arch::PositionGM{});
+        impl_(tensorA, tensorB, tensorC, actualShape, tensorScaleA, tensorScaleB, tensorBias);
+    }
+
+private:
+    CATLASS_DEVICE void Run(
+        AscendC::GlobalTensor<ElementA> const &gmA, LayoutA const &layoutA,
+        AscendC::GlobalTensor<ElementB> const &gmB, LayoutB const &layoutB,
+        AscendC::GlobalTensor<ElementC> const &gmC, LayoutC const &layoutC,
+        AscendC::GlobalTensor<ElementMxScaleA> const &gmMxScaleA,
+        AscendC::GlobalTensor<ElementMxScaleB> const &gmMxScaleB, uint32_t mxScaleK, uint32_t matrixN,
+        GemmCoord const &actualShape)
+    {
+        auto tensorA = tla::MakeTensor(gmA, MakeTlaLayout<ElementA>(layoutA), Arch::PositionGM{});
+        auto tensorB = tla::MakeTensor(gmB, MakeTlaLayout<ElementB>(layoutB), Arch::PositionGM{});
+        auto layoutBlockC = layoutC.GetTileLayout(actualShape.GetCoordMN());
+        auto tensorC = tla::MakeTensor(gmC, tla::MakeLayoutFromTag(layoutBlockC), Arch::PositionGM{});
+        auto layoutScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, LayoutA, false>(actualShape.m(), mxScaleK);
+        auto layoutScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, LayoutB, true>(mxScaleK, matrixN);
+        auto tensorScaleA = tla::MakeTensor(gmMxScaleA, layoutScaleA, Arch::PositionGM{});
+        auto tensorScaleB = tla::MakeTensor(gmMxScaleB, layoutScaleB, Arch::PositionGM{});
+        impl_(tensorA, tensorB, tensorC, actualShape, tensorScaleA, tensorScaleB);
     }
 
     Impl impl_;
