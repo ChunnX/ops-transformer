@@ -520,9 +520,13 @@ public:
         int vec_size = get_block_num();
         int vec_id = get_block_idx();
 
+        printf("[CRS_V2_SET_ENTRY] rank=%d block=%d subblock=%d epState=0x%x sumTarget=%f\n", m_rank, vec_id,
+               get_subblockid(), epStateValue_, static_cast<double>(sumTarget_));
         AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(RECV_SYNC_EVENT_ID);
         AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SEND_SYNC_EVENT_ID);
+        printf("[CRS_V2_SET_BEFORE_WAIT_SEND] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
         AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
+        printf("[CRS_V2_SET_AFTER_WAIT_SEND] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
         pipe_barrier(PIPE_ALL);
 
         ctrBuffer.SetValue(0, epStateValue_);
@@ -555,7 +559,10 @@ public:
             }
             AscendC::DataCopy(gmDstStates, ctrBuffer, 8);
         }
+        printf("[CRS_V2_SET_WRITE_POSTED] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
+        printf("[CRS_V2_SET_BEFORE_WAIT_RECV] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
         AscendC::CrossCoreWaitFlag(RECV_SYNC_EVENT_ID);
+        printf("[CRS_V2_SET_DONE] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
     }
 
     FORCE_INLINE_AICORE
@@ -578,7 +585,12 @@ public:
             startRankId_ += remainderRankNum;
         }
         uint32_t endRankId_ = startRankId_ + sendRankNum_;
+        printf("[CRS_V2_WAIT_ENTRY] rank=%d block=%d subblock=%d startRank=%u endRank=%u rankNum=%u "
+               "epState=0x%x sumTarget=%f\n",
+               m_rank, vec_id, get_subblockid(), startRankId_, endRankId_, sendRankNum_, epStateValue_,
+               static_cast<double>(sumTarget_));
         AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SEND_SYNC_EVENT_ID);
+        printf("[CRS_V2_WAIT_SEND_SET] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
 
         AscendC::GlobalTensor<float> epStatusSpaceGlobalTensor_;
         epStatusSpaceGlobalTensor_.SetGlobalBuffer((__gm__ float *)((*this)() + flag_offset));
@@ -598,6 +610,10 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
 
+            printf("[CRS_V2_WAIT_POLL_BEGIN] rank=%d block=%d subblock=%d startRank=%u rankNum=%u "
+                   "minTarget=%f maxTarget=%f\n",
+                   m_rank, vec_id, get_subblockid(), startRankId_, sendRankNum_, static_cast<double>(minTarget),
+                   static_cast<double>(maxTarget));
             while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
                 AscendC::DataCopy<float>(
                     statusTensor, epStatusSpaceGlobalTensor_[startRankId_ * stateOffset_ / sizeof(float)], intriParams);
@@ -613,13 +629,20 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
                 sumOfFlag = statusSumOutTensor.GetValue(0);
             }
+            printf("[CRS_V2_WAIT_POLL_DONE] rank=%d block=%d subblock=%d sumOfFlag=%f\n", m_rank, vec_id,
+                   get_subblockid(), static_cast<double>(sumOfFlag));
         }
 
+        printf("[CRS_V2_WAIT_BEFORE_SET_RECV] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
         AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(RECV_SYNC_EVENT_ID);
+        printf("[CRS_V2_WAIT_BEFORE_WAIT_RECV] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
         AscendC::CrossCoreWaitFlag(RECV_SYNC_EVENT_ID);
+        printf("[CRS_V2_WAIT_AFTER_WAIT_RECV] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
 
         // unpermute
+        printf("[CRS_V2_WAIT_BEFORE_WAIT_SEND] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
         AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
+        printf("[CRS_V2_WAIT_DONE] rank=%d block=%d subblock=%d\n", m_rank, vec_id, get_subblockid());
     }
 
     FORCE_INLINE_AICORE
