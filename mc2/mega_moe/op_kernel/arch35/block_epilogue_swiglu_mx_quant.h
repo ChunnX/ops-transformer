@@ -204,7 +204,6 @@ private:
     GM_ADDR yGmAddr_{nullptr};
     GM_ADDR yScaleGmAddr_{nullptr};
     GM_ADDR groupFlagListGmBaseAddr_{nullptr};
-    GM_ADDR metaInfoGmAddr_{nullptr};
 
     // UB ADDR
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
@@ -244,8 +243,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     yScaleGmAddr_ = params.yScaleGmAddr;
     groupFlagListGmBaseAddr_ = params.groupFlagListGmAddr;
     clampLimit_ = params.clampLimit;
-    metaInfoGmAddr_ = params.metaInfoGmAddr;
-    metaInfoGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(metaInfoGmAddr_));
+    metaInfoGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(params.metaInfoGmAddr));
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
