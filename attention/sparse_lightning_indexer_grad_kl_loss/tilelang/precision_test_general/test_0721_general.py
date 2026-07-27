@@ -295,6 +295,11 @@ def _tail_summary(case: Dict[str, Any]) -> Tuple[int, int, int]:
     return valid_min, valid_max, invalid_per_batch * case["B"]
 
 
+def _execution_k(case: Dict[str, Any]) -> int:
+    _, valid_max, _ = _tail_summary(case)
+    return max(1024, (valid_max + 1023) // 1024 * 1024)
+
+
 def _make_sparse_indices(case: Dict[str, Any], seed: int) -> torch.Tensor:
     """Build right-down causal sparse indices on CPU, then transfer once."""
     generator = torch.Generator(device="cpu")
@@ -518,10 +523,11 @@ def _brief_metrics(metrics: Dict[str, Dict[str, float]]) -> str:
 
 def _case_summary(case: Dict[str, Any]) -> str:
     valid_min, valid_max, invalid_count = _tail_summary(case)
+    k_exec = _execution_k(case)
     return (
         f"suite={case['suite']} kind={case['kind']} layout={case['layout']} B={case['B']} S1={case['S1']} S2={case['S2']} "
         f"N1={case['N1']} Nidx1={case['Nidx1']} K={case['K']} "
-        f"valid_k=[{valid_min},{valid_max}] invalid={invalid_count} dtype=bfloat16"
+        f"valid_k=[{valid_min},{valid_max}] exec_k={k_exec} invalid={invalid_count} dtype=bfloat16"
     )
 
 

@@ -3357,6 +3357,49 @@ def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx
     return d_key_index.to(dtype)
 
 
+def _host_sequence_lengths(
+    sequence_lengths: Optional[torch.Tensor],
+    default_length: int,
+    batch_size: int,
+) -> Optional[list[int]]:
+    if sequence_lengths is None:
+        return [default_length] * batch_size
+    if isinstance(sequence_lengths, (list, tuple)):
+        return [int(length) for length in sequence_lengths]
+    if isinstance(sequence_lengths, torch.Tensor) and sequence_lengths.device.type == "cpu":
+        return [int(length) for length in sequence_lengths.tolist()]
+    return None
+
+
+def _derive_k_exec(
+    actual_query_lengths: Optional[torch.Tensor],
+    actual_key_lengths: Optional[torch.Tensor],
+    batch_size: int,
+    query_length: int,
+    key_length: int,
+    top_k: int,
+) -> int:
+    host_query_lengths = _host_sequence_lengths(
+        actual_query_lengths, query_length, batch_size
+    )
+    host_key_lengths = _host_sequence_lengths(
+        actual_key_lengths, key_length, batch_size
+    )
+    if host_query_lengths is None or host_key_lengths is None:
+        return top_k
+    if len(host_query_lengths) != batch_size or len(host_key_lengths) != batch_size:
+        return top_k
+
+    max_real_k = max(
+        min(top_k, max(0, key_len - query_len + query_length))
+        for query_len, key_len in zip(host_query_lengths, host_key_lengths)
+    )
+    return max(
+        S2_WORKSPACE,
+        ceil_div(max_real_k, S2_WORKSPACE) * S2_WORKSPACE,
+    )
+
+
 # ==============================================================================
 # Main entry: BSND layout
 # ==============================================================================
@@ -3438,6 +3481,19 @@ def sparse_lightning_indexer_grad_kl_loss(
         k_real_size = (
             actual_k_len.unsqueeze(1) - actual_q_len.unsqueeze(1) + query_positions + 1
         ).clamp_(min=0, max=K).contiguous()
+
+        k_exec = _derive_k_exec(
+            actual_seq_lengths_query,
+            actual_seq_lengths_key,
+            B,
+            S1,
+            S2,
+            K,
+        )
+        if k_exec < K:
+            sparse_indices = sparse_indices[..., :k_exec].contiguous()
+            K = k_exec
+
         valid_k_mask = (
             torch.arange(K, dtype=torch.int32, device=query.device).view(1, 1, K)
             < k_real_size.unsqueeze(-1)
