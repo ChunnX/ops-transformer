@@ -126,7 +126,9 @@ class ElasticBuffer:
         )
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
         moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
-        missing_args = [name for name, val in zip(moe_arg_names, moe_args) if val is None]
+        missing_args = [
+            name for name, val in zip(moe_arg_names, moe_args) if val is None
+        ]
         torch._check(
             len(missing_args) == 0 or len(missing_args) == len(moe_args),
             lambda: (
@@ -150,7 +152,9 @@ class ElasticBuffer:
             lambda: "HCCL comm name is empty, please check HCCL group initialization.",
         )
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
-        self._runtime = _elastic_buffer_ops.ElasticBuffer(self._group_name, self._num_cpu_bytes)
+        self._runtime = _elastic_buffer_ops.ElasticBuffer(
+            self._group_name, self._num_cpu_bytes
+        )
 
         self._num_max_tokens_per_rank = num_max_tokens_per_rank
         self._hidden = hidden
@@ -159,8 +163,7 @@ class ElasticBuffer:
 
     @staticmethod
     def get_engram_storage_size_hint(
-        num_entries: int, hidden: int,
-        dtype: torch.dtype = torch.bfloat16
+        num_entries: int, hidden: int, dtype: torch.dtype = torch.bfloat16
     ) -> int:
         """
         Get the minimum CPU buffer size required for Engram storage.
@@ -192,7 +195,8 @@ class ElasticBuffer:
         )
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(
-            num_entries, hidden, dtype)
+            num_entries, hidden, dtype
+        )
 
     @staticmethod
     def get_moe_ep_ccl_buffer_size(
@@ -240,13 +244,25 @@ class ElasticBuffer:
             hidden_align + metadata_bytes * 2 + ub_align, win_addr_align
         )
         combine_per_slot_bytes = inline_align(hidden_align + ub_align, win_addr_align)
-        dispatch_buffer_size = (
+        dispatch_recv_buffer_size = (
             world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
         )
-        combine_buffer_size = num_max_tokens_per_rank * combine_per_slot_bytes * topk
+        combine_recv_buffer_size = (
+            num_max_tokens_per_rank * combine_per_slot_bytes * topk
+        )
+        dispatch_send_buffer_size = dispatch_recv_buffer_size
+        combine_send_state_buffer_size = (
+            world_size * num_max_tokens_per_rank * topk * ub_align
+        )
+        combine_send_data_buffer_size = world_size * combine_recv_buffer_size
 
         minimum_buffer_size = (
-            state_buffer_size + dispatch_buffer_size + combine_buffer_size
+            state_buffer_size
+            + dispatch_recv_buffer_size
+            + combine_recv_buffer_size
+            + dispatch_send_buffer_size
+            + combine_send_state_buffer_size
+            + combine_send_data_buffer_size
         )
         ccl_buffer_size = (
             inline_align(
@@ -284,7 +300,8 @@ class ElasticBuffer:
         )
         torch._check(
             storage.size(1) > 0,
-            lambda: f"storage second dimension must be positive, got: {storage.size(1)}")
+            lambda: f"storage second dimension must be positive, got: {storage.size(1)}",
+        )
         torch._check(
             storage.size(1) % 128 == 0,
             lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}",
@@ -315,7 +332,9 @@ class ElasticBuffer:
         )
         return self._runtime.engram_fetch(indices)
 
-    def barrier(self, use_comm_stream: bool = True, with_cpu_sync: bool = False) -> None:
+    def barrier(
+        self, use_comm_stream: bool = True, with_cpu_sync: bool = False
+    ) -> None:
         """
         Perform an NPU-level barrier across all ranks, optionally with CPU synchronization.
 
@@ -346,8 +365,12 @@ class ElasticBuffer:
     ]:
         self._ensure_moe_config()
         torch._check(
-            isinstance(x, torch.Tensor) or (isinstance(x, tuple) and len(x) == 2
-                and all(isinstance(t, torch.Tensor) for t in x)),
+            isinstance(x, torch.Tensor)
+            or (
+                isinstance(x, tuple)
+                and len(x) == 2
+                and all(isinstance(t, torch.Tensor) for t in x)
+            ),
             lambda: f"x must be a tensor or a tuple of two tensors, but got {type(x).__name__}.",
         )
         torch._check(
@@ -364,17 +387,24 @@ class ElasticBuffer:
         )
         if expert_alignment is not None:
             torch._check(
-                isinstance(expert_alignment, int) and not isinstance(expert_alignment, bool),
-                lambda: (f"expert_alignment must be an integer, but got {type(expert_alignment).__name__}."),
+                isinstance(expert_alignment, int)
+                and not isinstance(expert_alignment, bool),
+                lambda: (
+                    f"expert_alignment must be an integer, but got {type(expert_alignment).__name__}."
+                ),
             )
             torch._check(
                 expert_alignment == 1,
-                lambda: (f"expert_alignment only supports 1, but got {expert_alignment}."),
+                lambda: (
+                    f"expert_alignment only supports 1, but got {expert_alignment}."
+                ),
             )
         if do_cpu_sync is not None:
             torch._check(
                 isinstance(do_cpu_sync, bool),
-                lambda: (f"do_cpu_sync must be a boolean, but got {type(do_cpu_sync).__name__}."),
+                lambda: (
+                    f"do_cpu_sync must be a boolean, but got {type(do_cpu_sync).__name__}."
+                ),
             )
         args = self._prepare_dispatch_args(
             x,
@@ -461,23 +491,22 @@ class ElasticBuffer:
         )
         bias_0, bias_1 = self._unpack_bias(bias)
         torch._check(
-            ((bias_0 is None) and (bias_1 is None)), lambda: ("bias is not supported, please set bias to None.")
+            ((bias_0 is None) and (bias_1 is None)),
+            lambda: ("bias is not supported, please set bias to None."),
         )
 
-        combined_x, combined_topk_weights = (
-            self._runtime.moe_ep_combine(
-                x,
-                handle.topk_idx,
-                handle.recv_src_metadata,
-                handle.num_recv_tokens_per_expert,
-                topk_weights,
-                bias_0,
-                bias_1,
-                self._ep_world_size,
-                self._rank_id,
-                handle.num_experts,
-                handle.num_max_tokens_per_rank,
-            )
+        combined_x, combined_topk_weights = self._runtime.moe_ep_combine(
+            x,
+            handle.topk_idx,
+            handle.recv_src_metadata,
+            handle.num_recv_tokens_per_expert,
+            topk_weights,
+            bias_0,
+            bias_1,
+            self._ep_world_size,
+            self._rank_id,
+            handle.num_experts,
+            handle.num_max_tokens_per_rank,
         )
         return combined_x, combined_topk_weights
 
@@ -497,7 +526,9 @@ class ElasticBuffer:
     def _ensure_moe_config(self):
         moe_args = (self._num_max_tokens_per_rank, self._hidden, self._num_topk)
         moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
-        missing_args = [name for name, val in zip(moe_arg_names, moe_args) if val is None]
+        missing_args = [
+            name for name, val in zip(moe_arg_names, moe_args) if val is None
+        ]
         torch._check(
             len(missing_args) == 0,
             lambda: (
@@ -524,7 +555,8 @@ class ElasticBuffer:
                 (topk_idx is None), lambda: ("topk_idx is not supported when cached.")
             )
             torch._check(
-                (topk_weights is None), lambda: ("topk_weights is not supported when cached.")
+                (topk_weights is None),
+                lambda: ("topk_weights is not supported when cached."),
             )
             torch._check(
                 ((do_cpu_sync is None) or (do_cpu_sync is False)),
@@ -547,7 +579,8 @@ class ElasticBuffer:
             (topk_idx is not None), lambda: ("topk_idx are required when no-cached.")
         )
         torch._check(
-            (num_experts is not None), lambda: ("num_experts must be specified when no-cached.")
+            (num_experts is not None),
+            lambda: ("num_experts must be specified when no-cached."),
         )
         return _DispatchArgs(
             x,

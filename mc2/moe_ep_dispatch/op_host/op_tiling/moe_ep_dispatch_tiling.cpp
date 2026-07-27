@@ -100,6 +100,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &i
     OP_LOGD(nodeName, "numAivStage2 is %u.", info.numAivStage2);
     OP_LOGD(nodeName, "aivNum is %u.", info.aivNum);
     OP_LOGD(nodeName, "hostPinnedCounterAddr is %lu.", info.hostPinnedCounterAddr);
+    OP_LOGD(nodeName, "dispatchSendWinOffset is %lu.", info.dispatchSendWinOffset);
     OP_LOGD(nodeName, "totalWinSizeEp is %lu.", info.totalWinSizeEp);
     OP_LOGD(nodeName, "totalUbSize is %lu.", info.totalUbSize);
 }
@@ -563,8 +564,6 @@ static uint64_t AlignUpWin(const uint64_t data)
 static uint64_t CalcDispatchWorkspace(const MoeEpDispatchInfo &info)
 {
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
-    uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
-    uint64_t perSlotBytes = static_cast<uint64_t>(info.cfg.perSlotBytes);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t aivNum = static_cast<uint64_t>(info.aivNum);
     uint64_t counterBytes = aivNum * AlignUpWin(epWorldSize * sizeof(int32_t));
@@ -573,8 +572,7 @@ static uint64_t CalcDispatchWorkspace(const MoeEpDispatchInfo &info)
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
     uint64_t globalABytes = UB_ALIGN;
-    uint64_t stashBytes = epWorldSize * nmt * perSlotBytes;
-    return SYSTEM_NEED_WORKSPACE + sendCntBytes + globalABytes + stashBytes;
+    return SYSTEM_NEED_WORKSPACE + sendCntBytes + globalABytes;
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
@@ -586,7 +584,6 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
-    uint64_t perSlotBytes = static_cast<uint64_t>(info.cfg.perSlotBytes);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
 
@@ -594,12 +591,19 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t dispatchWinStateSize = cntWinStateSize + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t dispatchWinDataSize = epWorldSize * nmt * perSlotBytes;
-    uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint64_t topKAlign = (topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint64_t dispatchReservedPerSlotBytes = AlignUpWin(hiddenAlign + topKAlign * 2 + UB_ALIGN);
+    uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
     uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
 
     uint64_t totalStateWinSizeEp = dispatchWinStateSize + combineWinStateSize;
-    uint64_t winNeed = dispatchWinDataSize + combineWinDataSize + totalStateWinSizeEp;
+    uint64_t stateAndRecvDataWinSize = dispatchRecvWinDataReservedSize + combineWinDataSize + totalStateWinSizeEp;
+    uint64_t dispatchSendWinDataReservedSize = dispatchRecvWinDataReservedSize;
+    uint64_t combineSendWinStateSize = epWorldSize * nmt * topK * UB_ALIGN;
+    uint64_t combineSendWinDataSize = epWorldSize * combineWinDataSize;
+    uint64_t winNeed =
+        stateAndRecvDataWinSize + dispatchSendWinDataReservedSize + combineSendWinStateSize + combineSendWinDataSize;
     OP_TILING_CHECK(winNeed > maxWindowSize,
                     OP_LOGE(nodeName, "HCCL_BUFFSIZE is too SMALL, need %luMB, available %luMB.",
                             (winNeed / MB_SIZE) + 1UL, maxWindowSize / MB_SIZE),
@@ -608,7 +612,14 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     info.cntWinStateOffset = 0UL;
     info.slotWinStateOffset = cntWinStateSize;
     info.winDataOffset = totalStateWinSizeEp;
-    OP_LOGD(nodeName, "windowSize = %lu", maxWindowSize);
+    info.dispatchSendWinOffset = stateAndRecvDataWinSize;
+    OP_LOGD(nodeName,
+            "windowSize=%lu, perSlotBytes=%u, dispatchReservedPerSlotBytes=%lu, stateAndRecvDataWinSize=%lu, "
+            "dispatchSendWinOffset=%lu, dispatchSendWinDataReservedSize=%lu, combineSendWinStateSize=%lu, "
+            "combineSendWinDataSize=%lu",
+            maxWindowSize, info.cfg.perSlotBytes, dispatchReservedPerSlotBytes, stateAndRecvDataWinSize,
+            info.dispatchSendWinOffset, dispatchSendWinDataReservedSize, combineSendWinStateSize,
+            combineSendWinDataSize);
     return ge::GRAPH_SUCCESS;
 }
 

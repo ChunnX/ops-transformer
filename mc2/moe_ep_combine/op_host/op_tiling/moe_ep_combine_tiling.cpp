@@ -74,8 +74,11 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &in
             info.cfg.topK, info.cfg.numMaxTokensPerRank);
     OP_LOGD(nodeName, "perSlotBytes=%u, hasTopkWeights=%u, aivNum=%u", info.cfg.perSlotBytes, info.hasTopkWeights,
             info.aivNum);
-    OP_LOGD(nodeName, "totalWinSizeEp=%lu, localWsSizeDataPerRank=%lu, totalUbSize=%lu", info.totalWinSizeEp,
-            info.localWsSizeDataPerRank, info.totalUbSize);
+    OP_LOGD(nodeName,
+            "totalWinSizeEp=%lu, combineStateWinOffset=%lu, combineDataWinOffset=%lu, "
+            "combineSendWinOffset=%lu, sendWinDataSizePerRank=%lu, sendWinStateSizePerRank=%lu, totalUbSize=%lu",
+            info.totalWinSizeEp, info.combineStateWinOffset, info.combineDataWinOffset, info.combineSendWinOffset,
+            info.sendWinDataSizePerRank, info.sendWinStateSizePerRank, info.totalUbSize);
 }
 
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
@@ -325,27 +328,37 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
 
     uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
+    uint64_t nmt = static_cast<uint64_t>(*nmtPtr);
+    uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
-    uint64_t perWinDataNeed = static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) *
-                              static_cast<uint64_t>(info.cfg.perSlotBytes);
+    uint64_t sendWinDataSizePerRank = nmt * topK * static_cast<uint64_t>(info.cfg.perSlotBytes);
+    uint64_t sendWinStateSizePerRank = nmt * topK * UB_ALIGN;
 
     uint64_t dispatchWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 2 * epWorldSize * COMM_ALIGN;
-    uint64_t combineWinStateSize =
-        static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) * COMM_ALIGN + epWorldSize * COMM_ALIGN;
-    uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    uint32_t topKAlign = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    uint64_t dispatchWinDataSize = epWorldSize * static_cast<uint64_t>(*nmtPtr) *
-                                   AlignUpWin(static_cast<uint64_t>(hiddenAlign + topKAlign * 2 + UB_ALIGN));
+    uint64_t combineWinStateSize = nmt * topK * COMM_ALIGN + epWorldSize * COMM_ALIGN;
+    uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint64_t topKAlign = (topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint64_t dispatchReservedPerSlotBytes = AlignUpWin(hiddenAlign + topKAlign * 2 + UB_ALIGN);
+    uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
 
-    uint64_t winNeedTotal = dispatchWinStateSize + combineWinStateSize + dispatchWinDataSize + perWinDataNeed;
+    uint64_t stateAndRecvDataWinSize =
+        dispatchWinStateSize + combineWinStateSize + dispatchRecvWinDataReservedSize + sendWinDataSizePerRank;
+    uint64_t dispatchSendWinDataReservedSize = dispatchRecvWinDataReservedSize;
+    uint64_t combineSendWinStateSize = epWorldSize * sendWinStateSizePerRank;
+    uint64_t combineSendWinDataSize = epWorldSize * sendWinDataSizePerRank;
+    uint64_t winNeedTotal =
+        stateAndRecvDataWinSize + dispatchSendWinDataReservedSize + combineSendWinStateSize + combineSendWinDataSize;
     OP_TILING_CHECK(winNeedTotal > maxWindowSize,
                     OP_LOGE(nodeName, "HCCL_BUFFSIZE too small, need %luMB, available %luMB.",
                             (winNeedTotal / MB_SIZE) + 1UL, maxWindowSize / MB_SIZE),
                     return ge::GRAPH_FAILED);
     info.totalWinSizeEp = maxWindowSize;
-    info.winStateOffset = dispatchWinStateSize;
-    info.winDataOffset = dispatchWinStateSize + combineWinStateSize + dispatchWinDataSize;
+    info.combineStateWinOffset = dispatchWinStateSize;
+    info.combineDataWinOffset = dispatchWinStateSize + combineWinStateSize + dispatchRecvWinDataReservedSize;
+    info.combineSendWinOffset = stateAndRecvDataWinSize + dispatchSendWinDataReservedSize;
+    info.sendWinDataSizePerRank = sendWinDataSizePerRank;
+    info.sendWinStateSizePerRank = sendWinStateSizePerRank;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -379,14 +392,7 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    uint64_t perWinDataNeed = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) *
-                              static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(info.cfg.perSlotBytes);
-    uint64_t perWinStateNeed = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) *
-                               static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(UB_ALIGN);
-    info.localWsSizeDataPerRank = perWinDataNeed;
-    info.localWsSizeStatusPerRank = perWinStateNeed;
-    uint64_t stashBytes = static_cast<uint64_t>(info.cfg.epWorldSize) * (perWinDataNeed + perWinStateNeed);
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + stashBytes;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
