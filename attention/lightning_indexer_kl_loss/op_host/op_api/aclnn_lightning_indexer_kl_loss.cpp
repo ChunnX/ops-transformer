@@ -35,6 +35,7 @@ struct LightningIndexerKLLossParams {
     const aclTensor *targetScore = nullptr;
     const aclTensor *indexProbs = nullptr;
     double eps;
+    const char *weightType;
     const aclTensor *loss = nullptr;
 };
 
@@ -58,6 +59,7 @@ static aclnnStatus CheckParams(const LightningIndexerKLLossParams &params)
 {
     CHECK_COND(params.targetScore != nullptr, ACLNN_ERR_PARAM_NULLPTR, "targetScore must not be nullptr.");
     CHECK_COND(params.indexProbs != nullptr, ACLNN_ERR_PARAM_NULLPTR, "indexProbs must not be nullptr.");
+    CHECK_COND(params.weightType != nullptr, ACLNN_ERR_PARAM_NULLPTR, "weightType must not be nullptr.");
     CHECK_COND(params.loss != nullptr, ACLNN_ERR_PARAM_NULLPTR, "loss must not be nullptr.");
 
     if (!CheckShape(params.targetScore)) {
@@ -84,7 +86,7 @@ static aclnnStatus ContiguousAndLightningIndexerKLLoss(const LightningIndexerKLL
     // call l0 interface
     auto result = l0op::LightningIndexerKLLoss(
         targetScoreContiguous, indexProbsContiguous,
-        params.eps, executor);
+        params.eps, params.weightType, executor);
 
     // convert output tensor to contiguous tensor
     CHECK_RET(result != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -96,13 +98,13 @@ static aclnnStatus ContiguousAndLightningIndexerKLLoss(const LightningIndexerKLL
 
 aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
     const aclTensor *targetScore, const aclTensor *indexProbs,
-    double eps,
+    double eps, const char *weightType,
     const aclTensor *loss, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnLightningIndexerKLLoss,
-                   DFX_IN(targetScore, indexProbs, eps),
+                   DFX_IN(targetScore, indexProbs, eps, weightType),
                    DFX_OUT(loss));
-    LightningIndexerKLLossParams params{targetScore, indexProbs, eps, loss};
+    LightningIndexerKLLossParams params{targetScore, indexProbs, eps, weightType, loss};
 
     // check params
     aclnnStatus ret = CheckParams(params);

@@ -28,7 +28,7 @@ constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t VECTOR_SIZE = 8;
 
 
-template <typename T, bool isDeterministic>
+template <typename T, bool isDeterministic, bool weightType>
 class LightningIndexerKLLoss {
 public:
     __aicore__ inline LightningIndexerKLLoss(){};
@@ -297,14 +297,14 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Compute(uint3
     remain = KAligned_ % FLOAT_VECTOR_SIZE;
     BinaryRepeatParams divParams{1, 1, 0, 8, 8, 0};
     for (uint32_t i = 0; i < curTileLen; ++i) {
-        Div(ubLogP[i * KAligned_], 
+        Div(ubTmp[i * KAligned_], 
             ubTargetScoreIn[i * KAligned_], 
             ubReduceSum[i * FLOAT_BLOCK_SIZE], 
             FLOAT_VECTOR_SIZE, 
             repeat, 
             divParams);
         if (remain) {
-            Div(ubLogP[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE], 
+            Div(ubTmp[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE], 
                 ubTargetScoreIn[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE], 
                 ubReduceSum[i * FLOAT_BLOCK_SIZE], 
                 remain, 
@@ -312,10 +312,17 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Compute(uint3
                 divParams);
         }
     }
-    ClampMin(ubLogP, ubLogP, eps_, tileElems);
-    Ln(ubLogP, ubLogP, tileElems);
+    ClampMin(ubTmp, ubTmp, eps_, tileElems);
+    Ln(ubLogP, ubTmp, tileElems);
     Sub(ubLogP, ubLogP, ubLogY, tileElems);
-    Mul(ubLogP, ubLogP, ubTargetScoreIn, tileElems);
+    // 根据 weightType 选择外层权重:
+    //   weightType=0 ('logits'): result = log_ratio * ubTargetScoreIn (原始 y)
+    //   weightType=1 ('probs'):  result = log_ratio * p, p = ubTargetScoreIn / (ubReduceSum + eps)
+    if constexpr (weightType) {
+        Mul(ubLogP, ubLogP, ubTargetScoreIn, tileElems);
+    } else {
+        Mul(ubLogP, ubLogP, ubTmp, tileElems);
+    }
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
 
     WaitFlag<HardEvent::MTE3_V>(eventMTE3ToV_);

@@ -25,7 +25,7 @@
   $$
 
   $$
-  \tilde{y} = \frac{y}{\text{sum}(y, \text{dim}=-1, \text{keepdim=True}) + \varepsilon}
+  P = \frac{y}{\text{sum}(y, \text{dim}=-1, \text{keepdim=True}) + \varepsilon}
   $$
 
   $$
@@ -37,10 +37,14 @@
   $$
 
   $$
-  \text{loss} = \sum((\log\_P - \log\_Y) \cdot y)
+  \text{loss} = \sum((\log\_P - \log\_Y) \cdot \text{weight})
   $$
 
   其中 $\varepsilon$ 为 `eps` 参数，默认值 $10^{-9}$。
+
+  weight 的选择由 `weight_type` 控制：
+  - `'logits'`（默认）：weight = y，即原始未归一化分数
+  - `'probs'`：weight = P，即归一化概率
 
 ## 函数原型
 
@@ -51,6 +55,7 @@ aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
   const aclTensor   *targetScore,
   const aclTensor   *indexProbs,
   double             eps,
+  const char        *weightType,
   const aclTensor   *loss,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
@@ -118,6 +123,16 @@ aclnnStatus aclnnLightningIndexerKLLoss(
       <td>数值稳定常数。</td>
       <td>用于防止 log(0) 导致 NaN。</td>
       <td>double</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>weightType</td>
+      <td>属性</td>
+      <td>外层权重选择，'logits' 或 'probs'。</td>
+      <td>'logits'（默认）用原始 y 作为外层权重，'probs' 用归一化概率 p = y / sum(y) 作为外层权重。</td>
+      <td>string</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -354,7 +369,7 @@ int main() {
 
   // 调用aclnnLightningIndexerKLLossGetWorkspaceSize第一段接口
   ret = aclnnLightningIndexerKLLossGetWorkspaceSize(
-      targetScore, indexProbs, eps, loss, &workspaceSize, &executor);
+      targetScore, indexProbs, eps, "logits", loss, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnLightningIndexerKLLossGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);

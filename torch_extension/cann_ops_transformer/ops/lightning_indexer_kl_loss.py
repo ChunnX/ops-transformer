@@ -24,11 +24,11 @@ class LightningIndexerKLLossOpBuilder(OpBuilder):
         return ["ops/csrc/lightning_indexer_kl_loss.cpp"]
 
     def schema(self) -> str:
-        return "lightning_indexer_kl_loss(Tensor target_score, Tensor index_probs, float eps=1e-9) -> Tensor"
+        return "lightning_indexer_kl_loss(Tensor target_score, Tensor index_probs, float eps=1e-9, str weight_type='logits') -> Tensor"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def lightning_indexer_kl_loss_meta(target_score, index_probs, eps=1e-9):
+        def lightning_indexer_kl_loss_meta(target_score, index_probs, eps=1e-9, weight_type='logits'):
             return torch.empty((), dtype=target_score.dtype, device="meta")
 
 
@@ -37,7 +37,7 @@ op_module = lightning_indexer_kl_loss_op_builder.load()
 
 
 @impl(AS_LIBRARY, lightning_indexer_kl_loss_op_builder.name, "PrivateUse1")
-def lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9):
+def lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9, weight_type='logits'):
     """Lightning Indexer KL 散度损失函数。
 
     计算 teacher 侧原始未归一化主注意力分数（target_score）与 student 侧 indexer softmax
@@ -53,6 +53,7 @@ def lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9):
         index_probs (Tensor): student 侧 indexer softmax 后的概率分布，shape 与 target_score 一致。
             支持 float16、bfloat16、float32。
         eps (float): 数值稳定常数，默认 1e-9。
+        weight_type (str): 外层权重选择，'logits' 用原始 y（默认），'probs' 用归一化概率 p。
 
     Returns:
         Tensor: KL 散度标量损失，dtype 与输入一致。
@@ -61,7 +62,10 @@ def lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9):
         P = y / sum(y, dim=-1, keepdim=True)
         log_P = log(clamp_min(P, eps))
         log_Y = log(Y + eps)
-        loss = sum((log_P - log_Y) * y)
+        if weight_type == 'logits':
+            loss = sum((log_P - log_Y) * y)
+        else:  # 'probs'
+            loss = sum((log_P - log_Y) * P)
 
     调用示例:
         >>> import torch
@@ -72,4 +76,4 @@ def lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9):
         >>> index_probs = torch.softmax(torch.randn(4, 10, 128), dim=-1).npu()
         >>> loss = lightning_indexer_kl_loss(target_score, index_probs)
     """
-    return op_module.lightning_indexer_kl_loss(target_score, index_probs, eps)
+    return op_module.lightning_indexer_kl_loss(target_score, index_probs, eps, weight_type)

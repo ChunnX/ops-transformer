@@ -26,26 +26,20 @@ from cann_ops_transformer.ops import lightning_indexer_kl_loss  # noqa: E402,F40
 # ---------------------------------------------------------------------------
 # Reference implementation (纯 PyTorch, float 精度基准)
 # ---------------------------------------------------------------------------
-def lightning_indexer_kl_loss_ref(target_score, index_probs, eps=1e-9):
-    """PyTorch reference for KL divergence used in Lightning Indexer loss.
-
-    P = y / sum(y, dim=-1, keepdim=True)      # teacher: normalize target_score
-    log_P = log(clamp_min(P, eps))             # clamp_min 防止 log(0) 产生 NaN
-    log_Y = log(Y + eps)                       # student: +eps 保住 Y→0 处的梯度
-    loss = sum((log_P - log_Y) * y)            # weighted by original y
-    """
+def lightning_indexer_kl_loss_ref(target_score, index_probs, eps=1e-9, weight_type='logits'):
     y = target_score
     Y = index_probs
-    reduce_target = torch.sum(y, dim=-1, keepdim=True)
-    norm_target = y / (reduce_target + eps)
-    log_p = torch.log(torch.clamp_min(norm_target, eps))
-    log_Y = torch.log(Y + eps)
-    tmp = log_p - log_Y
-    # torch.set_printoptions(threshold=torch.inf)
-    # print(f'=====target_score:\n{target_score.to(torch.int)}')
-    # print(f'=====reduce_target:\n{reduce_target}')
-    result = tmp * y
-    # print(f'=====result:\n{result}')
+    P = y / torch.sum(y, dim=-1, keepdim=True)      # teacher: normalize target_score
+    log_P = torch.log(torch.clamp_min(P, eps))             # clamp_min 防止 log(0) 产生 NaN
+    log_Y = torch.log(Y + eps)                       # student: +eps 保住 Y→0 处的梯度
+    log_ratio = log_P - log_Y
+    if weight_type == 'logits':
+        weight = y                             # weighted by original y
+    elif weight_type == 'probs':
+        weight = P                             # weighted by normalized probability p
+    else:
+        raise ValueError("weight_type must be 'logits' or 'probs'")
+    result = weight * log_ratio
     return torch.sum(result)
 
 
@@ -83,7 +77,8 @@ def get_file(path, file_name):
         pass
 
 def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
-             max_diff_hd=0.1, check_fn=None, zero_target=False, zero_index_probs=False, deterministic=False):
+             max_diff_hd=0.1, zero_target=False, zero_index_probs=False, deterministic=False,
+             weight_type='logits'):
     """Run a single test case.
 
     Args:
@@ -96,11 +91,12 @@ def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
         check_fn: optional callable(npu_out, y, Y) -> bool for custom assertion.
         zero_target: if True, target_score is all zeros.
         zero_index_probs: if True, index_probs is all zeros.
+        weight_type: 'logits' or 'probs'.
 
     Returns:
         True if all checks pass.
     """
-    print(f"\n=== {name} ===")
+    print(f"\n=== {name} (weight_type={weight_type}) ===")
 
     y, Y = _gen_data(shape, dtype=dtype)
     if zero_target:
@@ -109,25 +105,18 @@ def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
         Y = torch.zeros_like(Y)
     if (Y < 0).any():
         raise ValueError("index_probs 不是有效的概率分布")
-    with profile(activities=[ProfilerActivity.CPU], record_shapes=True) as prof:
-        with record_function("model_inference"):
-            ref = lightning_indexer_kl_loss_ref(y.float(), Y.float(), eps=eps)
-    print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
+
+    # if dtype in (torch.float16, torch.bfloat16):
+    #     ref = lightning_indexer_kl_loss_ref(y.float(), Y.float(), eps=eps, weight_type=weight_type)
+    # else:
+    #     ref = lightning_indexer_kl_loss_ref(y, Y, eps=eps, weight_type=weight_type)
     if deterministic:
         torch.use_deterministic_algorithms(True)
-    # npu_out = lightning_indexer_kl_loss(y.npu(), Y.npu(), eps=eps)
 
-    if check_fn is not None:
-        return check_fn(npu_out, y, Y)
-
-    # print("shape:")
-    # print(y.shape)
-    # print(Y.shape)
-    # print("dtype:")
-    # print(y.dtype)
-    # print(Y.dtype)
-
-    torch.npu.synchronize()  # 做profiling前先同步
+    with profile(activities=[ProfilerActivity.CPU], record_shapes=True) as prof:
+        with record_function("model_inference"):
+            ref = lightning_indexer_kl_loss_ref(y.float(), Y.float(), eps=eps, weight_type=weight_type)
+    torch.npu.synchronize()
     profile_path = "./fag_profiling"
     os.system(f"rm -rf {profile_path}")
     experimental_config = torch_npu.profiler._ExperimentalConfig(
@@ -147,19 +136,13 @@ def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
         experimental_config=experimental_config
     ) as prof:
         for step in range(1):
-            npu_out = lightning_indexer_kl_loss(y.npu(), Y.npu(), eps=eps)
+            npu_out = lightning_indexer_kl_loss(y.npu(), Y.npu(), eps=eps, weight_type=weight_type)
             prof.step()
     file_name = []
     get_file(profile_path, file_name)
     result = pd.read_csv(file_name[0])
     print(result)
     print("Total Time(us):",result["Total Time(us)"].sum())
-    
-    # part = lightning_indexer_kl_loss_ref(y.float()[:133,:], Y.float()[:133,:], eps=eps)
-    # print(f"====={part}")
-    # part = lightning_indexer_kl_loss_ref(y.float()[133:266,:], Y.float()[133:266,:], eps=eps)
-    # print(f"====={part}")
-    # print(f"{lightning_indexer_kl_loss(y.npu(), Y.npu(), eps=eps).cpu()}")
     return data_compare(npu_out.cpu().to(torch.float32).detach().numpy(), ref.to(torch.float32).detach().numpy(), diff_thd=diff_thd, max_diff_hd=max_diff_hd)
 
 
@@ -193,6 +176,17 @@ TESTS = [
     ("large_d: (B, H, 512) float32",     (2125, 45, 8192),        None),
     ("edge: zero target_score",          (2, 4, 128),        {"zero_target": True}),
     ("edge: zero index_probs",           (2, 4, 128),          {"zero_index_probs": True}),
+    # --- weight_type='probs' tests ---
+    ("probs basic_2d: (B, D) float32",        (8888, 2332),     {"weight_type": "probs"}),
+    ("probs basic_3d: (B, H, D) float32",     (4, 10, 333),     {"eps": 0.5, "weight_type": "probs"}),
+    ("probs fp16: (B, H, D) float16",         (4, 2, 4444),     {"dtype": torch.float16, "diff_thd": 0.001, "weight_type": "probs"}),
+    ("probs bf16: (B, H, D) bfloat16",        (40, 264, 10),    {"eps": 0.5, "dtype": torch.bfloat16, "diff_thd": 0.005, "weight_type": "probs"}),
+    ("probs custom_eps: eps=1e-6",           (4000, 1),         {"eps": 1e-6, "weight_type": "probs"}),
+    ("probs large_d: (B, H, 512) float32",   (2125, 45, 8192),  {"weight_type": "probs"}),
+    ("probs edge: zero target_score",        (2, 4, 128),       {"zero_target": True, "weight_type": "probs"}),
+    ("probs edge: zero index_probs",         (2, 4, 128),       {"zero_index_probs": True, "weight_type": "probs"}),
+    # --- weight_type='probs' with deterministic ---
+    ("probs deterministic_2d: (B, D) float32", (4000, 100),     {"weight_type": "probs", "deterministic": True}),
 ]
 
 

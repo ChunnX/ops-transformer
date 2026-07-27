@@ -25,7 +25,7 @@
   $$
 
   $$
-  \tilde{y} = \frac{y}{\text{sum}(y, \text{dim}=-1, \text{keepdim=True}) + \varepsilon}
+  P = \frac{y}{\text{sum}(y, \text{dim}=-1, \text{keepdim=True}) + \varepsilon}
   $$
 
   $$
@@ -37,10 +37,14 @@
   $$
 
   $$
-  \text{loss} = \sum((\log\_P - \log\_Y) \cdot y)
+  \text{loss} = \sum((\log\_P - \log\_Y) \cdot \text{weight})
   $$
 
   其中 $\varepsilon$ 为 `eps` 参数，默认值 $10^{-9}$。
+
+  weight 的选择由 `weight_type` 控制：
+  - `'logits'`（默认）：weight = y，即原始未归一化分数
+  - `'probs'`：weight = P，即归一化概率
 
 ## 参数说明
 
@@ -86,6 +90,13 @@
       <td>属性</td>
       <td>数值稳定常数，默认值为 1e-9。</td>
       <td>FLOAT</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>weight_type</td>
+      <td>属性</td>
+      <td>外层权重选择，可选值为 'logits' 或 'probs'。'logits'（默认）用原始 y 作为外层权重，'probs' 用归一化概率 p = y / sum(y) 作为外层权重。</td>
+      <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>

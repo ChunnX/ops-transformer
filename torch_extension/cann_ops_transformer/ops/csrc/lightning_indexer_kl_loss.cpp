@@ -16,9 +16,12 @@ namespace op_api {
 at::Tensor lightning_indexer_kl_loss(
     const at::Tensor &target_score,
     const at::Tensor &index_probs,
-    double eps)
+    double eps,
+    const std::string &weight_type)
 {
     TORCH_CHECK((eps > 0), "eps should be greater than 0, current is: ", eps);
+    TORCH_CHECK((weight_type == "logits" || weight_type == "probs"),
+        "weight_type must be 'logits' or 'probs', current is: ", weight_type);
     TORCH_CHECK((target_score.scalar_type() == index_probs.scalar_type()),
         "target_score and index_probs should have the same dtype.");
     TORCH_CHECK((target_score.dim() >= 2 && target_score.dim() <= 3),
@@ -34,7 +37,7 @@ at::Tensor lightning_indexer_kl_loss(
         loss = at::empty({}, target_score.options());
     }
 
-    ACLNN_CMD(aclnnLightningIndexerKLLoss, target_score, index_probs, eps, loss);
+    ACLNN_CMD(aclnnLightningIndexerKLLoss, target_score, index_probs, eps, weight_type, loss);
 
     return loss;
 }
@@ -42,7 +45,7 @@ at::Tensor lightning_indexer_kl_loss(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("lightning_indexer_kl_loss", &lightning_indexer_kl_loss, "lightning_indexer_kl_loss",
-          py::arg("target_score"), py::arg("index_probs"), py::arg("eps"));
+          py::arg("target_score"), py::arg("index_probs"), py::arg("eps"), py::arg("weight_type"));
 }
 
 }  // namespace op_api

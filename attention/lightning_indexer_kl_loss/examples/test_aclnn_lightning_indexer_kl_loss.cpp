@@ -140,13 +140,16 @@ int main() {
   // eps 参数
   double eps = 1e-9;
 
-  // 3. 调用 CUANN 算子库 API
+  // weight_type 参数（默认 'logits'）
+  const char* weightType = "logits";
+
+  // 3. 调用 C(A)NN 算子库 API
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
 
   // 4. 调用 aclnnLightningIndexerKLLoss 第一段接口
   ret = aclnnLightningIndexerKLLossGetWorkspaceSize(
-      targetScore, indexProbs, eps, loss, &workspaceSize, &executor);
+      targetScore, indexProbs, eps, weightType, loss, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnLightningIndexerKLLossGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);

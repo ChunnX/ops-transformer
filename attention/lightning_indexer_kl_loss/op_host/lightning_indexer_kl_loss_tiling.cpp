@@ -148,6 +148,8 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
 
     auto attrs = context->GetAttrs();
     float eps = *attrs->GetFloat(0);
+    std::string weightTypeStr = *attrs->GetString(1);
+    int64_t weightType = (weightTypeStr == "probs") ? 1 : 0;
     bool deterministic = context->GetDeterministic() == 1;
     // UB 统一按 fp32 划分
     int64_t fp32Size = sizeof(float);
@@ -187,7 +189,7 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
     uint8_t dataTypeVal = (dataType == ge::DT_FLOAT16)? 0 :
                           (dataType == ge::DT_BF16)? 2 :
                           (dataType == ge::DT_FLOAT)? 1 : 0;
-    ASCENDC_TPL_SEL_PARAM(context, deterministic, dataTypeVal);
+    ASCENDC_TPL_SEL_PARAM(context, deterministic, dataTypeVal, weightType);
     OP_CHECK_IF(
         GetWorkspaceSize(context, deterministic, dataTypeVal != 1, coreNum) != ge::GRAPH_SUCCESS, OP_LOGE(context, "GetWorkspaceSize error"),
         return ge::GRAPH_FAILED);

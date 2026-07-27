@@ -36,6 +36,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Attr("eps").AttrType(OPTIONAL).Float(1e-9);
+        this->Attr("weight_type").AttrType(OPTIONAL).String("logits");
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag((true))
