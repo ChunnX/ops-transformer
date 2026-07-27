@@ -174,6 +174,7 @@ public:
         coreIdx = AscendC::GetBlockIdx();
         // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
         BlockMmadPV blockMmadPV(resource);
+        BlockMmadCopyGlobalMaxL1ToUB blockGMaxL1ToUb(resource);
  #endif	 
  #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
@@ -294,11 +295,13 @@ public:
                         auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(1, EpMXFP4::KVS_BASE_SIZE);
                         auto l1GMaxTensorTla = tla::MakeTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionUB{});
                         CopyGMaxL1ToUb(delay3TileInfo);
+                        blockGMaxL1ToUb(delay3TileInfo,ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx]);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB + 16);
                     } else {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
                         UpdatePScale(delay3TileInfo);
+                        AscendC::DumpTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], 168, 128);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2);
                     }
                 }
@@ -326,7 +329,7 @@ public:
                         auto l1PLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutP>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE / 2);
                         auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
                         GemmCoord actualBlockShapeQK{curTileInfo.kvsActBaseTile, curTaskInfo.qsActBaseTile, embed_};
-                        epilogueOnlineSoftmax(l1PTensorTla, actualBlockShapeQK, curTileInfo);
+                        // epilogueOnlineSoftmax(l1PTensorTla, actualBlockShapeQK, curTileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
                     }
                     if (curTileInfo.isUpdatePScale) {
