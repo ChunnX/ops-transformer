@@ -1894,10 +1894,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
                                                                                     uint32_t expertIdx,
                                                                                     int32_t &vecSetSyncCom)
 {
-    if constexpr (!IsShared) {
-        if constexpr (g_coreType == AIC) {
-            kernelTiming_.StartAccumulatedTiming(TIMING_GROUP_MATMUL);
-        } else if constexpr (ENABLE_A8W4) {
+    if constexpr (!IsShared && g_coreType == AIV) {
+        if constexpr (ENABLE_A8W4) {
             if (subBlockIdx_ == 1) {
                 kernelTiming_.StartAccumulatedTiming(TIMING_SWIGLU_QUANT);
             }
@@ -1948,34 +1946,33 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
         // MoE 专家走 prefetch 路径
         if constexpr (ENABLE_A8W4) {
             MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
-                                                    QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
-                                                    TopkWeightsPrefetch, IsShared>(epilogueOp_, params_,
-                                                    state.problemShape, gmmAddrInfo, startBlockIdx_,
-                                                    vecSetSyncCom, state.expertBeforeCnt, expertIdx);
+                                                     QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
+                                                     TopkWeightsPrefetch, IsShared>(epilogueOp_, params_,
+                                                     state.problemShape, gmmAddrInfo, startBlockIdx_,
+                                                     vecSetSyncCom, state.expertBeforeCnt, expertIdx,
+                                                     &kernelTiming_, TIMING_GROUP_MATMUL);
         } else {
             if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                 params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
                 // NZ format (A8W8_NZ / A4W4_NZ): isWeightNZ=true, EpilogueElementA 由 SwigluQuantOutType 自动处理类型提升
                 MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                     QuantScaleOutType, QuantScaleOutType, true, GMM1_TILE_M,
-                                                    EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared>(
-                    epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                    state.expertBeforeCnt, expertIdx);
+                                                     EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared>(
+                     epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                     state.expertBeforeCnt, expertIdx, &kernelTiming_, TIMING_GROUP_MATMUL);
             } else {
                 // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
                 MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                     QuantScaleOutType, QuantScaleOutType, false, GMM1_TILE_M,
-                                                    EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared>(
-                    epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                    state.expertBeforeCnt, expertIdx);
+                                                     EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared>(
+                     epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                     state.expertBeforeCnt, expertIdx, &kernelTiming_, TIMING_GROUP_MATMUL);
             }
         }
     }
 
-    if constexpr (!IsShared) {
-        if constexpr (g_coreType == AIC) {
-            kernelTiming_.StopAccumulatedTiming(TIMING_GROUP_MATMUL);
-        } else if constexpr (ENABLE_A8W4) {
+    if constexpr (!IsShared && g_coreType == AIV) {
+        if constexpr (ENABLE_A8W4) {
             if (subBlockIdx_ == 1) {
                 kernelTiming_.StopAccumulatedTiming(TIMING_SWIGLU_QUANT);
             }
@@ -1996,16 +1993,19 @@ __aicore__ inline void
 MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                                          uint32_t expertIdx, int32_t &vecSetSyncCom)
 {
-    int32_t timingSlot = TIMING_COMBINE;
-    bool timingEnabled = true;
+    Mc2Kernel::KernelTiming *gmm2Timing = nullptr;
+    bool combineTimingEnabled = false;
     if constexpr (!IsShared) {
-        if constexpr (g_coreType == AIC) {
-            timingSlot = TIMING_GMM2;
-        } else if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-            timingEnabled = subBlockIdx_ == 1;
-        }
-        if (timingEnabled) {
-            kernelTiming_.StartAccumulatedTiming(timingSlot);
+        gmm2Timing = &kernelTiming_;
+        if constexpr (g_coreType == AIV) {
+            if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
+                combineTimingEnabled = subBlockIdx_ == 1;
+            } else {
+                combineTimingEnabled = true;
+            }
+            if (combineTimingEnabled) {
+                kernelTiming_.StartAccumulatedTiming(TIMING_COMBINE);
+            }
         }
     }
 
@@ -2013,27 +2013,28 @@ MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmA
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t,
                                              QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch,
                                              IsShared>(params_, state.problemShape, gmmAddrInfo, startBlockIdx_,
-                                                       vecSetSyncCom, state.expertBeforeCnt, gmm2PingPongIdx_);
+                                                       vecSetSyncCom, state.expertBeforeCnt, gmm2PingPongIdx_,
+                                                       expertIdx, gmm2Timing, TIMING_GMM2);
     } else {
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                                      QuantScaleOutType, true, false, GMM1_TILE_M, TopkWeightsPrefetch, IsShared>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, state.expertBeforeCnt,
-                gmm2PingPongIdx_);
+                                       QuantScaleOutType, true, false, GMM1_TILE_M, TopkWeightsPrefetch, IsShared>(
+                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, state.expertBeforeCnt,
+                 gmm2PingPongIdx_, expertIdx, gmm2Timing, TIMING_GMM2);
         } else {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                                      QuantScaleOutType, false, false, GMM1_TILE_M, TopkWeightsPrefetch, IsShared>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, state.expertBeforeCnt,
-            gmm2PingPongIdx_);
+                                       QuantScaleOutType, false, false, GMM1_TILE_M, TopkWeightsPrefetch, IsShared>(
+                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, state.expertBeforeCnt,
+                 gmm2PingPongIdx_, expertIdx, gmm2Timing, TIMING_GMM2);
         }
     }
 
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV && !IsShared) {
         ProcessCombine(gmmAddrInfo, state, expertIdx);
     }
-    if constexpr (!IsShared) {
-        if (timingEnabled) {
-            kernelTiming_.StopAccumulatedTiming(timingSlot);
+    if constexpr (!IsShared && g_coreType == AIV) {
+        if (combineTimingEnabled) {
+            kernelTiming_.StopAccumulatedTiming(TIMING_COMBINE);
         }
     }
 }

@@ -22,6 +22,11 @@
 #include "lib/matmul_intf.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_base.h"
+#if __has_include("../../common/mc2_kernel_timing.h")
+#include "../../common/mc2_kernel_timing.h"
+#else
+#include "../../../common/op_kernel/mc2_kernel_timing.h"
+#endif
 
 #include "tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
@@ -34,6 +39,25 @@
 
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
+
+struct AicMatmulTiming {
+    Mc2Kernel::KernelTiming *timer{nullptr};
+    int32_t slot{-1};
+};
+
+__aicore__ inline void StartAicMatmulTiming(const AicMatmulTiming &timing)
+{
+    if (timing.timer != nullptr && timing.slot >= 0) {
+        timing.timer->StartAccumulatedTiming(timing.slot);
+    }
+}
+
+__aicore__ inline void StopAicMatmulTiming(const AicMatmulTiming &timing)
+{
+    if (timing.timer != nullptr && timing.slot >= 0) {
+        timing.timer->StopAccumulatedTiming(timing.slot);
+    }
+}
 
 struct GroupSyncSlotLayout {
     uint32_t baseSlotCountPerGroup; // 每个 group 固定分配的 slot 数。
@@ -444,8 +468,10 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                                                              Get<N_VALUE>(actualShape)));
                     auto tensorBlockGm = gmC.Slice(Te::MakeCoord(mLoc, nOffset),
                                                    Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                    StartAicMatmulTiming(args.timing);
                     blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, tensorBlockGm,
                               singleShape);
+                    StopAicMatmulTiming(args.timing);
                 }
                 // prefetch 软同步：写 tile 状态位通知 AIV0（roundTag = expertIdx + 1）
                 // FIX_S 同步确保 blockMmad 的 L0C→GM Fixpipe 传输完成后才写状态位
@@ -469,8 +495,10 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                         Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * config.outputN),
                         Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM),
                                       Get<N_VALUE>(actualShape)));
+                    StartAicMatmulTiming(args.timing);
                     blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias,
                               weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
+                    StopAicMatmulTiming(args.timing);
                 }
                 NotifyVector();
                 args.vecSetSyncCom = 1;
@@ -485,7 +513,9 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 auto tensorUb = args.pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
                 auto tensorBlockUb = tensorUb.Slice(
                     Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                StartAicMatmulTiming(args.timing);
                 blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, tensorBlockUb, singleShape);
+                StopAicMatmulTiming(args.timing);
                 NotifyVector(args.pingpongIdx);
                 args.vecSetSyncCom2++;
                 args.pingpongIdx = 1 - args.pingpongIdx;
@@ -495,7 +525,9 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                                           workSet.layouts.c);
                 auto gmBlockC = gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                StartAicMatmulTiming(args.timing);
                 blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
+                StopAicMatmulTiming(args.timing);
                 if constexpr (CombineQuantMode != COMBINE_NO_QUANT && !IsShared) {
                     NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout,
                                                            workSet.gmmAddrInfo.gmm2CombineSyncCounter);
@@ -661,12 +693,14 @@ template <typename SwigluQuantOp>
 struct Gmm1ArgsGeneric {
     SwigluQuantOp &swigluQuantOp;
     int32_t &vecSetSyncCom;
+    AicMatmulTiming timing{};
     uint32_t expertBeforeCnt{0};
     uint32_t expertIdx{0}; // prefetch 软同步：当前 expert 索引，roundTag = expertIdx + 1
 };
 
 struct Gmm2ArgsGeneric {
     int32_t &vecSetSyncCom2;
+    AicMatmulTiming timing{};
     uint32_t groupCnt;
     uint16_t &pingpongIdx;
 };
@@ -777,10 +811,12 @@ GroupMatmulSwigluQuant(BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, El
                                                   EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch> &epilogueOp,
                        const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                        const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom,
-                       uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+                       uint32_t expertBeforeCnt, uint32_t expertIdx = 0,
+                       Mc2Kernel::KernelTiming *kernelTiming = nullptr, int32_t timingSlot = -1)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
-    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom, expertBeforeCnt, expertIdx};
+    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{
+        epilogueOp, vecSetSyncCom, {kernelTiming, timingSlot}, expertBeforeCnt, expertIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, false, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
         params, problemShape, gmmAddrInfo, startBlockIdx, args);
@@ -795,10 +831,11 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                                    uint32_t groupCnt, uint16_t &pingpongIdx, uint32_t groupIdx = 0)
+                                    uint32_t groupCnt, uint16_t &pingpongIdx, uint32_t groupIdx = 0,
+                                    Mc2Kernel::KernelTiming *kernelTiming = nullptr, int32_t timingSlot = -1)
 {
     (void)groupIdx;
-    Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
+    Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, {kernelTiming, timingSlot}, groupCnt, pingpongIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
         params, problemShape, gmmAddrInfo, startBlockIdx, args);
@@ -812,22 +849,24 @@ namespace Detail {
 template <typename SwigluQuantOp>
 struct Gmm1ArgsA8W4 {
     SwigluQuantOp &swigluQuantOp;
+    AicMatmulTiming timing{};
     uint32_t expertBeforeCnt{0};
     uint32_t expertIdx{0}; // prefetch 软同步：当前 expert 索引，roundTag = expertIdx + 1
 };
 
 struct Gmm2ArgsA8W4 {
     uint32_t groupCnt;
+    AicMatmulTiming timing{};
     uint16_t &pingpongIdx;
 };
 
 template <uint8_t CombineQuantMode, typename Policy, bool IsShared, typename BlockMmad, typename Scheduler,
           typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config,
-          bool TopkWeightsPrefetch>
+          bool TopkWeightsPrefetch, typename ExtraArgs>
 __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
                                       TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
-                                      const Params &params, uint32_t expertIdx)
+                                      const Params &params, ExtraArgs &args)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
@@ -866,14 +905,18 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                     gmScaleB.Slice(Te::MakeCoord(0, nOffset), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
                 auto tensorBlockGm = l0cOutGm.Slice(
                     Te::MakeCoord(mLoc, nOffset), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                StartAicMatmulTiming(args.timing);
                 blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+                StopAicMatmulTiming(args.timing);
             }
         } else {
             auto gmBlockScaleB =
                 gmScaleB.Slice(Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
             auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                                 Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            StartAicMatmulTiming(args.timing);
             blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+            StopAicMatmulTiming(args.timing);
             if constexpr (CombineQuantMode != COMBINE_NO_QUANT && !IsShared) {
                 NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
             }
@@ -887,8 +930,8 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
-                    static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx;
-                AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
+                    static_cast<int64_t>(args.expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx;
+                AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(args.expertIdx + 1));
             } else {
                 // Keep at most one AIC-to-AIV1 GM tile notification outstanding.
                 NotifyAiv1GmTileReady();
@@ -1112,15 +1155,15 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet &workSet, const Params &param
         if constexpr (Policy::IS_GMM1) {
             AicComputeA8W4<CombineQuantMode, Policy, IsShared, BlockMmad, decltype(workSet.scheduler),
                            decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
-                           decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch>(
+                           decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch, ExtraArgs>(
                 blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.l0cOutGm,
-                gmmAddrInfo, config, startLoopIdx, tileNum, params, args.expertIdx);
+                gmmAddrInfo, config, startLoopIdx, tileNum, params, args);
         } else {
             AicComputeA8W4<CombineQuantMode, Policy, IsShared, BlockMmad, decltype(workSet.scheduler),
                            decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
-                           decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch>(
+                           decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch, ExtraArgs>(
                 blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.l0cOutGm,
-                gmmAddrInfo, config, startLoopIdx, tileNum, params, 0);
+                gmmAddrInfo, config, startLoopIdx, tileNum, params, args);
         }
     } else {
         if (GetSubBlockIdx() == 0) {
@@ -1211,11 +1254,13 @@ GroupMatmulSwigluQuantA8W4(BlockEpilogueSwigluMxQuant<ElementA, ElementC, Elemen
                                                       EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch> &swigluQuantOp,
                            const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                            const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom,
-                           uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+                           uint32_t expertBeforeCnt, uint32_t expertIdx = 0,
+                           Mc2Kernel::KernelTiming *kernelTiming = nullptr, int32_t timingSlot = -1)
 {
     (void)vecSetSyncCom;
     using SwigluQuantOpType = std::remove_reference_t<decltype(swigluQuantOp)>;
-    Detail::Gmm1ArgsA8W4<SwigluQuantOpType> args{swigluQuantOp, expertBeforeCnt, expertIdx};
+    Detail::Gmm1ArgsA8W4<SwigluQuantOpType> args{
+        swigluQuantOp, {kernelTiming, timingSlot}, expertBeforeCnt, expertIdx};
     Detail::GroupMatmulImplA8W4<COMBINE_NO_QUANT, Detail::Gmm1Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
                                 ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
         params, problemShape, gmmAddrInfo, startBlockIdx, args);
@@ -1228,11 +1273,12 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void
 GroupMatmul2CombineA8W4(const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                         const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                        uint32_t groupCnt, uint16_t &pingpongIdx, uint32_t groupIdx = 0)
+                        uint32_t groupCnt, uint16_t &pingpongIdx, uint32_t groupIdx = 0,
+                        Mc2Kernel::KernelTiming *kernelTiming = nullptr, int32_t timingSlot = -1)
 {
     (void)vecSetSyncCom2;
     (void)groupIdx;
-    Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx};
+    Detail::Gmm2ArgsA8W4 args{groupCnt, {kernelTiming, timingSlot}, pingpongIdx};
     Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
                                 ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
         params, problemShape, gmmAddrInfo, startBlockIdx, args);
