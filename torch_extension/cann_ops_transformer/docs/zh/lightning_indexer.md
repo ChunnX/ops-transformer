@@ -130,12 +130,12 @@ cann_ops_transformer.lightning_indexer(
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
   - 当前不支持seqused_q、output_idx_offset、max_seqlen_q功能，不建议传入这些参数。
-  - 当layout_k为PA_BBND时，必须传入seqused_k；当layout_k不为PA_BBND时，不支持seqused_k_功能，不建议传入该参数。
+  - 当layout_k为PA_BBND时，必须传入seqused_k；当layout_k不为PA_BBND时，不支持seqused_k功能，不建议传入该参数。
 - <term>Ascend 950PR/Ascend 950DT</term>:
-  - 当layout_q为BSND时，不支持传入cuSeqlens_q；当layout_k为BSND或PA_BBND时，不支持传入cuSeqlens_k_。
+  - 当layout_q为BSND时，不支持传入cu_seqlens_q；当layout_k为BSND或PA_BBND时，不支持传入cu_seqlens_k。
   - 当传入output_idx_offset时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
-  - 当layout_q为TND时，必须传入cu_seqlens_q_，如果也传入seqused_q，应保证由seqused_q传入的各个batch的query长度不超过根据cuSeqlens_q计算出的各个batch的q序列长度。当某个batch由seqused_q传入的q序列长度seqlen1小于由cu_seqlens_q计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparseIndices和sparseValues全部置为无效值。
-  - 当传入的cmpRatio > 1且maskMode = 3时，必须传入cmp_residual_k，其余情况不传入。
+  - 当layout_q为TND时，必须传入cu_seqlens_q，如果也传入seqused_q，应保证由seqused_q传入的各个batch的query长度不超过根据cu_seqlens_q计算出的各个batch的q序列长度。当某个batch由seqused_q传入的q序列长度seqlen1小于由cu_seqlens_q计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparse_indices和sparse_values全部置为无效值。
+  - 当传入的cmp_ratio > 1且mask_mode = 3时，必须传入cmp_residual_k，其余情况不传入。
   - 当layout_k为PA_BBND时，必须传入seqused_k。
 ## 返回值说明
 
@@ -172,8 +172,8 @@ cann_ops_transformer.lightning_indexer(
 - <term>Ascend 950PR/Ascend 950DT</term>:
   - 当layout_q为BSND时，不支持传入cu_seqlens_q；当layout_k为BSND或PA_BBND时，不支持传入cu_seqlens_k。
   - 当传入output_idx_offset时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
-  - 当layout_q为TND时，必须传入cu_seqlens_q，如果也传入seqused_q，应保证由seqused_q传入的各个batch的query长度不超过根据cu_seqlens_q计算出的各个batch的q序列长度。当某个batch由seqused_q传入的q序列长度seqlen1小于由cu_seqlens_q计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparseIndices和sparseValues全部置为无效值。
-  - 当传入的cmpRatio > 1且maskMode = 3时，必须传入cmp_residual_k，其余情况不传入。
+  - 当layout_q为TND时，必须传入cu_seqlens_q，如果也传入seqused_q，应保证由seqused_q传入的各个batch的query长度不超过根据cu_seqlens_q计算出的各个batch的q序列长度。当某个batch由seqused_q传入的q序列长度seqlen1小于由cu_seqlens_q计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparse_indices和sparse_values全部置为无效值。
+  - 当传入的cmp_ratio > 1且mask_mode = 3时，必须传入cmp_residual_k，其余情况不传入。
   - 参数metadata必须传入。
 
 ## 确定性计算
