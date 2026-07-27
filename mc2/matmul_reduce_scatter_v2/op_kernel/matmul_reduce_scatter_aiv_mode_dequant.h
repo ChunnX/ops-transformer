@@ -15,21 +15,21 @@
 #ifndef MATMUL_REDUCE_SCATTER_AIV_MODE_DEQUANT_H
 #define MATMUL_REDUCE_SCATTER_AIV_MODE_DEQUANT_H
 
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/arch/cross_core_sync.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/arch/resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/layout/layout.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/detail/callback.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/matrix_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/epilogue/block/block_epilogue.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/epilogue/tile/tile_broadcast_mul.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/epilogue/tile/tile_broadcast_one_blk.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/epilogue/tile/tile_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/gemm/block/block_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/gemm/block/block_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/gemm/gemm_type.hpp"
 #include "matmul_reduce_scatter_aiv_mode_block_epilogue_dequant.h"
 #include "matmul_reduce_scatter_aiv_mode_util.h"
 #include "tile_broadcast_add.hpp"
@@ -39,7 +39,7 @@ namespace dequant {
 template <typename BiasType, typename OutputType>
 class DequantRunner {
 public:
-    using ArchTag = Arch::AtlasA2;
+    using ArchTag = Arch::Ascend950;
     using ScaleType = Gemm::GemmType<float, layout::VectorLayout>;
     using PerTokenScaleType = Gemm::GemmType<float, layout::VectorLayout>;
     using BiasGType = Gemm::GemmType<BiasType, layout::VectorLayout>;
