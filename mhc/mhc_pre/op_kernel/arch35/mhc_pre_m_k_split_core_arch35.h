@@ -400,10 +400,8 @@ public:
         partialRmsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
             initParams.workspace + this->tiling_->mkWorkspaceRmsOffset));
         if (UseGmStage()) {
-            uint64_t finalBytes = this->outFlag_ ? 0U :
-                this->totalLength_ * this->matrixInfo_.fusionSize * sizeof(P);
             xStageGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
-                initParams.workspace + this->tiling_->mkWorkspaceFinalOffset + finalBytes));
+                initParams.workspace + this->tiling_->mkWorkspaceFinalOffset));
         }
 
         this->pipe_->InitBuffer(l1Buffer_, MHC_PRE_LOW_API_L1_ALLOC_SIZE);
@@ -695,9 +693,6 @@ public:
             initParams.workspace + this->tiling_->mkWorkspaceRmsOffset));
         if (this->outFlag_) {
             this->hMixGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_mix));
-        } else {
-            this->hMixGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
-                initParams.workspace + this->tiling_->mkWorkspaceFinalOffset));
         }
         this->InitUbBuffers(false);
 
@@ -731,17 +726,15 @@ public:
         if (!selected_ || this->vectorOffset_.singleCoreM == 0) {
             return;
         }
-        ReducePartials();
-        SetFlag<HardEvent::MTE3_MTE2>(static_cast<event_t>(0));
-        WaitFlag<HardEvent::MTE3_MTE2>(static_cast<event_t>(0));
-        PostProcess();
+        ReduceAndPostProcess();
         this->invRmsOutQueue_.FreeTensor(this->invRmsUb_);
         this->biasInQue_.FreeTensor(this->biasInUb_);
     }
 
 private:
-    __aicore__ inline void ReducePartials()
+    __aicore__ inline void ReduceAndPostProcess()
     {
+        uint64_t localOffset = 0;
         for (uint32_t offsetT = this->vectorOffset_.offsetMStart;
              offsetT < this->vectorOffset_.offsetMEnd; offsetT += this->V1_BASE_T) {
             uint32_t lenT = AscendC::Std::min(
@@ -794,31 +787,38 @@ private:
             this->xInQueue_.FreeTensor(partialLocal);
             this->outQueue_.template EnQue<P>(accumulator);
             accumulator = this->outQueue_.template DeQue<P>();
-            DataCopyExtParams outputParams;
-            outputParams.blockCount = 1;
-            outputParams.blockLen = lenT * fusionSize * sizeof(P);
-            outputParams.srcStride = 0;
-            outputParams.dstStride = 0;
-            uint64_t outputOffset = (this->globalOffsetM_ + offsetT) * this->matrixInfo_.fusionSize;
-            DataCopyPad(this->hMixGm_[outputOffset], accumulator, outputParams);
+            if (this->outFlag_) {
+                DataCopyExtParams outputParams;
+                outputParams.blockCount = 1;
+                outputParams.blockLen = lenT * fusionSize * sizeof(P);
+                outputParams.srcStride = 0;
+                outputParams.dstStride = 0;
+                uint64_t outputOffset = (this->globalOffsetM_ + offsetT) * fusionSize;
+                DataCopyPad(this->hMixGm_[outputOffset], accumulator, outputParams);
+                SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
+                WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+            }
+            PostProcessSegments(offsetT, lenT, localOffset, accumulator);
+            this->AIV1ProcessHPost(offsetT, lenT);
+            this->AIV1ProcessHPre(offsetT, lenT);
+            this->AIV1ProcessHInBatched(offsetT, lenT);
             this->outQueue_.FreeTensor(accumulator);
+            localOffset += lenT;
         }
         this->DataCopyOutInvRmsUb(this->vectorOffset_.singleCoreM,
             this->vectorOffset_.offsetMStart);
     }
 
     __aicore__ inline void PostProcessSegments(uint64_t offsetT, uint64_t lenT,
-        uint64_t localOffset)
+        uint64_t localOffset, const LocalTensor<P>& matmulResult)
     {
         uint64_t outputOffset = this->globalOffsetM_ + offsetT;
-        uint64_t hMixOffset = outputOffset * this->matrixInfo_.fusionSize;
         LocalTensor<P> hResLocal;
         if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
             hResLocal = this->outQueue_.template AllocTensor<P>();
         }
 
-        this->HMixCopyIn(hMixOffset, lenT);
-        this->matmulRes_ = this->xInQueue_.template DeQue<P>();
+        this->matmulRes_ = matmulResult;
         if (this->N_ == 4U) {
             MhcPreVFPostSegments<P, 4U, HAS_RESI == MHC_PRE_HAS_RESI>(
                 this->hPreBuff_, this->hPostBuff_, hResLocal, this->matmulRes_,
@@ -855,22 +855,6 @@ private:
             SetFlag<HardEvent::MTE3_V>(EVENT_ID3);
             WaitFlag<HardEvent::MTE3_V>(EVENT_ID3);
             this->outQueue_.FreeTensor(hResLocal);
-        }
-        this->xInQueue_.FreeTensor(this->matmulRes_);
-    }
-
-    __aicore__ inline void PostProcess()
-    {
-        uint64_t localOffset = 0;
-        for (uint64_t offsetT = this->vectorOffset_.offsetMStart;
-             offsetT < this->vectorOffset_.offsetMEnd; offsetT += this->V1_BASE_T) {
-            uint64_t lenT = AscendC::Std::min(
-                static_cast<uint64_t>(this->V1_BASE_T), this->vectorOffset_.offsetMEnd - offsetT);
-            PostProcessSegments(offsetT, lenT, localOffset);
-            this->AIV1ProcessHPost(offsetT, lenT);
-            this->AIV1ProcessHPre(offsetT, lenT);
-            this->AIV1ProcessHInBatched(offsetT, lenT);
-            localOffset += this->V1_BASE_T;
         }
     }
 

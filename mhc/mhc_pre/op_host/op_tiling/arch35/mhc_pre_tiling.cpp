@@ -771,13 +771,12 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
     size_t systemWorkspaceSize = SYSTEM_WORKSPACE;
 
     if (tilingMode_ == TilingMode::SPLIT_M_K) {
-        size_t finalBytes = outFlag_ ? 0U : static_cast<size_t>(totalLength_) * matN_ * sizeof(float);
         size_t mkXStageBytes = tilingData_.get_mkUseGmStage() == 0U ? 0U :
             static_cast<size_t>(tilingData_.get_cubeBlockDimM()) *
             tilingData_.get_cubeBlockDimK() * 2U *
             tilingData_.get_mL1Size() * tilingData_.get_kL1Size() * sizeof(float);
         userWorkspaceSize = static_cast<size_t>(tilingData_.get_mkWorkspaceFinalOffset()) +
-                            finalBytes + mkXStageBytes;
+                            mkXStageBytes;
     } else if (tilingMode_ == TilingMode::SPLIT_ND) {
         size_t xFloatWorkspaceSizeRaw = static_cast<size_t>(matM_) * static_cast<size_t>(matK_) * sizeof(float);
         size_t xFloatWorkspaceSize =
