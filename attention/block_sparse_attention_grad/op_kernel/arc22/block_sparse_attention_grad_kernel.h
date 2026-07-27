@@ -426,7 +426,9 @@ namespace BSA {
 
             AscendC::SyncAll<false>();
 
-            // deter: 方案D — 无需等待 AIV 清零 (cube 写共享 gDk/gDv)
+            if (deter) {
+                AscendC::SyncAll<false>();
+            }
             SetFlag();
             uint32_t vec2CubeFlag = 0;
             for (uint32_t i = 0; i < taskLength; i++) {
@@ -516,7 +518,7 @@ namespace BSA {
 
                                 blockMmad3(gP[preTaskInfo.sOffset],
                                     gDout[preTaskInfo.qOffset],
-                                    gDv[preTaskInfo.kvOffset],
+                                    deter ? gDvDeter[coreIdx * (dvSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDv[preTaskInfo.kvOffset],
                                     layoutA3,
                                     layoutB3,
                                     layoutC3,
@@ -525,15 +527,23 @@ namespace BSA {
 
                                 blockMmad3(gDs[preTaskInfo.sOffset],
                                     gQ[preTaskInfo.qOffset],
-                                    gDk[preTaskInfo.kvOffset],
+                                    deter ? gDkDeter[coreIdx * (dkSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDk[preTaskInfo.kvOffset],
                                     layoutA3,
                                     layoutB3,
                                     layoutC3,
                                     actualShape3,
                                     mmadFlag);
 
-                                // deter: 方案D — cube 写共享 gDk/gDv, 无逐轮 SyncAll
-                            }
+                                }
+                                // 方案R: GM 轮询同步 (在 if(count>0) 外, 每轮都执行)
+                                if (deter) {
+                                    deterRoundCnt++;
+                                    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID1);
+                                    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID1);
+                                    __gm__ int32_t* pollGm = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
+                                    AscendC::WriteGmByPassDCache<int32_t>(pollGm + coreIdx, 1);
+                                    while (AscendC::ReadGmByPassDCache<int32_t>(pollGm + coreIdx) != 0) { AscendC::PipeBarrier<PIPE_ALL>(); }
+                                }
                             preTaskInfo = curInfo;
                             preTaskInfo.sOffset = curInfo.sOffset * 2; // float32偏移转成bf16/half偏移
                             pingpongFlag = 1 - pingpongFlag;
@@ -581,7 +591,7 @@ namespace BSA {
                     mmadFlag);
                 blockMmad3(gP[preTaskInfo.sOffset],
                     gDout[preTaskInfo.qOffset],
-                    gDv[preTaskInfo.kvOffset],
+                    deter ? gDvDeter[coreIdx * (dvSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDv[preTaskInfo.kvOffset],
                     layoutA3,
                     layoutB3,
                     layoutC3,
@@ -589,15 +599,29 @@ namespace BSA {
                     mmadFlag);
                 blockMmad3(gDs[preTaskInfo.sOffset],
                     gQ[preTaskInfo.qOffset],
-                    gDk[preTaskInfo.kvOffset],
+                    deter ? gDkDeter[coreIdx * (dkSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDk[preTaskInfo.kvOffset],
                     layoutA3,
                     layoutB3,
                     layoutC3,
                     actualShape3,
                     mmadFlag);
-                // deter: 方案D — final mmad3 写共享, 无 SyncAll
+                if (deter) {
+                    deterRoundCnt++;
+                    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID1);
+                    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID1);
+                    __gm__ int32_t* pollGm = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
+                    AscendC::WriteGmByPassDCache<int32_t>(pollGm + coreIdx, 1);
+                    while (AscendC::ReadGmByPassDCache<int32_t>(pollGm + coreIdx) != 0) { AscendC::PipeBarrier<PIPE_ALL>(); }
+                }
             }
-            // deter: 方案D — 无需 padding SyncAll
+            if (deter) {
+                while (deterRoundCnt < deterMaxLoop) {
+                    __gm__ int32_t* pollGm = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
+                    AscendC::WriteGmByPassDCache<int32_t>(pollGm + coreIdx, 1); // 通知 AIV: 无效轮
+                    while (AscendC::ReadGmByPassDCache<int32_t>(pollGm + coreIdx) != 0) { AscendC::PipeBarrier<PIPE_ALL>(); }
+                    deterRoundCnt++;
+                }
+            }
             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
             WaitFlag();
         }
@@ -680,7 +704,7 @@ namespace BSA {
                 gDvShared.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
                 gDeterCoreInfoVec.SetGlobalBuffer((__gm__ int32_t *)(params.workspace + tilingData->deterCoreInfoGmOffset));
                 deterInfoGm = (__gm__ int32_t *)(params.workspace + tilingData->deterCoreInfoGmOffset);
-                // 清零 slots + final (cube 用 isAtomicAdd=true 写 slots, 需清零)
+                // 清零 slots + dkFinalOffset/dvFinalOffset
                 AscendC::LocalTensor<float> zeroUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET);
                 AscendC::Duplicate(zeroUb, 0.0f, DETER_AG_UB_FLOATS);
                 AscendC::PipeBarrier<PIPE_ALL>();
@@ -696,7 +720,29 @@ namespace BSA {
                     AscendC::DataCopy(gDvDeterVec[off], zeroUb, chunk);
                 }
                 AscendC::PipeBarrier<PIPE_ALL>();
-                AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(DETER_V2C); // 通知 AIC: slot 清零完成(用 DETER_V2C, 不复用 CUBE2VEC)
+                // 清零 dkFinalOffset/dvFinalOffset
+                {
+                    AscendC::GlobalTensor<float> gDkFZ; gDkFZ.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->dkFinalOffset));
+                    AscendC::GlobalTensor<float> gDvFZ; gDvFZ.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->dvFinalOffset));
+                    uint64_t totalDkF = tilingData->dKOutSize / sizeof(float);
+                    uint64_t totalDvF = tilingData->dVOutSize / sizeof(float);
+                    for (uint64_t off = 0; off < totalDkF; off += DETER_AG_UB_FLOATS) {
+                        uint32_t chunk = (totalDkF - off > DETER_AG_UB_FLOATS) ? DETER_AG_UB_FLOATS : (uint32_t)(totalDkF - off);
+                        AscendC::DataCopy(gDkFZ[off], zeroUb, chunk);
+                    }
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    for (uint64_t off = 0; off < totalDvF; off += DETER_AG_UB_FLOATS) {
+                        uint32_t chunk = (totalDvF - off > DETER_AG_UB_FLOATS) ? DETER_AG_UB_FLOATS : (uint32_t)(totalDvF - off);
+                        AscendC::DataCopy(gDvFZ[off], zeroUb, chunk);
+                    }
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                }
+                // 清零 GM 轮询 flag
+                __gm__ int32_t* pollGmInit = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
+                for (uint32_t ci = 0; ci < (tilingData->usedVecCoreNum + 1) / 2; ci++) {
+                    AscendC::WriteGmByPassDCache<int32_t>(pollGmInit + ci, 0);
+                }
+                AscendC::SyncAll<false>();
             }
             AscendC::GlobalTensor<bool> gBlcokSpaseMask;
             gBlcokSpaseMask.SetGlobalBuffer((__gm__ bool *)params.blockSparseMask);
@@ -827,7 +873,50 @@ namespace BSA {
 
                             AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(VEC2CUBE);
 
-                            // deter: 方案D — 无逐轮同步/聚合
+                            // 方案R: GM 轮询等 AIC 写完, 读 slot→final, 清零 slot, 通知 AIC
+                            if (deter && subBlockIdx == 0) {
+                                __gm__ int32_t* pollGm = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
+                                while (AscendC::ReadGmByPassDCache<int32_t>(pollGm + coreIdx) != 1) { AscendC::PipeBarrier<PIPE_ALL>(); }
+                                // Inline: read slot → copy to final, zero slot
+                                {
+                                    uint32_t kvHeadsR = tilingData->kvHeads;
+                                    uint32_t hdR = tilingData->headDim;
+                                    int32_t curKvR = (int32_t)preTaskInfo.curCalKVSize;
+                                    if (curKvR > 0 && curKvR <= 256 && hdR > 0 && hdR <= 256) {
+                                        uint64_t kvOffR = preTaskInfo.kvOffset;
+                                        uint64_t strideR = (uint64_t)kvHeadsR * hdR;
+                                        uint64_t dkSlotElemR = tilingData->dkSlotSize / sizeof(float);
+                                        uint64_t dvSlotElemR = tilingData->dvSlotSize / sizeof(float);
+                                        AscendC::GlobalTensor<float> gDkS; gDkS.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->dkDeterGmOffset));
+                                        AscendC::GlobalTensor<float> gDvS; gDvS.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->dvDeterGmOffset));
+                                        AscendC::GlobalTensor<float> gDkF; gDkF.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->dkFinalOffset));
+                                        AscendC::GlobalTensor<float> gDvF; gDvF.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->dvFinalOffset));
+                                        AscendC::LocalTensor<float> ubR = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET);
+                                        AscendC::LocalTensor<float> zUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET);
+                                        AscendC::Duplicate(zUb, 0.0f, hdR);
+                                        AscendC::PipeBarrier<PIPE_ALL>();
+                                        uint64_t dkBaseR = coreIdx * dkSlotElemR;
+                                        uint64_t dvBaseR = coreIdx * dvSlotElemR;
+                                        for (int32_t r = 0; r < curKvR; r++) {
+                                            uint64_t rowOff = kvOffR + (uint64_t)r * strideR;
+                                            AscendC::DataCopy(ubR, gDkS[dkBaseR + rowOff], hdR);
+                                            AscendC::PipeBarrier<PIPE_ALL>();
+                                            AscendC::DataCopy(gDkF[rowOff], ubR, hdR);
+                                            AscendC::PipeBarrier<PIPE_ALL>();
+                                            AscendC::DataCopy(gDkS[dkBaseR + rowOff], zUb, hdR);
+                                            AscendC::PipeBarrier<PIPE_ALL>();
+                                            AscendC::DataCopy(ubR, gDvS[dvBaseR + rowOff], hdR);
+                                            AscendC::PipeBarrier<PIPE_ALL>();
+                                            AscendC::DataCopy(gDvF[rowOff], ubR, hdR);
+                                            AscendC::PipeBarrier<PIPE_ALL>();
+                                            AscendC::DataCopy(gDvS[dvBaseR + rowOff], zUb, hdR);
+                                            AscendC::PipeBarrier<PIPE_ALL>();
+                                        }
+                                    }
+                                }
+                                deterRoundCntVec++;
+                                AscendC::WriteGmByPassDCache<int32_t>(pollGm + coreIdx, 0);
+                            }
 
                             preTaskInfo = curInfo;
                             pingpongFlag = 1 - pingpongFlag;
@@ -842,7 +931,19 @@ namespace BSA {
                         blockShapeX, basicQBlockSize, inputLayout, taskInfoVec[i % 2], taskInfoVec[(i + 1) % 2]);
                 }
             }
-            // deter: 方案D — 无需 padding
+            if (deter && subBlockIdx == 0) {
+                __gm__ int32_t* pollGm = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
+                // 匹配 AIC final block
+                while (AscendC::ReadGmByPassDCache<int32_t>(pollGm + coreIdx) != 1) { AscendC::PipeBarrier<PIPE_ALL>(); }
+                deterRoundCntVec++;
+                AscendC::WriteGmByPassDCache<int32_t>(pollGm + coreIdx, 0);
+                // Padding
+                while (deterRoundCntVec < deterMaxLoop) {
+                    while (AscendC::ReadGmByPassDCache<int32_t>(pollGm + coreIdx) != 1) { AscendC::PipeBarrier<PIPE_ALL>(); }
+                    deterRoundCntVec++;
+                    AscendC::WriteGmByPassDCache<int32_t>(pollGm + coreIdx, 0);
+                }
+            }
         }
 
 
@@ -889,8 +990,8 @@ namespace BSA {
             EpilogueFAGPre vecPre(preParms);
             vecPre();
 
-            // 方案L: deter 模式下清零 dkFinalOffset/dvFinalOffset (SetAtomicAdd 需要初始值为零)
-            if (tilingData->deterministic) {
+            // 方案R: dkFinalOffset 清零在 VecOp 中完成
+            if (false && tilingData->deterministic) {
                 uint64_t dkFinalOff = tilingData->dkFinalOffset;
                 uint64_t dvFinalOff = tilingData->dvFinalOffset;
                 uint64_t dkFinalSize = tilingData->dKOutSize;
