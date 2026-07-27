@@ -12,6 +12,7 @@
  * \file moe_v3_common.h
  * \brief
  */
+
 #ifndef MOE_V3_COMMON_H_REGBASE
 #define MOE_V3_COMMON_H_REGBASE
 
