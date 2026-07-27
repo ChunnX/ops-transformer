@@ -140,10 +140,8 @@ def execute_test(params, mode, cdir=None, external_dir=None):
                 golden.ACTUAL_SEQ_KV,
             )
             golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
-    elif "compare" in mode:
-        cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cdir)
     else:
-        cpu_out, cpu_lse = None, None
+        cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cdir)
 
     if "cpu" in mode and not (mode & {"npu", "compare"}):
         return None, None

@@ -73,10 +73,8 @@ def execute_test(params, mode, cdir=None):
             qr_bf16, kr_bf16,
         )
         golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
-    elif "compare" in mode:
-        cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cdir)
     else:
-        cpu_out, cpu_lse = None, None
+        cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cdir)
 
     if "cpu" in mode and "npu" not in mode and "compare" not in mode:
         return None, None

@@ -3,13 +3,12 @@
 
 import argparse
 import csv
-import os
 import re
 from pathlib import Path
 
 
-DEFAULT_OUTPUT_NAME = "fused_infer_attention_score_summary.csv"
-OPERATOR_NAME = "FusedInferAttentionScore"
+DEFAULT_OUTPUT_NAME = "fused_infer_attention_score_gqa_summary.csv"
+FIA_OP_KEY = "FusedInferAttentionScore"
 
 
 def _read_csv_rows(path):
@@ -35,12 +34,14 @@ def _load_manifest(output_dir):
     for op_summary in sorted(output_dir.glob("*.csv")):
         if op_summary.name in ("summary_manifest.csv", DEFAULT_OUTPUT_NAME):
             continue
-        log = op_summary.with_suffix(".log")
-        entries.append({
-            "case_name": op_summary.stem,
-            "op_summary": str(op_summary),
-            "log": str(log) if log.exists() else "",
-        })
+        log_path = op_summary.with_suffix(".log")
+        entries.append(
+            {
+                "case_name": op_summary.stem,
+                "op_summary": str(op_summary),
+                "log": str(log_path) if log_path.exists() else "",
+            }
+        )
     return entries
 
 
@@ -63,16 +64,17 @@ def _extract_perf_from_log(log_path):
         mfu_match = re.search(r"MFU\*时间计算公式:.*=\s*([0-9.eE+-]+)", text)
     if mfu_match:
         mfu_time = mfu_match.group(1)
+
     return flops, mfu_time
 
 
-def _op_name_columns(fieldnames):
-    preferred = []
+def _matching_columns(fieldnames):
+    matches = []
     for field in fieldnames:
         normalized = re.sub(r"[\s_]+", "", field).lower()
         if normalized in ("opname", "optype"):
-            preferred.append(field)
-    return preferred
+            matches.append(field)
+    return matches
 
 
 def _find_fia_row(op_summary_path):
@@ -81,20 +83,24 @@ def _find_fia_row(op_summary_path):
         return None, []
 
     fieldnames = list(rows[0].keys())
-    op_cols = _op_name_columns(fieldnames)
-    if not op_cols:
+    match_cols = _matching_columns(fieldnames)
+    if not match_cols:
         return None, fieldnames
 
+    exact_matches = []
+    contains_matches = []
     for row in rows:
-        for col in op_cols:
-            if (row.get(col) or "").strip() == OPERATOR_NAME:
-                return row, fieldnames
+        for col in match_cols:
+            value = (row.get(col) or "").strip()
+            if value == FIA_OP_KEY:
+                exact_matches.append(row)
+            elif FIA_OP_KEY in value and "Metadata" not in value:
+                contains_matches.append(row)
 
-    for row in rows:
-        for col in op_cols:
-            value = row.get(col) or ""
-            if OPERATOR_NAME in value:
-                return row, fieldnames
+    if exact_matches:
+        return exact_matches[0], fieldnames
+    if contains_matches:
+        return contains_matches[0], fieldnames
     return None, fieldnames
 
 
@@ -114,12 +120,14 @@ def aggregate(output_dir, output_path):
         op_summary = entry["op_summary"]
         if not op_summary or not Path(op_summary).exists():
             continue
+
         fia_row, op_fields = _find_fia_row(op_summary)
         if fia_row is None:
             continue
 
         for field in op_fields:
             _append_field(fieldnames, field)
+
         row = dict(fia_row)
         row["FLOPS"], row["MFU*times(us)"] = _extract_perf_from_log(entry["log"])
         row["case_name"] = entry["case_name"] or Path(op_summary).stem
@@ -137,12 +145,17 @@ def aggregate(output_dir, output_path):
 
     print(f"归纳完成: {output_path}")
     print(f"归纳行数: {len(rows)}")
+    return output_path
 
 
 def main():
-    parser = argparse.ArgumentParser(description="归纳FIA batch_single采集到的FusedInferAttentionScore op_summary数据")
+    parser = argparse.ArgumentParser(description="归纳FIA FullQuant GQA batch_single采集到的op_summary数据")
     parser.add_argument("output_dir", help="run_batch_single_prof.sh生成的归档目录")
-    parser.add_argument("-o", "--output", default=None, help=f"总表输出路径，默认{DEFAULT_OUTPUT_NAME}")
+    parser.add_argument(
+        "-o", "--output",
+        default=None,
+        help=f"总表输出路径，默认写入归档目录下的{DEFAULT_OUTPUT_NAME}",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)

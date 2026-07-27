@@ -10,10 +10,15 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import argparse
+import csv
+import math
+import sys
+from pathlib import Path
+
 import numpy as np
 import torch
 import torch.nn as nn
-import math
 import torch_npu
 from torchair.configs.compiler_config import CompilerConfig
 import torchair as tng
@@ -57,6 +62,7 @@ SEED_Q = 54
 SEED_K = 3
 SEED_V = 20
 SEED_BLOCK_TABLE = 1234
+BLOCK_TABLE_PATTERN = "random"
 FP8_DTYPE = torch.float8_e4m3fn
 OUTPUT_DETYPE = torch.bfloat16
 P_SCALE = 1.0
@@ -113,7 +119,10 @@ def create_block_table(actual_seq_kv, block_size, seed=SEED_BLOCK_TABLE, run_idx
     block_num_per_batch = [math.ceil(int(seq_len) / block_size) for seq_len in actual_seq_kv]
     total_blocks = sum(block_num_per_batch)
     max_blocks = max(block_num_per_batch)
-    block_idx_list = np.random.default_rng(seed + run_idx).permutation(np.arange(total_blocks, dtype=np.int32))
+    if BLOCK_TABLE_PATTERN == "sequential":
+        block_idx_list = np.arange(total_blocks, dtype=np.int32)
+    else:
+        block_idx_list = np.random.default_rng(seed + run_idx).permutation(np.arange(total_blocks, dtype=np.int32))
     block_table = np.full((len(actual_seq_kv), max_blocks), -1, dtype=np.int32)
     idx = 0
 
@@ -607,20 +616,244 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
 
 
 # ==============================================================================
-# Main
+# Batch single helpers
 # ==============================================================================
-if __name__ == '__main__':
+def _str_to_bool(value):
+    return str(value).strip().upper() in ("1", "TRUE", "YES", "Y")
+
+
+def _int_col(row, name, default=0):
+    value = row.get(name)
+    return int(value) if value not in (None, "") else default
+
+
+def _float_col(row, name, default=0.0):
+    value = row.get(name)
+    return float(value) if value not in (None, "") else default
+
+
+def _read_csv_row(csv_path, case_index):
+    with open(csv_path, "r", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    if case_index < 1 or case_index > len(rows):
+        raise ValueError(f"case index {case_index} out of range, total cases: {len(rows)}")
+    return rows[case_index - 1], len(rows)
+
+
+def _find_perf_case(case_name):
+    from fia_fullquant_gqa_paramset_perf_rdv import CASES
+
+    for case in CASES:
+        if case["name"] == case_name:
+            return case
+    raise ValueError(f"case '{case_name}' not found in fia_fullquant_gqa_paramset_perf_rdv.CASES")
+
+
+def _apply_paramset_case(case):
+    mapping = {
+        "B": "B",
+        "N_q": "N_q",
+        "N_kv": "N_kv",
+        "D": "D",
+        "actual_seq_q": "ACTUAL_SEQ_Q",
+        "actual_seq_kv": "ACTUAL_SEQ_KV",
+        "enable_pa": "ENABLE_PA",
+        "enable_lse": "ENABLE_LSE",
+        "block_size": "BLOCK_SIZE",
+        "sparse_mode": "SPARSE_MODE",
+        "input_layout": "INPUT_LAYOUT",
+        "output_layout": "OUTPUT_LAYOUT",
+        "q_scale_layout": "Q_SCALE_LAYOUT",
+        "kv_cache_layout": "KV_CACHE_LAYOUT",
+        "p_scale": "P_SCALE",
+        "scale_value": "SCALE_VALUE",
+        "is_contiguous": "IS_CONTIGUOUS",
+        "graph_path": "GRAPH_PATH",
+        "device_id": "DEVICE_ID",
+        "q_data_range": "Q_DATA_RANGE",
+        "k_data_range": "K_DATA_RANGE",
+        "v_data_range": "V_DATA_RANGE",
+        "seed_q": "SEED_Q",
+        "seed_k": "SEED_K",
+        "seed_v": "SEED_V",
+        "seed_block_table": "SEED_BLOCK_TABLE",
+    }
+    for param_key, global_name in mapping.items():
+        if param_key in case:
+            globals()[global_name] = case[param_key]
+
+
+def _apply_csv_row(row):
+    global B, N_q, N_kv, D, ACTUAL_SEQ_Q, ACTUAL_SEQ_KV
+    global ENABLE_LSE, BLOCK_SIZE, SPARSE_MODE, INPUT_LAYOUT
+    global OUTPUT_DETYPE, P_SCALE, BLOCK_TABLE_PATTERN
+
+    layout_q = (row.get("layout_q") or "NTD").strip().upper()
+    actlen_mode = (row.get("actlen_mode") or "full").strip().lower()
+    if layout_q != "NTD":
+        raise ValueError(f"unsupported layout_q for fia_fullquant_gqa_only_npu.py: {layout_q}")
+    if actlen_mode != "full":
+        raise ValueError(f"unsupported actlen_mode for fia_fullquant_gqa_only_npu.py: {actlen_mode}")
+
+    batch = _int_col(row, "B", B)
+    B = batch
+    N_q = _int_col(row, "N1", N_q)
+    N_kv = _int_col(row, "N2", N_kv)
+    D = _int_col(row, "D", D)
+    ACTUAL_SEQ_Q = [_int_col(row, "S1", ACTUAL_SEQ_Q[0])] * batch
+    ACTUAL_SEQ_KV = [_int_col(row, "S2", ACTUAL_SEQ_KV[0])] * batch
+    BLOCK_SIZE = _int_col(row, "sparse_kv_block_size", BLOCK_SIZE)
+    SPARSE_MODE = _int_col(row, "mask_mode", SPARSE_MODE)
+    INPUT_LAYOUT = "NTD_TND"
+    ENABLE_LSE = _str_to_bool(row.get("return_softmax_lse", ENABLE_LSE))
+    P_SCALE = _float_col(row, "p_scale_value", P_SCALE)
+    BLOCK_TABLE_PATTERN = (row.get("block_table_pattern") or "random").strip().lower()
+
+    output_dtype = (row.get("output_dtype") or "bfloat16").strip().lower()
+    if output_dtype in ("bf16", "bfloat16"):
+        OUTPUT_DETYPE = torch.bfloat16
+    else:
+        raise ValueError(f"unsupported output_dtype for fia_fullquant_gqa_only_npu.py: {output_dtype}")
+
+
+def _calc_compute_from_csv_row(row):
+    batch = _int_col(row, "B")
+    n1 = _int_col(row, "N1")
+    n2 = _int_col(row, "N2")
+    s1 = _int_col(row, "S1")
+    s2 = _int_col(row, "S2")
+    head_dim = _int_col(row, "D")
+    q_block = _int_col(row, "sparse_q_block_size", 128)
+    kv_block = _int_col(row, "sparse_kv_block_size", 128)
+    sparse_count = _int_col(row, "sparse_count", math.ceil(s2 / kv_block))
+    mask_mode = _int_col(row, "mask_mode", 3)
+
+    def allowed_blocks(qb_idx):
+        block_num = math.ceil(s2 / kv_block)
+        if mask_mode == 0:
+            return block_num
+        if mask_mode != 3:
+            raise ValueError(f"unsupported mask_mode for FLOPS estimate: {mask_mode}")
+        max_token = (qb_idx + 1) * q_block - 1 + s2 - s1
+        if max_token < 0:
+            return 0
+        return min(block_num, max_token // kv_block + 1)
+
+    q_blocks = math.ceil(s1 / q_block)
+    basic_block_count = 0
+    for qb_idx in range(q_blocks):
+        basic_block_count += min(sparse_count, allowed_blocks(qb_idx))
+    basic_block_count *= batch * n1
+
+    single_basic_block_compute = q_block * kv_block * head_dim
+    cube_compute_amount = basic_block_count * single_basic_block_compute * 2 * 2
+    cube_compute_capacity = 1000 * (16 * 16 * 32) * 1.65 * 32 * 2
+    mfu_time = cube_compute_amount / cube_compute_capacity
+
+    return {
+        "batch": batch,
+        "n1": n1,
+        "n2": n2,
+        "s1": s1,
+        "s2": s2,
+        "head_dim": head_dim,
+        "sparse_count": sparse_count,
+        "basic_block_count": basic_block_count,
+        "single_basic_block_compute": single_basic_block_compute,
+        "cube_compute_amount": cube_compute_amount,
+        "mfu_time": mfu_time,
+    }
+
+
+def _print_compute_log(case_name, row):
+    compute = _calc_compute_from_csv_row(row)
+    flops = compute["cube_compute_amount"]
+    mfu_time = compute["mfu_time"]
+    print(f"case_name={case_name}")
+    print("FLOPS计算过程量:")
+    print(f"基本块数量: {compute['basic_block_count']}")
+    print(f"单基本块计算量: {compute['single_basic_block_compute']}")
+    print(
+        "FLOPS计算公式: "
+        f"基本块数({compute['basic_block_count']}) * "
+        f"单基本块计算量({compute['single_basic_block_compute']}) * "
+        f"乘加计算(2) * 两次bmm计算(2) = {flops}"
+    )
+    print(
+        "MFU*时间计算公式: "
+        f"FLOPS({flops}) / 算力(865075200.000000) = "
+        f"MFU * 时间(us) = {mfu_time:.6f}"
+    )
+    print(f"FLOPS={flops}")
+    print(f"MFU*时间(us)={mfu_time:.6f}")
+    print(
+        "shape: "
+        f"B={compute['batch']}, N1={compute['n1']}, N2={compute['n2']}, "
+        f"S1={compute['s1']}, S2={compute['s2']}, D={compute['head_dim']}, "
+        f"sparse_count={compute['sparse_count']}"
+    )
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description="Run FIA FullQuant GQA NPU-only case")
+    parser.add_argument("--csv", default=None, help="CSV path for batch_single mode")
+    parser.add_argument("--case-index", type=int, default=None, help="1-based CSV data row index")
+    parser.add_argument("--case-name", default=None, help="case name in FIA GQA perf paramset")
+    parser.add_argument("--run-times", type=int, default=RUN_TIMES, help="NPU run times")
+    return parser.parse_args()
+
+
+def _configure_from_args(args):
+    case_name = args.case_name
+    csv_row = None
+
+    if args.csv or args.case_index is not None:
+        if not args.csv or args.case_index is None:
+            raise ValueError("--csv and --case-index must be specified together")
+        csv_path = Path(args.csv).resolve()
+        csv_row, total = _read_csv_row(csv_path, args.case_index)
+        case_name = (csv_row.get("case_name") or f"case_{args.case_index:06d}").strip()
+        enable = (csv_row.get("enable") or "TRUE").strip().upper()
+        print(f"[INFO] CSV={csv_path}")
+        print(f"[INFO] case_index={args.case_index}/{total}, case_name={case_name}, enable={enable}")
+        if enable != "TRUE":
+            print(f"[INFO] case_name={case_name} enable={enable}, skip")
+            sys.exit(0)
+
+    if case_name:
+        try:
+            case = _find_perf_case(case_name)
+        except ValueError:
+            if csv_row is None:
+                raise
+            case = None
+            print(f"[INFO] case_name={case_name} not found in GQA perf paramset, use CSV row directly")
+        if case is not None:
+            _apply_paramset_case(case)
+
+    if csv_row:
+        _apply_csv_row(csv_row)
+        _print_compute_log(case_name, csv_row)
+
+    if args.run_times < 1:
+        raise ValueError(f"--run-times must be positive, got {args.run_times}")
+    return case_name, args.run_times
+
+
+def _run_npu_only(run_times):
     print("=" * 60)
-    print("FIA Full Quant GQA NPU ({} runs, refresh input each run)".format(RUN_TIMES))
+    print("FIA Full Quant GQA NPU ({} runs, refresh input each run)".format(run_times))
     print("=" * 60)
     print(f"[INFO] 场景: {'PA' if ENABLE_PA else 'noPA'}, INPUT_LAYOUT: {INPUT_LAYOUT}, OUTPUT_LAYOUT: {OUTPUT_LAYOUT}")
     print(f"[INFO] B={B}, N_q={N_q}, N_kv={N_kv}, D={D}")
     print(f"[INFO] ACTUAL_SEQ_Q={ACTUAL_SEQ_Q}")
     print(f"[INFO] ACTUAL_SEQ_KV={ACTUAL_SEQ_KV}")
+    print(f"[INFO] BLOCK_SIZE={BLOCK_SIZE}, SPARSE_MODE={SPARSE_MODE}, ENABLE_LSE={ENABLE_LSE}")
+    print(f"[INFO] BLOCK_TABLE_PATTERN={BLOCK_TABLE_PATTERN}")
 
-    for run_idx in range(RUN_TIMES):
+    for run_idx in range(run_times):
         print("\n" + "=" * 60)
-        print(f"[Run {run_idx + 1}/{RUN_TIMES}] 开始")
+        print(f"[Run {run_idx + 1}/{run_times}] 开始")
         print("=" * 60)
 
         print(f"\n[Run {run_idx + 1} Step 1] 数据生成 (seed 偏移 run_idx={run_idx})")
@@ -636,5 +869,14 @@ if __name__ == '__main__':
         print("#" * 60)
 
     print("\n" + "=" * 60)
-    print(f"[INFO] 全部 {RUN_TIMES} 次运行完成")
+    print(f"[INFO] 全部 {run_times} 次运行完成")
     print("=" * 60)
+
+
+# ==============================================================================
+# Main
+# ==============================================================================
+if __name__ == '__main__':
+    args = _parse_args()
+    _, cli_run_times = _configure_from_args(args)
+    _run_npu_only(cli_run_times)
