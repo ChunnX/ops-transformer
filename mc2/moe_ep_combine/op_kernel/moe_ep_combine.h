@@ -410,11 +410,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     tpipe_->InitBuffer(metadataBuf_, metaChunkBytes);
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
     const DataCopyPadExtParams<int32_t> metaPadParams{false, 0U, 0U, 0U};
-    bool hasPendingToken = false;
-    int32_t pendingSrcRank = 0;
-    int32_t pendingSrcTokenIdx = 0;
-    int32_t pendingSrcTopKIdx = 0;
-
     for (uint64_t chunkStart = 0; chunkStart < actualA_; chunkStart += metaChunkTokens) {
         uint64_t chunkEnd = (chunkStart + metaChunkTokens > actualA_) ? actualA_ : (chunkStart + metaChunkTokens);
         uint32_t curChunkTokens = static_cast<uint32_t>(chunkEnd - chunkStart);
@@ -442,20 +437,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             } else if (static_cast<uint32_t>(src_rank) % activeAivNum != aivId_) {
                 continue;
             }
-            // Enqueue the current MTE2 copy first, then dequeue the previous token for MTE3/HCOMM.
+            // TQue with two buffers manages the MTE2/MTE3 ping-pong across loop iterations.
             CopyTokenToQueue(tokenIndex);
-            if (hasPendingToken) {
-                SendQueuedToken(pendingSrcRank, pendingSrcTokenIdx, pendingSrcTopKIdx, channelIndex);
-            }
-            pendingSrcRank = src_rank;
-            pendingSrcTokenIdx = src_token_idx;
-            pendingSrcTopKIdx = src_topK_idx;
-            hasPendingToken = true;
+            SendQueuedToken(src_rank, src_token_idx, src_topK_idx, channelIndex);
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖 metadataLocal
-    }
-    if (hasPendingToken) {
-        SendQueuedToken(pendingSrcRank, pendingSrcTokenIdx, pendingSrcTopKIdx, channelIndex);
     }
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
 }
