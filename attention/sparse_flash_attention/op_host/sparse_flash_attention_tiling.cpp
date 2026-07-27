@@ -663,7 +663,8 @@ ge::graphStatus SFATilingCheck::CheckDimNumInLayoutSupport(const SFALayout &layo
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != sfaDimIt->second,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                     opName_, name.c_str(), std::to_string(shape->GetStorageShape().GetDimNum()).c_str(),
-                    "When layout is " + SFALayoutToSerialString(layout) + ", the shape dim of " + name + "should be " +
+                    "When layout is " + SFALayoutToSerialString(layout) +
+                    ", the shape dim of " + name + " should be " +
                         std::to_string(sfaDimIt->second)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -824,9 +825,7 @@ ge::graphStatus SFATilingCheck::CheckRopeExistence()
 {
     OP_CHECK_IF((opParamInfo_.queryRope.tensor != nullptr || opParamInfo_.keyRope.tensor != nullptr) &&
                     *opParamInfo_.attentionMode == 0,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query_rope and key_rope",
-                    Ops::Base::ToString(opParamInfo_.queryRope.tensor->GetStorageShape()) + " and " +
-                        Ops::Base::ToString(opParamInfo_.keyRope.tensor->GetStorageShape()),
+                OP_LOGE_FOR_INVALID_ARGUMENTS_WITH_REASON(opName_, "query_rope and key_rope",
                     "In MHA/GQA situation(attentionMode=0), queryRope and keyRope should be empty tensor"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.attentionMode != 2,
@@ -835,13 +834,11 @@ ge::graphStatus SFATilingCheck::CheckRopeExistence()
                                                       "attentionMode only support 2"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((opParamInfo_.queryRope.tensor != nullptr && opParamInfo_.keyRope.tensor == nullptr),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query_rope",
-                    Ops::Base::ToString(opParamInfo_.queryRope.tensor->GetStorageShape()),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query_rope",
                     "keyRope is an empty tensor, queryRope must also be an empty tensor"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((opParamInfo_.queryRope.tensor == nullptr && opParamInfo_.keyRope.tensor != nullptr),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key_rope",
-                Ops::Base::ToString(opParamInfo_.keyRope.tensor->GetStorageShape()),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key_rope",
                     "queryRope is an empty tensor, keyRope must also be an empty tensor"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.keyRope.desc == nullptr || opParamInfo_.queryRope.desc == nullptr,
@@ -988,9 +985,7 @@ ge::graphStatus SFATilingCheck::CheckBlockTable() const
 {
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor != nullptr,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, BLOCK_TABLE_NAME.c_str(),
-                        Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, BLOCK_TABLE_NAME.c_str(),
                         "When the layout_kv is " + SFALayoutToSerialString(kvLayout_) + ", block_table should be null"),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
@@ -1130,9 +1125,7 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxMax()
 {
     if (*opParamInfo_.returnSoftmaxLse) {
         OP_CHECK_IF(opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() == 0,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "SoftmaxMax",
-                        Ops::Base::ToString(opParamInfo_.softmaxMax.shape->GetStorageShape()).c_str(),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "SoftmaxMax",
                         "When return_softmax_lse is true, SoftmaxMax tensor cannot be empty tensor"),
                     return ge::GRAPH_FAILED);
         // type类型校验
@@ -1158,9 +1151,7 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxSum()
 {
     if (*opParamInfo_.returnSoftmaxLse) {
         OP_CHECK_IF(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() == 0,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "softmaxSum",
-                        Ops::Base::ToString(opParamInfo_.softmaxSum.shape->GetStorageShape()).c_str(),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "softmaxSum",
                         "When return_softmax_lse is true, softmaxSum tensor cannot be empty tensor"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.softmaxSum.desc->GetDataType() != ge::DT_FLOAT,
@@ -1364,8 +1355,8 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensShape()
     }
     if (sfaShapeSizeKv != bSize_) {
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "actualSeqLengths", std::to_string(sfaShapeSizeKv),
-                                                  "The shape size of actualSeqLengths should be equal to batch size " +
-                                                      std::to_string(bSize_));
+            "The shape size of actualSeqLengths should be equal to batch size " +
+            std::to_string(bSize_));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1485,7 +1476,7 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantLayout() const
     OP_CHECK_IF(
         std::find(sfaLayoutSupportList.begin(), sfaLayoutSupportList.end(), layoutQuery) == sfaLayoutSupportList.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_query", layoutQuery.c_str(),
-            "layoutQuery only supports BSND/TND"),
+            "layoutQuery only supports BSND or TND"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -2056,9 +2047,9 @@ ge::graphStatus SFAInfoParser::GetRopeHeadDim()
 {
     if (queryShape_.GetDimNum() != queryRopeShape_.GetDimNum()) {
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(opName_, "query and query_rope",
-                                                  std::to_string(queryShape_.GetDimNum()) + " , " +
-                                                      std::to_string(queryRopeShape_.GetDimNum()),
-                                                  "The dimensions of query and query_rope should be equal");
+            std::to_string(queryShape_.GetDimNum()) + " and " +
+            std::to_string(queryRopeShape_.GetDimNum()),
+            "The dimensions of query and query_rope should be equal");
         return ge::GRAPH_PARAM_INVALID;
     }
     ropeHeadDim_ = GetAxisNum(queryRopeShape_, SFAAxis::D, qLayout_);
