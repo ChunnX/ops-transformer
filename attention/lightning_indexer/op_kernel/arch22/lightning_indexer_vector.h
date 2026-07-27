@@ -120,8 +120,7 @@ __aicore__ inline uint64_t FindNearestPower2(uint64_t value)
     if (value <= CONST_TWO) {
         return value;
     } else {
-        const uint64_t pow = 63 - AscendC::ScalarCountLeadingZero(
-                                      value); // 返回前导0的个数，对于64位整数，最大有效位位置 = 63 - 前导0个数
+        const uint64_t pow = 63 - AscendC::ScalarCountLeadingZero(value); // 返回前导0的个数，对于64位整数，最大有效位位置 = 63 - 前导0个数
         return (1 << pow);
     }
 }
