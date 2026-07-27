@@ -214,8 +214,8 @@ public:
             // qs=128, kvs=256 整块搬运
             AscendC::DataCopyParams repeatParams;
             repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize); // UB的物理P一整行256B, 包含P的逻辑视图4行
-            repeatParams.blockLen = pUBTlaNSize / 2;
-            repeatParams.srcStride = pUBTlaNSize / 2;
+            repeatParams.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2);
+            repeatParams.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2);
             repeatParams.dstStride = 0;
 
             auto pUBTensorTlaTile = GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize, pUBTlaNSize/2));
@@ -227,8 +227,8 @@ public:
             // 低位搬运
             AscendC::DataCopyParams repeatParams1;
             repeatParams1.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (MXFP4::UB_P_QS_MAJOR_BYTE / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图低位(高位)地址8行
-            repeatParams1.blockLen = pUBTlaNSize / 2;
-            repeatParams1.srcStride = pUBTlaNSize / 2;
+            repeatParams1.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2);
+            repeatParams1.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2);
             repeatParams1.dstStride = 0;
 
             auto pUBTensorTlaTile1 = tla::GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2));
@@ -238,8 +238,8 @@ public:
             // 高位搬运
             AscendC::DataCopyParams repeatParams2;
             repeatParams2.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (MXFP4::UB_P_QS_MAJOR_BYTE / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图高位(低位)地址8行
-            repeatParams2.blockLen = pUBTlaNSize / 2;
-            repeatParams2.srcStride = pUBTlaNSize / 2;
+            repeatParams2.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2);
+            repeatParams2.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2);
             repeatParams2.dstStride = 0;
 
             uint32_t pL1NHalfSize = tla::get<1, 0>(ubPTensorTla.shape());
