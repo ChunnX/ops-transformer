@@ -2214,7 +2214,7 @@ bool MoeInitRoutingV3Arch35TilingClass::IsOneOf3GatherKernels() const
 void MoeInitRoutingV3Arch35TilingClass::ComputeUseGatherCopy()
 {
     if (IsOneOf3GatherKernels()) {
-        tilingDataPtr_->useGatherCopy = ((expertEnd_ - expertStart_) * 3 > expertNum_) && (k_ > 1);
+        tilingDataPtr_->useGatherCopy = ((expertEnd_ - expertStart_) * k_ > expertNum_ * NUM_THREE);
     } else {
         tilingDataPtr_->useGatherCopy = (rowIdxType_ == ROW_IDX_GATHER);
     }
