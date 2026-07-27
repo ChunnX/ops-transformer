@@ -216,6 +216,7 @@ struct RunInfo {
     bool isSoftmaxLseEnable; \
     uint32_t oriSparseBlockCount; \
     uint32_t cmpSparseBlockCount; \
+    uint32_t alignedSparseBlockCount; \
     uint32_t actualSeqLenSize; /* 用户输入的actualseq的长度 */ \
     /* service mm1 mm2 pageAttention */ \
     uint32_t oriBlockSize; \
