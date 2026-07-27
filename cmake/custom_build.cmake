@@ -300,6 +300,10 @@ else()
     if(ADD_MAMBA)
         add_subdirectory(mamba)
     endif()
+    should_add_module("nddma_bench" ADD_NDDMA_BENCH)
+    if(ADD_NDDMA_BENCH)
+        add_subdirectory(nddma_bench)
+    endif()
 endif()
 
 # 编译examples目录下算子
