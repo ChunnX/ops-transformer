@@ -559,7 +559,6 @@ public:
                     uint64_t dumpOffset = dumpCount * mBaseSize * (s2BaseSize >> 1);
                     dumpGm.SetGlobalBuffer((__gm__ INPUT_T *)(attentionOutGm + dumpOffset * sizeof(INPUT_T)));
                     DataCopy(dumpGm, pTensor, mBaseSize * (s2BaseSize >> 1));
-                    PipeBarrier<ALL>();
                     pBuf.SetCrossCore();
                     dumpCount++;
 #else
