@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_flash_attn_tiling.cpp
+ * \file quant_flash_attn_tiling_mx.cpp
  * \brief QuantFlashAttn arch35 tiling implementation (MXFP8_FP32)
  */
 
-#include "quant_flash_attn_tiling.h"
+#include "quant_flash_attn_tiling_mx.h"
 #include "../quant_flash_attn_tiling.h"
 #include <vector>
 #include <graph/utils/type_utils.h>

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_flash_attn_tiling.h
+ * \file quant_flash_attn_tiling_mx.h
  * \brief QuantFlashAttn arch35 tiling implementation
  */
-#ifndef QUANT_FLASH_ATTN_TILING_IMPL_H_
-#define QUANT_FLASH_ATTN_TILING_IMPL_H_
+#ifndef QUANT_FLASH_ATTN_TILING_MX_IMPL_H_
+#define QUANT_FLASH_ATTN_TILING_MX_IMPL_H_
 
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
