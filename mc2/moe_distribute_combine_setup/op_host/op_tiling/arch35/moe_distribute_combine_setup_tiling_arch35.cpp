@@ -22,7 +22,7 @@
 #include "op_host/tiling_templates_registry.h"
 
 namespace {
-//-----------------------------aclnnInner接口参数列表-----------------------------//
+// -----------------------------aclnnInner接口参数列表----------------------------- //
 constexpr uint32_t CONTEXT_INDEX = 0;
 constexpr uint32_t EXPAND_X_INDEX = 1;
 constexpr uint32_t EXPERT_IDS_INDEX = 2;
@@ -42,7 +42,7 @@ constexpr uint32_t ATTR_COMM_ALG_INDEX = 10;
 
 constexpr uint32_t QUANT_EXPAND_X_OUT_INDEX = 0;
 constexpr uint32_t COMM_CMD_INFO_OUT_INDEX = 1;
-//-----------------------------aclnnInner接口参数列表-----------------------------//
+// -----------------------------aclnnInner接口参数列表----------------------------- //
 
 constexpr int64_t GROUP_EP_SIZE_2 = 2;
 constexpr int64_t GROUP_EP_SIZE_4 = 4;
@@ -157,15 +157,15 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckTensorShapeSize(int64_t 
 
 void MoeDistributeCombineSetupTilingA5::SetHcommCfg()
 {
-    //OP_LOGD(nodeName_, "MoeDistributeCombineSetup groupEp = %s", groupEp_.c_str());
-    //uint32_t opType = OP_TYPE_ALL_TO_ALL;
-    //std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
-    //uint8_t aivEngineValue = mc2tiling::AIV_ENGINE;
+    // OP_LOGD(nodeName_, "MoeDistributeCombineSetup groupEp = %s", groupEp_.c_str());
+    // uint32_t opType = OP_TYPE_ALL_TO_ALL;
+    // std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
+    // uint8_t aivEngineValue = mc2tiling::AIV_ENGINE;
 
-    //AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp_, opType, algConfigStr);
-    //mc2CcTilingConfig.SetCommEngine(aivEngineValue); // AIV_UB-MEM or AIV_URMA
-    //mc2CcTilingConfig.GetTiling(tilingData_->mc2InitTiling);
-    //mc2CcTilingConfig.GetTiling(tilingData_->mc2CcTiling);
-    //reinterpret_cast<Mc2CcTilingInner *>(&tilingData_->mc2CcTiling)->protocol = 1; // 0: UB-MEM, 1: URMA
+    // AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp_, opType, algConfigStr);
+    // mc2CcTilingConfig.SetCommEngine(aivEngineValue); // AIV_UB-MEM or AIV_URMA
+    // mc2CcTilingConfig.GetTiling(tilingData_->mc2InitTiling);
+    // mc2CcTilingConfig.GetTiling(tilingData_->mc2CcTiling);
+    // reinterpret_cast<Mc2CcTilingInner *>(&tilingData_->mc2CcTiling)->protocol = 1; // 0: UB-MEM, 1: URMA
 }
 } // namespace MC2Tiling

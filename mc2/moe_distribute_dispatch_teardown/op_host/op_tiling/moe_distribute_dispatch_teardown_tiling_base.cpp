@@ -231,11 +231,11 @@ const ge::graphStatus MoeDistributeDispatchTeardownTilingBase::CheckOptionalAttr
         OP_LOGE_WITH_INVALID_ATTR(nodeName_, "expertShardType", std::to_string(*expertShardTypePtr).c_str(), "0"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(((*sharedExpertNumPtr < MIN_SHARED_EXPERT_NUM) || (*sharedExpertNumPtr > MAX_SHARED_EXPERT_NUM)),
-                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "sharedExpertNum", std::to_string(*sharedExpertNumPtr).c_str(),
-                                              (std::string("[") + std::to_string(MIN_SHARED_EXPERT_NUM) + ", " +
-                                               std::to_string(MAX_SHARED_EXPERT_NUM) + "]")
-                                                  .c_str()),
-                    return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_ATTR(nodeName_, "sharedExpertNum", std::to_string(*sharedExpertNumPtr).c_str(),
+            (std::string("[") + std::to_string(MIN_SHARED_EXPERT_NUM) + ", " +
+            std::to_string(MAX_SHARED_EXPERT_NUM) + "]")
+                .c_str()),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         ((*sharedExpertRankNumPtr < MIN_SHARED_EXPERT_RANK_NUM) || (*sharedExpertRankNumPtr > *epWorldSizePtr / 2)),
         OP_LOGE_WITH_INVALID_ATTR(nodeName_, "sharedExpertRankNum", std::to_string(*sharedExpertRankNumPtr).c_str(),
@@ -284,18 +284,21 @@ ge::graphStatus MoeDistributeDispatchTeardownTilingBase::GetOptionalAttrAndSetTi
 
     // 判空
     OP_TILING_CHECK(expertShardPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertShardType"),
-                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(sharedExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "sharedExpertNum"),
-                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "sharedExpertRankNum"),
-                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(quantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "quantMode"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(globalBsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "globalBs"), return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(globalBsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "globalBs"), 
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(expertTokenNumsType == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertTokenNumsType"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commType"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commAlgPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commAlg"), return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commType"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commAlgPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commAlg"),
+        return ge::GRAPH_FAILED);
 
     if (CheckOptionalAttrValue() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -310,7 +313,8 @@ ge::graphStatus MoeDistributeDispatchTeardownTilingBase::GetOptionalAttrAndSetTi
     // 设置 tilingdata
     tilingData_->moeDistributeDispatchTeardownInfo.expertShardType = static_cast<uint32_t>(*expertShardPtr);
     tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertNum = static_cast<uint32_t>(*sharedExpertNumPtr);
-    tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertRankNum = static_cast<uint32_t>(*sharedExpertRankNumPtr);
+    tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertRankNum = 
+        static_cast<uint32_t>(*sharedExpertRankNumPtr);
     tilingData_->moeDistributeDispatchTeardownInfo.quantMode = static_cast<uint32_t>(*quantModePtr);
     tilingData_->moeDistributeDispatchTeardownInfo.globalBs = static_cast<uint32_t>(*globalBsPtr);
     tilingData_->moeDistributeDispatchTeardownInfo.expertTokenNumsType = static_cast<uint32_t>(*expertTokenNumsType);
@@ -396,10 +400,10 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckOutputTensorShapeDim()
         context_->GetOutputShape(OUTPUT_ASSIST_INFO_FOR_COMBINE_INDEX);
     const gert::StorageShape *expertTokenNumsOutShape = context_->GetOutputShape(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
     OP_TILING_CHECK(expandXOutShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "expandXOut",
-                                                 std::to_string(expandXOutShape->GetStorageShape().GetDimNum()).c_str(),
-                                                 "2"),
-                    return false);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "expandXOut",
+            std::to_string(expandXOutShape->GetStorageShape().GetDimNum()).c_str(),
+            "2"),
+        return false);
     auto quantMode = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.quantMode);
     if (quantMode == PERTOKEN_DYNAMIC_QUANT) {
         OP_TILING_CHECK(dynamicScalesOutShape->GetStorageShape().GetDimNum() != ONE_DIMS,
@@ -461,8 +465,8 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeRelation()
             (a1 != a2),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 nodeName_, "expandXOut/dynamicScalesOut",
-                (std::string("expandXOut dim0=") + std::to_string(a1) + ", dynamicScalesOut dim0=" + std::to_string(a2))
-                    .c_str(),
+                (std::string("expandXOut dim0=") + std::to_string(a1) + ",
+                dynamicScalesOut dim0=" + std::to_string(a2)).c_str(),
                 "Dim0 of expandXOut must be equal to dim0 of dynamicScalesOut"),
             return false);
     }
@@ -535,7 +539,8 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
     int64_t localExpertNum1;
     auto epWorldSize = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.epWorldSize);
     auto epRankId = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.epRankId);
-    auto sharedExpertRankNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertRankNum);
+    auto sharedExpertRankNum = 
+        static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertRankNum);
     auto globalBs = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.globalBs);
     auto globalBsReal = (globalBs == 0) ? (bs * epWorldSize) : globalBs;
     if (epRankId < sharedExpertRankNum) {
@@ -742,7 +747,8 @@ const ge::graphStatus MoeDistributeDispatchTeardownTilingBase::CheckHcclBuffSize
     auto epWorldSize = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.epWorldSize);
     auto epRankId = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.epRankId);
     auto sharedExpertNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertNum);
-    auto sharedExpertRankNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertRankNum);
+    auto sharedExpertRankNum =
+        static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertRankNum);
     auto moeExpertNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.moeExpertNum);
     auto globalBs = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.globalBs);
     int64_t localExpertNum;

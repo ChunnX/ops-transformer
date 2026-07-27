@@ -39,8 +39,8 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 
 // check nullptr
 static bool CheckNotNull(const aclTensor *x, const aclTensor *y, const aclTensor *expertIds,
-                         const aclTensor *commCmdInfo, const char *groupEp, aclTensor *expandXOut,
-                         aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut)
+    const aclTensor *commCmdInfo, const char *groupEp, aclTensor *expandXOut,
+    aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut)
 {
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(y, return false);
@@ -106,7 +106,8 @@ aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
     uint64_t hcclBuffSize = 0;
     aclTensor *mc2Context = nullptr;
     const char* opName = "moe_distribute_dispatch_teardown";
-    retStatus = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context, CommProtocol::COMM_PROTOCOL_UBC_CTP);
+    retStatus = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(
+        groupEp, opName, hcclBuffSize, mc2Context, CommProtocol::COMM_PROTOCOL_UBC_CTP);
     CHECK_RET(retStatus == ACLNN_SUCCESS, retStatus);
     retStatus = aclnnInnerMoeDistributeDispatchTeardownGetWorkspaceSize(
         mc2Context,

@@ -17,7 +17,7 @@
 #include "moe_distribute_combine_teardown_tiling_base.h"
 
 namespace {
-//-----------------------------aclnnInner接口参数列表-----------------------------//
+// -----------------------------aclnnInner接口参数列表----------------------------- //
 constexpr uint32_t CONTEXT_INDEX = 0;
 constexpr uint32_t EXPAND_X_INDEX = 1;
 constexpr uint32_t QUANT_EXPAND_X_INDEX = 2;
@@ -41,7 +41,7 @@ constexpr uint32_t ATTR_COMM_TYPE_INDEX = 9;
 constexpr uint32_t ATTR_COMM_ALG_INDEX = 10;
 
 constexpr uint32_t X_OUT_INDEX = 0;
-//-----------------------------aclnnInner接口参数列表-----------------------------//
+// -----------------------------aclnnInner接口参数列表----------------------------- //
 
 constexpr uint32_t THREE_DIMS = 3U;
 constexpr uint32_t TWO_DIMS = 2U;

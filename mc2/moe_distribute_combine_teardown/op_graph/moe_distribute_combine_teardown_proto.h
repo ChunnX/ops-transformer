@@ -24,25 +24,27 @@ namespace ge {
  * @par Inputs
  * Eight inputs, including:
  * @li context: A tensor. Support dtype: int32, dimension must be 1. Shape supports (2052, ), support format: ND.
- * @li expand_x: A tensor. Support dtype: float16, bfloat16, dimension must be 2, Support Shape: (A, H), support format:
- * ND.
+ * @li expand_x: A tensor. Support dtype: float16, bfloat16, dimension must be 2, Support Shape: (A, H),
+ * support format: ND.
  * @li quant_expand_x: A tensor. Support dtype: int8, dimension must be 2, Support Shape: (A, tokenMsgSize), support
  * format: ND.
  * @li expert_ids: A tensor. Support dtype: int32, dimension must be 2, Support Shape: (BS, K), support format: ND.
  * @li expand_idx: A tensor. Support dtype: int32, dimension must be 1, Support Shape: (BS * K, ), support format: ND.
- * @li expert_scales: A tensor. Support dtype: float32, dimension must be 2, Support Shape: (BS, K), support format: ND.
+ * @li expert_scales: A tensor. Support dtype: float32, dimension must be 2, Support Shape: (BS, K),
+ * support format: ND.
  * @li comm_cmd_info: A tensor. Support dtype: int32, dimension must be 1, Call the
  * `aclnnMoeDistributeCombineSetupTeardownCalcOutputSize` API to obtain the Shape, support format: ND.
  * @li x_active_mask: An optional tensor. Support dtype: bool, dimension must be 1, Support Shape: (BS, ) support
  * format: ND.
- * @li shared_expert_x: An optional tensor. Dtype should be same with expand_x, dimension must be 2 or 3, Support Shape:
- * (BS, H) or (a, b, H), where a * b = BS, support format: ND.
+ * @li shared_expert_x: An optional tensor. Dtype should be same with expand_x, dimension must be 2 or 3,
+ * Support Shape: (BS, H) or (a, b, H), where a * b = BS, support format: ND.
 
  * @par Attributes
  * @li ep_world_size: Input ep comm world size, dtype: Int64.
  * @li ep_rank_id: Input ep comm rank Id, dtype: Int64.
  * @li moe_expert_num: Input moe expert num, dtype: Int64.
- * @li ccl_buffer_size: Required, Input ccl buffer size, Support Range: [0, MAX_INT32)，MAX_INT32 = 2^31 - 1, dtype: Int64.
+ * @li ccl_buffer_size: Required, Input ccl buffer size, Support Range: [0, MAX_INT32)，MAX_INT32 = 2^31 - 1,
+ * dtype: Int64.
  * @li expert_shard_type: Input moe shard type, dtype: Int64. Default: 0.
  * @li shared_expert_num: Input shared expert num, dtype: Int64. Default: 1.
  * @li shared_expert_rank_num: Input shared expert rank num, dtype: Int64. Default: 0.

@@ -36,11 +36,15 @@ sharedExpertNum) + epWorldSize * localExpertNum) * 16), support format: ND.
 * @par Attributes
 * @li ep_world_size: Required. Input ep comm world size, value range: [2, 384], dtype: int64.
 * @li ep_rank_id: Required. Input ep comm rank Id, value range: [0, epWorldSize), dtype: int64.
-* @li moe_expert_num: Required. Input number of moe experts, value range: (0, 512] and must satisfy moeExpertNum % (epWorldSize - SharedExpertRankNum) = 0, dtype: int64.
-* @li ccl_buffer_size: Required, Input ccl buffer size, Support Range: [0, MAX_INT32)，MAX_INT32 = 2^31 - 1, dtype: Int64.
-* @li expert_shard_type: The shard type of shared expert rank. Only 0 (the shared expert rank is placed before moe expert rank) is supported currently, dtype: int64. Default: 0.
+* @li moe_expert_num: Required. Input number of moe experts, value range: (0, 512] and must satisfy moeExpertNum %
+(epWorldSize - SharedExpertRankNum) = 0, dtype: int64.
+* @li ccl_buffer_size: Required, Input ccl buffer size, Support Range: [0, MAX_INT32)，MAX_INT32 = 2^31 - 1,
+dtype: Int64.
+* @li expert_shard_type: The shard type of shared expert rank. Only 0 (the shared expert rank is placed
+before moe expert rank) is supported currently, dtype: int64. Default: 0.
 * @li shared_expert_num: Input shared expert num, value range: [0, 4], dtype: int64. Default: 1.
-* @li shared_expert_rank_num: Input shared expert rank num, value range: [0, epWorldSize / 2], dtype: int64. Default: 0.
+* @li shared_expert_rank_num: Input shared expert rank num, value range: [0, epWorldSize / 2], dtype: int64.
+Default: 0.
 * @li quant_mode: Input quant mode. The options are 0 (non-quantization), and 2 (dynamic quantization). dtype: int64.
 Default: 0.
 * @li global_bs: Input global batch size, dtype: int64. Default: 0.

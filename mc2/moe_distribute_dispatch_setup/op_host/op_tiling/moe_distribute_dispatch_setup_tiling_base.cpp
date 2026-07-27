@@ -17,7 +17,7 @@
 #include "moe_distribute_dispatch_setup_tiling_base.h"
 
 namespace {
-//-----------------------------aclnnInner接口参数列表-----------------------------//
+// -----------------------------aclnnInner接口参数列表----------------------------- //
 constexpr uint32_t CONTEXT_INDEX = 0;
 constexpr uint32_t X_INDEX = 1;
 constexpr uint32_t EXPERT_IDS_INDEX = 2;
@@ -40,7 +40,7 @@ constexpr uint32_t ATTR_Y_DTYPE_INDEX = 11;
 constexpr uint32_t OUTPUT_Y_INDEX = 0;
 constexpr uint32_t OUTPUT_EXPAND_IDX_INDEX = 1;
 constexpr uint32_t OUTPUT_COMM_CMD_INFO_INDEX = 2;
-//-----------------------------aclnnInner接口参数列表-----------------------------//
+// -----------------------------aclnnInner接口参数列表----------------------------- //
 
 constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;

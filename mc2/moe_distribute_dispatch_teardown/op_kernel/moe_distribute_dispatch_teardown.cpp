@@ -47,7 +47,7 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_teardown(
             expertTokenNumsOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
-#elif ((ORIG_DTYPE_EXPAND_X == DT_INT8) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2) ||                                  \
+#elif ((ORIG_DTYPE_EXPAND_X == DT_INT8) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2) ||           \
        (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8))
     if (TILING_KEY_IS(10011)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchTeardownTilingData, tilingData, tilingGM);

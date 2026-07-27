@@ -23,9 +23,9 @@
 
 using namespace AscendC;
 using namespace Mc2Kernel;
-extern "C" __global__ __aicore__ void moe_distribute_dispatch_setup(GM_ADDR context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
-                                                                    GM_ADDR YOut, GM_ADDR expandIdxOut, GM_ADDR commCmdInfoOut,
-                                                                    GM_ADDR workspaceGM, GM_ADDR tilingGM)
+extern "C" __global__ __aicore__ void moe_distribute_dispatch_setup(GM_ADDR context, GM_ADDR x,
+    GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR YOut, GM_ADDR expandIdxOut, 
+    GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchSetupTilingData);
     TPipe pipe;
@@ -39,7 +39,7 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_setup(GM_ADDR cont
                  workspaceGM, &pipe, &tilingData);
         op.Process();
     }
-#elif ((ORIG_DTYPE_Y == DT_INT8) || (ORIG_DTYPE_Y == DT_FLOAT8_E5M2) || (ORIG_DTYPE_Y == DT_FLOAT8_E4M3FN) ||          \
+#elif ((ORIG_DTYPE_Y == DT_INT8) || (ORIG_DTYPE_Y == DT_FLOAT8_E5M2) || (ORIG_DTYPE_Y == DT_FLOAT8_E4M3FN) || \
        (ORIG_DTYPE_Y == DT_HIFLOAT8))
     if (TILING_KEY_IS(1011)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchSetupTilingData, tilingData, tilingGM);

@@ -17,7 +17,7 @@
 #include "moe_distribute_combine_setup_tiling_base.h"
 
 namespace {
-//-----------------------------aclnnInner接口参数列表-----------------------------//
+// -----------------------------aclnnInner接口参数列表----------------------------- //
 constexpr uint32_t CONTEXT_INDEX = 0;
 constexpr uint32_t EXPAND_X_INDEX = 1;
 constexpr uint32_t EXPERT_IDS_INDEX = 2;
@@ -37,7 +37,7 @@ constexpr uint32_t ATTR_COMM_ALG_INDEX = 10;
 
 constexpr uint32_t QUANT_EXPAND_X_OUT_INDEX = 0;
 constexpr uint32_t COMM_CMD_INFO_OUT_INDEX = 1;
-//-----------------------------aclnnInner接口参数列表-----------------------------//
+// -----------------------------aclnnInner接口参数列表----------------------------- //
 
 constexpr uint32_t LOCAL_STREAM_MAX_NUM = 40U;
 constexpr uint32_t USED_AIV_NUMS = 40U;
@@ -398,7 +398,6 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorShapeRelation()
             "Dim0 of expandX must be equal to dim0 of quantExpandXOut"),
         return ge::GRAPH_FAILED);
 
-    //============================ todo xuxn ============================//
     auto contextStorageShape = context_->GetInputShape(CONTEXT_INDEX);
     OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE(nodeName_, "contextShape is null."), return ge::GRAPH_FAILED);
  	    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
@@ -406,7 +405,6 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorShapeRelation()
  	        contextStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
  	    int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
  	    OP_LOGD(nodeName_, "context dim0 = %ld", contextDim0);
-    //============================ todo xuxn ============================//
     return ge::GRAPH_SUCCESS;
 }
 

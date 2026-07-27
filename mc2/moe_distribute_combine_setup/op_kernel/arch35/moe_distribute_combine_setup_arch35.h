@@ -94,7 +94,7 @@ private:
     TQue<QuePosition::VECIN, 1> assistInfoQueue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> expertTokenTmpQueue_;
 
-    //=============================== Urma ===============================//
+    // =============================== Urma =============================== //
     uint32_t epRankId_{0};
     constexpr static uint64_t HCOMM_INIT_SIZE = 512UL;
 
@@ -118,7 +118,7 @@ private:
     {
         return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + COMBINE_STATE_OFFSET + dataState_ * WIN_STATE_OFFSET);
     }
-    //=============================== Urma ===============================//
+    // =============================== Urma =============================== //
 };
 
 template <TemplateMC2TypeClass>
@@ -196,13 +196,13 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
     uint32_t assistInfoQueueSize = Ceil(moeSendNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     uint64_t reservedUbSize = HCOMM_INIT_SIZE + assistInfoQueueSize;
     if(reservedUbSize > totalUbSize) {
-        printf("UB space is insufficient, reserved=%llu total=%u\n", reservedUbSize, totalUbSize);
+        // printf("UB space is insufficient, reserved=%llu total=%u\n", reservedUbSize, totalUbSize);
     }
     remain_ub_space = totalUbSize - reservedUbSize;
     tpipe_->Reset();
     if(!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize))
         || !tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space))) {
-        printf("communication buffers failed\n");
+        // printf("communication buffers failed\n");
     }
 }
 
@@ -237,7 +237,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     hcommTensor_ = assistStorage[assistInfoSize];
     int32_t ret = hcomm_.Init(hcommTensor_, static_cast<uint32_t>(HCOMM_INIT_SIZE));
     if(ret != HCOMM_SUCCESS) {
-        printf("Init hcomm failed, ret=%d\n", ret);
+        // printf("Init hcomm failed, ret=%d\n", ret);
         assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
         return;
     }
