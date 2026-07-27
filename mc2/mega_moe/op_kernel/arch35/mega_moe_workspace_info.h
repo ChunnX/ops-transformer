@@ -161,8 +161,9 @@ struct WorkspaceInfo {
 
         bool isGenericGmm = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
                             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+        bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm;
         bool useMteNoQuantGmm2Gm =
-            tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm && tilingData->combineQuantMode == COMBINE_NO_QUANT;
+            useMteA8W8Wave && tilingData->combineQuantMode == COMBINE_NO_QUANT;
 
         flagSwiGluToGmm2Ptr = base + workspaceSize;
         int64_t dispatchTileM = static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256);
@@ -173,12 +174,12 @@ struct WorkspaceInfo {
         // Only the wave pipeline can consume SwiGLU at 256-row granularity.
         // Legacy and layered paths retain one cache-line slot per expert.
         int64_t swigluFlagSlotsPerExpert =
-            useMteNoQuantGmm2Gm ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
+            useMteA8W8Wave ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * swigluFlagSlotsPerExpert;
 
         flagDispatchToGmm1Ptr = base + workspaceSize;
         int64_t dispatchFlagSlotsPerExpert =
-            useMteNoQuantGmm2Gm ?
+            useMteA8W8Wave ?
                 waveFlagSlotsPerExpert :
                 Ops::Base::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
