@@ -304,7 +304,7 @@ def tilelang_grad_kl_loss_single_kernel(
     # 宏收集阶段会校验条件表达式两侧的 BufferRegion。即使 full-valid
     # 最终不会生成 GetValue，也必须保留可被 [b, s] 合法索引的二维形状。
     k_real_size_shape = (B, S1)
-    valid_k_mask_shape = (1,) if full_valid else (B, S1, K)
+    valid_k_mask_shape = (B, S1, K)
     dkey_output_rows = B * S2
     assert dkey_output_rows % 32 == 0, (
         "The padded dKey output must preserve 32-row DMA alignment"
@@ -677,7 +677,11 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                             if not full_valid and n_start + n_block > valid_k_size:
                                 T.copy(
-                                    ValidKMask[bz_task, s1_id, n_start:n_start + n_block],
+                                    ValidKMask[
+                                        bz_task,
+                                        s1_id,
+                                        n_idx * n_block:(n_idx + 1) * n_block,
+                                    ],
                                     v1_p_valid,
                                 )
                             T.set_flag("mte2", "v", 1)
@@ -844,7 +848,11 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                             if not full_valid and n_start + n_block > valid_k_size:
                                 T.copy(
-                                    ValidKMask[bz_task, s1_id, n_start:n_start + n_block],
+                                    ValidKMask[
+                                        bz_task,
+                                        s1_id,
+                                        n_idx * n_block:(n_idx + 1) * n_block,
+                                    ],
                                     v1_sy_chunk,
                                 )
                             T.set_flag("mte2", "v", 3)
@@ -2151,7 +2159,13 @@ def _get_full_valid_aux_inputs(
                 dtype=torch.int32,
                 device=device,
             ),
-            torch.empty((1,), dtype=calc_dtype, device=device),
+            # full-valid specialization 不读取该张量；这里只提供宏收集阶段
+            # 所需的合法三维 BufferRegion，因此无需初始化内容。
+            torch.empty(
+                (batch_size, query_length, top_k),
+                dtype=calc_dtype,
+                device=device,
+            ),
         )
         _full_valid_aux_cache[cache_key] = cached
     return cached
