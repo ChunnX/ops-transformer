@@ -26,7 +26,9 @@ using namespace AscendC;
 enum class SMLATemplateMode {
     SWA_TEMPLATE_MODE = 0,
     HCA_TEMPLATE_MODE = 1,
-    CSA_TEMPLATE_MODE = 2
+    CSA_TEMPLATE_MODE = 2,
+    ORI_SPARSE_TEMPLATE_MODE = 3,
+    ORI_CMP_SPARSE_TEMPLATE_MODE = 4
 };
 
 enum class SMLA_LAYOUT {
@@ -303,9 +305,16 @@ struct ConstInfo {
     uint32_t mBaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
 
+    uint32_t subBlockIdx = 0;
+    uint32_t aivIdx = 0;
+
     // sparse attr
     int64_t sparseBlockSize = 0;
     uint32_t sparseBlockCount = 0;
+    uint32_t oriSparseBlockCount = 0;
+    uint32_t cmpSparseBlockCount = 0;
+    bool hasOriTopkLength = false;
+    bool hasCmpTopkLength = false;
 
     // cmp attr
     int64_t cmpRatio = 0;

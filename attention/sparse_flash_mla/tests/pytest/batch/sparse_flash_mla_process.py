@@ -62,8 +62,8 @@ class Network(torch.nn.Module):
             cmp_ratio=cmp_ratio,
             ori_mask_mode=ori_mask_mode,
             cmp_mask_mode=cmp_mask_mode,
-            ori_win_left=ori_win_left,
-            ori_win_right=ori_win_right,
+            **({'ori_win_left': ori_win_left} if ori_win_left is not None else {}),
+            **({'ori_win_right': ori_win_right} if ori_win_right is not None else {}),
             layout_q=layout_q,
             layout_kv=layout_kv,
             topk_value_mode=topk_value_mode,
@@ -77,6 +77,7 @@ def call_npu(input_data):
     print("用例参数: ", params)
 
     # metadata解析
+    K1 = metadata_input['K1']
     K = metadata_input['K']
     cmp_ratio = metadata_input['cmp_ratio']
     N1 = metadata_input['N1']
@@ -98,7 +99,7 @@ def call_npu(input_data):
         used_seqused_q_flag = True
     else:
         seqused_q = None
-    # seqused_kv = tensor_input['seqused_kv'].npu() if tensor_input['seqused_kv'] is not None else None
+
     seqused_ori_kv = tensor_input['seqused_ori_kv'].npu() if tensor_input['seqused_ori_kv'] is not None else None
     seqused_cmp_kv = tensor_input['seqused_cmp_kv'].npu() if tensor_input['seqused_cmp_kv'] is not None else None
     cmp_residual_kv = tensor_input['cmp_residual_kv'].npu() if tensor_input['cmp_residual_kv'] is not None else None
@@ -116,8 +117,8 @@ def call_npu(input_data):
     ori_sparse_indices = tensor_input['ori_sparse_indices']
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
     cmp_block_table = tensor_input['cmp_block_table']
-    ori_topk_length = None
-    cmp_topk_length = None
+    ori_topk_length = metadata_input.get('ori_topk_length')
+    cmp_topk_length = metadata_input.get('cmp_topk_length')
     return_softmax_lse = params.get('return_softmax_lse')
 
     # 将需要上NPU的tensor搬到NPU
@@ -127,6 +128,10 @@ def call_npu(input_data):
         cmp_sparse_indices = cmp_sparse_indices.npu()
     if cmp_block_table is not None:
         cmp_block_table = cmp_block_table.npu()
+    if ori_topk_length is not None:
+        ori_topk_length = ori_topk_length.npu()
+    if cmp_topk_length is not None:
+        cmp_topk_length = cmp_topk_length.npu()
 
     # 生成 metadata
     print("sparse_flash_mla_metadata...")
@@ -147,13 +152,13 @@ def call_npu(input_data):
         max_seqlen_q=max_seqlen_q,
         max_seqlen_ori_kv=max_seqlen_ori_kv,
         max_seqlen_cmp_kv=max_seqlen_cmp_kv,
-        ori_topk=K if ori_sparse_indices is not None else 0,
+        ori_topk=K1 if ori_sparse_indices is not None else 0,
         cmp_topk=K if cmp_sparse_indices is not None else 0,
         cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
         ori_mask_mode=ori_mask_mode,
         cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 3,
-        ori_win_left=ori_win_left,
-        ori_win_right=ori_win_right,
+        **({'ori_win_left': ori_win_left} if ori_win_left is not None else {}),
+        **({'ori_win_right': ori_win_right} if ori_win_right is not None else {}),
         layout_q=layout_q,
         layout_kv=layout_kv,
         has_ori_kv=ori_kv != None,
@@ -183,8 +188,8 @@ def call_npu(input_data):
                                                             cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
                                                             ori_mask_mode=ori_mask_mode,
                                                             cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 0,
-                                                            ori_win_left=ori_win_left,
-                                                            ori_win_right=ori_win_right,
+                                                            **({'ori_win_left': ori_win_left} if ori_win_left is not None else {}),
+                                                            **({'ori_win_right': ori_win_right} if ori_win_right is not None else {}),
                                                             layout_q=layout_q,
                                                             layout_kv=layout_kv,
                                                             topk_value_mode=1,
@@ -214,6 +219,7 @@ def call_npu_graph(input_data, device_id=0):
     npu_mode = torch.compile(npu_mode, fullgraph=True, backend=npu_backend, dynamic=False)
 
     # metadata解析
+    K1 = metadata_input['K1']
     K = metadata_input['K']
     cmp_ratio = metadata_input['cmp_ratio']
     N1 = metadata_input['N1']
@@ -252,8 +258,8 @@ def call_npu_graph(input_data, device_id=0):
     ori_sparse_indices = tensor_input['ori_sparse_indices']
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
     cmp_block_table = tensor_input['cmp_block_table']
-    ori_topk_length = None
-    cmp_topk_length = None
+    ori_topk_length = metadata_input.get('ori_topk_length')
+    cmp_topk_length = metadata_input.get('cmp_topk_length')
     return_softmax_lse = params.get('return_softmax_lse')
 
     # 将需要上NPU的tensor搬到NPU
@@ -263,6 +269,10 @@ def call_npu_graph(input_data, device_id=0):
         cmp_sparse_indices = cmp_sparse_indices.npu()
     if cmp_block_table is not None:
         cmp_block_table = cmp_block_table.npu()
+    if ori_topk_length is not None:
+        ori_topk_length = ori_topk_length.npu()
+    if cmp_topk_length is not None:
+        cmp_topk_length = cmp_topk_length.npu()
 
     # 生成 metadata
     print("sparse_flash_mla_metadata...")
@@ -283,13 +293,13 @@ def call_npu_graph(input_data, device_id=0):
         max_seqlen_q=max_seqlen_q,
         max_seqlen_ori_kv=max_seqlen_ori_kv,
         max_seqlen_cmp_kv=max_seqlen_cmp_kv,
-        ori_topk=K if ori_sparse_indices is not None else 0,
+        ori_topk=K1 if ori_sparse_indices is not None else 0,
         cmp_topk=K if cmp_sparse_indices is not None else 0,
         cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
         ori_mask_mode=ori_mask_mode,
         cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 3,
-        ori_win_left=ori_win_left,
-        ori_win_right=ori_win_right,
+        **({'ori_win_left': ori_win_left} if ori_win_left is not None else {}),
+        **({'ori_win_right': ori_win_right} if ori_win_right is not None else {}),
         layout_q=layout_q,
         layout_kv=layout_kv,
         has_ori_kv=ori_kv != None,

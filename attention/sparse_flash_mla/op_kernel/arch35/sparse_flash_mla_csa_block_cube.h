@@ -90,8 +90,6 @@ public:
         __gm__ uint8_t *cuSeqlensCmpKv,
         __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, const ConstInfo& constInfo);
 
-    __aicore__ inline void MergeKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        const RunInfo &runInfo, const ConstInfo &constInfo, int32_t startPos);
     // SWA/HCA场景, inputRightBuf是INNER_CORE_SYNC类型
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
         Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
@@ -117,12 +115,6 @@ private:
         __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, const ConstInfo& constInfo);
     __aicore__ inline void CalcS1Coord(const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void CalcS2Coord(const RunInfo &runInfo, const ConstInfo &constInfo);
-    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        const RunInfo &runInfo, const ConstInfo &constInfo, int32_t startPos);
-    __aicore__ inline void GetRealCmpS2Idx(int64_t &token0Idx, int64_t &token1Idx, int64_t s2IdxInBase,
-        const RunInfo &runInfo, const ConstInfo &constInfo);
-    __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<Q_T> inputRightTensor, int64_t startRow, int64_t token0Idx,
-        int64_t token1Idx, const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void IterateBmm1HCA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
         const RunInfo &runInfo, const ConstInfo &constInfo);
@@ -201,7 +193,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t
         if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
             this->oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
         }
-        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
+            TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
             this->cmpKvGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)cmpKv);
             if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                 this->cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
@@ -211,15 +204,15 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t
             this->cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
         }
         if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE || \
-                      IS_SPLIT_G) {
+            TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE || \
+            TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE || \
+            IS_SPLIT_G) {
             mte1ToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
             mte1ToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
             mte1ToMte2Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
             mte2ToMte1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
             mte2ToMte1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
             mte2ToMte1Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-        }
-        if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
             SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[0]);
             SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[1]);
             SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[2]);
@@ -274,7 +267,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t 
         ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
         parser.Init(cuSeqlensOriKv, constInfo.actualSeqLenSize + 1, seqUsedOriKV, seqUsedOriKvSize);
         this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize, parser);
-        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
+            TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
             uint32_t seqUseCmpKvSize = (seqUsedCmpKV == nullptr) ? 0 : constInfo.bSize;
             ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
             parser.Init(cuSeqlensCmpKv, constInfo.actualSeqLenSize + 1, seqUsedCmpKV, seqUseCmpKvSize);
@@ -319,111 +313,6 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(const RunInfo &r
         blockTableGm = oriBlockTableGm;
         curKvGm = oriKvGm;
     }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::MergeKv(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    const RunInfo &runInfo, const ConstInfo &constInfo, int32_t startPos)
-{
-    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
-        if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) { // ori kv阶段无核间操作
-            return;
-        }
-        if (runInfo.s2RealSize > startPos) {
-            CalcS2Coord(runInfo, constInfo);
-            ProcessSparseKv(outputL1, runInfo, constInfo, startPos);
-        }
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::ProcessSparseKv(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    const RunInfo &runInfo, const ConstInfo &constInfo, int32_t startPos)
-{
-    int64_t calNum = (runInfo.s2RealSize - startPos > 16) ? 16 : runInfo.s2RealSize - startPos; // 单次最多处理16行s2
-    int64_t s2Loops = CeilDiv(calNum, 2); // 每次循环处理2个topk
-
-    bool meetEnd = false;
-    int64_t s2 = startPos;
-    int64_t s2End = s2Loops * 2 + startPos;
-    int64_t token0Idx; // 拷贝进入的两个token的index
-    int64_t token1Idx;
-    // 处理一个s2的base块
-    int64_t dealRow = startPos;
-    while ((s2 < s2End) && !meetEnd) { // 拷贝到s2End或者遇到-1
-        // 1、copy kv in, gm ->ub
-        LocalTensor<Q_T> kvInL1 = outputL1.GetTensor<Q_T>();
-        GetRealCmpS2Idx(token0Idx, token1Idx, s2, runInfo, constInfo);
-        s2 += 2; // 每次搬运2行
-        if (token0Idx== -1 && token1Idx == -1) {
-            meetEnd = true;
-            break;
-        }
-        dealRow += CopyInKvSparse(kvInL1, dealRow, token0Idx, token1Idx, runInfo, constInfo);
-        if (token1Idx == -1) {
-            meetEnd = true;
-            break;
-        }
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t &token0Idx, int64_t &token1Idx,
-    int64_t s2IdxInBase, const RunInfo &runInfo, const ConstInfo &constInfo)
-{
-    int64_t topkBS1Idx = 0;
-    if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
-        uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runInfo.boIdx);
-        topkBS1Idx += (actualSeqQPrefixSum + runInfo.s1oIdx) * constInfo.cmpSparseBlockCount; // T, N2(1), K
-    } else {
-        topkBS1Idx += runInfo.boIdx * constInfo.s1Size * constInfo.cmpSparseBlockCount +
-            runInfo.s1oIdx * constInfo.cmpSparseBlockCount; // B, S1, N2(1), K
-    }
-    int64_t cmpS2LoopCnt = runInfo.s2LoopCount - runInfo.oriKvLoopEndIdx;
-    int64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
-    if (unlikely(topkKIdx >= constInfo.cmpSparseBlockCount)) {
-        token0Idx = -1;
-    } else {
-        token0Idx = cmpSparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
-    }
-    topkKIdx += 1;
-    if (unlikely(topkKIdx >= constInfo.cmpSparseBlockCount)) {
-        token1Idx = -1;
-    } else {
-        token1Idx = cmpSparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline uint32_t CSABlockCube<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<Q_T> inputRightTensor,
-    int64_t startRow, int64_t token0Idx, int64_t token1Idx, const RunInfo &runInfo, const ConstInfo &constInfo)
-{
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-        Position startPos;
-        startPos.bIdx = runInfo.boIdx;
-        startPos.n2Idx = runInfo.n2oIdx;
-        startPos.s2Offset = token0Idx;
-        startPos.dIdx = 0;
-        PAShape shape;
-        shape.blockSize = kvCacheBlockSize;
-        shape.headNum = constInfo.n2Size;
-        shape.headDim = constInfo.dSize;
-        shape.actHeadDim = constInfo.dSize;
-        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
-        shape.copyRowNum = 1;
-        shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
-        LocalTensor<Q_T> l1Tensor = inputRightTensor[startRow * 16];
-        shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
-        GmCopyInToL1PA<KV_T>(l1Tensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
-        if (token1Idx >= 0) {
-            startPos.s2Offset = token1Idx;
-            l1Tensor = inputRightTensor[(startRow + 1) * 16];
-            GmCopyInToL1PA<KV_T>(l1Tensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
-        }
-    }
-    return (token0Idx >= 0) + (token1Idx >= 0);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -654,7 +543,16 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     }
 
     // 加载当前轮的右矩阵到L1
-    if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) { // orikv阶段不需要取topk, 核内同步
+    // ORI_SPARSE、ORI_CMP_SPARSE及CSA的cmpKv为v0稀疏搬运，CSA的oriKv为cube搬运
+    bool isSparse = false;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        isSparse = true;
+    } else if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+        isSparse = runInfo.isCmp ? true : false;
+    }
+
+    if (!isSparse) {
         WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
         LocalTensor<KV_T> inputRightTensor = inputRightBuf.GetTensor<KV_T>();
         if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
@@ -762,7 +660,9 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
         mm2ResL0C.GetTensor<T>(),
         param);
 
-    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
     }
 

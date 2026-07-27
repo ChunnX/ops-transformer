@@ -212,52 +212,54 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
     for params in ENABLED_PARAMS:
         # 确保所有参数都存在，缺失的用默认值填充
         param_values = {
-            "testcase_name": params.get("testcase_name", [None] if not is_save_pt else None),
-            "layout_q": params.get("layout_q", [None] if not is_save_pt else None),
-            "layout_kv": params.get("layout_kv", [None] if not is_save_pt else None),
-            "q_type": params.get("q_type", [None] if not is_save_pt else None),
-            "ori_kv_type": params.get("ori_kv_type", [None] if not is_save_pt else None),
-            "cmp_kv_type": params.get("cmp_kv_type", [None] if not is_save_pt else None),
-            "B": params.get("B", [None] if not is_save_pt else None),
-            "S1": params.get("S1", [None] if not is_save_pt else None),
-            "S2": params.get("S2", [None] if not is_save_pt else None),
-            "T1": params.get("T1", [None] if not is_save_pt else None),
-            "T2": params.get("T2", [None] if not is_save_pt else None),
-            "T3": params.get("T3", [None] if not is_save_pt else None),
-            "N1": params.get("N1", [None] if not is_save_pt else None),
-            "N2": params.get("N2", [None] if not is_save_pt else None),
-            "D": params.get("D", [None] if not is_save_pt else None),
-            "K1": params.get("K1", [None] if not is_save_pt else None),
-            "K": params.get("K", [None] if not is_save_pt else None),
-            "block_num1": params.get("block_num1", [None] if not is_save_pt else None),
-            "block_num2": params.get("block_num2", [None] if not is_save_pt else None),
-            "block_size1": params.get("block_size1", [None] if not is_save_pt else None),
-            "block_size2": params.get("block_size2", [None] if not is_save_pt else None),
-            "seqused_q": params.get("seqused_q", [None] if not is_save_pt else None),
-            "cu_seqlens_q": params.get("cu_seqlens_q", [None] if not is_save_pt else None),
-            "cu_seqlens_ori_kv": params.get("cu_seqlens_ori_kv", [None] if not is_save_pt else None),
-            "cu_seqlens_cmp_kv": params.get("cu_seqlens_cmp_kv", [None] if not is_save_pt else None),
-            # "seqused_kv": params.get("seqused_kv", [None] if not is_save_pt else None),
-            "seqused_ori_kv": params.get("seqused_ori_kv", [None] if not is_save_pt else None),
-            "seqused_cmp_kv": params.get("seqused_cmp_kv", [None] if not is_save_pt else None),
-            "cmp_residual_kv": params.get("cmp_residual_kv", [None] if not is_save_pt else None),
-            "softmax_scale": params.get("softmax_scale", [None] if not is_save_pt else None),
-            "cmp_ratio": params.get("cmp_ratio", [None] if not is_save_pt else None),
-            "ori_mask_mode": params.get("ori_mask_mode", [None] if not is_save_pt else None),
-            "cmp_mask_mode": params.get("cmp_mask_mode", [None] if not is_save_pt else None),
-            "ori_win_left": params.get("ori_win_left", [None] if not is_save_pt else None),
-            "ori_win_right": params.get("ori_win_right", [None] if not is_save_pt else None),
-            "ori_kv_topk_mode": params.get("ori_kv_topk_mode", ["full"] if not is_save_pt else "full"),
-            "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", ["full"] if not is_save_pt else "full"),
-            "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", ["full"] if not is_save_pt else "full"),
-            "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"] if not is_save_pt else "full"),
-            "actlen_mode": params.get("actlen_mode", ["full"] if not is_save_pt else "full"),
-            "template_mode": params.get("template_mode", [None] if not is_save_pt else None),
-            "q_datarange": params.get("q_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
-            "ori_kv_datarange": params.get("ori_kv_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
-            "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
-            "qk_equal_len": params.get("qk_equal_len", ["False"] if not is_save_pt else False),
-            "return_softmax_lse": params.get("return_softmax_lse", ["full"] if not is_save_pt else "full")
+            "testcase_name": params.get("testcase_name", [None]),
+            "layout_q": params.get("layout_q", [None]),
+            "layout_kv": params.get("layout_kv", [None]),
+            "q_type": params.get("q_type", [None]),
+            "ori_kv_type": params.get("ori_kv_type", [None]),
+            "cmp_kv_type": params.get("cmp_kv_type", [None]),
+            "B": params.get("B", [None]),
+            "S1": params.get("S1", [None]),
+            "S2": params.get("S2", [None]),
+            "T1": params.get("T1", [None]),
+            "T2": params.get("T2", [None]),
+            "T3": params.get("T3", [None]),
+            "N1": params.get("N1", [None]),
+            "N2": params.get("N2", [None]),
+            "D": params.get("D", [None]),
+            "K1": params.get("K1", [None]),
+            "K": params.get("K", [None]),
+            "block_num1": params.get("block_num1", [None]),
+            "block_num2": params.get("block_num2", [None]),
+            "block_size1": params.get("block_size1", [None]),
+            "block_size2": params.get("block_size2", [None]),
+            "seqused_q": params.get("seqused_q", [None]),
+            "cu_seqlens_q": params.get("cu_seqlens_q", [None]),
+            "cu_seqlens_ori_kv": params.get("cu_seqlens_ori_kv", [None]),
+            "cu_seqlens_cmp_kv": params.get("cu_seqlens_cmp_kv", [None]),
+            # "seqused_kv": params.get("seqused_kv", [None]),
+            "seqused_ori_kv": params.get("seqused_ori_kv", [None]),
+            "seqused_cmp_kv": params.get("seqused_cmp_kv", [None]),
+            "cmp_residual_kv": params.get("cmp_residual_kv", [None]),
+            "softmax_scale": params.get("softmax_scale", [None]),
+            "cmp_ratio": params.get("cmp_ratio", [None]),
+            "ori_mask_mode": params.get("ori_mask_mode", [None]),
+            "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
+            "ori_win_left": params.get("ori_win_left", [None]),
+            "ori_win_right": params.get("ori_win_right", [None]),
+            "ori_kv_topk_mode": params.get("ori_kv_topk_mode", ["no"]),
+            "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", ["no"]),
+            "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", ["full"]),
+            "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
+            "actlen_mode": params.get("actlen_mode", ["full"]),
+            "template_mode": params.get("template_mode", [None]),
+            "q_datarange": params.get("q_datarange", ["[-2, 2]"]),
+            "ori_kv_datarange": params.get("ori_kv_datarange", ["[-2, 2]"]),
+            "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-2, 2]"]),
+            "random_seq": params.get("random_seq", [False]),
+            "return_softmax_lse": params.get("return_softmax_lse", [False]),
+            "ori_topk_length": params.get("ori_topk_length", [None]),
+            "cmp_topk_length": params.get("cmp_topk_length", [None]),
         }
         param_names = list(param_values.keys())
         for key, value in param_values.items():
@@ -321,22 +323,21 @@ def generate_seqused(cu_seqlens: list) -> list:
         seqused.append(cu_seqlens[i] - cu_seqlens[i - 1])
     return seqused
 
-def fill_random_cu_len(T, SMax, B, qk_equal_len=True, random_seq=False):
+def fill_random_cu_len(T, SMax, B, random_seq=False):
     cu_seqlens = [0]
     S = min(SMax, T // B)
-    S_eq = random.randint(0, S) if random_seq else S
     for i in range(B):
-        length = S_eq if qk_equal_len else random.randint(0, S)
-        cu_seqlens.append(cu_seqlens[-1] + length)
+        S_eq = random.randint(0, S) if random_seq else S
+        cu_seqlens.append(cu_seqlens[-1] + S_eq)
     cu_seqlens[-1] = T
     return cu_seqlens
 
-def fill_random_used_len(SMax, B, qk_equal_len=True, random_seq=False):
+def fill_random_used_len(SMax, B, random_seq=False):
     used_lens = []
-    S_eq = random.randint(0, SMax) if random_seq else SMax
+    S = SMax
     for i in range(B):
-        length = S_eq if qk_equal_len else random.randint(0, SMax)
-        used_lens.append(length)
+        S_eq = random.randint(0, S) if random_seq else S
+        used_lens.append(S_eq)
     return used_lens
 
 def generate_case_with_default_param(param_combinations):
@@ -359,14 +360,13 @@ def generate_case_with_default_param(param_combinations):
     # 数据预填充
     if case_param['cu_seqlens_q'] is None:
         if layout_q == "TND":
-            case_param['cu_seqlens_q'] = fill_random_cu_len(T1, S1, B, param_combinations['qk_equal_len'])
+            case_param['cu_seqlens_q'] = fill_random_cu_len(T1, S1, B, param_combinations['random_seq'])
             print("cu_seqlens_q auto set to: ", case_param['cu_seqlens_q'])
         elif layout_q == "BSND":
-            case_param['cu_seqlens_q'] = fill_random_cu_len(B * S1, S1, B, True)
+            case_param['cu_seqlens_q'] = fill_random_cu_len(B * S1, S1, B, param_combinations['random_seq'])
             print("cu_seqlens_q auto set to: ", case_param['cu_seqlens_q'])
-
     if case_param['cu_seqlens_ori_kv'] is None and layout_kv == "TND":
-        case_param['cu_seqlens_ori_kv'] = fill_random_cu_len(T2, S2, B, param_combinations['qk_equal_len'])
+        case_param['cu_seqlens_ori_kv'] = fill_random_cu_len(T2, S2, B, param_combinations['random_seq'])
         print("cu_seqlens_ori_kv auto set to: ", case_param['cu_seqlens_ori_kv'])
 
     if case_param['cu_seqlens_cmp_kv'] is None and layout_kv == "TND" and cmp_ratio is not None:
@@ -377,7 +377,7 @@ def generate_case_with_default_param(param_combinations):
         case_param['T3'] = case_param['cu_seqlens_cmp_kv'][-1]
 
     if case_param['seqused_ori_kv'] is None and layout_kv != "TND":
-        case_param['seqused_ori_kv'] = fill_random_used_len(S2, B, param_combinations['qk_equal_len'])
+        case_param['seqused_ori_kv'] = fill_random_used_len(S2, B, param_combinations['random_seq'])
         print("seqused_ori_kv auto set to: ", case_param['seqused_ori_kv'])
 
     if 'seqused_ori_kv' not in case_param:

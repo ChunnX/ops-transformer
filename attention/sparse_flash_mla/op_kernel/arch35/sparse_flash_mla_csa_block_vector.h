@@ -256,11 +256,15 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t &toke
     int64_t s2IdxInBase, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     int64_t sparseBlockCount = 0;
-    int64_t cmpS2LoopCnt = runInfo.s2LoopCount;
-    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+    int64_t curS2LoopCnt = runInfo.s2LoopCount;
+    // CSA、ORI_SPARSE、ORI_CMP_SPARSE均可通过runInfo.isCmp判断
+    if (runInfo.isCmp) {
         sparseBlockCount = constInfo.cmpSparseBlockCount;
-        cmpS2LoopCnt -= runInfo.oriKvLoopEndIdx;
+        curS2LoopCnt -= runInfo.oriKvLoopEndIdx;
+    } else  {
+        sparseBlockCount = constInfo.oriSparseBlockCount;
     }
+
     int64_t topkBS1Idx = 0;
     if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
         uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runInfo.boIdx);
@@ -269,16 +273,15 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t &toke
         topkBS1Idx += runInfo.boIdx * constInfo.s1Size * sparseBlockCount +
             runInfo.s1oIdx * sparseBlockCount; // B, S1, N2(1), K
     }
-    int64_t curSparseBlockCount = runInfo.isCmp ? runInfo.cmpSparseBlockCount : runInfo.oriSparseBlockCount;
 
-    int64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
-    if (unlikely(topkKIdx >= curSparseBlockCount)) {
+    int64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
+    if (unlikely(topkKIdx >= sparseBlockCount)) {
         token0Idx = -1;
     } else {
         token0Idx = sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx + runInfo.s2StartIdx);
     }
     topkKIdx += 1;
-    if (unlikely((topkKIdx >= curSparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
+    if (unlikely((topkKIdx >= sparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
         token1Idx = -1;
     } else {
         token1Idx = sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx + runInfo.s2StartIdx);
@@ -299,20 +302,18 @@ __aicore__ inline int64_t CSABlockVec<TEMPLATE_ARGS>::GetkeyOffset(
         int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
         realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
             paBlockStride + blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
-    } else {
-        if (LAYOUT_T == SMLA_LAYOUT::BSND) {
-            if (runInfo.isCmp) {
-                realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.cmpS2Size * constInfo.dSize + \
-                    runInfo.n2oIdx * constInfo.cmpS2Size * constInfo.dSize + s2Idx * constInfo.dSize; // BSN(1)D
-            } else {
-                realkeyOffset = runInfo.boIdx * constInfo.n2S2Dv +
-                    runInfo.n2oIdx * constInfo.s2Dv + s2Idx * constInfo.dSize; // BSN(1)D
-            }
-        } else if (LAYOUT_T == SMLA_LAYOUT::TND) {
-            realkeyOffset = (cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) *
-                constInfo.n2Size * constInfo.dSize +
-                runInfo.n2oIdx * constInfo.dSize; // TN(1)D
+    } else if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
+        if (runInfo.isCmp) {
+            realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.cmpS2Size * constInfo.dSize + \
+                runInfo.n2oIdx * constInfo.cmpS2Size * constInfo.dSize + s2Idx * constInfo.dSize; // BSN(1)D
+        } else {
+            realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.s2Size * constInfo.dSize +
+                runInfo.n2oIdx * constInfo.s2Size * constInfo.dSize + s2Idx * constInfo.dSize; // BSN(1)D
         }
+    } else if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+        realkeyOffset = (cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) *
+            constInfo.n2Size * constInfo.dSize +
+            runInfo.n2oIdx * constInfo.dSize; // TN(1)D
     }
     return realkeyOffset;
 }
@@ -477,6 +478,35 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         }
         outputL1.SetCrossCore();
         v0ResGm.SetCrossCore();
+    } else if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (!runInfo.isCmp) {
+            keyGm = oriKVGm;
+            cuSeqlensKvGm = cuSeqlensOriKvGm;
+            sparseIndicesGm = oriSparseIndicesGm;
+            if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+                blockTableGm = oriBlockTableGm;
+                blockSize = constInfo.oriBlockSize;
+                maxBlockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
+            }
+        } else {
+            keyGm = cmpKVGm;
+            cuSeqlensKvGm = cuSeqlensCmpKvGm;
+            sparseIndicesGm = cmpSparseIndicesGm;
+            if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+                blockTableGm = cmpBlockTableGm;
+                blockSize = constInfo.cmpBlockSize;
+                maxBlockNumPerBatch = constInfo.cmpMaxBlockNumPerBatch;
+            }
+        }
+        CalSparseCalSize(runInfo, constInfo);
+        ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo, startPos);
+        if constexpr (IS_SPLIT_G) {
+            CrossCoreSetFlag<0, PIPE_MTE3>(15);
+            CrossCoreWaitFlag<0, PIPE_MTE3>(15);
+        }
+        outputL1.SetCrossCore();
+        v0ResGm.SetCrossCore();
     }
 }
 
@@ -486,7 +516,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
-    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (sparseCalSize == 0) {
             return;
         }
@@ -856,12 +888,18 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
     }
-    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         cmpKVGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
         if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
             cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
         }
         cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
+    }
+
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        oriSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)oriSparseIndices);
     }
 
     if (sinks != nullptr) {
@@ -911,7 +949,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
         InitSinksBuffer(constInfo);
     }
 
-    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         tPipe->InitBuffer(stage0OutBuf[0], dVTemplateType * 16 * sizeof(KV_T));
         tPipe->InitBuffer(stage0OutBuf[1], dVTemplateType * 16 * sizeof(KV_T));
     }
