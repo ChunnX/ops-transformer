@@ -30,7 +30,7 @@ struct CommContext {
 struct ccuAllToAllMatmulTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-    CcuCommTilingData commTilingData;
+    CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     uint32_t localMatmul{0};
 };

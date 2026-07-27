@@ -110,6 +110,7 @@ private:
   static constexpr uint64_t x1HcclDataType_ = GetX1HcclDataType<X1Type>();
   uint32_t rankId_{0};
   uint32_t rankDim_{0};
+  uint64_t splitAxisSize_{0};
   uint64_t rankForComm_{0};
   uint32_t scaleKPerRank_{0};
 
@@ -131,6 +132,8 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
     GM_ADDR workspaceGM)
 {
   auto &&commTiling = tilingData_->commTilingData;
+  splitAxisSize_ = commTiling.splitAxisTileSize * commTiling.splitAxisTileCnt +
+                   commTiling.splitAxisTailSize * commTiling.splitAxisTailCnt;
   x1_ = x1;
   x2_ = x2;
   y_ = y;
@@ -140,13 +143,13 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
   workspaceGM_ = workspaceGM;
   commX1ScaleGM1_ = workspaceGM;
   uint64_t x1ScaleLen = CeilDivU64(commTiling.nonSplitAxisSize, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE *
-                        static_cast<uint64_t>(commTiling.splitAxisSize) * sizeof(AscendC::fp8_e8m0_t);
+                        static_cast<uint64_t>(splitAxisSize_) * sizeof(AscendC::fp8_e8m0_t);
   x1ScaleLen = CeilDivU64(x1ScaleLen, ALIGN_NUM) * ALIGN_NUM;
   commOutGM_ = workspaceGM + x1ScaleLen;
   hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
   hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
   rankId_ = hccl_.GetRankId();
-  rankDim_ = static_cast<uint32_t>(commTiling.rankDim);
+  rankDim_ = hccl_.GetRankDim();
 
   if ASCEND_IS_AIC {
     return;
@@ -159,8 +162,8 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
   scaleKPerRank_ = static_cast<uint32_t>(CeilDivU64(rankForComm_, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE);
 
   if (commTiling.splitAxisTileCnt > 0 || commTiling.splitAxisTailCnt > 0) {
-    uint64_t dataStrideCount = static_cast<uint64_t>(commTiling.splitAxisSize) * rankForComm_;
-    uint64_t scaleSendCount = static_cast<uint64_t>(commTiling.splitAxisSize) * scaleKPerRank_;
+    uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * rankForComm_;
+    uint64_t scaleSendCount = static_cast<uint64_t>(splitAxisSize_) * scaleKPerRank_;
     scaleHandle_ = hccl_.template AlltoAll<true>(
       x1Scale_, commX1ScaleGM1_,
       scaleSendCount, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
@@ -248,7 +251,7 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
   mmadParams.cGmAddr = y_;
   mmadParams.biasGmAddr = bias_;
 
-  LocalParams localParams{rankId_, rankDim_, commTiling.splitAxisSize, x1_, x1Scale_,
+  LocalParams localParams{rankId_, rankDim_, splitAxisSize_, x1_, x1Scale_,
                           tilingData_->localMatmul, rankDim_, MatmulMode::REMOTE,
                           static_cast<uint32_t>(commTiling.splitAxisTileSize)};
 

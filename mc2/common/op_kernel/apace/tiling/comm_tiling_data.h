@@ -13,7 +13,7 @@
  * \brief Apace 统一的 CommTilingData 结构体定义
  *
  * 该结构体同时被 host 端切分算法和 kernel 端通信实现使用，
- * 提供简化的 6 字段格式，足以支撑集合通信操作。
+ * 提供简化的 5 字段格式，足以支撑集合通信操作。
  */
 
 #pragma once
@@ -34,9 +34,9 @@
  *
  * 使用示例：
  * - AllToAll：切分轴 = M 轴，非切分轴 = K 轴
- *   CommTilingData = {tileSize_M, tileCnt_M, tailSize_M, tailCnt_M, splitAxisSize_M, K}
+ *   CommTilingData = {tileSize_M, tileCnt_M, tailSize_M, tailCnt_M, K}
  * - AllGather：切分轴 = M 轴，非切分轴 = K 轴
- *   CommTilingData = {tileSize_M, tileCnt_M, tailSize_M, tailCnt_M, splitAxisSize_M, K}
+ *   CommTilingData = {tileSize_M, tileCnt_M, tailSize_M, tailCnt_M, K}
  *
  * 内存布局：
  * - 切分轴总元素数 = tileSize * tileCnt + tailSize * tailCnt
@@ -49,15 +49,5 @@ struct CommTilingData {
     uint64_t splitAxisTailSize;     // 切分轴尾块大小（元素个数）
     uint64_t splitAxisTailCnt;      // 切分轴尾块数量
     uint64_t nonSplitAxisSize;      // 非切分轴数据块大小（元素个数，所有内轴乘积）
-};
-
-struct CcuCommTilingData {
-    uint64_t splitAxisTileSize;     // 切分轴头块大小（元素个数）
-    uint64_t splitAxisTileCnt;      // 切分轴头块数量
-    uint64_t splitAxisTailSize;     // 切分轴尾块大小（元素个数）
-    uint64_t splitAxisTailCnt;      // 切分轴尾块数量
-    uint64_t splitAxisSize;         // 切分轴总元素数
-    uint64_t nonSplitAxisSize;      // 非切分轴数据块大小（元素个数，所有内轴乘积）
-    uint32_t rankDim;               // 卡数（host 下发，供 AIC 读取）
 };
 
