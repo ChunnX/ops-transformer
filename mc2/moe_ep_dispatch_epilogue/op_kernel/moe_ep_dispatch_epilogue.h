@@ -455,11 +455,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         }
 
         GM_ADDR srcRankBase = localWinAddr_ + (int64_t)rankId * numMaxTokensPerRank_ * perSlotBytes_;
-        if (aivId_ == 0U) {
-            AscendC::PRINTF("epilogue recv: srcRank=%u srcRankBase=%lu winDataOffset=%lu "
-                            "perSlotBytes=%u slotCnt=%d\n",
-                            rankId, static_cast<uint64_t>(srcRankBase), winDataOffset_, perSlotBytes_, slotCnt);
-        }
         GM_ADDR firstSlotAddrThisAiv = srcRankBase + (int64_t)slotStart * perSlotBytes_;
         GlobalTensor<int32_t> srcMetaGm;
         srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(firstSlotAddrThisAiv + metaOffset_));
