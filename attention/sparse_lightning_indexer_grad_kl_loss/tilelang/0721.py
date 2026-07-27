@@ -3463,6 +3463,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         if S2_pad > S2:
             key = torch.nn.functional.pad(key, (0, 0, 0, 0, 0, S2_pad - S2, 0, 0))
             key_index = torch.nn.functional.pad(key_index, (0, 0, 0, 0, 0, S2_pad - S2, 0, 0))
+            if key_rope is not None:
+                key_rope = torch.nn.functional.pad(
+                    key_rope, (0, 0, 0, 0, 0, S2_pad - S2, 0, 0)
+                )
 
         if weights.dtype == torch.float32:
             weights = weights.to(input_dtype)
