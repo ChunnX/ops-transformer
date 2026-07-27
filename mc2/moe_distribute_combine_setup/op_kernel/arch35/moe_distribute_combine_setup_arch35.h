@@ -61,7 +61,8 @@ public:
 
 private:
     __aicore__ inline void SplitCoreCal();
-    __aicore__ inline void CurRankComm(const LocalTensor<int32_t> &assistInfoForCombineLocal, uint32_t curRankExpertNum);
+    __aicore__ inline void CurRankComm(const LocalTensor<int32_t> &assistInfoForCombineLocal,
+        uint32_t curRankExpertNum);
     __aicore__ inline void Communication();
     __aicore__ inline void BuffInit();
     __aicore__ inline void AssistInfoLocalCopy();
@@ -91,13 +92,12 @@ private:
     bool isShardExpert_{false};
 
     TQue<QuePosition::VECIN, 1> assistInfoQueue_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> expertTokenTmpQueue_; // URMA本卡回环通信拷贝数据Local Memory暂存
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> expertTokenTmpQueue_;
 
     //=============================== Urma ===============================//
     uint32_t epRankId_{0};
     constexpr static uint64_t HCOMM_INIT_SIZE = 512UL;
 
-    TBuf<> hcommBuf_;
     LocalTensor<uint8_t> hcommTensor_;
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
@@ -110,7 +110,8 @@ private:
 
     __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId, const uint8_t expertLocalId = 0U)
     {
-        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_ + expertPerSizeOnWin_ * static_cast<uint64_t>(expertLocalId));
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_ +
+            expertPerSizeOnWin_ * static_cast<uint64_t>(expertLocalId));
     }
 
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
@@ -132,15 +133,12 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
-    hcommTensor_ = hcommBuf_.Get<uint8_t>();
-    hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
-
     // 获取win状态区地址，并保证数据一致
     // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET + STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_)));
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET +
+        STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_)));
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
     dataState_ = selfDataStatusTensor(0); // win状态区的0/1标识
@@ -152,13 +150,17 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     moeSendNum_ = moeDistributeCombineSetupInfo_->epWorldSize * moeDistributeCombineSetupInfo_->moeExpertPerRankNum;
     isShardExpert_ = (epRankId_ < moeDistributeCombineSetupInfo_->sharedExpertRankNum); // 当前rank是否为共享专家
 
-    axisHExpandXTypeSize_ = static_cast<uint64_t>(moeDistributeCombineSetupInfo_->h) * static_cast<uint64_t>(sizeof(ExpandXType));              // 一个token占用内存
+    axisHExpandXTypeSize_ = static_cast<uint64_t>(moeDistributeCombineSetupInfo_->h) *
+        static_cast<uint64_t>(sizeof(ExpandXType));              // 一个token占用内存
     expertPerSizeOnWin_ = static_cast<uint64_t>(axisMaxBS_) * axisHExpandXTypeSize_; // 单个专家可能占用的最大空间
 
-    winDataSizeOffset_ = static_cast<uint64_t>(dataState_) * (static_cast<uint64_t>(moeDistributeCombineSetupInfo_->totalWinSize) >> 1);
+    winDataSizeOffset_ = static_cast<uint64_t>(dataState_) *
+        (static_cast<uint64_t>(moeDistributeCombineSetupInfo_->totalWinSize) >> 1);
     stateOffset_ = (moeSendNum_ > STATE_COUNT_THRESHOLD) ? (STATE_OFFSET >> 1) : STATE_OFFSET;
     epStateOffsetOnWin_ = static_cast<uint64_t>(epRankId_) * stateOffset_;
-    epDataOffsetOnWin_ = static_cast<uint64_t>(epRankId_) * static_cast<uint64_t>(moeDistributeCombineSetupInfo_->moeExpertPerRankNum) * expertPerSizeOnWin_; // 前面rank数据区占用内存地址偏移
+    epDataOffsetOnWin_ = static_cast<uint64_t>(epRankId_) *
+        static_cast<uint64_t>(moeDistributeCombineSetupInfo_->moeExpertPerRankNum) *
+        expertPerSizeOnWin_; // 前面rank数据区占用内存地址偏移
 
     epWindowGM_ = GetUrmaAddrByRankId(epRankId_);
     epStatusSpaceGM_ = GetUrmaStateAddrByRankId(epRankId_);
@@ -190,20 +192,18 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::SplitCore
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit()
 {
+    uint64_t totalUbSize = moeDistributeCombineSetupInfo_->totalUbSize;
     uint32_t assistInfoQueueSize = Ceil(moeSendNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t urmaSqInfoBufSize = Ceil(static_cast<uint32_t>(sizeof(HcclAiRMAWQ)), UB_ALIGN) * UB_ALIGN;
-    uint32_t urmaCqInfoBufSize = Ceil(static_cast<uint32_t>(sizeof(HcclAiRMACQ)), UB_ALIGN) * UB_ALIGN;
-    uint32_t doorBellBufSize = Ceil(static_cast<uint32_t>(sizeof(uint32_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t cqeBufSize = UB_ALIGN * CQ_DEPTH_256;
-    uint32_t templateSqeBufSize = Ceil(WRITE_WITH_NOTIFY_SQE_SIZE, UB_ALIGN) * UB_ALIGN;
-    uint32_t tokenSqeBufSize = Ceil(WRITE_WITH_NOTIFY_SQE_SIZE * moeDistributeCombineSetupInfo_->moeExpertPerRankNum, UB_ALIGN) * UB_ALIGN;
-    remain_ub_space = moeDistributeCombineSetupInfo_->totalUbSize - assistInfoQueueSize - urmaSqInfoBufSize - urmaCqInfoBufSize - 
-                      doorBellBufSize - doorBellBufSize - cqeBufSize - templateSqeBufSize - tokenSqeBufSize;
-
+    uint64_t reservedUbSize = HCOMM_INIT_SIZE + assistInfoQueueSize;
+    if(reservedUbSize > totalUbSize) {
+        printf("UB space is insufficient, reserved=%llu total=%u\n", reservedUbSize, totalUbSize);
+    }
+    remain_ub_space = totalUbSize - reservedUbSize;
     tpipe_->Reset();
-    tpipe_->InitBuffer(assistInfoQueue_, 1, assistInfoQueueSize); // epWorldSize * moeExpertPerRankNum * 4
-
-    tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space));
+    if(!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize))
+        || !tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space))) {
+        printf("communication buffers failed\n");
+    }
 }
 
 template <TemplateMC2TypeClass>
@@ -226,10 +226,21 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::AssistInf
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communication()
 {
-    uint32_t curRankExpertNum = (isShardExpert_) ? 1U : moeDistributeCombineSetupInfo_->moeExpertPerRankNum;    // 本卡专家数
+    // 本卡专家数
+    uint32_t curRankExpertNum = (isShardExpert_) ? 1U : moeDistributeCombineSetupInfo_->moeExpertPerRankNum;
     AssistInfoLocalCopy();
     LocalTensor<int32_t> assistInfoForCombineLocal = assistInfoQueue_.DeQue<int32_t>();
     AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等assistInfoQueue_的GM->Local，后续标量读
+
+    uint32_t assistInfoSize = Ceil(moeSendNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    LocalTensor<uint8_t> assistStorage = assistInfoForCombineLocal.ReinterpretCast<uint8_t>();
+    hcommTensor_ = assistStorage[assistInfoSize];
+    int32_t ret = hcomm_.Init(hcommTensor_, static_cast<uint32_t>(HCOMM_INIT_SIZE));
+    if(ret != HCOMM_SUCCESS) {
+        printf("Init hcomm failed, ret=%d\n", ret);
+        assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
+        return;
+    }
 
     if (unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
         // 本卡通信
@@ -243,7 +254,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         }
         bool hasWrite = false;
         auto channelId = GetCommHandle(dstRankId);
-        GM_ADDR notifyAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_ + sizeof(uint64_t);
+        GM_ADDR notifyAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
         for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
             uint32_t preCount = 0U;
             uint32_t assistInfoIdx = expertIdx * moeDistributeCombineSetupInfo_->epWorldSize + dstRankId;
@@ -255,15 +266,11 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             uint32_t curTokenNum = assistInfoForCombineLocal.GetValue(assistInfoIdx) - preCount;
             GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
             GM_ADDR dstAddr = GetUrmaAddrByRankId(dstRankId, expertIdx) + epDataOffsetOnWin_;
-            uint32_t length = static_cast<uint32_t>(axisHExpandXTypeSize_) * max(curTokenNum, 1U);
-            uint64_t notifyVal = 0U;
-            if (0 == curTokenNum) {
-                srcAddr = expandXGM_;
-                length = 0;
-            }
-            if (curRankExpertNum - 1 == expertIdx) {
-                notifyAddr -= sizeof(uint64_t);
-                notifyVal = 0x3f800000;
+            uint32_t length = static_cast<uint32_t>(axisHExpandXTypeSize_) * curTokenNum;
+            uint64_t notifyVal = 0x3f800000;
+            if (curRankExpertNum - 1 != expertIdx) {
+                hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, length);
+                continue;
             }
             hcomm_.WriteWithNotifyNbi<false>(channelId, dstAddr, srcAddr, length, notifyAddr, notifyVal);
             hasWrite = true;
@@ -278,7 +285,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void
-MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(const LocalTensor<int32_t> &assistInfoForCombineLocal, uint32_t curRankExpertNum)
+MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
+    const LocalTensor<int32_t> &assistInfoForCombineLocal, uint32_t curRankExpertNum)
 {
     uint32_t curTokenNum = 0;
     for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {

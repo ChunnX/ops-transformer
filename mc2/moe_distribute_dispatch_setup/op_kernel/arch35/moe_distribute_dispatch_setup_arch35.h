@@ -238,7 +238,7 @@ private:
     uint32_t sortRepeat_;
     uint64_t totalUbSize_;
 
-    //=============================== Urma ===============================//
+    // =============================== Urma =============================== //
     TBuf<> hcommBuf_;
     LocalTensor<uint8_t> hcommTensor_;
 
@@ -262,13 +262,14 @@ private:
     {
         return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET);
     }
-    //=============================== Urma ===============================//
+    // =============================== Urma =============================== //
 };
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(
-    GM_ADDR context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR YOut, GM_ADDR expandIdxOut,
-    GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, TPipe* pipe, const MoeDistributeDispatchSetupTilingData* tilingData)
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_ADDR context,
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR YOut,
+    GM_ADDR expandIdxOut,GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, TPipe* pipe, 
+    const MoeDistributeDispatchSetupTilingData* tilingData)
 {
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     tpipe_ = pipe;
@@ -731,8 +732,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::QuantSta
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void
-MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::QuantDynamicPerToken(LocalTensor<YOutType> &outLocal,
-                                                                      LocalTensor<XType> &inLocal, uint32_t expertIndex)
+MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::QuantDynamicPerToken(
+    LocalTensor<YOutType> &outLocal, LocalTensor<XType> &inLocal, uint32_t expertIndex)
 {
     float dynamicScale = 0.0;
     float maxVal = INT8_MAX_VALUE; // 获取输出类型的最大值（AscendC未提供相关接口）
@@ -826,7 +827,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::InitComm
     uint32_t sqInfoSize = Ceil(sizeof(HcclAiRMAWQ), UB_ALIGN) * UB_ALIGN;
     uint32_t cqInfoSize = Ceil(sizeof(HcclAiRMACQ), UB_ALIGN) * UB_ALIGN;
     remain_ub_space = (totalUbSize_ - statusBufCntAlign * UB_ALIGN - sqInfoSize - 
-                    cqInfoSize - 6 * UB_ALIGN - UB_ALIGN * CQ_DEPTH_256 - WRITE_SQE_SIZE - WRITE_SQE_SIZE * moeExpertNumPerRank_ * 2) / 2;
+                    cqInfoSize - 6 * UB_ALIGN - UB_ALIGN * CQ_DEPTH_256 -
+                    WRITE_SQE_SIZE - WRITE_SQE_SIZE * moeExpertNumPerRank_ * 2) / 2;
     tpipe_->InitBuffer(tmpTokenQueue_, 2, remain_ub_space); // double buffer
 
     // Urma
@@ -950,7 +952,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
         // 发状态
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         GlobalTensor<int32_t> dstAddrStatus;
-        dstAddrStatus.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + (epRankId_ + expertIdx * epWorldSize_) * stateOffset_));
+        dstAddrStatus.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) +
+            (epRankId_ + expertIdx * epWorldSize_) * stateOffset_));
         DataCopy<int32_t>(dstAddrStatus, statusTensor_[(expertIdx + preExpertNum) * 8], 8);
         calCnt += statusTensor_((preExpertNum + expertIdx) * 8 + 1);
         tmpTokenQueue_.FreeTensor<uint8_t>(expertTokenTmpU8);
@@ -985,7 +988,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
 
     GlobalTensor<int32_t> windowExpGMTensor;
     windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t*)(statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1))); // 不加偏移
-    //uint32_t len = sharedExpertRankNum_ + (endRankId - sharedExpertRankNum_) * moeExpertNumPerRank_; // 要传0到end位置的状态数
     uint32_t len = sharedExpertRankNum_;
     if (endRankId > sharedExpertRankNum_) {
         len += (endRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
@@ -1039,7 +1041,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
                 }
 
                 // 发送状态
-                GM_ADDR srcStatusAddr = (GM_ADDR)(statusDataSpaceGM_ + 2 * WIN_STATE_OFFSET + (preExpertNum + dstExpertId) * 8 * sizeof(uint32_t));
+                GM_ADDR srcStatusAddr = (GM_ADDR)(statusDataSpaceGM_ + 2 * WIN_STATE_OFFSET +
+                    (preExpertNum + dstExpertId) * 8 * sizeof(uint32_t));
                 uint32_t offset = stateOffset_ * epRankId_;
                 if (moeExpertNumPerRank_ > 1){
                     offset = (epRankId_ + dstExpertId * epWorldSize_) * stateOffset_;
@@ -1052,7 +1055,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
 
             if (hasWrite) {
                 hcomm_.Commit(channelId);
-                //hcomm_.Drain(channelId);  // 等待接收cq
+                // hcomm_.Drain(channelId);  // 等待接收cq
             }
         }
     }

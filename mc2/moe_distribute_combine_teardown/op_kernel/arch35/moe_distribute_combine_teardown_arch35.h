@@ -52,10 +52,9 @@ class MoeDistributeCombineTeardown {
 
 public:
     __aicore__ inline MoeDistributeCombineTeardown(){};
-    __aicore__ inline void Init(GM_ADDR context, GM_ADDR expandX, GM_ADDR quantExpandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-                                GM_ADDR expertScales, GM_ADDR commCmdInfo, GM_ADDR xActiveMask, GM_ADDR sharedExpertX,
-                                GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
-                                const MoeDistributeCombineTeardownTilingData *tilingData);
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR expandX, GM_ADDR quantExpandX, GM_ADDR expertIds,
+        GM_ADDR expandIdx, GM_ADDR expertScales, GM_ADDR commCmdInfo, GM_ADDR xActiveMask, GM_ADDR sharedExpertX,
+        GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineTeardownTilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -69,12 +68,14 @@ private:
 
     __aicore__ GM_ADDR GetUrmaAddrByRankId(const int32_t rankId, const uint8_t expertLocalId = 0U)
     {
-        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + STATE_SIZE + winDataSizeOffset_ + expertPerSizeOnWin_ * static_cast<uint64_t>(expertLocalId);
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + STATE_SIZE + winDataSizeOffset_ +
+            expertPerSizeOnWin_ * static_cast<uint64_t>(expertLocalId);
     }
 
     __aicore__ GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + COMBINE_STATE_OFFSET + WIN_STATE_OFFSET * static_cast<uint64_t>(dataState_);
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + COMBINE_STATE_OFFSET +
+            WIN_STATE_OFFSET * static_cast<uint64_t>(dataState_);
     }
 
     TPipe *tpipe_{nullptr};
