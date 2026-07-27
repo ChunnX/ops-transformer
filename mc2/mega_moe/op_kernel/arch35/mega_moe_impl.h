@@ -1218,9 +1218,8 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
                                     decltype(gmScaleB), decltype(l0cOutGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, l0cOutGm};
     GroupMatmulExecA8W4<CombineQuantMode, Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared, IsLayered,
-                        WorkSetType, decltype(config), TopkWeightsPrefetch>(workSet, params, gmmAddrInfo, config,
-                                                                            startLoopIdx, tileNum, gmTileSequence,
-                                                                            args);
+                        WorkSetType, decltype(config), TopkWeightsPrefetch>(
+        workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, args);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
