@@ -568,6 +568,7 @@ ge::graphStatus TilingPrepare4StemOamPrepVarlenQ(gert::TilingParseContext *conte
 
 IMPL_OP_OPTILING(StemOamPrepVarlenQ)
     .Tiling(Tiling4StemOamPrepVarlenQ)
+    .TilingInputsDataDependency({1, 2})
     .TilingParse<StemPrepQCompileInfo>(TilingPrepare4StemOamPrepVarlenQ);
 
 } // namespace optiling
