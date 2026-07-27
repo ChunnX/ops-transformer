@@ -273,29 +273,29 @@ static ge::graphStatus GetAttrsValue(T context, GMMAttrs &gmmAttrs)
     const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(GMM_INDEX_ATTR_TUNING_CONFIG);
     gmmAttrs.tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ?
                             (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0] : 0;
-    OP_LOGI(context->GetNodeName(), "Attr tuningConfig = %ld", gmmAttrs.tuningConfig); 
+    OP_LOGI(context->GetNodeName(), "Attr tuningConfig = %ld", gmmAttrs.tuningConfig);
 
     const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_TYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, groupTypePtr);
     gmmAttrs.groupType = *groupTypePtr;
-    OP_LOGI(context->GetNodeName(), "Attr groupType = %ld", gmmAttrs.groupType); 
+    OP_LOGI(context->GetNodeName(), "Attr groupType = %ld", gmmAttrs.groupType);
 
     const bool *transposeWPtr = attrs->GetAttrPointer<bool>(GMM_INDEX_ATTR_TRANSPOSE_W);
     OP_CHECK_NULL_WITH_CONTEXT(context, transposeWPtr);
     gmmAttrs.transposeWeight = *transposeWPtr;
-    OP_LOGI(context->GetNodeName(), "Attr isWeightTransposed = %d", gmmAttrs.transposeWeight); 
+    OP_LOGI(context->GetNodeName(), "Attr isWeightTransposed = %d", gmmAttrs.transposeWeight);
 
     const bool *transposeXPtr = attrs->GetAttrPointer<bool>(GMM_INDEX_ATTR_TRANSPOSE_X);
     OP_CHECK_NULL_WITH_CONTEXT(context, transposeXPtr);
     gmmAttrs.transposeX = *transposeXPtr;
-    OP_LOGI(context->GetNodeName(), "Attr isXTransposed = %d", gmmAttrs.transposeX); 
+    OP_LOGI(context->GetNodeName(), "Attr isXTransposed = %d", gmmAttrs.transposeX);
 
     const int64_t *activeType = attrs->GetInt(GMM_INDEX_ATTR_ACT_TYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, activeType);
     gmmAttrs.activeType = *activeType;
-    OP_LOGI(context->GetNodeName(), "Attr activeType = %ld", gmmAttrs.activeType); 
+    OP_LOGI(context->GetNodeName(), "Attr activeType = %ld", gmmAttrs.activeType);
     return GRAPH_SUCCESS;
- }
+}
 
 static ge::graphStatus CheckAttrs(gert::InferShapeContext* context, GMMAttrs& gmmAttrs) {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
