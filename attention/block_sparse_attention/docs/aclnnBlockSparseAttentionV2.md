@@ -218,7 +218,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：必须包含两个元素[blockShapeX, blockShapeY]
         <ul>
-          <li>blockShapeX: Q方向块大小，值必须大于0（无对齐约束）。</li>
+          <li>blockShapeX: Q方向块大小，值必须大于0。</li>
           <li>blockShapeY: KV方向块大小，值必须大于0；在<term>Ascend 950PR/Ascend 950DT</term>上须为16的倍数，在<term>Atlas A2/A3</term>上须为128的倍数。</li>
         </ul>
       </td>
