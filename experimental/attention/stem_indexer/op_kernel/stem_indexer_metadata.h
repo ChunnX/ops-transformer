@@ -30,6 +30,10 @@ using SLI_METADATA_T = uint32_t;
 constexpr uint32_t FA_METADATA_SIZE = 8U;
 constexpr uint32_t FD_METADATA_SIZE = 8U;
 
+// Section-based metadata layout
+constexpr uint32_t SLI_PER_CORE_STRIDE = 16U;
+constexpr uint32_t SLI_METADATA_HEADER_OFFSET = SLI_PER_CORE_STRIDE * sizeof(uint32_t);
+
 // FA Metadata Index Definitions
 constexpr uint32_t SLI_CORE_ENABLE_INDEX = 0U;
 constexpr uint32_t SLI_BN2_START_INDEX = 1U;
@@ -65,6 +69,16 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
     } else {
         return FA_METADATA_SIZE * coreIdx + metaIdx;
     }
+}
+
+__aicore__ inline uint32_t GetFASectionMetaIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+{
+    return SLI_PER_CORE_STRIDE * AIC_CORE_NUM * sectionIdx + SLI_PER_CORE_STRIDE * coreIdx + metaIdx;
+}
+
+__aicore__ inline uint32_t GetFDSectionMetaIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+{
+    return SLI_PER_CORE_STRIDE * AIV_CORE_NUM * sectionIdx + SLI_PER_CORE_STRIDE * coreIdx + metaIdx;
 }
 #endif
 
