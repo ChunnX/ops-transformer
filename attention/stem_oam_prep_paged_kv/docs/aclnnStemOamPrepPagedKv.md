@@ -164,7 +164,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
     <tr>
       <td class="tg-0pky">cacheLayout（int64_t）</td>
       <td class="tg-0pky">ATTR</td>
-      <td class="tg-0pky">KV Cache布局，0=Layout A (interleaved), 1=Layout B (contiguous)。</td>
+      <td class="tg-0pky">KV Cache布局，0=Layout A (interleaved), 1=Layout B (contiguous)。当前仅支持Layout B</td>
       <td class="tg-0pky">必填。</td>
       <td class="tg-0pky">-</td>
       <td class="tg-0pky">-</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
       <td>kScaleCache dtype不为FLOAT。</td>
     </tr>
     <tr>
-      <td>rScale shape不是1D [H_kv]。</td>
+      <td>vScale shape不是1D [H_kv]。</td>
     </tr>
     <tr>
       <td>cacheLayout/kvBlockSize/stemBlockSize/stemStride不满足约束。</td>
@@ -335,12 +335,9 @@ aclnnStatus aclnnStemOamPrepPagedKv(
 
 ## 约束说明
 
-- 确定计算：
-  - 模式0：每(batch,head)pai r由单一AI Core处理，FP32累加在单核内完成，默认确定性实现。
-  - 模式1/2：SyncAll保证数据一致性。
 - kCache/vCache dtype必须为FLOAT8_E4M3FN（仅FP8路径）。
 - kScaleCache/vScale必填，不允许nullptr。
-- kScaleCache shape随cacheLayout变化：Layout A `[total_blocks, kvBlockSize, H_kv, 1]`，Layout B `[total_blocks, H_kv, kvBlockSize, 1]`。
+- kScaleCache shape随cacheLayout变化：Layout A `[total_blocks, kvBlockSize, H_kv, 1]`，Layout B `[total_blocks, H_kv, kvBlockSize, 1]`。当前仅支持Layout B。
 - vScale shape：`[H_kv]`。
 - kvBlockSize ∈ {64, 128}。
 - stemBlockSize % 32 == 0，≤256；stemStride % 16 == 0，≤64，且stemStride ≤ stemBlockSize。
