@@ -42,6 +42,10 @@ namespace Mc2Tiling {
 #define TPL_CCU_COMM_MODE 0
 #define TPL_AICPU_COMM_MODE 1
 
+// own-redirect / skip-own 仅在单对端(rankDim==2)启用: 此时 RS 侧对端 ReadReduce 的累加顺序唯一,
+// 结果与固定序归约逐位一致, 满足确定性计算要求。host tiling 与 device kernel 共用此定义。
+#define OWN_REDIRECT_RANK_DIM 2
+
 // 模板参数
 ASCENDC_TPL_ARGS_DECL(Mc2MatmulReduceScatterV2, // 算子OpType
                       ASCENDC_TPL_BOOL_DECL(TPL_ISPERBLOCK, 0, 1), ASCENDC_TPL_BOOL_DECL(TPL_TRANSA, 0, 1),

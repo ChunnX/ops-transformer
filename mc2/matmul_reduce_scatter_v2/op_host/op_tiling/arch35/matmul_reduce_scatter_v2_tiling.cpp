@@ -115,8 +115,14 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for matmul_reduce_scatter_v2_tiling.");
     }
-    // own-redirect(debugMode==0)时 matmul 已把 own 片直写输出,RS 可跳过 own 本地拷贝;否则全量 reduce
-    mc2CcTilingConfig.SetSkipLocalRankCopy(mc2tiling::Mc2TilingUtils::GetDebugMode() == 0 ? 1 : 0);
+    // own-redirect 与 skip-own 是同一决策的两个投影, 必须同时成立:
+    //   生产者 own-redirect: matmul 把本 rank 分片直写输出 cGM(matmul_reduce_scatter_fp16_bf16.h)
+    //   消费者 skip-own:     RS 跳过本卡拷贝(hcomm CcuContextReduceScatterMeshMem2Mem1D::DoReduceScatter)
+    // 任一侧多/少一个条件, 本端贡献都会丢失或被重复累加。改动此谓词时必须同步改 kernel 侧同名谓词。
+    const bool ownRedirect = (commMode_ == TPL_CCU_COMM_MODE) &&
+                             (args_.rankDim == OWN_REDIRECT_RANK_DIM) &&
+                             (mc2tiling::Mc2TilingUtils::GetDebugMode() == 0);
+    mc2CcTilingConfig.SetSkipLocalRankCopy(ownRedirect ? 1 : 0);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
 

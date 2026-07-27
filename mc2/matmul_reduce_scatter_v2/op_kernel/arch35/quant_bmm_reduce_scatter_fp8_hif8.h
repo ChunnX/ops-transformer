@@ -244,8 +244,12 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
         mmv3;
     cfg.rankID = rankId_;
     auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
+    // own-redirect 与 host tiling 的 SetSkipLocalRankCopy 是同一决策的两个投影, 谓词必须逐条对齐:
+    // 少一个条件本端贡献被重复累加, 多一个条件本端贡献丢失。见 matmul_reduce_scatter_v2_tiling.cpp。
+    const bool ownRedirect = (TPL_COMM_MODE == TPL_CCU_COMM_MODE) && !IsPerBlock &&
+                             (cfg.rankDim == OWN_REDIRECT_RANK_DIM) && (debugMode_ == 0);
     mmv3.Init(aGM_, bGM_, biasGM_, x2ScaleGM_, x1ScaleGM_, tempGM, workspaceGM_, &qBMmtiling, GetTPipePtr(), cfg,
-              isTail, false, preCoreNum_, (debugMode_ == 0) ? cGM_ : nullptr);
+              isTail, false, preCoreNum_, ownRedirect ? cGM_ : nullptr);
     for (uint32_t i = 0; i < tileCnt; i++) {
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (tileCnt - 1)));
