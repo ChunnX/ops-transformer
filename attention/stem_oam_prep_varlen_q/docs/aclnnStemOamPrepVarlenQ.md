@@ -2,20 +2,28 @@
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| :----------------------------------------- | :------:|
-| <term>Ascend 950PR/Ascend 950DT</term> | √ |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | × |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
-
-> 仅支持 arch35 (DAV_3510) 架构芯片。
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：完成 Stem OAM block-sparse attention 中 Q 侧预处理计算。将变长 Q tensor 从 paged 存储格式转化为按 stem block (128 token) 分组的 flattened qFlat 输出，供后续 OAM score 计算。
+- 接口功能：完成Stem OAM block-sparse attention中Q侧预处理计算。将变长Q tensor从paged存储格式转化为按stem block(128 token)分组的flattened qFlat输出，供后续OAM score计算。
 - 计算公式：
 
   阶段1 Scale Fusion:
@@ -33,20 +41,20 @@
   阶段5 Cast输出:
   $$qflat\_out = qflat.to(\text{BF16})$$
 
-- 关键特性：Q 侧 stride 维度为自然顺序（不翻转），与 K 侧的翻转处理不同。
+- 关键特性：Q侧stride维度为自然顺序（不翻转），与K侧的翻转处理不同。
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用"aclnnStemOamPrepVarlenQGetWorkspaceSize"接口获取计算所需 workspace 大小以及包含了算子计算流程的执行器，再调用"aclnnStemOamPrepVarlenQ"接口执行计算。
+每个算子分为两段式接口，必须先调用"aclnnStemOamPrepVarlenQGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnStemOamPrepVarlenQ"接口执行计算。
 
 ```cpp
 aclnnStatus aclnnStemOamPrepVarlenQGetWorkspaceSize(
   const aclTensor   *q,
-  const aclTensor   *qScale,
   const aclIntArray *qSeqLens,
   const aclIntArray *cuSeqLensQ,
-  const int64_t      stemBlockSize,
-  const int64_t      stemStride,
+  const aclTensor   *qScale,
+  int64_t            stemBlockSize,
+  int64_t            stemStride,
   aclTensor         *qFlat,
   uint64_t          *workspaceSize,
   aclOpExecutor     **executor)
@@ -90,28 +98,18 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
       <td>q（aclTensor*）</td>
       <td>输入</td>
       <td>表示变长Q tensor，所有batch的token拼接存储。对应公式中q。</td>
-      <td><ul><li>不支持空Tensor。</li><li>最后一维必须等于stemBlockSize（默认128）。</li><li>数据类型为FLOAT8_E4M3FN。</li></ul></td>
+      <td><ul><li>支持空Tensor，空Tensor时直接返回，workspaceSize为0。</li><li>最后一维必须等于128。</li><li>数据类型仅支持FLOAT8_E4M3FN。</li></ul></td>
       <td>FLOAT8_E4M3FN</td>
       <td>ND</td>
-      <td>3 ([total_tokens, H_q, D])</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>qScale（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>表示Q的per-token scale factor，对应公式中qscale。FP8输入时必填。</td>
-      <td><ul><li>FP8输入时必填，shape为[total_tokens, H_q]，数据类型必须为FLOAT。</li><li>不传入时Kernel内部执行无权重Group Sum。</li></ul></td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>2 ([total_tokens, H_q])</td>
-      <td>×</td>
+      <td>3 ([total_tokens, H_q, D])，D=128</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>qSeqLens（aclIntArray*）</td>
       <td>输入</td>
       <td>表示每个batch的Q序列长度。对应公式中q_seq_lens。</td>
-      <td><ul><li>长度等于batch。</li><li>每个值≥0。</li><li>不支持空Array。</li><li>batch最大值为1024。</li></ul></td>
-      <td>INT32</td>
+      <td><ul><li>长度等于batch，取值范围为(0, 1024]。</li><li>每个值≥0。</li><li>长度为0时按空Tensor处理，直接返回。</li></ul></td>
+      <td>INT64</td>
       <td>-</td>
       <td>1 ([batch])</td>
       <td>-</td>
@@ -120,17 +118,27 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
       <td>cuSeqLensQ（aclIntArray*）</td>
       <td>输入</td>
       <td>表示Q的累积序列长度偏移量，用于varlen索引。对应公式中cu_seqlens_q。</td>
-      <td><ul><li>长度等于batch+1。</li><li>cuSeqLensQ[0]必须为0。</li><li>cuSeqLensQ[batch]必须等于total_tokens。</li><li>单调递增。</li></ul></td>
-      <td>INT32</td>
+      <td><ul><li>长度等于batch+1。</li><li>cuSeqLensQ[0]必须为0。</li><li>cuSeqLensQ[batch]必须等于total_tokens。</li><li>单调递增（允许相等）。</li></ul></td>
+      <td>INT64</td>
       <td>-</td>
       <td>1 ([batch+1])</td>
       <td>-</td>
     </tr>
     <tr>
+      <td>qScale（aclTensor*）</td>
+      <td>输入</td>
+      <td>表示Q的per-token scale factor。对应公式中qscale。</td>
+      <td><ul><li>必填，q为FLOAT8_E4M3FN时不可为nullptr。</li><li>shape为[total_tokens, H_q]。</li><li>数据类型必须为FLOAT。</li></ul></td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>2 ([total_tokens, H_q])</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>stemBlockSize（int64_t）</td>
       <td>输入</td>
-      <td>表示stem block大小,对应公式中B。控制每个stem block的token数量,决定Q Processing的分组粒度。推荐默认值128。</td>
-      <td><ul><li>必须是32的倍数。</li><li>最大值为256。</li><li>推荐默认值为128。</li><li>必须满足stemStride≤stemBlockSize。</li></ul></td>
+      <td>表示stem block大小,对应公式中B。控制每个stem block的token数量,决定Q Processing的分组粒度。</td>
+      <td><ul><li>仅支持128。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -139,8 +147,8 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
     <tr>
       <td>stemStride（int64_t）</td>
       <td>输入</td>
-      <td>表示stem stride大小,对应公式中S。控制stem block内stride group的token数量,决定qFlat的维度粒度。推荐默认值16。</td>
-      <td><ul><li>必须是16的倍数。</li><li>最大值为64。</li><li>推荐默认值为16。</li><li>必须满足stemStride≤stemBlockSize。</li></ul></td>
+      <td>表示stem stride大小,对应公式中S。控制stem block内stride group的token数量,决定qFlat的维度粒度。</td>
+      <td><ul><li>仅支持16。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -150,7 +158,7 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
       <td>qFlat（aclTensor*）</td>
       <td>输出</td>
       <td>表示flattened Q输出，供OAM score计算使用。对应公式中qflat_out。</td>
-      <td><ul><li>不支持空Tensor。</li><li>数据类型固定为BFLOAT16。</li><li>shape为[batch, H_q, max_Qb, kflat_dim]，其中max_Qb=ceil(max(qSeqLens)/stemBlockSize)，kflat_dim=stemStride×D(默认2048)。</li></ul></td>
+      <td><ul><li>数据类型固定为BFLOAT16。</li><li>shape为[batch, H_q, max_Qb, kflat_dim]，其中max_Qb=ceil(max(qSeqLens)/stemBlockSize)，kflat_dim=stemStride×D=16×128=2048。</li></ul></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>4 ([batch, H_q, max_Qb, kflat_dim])</td>
@@ -200,27 +208,30 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>q、qFlat存在空指针。qScale在FP8输入时不允许空指针；在BF16/FP16输入时允许nullptr。</td>
+      <td>q、qSeqLens、cuSeqLensQ、qFlat、workspaceSize、executor存在空指针。</td>
     </tr>
     <tr>
-      <td rowspan="6">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="6">161002</td>
-      <td>q的数据类型不在支持范围之内（仅支持FLOAT8_E4M3FN）。</td>
+      <td rowspan="7">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="7">161002</td>
+      <td>q的数据类型不为FLOAT8_E4M3FN。</td>
+    </tr>
+    <tr>
+      <td>q为FP8时qScale为nullptr。</td>
     </tr>
     <tr>
       <td>qScale的数据类型不为FLOAT。</td>
     </tr>
     <tr>
-      <td>q的最后一维不等于stemBlockSize。</td>
+      <td>qFlat的数据类型不为BFLOAT16。</td>
     </tr>
     <tr>
-      <td>cuSeqLensQ长度不等于batch+1或非单调递增。</td>
+      <td>q的维度不为3或最后一维不等于128；qScale维度不为2；qFlat维度不为4。</td>
     </tr>
     <tr>
-      <td>qFlat的shape维度不符合预期。</td>
+      <td>qSeqLens长度超出(0, 1024]范围；cuSeqLensQ长度不等于batch+1、cuSeqLensQ[0]不为0、非单调递增、或cuSeqLensQ[batch]不等于total_tokens。</td>
     </tr>
     <tr>
-      <td>stemBlockSize或stemStride不满足约束（stemBlockSize%32≠0或stemBlockSize>256；stemStride%16≠0或stemStride>64或stemStride>stemBlockSize）。</td>
+      <td>stemBlockSize不为128或stemStride不为16。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER</td>
@@ -255,64 +266,160 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 ## 约束说明
 
 - 确定性说明：aclnnStemOamPrepVarlenQ默认确定性实现。
-- <term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持arch35架构，不支持arch22。
-- q的最后一维D必须等于stemBlockSize（推荐默认128）。
-- stemBlockSize和stemStride为运行时参数。约束：stemBlockSize % 32 == 0且stemBlockSize ≤ 256；stemStride % 16 == 0且stemStride ≤ 64且stemStride ≤ stemBlockSize。推荐默认值：stemBlockSize=128, stemStride=16。派生值：R = stemBlockSize / stemStride, kflat_dim = stemStride × D。R必须为整数。
-- qFlat输出维度kflat_dim = stemStride × D（默认16×128=2048）。
-- 当前仅支持：head_dim=128; stemBloackSize=128; stemStride=16
+- q的最后一维D必须等于128。
+- stemBlockSize仅支持128，stemStride仅支持16。派生值：R = stemBlockSize / stemStride = 8, kflat_dim = stemStride × D = 2048。
+- qFlat输出维度kflat_dim = stemStride × D = 16 × 128 = 2048。
 - Q侧stride维度为自然顺序（g ∈ [0, S-1]），不翻转（与K侧处理不同）。
 - 当qSeqLens中某batch值为0时，该batch对应的qFlat输出填充为零。
-- 当q数据类型为FLOAT8_E4M3FN时，qScale为必填项；不传入时Kernel内部执行无权重Group Sum (Σ_r Q_blocks[:, r, :, :])，而非加权Group Sum (Σ_r Q_blocks × qScale)。
-- FP8输入时，qScale最后一维需要能覆盖max(qSeqLens)个位置（padding到stemBlockSize对齐）。
+- q仅支持FLOAT8_E4M3FN数据类型，qScale必填且数据类型为FLOAT，qFlat输出固定为BFLOAT16。
+- 支持空Tensor输入：当q为空或qSeqLens长度为0时，直接返回，workspaceSize为0。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-<term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 推理系列产品</term>：
+<term>Ascend 950PR/Ascend 950DT</term>：
 
 ```Cpp
-// 1. 创建输入tensor
-int64_t total_tokens = 256;
-int64_t H_q = 32;
-int64_t D = 128;
-int64_t batch = 2;
-int64_t max_seqlen_pad_stemBlockSize = 128;  // = ceil(max_seqlen/stemBlockSize)*stemBlockSize
+#include <iostream>
+#include <vector>
+#include "acl/acl.h"
+#include "aclnnop/aclnn_stem_oam_prep_varlen_q.h"
 
-aclTensor *q = aclCreateTensor(nullptr, 3, {total_tokens, H_q, D}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, nullptr, 0);
-aclTensor *qScale = aclCreateTensor(nullptr, 3, {batch, H_q, max_seqlen_pad_stemBlockSize}, ACL_FLOAT, ACL_FORMAT_ND, nullptr, 0);
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
+    } while (0)
 
-int32_t qSeqLens_data[] = {128, 128};
-int32_t cuSeqLensQ_data[] = {0, 128, 256};
-aclIntArray *qSeqLens = aclCreateIntArray(qSeqLens_data, 2);
-aclIntArray *cuSeqLensQ = aclCreateIntArray(cuSeqLensQ_data, 3);
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
 
-int64_t stemBlockSize = 128;
-int64_t stemStride = 16;
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
+    int64_t shapeSize = 1;
+    for (auto i : shape) {
+        shapeSize *= i;
+    }
+    return shapeSize;
+}
 
-int64_t max_Qb = 1;
-aclTensor *qFlat = aclCreateTensor(nullptr, 4, {batch, H_q, max_Qb, 2048}, ACL_BFLOAT16, ACL_FORMAT_ND, nullptr, 0);
+int Init(int32_t deviceId, aclrtStream *stream)
+{
+    auto ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtSetDevice(deviceId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtCreateStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
+    return 0;
+}
 
-// 2. 获取workspace大小
-uint64_t workspaceSize = 0;
-aclOpExecutor *executor = nullptr;
-aclnnStatus ret = aclnnStemOamPrepVarlenQGetWorkspaceSize(
-    q, qScale, qSeqLens, cuSeqLensQ,
-    stemBlockSize, stemStride, qFlat,
-    &workspaceSize, &executor);
+template <typename T>
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor, aclFormat format)
+{
+    auto size = GetShapeSize(shape) * sizeof(T);
+    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
 
-// 3. 申请workspace
-void *workspace = nullptr;
-aclrtMalloc(&workspace, workspaceSize, ACL_RT_MEM_MALLOC_NORMAL_ONLY);
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
 
-// 4. 执行计算
-ret = aclnnStemOamPrepVarlenQ(workspace, workspaceSize, executor, stream);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, format, shape.data(),
+                              shape.size(), *deviceAddr);
+    return 0;
+}
 
-// 5. 释放资源
-aclrtFree(workspace);
-aclDestroyTensor(q);
-aclDestroyTensor(qScale);
-aclDestroyIntArray(qSeqLens);
-aclDestroyIntArray(cuSeqLensQ);
-aclDestroyTensor(qFlat);
+int main()
+{
+    // 1. 初始化Device和Stream
+    int32_t deviceId = 0;
+    aclrtStream stream;
+    auto ret = Init(deviceId, &stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+
+    // 2. 创建输入tensor
+    int64_t totalTokens = 256;
+    int64_t numHeadQ = 32;
+    int64_t dimQk = 128;
+    int64_t batch = 2;
+    int64_t stemBlockSize = 128;
+    int64_t stemStride = 16;
+    int64_t kflatDim = stemStride * dimQk;
+
+    std::vector<int64_t> qShape = {totalTokens, numHeadQ, dimQk};
+    std::vector<int64_t> qScaleShape = {totalTokens, numHeadQ};
+    std::vector<int64_t> qFlatShape = {batch, numHeadQ, 1, kflatDim};
+
+    void *qDeviceAddr = nullptr;
+    void *qScaleDeviceAddr = nullptr;
+    void *qFlatDeviceAddr = nullptr;
+    aclTensor *q = nullptr;
+    aclTensor *qScale = nullptr;
+    aclTensor *qFlat = nullptr;
+
+    std::vector<uint8_t> hostQ(GetShapeSize(qShape), 1);
+    std::vector<float> hostQScale(GetShapeSize(qScaleShape), 1.0f);
+    std::vector<uint16_t> hostQFlat(GetShapeSize(qFlatShape), 0);
+
+    ret = CreateAclTensor(hostQ, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &q,
+                          aclFormat::ACL_FORMAT_ND);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(hostQScale, qScaleShape, &qScaleDeviceAddr, aclDataType::ACL_FLOAT, &qScale,
+                          aclFormat::ACL_FORMAT_ND);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(hostQFlat, qFlatShape, &qFlatDeviceAddr, aclDataType::ACL_BF16, &qFlat,
+                          aclFormat::ACL_FORMAT_ND);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+    int64_t qSeqLensData[] = {128, 128};
+    int64_t cuSeqLensQData[] = {0, 128, 256};
+    aclIntArray *qSeqLens = aclCreateIntArray(qSeqLensData, 2);
+    aclIntArray *cuSeqLensQ = aclCreateIntArray(cuSeqLensQData, 3);
+
+    // 3. 获取workspace大小
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor;
+    ret = aclnnStemOamPrepVarlenQGetWorkspaceSize(q, qSeqLens, cuSeqLensQ, qScale, stemBlockSize, stemStride,
+                                                  qFlat, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnStemOamPrepVarlenQGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
+
+    // 4. 申请workspace并执行计算
+    void *workspaceAddr = nullptr;
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+    }
+    ret = aclnnStemOamPrepVarlenQ(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnStemOamPrepVarlenQ failed. ERROR: %d\n", ret); return ret);
+
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+
+    // 5. 释放资源
+    aclDestroyTensor(q);
+    aclDestroyTensor(qScale);
+    aclDestroyTensor(qFlat);
+    aclDestroyIntArray(qSeqLens);
+    aclDestroyIntArray(cuSeqLensQ);
+    aclrtFree(qDeviceAddr);
+    aclrtFree(qScaleDeviceAddr);
+    aclrtFree(qFlatDeviceAddr);
+    if (workspaceSize > 0) {
+        aclrtFree(workspaceAddr);
+    }
+    aclrtDestroyStream(stream);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+    return 0;
+}
 ```
