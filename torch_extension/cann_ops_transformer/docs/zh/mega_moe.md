@@ -1196,7 +1196,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         ```
 
         **Ascend 950PR/Ascend 950DT：**
-        
+
         ```
         expertPerRank = moeExpertNum / epWorldSize;
 
