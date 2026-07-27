@@ -21,9 +21,9 @@ GATHER_CHUNK_SIZE = 16
 V2_SCATTER_BATCH = 16
 V2_TARGET_BATCHES_PER_AIV = 16
 
-# One physical core owns a complete (B, S1 tile) task.  These constants mirror
-# the original service split: V0 publishes separate gathered Key and KeyIndex
-# streams, then C1/V1/C2/V2 consume taskId % 2 workspace slots.
+# 一个物理核负责一个完整的（B，S1 分块）任务。这些常量对应官方服务
+# 的任务划分：V0 分别发布已 gather 的 Key 和 KeyIndex 数据流，随后由
+# C1/V1/C2/V2 消费 task ID % 2 对应的工作区槽位。
 S2_WORKSPACE = 1024
 N_SPLIT = 128
 K_SPLIT = 128
@@ -33,8 +33,8 @@ V0_TO_C1_SY_FLAGS = (2, 3)
 C1_TO_V1_P_FLAGS = (4, 5)
 C1_TO_V1_SY_FLAGS = (6, 7)
 V1_TO_C2_FLAGS = (8, 9)
-# TileLang-Ascend cannot emit the mode-1 AIV-pair wait used by the official
-# kernel on A3.  Mode-2 aggregates the same flag from both AIVs at their AIC.
+# TileLang-Ascend 无法生成官方 A3 kernel 使用的模式 1 AIV 对等待。
+# 模式 2 在 AIC 处汇聚两个 AIV 的同一组 flag，实现等价等待。
 V1_PSY_TO_AIC_FLAG = 10
 V1_PSY_RELAY_FLAG = 12
 
@@ -43,18 +43,20 @@ DQUERY_INDEX = 128
 
 _kernel_cache = {}
 _workspace_cache = {}
+_full_valid_aux_cache = {}
 _debug_dump_done = False
 
 
 def _clear_caches():
-    global _kernel_cache, _workspace_cache
+    global _kernel_cache, _workspace_cache, _full_valid_aux_cache
     _kernel_cache.clear()
     _workspace_cache.clear()
+    _full_valid_aux_cache.clear()
 
 
 pass_configs = {
-    # 全手动同步：关闭 auto-sync，消除标量触发的大量 PIPE_ALL（V0 192 + V1 广播 320）
-    # 关闭后 AscendSyncInsert early-return，核内所有 SetFlag/WaitFlag/PipeBarrier 必须手写
+    # 全手动同步：关闭自动同步，消除标量触发的大量 PIPE_ALL（V0 192 + V1 广播 320）
+    # 关闭后 AscendSyncInsert 提前返回，核内所有 SetFlag/WaitFlag/PipeBarrier 必须手写
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,
     tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
 
@@ -66,7 +68,7 @@ def ceil_div(a: int, b: int) -> int:
 
 
 def _get_aicore_count() -> int:
-    """Read the physical cube-core count from the active NPU."""
+    """读取当前 NPU 的物理 Cube core 数量。"""
     try:
         if torch.npu.is_available() and torch.npu.device_count() > 0:
             props = torch.npu.get_device_properties(torch.npu.current_device())
@@ -123,7 +125,7 @@ class SparseLightningIndexerGradKLLossTilingData:
 
 @dataclass(frozen=True)
 class TaskSchedule:
-    """Runtime partition for complete (B, S1-tile) task ownership."""
+    """完整（B，S1-tile）任务所有权的运行时划分。"""
 
     task_count: int
     launch_core_num: int
@@ -219,37 +221,37 @@ def check_param_valid(
 
 
 # ==============================================================================
-# Standalone AscendC translation workbench.
+# 独立的 AscendC 翻译工作区。
 #
-# The original implementation owns a complete (B, S1) task and runs
-# V0(task t), C1/V1/C2(task t-1), and V2(task t-2).  The implementation below
-# is intentionally kept in this independent file while that task scheduler is
-# translated stage by stage; 0715.py remains the precision baseline and 0720.py
-# remains an isolated explicit-L0 experiment.
+# 原始实现负责一个完整的（B，S1）任务，并按流水线执行 V0（任务 t）、
+# C1/V1/C2（任务 t-1）和 V2（任务 t-2）。在任务调度器逐阶段翻译期间，
+# 下面的实现有意保留在这个独立文件中；0715.py 仍是精度基线，0720.py
+# 仍是独立的显式 L0 实验。
 #
-# Current inherited body is the precision reference for each stage.  Do not
-# change block ownership independently: the pipeline requires the corresponding V1
-# P/SY exchange and C2/V2 task-slot changes in the same scheduler rewrite.
-# Single Kernel: CV-separated architecture (0630: gather moved into kernel)
-# V scope 0: Gather Key/KeyIndex/KeyRope by SparseIndices → workspace
-# C scope 1: Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
-# V scope 1: softmaxI, P_reduced, dWeight, reluGrad computation
-# C scope 2: Matmul4 (reluGrad @ gatherKeyIndex → dQueryIndex)
-# V scope 2: Cast dQueryIndex FP32→FP16 + Scatter dk_matmul_partial → dKeyIndex
-#   Both operations split across AIV0/AIV1 for load balance
+# 当前继承的主体是各阶段的精度参考实现。不要单独改变 block 所有权：
+# 流水线要求在同一次调度器改写中同步调整 V1 的 P/SY 交换以及
+# C2/V2 的任务槽位。
+# 单内核：CV 分离架构（0630：gather 已移入内核）
+# V 阶段 0：根据稀疏索引 gather Key/KeyIndex/KeyRope 到工作区。
+# C 阶段 1：Matmul1（query @ gatherKey^T）+ Matmul2（queryIndex @ gatherKeyIndex^T）。
+# V 阶段 1：计算 softmaxI、P_reduced、dWeight 和 reluGrad。
+# C 阶段 2：Matmul4（reluGrad @ gatherKeyIndex → dQueryIndex）。
+# V 阶段 2：dQueryIndex FP32→FP16 转换，以及 dk_matmul_partial → dKeyIndex 的 scatter。
+#   两个操作分别由 AIV0/AIV1 分担以实现负载均衡
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
-    # These workspaces are cached and passed explicitly by the host wrapper.
-    # Marking them as workspace_idx makes the JIT allocate private torch.empty
-    # tensors and silently ignore the caller-provided buffers.
+    # 这些工作区由主机封装层缓存并显式传入。
+    # 如果标记为 workspace_idx，JIT 会分配私有 torch.empty 张量，
+    # 并静默忽略调用方传入的缓冲区。
     workspace_idx=[],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
     launch_core_num,
-    d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N
+    d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
+    full_valid=False,
 ):
     s1_block = BLOCK_M
     n_block = block_n
@@ -258,7 +260,7 @@ def tilelang_grad_kl_loss_single_kernel(
     p_row_chunk_count = ceil_div(N1, p_rows_per_chunk)
     p_cols_per_chunk = min(n_block, 64)
     p_col_chunk_count = ceil_div(n_block, p_cols_per_chunk)
-    # Keep V1 backward within the precision-proven 32x64 physical tile.
+    # V1 反向计算保持在已经验证精度正确的 32x64 物理分块内。
     bw_col_block = min(n_block, 64)
     assert n_block % bw_col_block == 0
     bw_col_count = n_block // bw_col_block
@@ -280,13 +282,15 @@ def tilelang_grad_kl_loss_single_kernel(
     launch_core_num = max(launch_core_num, 1)
     tasks_per_core = ceil_div(task_count, launch_core_num)
     total_aiv_num = launch_core_num * 2
-    # The official 16 KiB scatter UB is split equally between ping and pong:
-    # 16 rows * 128 fp32 values * 4 bytes = 8 KiB per slot.
+    # 官方 16 KiB scatter UB 在 ping/pong 之间平均划分：
+    # 16 行 × 128 个 FP32 值 × 4 字节 = 每个槽位 8 KiB。
     v2_scatter_batch = V2_SCATTER_BATCH
     v2_total_batches = K // v2_scatter_batch
     v2_base_batches_per_core = v2_total_batches // launch_core_num
     v2_tail_batch_cores = v2_total_batches % launch_core_num
     v2_k_padded = K
+    k_real_size_shape = (1,) if full_valid else (B, S1)
+    valid_k_mask_shape = (1,) if full_valid else (B, S1, K)
     dkey_output_rows = B * S2
     assert dkey_output_rows % 32 == 0, (
         "The padded dKey output must preserve 32-row DMA alignment"
@@ -296,9 +300,9 @@ def tilelang_grad_kl_loss_single_kernel(
     dkey_finalize_batch = 16
     dkey_finalize_total_batches = dkey_output_rows // dkey_finalize_batch
     loss_reduce_chunk = 128
-    # DataCopyPad is block based.  Give every scalar partial its own aligned
-    # 32-byte GM slot and make the finalizer consume only complete 128-value
-    # chunks; short region copies lower incorrectly on the current backend.
+    # DataCopyPad 按 block 工作。为每个标量 partial 分配独立的对齐 32 字节
+    # GM 槽位，并让最终处理阶段只消费完整的 128 值分块；当前后端对短区域
+    # copy 的降级转换不正确。
     loss_partial_stride = 8
     loss_partial_span = task_count * 2 * loss_partial_stride
     loss_partial_size = ceil_div(
@@ -321,11 +325,10 @@ def tilelang_grad_kl_loss_single_kernel(
         task_slot,
         vector_id,
     ):
-        """Gather one task with the same subblock ownership as MergeKv.
+        """按照与 MergeKv 相同的 subblock 所有权 gather 一个任务。
 
-        Both AIVs gather all three streams. Each AIV owns one contiguous half
-        of the current 1024-row K tile, then both publish the same mode-2
-        readiness flags consumed by C1.
+        两个 AIV 都 gather 三条数据流。每个 AIV 负责当前 1024 行 K tile
+        的一个连续半区，随后共同发布由 C1 消费的 mode-2 readiness flag。
         """
         with T.Scope("V"):
             v0_key_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
@@ -406,9 +409,9 @@ def tilelang_grad_kl_loss_single_kernel(
                                    GatherKeyRope_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
                         T.set_flag("mte3", "mte2", cur)
 
-                    # A mode-2 AIC wait joins the same flag from both AIVs.
-                    # Publish both readiness flags after each AIV finishes its
-                    # half, so C1 cannot observe either workspace prematurely.
+                    # 模式 2 的 AIC wait 会汇聚两个 AIV 的同一组 flag。
+                    # 每个 AIV 完成自己的一半后再发布就绪 flag，
+                    # 避免 C1 过早观察到尚未完成的工作区。
                     if k_outer % 2 == 0:
                         T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[0])
                         T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[0])
@@ -434,11 +437,11 @@ def tilelang_grad_kl_loss_single_kernel(
         s1_end_task,
         task_slot,
     ):
-        """Compute P and SY with exact physical Cube ping-pong buffers."""
+        """使用物理形状精确的 Cube ping-pong buffer 计算 P 和 SY。"""
         with T.Scope("C"):
-            # P uses two independently allocated, physically exact slots.
-            # Keeping SY in the following C scope lets the allocator reuse L0
-            # capacity after both P slots are drained.
+            # P 使用两个独立分配且物理形状精确的槽位。
+            # 将 SY 放在后续 C 阶段中，使分配器可以在两个 P 槽位排空后
+            # 重用 L0 容量。
             c1_query_chunk_0_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
             c1_query_chunk_1_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
             c1_query_chunk_2_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
@@ -484,8 +487,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         QueryRope[bz_task, s1_id, 0:N1, 0:d_rope],
                         c1_query_rope_cache_l1[0:N1, 0:d_rope],
                     )
-                # Event 4 is dedicated to the one-time Query/Rope preload.
-                # The existing C1 tile event IDs remain owned by Key traffic.
+                # 事件 4 专用于一次性的 Query/Rope 预加载。
+                # 现有 C1 分块的事件 ID 仍由 Key 数据流独占。
                 T.set_flag("mte2", "mte1", 4)
                 T.wait_flag("mte2", "mte1", 4)
 
@@ -497,8 +500,8 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
                         k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
-                        # Slot 0 owns the first 128-column Key tile.  L1,
-                        # L0A/L0B use d_idx parity; L0C uses K-tile parity.
+                        # 槽位 0 负责第一个 128 列 Key 分块。L1、L0A/L0B
+                        # 使用 d_idx 奇偶性切换，L0C 使用 K 分块奇偶性切换。
                         T.wait_flag("mte1", "mte2", 0)
                         T.copy(
                             GatherKey_ws[bz_task, s1_id,
@@ -548,10 +551,9 @@ def tilelang_grad_kl_loss_single_kernel(
                                 else:
                                     T.wait_flag("fix", "m", 1)
                                     T.mma(c1_q_l0a_ping, c1_key_l0b_ping, c1_p_l0c_pong, init=(d_idx == 0))
-                                # The next d tile accumulates into this same
-                                # L0C slot.  MTE1 may advance on the other
-                                # operand slot, but M must finish this write
-                                # before its FIX_M token is returned.
+                                # 下一个 d 分块会累加到同一个 L0C 槽位。
+                                # MTE1 可以在另一个操作数槽位上前进，但 M
+                                # 必须完成本次写入后，才能归还 FIX_M token。
                                 if d_idx + 1 < d_num_query or d_num_rope > 0:
                                     T.pipe_barrier("m")
                                 T.set_flag("m", "mte1", 0)
@@ -692,8 +694,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[1])
 
         with T.Scope("C"):
-            # This scope begins after P has drained both slots, so these exact
-            # SY shapes can reuse the same physical L0 capacity.
+            # 此阶段在 P 的两个槽位都排空后开始，因此这些精确的 SY
+            # 物理形状可以重用相同的 L0 容量。
             c1_qi_l1 = T.alloc_L1((Nidx1, K_SPLIT), input_dtype)
             c1_ki_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
             c1_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
@@ -707,9 +709,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.copy(QueryIndex[bz_task, s1_id, 0:Nidx1, 0:DQueryIndex], c1_qi_l1)
                 T.set_flag("mte2", "mte1", 5)
                 T.wait_flag("mte2", "mte1", 5)
-                # For the current single 128-column QueryIndex block, the
-                # left operand is invariant over every K tile in C1-SY.
-                # Multi-block shapes retain the original per-d_idx load.
+                # 对当前单个 128 列 QueryIndex block，左 operand 在 C1-SY 的
+                # 所有 K 分块中都不变。多 block 形状保留原有的逐 d_idx 加载。
                 if d_num_query_index == 1:
                     T.wait_flag("m", "mte1", 1)
                     T.copy(c1_qi_l1, c1_qi_l0a)
@@ -782,7 +783,7 @@ def tilelang_grad_kl_loss_single_kernel(
         s1_end_task,
         task_slot,
     ):
-        """Precision-proven single-slot C1 pipeline."""
+        """已经验证精度正确的单槽 C1 流水线。"""
         with T.Scope("C"):
             c1_query_chunk_0_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
             c1_query_chunk_1_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
@@ -959,7 +960,7 @@ def tilelang_grad_kl_loss_single_kernel(
         s1_end_task,
         task_slot,
     ):
-        """Precision-proven single-slot C1 baseline."""
+        """已经验证精度正确的单槽 C1 基线。"""
         with T.Scope("C"):
             c1_query_chunk_0_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
             c1_query_chunk_1_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
@@ -1131,11 +1132,11 @@ def tilelang_grad_kl_loss_single_kernel(
         task_slot,
         vector_id,
     ):
-        """Translate the first half of ProcessVector1.
+        """翻译 ProcessVector1 的前半部分。
 
-        AIV0 owns VectorP and materializes PReduced.  AIV1 owns VectorSy and
-        materializes SoftmaxI.  Both operate over all K chunks of the same
-        task, rather than repeating a full-K reduction on every K launch.
+        AIV0 负责 VectorP 并生成 PReduced，AIV1 负责 VectorSy 并生成
+        SoftmaxI。两者遍历同一任务的全部 K chunk，而不是在每次 K launch
+        中重复完整 K reduction。
         """
         with T.Scope("V"):
             if task_slot == 0:
@@ -1151,16 +1152,17 @@ def tilelang_grad_kl_loss_single_kernel(
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 if vector_id == 0:
-                    # P and SY run on different AIVs.  Keep their allocations
-                    # branch-local so the UB planner can reuse the same space.
+                    # P 和 SY 在不同 AIV 上运行。将两者的分配限定在各自分支内，
+                    # 使 UB planner 可以重用相同的空间。
                     v1_p_bmm1 = T.alloc_ub((N1, n_block), calc_dtype)
                     v1_p_max = T.alloc_ub(N1, calc_dtype)
                     v1_p_sum = T.alloc_ub(N1, calc_dtype)
-                    # Reused after sum clamping as the 64-row partial reduce.
+                    # sum 截断后重用于 64 行 partial reduce。
                     v1_p_partial = T.alloc_ub(max(N1, n_block), calc_dtype)
                     v1_p_out = T.alloc_ub(n_block, calc_dtype)
                     v1_p_tmp = T.alloc_ub((N1, 8), calc_dtype)
-                    v1_p_valid = T.alloc_ub(n_block, calc_dtype)
+                    if not full_valid:
+                        v1_p_valid = T.alloc_ub(n_block, calc_dtype)
 
                     T.copy(SoftmaxMax[bz_task, 0, s1_id, 0:N1], v1_p_max)
                     T.copy(SoftmaxSum[bz_task, 0, s1_id, 0:N1], v1_p_sum)
@@ -1174,7 +1176,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(v1_p_sum, v1_p_sum, v1_p_partial[0:N1])
                     for n_idx in T.serial(n_num):
                         n_start = n_idx * n_block
-                        valid_k_size = KRealSize[bz_task, s1_id]
+                        valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
                         T.wait_flag("v", "mte2", 1)
                         T.wait_flag("mte3", "v", 0)
                         if n_start < valid_k_size:
@@ -1183,17 +1185,18 @@ def tilelang_grad_kl_loss_single_kernel(
                                         n_start:n_start + n_block],
                                 v1_p_bmm1,
                             )
-                            T.copy(
-                                ValidKMask[bz_task, s1_id, n_start:n_start + n_block],
-                                v1_p_valid,
-                            )
+                            if not full_valid:
+                                T.copy(
+                                    ValidKMask[bz_task, s1_id, n_start:n_start + n_block],
+                                    v1_p_valid,
+                                )
                             T.set_flag("mte2", "v", 1)
                             T.wait_flag("mte2", "v", 1)
                             T.tile.mul(v1_p_bmm1, v1_p_bmm1, scale_value)
                             T.pipe_barrier("v")
-                            # mask repeat is uint8_t.  A 128x128 FP32 tile would
-                            # lower to repeat=256 and wrap to zero, so process at
-                            # most 64 rows per row-expand instruction.
+                            # mask repeat 使用 uint8_t。128x128 FP32 分块会被
+                            # lowering 成 repeat=256 并溢出为 0，因此每条
+                            # row-expand 指令最多处理 64 行。
                             for p_row_chunk in T.serial(p_row_chunk_count):
                                 p_row_start = p_row_chunk * p_rows_per_chunk
                                 for p_col_chunk in T.serial(p_col_chunk_count):
@@ -1240,7 +1243,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                         ],
                                     )
                             T.pipe_barrier("v")
-                            if n_start + n_block > valid_k_size:
+                            if not full_valid and n_start + n_block > valid_k_size:
                                 for p_mask_row in T.serial(N1):
                                     T.tile.mul(
                                         v1_p_bmm1[p_mask_row, 0:n_block],
@@ -1248,11 +1251,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                         v1_p_valid,
                                     )
                                 T.pipe_barrier("v")
-                            # The Ascend fast path used here is stable for
-                            # 64x128 -> 128 (also used by VectorSy), while a single
-                            # 128x128 axis-0 reduction corrupts the result.  Match
-                            # the official N-loop structure and accumulate two
-                            # partial reductions in UB.
+                            # 这里使用的 Ascend 快速路径对 64x128 -> 128
+                            # 稳定（VectorSy 也使用该路径），但单次 128x128
+                            # axis-0 reduction 会破坏结果。这里对齐官方 N-loop
+                            # 结构，在 UB 中累加两个 partial reduction。
                             T.tile.fill(v1_p_out, 0.0)
                             T.pipe_barrier("v")
                             for p_reduce_chunk in T.serial(p_row_chunk_count):
@@ -1289,10 +1291,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte3", "v", 0)
 
                 if vector_id == 1:
-                    # Keep the current BMM2 tile and the loop-carried ReduceSumY
-                    # history in one physical allocation.  Separate allocations
-                    # were incorrectly coalesced by the UB planner even though
-                    # the history remains live across every K-block iteration.
+                    # 将当前 BMM2 分块和循环携带的 ReduceSumY 历史放在同一个
+                    # 物理分配中。即使该历史在每次 K-block 迭代期间都保持存活，
+                    # UB planner 仍可能错误合并分离的分配。
                     v1_sy_storage = T.alloc_ub(
                         (Nidx1 + n_num, n_block), calc_dtype
                     )
@@ -1300,8 +1301,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     v1_sy_weight = T.alloc_ub(Nidx1, calc_dtype)
                     v1_sy_weight_2d = T.alloc_ub((Nidx1, n_block), calc_dtype)
                     v1_sy_reduce = T.alloc_ub(n_block, calc_dtype)
-                    v1_sy_chunk = T.alloc_ub(n_block, calc_dtype)
-                    v1_sy_valid_mask = T.alloc_ub(n_block // 16, calc_dtype)
+                    if not full_valid:
+                        v1_sy_chunk = T.alloc_ub(n_block, calc_dtype)
+                        v1_sy_valid_mask = T.alloc_ub(n_block // 16, calc_dtype)
                     v1_sy_broadcast = T.alloc_ub((1, n_block), calc_dtype)
                     v1_sy_max = T.alloc_ub((1,), calc_dtype)
                     v1_sy_sum = T.alloc_ub((1,), calc_dtype)
@@ -1323,10 +1325,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     )
                     T.tile.fill(v1_sy_weight_2d, 1.0)
                     T.pipe_barrier("v")
-                    # The AscendC row-expand lowering interprets every 64
-                    # FP32 elements as one row.  Split a 128-column tile so
-                    # BRCB reads exactly Nidx1 scalars and mul_mask stays
-                    # within the physical rows.
+                    # AscendC 的 row-expand lowering 将每 64 个 FP32 元素解释为
+                            # 一行。将 128 列分块拆分，使 BRCB 恰好读取 Nidx1 个标量，
+                    # 并让 mul_mask 保持在物理行范围内。
                     for sy_col_chunk in T.serial(p_col_chunk_count):
                         sy_col_start = sy_col_chunk * p_cols_per_chunk
                         T.tile.row_expand_mul_experiment(
@@ -1345,7 +1346,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("v", "mte2", 3)
                     for n_idx in T.serial(n_num):
                         n_start = n_idx * n_block
-                        valid_k_size = KRealSize[bz_task, s1_id]
+                        valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
                         if n_start < valid_k_size:
                             T.wait_flag("v", "mte2", 3)
                             T.copy(
@@ -1353,10 +1354,11 @@ def tilelang_grad_kl_loss_single_kernel(
                                         n_start:n_start + n_block],
                                 v1_sy_storage[0:Nidx1, 0:n_block],
                             )
-                            T.copy(
-                                ValidKMask[bz_task, s1_id, n_start:n_start + n_block],
-                                v1_sy_chunk,
-                            )
+                            if not full_valid:
+                                T.copy(
+                                    ValidKMask[bz_task, s1_id, n_start:n_start + n_block],
+                                    v1_sy_chunk,
+                                )
                             T.set_flag("mte2", "v", 3)
                             T.wait_flag("mte2", "v", 3)
                             T.tile.mul(
@@ -1370,7 +1372,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 v1_sy_reduce,
                                 0,
                             )
-                            if n_start + n_block > valid_k_size:
+                            if not full_valid and n_start + n_block > valid_k_size:
                                 T.tile.compare(
                                     v1_sy_valid_mask,
                                     v1_sy_chunk,
@@ -1409,9 +1411,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     for n_idx in T.serial(n_num):
                         T.tile.broadcast(v1_sy_broadcast, v1_sy_max)
                         T.pipe_barrier("v")
-                        # The ReduceSumY history is no longer needed after the
-                        # global max has been found.  Keep exp(x - max) in the
-                        # same row so the normalization pass does not repeat it.
+                        # 得到全局 max 后不再需要 ReduceSumY 历史。将 exp(x-max)
+                        # 保存在同一行中，使 normalization 阶段不必重复计算。
                         T.tile.sub(
                             v1_sy_storage[Nidx1 + n_idx, 0:n_block],
                             v1_sy_storage[Nidx1 + n_idx, 0:n_block],
@@ -1481,12 +1482,11 @@ def tilelang_grad_kl_loss_single_kernel(
         task_slot,
         vector_id,
     ):
-        """Translate VectorDwDqDk + VectorLoss for one complete task.
+        """为一个完整任务翻译 VectorDwDqDk + VectorLoss。
 
-        The paired AIVs own disjoint Nidx1 halves.  Both consume the P/SY
-        workspaces only after the Cube relay observes both producers.  The
-        ReLU mask uses an out-of-place Select to avoid source/destination
-        aliasing while preserving one vector operation per tile.
+        配对的 AIV 分别负责互不重叠的 Nidx1 半区。只有 Cube relay 观察到
+        两个 producer 都完成后，双方才消费 P/SY workspace。ReLU mask 使用
+        非原地 Select，避免源/目标别名，同时保持每个 tile 一次向量操作。
         """
         with T.Scope("V"):
             v1_bw_weight_half = T.alloc_ub(rows_per_aiv, input_dtype)
@@ -1497,7 +1497,8 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_p = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_sy = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_diff = T.alloc_ub(bw_col_block, calc_dtype)
-            v1_bw_valid = T.alloc_ub(bw_col_block, calc_dtype)
+            if not full_valid:
+                v1_bw_valid = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_diff_2d = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
@@ -1507,10 +1508,9 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_mask = T.alloc_ub(
                 rows_per_aiv * bw_col_block // 16, calc_dtype
             )
-            # T.macro symbol collection does not safely propagate allocations
-            # through a Python conditional. Keep these four aligned 4x64 mask
-            # slots defined for every specialization; only the 16-row path
-            # consumes them.
+            # T.macro 的符号收集不能安全地将分配穿过 Python 条件传播。
+            # 因此在所有 specialization 中都定义这四个对齐的 4x64 mask
+            # 槽位；只有 16 行路径会实际使用它们。
             v1_bw_mask0 = T.alloc_ub(16, calc_dtype)
             v1_bw_mask1 = T.alloc_ub(16, calc_dtype)
             v1_bw_mask2 = T.alloc_ub(16, calc_dtype)
@@ -1533,8 +1533,8 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_row_tmp = T.alloc_ub((rows_per_aiv, 8), calc_dtype)
 
             T.tile.fill(v1_bw_eps, 1e-8)
-            # The FP16 reluGrad store shares its physical UB region with the
-            # next FP32 BMM2 load, so MTE2 waits for MTE3 directly.
+            # FP16 reluGrad store 与下一次 FP32 BMM2 load 共享物理 UB 区域，
+            # 因此 MTE2 必须直接等待 MTE3 完成。
             T.set_flag("mte3", "mte2", 2)
             T.set_flag("mte3", "v", 3)
 
@@ -1557,8 +1557,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 )
 
                 if rows_per_aiv == 4:
-                    # BRCB-based row expansion requires a multiple of 8 rows.
-                    # Broadcast each runtime scalar for the Nidx1=8 path only.
+                    # 基于 BRCB 的 row expansion 要求行数是 8 的倍数。
+                    # 仅对 Nidx1=8 路径广播每个运行时标量。
                     for bw_row in T.serial(rows_per_aiv):
                         T.tile.broadcast(
                             v1_bw_weight_2d[
@@ -1604,10 +1604,11 @@ def tilelang_grad_kl_loss_single_kernel(
                             ],
                             v1_bw_bmm2,
                         )
-                        T.copy(
-                            ValidKMask[bz_task, s1_id, bw_col_start:bw_col_end],
-                            v1_bw_valid,
-                        )
+                        if not full_valid:
+                            T.copy(
+                                ValidKMask[bz_task, s1_id, bw_col_start:bw_col_end],
+                                v1_bw_valid,
+                            )
                         T.set_flag("mte2", "v", 3)
                         T.wait_flag("mte2", "v", 3)
 
@@ -1623,9 +1624,9 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
 
                         if rows_per_aiv == 16:
-                            # Compare each statically aligned 4x64 group before
-                            # bmm2 is reused for dWeight.  Keep dWeight itself
-                            # as its proven single 16x64 reduction.
+                            # 在复用 bmm2 计算 dWeight 前，对每个静态对齐的 4x64
+                            # 分组执行 Compare。dWeight 本身仍保持已经验证过的
+                            # 单次 16x64 reduction。
                             T.tile.compare(
                                 v1_bw_mask0,
                                 v1_bw_bmm2[0:4, 0:bw_col_block],
@@ -1720,8 +1721,8 @@ def tilelang_grad_kl_loss_single_kernel(
                                 "GT",
                             )
                             T.pipe_barrier("v")
-                            # dWeight consumes the unweighted diff tile and is
-                            # accumulated across both 64-column subtiles.
+                            # dWeight 消费未加权的 diff 分块，并跨两个 64 列
+                            # 子分块累加。
                             T.tile.mul(
                                 v1_bw_bmm2,
                                 v1_bw_bmm2,
@@ -1768,8 +1769,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
                         T.set_flag("mte3", "mte2", 2)
 
-                        # Match VectorLoss: split outer K tiles across the AIV
-                        # pair, while the owner consumes both physical subtiles.
+                        # 对齐 VectorLoss：在 AIV 对之间拆分外层 K 分块，
+                        # 由所属 AIV 消费两个物理子 tile。
                         if n_idx % 2 == vector_id:
                             T.tile.max(
                                 v1_bw_p,
@@ -1803,12 +1804,13 @@ def tilelang_grad_kl_loss_single_kernel(
                                 v1_bw_p,
                             )
                             T.pipe_barrier("v")
-                            T.tile.mul(
-                                v1_bw_loss_2d[0, :],
-                                v1_bw_loss_2d[0, :],
-                                v1_bw_valid,
-                            )
-                            T.pipe_barrier("v")
+                            if not full_valid:
+                                T.tile.mul(
+                                    v1_bw_loss_2d[0, :],
+                                    v1_bw_loss_2d[0, :],
+                                    v1_bw_valid,
+                                )
+                                T.pipe_barrier("v")
                             T.reduce_sum(
                                 v1_bw_loss_2d, v1_bw_loss_sum, 1
                             )
@@ -1867,7 +1869,7 @@ def tilelang_grad_kl_loss_single_kernel(
         s1_end_task,
         task_slot,
     ):
-        """Compute dKey partials and dQuery with explicit MMA pipelines."""
+        """使用显式 MMA 流水线计算 dKey partial 和 dQuery。"""
         with T.Scope("C"):
             c2_rg_l1 = T.alloc_L1((c2_dk_k, n_block), input_dtype)
             c2_qi_l1 = T.alloc_L1((c2_dk_k, DQueryIndex), input_dtype)
@@ -1884,9 +1886,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 c2_qi_l1[0:Nidx1, 0:DQueryIndex],
             )
             if Nidx1 == 8:
-                # BF16 Cube requires a 16-wide reduction dimension.  Keep the
-                # logical eight rows intact and zero the physical tail once;
-                # later RG loads overwrite only the valid first eight rows.
+                # BF16 Cube 要求 reduction 维度为 16。保留逻辑上的 8 行，
+                # 只将物理尾部清零一次；后续 RG load 只覆盖前 8 个有效行。
                 T.copy(C2ZeroPad, c2_qi_l1[8:16, 0:DQueryIndex])
                 T.copy(C2ZeroPad, c2_rg_l1[8:16, 0:n_block])
             T.set_flag("mte2", "mte1", 6)
@@ -1970,7 +1971,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.macro
     def clear_dkey_accumulator(dKeyIndexAccum, core_id, vector_id):
-        """Clear the FP32 scatter target across all AIVs inside the kernel."""
+        """在 kernel 内由所有 AIV 协作清零 FP32 scatter 目标。"""
         with T.Scope("V"):
             v2_zero_batch = T.alloc_ub(
                 (dkey_clear_batch, DQueryIndex), calc_dtype
@@ -2011,7 +2012,7 @@ def tilelang_grad_kl_loss_single_kernel(
         core_id,
         vector_id,
     ):
-        """Batch GM-to-UB and ping-pong scatter over every task using all cores."""
+        """使用所有 core，对每个任务执行批量 GM→UB 和 ping-pong scatter。"""
         with T.Scope("V"):
             v2_dk_batch_ping = T.alloc_ub(
                 (v2_scatter_batch, DQueryIndex), calc_dtype
@@ -2041,8 +2042,26 @@ def tilelang_grad_kl_loss_single_kernel(
             for task_id in T.serial(task_count):
                 bz_task = task_id // S1
                 s1_task = task_id % S1
+                # 每个 task 仅读取一次真实 K 长度。尾块路径只让拥有的 AIV
+                # 搬运到 16 行对齐的有效终点，例如 1025 -> 1040。
+                valid_k_size = K if full_valid else KRealSize[bz_task, s1_task]
+                if full_valid:
+                    task_vector_batch_count = vector_batch_count
+                else:
+                    task_scatter_batches = (
+                        valid_k_size + v2_scatter_batch - 1
+                    ) // v2_scatter_batch
+                    task_vector_batch_end = T.min(
+                        vector_batch_start + vector_batch_count,
+                        task_scatter_batches,
+                    )
+                    task_vector_batch_count = T.if_then_else(
+                        task_vector_batch_end > vector_batch_start,
+                        task_vector_batch_end - vector_batch_start,
+                        0,
+                    )
 
-                if vector_batch_count > 0:
+                if task_vector_batch_count > 0:
                     T.wait_flag("mte3", "mte2", 6)
                     T.copy(
                         dk_matmul_partial[
@@ -2055,10 +2074,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     )
                     T.set_flag("mte2", "mte3", 6)
 
-                    for batch_id in T.serial(vector_batch_count):
+                    for batch_id in T.serial(task_vector_batch_count):
                         current_slot = batch_id % 2
                         next_slot = (batch_id + 1) % 2
-                        if batch_id + 1 < vector_batch_count:
+                        if batch_id + 1 < task_vector_batch_count:
                             next_k_start = (
                                 aiv_k_start
                                 + (batch_id + 1) * v2_scatter_batch
@@ -2100,7 +2119,6 @@ def tilelang_grad_kl_loss_single_kernel(
                             sparse_idx1 = SparseIndices[
                                 bz_task, s1_task, 0, k_idx + 1
                             ]
-                            valid_k_size = KRealSize[bz_task, s1_task]
                             if k_idx < valid_k_size:
                                 if sparse_idx0 >= 0:
                                     if current_slot == 0:
@@ -2159,7 +2177,7 @@ def tilelang_grad_kl_loss_single_kernel(
         core_id,
         vector_id,
     ):
-        """Distribute output casts and reduce all per-AIV loss partials."""
+        """分配输出 cast，并归约所有 AIV 的 loss partial。"""
         with T.Scope("V"):
             v2_finalize_dq_fp32 = T.alloc_ub((1, DQueryIndex), calc_dtype)
             v2_finalize_dq_half = T.alloc_ub((1, DQueryIndex), input_dtype)
@@ -2172,9 +2190,9 @@ def tilelang_grad_kl_loss_single_kernel(
             T.set_flag("v", "mte2", 4)
             T.set_flag("mte3", "v", 7)
 
-            # Only the AIV that owns the task casts dQuery.  Distributing this
-            # tiny output over every core would introduce unnecessary scalar
-            # work and event setup on otherwise scatter-focused cores.
+            # 只有拥有该任务的 AIV 负责 dQuery 转换。将这个很小的输出分给
+            # 所有核会给主要负责 scatter 的其他核引入额外标量工作
+            # 和事件初始化开销。
             for dq_task_iter in T.serial(tasks_per_core):
                 dq_task = dq_task_iter * launch_core_num + core_id
                 if dq_task < task_count:
@@ -2312,9 +2330,9 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.prim_func
     def main(
-        # === SPECIAL: int32 indices must be first to avoid dtype inference issues ===
+        # === 特殊处理：int32 索引必须放在首个参数，避免 dtype 推断问题 ===
         SparseIndices: T.Tensor((B, S1, Nidx2, K), "int32"),            # 0
-        # === INPUTS (1-11) ===
+        # === 输入（1-11）===
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),              # 1
         QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),          # 2
         Key: T.Tensor((B, S2, N2, DQuery), input_dtype),                # 3
@@ -2324,10 +2342,11 @@ def tilelang_grad_kl_loss_single_kernel(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),                 # 7
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),               # 8
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),               # 9
-        dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 10 (input, host-zeroed: atomic_add target)
-        # === INPUT (11) — dKeyIndex fp32 累加器，host 清零后传入（atomic_add target，照搬 dQueryIndexAccum 模式）===
-        dKeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), calc_dtype),   # 11 (input, host-zeroed)
-        # === WORKSPACES (12-21) ===
+        dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 10（输入，主机已清零：atomic_add 目标）
+        # === 输入（11）：dKeyIndex FP32 累加器，由主机清零后传入，作为
+        # atomic_add 目标，沿用 dQueryIndexAccum 的模式 ===
+        dKeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), calc_dtype),   # 11（输入，主机已清零）
+        # === 工作区（12-21）===
         GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),        # 12
         GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),    # 13
         GatherKeyIndex_ws: T.Tensor((B, S1, K, DQueryIndex), input_dtype), # 14
@@ -2336,8 +2355,8 @@ def tilelang_grad_kl_loss_single_kernel(
         PReduced: T.Tensor((B, S1, K), calc_dtype),                     # 17
         ReduceSumY: T.Tensor((B, S1, K), calc_dtype),                   # 18
         SoftmaxI: T.Tensor((B, S1, K), calc_dtype),                     # 19
-        dk_matmul_partial: T.Tensor((B, S1, K, DQueryIndex), calc_dtype), # 20 (workspace: reluGrad^T @ QueryIndex)
-        # === OUTPUTS (21-24) ===
+        dk_matmul_partial: T.Tensor((B, S1, K, DQueryIndex), calc_dtype), # 20（工作区：reluGrad^T @ QueryIndex）
+        # === 输出（21-24）===
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 21
         dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 22
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 23
@@ -2353,24 +2372,25 @@ def tilelang_grad_kl_loss_single_kernel(
             k_end = T.min(k_start + n_block, K)
 
             # ============================================================
-            # V scope 0: Gather Key/KeyIndex/KeyRope → workspace
-            # 手动同步（auto-sync 关）：chunk 级 double buffer，MTE2 fill ∥ MTE3 drain
-            #   预取下一 chunk 的 fill 与本 chunk 的 drain 并发，隐藏 burst 写延迟
-            # 标量 idx 从 GM 读，依赖 GetValue 同步语义（watch-point）
+            # V 阶段 0：Gather Key/KeyIndex/KeyRope → 工作区。
+            # 手动同步（自动同步关闭）：分块级双缓冲，MTE2 填充与 MTE3 排空
+            #   并发，隐藏 burst 写入延迟。
+            # 标量 idx 从 GM 读取，依赖 GetValue 的同步语义（观察点）。
             # ============================================================
             num_chunks = n_block // GATHER_CHUNK_SIZE
             with T.Scope("V"):
-                # Double-buffered chunked gather：MTE2 fill ∥ MTE3 drain（ping-pong）
-                # 照抄官方 examples/elementwise/elementwise_add_pipeline.py 的 WAR-safe 结构：
-                #   MTE3_MTE2 = "slot 可写" WAR 事件（预置两个 slot，末尾 clear 排空）
-                #   MTE2_MTE3 = "slot 已填" RAW 事件（drain 等 fill）
-                # 数据 copy 全部内联（官方范例同样内联，prim_func 内不能用未装饰的嵌套函数）
-                # 3D 前导索引 buf[slot, i, :] 由官方范例验证可用。
+                # 分块 gather 使用双缓冲：MTE2 填充与 MTE3 排空并发（乒乓）。
+                # 采用官方 examples/elementwise/elementwise_add_pipeline.py 中已验证的
+                # WAR 安全结构：
+                #   MTE3_MTE2 = “槽位可写”WAR 事件（预置两个槽位，末尾清理排空）
+                #   MTE2_MTE3 = “槽位已填”RAW 事件（排空操作等待填充）
+                # 所有数据 copy 都内联；官方范例同样如此，prim_func 内不能使用未装饰的嵌套函数。
+                # 3D 前导索引 buf[槽位, i, :] 已由官方范例验证可用。
                 key_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
                 ki_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
                 kr_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
 
-                # 零行 buffer：idx < 0 时写入零值，避免未初始化 UB 数据污染 GatherKey_ws
+                # 零行缓冲区：idx < 0 时写入零值，避免未初始化 UB 数据污染 GatherKey_ws。
                 zero_key_row = T.alloc_ub(DQuery, input_dtype)
                 zero_ki_row = T.alloc_ub(DQueryIndex, input_dtype)
                 zero_kr_row = T.alloc_ub(max(d_rope, 1), input_dtype)
@@ -2379,14 +2399,14 @@ def tilelang_grad_kl_loss_single_kernel(
                 if d_rope > 0:
                     T.tile.fill(zero_kr_row, 0)
 
-                # 预置：两个 slot 都标记为"已 drain（可 fill）"
+                # 预置：两个槽位都标记为“已排空（可填充）”。
                 T.set_flag("mte3", "mte2", 0)
                 T.set_flag("mte3", "mte2", 1)
 
                 for s1_id in T.serial(s1_start, s1_end):
-                    # prologue：fill chunk 0 → slot 0（MTE2 逐行随机读 16 行）
-                    # idx >= 0: 有效 → copy Key/KeyIndex/KeyRope
-                    # idx <  0: 无效 → zero-fill（避免未初始化 UB 污染 GatherKey_ws）
+                    # 前导阶段：将 chunk 0 填入槽位 0（MTE2 逐行随机读取 16 行）。
+                    # idx >= 0：有效，复制 Key/KeyIndex/KeyRope。
+                    # idx < 0：无效，填充零值，避免未初始化 UB 污染 GatherKey_ws。
                     T.wait_flag("mte3", "mte2", 0)
                     for i in T.serial(GATHER_CHUNK_SIZE):
                         k_id = k_start + i
@@ -2406,10 +2426,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     for chunk_id in T.serial(num_chunks):
                         cur = chunk_id % 2
                         nxt = (chunk_id + 1) % 2
-                        # 预取下一 chunk → slot nxt（MTE2，与本 chunk 的 MTE3 drain 并发）
+                        # 预取下一 chunk → 槽位 nxt（MTE2 与当前 chunk 的 MTE3 排空并发）。
                         if chunk_id + 1 < num_chunks:
                             next_start = k_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
-                            T.wait_flag("mte3", "mte2", nxt)   # WAR：slot nxt 上轮已 drain
+                            T.wait_flag("mte3", "mte2", nxt)   # WAR：槽位 nxt 上轮已排空
                             for i in T.serial(GATHER_CHUNK_SIZE):
                                 k_id = next_start + i
                                 idx = SparseIndices[bz, s1_id, 0, k_id]
@@ -2423,9 +2443,9 @@ def tilelang_grad_kl_loss_single_kernel(
                                     T.copy(zero_ki_row, ki_chunk_ub[nxt, i, 0:DQueryIndex])
                                     if d_rope > 0:
                                         T.copy(zero_kr_row, kr_chunk_ub[nxt, i, 0:d_rope])
-                            T.set_flag("mte2", "mte3", nxt)    # RAW：slot nxt 已 fill
-                        # drain 本 chunk（MTE3 整块 burst 写出）
-                        T.wait_flag("mte2", "mte3", cur)       # RAW：slot cur 已 fill
+                            T.set_flag("mte2", "mte3", nxt)    # RAW：槽位 nxt 已填充
+                        # 排空当前 chunk（MTE3 以整块 burst 写出）。
+                        T.wait_flag("mte2", "mte3", cur)       # RAW：槽位 cur 已填充
                         cur_start = k_start + chunk_id * GATHER_CHUNK_SIZE
                         T.copy(key_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
                                GatherKey_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
@@ -2434,19 +2454,19 @@ def tilelang_grad_kl_loss_single_kernel(
                         if d_rope > 0:
                             T.copy(kr_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:d_rope],
                                    GatherKeyRope_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
-                        T.set_flag("mte3", "mte2", cur)        # WAR：slot cur 已 drain，可复用
+                        T.set_flag("mte3", "mte2", cur)        # WAR：槽位 cur 已排空，可复用
 
-                # clear：排空剩余 2 个 WAR set（保持 event 平衡）
+                # 清理：排空剩余两个 WAR set，保持事件平衡。
                 T.wait_flag("mte3", "mte2", 0)
                 T.wait_flag("mte3", "mte2", 1)
 
                 T.set_cross_flag("V", 10)
 
             # ============================================================
-            # C scope 1: Matmul1 (with rope) + Matmul2
-            # 手动同步（auto-sync 关，T.Pipelined 不再生成同步）：
-            #   单缓冲 serial，每次迭代 mte2→m（RAW 载入→gemm）/ m→mte2（WAR 复用 L1）
-            #   K 维累加完成后 m→fix 再 copy_l0c
+            # C 阶段 1：Matmul1（含 rope）+ Matmul2。
+            # 手动同步（自动同步关闭，T.Pipelined 不再生成同步）：
+            #   单缓冲区串行执行，每次迭代 mte2→m（RAW 加载→gemm）/
+            #   m→mte2（WAR 重用 L1）。K 维累加完成后 m→fix，再 copy_l0c。
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(10)
@@ -2466,14 +2486,15 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_flag("fix", "m", 4)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    # Double-buffer Matmul1 K-loop: overlap copy[d_idx+1] ∥ gemm[d_idx]
-                    # WAR-safe ping-pong, slot 0→{Q_L1_0,GK_L1_0}, slot 1→{Q_L1_1,GK_L1_1}
-                    # MTE2_M{0,1}: RAW (slot loaded → gemm can read)
-                    # M_MTE2{0,1}: WAR (gemm done → slot safe to refill)
+                    # Matmul1 的 K-loop 使用双缓冲：copy[d_idx+1] 与 gemm[d_idx] 并发。
+                    # 采用 WAR 安全乒乓：槽位 0→{Q_L1_0,GK_L1_0}，
+                    # 槽位 1→{Q_L1_1,GK_L1_1}。
+                    # MTE2_M{0,1}：RAW（槽位加载完成，gemm 可读取）。
+                    # M_MTE2{0,1}：WAR（gemm 完成，槽位可重新填充）。
                     T.set_flag("m", "mte2", 0)
                     T.set_flag("m", "mte2", 1)
 
-                    # Prologue: load d_idx=0 → slot 0
+                    # 前导阶段：加载 d_idx=0 → 槽位 0。
                     T.wait_flag("m", "mte2", 0)
                     T.copy(Query[bz, s1_row, 0:N1, 0:k_block], Q_L1_0)
                     T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, 0:k_block], GK_L1_0)
@@ -2483,7 +2504,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         cur = d_idx % 2
                         nxt = (d_idx + 1) % 2
 
-                        # Compute current slot
+                        # 计算当前槽位。
                         T.wait_flag("mte2", "m", cur)
                         if cur == 0:
                             T.wait_flag("m", "mte1", 2)
@@ -2509,7 +2530,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 T.set_flag("fix", "m", 4)
                         T.set_flag("m", "mte2", cur)
 
-                        # Prefetch next iteration (MTE2 load ∥ cube gemm of current)
+                        # 预取下一次迭代（MTE2 加载与当前 cube gemm 并发）。
                         if d_idx + 1 < d_num_total:
                             next_d = d_idx + 1
                             T.wait_flag("m", "mte2", nxt)
@@ -2537,10 +2558,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                     T.copy(GatherKeyRope_ws[bz, s1_row, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1_1)
                             T.set_flag("mte2", "m", nxt)
 
-                    # Clear: drain remaining WAR events
+                    # 清理：排空剩余 WAR 事件。
                     T.wait_flag("m", "mte2", 0)
                     T.wait_flag("m", "mte2", 1)
-                    # M→FIX: copy_l0c waits for all K accumulations done
+                    # M→FIX：copy_l0c 等待所有 K 累加完成。
                     T.set_flag("m", "fix", 4)
                     T.wait_flag("m", "fix", 4)
                     T.copy(C_L0C, bmm1Res[bz, s1_row, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block])
@@ -2563,7 +2584,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     for k_idx in T.serial(d_num_query_index):
                         T.copy(QueryIndex[bz, s1_row, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block], QI_L1)
                         T.copy(GatherKeyIndex_ws[bz, s1_row, k_start:k_end, k_idx * k_block:(k_idx + 1) * k_block], GKI_L1)
-                        # RAW: gemm 等 L1 载入
+                        # RAW：gemm 等待 L1 加载完成。
                         T.set_flag("mte2", "m", 0)
                         T.wait_flag("mte2", "m", 0)
                         T.wait_flag("m", "mte1", 5)
@@ -2576,10 +2597,10 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.set_flag("m", "mte1", 5)
                         if k_idx + 1 < d_num_query_index:
                             T.set_flag("fix", "m", 5)
-                        # WAR: 下轮载入等 gemm 读完
+                        # WAR：下一轮加载等待 gemm 读取完成。
                         T.set_flag("m", "mte2", 0)
                         T.wait_flag("m", "mte2", 0)
-                    # M→FIX
+                    # M→FIX。
                     T.set_flag("m", "fix", 5)
                     T.wait_flag("m", "fix", 5)
                     T.copy(C2_L0C, bmm2Res[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], enable_relu=True)
@@ -2591,10 +2612,10 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("FIX", 1)
 
             # ============================================================
-            # V scope 1: All vector ops merged (reduce memory)
-            # - P_reduced, ReduceSumY for MY K block
-            # - Global SoftmaxI (all cores execute)
-            # - dWeight, reluGrad, Loss for MY K block
+            # V 阶段 1：合并全部向量操作以减少内存访问。
+            # - 当前 K 分块的 P_reduced、ReduceSumY
+            # - 全局 SoftmaxI（所有核执行）
+            # - 当前 K 分块的 dWeight、reluGrad、Loss
             # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(1)
@@ -2622,7 +2643,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 eps_sum_ub = T.alloc_ub((1,), calc_dtype)
                 softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_all_ub = T.alloc_ub((n_num, n_block), calc_dtype)
-                # row_expand brcb 中转 buffer：(rows, elems_per_block=8 for fp32)
+                # row_expand 的 brcb 中转缓冲区：（rows，FP32 每个分块 8 个元素）。
                 re_tmp_ub = T.alloc_ub((N1, 8), calc_dtype)
 
 
@@ -2636,19 +2657,19 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
 
-                    # P_reduced: broadcast sm_max/sm_sum to 2D once, then pure vector-vector
+                    # P_reduced：将 sm_max/sm_sum 一次广播到 2D，之后只执行向量-向量操作。
                     T.copy(bmm1Res[bz, s1_id, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm1_ub)
                     T.set_flag("mte2", "v", 5)
                     T.wait_flag("mte2", "v", 5)
                     T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
-                    T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
-                    # sm_max 逐行减：row_expand_sub 融合替代标量广播+sub（消除 128 PIPE_ALL）
-                    # bmm1[g,k] = bmm1[g,k] - sm_max[g]，走 brcb+sub_mask（PIPE_V，非 PIPE_ALL）
+                    T.tile.fill(p_reduced_tmp_ub, 1.0)  # 重用为广播种子。
+                    # sm_max 逐行减：使用 row_expand_sub 融合替代标量广播+sub，减少 128 次 PIPE_ALL。
+                    # bmm1[g,k] = bmm1[g,k] - sm_max[g]，走 brcb+sub_mask（PIPE_V，而非 PIPE_ALL）。
                     T.pipe_barrier("v")
                     T.tile.row_expand_sub_experiment(bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub)
                     T.pipe_barrier("v")
                     T.tile.exp(bmm1_ub, bmm1_ub)
-                    # sm_sum 逐行除：row_expand_div 融合替代标量广播+div（消除 128 PIPE_ALL）
+                    # sm_sum 逐行除：使用 row_expand_div 融合替代标量广播+div，减少 128 次 PIPE_ALL。
                     T.pipe_barrier("v")
                     T.tile.row_expand_div_experiment(bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub)
                     T.pipe_barrier("v")
@@ -2659,25 +2680,25 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("v", "mte3", 6)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # ReduceSumY: broadcast Weights to 2D once, then pure vector-vector
+                    # ReduceSumY：将 Weights 一次广播到 2D，之后只执行向量-向量操作。
                     T.copy(Weights[bz, s1_id, 0:Nidx1], weight_all_half_ub)
                     T.set_flag("mte2", "v", 7)
                     T.wait_flag("mte2", "v", 7)
                     T.tile.cast(weight_all_ub, weight_all_half_ub, "CAST_NONE", Nidx1)
-                    # weight 广播：row_expand_mul 替代标量循环（消除 Nidx1×PIPE_ALL）
-                    # weight_2d[k,:] = 1.0 * weight_all_ub[k] → 单次 brcb+mask 全并行
-                    # weight_2d 需物化（dWeight 循环 (b) 直接读整行 weight_2d[idx,:] 作向量）
+                    # weight 广播：row_expand_mul 替代标量循环，减少 Nidx1×PIPE_ALL。
+                    # weight_2d[k,:] = 1.0 * weight_all_ub[k]，通过一次 brcb+mask 并行完成。
+                    # weight_2d 需要物化，dWeight 循环可直接读取 weight_2d[idx,:] 向量。
                     T.tile.fill(weight_2d_ub, 1.0)
                     T.tile.row_expand_mul_experiment(weight_2d_ub, weight_2d_ub, weight_all_ub, re_tmp_ub)
-                    # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
-                    # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
+                    # ReduceSumY + GlobalSoftmaxI max：融合 K-block 遍历。
+                    # rsy_all_ub 保存所有 ReduceSumY block，避免重新读取 GM。
                     T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
-                    # Double-buffer ReduceSumY loop: overlap copy[n_rsy+1] ∥ compute[n_rsy]
-                    # bmm2 DB: V_MTE2{0,1} (WAR) / MTE2_V{0,1} (RAW)
+                    # ReduceSumY 循环使用双缓冲：copy[n_rsy+1] 与 compute[n_rsy] 并发。
+                    # bmm2 DB：V_MTE2{0,1}（WAR）/ MTE2_V{0,1}（RAW）。
                     T.set_flag("v", "mte2", 0)
                     T.set_flag("v", "mte2", 1)
 
-                    # Prologue: load n_rsy=0 → slot 0
+                    # 前导阶段：加载 n_rsy=0 → 槽位 0。
                     T.wait_flag("v", "mte2", 0)
                     T.copy(bmm2Res[bz, s1_id, 0:Nidx1, 0:n_block], bmm2_0)
                     T.set_flag("mte2", "v", 0)
@@ -2686,7 +2707,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         cur = n_rsy % 2
                         nxt = (n_rsy + 1) % 2
 
-                        # Compute current slot
+                        # 计算当前槽位。
                         T.wait_flag("mte2", "v", cur)
                         if cur == 0:
                             T.tile.mul(bmm2_0, bmm2_0, weight_2d_ub)
@@ -2698,18 +2719,18 @@ def tilelang_grad_kl_loss_single_kernel(
                         if cur == 1:
                             T.reduce_sum(bmm2_1, rsy_reduce_db[cur, :], 0)
                         T.pipe_barrier("v")
-                        # Save to UB for global SoftmaxI; ReduceSumY workspace is unused downstream.
+                        # 保存到 UB 供全局 SoftmaxI 使用；后续不再使用 ReduceSumY 工作区。
                         T.copy(rsy_reduce_db[cur, :], rsy_all_ub[n_rsy, :])
-                        # Fused: update global max from rsy_reduce_db[cur, :]
+                        # 融合更新：根据 rsy_reduce_db[cur, :] 更新全局 max。
                         T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur, :], 1.0)
                         T.pipe_barrier("v")
                         T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
                         T.pipe_barrier("v")
                         T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
-                        # WAR: current slot consumed → safe to refill
+                        # WAR：当前槽位已消费，可以重新填充。
                         T.set_flag("v", "mte2", cur)
 
-                        # Prefetch next iteration (MTE2 load ∥ V compute of current)
+                        # 预取下一次迭代（MTE2 加载与当前 V 计算并发）。
                         if n_rsy + 1 < n_num:
                             next_n = n_rsy + 1
                             T.wait_flag("v", "mte2", nxt)
@@ -2719,22 +2740,22 @@ def tilelang_grad_kl_loss_single_kernel(
                                 T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_1)
                             T.set_flag("mte2", "v", nxt)
 
-                    # Clear: drain remaining WAR events
+                    # 清理：排空剩余 WAR 事件。
                     T.wait_flag("v", "mte2", 0)
                     T.wait_flag("v", "mte2", 1)
 
-                    # Broadcast rsy_max to vector via T.tile.broadcast (BRCB, PIPE_V, 0 PIPE_ALL)
-                    # Drain PReduced MTE3 write before refilling p_reduced_tmp_ub.
+                    # 通过 T.tile.broadcast 将 rsy_max 广播到向量（BRCB，PIPE_V，0 PIPE_ALL）。
+                    # 重新填充 p_reduced_tmp_ub 前，先排空 PReduced 的 MTE3 写入。
                     T.set_flag("mte3", "v", 0)
                     T.wait_flag("mte3", "v", 0)
                     T.tile.fill(p_reduced_tmp_ub, 1.0)
                     T.pipe_barrier("v")
                     T.tile.broadcast(rsy_bc_ub, rsy_max_ub)
-                    # BRCB and the following V op have a RAW dependency.
+                    # BRCB 与后续 V 操作之间存在 RAW 依赖。
                     T.pipe_barrier("v")
                     T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
 
-                    # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
+                    # GlobalSoftmaxI：根据 UB 中保存的 ReduceSumY 计算全局 sum，不再读取 GM。
                     T.tile.fill(rsy_sum_ub, 0)
                     for n_idx_iter in T.serial(n_num):
                         T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
@@ -2753,7 +2774,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
 
-                    # Per-core SoftmaxI: use UB-held ReduceSumY, then materialize to GM.
+                    # 每个核的 SoftmaxI：使用 UB 中保存的 ReduceSumY，随后写回 GM。
                     T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
                     T.pipe_barrier("v")
                     T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
@@ -2761,19 +2782,19 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                     T.pipe_barrier("v")
                     T.tile.broadcast(rsy_bc_ub, rsy_sum_ub)
-                    # BRCB and div both use PIPE_V; preserve the broadcast result.
+                    # BRCB 和 div 都使用 PIPE_V，必须保留广播结果。
                     T.pipe_barrier("v")
                     T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
                     T.set_flag("v", "mte3", 4)
                     T.wait_flag("v", "mte3", 4)
                     T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # dWeight, reluGrad for MY K block (same V scope, no cross flag)
-                    # Strategy: 2D-vectorized per-row ops to eliminate scalar tile.mul
-                    #   - weight_2d_ub rows → rg_chunk_ub via T.copy (scalar idx, avoids UB range slicing bug)
-                    #   - diff_2d_ub broadcast once before g_id loop (32× UB→UB copy, amortized)
-                    #   - Op1/Op2/Op3 all use 2D tile.mul (3 ops per g_id vs 96 before)
-                    #   - bmm2 loaded per-chunk from GM → dw_chunk_ub (no UB→UB copy)
+                    # 当前 K 分块的 dWeight、reluGrad（同一 V 阶段，无 cross flag）。
+                    # 策略：使用 2D 向量化逐行操作，消除标量 tile.mul：
+                    #   - 通过 T.copy 将 weight_2d_ub 行复制到 rg_chunk_ub，避免 UB 范围切片问题。
+                    #   - 在 g_id 循环前一次广播 diff_2d_ub，将 32 次 UB→UB 复制的成本摊平。
+                    #   - 操作 1/2/3 都使用 2D tile.mul（每个 g_id 3 次，而不是之前的 96 次）。
+                    #   - bmm2 按分块从 GM 加载到 dw_chunk_ub，避免 UB→UB 复制。
                     diff_ub = T.alloc_ub(n_block, calc_dtype)
                     diff_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
@@ -2791,8 +2812,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(ones_2d_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
 
-                    # dWeight, reluGrad for MY K block
-                    # RAW: PReduced/SoftmaxI 刚由 mte3 写，mte2 读回前等 mte3 完成.
+                    # 当前 K block 的 dWeight、reluGrad。
+                    # RAW：PReduced/SoftmaxI 刚由 mte3 写入，mte2 读回前等待 mte3 完成。
                     T.set_flag("mte3", "mte2", 5)
                     T.wait_flag("mte3", "mte2", 5)
                     T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_ub)
@@ -2801,20 +2822,19 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte2", "v", 6)
                     T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
-                    # Broadcast diff_ub → diff_2d_ub via BRCB (1 instruction replaces 32 serial copies)
+                    # 通过 BRCB 将 diff_ub 广播到 diff_2d_ub，一条指令替代 32 次串行 copy。
                     T.tile.broadcast(diff_2d_ub, diff_ub)
 
-                    # WAR pre-fill: dw_chunk_ub 初始可安全写入（无前序 V 读者）
+                    # WAR 预填充：dw_chunk_ub 初始可安全写入（之前没有 V 读者）。
                     T.set_flag("v", "mte2", 4)
 
-                    # Keep T.serial bounds static for TIR simplification, then
-                    # select the independent Nidx1 half owned by this AIV.
+                    # 保持 T.serial 边界静态以便 TIR 简化，再选择当前 AIV 独占的 Nidx1 半区。
                     for g_id in T.serial(g_num):
                         g_start = g_id * vector_baseg
                         if g_id == vid:
                             T.tile.fill(weight_ub, 0)
 
-                            # WAR: 等 V 读完 dw_chunk_ub → MTE2 安全覆盖（替代 barrier_all 兜底）
+                            # WAR：等待 V 读完 dw_chunk_ub 后，MTE2 才能安全覆盖，避免使用 barrier_all 兜底。
                             T.wait_flag("v", "mte2", 4)
                             T.copy(bmm2Res[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block], dw_chunk_ub)
 
@@ -2827,15 +2847,15 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.pipe_barrier("v")
                             T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
 
-                            # Op1: rg = weight_slice * diff (2D)
-                            # weight切片逐行copy（整块copy参数在CANN 9.1下不正确）
+                            # 操作 1：rg = weight_slice * diff（2D）。
+                            # weight 切片逐行复制，整块复制参数在 CANN 9.1 下不正确。
                             for i in T.serial(vector_baseg):
                                 T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
                             T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
-                            # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
+                            # 操作 2：rg *= rsy_tmp 掩码（2D，之前是逐行 1D mul）。
                             T.pipe_barrier("v")
                             T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
-                            # Op3: dw *= diff (2D, was per-row 1D mul)
+                            # 操作 3：dw *= diff（2D，之前是逐行 1D mul）。
                             T.pipe_barrier("v")
                             T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
 
@@ -2843,11 +2863,11 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
                             T.pipe_barrier("v")
                             T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
-                            # WAR: V 已读完 dw_chunk_ub → 通知 MTE2 下轮可覆盖
+                            # WAR：V 已读完 dw_chunk_ub，通知 MTE2 下一轮可以覆盖。
                             T.set_flag("v", "mte2", 4)
 
                             T.tile.cast(rg_half_ub, rg_chunk_ub, "CAST_RINT", vector_baseg * n_block)
-                            # set_flag("v",...) 自带 V pipe barrier，无需 barrier_all
+                            # set_flag("v",...) 自带 V 流水线屏障，无需 barrier_all。
                             T.set_flag("v", "mte3", 0)
                             T.wait_flag("v", "mte3", 0)
                             T.pipe_barrier("mte3")
@@ -2859,17 +2879,17 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.wait_flag("v", "mte3", 1)
                             T.copy(dw_half_ub, dWeight_partial[bz, s1_id, n_idx_k, g_start:g_start + vector_baseg])
 
-                    # Clear: 排空 V_MTE2(4) WAR 事件（最后轮 g_id 的 set）
+                    # 清理：排空 V_MTE2(4) WAR 事件（由最后一轮 g_id 设置）。
                     T.wait_flag("v", "mte2", 4)
 
-                    # Compute partial Loss for MY K block only (n_idx_k)
+                    # 只计算当前 K block（n_idx_k）的 partial Loss。
                     T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
                     T.set_flag("mte2", "v", 0)
                     T.wait_flag("mte2", "v", 0)
                     T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
                     T.pipe_barrier("v")
                     T.tile.ln(loss_log_p_ub, loss_chunk_ub)
-                    # WAR: loss_chunk 复用，下轮 mte2 覆盖前等本轮 ln 读完
+                    # WAR：loss_chunk 会复用，下一轮 mte2 覆盖前等待本轮 ln 读取完成。
                     T.set_flag("v", "mte2", 1)
                     T.wait_flag("v", "mte2", 1)
 
@@ -2885,7 +2905,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
                     T.pipe_barrier("v")
                     T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
-                    # RAW: loss_chunk 刚 mte2 载入，mul 读前等
+                    # RAW：loss_chunk 刚由 mte2 载入，mul 读取前等待加载完成。
                     T.set_flag("mte2", "v", 4)
                     T.wait_flag("mte2", "v", 4)
                     T.pipe_barrier("v")
@@ -2899,15 +2919,15 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("v", "mte3", 5)
                     T.wait_flag("v", "mte3", 5)
 
-                    # Write partial Loss for MY K block only (single value)
+                    # 只为当前 K block 写入 partial Loss（单个值）。
                     T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k:n_idx_k + 1])
 
                 T.set_cross_flag("V", 12)
 
             # ============================================================
-            # C scope 2: Matmul4 — per-core K-block, atomic_add to accumulate
-            # reluGrad @ GatherKeyIndex_ws → dQueryIndexAccum
-            # (Reads from GatherKeyIndex_ws directly, not transposed)
+            # C 阶段 2：Matmul4——按核负责 K 分块，通过 atomic_add 累加
+            # reluGrad @ GatherKeyIndex_ws → dQueryIndexAccum。
+            # （直接读取 GatherKeyIndex_ws，不做转置。）
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(12)
@@ -2917,7 +2937,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 RG_L0A_dq = T.alloc_L0A((Nidx1, n_block), input_dtype)
                 GKI_L0B_dq = T.alloc_L0B((n_block, k_block), input_dtype)
                 DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
-                # dKeyIndex low-level MMA: L1→L0A transpose 替代 V1 预转置
+                # dKeyIndex 底层 MMA：使用 L1→L0A transpose 替代 V1 预转置。
                 QI_L1_dk = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)
                 RG_L0A_dk = T.alloc_L0A((n_block, Nidx1), input_dtype)
                 QI_L0B_dk = T.alloc_L0B((Nidx1, DQueryIndex), input_dtype)
@@ -2930,7 +2950,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     for d_idx in T.serial(d_num_query_index):
                         T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
                         T.copy(GatherKeyIndex_ws[bz, s1_row, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GKI2_L1)
-                        # RAW: gemm 等 L1 载入
+                        # RAW：gemm 等待 L1 加载完成。
                         T.set_flag("mte2", "m", 6)
                         T.wait_flag("mte2", "m", 6)
                         T.wait_flag("m", "mte1", 6)
@@ -2941,32 +2961,32 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_flag("fix", "m", 7)
                         T.mma(RG_L0A_dq, GKI_L0B_dq, DQ_L0C, init=True)
                         T.set_flag("m", "mte1", 6)
-                        # M→FIX: atomic_add 等 gemm 完成
+                        # M→FIX：atomic_add 等待 gemm 完成。
                         T.set_flag("m", "fix", 7)
                         T.wait_flag("m", "fix", 7)
                         T.tile.atomic_add(dQueryIndexAccum[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C)
                         T.set_flag("fix", "m", 7)
 
-                    # dKeyIndex: L1→L0A transpose (硬件转置) + T.mma，替代 V1 预转置
-                    # DK = RG^T @ QI  = (n_block,Nidx1) @ (Nidx1,DQI) = (n_block,DQI)
-                    # GM→L1 (MTE2): 直接加载 reluGradRes，无需预转置
+                    # dKeyIndex：L1→L0A transpose（硬件转置）+ T.mma，替代 V1 预转置。
+                    # DK = RG^T @ QI = (n_block,Nidx1) @ (Nidx1,DQI) = (n_block,DQI)。
+                    # GM→L1（MTE2）：直接加载 reluGradRes，无需预转置。
                     T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
                     T.copy(QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
-                    # MTE2→MTE1: L1 就绪，MTE1 可以开始搬运
+                    # MTE2→MTE1：L1 就绪，MTE1 可以开始搬运。
                     T.set_flag("mte2", "mte1", 10)
                     T.wait_flag("mte2", "mte1", 10)
-                    # L1→L0 (MTE1): RG 转置搬运到 L0A，QI 正常搬运到 L0B
+                    # L1→L0（MTE1）：RG 转置搬运到 L0A，QI 正常搬运到 L0B。
                     T.copy(RG_L1, RG_L0A_dk, transpose=True)
                     T.copy(QI_L1_dk, QI_L0B_dk)
-                    # MTE1→M: L0 就绪，Cube 可以开始 MMA
+                    # MTE1→M：L0 就绪，Cube 可以开始 MMA。
                     T.set_flag("mte1", "m", 10)
                     T.wait_flag("mte1", "m", 10)
-                    # MMA (Cube)
+                    # MMA（Cube）。
                     T.mma(RG_L0A_dk, QI_L0B_dk, DK_L0C, init=True)
-                    # M→FIX: L0C 就绪，FIX 可以写出
+                    # M→FIX：L0C 就绪，FIX 可以写出。
                     T.set_flag("m", "fix", 9)
                     T.wait_flag("m", "fix", 9)
-                    # 每 core 独占自己的 K 行，只写一次 → 普通 copy_l0c_to_gm
+                    # 每个 core 独占自己的 K 行，只写一次，因此使用普通 copy_l0c_to_gm。
                     T.copy(DK_L0C, dk_matmul_partial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:DQueryIndex])
 
                 T.wait_flag("m", "mte1", 6)
@@ -2975,9 +2995,9 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("FIX", 3)
 
             # ============================================================
-            # V scope 2: Cast dQueryIndex FP32→FP16 + Scatter → dKeyIndex
-            #   AIV0/AIV1 split: cast by g_id range, scatter by k_id range
-            #   Both ops independent → merged into single V scope
+            # V 阶段 2：dQueryIndex FP32→FP16 转换 + Scatter → dKeyIndex。
+            #   AIV0/AIV1 分工：按 g_id 范围执行 cast，按 k_id 范围执行 scatter。
+            #   两个操作彼此独立，因此合并到同一个 V 阶段。
             # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(3)
@@ -2991,18 +3011,18 @@ def tilelang_grad_kl_loss_single_kernel(
                 half_block = n_block // 2
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    # ---- Part 1: Cast dQueryIndex FP32→FP16 (split g_id, WAR-safe ping-pong DB) ----
-                    # Pipeline: MTE2 fill ∥ (V cast → MTE3 write) ∥ MTE2 prefetch
-                    # Events: MTE2_V{7,8} (RAW), V_MTE3{7,8} (RAW), MTE3_MTE2{7,8} (WAR)
-                    # vid 是 Python int(0/1)，直接算术求 g_start/g_end，避免 if/else 跨分支变量
+                    # ---- 第 1 部分：dQueryIndex FP32→FP16 转换（按 g_id 拆分，WAR 安全乒乓双缓冲）----
+                    # 流水线：MTE2 填充 ∥（V 转换 → MTE3 写出）∥ MTE2 预取。
+                    # 事件：MTE2_V{7,8}（RAW）、V_MTE3{7,8}（RAW）、MTE3_MTE2{7,8}（WAR）。
+                    # vid 是 Python 整数（0/1），直接计算 g_start/g_end，避免 if/else 跨分支变量。
                     g_start = vid * g_per_aiv           # 0 or 32
                     g_end = g_start + g_per_aiv         # 32 or 64
 
-                    # Pre-fill WAR: both slots initially free
+                    # WAR 预填充：两个槽位初始都可写。
                     T.set_flag("mte3", "mte2", 7)
                     T.set_flag("mte3", "mte2", 8)
 
-                    # Prologue: MTE2 fill + V cast for slot 0 (MTE3 deferred to loop)
+                    # 前导阶段：MTE2 填充槽位 0 并执行 V 转换（MTE3 延迟到循环中）。
                     T.wait_flag("mte3", "mte2", 7)
                     for d_idx in T.serial(d_num_query_index):
                         T.copy(dQueryIndexAccum[bz, s1_row, g_start * 4:(g_start + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[0, :, :])
@@ -3015,14 +3035,14 @@ def tilelang_grad_kl_loss_single_kernel(
                         cur = (g_id - g_start) % 2
                         nxt = (g_id - g_start + 1) % 2
 
-                        # MTE3 write slot cur → GM (∥ MTE2+V prefetch of nxt)
+                        # MTE3 将当前槽位写入 GM，并与 nxt 的 MTE2+V 预取并发。
                         T.wait_flag("v", "mte3", cur + 7)
                         for d_idx in T.serial(d_num_query_index):
                             T.copy(dq_fp16_db[cur, :, :], dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
-                        # WAR: slot cur consumed → safe to refill
+                        # WAR：当前槽位已消费，可以重新填充。
                         T.set_flag("mte3", "mte2", cur + 7)
 
-                        # Prefetch next g_id → slot nxt (MTE2 fill + V cast)
+                        # 预取下一个 g_id → 槽位 nxt（MTE2 填充 + V 转换）。
                         next_g = g_id + 1
                         if next_g < g_end:
                             T.wait_flag("mte3", "mte2", nxt + 7)
@@ -3033,15 +3053,15 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.tile.cast(dq_fp16_db[nxt, :, :], dq_fp32_db[nxt, :, :], "CAST_RINT", 4 * BLOCK_K)
                             T.set_flag("v", "mte3", nxt + 7)
 
-                    # Clear: drain remaining WAR events
+                    # 清理：排空剩余 WAR 事件。
                     T.wait_flag("mte3", "mte2", 7)
                     T.wait_flag("mte3", "mte2", 8)
 
-                    # ---- Part 2: Scatter dk_matmul_partial → dKeyIndex (split k_id across AIVs) ----
-                    # WAR-safe ping-pong DB: overlap MTE2 copy[k+1] ∥ MTE3 atomic_add[k]
-                    # Events: MTE2_MTE3{5,6} (RAW) / MTE3_MTE2{5,6} (WAR)
-                    # TileLang 不支持 if/else 跨分支变量 → DB 逻辑在分支内各写一份
-                    k_mid = k_start + half_block  # Python int
+                    # ---- 第 2 部分：Scatter dk_matmul_partial → dKeyIndex（AIV 间拆分 k_id）----
+                    # WAR 安全乒乓双缓冲：MTE2 复制[k+1] 与 MTE3 atomic_add[k] 并发。
+                    # 事件：MTE2_MTE3{5,6}（RAW）/ MTE3_MTE2{5,6}（WAR）。
+                    # TileLang 不支持 if/else 跨分支变量，因此在各分支中分别展开 DB 逻辑。
+                    k_mid = k_start + half_block  # Python 整数
                     if vid == 0:
                         T.set_flag("mte3", "mte2", 5)
                         T.set_flag("mte3", "mte2", 6)
@@ -3109,10 +3129,10 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.prim_func
     def main_pipeline(
-        # Inputs: 0-11
+        # 输入：0-11
         SparseIndices: T.Tensor((B, S1, Nidx2, K), "int32"),
-        KRealSize: T.Tensor((B, S1), "int32"),
-        ValidKMask: T.Tensor((B, S1, K), calc_dtype),
+        KRealSize: T.Tensor(k_real_size_shape, "int32"),
+        ValidKMask: T.Tensor(valid_k_mask_shape, calc_dtype),
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
         QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),
         Key: T.Tensor((B, S2, N2, DQuery), input_dtype),
@@ -3122,7 +3142,7 @@ def tilelang_grad_kl_loss_single_kernel(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
-        # Workspaces: 10-22
+        # 工作区：10-22
         dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
         dKeyIndexAccum: T.Tensor((dkey_output_rows, DQueryIndex), calc_dtype),
         GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),
@@ -3136,7 +3156,7 @@ def tilelang_grad_kl_loss_single_kernel(
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossPartial: T.Tensor((loss_partial_size,), calc_dtype),
         C2ZeroPad: T.Tensor((8, DQueryIndex), input_dtype),
-        # Outputs: -4..-1
+        # 输出：-4..-1
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         dKeyIndexOut: T.Tensor((dkey_output_rows, DQueryIndex), input_dtype),
         dWeightOut: T.Tensor((B, S1, Nidx1), input_dtype),
@@ -3231,9 +3251,9 @@ def tilelang_grad_kl_loss_single_kernel(
                                 task_prev_slot,
                             )
 
-            # All task owners must finish C2 before the all-core deterministic
-            # scatter phase starts.  This mirrors the official transition to
-            # ProcessDeterVector2 and also lets idle task cores participate.
+            # 所有任务负责人必须完成 C2 后，才能开始全核的确定性 scatter。
+            # 这对应官方切换到 ProcessDeterVector2 的阶段边界，也允许空闲的
+            # 任务核参与后续处理。
             T.sync_all()
             clear_dkey_accumulator(dKeyIndexAccum, cid, vid)
             T.sync_all()
@@ -3259,7 +3279,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
     return main_pipeline
 
-# Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
+# Gather 预处理：根据 Key/KeyIndex 和 sparseIndices 生成 GatherKey/GatherKeyIndex。
 # ==============================================================================
 def _preprocess_gather(key, key_index, key_rope, sparse_indices, B, S1, S2, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, dtype):
     device = key.device
@@ -3268,7 +3288,8 @@ def _preprocess_gather(key, key_index, key_rope, sparse_indices, B, S1, S2, N2, 
     valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(dtype)
     sparse_idx_safe = sparse_idx_3d.clamp(min=0)
 
-    # Fuse key, key_index, key_rope into a single gather (1x cat + 1x gather vs 3x gather)
+    # 将 key、key_index、key_rope 融合为一次 gather（1 次 cat + 1 次 gather，
+    # 替代 3 次 gather）。
     key_2d = key[:, :, 0, :]
     ki_2d = key_index[:, :, 0, :]
     if key_rope is not None and d_rope_orig > 0:
@@ -3293,7 +3314,7 @@ def _preprocess_gather(key, key_index, key_rope, sparse_indices, B, S1, S2, N2, 
 
 
 # ==============================================================================
-# Python-layer vector computation reference - kept as fallback
+# Python 层向量计算参考实现，仅作为回退路径保留。
 # ==============================================================================
 def _compute_vector_outputs(
     bmm1_res, bmm2_res, weights, softmax_max, softmax_sum,
@@ -3336,10 +3357,10 @@ def _compute_vector_outputs(
 
 
 # ==============================================================================
-# ScatterAdd: compute dKeyIndex via FP16 torch.bmm + scatter_add
+# ScatterAdd：通过 FP16 torch.bmm + scatter_add 计算 dKeyIndex。
 # ==============================================================================
 def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx1, Nidx2, K, DQueryIndex, device, dtype):
-    # FP16 bmm on Ascend Cube
+    # 在 Ascend Cube 上执行 FP16 bmm。
     relu_grad_t = relu_grad.permute(0, 1, 3, 2).reshape(B * S1, K, Nidx1)
     query_index_flat = query_index.reshape(B * S1, Nidx1, DQueryIndex)
     scatter_add = torch.bmm(relu_grad_t, query_index_flat).reshape(B, S1, K, DQueryIndex)
@@ -3400,8 +3421,49 @@ def _derive_k_exec(
     )
 
 
+def _is_static_full_valid(
+    actual_query_lengths: Optional[torch.Tensor],
+    actual_key_lengths: Optional[torch.Tensor],
+    batch_size: int,
+    query_length: int,
+    key_length: int,
+    top_k: int,
+) -> bool:
+    """仅在主机侧长度可见且每个查询位置均具有完整 K 时启用快路径。"""
+    host_query_lengths = _host_sequence_lengths(
+        actual_query_lengths, query_length, batch_size
+    )
+    host_key_lengths = _host_sequence_lengths(
+        actual_key_lengths, key_length, batch_size
+    )
+    if host_query_lengths is None or host_key_lengths is None:
+        return False
+    if len(host_query_lengths) != batch_size or len(host_key_lengths) != batch_size:
+        return False
+    return all(
+        key_len - query_len + 1 >= top_k
+        for query_len, key_len in zip(host_query_lengths, host_key_lengths)
+    )
+
+
+def _get_full_valid_aux_inputs(
+    device: torch.device,
+    calc_dtype: torch.dtype,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """返回 full-valid specialization 未使用的最小占位输入，并跨调用复用。"""
+    cache_key = (device, calc_dtype)
+    cached = _full_valid_aux_cache.get(cache_key)
+    if cached is None:
+        cached = (
+            torch.empty((1,), dtype=torch.int32, device=device),
+            torch.empty((1,), dtype=calc_dtype, device=device),
+        )
+        _full_valid_aux_cache[cache_key] = cached
+    return cached
+
+
 # ==============================================================================
-# Main entry: BSND layout
+# BSND 布局主入口
 # ==============================================================================
 def sparse_lightning_indexer_grad_kl_loss(
     query: torch.Tensor,
@@ -3459,30 +3521,7 @@ def sparse_lightning_indexer_grad_kl_loss(
 
     if layout_query == "BSND" and sparse_mode in (3,):
 
-        if actual_seq_lengths_query is not None:
-            actual_q_len = (
-                torch.tensor(actual_seq_lengths_query, dtype=torch.int32, device=query.device)
-                if isinstance(actual_seq_lengths_query, list)
-                else actual_seq_lengths_query.to(device=query.device, dtype=torch.int32)
-            )
-        else:
-            actual_q_len = torch.full((B,), S1, dtype=torch.int32, device=query.device)
-
-        if actual_seq_lengths_key is not None:
-            actual_k_len = (
-                torch.tensor(actual_seq_lengths_key, dtype=torch.int32, device=query.device)
-                if isinstance(actual_seq_lengths_key, list)
-                else actual_seq_lengths_key.to(device=query.device, dtype=torch.int32)
-            )
-        else:
-            actual_k_len = torch.full((B,), S2, dtype=torch.int32, device=query.device)
-
-        query_positions = torch.arange(S1, dtype=torch.int32, device=query.device)
-        k_real_size = (
-            actual_k_len.unsqueeze(1) - actual_q_len.unsqueeze(1) + query_positions + 1
-        ).clamp_(min=0, max=K).contiguous()
-
-        k_exec = _derive_k_exec(
+        full_valid = _is_static_full_valid(
             actual_seq_lengths_query,
             actual_seq_lengths_key,
             B,
@@ -3490,14 +3529,51 @@ def sparse_lightning_indexer_grad_kl_loss(
             S2,
             K,
         )
-        if k_exec < K:
-            sparse_indices = sparse_indices[..., :k_exec].contiguous()
-            K = k_exec
+        if full_valid:
+            # 该 specialization 不读取这两个输入，使用缓存的最小占位张量即可。
+            k_real_size, valid_k_mask = _get_full_valid_aux_inputs(
+                query.device, torch.float32
+            )
+        else:
+            if actual_seq_lengths_query is not None:
+                actual_q_len = (
+                    torch.tensor(actual_seq_lengths_query, dtype=torch.int32, device=query.device)
+                    if isinstance(actual_seq_lengths_query, list)
+                    else actual_seq_lengths_query.to(device=query.device, dtype=torch.int32)
+                )
+            else:
+                actual_q_len = torch.full((B,), S1, dtype=torch.int32, device=query.device)
 
-        valid_k_mask = (
-            torch.arange(K, dtype=torch.int32, device=query.device).view(1, 1, K)
-            < k_real_size.unsqueeze(-1)
-        ).to(torch.float32).contiguous()
+            if actual_seq_lengths_key is not None:
+                actual_k_len = (
+                    torch.tensor(actual_seq_lengths_key, dtype=torch.int32, device=query.device)
+                    if isinstance(actual_seq_lengths_key, list)
+                    else actual_seq_lengths_key.to(device=query.device, dtype=torch.int32)
+                )
+            else:
+                actual_k_len = torch.full((B,), S2, dtype=torch.int32, device=query.device)
+
+            query_positions = torch.arange(S1, dtype=torch.int32, device=query.device)
+            k_real_size = (
+                actual_k_len.unsqueeze(1) - actual_q_len.unsqueeze(1) + query_positions + 1
+            ).clamp_(min=0, max=K).contiguous()
+
+            k_exec = _derive_k_exec(
+                actual_seq_lengths_query,
+                actual_seq_lengths_key,
+                B,
+                S1,
+                S2,
+                K,
+            )
+            if k_exec < K:
+                sparse_indices = sparse_indices[..., :k_exec].contiguous()
+                K = k_exec
+
+            valid_k_mask = (
+                torch.arange(K, dtype=torch.int32, device=query.device).view(1, 1, K)
+                < k_real_size.unsqueeze(-1)
+            ).to(torch.float32).contiguous()
 
         S2_pad = (S2 + VECTOR_BASEN - 1) // VECTOR_BASEN * VECTOR_BASEN
         if S2_pad > S2:
@@ -3526,10 +3602,10 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_scatter_end = torch.npu.Event(enable_timing=True)
             _t_prep_start.record()
         d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
-        # Gather moved into kernel V0 scope — no host-side preprocess needed
+        # Gather 已移入内核的 V0 阶段，不再需要主机侧预处理。
 
 
-        # Pad rope dims to k_block alignment, and handle None
+        # 将 rope 维度补齐到 k_block 对齐，并处理 None。
         d_rope = ((d_rope_orig + BLOCK_K - 1) // BLOCK_K) * BLOCK_K if d_rope_orig > 0 else 0
         if query_rope is None:
             query_rope = torch.zeros(B, S1, N1, 0, dtype=input_dtype, device=query.device)
@@ -3540,8 +3616,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_rope = torch.nn.functional.pad(query_rope, (0, pad_len))
             key_rope = torch.nn.functional.pad(key_rope, (0, pad_len))
 
-        # Matrix and vector stages share one fixed 128-row K tile.  Core
-        # parallelism is owned by complete (B, S1) tasks, not K tiles.
+        # Cube 和 Vector 阶段共用固定的 128 列 K 分块。
+        # 核并行以完整的（B，S1）任务为单位，而不是以 K 分块为单位。
         hardware_core_count = _get_aicore_count()
         schedule = _make_task_schedule(
             B,
@@ -3562,7 +3638,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         cache_key = (
             B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2,
             DQuery, DQueryIndex, K, core_count, d_rope,
-            input_dtype_str, calc_dtype_str, scale_value, block_n,
+            input_dtype_str, calc_dtype_str, scale_value, block_n, full_valid,
         )
 
         if cache_key in _kernel_cache:
@@ -3571,9 +3647,10 @@ def sparse_lightning_indexer_grad_kl_loss(
             func = tilelang_grad_kl_loss_single_kernel(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
+                full_valid,
             )
 
-            # # dump 编译出的 AscendC 源码到文件，供离线核对手动同步转写
+            # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
             try:
                 import os as _os
                 _dump_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "0721_kernel_source.cpp")
@@ -3606,7 +3683,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
             softmax_i_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
             d_query_index_accum = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
-            # dKeyIndex 融合：matmul 中间结果(workspace) + fp32 累加器输出
+            # dKeyIndex 融合：matmul 中间结果（工作区）+ fp32 累加器输出
             dk_matmul_partial = torch.zeros(
                 B, S1, v2_k_padded, DQueryIndex,
                 dtype=torch.float32, device=query.device,
@@ -3644,8 +3721,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             query, query_rope, key, key_rope,           # 3-6
             query_index, key_index,                     # 7-8
             weights, softmax_max, softmax_sum,          # 9-11
-            d_query_index_accum,                        # 12 workspace
-            d_key_index_accum,                          # 13 workspace
+            d_query_index_accum,                        # 12，工作区
+            d_key_index_accum,                          # 13，工作区
             gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 14-16
             bmm1_res_ws, bmm2_res_ws,                   # 17-18
             p_reduced_ws, softmax_i_ws,                 # 19-20
@@ -3661,7 +3738,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_weight = results[2]
         loss_out = results[3]
 
-        # DEBUG: identify the first stage that produces a non-finite value.
+        # DEBUG：定位第一个产生非有限值的阶段。
         _DEBUG = _DEBUG_REQUESTED and not _debug_dump_done
         if _DEBUG:
             def _debug_tensor(name, tensor):
@@ -3690,8 +3767,11 @@ def sparse_lightning_indexer_grad_kl_loss(
             _debug_tensor("QueryIndex", query_index)
             _debug_tensor("KeyIndex", key_index)
             _debug_tensor("Weights", weights)
-            _debug_tensor("KRealSize", k_real_size)
-            _debug_tensor("ValidKMask", valid_k_mask)
+            if full_valid:
+                print("[DEBUG] FullValidStaticPath: enabled")
+            else:
+                _debug_tensor("KRealSize", k_real_size)
+                _debug_tensor("ValidKMask", valid_k_mask)
             _debug_tensor("SoftmaxMax", softmax_max)
             _debug_tensor("SoftmaxSum", softmax_sum)
             _debug_tensor("GatherKey_ws", gather_key_ws)
@@ -3722,7 +3802,11 @@ def sparse_lightning_indexer_grad_kl_loss(
             debug_softmax_max = softmax_max[:, 0, :, :].float()
             debug_softmax_sum = softmax_sum[:, 0, :, :].float().abs().clamp_min(1e-8)
             debug_scaled_bmm1 = bmm1_res_ws.float() * scale_value
-            debug_valid_mask = valid_k_mask.float()
+            debug_valid_mask = (
+                torch.ones((B, S1, K), dtype=torch.float32, device=query.device)
+                if full_valid
+                else valid_k_mask.float()
+            )
             debug_p_reduced = (
                 torch.exp(debug_scaled_bmm1 - debug_softmax_max.unsqueeze(-1))
                 / debug_softmax_sum.unsqueeze(-1)
@@ -3774,7 +3858,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 (~debug_expected_mask) & (debug_actual_rg.abs() > 1e-3)
             )
 
-            # Rebuild C2 from the stored BF16 reluGrad to separate V1 from C2.
+            # 根据保存的 BF16 reluGrad 重建 C2，用于区分 V1 和 C2 的误差来源。
             debug_dq_from_stored_rg = torch.matmul(
                 debug_actual_rg, gather_key_index_ws.float()
             )
@@ -3921,7 +4005,7 @@ def sparse_lightning_indexer_grad_kl_loss(
 
 
 # ==============================================================================
-# TND layout entry
+# TND 布局入口
 # ==============================================================================
 def sparse_lightning_indexer_grad_kl_loss_tnd(
     query: torch.Tensor,
