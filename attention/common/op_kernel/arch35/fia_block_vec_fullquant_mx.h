@@ -408,6 +408,9 @@ public:
                      {4, s2BaseSizeCur / 4, s2BaseSizeCur / 4 + 2, 0});
         }
         //-----------------------------------------------------------------
+#ifdef DEBUG_DUMP
+        AscendC::DumpTensor(stage1CastTensor, 10001, mBaseSize * (s2BaseSize >> 1) / 2);
+#endif
         this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
 
         if (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
