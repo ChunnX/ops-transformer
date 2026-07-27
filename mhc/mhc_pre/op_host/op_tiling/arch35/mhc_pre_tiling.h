@@ -25,7 +25,7 @@ namespace optiling {
 enum class TilingMode : uint8_t {
     SPLIT_BS = 0,
     SPLIT_ND = 1,
-    SPLIT_M_K = 3
+    SPLIT_M_K = 2
 };
 
 BEGIN_TILING_DATA_DEF(MhcPreTilingData)

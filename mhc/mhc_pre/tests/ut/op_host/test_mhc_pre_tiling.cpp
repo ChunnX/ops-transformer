@@ -237,7 +237,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case04_B2_S4096_n4_d1536_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -291,7 +291,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case05_B2_S4096_n6_d2048_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -345,7 +345,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case06_B2_S4096_n8_d6144_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -507,7 +507,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case09_B8_S512_n8_d768_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -561,7 +561,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case10_B32_S256_n4_d512_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -615,7 +615,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case11_B1_S8192_n6_d256_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -669,7 +669,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case12_B128_S64_n8_d1024_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -723,7 +723,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case13_B4_S2048_n4_d3072_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -831,7 +831,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case15_B64_S128_n8_d4096_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1047,7 +1047,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case19_B1_S1_n4_d128_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1154,7 +1154,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case21_T1024_n6_d768_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1208,7 +1208,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case22_B2_S4096_n4_d1536_NoGamma)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1263,7 +1263,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case23_OutFlag1_SplitBS_BSND_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1318,7 +1318,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case24_OutFlag1_SplitND_BSND_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1372,7 +1372,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case25_OutFlag1_SplitBS_TND_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1426,7 +1426,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case26_OutFlag1_SplitND_TND_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1641,7 +1641,7 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 3;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1906,7 +1906,7 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectedTilingKey, "", {},
                     0, TilingData2Str<int32_t>);
-    if (expectedTilingKey != 3 && expectedTilingKey != 7) {
+    if (expectedTilingKey != 2 && expectedTilingKey != 6) {
         return;
     }
 
@@ -1959,55 +1959,55 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_SmallM)
 {
-    CheckMkGeneralizedTiling(1U, 4U, 2560U, 3);
-    CheckMkGeneralizedTiling(64U, 4U, 2560U, 3);
+    CheckMkGeneralizedTiling(1U, 4U, 2560U, 2);
+    CheckMkGeneralizedTiling(64U, 4U, 2560U, 2);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_ImplMode_HF32)
 {
-    CheckMkGeneralizedTiling(64U, 4U, 2560U, 3, 0, true, 1);
-    CheckMkGeneralizedTiling(1024U, 8U, 6144U, 3, 0, true, 1);
-    CheckMkGeneralizedTiling(1536U, 8U, 6144U, 3, 0, true, 1);
+    CheckMkGeneralizedTiling(64U, 4U, 2560U, 2, 0, true, 1);
+    CheckMkGeneralizedTiling(1024U, 8U, 6144U, 2, 0, true, 1);
+    CheckMkGeneralizedTiling(1536U, 8U, 6144U, 2, 0, true, 1);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_Boundary)
 {
-    CheckMkGeneralizedTiling(511U, 4U, 6144U, 3);
-    CheckMkGeneralizedTiling(512U, 4U, 6144U, 3);
-    CheckMkGeneralizedTiling(1536U, 4U, 6144U, 3);
-    CheckMkGeneralizedTiling(2048U, 4U, 5120U, 3);
-    CheckMkGeneralizedTiling(10240U, 4U, 5120U, 3);
+    CheckMkGeneralizedTiling(511U, 4U, 6144U, 2);
+    CheckMkGeneralizedTiling(512U, 4U, 6144U, 2);
+    CheckMkGeneralizedTiling(1536U, 4U, 6144U, 2);
+    CheckMkGeneralizedTiling(2048U, 4U, 5120U, 2);
+    CheckMkGeneralizedTiling(10240U, 4U, 5120U, 2);
     CheckMkGeneralizedTiling(10241U, 4U, 5120U, 0);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N6_KTail)
 {
-    CheckMkGeneralizedTiling(1000U, 6U, 2576U, 3);
+    CheckMkGeneralizedTiling(1000U, 6U, 2576U, 2);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N8_WideFusion)
 {
-    CheckMkGeneralizedTiling(1024U, 8U, 6144U, 3);
+    CheckMkGeneralizedTiling(1024U, 8U, 6144U, 2);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_NoResi)
 {
-    CheckMkGeneralizedTiling(129U, 6U, 2592U, 7, 0, false);
-    CheckMkGeneralizedTiling(96U, 8U, 2592U, 7, 0, false);
+    CheckMkGeneralizedTiling(129U, 6U, 2592U, 6, 0, false);
+    CheckMkGeneralizedTiling(96U, 8U, 2592U, 6, 0, false);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Fallback_SmallK)
 {
     CheckMkGeneralizedTiling(128U, 4U, 16U, 1);
-    CheckMkGeneralizedTiling(32U, 4U, 2560U, 3);
+    CheckMkGeneralizedTiling(32U, 4U, 2560U, 2);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_DeterministicLevels)
 {
     // Ordinary deterministic and strong-consistency modes keep the fixed-order
     // M-K reduction. Level 3 is rejected by CanUseMk to match sinkhorn.
-    CheckMkGeneralizedTiling(256U, 4U, 5120U, 3, 1);
-    CheckMkGeneralizedTiling(1024U, 4U, 5120U, 3, 1);
-    CheckMkGeneralizedTiling(256U, 4U, 5120U, 3, 2);
-    CheckMkGeneralizedTiling(1024U, 4U, 5120U, 3, 2);
+    CheckMkGeneralizedTiling(256U, 4U, 5120U, 2, 1);
+    CheckMkGeneralizedTiling(1024U, 4U, 5120U, 2, 1);
+    CheckMkGeneralizedTiling(256U, 4U, 5120U, 2, 2);
+    CheckMkGeneralizedTiling(1024U, 4U, 5120U, 2, 2);
 }
