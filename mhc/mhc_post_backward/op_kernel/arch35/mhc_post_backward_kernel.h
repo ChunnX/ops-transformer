@@ -31,7 +31,7 @@ constexpr uint32_t FLOAT32_ALIGN_SIZE = 8; // 8 elements = 32 bytes for float32
 // Queue depth configuration
 constexpr uint32_t QUEUE_DEPTH = 1; // Single Buffer depth for all queues
 
-template<typename T>
+template<typename T, bool IS_HRES>
 class MhcPostBackwardKernel {
 public:
     __aicore__ inline MhcPostBackwardKernel() {}
@@ -130,8 +130,8 @@ private:
     uint32_t itemStart_;
 };
 
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::Init(
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::Init(
     GM_ADDR gradOutput, GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,
     GM_ADDR gradX, GM_ADDR gradHRes, GM_ADDR gradHOut, GM_ADDR gradHPost,
     GM_ADDR workspace,
@@ -168,7 +168,9 @@ __aicore__ inline void MhcPostBackwardKernel<T>::Init(
     xGm_.SetGlobalBuffer((__gm__ T *)x, totalItems_ * n_ * D_);
     // Set global memory buffers for inputs (float32)
     hPostGm_.SetGlobalBuffer((__gm__ float *)hPost, totalItems_ * n_);
-    hResGm_.SetGlobalBuffer((__gm__ float *)hRes, totalItems_ * n_ * n_);
+    if constexpr (IS_HRES) {
+        hResGm_.SetGlobalBuffer((__gm__ float *)hRes, totalItems_ * n_ * n_);
+    }
 
     // Set global memory buffers for outputs (bf16/fp16)
     gradHOutGm_.SetGlobalBuffer((__gm__ T *)gradHOut, totalItems_ * D_);
@@ -192,7 +194,9 @@ __aicore__ inline void MhcPostBackwardKernel<T>::Init(
         pipe_->InitBuffer(hOutTileQueue_, QUEUE_DEPTH, tileD_ * sizeof(T));
         // float32 for hPost, hRes (use aligned sizes for vector ops)
         pipe_->InitBuffer(hPostQueue_, QUEUE_DEPTH, alignedN_ * sizeof(float));
-        pipe_->InitBuffer(hResQueue_, QUEUE_DEPTH, alignedNN_ * sizeof(float));
+        if constexpr (IS_HRES) {
+            pipe_->InitBuffer(hResQueue_, QUEUE_DEPTH, alignedNN_ * sizeof(float));
+        }
 
         // Initialize output queues (bf16/fp16 for gradHOut, gradX)
         pipe_->InitBuffer(gradHOutTileQueue_, QUEUE_DEPTH, tileD_ * sizeof(T));
@@ -215,15 +219,16 @@ __aicore__ inline void MhcPostBackwardKernel<T>::Init(
             itemStart_ = blockIdx_ * (itemsPerAic_ + 1);
         } else {
             myItemCount_ = itemsPerAic_;
-            itemStart_ = remainderItemsAic_ * (itemsPerAic_ + 1) + (blockIdx_ - remainderItemsAic_) * itemsPerAic_;
+            itemStart_ = remainderItemsAic_ * (itemsPerAic_ + 1) +
+                         (blockIdx_ - remainderItemsAic_) * itemsPerAic_;
         }
 
         mm.Init(&tilingData->matmulTiling, pipe_);
     }
 }
 
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::Process()
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::Process()
 {
     if ASCEND_IS_AIV {
         if (blockIdx_ >= usedCores_) {
@@ -258,11 +263,10 @@ __aicore__ inline void MhcPostBackwardKernel<T>::Process()
     }
 }
 
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::CopyInWeights(uint32_t globalItemIdx)
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::CopyInWeights(uint32_t globalItemIdx)
 {
     uint32_t hPostOffset = globalItemIdx * n_;
-    uint32_t hResOffset = globalItemIdx * n_ * n_;
 
     LocalTensor<float> hPostLocal = hPostQueue_.AllocTensor<float>();
     // Slow path: need padding, zero out first then copy
@@ -272,17 +276,20 @@ __aicore__ inline void MhcPostBackwardKernel<T>::CopyInWeights(uint32_t globalIt
                 {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0}, hPostpadParams);
     hPostQueue_.EnQue(hPostLocal);
 
-    LocalTensor<float> hResLocal = hResQueue_.AllocTensor<float>();
-    // Slow path: need padding, zero out first then copy
-    uint8_t hResrightPad = static_cast<uint8_t>(alignedNN_ - n_ * n_);
-    DataCopyPadParams hRespadParams = {true, 0, hResrightPad, 0};
-    DataCopyPad(hResLocal, hResGm_[hResOffset], {1, static_cast<uint16_t>(n_ * n_ * sizeof(float)), 0, 0},
-                hRespadParams);
-    hResQueue_.EnQue(hResLocal);
+    if constexpr (IS_HRES) {
+        uint32_t hResOffset = globalItemIdx * n_ * n_;
+        LocalTensor<float> hResLocal = hResQueue_.AllocTensor<float>();
+        // Slow path: need padding, zero out first then copy
+        uint8_t hResrightPad = static_cast<uint8_t>(alignedNN_ - n_ * n_);
+        DataCopyPadParams hRespadParams = {true, 0, hResrightPad, 0};
+        DataCopyPad(hResLocal, hResGm_[hResOffset], {1, static_cast<uint16_t>(n_ * n_ * sizeof(float)), 0, 0},
+                    hRespadParams);
+        hResQueue_.EnQue(hResLocal);
+    }
 }
 
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::ComputeInitGrads()
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::ComputeInitGrads()
 {
     LocalTensor<float> gradHPostLocal = gradHPostQueue_.AllocTensor<float>();
 
@@ -293,8 +300,8 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeInitGrads()
     gradHPostQueue_.EnQue(gradHPostLocal);
 }
 
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::CopyInTile(uint32_t globalItemIdx, uint32_t tileId)
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::CopyInTile(uint32_t globalItemIdx, uint32_t tileId)
 {
     uint32_t dStart = tileId * tileD_;
     uint64_t gradOutBase = globalItemIdx * n_ * D_;
@@ -326,15 +333,14 @@ __aicore__ inline void MhcPostBackwardKernel<T>::CopyInTile(uint32_t globalItemI
     hOutTileQueue_.EnQue(hOutTileLocal);
 }
 
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::ComputeTile(uint32_t tileId)
 {
     uint32_t actualTileD = (tileId == nTilesD_ - 1) ? lastTileD_ : tileD_;
 
     LocalTensor<T> gradOutTile = gradOutTileQueue_.DeQue<T>();
     LocalTensor<T> hOutTile = hOutTileQueue_.DeQue<T>();
     LocalTensor<float> hPostLocal = hPostQueue_.DeQue<float>();
-    LocalTensor<float> hResLocal = hResQueue_.DeQue<float>();
     LocalTensor<float> gradHPostLocal = gradHPostQueue_.DeQue<float>();
 
     LocalTensor<T> gradHOutTile = gradHOutTileQueue_.AllocTensor<T>();
@@ -370,18 +376,23 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
     ComputeGradHOutTile(gradOutF32, hPostLocal, gradHOutTile, actualTileD);
     gradHOutTileQueue_.EnQue(gradHOutTile);
 
-    ComputeGradXTile(gradOutF32, hResLocal, gradXTile, actualTileD);
+    if constexpr (IS_HRES) {
+        LocalTensor<float> hResLocal = hResQueue_.DeQue<float>();
+        ComputeGradXTile(gradOutF32, hResLocal, gradXTile, actualTileD);
+        hResQueue_.EnQue(hResLocal);
+    } else {
+        DataCopy(gradXTile, gradOutTile, n_ * actualTileD);
+    }
     gradXTileQueue_.EnQue(gradXTile);
     
     hPostQueue_.EnQue(hPostLocal);
-    hResQueue_.EnQue(hResLocal);
 
     gradOutTileQueue_.FreeTensor(gradOutTile);
     hOutTileQueue_.FreeTensor(hOutTile);
 }
 
-template<typename T>
-__aicore__ inline float MhcPostBackwardKernel<T>::HierarchicalReduceSum(
+template<typename T, bool IS_HRES>
+__aicore__ inline float MhcPostBackwardKernel<T, IS_HRES>::HierarchicalReduceSum(
 const LocalTensor<float> &srcLocal,
 LocalTensor<float> &workLocal,
 uint32_t count)
@@ -460,8 +471,8 @@ uint32_t count)
     return workLocal.GetValue(0);
 }
 
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradHOutTile(LocalTensor<float> gradOutF32UB,
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::ComputeGradHOutTile(LocalTensor<float> gradOutF32UB,
                                                                     LocalTensor<float> hPostLocalUB,
                                                                     LocalTensor<T> gradHOutTileUB,
                                                                     uint32_t actualTileD) {
@@ -501,8 +512,8 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradHOutTile(LocalTensor
 }
 
 
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradXTile(LocalTensor<float> gradOutF32UB,
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::ComputeGradXTile(LocalTensor<float> gradOutF32UB,
                             LocalTensor<float> hResLocalUB, LocalTensor<T> gradXTileUB, uint32_t actualTileD) {
     uint32_t vfLen = 256 / sizeof(float);
     uint16_t repeatTimes = (actualTileD + vfLen - 1) / vfLen;
@@ -544,8 +555,8 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradXTile(LocalTensor<fl
     }
 }
 
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::CopyOutGradHOut(uint32_t globalItemIdx, uint32_t tileId)
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::CopyOutGradHOut(uint32_t globalItemIdx, uint32_t tileId)
 {
     uint32_t dStart = tileId * tileD_;
     uint64_t hOutBase = globalItemIdx * D_;
@@ -559,8 +570,8 @@ __aicore__ inline void MhcPostBackwardKernel<T>::CopyOutGradHOut(uint32_t global
     gradHOutTileQueue_.FreeTensor(gradHOutTile);
 }
 
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::CopyOutGradX(uint32_t globalItemIdx, uint32_t tileId)
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::CopyOutGradX(uint32_t globalItemIdx, uint32_t tileId)
 {
     uint32_t dStart = tileId * tileD_;
     uint64_t gradXBase = globalItemIdx * n_ * D_;
@@ -578,23 +589,25 @@ __aicore__ inline void MhcPostBackwardKernel<T>::CopyOutGradX(uint32_t globalIte
     gradXTileQueue_.FreeTensor(gradXTile);
 }
 
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::CopyOutWeightGrads(uint32_t globalItemIdx)
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::CopyOutWeightGrads(uint32_t globalItemIdx)
 {
     uint32_t hPostOffset = globalItemIdx * n_;
 
     LocalTensor<float> hPostLocal = hPostQueue_.DeQue<float>();
-    LocalTensor<float> hResLocal = hResQueue_.DeQue<float>();
     hPostQueue_.FreeTensor(hPostLocal);
-    hResQueue_.FreeTensor(hResLocal);
+    if constexpr (IS_HRES) {
+        LocalTensor<float> hResLocal = hResQueue_.DeQue<float>();
+        hResQueue_.FreeTensor(hResLocal);
+    }
 
     LocalTensor<float> gradHPostLocal = gradHPostQueue_.DeQue<float>();
     DataCopyPad(gradHPostGm_[hPostOffset], gradHPostLocal, {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0});
     gradHPostQueue_.FreeTensor(gradHPostLocal);
 }
 
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::SetMMParaAndCompute(
+template<typename T, bool IS_HRES>
+__aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::SetMMParaAndCompute(
     uint32_t globalItemIdx)
 {
     uint64_t inputBase = globalItemIdx * n_ * D_;
