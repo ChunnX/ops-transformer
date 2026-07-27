@@ -329,8 +329,7 @@ private:
     {
         uint32_t rankId = resources.context.rankId;
         constexpr uint32_t handleArraySize = 72U;
-        resources.context.channelsPerRank = (handleArraySize + resources.context.rankSize - 1U) /
-                                            resources.context.rankSize;
+        resources.context.channelsPerRank = static_cast<uint32_t>(CeilDiv(handleArraySize, resources.context.rankSize));
         if (resources.context.channelsPerRank == 0U) {
             resources.context.channelsPerRank = 1U;
         }
