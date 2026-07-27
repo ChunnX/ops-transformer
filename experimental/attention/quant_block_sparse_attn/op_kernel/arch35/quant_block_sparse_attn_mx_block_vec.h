@@ -85,8 +85,7 @@ public:
                 attenMaskGm_.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
                 attenMaskS2Size_ = attenMaskS2Size;
             }
-            uint32_t negativeIntScalar = NEGATIVE_MIN_VALUE_FP32;
-            negativeFloatScalar_ = *((MM_T *)&negativeIntScalar);
+            negativeFloatScalar_ = *((const MM_T *)&NEGATIVE_MIN_VALUE_FP32);
             // 输入 quantScale1 为 [1] e8m0；VF 另行生成 C2 使用的 PScale。
             pScaleValue_ = DecodeE8M0Scale(pScaleGm.GetValue(0));
         }
