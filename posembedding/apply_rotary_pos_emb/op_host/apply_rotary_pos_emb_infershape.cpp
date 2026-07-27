@@ -73,7 +73,7 @@ static bool BroadcastShapeToOutShape(const gert::Shape *shape, gert::Shape *shap
 {
     OP_LOGD("BroadcastShapeToOutShape", "start broadcast %s to %s!", Ops::Base::ToString(*shape).c_str(),
             Ops::Base::ToString(*shape_output).c_str());
-    
+
     if (Ops::Base::IsUnknownRank(*shape) || Ops::Base::IsUnknownRank(*shape_output)) {
         OP_LOGD("BroadcastShapeToOutShape", "the input shape is [-2], set output shape is [-2]!");
         shape_output->SetDimNum(1);
@@ -123,7 +123,6 @@ static bool BroadcastShape(const gert::Shape *in1_shape, const gert::Shape *in2_
                 return false);
     return true;
 }
-
 
 static ge::graphStatus ApplyRotaryPosEmbInferShape(gert::InferShapeContext *context)
 {
@@ -182,5 +181,16 @@ static ge::graphStatus ApplyRotaryPosEmbInferShape(gert::InferShapeContext *cont
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(ApplyRotaryPosEmb).InferShape(ApplyRotaryPosEmbInferShape);
+static ge::graphStatus ApplyRotaryPosEmbInferDtype(gert::InferDataTypeContext *context)
+{
+    OP_LOGD(context, "ApplyRotaryPosEmbInferDtype begin.");
+    context->SetOutputDataType(OUTPUT_0_IDX, context->GetInputDataType(INPUT0));
+    context->SetOutputDataType(OUTPUT_1_IDX, context->GetInputDataType(INPUT1));
+    OP_LOGD(context, "ApplyRotaryPosEmbInferDtype end.");
+    return ge::GRAPH_SUCCESS;
+}
+
+IMPL_OP_INFERSHAPE(ApplyRotaryPosEmb)
+    .InferShape(ApplyRotaryPosEmbInferShape)
+    .InferDataType(ApplyRotaryPosEmbInferDtype);
 } // namespace ops
