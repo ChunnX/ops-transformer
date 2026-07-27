@@ -53,6 +53,30 @@ static void ComputeBandDims(int64_t headDim, int64_t &tBand, int64_t &hBand, int
     }
 }
 
+static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
+{
+    if (seqLen <= 1) {
+        T = 1; H = 1; W = seqLen;
+        return;
+    }
+    int64_t maxDim = seqLen < 128 ? seqLen : 128LL;
+    for (int64_t w = maxDim; w >= 1; w--) {
+        if (seqLen % w == 0) {
+            int64_t rest = seqLen / w;
+            int64_t maxH = rest < 128 ? rest : 128LL;
+            for (int64_t h = maxH; h >= 1; h--) {
+                if (rest % h == 0) {
+                    T = rest / h;
+                    H = h;
+                    W = w;
+                    return;
+                }
+            }
+        }
+    }
+    T = 1; H = 1; W = seqLen;
+}
+
 static ge::graphStatus GetPlatformInfo(gert::TilingContext *context, uint64_t &ubSize, int64_t &coreNum)
 {
     auto *platformInfo = context->GetPlatformInfo();
@@ -105,13 +129,40 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     int64_t wBand = 0;
     ComputeBandDims(headDim, tBand, hBand, wBand);
 
+    // Compute video dims
+    int64_t T, H, W;
+    FactorVideoDims(seqLen, T, H, W);
+
+    // Compute block/tile params matching kernel logic
+    int64_t blockLength = totalLength / BLOCK_DIM;
+    int64_t halfD = headDim / 2;
+    size_t typeSize = 4; // default float
+    auto inputDtype = context->GetInputDesc(0)->GetDataType();
+    if (inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16) {
+        typeSize = 2;
+    }
+    int64_t maxTileElts = (ubSize - static_cast<uint64_t>(halfD) * typeSize) / (3ULL * typeSize);
+    int64_t posPerBlock = blockLength / headDim;
+    int64_t posPerTile = maxTileElts / headDim;
+    if (posPerTile <= 0)
+        posPerTile = 1;
+    if (posPerTile > posPerBlock)
+        posPerTile = posPerBlock;
+    int64_t tileNum = (posPerBlock + posPerTile - 1) / posPerTile;
+    int64_t tileLength = posPerTile * headDim;
+
     td->totalLength = totalLength;
     td->headDim = headDim;
     td->seqLen = seqLen;
+    td->T = T;
+    td->H = H;
+    td->W = W;
     td->tBand = tBand;
     td->hBand = hBand;
-    td->tileNum = TILE_NUM;
-    td->blockLength = totalLength / BLOCK_DIM;
+    td->wBand = wBand;
+    td->tileNum = tileNum;
+    td->tileLength = tileLength;
+    td->blockLength = blockLength;
     td->freqBase = FREQ_BASE;
     td->rT = static_cast<float>(std::pow(FREQ_BASE, -2.0 / static_cast<double>(tBand)));
     td->rH = static_cast<float>(std::pow(FREQ_BASE, -2.0 / static_cast<double>(hBand)));
@@ -121,7 +172,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     ws[0] = 16U * 1024U * 1024U;
 
     context->SetBlockDim(BLOCK_DIM);
-    auto inputDtype = context->GetInputDesc(0)->GetDataType();
     uint32_t tilingKey = 0;
     if (inputDtype == ge::DT_FLOAT16) {
         tilingKey = 1;

@@ -24,6 +24,7 @@ struct RotaryPositionEmbedding3dTilingData {
     int64_t hBand; // full height band dim (d1)
     int64_t wBand; // full width band dim (d2)
     int64_t tileNum;
+    int64_t tileLength;
     int64_t blockLength;
     float freqBase;
     float rT; // freqBase^(-2/tBand)

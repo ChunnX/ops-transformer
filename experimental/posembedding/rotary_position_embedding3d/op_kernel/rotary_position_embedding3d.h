@@ -52,18 +52,9 @@ __aicore__ inline void RotaryPositionEmbedding3d<T>::Init(GM_ADDR x, GM_ADDR cos
     headDim_ = td->headDim;
     halfD_ = static_cast<int32_t>(headDim_ / 2);
 
-    blockLength_ = td->totalLength / GetBlockNum();
-    tileLength_ = static_cast<uint32_t>(blockLength_);
-    // Compute max tile size to fit in UB (≈192KB on ascend910b)
-    int64_t maxTileElts = (196608ULL - static_cast<uint64_t>(halfD_) * sizeof(T)) / (3ULL * sizeof(T));
-    int64_t posPerBlock = blockLength_ / headDim_;
-    int64_t posPerTile = maxTileElts / headDim_;
-    if (posPerTile <= 0)
-        posPerTile = 1;
-    if (posPerTile > posPerBlock)
-        posPerTile = posPerBlock;
-    tileNum_ = static_cast<int32_t>((posPerBlock + posPerTile - 1) / posPerTile);
-    tileLength_ = static_cast<uint32_t>(posPerTile * headDim_);
+    blockLength_ = td->blockLength;
+    tileNum_ = static_cast<int32_t>(td->tileNum);
+    tileLength_ = static_cast<uint32_t>(td->tileLength);
 
     int64_t blockOffset = blockLength_ * GetBlockIdx();
     xGm_.SetGlobalBuffer((__gm__ T *)x + blockOffset, blockLength_);
