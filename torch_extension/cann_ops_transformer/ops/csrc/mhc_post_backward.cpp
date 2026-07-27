@@ -105,22 +105,22 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPostBackward(const
     CheckInputs(gradOutput, x, hRes, hOut, hPost);
 
     at::Tensor gradX{nullptr};
-    at::Tensor gradHRes{nullptr};
-    at::Tensor gradHOut{nullptr};
-    at::Tensor gradHPost{nullptr};
+    at::Tensor gradHres{nullptr};
+    at::Tensor gradHout{nullptr};
+    at::Tensor gradHpost{nullptr};
     {
         // Output allocation must happen under the input device guard for non-default NPU cards.
         auto localDevice = c10::Device(x.device());
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
         gradX = at::empty_like(x);
-        gradHRes = at::empty_like(hRes);
-        gradHOut = at::empty_like(hOut);
-        gradHPost = at::empty_like(hPost);
+        gradHres = at::empty_like(hRes);
+        gradHout = at::empty_like(hOut);
+        gradHpost = at::empty_like(hPost);
     }
 
-    ACLNN_CMD(aclnnMhcPostBackward, gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost);
+    ACLNN_CMD(aclnnMhcPostBackward, gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost);
 
-    return std::make_tuple(gradX, gradHRes, gradHOut, gradHPost);
+    return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(gradX, gradHres, gradHout, gradHpost);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
