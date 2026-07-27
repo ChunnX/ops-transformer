@@ -166,21 +166,34 @@ class GeneralizedSFAQuant:
                     if self.ori_mask_mode != 0 and i_S1 < cur_act_q - cur_ori_act_kv:  # 根据 win_kv 判断行无效
                         attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = torch.zeros([G, self.D], dtype=torch.float)
                         continue
-
-                    if self.ori_mask_mode == 4:
-                        ori_threshold = cur_ori_act_kv - cur_act_q + i_S1 + 1
-                        ori_win_end = ori_threshold + self.ori_win_right
+                    ori_threshold = cur_ori_act_kv - cur_act_q + i_S1 + 1
+                    if self.ori_mask_mode == 3:
+                        ori_win_start = 0
+                        ori_win_end = min(max(ori_threshold, 0), cur_ori_act_kv)
+                    elif self.ori_mask_mode == 4:
                         if self.ori_win_left == -1:
                             ori_win_start = 0
                         else:
-                            ori_win_start = max(ori_threshold - self.ori_win_left - 1, 0)
-                    elif self.ori_mask_mode == 3:
-                        ori_threshold = cur_ori_act_kv - cur_act_q + i_S1 + 1
-                        ori_win_end = ori_threshold + self.ori_win_right
-                        ori_win_start = 0
-                    elif self.ori_mask_mode == 0:
+                            ori_win_start = max(
+                                ori_threshold - self.ori_win_left - 1, 0
+                            )
+                        if self.ori_win_right == -1:
+                            ori_win_end = cur_ori_act_kv
+                        else:
+                            ori_win_end = min(
+                                max(ori_threshold + self.ori_win_right, 0),
+                                cur_ori_act_kv,
+                            )
+                    else:
                         ori_win_start = 0
                         ori_win_end = cur_ori_act_kv
+                    ori_win_start = min(ori_win_start, cur_ori_act_kv)
+
+                    if ori_win_start >= ori_win_end:  # 根据 win_kv 判断行无效
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
+                            [G, self.D], dtype=torch.float
+                        )
+                        continue
 
                     cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
 
