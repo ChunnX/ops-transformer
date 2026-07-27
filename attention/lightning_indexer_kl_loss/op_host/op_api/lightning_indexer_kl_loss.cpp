@@ -22,7 +22,7 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(LightningIndexerKLLoss);
 
-const std::array<const aclTensor *, LIGHTNING_INDEXER_KL_LOSS_OUTPUT_CNT> LightningIndexerKLLoss(
+const aclTensor *LightningIndexerKLLoss(
     const aclTensor *targetScore, const aclTensor *indexProbs,
     double eps, aclOpExecutor *executor)
 {
@@ -36,7 +36,7 @@ const std::array<const aclTensor *, LIGHTNING_INDEXER_KL_LOSS_OUTPUT_CNT> Lightn
                            OP_ATTR(eps, false));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "LightningIndexerKLLoss InferShape failed.");
-        return {nullptr};
+        return nullptr;
     }
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(LightningIndexerKLLoss,
@@ -45,9 +45,9 @@ const std::array<const aclTensor *, LIGHTNING_INDEXER_KL_LOSS_OUTPUT_CNT> Lightn
                                       OP_ATTR(eps, false));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "LightningIndexerKLLoss launch kernel failed.");
-        return {nullptr};
+        return nullptr;
     }
-    return {loss};
+    return loss;
 }
 
 } // namespace l0op

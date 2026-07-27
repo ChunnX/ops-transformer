@@ -54,27 +54,20 @@ static bool CheckShape(const aclTensor *targetScore)
     return true;
 }
 
-static aclnnStatus ValidateParams(const aclTensor *targetScore, const aclTensor *indexProbs)
-{
-    CHECK_RET(targetScore != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(indexProbs != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-
-    if (!CheckShape(targetScore)) {
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (targetScore->GetViewShape().GetDimNum() != indexProbs->GetViewShape().GetDimNum()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "targetScore dimNum %zu != indexProbs dimNum %zu.",
-                targetScore->GetViewShape().GetDimNum(), indexProbs->GetViewShape().GetDimNum());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    return ACLNN_SUCCESS;
-}
-
 static aclnnStatus CheckParams(const LightningIndexerKLLossParams &params)
 {
     CHECK_COND(params.targetScore != nullptr, ACLNN_ERR_PARAM_NULLPTR, "targetScore must not be nullptr.");
     CHECK_COND(params.indexProbs != nullptr, ACLNN_ERR_PARAM_NULLPTR, "indexProbs must not be nullptr.");
     CHECK_COND(params.loss != nullptr, ACLNN_ERR_PARAM_NULLPTR, "loss must not be nullptr.");
+
+    if (!CheckShape(params.targetScore)) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (params.targetScore->GetViewShape().GetDimNum() != params.indexProbs->GetViewShape().GetDimNum()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "targetScore dimNum %u != indexProbs dimNum %u.",
+                params.targetScore->GetViewShape().GetDimNum(), params.indexProbs->GetViewShape().GetDimNum());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 
@@ -94,8 +87,8 @@ static aclnnStatus ContiguousAndLightningIndexerKLLoss(const LightningIndexerKLL
         params.eps, executor);
 
     // convert output tensor to contiguous tensor
-    CHECK_RET(result[0] != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto viewCopyResult = l0op::ViewCopy(result[0], loss, executor);
+    CHECK_RET(result != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto viewCopyResult = l0op::ViewCopy(result, loss, executor);
     CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     return ACLNN_SUCCESS;
@@ -110,12 +103,6 @@ aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
                    DFX_IN(targetScore, indexProbs, eps),
                    DFX_OUT(loss));
     LightningIndexerKLLossParams params{targetScore, indexProbs, eps, loss};
-
-    // validate params
-    aclnnStatus validateRet = ValidateParams(targetScore, indexProbs);
-    if (validateRet != ACLNN_SUCCESS) {
-        return validateRet;
-    }
 
     // check params
     aclnnStatus ret = CheckParams(params);

@@ -14,9 +14,7 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const std::size_t LIGHTNING_INDEXER_KL_LOSS_OUTPUT_CNT = 1;
-
-const std::array<const aclTensor *, LIGHTNING_INDEXER_KL_LOSS_OUTPUT_CNT> LightningIndexerKLLoss(
+const aclTensor *LightningIndexerKLLoss(
     const aclTensor *targetScore, const aclTensor *indexProbs,
     double eps, aclOpExecutor *executor);
 } // namespace l0op
