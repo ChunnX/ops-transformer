@@ -49,8 +49,6 @@ private:
     uint32_t rankId_{0};
     uint32_t numRanks_{0};
     uint32_t channelsPerRank_{1};
-    __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &myRank, uint32_t &myIdxInGroup,
-                                             uint32_t &myGroupSize);
 
     AscendC::TBuf<> hcommBuf_;
     AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -75,49 +73,24 @@ __aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR commContext, GM_ADDR 
     hcomm_.Init(hcommTensor, Mc2Kernel::HCOMM_INIT_SIZE);
 }
 
-__aicore__ inline void EngramFetchWaitArch35::GetCoreAssignment(uint32_t totalBlocks, uint32_t &myRank,
-                                                               uint32_t &myIdxInGroup, uint32_t &myGroupSize)
-{
-    uint32_t base = totalBlocks / numRanks_;
-    uint32_t remainder = totalBlocks % numRanks_;
-    uint32_t accumulated = 0;
-    for (uint32_t r = 0; r < numRanks_; r++) {
-        uint32_t groupSize = base + ((r < remainder) ? 1U : 0U);
-        if (aivId_ < accumulated + groupSize) {
-            myRank = r;
-            myGroupSize = groupSize;
-            myIdxInGroup = aivId_ - accumulated;
-            return;
-        }
-        accumulated += groupSize;
-    }
-    myRank = numRanks_;
-    myGroupSize = 0;
-    myIdxInGroup = 0;
-}
-
 __aicore__ inline void EngramFetchWaitArch35::Process()
 {
     if ASCEND_IS_AIV {
         uint32_t totalBlocks = AscendC::GetBlockNum();
         if (totalBlocks >= numRanks_) {
-            uint32_t myRank = 0;
-            uint32_t myIdxInGroup = 0;
-            uint32_t myGroupSize = 0;
-            GetCoreAssignment(totalBlocks, myRank, myIdxInGroup, myGroupSize);
-            if (myRank != rankId_ && myRank < numRanks_) {
-                uint32_t channelIdx = myIdxInGroup % channelsPerRank_;
-                uint32_t chIdx = myRank * channelsPerRank_ + channelIdx;
-                int32_t ret = hcomm_.Drain(ctxPtr_->hcommHandle[chIdx]);
-                ascendc_assert(ret == 0, "Urma drain failed, ret=%d, chIdx=%u", ret, chIdx);
+            auto coreAssign = GetCoreAssignment(totalBlocks, aivId_, numRanks_);
+            if (coreAssign.assignedRank != rankId_ && coreAssign.idxInRankGroup < channelsPerRank_) {
+                uint32_t globalChannelIdx = coreAssign.assignedRank * channelsPerRank_ + coreAssign.idxInRankGroup;
+                int32_t ret = hcomm_.Drain(ctxPtr_->hcommHandle[globalChannelIdx]);
+                ascendc_assert(ret == 0, "Urma drain failed, ret=%d, globalChannelIdx=%u", ret, globalChannelIdx);
             }
         } else {
             uint32_t startRank = (aivId_ < numRanks_) ? aivId_ : rankId_;
             for (uint32_t ownerRank = startRank; ownerRank < numRanks_; ownerRank += totalBlocks) {
                 if (ownerRank != rankId_) {
-                    uint32_t chIdx = ownerRank * channelsPerRank_;
-                    int32_t ret = hcomm_.Drain(ctxPtr_->hcommHandle[chIdx]);
-                    ascendc_assert(ret == 0, "Urma drain failed, ret=%d, chIdx=%u", ret, chIdx);
+                    uint32_t globalChannelIdx = ownerRank * channelsPerRank_;
+                    int32_t ret = hcomm_.Drain(ctxPtr_->hcommHandle[globalChannelIdx]);
+                    ascendc_assert(ret == 0, "Urma drain failed, ret=%d, globalChannelIdx=%u", ret, globalChannelIdx);
                 }
             }
         }
