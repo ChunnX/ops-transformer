@@ -235,8 +235,14 @@ static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t *xBuf, uin
 
 class rotary_position_embedding3d_test : public testing::Test {
 protected:
-    static void SetUpTestCase() { cout << "rotary_position_embedding3d_test SetUp\n" << endl; }
-    static void TearDownTestCase() { cout << "rotary_position_embedding3d_test TearDown\n" << endl; }
+    static void SetUpTestCase()
+    {
+        cout << "rotary_position_embedding3d_test SetUp\n" << endl;
+    }
+    static void TearDownTestCase()
+    {
+        cout << "rotary_position_embedding3d_test TearDown\n" << endl;
+    }
 };
 
 // [2, 4, 8] float32 — 3D 基准测试
