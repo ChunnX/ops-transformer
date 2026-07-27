@@ -372,7 +372,7 @@ public:
                      ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ_C0_16, ge::FORMAT_FRACTAL_NZ_C0_16,
                      ge::FORMAT_FRACTAL_NZ_C0_16, ge::FORMAT_FRACTAL_NZ_C0_2,  ge::FORMAT_FRACTAL_NZ_C0_2,  ge::FORMAT_FRACTAL_NZ_C0_2,
                      ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32,
-                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32,
                      ge::FORMAT_FRACTAL_NZ_C0_4,  ge::FORMAT_FRACTAL_NZ_C0_4,  ge::FORMAT_FRACTAL_NZ_C0_4,  ge::FORMAT_FRACTAL_NZ_C0_4,
                      ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
                      ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
