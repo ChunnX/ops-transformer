@@ -41,7 +41,8 @@ ge::graphStatus FABaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDe
             std::string dtypeStr = DataTypeToSerialString(desc->GetDataType());
             std::string expectedDtypes;
             for (size_t i = 0; i < expectDtypeList.size(); i++) {
-                if (i > 0) expectedDtypes += ", ";
+                if (i > 0)
+                    expectedDtypes += ", ";
                 expectedDtypes += DataTypeToSerialString(expectDtypeList[i]);
             }
             OP_LOGE_FOR_INVALID_DTYPE("FlashAttn", name.c_str(), dtypeStr.c_str(), expectedDtypes.c_str());
@@ -57,8 +58,8 @@ ge::graphStatus FABaseChecker::CheckFormatSupport(const gert::CompileTimeTensorD
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
         OP_CHECK_IF((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
-            OP_LOGE_FOR_INVALID_FORMAT("FlashAttn", name.c_str(), Ops::Base::ToString(format).c_str(), "ND"),
-                return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_FORMAT("FlashAttn", name.c_str(), Ops::Base::ToString(format).c_str(), "ND"),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }

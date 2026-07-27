@@ -46,30 +46,14 @@ namespace l0op {
  * @return std::array<const aclTensor*, 2> [attnOut, softmaxLse]
  *         任意元素为nullptr表示对应输出的InferShape或Launch失败。
  */
-const std::array<const aclTensor *, 2> FlashAttn(
-    const aclTensor *q,
-    const aclTensor *k,
-    const aclTensor *v,
-    const aclTensor *blockTableOptional,
-    const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKvOptional,
-    const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional,
-    const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    double softmaxScale,
-    int32_t maskMode,
-    int32_t winLeft,
-    int32_t winRight,
-    int32_t maxSeqlenQ,
-    int32_t maxSeqlenKV,
-    const char *layoutQ,
-    const char *layoutKv,
-    const char *layoutOut,
-    int32_t returnSoftmaxLse,
-    aclOpExecutor *executor);
+const std::array<const aclTensor *, 2>
+FlashAttn(const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *blockTableOptional,
+          const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+          const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
+          const aclTensor *metadataOptional, double softmaxScale, int32_t maskMode, int32_t winLeft, int32_t winRight,
+          int32_t maxSeqlenQ, int32_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutOut,
+          int32_t returnSoftmaxLse, aclOpExecutor *executor);
 
-}  // namespace l0op
+} // namespace l0op
 
-#endif  // OP_API_INC_LEVEL0_FLASH_ATTN_H_
+#endif // OP_API_INC_LEVEL0_FLASH_ATTN_H_
