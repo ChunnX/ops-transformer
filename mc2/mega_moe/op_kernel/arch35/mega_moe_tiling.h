@@ -195,5 +195,8 @@ struct MegaMoeTilingData {
     uint32_t unpermuteFullTokenChunkCoreCount;
     int32_t topkWeightsPrefetch;
     uint32_t maxTilesPerExpert; // GMM1 tile 状态位区每 expert 的 tile 上限（prefetch 软同步用）
+    uint8_t actMode;            // 激活模式：0=swiglu(silu), 1=situ, 2=situ_linear
+    float activationAlpha;      // linear_beta, 默认 1.0
+    float activationBeta;       // beta, 默认 1.0
 };
 #endif
