@@ -42,10 +42,10 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, 
                           int64_t, int64_t, int64_t, int64_t>;
 
 // 预留：XType OutputType TopkWeightsType Weight1Type
-#define TemplateMegaMoeTypeClass                                                                                       \
-    typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode,            \
+#define TemplateMegaMoeTypeClass \
+    typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
         int32_t CombineQuantMode, bool TopkWeightsPrefetch
-#define TemplateMegaMoeTypeFunc                                                                                        \
+#define TemplateMegaMoeTypeFunc \
     XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
 
 template <TemplateMegaMoeTypeClass>
@@ -321,7 +321,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.cumsumInfoPtr + cumsumStride * blockIdx_));
     epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr, params_.workspaceInfo.swigluQuantScalePtr,
                       params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr,
-                      params_.workspaceInfo.metaInfoPtr, tilingData->clampLimit});
+                      params_.workspaceInfo.metaInfoPtr, tilingData->clampLimit, tilingData->actMode,
+                      tilingData->actSubMode, tilingData->activationAlpha, tilingData->activationBeta});
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     quantWinOffset_ =
@@ -738,9 +739,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal(const SendM
 // LoadTopkWeightsToUb：权重搬运到UB（TopkWeightsPrefetch=0 时仅做 MTE2_V 同步）
 // ======================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoe<TemplateMegaMoeTypeFunc>::LoadTopkWeightsToUb(const LocalTensor<ActivationType> &xOutTensor,
-                                                      int32_t curentOffset, int32_t index, TEventID event)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::LoadTopkWeightsToUb(
+    const LocalTensor<ActivationType> &xOutTensor, int32_t curentOffset, int32_t index, TEventID event)
 {
     uint32_t weightOffsetInUb = mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_;
     if constexpr (TopkWeightsPrefetch) {
@@ -909,8 +909,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
 //   热路径上取代 LocalTensor 数组索引，避免寄存器压力下 spill 到 GM。
 // ============================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline auto
-MegaMoe<TemplateMegaMoeTypeFunc>::DispatchCopyTmpTensor(int32_t bufferIdx) -> LocalTensor<ActivationType>
+__aicore__ inline auto MegaMoe<TemplateMegaMoeTypeFunc>::DispatchCopyTmpTensor(int32_t bufferIdx)
+    -> LocalTensor<ActivationType>
 {
     return LocalTensor<ActivationType>(
         TPosition::VECCALC, copyTmpBaseAddr_ + static_cast<uint32_t>(bufferIdx) * mxQuantTokenScaleAlignBytes_,
@@ -927,10 +927,9 @@ MegaMoe<TemplateMegaMoeTypeFunc>::DispatchCopyTmpTensor(int32_t bufferIdx) -> Lo
 // ============================================================================
 template <TemplateMegaMoeTypeClass>
 template <bool IsBufferReuse>
-__aicore__ inline void
-MegaMoe<TemplateMegaMoeTypeFunc>::FetchTokenNLoadMetaInfo(int32_t bufferIdx, int32_t topkIndex, int32_t remoteRankIdx,
-                                                          GlobalTensor<ActivationType> &remoteRankGlobalTensor,
-                                                          uint32_t copyInNum)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FetchTokenNLoadMetaInfo(
+    int32_t bufferIdx, int32_t topkIndex, int32_t remoteRankIdx, GlobalTensor<ActivationType> &remoteRankGlobalTensor,
+    uint32_t copyInNum)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx); // buffer 0~5 直接对应 EVENT_ID0~EVENT_ID5
     LocalTensor<ActivationType> copyTmpTensor = DispatchCopyTmpTensor(bufferIdx);
@@ -1093,9 +1092,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int3
 // 数据流：route mask -> compacted route index -> match ordinal -> dst row -> expert row/GMM1 wave。
 // ====================================================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoe<TemplateMegaMoeTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId,
-                                                         const DispatchBufferConfig &bufferConfig)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::MetaInfoCalAndDispatch(
+    GMMAddrInfo &gmmAddrInfo, int32_t localExpertId, const DispatchBufferConfig &bufferConfig)
 {
     constexpr int32_t GMM1_WAVE_ROW_COUNT = static_cast<int32_t>(GMM1_TILE_M);
     // cumsumInfo 按 [expert][source rank] 累加；前一个 expert 的末值就是当前 expert 的全局起始行。
@@ -1563,9 +1561,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(const GM
 // UnpermuteLoadWeights：加载一个 token batch 的权重到 UB
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset,
-                                                       int32_t batchTokenCount, LocalTensor<bfloat16_t> &tempLocal)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteLoadWeights(int32_t coreOffset,
+                                                                              int32_t batchTokenOffset,
+                                                                              int32_t batchTokenCount,
+                                                                              LocalTensor<bfloat16_t> &tempLocal)
 {
     if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
         GlobalTensor<float> topKWeightsGlobalTensor_;
@@ -1596,10 +1595,9 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteLoadWeights(int32_t coreOffset, int32
 // UnpermuteProcessToken：单个 token 的 per-expert 累加
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
-                                                        const GlobalTensor<bfloat16_t> &expandedX,
-                                                        const UnpermuteBufferConfig &bufferConfig)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(
+    int32_t tokenIdx, int32_t localIdx, const GlobalTensor<bfloat16_t> &expandedX,
+    const UnpermuteBufferConfig &bufferConfig)
 {
     for (int32_t expId = 0; expId < topK_; ++expId) {
         // Routed and shared expert results form one continuous accumulation-input sequence in the dynamic ring.
@@ -1732,9 +1730,8 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit()
 // tile 级 flag 轮询: 等 C 核完成当前 token 对应的 GMM2 tile 后再读 sharedResult
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteSharedExpert(int32_t tokenIdx, int32_t localIdx,
-                                                        const UnpermuteBufferConfig &bufferConfig)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteSharedExpert(
+    int32_t tokenIdx, int32_t localIdx, const UnpermuteBufferConfig &bufferConfig)
 {
     GlobalTensor<bfloat16_t> sharedResult;
     sharedResult.SetGlobalBuffer((__gm__ bfloat16_t *)params_.workspaceInfo.sharedExpertResultPtr);
@@ -2000,9 +1997,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
 template <bool IsShared>
-__aicore__ inline void
-MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-                                                         uint32_t expertIdx, int32_t &vecSetSyncCom)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo,
+                                                                                const ExpertLoopState &state,
+                                                                                uint32_t expertIdx,
+                                                                                int32_t &vecSetSyncCom)
 {
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t,
@@ -2031,9 +2029,10 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1(const TupleShape &initShape,
                                                                                  const BlockOffset &initOffset)
 {
-    sharedEpilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
-                            params_.workspaceInfo.sharedExpertSwigluScalePtr, nullptr, nullptr, nullptr, nullptr,
-                            nullptr, params_.tilingData->clampLimit});
+    sharedEpilogueOp_.Init(
+        {params_.workspaceInfo.sharedExpertSwigluDataPtr, params_.workspaceInfo.sharedExpertSwigluScalePtr, nullptr,
+         nullptr, nullptr, nullptr, nullptr, params_.tilingData->clampLimit, params_.tilingData->actMode,
+         params_.tilingData->actSubMode, params_.tilingData->activationAlpha, params_.tilingData->activationBeta});
 
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
