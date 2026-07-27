@@ -54,7 +54,7 @@ constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
 constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int DIM_TWO = 2;
-constexpr uint32_t MOE_MAX_CHANNELS_PER_RANK = 8U;
+constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 72U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
 
 // RAII guard for multi-step host buffer allocation
@@ -622,15 +622,27 @@ private:
         TORCH_CHECK(rankDim >= HCCL_MIN_RANK_SIZE && rankDim <= HCCL_MAX_RANK_SIZE,
                     "Invalid HCCL rank size ", rankDim);
         uint32_t remoteRankNum = rankDim - 1;
-        uint32_t maxChannelsByCapacity = HCCL_MAX_RANK_SIZE / remoteRankNum;
-        // Eight channels let eight AIVs send to the same peer independently.
-        context.channelsPerRank = std::min(MOE_MAX_CHANNELS_PER_RANK, maxChannelsByCapacity);
+        context.channelsPerRank = static_cast<uint32_t>(CeilDiv(MOE_CHANNEL_HANDLE_NUM, rankDim));
         TORCH_CHECK(context.channelsPerRank > 0, "No HCCL channel capacity for rank size ", rankDim);
+        TORCH_CHECK(context.channelsPerRank <= HCCL_MAX_RANK_SIZE / rankDim,
+                    "HCCL channel handles exceed capacity, rank size ", rankDim, ", channels per rank ",
+                    context.channelsPerRank);
         uint32_t channelNum = remoteRankNum * context.channelsPerRank;
         std::vector<HcclChannelDesc> channelDesc(channelNum);
+        ChannelHandle channelBuf[HCCL_MAX_RANK_SIZE] = {};
 
         InitHcclChannel(commHandle, rankDim, srcRankId, context.channelsPerRank, protocol, channelDesc);
-        AcquireChannels(commHandle, engine, channelDesc, context.hcommHandle);
+        AcquireChannels(commHandle, engine, channelDesc, channelBuf);
+
+        uint32_t channelIndex = 0;
+        for (uint32_t peer = 0; peer < rankDim; ++peer) {
+            if (peer == srcRankId) {
+                continue;
+            }
+            for (uint32_t channel = 0; channel < context.channelsPerRank; ++channel) {
+                context.hcommHandle[peer * context.channelsPerRank + channel] = channelBuf[channelIndex++];
+            }
+        }
     }
 
     void GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
@@ -647,8 +659,7 @@ private:
             if (i == rankId) {
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBufferSize);
             } else {
-                uint32_t idx = (i < rankId) ? i : (i - 1);
-                uint32_t channelIndex = idx * context.channelsPerRank;
+                uint32_t channelIndex = i * context.channelsPerRank;
                 hcclRet = HcclChannelGetHcclBufferFunc(commHandle, context.hcommHandle[channelIndex], &tempBuffer,
                                                        &bufferSize);
             }
