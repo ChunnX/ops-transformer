@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file mhc_pre_sinkhorn_backward_tiling.cpp
- * \brief MhcPreSinkhornBackward tiling file
+ * \file stem_oam_prep_paged_kv_tiling.cpp
+ * \brief stem oam prep paged kv tiling file
  */
 
 #include "register/op_def_registry.h"
