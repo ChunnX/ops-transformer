@@ -126,7 +126,6 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertInputScalePtr{nullptr};
     GM_ADDR sharedExpertSwigluDataPtr{nullptr};
     GM_ADDR sharedExpertSwigluScalePtr{nullptr};
-    GM_ADDR sharedExpertGmm2TileCounterPtr{nullptr};
 
     GM_ADDR maskSlotPtr{nullptr};          // urma发送mask临时GM
     GM_ADDR dispatchL1CommPtr{nullptr};    // dispatch L1 communication workspace
@@ -298,16 +297,8 @@ struct WorkspaceInfo {
             // sharedExpertSwigluScale: SwiGLU scale [sharedExpertNum × bs × hiddenDim/2/32]
             sharedExpertSwigluScalePtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum *
-                                                       tilingData->hiddenDim / SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
-                                                   ALIGN_512);
-            // sharedExpertGmm2TileCounter: tile 级 flag counter, 每 shared expert 一组 slot
-            // slot 数 = CeilDiv(bs, COMBINE_TOKEN_GROUP_SIZE), 每 slot 占 INT_CACHELINE 个 int32
-            sharedExpertGmm2TileCounterPtr = base + workspaceSize;
-            uint32_t tokenGroupCount = Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->bs),
-                                                           static_cast<uint32_t>(256U));
-            uint32_t totalSlots = tokenGroupCount * tilingData->sharedExpertNum;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(totalSlots) * static_cast<int64_t>(INT_CACHELINE) * SIZE_INT_32, ALIGN_512);
+                                                      tilingData->hiddenDim / SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
+                                                  ALIGN_512);
         }
     }
 };
