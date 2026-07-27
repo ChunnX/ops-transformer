@@ -1041,11 +1041,6 @@ ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_U
 
     if (subLoop == 0) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum_0, preg_134);
-        // pscale update
-        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
-        Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_134);
-        StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
-                                                                  vreg_p_scale_f8e8m0, preg_134);
     } else {
         RegTensor<float> first_loop_sum;
         LoadAlign(first_loop_sum, new_global_sum);
@@ -1367,11 +1362,6 @@ ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
         Add(vreg_l0, vreg_l0, vreg_x_sum_0, preg_134);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)first_loop_sum, vreg_x_sum_0, preg_134);
-        // pscale update
-        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
-        Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_134);
-        StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
-                                                                  vreg_p_scale_f8e8m0, preg_134);
     } else {
         RegTensor<float> vreg_l1;
         LoadAlign(vreg_l0, first_loop_sum);
