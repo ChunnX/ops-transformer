@@ -169,6 +169,8 @@ public:
         this->Attr("num_max_tokens_per_rank").AttrType(OPTIONAL).Int(0);
         this->Attr("activation").AttrType(OPTIONAL).String("swiglu");
         this->Attr("activation_clamp").AttrType(OPTIONAL).Float(std::numeric_limits<float>::max());
+        this->Attr("activation_alpha").AttrType(OPTIONAL).Float(1.0f);
+        this->Attr("activation_beta").AttrType(OPTIONAL).Float(1.0f);
         this->Attr("activation_out_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
         this->Attr("transpose_weight1").AttrType(OPTIONAL).Bool(false);
         this->Attr("transpose_weight2").AttrType(OPTIONAL).Bool(false);
