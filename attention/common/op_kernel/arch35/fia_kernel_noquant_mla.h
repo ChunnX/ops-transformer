@@ -121,7 +121,7 @@ public:
         AscendC::GlobalTensor<uint64_t> actualSeqLengthsGmKv;
 
         fiaMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)fiaMetaData,
-                                      NPU_AIC_CORE_NUM * FA_METADATA_SIZE + NPU_AIV_CORE_NUM * FD_METADATA_SIZE);
+                                       NPU_AIC_CORE_NUM * FA_METADATA_SIZE + NPU_AIV_CORE_NUM * FD_METADATA_SIZE);
 
         InitConstInfo();
 
@@ -138,21 +138,21 @@ public:
 
         if ASCEND_IS_AIV {
             vecFaBlock_.InitVecBlock(tPipe, actualSeqLengths, actualSeqLengthsKv, attenMask, softmaxLse, attentionOut,
-                                    workspace);
+                                     workspace);
             vecFaBlock_.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
             cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, queryRope, keyRope,
-                                    actualSeqLengths, actualSeqLengthsKv);
+                                     actualSeqLengths, actualSeqLengthsKv);
         }
 
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
                 vecFdBlock_.InitParams();
                 vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm, this->vecFaBlock_.softmaxFDSumGm,
-                                            this->vecFaBlock_.accumOutGm, this->vecFaBlock_.attentionOutGm,
-                                            actualSeqLengthsGmQ, actualSeqLengthsGmKv, keyPtr_);
+                                             this->vecFaBlock_.accumOutGm, this->vecFaBlock_.attentionOutGm,
+                                             actualSeqLengthsGmQ, actualSeqLengthsGmKv, keyPtr_);
                 if (unlikely(constInfo_.isSoftmaxLseEnable)) {
                     AscendC::GlobalTensor<float> softmaxLseGm;
                     softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
@@ -479,7 +479,8 @@ public:
             s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo_.gSize);
             s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo_.gSize);
         } else {
-            if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ_) == s1GLastToken / static_cast<int64_t>(actSeqLensQ_)) {
+            if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ_) ==
+                s1GLastToken / static_cast<int64_t>(actSeqLensQ_)) {
                 // start and end locate in one G
                 s1FirstToken = s1GFirstToken % static_cast<int64_t>(actSeqLensQ_);
                 s1LastToken = s1GLastToken % static_cast<int64_t>(actSeqLensQ_);
@@ -586,7 +587,7 @@ public:
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
     {
         info.loop = loop;
-        info.mloop_ = mloop_;
+        info.mloop = mloop_;
         info.bIdx = bN2Cur / constInfo_.n2Size;
         info.n2Idx = bN2Cur % constInfo_.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
@@ -764,7 +765,8 @@ public:
         uint32_t fdS2SplitNum = fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_S2_SPLIT_NUM_INDEX));
         uint32_t mStart = fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_M_START_INDEX));
         uint32_t mLen = fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_M_NUM_INDEX));
-        uint32_t fdWorkspaceIdx = fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_WORKSPACE_IDX_INDEX));
+        uint32_t fdWorkspaceIdx =
+            fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_WORKSPACE_IDX_INDEX));
 
         FDparamsX fdParams = {fdCoreEnable, fdBN2Idx, fdMIdx, fdS2SplitNum, mStart, mLen, fdWorkspaceIdx};
         vecFdBlock_.AllocEventID();
