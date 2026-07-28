@@ -44,7 +44,7 @@ __aicore__ inline void EngramFetchTrainSyncFunc()
     } while (0)
 
 constexpr uint32_t ENGRAM_TIMEOUT_US = 5U * 1000U * 1000U;
-constexpr uint32_t ENGRAM_CYCLES_PER_US = 50U;
+constexpr uint32_t ENGRAM_CYCLES_PER_US = 1000U;
 
 #define ENGRAM_TIMEOUT_CHECK(startTime, tag)                                                                           \
     do {                                                                                                               \
@@ -483,7 +483,6 @@ __aicore__ inline void EngramFetchTrainArch35::SendCountToPeers()
                                                     remoteFlagAddr, 1);
             ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=SendCount, rankId=%u, dstRank=%u", ret,
                            rankId_, dstRank);
-            ENGRAM_DRAIN(hcomm_, handle, "SendCount");
         }
     }
 }
@@ -536,8 +535,10 @@ __aicore__ inline int32_t EngramFetchTrainArch35::ReadLocalCounter(GM_ADDR winBa
     GM_ADDR counterAddr = winBase + counterOffset + srcRank * STATE_OFFSET;
     GlobalTensor<int32_t> counterGM;
     counterGM.SetGlobalBuffer((__gm__ int32_t *)counterAddr);
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(counterGM);
-    return counterGM.GetValue(0);
+    LocalTensor<int32_t> counterLocal = statusBuf_.Get<int32_t>();
+    DataCopy(counterLocal, counterGM, UB_ALIGN / sizeof(int32_t));
+    EngramFetchTrainSyncFunc<HardEvent::MTE2_S>();
+    return counterLocal.GetValue(0);
 }
 
 __aicore__ inline void EngramFetchTrainArch35::WriteRemoteCounter(uint32_t dstRank, uint64_t counterOffset,
@@ -674,7 +675,6 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesRemote(uint32_t dstRan
                                                 remoteCounterAddr, static_cast<uint64_t>(localWriteCnt + 1));
         ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExIdx_data, rankId=%u, dstRank=%u", ret,
                        rankId_, dstRank);
-        ENGRAM_DRAIN(hcomm_, handle, "ExIdx_data");
 
         localWriteCnt++;
         totalSent += chunkLen;
@@ -851,7 +851,6 @@ __aicore__ inline void EngramFetchTrainArch35::SendTokensRemote(uint32_t dstRank
                                                 static_cast<uint64_t>(localWriteCnt + 1));
         ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u", ret,
                        rankId_, dstRank);
-        ENGRAM_DRAIN(hcomm_, handle, "ExTok_data");
 
         localWriteCnt++;
         totalSent += chunkLen;
@@ -1142,12 +1141,11 @@ __aicore__ inline void EngramFetchTrainArch35::CountAndScatterPhase()
 __aicore__ inline void EngramFetchTrainArch35::ComputeSdispls()
 {
     if (aivId_ == 0) {
-        LocalTensor<int32_t> countsLocal = rankCountsBuf_.Get<int32_t>();
+        LocalTensor<int32_t> countsLocal = rankIDsBuf_.Get<int32_t>();
 
         GlobalTensor<int32_t> sendCountsGM;
         sendCountsGM.SetGlobalBuffer((__gm__ int32_t *)sendCountsOutGM_);
-        DataCopyExtParams cpParams{static_cast<uint16_t>(numRanks_), sizeof(int32_t), UB_ALIGN - sizeof(int32_t), 0U,
-                                   0U};
+        DataCopyExtParams cpParams{1U, static_cast<uint32_t>(numRanks_ * UB_ALIGN), 0U, 0U, 0U};
         DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
         DataCopyPad(countsLocal, sendCountsGM, cpParams, cpPad);
         EngramFetchTrainSyncFunc<HardEvent::MTE2_S>();
@@ -1156,7 +1154,7 @@ __aicore__ inline void EngramFetchTrainArch35::ComputeSdispls()
 
         int64_t sdisplsAccum = 0;
         for (uint32_t r = 0; r < numRanks_; r++) {
-            int32_t sCount = countsLocal.GetValue(r);
+            int32_t sCount = countsLocal.GetValue(r * UB_ALIGN / sizeof(int32_t));
             sdisplsUb.SetValue(r, sdisplsAccum);
             sdisplsAccum += static_cast<int64_t>(sCount);
         }

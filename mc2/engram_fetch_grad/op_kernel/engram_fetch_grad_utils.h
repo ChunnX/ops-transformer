@@ -28,9 +28,9 @@ constexpr uint32_t ALIGNED_LEN_256 = 256U;
 constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t NUM_SLOTS = 4U;
 
-constexpr int32_t DT_BFLOAT16 = 27;
-constexpr int32_t DT_FLOAT16 = 1;
-constexpr int32_t DT_FLOAT = 0;
+constexpr int32_t ENGRAM_DT_BFLOAT16 = 27;
+constexpr int32_t ENGRAM_DT_FLOAT16 = 1;
+constexpr int32_t ENGRAM_DT_FLOAT = 0;
 
 constexpr uint32_t ENTRY_BATCH_CAP = 1024U;
 constexpr uint32_t SENDCOUNT_STRIDE_RATIO = 8U;
