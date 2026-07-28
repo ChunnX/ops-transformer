@@ -4,7 +4,7 @@
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for full text of the License.
+# See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
 """DenseLightningIndexLseV2 kernel.
@@ -90,10 +90,11 @@ class DenseLiLseTilingKey:
 #  VF helper functions
 # ================================================================
 
+
 @pl.vector_function
 def init_data(max_tile):
     preg_all = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
-    vreg_x = vf.full(-3.4028234663852886e+38, dtype=pl.DT_FP32)
+    vreg_x = vf.full(-3.4028234663852886e38, dtype=pl.DT_FP32)
     vf.store_align(max_tile, vreg_x, preg_all)
 
 
@@ -179,7 +180,9 @@ def process_reduce_max_vf(dst_tile, qk_tile, weight_tile, max_tile, n1_dim, s2_s
         vreg_mul = vf.mul(vreg_relu, vreg_w, preg_s2)
         vreg_reduce_sum = vf.add(vreg_reduce_sum, vreg_mul, preg_s2)
 
-    vreg_reduce_max = vf.reduce_max(vreg_reduce_sum, preg_s2, merge_mode=pl.MergeMode.ZEROING)
+    vreg_reduce_max = vf.reduce_max(
+        vreg_reduce_sum, preg_s2, merge_mode=pl.MergeMode.ZEROING
+    )
     vreg_tmp_max = vf.load_align(max_tile, 0)
     vreg_max = vf.max(vreg_tmp_max, vreg_reduce_max, preg_max)
     vf.store_align(dst_tile, vreg_reduce_sum, preg_s2)
@@ -243,7 +246,9 @@ def process_reduce_sum_vf(dst_tile, reduce_sum_vec_tile, tmp_max, s2_tiles, tail
     vreg_all_sum_tail = vf.full(0, dtype=pl.DT_FP32)
     vreg_all_sum_tail = vf.add(vreg_all_sum_tail, vreg_exp, preg_tail)
     vreg_all_sum = vf.add(vreg_all_sum, vreg_all_sum_tail, preg_all)
-    vreg_reduce_sum = vf.reduce_sum(vreg_all_sum, preg_all, merge_mode=pl.MergeMode.ZEROING)
+    vreg_reduce_sum = vf.reduce_sum(
+        vreg_all_sum, preg_all, merge_mode=pl.MergeMode.ZEROING
+    )
     vf.store_align(dst_tile, vreg_reduce_sum, preg_sum)
 
 
@@ -258,10 +263,21 @@ def process_lse_vf(lse_vec_tile, reduce_res, tmp_s2_max):
     vf.store_align(lse_vec_tile, vreg_lse, preg_lse)
 
 
-def process_long_s2_reduce_max(qk_vec, weight_vec, reduce_sum_vec_tile, workspace,
-                               max_tile, n1_dim, core_id, sub_id,
-                               prev_s2_tiles, prev_s2_vec_tail_size,
-                               j, work_count, task_id):
+def process_long_s2_reduce_max(
+    qk_vec,
+    weight_vec,
+    reduce_sum_vec_tile,
+    workspace,
+    max_tile,
+    n1_dim,
+    core_id,
+    sub_id,
+    prev_s2_tiles,
+    prev_s2_vec_tail_size,
+    j,
+    work_count,
+    task_id,
+):
     """is_long_s2==1 分支1: 分chunk做 reduce_max + store到workspace。返回更新后的 task_id。"""
     num_chunks = (prev_s2_tiles + MAX_UB_S2_TILES - 1) // MAX_UB_S2_TILES
     for chunk_idx in pl.range(0, num_chunks):
@@ -273,25 +289,56 @@ def process_long_s2_reduce_max(qk_vec, weight_vec, reduce_sum_vec_tile, workspac
         for ci in pl.range(0, chunk_tiles):
             qk_vec_tile = qk_vec.next()
             weight_tile_cur = weight_vec.previous()
-            pl.system.wait_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_IDS[task_id % 2])
-            src_tile = reduce_sum_vec_tile[0:1, ci * TKV_HALF:]
-            cur_vec_size = prev_s2_vec_tail_size if (chunk_start + ci) == prev_s2_tiles - 1 else TKV_HALF
+            pl.system.wait_cross_core(
+                pipe=pl.PipeType.V, event_id=QK_READY_IDS[task_id % 2]
+            )
+            src_tile = reduce_sum_vec_tile[0:1, ci * TKV_HALF :]
+            cur_vec_size = (
+                prev_s2_vec_tail_size
+                if (chunk_start + ci) == prev_s2_tiles - 1
+                else TKV_HALF
+            )
             if cur_vec_size > 0:
                 pl.set_validshape(src_tile, [1, cur_vec_size])
-                process_reduce_max_vf(src_tile, qk_vec_tile, weight_tile_cur, max_tile, n1_dim, cur_vec_size)
-            pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2])
+                process_reduce_max_vf(
+                    src_tile,
+                    qk_vec_tile,
+                    weight_tile_cur,
+                    max_tile,
+                    n1_dim,
+                    cur_vec_size,
+                )
+            pl.system.set_cross_core(
+                pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2]
+            )
             task_id = task_id + 1
         for ci in pl.range(0, chunk_tiles):
-            ws_tile = reduce_sum_vec_tile[0:1, ci * TKV_HALF:]
-            cur_vec_size = prev_s2_vec_tail_size if (chunk_start + ci) == prev_s2_tiles - 1 else TKV_HALF
+            ws_tile = reduce_sum_vec_tile[0:1, ci * TKV_HALF :]
+            cur_vec_size = (
+                prev_s2_vec_tail_size
+                if (chunk_start + ci) == prev_s2_tiles - 1
+                else TKV_HALF
+            )
             if cur_vec_size > 0:
                 pl.set_validshape(ws_tile, [1, cur_vec_size])
-                pl.store(workspace, ws_tile, [core_id, (chunk_start + ci) * TKV + TKV_HALF * sub_id])
+                pl.store(
+                    workspace,
+                    ws_tile,
+                    [core_id, (chunk_start + ci) * TKV + TKV_HALF * sub_id],
+                )
     return task_id
 
 
-def process_long_s2_reduce_sum(lse_vec_tile, reduce_sum_vec, workspace, tmp_s2_max,
-                               core_id, sub_id, prev_s2_tiles, prev_s2_vec_tail_size):
+def process_long_s2_reduce_sum(
+    lse_vec_tile,
+    reduce_sum_vec,
+    workspace,
+    tmp_s2_max,
+    core_id,
+    sub_id,
+    prev_s2_tiles,
+    prev_s2_vec_tail_size,
+):
     """is_long_s2==1 分支2: 从workspace分chunk load + reduce_sum 累加,写回 lse_vec_tile。"""
     ws_chunk_sum = 0.0
     num_chunks = (prev_s2_tiles + MAX_UB_S2_TILES - 1) // MAX_UB_S2_TILES
@@ -303,11 +350,17 @@ def process_long_s2_reduce_sum(lse_vec_tile, reduce_sum_vec, workspace, tmp_s2_m
         chunk_tiles = chunk_end - chunk_start
         chunk_tile = reduce_sum_vec.next()
         for ci in pl.range(0, chunk_tiles):
-            src = chunk_tile[0:1, ci * TKV_HALF:]
+            src = chunk_tile[0:1, ci * TKV_HALF :]
             pl.set_validshape(src, [1, TKV_HALF])
-            pl.load(src, workspace, [core_id, (chunk_start + ci) * TKV + TKV_HALF * sub_id])
-        chunk_tail_sum = prev_s2_vec_tail_size if chunk_idx == num_chunks - 1 else TKV_HALF
-        process_reduce_sum_vf(lse_vec_tile, chunk_tile, tmp_s2_max, chunk_tiles, chunk_tail_sum)
+            pl.load(
+                src, workspace, [core_id, (chunk_start + ci) * TKV + TKV_HALF * sub_id]
+            )
+        chunk_tail_sum = (
+            prev_s2_vec_tail_size if chunk_idx == num_chunks - 1 else TKV_HALF
+        )
+        process_reduce_sum_vf(
+            lse_vec_tile, chunk_tile, tmp_s2_max, chunk_tiles, chunk_tail_sum
+        )
         ws_chunk_sum = ws_chunk_sum + pl.getval(lse_vec_tile, 0)
     write_scalar_vf(lse_vec_tile, ws_chunk_sum)
 
@@ -316,8 +369,18 @@ def process_long_s2_reduce_sum(lse_vec_tile, reduce_sum_vec, workspace, tmp_s2_m
 #  Inner kernel — receives typed tensor views + workspace
 # ================================================================
 
-def resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_lens_k,
-                 has_seq_used_q, seqused_q):
+
+def resolve_b_s1(
+    work_id,
+    layout,
+    b_dim,
+    s1_dim,
+    s2_dim,
+    cu_seq_lens_q,
+    cu_seq_lens_k,
+    has_seq_used_q,
+    seqused_q,
+):
     b_idx = 0
     s1_i = 0
     q_offset = 0
@@ -356,11 +419,20 @@ def resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_l
 
 
 def dense_lightning_indexer_softmax_lse_v2_inner(
-    query_index, key_index, weight, lse_out,
-    seqused_q, seqused_k, cmp_residual_k,
-    cu_seq_lens_q, cu_seq_lens_k,
-    workspace_max, workspace_sum, workspace,
-    tiling, metadata
+    query_index,
+    key_index,
+    weight,
+    lse_out,
+    seqused_q,
+    seqused_k,
+    cmp_residual_k,
+    cu_seq_lens_q,
+    cu_seq_lens_k,
+    workspace_max,
+    workspace_sum,
+    workspace,
+    tiling,
+    metadata,
 ):
     s1_dim = tiling.s1
     s2_dim = tiling.s2
@@ -383,71 +455,128 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
     elif core_id < total_cores:
         work_count = b_s1_per_tail_core
 
-    #【128，64】基本块用于qk的结果，这里UB开两块做db
+    # 【128，64】基本块用于qk的结果，这里UB开两块做db
     qk_vec = pl.make_tile_group(
-        type=pl.TileType(shape=[TN, TKV_HALF], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec),
-        addrs=VA0, mutex_ids=[0, 1]
+        type=pl.TileType(
+            shape=[TN, TKV_HALF], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA0,
+        mutex_ids=[0, 1],
     )
     weight_vec = pl.make_tile_group(
-        type=pl.TileType(shape=[1, TN], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec),
-        addrs=VA1, mutex_ids=[2, 3]
+        type=pl.TileType(
+            shape=[1, TN], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA1,
+        mutex_ids=[2, 3],
     )
     lse_vec = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 8], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec),
-        addrs=VA2, mutex_ids=[4]
+        type=pl.TileType(
+            shape=[1, 8], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA2,
+        mutex_ids=[4],
     )
     max_vec = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 8], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec),
-        addrs=VA3, mutex_ids=[5]
+        type=pl.TileType(
+            shape=[1, 8], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA3,
+        mutex_ids=[5],
     )
     reduce_sum_vec = pl.make_tile_group(
-        type=pl.TileType(shape=[1, KV_CACHE_NUM], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec),
-        addrs=VA4, mutex_ids=[6]
+        type=pl.TileType(
+            shape=[1, KV_CACHE_NUM], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA4,
+        mutex_ids=[6],
     )
 
     with pl.section_cube():
         q_mat = pl.make_tile_group(
-            type=pl.TileType(shape=[TN, TD], dtype=input_dtype,
-                             target_memory=pl.MemorySpace.Mat, layout=pl.NZ, compact=1),
-            addrs=MA0, mutex_ids=[7, 8]
+            type=pl.TileType(
+                shape=[TN, TD],
+                dtype=input_dtype,
+                target_memory=pl.MemorySpace.Mat,
+                layout=pl.NZ,
+                compact=1,
+            ),
+            addrs=MA0,
+            mutex_ids=[7, 8],
         )
         k_mat = pl.make_tile_group(
-            type=pl.TileType(shape=[TD, TKV], dtype=input_dtype,
-                             target_memory=pl.MemorySpace.Mat, layout=pl.ZN, compact=1),
-            addrs=MA1, mutex_ids=[9, 10]
+            type=pl.TileType(
+                shape=[TD, TKV],
+                dtype=input_dtype,
+                target_memory=pl.MemorySpace.Mat,
+                layout=pl.ZN,
+                compact=1,
+            ),
+            addrs=MA1,
+            mutex_ids=[9, 10],
         )
         left = pl.make_tile_group(
-            type=pl.TileType(shape=[TN, TD], dtype=input_dtype,
-                             target_memory=pl.MemorySpace.Left, layout=pl.NZ, compact=1),
-            addrs=LA0, mutex_ids=[11, 12]
+            type=pl.TileType(
+                shape=[TN, TD],
+                dtype=input_dtype,
+                target_memory=pl.MemorySpace.Left,
+                layout=pl.NZ,
+                compact=1,
+            ),
+            addrs=LA0,
+            mutex_ids=[11, 12],
         )
         right = pl.make_tile_group(
-            type=pl.TileType(shape=[TD, TKV], dtype=input_dtype,
-                             target_memory=pl.MemorySpace.Right, layout=pl.ZN, compact=1),
-            addrs=RA0, mutex_ids=[13, 14]
+            type=pl.TileType(
+                shape=[TD, TKV],
+                dtype=input_dtype,
+                target_memory=pl.MemorySpace.Right,
+                layout=pl.ZN,
+                compact=1,
+            ),
+            addrs=RA0,
+            mutex_ids=[13, 14],
         )
         acc = pl.make_tile_group(
-            type=pl.TileType(shape=[TN, TKV], dtype=pl.DT_FP32,
-                             target_memory=pl.MemorySpace.Acc, layout=pl.NZ, compact=1),
-            addrs=CA0, mutex_ids=[15, 16]
+            type=pl.TileType(
+                shape=[TN, TKV],
+                dtype=pl.DT_FP32,
+                target_memory=pl.MemorySpace.Acc,
+                layout=pl.NZ,
+                compact=1,
+            ),
+            addrs=CA0,
+            mutex_ids=[15, 16],
         )
 
         task_id = 0
         for j in pl.range(0, work_count):
             work_id = core_id + j * total_cores
             b_idx, s1_i, q_offset, k_offset_base = resolve_b_s1(
-                work_id, layout, b_dim, s1_dim, s2_dim,
-                cu_seq_lens_q, cu_seq_lens_k, has_seq_used_q, seqused_q)
+                work_id,
+                layout,
+                b_dim,
+                s1_dim,
+                s2_dim,
+                cu_seq_lens_q,
+                cu_seq_lens_k,
+                has_seq_used_q,
+                seqused_q,
+            )
             if has_seq_used_q == 1:
                 q_used_size = pl.getval(seqused_q, b_idx)
             elif layout == 1:
-                q_used_size = pl.getval(cu_seq_lens_q, b_idx + 1) - pl.getval(cu_seq_lens_q, b_idx)
+                q_used_size = pl.getval(cu_seq_lens_q, b_idx + 1) - pl.getval(
+                    cu_seq_lens_q, b_idx
+                )
             else:
                 q_used_size = s1_dim
             if has_seq_used_k == 1:
                 k_used_size = pl.getval(seqused_k, b_idx)
             elif layout == 1:
-                k_used_size = pl.getval(cu_seq_lens_k, b_idx + 1) - pl.getval(cu_seq_lens_k, b_idx)
+                k_used_size = pl.getval(cu_seq_lens_k, b_idx + 1) - pl.getval(
+                    cu_seq_lens_k, b_idx
+                )
             else:
                 k_used_size = s2_dim
             valid_s1_start = 0
@@ -469,15 +598,20 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                 pl.set_validshape(q_tile, [n1_dim, TD])
                 pl.load(q_tile, query_index, [q_offset, 0, 0, 0])
                 for s2_i in pl.range(0, s2_tiles + 1):
-                    k_tile_nxt = k_mat.next() # 0-a 1-b 2-a
+                    k_tile_nxt = k_mat.next()  # 0-a 1-b 2-a
                     if s2_i < s2_tiles:
                         if s2_i == s2_tiles - 1 and s2_tail_size != TKV:
                             pl.set_validshape(k_tile_nxt, [TD, s2_tail_size])
                         else:
                             pl.set_validshape(k_tile_nxt, [TD, TKV])
-                        pl.load(k_tile_nxt, key_index, [k_offset_base + s2_i * TKV, 0, 0, 0], order=[1, 0])
+                        pl.load(
+                            k_tile_nxt,
+                            key_index,
+                            [k_offset_base + s2_i * TKV, 0, 0, 0],
+                            order=[1, 0],
+                        )
                     if s2_i > 0:
-                        k_tile_cur = k_mat.previous() # 1-a 2-b
+                        k_tile_cur = k_mat.previous()  # 1-a 2-b
                         left_tile = left.next()
                         right_tile = right.next()
                         acc_tile = acc.next()
@@ -491,13 +625,21 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                             pl.set_validshape(k_tile_cur, [TD, TKV])
                             pl.set_validshape(acc_tile, [n1_dim, TKV])
                         pl.move(left_tile, q_tile)
-                        pl.move(right_tile, k_tile_cur) # 1-a
+                        pl.move(right_tile, k_tile_cur)  # 1-a
                         pl.matmul(acc_tile, left_tile, right_tile)
 
                         qk_vec_tile = qk_vec.next()
-                        pl.system.wait_cross_core(pipe=pl.PipeType.FIX, event_id=QK_FREE_IDS[task_id % 2])
-                        pl.move(qk_vec_tile, acc_tile, acc_to_vec_mode=pl.AccToVecMode.DualModeSplitN)
-                        pl.system.set_cross_core(pipe=pl.PipeType.FIX, event_id=QK_READY_IDS[task_id % 2])
+                        pl.system.wait_cross_core(
+                            pipe=pl.PipeType.FIX, event_id=QK_FREE_IDS[task_id % 2]
+                        )
+                        pl.move(
+                            qk_vec_tile,
+                            acc_tile,
+                            acc_to_vec_mode=pl.AccToVecMode.DualModeSplitN,
+                        )
+                        pl.system.set_cross_core(
+                            pipe=pl.PipeType.FIX, event_id=QK_READY_IDS[task_id % 2]
+                        )
                         task_id = task_id + 1
         pl.system.wait_cross_core(pipe=pl.PipeType.FIX, event_id=QK_FREE_IDS[0])
         pl.system.wait_cross_core(pipe=pl.PipeType.FIX, event_id=QK_FREE_IDS[1])
@@ -517,8 +659,16 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
         for j in pl.range(0, work_count + 1):
             work_id = core_id + j * total_cores
             b_idx, s1_i, q_offset, _ = resolve_b_s1(
-                work_id, layout, b_dim, s1_dim, s2_dim,
-                cu_seq_lens_q, cu_seq_lens_k, has_seq_used_q, seqused_q)
+                work_id,
+                layout,
+                b_dim,
+                s1_dim,
+                s2_dim,
+                cu_seq_lens_q,
+                cu_seq_lens_k,
+                has_seq_used_q,
+                seqused_q,
+            )
 
             max_tile = max_vec.next()
             init_data(max_tile)
@@ -528,13 +678,17 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                 if has_seq_used_q == 1:
                     q_used_size = pl.getval(seqused_q, b_idx)
                 elif layout == 1:
-                    q_used_size = pl.getval(cu_seq_lens_q, b_idx + 1) - pl.getval(cu_seq_lens_q, b_idx)
+                    q_used_size = pl.getval(cu_seq_lens_q, b_idx + 1) - pl.getval(
+                        cu_seq_lens_q, b_idx
+                    )
                 else:
                     q_used_size = s1_dim
                 if has_seq_used_k == 1:
                     k_used_size = pl.getval(seqused_k, b_idx)
                 elif layout == 1:
-                    k_used_size = pl.getval(cu_seq_lens_k, b_idx + 1) - pl.getval(cu_seq_lens_k, b_idx)
+                    k_used_size = pl.getval(cu_seq_lens_k, b_idx + 1) - pl.getval(
+                        cu_seq_lens_k, b_idx
+                    )
                 else:
                     k_used_size = s2_dim
                 valid_s1_start = 0
@@ -564,35 +718,66 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                     if sub_id == 0:
                         prev_s2_vec_tail_size = pl.min(prev_s2_tail_size, split_half)
                     else:
-                        prev_s2_vec_tail_size = pl.max(prev_s2_tail_size - split_half, 0)
+                        prev_s2_vec_tail_size = pl.max(
+                            prev_s2_tail_size - split_half, 0
+                        )
 
                 if is_long_s2 == 0:
                     for s2_i in pl.range(0, prev_s2_tiles):
                         qk_vec_tile = qk_vec.next()
                         weight_tile_cur = weight_vec.previous()
-                        pl.system.wait_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_IDS[task_id % 2])
-                        src_tile = reduce_sum_vec_tile[0:1, s2_i * TKV_HALF:]
-                        cur_vec_size = prev_s2_vec_tail_size if s2_i == prev_s2_tiles - 1 else TKV_HALF
+                        pl.system.wait_cross_core(
+                            pipe=pl.PipeType.V, event_id=QK_READY_IDS[task_id % 2]
+                        )
+                        src_tile = reduce_sum_vec_tile[0:1, s2_i * TKV_HALF :]
+                        cur_vec_size = (
+                            prev_s2_vec_tail_size
+                            if s2_i == prev_s2_tiles - 1
+                            else TKV_HALF
+                        )
                         if cur_vec_size > 0:
                             pl.set_validshape(src_tile, [1, cur_vec_size])
                             process_reduce_max_vf(
-                                src_tile, qk_vec_tile, weight_tile_cur,
-                                max_tile, n1_dim, cur_vec_size)
-                        pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2])
+                                src_tile,
+                                qk_vec_tile,
+                                weight_tile_cur,
+                                max_tile,
+                                n1_dim,
+                                cur_vec_size,
+                            )
+                        pl.system.set_cross_core(
+                            pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2]
+                        )
                         task_id = task_id + 1
                 else:
                     task_id = process_long_s2_reduce_max(
-                        qk_vec, weight_vec, reduce_sum_vec_tile, workspace,
-                        max_tile, n1_dim, core_id, sub_id,
-                        prev_s2_tiles, prev_s2_vec_tail_size,
-                        j, work_count, task_id)
+                        qk_vec,
+                        weight_vec,
+                        reduce_sum_vec_tile,
+                        workspace,
+                        max_tile,
+                        n1_dim,
+                        core_id,
+                        sub_id,
+                        prev_s2_tiles,
+                        prev_s2_vec_tail_size,
+                        j,
+                        work_count,
+                        task_id,
+                    )
 
                 pl.set_validshape(max_tile, [1, 1])
                 pl.store(workspace_max, max_tile, [0, core_id * 2 + sub_id])
-                pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=4,
-                                         sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
-                pl.system.wait_cross_core(pipe=pl.PipeType.MTE2, event_id=4,
-                                          sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
+                pl.system.set_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=4,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK,
+                )
+                pl.system.wait_cross_core(
+                    pipe=pl.PipeType.MTE2,
+                    event_id=4,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK,
+                )
                 tmp_s2_max = pl.getval(max_tile, 0)
                 pl.set_validshape(max_tile, [1, 2])
                 pl.load(max_tile, workspace_max, [0, core_id * 2])
@@ -602,18 +787,36 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
 
                 if is_long_s2 == 0:
                     process_reduce_sum_vf(
-                        lse_vec_tile, reduce_sum_vec_tile, tmp_s2_max,
-                        prev_s2_tiles, prev_s2_vec_tail_size)
+                        lse_vec_tile,
+                        reduce_sum_vec_tile,
+                        tmp_s2_max,
+                        prev_s2_tiles,
+                        prev_s2_vec_tail_size,
+                    )
                 else:
-                    process_long_s2_reduce_sum(lse_vec_tile, reduce_sum_vec, workspace, tmp_s2_max,
-                                               core_id, sub_id, prev_s2_tiles, prev_s2_vec_tail_size)
+                    process_long_s2_reduce_sum(
+                        lse_vec_tile,
+                        reduce_sum_vec,
+                        workspace,
+                        tmp_s2_max,
+                        core_id,
+                        sub_id,
+                        prev_s2_tiles,
+                        prev_s2_vec_tail_size,
+                    )
 
                 pl.set_validshape(lse_vec_tile, [1, 1])
                 pl.store(workspace_sum, lse_vec_tile, [0, core_id * 2 + sub_id])
-                pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=5,
-                                         sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
-                pl.system.wait_cross_core(pipe=pl.PipeType.MTE2, event_id=5,
-                                          sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
+                pl.system.set_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=5,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK,
+                )
+                pl.system.wait_cross_core(
+                    pipe=pl.PipeType.MTE2,
+                    event_id=5,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK,
+                )
                 pl.set_validshape(lse_vec_tile, [1, 2])
                 pl.load(lse_vec_tile, workspace_sum, [0, core_id * 2])
                 v0_tmp_sum = pl.getval(lse_vec_tile, 0)
@@ -638,11 +841,13 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
 # ================================================================
 #  Kernel — dynamic rank: inputs are raw pointers, shapes come from tiling
 # ================================================================
-@pl.jit(auto_mutex=True,
-        tiling_key=DenseLiLseTilingKey,
-        datatype={
-            "query_index": "input_dtype",
-        })
+@pl.jit(
+    auto_mutex=True,
+    tiling_key=DenseLiLseTilingKey,
+    datatype={
+        "query_index": "input_dtype",
+    },
+)
 def dense_lightning_indexer_softmax_lse_v2(
     query_index: pl.Ptr[pl.DT_UINT8],
     key_index: pl.Ptr[pl.DT_UINT8],

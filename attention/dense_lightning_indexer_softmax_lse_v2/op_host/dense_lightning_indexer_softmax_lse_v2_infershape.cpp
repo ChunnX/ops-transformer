@@ -24,7 +24,7 @@ constexpr uint32_t KEY_INDEX = 1;
 constexpr uint32_t ATTR_LAYOUT_INDEX = 0;
 constexpr uint32_t SOFTMAX_LSE_INDEX = 0;
 
-static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLseV2(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLseV2(gert::InferShapeContext *context)
 {
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
