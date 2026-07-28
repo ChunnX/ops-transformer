@@ -18,7 +18,6 @@
 
 #include "ffn.h"
 
-
 namespace FFN {
 using namespace matmul;
 

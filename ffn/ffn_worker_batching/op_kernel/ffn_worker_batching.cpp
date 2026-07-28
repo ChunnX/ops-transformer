@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 /*!
  * \file ffn_worker_batching.cpp
  * \brief
@@ -40,9 +40,9 @@ using namespace AscendC;
 using namespace FfnWbBatching;
 
 extern "C" __aicore__ inline void FfnWorkerBatchingProcess(GM_ADDR schedule_context,
-    GM_ADDR y, GM_ADDR group_list, GM_ADDR session_ids, GM_ADDR micro_batch_ids, GM_ADDR token_ids,
-    GM_ADDR expert_offsets, GM_ADDR dynamic_scale, GM_ADDR actual_token_num,
-    GM_ADDR userWS, const FfnWorkerBatchingTilingData *tilingData)
+                                                           GM_ADDR y, GM_ADDR group_list, GM_ADDR session_ids, GM_ADDR micro_batch_ids, GM_ADDR token_ids,
+                                                           GM_ADDR expert_offsets, GM_ADDR dynamic_scale, GM_ADDR actual_token_num,
+                                                           GM_ADDR userWS, const FfnWorkerBatchingTilingData *tilingData)
 {
     TPipe ffnPipe;
     ScheduleContextInfo contextInfo;
@@ -81,22 +81,22 @@ extern "C" __aicore__ inline void FfnWorkerBatchingProcess(GM_ADDR schedule_cont
         // 这里传递的是sort后的索引
         KernelFfnWBGatherOutAll<false> op;
         op.Init(userWS + (OFFSET_SORTED_EXPERT_IDS + contextInfo.sortNumWorkSpace + tilingdataSort.totalLength) *
-            sizeof(int32_t),
-            y,
-            session_ids,
-            micro_batch_ids,
-            token_ids,
-            expert_offsets,
-            dynamic_scale,
-            &contextInfo,
-            &ffnPipe,
-            usedCoreNum);
+                             sizeof(int32_t),
+                y,
+                session_ids,
+                micro_batch_ids,
+                token_ids,
+                expert_offsets,
+                dynamic_scale,
+                &contextInfo,
+                &ffnPipe,
+                usedCoreNum);
         op.Process();
         ffnPipe.Reset();
     } else {
         expertTokenOutMultiOp.Init(userWS + (OFFSET_SORTED_EXPERT_IDS + contextInfo.sortNumWorkSpace) * sizeof(int32_t), group_list,
-            userWS + (OFFSET_SORTED_EXPERT_IDS + contextInfo.sortNumWorkSpace * (NUM_TWO * NUM_FOUR + 1)) * sizeof(int32_t),
-            &contextInfo, &ffnPipe, groupListingDealFlag);
+                                   userWS + (OFFSET_SORTED_EXPERT_IDS + contextInfo.sortNumWorkSpace * (NUM_TWO * NUM_FOUR + 1)) * sizeof(int32_t),
+                                   &contextInfo, &ffnPipe, groupListingDealFlag);
         expertTokenOutMultiOp.Process(groupListingDealFlag);
     }
 
@@ -108,9 +108,9 @@ extern "C" __aicore__ inline void FfnWorkerBatchingProcess(GM_ADDR schedule_cont
 }
 
 extern "C" __aicore__ inline void FfnWorkerBatchingRecvProcess(GM_ADDR schedule_context,
-    GM_ADDR y, GM_ADDR group_list, GM_ADDR session_ids, GM_ADDR micro_batch_ids, GM_ADDR token_ids,
-    GM_ADDR expert_offsets, GM_ADDR dynamic_scale, GM_ADDR actual_token_num,
-    GM_ADDR userWS, const FfnWorkerBatchingTilingData *tilingData)
+                                                               GM_ADDR y, GM_ADDR group_list, GM_ADDR session_ids, GM_ADDR micro_batch_ids, GM_ADDR token_ids,
+                                                               GM_ADDR expert_offsets, GM_ADDR dynamic_scale, GM_ADDR actual_token_num,
+                                                               GM_ADDR userWS, const FfnWorkerBatchingTilingData *tilingData)
 {
     TPipe ffnPipe;
     ScheduleContextInfo contextInfo;
@@ -151,16 +151,16 @@ extern "C" __aicore__ inline void FfnWorkerBatchingRecvProcess(GM_ADDR schedule_
         // 这里传递的是sort后的索引
         KernelFfnWBGatherOutAll<true> op;
         op.Init(userWS + (OFFSET_SORTED_EXPERT_IDS + contextInfo.sortNumWorkSpace + tilingdataSort.totalLengthWithPad) *
-            sizeof(int32_t),
-            y,
-            session_ids,
-            micro_batch_ids,
-            token_ids,
-            expert_offsets,
-            dynamic_scale,
-            &contextInfo,
-            &ffnPipe,
-            GROUP_LISTING_SCAN_AIV_NUM);
+                             sizeof(int32_t),
+                y,
+                session_ids,
+                micro_batch_ids,
+                token_ids,
+                expert_offsets,
+                dynamic_scale,
+                &contextInfo,
+                &ffnPipe,
+                GROUP_LISTING_SCAN_AIV_NUM);
         op.Process();
         ffnPipe.Reset();
     } else {
@@ -168,17 +168,17 @@ extern "C" __aicore__ inline void FfnWorkerBatchingRecvProcess(GM_ADDR schedule_
         KernelFfnWBScanGroupListingOneCore expertTokenOutOp;
         // 这里workspace 记得加上偏移 排序后的专家
         expertTokenOutOp.Init(userWS + (OFFSET_SORTED_EXPERT_IDS + contextInfo.sortNumWorkSpace) * sizeof(int32_t),
-                            group_list, &contextInfo, &ffnPipe);
+                              group_list, &contextInfo, &ffnPipe);
         expertTokenOutOp.Process();
         ffnPipe.Reset();
     }
 }
 
 extern "C" __aicore__ inline void FfnWorkerBatchingRecvSpecProcess(GM_ADDR schedule_context,
-                    GM_ADDR y, GM_ADDR group_list, GM_ADDR session_ids,
-                    GM_ADDR micro_batch_ids, GM_ADDR token_ids,
-                    GM_ADDR expert_offsets, GM_ADDR dynamic_scale, GM_ADDR actual_token_num,
-                    GM_ADDR userWS, const FfnWorkerBatchingTilingData *tilingData)
+                                                                   GM_ADDR y, GM_ADDR group_list, GM_ADDR session_ids,
+                                                                   GM_ADDR micro_batch_ids, GM_ADDR token_ids,
+                                                                   GM_ADDR expert_offsets, GM_ADDR dynamic_scale, GM_ADDR actual_token_num,
+                                                                   GM_ADDR userWS, const FfnWorkerBatchingTilingData *tilingData)
 {
     TPipe ffnPipe;
     ScheduleContextInfo contextInfo;
@@ -202,24 +202,24 @@ extern "C" __aicore__ inline void FfnWorkerBatchingRecvSpecProcess(GM_ADDR sched
     int64_t totalLengthWithPad = contextInfo.A * (contextInfo.BS * contextInfo.K + contextInfo.BsKPaddingCount);
     KernelFfnWBGatherOutAll<true> opGather;
     opGather.Init(userWS + (OFFSET_SORTED_EXPERT_IDS + contextInfo.sortNumWorkSpace + totalLengthWithPad) *
-        sizeof(int32_t),
-        y,
-        session_ids,
-        micro_batch_ids,
-        token_ids,
-        expert_offsets,
-        dynamic_scale,
-        &contextInfo,
-        &ffnPipe,
-        0);
+                               sizeof(int32_t),
+                  y,
+                  session_ids,
+                  micro_batch_ids,
+                  token_ids,
+                  expert_offsets,
+                  dynamic_scale,
+                  &contextInfo,
+                  &ffnPipe,
+                  0);
     opGather.Process();
 }
 
 extern "C" __global__ __aicore__ void ffn_worker_batching(GM_ADDR schedule_context,
-                    GM_ADDR y, GM_ADDR group_list, GM_ADDR session_ids,
-                    GM_ADDR micro_batch_ids, GM_ADDR token_ids,
-                    GM_ADDR expert_offsets, GM_ADDR dynamic_scale, GM_ADDR actual_token_num,
-                    GM_ADDR workspace, GM_ADDR tiling)
+                                                          GM_ADDR y, GM_ADDR group_list, GM_ADDR session_ids,
+                                                          GM_ADDR micro_batch_ids, GM_ADDR token_ids,
+                                                          GM_ADDR expert_offsets, GM_ADDR dynamic_scale, GM_ADDR actual_token_num,
+                                                          GM_ADDR workspace, GM_ADDR tiling)
 {
     if (g_coreType == AIC) {
         return;
@@ -235,12 +235,12 @@ extern "C" __global__ __aicore__ void ffn_worker_batching(GM_ADDR schedule_conte
 
     if (TILING_KEY_IS(TILING_KEY_NORM)) {
         FfnWorkerBatchingProcess(schedule_context, y, group_list, session_ids, micro_batch_ids, token_ids,
-            expert_offsets, dynamic_scale, actual_token_num, userWS, &tilingData);
+                                 expert_offsets, dynamic_scale, actual_token_num, userWS, &tilingData);
     } else if (TILING_KEY_IS(TILING_KEY_RECV)) {
         FfnWorkerBatchingRecvProcess(schedule_context, y, group_list, session_ids, micro_batch_ids, token_ids,
-            expert_offsets, dynamic_scale, actual_token_num, userWS, &tilingData);
+                                     expert_offsets, dynamic_scale, actual_token_num, userWS, &tilingData);
     } else if (TILING_KEY_IS(TILING_KEY_RECV_GATHER)) {
         FfnWorkerBatchingRecvSpecProcess(schedule_context, y, group_list, session_ids, micro_batch_ids, token_ids,
-            expert_offsets, dynamic_scale, actual_token_num, userWS, &tilingData);
+                                         expert_offsets, dynamic_scale, actual_token_num, userWS, &tilingData);
     }
 }

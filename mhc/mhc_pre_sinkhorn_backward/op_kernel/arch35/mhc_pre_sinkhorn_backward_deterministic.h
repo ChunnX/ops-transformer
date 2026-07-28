@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /*!
  * \file mhc_pre_sinkhorn_backward_deterministic.h
  * \brief
@@ -704,7 +703,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
                     AscendC::MicroAPI::DataCopy<X_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(xReg, xAddrStart);
                     AscendC::MicroAPI::Cast<U, X_T, castTrait16ToFloat>(xCastReg, xReg, valueMaskReg);
                     AscendC::MicroAPI::Muls(gradXFromHinReg, gradHInCastReg, hPre,
-                                            valueMaskReg); // grad_h_in_f32 * h_pre
+                                            valueMaskReg);                                       // grad_h_in_f32 * h_pre
                     AscendC::MicroAPI::Mul(gradHPreReg, xCastReg, gradHInCastReg, valueMaskReg); // x_f32 *
                                                                                                  // grad_h_in_f32
                     AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(gradHPreReg, gradHPreReg,
@@ -735,7 +734,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::G
                 {static_cast<uint16_t>(1), static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(U)), 0, 0, 0},
                 {false, 0, 0, 0});
 }
-
 
 template <typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void
@@ -937,7 +935,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
 
         Reg::MaskReg maskN = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
         Reg::MaskReg maskNN = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-
 
         // 计算tmpDiv3、tmpDiv4
         for (uint16_t j = 0; j < bsLenLoop; j++) {

@@ -22,7 +22,6 @@
 #define OP_KERNEL_FFN_WB_SCAN_SORT_MULTI_CORE_BSK_H
 #include "ffn_wb_arch35_reuse.h"
 
-
 namespace FfnWbBatchingArch35 {
 using namespace AscendC;
 
@@ -62,7 +61,7 @@ private:
     int64_t F = 0;
     int64_t BsKLenWithPading = 0; // BS*K_plus_1按block对齐后的个数
 
-    int64_t perCoreSortNum = 0; // perCoreSessionNum * BsKLenWithPading 主核 每个核排序的元素总个数; 不保证32个数对齐
+    int64_t perCoreSortNum = 0;  // perCoreSessionNum * BsKLenWithPading 主核 每个核排序的元素总个数; 不保证32个数对齐
     int64_t lastCoreSortNum = 0; // lastCoreSessionNum * BsKLenWithPading;
     int64_t sessionLoops = 0;    // 当前核 ub循环次数
 

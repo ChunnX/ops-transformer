@@ -111,7 +111,6 @@ __aicore__ inline void CopyQueryGmToL1(FaL1Tensor<Q_T> &dstTensor, FaGmTensor<Q_
 
     uint64_t queryGmbaseOffset = GetOffset(info, gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
 
-
     if (info.dimG == 1) {
         CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset], s1IdxEnd - s1IdxStart,
                                gmCoord.dDealSize, info.strideS1, dstTensor.rowCount);

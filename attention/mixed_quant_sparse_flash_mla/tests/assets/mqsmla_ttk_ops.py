@@ -96,19 +96,31 @@ def build_mixed_quant_sparse_flash_mla_metadata(
             cu_seqlens_q, q_fallback
         )
     )
-    ori_fallback = 0 if ori_kv is None else (ori_kv.shape[0] if layout_kv == "TND" else ori_kv.shape[1])
-    cmp_fallback = 0 if cmp_kv is None else (cmp_kv.shape[0] if layout_kv == "TND" else cmp_kv.shape[1])
+    ori_fallback = (
+        0
+        if ori_kv is None
+        else (ori_kv.shape[0] if layout_kv == "TND" else ori_kv.shape[1])
+    )
+    cmp_fallback = (
+        0
+        if cmp_kv is None
+        else (cmp_kv.shape[0] if layout_kv == "TND" else cmp_kv.shape[1])
+    )
     max_seqlen_ori_kv = MixedQuantSparseFlashMlaMetadataBuilder.max_seq(
         cu_seqlens_ori_kv, seqused_ori_kv, ori_fallback
     )
     max_seqlen_cmp_kv = MixedQuantSparseFlashMlaMetadataBuilder.max_seq(
         cu_seqlens_cmp_kv, seqused_cmp_kv, cmp_fallback
     )
-    ori_topk = int(ori_sparse_indices.shape[-1]) if ori_sparse_indices is not None else 0
+    ori_topk = (
+        int(ori_sparse_indices.shape[-1]) if ori_sparse_indices is not None else 0
+    )
     cmp_topk = (
         int(metadata_cmp_topk)
         if metadata_cmp_topk is not None
-        else (int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0)
+        else (
+            int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0
+        )
     )
     if has_ori_kv is None:
         has_ori_kv = ori_kv is not None

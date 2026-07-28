@@ -32,8 +32,9 @@ class CaseDataStore:
 CASE_DATA = CaseDataStore()
 
 
-def cpu_mixed_quant_sparse_flash_mla(q, *, return_softmax_lse=False,
-                                     testcase_name=None, **kwargs):
+def cpu_mixed_quant_sparse_flash_mla(
+    q, *, return_softmax_lse=False, testcase_name=None, **kwargs
+):
     del q, kwargs
     data = CASE_DATA.get(testcase_name)
     if data is None:

@@ -90,16 +90,28 @@ def build_sparse_flash_mla_metadata(
         if layout_q == "BSND"
         else SparseFlashMlaMetadataBuilder.max_prefix_span(cu_seqlens_q, q_fallback)
     )
-    ori_fallback = 0 if ori_kv is None else (ori_kv.shape[0] if layout_kv == "TND" else ori_kv.shape[1])
-    cmp_fallback = 0 if cmp_kv is None else (cmp_kv.shape[0] if layout_kv == "TND" else cmp_kv.shape[1])
+    ori_fallback = (
+        0
+        if ori_kv is None
+        else (ori_kv.shape[0] if layout_kv == "TND" else ori_kv.shape[1])
+    )
+    cmp_fallback = (
+        0
+        if cmp_kv is None
+        else (cmp_kv.shape[0] if layout_kv == "TND" else cmp_kv.shape[1])
+    )
     max_seqlen_ori_kv = SparseFlashMlaMetadataBuilder.max_seq(
         cu_seqlens_ori_kv, seqused_ori_kv, ori_fallback
     )
     max_seqlen_cmp_kv = SparseFlashMlaMetadataBuilder.max_seq(
         cu_seqlens_cmp_kv, seqused_cmp_kv, cmp_fallback
     )
-    ori_topk = int(ori_sparse_indices.shape[-1]) if ori_sparse_indices is not None else 0
-    cmp_topk = int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0
+    ori_topk = (
+        int(ori_sparse_indices.shape[-1]) if ori_sparse_indices is not None else 0
+    )
+    cmp_topk = (
+        int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0
+    )
     if has_ori_kv is None:
         has_ori_kv = ori_kv is not None
     if has_cmp_kv is None:

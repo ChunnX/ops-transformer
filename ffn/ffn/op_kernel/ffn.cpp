@@ -50,10 +50,14 @@ constexpr CubeFormat formatY = CubeFormat::NZ;
 constexpr CubeFormat formatY = CubeFormat::ND;
 #endif
 
-template <typename T, CubeFormat cubeFormatA> using aType = matmul::MatmulType<TPosition::GM, cubeFormatA, T, false>;
-template <typename T, CubeFormat cubeFormatB> using bType = matmul::MatmulType<TPosition::GM, cubeFormatB, T, false>;
-template <typename T> using biasType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
-template <typename T, TPosition tPositionC> using cType = matmul::MatmulType<tPositionC, formatY, T>;
+template <typename T, CubeFormat cubeFormatA>
+using aType = matmul::MatmulType<TPosition::GM, cubeFormatA, T, false>;
+template <typename T, CubeFormat cubeFormatB>
+using bType = matmul::MatmulType<TPosition::GM, cubeFormatB, T, false>;
+template <typename T>
+using biasType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
+template <typename T, TPosition tPositionC>
+using cType = matmul::MatmulType<tPositionC, formatY, T>;
 // CFG_MDL: open large pack movement mode
 template <typename T, CubeFormat cubeFormatA, CubeFormat cubeFormatB = CubeFormat::ND,
           TPosition tPositionC = TPosition::GM>
@@ -65,7 +69,7 @@ using mmWNDType =
     MMType<aType<T, cubeFormatA>, bType<T, CubeFormat::ND>, cType<cT, tPositionC>, biasType<biasT>, CFG_MDL>;
 // MM_CFG_UNITFLAG: enable unitflag
 constexpr MatmulConfig MM_CFG_UNITFLAG{false, false, true, 0, 0, 0, false, false, false, false,
-                                       false, 0,     0,    0, 0, 0, 0,     0,     true};
+                                       false, 0, 0, 0, 0, 0, 0, 0, true};
 static constexpr MatmulConfig MM_CFG_STEPN = GetSpecialMDLConfig();
 template <typename T, typename cT = T, typename biasT = T, CubeFormat cubeFormatA = CubeFormat::ND,
           const MatmulConfig &MM_CFG = MM_CFG_UNITFLAG, TPosition tPositionC = TPosition::GM>
@@ -73,17 +77,20 @@ using mmQuantType =
     MMType<aType<T, cubeFormatA>, bType<T, CubeFormat::ND>, cType<cT, tPositionC>, biasType<biasT>, MM_CFG>;
 
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
-template <typename T> struct GetC1Type {
+template <typename T>
+struct GetC1Type {
     using Type = T;
 };
 
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
-template <> struct GetC1Type<bfloat16_t> {
+template <>
+struct GetC1Type<bfloat16_t> {
     using Type = float;
 };
 #endif
 
-template <> struct GetC1Type<half> {
+template <>
+struct GetC1Type<half> {
     using Type = half;
 };
 #endif

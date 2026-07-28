@@ -348,7 +348,6 @@ __aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::ComputeTile(uint32_t t
     // When aligned, SetValue will fill all valid positions
     Duplicate(gradHPostTileSums, 0.0f, alignedN_);
 
-
     // ===== Common path for bf16 and fp16: Cast to f32 for computation =====
     LocalTensor<float> gradOutF32 = gradOutF32Buf_.Get<float>();
     LocalTensor<float> hOutF32 = hOutF32Buf_.Get<float>();
@@ -503,7 +502,6 @@ MhcPostBackwardKernel<T, IS_HRES>::ComputeGradHOutTile(LocalTensor<float> gradOu
         }
     }
 }
-
 
 template <typename T, bool IS_HRES>
 __aicore__ inline void

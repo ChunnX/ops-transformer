@@ -29,10 +29,7 @@ using namespace at_npu::native;
 aicpu::kernels::Layout CovertToLayout(const std::string &str)
 {
     std::unordered_map<std::string, aicpu::kernels::Layout> layoutDict = {
-        {"BSH", aicpu::kernels::Layout::BSH},   {"BSND", aicpu::kernels::Layout::BSND},
-        {"BNSD", aicpu::kernels::Layout::BNSD}, {"NZ", aicpu::kernels::Layout::NZ},
-        {"TND", aicpu::kernels::Layout::TND},   {"NBSD", aicpu::kernels::Layout::NBSD},
-        {"NTD", aicpu::kernels::Layout::NTD}};
+        {"BSH", aicpu::kernels::Layout::BSH}, {"BSND", aicpu::kernels::Layout::BSND}, {"BNSD", aicpu::kernels::Layout::BNSD}, {"NZ", aicpu::kernels::Layout::NZ}, {"TND", aicpu::kernels::Layout::TND}, {"NBSD", aicpu::kernels::Layout::NBSD}, {"NTD", aicpu::kernels::Layout::NTD}};
     auto layoutIter = layoutDict.find(str);
     return (layoutIter == layoutDict.end()) ? aicpu::kernels::Layout::BUTT : layoutIter->second;
 }
@@ -86,7 +83,6 @@ TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
 {
     m.impl("npu_fused_infer_attention_score_metadata", &custom::npu_fused_infer_attention_score_metadata_npu);
 }
-
 
 // step5, 为META设备注册前向实现
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m)

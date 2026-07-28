@@ -82,8 +82,7 @@ class SparseFlashMlaComparator:
             max_relative_error = float(np.max(relative_error[diff_idx]))
 
         passed = (
-            fail_ratio <= cls.FAIL_RATIO
-            and max_relative_error < cls.MAX_RELATIVE_ERROR
+            fail_ratio <= cls.FAIL_RATIO and max_relative_error < cls.MAX_RELATIVE_ERROR
         )
         precision = (golden_flat.size - diff_idx.size) / golden_flat.size * 100
         error_info = None

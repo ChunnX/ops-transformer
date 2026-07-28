@@ -14,7 +14,7 @@ import torch
 
 __golden__ = {
     "kernel": {"mhc_post": "mhc_post_golden"},
-    "aclnn": {"aclnnMhcPost": "aclnn_mhc_post_golden"}
+    "aclnn": {"aclnnMhcPost": "aclnn_mhc_post_golden"},
 }
 
 
@@ -60,7 +60,7 @@ def mhc_post_golden(x, *args, **kwargs):
 
 
 def aclnn_mhc_post_golden(x, hRes, hOut, hPost, out, **kwargs):
-    '''
+    """
     Aclnn golden for aclnnMhcPost.
     All the parameters (name & order) follow
     function `aclnnMhcPostGetWorkspaceSize` in @aclnn_mhc_post.h
@@ -74,13 +74,13 @@ def aclnn_mhc_post_golden(x, hRes, hOut, hPost, out, **kwargs):
 
     Returns:
         Output tensors.
-    '''
+    """
     import torch
 
     def _to_numpy(t):
         if t is None:
             return None
-        if hasattr(t, 'numpy'):
+        if hasattr(t, "numpy"):
             if t.dtype == torch.bfloat16:
                 return t.float().numpy()
             return t.numpy()
@@ -93,8 +93,9 @@ def aclnn_mhc_post_golden(x, hRes, hOut, hPost, out, **kwargs):
 
     result = mhc_post_golden(x_np, hRes_np, hOut_np, hPost_np, **kwargs)
 
-    if hasattr(x, 'numpy'):
+    if hasattr(x, "numpy"):
         import torch
+
         result_tensor = torch.from_numpy(result)
         if x.dtype == torch.bfloat16:
             result_tensor = result_tensor.to(torch.bfloat16)

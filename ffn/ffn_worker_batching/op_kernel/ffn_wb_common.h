@@ -78,17 +78,17 @@ struct ScheduleContextInfo {
     uint32_t HS = 0; // HS, 读自 attn_to_ffn_token_size， 单位字节
     uint32_t H = 0;  // 算子的输入attr，个数
     uint32_t Y = 0;
-    uint64_t curMicroBatchID = 0; // recv功能增加的，标识当前哪个micro batchid的expert id已经ready
-    uint32_t outNum = 0; // 取自 FfnArea, 标识多少个attention session num的数据有效。 非recv功能时使用
-    uint32_t tokenDtype = 0; // 算子attr. 标识Y的数据类型以及 FfnArea.token_data_buf的存储方式
-                             // 0: FP16; 1: BF16 2: 输入是int8动态量化产生的，并且int8的数据和dynamic scale连续排布
-    uint32_t expertNum = 0;         // 这里设置的是attr 的 expert_num；
-    int64_t coreNum = 0;            // tiling中取到的总的aiv core
-    int64_t ubSize = 0;             // tiling中取到的可用ub大小
-    int64_t sortLoopMaxElement = 0; // 每次ub最多可以排序多少个int32。取自tilingdata
-    int64_t sortNumWorkSpace = 0; // 用于记录每次排序后的个数。所有核一起需要占用的总空间。单位：个数。取自tilingdata
+    uint64_t curMicroBatchID = 0;     // recv功能增加的，标识当前哪个micro batchid的expert id已经ready
+    uint32_t outNum = 0;              // 取自 FfnArea, 标识多少个attention session num的数据有效。 非recv功能时使用
+    uint32_t tokenDtype = 0;          // 算子attr. 标识Y的数据类型以及 FfnArea.token_data_buf的存储方式
+                                      // 0: FP16; 1: BF16 2: 输入是int8动态量化产生的，并且int8的数据和dynamic scale连续排布
+    uint32_t expertNum = 0;           // 这里设置的是attr 的 expert_num；
+    int64_t coreNum = 0;              // tiling中取到的总的aiv core
+    int64_t ubSize = 0;               // tiling中取到的可用ub大小
+    int64_t sortLoopMaxElement = 0;   // 每次ub最多可以排序多少个int32。取自tilingdata
+    int64_t sortNumWorkSpace = 0;     // 用于记录每次排序后的个数。所有核一起需要占用的总空间。单位：个数。取自tilingdata
     int64_t validGatherIdxLength = 0; // 文件排序后，去掉 100w(无效值的长度） 其值 ≤ A * BS * K 即gather_idx 有效长度;
-    int64_t BsKPaddingCount = 0; // BS*K 按block对齐需要补的pad个数, recv功能使用
+    int64_t BsKPaddingCount = 0;      // BS*K 按block对齐需要补的pad个数, recv功能使用
 
     // 放的是 切切实实的 gm 地址, 目前通过bin文件放的是偏移 ,所以需要加GM_ADDR schedule_context
     BufferInfo bufferPtr;
@@ -113,7 +113,7 @@ struct SortCustomTilingDataKernel {
     int64_t perCoreSessionNum = 0;
     int64_t lastCoreSessionNum = 0;
     int64_t sortNumWorkSpacePerCore = 0; // 用于记录每次排序后的个数。每个核需要占用的空间。单位：个数。
-    int64_t isNormalBsK = 0; // new 判断Bs*K是否大于UB
+    int64_t isNormalBsK = 0;             // new 判断Bs*K是否大于UB
 };
 
 struct FfnWBGroupListingTileInfo {
@@ -189,7 +189,7 @@ __aicore__ inline T PowerOfFourCeil(T x)
     return result;
 }
 
-__aicore__ inline void TilingOneCoreSort(SortCustomTilingDataKernel* tilingData, const int64_t totalLength)
+__aicore__ inline void TilingOneCoreSort(SortCustomTilingDataKernel *tilingData, const int64_t totalLength)
 {
     tilingData->needCoreNum = totalLength == 0 ? 0 : 1;
     tilingData->perCoreElements = totalLength;
@@ -203,12 +203,12 @@ __aicore__ inline void TilingOneCoreSort(SortCustomTilingDataKernel* tilingData,
 }
 
 __aicore__ inline void TilingMultiCoreSort(
-    SortCustomTilingDataKernel* tilingData, const int64_t totalLength, const ScheduleContextInfo* contextInfo)
+    SortCustomTilingDataKernel *tilingData, const int64_t totalLength, const ScheduleContextInfo *contextInfo)
 {
     int64_t needCoreNum = CeilDiv(totalLength, contextInfo->sortLoopMaxElement); // 向上取整
-    needCoreNum = PowerOfFourCeil(needCoreNum);           // 用到多核时，核数最多是4^x, 计算不小于
-                                                          // needCoreNum 的最小的 4 的整数次幂
-    needCoreNum = Min(needCoreNum, contextInfo->coreNum); // 不能超过物理核数
+    needCoreNum = PowerOfFourCeil(needCoreNum);                                  // 用到多核时，核数最多是4^x, 计算不小于
+                                                                                 // needCoreNum 的最小的 4 的整数次幂
+    needCoreNum = Min(needCoreNum, contextInfo->coreNum);                        // 不能超过物理核数
     if (needCoreNum == 0) {
         tilingData->needCoreNum = 0;
         return;
@@ -255,8 +255,8 @@ __aicore__ inline void TilingMultiCoreSort(
 }
 
 __aicore__ inline void TilingScanMultiCoreSort(
-    SortCustomTilingDataKernel* tilingdataSort,
-    const ScheduleContextInfo* contextInfo)
+    SortCustomTilingDataKernel *tilingdataSort,
+    const ScheduleContextInfo *contextInfo)
 {
     // 按A分核
     // 1. 计算每次排序可以放下多少个 session_num
@@ -283,7 +283,7 @@ __aicore__ inline void TilingScanMultiCoreSort(
     tilingdataSort->oneLoopMaxElementsMrg = MGR_SORT_MAX_ELEMENT;
 }
 
-__aicore__ inline void TilingSort(SortCustomTilingDataKernel* tilingdataSort, const ScheduleContextInfo* contextInfo)
+__aicore__ inline void TilingSort(SortCustomTilingDataKernel *tilingdataSort, const ScheduleContextInfo *contextInfo)
 {
     auto totalLength = contextInfo->outNum * contextInfo->BS * contextInfo->K;
     tilingdataSort->totalLength = totalLength;
@@ -298,7 +298,7 @@ __aicore__ inline void TilingSort(SortCustomTilingDataKernel* tilingdataSort, co
 }
 
 __aicore__ inline void TilingScanSort(
-    SortCustomTilingDataKernel* tilingdataSort, const ScheduleContextInfo* contextInfo)
+    SortCustomTilingDataKernel *tilingdataSort, const ScheduleContextInfo *contextInfo)
 {
     tilingdataSort->totalLengthWithPad =
         contextInfo->A * (contextInfo->BS * contextInfo->K + contextInfo->BsKPaddingCount);
@@ -317,13 +317,13 @@ __aicore__ inline void TilingScanSort(
 }
 
 __aicore__ inline void ValidGatherIdxLengthCompute(
-    GM_ADDR work_space, ScheduleContextInfo& contextInfo, GM_ADDR actual_token_num)
+    GM_ADDR work_space, ScheduleContextInfo &contextInfo, GM_ADDR actual_token_num)
 {
     GlobalTensor<int32_t> workSpace;
     GlobalTensor<int64_t> actualTokenNumGm;
 
-    workSpace.SetGlobalBuffer((__gm__ int32_t*)work_space, OFFSET_SORTED_EXPERT_IDS);
-    actualTokenNumGm.SetGlobalBuffer((__gm__ int64_t*)actual_token_num);
+    workSpace.SetGlobalBuffer((__gm__ int32_t *)work_space, OFFSET_SORTED_EXPERT_IDS);
+    actualTokenNumGm.SetGlobalBuffer((__gm__ int64_t *)actual_token_num);
 
     DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_ALL>(
         workSpace);
@@ -337,7 +337,7 @@ __aicore__ inline void ValidGatherIdxLengthCompute(
 }
 
 __aicore__ inline void Tiling4SrcToDstCompute(
-    const ScheduleContextInfo* tilingData, FfnWBGroupListingTileInfo& tilingInfo)
+    const ScheduleContextInfo *tilingData, FfnWBGroupListingTileInfo &tilingInfo)
 {
     int64_t ubSizePlatForm = tilingData->ubSize;
     int64_t validGatherIdxLength = tilingData->validGatherIdxLength;

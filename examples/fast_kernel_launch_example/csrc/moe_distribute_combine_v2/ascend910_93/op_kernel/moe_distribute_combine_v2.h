@@ -462,11 +462,11 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::BuffInit()
     if constexpr (IsInt8Quant) {
         uint32_t tokenScaleAlign32Size = Ceil(tokenScaleCnt_ * sizeof(ExpandXType), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, tokenScaleAlign32Size); // 28K 输出token搬运
-        tpipe_->InitBuffer(xAbsBuf_, hFloatAlign256Size_); // 28K blockReduceMax计算及后续Cast计算，256对齐
+        tpipe_->InitBuffer(xAbsBuf_, hFloatAlign256Size_);                 // 28K blockReduceMax计算及后续Cast计算，256对齐
         uint32_t hFloatAlign256Cnt = hFloatAlign256Size_ / sizeof(float);
         tpipe_->InitBuffer(xMaxBuf_, (hFloatAlign256Cnt / REDUCE_NUM) * sizeof(float)); // 3.5K 存储ReduceMax结果
-        tpipe_->InitBuffer(xScaleMulBuf_, hFloatAlign256Size_);          // 28K 参与Brcb计算，256对齐
-        tpipe_->InitBuffer(winTpSendCountFloatBuf_, hFloatAlign32Size_); // 28K 参与Div等token v核运算
+        tpipe_->InitBuffer(xScaleMulBuf_, hFloatAlign256Size_);                         // 28K 参与Brcb计算，256对齐
+        tpipe_->InitBuffer(winTpSendCountFloatBuf_, hFloatAlign32Size_);                // 28K 参与Div等token v核运算
 
         winTpSendCountFloatTensor_ = winTpSendCountFloatBuf_.Get<float>();
         absFloatTensor_ = xAbsBuf_.Get<float>();
@@ -593,9 +593,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AlltoAllBuffI
             (activeMaskAlignHalfSize > hFloatAlign32Size_ ? activeMaskAlignHalfSize : hFloatAlign32Size_);
     }
     // InitBuffer需要在tiling中计算ub总量
-    tpipe_->InitBuffer(tokenBuf_, maxSizeTokenBuf);             // 16K 用于搬入输入token
-    tpipe_->InitBuffer(rowTmpFloatBuf_, maxSizeRowTmpFloatBuf); // 32K 用于存储cast之后的fp32 token数据
-    tpipe_->InitBuffer(mulBuf_, mulBufSize); // 32K buffer复用， 最大用于存储Brcb之后的token，需要256对齐
+    tpipe_->InitBuffer(tokenBuf_, maxSizeTokenBuf);                     // 16K 用于搬入输入token
+    tpipe_->InitBuffer(rowTmpFloatBuf_, maxSizeRowTmpFloatBuf);         // 32K 用于存储cast之后的fp32 token数据
+    tpipe_->InitBuffer(mulBuf_, mulBufSize);                            // 32K buffer复用， 最大用于存储Brcb之后的token，需要256对齐
     tpipe_->InitBuffer(sumFloatBuf_, hFloatAlign32Size_);               // 32K add
     tpipe_->InitBuffer(moeSumQueue_, bufferNum_, hExpandXAlign32Size_); // 32K 搬入
     tpipe_->InitBuffer(stateBuf_, (flagRcvCount_)*STATE_OFFSET);

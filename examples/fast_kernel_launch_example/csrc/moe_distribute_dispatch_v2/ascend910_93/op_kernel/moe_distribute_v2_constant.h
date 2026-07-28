@@ -16,7 +16,6 @@
 #ifndef MOE_DISTRIBUTE_V2_CONSTANT_H
 #define MOE_DISTRIBUTE_V2_CONSTANT_H
 
-
 namespace Mc2Kernel {
 constexpr uint32_t STATE_SIZE = 1024 * 1024; // 1M
 constexpr uint64_t TIMEOUT_OFFSET = 1000UL * 1024UL;
@@ -74,7 +73,7 @@ constexpr uint32_t CACHEWRITESIZE = 8U;
 
 // combinev2额外所需常量段
 constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818UL * 1024UL; // combine 0/1状态区偏移，为dispatch预留50k大小
-constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U; // 本卡状态空间偏移地址，前面的地址给dispatch用
+constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U;        // 本卡状态空间偏移地址，前面的地址给dispatch用
 constexpr uint8_t EP_DOMAIN = 0;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 constexpr uint32_t ALIGNED_LEN = 256U; // blockReduceMax中，最多支持连续256字节数据参与计算

@@ -249,7 +249,6 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-
 void MhcPreBackwardTiling::SetC0TilingParams()
 {
     tilingData_.matmulTilingC0.set_dbL0C(C0_SET_VALUE);
@@ -297,10 +296,10 @@ void MhcPreBackwardTiling::FillTilingData()
 uint64_t MhcPreBackwardTiling::CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t cubeCoreNum,
                                                       uint64_t vecCoreNum, uint64_t elementSize)
 {
-    uint64_t v1Elements = totalLength * fusionSize +          // h_mix_grad
+    uint64_t v1Elements = totalLength * fusionSize +            // h_mix_grad
                           ALPHA_GRAD_CORE_FACTOR * vecCoreNum + // alpha_grad
                           vecCoreNum * fusionSize +             // bias_grad
-                          totalLength;                         // inv_rms_grad
+                          totalLength;                          // inv_rms_grad
 
     uint64_t v2Elements =
         C0_SET_SHAPE_M * C0_SET_SHAPE_N * cubeCoreNum * BUFFER_NUM + // x_rs_grad_mm
@@ -378,7 +377,6 @@ ge::graphStatus MhcPreBackwardTiling::TilingProcess()
     return ge::GRAPH_SUCCESS;
 }
 
-
 ge::graphStatus MhcPreBackwardTiling::DoOpTiling()
 {
     auto inputXDesc = context_->GetInputDesc(0);
@@ -443,7 +441,6 @@ static ge::graphStatus TilingFunc4mHCPreGrad(gert::TilingContext *context)
 
     return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
 }
-
 
 static ge::graphStatus TilingPrepare4mHCPreGrad(gert::TilingParseContext *context)
 {

@@ -31,8 +31,13 @@ try:
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair.ge._ge_graph import DataType, TensorType
-    from torchair.ge._ge_graph import torch_dtype_value_to_ge_proto_type, torch_dtype_value_to_ge_type
-    from torchair.ge._ge_graph import _ge_dtype_to_ge_proto_dtype as ge_dtype_to_ge_proto_dtype
+    from torchair.ge._ge_graph import (
+        torch_dtype_value_to_ge_proto_type,
+        torch_dtype_value_to_ge_type,
+    )
+    from torchair.ge._ge_graph import (
+        _ge_dtype_to_ge_proto_dtype as ge_dtype_to_ge_proto_dtype,
+    )
     from torchair.ge._ge_graph import compat_as_bytes, compat_as_bytes_list
     from torchair.ge._ge_graph import trans_to_list_list_int, trans_to_list_list_float
     from torchair.ge._ge_graph import get_invalid_desc
@@ -165,41 +170,47 @@ if _TORCHAIR_AVAILABLE:
             attrs=attrs,
             outputs=outputs,
             dependencies=dependencies,
-            ir=IrDef("MoeDistributeDispatchV3") \
-            .input("context", "DT_INT32") \
-            .input("x", "DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, "
-                        "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
-            .input("expert_ids", "DT_INT32") \
-            .optional_input("scales", "DT_FLOAT, DT_FLOAT8_E8M0") \
-            .optional_input("x_active_mask", "DT_BOOL") \
-            .optional_input("expert_scales", "DT_FLOAT") \
-            .optional_input("elastic_info", "DT_INT32") \
-            .optional_input("performance_info", "DT_INT64") \
-            .required_attr("ep_world_size", attr.Int) \
-            .required_attr("ep_rank_id", attr.Int) \
-            .required_attr("moe_expert_num", attr.Int) \
-            .required_attr("ccl_buffer_size", attr.Int) \
-            .attr("tp_world_size", attr.Int(0)) \
-            .attr("tp_rank_id", attr.Int(0)) \
-            .attr("expert_shard_type", attr.Int(0)) \
-            .attr("shared_expert_num", attr.Int(1)) \
-            .attr("shared_expert_rank_num", attr.Int(0)) \
-            .attr("quant_mode", attr.Int(0)) \
-            .attr("global_bs", attr.Int(0)) \
-            .attr("expert_token_nums_type", attr.Int(1)) \
-            .attr("comm_alg", attr.Str("")) \
-            .attr("zero_expert_num", attr.Int(0)) \
-            .attr("copy_expert_num", attr.Int(0)) \
-            .attr("const_expert_num", attr.Int(0)) \
-            .attr("y_dtype", attr.Int(28)) \
-            .output("expand_x", "DT_BF16, DT_INT8, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, "
-                                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
-            .output("dynamic_scales", "DT_FLOAT, DT_FLOAT8_E8M0") \
-            .output("assist_info_for_combine", "DT_INT32") \
-            .output("expert_token_nums", "DT_INT64") \
-            .output("ep_recv_count", "DT_INT32") \
-            .output("tp_recv_count", "DT_INT32") \
-            .output("expand_scales", "DT_FLOAT")
+            ir=IrDef("MoeDistributeDispatchV3")
+            .input("context", "DT_INT32")
+            .input(
+                "x",
+                "DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, "
+                "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2",
+            )
+            .input("expert_ids", "DT_INT32")
+            .optional_input("scales", "DT_FLOAT, DT_FLOAT8_E8M0")
+            .optional_input("x_active_mask", "DT_BOOL")
+            .optional_input("expert_scales", "DT_FLOAT")
+            .optional_input("elastic_info", "DT_INT32")
+            .optional_input("performance_info", "DT_INT64")
+            .required_attr("ep_world_size", attr.Int)
+            .required_attr("ep_rank_id", attr.Int)
+            .required_attr("moe_expert_num", attr.Int)
+            .required_attr("ccl_buffer_size", attr.Int)
+            .attr("tp_world_size", attr.Int(0))
+            .attr("tp_rank_id", attr.Int(0))
+            .attr("expert_shard_type", attr.Int(0))
+            .attr("shared_expert_num", attr.Int(1))
+            .attr("shared_expert_rank_num", attr.Int(0))
+            .attr("quant_mode", attr.Int(0))
+            .attr("global_bs", attr.Int(0))
+            .attr("expert_token_nums_type", attr.Int(1))
+            .attr("comm_alg", attr.Str(""))
+            .attr("zero_expert_num", attr.Int(0))
+            .attr("copy_expert_num", attr.Int(0))
+            .attr("const_expert_num", attr.Int(0))
+            .attr("y_dtype", attr.Int(28))
+            .output(
+                "expand_x",
+                "DT_BF16, DT_INT8, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, "
+                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2",
+            )
+            .output("dynamic_scales", "DT_FLOAT, DT_FLOAT8_E8M0")
+            .output("assist_info_for_combine", "DT_INT32")
+            .output("expert_token_nums", "DT_INT64")
+            .output("ep_recv_count", "DT_INT32")
+            .output("tp_recv_count", "DT_INT32")
+            .output("expand_scales", "DT_FLOAT"),
         )
 
     def _convert_dispatch_x(x: Tensor, x_dtype: Optional[int]):
@@ -208,20 +219,24 @@ if _TORCHAIR_AVAILABLE:
         if x_dtype == 296 or x_dtype == 297:
             const_x = ge.Const([1] * (x.rank - 1) + [2])
             shape_x = ge.Mul(ge.Shape(x), const_x)
-            x = ge.Reshape(ge.Bitcast(x, type=torch_dtype_value_to_ge_type(x_dtype)), shape_x)
+            x = ge.Reshape(
+                ge.Bitcast(x, type=torch_dtype_value_to_ge_type(x_dtype)), shape_x
+            )
         else:
             x = ge.Bitcast(x, type=torch_dtype_value_to_ge_type(x_dtype))
         x.desc.dtype = torch_dtype_value_to_ge_proto_type(x_dtype)
         return x
 
-
-    def _convert_dispatch_scales(scales: Optional[Tensor], x_smooth_scales_dtype: Optional[int]):
+    def _convert_dispatch_scales(
+        scales: Optional[Tensor], x_smooth_scales_dtype: Optional[int]
+    ):
         if x_smooth_scales_dtype is None or scales is None:
             return scales
-        scales = ge.Bitcast(scales, type=torch_dtype_value_to_ge_type(x_smooth_scales_dtype))
+        scales = ge.Bitcast(
+            scales, type=torch_dtype_value_to_ge_type(x_smooth_scales_dtype)
+        )
         scales.desc.dtype = torch_dtype_value_to_ge_proto_type(x_smooth_scales_dtype)
         return scales
-
 
     def _get_expand_x_dtype(x: Tensor, quant_mode: int, y_dtype: Optional[int]):
         if y_dtype is not None:
@@ -229,7 +244,6 @@ if _TORCHAIR_AVAILABLE:
         if quant_mode == 0:
             return x.dtype
         return DataType.DT_INT8
-
 
     def _format_expand_x(expand_x: Tensor, expand_x_dtype, y_dtype: Optional[int]):
         if y_dtype == 296 or y_dtype == 297:
@@ -241,22 +255,32 @@ if _TORCHAIR_AVAILABLE:
                 concat_dim=0,
                 N=2,
             )
-            expand_x = ge.Bitcast(ge.Reshape(expand_x, y_shape_int4_2bit), type=DataType.DT_UINT8)
+            expand_x = ge.Bitcast(
+                ge.Reshape(expand_x, y_shape_int4_2bit), type=DataType.DT_UINT8
+            )
             return ge.Reshape(expand_x, y_shape_uint8)
         expand_x.desc.dtype = ge_dtype_to_ge_proto_dtype(expand_x_dtype)
         return expand_x
 
-
-    def _set_dynamic_scales_dtype(dynamic_scales: Tensor, x: Tensor, scales: Optional[Tensor], quant_mode: int):
-        if quant_mode == 0 and x.dtype not in (DataType.DT_FLOAT16, DataType.DT_BF16) and scales is not None:
+    def _set_dynamic_scales_dtype(
+        dynamic_scales: Tensor, x: Tensor, scales: Optional[Tensor], quant_mode: int
+    ):
+        if (
+            quant_mode == 0
+            and x.dtype not in (DataType.DT_FLOAT16, DataType.DT_BF16)
+            and scales is not None
+        ):
             dynamic_scales.desc.dtype = scales.desc.dtype
             return dynamic_scales
-        dynamic_scales_dtype = DataType.DT_FLOAT8_E8M0 if quant_mode in (4, 5) else DataType.DT_FLOAT
+        dynamic_scales_dtype = (
+            DataType.DT_FLOAT8_E8M0 if quant_mode in (4, 5) else DataType.DT_FLOAT
+        )
         dynamic_scales.desc.dtype = ge_dtype_to_ge_proto_dtype(dynamic_scales_dtype)
         return dynamic_scales
 
-
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_moe_distribute_dispatch.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.npu_moe_distribute_dispatch.default
+    )
     def converter_moe_distribute_dispatch(
         context: Tensor,
         x: Tensor,
@@ -286,7 +310,8 @@ if _TORCHAIR_AVAILABLE:
         y_dtype: Optional[int] = None,
         x_dtype: Optional[int] = None,
         x_smooth_scales_dtype: Optional[int] = None,
-        meta_outputs: TensorSpec = None):
+        meta_outputs: TensorSpec = None,
+    ):
         x = _convert_dispatch_x(x, x_dtype)
         scales = _convert_dispatch_scales(scales, x_smooth_scales_dtype)
         expand_x_dtype = _get_expand_x_dtype(x, quant_mode, y_dtype)
@@ -326,7 +351,9 @@ if _TORCHAIR_AVAILABLE:
             y_dtype=expand_x_dtype,
         )
         expand_x = _format_expand_x(expand_x, expand_x_dtype, y_dtype)
-        dynamic_scales = _set_dynamic_scales_dtype(dynamic_scales, x, scales, quant_mode)
+        dynamic_scales = _set_dynamic_scales_dtype(
+            dynamic_scales, x, scales, quant_mode
+        )
         return (
             expand_x,
             dynamic_scales,

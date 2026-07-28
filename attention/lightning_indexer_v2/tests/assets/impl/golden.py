@@ -38,7 +38,11 @@ class CaseDataStore:
             self.case_data = {str(testcase_name): data}
 
     def activate(self, testcase_name):
-        data = self.case_data.get(str(testcase_name)) if testcase_name is not None else None
+        data = (
+            self.case_data.get(str(testcase_name))
+            if testcase_name is not None
+            else None
+        )
         if data is None:
             raise RuntimeError(
                 "LightningIndexer V2 TTK golden requires customize_inputs "
@@ -66,8 +70,7 @@ def get_score_context():
     return CASE_DATA.score_layout, CASE_DATA.cu_seqlens_q
 
 
-def cpu_lightning_indexer_v2(q, k, w, *, return_value=0,
-                             testcase_name=None, **kwargs):
+def cpu_lightning_indexer_v2(q, k, w, *, return_value=0, testcase_name=None, **kwargs):
     """Return the CPU outputs produced while generating this exact pytest case."""
     del q, k, w, kwargs
     data = CASE_DATA.activate(testcase_name)

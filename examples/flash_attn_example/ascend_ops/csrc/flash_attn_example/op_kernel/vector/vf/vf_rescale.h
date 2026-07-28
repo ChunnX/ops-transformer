@@ -363,7 +363,6 @@ __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *
     constexpr uint16_t floatRepSize = 64;
     const uint16_t dLoops = d / floatRepSize;
 
-
     constexpr uint32_t tmpZero = 0x00000000;
     const T zeroValue = *((T *)&tmpZero);
     const float minValue = *((float *)&min);

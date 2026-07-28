@@ -44,8 +44,10 @@ using namespace ops::adv::tests::utils;
 AclnnTensorList::AclnnTensorList(const char *name, const std::vector<std::vector<int64_t>> &shapes,
                                  const char *shapeType, ge::DataType dType, ge::Format format, TensorType type,
                                  bool isTrans)
-    : TensorIntf(name, {}, shapeType, dType, format, type), aclDataType_(ACL_DT_UNDEFINED),
-      aclTensorListDataStrides_({}), aclTensorList_(nullptr)
+    : TensorIntf(name, {}, shapeType, dType, format, type),
+      aclDataType_(ACL_DT_UNDEFINED),
+      aclTensorListDataStrides_({}),
+      aclTensorList_(nullptr)
 {
     for (auto shape : shapes) {
         std::vector<int64_t> shapeView{};
@@ -64,8 +66,8 @@ AclnnTensorList::AclnnTensorList(const char *name, const std::vector<std::vector
         // grouped matmul type mx quant mode need speical stride assignment
         if (std::strcmp("pertoken_scale", name) == 0 && isTrans && dType == ge::DataType::DT_FLOAT8_E8M0 &&
             shape.size() == 3 &&
-            shape[2] == 2) {             // in gmm mx typek quant mode, scale dim num is 3 and last dim value is 2
-            aclTensorDataStrides[0] = 2; // first dim is m, stride is 2, given by the last axis
+            shape[2] == 2) {                          // in gmm mx typek quant mode, scale dim num is 3 and last dim value is 2
+            aclTensorDataStrides[0] = 2;              // first dim is m, stride is 2, given by the last axis
             aclTensorDataStrides[1] = myShape[0] * 2; // k is outer axis, stride should be m dim value times 2
             aclTensorDataStrides[2] = 1;              // 2 is for last dim index, which stride is 1
         } else if (isTrans && dim2 >= 0) {

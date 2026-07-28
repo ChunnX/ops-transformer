@@ -106,7 +106,8 @@ public:
     T negativeFloatScalar;
 
     // ==================== Functions ======================
-    __aicore__ inline FABlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FABlockVec(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *attnMask,

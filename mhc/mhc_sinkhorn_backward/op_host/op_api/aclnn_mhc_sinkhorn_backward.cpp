@@ -7,8 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
- /*!
+
+/*!
  * \file aclnn_mhc_sinkhorn_backward.cpp
  * \brief aclnn_mhc_sinkhorn_backward
  */
@@ -48,7 +48,6 @@ static constexpr size_t SUPPORT_DIM_NUM_4 = 4;
 static const int64_t N_VALID_4 = 4;
 static const int64_t N_VALID_6 = 6;
 static const int64_t N_VALID_8 = 8;
-
 
 static bool CheckNotNull(const aclTensor *gradOutput, const aclTensor *normOut,
                          const aclTensor *sumOut, const aclTensor *out)
@@ -164,7 +163,7 @@ aclnnStatus aclnnMhcSinkhornBackwardGetWorkspaceSize(const aclTensor *gradOutput
     const aclTensor *sumOutContiguous = l0op::Contiguous(sumOut, uniqueExecutor.get());
     CHECK_RET(sumOutContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     // 将输出转换成连续的tensor
-    aclTensor *outContiguous = const_cast<aclTensor*>(l0op::Contiguous(out, uniqueExecutor.get()));
+    aclTensor *outContiguous = const_cast<aclTensor *>(l0op::Contiguous(out, uniqueExecutor.get()));
     CHECK_RET(outContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor *kernelOut =

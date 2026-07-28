@@ -81,12 +81,17 @@ class QuantLightningIndexerV2InputAdapter:
     def prefix_lengths(value):
         if not value:
             return []
-        return [int(value[index + 1]) - int(value[index])
-                for index in range(len(value) - 1)]
+        return [
+            int(value[index + 1]) - int(value[index]) for index in range(len(value) - 1)
+        ]
 
     @staticmethod
     def data_range(input_ranges, index, default=(-1, 1)):
-        if input_ranges and index < len(input_ranges) and input_ranges[index] is not None:
+        if (
+            input_ranges
+            and index < len(input_ranges)
+            and input_ranges[index] is not None
+        ):
             return repr(list(input_ranges[index]))
         return repr(list(default))
 
@@ -109,12 +114,13 @@ class QuantLightningIndexerV2InputAdapter:
             return "FP32"
         raise ValueError(f"unsupported QLI_V2 dequant dtype: {tensor.dtype}")
 
-    def geometry(self, query, key, layout_query, layout_key,
-                 cu_q, cu_k, seq_q, seq_k):
+    def geometry(self, query, key, layout_query, layout_key, cu_q, cu_k, seq_q, seq_k):
         q_lengths = self.prefix_lengths(cu_q) or (seq_q or [])
         k_lengths = self.prefix_lengths(cu_k) or (seq_k or [])
         if layout_query == "BSND":
-            batch_size, q_seq, q_head_num, head_dim = [int(item) for item in query.shape]
+            batch_size, q_seq, q_head_num, head_dim = [
+                int(item) for item in query.shape
+            ]
             q_t_size = 0
         elif layout_query == "TND":
             q_t_size, q_head_num, head_dim = [int(item) for item in query.shape]
@@ -140,12 +146,21 @@ class QuantLightningIndexerV2InputAdapter:
         else:
             raise ValueError(f"unsupported QLI_V2 key layout: {layout_key}")
         return (
-            batch_size, q_seq, k_seq, q_t_size, k_t_size,
-            q_head_num, k_head_num, head_dim, block_size, block_num,
+            batch_size,
+            q_seq,
+            k_seq,
+            q_t_size,
+            k_t_size,
+            q_head_num,
+            k_head_num,
+            head_dim,
+            block_size,
+            block_num,
         )
 
-    def build_case_params(self, query, key, query_dequant_scale,
-                          layout_query, layout_key, kwargs):
+    def build_case_params(
+        self, query, key, query_dequant_scale, layout_query, layout_key, kwargs
+    ):
         cu_q = self.list_value(kwargs, "cu_seqlens_q")
         cu_k = self.list_value(kwargs, "cu_seqlens_k")
         seq_q = self.list_value(kwargs, "seqused_q")
@@ -189,7 +204,9 @@ class QuantLightningIndexerV2InputAdapter:
         if dst is None:
             return
         if src is None:
-            raise ValueError(f"{name} is present in CSV but pytest generator returned None")
+            raise ValueError(
+                f"{name} is present in CSV but pytest generator returned None"
+            )
         src_cpu = src.detach().cpu() if torch.is_tensor(src) else torch.as_tensor(src)
         if tuple(dst.shape) != tuple(src_cpu.shape):
             raise ValueError(
@@ -212,10 +229,24 @@ class QuantLightningIndexerV2InputAdapter:
             "cu_seqlens_q": cu_q,
         }
 
-    def customize(self, query, key, weights, query_dequant_scale,
-                  key_dequant_scale, cu_seqlens_q, cu_seqlens_k,
-                  seqused_q, seqused_k, cmp_residual_k, block_table,
-                  output_idx_offset, layout_query, layout_key, kwargs):
+    def customize(
+        self,
+        query,
+        key,
+        weights,
+        query_dequant_scale,
+        key_dequant_scale,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        block_table,
+        output_idx_offset,
+        layout_query,
+        layout_key,
+        kwargs,
+    ):
         params = self.build_case_params(
             query,
             key,
@@ -253,12 +284,24 @@ class QuantLightningIndexerV2InputAdapter:
 INPUT_ADAPTER = QuantLightningIndexerV2InputAdapter()
 
 
-def generate_qli_v2_inputs(query, key, weights, query_dequant_scale,
-                           key_dequant_scale, *, cu_seqlens_q=None,
-                           cu_seqlens_k=None, seqused_q=None, seqused_k=None,
-                           cmp_residual_k=None, block_table=None,
-                           output_idx_offset=None, layout_query="BSND",
-                           layout_key="BSND", **kwargs):
+def generate_qli_v2_inputs(
+    query,
+    key,
+    weights,
+    query_dequant_scale,
+    key_dequant_scale,
+    *,
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    block_table=None,
+    output_idx_offset=None,
+    layout_query="BSND",
+    layout_key="BSND",
+    **kwargs,
+):
     """Generate the exact pytest inputs and CPU golden for a TTK case."""
     INPUT_ADAPTER.customize(
         query,

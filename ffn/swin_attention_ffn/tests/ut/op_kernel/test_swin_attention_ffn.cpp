@@ -8,33 +8,34 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
- #include <array>
- #include <vector>
- #include <iostream>
- #include <string>
- #include <cstdint>
- #include "gtest/gtest.h"
- #include "tikicpulib.h"
- #include "data_utils.h"
- #include "tiling_case_executor.h"
- #include "swin_attention_ffn_tiling.h"
+#include <array>
+#include <vector>
+#include <iostream>
+#include <string>
+#include <cstdint>
+#include "gtest/gtest.h"
+#include "tikicpulib.h"
+#include "data_utils.h"
+#include "tiling_case_executor.h"
+#include "swin_attention_ffn_tiling.h"
 
 using namespace std;
 
 extern "C" __global__ __aicore__ void swin_attention_ffn(
-    GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x3, GM_ADDR y, GM_ADDR workspace, 
+    GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x3, GM_ADDR y, GM_ADDR workspace,
     GM_ADDR tiling);
 
-class swin_attention_ffn_test : public testing::Test
-{
+class swin_attention_ffn_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        cout << "swin_attention_ffn_test SetUp\n" << endl;
+        cout << "swin_attention_ffn_test SetUp\n"
+             << endl;
     }
     static void TearDownTestCase()
     {
-        cout << "swin_attention_ffn_test TearDown\n" << endl;
+        cout << "swin_attention_ffn_test TearDown\n"
+             << endl;
     }
 };
 
@@ -48,19 +49,19 @@ TEST_F(swin_attention_ffn_test, test_case0)
     size_t tiling_data_size = sizeof(SwinAttentionFFNTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t* x1 = (uint8_t*)AscendC::GmAlloc(x1ByteSize);
-    uint8_t* x2 = (uint8_t*)AscendC::GmAlloc(x2ByteSize);
-    uint8_t* bias = (uint8_t*)AscendC::GmAlloc(biasByteSize);
-    uint8_t* x3 = (uint8_t*)AscendC::GmAlloc(x3ByteSize);
-    uint8_t* y = (uint8_t*)AscendC::GmAlloc(yByteSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint8_t *x1 = (uint8_t *)AscendC::GmAlloc(x1ByteSize);
+    uint8_t *x2 = (uint8_t *)AscendC::GmAlloc(x2ByteSize);
+    uint8_t *bias = (uint8_t *)AscendC::GmAlloc(biasByteSize);
+    uint8_t *x3 = (uint8_t *)AscendC::GmAlloc(x3ByteSize);
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(yByteSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    SwinAttentionFFNTilingData* tilingDatafromBin =
-        reinterpret_cast<SwinAttentionFFNTilingData*>(tiling);
+    SwinAttentionFFNTilingData *tilingDatafromBin =
+        reinterpret_cast<SwinAttentionFFNTilingData *>(tiling);
 
     TCubeTiling bmmTilingData;
 
@@ -132,17 +133,15 @@ TEST_F(swin_attention_ffn_test, test_case0)
     tilingDatafromBin->bmmTilingData.BatchNum = 0;
     tilingDatafromBin->bmmTilingData.mxTypePara = 0;
 
-
     tilingDatafromBin->dataNumPerBatchA = 65536;
     tilingDatafromBin->dataNumPerBatchD = 65536;
     tilingDatafromBin->dataNumPerLoop = 16384;
     tilingDatafromBin->reserved = 0;
 
-
     ICPU_SET_TILING_KEY(0);
     ICPU_RUN_KF(
         swin_attention_ffn, blockDim, x1, x2, bias, x3, y, workspace,
-        (uint8_t*)(tilingDatafromBin));
+        (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(x1);
     AscendC::GmFree(x2);

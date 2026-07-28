@@ -42,13 +42,28 @@ class QuantLightningIndexerMetadataBuilder:
         return 0
 
     @classmethod
-    def build(cls, query, key, *, cu_seqlens_q=None, cu_seqlens_k=None,
-              seqused_q=None, seqused_k=None, cmp_residual_k=None,
-              sparse_count=0, quant_mode=1, layout_query="BSND",
-              layout_key="BSND", sparse_mode=0, cmp_ratio=1):
+    def build(
+        cls,
+        query,
+        key,
+        *,
+        cu_seqlens_q=None,
+        cu_seqlens_k=None,
+        seqused_q=None,
+        seqused_k=None,
+        cmp_residual_k=None,
+        sparse_count=0,
+        quant_mode=1,
+        layout_query="BSND",
+        layout_key="BSND",
+        sparse_mode=0,
+        cmp_ratio=1,
+    ):
         q_seq = int(query.shape[1]) if layout_query == "BSND" else int(query.shape[0])
         k_seq = int(key.shape[1]) if layout_key == "BSND" else int(key.shape[0])
-        q_head_num = int(query.shape[2]) if layout_query == "BSND" else int(query.shape[1])
+        q_head_num = (
+            int(query.shape[2]) if layout_query == "BSND" else int(query.shape[1])
+        )
         k_head_num = int(key.shape[1]) if layout_key == "TND" else int(key.shape[2])
         metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
             num_heads_q=q_head_num,

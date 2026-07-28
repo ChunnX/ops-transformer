@@ -89,7 +89,6 @@ void MoeDistributeCombineV2_api(
     auto workspace_ptr = get_first_tensor_address<at::Tensor>(new_workspace.scalar_type(), new_workspace, false);
     auto mc2Context_ptr = get_first_tensor_address<at::Tensor>(mc2_context.scalar_type(), mc2_context, false);
 
-
     void *xActiveMask_ptr = nullptr;
     if (x_active_mask.has_value()) {
         xActiveMask_ptr =
@@ -133,7 +132,6 @@ void MoeDistributeCombineV2_api(
     void *residualX_ptr = nullptr;
     void *gamma_ptr = nullptr;
     auto XOut_ptr = get_first_tensor_address<at::Tensor>(x_out.scalar_type(), x_out, false);
-
 
     int32_t tilingKey = 100;
     calculate_tilingkey(tilingKey, expand_x.scalar_type(), comm_quant_mode);

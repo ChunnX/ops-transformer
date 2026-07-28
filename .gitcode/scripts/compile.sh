@@ -113,7 +113,7 @@ else
             mkdir build_out
             touch build_out/cann-ops-transformer-kirin9030_linux-x86_64.run
             exit 0
-        fi      
+        fi
     elif [ "${GE_ST_RT2}X" == "experimentalX" ]; then
         if [ "${GIT_TARGET_BRANCH}" = "master" ]; then
             LOG_DO bash build.sh --experimental --PR_PKG "pr_filelist.txt" --soc=ascend910b -j16 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH}

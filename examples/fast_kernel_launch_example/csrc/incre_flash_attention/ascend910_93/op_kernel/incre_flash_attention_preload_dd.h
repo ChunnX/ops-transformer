@@ -1040,7 +1040,6 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
         offset += blockNum * dbWorkspaceRatio * mmResUbSize * sizeof(KV_T);
     }
 
-
     mm2ResGm.SetGlobalBuffer(
         (__gm__ MM_OUT_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * bmm2ResUbSize * sizeof(MM_OUT_T)));
     offset += blockNum * dbWorkspaceRatio * bmm2ResUbSize * sizeof(MM_OUT_T);
@@ -1338,7 +1337,6 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiquantParamsPerTokenHead(GlobalT
     DataCopy(dstUb, srcGm[offset], columnCount);
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 }
-
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiquantParamsPerTokenParamsPagedAttention(
@@ -2176,7 +2174,6 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2DataCopyOut(uint64_t attenOutOffset
                 dataCopyParams);
 }
 
-
 template <typename IFAT>
 __aicore__ inline void
 IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2DataCopyOutNcon(const ExtraInfo &info, LocalTensor<OUT_T> &attenOutUb,
@@ -2355,7 +2352,6 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::DealBmm1ResBaseBlock(ExtraInfo &info, u
     DataCopy(vec1ResGm[inOutGmOffset + batchBase], tmpMMResCastTensor, computeSize);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
 }
-
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMatmulResCombine(
@@ -2934,12 +2930,12 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1AToL1(L
             mm1Nd2NzParamsForA.dValue = headDimAlign / 2;
             mm1Nd2NzParamsForA.srcDValue = headDimAlign / 2; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
         } else {
-            mm1Nd2NzParamsForA.dValue = headDimAlign; // 单个ND矩阵的列数, 单位为元素个数   128
+            mm1Nd2NzParamsForA.dValue = headDimAlign;    // 单个ND矩阵的列数, 单位为元素个数   128
             mm1Nd2NzParamsForA.srcDValue = headDimAlign; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  128
         }
         mm1Nd2NzParamsForA.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
-        mm1Nd2NzParamsForA.dstNzC0Stride = 16; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数  16
-        mm1Nd2NzParamsForA.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
+        mm1Nd2NzParamsForA.dstNzC0Stride = 16;    // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数  16
+        mm1Nd2NzParamsForA.dstNzNStride = 1;      // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
         mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移
         if constexpr (ANTIQUANT) {
             DataCopy(aL1Tensor[i * copyStride],
@@ -3037,10 +3033,10 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1(LocalTensor<KV_T> &bL1Te
             mm1Nd2NzParamsForB.dValue = headDim; // 单个ND矩阵的列数, 单位为元素个数   128
             mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
         }
-        mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 0
+        mm1Nd2NzParamsForB.srcNdMatrixStride = 0;      // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 0
         mm1Nd2NzParamsForB.dstNzC0Stride = nTailAlign; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForB.dstNzNStride =
-            1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
+            1;                                    // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数  0
 
         DataCopy(bL1Tensor[ndNum_tmp * baseN * headDimAlign], keyGm[keyGmBaseOffset + ndNum_tmp * baseN * step],
@@ -3114,10 +3110,10 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1ForPA(LocalTensor<KV_T> &
             mm1Nd2NzParamsForB.nValue = nHead;        // 单个ND矩阵的行数, 单位为元素个数
             mm1Nd2NzParamsForB.dValue = headDim;      // 单个ND矩阵的列数, 单位为元素个数
             mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
-            mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
+            mm1Nd2NzParamsForB.srcDValue = step;      // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
             mm1Nd2NzParamsForB.dstNzC0Stride = baseN; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
             mm1Nd2NzParamsForB.dstNzNStride =
-                1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
+                1;                                    // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
             mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数
 
             uint32_t ndNumFinish = copyStartRowCnt / baseN;
@@ -3185,14 +3181,14 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1ForPA(LocalTensor<KV_T> &
         } else {
             mm1Nd2NzParamsForB.ndNum = 1;
             mm1Nd2NzParamsForB.nValue =
-                nTail; // 单个ND矩阵的行数, 单位为元素个数 actualSingleProcessSInnerSizeAlign为32对齐，nTail已经是32对齐
+                nTail;                                // 单个ND矩阵的行数, 单位为元素个数 actualSingleProcessSInnerSizeAlign为32对齐，nTail已经是32对齐
             mm1Nd2NzParamsForB.dValue = headDim;      // 单个ND矩阵的列数, 单位为元素个数   128
             mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 0
-            mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
+            mm1Nd2NzParamsForB.srcDValue = step;      // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
             mm1Nd2NzParamsForB.dstNzC0Stride =
                 dstNzC0StrideTail; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
             mm1Nd2NzParamsForB.dstNzNStride =
-                1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
+                1;                                    // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
             mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数  0
 
             int32_t ndNumFinish = (copyStartRowCnt + nHead) / baseN + midNdNum;
@@ -3496,15 +3492,15 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2AToL1(
             mm1Nd2NzParamsForA.nValue = 16; // 单个ND矩阵的行数, 单位为元素个数  16
         }
         mm1Nd2NzParamsForA.dValue = kActCopyRowCount; // 单个ND矩阵的列数, 单位为元素个数
-        mm1Nd2NzParamsForA.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
+        mm1Nd2NzParamsForA.srcNdMatrixStride = 0;     // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
         if constexpr (KVINT4) {
             mm1Nd2NzParamsForA.srcDValue = info.actualSingleProcessSInnerSizeAlign / 2;
         } else {
             mm1Nd2NzParamsForA.srcDValue =
                 info.actualSingleProcessSInnerSizeAlign; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
         }
-        mm1Nd2NzParamsForA.dstNzC0Stride = 16; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
-        mm1Nd2NzParamsForA.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
+        mm1Nd2NzParamsForA.dstNzC0Stride = 16;    // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
+        mm1Nd2NzParamsForA.dstNzNStride = 1;      // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
         mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移
         DataCopy(aL1Tensor[i * copyStrideL1],
                  vec1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize +

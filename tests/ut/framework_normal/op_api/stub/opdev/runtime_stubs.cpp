@@ -203,36 +203,30 @@ rtError_t rtCreateLaunchArgs(size_t argsSize, size_t hostInfoTotalSize, size_t h
     return RT_ERROR_NONE;
 }
 
-
 rtError_t rtDestroyLaunchArgs(rtLaunchArgsHandle argsHandle)
 {
     return RT_ERROR_NONE;
 }
-
 
 rtError_t rtAppendLaunchAddrInfo(rtLaunchArgsHandle argsHandle, void *addrInfo)
 {
     return RT_ERROR_NONE;
 }
 
-
 rtError_t rtAppendLaunchHostInfo(rtLaunchArgsHandle argsHandle, size_t hostInfoSize, void **hostInfo)
 {
     return RT_ERROR_NONE;
 }
-
 
 rtError_t rtBinaryLoad(const rtDevBinary_t *bin, rtBinHandle *binHandle)
 {
     return RT_ERROR_NONE;
 }
 
-
 rtError_t rtBinaryGetFunction(const rtBinHandle binHandle, const uint64_t tilingKey, rtFuncHandle *funcHandle)
 {
     return RT_ERROR_NONE;
 }
-
 
 rtError_t rtLaunchKernelByFuncHandle(rtFuncHandle funcHandle, uint32_t blockDim, rtLaunchArgsHandle argsHandle,
                                      rtStream_t stm)
@@ -240,48 +234,40 @@ rtError_t rtLaunchKernelByFuncHandle(rtFuncHandle funcHandle, uint32_t blockDim,
     return RT_ERROR_NONE;
 }
 
-
 rtError_t rtSetExceptionExtInfo(const rtArgsSizeInfo_t *const sizeInfo)
 {
     return RT_ERROR_NONE;
 }
-
 
 rtError_t rtStreamCreateWithFlags(rtStream_t *stream, int32_t priority, uint32_t flags)
 {
     return RT_ERROR_NONE;
 }
 
-
 rtError_t rtStreamDestroy(rtStream_t stream)
 {
     return RT_ERROR_NONE;
 }
-
 
 rtError_t rtEventCreateWithFlag(rtEvent_t *event, uint32_t flag)
 {
     return RT_ERROR_NONE;
 }
 
-
 rtError_t rtEventDestroy(rtEvent_t event)
 {
     return RT_ERROR_NONE;
 }
-
 
 rtError_t rtEventRecord(rtEvent_t event, rtStream_t stream)
 {
     return RT_ERROR_NONE;
 }
 
-
 rtError_t rtStreamWaitEvent(rtStream_t stream, rtEvent_t event)
 {
     return RT_ERROR_NONE;
 }
-
 
 rtError_t rtEventReset(rtEvent_t event, rtStream_t stream)
 {
@@ -298,13 +284,11 @@ rtError_t rtNpuGetFloatDebugStatus(void *outputAddrPtr, uint64_t outputSize, uin
     return RT_ERROR_NONE;
 }
 
-
 rtError_t rtNpuClearFloatDebugStatus(uint32_t checkMode, rtStream_t stm)
 {
     floatDebugStatus = 0;
     return RT_ERROR_NONE;
 }
-
 
 rtError_t rtCtxGetCurrent(rtContext_t *ctx)
 {

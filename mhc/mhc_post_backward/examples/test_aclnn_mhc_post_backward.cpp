@@ -25,11 +25,11 @@ using namespace std;
 
 namespace {
 
-#define CHECK_RET(cond) ((cond) ? true :(false))
+#define CHECK_RET(cond) ((cond) ? true : (false))
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -61,7 +61,6 @@ int Init(int32_t deviceId, aclrtStream *stream)
     }
     return 0;
 }
-
 
 template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
@@ -111,16 +110,16 @@ int main()
 
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
     // Example: BSND format (B, S, n, D)
-    std::vector<int64_t> gradYShape = {1, 1024, 4, 5120};   // BSND
-    std::vector<int64_t> xShape = {1, 1024, 4, 5120};   // BSND
-    std::vector<int64_t> hResShape = {1, 1024, 4, 4};   // BSND
-    std::vector<int64_t> hOutShape = {1, 1024, 5120};   // BSD
-    std::vector<int64_t> hPostShape = {1, 1024, 4};     // BSn
-    std::vector<int64_t> gradXShape = {1, 1024, 4, 5120};   // BSND
-    std::vector<int64_t> gradHresShape = {1, 1024, 4, 4};   // BSND
-    std::vector<int64_t> gradHoutShape = {1, 1024, 5120};   // BSD
-    std::vector<int64_t> gradHpostShape = {1, 1024, 4};     // BSn
-    
+    std::vector<int64_t> gradYShape = {1, 1024, 4, 5120}; // BSND
+    std::vector<int64_t> xShape = {1, 1024, 4, 5120};     // BSND
+    std::vector<int64_t> hResShape = {1, 1024, 4, 4};     // BSND
+    std::vector<int64_t> hOutShape = {1, 1024, 5120};     // BSD
+    std::vector<int64_t> hPostShape = {1, 1024, 4};       // BSn
+    std::vector<int64_t> gradXShape = {1, 1024, 4, 5120}; // BSND
+    std::vector<int64_t> gradHresShape = {1, 1024, 4, 4}; // BSND
+    std::vector<int64_t> gradHoutShape = {1, 1024, 5120}; // BSD
+    std::vector<int64_t> gradHpostShape = {1, 1024, 4};   // BSn
+
     void *gradYDeviceAddr = nullptr;
     void *xDeviceAddr = nullptr;
     void *hResDeviceAddr = nullptr;
@@ -140,7 +139,7 @@ int main()
     aclTensor *gradHresTensor = nullptr;
     aclTensor *gradHoutTensor = nullptr;
     aclTensor *gradHpostTensor = nullptr;
-    
+
     int64_t gradYShapeSize = GetShapeSize(gradYShape);
     int64_t xShapeSize = GetShapeSize(xShape);
     int64_t hResShapeSize = GetShapeSize(hResShape);
@@ -159,7 +158,7 @@ int main()
     std::vector<float> gradHresHostData(gradHresShapeSize, 1.0f);
     std::vector<aclFloat16> gradHoutHostData(gradHoutShapeSize, aclFloatToFloat16(1.0f));
     std::vector<float> gradHpostHostData(gradHpostShapeSize, 1.0f);
-    
+
     ret = CreateAclTensor(gradYHostData, gradYShape, &gradYDeviceAddr, aclDataType::ACL_FLOAT16, &gradYTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
@@ -181,32 +180,32 @@ int main()
     }
     // Create hPost aclTensor.
     ret = CreateAclTensor(hPostHostData, hPostShape, &hPostDeviceAddr, aclDataType::ACL_FLOAT,
-        &hPostTensor);
+                          &hPostTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
 
     // Create gradX aclTensor.
     ret = CreateAclTensor(gradXHostData, gradXShape, &gradXDeviceAddr, aclDataType::ACL_FLOAT16,
-        &gradXTensor);
+                          &gradXTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create gradHres aclTensor.
     ret = CreateAclTensor(gradHresHostData, gradHresShape, &gradHresDeviceAddr, aclDataType::ACL_FLOAT,
-        &gradHresTensor);
+                          &gradHresTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create gradHout aclTensor.
     ret = CreateAclTensor(gradHoutHostData, gradHoutShape, &gradHoutDeviceAddr, aclDataType::ACL_FLOAT16,
-        &gradHoutTensor);
+                          &gradHoutTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create gradHpost aclTensor.
     ret = CreateAclTensor(gradHpostHostData, gradHpostShape, &gradHpostDeviceAddr, aclDataType::ACL_FLOAT,
-        &gradHpostTensor);
+                          &gradHpostTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }

@@ -99,7 +99,6 @@ PlatformInfoManager::~PlatformInfoManager()
 
 } // namespace fe
 
-
 namespace op {
 // add stub func for GetCurrentPlatformInfo()&GetSocVersion() in aclnn
 enum class SocVersion {

@@ -104,7 +104,9 @@ public:
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionKernel()
-        : cubeBlock(constInfo), vecFaBlock(constInfo), vecCombineBlock(constInfo){};
+        : cubeBlock(constInfo),
+          vecFaBlock(constInfo),
+          vecCombineBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attnMask, __gm__ uint8_t *actualSeqLengths,
                                 __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *attentionOut,
@@ -118,7 +120,6 @@ public:
                                      NPU_AIC_CORE_NUM * FA_METADATA_SIZE + NPU_AIV_CORE_NUM * COMBINE_METADATA_SIZE);
 
         InitConstInfo();
-
 
         keyPtr = key;
         valuePtr = value;
@@ -592,7 +593,7 @@ public:
         uint32_t combineWorkspaceIdx =
             faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_WORKSPACE_IDX_INDEX));
 
-        CombineParamsX combineParams = {combineCoreEnable,  combineBN2Idx, combineMIdx, combineS2SplitNum, mStart, mLen,
+        CombineParamsX combineParams = {combineCoreEnable, combineBN2Idx, combineMIdx, combineS2SplitNum, mStart, mLen,
                                         combineWorkspaceIdx};
         vecCombineBlock.AllocEventID();
         SyncAll();

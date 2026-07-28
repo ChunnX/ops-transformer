@@ -18,7 +18,6 @@
 
 using namespace std;
 
-
 void PyHolder::Clean()
 {
     if (Ut_Py_IsInitialized()) {
@@ -288,7 +287,6 @@ int PyHolder::LoadFuncs()
         cout << "Failed to dlsym function PyImport_Cleanup. Error: " << dlerror() << endl;
         return 1;
     }
-
 
     return 0;
 }

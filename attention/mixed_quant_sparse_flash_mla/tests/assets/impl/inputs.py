@@ -84,8 +84,9 @@ class MixedQuantSparseFlashMlaInputAdapter:
             return []
         return [int(value[i + 1]) - int(value[i]) for i in range(len(value) - 1)]
 
-    def build_case_params(self, q, ori_kv, cmp_kv, cmp_sparse_indices,
-                          layout_q, layout_kv, kwargs):
+    def build_case_params(
+        self, q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwargs
+    ):
         cu_q = self.list_value(kwargs, "cu_seqlens_q")
         cu_ori = self.list_value(kwargs, "cu_seqlens_ori_kv")
         cu_cmp = self.list_value(kwargs, "cu_seqlens_cmp_kv")
@@ -106,7 +107,9 @@ class MixedQuantSparseFlashMlaInputAdapter:
             block_num1, block_size1 = None, 64
         elif layout_kv == "TND":
             _, kv_heads, _ = [int(x) for x in ori_kv.shape]
-            kv_seq = max(self.prefix_lengths(cu_ori) or seq_ori or [int(ori_kv.shape[0])])
+            kv_seq = max(
+                self.prefix_lengths(cu_ori) or seq_ori or [int(ori_kv.shape[0])]
+            )
             block_num1, block_size1 = None, 64
         else:
             block_num1, block_size1, kv_heads, _ = [int(x) for x in ori_kv.shape]
@@ -130,42 +133,49 @@ class MixedQuantSparseFlashMlaInputAdapter:
             block_num2, block_size2 = None, block_size1
 
         params = dict(kwargs)
-        params.update({
-            "Testcase_Name": kwargs.get("testcase_name"),
-            "layout_q": layout_q,
-            "layout_kv": layout_kv,
-            "q_type": q.dtype,
-            "ori_kv_type": ori_kv.dtype,
-            "cmp_kv_type": cmp_kv.dtype if cmp_kv is not None else ori_kv.dtype,
-            "B": batch_size,
-            "S1": q_seq,
-            "S2": kv_seq,
-            "N1": q_heads,
-            "N2": kv_heads,
-            "D": head_dim,
-            "K": metadata_cmp_topk or (
-                int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0
-            ),
-            "block_num1": block_num1,
-            "block_num2": block_num2,
-            "block_size1": block_size1,
-            "block_size2": block_size2,
-            "seqused_q": seq_q,
-            "cu_seqlens_q": cu_q,
-            "seqused_ori_kv": seq_ori,
-            "seqused_cmp_kv": seq_cmp,
-            "cu_seqlens_ori_kv": cu_ori,
-            "cu_seqlens_cmp_kv": cu_cmp,
-            "cmp_residual_kv": residual,
-            "template_run_mode": mode,
-            "cmp_ratio": 1 if mode == "SWA" else int(kwargs.get("cmp_ratio", 1)),
-            "cmp_mask_mode": 0 if mode == "SWA" else int(kwargs.get("cmp_mask_mode", 3)),
-            "tile_size": 64,
-            "actlen_mode": kwargs.get("actlen_mode", "full"),
-            "S1EQS2": bool(kwargs.get("S1EQS2", False)),
-            "topk_value_mode": int(kwargs.get("topk_value_mode", 1)),
-            "return_softmax_lse": bool(kwargs.get("return_softmax_lse", False)),
-        })
+        params.update(
+            {
+                "Testcase_Name": kwargs.get("testcase_name"),
+                "layout_q": layout_q,
+                "layout_kv": layout_kv,
+                "q_type": q.dtype,
+                "ori_kv_type": ori_kv.dtype,
+                "cmp_kv_type": cmp_kv.dtype if cmp_kv is not None else ori_kv.dtype,
+                "B": batch_size,
+                "S1": q_seq,
+                "S2": kv_seq,
+                "N1": q_heads,
+                "N2": kv_heads,
+                "D": head_dim,
+                "K": metadata_cmp_topk
+                or (
+                    int(cmp_sparse_indices.shape[-1])
+                    if cmp_sparse_indices is not None
+                    else 0
+                ),
+                "block_num1": block_num1,
+                "block_num2": block_num2,
+                "block_size1": block_size1,
+                "block_size2": block_size2,
+                "seqused_q": seq_q,
+                "cu_seqlens_q": cu_q,
+                "seqused_ori_kv": seq_ori,
+                "seqused_cmp_kv": seq_cmp,
+                "cu_seqlens_ori_kv": cu_ori,
+                "cu_seqlens_cmp_kv": cu_cmp,
+                "cmp_residual_kv": residual,
+                "template_run_mode": mode,
+                "cmp_ratio": 1 if mode == "SWA" else int(kwargs.get("cmp_ratio", 1)),
+                "cmp_mask_mode": 0
+                if mode == "SWA"
+                else int(kwargs.get("cmp_mask_mode", 3)),
+                "tile_size": 64,
+                "actlen_mode": kwargs.get("actlen_mode", "full"),
+                "S1EQS2": bool(kwargs.get("S1EQS2", False)),
+                "topk_value_mode": int(kwargs.get("topk_value_mode", 1)),
+                "return_softmax_lse": bool(kwargs.get("return_softmax_lse", False)),
+            }
+        )
         return params
 
     @staticmethod
@@ -173,7 +183,9 @@ class MixedQuantSparseFlashMlaInputAdapter:
         if dst is None:
             return
         if src is None:
-            raise ValueError(f"{name} is present in CSV but pytest generator returned None")
+            raise ValueError(
+                f"{name} is present in CSV but pytest generator returned None"
+            )
         src_cpu = src.detach().cpu() if torch.is_tensor(src) else torch.as_tensor(src)
         if tuple(dst.shape) != tuple(src_cpu.shape):
             raise ValueError(
@@ -200,14 +212,27 @@ class MixedQuantSparseFlashMlaInputAdapter:
 INPUT_ADAPTER = MixedQuantSparseFlashMlaInputAdapter()
 
 
-def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
-                                                 ori_sparse_indices=None, cmp_sparse_indices=None,
-                                                 ori_block_table=None, cmp_block_table=None,
-                                                 cu_seqlens_q=None, cu_seqlens_ori_kv=None,
-                                                 cu_seqlens_cmp_kv=None, seqused_q=None,
-                                                 seqused_ori_kv=None, seqused_cmp_kv=None,
-                                                 cmp_residual_kv=None, ori_topk_length=None,
-                                                 cmp_topk_length=None, sinks=None, **kwargs):
+def generate_mixed_quant_sparse_flash_mla_inputs(
+    q,
+    *,
+    ori_kv=None,
+    cmp_kv=None,
+    ori_sparse_indices=None,
+    cmp_sparse_indices=None,
+    ori_block_table=None,
+    cmp_block_table=None,
+    cu_seqlens_q=None,
+    cu_seqlens_ori_kv=None,
+    cu_seqlens_cmp_kv=None,
+    seqused_q=None,
+    seqused_ori_kv=None,
+    seqused_cmp_kv=None,
+    cmp_residual_kv=None,
+    ori_topk_length=None,
+    cmp_topk_length=None,
+    sinks=None,
+    **kwargs,
+):
     """Reuse the pytest parameter validation and input processing for a TTK case."""
     params = INPUT_ADAPTER.build_case_params(
         q,

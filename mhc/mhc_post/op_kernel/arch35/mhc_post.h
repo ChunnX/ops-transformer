@@ -257,6 +257,6 @@ __aicore__ inline void MhcPostKernel<TEMPLATE_ARGS>::CopyOutTile(int64_t bsIdx, 
     outputTileQueue_.FreeTensor(outputTile);
 }
 
-}  // namespace MhcPost
+} // namespace MhcPost
 
-#endif  // ASCENDC_MHC_POST_H
+#endif // ASCENDC_MHC_POST_H

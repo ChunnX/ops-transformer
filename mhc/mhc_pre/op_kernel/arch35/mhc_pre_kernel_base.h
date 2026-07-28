@@ -55,7 +55,7 @@ using aT = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using bT = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using cT = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using MT = matmul::MatmulImpl<aT, bT, cT>;
-#endif  // MHC_PRE_COMMON_DEFINED
+#endif // MHC_PRE_COMMON_DEFINED
 
 struct MatrixInfo {
     uint32_t totalLength = 0;
@@ -108,7 +108,9 @@ public:
     static constexpr float kOneValue = 1.0f;
     static constexpr float kTwoValue = 2.0f;
 
-    __aicore__ inline MhcPreKernelBase(MT &matmul) : mm(matmul) {}
+    __aicore__ inline MhcPreKernelBase(MT &matmul)
+        : mm(matmul)
+    {}
 
     __aicore__ inline void InitPipeAndCoreIdx(TPipe *pipe)
     {
@@ -342,8 +344,8 @@ public:
     }
 
     __aicore__ inline void DataCopyOutToWorkSpace(LocalTensor<P> &x, uint32_t curMLen,
-                                                   uint32_t curNdLen, uint32_t offsetM,
-                                                   uint32_t offsetNd)
+                                                  uint32_t curNdLen, uint32_t offsetM,
+                                                  uint32_t offsetNd)
     {
         DataCopyParams copyParams;
         copyParams.blockCount = static_cast<uint16_t>(curMLen);
@@ -389,7 +391,7 @@ public:
                 }
             }
         }
-  
+
         BiasCopyIn();
         biasInUb_ = biasInQue_.DeQue<P>();
     }

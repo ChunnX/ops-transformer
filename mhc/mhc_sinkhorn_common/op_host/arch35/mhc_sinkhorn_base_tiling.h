@@ -29,19 +29,20 @@ namespace optiling {
 using Ops::Transformer::OpTiling::TilingBaseClass;
 
 struct MhcSinkhornSplitCoreInfo {
-    int64_t tNormCore {0};
-    int64_t usedCoreNum {0};
-    int64_t tTailCore {0};
-    int64_t tUbFactor {0};
-    int64_t tNormCoreLoop {0};
-    int64_t tTailCoreLoop {0};
-    int64_t tUbFactorTail {0};
-    int64_t tUbTailTail {0};
+    int64_t tNormCore{0};
+    int64_t usedCoreNum{0};
+    int64_t tTailCore{0};
+    int64_t tUbFactor{0};
+    int64_t tNormCoreLoop{0};
+    int64_t tTailCoreLoop{0};
+    int64_t tUbFactorTail{0};
+    int64_t tUbTailTail{0};
 };
 
 class MhcSinkhornBaseTiling : public TilingBaseClass {
 public:
-    explicit MhcSinkhornBaseTiling(gert::TilingContext* context) : TilingBaseClass(context)
+    explicit MhcSinkhornBaseTiling(gert::TilingContext *context)
+        : TilingBaseClass(context)
     {
     }
 
@@ -55,5 +56,5 @@ protected:
     int64_t BackwardCalOccupySize(int64_t ubFactor, int64_t nSize, int64_t xDtypeSize);
     int64_t ForwardCalOccupySize(int64_t ubFactor, int64_t nSize, int64_t xDtypeSize, int64_t outFlag);
 };
-}  // namespace optiling
-#endif  // MHC_SINKHORN_BASE_TILING_H_
+} // namespace optiling
+#endif // MHC_SINKHORN_BASE_TILING_H_

@@ -37,14 +37,22 @@ def is_bfloat16(value):
 
 def row_set_diff_positions(output_row, golden_row):
     golden_set = {int(x) for x in golden_row if x >= 0}
-    bad_positions = [idx for idx, value in enumerate(output_row) if value >= 0 and int(value) not in golden_set]
+    bad_positions = [
+        idx
+        for idx, value in enumerate(output_row)
+        if value >= 0 and int(value) not in golden_set
+    ]
     output_set = {int(x) for x in output_row if x >= 0}
     missing_count = max(len(output_set - golden_set), len(golden_set - output_set))
     if missing_count <= 0:
         return []
     if len(bad_positions) >= missing_count:
         return bad_positions[:missing_count]
-    positional = [idx for idx, (out, gold) in enumerate(zip(output_row, golden_row)) if out != gold]
+    positional = [
+        idx
+        for idx, (out, gold) in enumerate(zip(output_row, golden_row))
+        if out != gold
+    ]
     return (bad_positions + positional)[:missing_count]
 
 
@@ -100,8 +108,9 @@ def is_row_equivalent_by_score(output_indices, golden_indices, score_row):
     return True
 
 
-def build_score_row_accessor(scores_np, index_shape, score_layout=None,
-                             cu_seqlens_q=None):
+def build_score_row_accessor(
+    scores_np, index_shape, score_layout=None, cu_seqlens_q=None
+):
     """Map output rows to the pytest score tensor without copying it."""
     prefix = tuple(index_shape[:-1])
     row_count = int(np.prod(prefix)) if prefix else 1
@@ -115,6 +124,7 @@ def build_score_row_accessor(scores_np, index_shape, score_layout=None,
         batch_size, q_seq, head_num = prefix
         expected = (batch_size, head_num, q_seq)
         if tuple(scores_np.shape[:-1]) == expected:
+
             def get_bsnd_row(row_idx):
                 batch_idx, remainder = divmod(row_idx, q_seq * head_num)
                 q_idx, head_idx = divmod(remainder, head_num)
@@ -141,6 +151,7 @@ def build_score_row_accessor(scores_np, index_shape, score_layout=None,
             and scores_np.shape[2] >= max_q_seq
         )
         if valid_scores:
+
             def get_tnd_row(row_idx):
                 q_idx, head_idx = divmod(row_idx, head_num)
                 batch_idx = int(np.searchsorted(cu_q[1:], q_idx, side="right"))
@@ -156,8 +167,14 @@ def build_score_row_accessor(scores_np, index_shape, score_layout=None,
     return None, reason
 
 
-def topk_index_compare(npu_out, golden_out, scores, index_offsets=None,
-                       score_layout=None, cu_seqlens_q=None):
+def topk_index_compare(
+    npu_out,
+    golden_out,
+    scores,
+    index_offsets=None,
+    score_layout=None,
+    cu_seqlens_q=None,
+):
     npu = as_numpy(npu_out)
     golden = as_numpy(golden_out)
     if npu.shape != golden.shape:
@@ -185,7 +202,9 @@ def topk_index_compare(npu_out, golden_out, scores, index_offsets=None,
             "pass": len(diff_idx) == 0,
             "precision": precision,
             "diff_indices": diff_idx[:1000],
-            "error_info": None if not diff_idx else f"TopK fallback sorted-index compare failed: {score_error}",
+            "error_info": None
+            if not diff_idx
+            else f"TopK fallback sorted-index compare failed: {score_error}",
             "metrics": {"fallback": score_error, "diff_positions": len(diff_idx)},
         }
 
@@ -196,7 +215,9 @@ def topk_index_compare(npu_out, golden_out, scores, index_offsets=None,
     offset_rows = None
     if index_offsets is not None:
         offsets_np = as_numpy(index_offsets)
-        if tuple(offsets_np.shape[:len(golden.shape[:-1])]) == tuple(golden.shape[:-1]):
+        if tuple(offsets_np.shape[: len(golden.shape[:-1])]) == tuple(
+            golden.shape[:-1]
+        ):
             offset_rows = offsets_np.reshape(row_count, -1)[:, 0].astype(np.int64)
 
     diff_indices = []
@@ -222,11 +243,15 @@ def topk_index_compare(npu_out, golden_out, scores, index_offsets=None,
             score_equiv_rows += 1
             continue
         failed_rows += 1
-        abs_diff, rel_diff = row_score_diff_to_boundary(score_output, score_golden, score_row)
+        abs_diff, rel_diff = row_score_diff_to_boundary(
+            score_output, score_golden, score_row
+        )
         max_failed_abs_diff = max(max_failed_abs_diff, abs_diff)
         max_failed_rel_diff = max(max_failed_rel_diff, rel_diff)
         base = row_idx * k_count
-        diff_indices.extend(base + i for i in row_set_diff_positions(output_row, golden_row))
+        diff_indices.extend(
+            base + i for i in row_set_diff_positions(output_row, golden_row)
+        )
 
     precision = (golden.size - len(diff_indices)) / golden.size * 100
     fail_ratio = len(diff_indices) / golden.size
@@ -284,7 +309,8 @@ def value_compare(npu_out, golden_out, scores=None):
         npu_valid = np.sort(npu_row)[::-1]
         golden_valid = golden_row
         mismatch = ~np.isclose(
-            npu_valid, golden_valid, rtol=_VALUE_RTOL, atol=atol, equal_nan=True)
+            npu_valid, golden_valid, rtol=_VALUE_RTOL, atol=atol, equal_nan=True
+        )
         mismatch_indices = np.where(mismatch)[0]
         diff_idx.extend(row_idx * row_width + int(index) for index in mismatch_indices)
         if mismatch_indices.size / row_width > _VALUE_FAIL_RATIO:
@@ -296,9 +322,9 @@ def value_compare(npu_out, golden_out, scores=None):
         "pass": failed_rows == 0,
         "precision": precision,
         "diff_indices": diff_idx[:1000],
-        "error_info": None if not diff_idx else (
-            f"value compare mismatches={len(diff_idx)}, fail_ratio={fail_ratio:.6g}"
-        ),
+        "error_info": None
+        if not diff_idx
+        else (f"value compare mismatches={len(diff_idx)}, fail_ratio={fail_ratio:.6g}"),
         "metrics": {
             "rtol": _VALUE_RTOL,
             "atol": atol,
@@ -309,22 +335,31 @@ def value_compare(npu_out, golden_out, scores=None):
     }
 
 
-def compare(*outputs, scores=None, index_offsets=None, score_layout=None,
-            cu_seqlens_q=None):
+def compare(
+    *outputs, scores=None, index_offsets=None, score_layout=None, cu_seqlens_q=None
+):
     """Compare NPU outputs against golden references using TopK index and value tolerance policies."""
     if len(outputs) < 2 or len(outputs) % 2 != 0:
-        return {"pass": False, "precision": "invalid", "error_info": "compare expects NPU outputs followed by golden outputs"}
+        return {
+            "pass": False,
+            "precision": "invalid",
+            "error_info": "compare expects NPU outputs followed by golden outputs",
+        }
     half = len(outputs) // 2
     npu_outputs = outputs[:half]
     golden_outputs = outputs[half:]
-    results = [topk_index_compare(
-        npu_outputs[0],
-        golden_outputs[0],
-        scores,
-        index_offsets=index_offsets,
-        score_layout=score_layout,
-        cu_seqlens_q=cu_seqlens_q,
-    )]
+    results = [
+        topk_index_compare(
+            npu_outputs[0],
+            golden_outputs[0],
+            scores,
+            index_offsets=index_offsets,
+            score_layout=score_layout,
+            cu_seqlens_q=cu_seqlens_q,
+        )
+    ]
     for idx in range(1, half):
-        results.append(value_compare(npu_outputs[idx], golden_outputs[idx], scores=scores))
+        results.append(
+            value_compare(npu_outputs[idx], golden_outputs[idx], scores=scores)
+        )
     return results[0] if len(results) == 1 else results

@@ -90,7 +90,10 @@ bool FFNKernelRunCbf(void *curCase)
     return ret == ACL_SUCCESS;
 }
 
-AclnnFFNCase::AclnnFFNCase() : FFNCase(), mAclnnCtx(AclnnContext()), mAclnnParam(AclnnFFNParam())
+AclnnFFNCase::AclnnFFNCase()
+    : FFNCase(),
+      mAclnnCtx(AclnnContext()),
+      mAclnnParam(AclnnFFNParam())
 {
 }
 

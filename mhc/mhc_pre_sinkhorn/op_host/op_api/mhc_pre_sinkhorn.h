@@ -53,6 +53,6 @@ const aclTensor *MhcPreSinkhorn(const aclTensor *x, const aclTensor *phi, const 
                                 aclTensor *sumOut, aclTensor *normOut,
                                 aclOpExecutor *executor);
 
-}
+} // namespace l0op
 
 #endif // PTA_NPU_OP_API_INC_LEVEL0_OP_MHC_PRE_SINKHORN_OP_H_

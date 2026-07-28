@@ -53,10 +53,11 @@ constexpr int64_t HCMULT_VALUE = 4;
 constexpr int64_t NUM_ITERS_VALUE = 20;
 constexpr size_t X_DIM_NUM_3 = 3;
 constexpr size_t X_DIM_NUM_4 = 4;
-constexpr int32_t BATCH_CONSISTENCY_LEVEL = 3;  // batch一致性开关使能的确定性级别
+constexpr int32_t BATCH_CONSISTENCY_LEVEL = 3; // batch一致性开关使能的确定性级别
 } // namespace
 
-MhcPreSinkhornTilingRegbase::MhcPreSinkhornTilingRegbase(gert::TilingContext *tilingContext) : context_(tilingContext)
+MhcPreSinkhornTilingRegbase::MhcPreSinkhornTilingRegbase(gert::TilingContext *tilingContext)
+    : context_(tilingContext)
 {
 }
 
@@ -167,7 +168,6 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::GetShapeAttrsInfoInner()
 
     return ge::GRAPH_SUCCESS;
 }
-
 
 ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseOpTiling()
 {
@@ -683,7 +683,6 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcOpTiling()
         return CalcRegbaseOpTiling();
     }
 }
-
 
 ge::graphStatus MhcPreSinkhornTilingRegbase::DoOpTiling()
 {

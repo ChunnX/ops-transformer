@@ -22,7 +22,6 @@
 #define OP_KERNEL_FFN_WB_SORT_MULTI_CORE_H
 #include "ffn_wb_arch35_reuse.h"
 
-
 namespace FfnWbBatchingArch35 {
 using namespace AscendC;
 

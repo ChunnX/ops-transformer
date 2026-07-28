@@ -194,15 +194,15 @@ protected:
         }
     }
 
-#define CONV1D_ACC(ringN, wPtrN)                                                                                       \
-    if constexpr (IsSameType<T, float>::value) {                                                                       \
-        LoadAlign(ringF, ringN + col * V_LENGTH);                                                                      \
-    } else {                                                                                                           \
-        LoadAlign<T, LoadDist::DIST_UNPACK_B16>(ringTmp, ringN + col * V_LENGTH);                                      \
-        Cast<float, T, CastTraitB16ToB32>(ringF, ringTmp, pregLoop);                                                   \
-    }                                                                                                                  \
-    LoadAlign(weight, wPtrN + col * V_LENGTH);                                                                         \
-    Mul(tmp, ringF, weight, pregLoop);                                                                                 \
+#define CONV1D_ACC(ringN, wPtrN) \
+    if constexpr (IsSameType<T, float>::value) { \
+        LoadAlign(ringF, ringN + col * V_LENGTH); \
+    } else { \
+        LoadAlign<T, LoadDist::DIST_UNPACK_B16>(ringTmp, ringN + col * V_LENGTH); \
+        Cast<float, T, CastTraitB16ToB32>(ringF, ringTmp, pregLoop); \
+    } \
+    LoadAlign(weight, wPtrN + col * V_LENGTH); \
+    Mul(tmp, ringF, weight, pregLoop); \
     Add(bias, bias, tmp, pregLoop)
 
     __aicore__ inline void ComputeConv1dUnroll(LocalTensor<T> ring, LocalTensor<float> weight, LocalTensor<float> bias,

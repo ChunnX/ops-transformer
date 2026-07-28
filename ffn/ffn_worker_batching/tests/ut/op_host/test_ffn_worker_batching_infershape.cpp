@@ -51,8 +51,7 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_infershape_test01)
          {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
-    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 4096}, {8, 2}, {1152}, {1152},
-                                                           {1152},       {1152}, {1152}, {1}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 4096}, {8, 2}, {1152}, {1152}, {1152}, {1152}, {1152}, {1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -91,8 +90,7 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_infershape_arch35_ma
          {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
     // Y=1024, H=2048; group_list={256,2}
-    std::vector<std::vector<int64_t>> expectOutputShape = {{1024, 2048}, {256, 2}, {1024}, {1024},
-                                                           {1024},       {1024},   {1024}, {1}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1024, 2048}, {256, 2}, {1024}, {1024}, {1024}, {1024}, {1024}, {1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -122,7 +120,6 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_infershape_arch35_ma
          {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
     // Y=8192, H=4096; group_list={8,2}
-    std::vector<std::vector<int64_t>> expectOutputShape = {{8192, 4096}, {8, 2}, {8192}, {8192},
-                                                           {8192},       {8192}, {8192}, {1}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{8192, 4096}, {8, 2}, {8192}, {8192}, {8192}, {8192}, {8192}, {1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }

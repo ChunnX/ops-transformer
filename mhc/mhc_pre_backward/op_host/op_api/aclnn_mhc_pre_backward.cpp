@@ -261,7 +261,7 @@ bool CheckShapeDim(const gert::Shape &shape, uint64_t index, uint64_t expected, 
 {
     if (shape.GetDim(index) != expected) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s, and dim %lu must be %lu, actual is %ld", msg, index, expected,
-            shape.GetDim(index));
+                shape.GetDim(index));
         return false;
     }
     return true;
@@ -494,7 +494,7 @@ bool CheckDtype(const aclTensor *tensor, DataType expected, const char *name, bo
     bool valid = isValidX ? (dtype == DataType::DT_BF16 || dtype == DataType::DT_FLOAT16) : (dtype == expected);
     if (!valid) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor dtype must be %s. actual is [%s].", name,
-            isValidX ? "BF16 or FP16" : op::ToString(expected).GetString(), op::ToString(dtype).GetString());
+                isValidX ? "BF16 or FP16" : op::ToString(expected).GetString(), op::ToString(dtype).GetString());
         return false;
     }
     return true;
@@ -513,7 +513,7 @@ bool MhcGradCheckInputDtype(const AclnnMhcPreBackwardParams &params)
            CheckDtype(params.hPre, DataType::DT_FLOAT, "hPre") &&
            CheckDtype(params.hPost, DataType::DT_FLOAT, "hPost") &&
            (params.gradXPostOptional == nullptr ||
-             CheckDtype(params.gradXPostOptional, params.x->GetDataType(), "gradXPostOptional"));
+            CheckDtype(params.gradXPostOptional, params.x->GetDataType(), "gradXPostOptional"));
 }
 
 bool MhcGradCheckOutputDtype(const AclnnMhcPreBackwardParams &params)

@@ -42,10 +42,22 @@ class LightningIndexerMetadataBuilder:
         return 0
 
     @classmethod
-    def build(cls, q, k, *, cu_seqlens_q=None, cu_seqlens_k=None,
-              seqused_q=None, seqused_k=None, cmp_residual_k=None,
-              topk=0, layout_q="BSND", layout_k="BSND",
-              mask_mode=0, cmp_ratio=1):
+    def build(
+        cls,
+        q,
+        k,
+        *,
+        cu_seqlens_q=None,
+        cu_seqlens_k=None,
+        seqused_q=None,
+        seqused_k=None,
+        cmp_residual_k=None,
+        topk=0,
+        layout_q="BSND",
+        layout_k="BSND",
+        mask_mode=0,
+        cmp_ratio=1,
+    ):
         q_seq = int(q.shape[1]) if layout_q == "BSND" else int(q.shape[0])
         k_seq = int(k.shape[1]) if layout_k == "BSND" else int(k.shape[0])
         q_head_num = int(q.shape[2]) if layout_q == "BSND" else int(q.shape[1])

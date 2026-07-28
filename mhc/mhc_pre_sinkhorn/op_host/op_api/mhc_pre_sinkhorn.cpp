@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 /*!
  * \file mhc_pre_sinkhorn.cpp
  * \brief mhc_pre_sinkhorn
@@ -38,13 +38,13 @@ static const aclTensor *MhcPreSinkhornAiCore(const aclTensor *x, const aclTensor
 {
     L0_DFX(MhcPreSinkhornAiCore, x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward,
            hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut);
-    
+
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         MhcPreSinkhorn,
         OP_INPUT(x, phi, alpha, bias),
         OP_OUTPUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut),
-        OP_ATTR(hcMult, numIters,  static_cast<float>(hcEps),  static_cast<float>(normEps), needBackward));
-    
+        OP_ATTR(hcMult, numIters, static_cast<float>(hcEps), static_cast<float>(normEps), needBackward));
+
     OP_CHECK(ret == ACLNN_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MhcPreSinkhorn ADD_TO_LAUNCHER_LIST_AICORE failed."),
              return nullptr);

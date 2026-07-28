@@ -30,8 +30,7 @@ using namespace matmul_tiling;
 using namespace ge;
 using namespace AscendC;
 
-namespace optiling
-{
+namespace optiling {
 #define USE_CORE_THRESHOLD 24 // Use 24 aicore in 910B
 #define TRANSPOSE_BLOCK_SIZE (8 * 128)
 #define TRANSPOSE_SPACE_WIDTH 8
@@ -43,49 +42,50 @@ namespace optiling
 
 const std::string OP_NAME = "SwinAttentionFFN";
 
-class SAFFNTilingComp
-{
-    public:
-        SwinAttentionFFNTilingData tiling;
-        ge::graphStatus SAFFNTilingProc(gert::TilingContext* context);
-    protected:
-        uint32_t m;
-        uint32_t n;
-        uint32_t k;
-        uint32_t bm;
-        uint32_t batchSize;
-        uint32_t bmmFormerNum;
-        uint32_t bmmTailNum;
-        uint32_t bmmFormerBatchNum;
-        uint32_t bmmTailBatchNum;
-        uint32_t dataNumPerBatchA;
-        uint32_t dataNumPerBatchD;
-        uint32_t dataNumPerLoop;
+class SAFFNTilingComp {
+public:
+    SwinAttentionFFNTilingData tiling;
+    ge::graphStatus SAFFNTilingProc(gert::TilingContext *context);
 
-        uint32_t tpBlockSize;
-        uint32_t tpSpaceCnt;
-        uint32_t tpSpaceH;
-        uint32_t tpSpaceW;
-        uint32_t blockInSpace;
-        uint32_t tpSpaceSize;
-        uint32_t tpSpaceWTransposed;
-        uint32_t tpSpaceHTransposed;
+protected:
+    uint32_t m;
+    uint32_t n;
+    uint32_t k;
+    uint32_t bm;
+    uint32_t batchSize;
+    uint32_t bmmFormerNum;
+    uint32_t bmmTailNum;
+    uint32_t bmmFormerBatchNum;
+    uint32_t bmmTailBatchNum;
+    uint32_t dataNumPerBatchA;
+    uint32_t dataNumPerBatchD;
+    uint32_t dataNumPerLoop;
 
-        uint32_t shift1;
-        uint32_t shift2;
-        uint32_t aivNum;
-        uint32_t aicNum;
+    uint32_t tpBlockSize;
+    uint32_t tpSpaceCnt;
+    uint32_t tpSpaceH;
+    uint32_t tpSpaceW;
+    uint32_t blockInSpace;
+    uint32_t tpSpaceSize;
+    uint32_t tpSpaceWTransposed;
+    uint32_t tpSpaceHTransposed;
 
-        uint64_t ubSize;
-        uint64_t l1Size;
-        uint64_t l0cSize;
+    uint32_t shift1;
+    uint32_t shift2;
+    uint32_t aivNum;
+    uint32_t aicNum;
 
-        ge::graphStatus SAFFNTilingMM();
-        ge::graphStatus SAFFNTilingTPROLL(const gert::TilingContext* context);
-        ge::graphStatus SAFFNTilingPrint() const;
+    uint64_t ubSize;
+    uint64_t l1Size;
+    uint64_t l0cSize;
+
+    ge::graphStatus SAFFNTilingMM();
+    ge::graphStatus SAFFNTilingTPROLL(const gert::TilingContext *context);
+    ge::graphStatus SAFFNTilingPrint() const;
 };
 
-ge::graphStatus SAFFNTilingComp::SAFFNTilingMM() {
+ge::graphStatus SAFFNTilingComp::SAFFNTilingMM()
+{
     m = MATMUL_SIZE;
     batchSize = bm / MATMUL_SIZE;
     dataNumPerBatchD = m * n;
@@ -97,8 +97,9 @@ ge::graphStatus SAFFNTilingComp::SAFFNTilingMM() {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SAFFNTilingComp::SAFFNTilingTPROLL(const gert::TilingContext* context) {
-    auto compileInfo = static_cast<const SwinAttentionFFNCompileInfo*>(context->GetCompileInfo());
+ge::graphStatus SAFFNTilingComp::SAFFNTilingTPROLL(const gert::TilingContext *context)
+{
+    auto compileInfo = static_cast<const SwinAttentionFFNCompileInfo *>(context->GetCompileInfo());
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
 
     auto platformInfo = context->GetPlatformInfo();
@@ -114,13 +115,13 @@ ge::graphStatus SAFFNTilingComp::SAFFNTilingTPROLL(const gert::TilingContext* co
     l1Size = compileInfo->l1Size;
     l0cSize = compileInfo->l0cSize;
 
-    const gert::RuntimeAttrs* runtimeAttrs = context->GetAttrs();
+    const gert::RuntimeAttrs *runtimeAttrs = context->GetAttrs();
     const gert::TypedContinuousVector<int64_t> *shifts = runtimeAttrs->GetListInt(0);
-    shift1 =  uint32_t(*shifts->GetData());
-    shift2 =  uint32_t(*(shifts->GetData() + 1));
+    shift1 = uint32_t(*shifts->GetData());
+    shift2 = uint32_t(*(shifts->GetData() + 1));
 
-    const gert::StorageShape* shapeA = context->GetInputShape(0);
-    const gert::StorageShape* shapeB = context->GetInputShape(1);
+    const gert::StorageShape *shapeA = context->GetInputShape(0);
+    const gert::StorageShape *shapeB = context->GetInputShape(1);
     batchSize = shapeA->GetStorageShape().GetDim(0);
 
     m = shapeA->GetStorageShape().GetDim(DIM_M);
@@ -138,7 +139,8 @@ ge::graphStatus SAFFNTilingComp::SAFFNTilingTPROLL(const gert::TilingContext* co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SAFFNTilingComp::SAFFNTilingPrint() const {
+ge::graphStatus SAFFNTilingComp::SAFFNTilingPrint() const
+{
     OP_LOGI(
         OP_NAME.c_str(),
         "tpBlockSize: %d, tpSpaceCnt: %d, tpSpaceH: %d, tpSpaceW: %d, blockInSpace: %d, tpSpaceSize: %d\n\
@@ -149,12 +151,12 @@ ge::graphStatus SAFFNTilingComp::SAFFNTilingPrint() const {
         tpBlockSize, tpSpaceCnt, tpSpaceH, tpSpaceW, blockInSpace, tpSpaceSize, tpSpaceWTransposed,
         tpSpaceHTransposed, ubSize, l1Size, l0cSize, tiling.bmmTilingData.GetDataSize(), m, k, n,
         aicNum, aivNum, batchSize, bmmFormerNum, bmmTailNum, bmmFormerBatchNum, bmmTailBatchNum,
-        dataNumPerLoop, dataNumPerBatchA, dataNumPerBatchD
-    );
+        dataNumPerLoop, dataNumPerBatchA, dataNumPerBatchD);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SAFFNTilingComp::SAFFNTilingProc(gert::TilingContext *context) {
+ge::graphStatus SAFFNTilingComp::SAFFNTilingProc(gert::TilingContext *context)
+{
     SAFFNTilingTPROLL(context);
     SAFFNTilingMM();
     tiling.set_batchSize(batchSize);
@@ -194,19 +196,20 @@ ge::graphStatus SAFFNTilingComp::SAFFNTilingProc(gert::TilingContext *context) {
     context->SetBlockDim(aicNum);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-    size_t* workspaces = context->GetWorkspaceSizes(1);
+    size_t *workspaces = context->GetWorkspaceSizes(1);
     workspaces[0] = WORKSPACE_SIZE;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingFuncForSwinAttentionFFN(gert::TilingContext* context)
+ge::graphStatus TilingFuncForSwinAttentionFFN(gert::TilingContext *context)
 {
     SAFFNTilingComp tilingCompute;
     auto ret = tilingCompute.SAFFNTilingProc(context);
     return ret;
 }
 
-static ge::graphStatus TilingPrepareForSwinAttentionFFN(gert::TilingParseContext* context) {
+static ge::graphStatus TilingPrepareForSwinAttentionFFN(gert::TilingParseContext *context)
+{
     auto compileInfo = context->GetCompiledInfo<SwinAttentionFFNCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
     auto platformInfo = context->GetPlatformInfo();
@@ -230,7 +233,7 @@ static ge::graphStatus TilingPrepareForSwinAttentionFFN(gert::TilingParseContext
 }
 
 IMPL_OP_OPTILING(SwinAttentionFFN)
-.Tiling(TilingFuncForSwinAttentionFFN)
-.TilingParse<SwinAttentionFFNCompileInfo>(TilingPrepareForSwinAttentionFFN); // 向框架注册入口函数
+    .Tiling(TilingFuncForSwinAttentionFFN)
+    .TilingParse<SwinAttentionFFNCompileInfo>(TilingPrepareForSwinAttentionFFN); // 向框架注册入口函数
 
-}
+} // namespace optiling

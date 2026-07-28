@@ -530,8 +530,8 @@ public:
 
         std::string memBufferTag = mc2ContextTag + "_buffer";
         TORCH_CHECK(memBufferTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN,
-            "MemBufferTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
-            ", got ", memBufferTag.size());
+                    "MemBufferTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
+                    ", got ", memBufferTag.size());
         AllocateAndRegisterDeviceBuffer(commHandle, memBufferTag);
 
         GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize, memBufferTag);
@@ -630,9 +630,16 @@ public:
     CommContextManager(const std::string &group, int64_t worldSize, const py::object &backend = py::str("kfc"),
                        const std::string &commAlg = "ub-mem", const std::string &opName = "moe_dispatch_ffn_combine",
                        int64_t customCclBufferSize = 0)
-        : group_(group), worldSize_(worldSize), commAlg_(commAlg), opName_(opName), backend_(backend),
-          mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0), topoType_(TopoType::INTRA_SUPER_NODE),
-          rankNumPerServer_(2), customCclBufferSize_(customCclBufferSize)
+        : group_(group),
+          worldSize_(worldSize),
+          commAlg_(commAlg),
+          opName_(opName),
+          backend_(backend),
+          mode_(BackendMode::UNINITIALIZED),
+          cclBufferSize_(0),
+          topoType_(TopoType::INTRA_SUPER_NODE),
+          rankNumPerServer_(2),
+          customCclBufferSize_(customCclBufferSize)
     {
     }
 
@@ -709,21 +716,19 @@ private:
     void DispatchBuild(at::Tensor &tensor)
     {
         switch (mode_) {
-            case BackendMode::KFC:
-                {
-                    KfcContextBuilder builder;
-                    builder.Build(group_, worldSize_, cclBufferSize_, tensor);
-                    return;
-                }
-            case BackendMode::CHANNEL:
-                {
-                    HcclChannelContextBuilder builder;
-                    builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_,
-                                  customCclBufferSize_, &customDeviceBuffer_, &customMemHandle_);
-                    topoType_ = builder.GetTopoType();
-                    rankNumPerServer_ = builder.GetRankNumPerServer();
-                    return;
-                }
+            case BackendMode::KFC: {
+                KfcContextBuilder builder;
+                builder.Build(group_, worldSize_, cclBufferSize_, tensor);
+                return;
+            }
+            case BackendMode::CHANNEL: {
+                HcclChannelContextBuilder builder;
+                builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_,
+                              customCclBufferSize_, &customDeviceBuffer_, &customMemHandle_);
+                topoType_ = builder.GetTopoType();
+                rankNumPerServer_ = builder.GetRankNumPerServer();
+                return;
+            }
             default:
                 TORCH_CHECK(false, "Unknown backend mode: ", static_cast<int>(mode_));
         }

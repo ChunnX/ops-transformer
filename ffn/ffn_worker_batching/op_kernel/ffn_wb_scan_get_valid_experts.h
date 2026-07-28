@@ -27,13 +27,12 @@
 namespace FfnWbBatching {
 using namespace AscendC;
 
-class KernelScanGetValidExperts : public SortMaskBase
-{
+class KernelScanGetValidExperts : public SortMaskBase {
 public:
     __aicore__ inline KernelScanGetValidExperts(){};
     __aicore__ inline void Init(
-        GM_ADDR tokenInfoGm, GM_ADDR workspace, GM_ADDR groupList, const ScheduleContextInfo* contextInfo,
-        TPipe* tPipe);
+        GM_ADDR tokenInfoGm, GM_ADDR workspace, GM_ADDR groupList, const ScheduleContextInfo *contextInfo,
+        TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -55,7 +54,7 @@ private:
 
     GlobalTensor<int64_t> groupListGm_;
 
-    const ScheduleContextInfo* contextInfo_ = nullptr;
+    const ScheduleContextInfo *contextInfo_ = nullptr;
 
     int32_t totalValidCnt_ = 0;
     int32_t curValidCnt_ = 0;
@@ -349,7 +348,7 @@ __aicore__ inline void KernelScanGetValidExperts::CopyOutValidCount()
 }
 
 __aicore__ inline void KernelScanGetValidExperts::Init(
-    GM_ADDR tokenInfoGm, GM_ADDR workspace, GM_ADDR groupList, const ScheduleContextInfo* contextInfo, TPipe* tPipe)
+    GM_ADDR tokenInfoGm, GM_ADDR workspace, GM_ADDR groupList, const ScheduleContextInfo *contextInfo, TPipe *tPipe)
 {
     this->pipe = tPipe;
     contextInfo_ = contextInfo;
@@ -390,31 +389,31 @@ __aicore__ inline void KernelScanGetValidExperts::Init(
     }
 
     int64_t expertIdStartPos = contextInfo_->curMicroBatchID * F_ + 1 + 1;
-    expertIdsGmFStart_.SetGlobalBuffer((__gm__ int32_t*)tokenInfoGm + contextInfo_->curMicroBatchID * F_);
+    expertIdsGmFStart_.SetGlobalBuffer((__gm__ int32_t *)tokenInfoGm + contextInfo_->curMicroBatchID * F_);
     expertIdsGm.SetGlobalBuffer(
-        (__gm__ int32_t*)tokenInfoGm + expertIdStartPos + blockIdx_ * perCoreSessionNum_ * contextInfo_->M * F_);
+        (__gm__ int32_t *)tokenInfoGm + expertIdStartPos + blockIdx_ * perCoreSessionNum_ * contextInfo_->M * F_);
     // rsvdCntGm 在scan阶段已经清零
-    rsvdCntGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspace), SCAN_BATCHID_GM_OFFSET);
+    rsvdCntGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace), SCAN_BATCHID_GM_OFFSET);
     workspaceSortNumGm_.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t*>(workspace) + OFFSET_SORTED_EXPERT_IDS, contextInfo_->sortNumWorkSpace);
+        reinterpret_cast<__gm__ int32_t *>(workspace) + OFFSET_SORTED_EXPERT_IDS, contextInfo_->sortNumWorkSpace);
 
     sortedexpertIdsGm.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t*>(workspace) + OFFSET_SORTED_EXPERT_IDS + contextInfo_->sortNumWorkSpace,
+        reinterpret_cast<__gm__ int32_t *>(workspace) + OFFSET_SORTED_EXPERT_IDS + contextInfo_->sortNumWorkSpace,
         this->totalLength);
     sortedRowIdsGm.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t*>(workspace) + OFFSET_SORTED_EXPERT_IDS + contextInfo_->sortNumWorkSpace +
+        reinterpret_cast<__gm__ int32_t *>(workspace) + OFFSET_SORTED_EXPERT_IDS + contextInfo_->sortNumWorkSpace +
             this->totalLength,
         this->totalLength);
 
-    groupListGm_.SetGlobalBuffer((__gm__ int64_t*)groupList, contextInfo_->expertNum * NUM_TWO);
+    groupListGm_.SetGlobalBuffer((__gm__ int64_t *)groupList, contextInfo_->expertNum * NUM_TWO);
 
     // key and value
     workspaceGms[0].SetGlobalBuffer(
-        (__gm__ int32_t*)workspace + OFFSET_SORTED_EXPERT_IDS + contextInfo_->sortNumWorkSpace +
+        (__gm__ int32_t *)workspace + OFFSET_SORTED_EXPERT_IDS + contextInfo_->sortNumWorkSpace +
             this->totalLength * NUM_TWO,
         this->totalLength * NUM_TWO);
     workspaceGms[1].SetGlobalBuffer(
-        (__gm__ int32_t*)workspace + OFFSET_SORTED_EXPERT_IDS + contextInfo_->sortNumWorkSpace +
+        (__gm__ int32_t *)workspace + OFFSET_SORTED_EXPERT_IDS + contextInfo_->sortNumWorkSpace +
             this->totalLength * (NUM_TWO + NUM_TWO),
         this->totalLength * NUM_TWO);
 

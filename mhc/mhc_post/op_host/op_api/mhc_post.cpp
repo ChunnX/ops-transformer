@@ -31,9 +31,9 @@ namespace l0op {
 OP_TYPE_REGISTER(MhcPost);
 
 // AICORE算子kernel
-const aclTensor* MhcPostAICore(
-    const aclTensor* x, const aclTensor* hRes, const aclTensor* hOut, const aclTensor* hPost,
-    const aclTensor* output, aclOpExecutor* executor)
+const aclTensor *MhcPostAICore(
+    const aclTensor *x, const aclTensor *hRes, const aclTensor *hOut, const aclTensor *hPost,
+    const aclTensor *output, aclOpExecutor *executor)
 {
     L0_DFX(MhcPostAICore, x, hRes, hOut, hPost, output);
 
@@ -49,9 +49,9 @@ const aclTensor* MhcPostAICore(
     return output;
 }
 
-const aclTensor* MhcPost(
-    const aclTensor* x, const aclTensor* hRes, const aclTensor* hOut, const aclTensor* hPost,
-    aclOpExecutor* executor)
+const aclTensor *MhcPost(
+    const aclTensor *x, const aclTensor *hRes, const aclTensor *hOut, const aclTensor *hPost,
+    aclOpExecutor *executor)
 {
     auto output = executor->AllocTensor(x->GetViewShape(), x->GetDataType(), x->GetViewFormat());
     if (output == nullptr) {

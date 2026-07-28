@@ -120,7 +120,6 @@ void groupedmatmul_api(const TypeCombo &matchedCombo, int comboIndex, aclrtStrea
     }
 }
 
-
 torch::Tensor grouped_matmul_npu(
     const torch::TensorList &x, const torch::TensorList &weight, const c10::optional<torch::TensorList> &bias,
     const c10::optional<torch::TensorList> &scale, const c10::optional<torch::TensorList> &offset,

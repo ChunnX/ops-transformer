@@ -33,15 +33,15 @@ constexpr uint32_t AIC_CORE_NUM = 36;
 constexpr uint32_t AIV_CORE_NUM = 72;
 
 struct TndC4aParams {
-    std::unique_ptr<aclTensor, void (*)(aclTensor*)> cuSeqlensQ =
+    std::unique_ptr<aclTensor, void (*)(aclTensor *)> cuSeqlensQ =
         TensorDesc({3}, ACL_INT32, ACL_FORMAT_ND).ToAclType();
-    std::unique_ptr<aclTensor, void (*)(aclTensor*)> cuSeqlensOriKv =
+    std::unique_ptr<aclTensor, void (*)(aclTensor *)> cuSeqlensOriKv =
         TensorDesc({3}, ACL_INT32, ACL_FORMAT_ND).ToAclType();
-    std::unique_ptr<aclTensor, void (*)(aclTensor*)> cuSeqlensCmpKv =
+    std::unique_ptr<aclTensor, void (*)(aclTensor *)> cuSeqlensCmpKv =
         TensorDesc({3}, ACL_INT32, ACL_FORMAT_ND).ToAclType();
-    std::unique_ptr<aclTensor, void (*)(aclTensor*)> cmpResidualKv =
+    std::unique_ptr<aclTensor, void (*)(aclTensor *)> cmpResidualKv =
         TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND).ToAclType();
-    std::unique_ptr<aclTensor, void (*)(aclTensor*)> metadata =
+    std::unique_ptr<aclTensor, void (*)(aclTensor *)> metadata =
         TensorDesc({optiling::SMLA_METADATA_TOTAL_SIZE}, ACL_INT32, ACL_FORMAT_ND).ToAclType();
 };
 

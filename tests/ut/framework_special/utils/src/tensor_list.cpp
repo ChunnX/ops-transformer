@@ -42,7 +42,6 @@ TensorList::TensorList(const char *name, const std::initializer_list<int64_t> &s
 {
 }
 
-
 TensorList::~TensorList()
 {
     this->FreeDevData();

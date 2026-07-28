@@ -44,7 +44,6 @@ constexpr size_t DIM_3 = 3;
 
 constexpr int64_t ASCENDC_TOOLS_WORKSPACE = 0;
 
-
 ge::graphStatus MhcSinkhornBackwardTiling::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();

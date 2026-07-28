@@ -30,7 +30,7 @@ class CausalConv1dUpdateOpBuilder(OpBuilder):
             "Tensor x, Tensor conv_state, Tensor weight, "
             "*, "
             "Tensor? bias=None, "
-            "str activation=\"silu\", "
+            'str activation="silu", '
             "Tensor? conv_state_indices=None, "
             "Tensor? num_accepted_tokens=None, "
             "Tensor? query_start_loc=None, "

@@ -18,16 +18,15 @@
 
 using namespace ge;
 
-namespace ops
-{
-static ge::graphStatus InferShapeSwinAttentionFFN(gert::InferShapeContext* context)
+namespace ops {
+static ge::graphStatus InferShapeSwinAttentionFFN(gert::InferShapeContext *context)
 {
     OP_LOGI(context->GetNodeName(), "Enter SwinAttentionFFN infershape impl.");
 
-    const gert::Shape* x1_shape = context->GetInputShape(0);
+    const gert::Shape *x1_shape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, x1_shape);
 
-    gert::Shape* y_shape = context->GetOutputShape(0);
+    gert::Shape *y_shape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, y_shape);
 
     *y_shape = *x1_shape;
@@ -46,6 +45,6 @@ static ge::graphStatus InferDataTypeSwinAttentionFFN(gert::InferDataTypeContext 
     OP_LOGI(context->GetNodeName(), "SwinAttentionFFN inferDataType end.");
     return ret;
 }
-    
+
 IMPL_OP_INFERSHAPE(SwinAttentionFFN).InferShape(InferShapeSwinAttentionFFN).InferDataType(InferDataTypeSwinAttentionFFN);
-}   // namespace ops
+} // namespace ops

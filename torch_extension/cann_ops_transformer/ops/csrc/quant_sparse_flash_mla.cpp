@@ -99,7 +99,8 @@ ConstructQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::Tensor
                 "The layout of query only support BSND and TND, but got ", layoutQStr);
     for (auto i = 0; i < q.sizes().size(); i++) {
         TORCH_CHECK(q.size(i) > 0, "All values within query's shape should be greater "
-            "than 0, but shape[", i, "] is ", q.size(i));
+                                   "than 0, but shape[",
+                    i, "] is ", q.size(i));
     }
     at::SmallVector<int64_t, SIZE> attenOutSize;
     at::SmallVector<int64_t, SIZE> softmaxLseSize;
@@ -164,7 +165,7 @@ std::tuple<at::Tensor, at::Tensor> QuantSparseFlashMla(
 
     std::string layoutQStr = std::string(layoutQ);
     std::string layoutKvStr = std::string(layoutKv);
-    const at::Tensor& oriKvVal = *oriKv;
+    const at::Tensor &oriKvVal = *oriKv;
     // convert str
     char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
     char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
@@ -174,7 +175,7 @@ std::tuple<at::Tensor, at::Tensor> QuantSparseFlashMla(
         op_api::ConstructQuantSparseFlashMlaAttenOutTensor(q, oriKvVal, layoutQStr, layoutKvStr, returnSoftmaxLse);
     at::Tensor attenOut = std::get<0>(quantSparseFlashMlaAttenOut);
     at::Tensor softmaxLse = std::get<1>(quantSparseFlashMlaAttenOut);
-    
+
     if (quantMode == 1) { // HIFLOAT8 FULL QUANT
         at::Tensor nullTensor;
         auto oriKvValue = oriKv.has_value() ? oriKv.value() : nullTensor;

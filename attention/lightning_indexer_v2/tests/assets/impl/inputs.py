@@ -81,12 +81,17 @@ class LightningIndexerV2InputAdapter:
     def prefix_lengths(value):
         if not value:
             return []
-        return [int(value[index + 1]) - int(value[index])
-                for index in range(len(value) - 1)]
+        return [
+            int(value[index + 1]) - int(value[index]) for index in range(len(value) - 1)
+        ]
 
     @staticmethod
     def data_range(input_ranges, index, default=(-1, 1)):
-        if input_ranges and index < len(input_ranges) and input_ranges[index] is not None:
+        if (
+            input_ranges
+            and index < len(input_ranges)
+            and input_ranges[index] is not None
+        ):
             return repr(list(input_ranges[index]))
         return repr(list(default))
 
@@ -128,8 +133,16 @@ class LightningIndexerV2InputAdapter:
         else:
             raise ValueError(f"unsupported LI_V2 key layout: {layout_k}")
         return (
-            batch_size, q_seq, k_seq, q_t_size, k_t_size,
-            q_head_num, k_head_num, head_dim, block_size, block_num,
+            batch_size,
+            q_seq,
+            k_seq,
+            q_t_size,
+            k_t_size,
+            q_head_num,
+            k_head_num,
+            head_dim,
+            block_size,
+            block_num,
         )
 
     def build_case_params(self, q, k, layout_q, layout_k, kwargs):
@@ -169,7 +182,9 @@ class LightningIndexerV2InputAdapter:
         if dst is None:
             return
         if src is None:
-            raise ValueError(f"{name} is present in CSV but pytest generator returned None")
+            raise ValueError(
+                f"{name} is present in CSV but pytest generator returned None"
+            )
         src_cpu = src.detach().cpu() if torch.is_tensor(src) else torch.as_tensor(src)
         if tuple(dst.shape) != tuple(src_cpu.shape):
             raise ValueError(
@@ -192,9 +207,22 @@ class LightningIndexerV2InputAdapter:
             "cu_seqlens_q": cu_q,
         }
 
-    def customize(self, q, k, w, cu_seqlens_q, cu_seqlens_k,
-                  seqused_q, seqused_k, cmp_residual_k, block_table,
-                  output_idx_offset, layout_q, layout_k, kwargs):
+    def customize(
+        self,
+        q,
+        k,
+        w,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        block_table,
+        output_idx_offset,
+        layout_q,
+        layout_k,
+        kwargs,
+    ):
         params = self.build_case_params(q, k, layout_q, layout_k, kwargs)
         golden_store = self.load_golden_store().CASE_DATA
         golden_store.clear()
@@ -223,10 +251,22 @@ class LightningIndexerV2InputAdapter:
 INPUT_ADAPTER = LightningIndexerV2InputAdapter()
 
 
-def generate_li_v2_inputs(q, k, w, *, cu_seqlens_q=None, cu_seqlens_k=None,
-                          seqused_q=None, seqused_k=None, cmp_residual_k=None,
-                          block_table=None, output_idx_offset=None,
-                          layout_q="BSND", layout_k="BSND", **kwargs):
+def generate_li_v2_inputs(
+    q,
+    k,
+    w,
+    *,
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    block_table=None,
+    output_idx_offset=None,
+    layout_q="BSND",
+    layout_k="BSND",
+    **kwargs,
+):
     """Generate the exact pytest inputs and CPU golden for a TTK case."""
     INPUT_ADAPTER.customize(
         q,

@@ -103,7 +103,8 @@ struct CausalConv1dInputInfo {
 
 class CausalConv1dTiling {
 public:
-    explicit CausalConv1dTiling(gert::TilingContext *context) : context_(context)
+    explicit CausalConv1dTiling(gert::TilingContext *context)
+        : context_(context)
     {
     }
     ge::graphStatus DoTiling();

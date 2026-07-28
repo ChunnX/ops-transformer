@@ -134,4 +134,4 @@ IMPL_OP_INFERSHAPE(MhcPost)
     .InferShape(InferShapeForMhcPost)
     .InferDataType(InferDataTypeForMhcPost);
 
-}  // namespace ops
+} // namespace ops

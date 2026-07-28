@@ -44,7 +44,7 @@ struct ScheduleContext {
         uint32_t selected_expert_num;
         uint32_t expert_num; // Number of experts per layer, including routing experts and shared experts.
         uint32_t
-            attn_to_ffn_token_size; // Each token in the Ffn window data area has a space size aligned to 512 bytes.
+            attn_to_ffn_token_size;      // Each token in the Ffn window data area has a space size aligned to 512 bytes.
         uint32_t ffn_to_attn_token_size; // Each token in the Attention window data area has a space size aligned to 512
                                          // bytes.
         int32_t schedule_mode;           // 0: Ffn only 1: Attention only
@@ -65,17 +65,17 @@ struct ScheduleContext {
         int8_t reserve3[88];
 
         // ffn out area
-        uint64_t layer_ids_buf; // Points to a device memory region that stores the organized layer ids, with an array
-                                // size of session_num.
-        uint64_t layer_ids_buf_size; // Total size: session_num * sizeof(int32_t)
-        uint64_t session_ids_buf; //  Points to a device memory region that stores the organized session ids. The array
-                                  //  size is session_num.
-        uint64_t session_ids_buf_size; // Total size: session_num * sizeof(int32_t)
-        uint64_t micro_batch_ids_buf; // Points to a device memory region that stores the organized micro batch ids. The
-                                      // array size is session_num.
+        uint64_t layer_ids_buf;            // Points to a device memory region that stores the organized layer ids, with an array
+                                           // size of session_num.
+        uint64_t layer_ids_buf_size;       // Total size: session_num * sizeof(int32_t)
+        uint64_t session_ids_buf;          //  Points to a device memory region that stores the organized session ids. The array
+                                           //  size is session_num.
+        uint64_t session_ids_buf_size;     // Total size: session_num * sizeof(int32_t)
+        uint64_t micro_batch_ids_buf;      // Points to a device memory region that stores the organized micro batch ids. The
+                                           // array size is session_num.
         uint64_t micro_batch_ids_buf_size; // Total size: session_num * sizeof(int32_t)
-        uint64_t expert_ids_buf; //  Points to a device memory region that stores the organized expert ids. The tensor
-                                 //  dimensions are [session_num, batch_size, selected_expert_num].
+        uint64_t expert_ids_buf;           //  Points to a device memory region that stores the organized expert ids. The tensor
+                                           //  dimensions are [session_num, batch_size, selected_expert_num].
         uint64_t
             expert_ids_buf_size; // Total memory size: session_num * batch_size * selected_expert_num * sizeof(int32_t)
         uint32_t out_num;        // Indicates the number of sessions that have been processed.

@@ -78,7 +78,7 @@ jobs:
             echo "Renamed: $f -> ${{ inputs.package_name }}"
             break
           done
-      - 
+      -
         name: api-check
         identifier: api-check
         if: ${{ inputs.task_name == 'Compile_Ascend_X86_ubuntu24' }}

@@ -43,16 +43,16 @@ static constexpr size_t TNN_DIMS = 3;
 static constexpr int64_t UNKNOWN_DIM_VALUE = -1LL;
 static constexpr int64_t UNKNOWN_RANK_DIM_VALUE = -2LL;
 
-static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
+static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext *context)
 {
     OP_LOGD(context, "Begin to do MhcSinkhornInfershape.");
-    const gert::Shape* xShape = context->GetInputShape(X_INDEX);
+    const gert::Shape *xShape = context->GetInputShape(X_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
-    gert::Shape* yShape = context->GetOutputShape(Y_INDEX);
+    gert::Shape *yShape = context->GetOutputShape(Y_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
-    gert::Shape* normShape = context->GetOutputShape(NORM_INDEX);
+    gert::Shape *normShape = context->GetOutputShape(NORM_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, normShape);
-    gert::Shape* sumShape = context->GetOutputShape(SUM_INDEX);
+    gert::Shape *sumShape = context->GetOutputShape(SUM_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, sumShape);
     auto attrPtr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrPtr);
@@ -73,7 +73,7 @@ static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
     size_t xDims = xShape->GetDimNum();
     if ((xDims != TNN_DIMS) && (xDims != BSNN_DIMS)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "x",
-            std::to_string(xDims).c_str(), "the dim of x must be 3 or 4");
+                                                 std::to_string(xDims).c_str(), "the dim of x must be 3 or 4");
         return ge::GRAPH_FAILED;
     }
 
@@ -94,7 +94,7 @@ static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
     if ((n0 != UNKNOWN_DIM_VALUE) && (n1 != UNKNOWN_DIM_VALUE) && (n0 != n1)) {
         std::string shapeMsg = "{" + std::to_string(n0) + ", " + std::to_string(n1) + "}";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "n0, n1",
-            shapeMsg.c_str(), "n0 must be equal to n1");
+                                               shapeMsg.c_str(), "n0 must be equal to n1");
         return ge::GRAPH_FAILED;
     }
 
@@ -131,7 +131,7 @@ static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
     return GRAPH_SUCCESS;
 }
 
-static graphStatus InferDtype4MhcSinkhorn(gert::InferDataTypeContext* context)
+static graphStatus InferDtype4MhcSinkhorn(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
         return GRAPH_FAILED;

@@ -107,8 +107,14 @@ struct CombineResult {
     std::vector<uint32_t> mStart{};
     std::vector<uint32_t> mLen{};
     CombineResult(uint32_t coreNum, uint32_t vecCubeRatio)
-        : combineBN2Idx(coreNum), combineMIdx(coreNum), combineS2SplitNum(coreNum), combineWorkspaceIdx(coreNum),
-          mSize(coreNum), taskIdx(coreNum * vecCubeRatio), mStart(coreNum * vecCubeRatio), mLen(coreNum * vecCubeRatio)
+        : combineBN2Idx(coreNum),
+          combineMIdx(coreNum),
+          combineS2SplitNum(coreNum),
+          combineWorkspaceIdx(coreNum),
+          mSize(coreNum),
+          taskIdx(coreNum * vecCubeRatio),
+          mStart(coreNum * vecCubeRatio),
+          mLen(coreNum * vecCubeRatio)
     {
     }
 };
@@ -123,7 +129,11 @@ struct FAMetaData {
     std::vector<uint32_t> firstCombineDataWorkspaceIdx{};
     CombineResult combineRes{0U, 0U};
     FAMetaData(uint32_t coreNum, uint32_t ratio)
-        : vecCubeRatio(ratio), bN2End(coreNum), mEnd(coreNum), s2End(coreNum), firstCombineDataWorkspaceIdx(coreNum),
+        : vecCubeRatio(ratio),
+          bN2End(coreNum),
+          mEnd(coreNum),
+          s2End(coreNum),
+          firstCombineDataWorkspaceIdx(coreNum),
           combineRes(coreNum, ratio) {};
 };
 
@@ -135,7 +145,10 @@ struct SplitInfo {
     bool isKvSeqAllZero{true};
 
     explicit SplitInfo(uint32_t batchSize)
-        : s1GBaseNum(batchSize), s2BaseNum(batchSize), s1GTailSize(batchSize), s2TailSize(batchSize)
+        : s1GBaseNum(batchSize),
+          s2BaseNum(batchSize),
+          s1GTailSize(batchSize),
+          s2TailSize(batchSize)
     {
     }
 };
@@ -149,7 +162,9 @@ struct CostInfo {
     int64_t maxS1GCost{0};
 
     explicit CostInfo(uint32_t batchSize)
-        : bN2CostOfEachBatch(batchSize), bN2BlockOfEachBatch(batchSize), bN2LastBlockCostOfEachBatch(batchSize)
+        : bN2CostOfEachBatch(batchSize),
+          bN2BlockOfEachBatch(batchSize),
+          bN2LastBlockCostOfEachBatch(batchSize)
     {
     }
 };
@@ -161,7 +176,10 @@ struct SplitContext {
     CostInfo costInfo{0U};
 
     explicit SplitContext(const BaseInfo &info, SplitParam param)
-        : baseInfo(info), splitParam(param), splitInfo(info.bSize), costInfo(info.bSize)
+        : baseInfo(info),
+          splitParam(param),
+          splitInfo(info.bSize),
+          costInfo(info.bSize)
     {
     }
 };

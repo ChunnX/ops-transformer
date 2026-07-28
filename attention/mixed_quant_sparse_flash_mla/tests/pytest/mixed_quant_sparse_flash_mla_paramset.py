@@ -13,7 +13,7 @@
 import torch
 
 TEST_PARAMS = {
-    "decode_first":{
+    "decode_first": {
         "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
@@ -48,12 +48,11 @@ TEST_PARAMS = {
         "tile_size": [64],
         "rope_head_dim": [64],
         "template_run_mode": ["SWA"],
-        "actlen_mode":["full"],
-        "S1EQS2":[False],
-        "return_softmax_lse":[True],
+        "actlen_mode": ["full"],
+        "S1EQS2": [False],
+        "return_softmax_lse": [True],
     },
-
-    "prefill_first":{
+    "prefill_first": {
         "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
@@ -88,11 +87,10 @@ TEST_PARAMS = {
         "tile_size": [64],
         "rope_head_dim": [64],
         "template_run_mode": ["SWA"],
-        "actlen_mode":["full"],
-        "S1EQS2":[False],
-        "return_softmax_lse":[True],
+        "actlen_mode": ["full"],
+        "S1EQS2": [False],
+        "return_softmax_lse": [True],
     },
-
     "ori_sparse_decode": {
         "Testcase_Name": [None],
         "layout_q": ["BSND", "TND"],
@@ -131,13 +129,12 @@ TEST_PARAMS = {
         "template_run_mode": ["ORI_SPARSE"],
         "actlen_mode": ["full"],
         "S1EQS2": [False],
-        "ori_kv_topk_mode": ["random"], # fullK random
-        "ori_sparse_indices_mode": ["full"], # full random
+        "ori_kv_topk_mode": ["random"],  # fullK random
+        "ori_sparse_indices_mode": ["full"],  # full random
         "ori_topk_length": [None],
         "cmp_topk_length": [None],
-        "return_softmax_lse":[True],
+        "return_softmax_lse": [True],
     },
-
     "ori_cmp_sparse_decode": {
         "Testcase_Name": [None],
         "layout_q": ["BSND", "TND"],
@@ -176,15 +173,14 @@ TEST_PARAMS = {
         "template_run_mode": ["ORI_SPARSE", "ORI_CMP_SPARSE"],
         "actlen_mode": ["full"],
         "S1EQS2": [False],
-        "ori_kv_topk_mode": ["fullK"],     # fullK random
-        "cmp_kv_topk_mode": ["fullK"],     
-        "ori_sparse_indices_mode": ["full"],    # full random
+        "ori_kv_topk_mode": ["fullK"],  # fullK random
+        "cmp_kv_topk_mode": ["fullK"],
+        "ori_sparse_indices_mode": ["full"],  # full random
         "cmp_sparse_indices_mode": ["full"],
         "ori_topk_length": [None],
         "cmp_topk_length": [None],
-        "return_softmax_lse":[True],
+        "return_softmax_lse": [True],
     },
-
     "ori_sparse_decode_bsnd": {
         "Testcase_Name": [None],
         "layout_q": ["BSND"],
@@ -227,9 +223,8 @@ TEST_PARAMS = {
         "ori_sparse_indices_mode": ["full"],
         "ori_topk_length": [None],
         "cmp_topk_length": [None],
-        "return_softmax_lse":[True],
+        "return_softmax_lse": [True],
     },
-
     "ori_cmp_sparse_decode_tnd": {
         "Testcase_Name": [None],
         "layout_q": ["TND"],
@@ -274,9 +269,8 @@ TEST_PARAMS = {
         "cmp_sparse_indices_mode": ["full"],
         "ori_topk_length": [None],
         "cmp_topk_length": [None],
-        "return_softmax_lse":[True],
+        "return_softmax_lse": [True],
     },
-
     "ori_cmp_sparse_decode_with_topk": {
         "Testcase_Name": [None],
         "layout_q": ["BSND"],
@@ -321,9 +315,9 @@ TEST_PARAMS = {
         "cmp_sparse_indices_mode": ["full"],
         "ori_topk_length": [[64, 32, 48, 16]],
         "cmp_topk_length": [[32, 16, 24, 8]],
-        "return_softmax_lse":[True],
+        "return_softmax_lse": [True],
     },
 }
 
 ENABLED_PARAMS = [TEST_PARAMS["decode_first"]]
-#ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
+# ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

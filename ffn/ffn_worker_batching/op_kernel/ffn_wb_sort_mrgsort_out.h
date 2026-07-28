@@ -35,8 +35,8 @@ public:
     __aicore__ inline void SetInput(GlobalTensor<float> &gmInput, GlobalTensor<int32_t> &gmSortNum,
                                     LocalTensor<float> &ubInput);
     __aicore__ inline void SetOutput(GlobalTensor<int32_t> &gmOutput1, GlobalTensor<int32_t> &gmOutput2,
-                                    LocalTensor<float> &ubOutput1, LocalTensor<float> &ubOutput2);
-    __aicore__ inline void SetBuffer(LocalTensor<float> &tempBuffer); 
+                                     LocalTensor<float> &ubOutput1, LocalTensor<float> &ubOutput2);
+    __aicore__ inline void SetBuffer(LocalTensor<float> &tempBuffer);
 
 private:
     __aicore__ inline void CopyIn();
@@ -101,12 +101,12 @@ __aicore__ inline void SortCustomMrgsortOut::SetInput(GlobalTensor<float> &gmInp
 }
 
 __aicore__ inline void SortCustomMrgsortOut::SetOutput(GlobalTensor<int32_t> &gmOutput1, GlobalTensor<int32_t> &gmOutput2,
-                                 LocalTensor<float> &ubOutput1, LocalTensor<float> &ubOutput2)
+                                                       LocalTensor<float> &ubOutput1, LocalTensor<float> &ubOutput2)
 {
     this->gmOutput1 = gmOutput1;
     this->ubOutput1 = ubOutput1;
     this->ubOutputInt1 = ubOutput1.ReinterpretCast<int32_t>();
-    
+
     this->gmOutput2 = gmOutput2;
     this->ubOutput2 = ubOutput2.ReinterpretCast<uint32_t>();
     this->ubOutputInt2 = ubOutput2.ReinterpretCast<int32_t>();
@@ -141,7 +141,7 @@ __aicore__ inline void SortCustomMrgsortOut::CopyIn()
         lengths[i] = Min(param->oneLoopMaxElements, listRemainElements[i]);
         if (lengths[i] > 0) {
             DataCopy(this->ubInputs[i], this->gmInputs[i][offsets[i]],
-                    Align(GetSortLen<float>(lengths[i]), sizeof(float)));
+                     Align(GetSortLen<float>(lengths[i]), sizeof(float)));
             tmpUbInputs[j] = this->ubInputs[i];
             elementCountListTail[j] = lengths[i];
             this->remainListNum += 1;
@@ -157,7 +157,7 @@ __aicore__ inline void SortCustomMrgsortOut::MrgsortCompute()
         MrgSortSrcList sortListTail = MrgSortSrcList(tmpUbInputs[0], tmpUbInputs[1], tmpUbInputs[0], tmpUbInputs[0]);
         MrgSort<float, true>(this->tempBuffer, sortListTail, elementCountListTail, listSortedNums, validBitTail, 1);
     } else if (this->remainListNum == MERGE_LIST_THREE) {
-        MrgSortSrcList sortListTail = 
+        MrgSortSrcList sortListTail =
             MrgSortSrcList(tmpUbInputs[0], tmpUbInputs[1], tmpUbInputs[MERGE_LIST_IDX_TWO], tmpUbInputs[0]);
         MrgSort<float, true>(this->tempBuffer, sortListTail, elementCountListTail, listSortedNums, validBitTail, 1);
     } else if (this->remainListNum == MERGE_LIST_FOUR) {
@@ -167,7 +167,7 @@ __aicore__ inline void SortCustomMrgsortOut::MrgsortCompute()
     } else {
         if (elementCountListTail[0] > 0) {
             DataCopy(this->tempBuffer, this->tmpUbInputs[0],
-                Align(GetSortLen<float>(elementCountListTail[0]), sizeof(float)));
+                     Align(GetSortLen<float>(elementCountListTail[0]), sizeof(float)));
         }
         listSortedNums[0] = elementCountListTail[0];
     }
@@ -189,7 +189,7 @@ __aicore__ inline void SortCustomMrgsortOut::UpdateSortInfo()
         }
     }
 }
-    
+
 __aicore__ inline void SortCustomMrgsortOut::Extract()
 {
     if (curLoopSortedNum > 0) {
@@ -216,7 +216,7 @@ __aicore__ inline void SortCustomMrgsortOut::CopyOut()
 
 __aicore__ inline void SortCustomMrgsortOut::Init(SortCustomMrgsortParam *param, TPipe *tPipe)
 {
-    this->param= param;
+    this->param = param;
     this->allRemainElements = 0;
     for (int64_t i = 0; i < listNum; i++) {
         offsets[i] = GetSortOffset<float>(param->perListElements * i);
@@ -240,4 +240,3 @@ __aicore__ inline void SortCustomMrgsortOut::Process()
 }
 } // namespace FfnWbBatching
 #endif // OP_KERNEL_FFN_WB_SORT_MRGSORT_OUT_H
-
