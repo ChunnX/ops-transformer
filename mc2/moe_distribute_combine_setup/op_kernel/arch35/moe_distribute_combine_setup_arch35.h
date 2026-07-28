@@ -255,6 +255,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         bool hasWrite = false;
         auto channelId = GetCommHandle(dstRankId);
         GM_ADDR notifyAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
+        //先清理状态
+        GlobalTensor<int32_t> selfStatusTensor;
+        selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)notifyAddr);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
         for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
             uint32_t preCount = 0U;
             uint32_t assistInfoIdx = expertIdx * moeDistributeCombineSetupInfo_->epWorldSize + dstRankId;
@@ -269,7 +273,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             uint32_t length = static_cast<uint32_t>(axisHExpandXTypeSize_) * curTokenNum;
             uint64_t notifyVal = 0x3f800000;
             if (curRankExpertNum - 1 != expertIdx) {
-                hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, length);
+                if(0 < curRankExpertNum) {
+                    hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, length);
+                }
                 continue;
             }
             hcomm_.WriteWithNotifyNbi<false>(channelId, dstAddr, srcAddr, length, notifyAddr, notifyVal);
