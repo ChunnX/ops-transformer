@@ -1522,7 +1522,7 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
 
         for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / BASE_REDUCE_SIZE); ++loopM) {
             LoadAlign(vregF32_00, srcUb00 + loopM * RowSize + ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE);
-            LoadAlign(vregF32_01, srcUb01 + + loopM * RowSize + ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE);
+            LoadAlign(vregF32_01, srcUb01 + loopM * RowSize + ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE);
 
             LoadAlign(vregF32_10, srcUb10 + loopM * RowSize + ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE);
             LoadAlign(vregF32_11, srcUb11 + loopM * RowSize + ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE);
