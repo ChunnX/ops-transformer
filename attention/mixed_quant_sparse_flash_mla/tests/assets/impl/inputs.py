@@ -19,6 +19,14 @@ from pathlib import Path
 import torch
 
 
+def _module_load_error(stage, path, exc):
+    return RuntimeError(
+        "Failed to load MixedQuantSparseFlashMla module; "
+        f"stage={stage}; module={path.resolve()}; "
+        f"original error: {type(exc).__name__}: {exc}"
+    )
+
+
 class MixedQuantSparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
 
@@ -31,14 +39,16 @@ class MixedQuantSparseFlashMlaInputAdapter:
         if name in sys.modules:
             return sys.modules[name]
         path = Path(__file__).with_name("golden.py")
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
         try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception as exc:
             sys.modules.pop(name, None)
-            raise
+            raise _module_load_error("assets Golden store", path, exc) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -56,15 +66,16 @@ class MixedQuantSparseFlashMlaInputAdapter:
                 module = sys.modules[name]
             else:
                 spec = importlib.util.spec_from_file_location(name, module_path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"cannot create import spec for {module_path}")
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[name] = module
-                try:
-                    spec.loader.exec_module(module)
-                except Exception:
-                    sys.modules.pop(name, None)
-                    raise
+                spec.loader.exec_module(module)
             self.pytest_modules[stem] = module
             return module
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise _module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))

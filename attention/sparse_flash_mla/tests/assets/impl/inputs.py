@@ -19,6 +19,14 @@ from pathlib import Path
 import torch
 
 
+def _module_load_error(stage, path, exc):
+    return RuntimeError(
+        "Failed to load SparseFlashMla module; "
+        f"stage={stage}; module={path.resolve()}; "
+        f"original error: {type(exc).__name__}: {exc}"
+    )
+
+
 class SparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
 
@@ -31,14 +39,16 @@ class SparseFlashMlaInputAdapter:
         if name in sys.modules:
             return sys.modules[name]
         path = Path(__file__).with_name("golden.py")
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
         try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception as exc:
             sys.modules.pop(name, None)
-            raise
+            raise _module_load_error("assets Golden store", path, exc) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -56,15 +66,16 @@ class SparseFlashMlaInputAdapter:
                 module = sys.modules[name]
             else:
                 spec = importlib.util.spec_from_file_location(name, module_path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"cannot create import spec for {module_path}")
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[name] = module
-                try:
-                    spec.loader.exec_module(module)
-                except Exception:
-                    sys.modules.pop(name, None)
-                    raise
+                spec.loader.exec_module(module)
             self.pytest_modules[stem] = module
             return module
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise _module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -199,8 +210,9 @@ class SparseFlashMlaInputAdapter:
     def generate_case(self, params):
         pytest_utils = self.load_pytest_module("utils", "utils.py")
         pytest_golden = self.load_pytest_module("golden", "sparse_flash_mla_golden.py")
+        params.setdefault("random_seq", False)
         case_params = pytest_utils.generate_case_with_default_param(params)
-        data = pytest_golden.gen_data(case_params, case_params.get("template_mode"))
+        data = pytest_golden.gen_data(case_params)
         testcase_name = params.get("testcase_name") or case_params.get("testcase_name")
         self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data

@@ -24,6 +24,7 @@ class CaseDataStore:
         self.index_offsets = None
         self.score_layout = None
         self.cu_seqlens_q = None
+        self.active_testcase_name = None
 
     def clear(self):
         self.case_data.clear()
@@ -31,6 +32,7 @@ class CaseDataStore:
         self.index_offsets = None
         self.score_layout = None
         self.cu_seqlens_q = None
+        self.active_testcase_name = None
 
     def put(self, testcase_name, data):
         if testcase_name is not None:
@@ -44,6 +46,7 @@ class CaseDataStore:
                 "QuantLightningIndexer V2 TTK golden requires customize_inputs "
                 "to generate pytest data first"
             )
+        self.active_testcase_name = str(testcase_name)
         self.topk_scores = data["topk_value"]
         self.index_offsets = data.get("output_idx_offset")
         self.score_layout = data.get("score_layout")
@@ -64,6 +67,22 @@ def get_index_offsets():
 
 def get_score_context():
     return CASE_DATA.score_layout, CASE_DATA.cu_seqlens_q
+
+
+def has_compare_data(testcase_name):
+    return (
+        testcase_name is not None
+        and CASE_DATA.active_testcase_name == str(testcase_name)
+        and CASE_DATA.topk_scores is not None
+    )
+
+
+def set_compare_data(testcase_name, data):
+    CASE_DATA.active_testcase_name = str(testcase_name)
+    CASE_DATA.topk_scores = data["scores"]
+    CASE_DATA.index_offsets = data["index_offsets"]
+    CASE_DATA.score_layout = data["score_layout"]
+    CASE_DATA.cu_seqlens_q = data["cu_seqlens_q"]
 
 
 def cpu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale,
