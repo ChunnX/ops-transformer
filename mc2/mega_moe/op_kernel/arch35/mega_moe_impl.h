@@ -889,6 +889,8 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
             blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
             if constexpr (CombineQuantMode != COMBINE_NO_QUANT && !IsShared) {
                 NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
+            } else if constexpr (IsShared) {
+                NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
             }
         }
         constexpr bool hasAiv1GmEpilogue = Policy::IS_GMM1 || (CombineQuantMode == COMBINE_NO_QUANT && !IsShared);
