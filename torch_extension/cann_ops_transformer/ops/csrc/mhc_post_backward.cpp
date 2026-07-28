@@ -23,6 +23,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPostBackward(const
                                                                            const at::Tensor &hOut,
                                                                            const at::Tensor &hPost)
 {
+    const c10::OptionalDeviceGuard deviceGuard(x.device());
     at::Tensor gradX = at::empty_like(x);
     at::Tensor gradHres = at::empty_like(hRes);
     at::Tensor gradHout = at::empty_like(hOut);
