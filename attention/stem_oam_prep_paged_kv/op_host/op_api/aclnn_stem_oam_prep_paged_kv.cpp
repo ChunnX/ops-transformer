@@ -189,9 +189,10 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(const aclTensor *kCache, con
     const aclTensor *kvSeqLensTensor = uniqueExecutor->ConvertToTensor(kvSeqLens, DataType::DT_INT32);
     OP_CHECK_NULL(kvSeqLensTensor, return ACLNN_ERR_PARAM_NULLPTR);
     auto vScaleContiguous = l0op::Contiguous(vScale, uniqueExecutor.get());
+    float lambdaMagFloat = static_cast<float>(lambdaMag);
 
     auto result = l0op::StemOamPrepPagedKv(kCacheView, vCacheView, kvIndicesContiguous, kvSeqLensTensor,
-                                           kScaleCacheView, vScaleContiguous, lambdaMag, cacheLayout, kvBlockSize,
+                                           kScaleCacheView, vScaleContiguous, lambdaMagFloat, cacheLayout, kvBlockSize,
                                            stemBlockSize, stemStride, kFlat, vBias, uniqueExecutor.get());
     CHECK_RET(std::get<0>(result) != nullptr && std::get<1>(result) != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
