@@ -74,7 +74,7 @@ private:
     void InitImplParam();
     void PrintAllTilingData();
     void CalcScheduleMode();
-void CalcNumBlocks(uint32_t aicNum);
+    void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();
     ge::graphStatus SetTilingData(QuantFlashAttnTilingData &tilingData);
     bool CheckNeedInitOutput() const;

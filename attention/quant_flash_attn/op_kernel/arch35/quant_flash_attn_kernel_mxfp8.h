@@ -119,9 +119,8 @@ public:
     // fd metadata
     FDparamsX fdParams_;
 
-    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
-                              ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE, int32_t>>::type
-        qCuSeqLensParser;
+    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND), ActualSeqLensParser<Q_MODE, int32_t, true>,
+                              ActualSeqLensParser<Q_MODE, int32_t>>::type qCuSeqLensParser;
 
     typename std::conditional<(!PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE, int32_t>>::type
@@ -137,9 +136,8 @@ public:
                                 __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *cuSeqLensQ,
                                 __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
-                                __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale,
-                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attnOut,
-                                __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
+                                __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
+                                __gm__ uint8_t *attnOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
                                 const __gm__ QuantFlashAttnTilingData *__restrict tiling, TPipe *tPipe)
     {
@@ -175,12 +173,11 @@ public:
 
         if ASCEND_IS_AIV {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, pScale, attnMask, softmaxLse,
-                                        attnOut, workspace);
+                vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, pScale, attnMask, softmaxLse, attnOut,
+                                        workspace);
                 vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
             } else {
-                vecFaBlock.InitVecBlock(tPipe, sequsedQ, sequsedKv, pScale, attnMask, softmaxLse,
-                                        attnOut, workspace);
+                vecFaBlock.InitVecBlock(tPipe, sequsedQ, sequsedKv, pScale, attnMask, softmaxLse, attnOut, workspace);
                 vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
             vecFaBlock.ClearOutput();
@@ -188,13 +185,11 @@ public:
 
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable,
-                                        dequantScaleQuery, dequantScaleKey, dequantScaleValue,
-                                        qCuSeqLensParser, kvCuSeqLensParser);
+                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, dequantScaleQuery,
+                                        dequantScaleKey, dequantScaleValue, qCuSeqLensParser, kvCuSeqLensParser);
             } else {
-                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable,
-                                        dequantScaleQuery, dequantScaleKey, dequantScaleValue,
-                                        qSeqUsedParser, kvSeqUsedParser);
+                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, dequantScaleQuery,
+                                        dequantScaleKey, dequantScaleValue, qSeqUsedParser, kvSeqUsedParser);
             }
         }
         if constexpr (FLASH_DECODE) {
@@ -260,10 +255,10 @@ public:
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto& qfaBaseParams = this->tilingData->baseTiling.quantFlashAttnBaseParams;
-        const auto& qfaAttenMaskParams = this->tilingData->baseTiling.quantFlashAttnAttenMaskParams;
-        const auto& qfaPageAttentionParams = this->tilingData->baseTiling.quantFlashAttnPageAttentionParams;
-        const auto& qfaWorkspaceParams = this->tilingData->baseTiling.quantFlashAttnWorkspaceParams;
+        const auto &qfaBaseParams = this->tilingData->baseTiling.quantFlashAttnBaseParams;
+        const auto &qfaAttenMaskParams = this->tilingData->baseTiling.quantFlashAttnAttenMaskParams;
+        const auto &qfaPageAttentionParams = this->tilingData->baseTiling.quantFlashAttnPageAttentionParams;
+        const auto &qfaWorkspaceParams = this->tilingData->baseTiling.quantFlashAttnWorkspaceParams;
 
         constInfo.bSize = qfaBaseParams.bSize;
         constInfo.t1Size = qfaBaseParams.t1Size;
@@ -325,8 +320,8 @@ public:
     __aicore__ inline void InitKvCuSeqLensParser(__gm__ uint8_t *cuSeqLensKvPtr, __gm__ uint8_t *sequsedKvPtr)
     {
         if constexpr (!PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-            kvCuSeqLensParser.Init(cuSeqLensKvPtr, constInfo.cuSeqLensKVSize + 1,
-                                   sequsedKvPtr, constInfo.seqUsedKvSize);
+            kvCuSeqLensParser.Init(cuSeqLensKvPtr, constInfo.cuSeqLensKVSize + 1, sequsedKvPtr,
+                                   constInfo.seqUsedKvSize);
         } else if constexpr (PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser.Init(sequsedKvPtr, constInfo.seqUsedKvSize, constInfo.s2Size);
         } else {
@@ -433,8 +428,7 @@ public:
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        bool isFirstTask =
-            (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
+        bool isFirstTask = (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
         uint32_t bIdx = bN2Cur / constInfo.realN2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
@@ -532,7 +526,8 @@ public:
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
         int64_t s1GLastToken =
             AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                 static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.realGSize)) - 1;
+                                 static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.realGSize)) -
+            1;
 
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
