@@ -1675,7 +1675,4 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         else:
             raise ValueError(f"Unsupported scene: {scene}, please choose from ['A16W16', 'A8W8-INT', 'A8W4-INT']")
     ```
-<<<<<<< mega_moe_512_hidden_size
-=======
   <!-- end id18 -->
->>>>>>> master
