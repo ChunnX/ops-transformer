@@ -19,13 +19,21 @@
 namespace op_api {
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPostBackward(const at::Tensor &gradOutput,
-                                                                           const at::Tensor &x, const at::Tensor &hRes,
+                                                                           const at::Tensor &x,
+                                                                           const c10::optional<at::Tensor> &hRes,
                                                                            const at::Tensor &hOut,
                                                                            const at::Tensor &hPost)
 {
     const c10::OptionalDeviceGuard deviceGuard(x.device());
     at::Tensor gradX = at::empty_like(x);
-    at::Tensor gradHres = at::empty_like(hRes);
+    at::Tensor gradHres;
+    if (hRes.has_value()) {
+        gradHres = at::empty_like(hRes.value());
+    } else {
+        auto sizes = x.sizes().vec();
+        sizes.back() = sizes[sizes.size() - 2];
+        gradHres = at::empty(sizes, x.options().dtype(at::kFloat));
+    }
     at::Tensor gradHout = at::empty_like(hOut);
     at::Tensor gradHpost = at::empty_like(hPost);
 
