@@ -783,7 +783,8 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
     uint32_t oriDimNum = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDimNum();
     if (oriDimNum != DIM_NUM_TWO) {
         OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "ori_block_table",
-            std::to_string(oriDimNum).c_str(), std::to_string(DIM_NUM_TWO).c_str());
+            std::to_string(oriDimNum).c_str(),
+            std::to_string(DIM_NUM_TWO).c_str());
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1) < 0) {
