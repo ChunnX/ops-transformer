@@ -74,11 +74,25 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(TENSOR_API
                          ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
 else()
+  execute_process(
+    COMMAND git remote get-url origin
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_REMOTE_URL
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if(GIT_REMOTE_URL MATCHES "^git@|^ssh://")
+    set(OPTENSOR_GIT_URL "git@gitcode.com:cann/ops-tensor.git")
+    message(STATUS "[ThirdPartyLib][ops-tensor] using SSH protocol: ${OPTENSOR_GIT_URL}")
+  else()
+    set(OPTENSOR_GIT_URL "https://gitcode.com/cann/ops-tensor.git")
+    message(STATUS "[ThirdPartyLib][ops-tensor] using HTTPS protocol: ${OPTENSOR_GIT_URL}")
+  endif()
   include(FetchContent)
 
   FetchContent_Declare(
     ops-tensor
-    GIT_REPOSITORY https://gitcode.com/cann/ops-tensor.git
+    GIT_REPOSITORY ${OPTENSOR_GIT_URL}
     GIT_TAG ${OPTENSOR_TAG_ID}
     GIT_PROGRESS TRUE
     SOURCE_DIR ${CANN_3RD_LIB_PATH}/ops-tensor)
