@@ -570,3 +570,18 @@ visible = range(max(seq_start, draft_start - window_size), draft_end + 1)
 ## 14. 结论
 
 DSpark draft attention 的关键不是修改 target verification 的 causal 逻辑，而是让 draft model attention 能表达“每个 draft query 可见 trailing context window + 完整当前 draft block”。对 SMLA 来说，最小可行方案是使能已有的 `ori_sparse_indices` 预留输入，并放开 `ori_win_right > 0`，形成 ori sparse SWA 路径。该方案不需要新增主算子公开 ABI，能覆盖 vLLM-Ascend DSpark 的核心 attention 需求，同时保持现有 SWA、CSA、HCA 路径兼容。
+
+---
+
+## 附录：实现偏差说明（2026-07-23）
+
+> 正文设计原则不变；以下为相对 §7.2 / §7.4 / §12.3「V1 mask 支持 `-1` 与越界防御」的**落地取舍**（方案 A），便于与代码对照。
+
+| 设计原文 | 实际实现 |
+| --- | --- |
+| V1 对每个 `-1` / 越界 slot **逐列**写 `-inf` | **尾部 `-1`**：仍由 `actualSingleProcessSInnerSize` 对 tile 尾列统一 mask（DSpark 仅尾部 padding，与 golden 一致）。**越界 index**：V1 对 `idx < 0` 或 `idx >= ori_len[b]` 的列补 `-inf`。 |
+| V0 无效 slot「可填零，V1 必须 mask」 | **仅 V1 负责 mask**：V0 对 `idx < 0` 仅 `continue`（不 gather）；越界 index 由 V1 单列 `-inf` 屏蔽 softmax，V0 不做 `Duplicate(0)`（冗余）。 |
+| 中间位置 `-1`（非尾部） | **未单独处理**；与 DSpark / vLLM 约定（`-1` 仅作尾部 padding）一致，不做方案 B 式全量逐列扫描。 |
+| host 拦截 `index >= ori_len` | **kernel 防御已做（V1）**；host 侧仍仅 shape/dtype 校验，运行时数值越界由 V1 mask，不在 tiling 读 indices。 |
+
+**影响范围**：arch22 SWA + TND + PA_BBND 的 DSpark 主路径；连续 SWA / 无 `ori_sparse_indices` 路径无行为变化。

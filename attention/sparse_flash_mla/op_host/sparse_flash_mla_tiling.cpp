@@ -1965,7 +1965,8 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
         workspaceSize += PRELOAD_NUM * mmResUbSize_ * VEC1_RES_ELEM_SIZE * aicNum;
         workspaceSize += PRELOAD_NUM * bmm2ResUbSize_ * MM2_RES_ELEM_SIZE * aicNum;
         workspaceSize += PRELOAD_NUM * bmm2ResUbSize_ * VEC2_RES_ELEM_SIZE * aicNum;
-        if (tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+        if (tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+            (tilingInfo->perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE && tilingInfo->hasOriSparseIndices)) {
             constexpr uint32_t MERGE_CACHE_GM_BUF_NUM = 3;
             workspaceSize += MERGE_CACHE_GM_BUF_NUM * 512 * 512 * 2 * aicNum;
         }

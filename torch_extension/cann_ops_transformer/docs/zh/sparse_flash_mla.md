@@ -18,6 +18,7 @@
   `sparse_flash_mla`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`SparseFlashMla`算子完成共享KV（Key和Value使用同一份输入）的稀疏注意力计算。该接口支持以下三类计算模式：
 
   - **SWA（Sliding Window Attention）**：仅使用`ori_kv`，对原始KV做滑动窗口注意力。
+  - **SWA ori sparse（DSpark ori sparse SWA）**：仅使用`ori_kv`和`ori_sparse_indices`，由索引精确指定每行query的ori侧可见集合，适用于DSpark draft attention等场景。
   - **CSA（Compressed Sparse Attention）**：同时使用`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
   - **HCA（Heavily Compressed Attention）**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
 
@@ -78,7 +79,6 @@ cann_ops_transformer.sparse_flash_mla_metadata(
 
 ```python
 cann_ops_transformer.sparse_flash_mla(
-cann_ops_transformer.sparse_flash_mla(
     q,
     *,
     ori_kv=None,
@@ -127,7 +127,7 @@ cann_ops_transformer.sparse_flash_mla(
 | seqused_ori_kv | 可选输入 | 不同batch中`ori_kv`实际参与计算的token数。 | INT32 | ND |
 | seqused_cmp_kv | 可选输入 | 不同batch中`cmp_kv`实际参与计算的token数。 | INT32 | ND |
 | cmp_residual_kv | 可选输入 | 压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。 | INT32 | ND |
-| ori_topk_length | 可选输入 | 预留输入，当前版本不支持传入非空Tensor。 | INT32 | ND |
+| ori_topk_length | 可选输入 | SWA ori sparse场景可选，表示每行query对应的ori_kv实际可选topk长度；其它场景为预留输入，不支持传入非空Tensor。 | INT32 | ND |
 | cmp_topk_length | 可选输入 | 预留输入，当前版本不支持传入非空Tensor。 | INT32 | ND |
 | batch_size | 可选属性 | batch大小。默认值为0。 | INT | - |
 | max_seqlen_q | 可选属性 | 所有batch中`q`的最大有效长度。默认值为0。 | INT | - |
@@ -153,7 +153,7 @@ cann_ops_transformer.sparse_flash_mla(
 | q | 输入 | Query输入。 | FLOAT16、BFLOAT16 | ND |
 | ori_kv | 可选输入 | 原始KV输入，Key和Value共享同一份数据。 | FLOAT16、BFLOAT16 | ND |
 | cmp_kv | 可选输入 | 压缩KV输入，Key和Value共享同一份数据。 | FLOAT16、BFLOAT16 | ND |
-| ori_sparse_indices | 可选输入 | 原始KV稀疏索引，当前版本不支持传入非空Tensor。 | INT32 | ND |
+| ori_sparse_indices | 可选输入 | 原始KV稀疏索引（logical index）。SWA ori sparse场景（如DSpark draft attention）必须传入非空Tensor；连续SWA场景传入None。layout_kv为PA_BBND时必须同时传入ori_block_table和seqused_ori_kv。 | INT32 | ND |
 | cmp_sparse_indices | 可选输入 | 压缩KV TopK索引，无效位置填-1。 | INT32 | ND |
 | ori_block_table | 可选输入 | PageAttention场景下`ori_kv`使用的block映射表。 | INT32 | ND |
 | cmp_block_table | 可选输入 | PageAttention场景下`cmp_kv`使用的block映射表。 | INT32 | ND |
@@ -164,7 +164,7 @@ cann_ops_transformer.sparse_flash_mla(
 | seqused_ori_kv | 可选输入 | 不同batch中`ori_kv`实际参与计算的token数。 | INT32 | ND |
 | seqused_cmp_kv | 可选输入 | 不同batch中`cmp_kv`实际参与计算的token数。 | INT32 | ND |
 | cmp_residual_kv | 可选输入 | 压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。 | INT32 | ND |
-| ori_topk_length | 可选输入 | 预留输入，当前版本不支持传入非空Tensor。 | INT32 | ND |
+| ori_topk_length | 可选输入 | SWA ori sparse场景可选，表示每行query对应的ori_kv实际可选topk长度；其它场景为预留输入，不支持传入非空Tensor。 | INT32 | ND |
 | cmp_topk_length | 可选输入 | 预留输入，当前版本不支持传入非空Tensor。 | INT32 | ND |
 | sinks | 可选输入 | attention sinks输入。 | FLOAT | ND |
 | metadata | 输入 | `sparse_flash_mla_metadata`生成的任务切分结果。 | INT32 | ND |
@@ -208,23 +208,29 @@ cann_ops_transformer.sparse_flash_mla(
   - `layout_kv="PA_BBND"`时必须传入`seqused_ori_kv`和`ori_block_table`；传入`cmp_kv`时，还必须传入`cmp_block_table`。
   - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
   - `ori_mask_mode`及`cmp_mask_mode`所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode_introduction.md)。
-  - `metadata`固定为1024个INT32元素，`topk_value_mode`仅支持1，`ori_sparse_indices`、`ori_topk_length`和`cmp_topk_length`当前版本不支持传入非空Tensor。
+  - `metadata`固定为1024个INT32元素，`topk_value_mode`仅支持1；`cmp_topk_length`当前版本不支持传入非空Tensor；`ori_sparse_indices`在SWA ori sparse场景必须传入非空Tensor，连续SWA场景传入None；`ori_topk_length`在SWA ori sparse场景可选。
   - `ori_kv`和`cmp_kv`允许存在行间padding类非连续内存，接口会通过aclnn获取stride信息传给底层算子。
 
 - 规格约束：
   - 公共参数约束：
     - `head_dim`仅支持512，`num_heads_kv`仅支持1。
     - `num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128。
-    - `ori_mask_mode`仅支持4，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
+    - `ori_mask_mode`仅支持4。
+    - 连续SWA场景（`ori_sparse_indices`为空）下，`ori_win_left`/`ori_win_right`在A2/A3上须为127/0；SWA ori sparse场景下须为非负数（可含`ori_win_right`>0以覆盖draft block）。
     - PageAttention的block_size支持1到1024。
 
   - 产品型号约束如下：
     - <term>Ascend 950PR/Ascend 950DT</term>：`num_heads_q`/`num_heads_kv`不支持1。
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size支持16的倍数，且不超过1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维压缩KV TopK长度，支持0、512、1024。默认值为0。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size支持16的倍数，且不超过1024；SWA ori sparse场景下`ori_sparse_indices`当前仅支持TND q + PA_BBND kv；cmp_sparse_indices的最后一维压缩KV TopK长度，支持0、512、1024。默认值为0。
   - SWA：
     - 仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1。
     - 不传入`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`。
     - `cmp_topk`传0，`cmp_mask_mode`传0。
+  - SWA ori sparse（DSpark ori sparse SWA）：
+    - 必须传入`ori_sparse_indices`；`layout_q`须为TND，`layout_kv`须为PA_BBND。
+    - 必须同时传入`ori_block_table`和`seqused_ori_kv`；`cmp_kv`须为None。
+    - `ori_win_left`/`ori_win_right`须为非负数；metadata的`ori_topk`须设为K（`ori_sparse_indices`最后一维）。
+    - index为batch内logical ori row，PA_BBND下通过`ori_block_table` gather物理KV。
   - CSA：
     - `cmp_mask_mode`仅支持3。
     - `cmp_sparse_indices`必须传入，最后一维支持泛化；`cmp_topk`对应传非0。

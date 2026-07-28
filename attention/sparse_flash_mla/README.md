@@ -75,7 +75,7 @@
     <tr>
       <td>ori_sparse_indices</td>
       <td>可选输入</td>
-      <td>表示从ori_kv中离散取数的索引。</td>
+      <td>表示离散读取ori_kv的逻辑行索引（logical index）。SWA ori sparse场景（如DSpark draft attention）必须传入非空Tensor；连续SWA场景传入nullptr。layout_kv为PA_BBND时必须同时传入ori_block_table和seqused_ori_kv。index为batch内logical ori row，需通过ori_block_table映射到物理block slot。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -267,27 +267,28 @@
 ## 约束说明
 - 该接口支持训练、推理场景下使用。
 - 该接口支持aclgraph模式。
-- 该接口当前支持三种计算场景：SWA（Sliding Window Attention）场景仅传入`ori_kv`；CSA（Compressed Sparse Attention）场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`；HCA（Heavily Compressed Attention）场景传入`ori_kv`及`cmp_kv`。
+- 该接口当前支持四类计算场景：SWA（Sliding Window Attention）场景仅传入`ori_kv`；SWA ori sparse场景（`ori_sparse_indices`非空，又称DSpark ori sparse SWA）仅传入`ori_kv`和`ori_sparse_indices`；CSA（Compressed Sparse Attention）场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`；HCA（Heavily Compressed Attention）场景传入`ori_kv`及`cmp_kv`。
 - 通用规格约束如下：
   - KV\_N仅支持1，D仅支持512。其中，`ori_kv`和`cmp_kv`的D_kv由nope(448)和rope(64)拼接而成。
   - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1；支持1到128。
-  - `ori_mask_mode`仅支持4，`cmp_mask_mode`仅支持3，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
+  - `ori_mask_mode`仅支持4，`cmp_mask_mode`仅支持3。
+  - 连续SWA场景（`ori_sparse_indices`为空）下，`ori_win_left`/`ori_win_right`在A2/A3上须为127/0；SWA ori sparse场景下须为非负数（可含`ori_win_right`>0以覆盖draft block）。
   - PageAttention的block_size支持1到1024。
   - `layout_q`和`layout_kv`组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下`layout_q`和`layout_kv`必须一致。
-  - `ori_topk_length`和`cmp_topk_length`为预留输入，全平台均不支持传入非空Tensor。
+  - `cmp_topk_length`为预留输入，全平台均不支持传入非空Tensor；`ori_topk_length`在SWA ori sparse场景可选，其它场景不支持传入非空Tensor。
 - 产品型号约束如下：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：Q\_N支持1、2、4、8、16、32、64、128，KV\_N只支持1；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维K2当前支持512或1024。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：Q\_N支持1、2、4、8、16、32、64、128，KV\_N只支持1；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；SWA ori sparse场景下`ori_sparse_indices`当前仅支持TND q + PA\_BBND kv；cmp_sparse_indices的最后一维K2当前支持512或1024。
   - <term>Ascend 950PR/Ascend 950DT</term>：Q\_N支持2、4、8、16、32、64、128，不支持1，KV\_N只支持1。
 
 - 当`layout_q`为TND时，功能使用限制如下：
   - `q`的shape需要为[Q\_T, Q\_N, D]。
-  - `ori_sparse_indices`当前暂不支持。
+  - SWA ori sparse场景下`ori_sparse_indices`的shape需要为[Q\_T, KV\_N, K\_ori]，其中K\_ori为ori侧稀疏选择数上界；每行可用-1表示提前结束。
   - `cmp_sparse_indices`的shape需要为[Q\_T, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数。
   - `cu_seqlens_q`必须传入，shape为[B+1,]，第一个数固定为0，即前缀0。后面的每个元素表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。
 
 - 当`layout_q`为BSND时，功能使用限制如下：
   - `q`的shape需要为[B, Q\_S, Q\_N, D]。
-  - `ori_sparse_indices`当前暂不支持。
+  - `ori_sparse_indices`当前在A2/A3上不支持BSND q layout（SWA ori sparse仅支持TND q）。
   - `cmp_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数。
 
 - PageAttention场景下，功能使用限制如下：
@@ -299,8 +300,8 @@
   - 当输入为BSND时，`ori_kv`和`cmp_kv`的layout都必须为BSND，ori_kv的shape为[B, ORI\_KV\_S, KV\_N, D]，cmp_kv的shape为[B, CMP\_KV\_S, KV\_N, D]。
   - 当输入为TND时，`cu_seqlens_ori_kv`必须传入；若存在`cmp_kv`，`cu_seqlens_cmp_kv`也必须传入。
 - `return_softmax_lse`为False时返回占位Tensor；为True时返回softmax的log-sum-exp结果。
-- 目前暂不支持对`ori_kv`进行稀疏计算，因此设置`ori_sparse_indices`无效。
-- 除`ori_topk_length`和`cmp_topk_length`等预留输入可不传或传入空Tensor外，其余已传入Tensor不支持为空。
+- SWA ori sparse场景（如DSpark draft attention）要求`ori_mask_mode`为4、`cmp_kv`为空，且`ori_sparse_indices`、`ori_block_table`、`seqused_ori_kv`必须传入；每行query的ori侧可见集合由`ori_sparse_indices`精确给出。
+- 除`ori_topk_length`（SWA ori sparse场景可选）和`cmp_topk_length`等预留输入可不传或传入空Tensor外，其余已传入Tensor不支持为空。
 - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度；未传时由`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA block table相关语义推导。
 - `cmp_residual_kv`为主接口和metadata前置接口的可选入参；传入后用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度，其中`cmp_len`优先来自显式传入的`seqused_cmp_kv`。
 - `q`、`ori_kv`、`cmp_kv`数据排布格式支持从多种维度解读，B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。

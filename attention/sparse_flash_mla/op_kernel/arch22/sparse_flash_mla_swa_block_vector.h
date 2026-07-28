@@ -39,15 +39,20 @@ public:
     using MM2_OUT_T = float;
 
     __aicore__ inline SWAVectorBlock(){};
+    __aicore__ inline void ProcessVec0L(const RunInfo &runInfo);
     __aicore__ inline void ProcessVec1L(const RunInfo &info);
     __aicore__ inline void ProcessVec2L(const RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct ConstInfo &constInfo,
                                       const SparseFlashMlaTilingData *__restrict tilingData);
+    __aicore__ inline void InitVec0GlobalTensor(GlobalTensor<KV_T> kvMergeGm, GlobalTensor<KV_T> oriKvGm,
+                                                GlobalTensor<int32_t> oriBlockTableGm,
+                                                GlobalTensor<int32_t> oriSparseIndicesGm);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsQGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsKVGm,
-                                                GlobalTensor<T> sinksGm, GlobalTensor<T> softmaxLseGm);
+                                                GlobalTensor<T> sinksGm, GlobalTensor<T> softmaxLseGm,
+                                                GlobalTensor<int32_t> oriSparseIndicesGm);
     __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm,
                                                 GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
     __aicore__ inline void AllocEventID();
@@ -100,8 +105,17 @@ public:
     static constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float);
     // repeat stride不能超过256
     static constexpr uint32_t REPEATE_STRIDE_UP_BOUND = 256;
+    static constexpr uint64_t MERGE_CACHE_GM_BUF_NUM = 3;
+    static constexpr uint64_t MERGE_WORKSPACE_ROW_NUM = 512;
 
 private:
+    __aicore__ inline int64_t GetOriSparseKeyGmOffset(int32_t logicalIdx, const RunInfo &runInfo);
+    __aicore__ inline void CopyOriSparseRowToMerge(uint32_t mergeRowIdx, int32_t logicalIdx, const RunInfo &runInfo);
+    __aicore__ inline LocalTensor<int32_t> GetOriSparseIndexUb(uint32_t bufSlot);
+    __aicore__ inline void LoadOriSparseIndicesGmToUb(uint64_t qTokenOffset, uint32_t n2Idx, uint32_t gmColStart,
+                                                      int32_t loadCount, const LocalTensor<int32_t> &dstUb);
+    __aicore__ inline void LoadOriSparseIndicesToUb(uint64_t qTokenOffset, uint32_t n2Idx, uint32_t gmColStart,
+                                                    int32_t loadCount, uint32_t bufSlot, uint32_t ubColStart);
     static constexpr bool PAGE_ATTENTION = SMLAT::pageAttention;
     static constexpr bool FLASH_DECODE = SMLAT::flashDecode;
     static constexpr SMLA_LAYOUT LAYOUT_T = SMLAT::layout;
@@ -135,6 +149,7 @@ private:
 
     GlobalTensor<int32_t> actualSeqLengthsQGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
+    GlobalTensor<int32_t> oriSparseIndicesGm;
     GlobalTensor<UPDATE_T> vec2ResGm;
     GlobalTensor<MM2_OUT_T> mm2ResGm;
     GlobalTensor<T> accumOutGm;
@@ -146,6 +161,7 @@ private:
     GlobalTensor<KV_T> cmpKvGm_;
     GlobalTensor<int32_t> oriBlockTableGm_;
     GlobalTensor<int32_t> cmpBlockTableGm_;
+    GlobalTensor<KV_T> kvMergeGm_;
     GlobalTensor<T> softmaxLseGm;
 
     // ================================Local Buffer区====================================
@@ -156,6 +172,7 @@ private:
 
     TBuf<> tmpBuff1;        // 32K
     TBuf<> v0ValidSizeBuff; // 8K
+    TBuf<> oriIndexUbBuff;  // 3 * 512 int32, ping-pong with kvMergeGm
 
     TBuf<> sinksBuff;     // 1K
     TBuf<> sinksBrcbBuff; // 12K
@@ -187,6 +204,10 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::InitBuffers(TPipe *pipe)
 
     pipe->InitBuffer(tmpBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(v0ValidSizeBuff, ConstInfo::BUFFER_SIZE_BYTE_8K);
+    if (constInfo.hasOriSparseIndices) {
+        pipe->InitBuffer(oriIndexUbBuff,
+                         MERGE_CACHE_GM_BUF_NUM * MERGE_WORKSPACE_ROW_NUM * sizeof(int32_t));
+    }
 
     // M_MAX = 512/2vector = 256, 256 * sizeof(T) * N_Buffer
     pipe->InitBuffer(softmaxMaxBuff, ConstInfo::BUFFER_SIZE_BYTE_1K * constInfo.preLoadNum);
@@ -222,10 +243,139 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::InitParams(const struct ConstInfo 
 
 template <typename SMLAT>
 __aicore__ inline void
+SWAVectorBlock<SMLAT>::InitVec0GlobalTensor(GlobalTensor<KV_T> kvMergeGm, GlobalTensor<KV_T> oriKvGm,
+                                            GlobalTensor<int32_t> oriBlockTableGm,
+                                            GlobalTensor<int32_t> oriSparseIndicesGm)
+{
+    this->kvMergeGm_ = kvMergeGm;
+    this->oriKvGm_ = oriKvGm;
+    this->oriBlockTableGm_ = oriBlockTableGm;
+    this->oriSparseIndicesGm = oriSparseIndicesGm;
+}
+
+template <typename SMLAT>
+__aicore__ inline int64_t SWAVectorBlock<SMLAT>::GetOriSparseKeyGmOffset(int32_t logicalIdx, const RunInfo &runInfo)
+{
+    if (logicalIdx < 0) {
+        return -1;
+    }
+    int32_t oriLenLimit = actualSeqLengthsKVGm.GetValue(runInfo.bIdx);
+    if (logicalIdx >= oriLenLimit) {
+        return -1;
+    }
+    uint64_t blockTableIdx = static_cast<uint64_t>(logicalIdx) / constInfo.paOriBlockSize;
+    uint64_t inBlockIdx = static_cast<uint64_t>(logicalIdx) % constInfo.paOriBlockSize;
+    uint64_t idInBlockTable =
+        oriBlockTableGm_.GetValue(runInfo.bIdx * constInfo.oriMaxBlockNumPerBatch + blockTableIdx);
+    return static_cast<int64_t>(idInBlockTable * constInfo.oriKvStride0 +
+                                static_cast<uint64_t>(runInfo.n2IdxReal) * constInfo.headDim *
+                                    constInfo.paOriBlockSize +
+                                inBlockIdx * constInfo.headDim);
+}
+
+template <typename SMLAT>
+__aicore__ inline void SWAVectorBlock<SMLAT>::CopyOriSparseRowToMerge(uint32_t mergeRowIdx, int32_t logicalIdx,
+                                                                      const RunInfo &runInfo)
+{
+    LocalTensor<KV_T> rowUb = inputBuff2.Get<KV_T>();
+    uint64_t mergeOffset = runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * MERGE_WORKSPACE_ROW_NUM * constInfo.headDim +
+                           static_cast<uint64_t>(mergeRowIdx) * constInfo.headDim;
+    int64_t keyOffset = GetOriSparseKeyGmOffset(logicalIdx, runInfo);
+    if (keyOffset < 0) {
+        Duplicate(rowUb, static_cast<KV_T>(0), constInfo.headDim);
+        PipeBarrier<PIPE_V>();
+    } else {
+        DataCopyExtParams copyInParams;
+        copyInParams.blockCount = 1;
+        copyInParams.blockLen = constInfo.headDim * sizeof(KV_T);
+        copyInParams.srcStride = 0;
+        copyInParams.dstStride = 0;
+        DataCopyPadExtParams<KV_T> padInParams{false, 0, 0, 0};
+        DataCopyPad(rowUb, oriKvGm_[keyOffset], copyInParams, padInParams);
+        event_t mte2ToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+        SetFlag<HardEvent::MTE2_MTE3>(mte2ToMte3);
+        WaitFlag<HardEvent::MTE2_MTE3>(mte2ToMte3);
+    }
+    DataCopyExtParams copyOutParams;
+    copyOutParams.blockCount = 1;
+    copyOutParams.blockLen = constInfo.headDim * sizeof(KV_T);
+    copyOutParams.srcStride = 0;
+    copyOutParams.dstStride = 0;
+    DataCopyPad(kvMergeGm_[mergeOffset], rowUb, copyOutParams);
+    event_t mte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
+    WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
+}
+
+template <typename SMLAT>
+__aicore__ inline LocalTensor<int32_t> SWAVectorBlock<SMLAT>::GetOriSparseIndexUb(uint32_t bufSlot)
+{
+    LocalTensor<int32_t> indexUb = oriIndexUbBuff.Get<int32_t>();
+    return indexUb[bufSlot * MERGE_WORKSPACE_ROW_NUM];
+}
+
+template <typename SMLAT>
+__aicore__ inline void SWAVectorBlock<SMLAT>::LoadOriSparseIndicesGmToUb(uint64_t qTokenOffset, uint32_t n2Idx,
+                                                                          uint32_t gmColStart, int32_t loadCount,
+                                                                          const LocalTensor<int32_t> &dstUb)
+{
+    if (loadCount <= 0 || constInfo.oriSparseIndexWidth == 0) {
+        return;
+    }
+    uint64_t gmOffset =
+        (qTokenOffset * constInfo.kvHeadNum + n2Idx) * constInfo.oriSparseIndexWidth + gmColStart;
+    DataCopyExtParams copyParams;
+    copyParams.blockCount = 1;
+    copyParams.blockLen = static_cast<uint32_t>(loadCount) * sizeof(int32_t);
+    copyParams.srcStride = 0;
+    copyParams.dstStride = 0;
+    DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+    DataCopyPad(dstUb, oriSparseIndicesGm[gmOffset], copyParams, padParams);
+    event_t mte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
+    SetFlag<HardEvent::MTE2_S>(mte2ToS);
+    WaitFlag<HardEvent::MTE2_S>(mte2ToS);
+}
+
+template <typename SMLAT>
+__aicore__ inline void SWAVectorBlock<SMLAT>::LoadOriSparseIndicesToUb(uint64_t qTokenOffset, uint32_t n2Idx,
+                                                                      uint32_t gmColStart, int32_t loadCount,
+                                                                      uint32_t bufSlot, uint32_t ubColStart)
+{
+    LocalTensor<int32_t> indexUb = GetOriSparseIndexUb(bufSlot);
+    LoadOriSparseIndicesGmToUb(qTokenOffset, n2Idx, gmColStart, loadCount, indexUb[ubColStart]);
+}
+
+template <typename SMLAT>
+__aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec0L(const RunInfo &runInfo)
+{
+    int32_t s2DealSize = runInfo.v0S2DealSize;
+    if (s2DealSize <= 0) {
+        return;
+    }
+    int32_t slotStart = runInfo.v0S2Start;
+    int32_t slotEnd = slotStart + s2DealSize;
+    int32_t splitPoint = slotStart + (s2DealSize + 1) / 2;
+    int32_t myStart = (GetSubBlockIdx() == 0) ? slotStart : splitPoint;
+    int32_t myEnd = (GetSubBlockIdx() == 0) ? splitPoint : slotEnd;
+    uint32_t sparseColStart = runInfo.s2Idx * constInfo.s2BaseSize;
+    uint32_t bufSlot = runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM;
+    LoadOriSparseIndicesToUb(runInfo.qTokenOffset, runInfo.n2IdxReal, sparseColStart + static_cast<uint32_t>(myStart),
+                             myEnd - myStart, bufSlot, static_cast<uint32_t>(myStart - slotStart));
+    LocalTensor<int32_t> indexUb = GetOriSparseIndexUb(bufSlot);
+    for (int32_t slot = myStart; slot < myEnd; ++slot) {
+        int32_t mergeRowIdx = slot - slotStart;
+        int32_t logicalIdx = indexUb.GetValue(static_cast<uint32_t>(mergeRowIdx));
+        CopyOriSparseRowToMerge(static_cast<uint32_t>(mergeRowIdx), logicalIdx, runInfo);
+    }
+}
+
+template <typename SMLAT>
+__aicore__ inline void
 SWAVectorBlock<SMLAT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
                                            GlobalTensor<int32_t> actualSeqLengthsQGm,
                                            GlobalTensor<int32_t> actualSeqLengthsKVGm,
-                                           GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm)
+                                           GlobalTensor<T> sinksGm, GlobalTensor<T> softmaxLseGm,
+                                           GlobalTensor<int32_t> oriSparseIndicesGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -233,6 +383,7 @@ SWAVectorBlock<SMLAT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, Gl
     this->actualSeqLengthsKVGm = actualSeqLengthsKVGm;
     this->sinksGm = sinksGm;
     this->softmaxLseGm = softmaxLseGm;
+    this->oriSparseIndicesGm = oriSparseIndicesGm;
 }
 
 template <typename SMLAT>
@@ -339,6 +490,9 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
     uint32_t ubOffset = 0;
     if (info.isOriOnly) {
         if (constInfo.hasOriSparseIndices) {
+            int32_t oriLenLimit = actualSeqLengthsKVGm.GetValue(info.bIdx);
+            uint32_t validCols = Min(info.actualSingleProcessSInnerSize, columnCount);
+            uint32_t sparseColStart = info.s2Idx * constInfo.s2BaseSize;
             for (uint32_t i = s1StartIdx; i <= s1EndIdx; i++) {
                 dealTempSize = constInfo.gSize - gStartIdx;
                 if (i == s1EndIdx) {
@@ -346,6 +500,24 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
                 }
                 if (dealTempSize == 0) {
                     continue;
+                }
+                uint64_t qTokenOffsetForS1 = 0;
+                if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+                    qTokenOffsetForS1 = static_cast<uint64_t>(actualSeqLengthsQGm.GetValue(info.bIdx)) +
+                        static_cast<uint64_t>(i);
+                } else {
+                    qTokenOffsetForS1 = static_cast<uint64_t>(info.bIdx) * constInfo.qSeqSize +
+                        static_cast<uint64_t>(i);
+                }
+                uint64_t sparseIndexBaseOffset =
+                    (qTokenOffsetForS1 * constInfo.kvHeadNum + info.n2IdxReal) * constInfo.oriSparseIndexWidth;
+                for (uint32_t k = 0; k < validCols; ++k) {
+                    int32_t logicalIdx =
+                        oriSparseIndicesGm.GetValue(sparseIndexBaseOffset + sparseColStart + k);
+                    if (logicalIdx < 0 || logicalIdx >= oriLenLimit) {
+                        SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, static_cast<int64_t>(k),
+                                    static_cast<int64_t>(k));
+                    }
                 }
                 if (info.actualSingleProcessSInnerSize < columnCount) {
                     SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount,

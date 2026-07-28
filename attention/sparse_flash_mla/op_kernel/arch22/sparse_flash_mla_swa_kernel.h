@@ -111,6 +111,7 @@ private:
     static constexpr uint32_t SYNC_C1_V1_FLAG = 7;
     static constexpr uint32_t SYNC_V1_C2_FLAG = 8;
     static constexpr uint32_t SYNC_C2_V2_FLAG = 9;
+    static constexpr uint32_t MERGE_CACHE_GM_BUF_NUM = 3;
 
     static constexpr uint64_t SYNC_MM2RES_BUF1_FLAG = 10;
     static constexpr uint64_t SYNC_MM2RES_BUF2_FLAG = 11;
@@ -169,6 +170,7 @@ private:
 
     GlobalTensor<UPDATE_T> vec2ResGm;
 
+    GlobalTensor<KV_T> kvMergeGm_;
     GlobalTensor<T> accumOutGm;
     // ================================Init functions==================================
     __aicore__ inline void InitTilingData();
@@ -610,9 +612,20 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
         (__gm__ T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
     offset += constInfo.usedCoreNum * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T);
 
+    if (constInfo.hasOriSparseIndices) {
+        kvMergeGm_.SetGlobalBuffer(
+            (__gm__ KV_T *)(workspace + offset +
+                            aiCoreIdx * 512 * 512 * MERGE_CACHE_GM_BUF_NUM * sizeof(KV_T)));
+        offset += static_cast<uint64_t>(constInfo.usedCoreNum) * 512 * 512 * MERGE_CACHE_GM_BUF_NUM * sizeof(KV_T);
+    }
+
     if ASCEND_IS_AIV {
         vectorBlock.InitParams(constInfo, tilingData);
-        vectorBlock.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm, actualSeqLengthsKVGm, sinksGm, softmaxLseGm);
+        if (constInfo.hasOriSparseIndices) {
+            vectorBlock.InitVec0GlobalTensor(kvMergeGm_, oriKvGm, oriBlockTableGm, oriSparseIndicesGm);
+        }
+        vectorBlock.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm, actualSeqLengthsKVGm, sinksGm,
+                                         softmaxLseGm, oriSparseIndicesGm);
         vectorBlock.InitVec2GlobalTensor(accumOutGm, vec2ResGm, mm2ResGm, attentionOutGm);
     }
 
@@ -620,7 +633,7 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
         cubeBlock.InitParams(constInfo);
         cubeBlock.InitMm1GlobalTensor(queryGm, oriKvGm, cmpKvGm, mm1ResGm);
         cubeBlock.InitMm2GlobalTensor(vec1ResGm, mm2ResGm, attentionOutGm);
-        cubeBlock.InitPageAttentionInfo(oriKvGm, oriBlockTableGm, cmpBlockTableGm, oriSparseIndicesGm);
+        cubeBlock.InitPageAttentionInfo(oriKvGm, kvMergeGm_, oriBlockTableGm, cmpBlockTableGm);
     }
     // 要在InitParams之后执行
     if (pipe != nullptr) {
@@ -769,6 +782,10 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::CalcParams(uint32_t loop, uint3
         SMLAAlign(info.actualSingleProcessSInnerOriSize, SMLAVectorBlock<SMLAT>::BYTE_BLOCK);
     info.actualSingleProcessSInnerCmpAlignSize =
         SMLAAlign(info.actualSingleProcessSInnerCmpSize, SMLAVectorBlock<SMLAT>::BYTE_BLOCK);
+    if (constInfo.hasOriSparseIndices && info.isValid) {
+        info.v0S2Start = 0;
+        info.v0S2DealSize = static_cast<int32_t>(info.actualSingleProcessSInnerOriSize);
+    }
 }
 
 template <typename SMLAT>
@@ -944,6 +961,9 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::ProcessBalance()
                 s2LoopIdx++) {
                 PreloadPipeline(gloop, cmpLoop, constInfo.s2Start, s2LoopIdx, extraInfo);
                 ++gloop;
+                if (constInfo.hasOriSparseIndices && s2LoopIdx < tempLoopInfo.s2LoopTimes) {
+                    ++cmpLoop;
+                }
             }
             globalLoopStart = false;
             constInfo.s2Start = 0;
@@ -964,7 +984,12 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::PreloadPipeline(uint32_t loop, 
 
     CalcParams(loop, cmpLoop, s2Start, s2LoopIdx, extraInfo0);
     if (extraInfo0.isValid) {
-        if ASCEND_IS_AIC {
+        if (constInfo.hasOriSparseIndices) {
+            if ASCEND_IS_AIV {
+                vectorBlock.ProcessVec0L(extraInfo0);
+                CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
+            }
+        } else if ASCEND_IS_AIC {
             ComputeMm1(extraInfo0);
         }
     }
@@ -981,6 +1006,12 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::PreloadPipeline(uint32_t loop, 
             vectorBlock.ProcessVec2L(extraInfo1);
         }
         extraInfo1.isValid = false;
+    }
+    if (extraInfo0.isValid && constInfo.hasOriSparseIndices) {
+        if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
+            ComputeMm1(extraInfo0);
+        }
     }
 }
 } // namespace SMLAKernel
