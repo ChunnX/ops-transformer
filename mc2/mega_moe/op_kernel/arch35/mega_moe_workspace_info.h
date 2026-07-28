@@ -293,10 +293,10 @@ struct WorkspaceInfo {
                                          MegaMoeImpl::SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
                                      ALIGN_512);
             // sharedExpertGmm2TileCounter: tile 级 flag counter, 每 shared expert 一组 slot
-            // slot 数 = CeilDiv(bs, COMBINE_TOKEN_GROUP_SIZE), 每 slot 占 INT_CACHELINE 个 int32
+            // slot 数 = CeilDiv(bs, GMM1_TILE_M), 每 slot 占 INT_CACHELINE 个 int32
             sharedExpertGmm2TileCounterPtr = base + workspaceSize;
             uint32_t tokenGroupCount = Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->bs),
-                                                           static_cast<uint32_t>(256U));
+                                                           static_cast<uint32_t>(MegaMoeImpl::L1_TILE_M_256));
             uint32_t totalSlots = tokenGroupCount * tilingData->sharedExpertNum;
             workspaceSize += Ops::Base::CeilAlign(
                 static_cast<int64_t>(totalSlots) * static_cast<int64_t>(INT_CACHELINE) * SIZE_INT_32, ALIGN_512);
