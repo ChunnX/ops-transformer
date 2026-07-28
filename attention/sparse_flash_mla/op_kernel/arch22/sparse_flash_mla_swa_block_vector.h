@@ -112,6 +112,7 @@ private:
     __aicore__ inline int64_t GetOriSparseKeyGmOffset(int32_t logicalIdx, const RunInfo &runInfo);
     __aicore__ inline void CopyOriSparseRowToMerge(uint32_t mergeRowIdx, int32_t logicalIdx, const RunInfo &runInfo);
     __aicore__ inline LocalTensor<int32_t> GetOriSparseIndexUb(uint32_t bufSlot);
+    __aicore__ inline int32_t AlignOriSparseIndexLoadCount(int32_t loadCount);
     __aicore__ inline void LoadOriSparseIndicesGmToUb(uint64_t qTokenOffset, uint32_t n2Idx, uint32_t gmColStart,
                                                       int32_t loadCount, const LocalTensor<int32_t> &dstUb);
     __aicore__ inline void LoadOriSparseIndicesToUb(uint64_t qTokenOffset, uint32_t n2Idx, uint32_t gmColStart,
@@ -315,18 +316,29 @@ __aicore__ inline LocalTensor<int32_t> SWAVectorBlock<SMLAT>::GetOriSparseIndexU
 }
 
 template <typename SMLAT>
+__aicore__ inline int32_t SWAVectorBlock<SMLAT>::AlignOriSparseIndexLoadCount(int32_t loadCount)
+{
+    if (loadCount <= 0) {
+        return 0;
+    }
+    // MTE blockLen must be 32B-aligned; int32 slot count aligns to 8 elements.
+    return ((loadCount + 7) / 8) * 8;
+}
+
+template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::LoadOriSparseIndicesGmToUb(uint64_t qTokenOffset, uint32_t n2Idx,
                                                                           uint32_t gmColStart, int32_t loadCount,
                                                                           const LocalTensor<int32_t> &dstUb)
 {
-    if (loadCount <= 0 || constInfo.oriSparseIndexWidth == 0) {
+    int32_t alignedCount = AlignOriSparseIndexLoadCount(loadCount);
+    if (alignedCount <= 0 || constInfo.oriSparseIndexWidth == 0) {
         return;
     }
     uint64_t gmOffset =
         (qTokenOffset * constInfo.kvHeadNum + n2Idx) * constInfo.oriSparseIndexWidth + gmColStart;
     DataCopyExtParams copyParams;
     copyParams.blockCount = 1;
-    copyParams.blockLen = static_cast<uint32_t>(loadCount) * sizeof(int32_t);
+    copyParams.blockLen = static_cast<uint32_t>(alignedCount) * sizeof(int32_t);
     copyParams.srcStride = 0;
     copyParams.dstStride = 0;
     DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
@@ -341,8 +353,9 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::LoadOriSparseIndicesToUb(uint64_t 
                                                                       uint32_t gmColStart, int32_t loadCount,
                                                                       uint32_t bufSlot, uint32_t ubColStart)
 {
+    (void)ubColStart;
     LocalTensor<int32_t> indexUb = GetOriSparseIndexUb(bufSlot);
-    LoadOriSparseIndicesGmToUb(qTokenOffset, n2Idx, gmColStart, loadCount, indexUb[ubColStart]);
+    LoadOriSparseIndicesGmToUb(qTokenOffset, n2Idx, gmColStart, loadCount, indexUb);
 }
 
 template <typename SMLAT>
@@ -359,12 +372,15 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec0L(const RunInfo &runInf
     int32_t myEnd = (GetSubBlockIdx() == 0) ? splitPoint : slotEnd;
     uint32_t sparseColStart = runInfo.s2Idx * constInfo.s2BaseSize;
     uint32_t bufSlot = runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM;
-    LoadOriSparseIndicesToUb(runInfo.qTokenOffset, runInfo.n2IdxReal, sparseColStart + static_cast<uint32_t>(myStart),
-                             myEnd - myStart, bufSlot, static_cast<uint32_t>(myStart - slotStart));
-    LocalTensor<int32_t> indexUb = GetOriSparseIndexUb(bufSlot);
+    if (GetSubBlockIdx() == 0) {
+        LoadOriSparseIndicesToUb(runInfo.qTokenOffset, runInfo.n2IdxReal, sparseColStart, s2DealSize, bufSlot, 0);
+    }
+    LocalTensor<int32_t> sliceUb = v0ValidSizeBuff.Get<int32_t>();
+    LoadOriSparseIndicesGmToUb(runInfo.qTokenOffset, runInfo.n2IdxReal, sparseColStart + static_cast<uint32_t>(myStart),
+                                 myEnd - myStart, sliceUb);
     for (int32_t slot = myStart; slot < myEnd; ++slot) {
         int32_t mergeRowIdx = slot - slotStart;
-        int32_t logicalIdx = indexUb.GetValue(static_cast<uint32_t>(mergeRowIdx));
+        int32_t logicalIdx = sliceUb.GetValue(static_cast<uint32_t>(slot - myStart));
         CopyOriSparseRowToMerge(static_cast<uint32_t>(mergeRowIdx), logicalIdx, runInfo);
     }
 }
@@ -509,11 +525,11 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
                     qTokenOffsetForS1 = static_cast<uint64_t>(info.bIdx) * constInfo.qSeqSize +
                         static_cast<uint64_t>(i);
                 }
-                uint64_t sparseIndexBaseOffset =
-                    (qTokenOffsetForS1 * constInfo.kvHeadNum + info.n2IdxReal) * constInfo.oriSparseIndexWidth;
+                LocalTensor<int32_t> rowIndexUb = tmpBuff1.Get<int32_t>();
+                LoadOriSparseIndicesGmToUb(qTokenOffsetForS1, info.n2IdxReal, sparseColStart,
+                                           static_cast<int32_t>(validCols), rowIndexUb);
                 for (uint32_t k = 0; k < validCols; ++k) {
-                    int32_t logicalIdx =
-                        oriSparseIndicesGm.GetValue(sparseIndexBaseOffset + sparseColStart + k);
+                    int32_t logicalIdx = rowIndexUb.GetValue(k);
                     if (logicalIdx < 0 || logicalIdx >= oriLenLimit) {
                         SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, static_cast<int64_t>(k),
                                     static_cast<int64_t>(k));
