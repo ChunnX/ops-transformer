@@ -114,6 +114,7 @@ const static int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
 const static int64_t EXPERT_TOKENS_TYPE_KEY_VALUE = 2LL;
 const static int64_t DROP_PAD_MODE_DROPLESS = 0LL;
 const static int64_t DROP_PAD_MODE_DROPPAD = 1LL;
+const static int64_t FP32_EXACT_INT_MAX = 1LL << 24;
 const static int64_t EXPERT_CAPACITY_MIN_VALUE = 0LL;
 const static int64_t MAX_COLS_ONE_LOOP = 16376LL; // DropPad Tiling计算使用的最大列数
 const static int64_t REG_SIZE = 256LL;
@@ -1711,11 +1712,11 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4ExpertTokensCountCompute()
     int64_t expertTensorBytes = Ops::Base::CeilAlign(expertNumElement, UB_BLOCK_SIZE) * UB_BLOCK_SIZE;
     int64_t expertTokensCountVecWorkspaceBytes = 0;
     if (tilingDataPtr_->expertTokensNumType == EXPERT_TOKENS_TYPE_COUNT &&
-        dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
+        dropPadMode_ == DROP_PAD_MODE_DROPLESS && totalElements <= FP32_EXACT_INT_MAX) {
         expertTokensCountVecWorkspaceBytes = AlignBytes(tilingDataPtr_->actualExpertNum, sizeof(float));
     }
     if (tilingDataPtr_->expertTokensNumType == EXPERT_TOKENS_TYPE_CUMSUM &&
-        tilingDataPtr_->actualExpertNum > 0) {
+        tilingDataPtr_->actualExpertNum > 0 && totalElements <= FP32_EXACT_INT_MAX) {
         int64_t cumsumInner = Align(tilingDataPtr_->actualExpertNum, sizeof(float));
         uint32_t maxTmpBytes = 0;
         uint32_t minTmpBytes = 0;
