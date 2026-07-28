@@ -550,9 +550,15 @@ def _print_metrics(metrics: Dict[str, Dict[str, float]]) -> None:
 
 
 def _brief_metrics(metrics: Dict[str, Dict[str, float]]) -> str:
+    brief_names = (
+        ("dQueryIndex", "dQ_norm"),
+        ("dKeyIndex", "dK_norm"),
+        ("dWeights", "dW_norm"),
+        ("Loss", "Loss_norm"),
+    )
     return " ".join(
-        f"{name}={metrics[name]['mean_rel']:.2e}"
-        for name in ("dQueryIndex", "dKeyIndex", "dWeights", "Loss")
+        f"{short_name}={metrics[name]['norm_rel']:.2e}"
+        for name, short_name in brief_names
     )
 
 
