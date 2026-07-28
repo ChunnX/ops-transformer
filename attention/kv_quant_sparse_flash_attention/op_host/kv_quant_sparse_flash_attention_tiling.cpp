@@ -1909,9 +1909,9 @@ ge::graphStatus QSFAInfoParser::CheckContiguous() const
     }
 
     OP_CHECK_IF(keyNonContiguous,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "keyNonContiguous",
-                                                      std::string(keyNonContiguous ? "true" : "false"),
-                                                      "key only support non-continuous keying on the 0-axis"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName_, "keyNonContiguous", std::string(keyNonContiguous ? "true" : "false"),
+                    "key only support non-continuous keying on the 0-axis in PA scenarios."),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
