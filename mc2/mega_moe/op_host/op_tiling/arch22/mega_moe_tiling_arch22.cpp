@@ -53,6 +53,7 @@ constexpr uint32_t ATTR_ACTIVATION_OUT_DTYPE_INDEX = 11;   // 激活函数输出
 constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 12;      // weight1 是否转置
 constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 13;      // weight2 是否转置
 constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 14;     // weight1 交错模式
+constexpr uint32_t ATTR_TIMEOUT_MS_INDEX = 18;             // A3 通信超时（毫秒）
 
 // 输入 tensor 索引
 constexpr uint32_t CONTEXT_INDEX = 0;        // context，shape = [?]
@@ -67,6 +68,7 @@ constexpr uint32_t BIAS1_INDEX = 8;          // GMM1 的 bias（OPTIONAL）
 constexpr uint32_t BIAS2_INDEX = 9;          // GMM2 的 bias（OPTIONAL）
 constexpr uint32_t X_ACTIVE_MASK_INDEX = 10; // token 活跃掩码（OPTIONAL）
 constexpr uint32_t SCALES_INDEX = 11;        // 额外 scale（OPTIONAL）
+constexpr uint32_t MASK_BUFFER_INDEX = 18;   // rank 通信掩码（OPTIONAL）
 
 // 输出 tensor 索引
 constexpr uint32_t OUTPUT_Y_INDEX = 0;                 // 输出 y，shape = [M, K]
@@ -344,6 +346,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     auto transposeWeight1Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT1_INDEX);
     auto transposeWeight2Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT2_INDEX);
     auto weight1InterleavePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT1_INTERLEAVE_INDEX);
+    auto timeoutMsPtr = attrs->GetAttrPointer<int64_t>(ATTR_TIMEOUT_MS_INDEX);
 
     // 1. moe_expert_num
     OP_TILING_CHECK(CheckMoeExpertNumAttr(moeExpertNumPtr) != ge::GRAPH_SUCCESS,
@@ -388,6 +391,31 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_TILING_CHECK(CheckNumMaxTokensPerRankAttr(context, numMaxTokensPerRankPtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckNumMaxTokensPerRankAttr failed."), return GRAPH_FAILED);
     info.numMaxTokensPerRank = static_cast<uint32_t>(*numMaxTokensPerRankPtr);
+
+    // Elastic timeout/mask is an A3-only capability. A missing optional attr
+    // keeps the legacy no-timeout behavior used by existing callers/tests.
+    int64_t timeoutMs = timeoutMsPtr == nullptr ? 0 : *timeoutMsPtr;
+    OP_TILING_CHECK(timeoutMs < 0, OP_LOGE(K_INNER_DEBUG, "timeout_ms must be >= 0, but got %ld.", timeoutMs),
+                    return GRAPH_FAILED);
+    std::string socVersion = mc2tiling::GetSocVersion(context);
+    auto maskBuffer = context->GetOptionalInputTensor(MASK_BUFFER_INDEX);
+    OP_TILING_CHECK(socVersion != "Ascend910_93" && (timeoutMs != 0 || maskBuffer != nullptr),
+                    OP_LOGE(K_INNER_DEBUG, "timeout_ms/mask_buffer are supported on A3 only."), return GRAPH_FAILED);
+    OP_TILING_CHECK(timeoutMs > 0 && maskBuffer == nullptr,
+                    OP_LOGE(K_INNER_DEBUG, "mask_buffer is required when timeout_ms is configured."),
+                    return GRAPH_FAILED);
+    if (maskBuffer != nullptr) {
+        auto maskShape = context->GetOptionalInputShape(MASK_BUFFER_INDEX);
+        auto maskDesc = context->GetOptionalInputDesc(MASK_BUFFER_INDEX);
+        OP_TILING_CHECK(maskShape == nullptr || maskDesc == nullptr,
+                        OP_LOGE(K_INNER_DEBUG, "mask_buffer shape/desc is null."), return GRAPH_FAILED);
+        OP_TILING_CHECK(maskShape->GetStorageShape().GetDimNum() != ONE_DIM ||
+                            maskShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.epWorldSize),
+                        OP_LOGE(K_INNER_DEBUG, "mask_buffer shape must be [ep_world_size]."), return GRAPH_FAILED);
+        OP_TILING_CHECK(maskDesc->GetDataType() != ge::DT_BOOL,
+                        OP_LOGE(K_INNER_DEBUG, "mask_buffer dtype must be bool."), return GRAPH_FAILED);
+    }
+    info.timeoutMs = static_cast<uint64_t>(timeoutMs);
 
     // 9. activation
     OP_TILING_CHECK(CheckActivationAttr(activationPtr) != ge::GRAPH_SUCCESS,

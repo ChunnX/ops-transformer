@@ -99,11 +99,12 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *xActiveMaskOptional, const aclTensorList *sharedWeight1Optional,
     const aclTensorList *sharedWeight2Optional, const aclTensorList *sharedWeightScales1Optional,
     const aclTensorList *sharedWeightScales2Optional, const aclTensorList *sharedBias1Optional,
-    const aclTensorList *sharedBias2Optional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
-    int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
-    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
-    int64_t rankNumPerServer, int64_t topkWeightsType, aclTensor *yOut, aclTensor *expertTokenNumsOut,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensorList *sharedBias2Optional, const aclTensor *maskBufferOptional, int64_t moeExpertNum,
+    int64_t epWorldSize, int64_t cclBufferSize, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
+    int64_t dispatchQuantOutDtype, int64_t combineQuantMode, const char *commAlg, int64_t numMaxTokensPerRank,
+    const char *activation, float activationClamp, int64_t topoType, int64_t rankNumPerServer, int64_t topkWeightsType,
+    int64_t timeoutMs, aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -120,6 +121,9 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID, "epWorldSize must be > 0, got %ld.", epWorldSize);
     CHECK_COND(maxRecvTokenNum >= 0, ACLNN_ERR_PARAM_INVALID, "maxRecvTokenNum must be >= 0, got %ld.",
                maxRecvTokenNum);
+    CHECK_COND(timeoutMs >= 0, ACLNN_ERR_PARAM_INVALID, "timeoutMs must be >= 0, got %ld.", timeoutMs);
+    CHECK_COND(timeoutMs == 0 || maskBufferOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "maskBuffer must be provided when timeoutMs is configured.");
 
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {
@@ -186,10 +190,10 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2, weightScales1Optional, weightScales2Optional, bias1Optional,
         bias2Optional, xActiveMaskOptional, nullptr, sharedWeight1Optional, sharedWeight2Optional,
         sharedWeightScales1Optional, sharedWeightScales2Optional, sharedBias1Optional, sharedBias2Optional,
-        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutDtype,
-        combineQuantMode, const_cast<char *>(commAlg), 0, const_cast<char *>(activation), activationClamp,
-        ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer, topkWeightsType, yOut, expertTokenNumsOut,
-        workspaceSize, executor);
+        maskBufferOptional, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
+        dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0, const_cast<char *>(activation),
+        activationClamp, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer, topkWeightsType, timeoutMs,
+        yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

@@ -11,7 +11,10 @@ from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_
 from .moe_token_permute import moe_token_permute
 from .mega_moe import (
     get_symm_buffer_for_mega_moe,
-    mega_moe
+    mega_moe,
+    query_mask_buffer,
+    update_mask_buffer,
+    update_group,
 )
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
