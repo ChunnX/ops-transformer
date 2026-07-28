@@ -66,11 +66,7 @@ struct QSMLATilingOptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-enum class QSMLALayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BBND = 2
-};
+enum class QSMLALayout : uint32_t { BSND = 0, TND = 1, PA_BBND = 2 };
 
 enum class QSMLAAxis : uint32_t {
     B = 0,
@@ -86,14 +82,12 @@ enum class QSMLAAxis : uint32_t {
 enum class QSMLATemplateMode : uint32_t {
     SWA_TEMPLATE_MODE = 0,
     HCA_TEMPLATE_MODE = 1,
-    CSA_TEMPLATE_MODE = 2
+    CSA_TEMPLATE_MODE = 2,
+    ORI_SPARSE_TEMPLATE_MODE = 3,
+    ORI_CMP_SPARSE_TEMPLATE_MODE = 4
 };
 
-enum class KvStorageMode : uint32_t {
-    BATCH_CONTINUOUS = 0,
-    TENSOR_LIST = 1,
-    PAGE_ATTENTION = 2
-};
+enum class KvStorageMode : uint32_t { BATCH_CONTINUOUS = 0, TENSOR_LIST = 1, PAGE_ATTENTION = 2 };
 
 struct QSMLATilingShapeCompareParam {
     int64_t B = 1;
@@ -336,9 +330,7 @@ public:
 
 class QSMLAInfoParser {
 public:
-    explicit QSMLAInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit QSMLAInfoParser(gert::TilingContext *context) : context_(context) {}
     ~QSMLAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
