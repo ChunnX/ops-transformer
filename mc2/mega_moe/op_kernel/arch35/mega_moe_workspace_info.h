@@ -108,7 +108,8 @@ HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tiling
     bool useMteNoQuantGmm2Gm =
         useMteA8W8Wave && tilingData->combineQuantMode == COMBINE_NO_QUANT;
     int64_t maxWavesPerExpert =
-        Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
+        Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
+                           static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256));
     int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
     int64_t swigluFlagSlotsPerExpert =
         useMteA8W8Wave ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
@@ -194,7 +195,8 @@ struct WorkspaceInfo {
             useMteA8W8Wave && tilingData->combineQuantMode == COMBINE_NO_QUANT;
 
         int64_t maxWavesPerExpert =
-            Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
+            Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
+                               static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256));
         int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
         // Only the wave pipeline can consume SwiGLU at 256-row granularity.
         // Legacy and layered paths retain one cache-line slot per expert.
