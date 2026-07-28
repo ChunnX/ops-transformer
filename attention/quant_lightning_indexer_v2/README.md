@@ -29,8 +29,8 @@
 | query                     | 输入      | 公式中的$Q_{index}^{Quant}\in\R^{g\times d}$，表示输入Index Query，不支持非连续。| INT8、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1 | ND         |
 | key                   | 输入      | 公式中的$K_{index}^{Quant}\in\R^{S_{k}\times d}$，表示压缩后的输入Index Key，支持0轴非连续。| INT8、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1 | ND |
 | weights                 | 输入      | 公式中的$W$，表示权重系数，不支持非连续。 | FLOAT16、FLOAT32 | ND |
-| query_dequant_scale             | 输入      | 公式中的$Scale_Q$，表示Index Query的反量化系数，不支持非连续。shape与weights一致 | FLOAT16、FLOAT32、FLOAT8_E8M0     | ND         |
-| key_dequant_scale            | 输入      | 公式中的$Scale_K$，表示Index Key的反量化系数，支持0轴非连续。| FLOAT16、FLOAT32、FLOAT8_E8M0       | ND         |
+| query_dequant_scale             | 输入      | 公式中的$Scale_Q$，表示Index Query的反量化系数，不支持非连续。非MX场景shape与weights一致；`quant_mode`为3/5时，shape为将`query`的D轴替换为(D/64, 2) | FLOAT16、FLOAT32、FLOAT8_E8M0     | ND         |
+| key_dequant_scale            | 输入      | 公式中的$Scale_K$，表示Index Key的反量化系数，支持0轴非连续。`quant_mode`为3/5时，shape为将`key`的D轴替换为(D/64, 2) | FLOAT16、FLOAT32、FLOAT8_E8M0       | ND         |
 | cu_seqlens_q                    | 可选输入      | layout_q为TND时必须传入，表示每个Batch中`query`的有效token数前缀和。；layout_q为BSND时不能传入 | INT32       | ND         |
 | cu_seqlens_k                    | 可选输入      | layout_k为TND时必须传入，表示每个Batch中`key`的有效token数前缀和；layout_k为PA_BSND或BSND时不能传入 | INT32       | ND         |
 | seqused_q                    | 可选输入      | layout_q为BSND时可选传入，表示每个Batch中`query`的有效token数，可传入None表示与query的S长度相同 | INT32       | ND         |
