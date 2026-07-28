@@ -374,33 +374,34 @@ public:
                                   gmDst[matmulGmOffsetC], layoutGmDst, gmMxScaleA[matmulGmOffsetMxScaleA],
                                   gmMxScaleB[matmulGmOffsetMxScaleB], mxScaleK, params.problemShape.n(),
                                   matmulBlockSizeCoord);
-                        continue;
+                    } else {
+                        bool matmulIsFirstBlock = matmulLoopIdx == coreIdx;
+                        bool matmulHasNextBlock = false;
+                        GemmCoord nextBlockLocCoord;
+                        GemmCoord matmulNextBlockSizeCoord;
+                        GemmCoord nextBlockIdCoord;
+                        int32_t nextLoopIdx = matmulLoopIdx + coreNum;
+                        int32_t nextInRankIdx = nextLoopIdx / params.rankSize;
+                        int32_t nextDstRankIdx = nextLoopIdx % params.rankSize;
+                        if (nextLoopIdx < coreLoops) {
+                            matmulHasNextBlock = true;
+                            nextBlockIdCoord = GetBlockIdCoord(nextInRankIdx, mLoopPerRank, nLoops, params.swizzlDirect,
+                                                               params.swizzlCount);
+                            nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
+                            matmulNextBlockSizeCoord =
+                                GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank, finalM, nLoops,
+                                                  params.problemShape.n(), params.problemShape.k());
+                        }
+                        int64_t nextGmABlockSt = static_cast<int64_t>(nextDstRankIdx) * finalM * kAlign;
+                        MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
+                        MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
+                        int64_t matmulGmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);
+                        int64_t matmulGmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
+                        blockMmad(
+                            gmA[matmulGmOffsetA], params.layoutA, gmB[matmulGmOffsetB], params.layoutB,
+                            gmDst[matmulGmOffsetC], layoutGmDst, gmA[matmulGmOffsetNextA], gmB[matmulGmOffsetNextB],
+                            matmulBlockSizeCoord, matmulNextBlockSizeCoord, matmulIsFirstBlock, matmulHasNextBlock);
                     }
-                    bool matmulIsFirstBlock = matmulLoopIdx == coreIdx;
-                    bool matmulHasNextBlock = false;
-                    GemmCoord nextBlockLocCoord;
-                    GemmCoord matmulNextBlockSizeCoord;
-                    GemmCoord nextBlockIdCoord;
-                    int32_t nextLoopIdx = matmulLoopIdx + coreNum;
-                    int32_t nextInRankIdx = nextLoopIdx / params.rankSize;
-                    int32_t nextDstRankIdx = nextLoopIdx % params.rankSize;
-                    if (nextLoopIdx < coreLoops) {
-                        matmulHasNextBlock = true;
-                        nextBlockIdCoord = GetBlockIdCoord(nextInRankIdx, mLoopPerRank, nLoops, params.swizzlDirect,
-                                                           params.swizzlCount);
-                        nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
-                        matmulNextBlockSizeCoord =
-                            GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank, finalM, nLoops,
-                                              params.problemShape.n(), params.problemShape.k());
-                    }
-                    int64_t nextGmABlockSt = static_cast<int64_t>(nextDstRankIdx) * finalM * kAlign;
-                    MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
-                    MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
-                    int64_t matmulGmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);
-                    int64_t matmulGmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
-                    blockMmad(gmA[matmulGmOffsetA], params.layoutA, gmB[matmulGmOffsetB], params.layoutB,
-                              gmDst[matmulGmOffsetC], layoutGmDst, gmA[matmulGmOffsetNextA], gmB[matmulGmOffsetNextB],
-                              matmulBlockSizeCoord, matmulNextBlockSizeCoord, matmulIsFirstBlock, matmulHasNextBlock);
                 }
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(matmulFlagIdx);
