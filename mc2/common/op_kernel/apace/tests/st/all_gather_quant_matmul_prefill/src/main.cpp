@@ -133,54 +133,6 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n)
   tilingData.commTurn = commTurn;
   tilingData.paddedTailM = paddedTailM;
 
-  // FragmentTilingData (host 侧预计算)
-  uint64_t scaleKLen = static_cast<uint64_t>(CeilDiv(k, static_cast<int>(::MXFP_DIVISOR_SIZE)))
-                       * static_cast<uint64_t>(::MXFP_MULTI_BASE_SIZE);
-
-  // Self main: 1 fragment, fragmentSize = tileCnt * tileM
-  tilingData.fragTilingSelfA.AssembleAxis = 0;
-  tilingData.fragTilingSelfA.assembledShape[0] = static_cast<uint64_t>(tileCnt) * tileM;
-  tilingData.fragTilingSelfA.assembledShape[1] = static_cast<uint64_t>(k);
-  tilingData.fragTilingSelfA.fragmentSize      = static_cast<uint64_t>(tileCnt) * tileM;
-  tilingData.fragTilingSelfA.realFragmentSize  = static_cast<uint64_t>(tileCnt) * tileM;
-  // tilingData.fragTilingSelfA.fragmentStride[0] = static_cast<uint64_t>(tileCnt) * tileM;
-  // tilingData.fragTilingSelfA.fragmentStride[1] = 1;
-  tilingData.fragTilingSelfA.fragmentCnt = 1;
-  tilingData.fragTilingSelfScaleA = tilingData.fragTilingSelfA;
-  tilingData.fragTilingSelfScaleA.assembledShape[1] = scaleKLen;
-  tilingData.fragTilingSelfC = tilingData.fragTilingSelfA;
-  tilingData.fragTilingSelfC.assembledShape[1] = static_cast<uint64_t>(n);
-
-  // Remote round: R-1 fragments, fragmentSize = tileM
-  tilingData.fragTilingRemoteA.AssembleAxis = 0;
-  tilingData.fragTilingRemoteA.assembledShape[0] = static_cast<uint64_t>(rankNum - 1) * tileM;
-  tilingData.fragTilingRemoteA.assembledShape[1] = static_cast<uint64_t>(k);
-  tilingData.fragTilingRemoteA.fragmentSize      = tileM;
-  tilingData.fragTilingRemoteA.realFragmentSize  = tileM;
-  // tilingData.fragTilingRemoteA.fragmentStride[0] = tileM;
-  // tilingData.fragTilingRemoteA.fragmentStride[1] = 1;
-  tilingData.fragTilingRemoteA.fragmentCnt = static_cast<uint32_t>(rankNum - 1);
-  tilingData.fragTilingRemoteScaleA = tilingData.fragTilingRemoteA;
-  tilingData.fragTilingRemoteScaleA.assembledShape[1] = scaleKLen;
-  tilingData.fragTilingRemoteC = tilingData.fragTilingRemoteA;
-  tilingData.fragTilingRemoteC.assembledShape[1] = static_cast<uint64_t>(n);
-
-  // Tail: R fragments, fragmentSize = paddedTailM
-  if (tailCnt > 0) {
-    tilingData.fragTilingTailA.AssembleAxis = 0;
-    tilingData.fragTilingTailA.assembledShape[0] = static_cast<uint64_t>(rankNum) * paddedTailM;
-    tilingData.fragTilingTailA.assembledShape[1] = static_cast<uint64_t>(k);
-    tilingData.fragTilingTailA.fragmentSize      = paddedTailM;
-    tilingData.fragTilingTailA.realFragmentSize  = tailM;
-    // tilingData.fragTilingTailA.fragmentStride[0] = paddedTailM;
-    // tilingData.fragTilingTailA.fragmentStride[1] = 1;
-    tilingData.fragTilingTailA.fragmentCnt = static_cast<uint32_t>(rankNum);
-    tilingData.fragTilingTailScaleA = tilingData.fragTilingTailA;
-    tilingData.fragTilingTailScaleA.assembledShape[1] = scaleKLen;
-    tilingData.fragTilingTailC = tilingData.fragTilingTailA;
-    tilingData.fragTilingTailC.assembledShape[1] = static_cast<uint64_t>(n);
-  }
-
   printf("[Rank %d] Tiling: tileCnt=%u, tileM=%u, tailCnt=%u, tailM=%u, paddedTailM=%u, commTurn=%u\n",
        rankId, tileCnt, tileM, tailCnt, tailM, paddedTailM, commTurn);
 
