@@ -1,0 +1,35 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+
+SLIDING_TILE_ATTENTION_SOURCE_TREE_SHA256=e928737087f5fc3343c81b3e28127621c8263cbe0cd3b5186581589e1c662e08
+SLIDING_TILE_ATTENTION_SOC_VERSION=ascend910_93
+SLIDING_TILE_ATTENTION_DEVICE=Ascend910 physical=9 card=4 chip=1 logical=npu:0-after-visibility-remap
+CASE_PASS id=1 dtype=FP16 shape=[1,8,115328,64] samples=27 max_abs=0.00010439754 mae=4.6115783e-05 rmse=5.5796706e-05 tol=0.003 latency_us_median=70725.602 latency_us_min=70691.703 latency_us_max=70869.820 warmup=3 repeat=5 text=128 window_values=24 layout=contiguous
+CASE_PASS id=2 dtype=BF16 shape=[1,8,115328,64] samples=27 max_abs=0.00094687939 mae=0.00042763076 rmse=0.00052758919 tol=0.02 latency_us_median=70769.414 latency_us_min=70734.578 latency_us_max=70776.820 warmup=3 repeat=5 text=128 window_values=24 layout=contiguous
+CASE_PASS id=3 dtype=FP16 shape=[1,8,115328,64] samples=27 max_abs=0.00010484457 mae=4.334527e-05 rmse=5.3947547e-05 tol=0.003 latency_us_median=123082.820 latency_us_min=123059.383 latency_us_max=123167.383 warmup=3 repeat=5 text=128 window_values=24 layout=contiguous
+CASE_PASS id=4 dtype=BF16 shape=[1,8,115328,64] samples=27 max_abs=0.00094687939 mae=0.00047624939 rmse=0.00058424453 tol=0.02 latency_us_median=122886.438 latency_us_min=122875.703 latency_us_max=122908.719 warmup=3 repeat=5 text=128 window_values=24 layout=contiguous
+CASE_PASS id=5 dtype=FP16 shape=[1,8,82944,64] samples=24 max_abs=0.00011575222 mae=4.5389558e-05 rmse=6.1808314e-05 tol=0.003 latency_us_median=84452.883 latency_us_min=84403.703 latency_us_max=84734.656 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=6 dtype=BF16 shape=[1,8,82944,64] samples=24 max_abs=0.00076010823 mae=0.0004370405 rmse=0.00050273663 tol=0.02 latency_us_median=48420.719 latency_us_min=48383.758 latency_us_max=48422.500 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=7 dtype=FP16 shape=[1,8,82944,64] samples=24 max_abs=0.00011575222 mae=5.6820611e-05 rmse=6.732432e-05 tol=0.003 latency_us_median=156646.938 latency_us_min=156547.422 latency_us_max=156696.484 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=8 dtype=BF16 shape=[1,8,82944,64] samples=24 max_abs=0.00094971061 mae=0.00045130029 rmse=0.00054719713 tol=0.02 latency_us_median=86743.844 latency_us_min=86605.977 latency_us_max=86760.039 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=9 dtype=FP16 shape=[1,8,82944,64] samples=24 max_abs=0.00010585785 mae=7.0169568e-05 rmse=8.030836e-05 tol=0.003 latency_us_median=22620.180 latency_us_min=22313.379 latency_us_max=22990.119 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=10 dtype=BF16 shape=[1,8,82944,64] samples=24 max_abs=0.00081115961 mae=0.00049286212 rmse=0.00052375309 tol=0.02 latency_us_median=17463.180 latency_us_min=17433.398 latency_us_max=17465.260 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=11 dtype=FP16 shape=[1,8,115328,64] samples=27 max_abs=9.6917152e-05 mae=5.0016575e-05 rmse=5.5650089e-05 tol=0.003 latency_us_median=25037.340 latency_us_min=24979.521 latency_us_max=25042.379 warmup=3 repeat=5 text=128 window_values=24 layout=contiguous
+CASE_PASS id=12 dtype=BF16 shape=[1,8,115328,64] samples=27 max_abs=0.00091713667 mae=0.00062500161 rmse=0.00072022569 tol=0.02 latency_us_median=24602.840 latency_us_min=24576.900 latency_us_max=24606.600 warmup=3 repeat=5 text=128 window_values=24 layout=contiguous
+CASE_PASS id=13 dtype=FP16 shape=[1,8,69120,64] samples=24 max_abs=0.0001090467 mae=2.3014223e-05 rmse=3.5800148e-05 tol=0.003 latency_us_median=18731.420 latency_us_min=18499.160 latency_us_max=19340.020 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=14 dtype=BF16 shape=[1,8,69120,64] samples=24 max_abs=0.00020559132 mae=4.7892953e-05 rmse=8.2868334e-05 tol=0.02 latency_us_median=14583.900 latency_us_min=14557.460 latency_us_max=14591.641 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=15 dtype=FP16 shape=[1,8,69120,64] samples=24 max_abs=8.3118677e-05 mae=4.4033552e-05 rmse=5.0585391e-05 tol=0.003 latency_us_median=44620.398 latency_us_min=44572.500 latency_us_max=44652.000 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=16 dtype=BF16 shape=[1,8,69120,64] samples=24 max_abs=0.00095200539 mae=0.00040666449 rmse=0.0005454756 tol=0.02 latency_us_median=29585.939 latency_us_min=29574.760 latency_us_max=29601.139 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=17 dtype=FP16 shape=[2,8,69120,64] samples=24 max_abs=0.0001090467 mae=2.3014223e-05 rmse=3.5800148e-05 tol=0.003 latency_us_median=37763.617 latency_us_min=37450.219 latency_us_max=37951.320 warmup=3 repeat=5 text=0 window_values=24 layout=contiguous
+CASE_PASS id=18 dtype=BF16 shape=[1,8,82944,64] samples=24 max_abs=0.00081115961 mae=0.00049286212 rmse=0.00052375309 tol=0.02 latency_us_median=17437.281 latency_us_min=17427.100 latency_us_max=17459.061 warmup=3 repeat=5 text=0 window_values=3 layout=contiguous
+CASE_PASS id=19 dtype=FP16 shape=[1,3,69120,72] samples=15 max_abs=7.8529119e-05 mae=2.4795532e-05 rmse=3.8966229e-05 tol=0.003 latency_us_median=21497.061 latency_us_min=21459.160 latency_us_max=21523.680 warmup=3 repeat=5 text=0 window_values=9 layout=contiguous
+CASE_PASS id=23 dtype=FP16 shape=[1,1,69120,72] samples=5 max_abs=0.00011569262 mae=7.1960688e-05 rmse=8.9705423e-05 tol=0.003 latency_us_median=6039.820 latency_us_min=6032.900 latency_us_max=6053.520 warmup=3 repeat=5 text=0 window_values=3 layout=non_contiguous_d_stride
+CASE_PASS id=24 dtype=FP16 shape=[3,1,69120,72] samples=5 max_abs=9.1955066e-05 mae=5.4860115e-05 rmse=6.2665693e-05 tol=0.003 latency_us_median=138731.719 latency_us_min=138668.297 latency_us_max=138853.375 warmup=3 repeat=5 text=0 window_values=3 layout=contiguous
+CASE_PASS id=25 dtype=BF16 shape=[2,3,69120,72] samples=15 max_abs=0.00032439828 mae=0.00020481348 rmse=0.00022417458 tol=0.02 latency_us_median=182221.797 latency_us_min=182038.031 latency_us_max=182314.859 warmup=3 repeat=5 text=0 window_values=9 layout=non_contiguous_d_stride
+API_PASS empty_tensor workspace=0
+ALL_LOCAL_SLIDING_TILE_ATTENTION_CASES_PASSED cases=22 warmup=3 repeat=5
