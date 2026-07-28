@@ -54,6 +54,7 @@ namespace MXFP4 {
     static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_SIZE = 512;
     static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_OFFSET = 498 * KB_SIZE;
 
+    // L0 分配
     static constexpr uint32_t L0A_QK_BUF_CNT = 2;
     static constexpr uint32_t L0A_QK_BUF_SIZE = 8 * KB_SIZE;
     static constexpr uint32_t L0A_QK_BUF_OFFSET = 0;
