@@ -83,7 +83,7 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
             inputParams_.kSize);
         tilingData_.mmTilingData.scaleKBL1 = tilingData_.mmTilingData.scaleKAL1;
     }
-    tilingData_.mmTilingData.l1BufferStage = CanEnableThreeL1Buffer() ? TB_SIZE : DB_SIZE;
+    tilingData_.mmTilingData.l1BufferStage = static_cast<uint8_t>(CanEnableThreeL1Buffer() ? TB_SIZE : DB_SIZE);
     return ge::GRAPH_SUCCESS;
 }
 

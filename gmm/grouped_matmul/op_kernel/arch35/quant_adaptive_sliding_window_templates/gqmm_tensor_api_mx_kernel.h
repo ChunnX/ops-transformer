@@ -67,10 +67,10 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
                         static_cast<uint32_t>(mmTilingDataIn->scaleKBL1),
                         static_cast<uint8_t>(mmTilingDataIn->isBias),
                         static_cast<uint8_t>(mmTilingDataIn->dbL0C),
+                        static_cast<uint8_t>(mmTilingDataIn->l1BufferStage),
                         static_cast<int8_t>(gmmBaseParamsIn->groupType),
                         static_cast<uint8_t>(gmmBaseParamsIn->groupListType),
-                        static_cast<uint8_t>(gmmBaseParamsIn->singleW),
-                        static_cast<uint8_t>(mmTilingDataIn->l1BufferStage)};
+                        static_cast<uint8_t>(gmmBaseParamsIn->singleW)};
 
     GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AType>(0, x));
     GM_ADDR bDataAddr = gmmBaseParamsIn->singleW == 1 ?
