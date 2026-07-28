@@ -56,6 +56,7 @@ ASCENDC_TPL_SEL(
                                               CSA_TEMPLATE, ORI_SPARSE_TEMPLATE, ORI_CMP_SPARSE_TEMPLATE),
                          ASCENDC_TPL_BOOL_SEL(SPLIT_G, 0, 1),
                          ASCENDC_TPL_UINT_SEL(KV_DTYPE, ASCENDC_TPL_UI_LIST, DTYPE_HIF8),
-                         ASCENDC_TPL_BOOL_SEL(IS_VEC_S2PHYADDR, 0, 1)), );
+                         ASCENDC_TPL_BOOL_SEL(IS_VEC_S2PHYADDR, 0, 1))),
+);
 
 #endif // QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
