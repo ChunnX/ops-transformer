@@ -36,7 +36,6 @@ __global__ __aicore__ void stem_oam_prep_paged_kv(GM_ADDR kCache, GM_ADDR vCache
 
     TPipe pipe;
     StemOamPrepPagedKvSimd op;
-    op.Init(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, kFlat, vBias, workspace, &tilingData,
-            &pipe);
+    op.Init(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, kFlat, vBias, workspace, &tilingData, &pipe);
     op.Process();
 }

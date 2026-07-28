@@ -19,16 +19,10 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "stem_oam_prep_paged_kv_tiling_data.h"
 
-ASCENDC_TPL_ARGS_DECL(StemOamPrepPagedKv,
-    ASCENDC_TPL_BOOL_DECL(TILINGKEY, 1),
-);
+ASCENDC_TPL_ARGS_DECL(StemOamPrepPagedKv, ASCENDC_TPL_BOOL_DECL(TILINGKEY, 1), );
 
-ASCENDC_TPL_SEL(
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_AIV_ONLY),
-        ASCENDC_TPL_BOOL_SEL(TILINGKEY, 1),
-        ASCENDC_TPL_TILING_STRUCT_SEL(StemOamPrepPagedKvTilingData)
-    )
-)
+ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_AIV_ONLY),
+                                     ASCENDC_TPL_BOOL_SEL(TILINGKEY, 1),
+                                     ASCENDC_TPL_TILING_STRUCT_SEL(StemOamPrepPagedKvTilingData)))
 
 #endif // STEM_OAM_PREP_PAGED_KV_TILING_KEY_H
