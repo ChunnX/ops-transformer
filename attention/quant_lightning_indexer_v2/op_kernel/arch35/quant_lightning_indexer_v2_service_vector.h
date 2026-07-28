@@ -727,9 +727,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                         offset = vecOffset * QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) +
                                 topkCountAlign256_ + (loopIdx - 1) * trunkLen_ + ldDstOffset;
                     } else {
-                        uint32_t validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len
+                        validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len
                             ? validS2Len % trunkLen_ : trunkLen_;
-                        uint32_t offset = vecOffset * QLIV2Common::Align((uint64_t)constInfo_.kSeqSize,
+                        offset = vecOffset * QLIV2Common::Align((uint64_t)constInfo_.kSeqSize,
                             (uint64_t)s2BaseSize_) + loopIdx * trunkLen_ + ldDstOffset;
                     }
                     
