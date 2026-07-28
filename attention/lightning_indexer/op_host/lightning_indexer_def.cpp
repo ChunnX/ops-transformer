@@ -61,7 +61,7 @@ public:
         this->Attr("layout_query").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_key").AttrType(OPTIONAL).String("BSND");
         this->Attr("sparse_count").AttrType(OPTIONAL).Int(2048); // 2048:默认值，筛选前2048
-        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);     // 3:默认值，只计算下三角
+        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);       // 3:默认值，只计算下三角
         this->Attr("pre_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
         this->Attr("next_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
         this->Attr("return_values").AttrType(OPTIONAL).Bool(false);
