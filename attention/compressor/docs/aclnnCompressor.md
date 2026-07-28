@@ -71,28 +71,29 @@
     $$
 
 ## 函数原型
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnCompressorGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnCompressor”接口执行计算。
+
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnCompressorGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnCompressor”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnCompressorGetWorkspaceSize(
     const aclTensor *x,
     const aclTensor *wkv,
     const aclTensor *wgate,
-    const aclTensor *stateCacheRef,
+    aclTensor       *stateCacheRef,
     const aclTensor *ape,
-    const aclTensor *stateBlockTable,
-    const aclTensor *cuSeqlens,
-    const aclTensor *seqused,
-    const aclTensor *startPos,
+    const aclTensor *stateBlockTableOptional,
+    const aclTensor *cuSeqlensOptional,
+    const aclTensor *sequsedOptional,
+    const aclTensor *startPosOptional,
     int64_t          cmpRatio,
     int64_t          coff,
     int64_t          cacheMode,
     int64_t          stateCacheStrideDim0,
-    const aclTensor *cmpKv,
-    const aclTensor *stateCache,
+    const aclTensor *cmpKvOut,
     uint64_t        *workspaceSize,
-    aclOpExecutor  **executor)
+    aclOpExecutor   **executor)
 ```
+
 ``` cpp
 aclnnStatus aclnnCompressor(
   void          *workspace,
@@ -100,15 +101,17 @@ aclnnStatus aclnnCompressor(
   aclOpExecutor *executor,
   aclrtStream    stream)
 ```
+
 ## aclnnCompressorGetWorkspaceSize
+
 - **参数说明**
 
     | 参数名                      | 输入/输出 | 描述  |  使用说明  | 数据类型       | 数据格式   | 维度（shape） | 非连续Tensor |
     |----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|-|-|-|
-    | x | 输入 | 公式中的$X$，表示原始不经压缩的数据。 |  支持B=0,S=0,T=0的空Tensor。  | FLOAT16、BFLOAT16 | ND         | BS合轴：[B,S,H]、BS非合轴：[T,H]|×|
+    | x | 输入 | 公式中的$X$，表示原始不经压缩的数据。 |  支持B=0,S=0,T=0的空Tensor。  | FLOAT16、BFLOAT16 | ND         | BS合轴：[T,H]、BS非合轴：[B,S,H]|×|
     | wkv | 输入 | 公式中的$W^{KV}$，表示kv压缩权重。  |不支持空Tensor。| FLOAT16、BFLOAT16 | ND |[coff* D,H]|×|
     | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重。 |不支持空Tensor。| FLOAT16、BFLOAT16 | ND |[coff* D,H]|×|
-    | stateCacheRef | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 |不支持空Tensor| FLOAT32     | ND         |[block_num,block_size,2* coff* D]|支持0轴非连续|
+    | stateCacheRef | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 |不支持空Tensor| FLOAT32     | ND         |[block_num,block_size,2*coff* D]|支持0轴非连续|
     | ape | 输入 | 公式中的$Ape$，表示positional biases。 | 不支持空Tensor。|FLOAT32       | ND         |[cmp_ratio,coff* D]|×|
     | stateBlockTable | 可选输入 | 表示state\_cache存储使用的block映射表。|当其中元素的值为0时，表示当前位置无需进行更新state\_cache操作；支持S=0,T=0的空Tensor。| INT32 | ND         |cache_mode=1时，shape为[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length，当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。cache_mode=2时，shape为[B]。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作|×|
     | cuSeqlens | 可选输入 | 表示不同Batch中的有效token数。  |支持B=0,S=0,T=0的空Tensor；当x的shape为[B,S,H]时，参数必须为空。| INT32          | ND         |当x的shape为[T,H]时，输入shape为[B+1,]|×|
@@ -118,15 +121,15 @@ aclnnStatus aclnnCompressor(
     | coff | 可选输入 | 表示是否进行overlap数据重排。 |取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。| INT32          | -         |-|-|
     | cacheMode | 可选输入 | 表示state_cache的存储模式。 |取值范围为[1, 2]；1表示连续buffer，2表示循环buffer。| INT32          | -         |-|-|
     | stateCacheStrideDim0 | 可选输入 | 表示state_cache的0轴stride。 |-| INT32     | -         |-|-|
-    | cmpKv | 输出 | 表示压缩后的数据。 |支持B=0,S=0,T=0的空Tensor。| FLOAT16、BFLOAT16         | ND          |BS合轴：[B,ceil(S/cmp_ratio),D]、BS非合轴：[min(T,T//cmp_ratio+B),D]|×|
+    | cmpKv | 输出 | 表示压缩后的数据。 |支持B=0,S=0,T=0的空Tensor。| FLOAT16、BFLOAT16         | ND          |BS合轴：[min(T,T//cmp_ratio+B),D]、BS非合轴：[B,ceil(S/cmp_ratio),D]|×|
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
  cacheMode不支持输入2，且不支持0轴非连续。
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
     第一段接口完成入参校验，出现以下场景时报错：
 
     <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
@@ -166,6 +169,7 @@ aclnnStatus aclnnCompressor(
     </table>
 
 ## aclnnCompressor
+
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
@@ -205,16 +209,17 @@ aclnnStatus aclnnCompressor(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
+
 - 确定性计算：
   - aclnnCompressor默认确定性实现。
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
     - wkv支持输入shape[coff* D,H]
     - wgate支持输入shape[coff* D,H]
-    - stateCache支持输入shape[block_num,block_size,2* coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
+    - stateCache支持输入shape[block_num,block_size,2*coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
     - ape支持输入shape[cmp_ratio,coff* D]
     - startPos支持输入shape[B,]
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]

@@ -210,11 +210,6 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaKey() const
                     OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be in range (0, %u].",
                             oriBlockSize_, MAX_BLOCK_SIZE),
                     return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(
-            oriBlockSize_ % 16 > 0,
-            OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be 16-aligned.", oriBlockSize_),
-            return ge::GRAPH_FAILED);
     }
 
     if (opParamInfo_.cmpKv.tensor != nullptr) {
@@ -239,11 +234,6 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaKey() const
                         OP_LOGE(opName_,
                                 "when page attention is enabled, cmp_block_size(%u) should be in range (0, %u].",
                                 cmpBlockSize_, MAX_BLOCK_SIZE),
-                        return ge::GRAPH_FAILED);
-
-            OP_CHECK_IF(cmpBlockSize_ % 16 > 0,
-                        OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%u) should be 16-aligned.",
-                                cmpBlockSize_),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -305,7 +295,10 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaSparseBlockSize() const
 
 ge::graphStatus MQSMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
-    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE && opParamInfo_.cmpResidualKv.tensor == nullptr,
+    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
+                perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
+                cmpMaskMode_ != 0 &&
+                opParamInfo_.cmpResidualKv.tensor == nullptr,
                 OP_LOGE(opName_, "cmp_residual_kv is required in CSA and HCA mode "), return ge::GRAPH_FAILED);
 
     if (opParamInfo_.cmpResidualKv.tensor != nullptr) {
@@ -404,8 +397,14 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaCuSeqLensQ() const
 
 ge::graphStatus MQSMLATilingCheck::CheckSingleParaSequsedKv() const
 {
-    OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-                OP_LOGE(opName_, "input sequsedOriKv can not be nullptr, but it's empty"), return ge::GRAPH_FAILED);
+    if (perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        return ge::GRAPH_SUCCESS;
+    } else {
+        OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
+                    OP_LOGE(opName_, "input sequsedOriKv can not be nullptr in non-BSND layout, but it's empty"),
+                    return ge::GRAPH_FAILED);
+    }
     const std::vector<size_t> expectDimNumList = {DIM_NUM_ONE};
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedOriKv.desc, SEQUSED_ORI_KV_NAME) ||
         ge::GRAPH_SUCCESS !=
@@ -491,6 +490,10 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaOriSparseIndices() const
 
 ge::graphStatus MQSMLATilingCheck::CheckSingleParaCuSeqLensOriKv() const
 {
+    if (perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        return ge::GRAPH_SUCCESS;
+    }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && kvLayout_ == MQSMLALayout::TND &&
                     opParamInfo_.cuSeqLensOriKv.tensor == nullptr,
                 OP_LOGE(opName_, "cuSeqLensOriKv is required when oriKv is provided and kvLayout is TND."),

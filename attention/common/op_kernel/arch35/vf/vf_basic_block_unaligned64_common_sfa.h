@@ -21,10 +21,10 @@ using namespace regbaseutil;
 
 namespace FaVectorApi {
 
-template<typename T, typename T2>
-__simd_callee__ inline void CastStoreExp64(
-    RegTensor<float> &vreg_exp, __ubuf__ T2 *&expUb, const uint32_t blockStride, const uint32_t repeatStride,
-    MaskReg &preg_all, MaskReg &preg_all_b16, MaskReg &storeMask, __ubuf__ uint8_t * indexesUb)
+template <typename T, typename T2>
+__simd_callee__ inline void CastStoreExp64(RegTensor<float> &vreg_exp, __ubuf__ T2 *&expUb, const uint32_t blockStride,
+                                           const uint32_t repeatStride, MaskReg &preg_all, MaskReg &preg_all_b16,
+                                           MaskReg &storeMask, __ubuf__ uint8_t *indexesUb)
 {
     RegTensor<bfloat16_t> vreg_exp_bf16;
     RegTensor<bfloat16_t> vreg_dst_even_bf16;
@@ -32,7 +32,7 @@ __simd_callee__ inline void CastStoreExp64(
     RegTensor<half> vreg_exp_fp16;
     RegTensor<half> vreg_dst_even_fp16;
     RegTensor<half> vreg_dst_odd_fp16;
-    if constexpr (IsSameType<T2, hifloat8_t>::value) {  // T2 == hifp8 为全量化
+    if constexpr (IsSameType<T2, hifloat8_t>::value) { // T2 == hifp8 为全量化
         AscendC::MicroAPI::Muls(vreg_exp, vreg_exp, hifp8ScaleValue, preg_all);
     }
     if constexpr (IsSameType<T2, bfloat16_t>::value) {
@@ -59,16 +59,15 @@ __simd_callee__ inline void CastStoreExp64(
     }
 }
 
-template<typename T>
-__simd_callee__ inline void ExpSumReduceStore64(
-    RegTensor<float> &vreg_exp_sum, RegTensor<float> &vreg_exp,
-    UnalignRegForStore &ureg_exp_sum, __ubuf__ T *&expSumUb,
-    MaskReg &preg_ori_src_n)
+template <typename T>
+__simd_callee__ inline void ExpSumReduceStore64(RegTensor<float> &vreg_exp_sum, RegTensor<float> &vreg_exp,
+                                                UnalignRegForStore &ureg_exp_sum, __ubuf__ T *&expSumUb,
+                                                MaskReg &preg_ori_src_n)
 {
-    Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-        vreg_exp_sum, vreg_exp, preg_ori_src_n);
-    StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-        ((__ubuf__ T *&)expSumUb), vreg_exp_sum, ureg_exp_sum, 1);
+    Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp,
+                                                                                      preg_ori_src_n);
+    StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum, ureg_exp_sum,
+                                                                 1);
 }
 
 } // namespace FaVectorApi

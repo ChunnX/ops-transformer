@@ -156,7 +156,7 @@ __aicore__ inline constexpr static bool IsQuantSenario()
         return true;
     }
     if constexpr (AscendC::IsSameTypeV<L0cT, int32_t> &&
-        (AscendC::IsSameTypeV<CType, bfloat16_t> || AscendC::IsSameTypeV<CType, int32_t>)) {
+                  (AscendC::IsSameTypeV<CType, bfloat16_t> || AscendC::IsSameTypeV<CType, int32_t>)) {
         return true;
     }
 #endif

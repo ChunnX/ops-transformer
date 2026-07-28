@@ -142,6 +142,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     OPS_CHECK_NULL_WITH_CONTEXT(context, expertIdsShape);
     const gert::Shape *scalesShape = context->GetOptionalInputShape(DISPATCH_INPUT_SCALES_IDX_INDEX);
     const gert::Shape *expertScalesShape = context->GetOptionalInputShape(DISPATCH_INPUT_EXPERT_SCALES_IDX_INDEX);
+    bool hasExpertScales = (expertScalesShape != nullptr);
     const gert::Shape *elasticInfoShape = context->GetOptionalInputShape(DISPATCH_INPUT_ELASTIC_INFO_IDX_INDEX);
 
     gert::Shape *expandXShape = context->GetOutputShape(DISPATCH_OUTPUT_EXPAND_X_INDEX);
@@ -224,12 +225,12 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
                                               std::to_string(moeRankNum).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-
-    int64_t bs = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(0));
-    int64_t h = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(1));
-    int64_t bsTmp = expertIdsShape->GetDimNum() == 1U ? NEG_ONE : expertIdsShape->GetDim(0);
-    int64_t k = ((expertIdsShape->GetDimNum() == 1U) ? NEG_ONE : expertIdsShape->GetDim(1));
-
+    size_t xDimNum = xShape->GetDimNum();
+    size_t expertDimNum = expertIdsShape->GetDimNum();
+    int64_t bs = ((xDimNum == 1U) ? NEG_ONE : xShape->GetDim(0));
+    int64_t h = ((xDimNum == 1U) ? NEG_ONE : xShape->GetDim(1));
+    int64_t bsTmp = ((expertDimNum == 1U) ? NEG_ONE : expertIdsShape->GetDim(0));
+    int64_t k = ((expertDimNum == 1U) ? NEG_ONE : expertIdsShape->GetDim(1));
     if ((bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0)) {
         std::string shapeStr = std::string("x[") + std::to_string(bs) + "," + std::to_string(h) + "]" +
                                ", expert_ids[" + std::to_string(bsTmp) + "," + std::to_string(k) + "]";
@@ -237,7 +238,6 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
                                               "Each dim of x and expert_ids must be positive");
         return ge::GRAPH_FAILED;
     }
-
     int64_t a;
     int64_t localExpertNum;
     int64_t localMoeExpertNum = *moeExpertNum / moeRankNum;
@@ -299,7 +299,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
 
     epRecvCountShape->SetDimNum(DIM_ONE);
     if (IsTargetSocVersionInfershape(context->GetNodeName(), PLATFORM_A2)) {
-        if (expertScalesShape != nullptr) {
+        if (hasExpertScales) {
             epRecvCountShape->SetDim(
                 0U, *epWorldSize * localExpertNum +
                         globalBsReal * 2 * k *
@@ -309,9 +309,10 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
         }
     } else {
-        if (expertScalesShape != nullptr) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k *
-                                                                             (*epWorldSize) / RANK_NUM_PER_NODE);
+        if (hasExpertScales && !IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
+            epRecvCountShape->SetDim(
+                0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k *
+                    (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
         }
@@ -326,7 +327,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
 
     expandScalesShape->SetDimNum(DIM_ONE);
     expandScalesShape->SetDim(0U, 0);
-    if (expertScalesShape != nullptr) {
+    if (hasExpertScales) {
         expandScalesShape->SetDim(0U, a);
     }
     OP_LOGD(context->GetNodeName(), "expandScalesShape shape is :%s after infershape.",

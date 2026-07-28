@@ -77,7 +77,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case01_B1_S1_n4_d1_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},            // h_post
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},      // h_res
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                  // inv_rms (optional)
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},  // h_mix (optional)
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},  // h_mix (optional)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}             // h_pre (optional)
         },
         {
@@ -126,7 +126,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case02_B1_S1_n6_d65535_FP16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -175,7 +175,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case03_B65535_S1_n8_d1_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -224,7 +224,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case04_B2_S4096_n4_d1536_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -278,7 +278,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case05_B2_S4096_n6_d2048_FP16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -332,7 +332,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case06_B2_S4096_n8_d6144_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -386,7 +386,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case07_B256_S1024_n4_d2048_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -440,7 +440,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case08_B20_S4096_n6_d1024_FP16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -494,7 +494,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case09_B8_S512_n8_d768_FP16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -548,7 +548,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case10_B32_S256_n4_d512_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -602,7 +602,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case11_B1_S8192_n6_d256_FP16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -656,7 +656,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case12_B128_S64_n8_d1024_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -710,7 +710,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case13_B4_S2048_n4_d3072_FP16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -764,7 +764,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case14_B16_S1024_n6_d128_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -818,7 +818,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case15_B64_S128_n8_d4096_FP16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -872,7 +872,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case16_B2_S32768_n4_d512_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -926,7 +926,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case17_B48_S512_n6_d2048_FP16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -980,7 +980,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case18_B12_S1536_n8_d1536_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -1034,7 +1034,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case19_B1_S1_n4_d128_FP16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -1088,7 +1088,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case20_B1024_S32_n6_d768_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -1141,7 +1141,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case21_T1024_n6_d768_BF16)
             {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{T, n, n}, {T, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{T}, {T}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{T, phi_dim1}, {T, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, phi_dim0}, {T, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -1195,7 +1195,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case22_B2_S4096_n4_d1536_NoGamma)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_res
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms (optional)
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},     // h_mix (optional)
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},     // h_mix (optional)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}                    // h_pre (optional)
         },
         {
@@ -1250,7 +1250,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case23_OutFlag1_SplitBS_BSND_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -1305,7 +1305,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case24_OutFlag1_SplitND_BSND_FP16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -1359,7 +1359,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case25_OutFlag1_SplitBS_TND_BF16)
             {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{T, n, n}, {T, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{T}, {T}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{T, phi_dim1}, {T, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, phi_dim0}, {T, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -1413,7 +1413,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case26_OutFlag1_SplitND_TND_FP16)
             {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{T, n, n}, {T, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{T}, {T}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{T, phi_dim1}, {T, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, phi_dim0}, {T, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -1468,7 +1468,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case27_OutFlag1_LongSeq_BSND_BF16)
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
@@ -1485,4 +1485,148 @@ TEST_F(MhcPreTiling, Ut_Check_Case27_OutFlag1_LongSeq_BSND_BF16)
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
                     expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaRank)
+{
+    constexpr uint32_t T = 1;
+    constexpr uint32_t n = 4;
+    constexpr uint32_t d = 256;
+    constexpr uint32_t phiDim0 = n * n + 2 * n;
+    constexpr uint32_t phiDim1 = n * d;
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{T, n, d}, {T, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3, 1}, {3, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiDim0}, {phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiDim1}, {phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{T, d}, {T, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n, n}, {T, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T}, {T}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, phiDim0}, {T, phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}
+        },
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaShape)
+{
+    constexpr uint32_t T = 1;
+    constexpr uint32_t n = 4;
+    constexpr uint32_t d = 256;
+    constexpr uint32_t phiDim0 = n * n + 2 * n;
+    constexpr uint32_t phiDim1 = n * d;
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{T, n, d}, {T, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiDim0}, {phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiDim1}, {phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{T, d}, {T, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n, n}, {T, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T}, {T}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, phiDim0}, {T, phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}
+        },
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_InvalidXRank)
+{
+    constexpr uint32_t T = 1;
+    constexpr uint32_t n = 4;
+    constexpr uint32_t d = 256;
+    constexpr uint32_t phiDim0 = n * n + 2 * n;
+    constexpr uint32_t phiDim1 = n * d;
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{T, n}, {T, n}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiDim0}, {phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiDim1}, {phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{T, d}, {T, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n, n}, {T, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T}, {T}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, phiDim0}, {T, phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}
+        },
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_InvalidHMixShape)
+{
+    constexpr uint32_t T = 1;
+    constexpr uint32_t n = 4;
+    constexpr uint32_t d = 256;
+    constexpr uint32_t phiDim0 = n * n + 2 * n;
+    constexpr uint32_t phiDim1 = n * d;
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{T, n, d}, {T, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiDim0}, {phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiDim1}, {phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{T, d}, {T, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n, n}, {T, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T}, {T}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, phiDim1}, {T, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}
+        },
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }

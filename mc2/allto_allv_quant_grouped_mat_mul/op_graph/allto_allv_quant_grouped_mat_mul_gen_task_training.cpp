@@ -25,15 +25,14 @@
 namespace ops {
 static const size_t ATTR_COMM_MODE_INDEX = 14;
 static const size_t RANK_DIM_BOUNDARY = 8;
-static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context,
-                                            std::string &commMode)
+static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context, std::string &commMode)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     if (attrs == nullptr) {
         OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
         return ge::GRAPH_FAILED;
     }
-    const char* commModePtr = attrs->GetStr(ATTR_COMM_MODE_INDEX);
+    const char *commModePtr = attrs->GetStr(ATTR_COMM_MODE_INDEX);
     if (commModePtr == nullptr) {
         OPS_LOG_E(context->GetNodeName(), "commModePtr pointer is null.");
         return ge::GRAPH_FAILED;
@@ -50,9 +49,9 @@ ge::Status AlltoAllvQuantGroupedMatMulCalcParamFunc(gert::ExeResGenerationContex
         return status;
     }
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
-    const char* serverType = nullptr;
-    const char* streamType = nullptr;
-    if ((isArch35 &&  commMode == "ai_cpu")) {
+    const char *serverType = nullptr;
+    const char *streamType = nullptr;
+    if ((isArch35 && commMode == "ai_cpu")) {
         serverType = "aicpu kfc server";
         streamType = "kfc_stream";
         OPS_LOG_D(context->GetNodeName(), "AlltoAllvQuantGroupedMatMulCalcParamFunc use AICPU GenTask");
@@ -65,7 +64,7 @@ ge::Status AlltoAllvQuantGroupedMatMulCalcParamFunc(gert::ExeResGenerationContex
 }
 
 ge::Status AlltoAllvQuantGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                            std::vector<std::vector<uint8_t>> &tasks)
+                                                  std::vector<std::vector<uint8_t>> &tasks)
 {
     std::string commMode;
     ge::Status status = GetRankSizeAndSetCommmode(context, commMode);
@@ -87,4 +86,3 @@ IMPL_OP(AlltoAllvQuantGroupedMatMul)
     .CalcOpParam(AlltoAllvQuantGroupedMatMulCalcParamFunc)
     .GenerateTask(AlltoAllvQuantGroupedMatMulGenTaskFunc);
 } // namespace ops
-

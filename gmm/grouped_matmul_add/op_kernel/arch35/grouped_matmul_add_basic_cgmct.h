@@ -46,8 +46,8 @@ __aicore__ inline void GmmAddCgmct(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList,
     using BlockScheduler = GroupedMatmulAswtScheduler;
     // 定义MMAD类型
     using BlockMmad =
-        Block::BlockGroupedMatmulBuilder<AType, LayoutA, BType, LayoutB, CType, LayoutC, CType, LayoutBias,
-                                         L1TileShape, L0TileShape, BlockScheduler, MatmulMultiBlockBias<>>;
+        Block::BlockGroupedMatmulBuilder<AType, LayoutA, BType, LayoutB, CType, LayoutC, CType, LayoutBias, L1TileShape,
+                                         L0TileShape, BlockScheduler, MatmulMultiBlockBias<>>;
     // 定义BlockEpilogue类型
     using BlockEpilogue = Block::BlockEpilogueEmpty;
     // 定义shape的形状，tuple保存 m n k batch
@@ -56,8 +56,8 @@ __aicore__ inline void GmmAddCgmct(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList,
     using GmmAdd = Kernel::KernelGroupedMatmulAdd<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GmmAdd::Params;
     using GMMAddTiling = typename GmmAdd::GMMAddTiling;
-    GMMAddTiling gmmParams{gmmBaseParams_.groupNum, gmmBaseParams_.groupListType,
-                        gmmBaseParams_.mTailCnt, gmmBaseParams_.nTailCnt};
+    GMMAddTiling gmmParams{gmmBaseParams_.groupNum, gmmBaseParams_.groupListType, gmmBaseParams_.mTailCnt,
+                           gmmBaseParams_.nTailCnt};
     gmmParams.matmulTiling = &mmTilingData_;
     Params params = {// template shape, gmm shape can not get now
                      {1, 1, 1, 1},
@@ -71,5 +71,5 @@ __aicore__ inline void GmmAddCgmct(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList,
     op(params);
 }
 
-} // namespace GROUPED_MATMUL_ADD
+} // namespace GroupedMatmulAdd
 #endif

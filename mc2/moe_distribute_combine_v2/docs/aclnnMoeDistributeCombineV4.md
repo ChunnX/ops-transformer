@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。不支持TP域通信。
+- 接口功能：进行AllToAllV通信，最后将接收的数据整合；expertScales非空时乘权重再相加，为空时直接相加。不支持TP域通信。
 
     相较于`aclnnMoeDistributeCombineV3`接口，该接口变更如下：
 
@@ -28,11 +28,13 @@
     xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
     $$
 
+    `expertScales`为空Tensor时，不执行权重乘法，直接对专家输出求和。
+
 > 注意：该接口必须与`aclnnMoeDistributeDispatchV4`配套使用，相当于按`aclnnMoeDistributeDispatchV4`接口收集数据的路径原路返还。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeDistributeCombineV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeCombineV4”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeDistributeCombineV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeCombineV4”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineV4GetWorkspaceSize(
@@ -155,11 +157,11 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     <tr>
     <td>expertScales</td>
     <td>输入</td>
-    <td>每个token的topK个专家的权重。</td>
-    <td>要求2D Tensor。</td>
+    <td>每个token的topK个专家的权重。支持空Tensor；传入空Tensor时不进行加权，直接对专家输出求和。</td>
+    <td>非空时要求2D Tensor；空Tensor至少有一个维度为0，不要求固定维数。</td>
     <td>FLOAT32</td>
     <td>ND</td>
-    <td><code>(BS, K)</code></td>
+    <td>非空：<code>(BS, K)</code>；空Tensor：至少一维为0</td>
     <td>√</td>
     </tr>
     <tr>
@@ -596,7 +598,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -675,7 +677,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -722,7 +724,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 
   - **HCCL_INTRA_PCIE_ENABLE/HCCL_INTRA_ROCE_ENABLE**：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议commAlg配置"hierarchy"。
-    - <term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：不支持该环境变量。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、Ascend 950DT：不支持该环境变量。
   - **HCCL_LOGIC_SUPERPOD_ID**
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：当commAlg配置"hierarchy"需根据不同的超节点配置该环境变量，例如两机分别设为`export HCCL_LOGIC_SUPERPOD_ID=0`和`export HCCL_LOGIC_SUPERPOD_ID=1`。
 
@@ -1195,7 +1197,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
 
-    具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+    具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 - 示例代码如下，仅供参考
 

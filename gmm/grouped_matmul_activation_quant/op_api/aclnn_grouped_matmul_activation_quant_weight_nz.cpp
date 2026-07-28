@@ -501,8 +501,9 @@ aclnnStatus CheckMxQuantAttrs(int64_t groupListType, int64_t effectiveYDtype, co
 {
     CHECK_RET(ResolveAndCheckRoundMode(roundMode, effectiveRoundMode) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     GMMAQ_CHECK_WITH_LOG(IsFp8DtypeValue(effectiveYDtype), ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "y", std::to_string(effectiveYDtype),
-                                             "the dtype of y must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "y",
+            op::ToString(static_cast<DataType>(effectiveYDtype)).GetString(),
+            "the dtype of y must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
     GMMAQ_CHECK_WITH_LOG(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupListType", std::to_string(groupListType),
                                              "groupListType must be 0 or 1"));

@@ -39,6 +39,7 @@ struct GMMAddrInfo {
     GM_ADDR gmm2OutGlobal;
     __gm__ int32_t *swigluToGmm2Flag;
     __gm__ int32_t *dispatchToGmm1Flag;
+    __gm__ int32_t *gmm2CombineSyncCounter;
 };
 
 struct PeermemInfo {
@@ -73,8 +74,13 @@ struct PeermemInfo {
                 Ops::Base::CeilAlign(tilingData->h / elemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
             uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
-            offset += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs * tokenBytes * sizeof(int8_t)),
-                                           (int64_t)ALIGN_512);
+            if (tilingData->topkWeightsPrefetch == 1) {
+                uint32_t weightBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
+                                                            static_cast<uint32_t>(ALIGN_32));
+                tokenBytes = Ops::Base::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+            }
+            offset += Ops::Base::CeilAlign(
+                (int64_t)(static_cast<int64_t>(tilingData->bs) * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
         } else {
             dispatchRecivePtr = base + offset;
             uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
@@ -85,8 +91,8 @@ struct PeermemInfo {
                 static_cast<int64_t>(Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32)) +
                                      ALIGN_32),
                 static_cast<int64_t>(ALIGN_512));
-            offset += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs * tokenBytes * sizeof(int8_t)) *
-                                               static_cast<int64_t>(serverNum),
+            offset += Ops::Base::CeilAlign((int64_t)(static_cast<int64_t>(tilingData->bs) * tokenBytes *
+                                                     sizeof(int8_t) * static_cast<int64_t>(serverNum)),
                                            (int64_t)ALIGN_512);
         }
         combineSendPtr = base + offset;
@@ -106,6 +112,10 @@ struct Params {
     GM_ADDR bScaleGmAddr;
     GM_ADDR b2GmAddr;
     GM_ADDR b2ScaleGmAddr;
+    GM_ADDR sharedBGmAddr;
+    GM_ADDR sharedBScaleGmAddr;
+    GM_ADDR sharedB2GmAddr;
+    GM_ADDR sharedB2ScaleGmAddr;
     GM_ADDR probsGmAddr;
     GM_ADDR y2GmAddr;
     GM_ADDR expertTokenNumsOutGmAddr;
@@ -140,14 +150,26 @@ __aicore__ inline void WaitForCube(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
 }
 
-__aicore__ inline void NotifyVectorToCopyIn(uint16_t value = 0)
+__aicore__ inline void NotifyAiv1GmTileReady(uint16_t value = 0)
 {
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_EPILOGUE_FLAG + FLAG_ID_MAX_PER_V + value);
 }
 
-__aicore__ inline void WaitForCubeFinishCopyout(uint16_t value = 0)
+__aicore__ inline void WaitForAicGmTileReady(uint16_t value = 0)
 {
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIC_SYNC_AIV_EPILOGUE_FLAG + value);
+}
+
+// AIV1 acknowledges that it has accepted the AIC-to-AIV1 GM tile notification.
+// On DAV_3510, an AIV1 flag ID maps to the AIC flag ID plus FLAG_ID_MAX_PER_V.
+__aicore__ inline void NotifyAicGmTileAccepted()
+{
+    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG);
+}
+
+__aicore__ inline void WaitForAiv1GmTileAccepted()
+{
+    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG + FLAG_ID_MAX_PER_V);
 }
 
 __aicore__ inline void EndSync(int32_t &vecSetSyncCom)

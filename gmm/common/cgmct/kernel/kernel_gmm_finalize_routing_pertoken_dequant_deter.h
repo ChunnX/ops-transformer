@@ -43,47 +43,45 @@ template <class ProblemShape_, class BlockMmadBuilder_, class BlockPrologue_,
 class KernelGmmFinalizeRoutingPertokenDequantDeter<
     ProblemShape_, BlockMmadBuilder_, BlockPrologue_, BlockEpilogueDequantFinalizeRoutingDeter_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler>>>
-    : public KernelGmmFinalizeRoutingPertokenDequant<
-          ProblemShape_, BlockMmadBuilder_, BlockPrologue_,
-          BlockEpilogueDequantFinalizeRoutingDeter_, BlockScheduler_> {
+    : public KernelGmmFinalizeRoutingPertokenDequant<ProblemShape_, BlockMmadBuilder_, BlockPrologue_,
+                                                     BlockEpilogueDequantFinalizeRoutingDeter_, BlockScheduler_> {
 public:
-    using Base = KernelGmmFinalizeRoutingPertokenDequant<
-        ProblemShape_, BlockMmadBuilder_, BlockPrologue_,
-        BlockEpilogueDequantFinalizeRoutingDeter_, BlockScheduler_>;
+    using Base = KernelGmmFinalizeRoutingPertokenDequant<ProblemShape_, BlockMmadBuilder_, BlockPrologue_,
+                                                         BlockEpilogueDequantFinalizeRoutingDeter_, BlockScheduler_>;
 
-    using typename Base::BlockSchedulerOp;
-    using typename Base::BlockShape;
-    using typename Base::BlockCoord;
-    using typename Base::CoordClass;
-    using typename Base::BlockMmadArguments;
-    using typename Base::BlockPrologueArguments;
-    using typename Base::BlockMmadParams;
-    using typename Base::BlockPrologueParams;
-    using typename Base::BlockEpilogueParams;
-    using typename Base::AType;
-    using typename Base::BType;
-    using typename Base::CType;
+    using Base::aGlobal_;
+    using Base::baseOffset_;
+    using Base::bGlobal_;
+    using Base::blockOffset_;
+    using Base::End;
+    using Base::epilogueDequantOp_;
+    using Base::formatB;
+    using Base::GetSplitValueFromGroupList;
+    using Base::groupListGm_;
+    using Base::isVecSetSyncCom_;
+    using Base::l0cOutUb_;
+    using Base::mmadOp_;
+    using Base::NotifyCube;
+    using Base::NotifyVector;
+    using Base::problemShape_;
+    using Base::prologueOp_;
     using Base::transA;
     using Base::transB;
-    using Base::formatB;
-    using Base::aGlobal_;
-    using Base::bGlobal_;
-    using Base::groupListGm_;
-    using Base::problemShape_;
-    using Base::baseOffset_;
-    using Base::blockOffset_;
-    using Base::mmadOp_;
-    using Base::prologueOp_;
-    using Base::epilogueDequantOp_;
-    using Base::l0cOutUb_;
-    using Base::isVecSetSyncCom_;
-    using Base::WaitForVector;
-    using Base::NotifyVector;
-    using Base::WaitForCube;
-    using Base::NotifyCube;
-    using Base::End;
-    using Base::GetSplitValueFromGroupList;
     using Base::UpdateOffset;
+    using Base::WaitForCube;
+    using Base::WaitForVector;
+    using typename Base::AType;
+    using typename Base::BlockCoord;
+    using typename Base::BlockEpilogueParams;
+    using typename Base::BlockMmadArguments;
+    using typename Base::BlockMmadParams;
+    using typename Base::BlockPrologueArguments;
+    using typename Base::BlockPrologueParams;
+    using typename Base::BlockSchedulerOp;
+    using typename Base::BlockShape;
+    using typename Base::BType;
+    using typename Base::CoordClass;
+    using typename Base::CType;
 
     DeterSyncConfig deterSync_;
     uint64_t cumulativeGroupM_ = 0;
@@ -91,7 +89,9 @@ public:
     struct GMMTiling : Base::GMMTiling {
         uint32_t deterWorkspaceSize;
         uint32_t coreNum;
-        __aicore__ GMMTiling() : Base::GMMTiling() {}
+        __aicore__ GMMTiling() : Base::GMMTiling()
+        {
+        }
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_,
                              uint8_t hasBias_, uint32_t deterWsSize_, uint32_t coreNum_)
             : Base::GMMTiling(groupNum_, groupListType_, baseM_, baseN_, baseK_, hasBias_),
@@ -189,12 +189,12 @@ public:
         while (bs.GetTileIdxRowMajor(tileIdx)) {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
             blockOffset_ = coord.template GetQuantOffset<GroupedMatmul::QuantMode::PERTOKEN_MODE>(
-                Get<IDX_M_TILEIDXS>(tileIdx), Get<IDX_N_TILEIDXS>(tileIdx),
-                Get<IDX_M_TAIL_SPLIT_TILEIDXS>(singleShape), Get<IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
+                Get<IDX_M_TILEIDXS>(tileIdx), Get<IDX_N_TILEIDXS>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDXS>(singleShape),
+                Get<IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
             int64_t y = Get<IDX_C_OFFSETS>(blockOffset_);
             int64_t tileMOffset = y / n;
             int64_t singleM = Get<MNK_M>(singleShape);
-            int64_t wsAccum   = static_cast<int64_t>(cumulativeGroupM_ - deterSync_.windowStartM);
+            int64_t wsAccum = static_cast<int64_t>(cumulativeGroupM_ - deterSync_.windowStartM);
             int64_t tileWsEnd = wsAccum + tileMOffset + singleM;
             if (tileWsEnd > static_cast<int64_t>(deterSync_.windowSize)) {
                 deterSync_.curGroupM = cumulativeGroupM_ + static_cast<uint64_t>(tileMOffset);
@@ -203,23 +203,22 @@ public:
                     FRDeterministic(params);
                 }
                 deterSync_.windowStartM = deterSync_.curGroupM;
-                deterSync_.lowBoundM  = deterSync_.curGroupM + deterSync_.windowSize;
+                deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
                 SyncAll<false>();
             }
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
                 }
-                AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{singleM,
-                                                                             Get<MNK_N>(singleShape), k};
-                mmadOp_(aGlobal_[Get<IDX_A_OFFSETS>(blockOffset_)],
-                        bGlobal_[Get<IDX_B_OFFSETS>(blockOffset_)], l0cOutUb_, mmSingleShape, transA, transB);
+                AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{singleM, Get<MNK_N>(singleShape), k};
+                mmadOp_(aGlobal_[Get<IDX_A_OFFSETS>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSETS>(blockOffset_)],
+                        l0cOutUb_, mmSingleShape, transA, transB);
                 NotifyVector();
             }
             isVecSetSyncCom_ = true;
             if ASCEND_IS_AIV {
-                AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{singleM,
-                                                                                      Get<MNK_N>(singleShape), 0, 0};
+                AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{singleM, Get<MNK_N>(singleShape),
+                                                                                      0, 0};
                 int64_t nOffset = y - tileMOffset * n;
                 epilogueDequantOp_.SetWorkspaceGroupOffset(cumulativeGroupM_ - deterSync_.windowStartM);
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
