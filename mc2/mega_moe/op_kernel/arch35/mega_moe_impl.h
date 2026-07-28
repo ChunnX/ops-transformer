@@ -365,7 +365,7 @@ struct Config {
 };
 
 template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename ElementC, bool IsShared,
-          bool TopkWeightsPrefetch, bool IsLayered = false,typename WorkSet, typename ExtraArgs>
+          bool TopkWeightsPrefetch, bool IsLayered = false, typename WorkSet, typename ExtraArgs>
 __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet, uint32_t startLoopIdx,
                                          uint32_t tileNum, ExtraArgs &args)
 {
@@ -374,8 +374,8 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
     if constexpr (Policy::IS_GMM1) {
         ubBufSize = (config.tileM == L1_TILE_M_128) ? MAX_SINGLE_MN_ALIGN32_NUM_128 : MAX_SINGLE_MN_ALIGN32_NUM_256;
     } else {
-        ubBufSize = (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) ?
-                                         MAX_SINGLE_MN_ALIGN32_NUM_128 : 0;
+        ubBufSize =
+            (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) ? MAX_SINGLE_MN_ALIGN32_NUM_128 : 0;
     }
     int64_t ubOffsetFirst = 0;
     int64_t ubOffsetSecond = static_cast<int64_t>(ubBufSize) * sizeof(ElementC);
@@ -384,7 +384,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
-    if constexpr (!Policy::IS_GMM1 && (CombineQuantMode != COMBINE_NO_QUANT || IsLayered)&& !IsShared) {
+    if constexpr (!Policy::IS_GMM1 && (CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
         uint32_t logicalCoreCount = config.blockNum * 2U;
         groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
     }
@@ -419,7 +419,6 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             if (loopIdx == startLoopIdx) {
                 WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
             }
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsLayered) {
             if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsLayered) {
                 if (args.vecSetSyncCom2 >= 2) {
                     WaitForVector(args.pingpongIdx);
@@ -484,7 +483,6 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             auto gmBlockScaleB = workSet.gmScaleB.Slice(
                 Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
                 Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
             if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
                 auto tensorUb = args.pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
                 auto tensorBlockUb = tensorUb.Slice(
@@ -820,8 +818,8 @@ struct Gmm2ArgsA8W4 {
 };
 
 template <uint8_t CombineQuantMode, typename Policy, bool IsShared, bool IsLayered = false, typename BlockMmad,
-         typename Scheduler, typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC,
-         typename Config, bool TopkWeightsPrefetch>
+          typename Scheduler, typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC,
+          typename Config, bool TopkWeightsPrefetch>
 __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
                                       TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
@@ -878,8 +876,9 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
         }
 
         // Layered 路径 GMM2 输出由 ProcessCombine 通过 group sync counter 读取，不走 Aiv1 GM tile 通知。
-        constexpr bool hasAiv1GmEpilogue = Policy::IS_GMM1 || (CombineQuantMode == COMBINE_NO_QUANT &&
-                                           !IsShared && !IsLayered);
+        constexpr bool hasAiv1GmEpilogue =
+            Policy::IS_GMM1 || (CombineQuantMode == COMBINE_NO_QUANT &&
+            !IsShared && !IsLayered);
         if constexpr (hasAiv1GmEpilogue) {
             if constexpr (Policy::IS_GMM1 && TopkWeightsPrefetch) {
                 // prefetch 软同步：写 tile 状态位通知 AIV1（roundTag = expertIdx + 1）
@@ -1144,7 +1143,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet &workSet, const Params &param
 
 template <uint8_t CombineQuantMode, typename Policy, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256,
-          bool TopkWeightsPrefetch = false, bool IsShared, bool IsLayered = false,typename ExtraArgs>
+          bool TopkWeightsPrefetch = false, bool IsShared, bool IsLayered = false, typename ExtraArgs>
 __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
                                            const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                            const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, ExtraArgs &args)
