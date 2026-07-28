@@ -721,12 +721,10 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint32_t> &tmpIdxLocal, const 
  * @param loopBasicIdx 当前循环需要加上得基准Index
  * @param validLen 有效元素个数
  */
-__aicore__ inline void LiTopKGatherVF(const LocalTensor<uint32_t> &outputIdxLocal,
-                                      const LocalTensor<uint32_t> &outputValueLocal,
-                                      const LocalTensor<uint32_t> &inputValueLocal,
-                                      const LocalTensor<uint32_t> &tmpIdxLocal,
-                                      const LocalTensor<uint32_t> &hisIdxLocal, uint32_t topK, uint32_t loopBasicIdx,
-                                      uint32_t validLen)
+__aicore__ inline void
+LiTopKGatherVF(const LocalTensor<uint32_t> &outputIdxLocal, const LocalTensor<uint32_t> &outputValueLocal,
+               const LocalTensor<uint32_t> &inputValueLocal, const LocalTensor<uint32_t> &tmpIdxLocal,
+               const LocalTensor<uint32_t> &hisIdxLocal, uint32_t topK, uint32_t loopBasicIdx, uint32_t validLen)
 {
     __ubuf__ uint32_t *outputIdxBuf = (__ubuf__ uint32_t *)outputIdxLocal.GetPhyAddr();
     __ubuf__ uint32_t *outputValueBuf = (__ubuf__ uint32_t *)outputValueLocal.GetPhyAddr();

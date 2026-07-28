@@ -219,11 +219,10 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitBuffers()
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2Kernel<LIT>::InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ,
-                                                                       __gm__ uint8_t *cuSeqlensK,
-                                                                       __gm__ uint8_t *sequsedQ,
-                                                                       __gm__ uint8_t *sequsedK,
-                                                                       __gm__ uint8_t *cmpResidualK)
+__aicore__ inline void
+LightningIndexerV2Kernel<LIT>::InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
+                                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
+                                                __gm__ uint8_t *cmpResidualK)
 {
     if (cuSeqlensQ != nullptr) {
         cuSeqlensQGm.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQ);
@@ -248,11 +247,10 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitActualSeqLen(__gm__ ui
 }
 
 template <typename LIT>
-__aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims,
-                                                                          bool isAccumSeq,
-                                                                          GlobalTensor<uint32_t> &cuSeqlensQGm,
-                                                                          GlobalTensor<uint32_t> &sequsedQGm,
-                                                                          uint32_t defaultSeqLen)
+__aicore__ inline uint32_t
+LightningIndexerV2Kernel<LIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
+                                               GlobalTensor<uint32_t> &cuSeqlensQGm, GlobalTensor<uint32_t> &sequsedQGm,
+                                               uint32_t defaultSeqLen)
 {
     if (hasSequsedQ) {
         return sequsedQGm.GetValue(bIdx);
@@ -264,12 +262,11 @@ __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLen(uint32
 }
 
 template <typename LIT>
-__aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
-                                                                             bool isAccumSeq,
-                                                                             GlobalTensor<uint32_t> &cuSeqlensKGm,
-                                                                             GlobalTensor<uint32_t> &sequsedKGm,
-                                                                             uint32_t defaultSeqLen, uint32_t cmpRatio,
-                                                                             GlobalTensor<uint32_t> &cmpResidualKGm)
+__aicore__ inline uint32_t
+LightningIndexerV2Kernel<LIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
+                                                  GlobalTensor<uint32_t> &cuSeqlensKGm,
+                                                  GlobalTensor<uint32_t> &sequsedKGm, uint32_t defaultSeqLen,
+                                                  uint32_t cmpRatio, GlobalTensor<uint32_t> &cmpResidualKGm)
 {
     uint32_t residual = hasCmpResidualK ? cmpResidualKGm.GetValue(bIdx) : 0;
     if (hasSequsedK) {
@@ -528,14 +525,13 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::DealActSeqLenIsZero(uint32
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key,
-                                                           __gm__ uint8_t *weights, __gm__ uint8_t *cuSeqlensQ,
-                                                           __gm__ uint8_t *cuSeqlensK, __gm__ uint8_t *sequsedQ,
-                                                           __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
-                                                           __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset,
-                                                           __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices,
-                                                           __gm__ uint8_t *sparseValues, __gm__ uint8_t *workspace,
-                                                           const LIV2TilingData *__restrict tiling, TPipe *tPipe)
+__aicore__ inline void
+LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
+                                    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK, __gm__ uint8_t *sequsedQ,
+                                    __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable,
+                                    __gm__ uint8_t *outputIdxOffset, __gm__ uint8_t *metadata,
+                                    __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+                                    __gm__ uint8_t *workspace, const LIV2TilingData *__restrict tiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47

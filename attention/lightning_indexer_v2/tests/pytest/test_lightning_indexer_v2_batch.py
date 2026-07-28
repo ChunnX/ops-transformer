@@ -19,7 +19,6 @@ import os
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import concurrent
-
 TEST_INPUT_PATH = "pt_path"
 pt_dir = TEST_INPUT_PATH
 result_path = Path("result.xlsx")  # 或使用传入的result_path

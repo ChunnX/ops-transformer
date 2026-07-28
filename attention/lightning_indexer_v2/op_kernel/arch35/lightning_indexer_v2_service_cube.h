@@ -301,10 +301,9 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::QueryNd2Nz(uint64_t s
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uint64_t s1gL1Offset,
-                                                                          uint64_t s1gL1RealSize,
-                                                                          uint64_t s1gL0RealSize,
-                                                                          const LIV2Common::RunInfo &runInfo)
+__aicore__ inline void
+LightningIndexerV2ServiceCube<LIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
+                                                   uint64_t s1gL0RealSize, const LIV2Common::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
