@@ -15,12 +15,39 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "opdev/platform.h"
 #include "opdev/shape_utils.h"
 
 using namespace op;
 
 namespace l0op {
 OP_TYPE_REGISTER(GroupedMatmulFinalizeRouting);
+
+namespace {
+constexpr int64_t OUT_DTYPE_BF16 = 2;
+
+bool IsMxFullQuant(const aclTensor *x1, const aclTensor *x2)
+{
+    if (x1 == nullptr || x2 == nullptr) {
+        return false;
+    }
+    auto x1Dtype = x1->GetDataType();
+    auto x2Dtype = x2->GetDataType();
+    bool isMxFp4 = x1Dtype == DataType::DT_FLOAT4_E2M1 && x2Dtype == DataType::DT_FLOAT4_E2M1;
+    bool isMxFp8 = (x1Dtype == DataType::DT_FLOAT8_E4M3FN || x1Dtype == DataType::DT_FLOAT8_E5M2) &&
+                   (x2Dtype == DataType::DT_FLOAT8_E4M3FN || x2Dtype == DataType::DT_FLOAT8_E5M2);
+    return isMxFp4 || isMxFp8;
+}
+
+DataType GetOutputDataType(const aclTensor *x1, const aclTensor *x2, int64_t dtype)
+{
+    if (dtype == OUT_DTYPE_BF16 && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+        IsMxFullQuant(x1, x2)) {
+        return DataType::DT_BF16;
+    }
+    return DataType::DT_FLOAT;
+}
+} // namespace
 
 const aclTensor *GroupedMatmulFinalizeRouting(const aclTensor *x1, const aclTensor *x2, const aclTensor *scale,
     const aclTensor *bias, const aclTensor *pertokenScale, const aclTensor *groupList, const aclTensor *shareInput, 
@@ -30,7 +57,7 @@ const aclTensor *GroupedMatmulFinalizeRouting(const aclTensor *x1, const aclTens
 {
     L0_DFX(GroupedMatmulFinalizeRouting, x1, x2, scale, bias, pertokenScale, groupList, shareInput, logit, rowIndex,
         dtype, sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, outputBS, groupListType);
-    DataType outType = DataType::DT_FLOAT;
+    DataType outType = GetOutputDataType(x1, x2, dtype);
 
     Format format = Format::FORMAT_ND;
     if (executor == nullptr) {
