@@ -320,6 +320,30 @@ inline std::vector<void *> GetCustOpApiHandlers()
             }
         }
     }
+
+    const char *ldEnv = std::getenv("LD_LIBRARY_PATH");
+    if (ldEnv != nullptr) {
+        std::string envStr(ldEnv);
+        std::istringstream iss(envStr);
+        std::string path;
+        while (std::getline(iss, path, ':')) {
+            if (path.empty()) {
+                continue;
+            }
+            std::string soPathStr = path + "/" + GetCustOpApiLibName();
+            char soPath[PATH_MAX] = {0};
+            if (realpath(soPathStr.c_str(), soPath) == nullptr) {
+                continue;
+            }
+            auto handler = dlopen(soPath, RTLD_LAZY);
+            if (handler != nullptr) {
+                handlers.push_back(handler);
+            } else {
+                ASCEND_LOGW("dlopen %s failed, error:%s.", soPath, dlerror());
+            }
+        }
+    }
+
     if (handlers.empty()) {
         auto handler = GetOpApiLibHandler(GetCustOpApiLibName());
         if (handler != nullptr) {
