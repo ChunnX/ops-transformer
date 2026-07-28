@@ -813,6 +813,12 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     uint32_t quantTokenBytes =
         ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
     uint32_t quantOutputBufferBytes = quantTokenBytes + ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+    if (tilingData->topkWeightsPrefetch == 1) {
+        uint32_t weightBytes =
+            ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+        quantOutputBufferBytes =
+            ops::CeilAlign(quantOutputBufferBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+    }
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
     // sendCntAccTensor_ 按本卡 weight 容量分配，与 kernel 地址布局一致；实际 mask push 次数按 routed MoE
     // expert 数计算，不包含共享专家和未参与路由的预留 weight。
