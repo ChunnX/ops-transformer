@@ -131,9 +131,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorNotNullPtr(c
 {
     const aclTensor *tensor = (*tensorList)[idx];
     if (unlikely(tensor == nullptr)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), tensorType, "nullptr",
-                                              tensorType + "[" + std::to_string(idx) +
-                                                  "] is null, which is not supported");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            GetAclnnName(), tensorType, "nullptr",
+            tensorType + "[" + std::to_string(idx) + "] is null, which is not supported");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     return ACLNN_SUCCESS;
@@ -401,10 +401,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTransposeStatus() 
 
     if (IsA16F8ND() || IsMxA8W4NZ()) {
         if (unlikely(!gmmParams_.transposeWeight)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                GetAclnnName(), "transposeWeight", "false",
-                "In weight quant case fp16/bf16-int8, fp16/bf16-fp8/hif8 and "
-                "fp8_e4m3-fp4_e2m1/fp4_e1m2, weight must be transposed");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "transposeWeight", "false",
+                                                  "In weight quant case fp16/bf16-int8, fp16/bf16-fp8/hif8 and "
+                                                  "fp8_e4m3-fp4_e2m1/fp4_e1m2, weight must be transposed");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else if (IsA16MxFp4NZ() || IsS8S4NZ()) {
@@ -560,9 +559,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckBiasDtype()
             if (unlikely(biasDtype_ != yDtype_)) {
                 std::string incorrectDtypes =
                     std::string(op::ToString(biasDtype_).GetString()) + ", " + op::ToString(yDtype_).GetString();
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(GetAclnnName(), "bias, y", incorrectDtypes,
-                                                       "The dtype of bias must be equal to the dtype of y, " +
-                                                           GetDataFlowString());
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    GetAclnnName(), "bias, y", incorrectDtypes,
+                    "The dtype of bias must be equal to the dtype of y, " + GetDataFlowString());
                 return ACLNN_ERR_PARAM_INVALID;
             }
         } else if (IsS8S4NZ()) {
@@ -581,9 +580,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantDtype(siz
 {
     if (gmmParams_.antiquantScaleOptional != nullptr) {
         if (IsA16W8ND() || IsA16F8ND() || IsA16W4()) {
-            CHECK_RET(CheckTensorDtype(gmmParams_.antiquantScaleOptional, xDtype_, idx, "antiquantScale") ==
-                          ACLNN_SUCCESS,
-                      ACLNN_ERR_PARAM_INVALID);
+            CHECK_RET(
+                CheckTensorDtype(gmmParams_.antiquantScaleOptional, xDtype_, idx, "antiquantScale") == ACLNN_SUCCESS,
+                ACLNN_ERR_PARAM_INVALID);
         } else if (IsA16MxFp4NZ() || IsMxA8W4NZ()) {
             CHECK_RET(CheckTensorDtype(gmmParams_.antiquantScaleOptional, ge::DT_FLOAT8_E8M0, idx, "antiquantScale") ==
                           ACLNN_SUCCESS,
@@ -598,9 +597,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantDtype(siz
 
     if (gmmParams_.antiquantOffsetOptional != nullptr) {
         // 当前有antiquantOffset的数据流，antiquantOffset的数据类型均和x一致
-        CHECK_RET(CheckTensorDtype(gmmParams_.antiquantOffsetOptional, xDtype_, idx, "antiquantOffset") ==
-                      ACLNN_SUCCESS,
-                  ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(
+            CheckTensorDtype(gmmParams_.antiquantOffsetOptional, xDtype_, idx, "antiquantOffset") == ACLNN_SUCCESS,
+            ACLNN_ERR_PARAM_INVALID);
     }
     return ACLNN_SUCCESS;
 }
@@ -635,9 +634,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(con
     }
 
     if (dimValueAllOne) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), paramName, "true",
-                                              "When xDtype-weightDtype is fp16/bf16-int4, The dim value of " +
-                                                  paramName + " not support all be 1");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            GetAclnnName(), paramName, "true",
+            "When xDtype-weightDtype is fp16/bf16-int4, The dim value of " + paramName + " not support all be 1");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
