@@ -72,6 +72,22 @@ __aicore__ inline void LowApiCopyOut(const LocalTensor<T>& outputLocal, const Gl
     DataCopyPad(outputGm, outputLocal, copyParams);
 }
 
+template <typename T>
+__aicore__ inline void MhcPreVFCompactRows(const LocalTensor<T>& dstLocal, const LocalTensor<T>& srcLocal,
+    uint16_t rowCount, uint32_t srcRowStride, uint32_t rowWidth)
+{
+    __ubuf__ T* dst = (__ubuf__ T*)dstLocal.GetPhyAddr();
+    __ubuf__ T* src = (__ubuf__ T*)srcLocal.GetPhyAddr();
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<T> data;
+        for (uint16_t row = 0; row < rowCount; ++row) {
+            MicroAPI::Load<T>(data, src + static_cast<uint32_t>(row) * srcRowStride);
+            MicroAPI::Store<T>(dst + static_cast<uint32_t>(row) * rowWidth, data, rowWidth);
+        }
+    }
+}
+
 
 } // namespace MhcPre
 

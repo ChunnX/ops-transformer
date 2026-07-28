@@ -209,6 +209,16 @@ private:
 
     __aicore__ inline void CopyRawHMixToGm(uint64_t offsetT, uint64_t lenT)
     {
+        LocalTensor<P> copySource = this->matmulRes_;
+        LocalTensor<P> compactLocal;
+        // Fixpipe uses fusionAlign as the UB row stride. Compact rows before
+        // writing raw hMix when the logical fusion size is not 32-byte aligned.
+        if (this->tiling_->fusionAlign != this->mnConfig_.n) {
+            compactLocal = this->xInQueue_.template AllocTensor<P>();
+            MhcPreVFCompactRows(compactLocal, this->matmulRes_, static_cast<uint16_t>(lenT),
+                this->tiling_->fusionAlign, this->mnConfig_.n);
+            copySource = compactLocal;
+        }
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
 
@@ -218,10 +228,13 @@ private:
         copyParams.srcStride = 0;
         copyParams.dstStride = 0;
         DataCopyPad(this->hMixGm_[(this->globalOffsetM_ + offsetT) * this->mnConfig_.n],
-            this->matmulRes_, copyParams);
+            copySource, copyParams);
 
         SetFlag<HardEvent::MTE3_V>(EVENT_ID2);
         WaitFlag<HardEvent::MTE3_V>(EVENT_ID2);
+        if (this->tiling_->fusionAlign != this->mnConfig_.n) {
+            this->xInQueue_.FreeTensor(compactLocal);
+        }
     }
 
     __aicore__ inline void AIV1PrologueDirect(uint64_t offsetT, uint64_t lenT, uint64_t localOffset)
