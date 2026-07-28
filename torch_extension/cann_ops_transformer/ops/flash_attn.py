@@ -18,12 +18,12 @@ FA_METADATA_OP_NAME = "flash_attn_metadata"
 
 
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
-    if batch_size is not None:
-        return batch_size
+    if seqused_q is not None:
+        return seqused_q.size(0)
     elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:
         return cu_seqlens_q.size(0) - 1
-    elif seqused_q is not None:
-        return seqused_q.size(0)
+    elif batch_size is not None and batch_size > 0:
+        return batch_size
     return 0
 
 
@@ -84,9 +84,7 @@ class FlashAttenOpBuilder(OpBuilder):
             layout_kv: Optional[str] = None,
             layout_out: Optional[str] = None,
         ):
-            batch_size = (_calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
-                if batch_size is None
-                else batch_size)
+            batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
             metadata_size = _calculate_metadata_size(batch_size, num_heads_kv)
             return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
@@ -185,11 +183,7 @@ def flash_attn_metadata(
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     op_module = flash_attn_op_builder.load()
-    batch_size = (
-        _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
-        if batch_size is None
-        else batch_size
-    )
+    batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     mask_mode = 1 if mask_mode is None else mask_mode
