@@ -117,7 +117,7 @@ cann_ops_transformer.quant_compressor(
 | state_cache | Tensor | 必选 | kv_state和score_state的历史数据，对应公式中的 $\left[kv\_state, score\_state\right]$。不支持非连续，数据格式支持ND。 | float32 | [block_num, block_size, 2\*coff\*D]，要求block_num>0 |
 | ape | Tensor | 必选 | positional biases，对应公式中的 $Ape$。不支持非连续，数据格式支持ND。 | float32 | [cmp_ratio,coff\*D] |
 | quant_mode | int | 必选 | 量化模式。取值范围为[1]，1表示A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL（HIFLOAT8输入，x按per-tensor缩放、wkv/wgate按per-channel缩放反量化）。 | - | - |
-| cmp_ratio | int | 必选 | 数据压缩率。默认值为4. | - | - |
+| cmp_ratio | int | 必选 | 数据压缩率。取值范围为[2, 128]内的整数。 | - | - |
 | x_descale | Tensor | 可选 | x的反量化缩放因子，per-tensor缩放。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [1,] |
 | wkv_descale | Tensor | 可选 | wkv的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [coff\*D,] |
 | wgate_descale | Tensor | 可选 | wgate的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [coff\*D,] |
@@ -183,7 +183,7 @@ cann_ops_transformer.quant_compressor(
 - 支持H为1K~10K，512对齐。
 - 支持block_size为1~1024。
 - quant_mode取值为1（A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL），此时x_descale、wkv_descale、wgate_descale为必选输入。其中x_descale shape为[1,]（per-tensor缩放），wkv_descale、wgate_descale shape为[coff\*D,]（per-channel缩放）。
-- 支持cmp_ratio为2/4/8/16/32/64/128。支持如下三种典型组合场景：
+- 支持如下三种典型组合场景：
   - C4A: D=512, coff=2, cmp_ratio=4;
   - C4Li: D=128, coff=2, cmp_ratio=4;
   - C128A: D=512, coff=1, cmp_ratio=128。

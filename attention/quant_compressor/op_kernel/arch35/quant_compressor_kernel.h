@@ -245,7 +245,7 @@ __aicore__ inline void QuantCompressorKernel<COMP>::SkipInvalidBatch(BatchInfo &
     if (batchInfo.bIdx < constInfo.batchSize) {
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
-        batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
+        batchInfo.headHolderSeq = (uint32_t)(batchInfo.bStartPos % constInfo.cmpRatio);
         batchInfo.tcNum = (batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio -
                           batchInfo.bStartPos / constInfo.cmpRatio;
         batchInfo.compressedTcNum = (batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio -
@@ -302,7 +302,7 @@ __aicore__ inline BasicBlockInfo QuantCompressorKernel<COMP>::SkipOneLoop(BatchI
             }
             if (quota > alignSeq) {
                 uint32_t delta =
-                    (batchInfo.bStartPos + batchInfo.sIdx + quota) & (constInfo.cmpRatio - 1); // 超出对齐的部分
+                    (batchInfo.bStartPos + batchInfo.sIdx + quota) % constInfo.cmpRatio; // 超出对齐的部分
                 curDealSeq = quota - delta;
                 quota -= curDealSeq;
                 curDealTcNum = (curDealSeq + constInfo.cmpRatio - 1) / constInfo.cmpRatio;
