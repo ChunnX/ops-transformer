@@ -34,13 +34,15 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor[]? shared_weight1=None, Tensor[]? shared_weight2=None, "
             "Tensor[]? shared_weight_scales1=None, Tensor[]? shared_weight_scales2=None, "
             "Tensor[]? shared_bias1=None, Tensor[]? shared_bias2=None, "
+            "Tensor(a!)? mask_buffer=None, "
             "int max_recv_token_num=0, "
             "int dispatch_quant_mode=0, int combine_quant_mode=0, "
             'str comm_alg="", int num_max_tokens_per_rank=0, str activation="swiglu", '
             "float? activation_clamp=None, "
             "int? dispatch_quant_out_dtype=None,  "
             "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, "
-            "int? rank_num_per_server=None, int topk_weights_type=0) -> (Tensor, Tensor)"
+            "int? rank_num_per_server=None, int topk_weights_type=0, "
+            "int? timeout_ms=None) -> (Tensor, Tensor)"
         )
 
     def register_meta(self):
@@ -66,6 +68,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             shared_weight_scales2=None,
             shared_bias1=None,
             shared_bias2=None,
+            mask_buffer=None,
             max_recv_token_num=0,
             dispatch_quant_mode=0,
             combine_quant_mode=0,
@@ -79,6 +82,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             topo_type=None,
             rank_num_per_server=None,
             topk_weights_type=0,
+            timeout_ms=None,
         ):
             torch._check(
                 ep_world_size != 0,
@@ -117,6 +121,7 @@ def _npu_mega_moe(
     shared_weight_scales2=None,
     shared_bias1=None,
     shared_bias2=None,
+    mask_buffer=None,
     max_recv_token_num=0,
     dispatch_quant_mode=0,
     combine_quant_mode=0,
@@ -130,6 +135,7 @@ def _npu_mega_moe(
     topo_type=None,
     rank_num_per_server=None,
     topk_weights_type=0,
+    timeout_ms=None,
 ):
     _op_module = _mega_moe_op_builder.load()
     return _op_module.npu_mega_moe(
@@ -153,6 +159,7 @@ def _npu_mega_moe(
         shared_weight_scales2,
         shared_bias1,
         shared_bias2,
+        mask_buffer,
         max_recv_token_num,
         dispatch_quant_mode,
         combine_quant_mode,
@@ -166,6 +173,7 @@ def _npu_mega_moe(
         topo_type,
         rank_num_per_server,
         topk_weights_type,
+        timeout_ms,
     )
 
 
@@ -184,7 +192,14 @@ class SymmBuffer:
         combine_quant_mode: int = 0,
         comm_alg: str = "",
         topk_weights_type: int = 0,
+        timeout_ms: Optional[int] = None,
     ):
+        if timeout_ms is not None and (
+            isinstance(timeout_ms, bool)
+            or not isinstance(timeout_ms, int)
+            or timeout_ms <= 0
+        ):
+            raise ValueError("timeout_ms must be a positive integer or None.")
         # Metadata
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
@@ -227,11 +242,93 @@ class SymmBuffer:
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
         self.topk_weights_type = topk_weights_type
+        self.timeout_ms = timeout_ms
         self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
+        self.mask_buffer = (
+            torch.zeros(
+                self.ep_world_size, dtype=torch.bool, device=self.context.device
+            )
+            if timeout_ms is not None
+            else None
+        )
 
     def destroy(self):
         self._ctx_manager.destroy()
+
+    def query_mask_buffer(self) -> torch.Tensor:
+        """Return a host-side snapshot of the rank mask."""
+        if self.mask_buffer is None:
+            return torch.zeros(self.ep_world_size, dtype=torch.bool)
+        return self.mask_buffer.detach().cpu().clone()
+
+    def update_mask_buffer(self, rank: int, masked: bool) -> None:
+        if self.mask_buffer is None:
+            raise RuntimeError(
+                "mask_buffer is unavailable because timeout_ms is not configured."
+            )
+        if (
+            isinstance(rank, bool)
+            or not isinstance(rank, int)
+            or not 0 <= rank < self.ep_world_size
+        ):
+            raise IndexError(f"rank must be in [0, {self.ep_world_size}), got {rank}.")
+        if not isinstance(masked, bool):
+            raise TypeError(f"masked must be bool, got {type(masked)}.")
+        self.mask_buffer[rank] = masked
+
+    def update_group(self, group) -> None:
+        """Destroy the old links after a replacement context has been created."""
+        rank_id = torch.distributed.get_rank(group)
+        group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
+            rank_id, init_comm=False
+        )
+        ep_world_size = torch.distributed.get_world_size(group)
+        required_ccl_buffer_size = _get_mega_moe_ccl_buffer_size(
+            ep_world_size,
+            self.num_experts,
+            self.num_max_tokens_per_rank,
+            self.num_topk,
+            self.hidden,
+            self.max_recv_token_num,
+            self.dispatch_quant_mode,
+            self.dispatch_quant_out_dtype,
+            self.combine_quant_mode,
+            self.comm_alg,
+            self.topk_weights_type,
+        )
+        new_manager = CommContextManager(
+            group_name,
+            ep_world_size,
+            backend={
+                "Ascend910B": "kfc",
+                "Ascend910_93": "kfc",
+                "Ascend950": "channel",
+            },
+            customCclBufferSize=required_ccl_buffer_size,
+        )
+        try:
+            new_context = new_manager.create_context()
+        except Exception:
+            new_manager.destroy()
+            raise
+
+        old_manager = self._ctx_manager
+        self.group = group
+        self.rank_id = rank_id
+        self.group_name = group_name
+        self.ep_world_size = ep_world_size
+        self._ctx_manager = new_manager
+        self.context = new_context
+        self.ccl_buffer_size = new_manager.ccl_buffer_size
+        self.topo_type = new_manager.topo_type
+        self.rank_num_per_server = new_manager.rank_num_per_server
+        self.mask_buffer = (
+            torch.zeros(ep_world_size, dtype=torch.bool, device=new_context.device)
+            if self.timeout_ms is not None
+            else None
+        )
+        old_manager.destroy()
 
 
 _TORCH_DTYPE_TO_INT = {  # torch枚举
@@ -300,6 +397,7 @@ def get_symm_buffer_for_mega_moe(
     comm_alg: str = "",
     use_ccl_buffer: bool = True,
     topk_weights_type: int = 0,
+    timeout_ms: Optional[int] = None,
 ) -> SymmBuffer:
     return SymmBuffer(
         group,
@@ -314,6 +412,7 @@ def get_symm_buffer_for_mega_moe(
         combine_quant_mode,
         comm_alg,
         topk_weights_type,
+        timeout_ms,
     )
 
 
@@ -362,6 +461,7 @@ def mega_moe(
         shared_weight_scales2=shared_l2_weights_sf,
         shared_bias1=shared_l1_bias,
         shared_bias2=shared_l2_bias,
+        mask_buffer=sym_buffer.mask_buffer,
         max_recv_token_num=sym_buffer.max_recv_token_num,
         dispatch_quant_mode=sym_buffer.dispatch_quant_mode,
         combine_quant_mode=sym_buffer.combine_quant_mode,
@@ -375,4 +475,17 @@ def mega_moe(
         topo_type=sym_buffer.topo_type,
         rank_num_per_server=sym_buffer.rank_num_per_server,
         topk_weights_type=sym_buffer.topk_weights_type,
+        timeout_ms=sym_buffer.timeout_ms,
     )
+
+
+def query_mask_buffer(sym_buffer: SymmBuffer) -> torch.Tensor:
+    return sym_buffer.query_mask_buffer()
+
+
+def update_mask_buffer(sym_buffer: SymmBuffer, rank: int, masked: bool) -> None:
+    sym_buffer.update_mask_buffer(rank, masked)
+
+
+def update_group(sym_buffer: SymmBuffer, group) -> None:
+    sym_buffer.update_group(group)

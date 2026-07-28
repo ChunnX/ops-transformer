@@ -89,8 +89,9 @@ public:
     __aicore__ inline MegaMoe(){};
     __aicore__ inline void Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
                                 GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
-                                GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM, GM_ADDR yGM,
-                                GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
+                                GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
+                                GM_ADDR maskBufferGM, GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM,
+                                GM_ADDR tilingGM);
     __aicore__ inline void Process();
 
 private:
@@ -106,6 +107,7 @@ private:
     GM_ADDR bias2GM_;
     GM_ADDR xActiveMaskGM_;
     GM_ADDR scalesGM_;
+    GM_ADDR maskBufferGM_;
     GM_ADDR yGM_;
     GM_ADDR gmExpertTokenNums_;
     GM_ADDR workspaceGM_;
@@ -130,6 +132,7 @@ private:
     int32_t epWorldSize_;
     int32_t listLen_;
     float activationClamp_;
+    uint64_t timeoutMs_;
 
     MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
     MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
@@ -138,11 +141,11 @@ private:
 
 
 template <MegaMoeClass>
-__aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM,
-                                                  GM_ADDR topkWeightsGM, GM_ADDR weight1GM, GM_ADDR weight2GM,
-                                                  GM_ADDR weightScales1GM, GM_ADDR weightScales2GM, GM_ADDR bias1GM,
-                                                  GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM, GM_ADDR yGM,
-                                                  GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__aicore__ inline void
+MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM, GM_ADDR weight1GM,
+                           GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM, GM_ADDR bias1GM,
+                           GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM, GM_ADDR maskBufferGM, GM_ADDR yGM,
+                           GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     constexpr bool kRoutingIsQuant =
         std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t> || std::is_same_v<BType_, int8_t>;
@@ -159,6 +162,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
     bias2GM_ = bias2GM;
     xActiveMaskGM_ = xActiveMaskGM;
     scalesGM_ = scalesGM;
+    maskBufferGM_ = maskBufferGM;
     yGM_ = yGM;
     gmExpertTokenNums_ = expertTokenNumsGM;
     workspaceGM_ = workspaceGM;
@@ -178,6 +182,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
         listLen_ = tilingData.common.listLen;
 
         activationClamp_ = tilingData.common.activationClamp;
+        timeoutMs_ = tilingData.common.timeoutMs;
 
         moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -195,6 +200,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
         listLen_ = tilingData.common.listLen;
 
         activationClamp_ = tilingData.common.activationClamp;
+        timeoutMs_ = tilingData.common.timeoutMs;
 
         moeInitRoutingV2TilingData = tilingData.moeInitRoutingV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -359,7 +365,9 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                moeInitRoutingQuantV2TilingData,
                                                epilogueGranularity,
                                                activationClamp_,
-                                               tilingGM_};
+                                               tilingGM_,
+                                               maskBufferGM_,
+                                               timeoutMs_};
     } else {
         params = typename MatmulKernel::Params{problemShape,
                                                static_cast<uint32_t>(epWorldSize_),
@@ -398,7 +406,9 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                moeInitRoutingV2TilingData,
                                                epilogueGranularity,
                                                activationClamp_,
-                                               tilingGM_};
+                                               tilingGM_,
+                                               maskBufferGM_,
+                                               timeoutMs_};
     }
 
     MatmulKernel kernel(params);

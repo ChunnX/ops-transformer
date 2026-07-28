@@ -602,12 +602,26 @@
 先调用get_symm_buffer_for_mega_moe接口封装输入参数并创建SymmBuffer结构体，再调用mega_moe接口进行计算。
 
 ```python
-get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="") -> SymmBuffer
+get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="", timeout_ms=None) -> SymmBuffer
 ```
 
 ```python
 mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, weight1_type=None, weight2_type=None, shared_l1_weights=None, shared_l2_weights=None, shared_l1_weights_sf=None, shared_l2_weights_sf=None, shared_l1_bias=None, shared_l2_bias=None) -> (Tensor, Tensor)
 ```
+
+- A3 弹性扩缩容接口：
+
+```python
+query_mask_buffer(sym_buffer) -> Tensor
+update_mask_buffer(sym_buffer, rank, masked) -> None
+update_group(sym_buffer, group) -> None
+```
+
+`timeout_ms`、`mask_buffer` 及以上弹性接口当前仅支持 Atlas A3。配置正整数
+`timeout_ms` 后，`SymmBuffer` 会在 NPU 上创建 shape 为 `[ep_world_size]` 的全 False
+bool 掩码；通信超时的 rank 会被置为 True 并在后续卡间通信中跳过。
+`query_mask_buffer` 返回其 Host 侧快照，`update_group` 使用新 group 完整重建通信链路，
+并按新 world size 将掩码重新初始化为全 False。
 
 ## 参数说明
 
@@ -693,6 +707,12 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>str</td>
         <td>可选</td>
         <td>暂不支持该参数，使用默认值即可。默认值为""。</td>
+    </tr>
+    <tr>
+        <td>timeout_ms</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>A3 卡间通信超时时间，单位毫秒，必须为正整数；None 表示关闭超时检测。默认值为None。</td>
     </tr>
 </tbody>
 </table>

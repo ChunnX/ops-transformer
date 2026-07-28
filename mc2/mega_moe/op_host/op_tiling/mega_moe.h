@@ -43,6 +43,7 @@ struct MegaMoeConfig {
     uint32_t sharedWeightScales2Index = 15U;
     uint32_t sharedBias1Index = 16U;
     uint32_t sharedBias2Index = 17U;
+    uint32_t maskBufferIndex = 18U;
     uint32_t yIndex = 0U;
     uint32_t expertTokenNumsIndex = 1U;
     uint32_t attrMoeExpertNumIndex = 0U;
@@ -63,6 +64,7 @@ struct MegaMoeConfig {
     uint32_t attrTopoTypeIndex = 15U;
     uint32_t attrRankNumPerServerIndex = 16U;
     uint32_t attrTopkWeightsTypeIndex = 17U;
+    uint32_t attrTimeoutMsIndex = 18U;
     bool isMc2Context = false;
 };
 using namespace Ops::Transformer::OpTiling;
