@@ -35,7 +35,7 @@ import sys
 import time
 from collections import Counter
 from importlib import import_module
-from typing import Any, Callable, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import torch
 import torch_npu
@@ -490,7 +490,81 @@ def _bench(fn: Callable[[], Any], warmup: int, iterations: int) -> Tuple[float, 
     return sum(timings) / len(timings), timings[len(timings) // 2], timings[0]
 
 
-def _compare_tensor(name: str, actual: torch.Tensor, expected: torch.Tensor) -> Dict[str, float]:
+def _describe_nonfinite(
+    name: str,
+    tensor: torch.Tensor,
+    source: str,
+    case: Optional[Dict[str, Any]],
+) -> str:
+    tensor_f32 = tensor.float()
+    nan_mask = torch.isnan(tensor_f32)
+    inf_mask = torch.isinf(tensor_f32)
+    pos_inf_mask = inf_mask & (tensor_f32 > 0)
+    neg_inf_mask = inf_mask & (tensor_f32 < 0)
+    nonfinite_mask = nan_mask | inf_mask
+
+    nan_count = int(nan_mask.sum().item())
+    pos_inf_count = int(pos_inf_mask.sum().item())
+    neg_inf_count = int(neg_inf_mask.sum().item())
+    lines = [
+        f"  {source} kinds: nan={nan_count} +inf={pos_inf_count} -inf={neg_inf_count}"
+    ]
+
+    first_coords = torch.nonzero(nonfinite_mask, as_tuple=False)[:16].cpu().tolist()
+    lines.append(
+        f"  {source} first coordinates: "
+        + ", ".join(str(tuple(coord)) for coord in first_coords)
+    )
+
+    if (
+        name == "dWeights"
+        and case is not None
+        and case["layout"] == "BSND"
+        and tensor.ndim >= 3
+        and tensor.shape[0] == case["B"]
+        and tensor.shape[1] == case["S1"]
+    ):
+        k_exec = _execution_k(case)
+        s2_padded = math.ceil(case["S2"] / 128) * 128
+        schedule = MODULE._make_task_schedule(
+            case["B"],
+            case["S1"],
+            s2_padded,
+            k_exec,
+            MODULE._get_aicore_count(),
+        )
+        launch_cores = schedule.launch_core_num
+        per_task_mask = nonfinite_mask.reshape(case["B"], case["S1"], -1)
+        bad_tasks = torch.nonzero(per_task_mask.any(dim=2), as_tuple=False).cpu().tolist()
+        lines.append(
+            f"  {source} task mapping: launch_cores={launch_cores} "
+            f"bad_tasks={len(bad_tasks)}"
+        )
+        for batch_id, query_id in bad_tasks[:16]:
+            task_id = batch_id * case["S1"] + query_id
+            bad_heads = torch.nonzero(
+                per_task_mask[batch_id, query_id], as_tuple=False
+            ).reshape(-1).cpu().tolist()
+            head_preview = ",".join(str(head_id) for head_id in bad_heads[:16])
+            if len(bad_heads) > 16:
+                head_preview += ",..."
+            lines.append(
+                f"    b={batch_id} q={query_id} task={task_id} "
+                f"round={task_id // launch_cores} core={task_id % launch_cores} "
+                f"count={len(bad_heads)} heads=[{head_preview}]"
+            )
+        if len(bad_tasks) > 16:
+            lines.append(f"    ... {len(bad_tasks) - 16} more bad tasks")
+
+    return "\n".join(lines)
+
+
+def _compare_tensor(
+    name: str,
+    actual: torch.Tensor,
+    expected: torch.Tensor,
+    case: Optional[Dict[str, Any]] = None,
+) -> Dict[str, float]:
     if actual.shape != expected.shape:
         raise AssertionError(f"{name}: shape mismatch: TileLang={tuple(actual.shape)}, official={tuple(expected.shape)}")
     actual_f32 = actual.float()
@@ -498,11 +572,16 @@ def _compare_tensor(name: str, actual: torch.Tensor, expected: torch.Tensor) -> 
     actual_finite = torch.isfinite(actual_f32)
     expected_finite = torch.isfinite(expected_f32)
     if not actual_finite.all().item() or not expected_finite.all().item():
-        raise AssertionError(
+        details = [
             f"{name}: non-finite value detected "
             f"(TileLang={actual_f32.numel() - actual_finite.sum().item()}, "
             f"Official={expected_f32.numel() - expected_finite.sum().item()})"
-        )
+        ]
+        if not actual_finite.all().item():
+            details.append(_describe_nonfinite(name, actual_f32, "TileLang", case))
+        if not expected_finite.all().item():
+            details.append(_describe_nonfinite(name, expected_f32, "Official", case))
+        raise AssertionError("\n".join(details))
     difference = (actual_f32 - expected_f32).abs()
     reference_norm = torch.norm(expected_f32).item()
     return {
@@ -514,18 +593,25 @@ def _compare_tensor(name: str, actual: torch.Tensor, expected: torch.Tensor) -> 
 
 
 def _compare_outputs(
-    tilelang_outputs: Sequence[torch.Tensor], official_outputs: Sequence[torch.Tensor]
+    tilelang_outputs: Sequence[torch.Tensor],
+    official_outputs: Sequence[torch.Tensor],
+    case: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Dict[str, float]], bool]:
     metrics: Dict[str, Dict[str, float]] = {}
     output_names = ("dQueryIndex", "dKeyIndex", "dWeights")
     for name, actual, expected in zip(output_names, tilelang_outputs[:3], official_outputs[:3]):
-        metrics[name] = _compare_tensor(name, actual, expected)
+        metrics[name] = _compare_tensor(name, actual, expected, case)
     loss_actual = tilelang_outputs[3].float().reshape(-1)
     loss_expected = official_outputs[3].float().reshape(-1)
     if loss_actual.numel() != 1 or loss_expected.numel() != 1:
         raise AssertionError("Loss must contain exactly one scalar")
     if not torch.isfinite(loss_actual).all().item() or not torch.isfinite(loss_expected).all().item():
-        raise AssertionError("Loss: non-finite value detected")
+        details = ["Loss: non-finite value detected"]
+        if not torch.isfinite(loss_actual).all().item():
+            details.append(_describe_nonfinite("Loss", loss_actual, "TileLang", case))
+        if not torch.isfinite(loss_expected).all().item():
+            details.append(_describe_nonfinite("Loss", loss_expected, "Official", case))
+        raise AssertionError("\n".join(details))
     loss_abs = (loss_actual - loss_expected).abs().item()
     metrics["Loss"] = {
         "max_abs": loss_abs,
@@ -721,7 +807,7 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
         return "OFFICIAL_FAIL"
 
     try:
-        metrics, passed = _compare_outputs(tilelang_outputs, official_outputs)
+        metrics, passed = _compare_outputs(tilelang_outputs, official_outputs, case)
         status = "PASS" if passed else "PRECISION_FAIL"
         if args.verbose:
             _print_metrics(metrics)
