@@ -94,7 +94,7 @@ public:
 
     // ub
     TBuf<> commonTBuf; // common的复用空间
-    TQue<QuePosition::VECOUT, 1> stage1OutQue[2];
+    TQue<QuePosition::VECOUT, 1> stage1OutQue;
     TQue<QuePosition::VECIN, 1> attenMaskInQue[2];
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
@@ -325,7 +325,7 @@ public:
 
         apiTmpBuffer = this->commonTBuf.template Get<uint8_t>();
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
-        auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
+        auto stage1CastTensor = this->stage1OutQue.template AllocTensor<INPUT_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
                 ProcessVec1Vf<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSize, EQ_128, hasAtten, PSE_MODE,
@@ -384,26 +384,25 @@ public:
                 }
             }
         }
-        bmm1ResBuf.SetCrossCore();
-        if constexpr (hasAtten) {
-            this->attenMaskInQue[runInfo.loop % DB].template FreeTensor(attenMaskUb);
-        }
 
         // ===================DataCopy to L1 ====================
-        this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
-        this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
-        LocalTensor<INPUT_T> mm2AL1Tensor;
-        mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>()[dVBaseSize];
+        this->stage1OutQue.template EnQue(stage1CastTensor);
+        this->stage1OutQue.template DeQue<INPUT_T>();
+        LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
         if (likely(runInfo.actVecMSize != 0)) {
-            DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
-                                  (runInfo.actMSize - runInfo.actVecMSize)],
+            DataCopy(mm2AL1Tensor[s2BaseSize * dVBaseSize + runInfo.vecMbaseIdx * (AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T))],
                      stage1CastTensor,
                      {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize, (uint16_t)(vec1Srcstride - runInfo.actVecMSize),
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
-        this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
+        this->stage1OutQue.template FreeTensor(stage1CastTensor);
 
+        if constexpr (hasAtten) {
+            this->attenMaskInQue[runInfo.loop % DB].template FreeTensor(attenMaskUb);
+        }
+
+        bmm1ResBuf.SetCrossCore();
         outputBuf.SetCrossCore();
         // ======================================================
 
@@ -676,7 +675,7 @@ public:
         // Bmm2结果和Vec2结果都在UB
         tPipe->InitBuffer(stage2OutBuf, mBaseSize * dVTemplateAlign64 * sizeof(T));
 
-        tPipe->InitBuffer(stage1OutQue[0], 1, (mBaseSize / CV_RATIO + 1) * s2BaseSize * sizeof(INPUT_T));
+        tPipe->InitBuffer(stage1OutQue, 1, (mBaseSize / CV_RATIO + 1) * s2BaseSize * sizeof(INPUT_T));
 
         if (unlikely(constInfo.isSoftmaxLseEnable)) {
             // 8: 适配TND，每行的结果存为8个重复lse元素（32B对齐）

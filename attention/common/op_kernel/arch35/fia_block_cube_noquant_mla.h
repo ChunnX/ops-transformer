@@ -103,7 +103,7 @@ public:
     __aicore__ inline void InitBuffers()
     {
         static_assert(mBaseSize == 64 && s2BaseSize == 128, "mBaseSize != 64 or s2BaseSize != 128");
-        l1QBuffers.Init(*l1BufferManagerPtr, (uint32_t)mBaseSize * s2BaseSize * 2);
+        l1QBuffers.Init(*l1BufferManagerPtr, (uint32_t)mBaseSize * 576 * sizeof(Q_T));
 
         // L0A B C 当前写死，能否通过基础api获取
         l0aBufferManager.Init(tPipe, 65536);  // 64 * 1024
