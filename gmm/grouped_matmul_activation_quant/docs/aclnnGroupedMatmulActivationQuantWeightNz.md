@@ -57,7 +57,7 @@
       * $groupList$：分组索引列表，按groupListType解释为cumsum或count。
       * $weight$：分组weight矩阵。
       * $weightScale$：weight矩阵量化因子。
-      * $bias$：MXFP8场景下必须为空，支持nullptr、空tensorlist或长度为1且元素shape为(0)的空tensorlist。
+      * $bias$：MX场景下必须为空，支持nullptr、空tensorlist或长度为1且元素shape为(0)的空tensorlist。
       * $xScaleOptional$：左矩阵量化因子，对应公式中的$xScale$。
 
     - **输出**：
@@ -210,7 +210,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td rowspan="1">输入</td>
       <td>表示左矩阵，对应公式中的X。</td>
       <td>必选参数。</td>
-      <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+      <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、FLOAT4_E1M2</td>
       <td>ND</td>
       <td>2</td>
       <td>√</td>
@@ -230,7 +230,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td rowspan="1">输入</td>
       <td>表示weight矩阵，对应公式中的weight。</td>
       <td>tensorList长度当前仅支持1。调用者必须传入FRACTAL_NZ格式的weight，接口按该格式解析该参数；viewShape要求为3维，storageShape要求为5维。</td>
-      <td>FLOAT8_E4M3FN</td>
+      <td>FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2</td>
       <td>FRACTAL_NZ</td>
       <td>3（storageShape为5）</td>
       <td>×</td>
@@ -249,7 +249,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>bias（const aclTensorList *）</td>
       <td rowspan="1">可选输入</td>
       <td>表示偏置。</td>
-      <td>MXFP8场景下必须为空，支持nullptr、空tensorlist或长度为1且元素shape为(0)的空tensorlist。</td>
+      <td>MX场景下必须为空，支持nullptr、空tensorlist或长度为1且元素shape为(0)的空tensorlist。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -259,7 +259,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>xScaleOptional（const aclTensor *）</td>
       <td rowspan="1">输入</td>
       <td>表示左矩阵的量化因子，对应公式中的xScale。</td>
-      <td>当前MXFP8量化场景下必选，不能传nullptr。</td>
+      <td>当前MX量化场景下必选，不能传nullptr。</td>
       <td>FLOAT8_E8M0</td>
       <td>ND</td>
       <td>3</td>
@@ -482,7 +482,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 - 确定性计算：
     - aclnnGroupedMatmulActivationQuantWeightNz默认确定性实现。
 - 非空Tensor场景下，groupList第1维最小为1，最大为1024。
-- MXFP8量化场景下需满足以下约束条件：
+- MX量化场景下需满足以下约束条件：
     - 数据类型需要满足下表：
       <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
       <col style="width: 130px">
@@ -511,6 +511,16 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           <td>gelu_tanh</td>
           <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
           <td>FLOAT8_E4M3FN</td>
+          <td>FLOAT8_E8M0</td>
+          <td>FLOAT8_E8M0</td>
+          <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+          <td>FLOAT8_E8M0</td>
+        </tr>
+        <tr>
+          <td>MXFP4</td>
+          <td>gelu_tanh</td>
+          <td>FLOAT4_E2M1、FLOAT4_E1M2</td>
+          <td>FLOAT4_E2M1、FLOAT4_E1M2</td>
           <td>FLOAT8_E8M0</td>
           <td>FLOAT8_E8M0</td>
           <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
@@ -556,12 +566,27 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           <td>(M, N)</td>
           <td>(M, ceil(N / 64), 2)</td>
         </tr>
-      </tbody>
-      </table>
+        <tr>
+          <td>MXFP4</td>
+          <td>gelu_tanh</td>
+          <td>(M, K)</td>
+          <td><ul>
+          <li>非转置shape形如{(E, ceil(N / 64), ceil(K / 16), 16, 64)}</li>
+          <li>转置shape形如{(E, ceil(K / 64), ceil(N / 16), 16, 64)}</li></ul></td>
+          <td><ul>
+          <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
+          <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>
+          <td>(M, ceil(K / 64), 2)</td>
+          <td>(M, N)</td>
+          <td>(M, ceil(N / 64), 2)</td>
+        </tr>
+       </tbody>
+       </table>
 
     - 表中xScale和outputScale的shape第三维为2，表示每个64元素的存储block中包含2个MX量化group，每个group覆盖32个元素。
 
-    - N必须为64整数倍。
+     - N必须为64整数倍。
+     - MXFP4场景下x和weight必须同时为FLOAT4，二者可分别选择E2M1或E1M2；K必须为偶数且不能为2。
 
 ## 调用示例
 

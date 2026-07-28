@@ -30,6 +30,7 @@ DEFAULT_Y_DTYPE = GE_DTYPE_FLOAT8_E4M3FN
 FLOAT8_E8M0_DTYPE = getattr(
     torch_npu, "float8_e8m0fnu", getattr(torch, "float8_e8m0fnu", torch.uint8)
 )
+FLOAT4_E2M1_DTYPE = getattr(torch, "float4_e2m1fn_x2", None)
 
 _TORCH_DTYPE_TO_GE_DTYPE = {
     torch.float32: GE_DTYPE_FLOAT,
@@ -37,6 +38,8 @@ _TORCH_DTYPE_TO_GE_DTYPE = {
     torch.float8_e4m3fn: GE_DTYPE_FLOAT8_E4M3FN,
     FLOAT8_E8M0_DTYPE: GE_DTYPE_FLOAT8_E8M0,
 }
+if FLOAT4_E2M1_DTYPE is not None:
+    _TORCH_DTYPE_TO_GE_DTYPE[FLOAT4_E2M1_DTYPE] = GE_DTYPE_FLOAT4_E2M1
 
 _GE_DTYPE_TO_TORCH_DTYPE = {
     GE_DTYPE_FLOAT8_E5M2: torch.float8_e5m2,
@@ -100,6 +103,8 @@ def _normalize_wrapper_dtype(dtype):
         GE_DTYPE_FLOAT8_E5M2,
         GE_DTYPE_FLOAT8_E4M3FN,
         GE_DTYPE_FLOAT8_E8M0,
+        GE_DTYPE_FLOAT4_E2M1,
+        GE_DTYPE_FLOAT4_E1M2,
     ):
         return ge_dtype + ACL_DTYPE_OFFSET
     return dtype
@@ -124,7 +129,9 @@ def _resolve_y_dtype(y_dtype, x, x_dtype):
         x_ge_dtype = _get_effective_x_ge_dtype(x, x_dtype)
         if x_ge_dtype in (GE_DTYPE_FLOAT8_E4M3FN, GE_DTYPE_FLOAT8_E5M2):
             return x_ge_dtype
-        raise TypeError("y_dtype is None only supports inferring from FP8 x dtype.")
+        if x_ge_dtype in (GE_DTYPE_FLOAT4_E2M1, GE_DTYPE_FLOAT4_E1M2):
+            return DEFAULT_Y_DTYPE
+        raise TypeError("y_dtype is None only supports inferring from FP8 or FP4 x dtype.")
     return _normalize_attr_dtype(y_dtype)
 
 
@@ -277,29 +284,34 @@ def grouped_matmul_activation_quant(
     """GroupedMatmulActivationQuant torch接口，封装 aclnnGroupedMatmulActivationQuantWeightNz。
 
     Args:
-        x (Tensor): 左矩阵，shape为 ``(M, K)``，dtype支持 ``torch.float8_e4m3fn`` 或
-            ``torch.float8_e5m2``。
+        x (Tensor): 左矩阵。MXFP8 shape为 ``(M, K)``，dtype支持 ``torch.float8_e4m3fn`` 或
+            ``torch.float8_e5m2``；MXFP4使用 ``torch.uint8`` 存放打包数据，shape为 ``(M, K / 2)``，
+            并通过 ``x_dtype`` 指定逻辑FLOAT4类型。
         group_list (Tensor): 分组信息，1D Tensor，dtype为 ``torch.int64``，第一维表示group数E，
             当前E取值范围为[1, 1024]。
-        weight (List[Tensor]): 右矩阵dynamic input，当前MXFP8仅支持长度为1。
-            元素为3D逻辑Tensor，MX WeightNZ运行时调用者会将其规整为非转置逻辑布局，
+        weight (List[Tensor]): 右矩阵dynamic input，当前MX仅支持长度为1。
+            元素为3D逻辑Tensor；MXFP4使用 ``torch.uint8`` 存放打包数据并通过 ``weight_dtype``
+            指定逻辑FLOAT4类型。MX WeightNZ运行时调用者会将其规整为非转置逻辑布局，
             传入前需要通过 ``torch_npu.npu_format_cast(weight, 29)`` 转为FRACTAL_NZ格式。
-        weight_scale (List[Tensor]): weight的MX量化scale，当前MXFP8仅支持长度为1。
+        weight_scale (List[Tensor]): weight的MX量化scale，当前MX仅支持长度为1。
             shape为 ``(E, ceil(K / 64), N, 2)``，torch层根据第2维推导逻辑N。
         activation_type (str): 激活函数类型，当前仅支持 ``"gelu_tanh"``。
-        bias (List[Tensor], optional): bias dynamic input。当前MXFP8仅支持传None、空TensorList或单个空Tensor。
-        x_scale (Tensor, optional): x的MX量化scale。当前MXFP8必须传入，shape为
+        bias (List[Tensor], optional): bias dynamic input。当前MX仅支持传None、空TensorList或单个空Tensor。
+        x_scale (Tensor, optional): x的MX量化scale。当前MX必须传入，shape为
             ``(M, ceil(K / 64), 2)``。
         group_list_type (int): group_list语义类型，当前支持0或1。
         tuning_config (List[int], optional): 预留调优参数。
         quant_mode (str, optional): 量化模式，torch层不做解析，直接透传到aclnn层处理。
         y_dtype (torch.dtype, optional): 输出y的数据类型，支持 ``torch.float8_e4m3fn`` 和
-            ``torch.float8_e5m2``；为None时默认推导为x的数据类型。
+            ``torch.float8_e5m2``；为None时MXFP8默认推导为x的数据类型，MXFP4默认使用
+            ``torch.float8_e4m3fn``。
         round_mode (str): 舍入模式，当前仅支持 ``"rint"``。
         scale_alg (int): scale算法，当前支持0或1。
         dst_type_max (float): 预留参数，当前仅支持0.0。
-        x_dtype (int, optional): x的dtype wrapper覆盖值，传入torch_npu dtype枚举。
-        weight_dtype (int, optional): weight的dtype wrapper覆盖值，传入torch_npu dtype枚举。
+        x_dtype (int, optional): x的dtype wrapper覆盖值。MXFP4传入
+            ``torch_npu.float4_e2m1fn_x2`` 或 ``torch_npu.float4_e1m2fn_x2``。
+        weight_dtype (int, optional): weight的dtype wrapper覆盖值。MXFP4传入
+            ``torch_npu.float4_e2m1fn_x2`` 或 ``torch_npu.float4_e1m2fn_x2``。
         weight_scale_dtype (int, optional): weight_scale的dtype wrapper覆盖值，传入torch_npu dtype枚举。
         x_scale_dtype (int, optional): x_scale的dtype wrapper覆盖值，传入torch_npu dtype枚举。
 
@@ -310,6 +322,10 @@ def grouped_matmul_activation_quant(
     weight = _normalize_tensor_list(weight, "weight")
     weight_scale = _normalize_tensor_list(weight_scale, "weight_scale")
     bias = _normalize_bias(bias)
+    x_dtype = _normalize_wrapper_dtype(x_dtype)
+    weight_dtype = _normalize_wrapper_dtype(weight_dtype)
+    weight_scale_dtype = _normalize_wrapper_dtype(weight_scale_dtype)
+    x_scale_dtype = _normalize_wrapper_dtype(x_scale_dtype)
     y_dtype = (
         None
         if y_dtype is None

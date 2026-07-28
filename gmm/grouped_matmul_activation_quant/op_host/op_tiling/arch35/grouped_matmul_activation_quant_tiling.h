@@ -96,6 +96,7 @@ private:
     bool CheckDtype() const;
     bool CheckMxScaleShape(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
     bool CheckWeightNzShape(const gert::Shape &wStorageShape) const;
+    bool IsFp4(ge::DataType dtype) const;
     bool IsFp8(ge::DataType dtype) const;
 
     GroupedMatmulActivationQuant::GMMActivationQuantTilingDataParams tilingData_;

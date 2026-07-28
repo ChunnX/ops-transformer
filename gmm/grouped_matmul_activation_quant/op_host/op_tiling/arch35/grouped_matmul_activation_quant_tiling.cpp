@@ -60,8 +60,10 @@ constexpr uint32_t WEIGHT_NZ_BLOCK2_DIM_INDEX = 2;
 constexpr uint32_t WEIGHT_NZ_C0_DIM_INDEX = 3;
 constexpr uint32_t WEIGHT_NZ_LAST_DIM_INDEX = 4;
 constexpr uint32_t WEIGHT_NZ_LAST_DIM_FP8 = 32;
+constexpr uint32_t WEIGHT_NZ_LAST_DIM_FP4 = 64;
 constexpr uint32_t WEIGHT_NZ_C0_DIM = 16;
 constexpr uint32_t N_SIZE_ALIGN = 64;
+constexpr uint32_t MXFP4_PACK_FACTOR = 2;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
 constexpr uint32_t FP8_E5M2_VALUE = 35;
 constexpr uint8_t ROUND_MODE_RINT = 4;
@@ -107,6 +109,11 @@ bool GroupedMatmulActivationQuantTiling950::IsFp8(ge::DataType dtype) const
     return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2;
 }
 
+bool GroupedMatmulActivationQuantTiling950::IsFp4(ge::DataType dtype) const
+{
+    return dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2;
+}
+
 bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
@@ -134,13 +141,14 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
     std::string quantMode = quantModePtr == nullptr ? "" : std::string(quantModePtr);
     if (quantMode.empty()) {
         OP_CHECK_IF(
-            !(IsFp8(inputParams_.aDtype) && inputParams_.perTokenScaleDtype == ge::DT_FLOAT8_E8M0),
+            !((IsFp8(inputParams_.aDtype) || IsFp4(inputParams_.aDtype)) &&
+              inputParams_.perTokenScaleDtype == ge::DT_FLOAT8_E8M0),
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                 context_->GetNodeName(), "x and x_scale",
                 FormatString("x=%s, x_scale=%s", ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
                              ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()),
-                "when quant_mode is empty, x must be FLOAT8_E4M3FN or FLOAT8_E5M2 and x_scale must be "
-                "FLOAT8_E8M0 to infer quant_mode as mx"),
+                "when quant_mode is empty, x must be FLOAT8 or FLOAT4 and x_scale must be FLOAT8_E8M0 "
+                "to infer quant_mode as mx"),
             return false);
         quantMode = QUANT_MODE_MX_STR;
     }
@@ -179,15 +187,15 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
 
 bool GroupedMatmulActivationQuantTiling950::CheckDtype() const
 {
-    OP_CHECK_IF(!IsFp8(inputParams_.aDtype),
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                    context_->GetNodeName(), "x", ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
-                    "when the quantization mode is mx, the dtype of x must be FLOAT8_E4M3FN or FLOAT8_E5M2"),
-                return false);
-    OP_CHECK_IF(inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN,
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                    context_->GetNodeName(), "weight", ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype),
-                    "when the quantization mode is mx, the dtype of weight must be FLOAT8_E4M3FN"),
+    const bool isSupportedFp8 =
+        IsFp8(inputParams_.aDtype) && inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN;
+    const bool isSupportedFp4 = IsFp4(inputParams_.aDtype) && IsFp4(inputParams_.bDtype);
+    OP_CHECK_IF(!(isSupportedFp8 || isSupportedFp4),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    context_->GetNodeName(), "x, weight",
+                    FormatString("{%s, %s}", ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
+                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
+                    "when the quantization mode is mx, x and weight must be a supported FP8 pair or both be FLOAT4"),
                 return false);
     OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0 || inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
@@ -279,15 +287,18 @@ bool GroupedMatmulActivationQuantTiling950::CheckWeightNzShape(const gert::Shape
                     context_->GetNodeName(), "weight storageShape", std::to_string(wStorageShape.GetDimNum()),
                     "when the quantization mode is mx, the dim num of weight storageShape must be 5"),
                 return false);
+    const int64_t expectedNzLastDim =
+        IsFp4(inputParams_.bDtype) ? WEIGHT_NZ_LAST_DIM_FP4 : WEIGHT_NZ_LAST_DIM_FP8;
     OP_CHECK_IF(wStorageShape.GetDim(WEIGHT_NZ_C0_DIM_INDEX) != WEIGHT_NZ_C0_DIM ||
-                    wStorageShape.GetDim(WEIGHT_NZ_LAST_DIM_INDEX) != WEIGHT_NZ_LAST_DIM_FP8,
+                    wStorageShape.GetDim(WEIGHT_NZ_LAST_DIM_INDEX) != expectedNzLastDim,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     context_->GetNodeName(), "weight storageShape", ShapeToDebugString(wStorageShape),
-                    "when the quantization mode is mx, FP8 NZ weight storage tail dims must be 16 and 32"),
+                    FormatString("when the quantization mode is mx, NZ weight storage tail dims must be 16 and %ld",
+                                 expectedNzLastDim).c_str()),
                 return false);
     auto kSize = static_cast<int64_t>(inputParams_.kSize);
     auto nSize = static_cast<int64_t>(inputParams_.nSize);
-    auto nzLastDim = static_cast<int64_t>(WEIGHT_NZ_LAST_DIM_FP8);
+    auto nzLastDim = expectedNzLastDim;
     auto nzC0Dim = static_cast<int64_t>(WEIGHT_NZ_C0_DIM);
     auto expectedNBlock = inputParams_.transB ? static_cast<int64_t>(Ops::Base::CeilDiv(kSize, nzLastDim)) :
                                                 static_cast<int64_t>(Ops::Base::CeilDiv(nSize, nzLastDim));
@@ -335,6 +346,12 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
     const auto &wScaleShape = wScaleStorageShape->GetOriginShape();
     const auto &weightScaleStorageShape = wScaleStorageShape->GetStorageShape();
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    OP_CHECK_IF(IsFp4(inputParams_.aDtype) &&
+                    (inputParams_.kSize % MXFP4_PACK_FACTOR != 0 || inputParams_.kSize == MXFP4_PACK_FACTOR),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "K", std::to_string(inputParams_.kSize),
+                    "when x and weight are FLOAT4, K must be even and must not be 2"),
+                return false);
     OP_CHECK_IF(inputParams_.nSize % N_SIZE_ALIGN != 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     inputParams_.opName, "N", std::to_string(inputParams_.nSize),
