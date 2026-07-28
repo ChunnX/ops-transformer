@@ -638,17 +638,38 @@ private:
         if (!UseGmStage()) {
             WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
         }
-        CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::MM_READY_FLAG);
+        bool compactMmRows = this->tiling_->fusionAlign != this->matrixInfo_.fusionSize;
+        // The compact path reads Fixpipe output with VF, so MM_READY must build
+        // a FIX-to-V dependency. Aligned rows retain the direct MTE3 path.
+        if (compactMmRows) {
+            CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_V>(MhcPreUtils::MM_READY_FLAG);
+        } else {
+            CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::MM_READY_FLAG);
+        }
+        LocalTensor<P> mmCopySource = mmPartialLocal_;
+        LocalTensor<P> compactMmLocal;
+        if (compactMmRows) {
+            compactMmLocal = this->outQueue_.template AllocTensor<P>();
+            MhcPreVFCompactRows(compactMmLocal, mmPartialLocal_, static_cast<uint16_t>(rowCount),
+                this->tiling_->fusionAlign, this->matrixInfo_.fusionSize);
+            mmCopySource = compactMmLocal;
+            SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
+            WaitFlag<HardEvent::V_MTE3>(EVENT_ID1);
+        }
         DataCopyExtParams mmCopyParams;
-        mmCopyParams.blockCount = static_cast<uint16_t>(rowCount);
-        mmCopyParams.blockLen = this->matrixInfo_.fusionSize * sizeof(P);
-        mmCopyParams.srcStride =
-            (this->tiling_->fusionAlign - this->matrixInfo_.fusionSize) * sizeof(P);
+        mmCopyParams.blockCount = 1;
+        mmCopyParams.blockLen = rowCount * this->matrixInfo_.fusionSize * sizeof(P);
+        mmCopyParams.srcStride = 0;
         mmCopyParams.dstStride = 0;
         uint64_t mmOffset = (static_cast<uint64_t>(kIndex) * this->totalLength_ +
             mStart + rowStart) * this->matrixInfo_.fusionSize;
         // K-split reduction crosses cores, so AIV stages the UB partial to shared workspace.
-        DataCopyPad(partialMmGm_[mmOffset], mmPartialLocal_, mmCopyParams);
+        DataCopyPad(partialMmGm_[mmOffset], mmCopySource, mmCopyParams);
+        if (compactMmRows) {
+            SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
+            WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
+            this->outQueue_.FreeTensor(compactMmLocal);
+        }
 
         DataCopyExtParams copyParams;
         copyParams.blockCount = 1;
