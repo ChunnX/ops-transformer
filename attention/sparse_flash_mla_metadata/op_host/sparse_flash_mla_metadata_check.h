@@ -15,7 +15,6 @@
 
 #include "log/log.h"
 #include "opdev/format_utils.h"
-#include "opdev/op_log.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "../../sparse_flash_mla/op_kernel/sparse_flash_mla_metadata.h"
@@ -490,53 +489,53 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
 }
 
 int64_t GetQueryBatchSizeSmla(const aclTensor *sequsedQOptional, const aclTensor *cuSeqlensQOptional,
-                              const char *layoutQOptional, int64_t batchSize, std::string &source)
+                              const char *layoutQOptional, int64_t batchSize, std::string *source)
 {
     if (IsTensorExistSmla(sequsedQOptional)) {
-        source = "seqused_q";
+        *source = "seqused_q";
         return sequsedQOptional->GetViewShape().GetDim(0);
     }
     if (strcmp(layoutQOptional, "TND") == 0) {
         if (IsTensorExistSmla(cuSeqlensQOptional)) {
-            source = "cu_seqlens_q";
+            *source = "cu_seqlens_q";
             return cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    source = "batch_size";
+    *source = "batch_size";
     return batchSize;
 }
 
 int64_t GetOriKvBatchSizeSmla(const aclTensor *sequsedOriKvOptional, const aclTensor *cuSeqlensOriKvOptional,
-                              const char *layoutKvOptional, int64_t batchSize, std::string &source)
+                              const char *layoutKvOptional, int64_t batchSize, std::string *source)
 {
     if (IsTensorExistSmla(sequsedOriKvOptional)) {
-        source = "seqused_ori_kv";
+        *source = "seqused_ori_kv";
         return sequsedOriKvOptional->GetViewShape().GetDim(0);
     }
     if (strcmp(layoutKvOptional, "TND") == 0) {
         if (IsTensorExistSmla(cuSeqlensOriKvOptional)) {
-            source = "cu_seqlens_ori_kv";
+            *source = "cu_seqlens_ori_kv";
             return cuSeqlensOriKvOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    source = "batch_size";
+    *source = "batch_size";
     return batchSize;
 }
 
 int64_t GetCmpKvBatchSizeSmla(const aclTensor *sequsedCmpKvOptional, const aclTensor *cuSeqlensCmpKvOptional,
-                              const char *layoutKvOptional, int64_t batchSize, std::string &source)
+                              const char *layoutKvOptional, int64_t batchSize, std::string *source)
 {
     if (IsTensorExistSmla(sequsedCmpKvOptional)) {
-        source = "seqused_cmp_kv";
+        *source = "seqused_cmp_kv";
         return sequsedCmpKvOptional->GetViewShape().GetDim(0);
     }
     if (strcmp(layoutKvOptional, "TND") == 0) {
         if (IsTensorExistSmla(cuSeqlensCmpKvOptional)) {
-            source = "cu_seqlens_cmp_kv";
+            *source = "cu_seqlens_cmp_kv";
             return cuSeqlensCmpKvOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    source = "batch_size";
+    *source = "batch_size";
     return batchSize;
 }
 
@@ -770,7 +769,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
     // 校验 q/kv 维度一致性
     std::string querySource;
     int64_t queryBatchSize =
-        GetQueryBatchSizeSmla(sequsedQOptional, cuSeqlensQOptional, layoutQOptional, batchSize, querySource);
+        GetQueryBatchSizeSmla(sequsedQOptional, cuSeqlensQOptional, layoutQOptional, batchSize, &querySource);
     // 校验TND场景q维度一致性
     if (strcmp(layoutQOptional, "TND") == 0 && IsTensorExistSmla(sequsedQOptional)) {
         int64_t cuSeqlensQBatchSize = cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
@@ -788,7 +787,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
     if (hasOriKv) {
         std::string oriKvSource;
         int64_t oriKvBatchSize = GetOriKvBatchSizeSmla(sequsedOriKvOptional, cuSeqlensOriKvOptional, layoutKvOptional,
-                                                       batchSize, oriKvSource);
+                                                       batchSize, &oriKvSource);
         // 校验q与ori_kv维度一致性
         if (queryBatchSize != oriKvBatchSize) {
             if (IsTensorSourceSmla(querySource) && IsTensorSourceSmla(oriKvSource)) {
@@ -829,7 +828,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
     if (hasCmpKv) {
         std::string cmpKvSource;
         int64_t cmpKvBatchSize = GetCmpKvBatchSizeSmla(sequsedCmpKvOptional, cuSeqlensCmpKvOptional, layoutKvOptional,
-                                                       batchSize, cmpKvSource);
+                                                       batchSize, &cmpKvSource);
         // 校验q与cmp_kv维度一致性
         if (queryBatchSize != cmpKvBatchSize) {
             if (IsTensorSourceSmla(querySource) && IsTensorSourceSmla(cmpKvSource)) {
