@@ -957,7 +957,7 @@ public:
             fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
         } else {
             fixpipeParams.mSize = mBaseSize;
-            fixpipeParams.srcStride = ((fixpipeParams.nSize + 15) / 16) * 16;
+            fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
         }
 
         if constexpr (BMM2_TOUB || SPLITD) {
