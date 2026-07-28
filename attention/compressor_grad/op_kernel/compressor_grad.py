@@ -24,9 +24,7 @@ TilingData: batchSize, tokenSize, seqSize,       — 运行时参数
 当前状态: Phase 1 已实现, Phase 2/3 待实现
 """
 
-from __future__ import annotations
 from dataclasses import dataclass
-import torch, torch_npu
 import pypto_pro.language as pl
 from pypto_pro.runtime.tilingkey import TilingKeyField as tilingkey_field
 
@@ -38,7 +36,7 @@ FLOAT_REG_ELEMENTS = 64   # FP32 VF register holds 64 elements
 # ================================================================
 #  TilingKey
 # ================================================================
-class CompressorTilingKey:
+class CompressorGradTilingKey:
     Coff     = tilingkey_field(bits=2, values=[1, 2])
     Layout   = tilingkey_field(bits=1, values=[0, 1])
     DataType = tilingkey_field(bits=2, values=[0, 1])
@@ -52,13 +50,32 @@ class CompressorTilingKey:
 #  TilingData
 # ================================================================
 @dataclass
-class CompressorTiling:
-    batchSize:  int = 1
-    tokenSize:  int = 0
-    seqSize:    int = 0
-    cmpRatio:   int = 4
-    hiddenSize: int = 512
-    headDim:    int = 128
+class CompressorGradTiling:
+    batchSize:        int = 1
+    tokenSize:        int = 0
+    seqSize:          int = 0
+    cmpRatio:         int = 4
+    hiddenSize:       int = 512
+    headDim:          int = 128
+    featureDim:       int = 0
+    scKvRowCount:     int = 0
+    outStride:        int = 0
+    groupSize:        int = 0
+    dBaseSize:        int = 0
+    nCorePerGroup:    int = 0
+    mPerRoundPerGroup:int = 0
+    mBaseSize:        int = 0
+    mPerRoundAll:     int = 0
+    dbRows:           int = 0
+    ape_ws_elems:     int = 0
+    dx_per_group:     int = 0
+    dx_stride:        int = 0
+    dx_ws_elems:      int = 0
+    d_x_rows:         int = 0
+    outputRows:       int = 0
+    rgChunkNum:       int = 0
+    rgPerCore:        int = 0
+    rgRemain:         int = 0
 
 
 # ================================================================
@@ -333,7 +350,7 @@ def _skip_blocks(blockCount, bIdx, scIdx,
 # ================================================================
 #  Unified Compressor Grad Kernel
 # ================================================================
-@pl.jit(tiling_key=CompressorTilingKey, auto_mutex=True, arch="a5")
+@pl.jit(tiling_key=CompressorGradTilingKey, auto_mutex=True, arch="a5")
 def compressor_grad_kernel(
     # ── 输入（前向参数） ──
     x:              pl.Ptr[pl.DT_UINT8],     # (T, hiddenSize)      
@@ -360,7 +377,7 @@ def compressor_grad_kernel(
     workspace:      pl.Ptr[pl.DT_UINT8],     # Phase 2 partials
 
     # ── Tiling ──
-    tiling:         CompressorTiling,
+    tiling:         CompressorGradTiling,
 ):
     batchSize  = tiling.batchSize
     tokenSize  = tiling.tokenSize
