@@ -53,35 +53,14 @@ namespace l0op {
  *         Any element being nullptr indicates InferShape or Launch failure for that output.
  */
 const std::array<const aclTensor *, 2> QuantFlashAttn(
-    const aclTensor *q,
-    const aclTensor *k,
-    const aclTensor *v,
-    const aclTensor *qDescale,
-    const aclTensor *kDescale,
-    const aclTensor *vDescale,
-    const aclTensor *blockTableOptional,
-    const aclTensor *pScaleOptional,
-    const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKvOptional,
-    const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional,
-    const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    int64_t quantMode,
-    double softmaxScale,
-    int64_t maskMode,
-    int64_t winLeft,
-    int64_t winRight,
-    int64_t maxSeqlenQ,
-    int64_t maxSeqlenKV,
-    const char *layoutQ,
-    const char *layoutQDescale,
-    const char *layoutKv,
-    const char *layoutOut,
-    bool returnSoftmaxLse,
-    aclOpExecutor *executor);
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *qDescale, const aclTensor *kDescale,
+    const aclTensor *vDescale, const aclTensor *blockTableOptional, const aclTensor *pScaleOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
+    const aclTensor *metadataOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
+    int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutQDescale,
+    const char *layoutKv, const char *layoutOut, bool returnSoftmaxLse, aclOpExecutor *executor);
 
-}  // namespace l0op
+} // namespace l0op
 
-#endif  // OP_API_INC_LEVEL0_QUANT_FLASH_ATTN_H_
+#endif // OP_API_INC_LEVEL0_QUANT_FLASH_ATTN_H_
