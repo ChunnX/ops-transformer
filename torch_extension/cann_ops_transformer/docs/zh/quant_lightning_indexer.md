@@ -173,11 +173,6 @@ cann_ops_transformer.quant_lightning_indexer(
   - 不支持return_value功能，不建议传入该参数。
 <!-- end id11 -->
 
-- PyTorch接口中，quant_mode = 3/5时query_dequant_scale和key_dequant_scale必须为torch.float8_e8m0fnu。
-- PyTorch接口中，quant_mode = 5时，query和key的逻辑数据类型为FLOAT4_E2M1，每个物理字节打包两个E2M1逻辑元素：
-  - PyTorch提供torch.float4_e2m1fn_x2时，优先使用该原生类型。
-  - PyTorch未提供该类型时，使用torch.uint8承载已打包数据；封装层会将其按ACL_FLOAT4_E2M1传入算子。
-
 ## 返回值说明
 
 ### quant_lightning_indexer_metadata
