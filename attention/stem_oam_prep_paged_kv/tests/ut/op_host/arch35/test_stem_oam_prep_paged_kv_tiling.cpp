@@ -17,15 +17,9 @@
 
 class StemOamPrepPagedKvTilingArch35 : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "StemOamPrepPagedKvTilingArch35 SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "StemOamPrepPagedKvTilingArch35 SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "StemOamPrepPagedKvTilingArch35 TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "StemOamPrepPagedKvTilingArch35 TearDown" << std::endl; }
 };
 
 namespace {
@@ -39,9 +33,8 @@ struct InputBundle {
     std::vector<int32_t> kvSeqLensData;
 };
 
-InputBundle MakeInputs(int64_t totalBlocks = 8, int64_t kvBlockSize = 64, int64_t numKvHeads = 4,
-                       int64_t batch = 1, int64_t maxKvBlocks = 2, int64_t cacheLayout = 0,
-                       std::vector<int32_t> seqLens = {128})
+InputBundle MakeInputs(int64_t totalBlocks = 8, int64_t kvBlockSize = 64, int64_t numKvHeads = 4, int64_t batch = 1,
+                       int64_t maxKvBlocks = 2, int64_t cacheLayout = 0, std::vector<int32_t> seqLens = {128})
 {
     InputBundle bundle;
     bundle.kvSeqLensData = std::move(seqLens);
@@ -49,25 +42,31 @@ InputBundle MakeInputs(int64_t totalBlocks = 8, int64_t kvBlockSize = 64, int64_
     if (cacheLayout == 0) {
         bundle.descs = {
             {{{totalBlocks, kvBlockSize, numKvHeads, 128}, {totalBlocks, kvBlockSize, numKvHeads, 128}},
-             ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+             ge::DT_FLOAT8_E4M3FN,
+             ge::FORMAT_ND},
             {{{totalBlocks, kvBlockSize, numKvHeads, 128}, {totalBlocks, kvBlockSize, numKvHeads, 128}},
-             ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+             ge::DT_FLOAT8_E4M3FN,
+             ge::FORMAT_ND},
             {{{batch, maxKvBlocks}, {batch, maxKvBlocks}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{batch}, {batch}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{totalBlocks, kvBlockSize, numKvHeads, 1}, {totalBlocks, kvBlockSize, numKvHeads, 1}},
-             ge::DT_FLOAT, ge::FORMAT_ND},
+             ge::DT_FLOAT,
+             ge::FORMAT_ND},
             {{{numKvHeads}, {numKvHeads}}, ge::DT_FLOAT, ge::FORMAT_ND},
         };
     } else {
         bundle.descs = {
             {{{totalBlocks, numKvHeads, kvBlockSize, 128}, {totalBlocks, numKvHeads, kvBlockSize, 128}},
-             ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+             ge::DT_FLOAT8_E4M3FN,
+             ge::FORMAT_ND},
             {{{totalBlocks, numKvHeads, kvBlockSize, 128}, {totalBlocks, numKvHeads, kvBlockSize, 128}},
-             ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+             ge::DT_FLOAT8_E4M3FN,
+             ge::FORMAT_ND},
             {{{batch, maxKvBlocks}, {batch, maxKvBlocks}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{batch}, {batch}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{totalBlocks, numKvHeads, kvBlockSize, 1}, {totalBlocks, numKvHeads, kvBlockSize, 1}},
-             ge::DT_FLOAT, ge::FORMAT_ND},
+             ge::DT_FLOAT,
+             ge::FORMAT_ND},
             {{{numKvHeads}, {numKvHeads}}, ge::DT_FLOAT, ge::FORMAT_ND},
         };
     }
@@ -99,13 +98,12 @@ std::vector<OpAttr> MakeAttrs(float lambdaMag = 0.3f, int64_t cacheLayout = 0, i
     };
 }
 
-gert::TilingContextPara BuildTilingPara(const std::vector<TensorDesc> &inputs,
-                                        const std::vector<TensorDesc> &outputs,
+gert::TilingContextPara BuildTilingPara(const std::vector<TensorDesc> &inputs, const std::vector<TensorDesc> &outputs,
                                         const std::vector<OpAttr> &attrs)
 {
     static StemOamPrepPagedKvCompileInfo compileInfo;
-    return gert::TilingContextPara("StemOamPrepPagedKv", inputs, outputs, attrs, &compileInfo, "Ascend950", 64,
-                                   262144, 4096);
+    return gert::TilingContextPara("StemOamPrepPagedKv", inputs, outputs, attrs, &compileInfo, "Ascend950", 64, 262144,
+                                   4096);
 }
 
 void ExpectTilingResult(const gert::TilingContextPara &para, bool expectSuccess)

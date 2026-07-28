@@ -16,12 +16,11 @@ using namespace at_npu::native;
 
 const int64_t DIM_QK = 128;
 
-std::tuple<at::Tensor, at::Tensor>
-StemOamPrepPagedKv(
-    const at::Tensor &kCache, const at::Tensor &vCache, const at::Tensor &kvIndices,
-    const at::IntArrayRef &kvSeqLens, const at::Tensor &kScaleCache, const at::Tensor &vScale,
-    double lambdaMag, int64_t cacheLayout, int64_t kvBlockSize,
-    int64_t stemBlockSize, int64_t stemStride)
+std::tuple<at::Tensor, at::Tensor> StemOamPrepPagedKv(const at::Tensor &kCache, const at::Tensor &vCache,
+                                                      const at::Tensor &kvIndices, const at::IntArrayRef &kvSeqLens,
+                                                      const at::Tensor &kScaleCache, const at::Tensor &vScale,
+                                                      double lambdaMag, int64_t cacheLayout, int64_t kvBlockSize,
+                                                      int64_t stemBlockSize, int64_t stemStride)
 {
     TORCH_CHECK(kCache.numel() > 0, "kCache is empty");
     TORCH_CHECK(vCache.numel() > 0, "vCache is empty");
@@ -29,10 +28,9 @@ StemOamPrepPagedKv(
     TORCH_CHECK(kvSeqLens.size() > 0, "kvSeqLens is empty");
     TORCH_CHECK(kScaleCache.numel() > 0, "kScaleCache is empty");
     TORCH_CHECK(vScale.numel() > 0, "vScale is empty");
-    TORCH_CHECK(kvBlockSize == 64 || kvBlockSize == 128,
-                "kvBlockSize must be 64 or 128, got ", kvBlockSize);
-    TORCH_CHECK(stemBlockSize % 32 == 0 && stemBlockSize <= 256,
-                "stemBlockSize must be %32==0 and <=256, got ", stemBlockSize);
+    TORCH_CHECK(kvBlockSize == 64 || kvBlockSize == 128, "kvBlockSize must be 64 or 128, got ", kvBlockSize);
+    TORCH_CHECK(stemBlockSize % 32 == 0 && stemBlockSize <= 256, "stemBlockSize must be %32==0 and <=256, got ",
+                stemBlockSize);
     TORCH_CHECK(stemStride % 16 == 0 && stemStride <= 64 && stemStride <= stemBlockSize,
                 "stemStride must be %16==0, <=64, and <=stemBlockSize, got ", stemStride);
 
@@ -43,12 +41,11 @@ StemOamPrepPagedKv(
     // read kvSeqLens from NPU to host to compute max_Kb
     int64_t maxKvSeqLens = *std::max_element(kvSeqLens.begin(), kvSeqLens.end());
     int64_t maxKb = (maxKvSeqLens + stemBlockSize - 1) / stemBlockSize;
-    if (maxKb < 1) maxKb = 1;
+    if (maxKb < 1)
+        maxKb = 1;
 
-    at::Tensor kFlat = at::empty({batch, numHeads, maxKb, kflatDim},
-                                 kCache.options().dtype(at::kBFloat16));
-    at::Tensor vBias = at::empty({batch, numHeads, maxKb},
-                                 kCache.options().dtype(at::kFloat));
+    at::Tensor kFlat = at::empty({batch, numHeads, maxKb, kflatDim}, kCache.options().dtype(at::kBFloat16));
+    at::Tensor vBias = at::empty({batch, numHeads, maxKb}, kCache.options().dtype(at::kFloat));
 
     StorageShapeTensor kCacheWrapped{kCache};
     StorageShapeTensor vCacheWrapped{vCache};
@@ -56,9 +53,8 @@ StemOamPrepPagedKv(
     StorageShapeTensor kScaleCacheWrapped{kScaleCache};
     StorageShapeTensor kFlatWrapped{kFlat};
     StorageShapeTensor vBiasWrapped{vBias};
-    ACLNN_CMD(aclnnStemOamPrepPagedKv, kCacheWrapped, vCacheWrapped, kvIndicesWrapped, kvSeqLens,
-              kScaleCacheWrapped, vScale, lambdaMag, cacheLayout, kvBlockSize,
-              stemBlockSize, stemStride, kFlatWrapped, vBiasWrapped);
+    ACLNN_CMD(aclnnStemOamPrepPagedKv, kCacheWrapped, vCacheWrapped, kvIndicesWrapped, kvSeqLens, kScaleCacheWrapped,
+              vScale, lambdaMag, cacheLayout, kvBlockSize, stemBlockSize, stemStride, kFlatWrapped, vBiasWrapped);
 
     return std::tuple<at::Tensor, at::Tensor>(kFlat, vBias);
 }

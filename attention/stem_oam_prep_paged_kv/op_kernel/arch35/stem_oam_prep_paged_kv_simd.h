@@ -699,5 +699,4 @@ __aicore__ inline void StemOamPrepPagedKvSimd::Process(void)
     ProcessVBias();
 }
 
-
 #endif //  STEM_OAM_PREP_PAGED_KV_SIMD_H
