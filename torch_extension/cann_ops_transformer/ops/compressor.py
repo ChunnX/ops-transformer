@@ -55,6 +55,7 @@ def _compressor_forward(
     cmp_ratio: int = 4,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
+    grad_enabled: Optional[bool] = False
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     return op_module.compressor(
         x,
@@ -69,6 +70,7 @@ def _compressor_forward(
         start_pos,
         coff,
         cache_mode,
+        grad_enabled
     )
 
 
@@ -86,20 +88,21 @@ def _compressor_forward_fake(
     cmp_ratio: int = 4,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
+    grad_enabled: Optional[bool] = False
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     d = wkv.size(0) // coff
     coff_cmp = coff * cmp_ratio
     if x.dim() == 3:
         b = x.size(0)
         s = x.size(1)
-        cmp_size = (s + cmp_ratio - 1) / cmp_ratio
+        cmp_size = (s + cmp_ratio - 1) // cmp_ratio
         cmp_kv_size = (b, cmp_size, d)
         softmax_score_size = (b, cmp_size, coff_cmp, d)
         kv_size = (b, cmp_size, coff_cmp, d)
     else:
         bSize = cu_seqlens.size(0) - 1
         t = x.size(0)
-        cmp_size = min(t, t // cmp_ratio + b)
+        cmp_size = min(t, t // cmp_ratio + bSize)
         cmp_kv_size = (cmp_size, d)
         softmax_score_size = (cmp_size, coff_cmp, d)
         kv_size = (cmp_size, coff_cmp, d)
@@ -191,7 +194,7 @@ def backward(ctx, dout, *grads):
     return d_x, d_wkv, d_wgate, d_ape, *((None, ) * 8)
     
 
-compressor.register_autograd(backward, setup_context=setup_context)
+_compressor_forward.register_autograd(backward, setup_context=setup_context)
 
 
 def compressor(
@@ -208,6 +211,7 @@ def compressor(
     start_pos: Optional[torch.Tensor] = None,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
+    grad_enabled: Optional[bool] = False
 ) -> Tuple[torch.Tensor]:
     """
     dispatcher implementation for NPU.
@@ -226,5 +230,6 @@ def compressor(
         cmp_ratio,
         coff,
         cache_mode,
+        grad_enabled
     )
     return cmp_kv
