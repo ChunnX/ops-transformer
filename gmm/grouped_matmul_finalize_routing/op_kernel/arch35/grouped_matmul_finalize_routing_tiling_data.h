@@ -43,6 +43,8 @@ struct GMMFinalizeRoutingDataParams {
 struct GMMFinalizeRoutingTilingData {
     GMMFinalizeRoutingDataParams gmmFinalizeRoutingDataParams;
     TCubeTiling matmulTiling;
+    uint16_t residualScaleBf16 = 0x3F80;
+    uint16_t reserved[3] = {0, 0, 0};
 };
 #pragma pack(pop)
 } // namespace GMMFinalizeRoutingArch35Tiling
