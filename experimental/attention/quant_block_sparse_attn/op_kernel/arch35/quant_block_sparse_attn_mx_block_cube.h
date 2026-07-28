@@ -80,16 +80,15 @@ public:
     __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIC {
-            static_assert(USE_DN,
-                          "MXFullQuantMode cube currently implements DN copy/load path; "
-                          "use_dn is kept for future non-DN extension");
+            static_assert(USE_DN, "MXFullQuantMode cube currently implements DN copy/load path; "
+                                  "use_dn is kept for future non-DN extension");
             // data 与 scale 连续存放，LoadData 在 L1->L0 时完成随路反量化。
             constexpr uint32_t qSize = M_BASE * D_BASE * sizeof(INPUT_T);
             constexpr uint32_t qScaleSize = M_BASE * D_BASE / MX_SCALE_GROUP * sizeof(SCALE_T);
             constexpr uint32_t kvSize = S2_SPLIT * D_BASE * sizeof(INPUT_T);
             constexpr uint32_t kvScaleSize = S2_SPLIT * D_BASE / MX_SCALE_GROUP * sizeof(SCALE_T);
-            constexpr uint32_t valueScaleSize = (S2_SPLIT / MX_TOKEN_GROUP) * DV_BASE * MX_SCALE_LAST_DIM *
-                                                sizeof(SCALE_T);
+            constexpr uint32_t valueScaleSize =
+                (S2_SPLIT / MX_TOKEN_GROUP) * DV_BASE * MX_SCALE_LAST_DIM * sizeof(SCALE_T);
 
             // Q 双 buffer；K 四 buffer；V 双 buffer。
             l1QBuffers_.Init(*l1BufferManager_, qSize + qScaleSize);
@@ -150,9 +149,9 @@ public:
         MMParam param = MxMakeMMParam(s2CalcSize, runInfo.actMSize, constInfo.dSize, false, true);
         MxMatmulFull<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
                      BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
-                     mx_fp8_e4m3_t, mx_fp8_e4m3_t>(kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_,
-                                                   mmL0BBuffers_, mm1ResL0C.GetTensor<MM_T>(), param,
-                                                   kScaleTensor, qBuf.GetTensor<SCALE_T>(qScaleOffset));
+                     mx_fp8_e4m3_t, mx_fp8_e4m3_t>(kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
+                                                   mm1ResL0C.GetTensor<MM_T>(), param, kScaleTensor,
+                                                   qBuf.GetTensor<SCALE_T>(qScaleOffset));
 
         if (unlikely(runInfo.isLastS2Loop && IsLastSubLoop(runInfo, subLoop))) {
             qBuf.Set<HardEvent::MTE1_MTE2>();
@@ -180,8 +179,7 @@ public:
             constexpr uint32_t int16Bytes = 2U;
             LocalTensor<int16_t> pScalePadTensor =
                 pBuf.GetTensor<int16_t>(pScaleOffset / int16Bytes + M_BASE * S2_SPLIT / MX_SCALE_GROUP / int16Bytes);
-            InitConstValue(pScalePadTensor,
-                           {1, M_BASE * S2_SPLIT / MX_SCALE_GROUP * sizeof(SCALE_T) / 32U, 0, 0x7f7f});
+            InitConstValue(pScalePadTensor, {1, M_BASE * S2_SPLIT / MX_SCALE_GROUP * sizeof(SCALE_T) / 32U, 0, 0x7f7f});
         }
         LocalTensor<SCALE_T> pScaleTensor = pBuf.GetTensor<SCALE_T>(pScaleOffset);
 
@@ -207,14 +205,14 @@ public:
             vBuf.Set<HardEvent::MTE2_MTE1>();
             vBuf.Wait<HardEvent::MTE2_MTE1>();
 
-            MMParam param = MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U,
-                                          kIdx == 0U);
+            MMParam param =
+                MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U, kIdx == 0U);
             // P 转置，V 保持 KN。
             MxMatmulFull<INPUT_T, INPUT_T, MM_T, M_BASE, DV_BASE, baseK, ABLayout::MK, ABLayout::KN,
                          BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
                          mx_fp8_e4m3_t, mx_fp8_e4m3_t>(pBuf.GetTensor<INPUT_T>()[kIdx * l1BaseKOffset], vTensor,
-                                                       mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<MM_T>(),
-                                                       param, pScaleTensor[kIdx * l1ScaleOffset], vScaleTensor);
+                                                       mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<MM_T>(), param,
+                                                       pScaleTensor[kIdx * l1ScaleOffset], vScaleTensor);
             vBuf.Set<HardEvent::MTE1_MTE2>();
         }
 
@@ -227,15 +225,9 @@ public:
     }
 
 private:
-    __aicore__ inline uint32_t AlignUp32(uint32_t value) const
-    {
-        return (value + 31U) >> 5 << 5;
-    }
+    __aicore__ inline uint32_t AlignUp32(uint32_t value) const { return (value + 31U) >> 5 << 5; }
 
-    __aicore__ inline uint32_t AlignUp64(uint32_t value) const
-    {
-        return (value + 63U) >> 6 << 6;
-    }
+    __aicore__ inline uint32_t AlignUp64(uint32_t value) const { return (value + 63U) >> 6 << 6; }
 
     __aicore__ inline uint32_t GetSubLoopS2Size(const MxRunInfo &runInfo, uint32_t subLoop) const
     {
@@ -261,9 +253,8 @@ private:
     }
 
     __aicore__ inline void CopyKeyAndScaleToL1(LocalTensor<INPUT_T> &keyDstTensor,
-                                              LocalTensor<SCALE_T> &keyScaleDstTensor,
-                                              const MxRunInfo &runInfo, const MxConstInfo &constInfo,
-                                              uint32_t s2CalcSize, uint32_t subLoop)
+                                               LocalTensor<SCALE_T> &keyScaleDstTensor, const MxRunInfo &runInfo,
+                                               const MxConstInfo &constInfo, uint32_t s2CalcSize, uint32_t subLoop)
     {
         // PA BNBD K 与 KScale 使用相同的 sparse 顺序和 token overlap。
         const uint32_t tileStart = subLoop * S2_SPLIT;
@@ -312,20 +303,19 @@ private:
 
             startPos.s2Offset = runInfo.sparseBlockTokenOffset[i] + copyStartInBlock;
             keyShape.copyRowNum = copyRowNum;
-            LocalTensor<INPUT_T> keyBlockDstTensor =
-                keyDstTensor[(overlapStart - tileStart) * blockElementCnt];
+            LocalTensor<INPUT_T> keyBlockDstTensor = keyDstTensor[(overlapStart - tileStart) * blockElementCnt];
             GmCopyInToL1PA<INPUT_T>(keyBlockDstTensor, keyGm_, blockTableGm_, KVLAYOUT::BNBD, keyShape, startPos);
 
             keyScaleShape.copyRowNum = copyRowNum;
             LocalTensor<SCALE_T> keyScaleBlockDstTensor =
                 keyScaleDstTensor[(overlapStart - tileStart) * keyScaleShape.actHeadDim];
-            MxGmFlatScaleCopyInToL1PAForDN<SCALE_T>(keyScaleBlockDstTensor, kScaleGm_, blockTableGm_,
-                                                     keyScaleShape, startPos);
+            MxGmFlatScaleCopyInToL1PAForDN<SCALE_T>(keyScaleBlockDstTensor, kScaleGm_, blockTableGm_, keyScaleShape,
+                                                    startPos);
         }
     }
 
     __aicore__ inline void CopyValueToL1(LocalTensor<INPUT_T> &dstTensor, const MxRunInfo &runInfo,
-                                        const MxConstInfo &constInfo, uint32_t realK, uint32_t kIdx)
+                                         const MxConstInfo &constInfo, uint32_t realK, uint32_t kIdx)
     {
         // V 使用与 K 相同的 PA 拼接顺序。
         const uint32_t tileStart = kIdx * S2_SPLIT;
@@ -368,7 +358,7 @@ private:
     }
 
     __aicore__ inline void CopyValueScaleToL1(LocalTensor<SCALE_T> &dstTensor, const MxRunInfo &runInfo,
-                                             const MxConstInfo &constInfo, uint32_t realK, uint32_t kIdx)
+                                              const MxConstInfo &constInfo, uint32_t realK, uint32_t kIdx)
     {
         // VScale GM 为 [physicalBlock, kvHeads, blockSize/64, DV, 2]，offset 单位为 64-token group。
         const uint32_t tileStart = kIdx * S2_SPLIT;
@@ -413,7 +403,7 @@ private:
             valueScaleShape.copyRowNum = copyGroupNum;
             LocalTensor<SCALE_T> valueScaleDstTensor = dstTensor[copiedGroupCount * blockElementCnt];
             MxGmFlatScaleCopyInToL1PAForND<SCALE_T>(valueScaleDstTensor, vScaleGm_, blockTableGm_, valueScaleShape,
-                                                     startPos);
+                                                    startPos);
             copiedGroupCount += copyGroupNum;
         }
     }

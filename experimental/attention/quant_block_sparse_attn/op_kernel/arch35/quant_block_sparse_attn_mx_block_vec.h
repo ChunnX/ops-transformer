@@ -76,8 +76,7 @@ public:
     static constexpr uint32_t SOFTMAX_STATE_UB_SIZE = VEC_M_BASE * sizeof(float);
 
     __aicore__ inline void Init(TPipe *pipe, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *attenMask,
-                                uint32_t attenMaskS2Size)
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *attenMask, uint32_t attenMaskS2Size)
     {
         if ASCEND_IS_AIV {
             tPipe_ = pipe;
@@ -154,8 +153,8 @@ public:
         if ASCEND_IS_AIV {
             // sparseSeqLen=0 的 Q block 不进入主循环，需预置输出，避免留下未写 GM。
             const uint64_t aivCoreNum = static_cast<uint64_t>(constInfo.coreNum) * GetSubBlockNum();
-            InitOutputSingleCore(attentionOutGm_, emptyTensorParams.totalOutputSize, aivCoreNum,
-                                 constInfo.aivIdx, 0.0F);
+            InitOutputSingleCore(attentionOutGm_, emptyTensorParams.totalOutputSize, aivCoreNum, constInfo.aivIdx,
+                                 0.0F);
             if constexpr (HAS_LSE) {
                 InitOutputSingleCore(softmaxLseGm_, emptyTensorParams.totalSoftMaxLseOutputSize, aivCoreNum,
                                      constInfo.aivIdx, BSA_EMPTY_LSE_VALUE);
@@ -207,18 +206,16 @@ public:
             const bool hasPreviousS2Loop = !runInfo.isFirstS2Loop;
             if (unlikely(!hasPreviousS2Loop)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, false, HAS_ATTEN, S2_SPLIT>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb,
-                    pScaleSubLoopTensor, ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign >> 1, s2CalcSize, static_cast<MM_T>(constInfo.scaleValue),
-                    descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F, preLoopMaxUb, preLoopSumUb,
-                    firstLoopSumUb, subLoop);
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
+                    ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign >> 1,
+                    s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
+                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, true, HAS_ATTEN, S2_SPLIT>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb,
-                    pScaleSubLoopTensor, ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign >> 1, s2CalcSize, static_cast<MM_T>(constInfo.scaleValue),
-                    descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F, preLoopMaxUb, preLoopSumUb,
-                    firstLoopSumUb, subLoop);
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
+                    ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign >> 1,
+                    s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
+                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             }
         } else {
             static_assert(USE_DN, "MXFullQuantMode vector currently implements DN VF only; "
@@ -288,8 +285,8 @@ public:
             if (unlikely(isFirstS2Loop)) {
                 // 单 tile 场景单独归一化。
                 LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
-                LastDivNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64>(
-                    vec2ResUb, vec2ResUb, sumUb, vecMSize, static_cast<uint16_t>(dTemplateAlign64), 1.0f);
+                LastDivNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, vecMSize,
+                                                                      static_cast<uint16_t>(dTemplateAlign64), 1.0f);
             }
             CopyOutAttentionOut(runInfo, constInfo, vec2ResUb);
         }
@@ -298,13 +295,15 @@ public:
 
 private:
     template <typename T>
-    __aicore__ inline void InitOutputSingleCore(GlobalTensor<T> &outputGm, uint64_t totalSize,
-                                                uint64_t aivCoreNum, uint32_t aivIdx, float initValue)
+    __aicore__ inline void InitOutputSingleCore(GlobalTensor<T> &outputGm, uint64_t totalSize, uint64_t aivCoreNum,
+                                                uint32_t aivIdx, float initValue)
     {
         const uint64_t singleCoreSize = (totalSize + aivCoreNum - 1U) / aivCoreNum;
         const uint64_t coreOffset = static_cast<uint64_t>(aivIdx) * singleCoreSize;
-        const uint64_t singleInitSize = coreOffset < totalSize ?
-            (totalSize - coreOffset < singleCoreSize ? totalSize - coreOffset : singleCoreSize) : 0U;
+        const uint64_t singleInitSize =
+            coreOffset < totalSize ?
+                (totalSize - coreOffset < singleCoreSize ? totalSize - coreOffset : singleCoreSize) :
+                0U;
         if (singleInitSize == 0U) {
             return;
         }
@@ -333,8 +332,8 @@ private:
         return (runInfo.actSingleLoopS2Size <= S2_SPLIT) || (subLoop != 0U);
     }
 
-    __aicore__ inline void BoolCopyInMxMask(const LocalTensor<uint8_t> &dstTensor, uint64_t srcOffset,
-                                            uint32_t s2Len, uint32_t qLen)
+    __aicore__ inline void BoolCopyInMxMask(const LocalTensor<uint8_t> &dstTensor, uint64_t srcOffset, uint32_t s2Len,
+                                            uint32_t qLen)
     {
         // DN mask 按 GM row stride 搬到 [S2,64] UB。
         DataCopyParams dataCopyParams;
@@ -352,8 +351,7 @@ private:
         const int64_t deltaCausalOrNext =
             static_cast<int64_t>(runInfo.s1Idx) - static_cast<int64_t>(segmentS2TokenOffset) - deltaN;
         const uint64_t maskOffset = static_cast<uint64_t>(regbaseutil::ComputeOffsetForCausal(
-            deltaCausalOrNext, M_BASE, S2_SPLIT, attenMaskS2Size_,
-            static_cast<int64_t>(runInfo.vecMbaseIdx), USE_DN));
+            deltaCausalOrNext, M_BASE, S2_SPLIT, attenMaskS2Size_, static_cast<int64_t>(runInfo.vecMbaseIdx), USE_DN));
         return maskOffset;
     }
 
@@ -412,8 +410,8 @@ private:
     }
 
     __aicore__ inline void CopyPScaleToL1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         LocalTensor<SCALE_T> &pScaleSubLoopTensor, const MxRunInfo &runInfo,
-                                         const MxConstInfo &constInfo, uint32_t subLoop)
+                                          LocalTensor<SCALE_T> &pScaleSubLoopTensor, const MxRunInfo &runInfo,
+                                          const MxConstInfo &constInfo, uint32_t subLoop)
     {
         // 将 subLoop PScale 整理到完整 P[128,512] 后方。
         constexpr uint64_t pScaleL1Offset = static_cast<uint64_t>(M_BASE) * S2_BASE;
@@ -442,8 +440,8 @@ private:
     }
 
     __aicore__ inline void CopyPToL1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                    LocalTensor<INPUT_T> &stage1CastTensor, const MxConstInfo &constInfo,
-                                    uint32_t subLoop)
+                                     LocalTensor<INPUT_T> &stage1CastTensor, const MxConstInfo &constInfo,
+                                     uint32_t subLoop)
     {
         // 两个 AIV、两个 subLoop 分别写入 P 的对应象限。
         LocalTensor<INPUT_T> pL1Tensor = outputBuf.GetTensor<INPUT_T>();
@@ -467,16 +465,14 @@ private:
     {
         if constexpr (HAS_ATTEN) {
             // 使用所有 S2 loop 累计后的 max 判断整行是否始终无有效 key。
-            LocalTensor<float> maxUb =
-                softmaxMaxBuf_[runInfo.mLoop % (PRELOAD_N + 1U)].template Get<float>();
+            LocalTensor<float> maxUb = softmaxMaxBuf_[runInfo.mLoop % (PRELOAD_N + 1U)].template Get<float>();
             FaVectorApi::RowInvalidUpdateVF<MM_T>(vec2ResUb, maxUb, runInfo.actVecMSize, constInfo.dSizeV,
                                                   static_cast<int64_t>(dTemplateAlign64));
         }
         // 按 TND token/head stride 写回。
         LocalTensor<OUTPUT_T> attenOut;
         attenOut.SetAddr(vec2ResUb.address_);
-        Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND,
-             static_cast<int64_t>(runInfo.actVecMSize) * dTemplateAlign64);
+        Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, static_cast<int64_t>(runInfo.actVecMSize) * dTemplateAlign64);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
 
@@ -487,7 +483,8 @@ private:
         dataCopyParams.dstStride = constInfo.attentionOutStride;
         const uint64_t dstOffset =
             ((runInfo.queryTokenBase + runInfo.s1Idx + runInfo.vecMbaseIdx) * constInfo.realN2Size +
-             runInfo.realN2Idx) * constInfo.dSizeV;
+             runInfo.realN2Idx) *
+            constInfo.dSizeV;
         DataCopyPad(attentionOutGm_[dstOffset], attenOut, dataCopyParams);
     }
 
@@ -507,8 +504,7 @@ private:
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = constInfo.softmaxLseStride;
         const uint64_t dstOffset =
-            (runInfo.queryTokenBase + runInfo.s1Idx + runInfo.vecMbaseIdx) * constInfo.realN2Size +
-            runInfo.realN2Idx;
+            (runInfo.queryTokenBase + runInfo.s1Idx + runInfo.vecMbaseIdx) * constInfo.realN2Size + runInfo.realN2Idx;
         DataCopyPad(softmaxLseGm_[dstOffset], lseUb, dataCopyParams);
         softmaxLseQueue_.template FreeTensor(lseUb);
     }

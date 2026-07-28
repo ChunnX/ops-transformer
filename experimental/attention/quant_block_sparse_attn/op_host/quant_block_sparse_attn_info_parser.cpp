@@ -48,9 +48,7 @@ constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 2U;
 constexpr uint32_t BSA_LAYOUT_Q_NTD_VALUE = 5U;
 } // namespace
 
-QuantBlockSparseAttnInfoParser::QuantBlockSparseAttnInfoParser(gert::TilingContext *context) : context_(context)
-{
-}
+QuantBlockSparseAttnInfoParser::QuantBlockSparseAttnInfoParser(gert::TilingContext *context) : context_(context) {}
 
 ge::graphStatus QuantBlockSparseAttnInfoParser::ParseQuery(QuantBlockSparseAttnTilingInfo &tilingInfo,
                                                            const gert::Shape &queryShape,
@@ -123,9 +121,9 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
         }
 
         if (tilingInfo.n1Size % tilingInfo.n2Size != 0U) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "n1Size (query head num)", std::to_string(tilingInfo.n1Size),
-                                                  "must be divisible by n2Size (kv head num) " +
-                                                      std::to_string(tilingInfo.n2Size));
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "n1Size (query head num)", std::to_string(tilingInfo.n1Size),
+                "must be divisible by n2Size (kv head num) " + std::to_string(tilingInfo.n2Size));
             return ge::GRAPH_FAILED;
         }
 
@@ -146,9 +144,9 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
     }
 
     if (tilingInfo.n2Size == 0U || tilingInfo.n1Size % tilingInfo.n2Size != 0U) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "n1Size (query head num)", std::to_string(tilingInfo.n1Size),
-                                              "must be divisible by n2Size (kv head num) " +
-                                                  std::to_string(tilingInfo.n2Size));
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "n1Size (query head num)", std::to_string(tilingInfo.n1Size),
+            "must be divisible by n2Size (kv head num) " + std::to_string(tilingInfo.n2Size));
         return ge::GRAPH_FAILED;
     }
 
@@ -302,8 +300,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
     tilingInfo.quantModeVal = BSAGetUintAttr(attrs, BSA_QUANT_MODE_ATTR_INDEX, BSA_QUANT_MODE_FP8);
     tilingInfo.layoutQStr = BSAGetStringAttr(attrs, BSA_LAYOUT_Q_ATTR_INDEX, "TND");
     tilingInfo.layoutKVStr = BSAGetStringAttr(attrs, BSA_LAYOUT_KV_ATTR_INDEX, "PA_BNSD");
-    tilingInfo.layoutSparseIndicesStr =
-        BSAGetStringAttr(attrs, BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX, "B_N_Qb_Kb");
+    tilingInfo.layoutSparseIndicesStr = BSAGetStringAttr(attrs, BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX, "B_N_Qb_Kb");
     tilingInfo.layoutOutStr = BSAGetStringAttr(attrs, BSA_LAYOUT_OUT_ATTR_INDEX, "TND");
     tilingInfo.returnSoftmaxLseVal = BSAGetBoolAttr(attrs, BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX, false);
 

@@ -75,14 +75,12 @@ static aclnnStatus CheckSingleParamQbsa(int64_t batchSize, int64_t numHeadsQ, in
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
-        if (sparseBlockSizeQ != QBSA_SPARSE_BLOCK_SIZE_64 &&
-            sparseBlockSizeQ != QBSA_SPARSE_BLOCK_SIZE_128) {
+        if (sparseBlockSizeQ != QBSA_SPARSE_BLOCK_SIZE_64 && sparseBlockSizeQ != QBSA_SPARSE_BLOCK_SIZE_128) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
                     "sparseBlockSizeQ only supports 64 or 128 when quantMode is 2, but got %ld", sparseBlockSizeQ);
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (sparseBlockSizeK != QBSA_SPARSE_BLOCK_SIZE_64 &&
-            sparseBlockSizeK != QBSA_SPARSE_BLOCK_SIZE_128) {
+        if (sparseBlockSizeK != QBSA_SPARSE_BLOCK_SIZE_64 && sparseBlockSizeK != QBSA_SPARSE_BLOCK_SIZE_128) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
                     "sparseBlockSizeK only supports 64 or 128 when quantMode is 2, but got %ld", sparseBlockSizeK);
             return ACLNN_ERR_PARAM_INVALID;
@@ -125,9 +123,9 @@ static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTe
         return ACLNN_ERR_PARAM_INVALID;
     }
     uint64_t minMetaSize = optiling::QBSA_HEAD_METADATA_SIZE +
-        static_cast<uint64_t>(batchSize) * static_cast<uint64_t>(numHeadsQ) *
-            optiling::AIC_CORE_NUM * optiling::QBSA_METADATA_SIZE +
-        static_cast<uint64_t>(optiling::AIV_CORE_NUM) * optiling::FD_METADATA_SIZE;
+                           static_cast<uint64_t>(batchSize) * static_cast<uint64_t>(numHeadsQ) *
+                               optiling::AIC_CORE_NUM * optiling::QBSA_METADATA_SIZE +
+                           static_cast<uint64_t>(optiling::AIV_CORE_NUM) * optiling::FD_METADATA_SIZE;
     if (metadata->GetViewShape().GetDim(0) < static_cast<int64_t>(minMetaSize)) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata shape too small, need at least %llu int32, but got %ld",
                 static_cast<unsigned long long>(minMetaSize), metadata->GetViewShape().GetDim(0));

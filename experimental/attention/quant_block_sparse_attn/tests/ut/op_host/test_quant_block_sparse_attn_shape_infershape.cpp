@@ -24,18 +24,11 @@ static const std::string OP_NAME = "QuantBlockSparseAttn";
 using TensorDesc = gert::InfershapeContextPara::TensorDescription;
 using OpAttr = gert::InfershapeContextPara::OpAttr;
 
-class QuantBlockSparseAttnInferShapeTest
-    : public testing::TestWithParam<QuantBlockSparseAttnInferShapeUtParam> {
+class QuantBlockSparseAttnInferShapeTest : public testing::TestWithParam<QuantBlockSparseAttnInferShapeUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "QuantBlockSparseAttnInferShapeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "QuantBlockSparseAttnInferShapeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "QuantBlockSparseAttnInferShapeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "QuantBlockSparseAttnInferShapeTest TearDown" << std::endl; }
 };
 
 TEST_P(QuantBlockSparseAttnInferShapeTest, param)
@@ -44,12 +37,22 @@ TEST_P(QuantBlockSparseAttnInferShapeTest, param)
     std::cout << "[TEST_CASE] " << param.case_name << std::endl;
 
     std::vector<TensorDesc> inputTensorDesc({
-        param.query, param.key, param.value,
-        param.qDescale, param.kDescale, param.vDescale,
-        param.pScale, param.cuSeqlensQ, param.cuSeqlensKv,
-        param.sequsedQ, param.sequsedKv,
-        param.sparseIndices, param.sparseSeqLen,
-        param.blockTable, param.attenMask, param.metadata,
+        param.query,
+        param.key,
+        param.value,
+        param.qDescale,
+        param.kDescale,
+        param.vDescale,
+        param.pScale,
+        param.cuSeqlensQ,
+        param.cuSeqlensKv,
+        param.sequsedQ,
+        param.sequsedKv,
+        param.sparseIndices,
+        param.sparseSeqLen,
+        param.blockTable,
+        param.attenMask,
+        param.metadata,
     });
 
     std::vector<TensorDesc> outputTensorDesc({

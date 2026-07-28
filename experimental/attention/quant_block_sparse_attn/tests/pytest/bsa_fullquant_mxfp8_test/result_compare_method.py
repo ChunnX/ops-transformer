@@ -17,9 +17,9 @@ import torch
 
 logging.basicConfig(
     level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s]-%(filename)s:%(lineno)04d - %(message)s',
-    datefmt='%Y/%m/%d %H:%M:%S',
-    force=True
+    format="[%(asctime)s] [%(levelname)s]-%(filename)s:%(lineno)04d - %(message)s",
+    datefmt="%Y/%m/%d %H:%M:%S",
+    force=True,
 )
 logger = logging.getLogger(__name__)
 
@@ -64,12 +64,18 @@ def get_compare_tolerance(npu_result):
 def display_output_torch(real_data, expect_data, start, end, expect_fp32_data=None):
     has_fp32 = expect_fp32_data is not None
 
-    logger.info('-' * (_TABLE_WIDTH + (22 if has_fp32 else 0)))
+    logger.info("-" * (_TABLE_WIDTH + (22 if has_fp32 else 0)))
     if has_fp32:
-        logger.info(_FP32_HEADER.format("Loop", "ExpFP32Out", "ExpectOut", "RealOut", "AbsDiff", "RateDiff"))
+        logger.info(
+            _FP32_HEADER.format(
+                "Loop", "ExpFP32Out", "ExpectOut", "RealOut", "AbsDiff", "RateDiff"
+            )
+        )
     else:
-        logger.info(_BASE_HEADER.format("Loop", "ExpectOut", "RealOut", "AbsDiff", "RateDiff"))
-    logger.info('-' * (_TABLE_WIDTH + (22 if has_fp32 else 0)))
+        logger.info(
+            _BASE_HEADER.format("Loop", "ExpectOut", "RealOut", "AbsDiff", "RateDiff")
+        )
+    logger.info("-" * (_TABLE_WIDTH + (22 if has_fp32 else 0)))
 
     total_count = int(end - start + 1)
 
@@ -86,26 +92,44 @@ def display_output_torch(real_data, expect_data, start, end, expect_fp32_data=No
             diff_abs = abs(expect_value - real_value)
 
         if has_fp32:
-            logger.info(_FP32_ROW.format(
-                idx, _format_float(float(expect_fp32_data[j])), _format_float(expect_value),
-                _format_float(real_value), _format_float(diff_abs), _format_float(diff_rate)))
+            logger.info(
+                _FP32_ROW.format(
+                    idx,
+                    _format_float(float(expect_fp32_data[j])),
+                    _format_float(expect_value),
+                    _format_float(real_value),
+                    _format_float(diff_abs),
+                    _format_float(diff_rate),
+                )
+            )
         else:
-            logger.info(_BASE_ROW.format(
-                idx, _format_float(expect_value), _format_float(real_value),
-                _format_float(diff_abs), _format_float(diff_rate)))
+            logger.info(
+                _BASE_ROW.format(
+                    idx,
+                    _format_float(expect_value),
+                    _format_float(real_value),
+                    _format_float(diff_abs),
+                    _format_float(diff_rate),
+                )
+            )
 
     for offset in _display_offsets(total_count):
         if offset is None:
-            logger.info(_FP32_ROW.format("...", "...", "...", "...", "...", "...")
-                        if has_fp32 else _BASE_ROW.format("...", "...", "...", "...", "..."))
+            logger.info(
+                _FP32_ROW.format("...", "...", "...", "...", "...", "...")
+                if has_fp32
+                else _BASE_ROW.format("...", "...", "...", "...", "...")
+            )
             continue
         display_row(offset)
 
 
 def display_error_output_torch(real_data, expect_data, err_idx, relative_diff):
-    logger.info('Error Line' + '-' * (_TABLE_WIDTH - len('Error Line')))
-    logger.info(_BASE_HEADER.format("Loop", "ExpectOut", "RealOut", "AbsDiff", "RateDiff"))
-    logger.info('-' * _TABLE_WIDTH)
+    logger.info("Error Line" + "-" * (_TABLE_WIDTH - len("Error Line")))
+    logger.info(
+        _BASE_HEADER.format("Loop", "ExpectOut", "RealOut", "AbsDiff", "RateDiff")
+    )
+    logger.info("-" * _TABLE_WIDTH)
 
     len_err = int(err_idx.numel())
     for offset in _display_offsets(len_err):
@@ -115,22 +139,36 @@ def display_error_output_torch(real_data, expect_data, err_idx, relative_diff):
         i = int(err_idx[offset].item())
         expect_value = float(expect_data[i])
         real_value = float(real_data[i])
-        logger.info(_BASE_ROW.format(
-            i, _format_float(expect_value), _format_float(real_value),
-            _format_float(abs(expect_value - real_value)), _format_float(float(relative_diff[offset].item()))))
+        logger.info(
+            _BASE_ROW.format(
+                i,
+                _format_float(expect_value),
+                _format_float(real_value),
+                _format_float(abs(expect_value - real_value)),
+                _format_float(float(relative_diff[offset].item())),
+            )
+        )
 
-    logger.info('Max-RE line:' + '-' * (_TABLE_WIDTH - len('Max-RE line:')))
-    max_error = float(torch.max(relative_diff).item()) if relative_diff.numel() > 0 else 0.0
+    logger.info("Max-RE line:" + "-" * (_TABLE_WIDTH - len("Max-RE line:")))
+    max_error = (
+        float(torch.max(relative_diff).item()) if relative_diff.numel() > 0 else 0.0
+    )
     m_idx_list = err_idx[relative_diff == max_error]
     for m_count, m_idx in enumerate(m_idx_list.tolist()):
         if m_count >= 3:
             break
         expect_value = float(expect_data[m_idx])
         real_value = float(real_data[m_idx])
-        logger.info(_BASE_ROW.format(
-            m_idx, _format_float(expect_value), _format_float(real_value),
-            _format_float(abs(expect_value - real_value)), _format_float(max_error)))
-    logger.info('-' * _TABLE_WIDTH)
+        logger.info(
+            _BASE_ROW.format(
+                m_idx,
+                _format_float(expect_value),
+                _format_float(real_value),
+                _format_float(abs(expect_value - real_value)),
+                _format_float(max_error),
+            )
+        )
+    logger.info("-" * _TABLE_WIDTH)
 
 
 def check_result(expect, npu_result, debug=False):
@@ -140,15 +178,24 @@ def check_result(expect, npu_result, debug=False):
     rtol, atol = get_compare_tolerance(npu_result)
 
     real_data = npu_result.detach().cpu().flatten()
-    expect_data = expect.detach().cpu().flatten() if isinstance(expect, torch.Tensor) else torch.as_tensor(expect).flatten()
+    expect_data = (
+        expect.detach().cpu().flatten()
+        if isinstance(expect, torch.Tensor)
+        else torch.as_tensor(expect).flatten()
+    )
 
     if real_data.numel() != expect_data.numel():
-        logger.info('Error,the size of npu output[%s] and benchmark[%s] is not equal.',
-                    real_data.numel(), expect_data.numel())
+        logger.info(
+            "Error,the size of npu output[%s] and benchmark[%s] is not equal.",
+            real_data.numel(),
+            expect_data.numel(),
+        )
         return "Failed", 0.0, 0
 
     if real_data.numel() == 0:
-        logger.info('The npu_output and benchmark are both [], the result of data_compare is "Pass"')
+        logger.info(
+            'The npu_output and benchmark are both [], the result of data_compare is "Pass"'
+        )
         return "Pass", 100.0, 0
 
     start = 0
@@ -158,14 +205,18 @@ def check_result(expect, npu_result, debug=False):
     split_count = end - start + 1 if end != start else 1
     max_error = 0.0
 
-    overflows_count = int(torch.isinf(expect_data).sum().item() + torch.isnan(expect_data).sum().item())
+    overflows_count = int(
+        torch.isinf(expect_data).sum().item() + torch.isnan(expect_data).sum().item()
+    )
     if overflows_count > 0:
-        logger.info('Overflow,size:%s,benchmark_output:%s, %s',
-                    overflows_count,
-                    expect_data[torch.isinf(expect_data)][0:10],
-                    expect_data[torch.isnan(expect_data)][0:10])
+        logger.info(
+            "Overflow,size:%s,benchmark_output:%s, %s",
+            overflows_count,
+            expect_data[torch.isinf(expect_data)][0:10],
+            expect_data[torch.isnan(expect_data)][0:10],
+        )
 
-    logger.info('split_count:%s; max_diff_hd:%s;', float(split_count), max_diff_hd)
+    logger.info("split_count:%s; max_diff_hd:%s;", float(split_count), max_diff_hd)
 
     if expect_data.dtype == torch.bool:
         expect_data = expect_data.to(torch.int8)
@@ -174,7 +225,9 @@ def check_result(expect, npu_result, debug=False):
     real_float = real_data.to(torch.float32)
     expect_float = expect_data.to(torch.float32)
 
-    diff_result = torch.isclose(real_float, expect_float, rtol=rtol, atol=atol, equal_nan=True)
+    diff_result = torch.isclose(
+        real_float, expect_float, rtol=rtol, atol=atol, equal_nan=True
+    )
     err_idx = torch.nonzero(~diff_result, as_tuple=False).flatten()
 
     diff_abs = torch.abs(expect_float - real_float)
@@ -182,8 +235,11 @@ def check_result(expect, npu_result, debug=False):
     b2 = float((1.0 / (1 << 14)) / diff_thd)
     b = torch.maximum(b1, torch.tensor(b2, dtype=torch.float32)) + _EPS
     err_diff = (diff_abs / b)[err_idx]
-    err_diff = torch.where(torch.isnan(err_diff) | torch.isinf(err_diff),
-                           torch.tensor(float('inf'), dtype=torch.float32), err_diff)
+    err_diff = torch.where(
+        torch.isnan(err_diff) | torch.isinf(err_diff),
+        torch.tensor(float("inf"), dtype=torch.float32),
+        err_diff,
+    )
 
     fulfill_percent = float(split_count - err_idx.numel()) / float(split_count) * 100.0
 
@@ -197,14 +253,23 @@ def check_result(expect, npu_result, debug=False):
         if max_error >= max_diff_hd:
             result = "Failed"
 
-    logger.info('-' * _TABLE_WIDTH)
-    logger.info("{:>10} {:>12} {:>12} {:>14} {:>10}".format("Rtol", "Atol", "PctThd", "PctRlt", "Result"))
-    logger.info('-' * _TABLE_WIDTH)
-    logger.info("{:>10.4f} {:>12.6f} {:>11.2f}% {:>13.6f}% {:>10}".format(
-        rtol, atol, pct_thd, fulfill_percent, result))
+    logger.info("-" * _TABLE_WIDTH)
+    logger.info(
+        "{:>10} {:>12} {:>12} {:>14} {:>10}".format(
+            "Rtol", "Atol", "PctThd", "PctRlt", "Result"
+        )
+    )
+    logger.info("-" * _TABLE_WIDTH)
+    logger.info(
+        "{:>10.4f} {:>12.6f} {:>11.2f}% {:>13.6f}% {:>10}".format(
+            rtol, atol, pct_thd, fulfill_percent, result
+        )
+    )
 
     if err_diff.numel() > 0:
-        logger.info('Max-RelativeError is: %s. Threshold is: %s.', max_error, max_diff_hd)
+        logger.info(
+            "Max-RelativeError is: %s. Threshold is: %s.", max_error, max_diff_hd
+        )
 
     if err_diff.numel() > 0 and (result == "Failed" or debug):
         display_error_output_torch(real_data, expect_data, err_idx, err_diff)
@@ -212,11 +277,19 @@ def check_result(expect, npu_result, debug=False):
     return result, fulfill_percent, max_error
 
 
-def save_precision_map(expect, npu_result, output_path, tensor_name, compare_result=None,
-                       max_display_rows=2048, max_display_cols=2048):
+def save_precision_map(
+    expect,
+    npu_result,
+    output_path,
+    tensor_name,
+    compare_result=None,
+    max_display_rows=2048,
+    max_display_cols=2048,
+):
     """生成白色通过、蓝色失败的逐元素精度分布图；大 Tensor 按区域聚合显示。"""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         from matplotlib.colors import ListedColormap
@@ -224,7 +297,11 @@ def save_precision_map(expect, npu_result, output_path, tensor_name, compare_res
     except ImportError as error:
         raise RuntimeError("--debug precision PNG requires matplotlib") from error
 
-    expect_tensor = expect.detach().cpu() if isinstance(expect, torch.Tensor) else torch.as_tensor(expect)
+    expect_tensor = (
+        expect.detach().cpu()
+        if isinstance(expect, torch.Tensor)
+        else torch.as_tensor(expect)
+    )
     npu_tensor = npu_result.detach().cpu()
     expect_shape = tuple(expect_tensor.shape)
     npu_shape = tuple(npu_tensor.shape)
@@ -243,7 +320,11 @@ def save_precision_map(expect, npu_result, output_path, tensor_name, compare_res
             expect_flat = expect_flat.to(torch.int8)
             npu_flat = npu_flat.to(torch.int8)
         total_count = int(expect_flat.numel())
-        logical_cols = int(expect_shape[-1]) if expect_shape and expect_shape[-1] > 0 else max(total_count, 1)
+        logical_cols = (
+            int(expect_shape[-1])
+            if expect_shape and expect_shape[-1] > 0
+            else max(total_count, 1)
+        )
         logical_rows = max(1, math.ceil(total_count / logical_cols))
         display_rows = min(logical_rows, max_display_rows)
         display_cols = min(logical_cols, max_display_cols)
@@ -262,7 +343,10 @@ def save_precision_map(expect, npu_result, output_path, tensor_name, compare_res
             close_mask = torch.isclose(
                 npu_flat[flat_begin:flat_end].to(torch.float32),
                 expect_flat[flat_begin:flat_end].to(torch.float32),
-                rtol=rtol, atol=atol, equal_nan=True)
+                rtol=rtol,
+                atol=atol,
+                equal_nan=True,
+            )
             fail_chunk = ~close_mask
             fail_count += int(fail_chunk.sum().item())
 
@@ -270,11 +354,14 @@ def save_precision_map(expect, npu_result, output_path, tensor_name, compare_res
             padded_count = source_row_count * logical_cols
             if fail_chunk.numel() < padded_count:
                 fail_chunk = torch.nn.functional.pad(
-                    fail_chunk, (0, padded_count - fail_chunk.numel()), value=False)
+                    fail_chunk, (0, padded_count - fail_chunk.numel()), value=False
+                )
             fail_columns = fail_chunk.reshape(source_row_count, logical_cols).any(dim=0)
             if display_cols != logical_cols:
                 fail_columns = torch.nn.functional.adaptive_max_pool1d(
-                    fail_columns.to(torch.float32).reshape(1, 1, logical_cols), display_cols)[0, 0].to(torch.bool)
+                    fail_columns.to(torch.float32).reshape(1, 1, logical_cols),
+                    display_cols,
+                )[0, 0].to(torch.bool)
             display_mask[display_row] = fail_columns.to(torch.uint8)
 
     display_rows, display_cols = display_mask.shape
@@ -282,12 +369,19 @@ def save_precision_map(expect, npu_result, output_path, tensor_name, compare_res
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
     figure_width = min(18.0, max(8.0, display_cols / max(display_rows, 1) * 10.0))
-    figure_height = min(14.0, max(5.0, display_rows / max(display_cols, 1) * figure_width))
+    figure_height = min(
+        14.0, max(5.0, display_rows / max(display_cols, 1) * figure_width)
+    )
     fig, axis = plt.subplots(figsize=(figure_width, figure_height))
     axis.imshow(
-        display_mask.numpy(), cmap=ListedColormap(["#FFFFFF", "#2563EB"]),
-        vmin=0, vmax=1, interpolation="nearest", aspect="auto",
-        extent=(0, logical_cols, logical_rows, 0))
+        display_mask.numpy(),
+        cmap=ListedColormap(["#FFFFFF", "#2563EB"]),
+        vmin=0,
+        vmax=1,
+        interpolation="nearest",
+        aspect="auto",
+        extent=(0, logical_cols, logical_rows, 0),
+    )
     axis.set_xlabel(f"logical column (size={logical_cols})")
     axis.set_ylabel(f"logical row (size={logical_rows})")
 
@@ -307,9 +401,13 @@ def save_precision_map(expect, npu_result, output_path, tensor_name, compare_res
         title += "\naggregated view: a pixel is blue when its source region contains at least one failed element"
     axis.set_title(title, fontsize=10)
     axis.legend(
-        handles=[Patch(facecolor="#FFFFFF", edgecolor="#808080", label="PASS"),
-                 Patch(facecolor="#2563EB", label="FAIL")],
-        loc="upper right", framealpha=0.9)
+        handles=[
+            Patch(facecolor="#FFFFFF", edgecolor="#808080", label="PASS"),
+            Patch(facecolor="#2563EB", label="FAIL"),
+        ],
+        loc="upper right",
+        framealpha=0.9,
+    )
     fig.tight_layout()
     fig.savefig(output_path, dpi=140, bbox_inches="tight", facecolor="white")
     plt.close(fig)

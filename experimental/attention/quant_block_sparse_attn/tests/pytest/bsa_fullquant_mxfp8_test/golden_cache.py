@@ -17,7 +17,9 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden_cache")
+DEFAULT_CACHE_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "golden_cache"
+)
 
 
 def _ensure_dir(path):

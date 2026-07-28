@@ -39,17 +39,14 @@ using namespace optiling;
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::BSABlockVecDummy<__VA_ARGS__>, \
                                       BaseApi::BSABlockVec<__VA_ARGS__>>::type; \
         BaseApi::QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType> op; \
-        op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, \
-                       cuSeqlensQ, cuSeqlensKv, seqUsedQ, seqUsedKv, blockTable, \
-                       nullptr /* queryPaddingSize */, nullptr /* kvPaddingSize */, \
-                       qScale /* deqScaleQ */, kScale /* deqScaleK */, vScale /* deqScaleV */, \
-                       pScale /* pScale */, nullptr /* keySharedPrefix */, \
-                       nullptr /* valueSharedPrefix */, nullptr /* actualSharedPrefixLen */, \
-                       nullptr /* queryRope */, nullptr /* keyRope */, \
-                       nullptr /* learnableSink */, nullptr /* softmaxMax */, \
-                       nullptr /* softmaxSum */, nullptr /* softmaxOut */, \
-                       softmaxLse, attentionOut, user /* workspace */, \
-                       tilingDataPtr, &tPipe); \
+        op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, cuSeqlensQ, cuSeqlensKv, \
+                       seqUsedQ, seqUsedKv, blockTable, nullptr /* queryPaddingSize */, nullptr /* kvPaddingSize */, \
+                       qScale /* deqScaleQ */, kScale /* deqScaleK */, vScale /* deqScaleV */, pScale /* pScale */, \
+                       nullptr /* keySharedPrefix */, nullptr /* valueSharedPrefix */, \
+                       nullptr /* actualSharedPrefixLen */, nullptr /* queryRope */, nullptr /* keyRope */, \
+                       nullptr /* learnableSink */, nullptr /* softmaxMax */, nullptr /* softmaxSum */, \
+                       nullptr /* softmaxOut */, softmaxLse, attentionOut, user /* workspace */, tilingDataPtr, \
+                       &tPipe); \
         op.Process(); \
     } while (0)
 
@@ -77,7 +74,6 @@ using namespace optiling;
         BSA_MX_OP_IMPL_WITH_TILING(tilingData, __VA_ARGS__); \
     } while (0)
 
-
 template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t MASK_MODE, bool RETURN_SOFTMAX_LSE,
           uint32_t Config, uint32_t QUANT_MODE>
 __global__ __aicore__ void quant_block_sparse_attn(
@@ -104,8 +100,8 @@ __global__ __aicore__ void quant_block_sparse_attn(
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
                       "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
         BSA_MX_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
-                       S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128,
-                       HAS_ATTENTION, RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
+                       S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
+                       RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
     } else {
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
                       "FP8QuantMode must use S1=128, S2=256, D=128, DV=128 config");

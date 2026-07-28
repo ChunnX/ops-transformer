@@ -63,8 +63,7 @@ struct QuantBlockSparseAttnApiUtParam {
         this->vDescale = GetTensorACL(csvMap, "v_descale_shape", "v_descale_dtype", "v_descale_format");
         this->pScale = GetTensorACL(csvMap, "p_scale_shape", "p_scale_dtype", "p_scale_format");
         this->cuSeqlensQ = GetTensorACL(csvMap, "cu_seqlens_q_shape", "cu_seqlens_q_dtype", "cu_seqlens_q_format");
-        this->cuSeqlensKv =
-            GetTensorACL(csvMap, "cu_seqlens_kv_shape", "cu_seqlens_kv_dtype", "cu_seqlens_kv_format");
+        this->cuSeqlensKv = GetTensorACL(csvMap, "cu_seqlens_kv_shape", "cu_seqlens_kv_dtype", "cu_seqlens_kv_format");
         this->sequsedQ = GetTensorACL(csvMap, "seqused_q_shape", "seqused_q_dtype", "seqused_q_format");
         this->sequsedKv = GetTensorACL(csvMap, "seqused_kv_shape", "seqused_kv_dtype", "seqused_kv_format");
         this->sparseIndices =
@@ -74,8 +73,7 @@ struct QuantBlockSparseAttnApiUtParam {
         this->blockTable = GetTensorACL(csvMap, "block_table_shape", "block_table_dtype", "block_table_format");
         this->attenMask = GetTensorACL(csvMap, "atten_mask_shape", "atten_mask_dtype", "atten_mask_format");
         this->metadata = GetTensorACL(csvMap, "metadata_shape", "metadata_dtype", "metadata_format");
-        this->attentionOut =
-            GetTensorACL(csvMap, "attention_out_shape", "attention_out_dtype", "attention_out_format");
+        this->attentionOut = GetTensorACL(csvMap, "attention_out_shape", "attention_out_dtype", "attention_out_format");
         this->softmaxLse = GetTensorACL(csvMap, "softmax_lse_shape", "softmax_lse_dtype", "softmax_lse_format");
         this->maxSeqlenQ = stoll(ReadMap(csvMap, "max_seqlen_q", "0"));
         this->maxSeqlenKv = stoll(ReadMap(csvMap, "max_seqlen_kv", "0"));

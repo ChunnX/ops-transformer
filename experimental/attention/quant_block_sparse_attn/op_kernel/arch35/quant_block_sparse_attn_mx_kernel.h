@@ -61,13 +61,13 @@ public:
     __aicore__ inline QuantBlockSparseAttnMxKernel() = default;
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *cuSeqlensQ,
-                                __gm__ uint8_t *cuSeqlensKv, __gm__ uint8_t *seqUsedQ,
-                                __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *qScale,
-                                __gm__ uint8_t *kScale, __gm__ uint8_t *vScale, __gm__ uint8_t *pScale,
-                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *,
-                                const QuantBlockSparseAttnMxTilingData *__restrict tiling, TPipe *tPipe)
+                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask,
+                                __gm__ uint8_t *metadata, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKv,
+                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *qScale, __gm__ uint8_t *kScale, __gm__ uint8_t *vScale,
+                                __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling,
+                                TPipe *tPipe)
     {
         // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
         pipe = tPipe;
@@ -88,8 +88,7 @@ public:
         InitConstInfo();
         InitMMResBuf();
         cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
-        vecBlock.Init(pipe, pScale, softmaxLse, attentionOut, attenMask,
-                      tilingData->attenMaskParams.attenMaskS2Size);
+        vecBlock.Init(pipe, pScale, softmaxLse, attentionOut, attenMask, tilingData->attenMaskParams.attenMaskS2Size);
     }
 
     __aicore__ inline void Process()
@@ -217,8 +216,7 @@ private:
     __aicore__ inline uint32_t GetS1LoopEnd(uint32_t bn1Idx, uint32_t bn1EndIdx, uint32_t s1EndIdx,
                                             uint32_t actualS1Size) const
     {
-        const uint32_t loopEnd =
-            (actualS1Size + constInfo.qSparseBlockSize - 1U) / constInfo.qSparseBlockSize;
+        const uint32_t loopEnd = (actualS1Size + constInfo.qSparseBlockSize - 1U) / constInfo.qSparseBlockSize;
         if (s1EndIdx != 0U && bn1Idx == bn1EndIdx - 1U) {
             return s1EndIdx;
         }
@@ -252,11 +250,11 @@ private:
         }
     }
 
-    __aicore__ inline void FillRunInfo(MxRunInfo &runInfo, uint64_t loop, uint32_t mLoop, uint32_t bIdx,
-                                       uint32_t n1Idx, uint32_t n2Idx, uint32_t queryTokenBase,
-                                       uint32_t actualS1Size, uint32_t actualS2Size, uint32_t s1OuterIdx,
-                                       uint32_t s2LoopIdx, uint32_t s2LoopEnd, uint32_t sparseBlockCount,
-                                       uint64_t sparseBase, bool isFirstValidS2Loop)
+    __aicore__ inline void FillRunInfo(MxRunInfo &runInfo, uint64_t loop, uint32_t mLoop, uint32_t bIdx, uint32_t n1Idx,
+                                       uint32_t n2Idx, uint32_t queryTokenBase, uint32_t actualS1Size,
+                                       uint32_t actualS2Size, uint32_t s1OuterIdx, uint32_t s2LoopIdx,
+                                       uint32_t s2LoopEnd, uint32_t sparseBlockCount, uint64_t sparseBase,
+                                       bool isFirstValidS2Loop)
     {
         // 构造一个 512-token logical S2 tile 的运行参数。
         // 仅清零必要的字段
@@ -299,22 +297,21 @@ private:
                 sparseTokenOffset = static_cast<uint64_t>(sparseBlkIdx) * constInfo.kvSparseBlockSize;
                 const int64_t remainS2 =
                     static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(sparseTokenOffset);
-                sparseBlockRealSize =
-                    remainS2 > static_cast<int64_t>(constInfo.kvSparseBlockSize) ? constInfo.kvSparseBlockSize :
-                        (remainS2 > 0 ? static_cast<uint32_t>(remainS2) : 0U);
+                sparseBlockRealSize = remainS2 > static_cast<int64_t>(constInfo.kvSparseBlockSize) ?
+                                          constInfo.kvSparseBlockSize :
+                                          (remainS2 > 0 ? static_cast<uint32_t>(remainS2) : 0U);
             }
             runInfo.sparseBlockTokenOffset[i] = sparseTokenOffset;
             runInfo.sparseBlockRealSize[i] = sparseBlockRealSize;
             runInfo.sparseBlockPartialMask[i] = false;
             if constexpr (HAS_ATTEN) {
                 if (likely(sparseBlockRealSize != 0U)) {
-                    const int64_t causalDelta = static_cast<int64_t>(runInfo.actS2Size) -
-                                                static_cast<int64_t>(runInfo.actS1Size);
+                    const int64_t causalDelta =
+                        static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(runInfo.actS1Size);
                     int64_t sparseBlkIdxForMask = sparseBlkIdx;
-                    AttentionMaskFullProcessingOrRequired(static_cast<int64_t>(runInfo.s1Idx),
-                                                          static_cast<int64_t>(sparseTokenOffset), causalDelta,
-                                                          sparseBlockRealSize, sparseBlkIdxForMask,
-                                                          runInfo.sparseBlockPartialMask[i]);
+                    AttentionMaskFullProcessingOrRequired(
+                        static_cast<int64_t>(runInfo.s1Idx), static_cast<int64_t>(sparseTokenOffset), causalDelta,
+                        sparseBlockRealSize, sparseBlkIdxForMask, runInfo.sparseBlockPartialMask[i]);
                 }
             }
             runInfo.actSingleLoopS2Size += sparseBlockRealSize;
@@ -403,25 +400,22 @@ private:
                 const uint32_t s1LoopEnd = GetS1LoopEnd(bn1Idx, bn1EndIdx, s1EndIdx, actualS1Size);
                 for (uint32_t s1OuterIdx = s1LoopStart; s1OuterIdx < s1LoopEnd; ++s1OuterIdx) {
                     // 当前 query block 的有效 sparse block 数。
-                    const int32_t sparseLen =
-                        sparseSeqLenGm.GetValue((static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) *
-                                                    constInfo.maxQb +
-                                                s1OuterIdx);
+                    const int32_t sparseLen = sparseSeqLenGm.GetValue(
+                        (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) * constInfo.maxQb + s1OuterIdx);
                     if (unlikely(sparseLen <= 0)) {
                         continue;
                     }
                     // sparseBase 指向 sparseIndices[B,N1,Qb,0]。
-                    const uint64_t sparseBase =
-                        (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) * constInfo.maxQb *
-                            constInfo.maxKb +
-                        static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
+                    const uint64_t sparseBase = (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) *
+                                                    constInfo.maxQb * constInfo.maxKb +
+                                                static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
                     const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
                     bool hasValidS2Task = false;
                     for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
                         MxRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
                         const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
-                        const uint32_t sparseBlockCount = remainSparseBlockCount > sparseBlocksPerTask ?
-                                                              sparseBlocksPerTask : remainSparseBlockCount;
+                        const uint32_t sparseBlockCount =
+                            remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
                         FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
                                     actualS2Size, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount, sparseBase,
                                     !hasValidS2Task);

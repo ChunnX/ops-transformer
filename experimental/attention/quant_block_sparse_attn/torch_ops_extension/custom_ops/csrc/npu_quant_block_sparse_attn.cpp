@@ -103,8 +103,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
             "value should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
             value.strides());
         if (quant_mode == BSA_MXFP8_FULL_QUANT_MODE) {
-            const int64_t keyScaleDSize =
-                (key.size(3) + BSA_MXFP8_SCALE_GROUP_SIZE - 1) / BSA_MXFP8_SCALE_GROUP_SIZE;
+            const int64_t keyScaleDSize = (key.size(3) + BSA_MXFP8_SCALE_GROUP_SIZE - 1) / BSA_MXFP8_SCALE_GROUP_SIZE;
             const int64_t valueScaleBlockSize =
                 (value.size(2) + BSA_MXFP8_SCALE_GROUP_SIZE - 1) / BSA_MXFP8_SCALE_GROUP_SIZE;
             TORCH_CHECK(k_descale.dim() == DIM_FIVE,

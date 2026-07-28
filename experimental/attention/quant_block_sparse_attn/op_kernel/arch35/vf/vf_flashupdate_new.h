@@ -207,7 +207,6 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
     constexpr float int8MaxValueRec = 1 / 127.0f;
     constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
-
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * reduceSize);
@@ -537,7 +536,6 @@ __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *
 {
     constexpr uint16_t floatRepSize = 64; // 64: 一个寄存器可以存储64个float类型数据
     const uint16_t dLoops = d / floatRepSize;
-
 
     constexpr uint32_t tmpZero = 0x00000000; // zero value of fp16 and fp32
     const T zeroValue = *((T *)&tmpZero);

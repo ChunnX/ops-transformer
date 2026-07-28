@@ -40,37 +40,30 @@ TEST_P(AclnnQuantBlockSparseAttnTest, param)
     aclTensor *kDescalePtr = param.kDescale.GetViewDims().empty() ? nullptr : param.kDescale.ToAclTypeRawPtr();
     aclTensor *vDescalePtr = param.vDescale.GetViewDims().empty() ? nullptr : param.vDescale.ToAclTypeRawPtr();
     aclTensor *pScalePtr = param.pScale.GetViewDims().empty() ? nullptr : param.pScale.ToAclTypeRawPtr();
-    aclTensor *cuSeqlensQPtr =
-        param.cuSeqlensQ.GetViewDims().empty() ? nullptr : param.cuSeqlensQ.ToAclTypeRawPtr();
-    aclTensor *cuSeqlensKvPtr =
-        param.cuSeqlensKv.GetViewDims().empty() ? nullptr : param.cuSeqlensKv.ToAclTypeRawPtr();
+    aclTensor *cuSeqlensQPtr = param.cuSeqlensQ.GetViewDims().empty() ? nullptr : param.cuSeqlensQ.ToAclTypeRawPtr();
+    aclTensor *cuSeqlensKvPtr = param.cuSeqlensKv.GetViewDims().empty() ? nullptr : param.cuSeqlensKv.ToAclTypeRawPtr();
     aclTensor *sequsedQPtr = param.sequsedQ.GetViewDims().empty() ? nullptr : param.sequsedQ.ToAclTypeRawPtr();
-    aclTensor *sequsedKvPtr =
-        param.sequsedKv.GetViewDims().empty() ? nullptr : param.sequsedKv.ToAclTypeRawPtr();
+    aclTensor *sequsedKvPtr = param.sequsedKv.GetViewDims().empty() ? nullptr : param.sequsedKv.ToAclTypeRawPtr();
     aclTensor *sparseIndicesPtr =
         param.sparseIndices.GetViewDims().empty() ? nullptr : param.sparseIndices.ToAclTypeRawPtr();
     aclTensor *sparseSeqLenPtr =
         param.sparseSeqLen.GetViewDims().empty() ? nullptr : param.sparseSeqLen.ToAclTypeRawPtr();
-    aclTensor *blockTablePtr =
-        param.blockTable.GetViewDims().empty() ? nullptr : param.blockTable.ToAclTypeRawPtr();
-    aclTensor *attenMaskPtr =
-        param.attenMask.GetViewDims().empty() ? nullptr : param.attenMask.ToAclTypeRawPtr();
+    aclTensor *blockTablePtr = param.blockTable.GetViewDims().empty() ? nullptr : param.blockTable.ToAclTypeRawPtr();
+    aclTensor *attenMaskPtr = param.attenMask.GetViewDims().empty() ? nullptr : param.attenMask.ToAclTypeRawPtr();
     aclTensor *metadataPtr = param.metadata.GetViewDims().empty() ? nullptr : param.metadata.ToAclTypeRawPtr();
     aclTensor *attentionOutPtr =
         param.attentionOut.GetViewDims().empty() ? nullptr : param.attentionOut.ToAclTypeRawPtr();
-    aclTensor *softmaxLsePtr =
-        param.softmaxLse.GetViewDims().empty() ? nullptr : param.softmaxLse.ToAclTypeRawPtr();
+    aclTensor *softmaxLsePtr = param.softmaxLse.GetViewDims().empty() ? nullptr : param.softmaxLse.ToAclTypeRawPtr();
 
-    auto ut = OP_API_UT(aclnnQuantBlockSparseAttn,
-                        INPUT(queryPtr, keyPtr, valuePtr, qDescalePtr, kDescalePtr, vDescalePtr, pScalePtr,
-                              cuSeqlensQPtr, cuSeqlensKvPtr, sequsedQPtr, sequsedKvPtr, sparseIndicesPtr,
-                              sparseSeqLenPtr, blockTablePtr, attenMaskPtr, metadataPtr, param.maxSeqlenQ,
-                              param.maxSeqlenKv, param.softmaxScale, param.sparseQBlockSize,
-                              param.sparseKvBlockSize, param.paBlockStride, (char *)param.layoutKv.c_str(),
-                              (char *)param.layoutQ.c_str(), (char *)param.layoutSparseIndices.c_str(),
-                              (char *)param.layoutOut.c_str(), param.quantMode, param.maskMode,
-                              param.returnSoftmaxLse),
-                        OUTPUT(attentionOutPtr, softmaxLsePtr));
+    auto ut = OP_API_UT(
+        aclnnQuantBlockSparseAttn,
+        INPUT(queryPtr, keyPtr, valuePtr, qDescalePtr, kDescalePtr, vDescalePtr, pScalePtr, cuSeqlensQPtr,
+              cuSeqlensKvPtr, sequsedQPtr, sequsedKvPtr, sparseIndicesPtr, sparseSeqLenPtr, blockTablePtr, attenMaskPtr,
+              metadataPtr, param.maxSeqlenQ, param.maxSeqlenKv, param.softmaxScale, param.sparseQBlockSize,
+              param.sparseKvBlockSize, param.paBlockStride, (char *)param.layoutKv.c_str(),
+              (char *)param.layoutQ.c_str(), (char *)param.layoutSparseIndices.c_str(), (char *)param.layoutOut.c_str(),
+              param.quantMode, param.maskMode, param.returnSoftmaxLse),
+        OUTPUT(attentionOutPtr, softmaxLsePtr));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;

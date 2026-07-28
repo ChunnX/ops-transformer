@@ -73,9 +73,7 @@ QuantBlockSparseAttnMxStrideParams MakePaBnbdStride(uint32_t n2Size, uint32_t bl
 
 } // namespace
 
-QuantBlockSparseAttnTiling::QuantBlockSparseAttnTiling(gert::TilingContext *context) : context_(context)
-{
-}
+QuantBlockSparseAttnTiling::QuantBlockSparseAttnTiling(gert::TilingContext *context) : context_(context) {}
 
 void QuantBlockSparseAttnTiling::FillPaParams()
 {
@@ -272,22 +270,17 @@ void QuantBlockSparseAttnTiling::CalcTilingKey()
     const auto &info = *tilingInfo_;
     if (info.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         // MX 使用独立 tiling data 和 S2=512 config。
-        tilingKey_ = GET_TPL_TILING_KEY(
-            BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD, info.maskModeVal,
-            info.returnSoftmaxLseVal ? 1U : 0U, Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
-            MXFullQuantMode);
+        tilingKey_ = GET_TPL_TILING_KEY(BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD,
+                                        info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U,
+                                        Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128, MXFullQuantMode);
     } else {
-        tilingKey_ = GET_TPL_TILING_KEY(
-            BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD, info.maskModeVal,
-            info.returnSoftmaxLseVal ? 1U : 0U, Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
-            FP8QuantMode);
+        tilingKey_ = GET_TPL_TILING_KEY(BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD,
+                                        info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U,
+                                        Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128, FP8QuantMode);
     }
 }
 
-void QuantBlockSparseAttnTiling::CalcWorkspaceSize()
-{
-    workspaceSize_ = 0;
-}
+void QuantBlockSparseAttnTiling::CalcWorkspaceSize() { workspaceSize_ = 0; }
 
 void QuantBlockSparseAttnTiling::PrintAllTilingData()
 {
@@ -384,10 +377,8 @@ void QuantBlockSparseAttnTiling::PrintMxTilingData()
     OP_LOGD(kOpName, "coreNum:%u", baseParams.coreNum);
     OP_LOGD(kOpName, "keyStrides:%lu/%lu", baseParams.keyStrides.bnStride, baseParams.keyStrides.n2Stride);
     OP_LOGD(kOpName, "valueStrides:%lu/%lu", baseParams.valueStrides.bnStride, baseParams.valueStrides.n2Stride);
-    OP_LOGD(kOpName, "kScaleStrides:%lu/%lu", baseParams.kScaleStrides.bnStride,
-            baseParams.kScaleStrides.n2Stride);
-    OP_LOGD(kOpName, "vScaleStrides:%lu/%lu", baseParams.vScaleStrides.bnStride,
-            baseParams.vScaleStrides.n2Stride);
+    OP_LOGD(kOpName, "kScaleStrides:%lu/%lu", baseParams.kScaleStrides.bnStride, baseParams.kScaleStrides.n2Stride);
+    OP_LOGD(kOpName, "vScaleStrides:%lu/%lu", baseParams.vScaleStrides.bnStride, baseParams.vScaleStrides.n2Stride);
 
     const auto &attenMaskParams = mxTilingData_.attenMaskParams;
     OP_LOGD(kOpName, "===== MX AttenMaskParams =====");
@@ -455,10 +446,9 @@ ge::graphStatus QuantBlockSparseAttnTiling::SaveTilingData()
     if (tilingInfo_->quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         const auto dataSize = sizeof(QuantBlockSparseAttnMxTilingData);
         if (rawTilingData->GetCapacity() < dataSize) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "tilingDataCapacity",
-                                                  std::to_string(rawTilingData->GetCapacity()),
-                                                  "must be at least " + std::to_string(dataSize) +
-                                                      " for MXFP8 full-quant tiling data");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "tilingDataCapacity", std::to_string(rawTilingData->GetCapacity()),
+                "must be at least " + std::to_string(dataSize) + " for MXFP8 full-quant tiling data");
             return ge::GRAPH_FAILED;
         }
         std::memcpy(rawTilingData->GetData(), &mxTilingData_, dataSize);
@@ -482,9 +472,9 @@ ge::graphStatus QuantBlockSparseAttnTiling::DoOpTiling(QuantBlockSparseAttnTilin
     const uint64_t bnCount = tilingInfo_->bSize * tilingInfo_->n1Size;
     totalTaskNum_ = bnCount * tilingInfo_->gS1OuterSize;
     if (totalTaskNum_ == 0U || totalTaskNum_ > std::numeric_limits<uint32_t>::max()) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "bSize * n1Size * gS1OuterSize", std::to_string(totalTaskNum_),
-                                              "total task num must be in range [1, " +
-                                                  std::to_string(std::numeric_limits<uint32_t>::max()) + "]");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "bSize * n1Size * gS1OuterSize", std::to_string(totalTaskNum_),
+            "total task num must be in range [1, " + std::to_string(std::numeric_limits<uint32_t>::max()) + "]");
         return ge::GRAPH_FAILED;
     }
 

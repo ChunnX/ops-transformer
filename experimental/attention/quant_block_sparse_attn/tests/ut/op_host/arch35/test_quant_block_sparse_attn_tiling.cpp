@@ -37,18 +37,11 @@ static TensorDesc NormalizeTd(const TensorDesc &td)
     return td;
 }
 
-class QuantBlockSparseAttnTilingArch35Test
-    : public testing::TestWithParam<QuantBlockSparseAttnTilingUtParam> {
+class QuantBlockSparseAttnTilingArch35Test : public testing::TestWithParam<QuantBlockSparseAttnTilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "QuantBlockSparseAttnTilingArch35Test SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "QuantBlockSparseAttnTilingArch35Test SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "QuantBlockSparseAttnTilingArch35Test TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "QuantBlockSparseAttnTilingArch35Test TearDown" << std::endl; }
 };
 
 TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
@@ -57,12 +50,22 @@ TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
     std::cout << "[TEST_CASE] " << param.case_name << std::endl;
 
     std::vector<TensorDesc> inputTensorDesc({
-        NormalizeTd(param.query), NormalizeTd(param.key), NormalizeTd(param.value),
-        NormalizeTd(param.qDescale), NormalizeTd(param.kDescale), NormalizeTd(param.vDescale),
-        NormalizeTd(param.pScale), NormalizeTd(param.cuSeqlensQ), NormalizeTd(param.cuSeqlensKv),
-        NormalizeTd(param.sequsedQ), NormalizeTd(param.sequsedKv),
-        NormalizeTd(param.sparseIndices), NormalizeTd(param.sparseSeqLen),
-        NormalizeTd(param.blockTable), NormalizeTd(param.attenMask), NormalizeTd(param.metadata),
+        NormalizeTd(param.query),
+        NormalizeTd(param.key),
+        NormalizeTd(param.value),
+        NormalizeTd(param.qDescale),
+        NormalizeTd(param.kDescale),
+        NormalizeTd(param.vDescale),
+        NormalizeTd(param.pScale),
+        NormalizeTd(param.cuSeqlensQ),
+        NormalizeTd(param.cuSeqlensKv),
+        NormalizeTd(param.sequsedQ),
+        NormalizeTd(param.sequsedKv),
+        NormalizeTd(param.sparseIndices),
+        NormalizeTd(param.sparseSeqLen),
+        NormalizeTd(param.blockTable),
+        NormalizeTd(param.attenMask),
+        NormalizeTd(param.metadata),
     });
 
     std::vector<TensorDesc> outputTensorDesc({
