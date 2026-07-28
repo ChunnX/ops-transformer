@@ -255,6 +255,7 @@ def tilelang_grad_kl_loss_single_kernel(
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
     full_valid=False, k_scatter_exec=None,
     source_s2=None, sparse_k_stride=None, serial_task_pipeline=False,
+    c1_serial=False,
 ):
     source_s2 = S2 if source_s2 is None else source_s2
     sparse_k_stride = K if sparse_k_stride is None else sparse_k_stride
@@ -445,7 +446,6 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.macro
     def cube1_task(
-        KRealSize,
         Query,
         QueryRope,
         QueryIndex,
@@ -484,11 +484,6 @@ def tilelang_grad_kl_loss_single_kernel(
             T.set_flag("fix", "m", 1)
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
-                # full-valid specialization 在编译期保持原始 128 列路径；尾块
-                # specialization 才读取每个 query 的实际有效 K 长度。
-                valid_k_size = K
-                if not full_valid:
-                    valid_k_size = KRealSize[bz_task, s1_id]
                 T.copy(Query[bz_task, s1_id, 0:N1, 0:K_SPLIT], c1_query_chunk_0_l1)
                 T.copy(Query[bz_task, s1_id, 0:N1, K_SPLIT:2 * K_SPLIT], c1_query_chunk_1_l1)
                 T.copy(Query[bz_task, s1_id, 0:N1, 2 * K_SPLIT:3 * K_SPLIT], c1_query_chunk_2_l1)
@@ -509,22 +504,77 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_cross_flag(V0_TO_C1_P_FLAGS[1])
                     for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
                         k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
-                        if k_start < valid_k_size:
-                            tail_n = N_SPLIT
-                            if not full_valid:
-                                tail_n = T.if_then_else(
-                                    k_start + N_SPLIT > valid_k_size,
-                                    ((valid_k_size - k_start + 15) // 16) * 16,
-                                    N_SPLIT,
-                                )
-                            T.wait_flag("mte1", "mte2", 0)
-                            if full_valid:
-                                T.copy(GatherKey_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, 0:K_SPLIT], c1_key_l1)
-                            else:
+                        if c1_serial:
+                            # 诊断路径：逐段完成 GM→L1→L0→MMA，禁止 Key L1 预取。
+                            # 仅用于定位 C1 内部复用问题，正常版本仍保留原始流水。
+                            for d_idx in T.serial(d_num_query):
+                                T.wait_flag("m", "mte1", 0)
+                                T.wait_flag("mte1", "mte2", 0)
                                 T.copy(
-                                    GatherKey_ws[bz_task, s1_id, k_start:k_start + tail_n, 0:K_SPLIT],
-                                    c1_key_l1[0:tail_n, 0:K_SPLIT],
+                                    GatherKey_ws[
+                                        bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                        d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT,
+                                    ],
+                                    c1_key_l1,
                                 )
+                                T.set_flag("mte2", "mte1", 0)
+                                T.wait_flag("mte2", "mte1", 0)
+                                if d_idx == 0:
+                                    T.copy(c1_query_chunk_0_l1, c1_q_l0a)
+                                if d_idx == 1:
+                                    T.copy(c1_query_chunk_1_l1, c1_q_l0a)
+                                if d_idx == 2:
+                                    T.copy(c1_query_chunk_2_l1, c1_q_l0a)
+                                if d_idx == 3:
+                                    T.copy(c1_query_chunk_3_l1, c1_q_l0a)
+                                T.copy(c1_key_l1, c1_key_l0b, transpose=True)
+                                T.set_flag("mte1", "mte2", 0)
+                                T.set_flag("mte1", "m", 0)
+                                T.wait_flag("mte1", "m", 0)
+                                T.wait_flag("fix", "m", 0)
+                                T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=(d_idx == 0))
+                                T.set_flag("m", "mte1", 0)
+                                if d_idx + 1 < d_num_query or d_num_rope > 0:
+                                    T.set_flag("fix", "m", 0)
+
+                            for rope_idx in T.serial(d_num_rope):
+                                T.wait_flag("m", "mte1", 0)
+                                T.wait_flag("mte1", "mte2", 0)
+                                T.copy(
+                                    GatherKeyRope_ws[
+                                        bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                        rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT,
+                                    ],
+                                    c1_key_l1,
+                                )
+                                T.set_flag("mte2", "mte1", 0)
+                                T.wait_flag("mte2", "mte1", 0)
+                                T.copy(
+                                    c1_query_rope_cache_l1[
+                                        0:N1, rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT
+                                    ],
+                                    c1_q_l0a,
+                                )
+                                T.copy(c1_key_l1, c1_key_l0b, transpose=True)
+                                T.set_flag("mte1", "mte2", 0)
+                                T.set_flag("mte1", "m", 0)
+                                T.wait_flag("mte1", "m", 0)
+                                T.wait_flag("fix", "m", 0)
+                                T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=False)
+                                T.set_flag("m", "mte1", 0)
+                                if rope_idx + 1 < d_num_rope:
+                                    T.set_flag("fix", "m", 0)
+
+                            T.set_flag("m", "fix", 0)
+                            T.wait_flag("m", "fix", 0)
+                            T.copy(
+                                c1_p_l0c,
+                                bmm1Res[bz_task, s1_id, 0:N1, k_start:k_start + N_SPLIT],
+                            )
+                            T.set_flag("fix", "m", 0)
+                        else:
+                            T.wait_flag("mte1", "mte2", 0)
+                            T.copy(GatherKey_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, 0:K_SPLIT], c1_key_l1)
                             T.set_flag("mte2", "mte1", 0)
 
                             for d_idx in T.serial(d_num_query):
@@ -538,41 +588,22 @@ def tilelang_grad_kl_loss_single_kernel(
                                     T.copy(c1_query_chunk_2_l1, c1_q_l0a)
                                 if d_idx == 3:
                                     T.copy(c1_query_chunk_3_l1, c1_q_l0a)
-                                if full_valid:
-                                    T.copy(c1_key_l1, c1_key_l0b, transpose=True)
-                                else:
-                                    T.copy(c1_key_l1, c1_key_l0b, transpose=True, real_n=tail_n)
+                                T.copy(c1_key_l1, c1_key_l0b, transpose=True)
                                 T.set_flag("mte1", "mte2", 0)
                                 T.set_flag("mte1", "m", 0)
                                 if d_idx + 1 < d_num_query:
                                     T.wait_flag("mte1", "mte2", 0)
-                                    if full_valid:
-                                        T.copy(GatherKey_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
-                                                            (d_idx + 1) * K_SPLIT:(d_idx + 2) * K_SPLIT], c1_key_l1)
-                                    else:
-                                        T.copy(
-                                            GatherKey_ws[bz_task, s1_id, k_start:k_start + tail_n,
-                                                         (d_idx + 1) * K_SPLIT:(d_idx + 2) * K_SPLIT],
-                                            c1_key_l1[0:tail_n, 0:K_SPLIT],
-                                        )
+                                    T.copy(GatherKey_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                        (d_idx + 1) * K_SPLIT:(d_idx + 2) * K_SPLIT], c1_key_l1)
                                     T.set_flag("mte2", "mte1", 0)
                                 if d_idx + 1 >= d_num_query:
                                     if d_num_rope > 0:
                                         T.wait_flag("mte1", "mte2", 0)
-                                        if full_valid:
-                                            T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, 0:K_SPLIT], c1_key_l1)
-                                        else:
-                                            T.copy(
-                                                GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + tail_n, 0:K_SPLIT],
-                                                c1_key_l1[0:tail_n, 0:K_SPLIT],
-                                            )
+                                        T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, 0:K_SPLIT], c1_key_l1)
                                         T.set_flag("mte2", "mte1", 0)
                                 T.wait_flag("mte1", "m", 0)
                                 T.wait_flag("fix", "m", 0)
-                                if full_valid:
-                                    T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=(d_idx == 0))
-                                else:
-                                    T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=(d_idx == 0), n_actual=tail_n)
+                                T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=(d_idx == 0))
                                 T.set_flag("m", "mte1", 0)
                                 if d_idx + 1 < d_num_query or d_num_rope > 0:
                                     T.set_flag("fix", "m", 0)
@@ -581,40 +612,24 @@ def tilelang_grad_kl_loss_single_kernel(
                                 T.wait_flag("m", "mte1", 0)
                                 T.wait_flag("mte2", "mte1", 0)
                                 T.copy(c1_query_rope_cache_l1[0:N1, rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT], c1_q_l0a)
-                                if full_valid:
-                                    T.copy(c1_key_l1, c1_key_l0b, transpose=True)
-                                else:
-                                    T.copy(c1_key_l1, c1_key_l0b, transpose=True, real_n=tail_n)
+                                T.copy(c1_key_l1, c1_key_l0b, transpose=True)
                                 T.set_flag("mte1", "mte2", 0)
                                 T.set_flag("mte1", "m", 0)
                                 if rope_idx + 1 < d_num_rope:
                                     T.wait_flag("mte1", "mte2", 0)
-                                    if full_valid:
-                                        T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
-                                                               (rope_idx + 1) * K_SPLIT:(rope_idx + 2) * K_SPLIT], c1_key_l1)
-                                    else:
-                                        T.copy(
-                                            GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + tail_n,
-                                                             (rope_idx + 1) * K_SPLIT:(rope_idx + 2) * K_SPLIT],
-                                            c1_key_l1[0:tail_n, 0:K_SPLIT],
-                                        )
+                                    T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                           (rope_idx + 1) * K_SPLIT:(rope_idx + 2) * K_SPLIT], c1_key_l1)
                                     T.set_flag("mte2", "mte1", 0)
                                 T.wait_flag("mte1", "m", 0)
                                 T.wait_flag("fix", "m", 0)
-                                if full_valid:
-                                    T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=False)
-                                else:
-                                    T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=False, n_actual=tail_n)
+                                T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=False)
                                 T.set_flag("m", "mte1", 0)
                                 if rope_idx + 1 < d_num_rope:
                                     T.set_flag("fix", "m", 0)
 
                             T.set_flag("m", "fix", 0)
                             T.wait_flag("m", "fix", 0)
-                            if full_valid:
-                                T.copy(c1_p_l0c, bmm1Res[bz_task, s1_id, 0:N1, k_start:k_start + N_SPLIT])
-                            else:
-                                T.copy(c1_p_l0c, bmm1Res[bz_task, s1_id, 0:N1, k_start:k_start + tail_n])
+                            T.copy(c1_p_l0c, bmm1Res[bz_task, s1_id, 0:N1, k_start:k_start + N_SPLIT])
                             T.set_flag("fix", "m", 0)
 
                 T.wait_flag("mte1", "mte2", 0)
@@ -638,54 +653,29 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_cross_flag(V0_TO_C1_SY_FLAGS[1])
                     for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
                         k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
-                        if k_start < valid_k_size:
-                            tail_n = N_SPLIT
-                            if not full_valid:
-                                tail_n = T.if_then_else(
-                                    k_start + N_SPLIT > valid_k_size,
-                                    ((valid_k_size - k_start + 15) // 16) * 16,
-                                    N_SPLIT,
-                                )
-                            for d_idx in T.serial(d_num_query_index):
-                                T.wait_flag("mte1", "mte2", 1)
-                                if full_valid:
-                                    T.copy(GatherKeyIndex_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
-                                                              d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_ki_l1)
-                                else:
-                                    T.copy(
-                                        GatherKeyIndex_ws[bz_task, s1_id, k_start:k_start + tail_n,
-                                                          d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT],
-                                        c1_ki_l1[0:tail_n, 0:K_SPLIT],
-                                    )
-                                T.set_flag("mte2", "mte1", 1)
-                                T.wait_flag("m", "mte1", 1)
-                                T.wait_flag("mte2", "mte1", 1)
-                                if d_num_query_index != 1:
-                                    T.copy(c1_qi_l1[0:Nidx1, d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_qi_l0a)
-                                if full_valid:
-                                    T.copy(c1_ki_l1, c1_ki_l0b, transpose=True)
-                                else:
-                                    T.copy(c1_ki_l1, c1_ki_l0b, transpose=True, real_n=tail_n)
-                                T.set_flag("mte1", "mte2", 1)
-                                T.set_flag("mte1", "m", 1)
-                                T.wait_flag("mte1", "m", 1)
-                                T.wait_flag("fix", "m", 1)
-                                if full_valid:
-                                    T.mma(c1_qi_l0a, c1_ki_l0b, c1_sy_l0c, init=(d_idx == 0))
-                                else:
-                                    T.mma(c1_qi_l0a, c1_ki_l0b, c1_sy_l0c, init=(d_idx == 0), n_actual=tail_n)
-                                T.set_flag("m", "mte1", 1)
-                                if d_idx + 1 < d_num_query_index:
-                                    T.set_flag("fix", "m", 1)
-                            T.set_flag("m", "fix", 1)
-                            T.wait_flag("m", "fix", 1)
-                            if full_valid:
-                                T.copy(c1_sy_l0c, bmm2Res[bz_task, s1_id, 0:Nidx1,
-                                                          k_start:k_start + N_SPLIT], enable_relu=True)
-                            else:
-                                T.copy(c1_sy_l0c, bmm2Res[bz_task, s1_id, 0:Nidx1,
-                                                          k_start:k_start + tail_n], enable_relu=True)
-                            T.set_flag("fix", "m", 1)
+                        for d_idx in T.serial(d_num_query_index):
+                            T.wait_flag("mte1", "mte2", 1)
+                            T.copy(GatherKeyIndex_ws[bz_task, s1_id, k_start:k_start + N_SPLIT,
+                                                      d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_ki_l1)
+                            T.set_flag("mte2", "mte1", 1)
+                            T.wait_flag("m", "mte1", 1)
+                            T.wait_flag("mte2", "mte1", 1)
+                            if d_num_query_index != 1:
+                                T.copy(c1_qi_l1[0:Nidx1, d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_qi_l0a)
+                            T.copy(c1_ki_l1, c1_ki_l0b, transpose=True)
+                            T.set_flag("mte1", "mte2", 1)
+                            T.set_flag("mte1", "m", 1)
+                            T.wait_flag("mte1", "m", 1)
+                            T.wait_flag("fix", "m", 1)
+                            T.mma(c1_qi_l0a, c1_ki_l0b, c1_sy_l0c, init=(d_idx == 0))
+                            T.set_flag("m", "mte1", 1)
+                            if d_idx + 1 < d_num_query_index:
+                                T.set_flag("fix", "m", 1)
+                        T.set_flag("m", "fix", 1)
+                        T.wait_flag("m", "fix", 1)
+                        T.copy(c1_sy_l0c, bmm2Res[bz_task, s1_id, 0:Nidx1,
+                                                  k_start:k_start + N_SPLIT], enable_relu=True)
+                        T.set_flag("fix", "m", 1)
 
                 T.wait_flag("mte1", "mte2", 1)
                 T.wait_flag("m", "mte1", 1)
@@ -1112,7 +1102,6 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_sy = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_diff = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_valid = T.alloc_ub(bw_col_block, calc_dtype)
-            v1_bw_valid_mask = T.alloc_ub(bw_col_block // 16, calc_dtype)
             v1_bw_diff_2d = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
@@ -1154,9 +1143,6 @@ def tilelang_grad_kl_loss_single_kernel(
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 g_start = vector_id * rows_per_aiv
-                valid_k_size = K
-                if not full_valid:
-                    valid_k_size = KRealSize[bz_task, s1_id]
                 T.tile.fill(v1_bw_dw_accum, 0.0)
                 T.tile.fill(v1_bw_loss_accum, 0.0)
                 T.copy(
@@ -1230,29 +1216,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         # v1_bw_diff_2d 与上一块正在被 MTE3 读取的
                         # v1_bw_rg_half 复用同一物理 UB，覆写前必须等待归还。
                         T.wait_flag("mte3", "v", 2)
-
-                        # C1 的尾块只写到 16 对齐的实际宽度。dWeight 在 ReLU
-                        # mask 之前就会消费 bmm2，因此必须先清除该 64 列子块中
-                        # 未写入的无效列；完整块与 full-valid 路径不增加该操作。
-                        if not full_valid:
-                            if bw_col_start < valid_k_size:
-                                if bw_col_end > valid_k_size:
-                                    T.tile.compare(
-                                        v1_bw_valid_mask,
-                                        v1_bw_valid,
-                                        0.0,
-                                        "GT",
-                                    )
-                                    T.pipe_barrier("v")
-                                    for bw_mask_row in T.serial(rows_per_aiv):
-                                        T.tile.select(
-                                            v1_bw_bmm2[bw_mask_row, 0:bw_col_block],
-                                            v1_bw_valid_mask,
-                                            v1_bw_bmm2[bw_mask_row, 0:bw_col_block],
-                                            0.0,
-                                            "VSEL_TENSOR_SCALAR_MODE",
-                                        )
-                                    T.pipe_barrier("v")
 
                         T.tile.sub(
                             v1_bw_diff,
@@ -2021,7 +1984,6 @@ def tilelang_grad_kl_loss_single_kernel(
                             s1_prev = task_prev % S1
                             task_prev_slot = task_prev_iter % 2
                             cube1_task(
-                                KRealSize,
                                 Query,
                                 QueryRope,
                                 QueryIndex,
@@ -2513,6 +2475,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         _DEBUG_REQUESTED = os.environ.get("SLIG_DEBUG", "0") == "1"
         _DEBUG_TASK_TEXT = os.environ.get("SLIG_DEBUG_TASK", "").strip()
         _DEBUG_TASK = None
+        _DEBUG_TASK_SOURCE = None
+        _DEBUG_BMM1_COORD = None
         _DEBUG_TASK_AUTO = _DEBUG_TASK_TEXT.lower() == "auto"
         if _DEBUG_TASK_TEXT and not _DEBUG_TASK_AUTO:
             _DEBUG_TASK_PARTS = _DEBUG_TASK_TEXT.split(",")
@@ -2536,6 +2500,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         _SERIAL_TASK_PIPELINE = (
             os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1"
         )
+        # C1 内部串行仅用于定位 L1/L0 和 Cube 流水的同步问题。
+        _C1_SERIAL = os.environ.get("SLIG_C1_SERIAL", "0") == "1"
         _GATHER_SENTINEL = 123.0
 
         if _PROFILE:
@@ -2587,6 +2553,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             DQuery, DQueryIndex, K, sparse_k_stride, k_scatter_exec, core_count, d_rope,
             input_dtype_str, calc_dtype_str, scale_value, block_n, full_valid,
             _SERIAL_TASK_PIPELINE,
+            _C1_SERIAL,
         )
 
         if cache_key in _kernel_cache:
@@ -2596,7 +2563,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
-                _SERIAL_TASK_PIPELINE,
+                _SERIAL_TASK_PIPELINE, _C1_SERIAL,
             )
 
             # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
@@ -2690,20 +2657,59 @@ def sparse_lightning_indexer_grad_kl_loss(
         # DEBUG：定位第一个产生非有限值的阶段。
         _DEBUG = _DEBUG_REQUESTED and not _debug_dump_done
         if _DEBUG_TASK_AUTO and not _debug_dump_done:
-            debug_nonfinite_dweight = torch.nonzero(
-                ~torch.isfinite(d_weight.float()), as_tuple=False
-            )
-            if debug_nonfinite_dweight.numel() == 0:
-                print("[DEBUG_TASK] auto: dWeightOut contains no non-finite task in this run")
-                _debug_dump_done = True
-            else:
-                _DEBUG_TASK = (
-                    int(debug_nonfinite_dweight[0, 0].item()),
-                    int(debug_nonfinite_dweight[0, 1].item()),
+            # 仅检查语义有效的 K，避免无效尾部工作区影响首错定位。
+            debug_bmm1_valid = torch.isfinite(bmm1_res_ws.float())
+            if not full_valid:
+                debug_bmm1_valid = debug_bmm1_valid | (
+                    valid_k_mask.unsqueeze(2).float() == 0
                 )
+            debug_bad_bmm1 = torch.nonzero(~debug_bmm1_valid, as_tuple=False)
+            if debug_bad_bmm1.numel() > 0:
+                _DEBUG_TASK = (
+                    int(debug_bad_bmm1[0, 0].item()),
+                    int(debug_bad_bmm1[0, 1].item()),
+                )
+                _DEBUG_BMM1_COORD = (
+                    int(debug_bad_bmm1[0, 2].item()),
+                    int(debug_bad_bmm1[0, 3].item()),
+                )
+                _DEBUG_TASK_SOURCE = "the first non-finite valid BMM1 element"
+            else:
+                debug_large_bmm1 = torch.isfinite(bmm1_res_ws.float()) & (
+                    bmm1_res_ws.float().abs() > 1e6
+                )
+                if not full_valid:
+                    debug_large_bmm1 = debug_large_bmm1 & (
+                        valid_k_mask.unsqueeze(2).float() != 0
+                    )
+                debug_large_bmm1 = torch.nonzero(debug_large_bmm1, as_tuple=False)
+                if debug_large_bmm1.numel() > 0:
+                    _DEBUG_TASK = (
+                        int(debug_large_bmm1[0, 0].item()),
+                        int(debug_large_bmm1[0, 1].item()),
+                    )
+                    _DEBUG_BMM1_COORD = (
+                        int(debug_large_bmm1[0, 2].item()),
+                        int(debug_large_bmm1[0, 3].item()),
+                    )
+                    _DEBUG_TASK_SOURCE = "the first implausibly large valid BMM1 element"
+                else:
+                    debug_nonfinite_dweight = torch.nonzero(
+                        ~torch.isfinite(d_weight.float()), as_tuple=False
+                    )
+                    if debug_nonfinite_dweight.numel() > 0:
+                        _DEBUG_TASK = (
+                            int(debug_nonfinite_dweight[0, 0].item()),
+                            int(debug_nonfinite_dweight[0, 1].item()),
+                        )
+                        _DEBUG_TASK_SOURCE = "the first non-finite dWeightOut element"
+                    else:
+                        print("[DEBUG_TASK] auto: no non-finite or implausibly large valid BMM1/dWeight value")
+                        _debug_dump_done = True
+            if _DEBUG_TASK is not None:
                 print(
                     f"[DEBUG_TASK] auto selected b={_DEBUG_TASK[0]} q={_DEBUG_TASK[1]} "
-                    "from the first non-finite dWeightOut element"
+                    f"from {_DEBUG_TASK_SOURCE}"
                 )
         _DEBUG_TASK_ACTIVE = _DEBUG_TASK is not None and not _debug_dump_done
         if _DEBUG_TASK_ACTIVE:
@@ -2761,9 +2767,41 @@ def sparse_lightning_indexer_grad_kl_loss(
             debug_expected_gki = debug_expected_gki * debug_index_valid.unsqueeze(-1).to(
                 debug_expected_gki.dtype
             )
+            debug_expected_gk = torch.index_select(
+                key[debug_b, :, 0, :], 0, debug_safe_indices
+            )
+            debug_expected_gk = debug_expected_gk * debug_index_valid.unsqueeze(-1).to(
+                debug_expected_gk.dtype
+            )
+            if d_rope > 0:
+                debug_expected_grope = torch.index_select(
+                    key_rope[debug_b, :, 0, :], 0, debug_safe_indices
+                )
+                debug_expected_grope = debug_expected_grope * debug_index_valid.unsqueeze(-1).to(
+                    debug_expected_grope.dtype
+                )
+            else:
+                debug_expected_grope = None
+            debug_gk = gather_key_ws[debug_b, debug_q]
+            debug_grope = gather_key_rope_ws[debug_b, debug_q]
             debug_gki = gather_key_index_ws[debug_b, debug_q]
             debug_bmm2 = bmm2_res_ws[debug_b, debug_q]
             debug_bmm1 = bmm1_res_ws[debug_b, debug_q]
+            debug_query = query[debug_b, debug_q].float()
+            debug_bmm1_from_gather = torch.matmul(
+                debug_query, debug_gk.float().transpose(0, 1)
+            )
+            debug_bmm1_from_host_gather = torch.matmul(
+                debug_query, debug_expected_gk.float().transpose(0, 1)
+            )
+            if d_rope > 0:
+                debug_query_rope = query_rope[debug_b, debug_q].float()
+                debug_bmm1_from_gather = debug_bmm1_from_gather + torch.matmul(
+                    debug_query_rope, debug_grope.float().transpose(0, 1)
+                )
+                debug_bmm1_from_host_gather = debug_bmm1_from_host_gather + torch.matmul(
+                    debug_query_rope, debug_expected_grope.float().transpose(0, 1)
+                )
             debug_query_index = query_index[debug_b, debug_q].float()
             debug_bmm2_from_gather = torch.relu(
                 torch.matmul(debug_query_index, debug_gki.float().transpose(0, 1))
@@ -2803,6 +2841,9 @@ def sparse_lightning_indexer_grad_kl_loss(
                 f"[DEBUG_TASK] selected b={debug_b} q={debug_q} "
                 f"kReal={debug_k_real} full_valid={full_valid}"
             )
+            _debug_task_tensor("GatherKey_ws", debug_gk)
+            if d_rope > 0:
+                _debug_task_tensor("GatherKeyRope_ws", debug_grope)
             _debug_task_tensor("GatherKeyIndex_ws", debug_gki)
             _debug_task_tensor("bmm1Res", debug_bmm1)
             _debug_task_tensor("bmm2Res", debug_bmm2)
@@ -2810,6 +2851,48 @@ def sparse_lightning_indexer_grad_kl_loss(
             _debug_task_tensor("SoftmaxI", softmax_i_ws[debug_b, debug_q])
             _debug_task_tensor("dWeightOut", d_weight[debug_b, debug_q])
             _debug_task_tensor("reluGradRes", relu_grad_out[debug_b, debug_q])
+            _debug_task_compare(
+                "GatherKey_ws vs host gather (valid K)",
+                debug_gk[:debug_k_real], debug_expected_gk[:debug_k_real],
+            )
+            if d_rope > 0:
+                _debug_task_compare(
+                    "GatherKeyRope_ws vs host gather (valid K)",
+                    debug_grope[:debug_k_real], debug_expected_grope[:debug_k_real],
+                )
+            _debug_task_compare(
+                "BMM1 vs Query @ GatherKey.T plus Rope (valid K)",
+                debug_bmm1[:, :debug_k_real], debug_bmm1_from_gather[:, :debug_k_real],
+            )
+            _debug_task_compare(
+                "BMM1 host-gather cross-check (valid K)",
+                debug_bmm1_from_gather[:, :debug_k_real],
+                debug_bmm1_from_host_gather[:, :debug_k_real],
+            )
+            if _DEBUG_BMM1_COORD is not None:
+                debug_head, debug_k = _DEBUG_BMM1_COORD
+                if debug_k < debug_k_real:
+                    debug_terms = []
+                    for debug_chunk in range(d_num_query):
+                        debug_terms.append(
+                            float(torch.dot(
+                                debug_query[debug_head, debug_chunk * K_SPLIT:(debug_chunk + 1) * K_SPLIT],
+                                debug_gk[debug_k, debug_chunk * K_SPLIT:(debug_chunk + 1) * K_SPLIT].float(),
+                            ).item())
+                        )
+                    debug_rope_term = 0.0
+                    if d_rope > 0:
+                        debug_rope_term = float(torch.dot(
+                            debug_query_rope[debug_head], debug_grope[debug_k].float()
+                        ).item())
+                    print(
+                        f"[DEBUG_TASK] BMM1 first-error coord=(h={debug_head}, k={debug_k}) "
+                        f"sparse_idx={int(debug_sparse_indices[debug_k].item())} "
+                        f"index_valid={bool(debug_index_valid[debug_k].item())} "
+                        f"tilelang={debug_bmm1[debug_head, debug_k].float().item():.6e} "
+                        f"host={debug_bmm1_from_host_gather[debug_head, debug_k].item():.6e} "
+                        f"q128={debug_terms} rope={debug_rope_term:.6e}"
+                    )
             _debug_task_compare(
                 "GatherKeyIndex_ws vs host gather (valid K)",
                 debug_gki[:debug_k_real], debug_expected_gki[:debug_k_real],

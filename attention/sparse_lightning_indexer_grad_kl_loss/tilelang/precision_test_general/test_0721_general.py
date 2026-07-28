@@ -918,10 +918,13 @@ def main() -> int:
         os.environ.get("SLIG_DEBUG", "0") == "1"
         or os.environ.get("SLIG_DEBUG_TASK", "").strip()
         or os.environ.get("SLIG_PROFILE", "0") == "1"
+        or os.environ.get("SLIG_C1_SERIAL", "0") == "1"
     ):
-        print("WARNING: SLIG_DEBUG/SLIG_DEBUG_TASK/SLIG_PROFILE is enabled; disable it for benchmark numbers.")
+        print("WARNING: SLIG_DEBUG/SLIG_DEBUG_TASK/SLIG_PROFILE/SLIG_C1_SERIAL is enabled; disable it for benchmark numbers.")
     if os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1":
         print("WARNING: SLIG_SERIAL_TASK_PIPELINE=1，当前使用串行 task 诊断版本，禁止用于性能测试。")
+    if os.environ.get("SLIG_C1_SERIAL", "0") == "1":
+        print("WARNING: SLIG_C1_SERIAL=1，当前使用 C1 内部串行诊断版本，禁止用于性能测试。")
     selected_cases = list(_select_cases(args))
     if not args.summary_only:
         print(
