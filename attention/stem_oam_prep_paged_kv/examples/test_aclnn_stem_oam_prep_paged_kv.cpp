@@ -85,7 +85,6 @@ int main() {
 
   std::vector<int64_t> kCacheShape = {totalBlocks, numKvHeads, kvBlockSize, dimQk};
   std::vector<int64_t> kvIndicesShape = {batch, maxKvBlocks};
-  std::vector<int64_t> kvSeqLensShape = {batch};
   std::vector<int64_t> kScaleCacheShape = {totalBlocks, numKvHeads, kvBlockSize, 1};
   std::vector<int64_t> vScaleShape = {numKvHeads};
   std::vector<int64_t> kFlatShape = {batch, numKvHeads, maxKb, kflatDim};
@@ -94,7 +93,6 @@ int main() {
   void* kCacheDeviceAddr = nullptr;
   void* vCacheDeviceAddr = nullptr;
   void* kvIndicesDeviceAddr = nullptr;
-  void* kvSeqLensDeviceAddr = nullptr;
   void* kScaleCacheDeviceAddr = nullptr;
   void* vScaleDeviceAddr = nullptr;
   void* kFlatDeviceAddr = nullptr;
@@ -103,7 +101,7 @@ int main() {
   aclTensor* kCache = nullptr;
   aclTensor* vCache = nullptr;
   aclTensor* kvIndices = nullptr;
-  aclTensor* kvSeqLens = nullptr;
+  aclIntArray* kvSeqLens = nullptr;
   aclTensor* kScaleCache = nullptr;
   aclTensor* vScale = nullptr;
   aclTensor* kFlat = nullptr;
@@ -124,8 +122,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(hostKvIndices, kvIndicesShape, &kvIndicesDeviceAddr, aclDataType::ACL_INT32, &kvIndices, aclFormat::ACL_FORMAT_ND);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(hostKvSeqLens, kvSeqLensShape, &kvSeqLensDeviceAddr, aclDataType::ACL_INT32, &kvSeqLens, aclFormat::ACL_FORMAT_ND);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  kvSeqLens = aclCreateIntArray(hostKvSeqLens.data(), hostKvSeqLens.size(), ACL_INT32);
   ret = CreateAclTensor(hostKScaleCache, kScaleCacheShape, &kScaleCacheDeviceAddr, aclDataType::ACL_FLOAT, &kScaleCache, aclFormat::ACL_FORMAT_ND);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(hostVScale, vScaleShape, &vScaleDeviceAddr, aclDataType::ACL_FLOAT, &vScale, aclFormat::ACL_FORMAT_ND);
@@ -166,7 +163,7 @@ int main() {
   aclDestroyTensor(kCache);
   aclDestroyTensor(vCache);
   aclDestroyTensor(kvIndices);
-  aclDestroyTensor(kvSeqLens);
+  aclDestroyIntArray(kvSeqLens);
   aclDestroyTensor(kScaleCache);
   aclDestroyTensor(vScale);
   aclDestroyTensor(kFlat);
@@ -175,7 +172,6 @@ int main() {
   aclrtFree(kCacheDeviceAddr);
   aclrtFree(vCacheDeviceAddr);
   aclrtFree(kvIndicesDeviceAddr);
-  aclrtFree(kvSeqLensDeviceAddr);
   aclrtFree(kScaleCacheDeviceAddr);
   aclrtFree(vScaleDeviceAddr);
   aclrtFree(kFlatDeviceAddr);
