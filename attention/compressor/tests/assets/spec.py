@@ -49,7 +49,25 @@ class CompressorSpec:
         kwargs['cmp_ratio'] = ctx.get('cmp_ratio')
         kwargs['is_th'] = ctx.get('is_th')
         return compare_module.compare(*outputs, **kwargs)
+class AclnnCompressorSpec:
+    golden = golden_module.aclnn_compressor_golden
+    customize_inputs = inputs_module.aclnn_compressor_input
+    tolerance = {
+        "float16": {"standard": "stat_rel_err"},
+        "bfloat16": {"standard": "stat_rel_err"},
+    }
 
+    def compare(*outputs, **kwargs):
+        ctx = golden_module.get_golden_context()
+        kwargs['cmp_kv_mask'] = ctx.get('cmp_kv_mask')
+        kwargs['update_kv'] = ctx.get('update_kv')
+        kwargs['update_score'] = ctx.get('update_score')
+        kwargs['start_pos_list'] = ctx.get('start_pos_list')
+        kwargs['seqused_list'] = ctx.get('seqused_list')
+        kwargs['cmp_ratio'] = ctx.get('cmp_ratio')
+        kwargs['is_th'] = ctx.get('is_th')
+        return compare_module.compare(*outputs, **kwargs)
 __spec__ = {
     "cann_ops_transformer.ops.compressor": "CompressorSpec",
+    "aclnnCompressor": "AclnnCompressorSpec",
 }

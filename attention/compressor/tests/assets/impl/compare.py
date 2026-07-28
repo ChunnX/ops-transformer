@@ -273,50 +273,49 @@ def _batch_consistency_check(npu_outputs, kwargs):
     result = []
 
     for axis_pos, slices, cache_key_idx in zip(batch_axis ,batch_slice_info, cache_key):
-            if axis_pos is None or slices is None or cache_key_idx is None:
+        if axis_pos is None or slices is None or cache_key_idx is None:
+            continue
+        for axis_idx , slices_idx, key_idx in zip(axis_pos, slices, cache_key_idx):
+            if axis_idx is None or slices_idx is None or key_idx is None:
                 continue
-            for axis_idx , slices_idx, key_idx in zip(axis_pos, slices, cache_key_idx):
-                if axis_idx is None or slices_idx is None or key_idx is None:
+            for sl, kl in zip(slices_idx, key_idx):
+                if sl is None or kl is None:
                     continue
-                for sl, kl in zip(slices_idx, key_idx):
-                    if sl is None or kl is None:
-                        continue
-                    start = sl[0]
-                    stop = sl[1]
-                    if is_th:
+                start = sl[0]
+                stop = sl[1]
+                if is_th:
+                    headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
+                    compare_len = (stop - start - headSize) // cmp_ratio
+                    start_idx = start // cmp_ratio if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
+                    slice_output = npu_np[start_idx:(start_idx+compare_len),:]
+                else:
+                    if axis_idx == 1:
                         headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
                         compare_len = (stop - start - headSize) // cmp_ratio
                         start_idx = start // cmp_ratio if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
-                        slice_output = npu_np[start_idx:(start_idx+compare_len),:]
+                        print(start_idx)
+                        print(compare_len)
+                        print(headSize)
+                        slice_output = npu_np[0,start_idx:(start_idx+compare_len),:]
                     else:
-                        if axis_idx == 1:
-                            headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
-                            compare_len = (stop - start - headSize) // cmp_ratio
-                            start_idx = start // cmp_ratio if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
-                            print(start_idx)
-                            print(compare_len)
-                            print(headSize)
-                            slice_output = npu_np[0,start_idx:(start_idx+compare_len),:]
-                        else:
-                            slice_output = npu_np[start:stop,:,:]                                                    
-
-                    if kl not in _BATCH_CONSISTENCY_CACHE:
-                        dl = '_'.join(kl.split('_')[:2])
-                        _BATCH_CONSISTENCY_CACHE[dl] = {
-                            'base': slice_output.copy(),
-                            'comparisons': []
-                        }
-                        print(f"[batch_consistency]: base for id={kl}")
-                    else:
-                        cached = _BATCH_CONSISTENCY_CACHE[kl]
-                        compare_result = _tensor_compare(cached['base'], slice_output, "batch_consisteny")
-                        result.append(compare_result)
-                        status = "Pass" if compare_result["pass"] else "Failed"
-                        cached['comparisons'].append({
-                            'status': status,
-                            'batch_consistency_id': kl,
-                        })
-                        print(f"[batch_consistency]  {status}" f"(id={kl})")
+                        slice_output = npu_np[start:stop,:,:]                                                    
+                dl = '_'.join(kl.split('_')[:2])
+                if dl not in _BATCH_CONSISTENCY_CACHE:
+                    _BATCH_CONSISTENCY_CACHE[dl] = {
+                        'base': slice_output.copy(),
+                        'comparisons': []
+                    }
+                    print(f"[batch_consistency]: base for id={kl}")
+                else:
+                    cached = _BATCH_CONSISTENCY_CACHE[dl]
+                    compare_result = _tensor_compare(cached['base'], slice_output, "batch_consisteny")
+                    result.append(compare_result)
+                    status = "Pass" if compare_result["pass"] else "Failed"
+                    cached['comparisons'].append({
+                        'status': status,
+                        'batch_consistency_id': kl,
+                    })
+                    print(f"[batch_consistency]  {status}" f"(id={kl})")
 
     return result
 

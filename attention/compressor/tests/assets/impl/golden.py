@@ -176,6 +176,37 @@ def cpu_compressor(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
         golden_state_cache,
     ]
 
+def aclnn_compressor_golden(x, wkv, wgate, stateCacheRef, ape,
+                             stateBlockTable, cuSeqlens, seqused, startPos,
+                             cmpRatio, coff, cacheMode, stateCacheStrideDim0,
+                             cmpKv, stateCache, **kwargs):
+    x_cpu = ttk_to_cpu(x)
+    wkv_cpu = ttk_to_cpu(wkv)
+    wgate_cpu = ttk_to_cpu(wgate)
+    ape_cpu = ttk_to_cpu(ape)
+    state_cache_cpu = ttk_to_cpu(stateCacheRef)
+    block_table = ttk_to_cpu(stateBlockTable)
+
+    start_pos_list = ttk_tensor_to_list(startPos) if startPos is not None else None
+    cu_seqlens_list = ttk_tensor_to_list(cuSeqlens) if cuSeqlens is not None else None
+    seqused_list = ttk_tensor_to_list(seqused) if seqused is not None else None
+
+    cmp_kv, cmp_kv_mask, golden_state_cache, update_kv, update_score, x_dtype = run_cpu_compressor(
+        x_cpu, wkv_cpu, wgate_cpu, state_cache_cpu, ape_cpu, block_table,
+        cmpRatio, coff, cacheMode, start_pos_list, cu_seqlens_list, seqused_list,
+    )
+
+    is_th = x_cpu.dim() == 2 if x_cpu is not None else False
+    _GOLDEN_CONTEXT['cmp_kv_mask'] = cmp_kv_mask
+    _GOLDEN_CONTEXT['update_kv'] = update_kv
+    _GOLDEN_CONTEXT['update_score'] = update_score
+    _GOLDEN_CONTEXT['data_type'] = str(x_dtype)
+    _GOLDEN_CONTEXT['cmp_ratio'] = cmpRatio
+    _GOLDEN_CONTEXT['start_pos_list'] = start_pos_list
+    _GOLDEN_CONTEXT['seqused_list'] = seqused_list
+    _GOLDEN_CONTEXT['is_th'] = is_th
+
+    return [cmp_kv, golden_state_cache]
 
 def get_golden_context():
     return _GOLDEN_CONTEXT
