@@ -37,6 +37,11 @@ constexpr size_t WEIGHT_SCALE_DIM_NUM = 4UL;
 constexpr size_t ATTR_INDEX_TRANSPOSE_WEIGHT = 1UL;
 constexpr size_t ATTR_INDEX_Y_DTYPE = 5UL;
 constexpr int64_t DYNAMIC_DIM = -1L;
+
+bool IsFp4(ge::DataType dtype)
+{
+    return dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2;
+}
 } // namespace
 
 static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeContext *context)
@@ -97,7 +102,8 @@ static graphStatus InferDataType4GroupedMatmulActivationQuant(gert::InferDataTyp
     OP_CHECK_NULL_WITH_CONTEXT(context, yDtype);
     ge::DataType outputDtype = static_cast<ge::DataType>(*yDtype);
     if (outputDtype == ge::DT_UNDEFINED) {
-        outputDtype = context->GetInputDataType(X_INDEX);
+        const ge::DataType inputDtype = context->GetInputDataType(X_INDEX);
+        outputDtype = IsFp4(inputDtype) ? ge::DT_FLOAT8_E4M3FN : inputDtype;
     }
     context->SetOutputDataType(OUT_Y_INDEX, outputDtype);
     context->SetOutputDataType(OUT_Y_SCALE_INDEX, ge::DT_FLOAT8_E8M0);
