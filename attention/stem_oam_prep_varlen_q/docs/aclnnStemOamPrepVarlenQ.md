@@ -269,50 +269,145 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 <term>Ascend 950PR/Ascend 950DT</term>：
 
 ```Cpp
-// 1. 创建输入tensor
-int64_t total_tokens = 256;
-int64_t H_q = 32;
-int64_t D = 128;
-int64_t batch = 2;
+#include <iostream>
+#include <vector>
+#include "acl/acl.h"
+#include "aclnnop/aclnn_stem_oam_prep_varlen_q.h"
 
-int64_t qDims[] = {total_tokens, H_q, D};
-aclTensor *q = aclCreateTensor(qDims, 3, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, nullptr, 0);
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
+    } while (0)
 
-int64_t qScaleDims[] = {total_tokens, H_q};
-aclTensor *qScale = aclCreateTensor(qScaleDims, 2, ACL_FLOAT, ACL_FORMAT_ND, nullptr, 0);
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
 
-int64_t qSeqLens_data[] = {128, 128};
-int64_t cuSeqLensQ_data[] = {0, 128, 256};
-aclIntArray *qSeqLens = aclCreateIntArray(qSeqLens_data, 2);
-aclIntArray *cuSeqLensQ = aclCreateIntArray(cuSeqLensQ_data, 3);
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
+    int64_t shapeSize = 1;
+    for (auto i : shape) {
+        shapeSize *= i;
+    }
+    return shapeSize;
+}
 
-int64_t stemBlockSize = 128;
-int64_t stemStride = 16;
+int Init(int32_t deviceId, aclrtStream *stream)
+{
+    auto ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtSetDevice(deviceId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtCreateStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
+    return 0;
+}
 
-int64_t max_Qb = 1;
-int64_t qFlatDims[] = {batch, H_q, max_Qb, 2048};
-aclTensor *qFlat = aclCreateTensor(qFlatDims, 4, ACL_BFLOAT16, ACL_FORMAT_ND, nullptr, 0);
+template <typename T>
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor, aclFormat format)
+{
+    auto size = GetShapeSize(shape) * sizeof(T);
+    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
 
-// 2. 获取workspace大小
-uint64_t workspaceSize = 0;
-aclOpExecutor *executor = nullptr;
-aclnnStatus ret = aclnnStemOamPrepVarlenQGetWorkspaceSize(
-    q, qSeqLens, cuSeqLensQ, qScale,
-    stemBlockSize, stemStride, qFlat,
-    &workspaceSize, &executor);
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
 
-// 3. 申请workspace
-void *workspace = nullptr;
-aclrtMalloc(&workspace, workspaceSize, ACL_RT_MEM_MALLOC_NORMAL_ONLY);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, format, shape.data(),
+                              shape.size(), *deviceAddr);
+    return 0;
+}
 
-// 4. 执行计算
-ret = aclnnStemOamPrepVarlenQ(workspace, workspaceSize, executor, stream);
+int main()
+{
+    // 1. 初始化Device和Stream
+    int32_t deviceId = 0;
+    aclrtStream stream;
+    auto ret = Init(deviceId, &stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-// 5. 释放资源
-aclrtFree(workspace);
-aclDestroyTensor(q);
-aclDestroyTensor(qScale);
-aclDestroyIntArray(qSeqLens);
-aclDestroyIntArray(cuSeqLensQ);
-aclDestroyTensor(qFlat);
+    // 2. 创建输入tensor
+    int64_t totalTokens = 256;
+    int64_t numHeadQ = 32;
+    int64_t dimQk = 128;
+    int64_t batch = 2;
+    int64_t stemBlockSize = 128;
+    int64_t stemStride = 16;
+    int64_t kflatDim = stemStride * dimQk;
+
+    std::vector<int64_t> qShape = {totalTokens, numHeadQ, dimQk};
+    std::vector<int64_t> qScaleShape = {totalTokens, numHeadQ};
+    std::vector<int64_t> qFlatShape = {batch, numHeadQ, 1, kflatDim};
+
+    void *qDeviceAddr = nullptr;
+    void *qScaleDeviceAddr = nullptr;
+    void *qFlatDeviceAddr = nullptr;
+    aclTensor *q = nullptr;
+    aclTensor *qScale = nullptr;
+    aclTensor *qFlat = nullptr;
+
+    std::vector<uint8_t> hostQ(GetShapeSize(qShape), 1);
+    std::vector<float> hostQScale(GetShapeSize(qScaleShape), 1.0f);
+    std::vector<uint16_t> hostQFlat(GetShapeSize(qFlatShape), 0);
+
+    ret = CreateAclTensor(hostQ, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &q,
+                          aclFormat::ACL_FORMAT_ND);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(hostQScale, qScaleShape, &qScaleDeviceAddr, aclDataType::ACL_FLOAT, &qScale,
+                          aclFormat::ACL_FORMAT_ND);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(hostQFlat, qFlatShape, &qFlatDeviceAddr, aclDataType::ACL_BF16, &qFlat,
+                          aclFormat::ACL_FORMAT_ND);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+    int64_t qSeqLensData[] = {128, 128};
+    int64_t cuSeqLensQData[] = {0, 128, 256};
+    aclIntArray *qSeqLens = aclCreateIntArray(qSeqLensData, 2);
+    aclIntArray *cuSeqLensQ = aclCreateIntArray(cuSeqLensQData, 3);
+
+    // 3. 获取workspace大小
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor;
+    ret = aclnnStemOamPrepVarlenQGetWorkspaceSize(q, qSeqLens, cuSeqLensQ, qScale, stemBlockSize, stemStride,
+                                                  qFlat, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnStemOamPrepVarlenQGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
+
+    // 4. 申请workspace并执行计算
+    void *workspaceAddr = nullptr;
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+    }
+    ret = aclnnStemOamPrepVarlenQ(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnStemOamPrepVarlenQ failed. ERROR: %d\n", ret); return ret);
+
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+
+    // 5. 释放资源
+    aclDestroyTensor(q);
+    aclDestroyTensor(qScale);
+    aclDestroyTensor(qFlat);
+    aclDestroyIntArray(qSeqLens);
+    aclDestroyIntArray(cuSeqLensQ);
+    aclrtFree(qDeviceAddr);
+    aclrtFree(qScaleDeviceAddr);
+    aclrtFree(qFlatDeviceAddr);
+    if (workspaceSize > 0) {
+        aclrtFree(workspaceAddr);
+    }
+    aclrtDestroyStream(stream);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+    return 0;
+}
 ```
