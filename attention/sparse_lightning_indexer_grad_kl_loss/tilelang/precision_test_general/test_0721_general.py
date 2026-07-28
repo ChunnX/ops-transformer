@@ -786,6 +786,68 @@ def _print_query_diagnostics(
     )
 
 
+def _select_worst_query_for_kernel_debug(
+    case: Dict[str, Any],
+    tilelang_outputs: Sequence[torch.Tensor],
+    official_outputs: Sequence[torch.Tensor],
+) -> Optional[Tuple[int, int, float, float]]:
+    """返回最适合内核阶段诊断的 BSND query。"""
+    if case["layout"] != "BSND":
+        return None
+
+    dq_errors = _per_batch_query_normalized_errors(
+        tilelang_outputs[0], official_outputs[0]
+    )
+    dw_errors = _per_batch_query_normalized_errors(
+        tilelang_outputs[2], official_outputs[2]
+    )
+    worst: Optional[Tuple[int, int, float, float]] = None
+    for batch_id in range(case["B"]):
+        for query_id in range(case["S1"]):
+            dq_norm_rel = dq_errors[batch_id][query_id]
+            dw_norm_rel = dw_errors[batch_id][query_id]
+            if worst is None or max(dq_norm_rel, dw_norm_rel) > max(worst[2], worst[3]):
+                worst = (batch_id, query_id, dq_norm_rel, dw_norm_rel)
+    return worst
+
+
+def _rerun_kernel_task_debug(
+    case_prefix: str,
+    case: Dict[str, Any],
+    inputs: Dict[str, Any],
+    tilelang_outputs: Sequence[torch.Tensor],
+    official_outputs: Sequence[torch.Tensor],
+) -> None:
+    """使用官方对比选出的最差 query 重跑一次内核阶段诊断。"""
+    if os.environ.get("SLIG_DEBUG_TASK", "").strip().lower() != "auto":
+        return
+    worst = _select_worst_query_for_kernel_debug(
+        case, tilelang_outputs, official_outputs
+    )
+    if worst is None:
+        print(f"{case_prefix} DEBUG_TASK auto rerun skipped: TND has no BSND batch/query mapping")
+        return
+
+    batch_id, query_id, dq_norm_rel, dw_norm_rel = worst
+    old_debug_task = os.environ.get("SLIG_DEBUG_TASK")
+    os.environ["SLIG_DEBUG_TASK"] = f"{batch_id},{query_id}"
+    MODULE._debug_dump_done = False
+    print(
+        f"{case_prefix} DEBUG_TASK rerun b={batch_id} q={query_id} "
+        f"dQ_norm={dq_norm_rel:.2e} dW_norm={dw_norm_rel:.2e}"
+    )
+    try:
+        _call_tilelang(inputs, case)
+        torch.npu.synchronize()
+    except Exception as exc:
+        print(f"{case_prefix} DEBUG_TASK rerun failed: {exc}")
+    finally:
+        if old_debug_task is None:
+            os.environ.pop("SLIG_DEBUG_TASK", None)
+        else:
+            os.environ["SLIG_DEBUG_TASK"] = old_debug_task
+
+
 def _release_case_memory() -> None:
     """Release tensors from the previous case before compiling the next one."""
     gc.collect()
@@ -831,6 +893,14 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
         if args.diagnose:
             _print_batch_diagnostics(case, tilelang_outputs, official_outputs)
             _print_query_diagnostics(case, tilelang_outputs, official_outputs)
+        if not passed:
+            _rerun_kernel_task_debug(
+                case_prefix,
+                case,
+                inputs,
+                tilelang_outputs,
+                official_outputs,
+            )
         # 保持普通运行日志简洁：通过的用例只由下面的性能行表示，失败用例
         # 则保留精度指标。
         if not passed or (not args.bench and not args.summary_only):
