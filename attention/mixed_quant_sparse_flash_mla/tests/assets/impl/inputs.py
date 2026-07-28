@@ -21,14 +21,6 @@ import numpy as np
 import torch
 
 
-def _module_load_error(stage, path, exc):
-    return RuntimeError(
-        "Failed to load MixedQuantSparseFlashMla module; "
-        f"stage={stage}; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
-
-
 class NumpyBatchRandomContext:
     """Make declared batch slices deterministic before quantized KV packing."""
 
@@ -36,7 +28,7 @@ class NumpyBatchRandomContext:
 
     def __init__(self, q, kwargs):
         self.batch_size = int(q.shape[0])
-        self.relations = self._parse_relations(q, kwargs)
+        self.relations = self.parse_relations(q, kwargs)
         self.base_seed = self.relations[0][1]
         self.call_index = 0
         self.original_numpy_uniform = None
@@ -59,7 +51,7 @@ class NumpyBatchRandomContext:
         return cls(q, kwargs)
 
     @staticmethod
-    def _parse_relations(q, kwargs):
+    def parse_relations(q, kwargs):
         batch_axis = kwargs["batch_axis"]
         batch_slices = kwargs["batch_slice_info"]
         batch_seed = kwargs["batch_seed"]
@@ -90,13 +82,13 @@ class NumpyBatchRandomContext:
             raise ValueError("MQSMLA batch consistency currently supports quant_mode=1 only")
 
     @classmethod
-    def _derive_seed(cls, seed, call_index):
+    def derive_seed(cls, seed, call_index):
         return (int(seed) + (call_index + 1) * 1000003) % cls.SEED_MODULUS
 
-    def _numpy_uniform(self, low=0.0, high=1.0, size=None):
+    def numpy_uniform(self, low=0.0, high=1.0, size=None):
         call_index = self.call_index
         self.call_index += 1
-        rng = np.random.default_rng(self._derive_seed(self.base_seed, call_index))
+        rng = np.random.default_rng(self.derive_seed(self.base_seed, call_index))
         value = rng.uniform(low, high, size)
         if size is None:
             return value
@@ -107,21 +99,21 @@ class NumpyBatchRandomContext:
         for slice_value, seed in self.relations:
             selector = (slice(*slice_value),) + (slice(None),) * (value.ndim - 1)
             piece = value[selector]
-            piece_rng = np.random.default_rng(self._derive_seed(seed, call_index))
+            piece_rng = np.random.default_rng(self.derive_seed(seed, call_index))
             value[selector] = piece_rng.uniform(low, high, piece.shape)
         return value
 
-    def _python_uniform(self, low, high):
+    def python_uniform(self, low, high):
         call_index = self.call_index
         self.call_index += 1
-        rng = random.Random(self._derive_seed(self.base_seed, call_index))
+        rng = random.Random(self.derive_seed(self.base_seed, call_index))
         return rng.uniform(low, high)
 
     def __enter__(self):
         self.original_numpy_uniform = np.random.uniform
         self.original_python_uniform = random.uniform
-        np.random.uniform = self._numpy_uniform
-        random.uniform = self._python_uniform
+        np.random.uniform = self.numpy_uniform
+        random.uniform = self.python_uniform
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -135,6 +127,14 @@ class MixedQuantSparseFlashMlaInputAdapter:
 
     def __init__(self):
         self.pytest_modules = {}
+
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load MixedQuantSparseFlashMla module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
 
     @staticmethod
     def load_golden_store():
@@ -151,7 +151,9 @@ class MixedQuantSparseFlashMlaInputAdapter:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("assets Golden store", path, exc) from exc
+            raise MixedQuantSparseFlashMlaInputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -178,7 +180,7 @@ class MixedQuantSparseFlashMlaInputAdapter:
             return module
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error(f"pytest {stem}", module_path, exc) from exc
+            raise self.module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
