@@ -50,10 +50,8 @@ public:
     using ElementInput = half; // S
     using ElementMax = ElementInput;
     using ElementDisguiseP = uint8_t;
-    using ElementPScale = uint8_t;
+    using ElementPScale = typename ScaleType_::Element;
     using ElementIndex = uint8_t;
-    using LayoutOutput = typename OutputType_::Layout;
-    using LayoutInput = LayoutS_;
     using LayoutPUB = layout::RowMajor;
 
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue, ElementInput dstTypeMax)

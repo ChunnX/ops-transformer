@@ -84,7 +84,7 @@ public:
 
         // 如果当前s2只有一个softmax，就另外一个核不用做pscale操作
         if (tileInfo.kvsFirstTileStartVecCore != subBlockIdx && tileInfo.isTileGoupFirstTile) {
-            if (tileInfo.curKvsTileLoopIdx / 16 == 0) {
+            if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
                 Mxfp4VF::computeOnlyScale<true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm, static_cast<uint16_t>(subBlockIdx));
             } else {
@@ -109,7 +109,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
 
-        if (tileInfo.curKvsTileLoopIdx / 16 == 0) {
+        if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
             Mxfp4VF::computePscale<true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                 pscale1, pscale2, localGroupMax1, localGroupMax2,
                 localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
