@@ -628,7 +628,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Set
         runInfo.s2StartIdx = runParam.s2OriLineStartIdx;
         runInfo.s2EndIdx = runParam.s2OriLineEndIdx;
     } else {
-        runInfo.s2StartIdx = 0;
+        runInfo.s2StartIdx = runParam.s2CmpLineStartIdx;
         runInfo.s2EndIdx = runParam.s2CmpLineEndIdx;
     }
     runInfo.s2LoopCount = s2LoopCount;

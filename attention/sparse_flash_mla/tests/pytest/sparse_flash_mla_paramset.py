@@ -1030,5 +1030,11 @@ TEST_PARAMS["testest"] = {
     "template_run_mode": ["HCA"],
 }
 
-# ENABLED_PARAMS = [TEST_PARAMS["single_batch_2_cores"]]
-ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
+from smla_coverage200_cases import GENERATED_CASES as COVERAGE200_CASES
+
+_coverage200_collisions = sorted(set(TEST_PARAMS) & set(COVERAGE200_CASES))
+if _coverage200_collisions:
+    raise KeyError(f"coverage200 case names already exist: {_coverage200_collisions[:8]}")
+TEST_PARAMS.update(COVERAGE200_CASES)
+COVERAGE200_CASE_NAMES = tuple(COVERAGE200_CASES)
+ENABLED_PARAMS = [TEST_PARAMS[name] for name in COVERAGE200_CASE_NAMES]

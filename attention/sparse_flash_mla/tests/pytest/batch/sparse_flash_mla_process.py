@@ -159,6 +159,11 @@ def call_npu(input_data):
         has_ori_kv=ori_kv != None,
         has_cmp_kv=cmp_kv != None)
 
+    metadata_coverage_path = os.getenv("SMLA_METADATA_COVERAGE_PATH")
+    if metadata_coverage_path:
+        from analyze_smla_metadata import analyze_and_store
+        analyze_and_store(metadata, params, metadata_coverage_path)
+
     torch.set_printoptions(threshold=float('inf'))
     print("metadata: ", metadata)
     # 统一调用 sparse_flash_mla，所有参数可选带默认值
