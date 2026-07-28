@@ -99,11 +99,11 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto c1_query_chunk_3_l1 = ascend_l1.GetWithOffset<bfloat16_t>(16384, 98304);
   auto c1_query_rope_cache_l1 = ascend_l1.GetWithOffset<bfloat16_t>(16384, 131072);
   auto c1_qi_l1 = ascend_l1.GetWithOffset<bfloat16_t>(8192, 163840);
-  auto c1_qi_l0a = ascend_l0a.GetWithOffset<bfloat16_t>(8192, 32768);
   auto c1_key_l1 = ascend_l1.GetWithOffset<bfloat16_t>(16384, 180224);
   auto c1_q_l0a = ascend_l0a.GetWithOffset<bfloat16_t>(16384, 0);
   auto c1_key_l0b = ascend_l0b.GetWithOffset<bfloat16_t>(16384, 0);
   auto c1_p_l0c = ascend_l0c.GetWithOffset<float>(16384, 0);
+  auto c1_qi_l0a = ascend_l0a.GetWithOffset<bfloat16_t>(8192, 32768);
   auto c1_ki_l1 = ascend_l1.GetWithOffset<bfloat16_t>(16384, 212992);
   auto c1_ki_l0b = ascend_l0b.GetWithOffset<bfloat16_t>(16384, 32768);
   auto c1_sy_l0c = ascend_l0c.GetWithOffset<float>(8192, 65536);
@@ -136,7 +136,6 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto v1_bw_weight = ascend_ub.GetWithOffset<float>(32, 196192);
   auto v1_bw_weight_2d = ascend_ub.GetWithOffset<float>(2048, 4608);
   auto v1_bw_row_tmp = ascend_ub.GetWithOffset<float>(256, 0);
-  auto v1_bw_dw_half = ascend_ub.GetWithOffset<bfloat16_t>(32, 0);
   auto v1_bw_p = ascend_ub.GetWithOffset<float>(64, 0);
   auto v1_bw_sy = ascend_ub.GetWithOffset<float>(64, 256);
   auto v1_bw_bmm2 = ascend_ub.GetWithOffset<float>(2048, 12800);
@@ -151,6 +150,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto v1_bw_log_sy = ascend_ub.GetWithOffset<float>(64, 1024);
   auto v1_bw_loss_2d = ascend_ub.GetWithOffset<float>(64, 256);
   auto v1_bw_loss_sum = ascend_ub.GetWithOffset<float>(1, 196320);
+  auto v1_bw_dw_half = ascend_ub.GetWithOffset<bfloat16_t>(32, 0);
   auto c2_dq_l0c = ascend_l0c.GetWithOffset<float>(8192, 98304);
   auto c2_rg_l1 = ascend_l1.GetWithOffset<bfloat16_t>(8192, 262144);
   auto c2_gki_l1 = ascend_l1.GetWithOffset<bfloat16_t>(16384, 278528);
@@ -294,7 +294,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
               }
               AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
               AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
-              tl::ascend::mma<bfloat16_t, float, 128, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (d_idx == 0), 128, 128, 0);
+              tl::ascend::mma<bfloat16_t, float, 128, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (d_idx == 0), 128);
               AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
               AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
             }
@@ -306,7 +306,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
-            tl::ascend::mma<bfloat16_t, float, 128, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (bool)0, 128, 128, 0);
+            tl::ascend::mma<bfloat16_t, float, 128, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (bool)0, 128);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(0);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(0);
@@ -341,7 +341,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(1);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(1);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(1);
-            tl::ascend::mma<bfloat16_t, float, 64, 128>(c1_qi_l0a[0],c1_ki_l0b[0],c1_sy_l0c[0], (bool)1, 128, 128, 0);
+            tl::ascend::mma<bfloat16_t, float, 64, 128>(c1_qi_l0a[0],c1_ki_l0b[0],c1_sy_l0c[0], (bool)1, 128);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(1);
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(1);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(1);
