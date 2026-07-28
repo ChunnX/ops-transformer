@@ -70,7 +70,7 @@ public:
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
 
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
@@ -178,7 +178,7 @@ public:
         // TODO，共享buffer初始化放到block层
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         if constexpr (BMM2_TOUB) {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
+            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         } else {
             ubBufferManager.Init(pipe, mm1ResultSize * 2);
@@ -302,6 +302,7 @@ public:
         if constexpr (BMM2_TOUB) {
             if ASCEND_IS_AIV {
                 bmm2Buffers.Get().SetCrossCore();
+                bmm2Buffers.Get().SetCrossCore();
             }
         }
         if ASCEND_IS_AIV {
@@ -318,6 +319,7 @@ public:
         }
         if constexpr (BMM2_TOUB) {
             if ASCEND_IS_AIC {
+                bmm2Buffers.Get().WaitCrossCore();
                 bmm2Buffers.Get().WaitCrossCore();
             }
         }
