@@ -13,15 +13,120 @@
 """Input customization for MixedQuantSparseFlashMla TTK cases."""
 
 import importlib.util
+import random
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
+
+
+class NumpyBatchRandomContext:
+    """Make declared batch slices deterministic before quantized KV packing."""
+
+    SEED_MODULUS = (1 << 63) - 1
+
+    def __init__(self, q, kwargs):
+        self.batch_size = int(q.shape[0])
+        self.relations = self.parse_relations(q, kwargs)
+        self.base_seed = self.relations[0][1]
+        self.call_index = 0
+        self.original_numpy_uniform = None
+        self.original_python_uniform = None
+
+    @classmethod
+    def from_case(cls, q, kwargs):
+        fields = tuple(kwargs.get(name) for name in (
+            "batch_axis", "batch_slice_info", "batch_seed"
+        ))
+        if all(field is None for field in fields):
+            return None
+        if any(field is None for field in fields):
+            raise ValueError(
+                "batch_axis, batch_slice_info and batch_seed must be set together"
+            )
+        if kwargs.get("layout_q", "BSND") != "BSND" or kwargs.get(
+                "layout_kv", "BSND") != "BSND":
+            raise ValueError("MQSMLA batch consistency currently supports BSND/BSND only")
+        return cls(q, kwargs)
+
+    @staticmethod
+    def parse_relations(q, kwargs):
+        batch_axis = kwargs["batch_axis"]
+        batch_slices = kwargs["batch_slice_info"]
+        batch_seed = kwargs["batch_seed"]
+        if not batch_axis or batch_axis[0] != (0,):
+            raise ValueError("MQSMLA batch consistency requires q batch_axis=((0,), ...)")
+        if not batch_slices or batch_slices[0] is None or batch_seed[0] is None:
+            raise ValueError("MQSMLA batch consistency requires slices and seeds on q")
+        if any(slices is not None for slices in batch_slices[1:]):
+            raise ValueError("MQSMLA batch consistency relations must be declared on q only")
+
+        relations = list(zip(batch_slices[0][0], batch_seed[0][0]))
+        if not relations:
+            raise ValueError("MQSMLA batch consistency requires at least one q slice")
+        if len({seed for _, seed in relations}) != 1:
+            raise ValueError("MQSMLA batch consistency supports one relation seed per case")
+        for slice_value, _ in relations:
+            start, stop, step = slice_value
+            if step != 1 or start < 0 or start >= stop or stop > int(q.shape[0]):
+                raise ValueError(
+                    "MQSMLA batch consistency requires in-range, contiguous q batch slices"
+                )
+        return relations
+
+    def validate_params(self, params):
+        if params.get("template_run_mode") not in ("SWA", "HCA"):
+            raise ValueError("MQSMLA batch consistency currently excludes sparse modes")
+        if int(params.get("quant_mode")) != 1:
+            raise ValueError("MQSMLA batch consistency currently supports quant_mode=1 only")
+
+    @classmethod
+    def derive_seed(cls, seed, call_index):
+        return (int(seed) + (call_index + 1) * 1000003) % cls.SEED_MODULUS
+
+    def numpy_uniform(self, low=0.0, high=1.0, size=None):
+        call_index = self.call_index
+        self.call_index += 1
+        rng = np.random.default_rng(self.derive_seed(self.base_seed, call_index))
+        value = rng.uniform(low, high, size)
+        if size is None:
+            return value
+        value = np.asarray(value)
+        if value.ndim < 2 or int(value.shape[0]) != self.batch_size:
+            return value
+
+        for slice_value, seed in self.relations:
+            selector = (slice(*slice_value),) + (slice(None),) * (value.ndim - 1)
+            piece = value[selector]
+            piece_rng = np.random.default_rng(self.derive_seed(seed, call_index))
+            value[selector] = piece_rng.uniform(low, high, piece.shape)
+        return value
+
+    def python_uniform(self, low, high):
+        call_index = self.call_index
+        self.call_index += 1
+        rng = random.Random(self.derive_seed(self.base_seed, call_index))
+        return rng.uniform(low, high)
+
+    def __enter__(self):
+        self.original_numpy_uniform = np.random.uniform
+        self.original_python_uniform = random.uniform
+        np.random.uniform = self.numpy_uniform
+        random.uniform = self.python_uniform
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        np.random.uniform = self.original_numpy_uniform
+        random.uniform = self.original_python_uniform
+        return False
 
 
 class MixedQuantSparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
 
+    PYTEST_BLOCK_SIZE = 64
+    PYTEST_TILE_SIZE = 64
     TEMPLATE_MODES = frozenset(("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"))
 
     @staticmethod
@@ -121,6 +226,7 @@ class MixedQuantSparseFlashMlaInputAdapter:
     def build_case_params(self, q, ori_kv, cmp_kv, ori_sparse_indices,
                           cmp_sparse_indices,
                           layout_q, layout_kv, kwargs):
+        is_batch_case = kwargs.get("batch_axis") is not None
         cu_q = self.list_value(kwargs, "cu_seqlens_q")
         cu_ori = self.list_value(kwargs, "cu_seqlens_ori_kv")
         cu_cmp = self.list_value(kwargs, "cu_seqlens_cmp_kv")
@@ -142,11 +248,15 @@ class MixedQuantSparseFlashMlaInputAdapter:
             _, kv_seq, kv_heads, _ = [int(x) for x in ori_kv.shape]
             block_num1 = kwargs.get("block_num1")
             block_size1 = kwargs.get("block_size1")
+            if is_batch_case and block_size1 is None:
+                block_size1 = self.PYTEST_BLOCK_SIZE
         elif layout_kv == "TND":
             _, kv_heads, _ = [int(x) for x in ori_kv.shape]
             kv_seq = max(self.prefix_lengths(cu_ori) or seq_ori or [int(ori_kv.shape[0])])
             block_num1 = kwargs.get("block_num1")
             block_size1 = kwargs.get("block_size1")
+            if is_batch_case and block_size1 is None:
+                block_size1 = self.PYTEST_BLOCK_SIZE
         else:
             shape_block_num, shape_block_size, kv_heads, _ = [int(x) for x in ori_kv.shape]
             block_num1 = kwargs.get("block_num1")
@@ -161,6 +271,8 @@ class MixedQuantSparseFlashMlaInputAdapter:
         if cmp_kv is None:
             block_num2 = kwargs.get("block_num2")
             block_size2 = kwargs.get("block_size2")
+            if is_batch_case and block_size2 is None:
+                block_size2 = block_size1
         elif layout_kv == "PA_BBND":
             block_num2 = kwargs.get("block_num2")
             block_size2 = kwargs.get("block_size2")
@@ -169,6 +281,8 @@ class MixedQuantSparseFlashMlaInputAdapter:
         else:
             block_num2 = kwargs.get("block_num2")
             block_size2 = kwargs.get("block_size2")
+            if is_batch_case and block_size2 is None:
+                block_size2 = block_size1
 
         mode = self.select_template_mode(kwargs)
 
@@ -214,6 +328,9 @@ class MixedQuantSparseFlashMlaInputAdapter:
             "cu_seqlens_cmp_kv": cu_cmp,
             "cmp_residual_kv": residual,
         })
+        if is_batch_case and params.get("tile_size") is None:
+            # The batch CSV has no target API field for this pytest packing geometry.
+            params["tile_size"] = self.PYTEST_TILE_SIZE
         if mode is not None:
             params["template_run_mode"] = mode
         params.update({name: value for name, value in data_ranges.items() if value is not None})
@@ -236,7 +353,7 @@ class MixedQuantSparseFlashMlaInputAdapter:
             )
         dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
 
-    def generate_case(self, params):
+    def generate_case(self, params, batch_random=None):
         pytest_utils = self.load_pytest_module("utils", "utils.py")
         pytest_check = self.load_pytest_module("check", "check_valid_param.py")
         pytest_golden = self.load_pytest_module(
@@ -249,7 +366,12 @@ class MixedQuantSparseFlashMlaInputAdapter:
         if filled.get("Testcase_Name") is None:
             filled["Testcase_Name"] = params.get("testcase_name")
         pytest_check.check_valid_param(filled)
-        data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
+        if batch_random is None:
+            data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
+        else:
+            batch_random.validate_params(filled)
+            with batch_random:
+                data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
         testcase_name = params.get("testcase_name") or filled.get("Testcase_Name")
         self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data
@@ -267,6 +389,7 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
                                                  cmp_residual_kv=None, ori_topk_length=None,
                                                  cmp_topk_length=None, sinks=None, **kwargs):
     """Reuse the pytest parameter validation and input processing for a TTK case."""
+    batch_random = NumpyBatchRandomContext.from_case(q, kwargs)
     params = INPUT_ADAPTER.build_case_params(
         q,
         ori_kv,
@@ -277,7 +400,7 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
         kwargs.get("layout_kv"),
         kwargs,
     )
-    data = INPUT_ADAPTER.generate_case(params)
+    data = INPUT_ADAPTER.generate_case(params, batch_random)
     op_input = data["op_input"]
     for name, tensor in (
         ("q", q),

@@ -16,7 +16,7 @@ from typing import Optional
 
 import torch
 
-import cann_ops_transformer
+import cann_ops_transformer  # noqa: F401
 
 
 class SparseFlashMlaMetadataBuilder:
