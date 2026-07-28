@@ -401,20 +401,23 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
 
     OP_CHECK_IF(!(inputQType_ == inputKType_),
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key",
-                    QLIDataTypeToSerialString(inputQType_) + ", " + QLIDataTypeToSerialString(inputKType_),
+                    QLIDataTypeToSerialString(inputQType_) + " and " +
+                    QLIDataTypeToSerialString(inputKType_),
                     "The dtype of query and key must be same"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         !(inputQueryScaleType_ == inputKeyScaleType_),
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
-            QLIDataTypeToSerialString(inputQueryScaleType_) + ", " + QLIDataTypeToSerialString(inputKeyScaleType_),
+            QLIDataTypeToSerialString(inputQueryScaleType_) + " and " +
+            QLIDataTypeToSerialString(inputKeyScaleType_),
             "The dtype of query_dequant_scale and key_dequant_scale must be same"),
         return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8 && inputQType_ != ge::DT_INT8,
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key",
-                QLIDataTypeToSerialString(inputQType_) + ", " + QLIDataTypeToSerialString(inputKType_),
+                QLIDataTypeToSerialString(inputQType_) + " and " +
+                QLIDataTypeToSerialString(inputKType_),
                 "The dtype of query and key must be float8_e4m3, hifloat8 or int8"),
             return ge::GRAPH_FAILED);
         // hifloat8只支持bf16的weights和fp32的scale
@@ -423,7 +426,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
                         (weightsType_ != ge::DT_FLOAT16|| inputQueryScaleType_ != ge::DT_FLOAT16),
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, query_dequant_scale and key_dequant_scale",
                     QLIDataTypeToSerialString(weightsType_) + ", " +
-                    QLIDataTypeToSerialString(inputQueryScaleType_) + "and " +
+                    QLIDataTypeToSerialString(inputQueryScaleType_) + " and " +
                     QLIDataTypeToSerialString(inputKeyScaleType_),
                     "When input query and key are float8_e4m3, "
                     "the dtype of weights, query_dequant_scale and key_dequant_scale must be "
@@ -433,7 +436,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
             OP_CHECK_IF(weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, queryScale and keyScale",
                     QLIDataTypeToSerialString(weightsType_) + ", " +
-                    QLIDataTypeToSerialString(inputQueryScaleType_) + "and " +
+                    QLIDataTypeToSerialString(inputQueryScaleType_) + " and " +
                     QLIDataTypeToSerialString(inputKeyScaleType_),
                     "When input query and key are hifloat8, the dtype of weights, "
                     "queryScale and keyScale must be (bfloat16, float32, float32)"),
@@ -442,7 +445,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16 || inputQueryScaleType_ != ge::DT_FLOAT16,
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, queryScale and keyScale",
                     QLIDataTypeToSerialString(weightsType_) + ", " +
-                    QLIDataTypeToSerialString(inputQueryScaleType_) + "and " +
+                    QLIDataTypeToSerialString(inputQueryScaleType_) + " and " +
                     QLIDataTypeToSerialString(inputKeyScaleType_),
                     "When input query and key are int8, the dtype of weights, "
                     "queryScale and keyScale must be float16"),
@@ -451,7 +454,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
     } else {
         OP_CHECK_IF(inputQType_ != ge::DT_INT8,
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key",
-                QLIDataTypeToSerialString(inputQType_) + ", " + QLIDataTypeToSerialString(inputKType_),
+                QLIDataTypeToSerialString(inputQType_) + " and " + QLIDataTypeToSerialString(inputKType_),
                 "The dtype of query and key must be int8"),
             return ge::GRAPH_FAILED);
 
@@ -464,7 +467,8 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
         OP_CHECK_IF(
             inputQueryScaleType_ != ge::DT_FLOAT16,
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
-                QLIDataTypeToSerialString(inputQueryScaleType_) + ", " + QLIDataTypeToSerialString(inputKeyScaleType_),
+                QLIDataTypeToSerialString(inputQueryScaleType_) + " and " +
+                QLIDataTypeToSerialString(inputKeyScaleType_),
                 "The dtype of query_dequant_scale and key_dequant_scale must be float16"),
             return ge::GRAPH_FAILED);
     }
@@ -519,7 +523,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
                 "The dtype of block_table must be int32"), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor != nullptr,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "block_table",
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "block_table",
                         Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
                         "when key layout is not PA_BSND, input block_table must be null"),
                     return ge::GRAPH_FAILED);
@@ -826,7 +830,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                 ((opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
                 (opParamInfo_.blockTable.tensor != nullptr &&
                 opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_)),
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query actual_seq_lengths_key and block_table",
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query, actual_seq_lengths_key and block_table",
                 Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
                 Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()) + " and " +
                 Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()),
@@ -891,12 +895,12 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                     opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
                     (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_)),
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_,
-                "query, weights, actual_seq_lengths_key, and sparse_indices",
+                "query, weights, actual_seq_lengths_key and sparse_indices",
                 Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
                 Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + ", " +
                 Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()) + " and " +
                 Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
-                "BSND case input query, weights, actual_seq_lengths_key, block_table, sparse_indices dim 0 are " +
+                "BSND case input query, weights, actual_seq_lengths_key, sparse_indices dim 0 are " +
                 std::to_string(bSize_) + ", " +
                 std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + ", " +
                 std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) + ", " +
