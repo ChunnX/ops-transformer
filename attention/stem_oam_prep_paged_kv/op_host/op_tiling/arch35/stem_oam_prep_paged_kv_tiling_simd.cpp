@@ -4,7 +4,7 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -23,7 +23,7 @@
 namespace optiling {
 using namespace Ops::Base;
 
-ge::graphStatus StemPrepKvTiling::CheckParams()
+ge::graphStatus StemOamPrepPagedKvTilingSimd::CheckParams()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -36,26 +36,26 @@ ge::graphStatus StemPrepKvTiling::CheckParams()
     auto vScaleDtype = context_->GetInputDesc(INPUT_V_SCALE_INDEX)->GetDataType();
     if (kCacheDtype != ge::DT_FLOAT8_E4M3FN) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "kCache",
-            std::to_string(static_cast<int32_t>(kCacheDtype)).c_str(),
-            "The dtype of kCache must be FLOAT8_E4M3FN.");
+                                              std::to_string(static_cast<int32_t>(kCacheDtype)).c_str(),
+                                              "The dtype of kCache must be FLOAT8_E4M3FN.");
         return ge::GRAPH_FAILED;
     }
     if (vCacheDtype != ge::DT_FLOAT8_E4M3FN) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "vCache",
-            std::to_string(static_cast<int32_t>(vCacheDtype)).c_str(),
-            "The dtype of vCache must be FLOAT8_E4M3FN.");
+                                              std::to_string(static_cast<int32_t>(vCacheDtype)).c_str(),
+                                              "The dtype of vCache must be FLOAT8_E4M3FN.");
         return ge::GRAPH_FAILED;
     }
     if (kScaleCacheDtype != ge::DT_FLOAT) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "kScaleCache",
-            std::to_string(static_cast<int32_t>(kScaleCacheDtype)).c_str(),
-            "The dtype of kScaleCache must be FLOAT.");
+                                              std::to_string(static_cast<int32_t>(kScaleCacheDtype)).c_str(),
+                                              "The dtype of kScaleCache must be FLOAT.");
         return ge::GRAPH_FAILED;
     }
     if (vScaleDtype != ge::DT_FLOAT) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "vScale",
-            std::to_string(static_cast<int32_t>(vScaleDtype)).c_str(),
-            "The dtype of vScale must be FLOAT.");
+                                              std::to_string(static_cast<int32_t>(vScaleDtype)).c_str(),
+                                              "The dtype of vScale must be FLOAT.");
         return ge::GRAPH_FAILED;
     }
 
@@ -65,7 +65,7 @@ ge::graphStatus StemPrepKvTiling::CheckParams()
         OP_CHECK_NULL_WITH_CONTEXT(context_, inputShape);
         if (inputShape->GetShape().GetShapeSize() == 0) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(context_->GetNodeName(), inputNames[i], "0",
-                "does not support empty tensor.");
+                                                      "does not support empty tensor.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -76,53 +76,61 @@ ge::graphStatus StemPrepKvTiling::CheckParams()
     auto vScaleShape = context_->GetInputShape(INPUT_V_SCALE_INDEX)->GetShape();
     if (kCacheShape.GetDimNum() != KV_CACHE_DIM_NUM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "kCache",
-            std::to_string(kCacheShape.GetDimNum()).c_str(), "The shape dim of kCache must be 4.");
+                                                 std::to_string(kCacheShape.GetDimNum()).c_str(),
+                                                 "The shape dim of kCache must be 4.");
         return ge::GRAPH_FAILED;
     }
     if (vCacheShape.GetDimNum() != KV_CACHE_DIM_NUM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "vCache",
-            std::to_string(vCacheShape.GetDimNum()).c_str(), "The shape dim of vCache must be 4.");
+                                                 std::to_string(vCacheShape.GetDimNum()).c_str(),
+                                                 "The shape dim of vCache must be 4.");
         return ge::GRAPH_FAILED;
     }
     if (kScaleCacheShape.GetDimNum() != KV_CACHE_DIM_NUM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "kScaleCache",
-            std::to_string(kScaleCacheShape.GetDimNum()).c_str(), "The shape dim of kScaleCache must be 4.");
+                                                 std::to_string(kScaleCacheShape.GetDimNum()).c_str(),
+                                                 "The shape dim of kScaleCache must be 4.");
         return ge::GRAPH_FAILED;
     }
     if (vScaleShape.GetDimNum() != V_SCALE_DIM_NUM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "vScale",
-            std::to_string(vScaleShape.GetDimNum()).c_str(), "The shape dim of vScale must be 1.");
+                                                 std::to_string(vScaleShape.GetDimNum()).c_str(),
+                                                 "The shape dim of vScale must be 1.");
         return ge::GRAPH_FAILED;
     }
 
     if (cacheLayout == CACHE_LAYOUT_A) {
         if (kScaleCacheShape.GetDim(DIM_1) != kvBlockSize) {
-            std::string reason = "cacheLayout=0 requires kScaleCacheShape[1]=kvBlockSize(" +
-                                 std::to_string(kvBlockSize) + ").";
+            std::string reason =
+                "cacheLayout=0 requires kScaleCacheShape[1]=kvBlockSize(" + std::to_string(kvBlockSize) + ").";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kScaleCache",
-                std::to_string(kScaleCacheShape.GetDim(DIM_1)).c_str(), reason.c_str());
+                                                  std::to_string(kScaleCacheShape.GetDim(DIM_1)).c_str(),
+                                                  reason.c_str());
             return ge::GRAPH_FAILED;
         }
         if (kScaleCacheShape.GetDim(DIM_2) != vScaleShape.GetDim(DIM_0)) {
-            std::string reason = "cacheLayout=0 requires kScaleCacheShape[2]=H_kv(" +
-                                 std::to_string(vScaleShape.GetDim(DIM_0)) + ").";
+            std::string reason =
+                "cacheLayout=0 requires kScaleCacheShape[2]=H_kv(" + std::to_string(vScaleShape.GetDim(DIM_0)) + ").";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kScaleCache",
-                std::to_string(kScaleCacheShape.GetDim(DIM_2)).c_str(), reason.c_str());
+                                                  std::to_string(kScaleCacheShape.GetDim(DIM_2)).c_str(),
+                                                  reason.c_str());
             return ge::GRAPH_FAILED;
         }
     } else {
         if (kScaleCacheShape.GetDim(DIM_2) != kvBlockSize) {
-            std::string reason = "cacheLayout=1 requires kScaleCacheShape[2]=kvBlockSize(" +
-                                 std::to_string(kvBlockSize) + ").";
+            std::string reason =
+                "cacheLayout=1 requires kScaleCacheShape[2]=kvBlockSize(" + std::to_string(kvBlockSize) + ").";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kScaleCache",
-                std::to_string(kScaleCacheShape.GetDim(DIM_2)).c_str(), reason.c_str());
+                                                  std::to_string(kScaleCacheShape.GetDim(DIM_2)).c_str(),
+                                                  reason.c_str());
             return ge::GRAPH_FAILED;
         }
         if (kScaleCacheShape.GetDim(DIM_1) != vScaleShape.GetDim(DIM_0)) {
-            std::string reason = "cacheLayout=1 requires kScaleCacheShape[1]=H_kv(" +
-                                 std::to_string(vScaleShape.GetDim(DIM_0)) + ").";
+            std::string reason =
+                "cacheLayout=1 requires kScaleCacheShape[1]=H_kv(" + std::to_string(vScaleShape.GetDim(DIM_0)) + ").";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kScaleCache",
-                std::to_string(kScaleCacheShape.GetDim(DIM_1)).c_str(), reason.c_str());
+                                                  std::to_string(kScaleCacheShape.GetDim(DIM_1)).c_str(),
+                                                  reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -130,12 +138,9 @@ ge::graphStatus StemPrepKvTiling::CheckParams()
     return ge::GRAPH_SUCCESS;
 }
 
-bool StemPrepKvTiling::IsCapable()
-{
-    return true;
-}
+bool StemOamPrepPagedKvTilingSimd::IsCapable() { return true; }
 
-ge::graphStatus StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &stride, size_t idx)
+ge::graphStatus StemOamPrepPagedKvTilingSimd::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &stride, size_t idx)
 {
     auto xStorageShape = context_->GetInputShape(idx);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xStorageShape);
@@ -152,7 +157,7 @@ ge::graphStatus StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, g
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKvTiling::GetTensorInfo(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
+ge::graphStatus StemOamPrepPagedKvTilingSimd::GetTensorInfo(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
 {
     if (context_->InputIsView(idx)) {
         auto *strides = context_->GetInputStride(idx);
@@ -173,20 +178,22 @@ ge::graphStatus StemPrepKvTiling::GetTensorInfo(gert::Shape &shape, gert::Stride
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKvTiling::GetPlatformInfo()
+ge::graphStatus StemOamPrepPagedKvTilingSimd::GetPlatformInfo()
 {
-    OP_LOGD("StemOamPrepPagedKv", "StemPrepKvTiling GetPlatformInfo");
+    OP_LOGD("StemOamPrepPagedKv", "StemOamPrepPagedKvTilingSimd GetPlatformInfo");
     auto platformInfo = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("StemOamPrepPagedKv", "fail to get platform info"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("StemOamPrepPagedKv", "fail to get platform info"),
+                return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     auto coreNumAiv = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF((coreNumAiv <= 0), OP_LOGE("StemOamPrepPagedKv", "StemOamPrepPagedKvSimdTiling fail to get coreNumAiv."),
+    OP_CHECK_IF((coreNumAiv <= 0),
+                OP_LOGE("StemOamPrepPagedKv", "StemOamPrepPagedKvSimdTiling fail to get coreNumAiv."),
                 return ge::GRAPH_FAILED);
     totalCoreNum_ = coreNumAiv;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
+ge::graphStatus StemOamPrepPagedKvTilingSimd::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr, OP_LOGE("StemOamPrepPagedKv", "context is null"), return ge::GRAPH_FAILED);
     auto attrs = context_->GetAttrs();
@@ -214,34 +221,31 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
 
     if (kvBlockSize_ != KV_BLOCK_SIZE_64 && kvBlockSize_ != KV_BLOCK_SIZE_128) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "kvBlockSize",
-            std::to_string(kvBlockSize_).c_str(), "kvBlockSize must be 64 or 128.");
+                                              std::to_string(kvBlockSize_).c_str(), "kvBlockSize must be 64 or 128.");
         return ge::GRAPH_FAILED;
     }
-    if (stemBlocks_ % STEM_BLOCK_SIZE_ALIGN != 0 || stemBlocks_ > STEM_BLOCK_SIZE_MAX ||
-        stemBlocks_ <= 0) {
+    if (stemBlocks_ % STEM_BLOCK_SIZE_ALIGN != 0 || stemBlocks_ > STEM_BLOCK_SIZE_MAX || stemBlocks_ <= 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "stemBlockSize",
-            std::to_string(stemBlocks_).c_str(),
-            "stemBlockSize must be multiple of 32, >0 and <=256.");
+                                              std::to_string(stemBlocks_).c_str(),
+                                              "stemBlockSize must be multiple of 32, >0 and <=256.");
         return ge::GRAPH_FAILED;
     }
     if (stemStride_ % STEM_STRIDE_ALIGN != 0 || stemStride_ > STEM_STRIDE_MAX || stemStride_ > stemBlocks_ ||
         stemBlocks_ % stemStride_ != 0) {
-        std::string reason = "stemStride must be multiple of 16, <=64, <=stemBlockSize(" +
-                             std::to_string(stemBlocks_) + "), and stemBlockSize must be a multiple of stemStride.";
+        std::string reason = "stemStride must be multiple of 16, <=64, <=stemBlockSize(" + std::to_string(stemBlocks_) +
+                             "), and stemBlockSize must be a multiple of stemStride.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "stemStride",
-            std::to_string(stemStride_).c_str(), reason.c_str());
+                                              std::to_string(stemStride_).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (kvLayout_ != CACHE_LAYOUT_A && kvLayout_ != CACHE_LAYOUT_B) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "cacheLayout",
-            std::to_string(kvLayout_).c_str(), "cacheLayout must be 0 or 1.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "cacheLayout", std::to_string(kvLayout_).c_str(),
+                                              "cacheLayout must be 0 or 1.");
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF(CheckParams() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "CheckParams failed."),
-        return ge::GRAPH_FAILED);
-
+    OP_CHECK_IF(CheckParams() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckParams failed."),
+                return ge::GRAPH_FAILED);
 
     rVal_ = stemBlocks_ / stemStride_;
 
@@ -282,7 +286,7 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKvTiling::DoOpTiling()
+ge::graphStatus StemOamPrepPagedKvTilingSimd::DoOpTiling()
 {
     if (batchSize_ == 0 || numKvHeads_ == 0) {
         OP_LOGE(context_->GetNodeName(), "batchSize or numKvHeads is 0!");
@@ -291,22 +295,16 @@ ge::graphStatus StemPrepKvTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKvTiling::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus StemOamPrepPagedKvTilingSimd::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
 
-uint64_t StemPrepKvTiling::GetTilingKey() const
-{
-    return GET_TPL_TILING_KEY(true);
-}
+uint64_t StemOamPrepPagedKvTilingSimd::GetTilingKey() const { return GET_TPL_TILING_KEY(true); }
 
-ge::graphStatus StemPrepKvTiling::GetWorkspaceSize()
+ge::graphStatus StemOamPrepPagedKvTilingSimd::GetWorkspaceSize()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    uint64_t vFlatSize = static_cast<uint64_t>(batchSize_) * static_cast<uint64_t>(numKvHeads_) *
-                         (maxKb_ * rVal_) * sizeof(float);
+    uint64_t vFlatSize =
+        static_cast<uint64_t>(batchSize_) * static_cast<uint64_t>(numKvHeads_) * (maxKb_ * rVal_) * sizeof(float);
     workspaceSize_ = vFlatSize;
 
     auto workspaces = context_->GetWorkspaceSizes(1);
@@ -315,7 +313,7 @@ ge::graphStatus StemPrepKvTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKvTiling::PostTiling()
+ge::graphStatus StemOamPrepPagedKvTilingSimd::PostTiling()
 {
     uint32_t usedCoreNum = static_cast<uint32_t>(totalCoreNum_);
 
@@ -344,7 +342,7 @@ ge::graphStatus StemPrepKvTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void StemPrepKvTiling::DumpTilingInfo()
+void StemOamPrepPagedKvTilingSimd::DumpTilingInfo()
 {
     std::ostringstream info;
     info << "kvLayout: " << kvLayout_ << std::endl;
@@ -370,6 +368,6 @@ void StemPrepKvTiling::DumpTilingInfo()
     OP_LOGI("StemOamPrepPagedKv", "Tiling info is: %s", info.str().c_str());
 }
 
-REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKv, StemPrepKvTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKv, StemOamPrepPagedKvTilingSimd, 0);
 
 } // namespace optiling
