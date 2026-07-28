@@ -25,9 +25,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPostBackward(const
                                                                            const at::Tensor &hPost)
 {
     const c10::OptionalDeviceGuard deviceGuard(x.device());
+    bool hasHRes = hRes.has_value() && hRes.value().numel() > 0;
     at::Tensor gradX = at::empty_like(x);
     at::Tensor gradHres;
-    if (hRes.has_value()) {
+    if (hasHRes) {
         gradHres = at::empty_like(hRes.value());
     } else {
         auto sizes = x.sizes().vec();
@@ -37,7 +38,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPostBackward(const
     at::Tensor gradHout = at::empty_like(hOut);
     at::Tensor gradHpost = at::empty_like(hPost);
 
-    ACLNN_CMD(aclnnMhcPostBackward, gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost);
+    c10::optional<at::Tensor> hResArg = hasHRes ? c10::optional<at::Tensor>(hRes.value()) : c10::nullopt;
+    ACLNN_CMD(aclnnMhcPostBackward, gradOutput, x, hResArg, hOut, hPost, gradX, gradHres, gradHout, gradHpost);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(gradX, gradHres, gradHout, gradHpost);
 }
