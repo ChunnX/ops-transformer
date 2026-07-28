@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -23,30 +23,13 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize(
-    const aclTensor* cuSeqLensQOptional,
-    const aclTensor* cuSeqLensKOptional,
-    const aclTensor* seqUsedQOptional,
-    const aclTensor* seqUsedKOptional,
-    const aclTensor* cmpResidualKOptional,
-    int64_t batchSize,
-    int64_t maxSeqLenQ,
-    int64_t maxSeqLenK,
-    int64_t numHeadsQ,
-    int64_t numHeadsK,
-    int64_t headDim,
-    char *layoutQ,
-    char *layoutK,
-    int64_t maskMode,
-    int64_t cmpRatio,
-    const aclTensor* metadata,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+    const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensKOptional, const aclTensor *seqUsedQOptional,
+    const aclTensor *seqUsedKOptional, const aclTensor *cmpResidualKOptional, int64_t batchSize, int64_t maxSeqLenQ,
+    int64_t maxSeqLenK, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, char *layoutQ, char *layoutK,
+    int64_t maskMode, int64_t cmpRatio, const aclTensor *metadata, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) aclnnStatus
-aclnnDenseLightningIndexerSoftmaxLseV2Metadata(void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
+    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }

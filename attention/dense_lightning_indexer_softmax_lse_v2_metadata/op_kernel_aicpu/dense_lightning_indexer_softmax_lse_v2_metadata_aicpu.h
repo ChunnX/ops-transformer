@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -34,10 +34,7 @@ enum class DliLayout {
     TND = 1,
 };
 
-enum class ValidSocVersion {
-    ASCEND910 = 0,
-    ASCEND950
-};
+enum class ValidSocVersion { ASCEND910 = 0, ASCEND950 };
 
 inline bool IsTensorValid(Tensor *tensor)
 {

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -46,8 +46,7 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::Prepare(CpuKernelContex
     cmpResidualKey_ = ctx.Input(4);
     metadata_ = ctx.Output(0);
 
-    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
-                         GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
+    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) && GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
                          GetAttrValue(ctx, "head_dim", headDim_);
     if (!requiredAttrs) {
         return false;
@@ -120,8 +119,8 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::CheckAttrs()
         return false;
     }
     if (numHeadsQ_ <= 0 || numHeadsK_ <= 0 || headDim_ <= 0) {
-        KERNEL_LOG_ERROR("num_heads_q/num_heads_k/head_dim must be positive, but got nq=%ld nk=%ld d=%ld",
-                         numHeadsQ_, numHeadsK_, headDim_);
+        KERNEL_LOG_ERROR("num_heads_q/num_heads_k/head_dim must be positive, but got nq=%ld nk=%ld d=%ld", numHeadsQ_,
+                         numHeadsK_, headDim_);
         return false;
     }
     if (headDim_ != 128) {
@@ -137,13 +136,12 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::CheckAttrs()
         return false;
     }
     if (layout_ != layoutK_) {
-        KERNEL_LOG_ERROR("layout_q and layout_k must be the same, but got layout_q=%s layout_k=%s",
-                         layout_.c_str(), layoutK_.c_str());
+        KERNEL_LOG_ERROR("layout_q and layout_k must be the same, but got layout_q=%s layout_k=%s", layout_.c_str(),
+                         layoutK_.c_str());
         return false;
     }
     if (numHeadsQ_ % numHeadsK_ != 0) {
-        KERNEL_LOG_ERROR("num_heads_q must be divisible by num_heads_k, but got nq=%ld nk=%ld",
-                         numHeadsQ_, numHeadsK_);
+        KERNEL_LOG_ERROR("num_heads_q must be divisible by num_heads_k, but got nq=%ld nk=%ld", numHeadsQ_, numHeadsK_);
         return false;
     }
     if (bSize_ <= 0) {
@@ -155,8 +153,7 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::CheckAttrs()
         return false;
     }
     if (s1Size_ < 0 || s2Size_ < 0) {
-        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be non-negative, but got q=%ld k=%ld",
-                         s1Size_, s2Size_);
+        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be non-negative, but got q=%ld k=%ld", s1Size_, s2Size_);
         return false;
     }
     if (maskMode_ != static_cast<int64_t>(DliSparseMode::NO_MASK) &&
@@ -186,26 +183,22 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::CheckLayoutConsistency(
 
 bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::CheckTensorShapes()
 {
-    if (IsTensorValid(cuSeqLensQuery_) &&
-        cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) != bSize_ + 1) {
+    if (IsTensorValid(cuSeqLensQuery_) && cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) != bSize_ + 1) {
         KERNEL_LOG_ERROR("cu_seqlens_q length must be batch_size + 1, but got %ld and batch_size=%ld.",
                          cuSeqLensQuery_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
-    if (IsTensorValid(cuSeqLensKey_) &&
-        cuSeqLensKey_->GetTensorShape()->GetDimSize(0) != bSize_ + 1) {
+    if (IsTensorValid(cuSeqLensKey_) && cuSeqLensKey_->GetTensorShape()->GetDimSize(0) != bSize_ + 1) {
         KERNEL_LOG_ERROR("cu_seqlens_k length must be batch_size + 1, but got %ld and batch_size=%ld.",
                          cuSeqLensKey_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
-    if (IsTensorValid(seqUsedQuery_) &&
-        seqUsedQuery_->GetTensorShape()->GetDimSize(0) != bSize_) {
+    if (IsTensorValid(seqUsedQuery_) && seqUsedQuery_->GetTensorShape()->GetDimSize(0) != bSize_) {
         KERNEL_LOG_ERROR("seqused_q length must be batch_size, but got %ld and batch_size=%ld.",
                          seqUsedQuery_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
-    if (IsTensorValid(seqUsedKey_) &&
-        seqUsedKey_->GetTensorShape()->GetDimSize(0) != bSize_) {
+    if (IsTensorValid(seqUsedKey_) && seqUsedKey_->GetTensorShape()->GetDimSize(0) != bSize_) {
         KERNEL_LOG_ERROR("seqused_k length must be batch_size, but got %ld and batch_size=%ld.",
                          seqUsedKey_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
@@ -229,8 +222,8 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::CheckTensorValues()
         auto *data = reinterpret_cast<const int32_t *>(cmpResidualKey_->GetData());
         for (int64_t i = 0; i < bSize_; ++i) {
             if (static_cast<int64_t>(data[i]) >= cmpRatio_) {
-                KERNEL_LOG_ERROR("cmp_residual_k[%ld] must be less than cmp_ratio(%ld), but got %d.",
-                                 i, cmpRatio_, data[i]);
+                KERNEL_LOG_ERROR("cmp_residual_k[%ld] must be less than cmp_ratio(%ld), but got %d.", i, cmpRatio_,
+                                 data[i]);
                 return false;
             }
         }
