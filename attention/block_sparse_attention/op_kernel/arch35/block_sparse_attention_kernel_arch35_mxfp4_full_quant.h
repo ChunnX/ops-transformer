@@ -41,10 +41,10 @@ public:
     using ElementK = typename BlockMmadQK::ElementB;
     using ElementS = typename EpilogueOnlineSoftmax::ElementInput;
     using ElementP = typename BlockMmadPV::ElementA;
-    using ElementDisguiseP = EpilogueOnlineSoftmax::ElementDisguiseP;
+    using ElementDisguiseP = typename EpilogueOnlineSoftmax::ElementDisguiseP;
     using ElementV = typename BlockMmadPV::ElementB;
     using ElementOTmp = typename BlockMmadPV::ElementC;
-    using ElementO = typename EpilogueOnlineSoftmax::ElementInput;
+    using ElementO = typename EpilogueRescaleO::ElementO;
     using ElementLse = typename EpilogueRescaleO::ElementLse;
     using ElementSparseMask = typename EpilogueMask2Idx::ElementSparseMask;
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
