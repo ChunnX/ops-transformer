@@ -72,6 +72,7 @@ private:
     GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData tilingData_;
     ge::DataType xScaleDtype_ = ge::DT_UNDEFINED;
     uint32_t aivNum_ = 0U;
+    bool platformMemoryReady_ = false;
 };
 } // namespace optiling
 

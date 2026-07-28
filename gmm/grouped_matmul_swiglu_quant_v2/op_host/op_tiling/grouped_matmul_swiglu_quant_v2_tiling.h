@@ -136,10 +136,6 @@ REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_3, GMMSwigluQuantV2TilingF
 
 struct GMMSwigluV2CompileInfo {
     uint64_t ubSize_ = 0;
-    uint64_t l1Size_ = 0;
-    uint64_t l0ASize_ = 0;
-    uint64_t l0BSize_ = 0;
-    uint64_t l0CSize_ = 0;
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
     uint32_t baseM_ = 128;

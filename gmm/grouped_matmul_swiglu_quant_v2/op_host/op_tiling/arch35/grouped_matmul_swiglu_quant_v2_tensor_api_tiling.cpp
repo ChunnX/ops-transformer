@@ -44,6 +44,7 @@ void GroupedMatmulSwigluQuantV2TensorApiTiling950::Reset()
     basicTiling_ = GQmmBasicTiling();
     xScaleDtype_ = ge::DT_UNDEFINED;
     aivNum_ = 0U;
+    platformMemoryReady_ = false;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::GetPlatformInfo()
@@ -56,10 +57,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::GetPlatformInfo()
         aicoreParams_.aicNum = compileInfo->aicNum_;
         aivNum_ = compileInfo->aivNum_;
         aicoreParams_.ubSize = compileInfo->ubSize_;
-        aicoreParams_.l1Size = compileInfo->l1Size_;
-        aicoreParams_.l0aSize = compileInfo->l0ASize_;
-        aicoreParams_.l0bSize = compileInfo->l0BSize_;
-        aicoreParams_.l0cSize = compileInfo->l0CSize_;
+        OP_LOGD(context_->GetNodeName(),
+                "Platform memory information is unavailable; Tensor API tiling will fall back.");
+        return ge::GRAPH_SUCCESS;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
         aicoreParams_.aicNum = ascendcPlatform.GetCoreNumAic();
@@ -69,6 +69,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::GetPlatformInfo()
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, aicoreParams_.l0aSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, aicoreParams_.l0bSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
+        platformMemoryReady_ = aicoreParams_.l1Size > 0 && aicoreParams_.l0cSize > 0;
     }
     OP_LOGD(context_->GetNodeName(),
             "Tensor API platform info: aicNum=%lu, aivNum=%u, ub=%lu, l1=%lu, l0a=%lu, l0b=%lu, l0c=%lu.",
@@ -258,6 +259,9 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::CheckTensorApiScaleShapes() c
 
 bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
 {
+    if (!platformMemoryReady_) {
+        return false;
+    }
     const bool dtypeSupported =
         IsFp8(inputParams_.aDtype) && IsFp8(inputParams_.bDtype) &&
         xScaleDtype_ == ge::DT_FLOAT8_E8M0 &&
