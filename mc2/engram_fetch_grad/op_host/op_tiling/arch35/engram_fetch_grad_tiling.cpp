@@ -584,16 +584,26 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsRdispls = numRanks * UB_ALIGN;
     int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
     int64_t wsFlagScratch = 32;
+    uint32_t segLen =
+        (static_cast<uint32_t>(tilingData.numEntriesPerRank) + tilingData.aivNum - 1U) / tilingData.aivNum;
 
-    int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch;
+    int64_t wsPrefixSum = tilingData.numEntriesPerRank * sizeof(int32_t);
+    uint32_t bitmapBytesPerCore = (segLen + 7) / 8;
+    uint32_t bitmapAlignPerCore = (bitmapBytesPerCore + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    int64_t wsBitmap = static_cast<int64_t>(tilingData.aivNum) * bitmapAlignPerCore;
+    int64_t wsGradFp32 = totalRecv * tilingData.hiddenDim * sizeof(float);
+
+    int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch +
+                      wsPrefixSum + wsBitmap + wsGradFp32;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 
     workSpaces[0] = static_cast<size_t>(wsTotal);
     OP_LOGD(nodeName,
             "backward workspace: gradSorted=%ld, recvGrad=%ld, sdispls=%ld, rdispls=%ld, "
-            "counterScratch=%ld, flagScratch=%ld, total=%zu",
-            wsGradSorted, wsRecvGrad, wsSdispls, wsRdispls, wsCounterScratch, wsFlagScratch, workSpaces[0]);
+            "counterScratch=%ld, flagScratch=%ld, prefixSum=%ld, bitmap=%ld, gradFp32=%ld, total=%zu",
+            wsGradSorted, wsRecvGrad, wsSdispls, wsRdispls, wsCounterScratch, wsFlagScratch, wsPrefixSum, wsBitmap,
+            wsGradFp32, workSpaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 
