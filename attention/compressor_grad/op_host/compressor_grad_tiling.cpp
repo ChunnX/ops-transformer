@@ -78,8 +78,8 @@ ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradConte
     auto attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "attrs got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
-    compressorGradContext.coff = attrs->GetAttrPointer<int>(COFF_ATTR_INDEX);
-    compressorGradContext.cmpRatio = attrs->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
+    compressorGradContext.coff = attrs->GetAttrPointer<uint32_t>(COFF_ATTR_INDEX);
+    compressorGradContext.cmpRatio = attrs->GetAttrPointer<uint32_t>(CMP_RATIO_ATTR_INDEX);
 
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
@@ -103,6 +103,7 @@ ge::graphStatus SetBaseInfo(CompressorGradContext &compressorGradContext, Compre
 
     uint8_t coff = static_cast<uint8_t>(*compressorGradContext.coff);
     compressorGradBaseParams.headDim = compressorGradContext.wkv.shape->GetStorageShape().GetDim(COMPRESSOR_GRAD_DIM_INDEX_0) / coff;
+    compressorGradBaseParams.featureDim = compressorGradContext.wkv.shape->GetStorageShape().GetDim(COMPRESSOR_GRAD_DIM_INDEX_0);
     compressorGradBaseParams.cmpRatio = static_cast<uint32_t>(*compressorGradContext.cmpRatio);
     compressorGradBaseParams.nSize = 2; // 2:每个核处理两个基本块后做全核同步
     compressorGradBaseParams.usedCoreNum = aicNum;
@@ -130,69 +131,54 @@ ge::graphStatus SetWorkSpaceInfo(CompressorGradInnerSplitParams &compressorGradI
     return ge::GRAPH_SUCCESS;
 }
 
-// ge::graphStatus CompressorGradTiling::SetTemplateId()
-// {
-//     if (context_->templateId == TemplateId::EMPTY_X) {
-//         return ge::GRAPH_SUCCESS;
-//     }
-//     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
-//         // 设置高性能模板
-//         if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
-//             context_->templateId = TemplateId::FULL_LOAD;
-//         }
-//         return ge::GRAPH_SUCCESS;
-//     }
-//     return ge::GRAPH_SUCCESS;
-// }
-
 ge::graphStatus SetInnerSplitInfo(CompressorGradContext &compressorGradContext, CompressorGradBaseParams &compressorGradBaseParams,
                                   CompressorGradInnerSplitParams &compressorGradInnerSplitParams)
 {
     uint8_t coff = static_cast<uint8_t>(*compressorGradContext.coff);
-    if (compressorGradContext.templateId == TemplateId::FULL_LOAD) {
-        compressorGradInnerSplitParams.mBaseSize = 256;              // 256:核间切分，M轴基本块大小
-        compressorGradInnerSplitParams.dBaseSize = 256 / (coff * 2); // nBase = dBase * coff * 2
-        uint32_t dBaseNum = compressorGradBaseParams.headDim / compressorGradInnerSplitParams.dBaseSize;
-        uint32_t mBaseNum = (compressorGradBaseParams.tokenSize + compressorGradInnerSplitParams.mBaseSize - 1) / compressorGradInnerSplitParams.mBaseSize;
-        compressorGradBaseParams.coreGroupNum = compressorGradBaseParams.usedCoreNum / dBaseNum;
-        compressorGradBaseParams.kBaseNum = 1;
-        compressorGradBaseParams.kBaseSize = compressorGradBaseParams.hiddenSize;
-        if ((dBaseNum * mBaseNum) < compressorGradBaseParams.usedCoreNum) {
-            compressorGradBaseParams.kBaseNum = compressorGradBaseParams.usedCoreNum / dBaseNum;
-            uint32_t kAlignSize = (compressorGradBaseParams.hiddenSize + compressorGradBaseParams.kBaseNum - 1) / compressorGradBaseParams.kBaseNum;
-            compressorGradBaseParams.kBaseSize = kAlignSize / 16 * 16; // 切k的size需要16对齐
-        }
-        for (uint32_t i = 0; i < compressorGradBaseParams.usedCoreNum; i++) {
-            compressorGradBaseParams.splitCoreParam[i].nStart = (i % dBaseNum) * compressorGradInnerSplitParams.dBaseSize;
-            compressorGradBaseParams.splitCoreParam[i].nEnd = compressorGradBaseParams.splitCoreParam[i].nStart + compressorGradInnerSplitParams.dBaseSize;
-            if (compressorGradBaseParams.kBaseNum > 1) {
-                uint32_t kStartIdx = i / dBaseNum;
-                if (kStartIdx + 1 < compressorGradBaseParams.coreGroupNum) {
-                    uint32_t dealKSize = compressorGradBaseParams.kBaseSize;
-                    compressorGradBaseParams.splitCoreParam[i].kStart = kStartIdx * compressorGradBaseParams.kBaseSize;
-                    compressorGradBaseParams.splitCoreParam[i].kEnd = compressorGradBaseParams.splitCoreParam[i].kStart + dealKSize;
-                } else {
-                    uint32_t dealKSize = kStartIdx < compressorGradBaseParams.coreGroupNum ?
-                                        compressorGradBaseParams.hiddenSize - kStartIdx * compressorGradBaseParams.kBaseSize : 0;
-                    compressorGradBaseParams.splitCoreParam[i].kStart = kStartIdx * compressorGradBaseParams.kBaseSize;
-                    compressorGradBaseParams.splitCoreParam[i].kEnd = compressorGradBaseParams.splitCoreParam[i].kStart + dealKSize;
-                }
-                compressorGradBaseParams.splitCoreParam[i].mStart = 0;
-                compressorGradBaseParams.splitCoreParam[i].mEnd = compressorGradBaseParams.tokenSize;
-                compressorGradBaseParams.mLoopNum = 1;
-            } else {
-                compressorGradBaseParams.splitCoreParam[i].kStart = 0;
-                compressorGradBaseParams.splitCoreParam[i].kEnd = compressorGradBaseParams.splitCoreParam[i].kStart + compressorGradBaseParams.kBaseSize;
-                compressorGradBaseParams.splitCoreParam[i].mStart = (i / dBaseNum) * compressorGradInnerSplitParams.mBaseSize;
-                compressorGradBaseParams.splitCoreParam[i].mEnd =
-                    compressorGradBaseParams.splitCoreParam[i].mStart + compressorGradInnerSplitParams.mBaseSize;
-                compressorGradBaseParams.mLoopNum = mBaseNum / compressorGradBaseParams.coreGroupNum;
-            }
-        }
-    } else {
-        compressorGradInnerSplitParams.mBaseSize = 256;        // 256:核间切分，M轴基本块大小
-        compressorGradInnerSplitParams.dBaseSize = 128 / coff; // 128：核间切分，D轴基本块大小
+    // if (compressorGradContext.templateId == TemplateId::FULL_LOAD) {
+    compressorGradInnerSplitParams.mBaseSize = 128 / compressorGradBaseParams.cmpRatio;
+    compressorGradInnerSplitParams.dBaseSize = 128 / coff;
+    uint32_t dBaseNum = compressorGradBaseParams.headDim / compressorGradInnerSplitParams.dBaseSize;
+    uint32_t mBaseNum = (compressorGradBaseParams.tokenSize + compressorGradInnerSplitParams.mBaseSize - 1) / compressorGradInnerSplitParams.mBaseSize;
+    compressorGradBaseParams.coreGroupNum = compressorGradBaseParams.usedCoreNum / dBaseNum;
+    compressorGradBaseParams.kBaseNum = 1;
+    compressorGradBaseParams.kBaseSize = compressorGradBaseParams.hiddenSize;
+    if ((dBaseNum * mBaseNum) < compressorGradBaseParams.usedCoreNum) {
+        compressorGradBaseParams.kBaseNum = compressorGradBaseParams.usedCoreNum / dBaseNum;
+        uint32_t kAlignSize = (compressorGradBaseParams.hiddenSize + compressorGradBaseParams.kBaseNum - 1) / compressorGradBaseParams.kBaseNum;
+        compressorGradBaseParams.kBaseSize = kAlignSize / 16 * 16; // 切k的size需要16对齐
     }
+    for (uint32_t i = 0; i < compressorGradBaseParams.usedCoreNum; i++) {
+        compressorGradBaseParams.splitCoreParam[i].nStart = (i % dBaseNum) * compressorGradInnerSplitParams.dBaseSize;
+        compressorGradBaseParams.splitCoreParam[i].nEnd = compressorGradBaseParams.splitCoreParam[i].nStart + compressorGradInnerSplitParams.dBaseSize;
+        if (compressorGradBaseParams.kBaseNum > 1) {
+            uint32_t kStartIdx = i / dBaseNum;
+            if (kStartIdx + 1 < compressorGradBaseParams.coreGroupNum) {
+                uint32_t dealKSize = compressorGradBaseParams.kBaseSize;
+                compressorGradBaseParams.splitCoreParam[i].kStart = kStartIdx * compressorGradBaseParams.kBaseSize;
+                compressorGradBaseParams.splitCoreParam[i].kEnd = compressorGradBaseParams.splitCoreParam[i].kStart + dealKSize;
+            } else {
+                uint32_t dealKSize = kStartIdx < compressorGradBaseParams.coreGroupNum ?
+                                    compressorGradBaseParams.hiddenSize - kStartIdx * compressorGradBaseParams.kBaseSize : 0;
+                compressorGradBaseParams.splitCoreParam[i].kStart = kStartIdx * compressorGradBaseParams.kBaseSize;
+                compressorGradBaseParams.splitCoreParam[i].kEnd = compressorGradBaseParams.splitCoreParam[i].kStart + dealKSize;
+            }
+            compressorGradBaseParams.splitCoreParam[i].mStart = 0;
+            compressorGradBaseParams.splitCoreParam[i].mEnd = compressorGradBaseParams.tokenSize;
+            compressorGradBaseParams.mLoopNum = 1;
+        } else {
+            compressorGradBaseParams.splitCoreParam[i].kStart = 0;
+            compressorGradBaseParams.splitCoreParam[i].kEnd = compressorGradBaseParams.splitCoreParam[i].kStart + compressorGradBaseParams.kBaseSize;
+            compressorGradBaseParams.splitCoreParam[i].mStart = (i / dBaseNum) * compressorGradInnerSplitParams.mBaseSize;
+            compressorGradBaseParams.splitCoreParam[i].mEnd =
+                compressorGradBaseParams.splitCoreParam[i].mStart + compressorGradInnerSplitParams.mBaseSize;
+            compressorGradBaseParams.mLoopNum = mBaseNum / compressorGradBaseParams.coreGroupNum;
+        }
+    }
+    // } else {
+    //     compressorGradInnerSplitParams.mBaseSize = 256;        // 256:核间切分，M轴基本块大小
+    //     compressorGradInnerSplitParams.dBaseSize = 128 / coff; // 128：核间切分，D轴基本块大小
+    // }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -251,17 +237,14 @@ ge::graphStatus GenTilingKey(CompressorGradContext &compressorGradContext)
         layout = 1;
     }
 
-    // context_->tilingKey = GET_TPL_TILING_KEY(
-    //     layout,
-    //     dtype,
-    //     coff
-    // );
     uint8_t coff = static_cast<uint8_t>(*compressorGradContext.coff);
-    compressorGradContext.tilingKey = 100001;
+    compressorGradContext.tilingKey = static_cast<uint64_t>(coff)
+                                        | (static_cast<uint64_t>(layout) << 1)
+                                        | (static_cast<uint64_t>(dtype) << 3);
+    
     OP_LOGI(compressorGradContext.opName,
             "CompressorGrad dtype:%hhu layout:%hhu  coff:%hhu", dtype, layout, coff);
     OP_LOGI(compressorGradContext.opName, "CompressorGrad tilingKey:%lu", compressorGradContext.tilingKey);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -864,25 +847,16 @@ ge::graphStatus CheckRequiredParaExistence(CompressorGradContext &compressorGrad
 
 ge::graphStatus CheckEmptyTensor(CompressorGradContext &compressorGradcontext)
 {
-    if ((compressorGradcontext.layout == LayoutType::LAYOUT_BSH &&
-            compressorGradcontext.x.shape->GetStorageShape().GetDim(COMPRESSOR_GRAD_DIM_INDEX_0) == 0) ||
-        (compressorGradcontext.layout == LayoutType::LAYOUT_BSH &&
-            compressorGradcontext.x.shape->GetStorageShape().GetDim(COMPRESSOR_GRAD_DIM_INDEX_1) == 0) ||
-        (compressorGradcontext.layout == LayoutType::LAYOUT_TH &&
-            compressorGradcontext.x.shape->GetStorageShape().GetDim(COMPRESSOR_GRAD_DIM_INDEX_0) == 0)) {
-        compressorGradcontext.templateId = TemplateId::EMPTY_X;
-    } else {
-        if (compressorGradcontext.x.shape->GetStorageShape().GetShapeSize() == 0 ||
-            compressorGradcontext.wkv.shape->GetStorageShape().GetShapeSize() == 0 ||
-            compressorGradcontext.wgate.shape->GetStorageShape().GetShapeSize() == 0 ||
-            compressorGradcontext.dCmpKv.shape->GetStorageShape().GetShapeSize() == 0 ||
-            compressorGradcontext.softmaxScore.shape->GetStorageShape().GetShapeSize() == 0 ||
-            compressorGradcontext.kv.shape->GetStorageShape().GetShapeSize() == 0) {
-            OP_LOGE(compressorGradcontext.opName, "Only input tensor x dim B or S or T supports to be 0");
-            return ge::GRAPH_FAILED;
-        }
-        compressorGradcontext.templateId = TemplateId::NORMAL;
+    if (compressorGradcontext.x.shape->GetStorageShape().GetShapeSize() == 0 ||
+        compressorGradcontext.wkv.shape->GetStorageShape().GetShapeSize() == 0 ||
+        compressorGradcontext.wgate.shape->GetStorageShape().GetShapeSize() == 0 ||
+        compressorGradcontext.dCmpKv.shape->GetStorageShape().GetShapeSize() == 0 ||
+        compressorGradcontext.softmaxScore.shape->GetStorageShape().GetShapeSize() == 0 ||
+        compressorGradcontext.kv.shape->GetStorageShape().GetShapeSize() == 0) {
+        OP_LOGE(compressorGradcontext.opName, "Only input tensor x dim B or S or T supports to be 0");
+        return ge::GRAPH_FAILED;
     }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -956,26 +930,59 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
     size_t libapiSize = 0;
     size_t workspaceSize = 0;
 
-    if (compressorGradContext.templateId == TemplateId::EMPTY_X) {
-        workspaceSize = libapiSize; //这个逻辑再看下
-        if (compressorGradContext.workSpaces) {
-            compressorGradContext.workSpaces[0] = workspaceSize;
-        }
-        GenTilingKey(compressorGradContext);
-        compressorGradContext.blockDim = 1U;
-    } else {
-        if (CalcWorkSpace(compressorGradContext, compressorGradInnerSplitParams, compressorGradBaseParams, compressorGradWorkspaceParams, workspaceSize,
-                      libapiSize, aicNum) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-        if (GenTilingKey(compressorGradContext) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
+    if (CalcWorkSpace(compressorGradContext, compressorGradInnerSplitParams, compressorGradBaseParams, compressorGradWorkspaceParams, workspaceSize,
+                    libapiSize, aicNum) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (GenTilingKey(compressorGradContext) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
 
-    compressorGradContext.blockDim = aicNum;
+    CompressorGradTiling *tilingData = context->GetTilingData<CompressorGradTiling>();
+    OP_CHECK_IF(tilingData == nullptr, OPS_REPORT_VECTOR_INNER_ERR(compressorGradContext.opName, "TilingData is nullptr."),
+                return ge::GRAPH_FAILED);
+    // compressorGradContext.blockDim = aicNum;
+
+    tilingData->batchSize = compressorGradBaseParams.batchSize;
+    tilingData->tokenSize = compressorGradBaseParams.tokenSize;
+    tilingData->seqSize = compressorGradBaseParams.seqSize;
+    tilingData->cmpRatio = compressorGradBaseParams.cmpRatio;
+    tilingData->hiddenSize = compressorGradBaseParams.hiddenSize;
+    tilingData->headDim = compressorGradBaseParams.headDim;
+    tilingData->featureDim = compressorGradBaseParams.featureDim;
+    tilingData->scKvRowCount = *compressorGradContext.coff * compressorGradBaseParams.cmpRatio;
+    tilingData->outStride = (compressorGradBaseParams.seqSize + compressorGradBaseParams.cmpRatio - 1) / compressorGradBaseParams.cmpRatio;
+    tilingData->groupSize = compressorGradBaseParams.headDim / 128;
+    tilingData->dBaseSize = 128 / *compressorGradContext.coff;
+    tilingData->nCorePerGroup = blockDim / tilingData->groupSize;
+    tilingData->mPerRoundPerGroup = (256 / *compressorGradContext.coff) / compressorGradBaseParams.cmpRatio;
+    tilingData->mBaseSize = 128 / compressorGradBaseParams.cmpRatio;
+    tilingData->mPerRoundAll = tilingData->nCorePerGroup * compressorGradBaseParams.cmpRatio;
+    tilingData->dbRows = tilingData->mPerRoundAll * compressorGradBaseParams.cmpRatio;
+    tilingData->ape_ws_elems = 2 * tilingData->dbRows * compressorGradBaseParams.headDim;
+    tilingData->dx_per_group = 256 * compressorGradBaseParams.hiddenSize;
+    tilingData->dx_stride = tilingData->dx_per_group * compressorGradContext.blockDim;
+    tilingData->dx_ws_elems = tilingData->dx_stride * 2;
+
+    if (compressorGradContext.layout == LayoutType::LAYOUT_BSH) {
+        tilingData->d_x_rows = compressorGradBaseParams.batchSize * compressorGradBaseParams.seqSize;
+    } else {
+        tilingData->d_x_rows = compressorGradBaseParams.tokenSize;
+    }
+
+    if (compressorGradContext.layout == LayoutType::LAYOUT_BSH) {
+        tilingData->outputRows = compressorGradBaseParams.batchSize * compressorGradBaseParams.seqSize;
+    } else {
+        tilingData->outputRows = std::min(compressorGradBaseParams.tokenSize,
+            compressorGradBaseParams.tokenSize / compressorGradBaseParams.cmpRatio + compressorGradBaseParams.batchSize);
+    }
+    
+    tilingData->rgChunkNum = (*compressorGradContext.coff * compressorGradBaseParams.cmpRatio * compressorGradBaseParams.headDim) / 128;
+    tilingData->rgPerCore = tilingData->rgChunkNum / (2 * compressorGradContext.blockDim);
+    tilingData->rgRemain = tilingData->rgChunkNum % (2 * compressorGradContext.blockDim);
+
     context->SetTilingKey(compressorGradContext.tilingKey);
-    context->SetBlockDim(compressorGradContext.blockDim);
+    // context->SetBlockDim(compressorGradContext.blockDim);
     OP_LOGI(compressorGradContext.opName, "block dim: %u.", compressorGradContext.blockDim);
     return ge::GRAPH_SUCCESS;
 }

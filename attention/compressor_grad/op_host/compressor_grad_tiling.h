@@ -175,7 +175,7 @@ struct OptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-const std::vector<int> COFF {1, 2};
+const std::vector<uint32_t> COFF {1, 2};
 const std::vector<uint32_t> HEAD_DIM {128, 512};
 
 enum class LayoutType {
@@ -208,8 +208,8 @@ struct CompressorGradContext {
     RequiredParaInfo dWgate;
     RequiredParaInfo dApe;
 
-    const int *coff;
-    const int *cmpRatio;
+    const uint32_t *coff;
+    const uint32_t *cmpRatio;
     TemplateId templateId;
 
     ge::DataType dtype = ge::DT_BF16; 
@@ -236,6 +236,7 @@ struct CompressorGradBaseParams {
     uint32_t hiddenSize = 0;            // hidden size（隐藏层大小）
     uint32_t tokenSize = 0;             // token size = batchSize * seqSize(token总数：批大小x序列1长度)
     uint32_t headDim = 0;               // head size of kv
+    uint32_t featureDim = 0;               // head size of kv
     uint32_t csSize = 0;                // Compress sequence len
     uint32_t cmpRatio = 4;              // Compress ratio
     uint32_t usedCoreNum = 0;           // 使用核数
