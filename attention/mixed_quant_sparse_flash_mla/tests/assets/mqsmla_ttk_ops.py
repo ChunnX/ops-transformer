@@ -12,11 +12,41 @@
 
 """TTK metadata-first adapter for the installed MixedQuantSparseFlashMla API."""
 
+from contextlib import contextmanager
 from typing import Optional
 
 import torch
 
-import cann_ops_transformer
+import cann_ops_transformer  # noqa: F401
+
+
+@contextmanager
+def deterministic_level(level):
+    """Keep the requested runtime level active through metadata, op, and sync."""
+    if level is None:
+        yield None
+        return
+
+    requested = int(level)
+    if requested != 3:
+        raise ValueError("MQSMLA batch consistency requires deterministic level 3")
+
+    import torch_npu
+
+    getter = getattr(torch_npu.npu, "_get_deterministic_level", None)
+    if getter is None:
+        raise RuntimeError("torch_npu deterministic-level getter is unavailable")
+    previous = int(getter())
+    try:
+        torch_npu.npu.set_deterministic_level(requested)
+        observed = int(getter())
+        if observed != requested:
+            raise RuntimeError(
+                f"deterministic level {requested} read back as {observed}"
+            )
+        yield torch_npu.npu
+    finally:
+        torch_npu.npu.set_deterministic_level(previous)
 
 
 class MixedQuantSparseFlashMlaMetadataBuilder:
@@ -187,68 +217,73 @@ def mixed_quant_sparse_flash_mla_ttk(
     metadata_cmp_topk: Optional[int] = None,
     key_dtype: Optional[int] = None,
     value_dtype: Optional[int] = None,
+    batch_deterministic_level: Optional[int] = None,
 ):
     """Generate metadata in TTK, then call the mixed-quant extension op."""
-    metadata = build_mixed_quant_sparse_flash_mla_metadata(
-        q,
-        ori_kv=ori_kv,
-        cmp_kv=cmp_kv,
-        ori_sparse_indices=ori_sparse_indices,
-        cmp_sparse_indices=cmp_sparse_indices,
-        cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_ori_kv=cu_seqlens_ori_kv,
-        cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
-        seqused_q=seqused_q,
-        seqused_ori_kv=seqused_ori_kv,
-        seqused_cmp_kv=seqused_cmp_kv,
-        cmp_residual_kv=cmp_residual_kv,
-        ori_topk_length=ori_topk_length,
-        cmp_topk_length=cmp_topk_length,
-        quant_mode=quant_mode,
-        rope_head_dim=rope_head_dim,
-        cmp_ratio=cmp_ratio,
-        ori_mask_mode=ori_mask_mode,
-        cmp_mask_mode=cmp_mask_mode,
-        ori_win_left=ori_win_left,
-        ori_win_right=ori_win_right,
-        layout_q=layout_q,
-        layout_kv=layout_kv,
-        has_ori_kv=has_ori_kv,
-        has_cmp_kv=has_cmp_kv,
-        metadata_cmp_topk=metadata_cmp_topk,
-    )
+    with deterministic_level(batch_deterministic_level) as npu:
+        metadata = build_mixed_quant_sparse_flash_mla_metadata(
+            q,
+            ori_kv=ori_kv,
+            cmp_kv=cmp_kv,
+            ori_sparse_indices=ori_sparse_indices,
+            cmp_sparse_indices=cmp_sparse_indices,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+            seqused_q=seqused_q,
+            seqused_ori_kv=seqused_ori_kv,
+            seqused_cmp_kv=seqused_cmp_kv,
+            cmp_residual_kv=cmp_residual_kv,
+            ori_topk_length=ori_topk_length,
+            cmp_topk_length=cmp_topk_length,
+            quant_mode=quant_mode,
+            rope_head_dim=rope_head_dim,
+            cmp_ratio=cmp_ratio,
+            ori_mask_mode=ori_mask_mode,
+            cmp_mask_mode=cmp_mask_mode,
+            ori_win_left=ori_win_left,
+            ori_win_right=ori_win_right,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            has_ori_kv=has_ori_kv,
+            has_cmp_kv=has_cmp_kv,
+            metadata_cmp_topk=metadata_cmp_topk,
+        )
 
-    return torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
-        q,
-        ori_kv=ori_kv,
-        cmp_kv=cmp_kv,
-        ori_sparse_indices=ori_sparse_indices,
-        cmp_sparse_indices=cmp_sparse_indices,
-        ori_block_table=ori_block_table,
-        cmp_block_table=cmp_block_table,
-        cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_ori_kv=cu_seqlens_ori_kv,
-        cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
-        seqused_q=seqused_q,
-        seqused_ori_kv=seqused_ori_kv,
-        seqused_cmp_kv=seqused_cmp_kv,
-        cmp_residual_kv=cmp_residual_kv,
-        ori_topk_length=ori_topk_length,
-        cmp_topk_length=cmp_topk_length,
-        sinks=sinks,
-        metadata=metadata,
-        quant_mode=int(quant_mode),
-        rope_head_dim=int(rope_head_dim),
-        softmax_scale=float(softmax_scale),
-        cmp_ratio=int(cmp_ratio),
-        ori_mask_mode=int(ori_mask_mode),
-        cmp_mask_mode=int(cmp_mask_mode),
-        ori_win_left=int(ori_win_left),
-        ori_win_right=int(ori_win_right),
-        layout_q=layout_q,
-        layout_kv=layout_kv,
-        topk_value_mode=int(topk_value_mode),
-        return_softmax_lse=bool(return_softmax_lse),
-        key_dtype=key_dtype,
-        value_dtype=value_dtype,
-    )
+        result = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
+            q,
+            ori_kv=ori_kv,
+            cmp_kv=cmp_kv,
+            ori_sparse_indices=ori_sparse_indices,
+            cmp_sparse_indices=cmp_sparse_indices,
+            ori_block_table=ori_block_table,
+            cmp_block_table=cmp_block_table,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+            seqused_q=seqused_q,
+            seqused_ori_kv=seqused_ori_kv,
+            seqused_cmp_kv=seqused_cmp_kv,
+            cmp_residual_kv=cmp_residual_kv,
+            ori_topk_length=ori_topk_length,
+            cmp_topk_length=cmp_topk_length,
+            sinks=sinks,
+            metadata=metadata,
+            quant_mode=int(quant_mode),
+            rope_head_dim=int(rope_head_dim),
+            softmax_scale=float(softmax_scale),
+            cmp_ratio=int(cmp_ratio),
+            ori_mask_mode=int(ori_mask_mode),
+            cmp_mask_mode=int(cmp_mask_mode),
+            ori_win_left=int(ori_win_left),
+            ori_win_right=int(ori_win_right),
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            topk_value_mode=int(topk_value_mode),
+            return_softmax_lse=bool(return_softmax_lse),
+            key_dtype=key_dtype,
+            value_dtype=value_dtype,
+        )
+        if npu is not None:
+            npu.synchronize()
+        return result
