@@ -459,7 +459,7 @@ stages:
           -
             name: ut_report
             identifier: ut-report
-            uses: cann/.gitcode/actions/ut-cov-report@master
+            uses: tanghaoran7/.gitcode/actions/ut-cov-report@master
             with:
               workspace: ${{ steps.process_checkout.outputs.path }}
               cov_mode: "report"
