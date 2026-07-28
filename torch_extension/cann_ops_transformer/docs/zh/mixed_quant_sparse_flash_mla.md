@@ -225,6 +225,9 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 **说明**
 -   attention_out：tensor类型，公式中的输出，数据类型支持bfloat16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致，dtype与q一致。
 -   softmax_lse：tensor类型，对query乘key的结果先取max得到softmax_max，query乘key的结果减去softmax_max后取exp再取sum得到softmax_sum，最后对softmax_sum取log再加上softmax_max得到的结果。return_softmax_lse=False时返回shape为[1]的值为0的tensor；return_softmax_lse=True时返回float32的log-sum-exp结果。
+- cmp_residual_kv每个batch的值需要小于cmp_ratio。
+- cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
+- 当layout_kv为PA_BBND时，ori_kv和cmp_kv支持0轴非连续。
 
 ## 约束说明
 
@@ -232,9 +235,8 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
   - 参数cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv、seqused_q、seqused_ori_kv、seqused_cmp_kv、cmp_residual_kv、ori_block_table、cmp_block_table等输入属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - mixed_quant_sparse_flash_mla_metadata和mixed_quant_sparse_flash_mla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - ori_topk_length、cmp_topk_length表示ori/cmp sparse_indices实际参与计算的长度。其值不能大于sparse_indices的最后一维大小，且当seqused_q传入时，topk_length对应有效部分的值需要大于等于0。
-  - cmp_residual_kv每个batch的值需要小于cmp_ratio。
+  - 当ori_mask_mode/cmp_mask_mode为0时，ORI_KV_K/CMP_KV_K需要大于等于ori_topk_length/cmp_topk_lengthd的最大值。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
-  - cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
 
 ### 特性参数组
 
@@ -252,13 +254,13 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 
 
 ### 计算模式说明
-|    命名    |                            必传参数                           |
-| :---------: | :---------------------------------------------------------: |
-|      SWA      |                ori_kv                |
-|      HCA      |                ori_kv、cmp_kv                |
-|      CSA      |                ori_kv、cmp_kv、cmp_sparse_indices                |
-|      ORI_SPARSE      |                ori_kv、ori_sparse_indices|
-|      ORI_CMP_SPARSE      |                ori_kv、cmp_kv、ori_sparse_indices、cmp_sparse_indices|
+|    命名    |    常见场景    |                            需传参数                           |
+| :---------: | :---------: | :---------------------------------------------------------: |
+|      SWA      |     典型场景     |                ori_kv                |
+|      HCA      |     典型场景     |                ori_kv、cmp_kv                |
+|      CSA      |     典型场景     |                ori_kv、cmp_kv、cmp_sparse_indices                |
+|      ORI_SPARSE      |     全稀疏场景     |                ori_kv、ori_sparse_indices|
+|      ORI_CMP_SPARSE      |     全稀疏场景     |                ori_kv、cmp_kv、ori_sparse_indices、cmp_sparse_indices|
 
 ### 参数组约束
 
@@ -331,6 +333,7 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
         <td>ori_kv</td>
         <td>
             <ul>
+                <li>dtype支持fp8_e4m3</li>
                 <li>layout_kv为BSND时，ori_kv的shape为(B, ORI_KV_S, KV_N, KV_D)</li>
                 <li>layout_kv为TND时，ori_kv的shape为(ORI_KV_T, KV_N, KV_D)</li>
                 <li>layout_kv为PA_BBND时，ori_kv的shape为(ori_kv_block_nums, ori_kv_block_size, KV_N, KV_D)</li>
@@ -357,6 +360,7 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
         <td>cmp_kv</td>
         <td>
             <ul>
+                <li>dtype支持fp8_e4m3</li>
                 <li>layout_kv为BSND时，cmp_kv的shape为(B, CMP_KV_S, KV_N, KV_D)</li>
                 <li>layout_kv为TND时，cmp_kv的shape为(CMP_KV_T, KV_N, KV_D)</li>
                 <li>layout_kv为PA_BBND时，cmp_kv的shape为(cmp_kv_block_nums, cmp_kv_block_size, KV_N, KV_D)</li>
@@ -504,8 +508,8 @@ metadata校验
                  </ul>
              </td>
              <td>
-                     <li>只有ORI_CMP_SPARSE情景下，cmp_mask_mode为0和ori_mask_mode必须为0</li>
-                    <li>SWA场景下，ori_mask_mode为3、4</li>
+                     <li>当ori_kv/cmp_kv/cmp_sparse_indices/ori_sparse_indices传入时，cmp_mask_mode为0和ori_mask_mode必须为0</li>
+                    <li>当cmp_kv不传时，ori_mask_mode为3、4</li>
                     <li>当ori_mask_mode为3时，cmp_mask_mode必须为3</li>
                     <li>当ori_mask_mode为4时，cmp_mask_mode必须为3</li>
             </td>
@@ -582,7 +586,6 @@ metadata校验
                 <ul>
                     <li>当layout_kv为BSND时，可选传入</li>
                     <li>当layout_kv为PA_BBND时，必须传入</li>
-                    <li>ORI_SPARSE计算模式下，不传入</li>
                 </ul>
             </td>
             <td>无</td>
@@ -601,7 +604,7 @@ metadata校验
             <td >
                 <ul>
                     <li>当layout_kv为BSND时，可选传入</li>
-                    <li>当layout_kv为PA_BBND且非SWA计算模式，必须传入</li>
+                    <li>当layout_kv为PA_BBND且cmp_kv传入时，必须传入</li>
                     <li>ORI_CMP_SPARSE计算模式下，可以不传</li>
                 </ul>
             </td>
@@ -705,8 +708,7 @@ metadata校验
             <td>无</td>
             <td>
                 <ul>
-                    <li>在SWA场景，仅支持默认值1。</li>
-                     <li>在CSA\HCA\ORI_SPARSE\ORI_CMP_SPARSE场景，支持1-128。</li>
+                    <li>在SWA典型场景，仅支持默认值1。</li>
                 </ul>
             </td>
         </tr>
@@ -745,7 +747,6 @@ metadata校验
             <td>
                 <ul>
                     <li>可选</li>
-                    <li>在ORI_SPARSE计算模式下，该参数必传。</li>
                 </ul>
             </td>
             <td>
@@ -769,7 +770,6 @@ metadata校验
                 <ul>
                     <li>只有cmp_kv传入才校验</li>
                     <li>可选</li>
-                    <li>在CSA和ORI_CMP_SPARSE计算模式下，该参数必传。</li>
                 </ul>
             </td>
             <td>
@@ -800,7 +800,11 @@ metadata校验
                     <li>当layout_q为BSND时，该shape为(B, Q_S, KV_N)</li>
                 </ul>
             </td>
-            <td>无</td>
+            <td>
+                <ul>
+                    <li>当ori_mask_mode不为0时，不支持传入</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>cmp_topk_length</td>
@@ -963,7 +967,7 @@ metadata校验
             <td>return_softmax_lse</td>
             <td>
                 <ul>
-                    <li>data_type仅支持`bool`</li>
+                    <li>data_type仅支持bool</li>
                     <li>true代表开启softmax_lse，false代表关闭softmax_lse</li>
                 </ul>
             </td>
