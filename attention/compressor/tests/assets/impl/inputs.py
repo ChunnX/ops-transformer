@@ -162,7 +162,7 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, state_block_table, ape,
     batch_axis = kwargs.get('batch_axis')
     batch_slice_info = kwargs.get('batch_slice_info')
     batch_seed = kwargs.get('batch_seed')
-    input_ranges = kwargs.get('input_ranges')  # ttk 框架自动传递: ((lo,hi), (lo,hi), ...) 按 tensor 索引
+    input_ranges = kwargs.get('input_ranges')
     
     if batch_axis is None or batch_slice_info is None or batch_seed is None:
         return
@@ -202,9 +202,7 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, state_block_table, ape,
                     continue
                 start = sl[0]
                 end = sl[1]
-                length = end = start
-                if end - start < cmp_ratio:
-                        continue                
+                length = end - start            
                 if coff == 1:
                     if is_th:
                         sliced_shape[axis_pos] = length
@@ -239,12 +237,6 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, state_block_table, ape,
                             sliced_shape[axis_pos] = length
                             data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
                             tensor[start:end,:,:]= torch.from_numpy(data).to(tensor.dtype)
-                            cache_shape = list(state_cache.shape)
-                            cache_shape[0] = x.shape[0]
-                            start_idx = start * state_block_table.shape[1]
-                            end_idx = end * state_block_table.shape[1]
-                            cache_data = rng.uniform(lo, hi, size=tuple(cache_shape)).astype(np.float32)
-                            state_cache[start_idx:end_idx,:,:] = torch.from_numpy(cache_data).to(tensor.dtype)
                                                            
 def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
                                 state_block_table=None, cu_seqlens=None, seqused=None,

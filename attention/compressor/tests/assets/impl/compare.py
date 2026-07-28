@@ -257,6 +257,8 @@ def _batch_consistency_check(npu_outputs, kwargs):
     batch_slice_info = kwargs.get('batch_slice_info')
 
     start_pos_list = kwargs.get('start_pos_list')
+    cu_seqlens_list = kwargs.get('cu_seqlens_list')
+    seqused_list = kwargs.get('seqused_list')
     cmp_ratio = kwargs.get('cmp_ratio')
     is_th = kwargs.get('is_th')
 
@@ -283,22 +285,34 @@ def _batch_consistency_check(npu_outputs, kwargs):
                     continue
                 start = sl[0]
                 stop = sl[1]
+                length = stop - start
                 if is_th:
-                    headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
-                    compare_len = (stop - start - headSize) // cmp_ratio
-                    start_idx = start // cmp_ratio if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
+                    b_idx = 0
+                    tc_idx = 0
+                    batch_size = len(cu_seqlens_list) - 1
+                    for b_idx in range(batch_size):
+                        if start >= cu_seqlens_list[b_idx+1] - cu_seqlens_list[0]:
+                            tc_idx += seqused_list[b_idx] // cmp_ratio
+                            continue
+                        else:
+                            start = start - cu_seqlens_list[b_idx]
+                            stop = start + length
+                            break
+                    headSize = cmp_ratio - (start + start_pos_list[b_idx]) % cmp_ratio
+                    compare_len = (stop - start - headSize % cmp_ratio) // cmp_ratio
+                    cache_len = cmp_ratio - start_pos_list[b_idx] % cmp_ratio
+                    start_idx = (start - cache_len) // cmp_ratio + 1 if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
+                    start_idx += tc_idx
                     slice_output = npu_np[start_idx:(start_idx+compare_len),:]
                 else:
                     if axis_idx == 1:
                         headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
-                        compare_len = (stop - start - headSize) // cmp_ratio
-                        start_idx = start // cmp_ratio if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
-                        print(start_idx)
-                        print(compare_len)
-                        print(headSize)
-                        slice_output = npu_np[0,start_idx:(start_idx+compare_len),:]
+                        compare_len = (stop - start - headSize % cmp_ratio) // cmp_ratio
+                        cache_len = cmp_ratio - start_pos_list[0] % cmp_ratio
+                        start_idx = (start - cache_len) // cmp_ratio + 1 if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
+                        slice_output = npu_np[0,start_idx:(start_idx + compare_len),:]
                     else:
-                        slice_output = npu_np[start:stop,:,:]                                                    
+                        slice_output = npu_np[start:stop,1:,:]                                                    
                 dl = '_'.join(kl.split('_')[:2])
                 if dl not in _BATCH_CONSISTENCY_CACHE:
                     _BATCH_CONSISTENCY_CACHE[dl] = {
