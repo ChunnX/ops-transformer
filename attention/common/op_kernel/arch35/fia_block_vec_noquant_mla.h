@@ -45,6 +45,7 @@ public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1; // 解bank冲突，需要加1行
     static constexpr uint32_t dVTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
@@ -388,7 +389,7 @@ public:
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
         LocalTensor<INPUT_T> mm2AL1Tensor;
-        mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>()[dVTemplateType];
+        mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>()[dVBaseSize];
 
         if (likely(runInfo.actVecMSize != 0)) {
             DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
@@ -672,13 +673,12 @@ public:
         tPipe->InitBuffer(stage2OutBuf, mBaseSize * dVTemplateAlign64 * sizeof(T));
 
         tPipe->InitBuffer(stage1OutQue[0], 1, (mBaseSize / CV_RATIO + 1) * s2BaseSize * sizeof(INPUT_T));
-    }
 
-    if (unlikely(constInfo.isSoftmaxLseEnable)) {
-        // 8: 适配TND，每行的结果存为8个重复lse元素（32B对齐）
-        this->tPipe->InitBuffer(softmaxLseQueue, 1, mBaseSize / CV_RATIO * sizeof(float) * 8);
+        if (unlikely(constInfo.isSoftmaxLseEnable)) {
+            // 8: 适配TND，每行的结果存为8个重复lse元素（32B对齐）
+            this->tPipe->InitBuffer(softmaxLseQueue, 1, mBaseSize / CV_RATIO * sizeof(float) * 8);
+        }
     }
-    
 
     __aicore__ inline void AllocEventID()
     {
