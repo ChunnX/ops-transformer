@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file matmul_allto_all_arch35.h
+ * \file matmul_allto_all_kernel_base.h
  * \brief
  */
 
 #ifndef MATMUL_ALLTO_ALL_ARCH35_H
-#define MATMUL_ALLTO_ALL_ARCH35_H
+#define MATMUL_ALLTO_ALL_KERNEL_BASE_H
 
 namespace Mc2Kernel {
 /**

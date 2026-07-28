@@ -16,7 +16,7 @@
 #include <kernel_operator.h>
 #include <lib/matmul_intf.h>
 #include "common.h"
-#include "../allto_all_matmul_arch35.h"
+#include "../allto_all_matmul_kernel_base.h"
 #include "../allto_all_matmul_pipeline.h"
 #include "allto_all_matmul_tiling_key.h"
 #include "allto_all_matmul_tiling_data.h"
