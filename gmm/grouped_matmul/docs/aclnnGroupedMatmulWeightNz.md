@@ -626,7 +626,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |0   |INT8          |FLOAT32       |INT32           |FLOAT16     |FLOAT32 |null |FLOAT32/null              |FLOAT16  |(M)              |(g, K, N/8) |(g, K/groupSize, N) |(g, N) |(g, N) |
 
     - 约束说明：
-      - 当x为FLOAT8_E4M3FN/FLOAT16/BFLOAT16，weight为FLOAT4_E2M1/FLOAT4_E1M2/FLOAT32的场景， groupSize只支持32。
+      - 当x为FLOAT16/BFLOAT16，weight为FLOAT4_E2M1/FLOAT32的场景，groupSize只支持32。
+      - 当x为FLOAT8_E4M3FN，weight为FLOAT4_E2M1/FLOAT4_E1M2/FLOAT32的场景，groupSize只支持32。
       - 当x为INT8， weight为INT4/INT32的场景， groupSize只支持128、192、256、512。
       - 当x的shape固定为（M, K）, out的shape固定为（M, N）。
       - mx伪量化和K-CG伪量化场景，weight的K轴和N轴均要求32B对齐。
