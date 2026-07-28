@@ -15,7 +15,7 @@ import torch_npu
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 import logging
-
+import cann_ops_transformer
 
 class Network(torch.nn.Module):
     def __init__(self):
