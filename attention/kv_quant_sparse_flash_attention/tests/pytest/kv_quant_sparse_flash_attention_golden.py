@@ -504,9 +504,9 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     q_torch_dtype = _q_dtype_map.get(q_dtype_str)
     q_torch = q_cat.to(q_torch_dtype) if q_torch_dtype is not None else q_cat
 
-    input_tensor_dict["query_cache"] = q_torch.to("npu")
-    input_tensor_dict["key_cache"] = key_concat.to("npu")
-    input_tensor_dict["value_cache"] = key_concat.to("npu")
+    input_tensor_dict["query_cache"] = q_torch
+    input_tensor_dict["key_cache"] = key_concat
+    input_tensor_dict["value_cache"] = key_concat
 
 
 def generate_input_tensors(params):
@@ -521,7 +521,7 @@ def generate_input_tensors(params):
     ]
     raw = {}
     for key in tensor_keys:
-        raw[key] = generate_tensor_data.gen_tensor_data(params, key).to("npu")
+        raw[key] = generate_tensor_data.gen_tensor_data(params, key)
 
     return {
         "query": raw["query"],
@@ -750,19 +750,11 @@ def _generate_sparse_indices(
                 )
 
     if fa_param["tnd_flag"]:
-        sparse_indices_tensor_tnd = trans_bnsd_to_layout(
-            sparse_indices_tensor,
-            out_shape,
-            layoutQuery,
-            fa_param["actualSeqLengths_q"],
-        )
-        input_tensor_dict["sparse_indices"] = sparse_indices_tensor_tnd.to(
-            torch.int32
-        ).to("npu")
+        sparse_indices_tensor_tnd = trans_bnsd_to_layout(sparse_indices_tensor, out_shape, layoutQuery,
+                                                         fa_param["actualSeqLengths_q"])
+        input_tensor_dict["sparse_indices"] = sparse_indices_tensor_tnd.to(torch.int32)
     else:
-        input_tensor_dict["sparse_indices"] = (
-            sparse_indices_tensor.permute(0, 2, 1, 3).contiguous().to("npu")
-        )
+        input_tensor_dict["sparse_indices"] = sparse_indices_tensor.permute(0, 2, 1, 3).contiguous()
 
     fa_param["sparse_indices_bnsd_tensor"] = sparse_indices_tensor
 
@@ -801,7 +793,7 @@ def _generate_block_table_and_cache(
                 block_idx += 1
             block_table_batch_idx += 1
         fa_param["block_table"] = block_table
-        input_tensor_dict["block_table"] = block_table.to("npu")
+        input_tensor_dict["block_table"] = block_table
         k_dtype = params.get("dtype_input", {}).get("key", "unknown")
         v_dtype = params.get("dtype_input", {}).get("value", "unknown")
         print(f"[PageAtten]Input Kdtype:{k_dtype} Vdtype:{v_dtype}")
@@ -1195,9 +1187,9 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
     }
     q_torch_dtype = _q_dtype_map.get(q_dtype_str)
     q_torch = q_cat.to(q_torch_dtype) if q_torch_dtype is not None else q_cat
-    input_tensor_dict["query_cache"] = q_torch.to("npu")
-    input_tensor_dict["key_cache"] = k_cache_concat.to("npu")
-    input_tensor_dict["value_cache"] = k_cache_concat.to("npu")
+    input_tensor_dict["query_cache"] = q_torch
+    input_tensor_dict["key_cache"] = k_cache_concat
+    input_tensor_dict["value_cache"] = k_cache_concat
 
 
 def qtensor_seqlength(q_shape, inputLayout):
