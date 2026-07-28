@@ -92,7 +92,7 @@ ge::graphStatus QLIInfoParser::CheckTensorShapes() const
                                                          "Shape of tensor key_dequant_scale is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attenOut", "Shape of tensor output is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attention_out", "Shape of tensor output is nullptr"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -117,7 +117,7 @@ ge::graphStatus QLIInfoParser::CheckTensorDescriptions() const
                                                          "Desc of tensor key_dequant_scale is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attenOut", "Desc of tensor output is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attention_out", "Desc of tensor output is nullptr"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -177,8 +177,7 @@ ge::graphStatus QLIInfoParser::CheckRequiredParaExistence() const
 ge::graphStatus QLIInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantLightningIndexer", "opName",
-                                                 "opName got from TilingContext is nullptr");
+        OP_LOGE("QuantLightningIndexer", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -204,11 +203,10 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
     }
     OP_CHECK_IF(
         context_->GetWorkspaceSizes(1) == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "workSpaceSize", "workSpaceSize got from ge is nullptr"),
+        OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "RawTilingData",
-                                                         "RawTilingData got from GE context is nullptr"),
+                OP_LOGE(opName_, "RawTilingData got from GE context is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -427,7 +425,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
         } else if (inputKType_ == ge::DT_HIFLOAT8) {
             OP_CHECK_IF(
                 weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, queryScale and keyScale",
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, query_dequant_scale and key_dequant_scale",
                                                        QLIDataTypeToSerialString(weightsType_) + ", " +
                                                            QLIDataTypeToSerialString(inputQueryScaleType_) + " and " +
                                                            QLIDataTypeToSerialString(inputKeyScaleType_),
@@ -437,7 +435,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
         } else if (inputQType_ == ge::DT_INT8) {
             OP_CHECK_IF(
                 weightsType_ != ge::DT_FLOAT16 || inputQueryScaleType_ != ge::DT_FLOAT16,
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, queryScale and keyScale",
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, query_dequant_scale and key_dequant_scale",
                                                        QLIDataTypeToSerialString(weightsType_) + ", " +
                                                            QLIDataTypeToSerialString(inputQueryScaleType_) + " and " +
                                                            QLIDataTypeToSerialString(inputKeyScaleType_),
@@ -1265,7 +1263,7 @@ ge::graphStatus TilingForQuantLightningIndexer(gert::TilingContext *context)
 {
     OP_CHECK_IF(
         context == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantLightningIndexer", "TilingContext", "Tilingcontext is null"),
+        OP_LOGE("QuantLightningIndexer", "Tilingcontext is null"),
         return ge::GRAPH_FAILED);
     QLITilingInfo QLIInfo;
     QLIInfoParser QLIInfoParser(context);

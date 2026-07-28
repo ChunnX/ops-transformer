@@ -1058,12 +1058,12 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensDType()
     }
     if (opParamInfo_.actualSeqLengths.desc == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-            opName_, "actualSeqLengths", "actualSeqLengths is not empty, but actualSeqLengths's dtype is nullptr");
+            opName_, "actual_seq_lengths_kv", "actualSeqLengths is not empty, but actualSeqLengths's dtype is nullptr");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-            opName_, "actualSeqLengths",
+            opName_, "actual_seq_lengths_kv",
             QSFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
             "The dtype of actualSeqLengths must be DT_INT32");
     }
@@ -1081,7 +1081,7 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensShape()
         return ge::GRAPH_FAILED;
     }
     if (qsfaShapeSizeKv != bSize_) {
-        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "actualSeqLengths", std::to_string(qsfaShapeSizeKv).c_str(),
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "actual_seq_lengths_kv", std::to_string(qsfaShapeSizeKv).c_str(),
                                                   "The shape size of actualSeqLengths should be equal to batch size " +
                                                       std::to_string(bSize_));
         return ge::GRAPH_FAILED;
@@ -1537,8 +1537,7 @@ ge::graphStatus QSFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
 ge::graphStatus QSFAInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("KvQuantSparseFlashAttention", "opName",
-                                                 "opName got from TilingContext is nullptr");
+        OP_LOGE("KvQuantSparseFlashAttention", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -1975,8 +1974,7 @@ void QSFAInfoParser::FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo)
 ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &qsfaInfo)
 {
     if (context_ == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("KvQuantSparseFlashAttention", "tiling context",
-                                                 "tiling context is nullptr");
+        OP_LOGE("KvQuantSparseFlashAttention", "tiling context is nullptr");
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
