@@ -123,14 +123,14 @@ def npu_test(case, device, seed=42):
     seqlens_list_q = case["seqlens_list_q"]
     dataType = case["dtype"]
 
-    tokenSize = batchSize * seqSize
-    if layoutId == 0:
-        tokenSize = seqlens_list_q[-1]
-
     dtypeMap   = {"float16": torch.float16, "bfloat16": torch.bfloat16}
     ioDtype    = dtypeMap[dataType]
     dataTypeId = 0 if dataType == "bfloat16" else 1
     layoutId   = 0 if layout == "TH" else 1
+
+    tokenSize = batchSize * seqSize
+    if layoutId == 0:
+        tokenSize = seqlens_list_q[-1]
 
     scKvRowCount = coff * cmpRatio
 

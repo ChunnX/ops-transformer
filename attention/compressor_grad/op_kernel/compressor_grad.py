@@ -351,7 +351,7 @@ def _skip_blocks(blockCount, bIdx, scIdx,
 #  Unified Compressor Grad Kernel
 # ================================================================
 @pl.jit(tiling_key=CompressorGradTilingKey, auto_mutex=True, arch="a5")
-def compressor_grad_kernel(
+def compressor_grad(
     # ── 输入（前向参数） ──
     x:              pl.Ptr[pl.DT_UINT8],     # (T, hiddenSize)      
     wkv:            pl.Ptr[pl.DT_UINT8],     # (C, hiddenSize)       
