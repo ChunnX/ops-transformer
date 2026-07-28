@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file all_to_all_mx_matmul_asccomm_impl.h
+ * \file all_to_all_mx_matmul_hcomm_impl.h
  * \brief AlltoAll MX Quant Matmul — 通信+计算融合实现
  *
  * Run():
@@ -31,12 +31,6 @@
 #include "include/tensor_api/tensor.h"
 
 namespace Apace {
-
-__aicore__ inline uint64_t CeilDivU64(uint64_t a, uint64_t b)
-{
-  return (a + b - 1) / b;
-}
-
 template <typename T>
 constexpr uint64_t GetX1HcclDataType()
 {
@@ -142,9 +136,9 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
   x2Scale_ = x2_scale;
   workspaceGM_ = workspaceGM;
   commX1ScaleGM1_ = workspaceGM;
-  uint64_t x1ScaleLen = CeilDivU64(commTiling.nonSplitAxisSize, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE *
+  uint64_t x1ScaleLen = Blaze::Gemm::CeilDiv(commTiling.nonSplitAxisSize, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE *
                         static_cast<uint64_t>(splitAxisSize_) * sizeof(AscendC::fp8_e8m0_t);
-  x1ScaleLen = CeilDivU64(x1ScaleLen, ALIGN_NUM) * ALIGN_NUM;
+  x1ScaleLen = Blaze::Gemm::CeilDiv(x1ScaleLen, ALIGN_NUM) * ALIGN_NUM;
   commOutGM_ = workspaceGM + x1ScaleLen;
   hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
   hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
@@ -159,7 +153,7 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
   }
 
   rankForComm_ = commTiling.nonSplitAxisSize / rankDim_;
-  scaleKPerRank_ = static_cast<uint32_t>(CeilDivU64(rankForComm_, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE);
+  scaleKPerRank_ = static_cast<uint32_t>(Blaze::Gemm::CeilDiv(rankForComm_, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE);
 
   if (commTiling.splitAxisTileCnt > 0 || commTiling.splitAxisTailCnt > 0) {
     uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * rankForComm_;
