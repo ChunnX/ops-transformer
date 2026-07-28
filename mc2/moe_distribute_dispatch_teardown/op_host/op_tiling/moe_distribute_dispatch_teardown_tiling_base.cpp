@@ -465,10 +465,10 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeRelation()
             (a1 != a2),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 nodeName_, "expandXOut/dynamicScalesOut",
-                (std::string("expandXOut dim0=") + std::to_string(a1) + ",
-                dynamicScalesOut dim0=" + std::to_string(a2)).c_str(),
+                (std::string("expandXOut dim0=") + std::to_string(a1) +
+                ", dynamicScalesOut dim0=" + std::to_string(a2)).c_str(),
                 "Dim0 of expandXOut must be equal to dim0 of dynamicScalesOut"),
-            return false);
+                return false);
     }
     return true;
 }

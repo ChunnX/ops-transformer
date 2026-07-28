@@ -273,7 +273,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             uint32_t length = static_cast<uint32_t>(axisHExpandXTypeSize_) * curTokenNum;
             uint64_t notifyVal = 0x3f800000;
             if (curRankExpertNum - 1 != expertIdx) {
-                if(0 < curRankExpertNum) {
+                if(0 < curTokenNum) {
                     hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, length);
                 }
                 continue;
