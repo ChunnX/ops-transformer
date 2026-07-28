@@ -795,17 +795,23 @@ def _select_worst_query_for_kernel_debug(
     if case["layout"] != "BSND":
         return None
 
-    dq_errors = _per_batch_query_normalized_errors(
-        tilelang_outputs[0], official_outputs[0]
-    )
-    dw_errors = _per_batch_query_normalized_errors(
-        tilelang_outputs[2], official_outputs[2]
-    )
+    # 自动选点不能在 NPU 上额外构造完整 FP32 差分，否则会与算子工作区叠加。
+    # dQueryIndex 和 dWeights 较小，先转到 CPU，再按 query 计算归一化误差。
+    dq_actual = tilelang_outputs[0].detach().cpu()
+    dq_expected = official_outputs[0].detach().cpu()
+    dw_actual = tilelang_outputs[2].detach().cpu()
+    dw_expected = official_outputs[2].detach().cpu()
     worst: Optional[Tuple[int, int, float, float]] = None
     for batch_id in range(case["B"]):
         for query_id in range(case["S1"]):
-            dq_norm_rel = dq_errors[batch_id][query_id]
-            dw_norm_rel = dw_errors[batch_id][query_id]
+            dq_difference = dq_actual[batch_id, query_id].float() - dq_expected[batch_id, query_id].float()
+            dw_difference = dw_actual[batch_id, query_id].float() - dw_expected[batch_id, query_id].float()
+            dq_norm_rel = torch.linalg.vector_norm(dq_difference).item() / (
+                torch.linalg.vector_norm(dq_expected[batch_id, query_id].float()).item() + 1e-6
+            )
+            dw_norm_rel = torch.linalg.vector_norm(dw_difference).item() / (
+                torch.linalg.vector_norm(dw_expected[batch_id, query_id].float()).item() + 1e-6
+            )
             if worst is None or max(dq_norm_rel, dw_norm_rel) > max(worst[2], worst[3]):
                 worst = (batch_id, query_id, dq_norm_rel, dw_norm_rel)
     return worst
@@ -829,35 +835,14 @@ def _report_kernel_task_debug(
         return
 
     batch_id, query_id, dq_norm_rel, dw_norm_rel = worst
-    old_debug_task = os.environ.get("SLIG_DEBUG_TASK")
-    os.environ["SLIG_DEBUG_TASK"] = f"{batch_id},{query_id}"
-    MODULE._debug_dump_done = False
     print(
         f"{case_prefix} DEBUG_TASK selected b={batch_id} q={query_id} "
         f"dQ_norm={dq_norm_rel:.2e} dW_norm={dw_norm_rel:.2e}"
     )
-    if os.environ.get("SLIG_DEBUG_TASK_RERUN", "0") != "1":
-        print(
-            f"{case_prefix} DEBUG_TASK rerun skipped to avoid an NPU memory peak; "
-            f"rerun in a fresh process with SLIG_DEBUG_TASK={batch_id},{query_id}."
-        )
-        if old_debug_task is None:
-            os.environ.pop("SLIG_DEBUG_TASK", None)
-        else:
-            os.environ["SLIG_DEBUG_TASK"] = old_debug_task
-        return
-
-    print(f"{case_prefix} DEBUG_TASK in-process rerun enabled")
-    try:
-        _call_tilelang(inputs, case)
-        torch.npu.synchronize()
-    except Exception as exc:
-        print(f"{case_prefix} DEBUG_TASK rerun failed: {exc}")
-    finally:
-        if old_debug_task is None:
-            os.environ.pop("SLIG_DEBUG_TASK", None)
-        else:
-            os.environ["SLIG_DEBUG_TASK"] = old_debug_task
+    print(
+        f"{case_prefix} DEBUG_TASK rerun disabled to avoid an NPU memory peak; "
+        f"rerun in a fresh process with SLIG_DEBUG_TASK={batch_id},{query_id}."
+    )
 
 
 def _release_case_memory() -> None:
@@ -902,9 +887,12 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
         status = "PASS" if passed else "PRECISION_FAIL"
         if args.verbose:
             _print_metrics(metrics)
-        if args.diagnose:
+        auto_debug_task = os.environ.get("SLIG_DEBUG_TASK", "").strip().lower() == "auto"
+        if args.diagnose and not auto_debug_task:
             _print_batch_diagnostics(case, tilelang_outputs, official_outputs)
             _print_query_diagnostics(case, tilelang_outputs, official_outputs)
+        elif args.diagnose:
+            print(f"{case_prefix} DEBUG_TASK auto: skip full-tensor diagnostics to limit NPU peak memory")
         if not passed:
             _report_kernel_task_debug(
                 case_prefix,
