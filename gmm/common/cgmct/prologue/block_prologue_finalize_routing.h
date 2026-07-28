@@ -41,6 +41,10 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_FP16_TO_FP32 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
 
+static constexpr AscendC::MicroAPI::CastTrait CAST_FR_PROLOGUE_FP32_TO_BF16 = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+
 #define BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS template <typename DataTypeOut_, typename DataTypeIn_>
 #define BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS DataTypeOut_, DataTypeIn_
 
@@ -192,23 +196,40 @@ __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::VFDoSharedCastAndMuls(
     __ubuf__ DataTypeOut *dstPtr, __ubuf__ DataTypeIn *residualLocalUbAddr, float sharedWeight, uint64_t curCount)
 {
-    constexpr uint32_t vectorRegLen = VECTOR_REG_WIDTH / sizeof(DataTypeOut);
+    constexpr uint32_t vectorRegLen =
+        IsSameType<DataTypeOut, bfloat16_t>::value ? VECTOR_REG_WIDTH / sizeof(float) :
+                                                     VECTOR_REG_WIDTH / sizeof(DataTypeOut);
     uint16_t loopNum = CeilDiv(static_cast<uint64_t>(curCount), static_cast<uint64_t>(vectorRegLen));
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
-        AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCast;
-        AscendC::MicroAPI::RegTensor<DataTypeOut> vDstReg;
         uint32_t elementNum = static_cast<uint32_t>(curCount);
         AscendC::MicroAPI::MaskReg mask;
         uint16_t oneRepeatSize = vectorRegLen;
         for (uint16_t i = 0; i < loopNum; ++i) {
-            mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
-            AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
-            AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
-            AscendC::MicroAPI::Muls(vDstReg, vRegCast, sharedWeight, mask);
-            AscendC::MicroAPI::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
+            if constexpr (IsSameType<DataTypeOut, bfloat16_t>::value) {
+                mask = AscendC::MicroAPI::UpdateMask<float>(elementNum);
+                AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
+                AscendC::MicroAPI::RegTensor<float> vRegCast;
+                AscendC::MicroAPI::RegTensor<float> vMulReg;
+                AscendC::MicroAPI::RegTensor<bfloat16_t> vDstReg;
+                AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
+                AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
+                AscendC::MicroAPI::Muls(vMulReg, vRegCast, sharedWeight, mask);
+                AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FR_PROLOGUE_FP32_TO_BF16>(vDstReg, vMulReg, mask);
+                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
+                    dstPtr + i * oneRepeatSize, vDstReg, mask);
+            } else {
+                mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
+                AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
+                AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCast;
+                AscendC::MicroAPI::RegTensor<DataTypeOut> vDstReg;
+                AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
+                AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
+                AscendC::MicroAPI::Muls(vDstReg, vRegCast, sharedWeight, mask);
+                AscendC::MicroAPI::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
+            }
         }
     }
 }

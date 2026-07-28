@@ -43,8 +43,12 @@ constexpr uint64_t BLOCK_ELEMENTS_FP32 = 8;
 
 using namespace AscendC;
 
-#define GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS template <typename DataTypeOut_>
-#define GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS DataTypeOut_
+static constexpr AscendC::MicroAPI::CastTrait CAST_FR_FP32_TO_BF16 = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+
+#define GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS template <typename DataTypeOut_, typename DataTypeIn_>
+#define GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS DataTypeOut_, DataTypeIn_
 
 GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
 class BlockEpilogueFinalizeRouting {
@@ -68,6 +72,7 @@ public:
     using Params = Arguments;
 
     using DataTypeOut = DataTypeOut_;
+    using DataTypeIn = DataTypeIn_;
     // shape
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>; // blk_m, blk_n, blk_k, _
     using BlockCoord =
@@ -95,7 +100,7 @@ private:
     AscendC::GlobalTensor<DataTypeOut> yGlobal_;
 
     // UB ADDR
-    AscendC::LocalTensor<DataTypeOut> l0cOutUb_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
+    AscendC::LocalTensor<DataTypeIn> l0cOutUb_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
     AscendC::LocalTensor<float> logitUbPing_;
     AscendC::LocalTensor<float> logitUbPong_;
     AscendC::LocalTensor<DataTypeOut> outUbPing_;
@@ -123,15 +128,14 @@ BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_FUNC_LOCAL_PARA
     params_ = &params;
     yGlobal_.SetGlobalBuffer((__gm__ DataTypeOut *)params_->yGMAddr);
     // input
-    uint32_t afterFirstIn = MAX_SINGLE_MN * sizeof(DataTypeOut);
+    uint32_t afterFirstIn = MAX_SINGLE_MN * sizeof(DataTypeIn);
     logitUbPing_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, afterFirstIn, BLOCK_BYTES);
-    uint32_t afterSecondIn = afterFirstIn + BLOCK_BYTES * sizeof(DataTypeOut);
+    uint32_t afterSecondIn = afterFirstIn + BLOCK_BYTES * sizeof(float);
     logitUbPong_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, afterSecondIn, BLOCK_BYTES);
-    outUbPing_ = AscendC::LocalTensor<DataTypeOut>(
-        AscendC::TPosition::VECOUT, afterSecondIn + BLOCK_BYTES * sizeof(DataTypeOut), HALF_DB_MAX_SINGLE_MN);
+    uint32_t afterLogit = afterSecondIn + BLOCK_BYTES * sizeof(float);
+    outUbPing_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECOUT, afterLogit, HALF_DB_MAX_SINGLE_MN);
     outUbPong_ = AscendC::LocalTensor<DataTypeOut>(
-        AscendC::TPosition::VECOUT, afterSecondIn + (BLOCK_BYTES + HALF_DB_MAX_SINGLE_MN) * sizeof(DataTypeOut),
-        HALF_DB_MAX_SINGLE_MN);
+        AscendC::TPosition::VECOUT, afterLogit + HALF_DB_MAX_SINGLE_MN * sizeof(DataTypeOut), HALF_DB_MAX_SINGLE_MN);
 }
 
 GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
@@ -175,7 +179,7 @@ __aicore__ inline void
 BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::VectorAtomicProcess(
     uint32_t curBaseN, uint32_t curVecBaseM, uint64_t offsetM, uint64_t yOffset, LocalTensor<DataTypeOut> yLocal)
 {
-    SetAtomicAdd<float>();
+    SetAtomicAdd<DataTypeOut>();
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
         auto outRow = static_cast<uint64_t>(rowIndexGlobal_.GetValue(offsetM + i));
@@ -191,23 +195,49 @@ BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_FUNC_LOCAL_PARA
     uint32_t offsetRe, uint32_t offsetLogit, uint16_t repeatTimesLogit, uint16_t repeatTimesRe,
     __ubuf__ DataTypeOut *outUbAddr, LocalTensor<float> logitUb)
 {
-    __ubuf__ DataTypeOut *l0cOutUbAddr = (__ubuf__ DataTypeOut *)l0cOutUb_.GetPhyAddr();
-    __ubuf__ DataTypeOut *logitUbAddr = (__ubuf__ DataTypeOut *)logitUb.GetPhyAddr();
+    __ubuf__ DataTypeIn* l0cOutUbAddr = (__ubuf__ DataTypeIn*)l0cOutUb_.GetPhyAddr();
+    __ubuf__ float* logitUbAddr = (__ubuf__ float*)logitUb.GetPhyAddr();
     l0cOutUbAddr += offsetRe;
     logitUbAddr += offsetLogit;
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<float> vregLogit;
-        AscendC::MicroAPI::RegTensor<DataTypeOut> vregRe, vDstReg;
         AscendC::MicroAPI::MaskReg mask;
-        for (uint16_t i = 0; i < repeatTimesLogit; ++i) {
-            DataCopy<DataTypeOut, MicroAPI::LoadDist::DIST_BRC_B32>(vregLogit, logitUbAddr + i);
-            uint32_t elementNum = singleN_;
-            for (uint16_t j = 0; j < repeatTimesRe; ++j) {
-                mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
-                AscendC::MicroAPI::DataCopy(vregRe, l0cOutUbAddr + i * alignN_ + j * vlForFloatNumber_);
-                AscendC::MicroAPI::Mul(vDstReg, vregLogit, vregRe, mask);
-                AscendC::MicroAPI::DataCopy(outUbAddr + i * alignN_ + j * vlForFloatNumber_, vDstReg, mask);
+        if constexpr (IsSameType<DataTypeOut, bfloat16_t>::value) {
+            for (uint16_t i = 0; i < repeatTimesLogit; ++i) {
+                AscendC::MicroAPI::RegTensor<float> vregLogitFp32;
+                DataCopy<float, MicroAPI::LoadDist::DIST_BRC_B32>(vregLogitFp32, logitUbAddr + i);
+                uint32_t elementNum = singleN_;
+                for (uint16_t j = 0; j < repeatTimesRe; ++j) {
+                    mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
+                    AscendC::MicroAPI::RegTensor<bfloat16_t> vregLogitBf16, vregReBf16, vDstRegBf16;
+                    AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FR_FP32_TO_BF16>(
+                        vregLogitBf16, vregLogitFp32, mask);
+                    if constexpr (IsSameType<DataTypeIn, bfloat16_t>::value) {
+                        AscendC::MicroAPI::DataCopy(vregReBf16, l0cOutUbAddr + i * alignN_ + j * vlForFloatNumber_);
+                    } else {
+                        AscendC::MicroAPI::RegTensor<float> vregReFp32;
+                        AscendC::MicroAPI::DataCopy(vregReFp32, l0cOutUbAddr + i * alignN_ + j * vlForFloatNumber_);
+                        AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FR_FP32_TO_BF16>(
+                            vregReBf16, vregReFp32, mask);
+                    }
+                    AscendC::MicroAPI::Mul(vDstRegBf16, vregLogitBf16, vregReBf16, mask);
+                    AscendC::MicroAPI::DataCopy<DataTypeOut, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
+                        outUbAddr + i * alignN_ + j * vlForFloatNumber_, vDstRegBf16, mask);
+                }
+            }
+        } else {
+            for (uint16_t i = 0; i < repeatTimesLogit; ++i) {
+                AscendC::MicroAPI::RegTensor<float> vregLogit;
+                DataCopy<float, MicroAPI::LoadDist::DIST_BRC_B32>(vregLogit, logitUbAddr + i);
+                uint32_t elementNum = singleN_;
+                for (uint16_t j = 0; j < repeatTimesRe; ++j) {
+                    mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
+                    AscendC::MicroAPI::RegTensor<DataTypeIn> vregRe;
+                    AscendC::MicroAPI::RegTensor<DataTypeOut> vDstReg;
+                    AscendC::MicroAPI::DataCopy(vregRe, l0cOutUbAddr + i * alignN_ + j * vlForFloatNumber_);
+                    AscendC::MicroAPI::Mul(vDstReg, vregLogit, vregRe, mask);
+                    AscendC::MicroAPI::DataCopy(outUbAddr + i * alignN_ + j * vlForFloatNumber_, vDstReg, mask);
+                }
             }
         }
     }
@@ -226,7 +256,7 @@ __aicore__ inline void BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_
         return;
     }
     uint32_t mOffset = subBlockIdx_ * halfSingleM;
-    vlForFloatNumber_ = BLOCK_BYTES / sizeof(DataTypeOut);
+    vlForFloatNumber_ = BLOCK_BYTES / sizeof(DataTypeIn);
     auto repeatTimesRe = CeilDiv(singleN_, vlForFloatNumber_);
     uint64_t logitOffset = Get<LOGIT_INDEX>(blockCoord) + mOffset;
     uint64_t yOffset = Get<Y_IDX>(blockCoord);

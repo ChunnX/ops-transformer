@@ -58,6 +58,7 @@ const int64_t GMMFR_SPLIT_SIZE = 64;
 const int64_t GMMFR_QUANT_SCALE_PARAM_COUNT = 2;
 const int ND_N_VALUE_ALIGN = 8;
 const int ND_K0_VALUE_INT8 = 64;
+const int64_t OUT_DTYPE_BF16 = 2;
 }
 
 using namespace gert;
@@ -434,6 +435,8 @@ static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferData
     OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
         return ge::GRAPH_FAILED);
     bool supportDataTypeMX = IsSupportMX(context);
+    auto attrs = context->GetAttrs();
+    const int64_t *outputDtype = attrs == nullptr ? nullptr : attrs->GetAttrPointer<int64_t>(0);
 
     bool supportDataTypeW8A8 = (context->GetInputDataType(xIndex) == ge::DT_INT8 ||
                                 context->GetInputDataType(xIndex) == ge::DT_FLOAT8_E4M3FN ||
@@ -475,7 +478,11 @@ static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferData
                     return ge::GRAPH_FAILED);
     }
     
-    context->SetOutputDataType(0, ge::DT_FLOAT);
+    if (supportDataTypeMX && outputDtype != nullptr && *outputDtype == OUT_DTYPE_BF16) {
+        context->SetOutputDataType(0, ge::DT_BF16);
+    } else {
+        context->SetOutputDataType(0, ge::DT_FLOAT);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
