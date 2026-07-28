@@ -32,6 +32,9 @@ uint32_t StemIndexerMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 
     SectionStreamKResult result;
     success = BalanceSchedule(result);
+    if (!success) {
+        return KERNEL_STATUS_PARAM_INVALID;
+    }
 
     success = GenMetadata(result);
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
@@ -200,58 +203,46 @@ bool StemIndexerMetadataCpuKernel::GenMetadata(SectionStreamKResult &result)
         return false;
     }
 
-    optiling::detail::SliMetadata sliMetadata(metadata_->GetData());
-    for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
-        sliMetadata.SetFaMetadata(i, optiling::SLI_CORE_ENABLE_INDEX, 0U);
-        sliMetadata.SetFaMetadata(i, optiling::SLI_BN2_START_INDEX, 0U);
-        sliMetadata.SetFaMetadata(i, optiling::SLI_M_START_INDEX, 0U);
-        sliMetadata.SetFaMetadata(i, optiling::SLI_S2_START_INDEX, 0U);
-        sliMetadata.SetFaMetadata(i, optiling::SLI_BN2_END_INDEX, 0U);
-        sliMetadata.SetFaMetadata(i, optiling::SLI_M_END_INDEX, 0U);
-        sliMetadata.SetFaMetadata(i, optiling::SLI_S2_END_INDEX, 0U);
-        sliMetadata.SetFaMetadata(i, optiling::SLI_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
-    }
-    for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
-        sliMetadata.SetFdMetadata(i, optiling::SLD_CORE_ENABLE_INDEX, 0U);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_BN2_IDX_INDEX, 0U);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_M_IDX_INDEX, 0U);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_WORKSPACE_IDX_INDEX, 0U);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_WORKSPACE_NUM_INDEX, 0U);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_M_START_INDEX, 0U);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_M_NUM_INDEX, 0U);
-    }
+    optiling::detail::SliMetadata sliMetadata(metadata_->GetData(), result.sectionNum);
+    sliMetadata.Clear();
 
-    // FA Metadata Generate
-    auto faResult = result.sectionFaResult[0];
+    sliMetadata.SetHeadMetadata(optiling::HEAD_SECTION_NUM_INDEX, result.sectionNum);
 
-    for (uint32_t i = 0; i < faResult.usedCoreNum; ++i) {
-        sliMetadata.SetFaMetadata(i, optiling::SLI_CORE_ENABLE_INDEX, 1);
-        // FA start
-        if (i > 0) {
-            sliMetadata.SetFaMetadata(i, optiling::SLI_BN2_START_INDEX, faResult.bN2End[i - 1]);
-            sliMetadata.SetFaMetadata(i, optiling::SLI_M_START_INDEX, faResult.gS1End[i - 1]);
-            sliMetadata.SetFaMetadata(i, optiling::SLI_S2_START_INDEX, faResult.s2End[i - 1]);
+    load_balance::SectionStreamKFaResult dummyHead { static_cast<uint32_t>(aicCoreNum_) };
+    for (uint32_t secIdx = 0; secIdx < result.sectionNum; ++secIdx) {
+        auto &faRes = result.sectionFaResult[secIdx];
+        for (uint32_t aicIdx = 0; aicIdx < faRes.usedCoreNum; ++aicIdx) {
+            auto &prevFaRes = (secIdx == 0U) ? dummyHead : result.sectionFaResult[secIdx - 1U];
+            auto prevLastCore = (secIdx == 0U) ? 0U : prevFaRes.usedCoreNum - 1U;
+            SLI_METADATA_T bn2Start =
+                (aicIdx == 0) ? prevFaRes.bN2End[prevLastCore] : faRes.bN2End[aicIdx - 1U];
+            SLI_METADATA_T mStart =
+                (aicIdx == 0) ? prevFaRes.gS1End[prevLastCore] : faRes.gS1End[aicIdx - 1U];
+            SLI_METADATA_T s2Start =
+                (aicIdx == 0) ? prevFaRes.s2End[prevLastCore] : faRes.s2End[aicIdx - 1U];
+
+            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_BN2_START_INDEX, bn2Start);
+            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_M_START_INDEX, mStart);
+            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_S2_START_INDEX, s2Start);
+            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_BN2_END_INDEX, faRes.bN2End[aicIdx]);
+            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_M_END_INDEX, faRes.gS1End[aicIdx]);
+            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_S2_END_INDEX, faRes.s2End[aicIdx]);
+            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_FIRST_FD_WORKSPACE_IDX_INDEX,
+                                      faRes.firstFdDataWorkspaceIdx[aicIdx]);
         }
-        // FA end
-        sliMetadata.SetFaMetadata(i, optiling::SLI_BN2_END_INDEX, faResult.bN2End[i]);
-        sliMetadata.SetFaMetadata(i, optiling::SLI_M_END_INDEX, faResult.gS1End[i]);
-        sliMetadata.SetFaMetadata(i, optiling::SLI_S2_END_INDEX, faResult.s2End[i]);
-        // FA idx
-        sliMetadata.SetFaMetadata(i, optiling::SLI_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
-                                  faResult.firstFdDataWorkspaceIdx[i]);
-    }
-    KERNEL_LOG_ERROR("Assign FD");
-    // FD Metadata Generate
-    auto fdResult = result.sectionFdResult[0];
-    for (uint32_t i = 0; i < fdResult.usedVecNum; ++i) {
-        uint32_t curTaskIdx = fdResult.taskIdx[i];
-        sliMetadata.SetFdMetadata(i, optiling::SLD_CORE_ENABLE_INDEX, 1);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_BN2_IDX_INDEX, fdResult.bN2Idx[curTaskIdx]);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_M_IDX_INDEX, fdResult.gS1Idx[curTaskIdx]);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_WORKSPACE_IDX_INDEX, fdResult.workspaceIdx[curTaskIdx]);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_WORKSPACE_NUM_INDEX, fdResult.s2SplitNum[curTaskIdx]);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_M_START_INDEX, fdResult.mStart[i]);
-        sliMetadata.SetFdMetadata(i, optiling::SLD_M_NUM_INDEX, fdResult.mLen[i]);
+
+        auto &fdRes = result.sectionFdResult[secIdx];
+        for (uint32_t aivIdx = 0; aivIdx < fdRes.usedVecNum; ++aivIdx) {
+            uint32_t curTaskIdx = fdRes.taskIdx[aivIdx];
+            sliMetadata.SetFdMetadata(secIdx, aivIdx, optiling::SLD_BN2_IDX_INDEX, fdRes.bN2Idx[curTaskIdx]);
+            sliMetadata.SetFdMetadata(secIdx, aivIdx, optiling::SLD_M_IDX_INDEX, fdRes.gS1Idx[curTaskIdx]);
+            sliMetadata.SetFdMetadata(secIdx, aivIdx, optiling::SLD_WORKSPACE_IDX_INDEX,
+                                      fdRes.workspaceIdx[curTaskIdx]);
+            sliMetadata.SetFdMetadata(secIdx, aivIdx, optiling::SLD_WORKSPACE_NUM_INDEX,
+                                      fdRes.s2SplitNum[curTaskIdx]);
+            sliMetadata.SetFdMetadata(secIdx, aivIdx, optiling::SLD_M_START_INDEX, fdRes.mStart[aivIdx]);
+            sliMetadata.SetFdMetadata(secIdx, aivIdx, optiling::SLD_M_NUM_INDEX, fdRes.mLen[aivIdx]);
+        }
     }
     return true;
 }

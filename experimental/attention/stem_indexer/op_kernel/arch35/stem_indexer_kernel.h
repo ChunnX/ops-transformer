@@ -273,7 +273,9 @@ __aicore__ inline void SIPreload<SIT>::GetFASectionInfo(uint32_t sectionIdx)
     uint32_t s2EndIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_SEC_S2_END_INDEX, sectionIdx);
 
     uint32_t bN2EndRhs = faMetaDataGm.GetValue(bN2EndIndex);
-    if (bN2EndRhs == 0U) {
+    uint32_t mEndRhs = faMetaDataGm.GetValue(mEndIndex);
+    uint32_t s2EndRhs = faMetaDataGm.GetValue(s2EndIndex);
+    if (bN2EndRhs == 0U && mEndRhs == 0U && s2EndRhs == 0U) {
         splitCoreInfo.isCoreEnable = false;
         return;
     }
@@ -283,8 +285,8 @@ __aicore__ inline void SIPreload<SIT>::GetFASectionInfo(uint32_t sectionIdx)
     splitCoreInfo.gS1Start = faMetaDataGm.GetValue(mStartIndex);
     splitCoreInfo.s2Start = faMetaDataGm.GetValue(s2StartIndex);
     splitCoreInfo.bN2End = bN2EndRhs;
-    splitCoreInfo.gS1End = faMetaDataGm.GetValue(mEndIndex);
-    splitCoreInfo.s2End = faMetaDataGm.GetValue(s2EndIndex);
+    splitCoreInfo.gS1End = mEndRhs;
+    splitCoreInfo.s2End = s2EndRhs;
 
     if (splitCoreInfo.s2End != 0) {
         splitCoreInfo.s2End = splitCoreInfo.s2End - 1;
