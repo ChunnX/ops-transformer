@@ -222,6 +222,7 @@
 - [aclnnScatterPaCache](../../attention/scatter_pa_cache/docs/aclnnScatterPaCache.md)
 - [aclnnScatterPaKvCache](../../attention/scatter_pa_kv_cache/docs/aclnnScatterPaKvCache.md)
 - [aclnnScatterPaKvCacheWithKScale](../../attention/scatter_pa_kv_cache_with_k_scale/docs/aclnnScatterPaKvCacheWithKScale.md)
+- [aclnnStemOamPrepVarlenQ](../../attention/stem_oam_prep_varlen_q/docs/aclnnStemOamPrepVarlenQ.md)
 - [aclnnSparseFlashAttention](../../attention/sparse_flash_attention/docs/aclnnSparseFlashAttention.md)
 - [aclnnSparseFlashAttentionV2](../../attention/sparse_flash_attention/docs/aclnnSparseFlashAttentionV2.md)
 - [aclnnSparseFlashAttentionGrad](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGrad.md)
