@@ -930,7 +930,7 @@ template <typename ElementA, typename EpilogueElementA, typename ElementB, typen
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false,
           bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
-__aicore__ inline void GroupMatmulSwigluQuant(
+__aicore__ inline void GroupMatmulSwigluQuantWave(
     BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
                                L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved, IsWaveFlagGrained> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
@@ -946,8 +946,8 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
-// Preserve the legacy eight-argument call contract. Only the interleaved wave
-// path needs to keep ping-pong state across calls.
+// Preserve the legacy/layered call contract. Wave-only ping-pong and
+// fine-grained flag state are kept behind GroupMatmulSwigluQuantWave.
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false>
@@ -956,28 +956,13 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                                L1_TILE_N, TopkWeightsPrefetch> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint32_t expertBeforeCnt,
-    uint32_t expertIdx)
+    uint32_t expertIdx = 0)
 {
     uint16_t pingpongIdx = 0;
-    GroupMatmulSwigluQuant<ElementA, EpilogueElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
-                           IsWeightNZ, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, false, false>(
+    GroupMatmulSwigluQuantWave<ElementA, EpilogueElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
+                               IsWeightNZ, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, false, false>(
         epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom, expertBeforeCnt, expertIdx,
         pingpongIdx);
-}
-
-// Keep the legacy/layered call contract unchanged. Their non-interleaved
-// epilogue does not carry ping-pong state across expert calls.
-template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
-          typename ElementMxScaleB, bool IsWeightNZ = false, bool IsShared = false>
-__aicore__ inline void GroupMatmulSwigluQuant(
-    BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true> &epilogueOp,
-    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom)
-{
-    uint16_t pingpongIdx = 0;
-    GroupMatmulSwigluQuant<ElementA, EpilogueElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
-                           IsWeightNZ, L1_TILE_M_256, L1_TILE_M_256, false, IsShared, false, false>(
-        epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom, 0U, 0U, pingpongIdx);
 }
 
 // =================================================================================================

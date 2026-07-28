@@ -2122,12 +2122,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithS
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
             params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                                                QuantScaleOutType, QuantScaleOutType, true, IsShared>(
-                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom);
+                                                QuantScaleOutType, QuantScaleOutType, true, MegaMoeImpl::L1_TILE_M_256,
+                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
+                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, 0);
         } else {
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                                                QuantScaleOutType, QuantScaleOutType, false, IsShared>(
-                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom);
+                                                QuantScaleOutType, QuantScaleOutType, false, MegaMoeImpl::L1_TILE_M_256,
+                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
+                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, 0);
         }
     }
 }
