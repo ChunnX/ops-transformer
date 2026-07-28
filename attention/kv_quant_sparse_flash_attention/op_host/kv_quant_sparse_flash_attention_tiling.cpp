@@ -260,7 +260,7 @@ void QSFAMlaTiling::GenTilingKey()
 
     tilingKey_ = GET_TPL_TILING_KEY(0U, pageAttention, layoutQuery, layoutKV, \
         perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE, static_cast<uint32_t>(qsfaInfo_->gSize > 64)); // G大于64时核间切G
-    
+
     OP_LOGI(qsfaInfo_->opName, "QSFA tilingKey_: %lu.", tilingKey_);
 }
 
@@ -607,7 +607,7 @@ void QSFATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberLi
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
         qsfaOssNum << std::to_string(expectNumberList[i]);
         if (i < expectNumberList.size() - 1) {
-            qsfaOssNum << ", ";
+            qsfaOssNum << " or ";
         }
     }
 
@@ -869,20 +869,19 @@ ge::graphStatus QSFATilingCheck::CheckBlockTable() const
 {
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor != nullptr,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, BLOCK_TABLE_NAME.c_str(),
-                Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, BLOCK_TABLE_NAME.c_str(),
                 "When the layout_kv is " + QSFALayoutToSerialString(kvLayout_) + ", block_table should be null"),
             return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
-    
+
     uint32_t blockTableBatch = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(blockTableBatch != bSize_,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, BLOCK_TABLE_NAME.c_str(),
             Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
             "The first dim of " + BLOCK_TABLE_NAME + " should be equal to batch size " + std::to_string(bSize_)),
         return ge::GRAPH_FAILED);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1121,7 +1120,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSizes() const
             Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
             "batch_size should be greater than 0, but got " + std::to_string(bSize_)),
         return ge::GRAPH_FAILED);
-        
+
     OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == QSFALayout::TND),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
             Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
@@ -1216,11 +1215,11 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantLayout() const
         "TND"
     };
     std::string layoutQuery = opParamInfo_.layoutQuery;
-    OP_CHECK_IF(std::find(qsfaLayoutSupportList.begin(),
-        qsfaLayoutSupportList.end(), layoutQuery) == qsfaLayoutSupportList.end(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_query", layoutQuery.c_str(),
-            "layoutQuery only supports BSND/TND"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(std::find(qsfaLayoutSupportList.begin(), qsfaLayoutSupportList.end(), layoutQuery) ==
+                    qsfaLayoutSupportList.end(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_query", layoutQuery.c_str(),
+                    "layoutQuery only supports BSND or TND"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1232,16 +1231,15 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
             "The dtype of query must be " + QSFADataTypeToSerialString(ge::DT_BF16) +
             " and " + QSFADataTypeToSerialString(ge::DT_FLOAT16)),
         return ge::GRAPH_FAILED);
-    
+
     if (isA5_) {
-        OP_CHECK_IF(inputKvType_ != ge::DT_FLOAT8_E4M3FN &&
-                    inputKvType_ != ge::DT_HIFLOAT8 &&
-                    inputKvType_ != ge::DT_INT8,
+        OP_CHECK_IF(
+            inputKvType_ != ge::DT_FLOAT8_E4M3FN && inputKvType_ != ge::DT_HIFLOAT8 && inputKvType_ != ge::DT_INT8,
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "key and value",
                 QSFADataTypeToSerialString(inputKvType_).c_str(),
                 "The dtype of key and value must be " +
-                QSFADataTypeToSerialString(ge::DT_FLOAT8_E4M3FN) + ", " +
-                QSFADataTypeToSerialString(ge::DT_HIFLOAT8) + ", " +
+                QSFADataTypeToSerialString(ge::DT_FLOAT8_E4M3FN) + " or " +
+                QSFADataTypeToSerialString(ge::DT_HIFLOAT8) + " or " +
                 QSFADataTypeToSerialString(ge::DT_INT8)),
             return ge::GRAPH_FAILED);
     } else {
@@ -1312,14 +1310,14 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantPa() const
             "when page attention is enabled, block_size(" + std::to_string(blockSize_) +
             ") should be in range (0, " + std::to_string(MAX_BLOCK_SIZE) + "]"),
         return ge::GRAPH_FAILED);
-    
+
     OP_CHECK_IF(blockSize_ % 16 > 0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
             Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
             "when page attention is enabled, block_size(" + std::to_string(blockSize_) +
             ") should be 16-aligned"),
         return ge::GRAPH_FAILED);
-    
+
     OP_CHECK_IF(blockSize_ % sparseBlockSize_ > 0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
             Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
@@ -1978,7 +1976,7 @@ void QSFAInfoParser::FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo)
     qsfaInfo.actualLenDimsQ = actualLenDimsQ_;
     qsfaInfo.actualLenDimsKV = actualLenDimsKV_;
     qsfaInfo.maxActualseq = maxActualseq_;
-    
+
     qsfaInfo.actualQSeqLenFlag = (opParamInfo_.actualSeqLengthsQ.tensor != nullptr);
     qsfaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
 
