@@ -2239,13 +2239,9 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for split fuse failed"),
             return ge::GRAPH_FAILED);
         // 支持qs=0场景：TND布局下actualSeqLengthQ为累加和数组，某batch的qs=0
-        // （首轴为0：actualSeqQ[0]==0；或连续轴相等：actualSeqQ[i]==actualSeqQ[i-1]）时，
-        // tiling会自动将该batch的curTaskNum计为0，kernel跳过，无需特殊处理。
-        // 但当所有batch的qs均为0时（queryS==0），totalTaskNum=0，BATCH_MODE_SCHEDULE下
-        // 多核空转可能导致同步异常，故强制单核执行。
-        if (queryS == 0) {
-            context->SetBlockDim(1);
-        }
+        // if (queryS == 0) {
+        //     context->SetBlockDim(1);
+        // }
     } else if (usingIFA) { // IFA tiling process
         OP_CHECK_IF(TilingProcess4IFA(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for ifa failed"),

@@ -9504,6 +9504,16 @@ class TestFIAV4SplitFuse():
                 cu_seqlen += q_seqlen
                 kv_seqlen_now += k_seqlen
                 continue
+            # kvs=0场景（PA下actualSeqKV[i]==0）：有query但无KV，输出为0、lse为-inf。
+            # 跳过ref计算避免np.stack对空list报错，直接填充golden结果。
+            if k_seqlen == 0:
+                output[cu_seqlen: cu_seqlen + q_seqlen, :, :] = 0
+                golden_gpu_output[cu_seqlen: cu_seqlen + q_seqlen, :, :] = 0
+                golden_lse_output[:, cu_seqlen: cu_seqlen + q_seqlen] = -np.inf
+                golden_gpu_lse_output[:, cu_seqlen: cu_seqlen + q_seqlen] = -np.inf
+                cu_seqlen += q_seqlen
+                kv_seqlen_now += k_seqlen
+                continue
 
             q = None
             if attention_inputs.auxAttrs.layout_dtype == 1:
