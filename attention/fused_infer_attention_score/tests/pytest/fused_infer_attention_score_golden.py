@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 
 
-class FlashAttentionGolden:
-    """Flash Attention Golden reference implementation (non-quantized).
+class FusedInferAttentionScoreGolden:
+    """FusedInferAttentionScore Golden reference implementation (non-quantized).
 
     Supports two computation modes:
       - "full":    per-batch bmm(Q,K) -> softmax -> bmm(P,V)
@@ -18,6 +18,7 @@ class FlashAttentionGolden:
 
     TILE_SIZE = 2048
     EPSILON = 1e-20
+    TILED_CROSSOVER = 3 * 1024 * 1024  # S1*S2 > this -> tiled saves memory
 
     def __init__(
         self,
@@ -53,21 +54,22 @@ class FlashAttentionGolden:
         seqused_kv: Optional[torch.Tensor] = None,
         sinks: Optional[torch.Tensor] = None,
         softmax_scale: Optional[float] = None,
-        mask_mode: int = 0,
-        attn_mask: Optional[torch.Tensor] = None,
+        sparse_mode: int = 0,
+        atten_mask: Optional[torch.Tensor] = None,
         layout_q: str = "BSND",
         layout_kv: str = "BSND",
         layout_out: str = "BSND",
         return_softmax_lse: int = 0,
         device_mode: str = "cpu",
-        compute_mode: str = "tiled",
+        compute_mode: str = "auto",
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Compute flash attention golden reference.
+        """Compute fused_infer_attention_score golden reference.
 
         Args:
             query_rope: RoPE part of Q, concatenated to Q along last dim (MLA).
             key_rope: RoPE part of K, concatenated to K along last dim (MLA).
-            compute_mode: "tiled" for block-wise online softmax,
+            compute_mode: "auto" selects based on S1*S2 crossover,
+                          "tiled" for block-wise online softmax,
                           "full" for per-batch full bmm.
 
         Returns:
@@ -77,8 +79,8 @@ class FlashAttentionGolden:
         """
         if device_mode not in ("cpu", "npu"):
             raise ValueError(f"device_mode must be 'cpu' or 'npu', got {device_mode}")
-        if compute_mode not in ("tiled", "full"):
-            raise ValueError(f"compute_mode must be 'tiled' or 'full', got {compute_mode}")
+        if compute_mode not in ("auto", "tiled", "full"):
+            raise ValueError(f"compute_mode must be 'auto', 'tiled' or 'full', got {compute_mode}")
 
         if device_mode == "npu":
             for name, t in [("q", q), ("k", k), ("v", v)]:
@@ -103,8 +105,8 @@ class FlashAttentionGolden:
                 seqused_q = seqused_q.cpu()
             if seqused_kv is not None:
                 seqused_kv = seqused_kv.cpu()
-            if attn_mask is not None:
-                attn_mask = attn_mask.cpu()
+            if atten_mask is not None:
+                atten_mask = atten_mask.cpu()
             if sinks is not None:
                 sinks = sinks.cpu()
 
@@ -133,12 +135,25 @@ class FlashAttentionGolden:
         else:
             kv_lens = None
 
+        # Resolve auto compute_mode: tiled saves memory only when S1*S2 is large
+        # and S1 >= TILE_SIZE (otherwise single partial Q tile can't amortize overhead)
+        if compute_mode == "auto":
+            if q_lens is not None and kv_lens is not None:
+                max_sq = max(q_lens)
+                max_product = max(sq * skv for sq, skv in zip(q_lens, kv_lens))
+            else:
+                max_sq = q.shape[2] if layout_q == "BNSD" else q.shape[1]
+                max_skv = k.shape[2] if layout_kv == "BNSD" else k.shape[1]
+                max_product = max_sq * max_skv
+            compute_mode = "tiled" if (max_sq >= self._tile_size and
+                                       max_product > self.TILED_CROSSOVER) else "full"
+
         # 3. Compute attention — per-batch to avoid OOM on large TND inputs
         out_f32, lse_f32 = self._compute_per_batch(
             q, k, v, q_lens, kv_lens,
             layout_q, layout_kv, cu_seqlens_q, cu_seqlens_kv,
             block_table, seqused_kv,
-            mask_mode, attn_mask, scale, sinks, compute_mode,
+            sparse_mode, atten_mask, scale, sinks, compute_mode,
             key_rope,
         )
 
@@ -184,8 +199,8 @@ class FlashAttentionGolden:
         cu_seqlens_kv: Optional[torch.Tensor],
         block_table: Optional[torch.Tensor],
         seqused_kv: Optional[torch.Tensor],
-        mask_mode: int,
-        attn_mask: Optional[torch.Tensor],
+        sparse_mode: int,
+        atten_mask: Optional[torch.Tensor],
         scale: float,
         sinks: Optional[torch.Tensor],
         compute_mode: str = "tiled",
@@ -266,7 +281,7 @@ class FlashAttentionGolden:
             )
 
             # Build mask for this batch
-            mask_b = self._build_batch_mask(sq, skv, mask_mode, attn_mask, q.device)
+            mask_b = self._build_batch_mask(sq, skv, sparse_mode, atten_mask, q.device)
 
             # Compute per head
             compute_fn = self._compute_tiled_single if compute_mode == "tiled" else self._compute_full_single
@@ -279,7 +294,7 @@ class FlashAttentionGolden:
                     q_bh = q_b[0, qh, :sq, :]
                     sink = sinks[qh] if sinks is not None else None
                     if compute_mode == "tiled":
-                        o, l = compute_fn(q_bh, k_bh, v_bh, mask_b, scale, sink, mask_mode, delta)
+                        o, l = compute_fn(q_bh, k_bh, v_bh, mask_b, scale, sink, sparse_mode, delta)
                     else:
                         o, l = compute_fn(q_bh, k_bh, v_bh, mask_b, scale, sink)
                     if is_tnd_out:
@@ -401,7 +416,7 @@ class FlashAttentionGolden:
 
         # Concatenate key_rope to K per-batch (MLA support)
         if key_rope is not None:
-            kr_b = FlashAttentionGolden._extract_key_rope_batch(
+            kr_b = FusedInferAttentionScoreGolden._extract_key_rope_batch(
                 key_rope, b, skv, layout_kv, block_table,
             )
             k_b = torch.cat([k_b, kr_b], dim=-1)
@@ -418,7 +433,7 @@ class FlashAttentionGolden:
     ) -> torch.Tensor:
         """Extract single batch key_rope as (1, N_kv, S, rope_d) float32."""
         if layout_kv in ("BNSD", "BSND", "TND"):
-            return FlashAttentionGolden._extract_batch_bnsd_f32(
+            return FusedInferAttentionScoreGolden._extract_batch_bnsd_f32(
                 key_rope, key_rope, key_rope, b, skv, skv, layout_kv, layout_kv,
                 None, None, None, None,
             )[1]
@@ -488,7 +503,7 @@ class FlashAttentionGolden:
         mask: Optional[torch.Tensor],  # (Sq, Skv) bool, True=mask out
         scale: float,
         sink: Optional[float],
-        mask_mode: int = 0,
+        sparse_mode: int = 0,
         delta: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Tiled online softmax for a single (batch, head) pair.
@@ -496,7 +511,7 @@ class FlashAttentionGolden:
         Scores matrix Q@K^T of shape (Sq, Skv) is processed in square
         tiles of size (TILE, TILE). K/V blocks are 1:1 (no pairing).
 
-        When mask is None but mask_mode=3, causal masking is applied
+        When mask is None but sparse_mode=3, causal masking is applied
         per-tile to avoid materializing the full (Sq, Skv) mask.
 
         Returns (out, lse) where out is (Sq, dv) and lse is (Sq,).
@@ -546,7 +561,7 @@ class FlashAttentionGolden:
                     S_ij = S_ij.masked_fill(
                         mask[Sq_start:Sq_end, Sk_start:Sk_end], float("-inf")
                     )
-                elif mask_mode == 3:
+                elif sparse_mode == 3:
                     # Per-tile causal: k_idx > q_idx + delta
                     q_idx = torch.arange(Sq_start, Sq_end, device=q.device).unsqueeze(1)
                     k_idx = torch.arange(Sk_start, Sk_end, device=q.device).unsqueeze(0)
@@ -630,8 +645,8 @@ class FlashAttentionGolden:
         self,
         sq: int,
         skv: int,
-        mask_mode: int,
-        attn_mask: Optional[torch.Tensor],
+        sparse_mode: int,
+        atten_mask: Optional[torch.Tensor],
         device: torch.device,
     ) -> Optional[torch.Tensor]:
         """Build (sq, skv) bool mask for a single batch. True = mask out.
@@ -639,7 +654,7 @@ class FlashAttentionGolden:
         For large sq*skv, this would OOM. Instead return None and let
         _compute_tiled_single handle masking per-tile.
         """
-        if mask_mode == 0:
+        if sparse_mode == 0:
             return None
 
         # For large matrices, skip full mask creation — tile-level masking
@@ -647,14 +662,14 @@ class FlashAttentionGolden:
         if sq * skv > 64 * 1024 * 1024:  # > 64M elements
             return None
 
-        if mask_mode == 3:
+        if sparse_mode == 3:
             delta = skv - sq
             q_idx = torch.arange(sq, device=device).unsqueeze(1)
             k_idx = torch.arange(skv, device=device).unsqueeze(0)
             return k_idx > (q_idx + delta)
 
-        if attn_mask is not None:
-            return attn_mask[:sq, :skv].to(torch.bool)
+        if atten_mask is not None:
+            return atten_mask[:sq, :skv].to(torch.bool)
 
         return None
 
@@ -845,8 +860,8 @@ class FlashAttentionGolden:
     # ==========================================================================
 
 
-class FlashAttention(nn.Module):
-    """flash_attn operator Module wrapper with golden interface."""
+class FusedInferAttentionScore(nn.Module):
+    """FusedInferAttentionScore operator Module wrapper with golden interface."""
 
     def __init__(
         self,
@@ -854,7 +869,7 @@ class FlashAttention(nn.Module):
         num_heads_kv: int,
         head_dim: int = 128,
         softmax_scale: Optional[float] = None,
-        mask_mode: int = 0,
+        sparse_mode: int = 0,
         layout_q: str = "BSND",
         layout_kv: str = "BSND",
         layout_out: str = "BSND",
@@ -866,7 +881,7 @@ class FlashAttention(nn.Module):
         self._softmax_scale = (
             softmax_scale if softmax_scale is not None else 1.0 / math.sqrt(head_dim)
         )
-        self._mask_mode = mask_mode
+        self._sparse_mode = sparse_mode
         self._layout_q = layout_q
         self._layout_kv = layout_kv
         self._layout_out = layout_out
@@ -883,14 +898,14 @@ class FlashAttention(nn.Module):
         seqused_kv: Optional[torch.Tensor] = None,
         sinks: Optional[torch.Tensor] = None,
         metadata: Optional[torch.Tensor] = None,
-        attn_mask: Optional[torch.Tensor] = None,
+        atten_mask: Optional[torch.Tensor] = None,
         win_left: int = -1,
         win_right: int = -1,
         max_seqlen_q: int = -1,
         max_seqlen_kv: int = -1,
         return_softmax_lse: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Call NPU flash_attn operator."""
+        """Call NPU fused_infer_attention_score operator."""
         import cann_ops_transformer
 
         attn_out, softmax_lse = cann_ops_transformer.ops.flash_attn(
@@ -903,8 +918,8 @@ class FlashAttention(nn.Module):
             sinks=sinks,
             metadata=metadata,
             softmax_scale=self._softmax_scale,
-            mask_mode=self._mask_mode,
-            attn_mask=attn_mask,
+            sparse_mode=self._sparse_mode,
+            attn_mask=atten_mask,
             win_left=win_left,
             win_right=win_right,
             max_seqlen_q=max_seqlen_q,
@@ -930,18 +945,18 @@ class FlashAttention(nn.Module):
         seqused_kv: Optional[torch.Tensor] = None,
         sinks: Optional[torch.Tensor] = None,
         softmax_scale: Optional[float] = None,
-        mask_mode: Optional[int] = None,
-        attn_mask: Optional[torch.Tensor] = None,
+        sparse_mode: Optional[int] = None,
+        atten_mask: Optional[torch.Tensor] = None,
         layout_q: Optional[str] = None,
         layout_kv: Optional[str] = None,
         layout_out: Optional[str] = None,
         return_softmax_lse: int = 0,
         device_mode: str = "cpu",
-        compute_mode: str = "tiled",
+        compute_mode: str = "auto",
         tile_size: Optional[int] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Call golden reference implementation."""
-        golden = FlashAttentionGolden(
+        golden = FusedInferAttentionScoreGolden(
             num_heads_q=self._num_heads_q,
             num_heads_kv=self._num_heads_kv,
             head_dim=self._head_dim,
@@ -959,8 +974,8 @@ class FlashAttention(nn.Module):
             seqused_kv=seqused_kv,
             sinks=sinks,
             softmax_scale=softmax_scale,
-            mask_mode=mask_mode if mask_mode is not None else self._mask_mode,
-            attn_mask=attn_mask,
+            sparse_mode=sparse_mode if sparse_mode is not None else self._sparse_mode,
+            atten_mask=atten_mask,
             layout_q=layout_q if layout_q is not None else self._layout_q,
             layout_kv=layout_kv if layout_kv is not None else self._layout_kv,
             layout_out=layout_out if layout_out is not None else self._layout_out,

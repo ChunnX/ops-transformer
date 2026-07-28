@@ -121,7 +121,7 @@ def write_cases_file(cases, output_path):
         '    "layout_out": ["BNSD"],',
         '    "block_size": [128],',
         '    "return_softmax_lse": [False],',
-        '    "mask_mode": [0],',
+        '    "sparse_mode": [0],',
         '    "q_range": [(-5.0, 5.0)],',
         '    "k_range": [(-5.0, 5.0)],',
         '    "v_range": [(-5.0, 5.0)],',
