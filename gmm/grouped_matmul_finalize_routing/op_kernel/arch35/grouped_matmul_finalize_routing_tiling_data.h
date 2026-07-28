@@ -29,6 +29,7 @@ struct GMMFinalizeRoutingDataParams {
     uint32_t sharedInputOffset = 0;
     uint32_t sharedInputLen = 0;
     float residualScale = 0;
+    uint16_t residualScaleBf16 = 0x3F80;
     uint32_t aQuantMode = 0;
     uint32_t bQuantMode = 0;
     uint32_t biasDtype = 0;
@@ -36,6 +37,7 @@ struct GMMFinalizeRoutingDataParams {
     uint8_t hasBias = 0;
     uint16_t deterministicFlag = 0;
     uint32_t deterWorkspaceSize = 0;
+    uint32_t reserved = 0;
 };
 #pragma pack(pop)
 
