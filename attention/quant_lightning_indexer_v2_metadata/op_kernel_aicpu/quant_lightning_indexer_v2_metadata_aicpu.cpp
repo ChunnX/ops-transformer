@@ -199,6 +199,9 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsInit()
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 2048U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (topk_ > TOPK_6K) {
+            s1BaseSize_ = S1_BASE_SIZE_SMALL;
+        }
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 128U;
     } else {
