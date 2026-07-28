@@ -405,7 +405,8 @@ public:
             if (constInfo.subBlockIdx == 1) {
                 dstOffset += s2BaseSizeCur * actVec0Align32;
             }
-            uint32_t srcOffset = i * (65 << 5);
+            constexpr uint32_t vec1BlockStride = (s2BaseSizeCur >> 2) | 0x1;
+            uint32_t srcOffset = i * (vec1BlockStride << 5);
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset],
                      {4, s2BaseSizeCur / 4, s2BaseSizeCur / 4 + 2, 0});
         }
