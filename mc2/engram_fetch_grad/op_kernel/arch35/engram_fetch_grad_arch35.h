@@ -44,7 +44,7 @@ __aicore__ inline void EngramFetchGradSyncFunc()
     } while (0)
 
 constexpr uint32_t ENGRAM_GRAD_TIMEOUT_US = 5U * 1000U * 1000U;
-constexpr uint32_t ENGRAM_GRAD_CYCLES_PER_US = 50U;
+constexpr uint32_t ENGRAM_GRAD_CYCLES_PER_US = 1000U;
 
 #define ENGRAM_GRAD_TIMEOUT_CHECK(startTime, tag)                                                                      \
     do {                                                                                                               \
@@ -380,17 +380,10 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
     uint32_t bitmapBufSize = Ceil(Ceil(segLen, BITS_PER_BYTE), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     tpipe_->InitBuffer(bitmapBuf_, bitmapBufSize);
-
-    printf("[engram_fetch_grad] Init: rankId=%u, numRanks=%u, aivId=%u, totalBlocks=%u, "
-           "winSize=%lu, tokenSlot=%lu, maxTokPerSlot=%u, sendCores=%u, recvCores=%u\n",
-           rankId_, numRanks_, aivId_, totalBlocks_, winSize_, tokenSlotSize_, maxTokensPerSlot_, numSendCores_,
-           numRecvCores_);
 }
 
 __aicore__ inline void EngramFetchGradArch35::UnsortGrad()
 {
-    printf("[engram_fetch_grad] UnsortGrad start: rankId=%u, aivId=%u, numTokens=%ld, hiddenBytes=%ld\n", rankId_,
-           aivId_, numTokens_, hiddenBytes_);
     GlobalTensor<int32_t> permGM;
     permGM.SetGlobalBuffer((__gm__ int32_t *)permOutGM_);
 
@@ -402,7 +395,6 @@ __aicore__ inline void EngramFetchGradArch35::UnsortGrad()
     }
 
     SyncAll<true>();
-    printf("[engram_fetch_grad] UnsortGrad done: rankId=%u\n", rankId_);
 }
 
 __aicore__ inline void EngramFetchGradArch35::ExchangeGrad()
@@ -500,12 +492,15 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, i
         GM_ADDR srcAddr = gradSortedGM_ + (sdispl + totalSent) * hiddenBytes_;
         uint64_t dataBytes = static_cast<uint64_t>(chunkLen) * hiddenBytes_;
 
-        ENGRAM_GRAD_WRITE_NBI(hcomm_, handle, remoteSlotAddr, srcAddr, dataBytes, "ExGrad_data");
+        GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, tokenWriteOffset_) + rankId_ * STATE_OFFSET;
+        int32_t ret = hcomm_.WriteWithNotifyNbi(handle, remoteSlotAddr, srcAddr, dataBytes, remoteCounterAddr,
+                                                static_cast<uint64_t>(localWriteCnt + 1));
+        ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u", ret,
+                       rankId_, dstRank);
         ENGRAM_GRAD_DRAIN(hcomm_, handle, "ExGrad_data");
 
         localWriteCnt++;
         totalSent += chunkLen;
-        WriteRemoteCounter(dstRank, tokenWriteOffset_, static_cast<int32_t>(localWriteCnt));
     }
 
     GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, tokenFlagOffset_) + rankId_ * STATE_OFFSET;
@@ -812,12 +807,12 @@ EngramFetchGradArch35::AccumulateGradForEntry(int32_t entryVal, uint32_t numRecv
             DataCopyPad(gradRaw, gradSrcGM, gradParams, gradPad);
             EngramFetchGradSyncFunc<HardEvent::MTE2_V>();
 
-            if (inputDtype_ == DT_BFLOAT16) {
+            if (inputDtype_ == ENGRAM_DT_BFLOAT16) {
                 LocalTensor<bfloat16_t> inTensor = pongBuf_.Get<bfloat16_t>();
                 Cast(gradTmp, inTensor, AscendC::RoundMode::CAST_NONE, static_cast<uint32_t>(hiddenDim_));
                 PipeBarrier<PIPE_V>();
                 Add(gradSumFp32, gradSumFp32, gradTmp, static_cast<uint32_t>(hiddenDim_));
-            } else if (inputDtype_ == DT_FLOAT16) {
+            } else if (inputDtype_ == ENGRAM_DT_FLOAT16) {
                 LocalTensor<half> inTensor = pongBuf_.Get<half>();
                 Cast(gradTmp, inTensor, AscendC::RoundMode::CAST_NONE, static_cast<uint32_t>(hiddenDim_));
                 PipeBarrier<PIPE_V>();
@@ -835,14 +830,14 @@ EngramFetchGradArch35::AccumulateGradForEntry(int32_t entryVal, uint32_t numRecv
 __aicore__ inline void EngramFetchGradArch35::WriteGradResult(int32_t outOffset, LocalTensor<float> &gradSumFp32,
                                                               GlobalTensor<uint8_t> &gradUniqueGM)
 {
-    if (outputDtype_ == DT_BFLOAT16) {
+    if (outputDtype_ == ENGRAM_DT_BFLOAT16) {
         LocalTensor<bfloat16_t> outTensor = pingBuf_.Get<bfloat16_t>();
         Cast(outTensor, gradSumFp32, AscendC::RoundMode::CAST_ROUND, static_cast<uint32_t>(hiddenDim_));
         EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
         DataCopyPad(gradUniqueGM[static_cast<uint64_t>(outOffset) * hiddenDim_ * sizeof(bfloat16_t)],
                     outTensor.ReinterpretCast<uint8_t>(),
                     {1U, static_cast<uint16_t>(hiddenDim_ * sizeof(bfloat16_t)), 0U, 0U});
-    } else if (outputDtype_ == DT_FLOAT16) {
+    } else if (outputDtype_ == ENGRAM_DT_FLOAT16) {
         LocalTensor<half> outTensor = pingBuf_.Get<half>();
         Cast(outTensor, gradSumFp32, AscendC::RoundMode::CAST_ROUND, static_cast<uint32_t>(hiddenDim_));
         EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
