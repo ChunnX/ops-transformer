@@ -27,6 +27,7 @@
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
+#include "acl/acl_rt.h"
 #include "../sparse_flash_mla_metadata_check.h"
 
 #ifdef __cplusplus
@@ -69,6 +70,14 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     std::string socVersionStr = npuInfo.GetSocLongVersion();
     const char *socVersion = socVersionStr.c_str();
 
+    int64_t batchConsistencyLevel = 0;
+    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &batchConsistencyLevel);
+    if (aclRet != ACL_SUCCESS) {
+        OP_LOGW("aclnnSparseFlashMlaMetadata unable to get system param batch consistency level.");
+    }
+    // bool isBatchConsistency = batchConsistencyLevel == 1 &&
+    //     socVersionStr.find("Ascend950") != std::string::npos;
+    bool isBatchConsistency = true;
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                            cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenOriKv,
@@ -156,7 +165,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
         cmpResidualKvOptionalContiguous, oriTopkLengthOptionalContiguous, cmpTopkLengthOptionalContiguous, numHeadsQ,
         numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk, cmpRatio,
         oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
-        socVersion, aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
+        socVersion, aicCoreNum, aivCoreNum, isBatchConsistency, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

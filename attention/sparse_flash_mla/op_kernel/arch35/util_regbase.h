@@ -88,6 +88,7 @@ struct RunParamStr { // 分核与切块需要使用到参数
     bool isS2Split = false;
     int64_t s2SplitIdx = 0;
     bool isFirstS2SplitCore = true;
+    int64_t baseBlockNumInTile = 1;
 };
 
 #define COMMON_RUN_INFO                                                                                                                         \
@@ -117,6 +118,7 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t multiCoreInnerIdx = 0;                                                                                                              \
     int64_t attentionOutOffset;                                                                                                                 \
     int32_t actualS1Size;          /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */                                             \
+    int32_t actualS2OriSize;       /* ori_kv的真实使用长度 */                                                                            \
     int32_t actualS2CmpSize;       /* cmp_kv的真实使用长度 */                                                                            \
     int32_t cmpResidual;           /* cmp的余数，用于mask计算 */                                                                        \
     int64_t preTokensPerBatchOri;  /* vector2 左上顶点的pretoken */                                                                        \
@@ -132,7 +134,8 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t mOuterOffset;                                                                                                                       \
     bool isS2Split = false;                                                                                                                     \
     int64_t s2SplitIdx = 0;                                                                                                                     \
-    bool isFirstS2SplitCore = true;
+    bool isFirstS2SplitCore = true;                                                                                                              \
+    int64_t baseBlockNumInTile = 1;
 
 struct RunInfo {
     COMMON_RUN_INFO;
@@ -146,6 +149,10 @@ struct RunInfo {
     uint32_t oriSparseBlockCount;
     uint32_t cmpSparseBlockCount;
     int64_t firstFdDataWorkspaceIdx = 0;
+    bool isFirstBase = true;
+    bool isLastBase = true;
+    bool needReduce = false;
+    int64_t reduceBlockId = 0;
 };
 
 #define COMMON_CONST_INFO                                                                                              \
