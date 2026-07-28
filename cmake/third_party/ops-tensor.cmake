@@ -83,11 +83,40 @@ else()
   )
   if(GIT_REMOTE_URL MATCHES "^git@|^ssh://")
     set(OPTENSOR_GIT_URL "git@gitcode.com:cann/ops-tensor.git")
-    message(STATUS "[ThirdPartyLib][ops-tensor] using SSH protocol: ${OPTENSOR_GIT_URL}")
+    set(OPTENSOR_FALLBACK_GIT_URL "https://gitcode.com/cann/ops-tensor.git")
   else()
     set(OPTENSOR_GIT_URL "https://gitcode.com/cann/ops-tensor.git")
-    message(STATUS "[ThirdPartyLib][ops-tensor] using HTTPS protocol: ${OPTENSOR_GIT_URL}")
+    set(OPTENSOR_FALLBACK_GIT_URL "git@gitcode.com:cann/ops-tensor.git")
   endif()
+
+  execute_process(
+    COMMAND git ls-remote ${OPTENSOR_GIT_URL} HEAD
+    TIMEOUT 20
+    RESULT_VARIABLE GIT_RESULT
+    ERROR_VARIABLE GIT_ERROR
+    OUTPUT_QUIET
+  )
+  if(NOT "${GIT_RESULT}" STREQUAL "0")
+    message(WARNING
+            "[ThirdPartyLib][ops-tensor] failed to access ${OPTENSOR_GIT_URL}, "
+            "trying fallback protocol: ${OPTENSOR_FALLBACK_GIT_URL}")
+    execute_process(
+      COMMAND git ls-remote ${OPTENSOR_FALLBACK_GIT_URL} HEAD
+      TIMEOUT 20
+      RESULT_VARIABLE FALLBACK_GIT_RESULT
+      ERROR_VARIABLE FALLBACK_GIT_ERROR
+      OUTPUT_QUIET
+    )
+    if(NOT "${FALLBACK_GIT_RESULT}" STREQUAL "0")
+      message(FATAL_ERROR
+              "[ThirdPartyLib][ops-tensor] failed to access ops-tensor with both protocols.\n"
+              "Primary (${OPTENSOR_GIT_URL}): ${GIT_ERROR}\n"
+              "Fallback (${OPTENSOR_FALLBACK_GIT_URL}): ${FALLBACK_GIT_ERROR}")
+    endif()
+    set(OPTENSOR_GIT_URL "${OPTENSOR_FALLBACK_GIT_URL}")
+  endif()
+  message(STATUS "[ThirdPartyLib][ops-tensor] using repository: ${OPTENSOR_GIT_URL}")
+
   include(FetchContent)
 
   FetchContent_Declare(
