@@ -300,12 +300,23 @@ public:
             bmm1Buffers_.Get().SetCrossCore();
             bmm2Buffers_.Get().SetCrossCore();
             bmm2Buffers_.Get().SetCrossCore();
+        } else {
+            l1KvPBuffers_.Get().SetEventID();
+            l1KvPBuffers_.Get().SetEventID();
+            l1KvPBuffers_.Get().SetEventID();
+            SetFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
+            SetFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
+            SetFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
         }
     }
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
         if ASCEND_IS_AIC {
+            WaitFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
+            WaitFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
+            WaitFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
+
             bmm1Buffers_.Get().WaitCrossCore();
             bmm1Buffers_.Get().WaitCrossCore();
             bmm2Buffers_.Get().WaitCrossCore();
