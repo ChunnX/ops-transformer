@@ -345,7 +345,7 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV2(gert::InferDataTypeC
     bool quantFlag = (scalesType != ge::DT_UNDEFINED) ? true : false;
     OP_LOGD(context->GetNodeName(), "quantFlag id %d.", quantFlag);
     ge::DataType expandXDtype = ge::DT_INT8;
-    if (!quantFlag && (*quantMode == QuantMode::QUANT_MODE_NO_QUANT)) {
+    if ((*quantMode == QuantMode::QUANT_MODE_NO_QUANT) && (!quantFlag || xDtype == ge::DT_INT32)) {
         expandXDtype = xDtype;
     } else if ((yDtypePtr != nullptr) && (*yDtypePtr != ge::DT_UNDEFINED)) {
         int64_t yDtype = *yDtypePtr;
