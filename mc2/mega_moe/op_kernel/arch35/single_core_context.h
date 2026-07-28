@@ -42,8 +42,8 @@ struct DispatchPrepareContext {
     TokenShapeContext tokenShape;
 };
 
-__aicore__ inline void TilingByJobContext(int32_t totalLen, int32_t &jobLen, int32_t &jobOffset,
-    uint32_t jobIndex, uint32_t totalJobs, int32_t align = ALIGN_32)
+__aicore__ inline void TilingByJobContext(int32_t totalLen, int32_t &jobLen, int32_t &jobOffset, uint32_t jobIndex,
+                                          uint32_t totalJobs, int32_t align = ALIGN_32)
 {
     if (totalJobs == 0U || jobIndex >= totalJobs) {
         jobLen = 0;
@@ -51,8 +51,7 @@ __aicore__ inline void TilingByJobContext(int32_t totalLen, int32_t &jobLen, int
         return;
     }
     int32_t lenPerJob = Ops::Base::CeilDiv(static_cast<uint32_t>(totalLen), totalJobs);
-    int32_t lenPerJobAlign =
-        Ops::Base::CeilAlign(static_cast<uint32_t>(lenPerJob), static_cast<uint32_t>(align));
+    int32_t lenPerJobAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(lenPerJob), static_cast<uint32_t>(align));
     jobLen = lenPerJobAlign;
     jobOffset = static_cast<int32_t>(jobIndex) * lenPerJobAlign;
     if (jobOffset >= totalLen) {

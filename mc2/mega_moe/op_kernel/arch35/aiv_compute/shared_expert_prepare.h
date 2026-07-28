@@ -32,10 +32,9 @@ struct SharedExpertPrepareScratch {
 
 // Prototype: MegaMoe::SharedExpertCopyInput. Splits interleaved token data and scale for one logical AIV job.
 template <typename ActivationType, typename QuantScaleType>
-__aicore__ inline void SharedExpertCopyInputOneCore(
-    const DispatchPrepareContext &context,
-    const SharedExpertPrepareArgs &args,
-    SharedExpertPrepareScratch<ActivationType> &scratch)
+__aicore__ inline void SharedExpertCopyInputOneCore(const DispatchPrepareContext &context,
+                                                    const SharedExpertPrepareArgs &args,
+                                                    SharedExpertPrepareScratch<ActivationType> &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -47,38 +46,28 @@ __aicore__ inline void SharedExpertCopyInputOneCore(
 
     int32_t jobTokenNum;
     int32_t jobTokenOffset;
-    TilingByJobContext(
-        context.tokenShape.tokenNum, jobTokenNum, jobTokenOffset, job.jobIndex, job.totalJobs, 1);
+    TilingByJobContext(context.tokenShape.tokenNum, jobTokenNum, jobTokenOffset, job.jobIndex, job.totalJobs, 1);
 
-    constexpr uint32_t activationElemsPerByte =
-        Std::IsSame<ActivationType, uint8_t>::value ? 2U : 1U;
+    constexpr uint32_t activationElemsPerByte = Std::IsSame<ActivationType, uint8_t>::value ? 2U : 1U;
     int64_t tokenDataElementCount = context.tokenShape.tokenHiddenDim / activationElemsPerByte;
-    int64_t tokenScaleElementCount =
-        Ops::Base::CeilDiv(
-            static_cast<int64_t>(context.tokenShape.tokenHiddenDim),
-            static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-        MXFP_MULTI_BASE_SIZE;
+    int64_t tokenScaleElementCount = Ops::Base::CeilDiv(static_cast<int64_t>(context.tokenShape.tokenHiddenDim),
+                                                        static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
+                                     MXFP_MULTI_BASE_SIZE;
     uint32_t copyTokenScaleBytes = Ops::Base::CeilAlign(
-        static_cast<int64_t>(args.quantTokenAlignBytes + args.quantScaleAlignBytes),
-        static_cast<int64_t>(ALIGN_32));
+        static_cast<int64_t>(args.quantTokenAlignBytes + args.quantScaleAlignBytes), static_cast<int64_t>(ALIGN_32));
 
     GlobalTensor<ActivationType> srcGlobalTensor;
     GlobalTensor<ActivationType> dataDstGlobalTensor;
     GlobalTensor<QuantScaleType> scaleDstGlobalTensor;
-    srcGlobalTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ ActivationType *>(args.quantTokenScalePtr));
-    dataDstGlobalTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ ActivationType *>(args.sharedExpertInputDataPtr));
-    scaleDstGlobalTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ QuantScaleType *>(args.sharedExpertInputScalePtr));
+    srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(args.quantTokenScalePtr));
+    dataDstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(args.sharedExpertInputDataPtr));
+    scaleDstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleType *>(args.sharedExpertInputScalePtr));
 
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < jobTokenNum; ++index) {
         int32_t tokenIdx = jobTokenOffset + index;
-        uint64_t srcOffset =
-            static_cast<uint64_t>(tokenIdx) *
-            static_cast<uint64_t>(args.quantTokenScaleAlignBytes);
+        uint64_t srcOffset = static_cast<uint64_t>(tokenIdx) * static_cast<uint64_t>(args.quantTokenScaleAlignBytes);
         bool useFirstBuffer = index % DOUBLE_BUFFER == 0;
         auto event = useFirstBuffer ? EVENT_ID0 : EVENT_ID1;
         auto copyBuffer = useFirstBuffer ? scratch.copyBuffer0 : scratch.copyBuffer1;
@@ -90,14 +79,10 @@ __aicore__ inline void SharedExpertCopyInputOneCore(
 
         LocalTensor<QuantScaleType> scaleBuffer =
             copyBuffer[args.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
-        DataCopyPad(
-            dataDstGlobalTensor[static_cast<int64_t>(tokenIdx) * tokenDataElementCount],
-            copyBuffer,
-            {1, static_cast<uint16_t>(tokenDataElementCount * sizeof(ActivationType)), 0U, 0U, 0U});
-        DataCopyPad(
-            scaleDstGlobalTensor[static_cast<int64_t>(tokenIdx) * tokenScaleElementCount],
-            scaleBuffer,
-            {1, static_cast<uint16_t>(tokenScaleElementCount * sizeof(QuantScaleType)), 0U, 0U, 0U});
+        DataCopyPad(dataDstGlobalTensor[static_cast<int64_t>(tokenIdx) * tokenDataElementCount], copyBuffer,
+                    {1, static_cast<uint16_t>(tokenDataElementCount * sizeof(ActivationType)), 0U, 0U, 0U});
+        DataCopyPad(scaleDstGlobalTensor[static_cast<int64_t>(tokenIdx) * tokenScaleElementCount], scaleBuffer,
+                    {1, static_cast<uint16_t>(tokenScaleElementCount * sizeof(QuantScaleType)), 0U, 0U, 0U});
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);

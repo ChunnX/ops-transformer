@@ -34,16 +34,15 @@ struct SendMaskScratch {
 
 // Prototype: MegaMoe::SendMaskCal. Builds and sends per-expert masks for one logical AIV job using route batches.
 __aicore__ inline void SendMaskCalOneCore(const DispatchPrepareContext &context, const SendMaskArgs &args,
-    SendMaskScratch &scratch)
+                                          SendMaskScratch &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
     const AivJobContext &job = context.job;
     const MegaMoeSendMaskBufferConfig &bufferConfig = args.bufferConfig;
-    if (job.totalJobs == 0U || job.jobIndex >= job.totalJobs ||
-        bufferConfig.routeItemsPerBatch <= 0 || bufferConfig.routeBatchCount <= 0 ||
-        bufferConfig.bufferCount <= 0) {
+    if (job.totalJobs == 0U || job.jobIndex >= job.totalJobs || bufferConfig.routeItemsPerBatch <= 0 ||
+        bufferConfig.routeBatchCount <= 0 || bufferConfig.bufferCount <= 0) {
         return;
     }
 
@@ -52,8 +51,7 @@ __aicore__ inline void SendMaskCalOneCore(const DispatchPrepareContext &context,
     int32_t totalExperts = static_cast<int32_t>(topology.worldSize * topology.expertPerRank);
     int32_t jobIndex = static_cast<int32_t>(job.jobIndex);
     int32_t totalJobs = static_cast<int32_t>(job.totalJobs);
-    int32_t ownedExpertNum = jobIndex < totalExperts ?
-        Ops::Base::CeilDiv(totalExperts - jobIndex, totalJobs) : 0;
+    int32_t ownedExpertNum = jobIndex < totalExperts ? Ops::Base::CeilDiv(totalExperts - jobIndex, totalJobs) : 0;
     if (ownedExpertNum <= 0) {
         return;
     }
@@ -97,31 +95,31 @@ __aicore__ inline void SendMaskCalOneCore(const DispatchPrepareContext &context,
             int32_t localExpertId = globalExpertId % static_cast<int32_t>(topology.expertPerRank);
             int32_t bufferIdx = iter % bufferConfig.bufferCount;
             TEventID eventId = static_cast<TEventID>(bufferIdx);
-            LocalTensor<uint8_t> maskBuf =
-                scratch.sendMaskTensor[bufferIdx * bufferConfig.bufferBytes];
+            LocalTensor<uint8_t> maskBuf = scratch.sendMaskTensor[bufferIdx * bufferConfig.bufferBytes];
             LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
 
             WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);
             CompareScalar(maskBuf, scratch.topkIdsTensor, globalExpertId, AscendC::CMPMODE::EQ,
-                bufferConfig.routeItemsPerBatch);
+                          bufferConfig.routeItemsPerBatch);
             uint64_t batchMatchedRouteCount = 0;
             GatherMask(scratch.sendGatherOutTensor, scratch.topkIdsTensor, maskBufU32, true,
-                static_cast<uint32_t>(validLen), {1, 1, 0, 0}, batchMatchedRouteCount);
+                       static_cast<uint32_t>(validLen), {1, 1, 0, 0}, batchMatchedRouteCount);
             SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
 
-            int32_t expertMatchedRouteCount = scratch.sendCntAccTensor.GetValue(ownedIdx) +
-                static_cast<int32_t>(batchMatchedRouteCount);
+            int32_t expertMatchedRouteCount =
+                scratch.sendCntAccTensor.GetValue(ownedIdx) + static_cast<int32_t>(batchMatchedRouteCount);
             scratch.sendCntAccTensor.SetValue(ownedIdx, expertMatchedRouteCount);
             if (isLastBatch) {
-                maskBuf.template ReinterpretCast<int32_t>().SetValue(
-                    sliceBytes / sizeof(int32_t), expertMatchedRouteCount);
+                maskBuf.template ReinterpretCast<int32_t>().SetValue(sliceBytes / sizeof(int32_t),
+                                                                     expertMatchedRouteCount);
             }
             SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
 
             uint64_t dstOffset = args.maskWinOffset +
-                static_cast<uint64_t>(localExpertId * static_cast<int32_t>(topology.worldSize) +
-                    static_cast<int32_t>(topology.rankId)) * args.maskSlotSize +
-                static_cast<uint64_t>(batchStart / 8);
+                                 static_cast<uint64_t>(localExpertId * static_cast<int32_t>(topology.worldSize) +
+                                                       static_cast<int32_t>(topology.rankId)) *
+                                     args.maskSlotSize +
+                                 static_cast<uint64_t>(batchStart / 8);
             dstMaskGm.SetGlobalBuffer((__gm__ uint8_t *)(args.winRankAddr[dstRank] + dstOffset));
             DataCopyPad(dstMaskGm, maskBuf, {1U, static_cast<uint32_t>(pushBytes), 0U, 0U, 0U});
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);

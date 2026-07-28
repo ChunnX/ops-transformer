@@ -15,16 +15,15 @@
 // the shared GMM policies and Config template have been defined.
 
 // Prototype: AicComputeGeneric. Executes the generic GMM tile loop on one logical AIC block.
-template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename ElementC,
-    bool IsShared, bool TopkWeightsPrefetch, bool IsLayered = false, typename WorkSet, typename ExtraArgs>
-__aicore__ inline void AicComputeGeneric(
-    BlockMmad& blockMmad, WorkSet& workSet, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs& args)
+template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename ElementC, bool IsShared,
+          bool TopkWeightsPrefetch, bool IsLayered = false, typename WorkSet, typename ExtraArgs>
+__aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet, uint32_t startLoopIdx,
+                                         uint32_t tileNum, ExtraArgs &args)
 {
-    const auto& config = workSet.config;
+    const auto &config = workSet.config;
     uint32_t ubBufSize;
     if constexpr (Policy::IS_GMM1) {
-        ubBufSize =
-            config.tileM == L1_TILE_M_128 ? MAX_SINGLE_MN_ALIGN32_NUM_128 : MAX_SINGLE_MN_ALIGN32_NUM_256;
+        ubBufSize = config.tileM == L1_TILE_M_128 ? MAX_SINGLE_MN_ALIGN32_NUM_128 : MAX_SINGLE_MN_ALIGN32_NUM_256;
     } else {
         ubBufSize =
             (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) ? MAX_SINGLE_MN_ALIGN32_NUM_128 : 0;
@@ -50,8 +49,8 @@ __aicore__ inline void AicComputeGeneric(
 
         // Slice only builds tensor views. Keep it ahead of the synchronization waits so the
         // current tile's address calculation is not inserted into the compute critical path.
-        auto gmBlockA = workSet.gmA.Slice(
-            Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+        auto gmBlockA = workSet.gmA.Slice(Te::MakeCoord(mLoc, kLoc),
+                                          Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
         auto gmBlockScaleA = workSet.gmScaleA.Slice(
             Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
             Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
@@ -78,32 +77,33 @@ __aicore__ inline void AicComputeGeneric(
             }
         }
 
-        typename BlockMmad::BlockShape singleShape{
-            Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
+        typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
+                                                   Get<K_VALUE>(actualShape), 0};
 
         if constexpr (Policy::IS_GMM1) {
             if constexpr (TopkWeightsPrefetch) {
                 auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
-                    reinterpret_cast<__gm__ ElementC*>(workSet.gmmAddrInfo.gmm1OutGlobal)), workSet.layouts.c);
+                                              reinterpret_cast<__gm__ ElementC *>(workSet.gmmAddrInfo.gmm1OutGlobal)),
+                                          workSet.layouts.c);
                 for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
                     auto nOffset = nLoc + weightBlock * config.outputN;
-                    auto gmBlockB = workSet.gmB.Slice(Te::MakeCoord(kLoc, nOffset),
-                        Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-                    auto gmBlockScaleB = workSet.gmScaleB.Slice(
-                        Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nOffset),
-                        Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM),
-                            Get<N_VALUE>(actualShape)));
+                    auto gmBlockB =
+                        workSet.gmB.Slice(Te::MakeCoord(kLoc, nOffset),
+                                          Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                    auto gmBlockScaleB =
+                        workSet.gmScaleB.Slice(Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nOffset),
+                                               Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM),
+                                                             Get<N_VALUE>(actualShape)));
                     auto tensorBlockGm = gmC.Slice(Te::MakeCoord(mLoc, nOffset),
-                        Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-                    blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias,
-                        tensorBlockGm, singleShape);
+                                                   Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                    blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, tensorBlockGm,
+                              singleShape);
                 }
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-                __gm__ int32_t* statusAddr = reinterpret_cast<__gm__ int32_t*>(
-                    workSet.params.workspaceInfo.gmm1TileStatusPtr) +
-                    static_cast<int64_t>(args.expertIdx) *
-                        workSet.params.tilingData->maxTilesPerExpert + loopIdx;
+                __gm__ int32_t *statusAddr =
+                    reinterpret_cast<__gm__ int32_t *>(workSet.params.workspaceInfo.gmm1TileStatusPtr) +
+                    static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx;
                 AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(args.expertIdx + 1));
             } else {
                 auto tensorBlockUbFirst = l0cOutUbFirst.Slice(
@@ -111,22 +111,22 @@ __aicore__ inline void AicComputeGeneric(
                 auto tensorBlockUbSecond = l0cOutUbSecond.Slice(
                     Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
-                    auto gmBlockB = workSet.gmB.Slice(
-                        Te::MakeCoord(kLoc, nLoc + weightBlock * config.outputN),
-                        Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                    auto gmBlockB =
+                        workSet.gmB.Slice(Te::MakeCoord(kLoc, nLoc + weightBlock * config.outputN),
+                                          Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                     auto gmBlockScaleB = workSet.gmScaleB.Slice(
                         Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * config.outputN),
                         Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM),
-                            Get<N_VALUE>(actualShape)));
+                                      Get<N_VALUE>(actualShape)));
                     blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias,
-                        weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
+                              weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
                 }
                 NotifyVector();
                 args.vecSetSyncCom = 1;
             }
         } else {
-            auto gmBlockB = workSet.gmB.Slice(
-                Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            auto gmBlockB = workSet.gmB.Slice(Te::MakeCoord(kLoc, nLoc),
+                                              Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             auto gmBlockScaleB = workSet.gmScaleB.Slice(
                 Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
                 Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
@@ -140,13 +140,14 @@ __aicore__ inline void AicComputeGeneric(
                 args.pingpongIdx = 1 - args.pingpongIdx;
             } else {
                 auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
-                    reinterpret_cast<__gm__ ElementC*>(workSet.gmmAddrInfo.gmm2OutGlobal)), workSet.layouts.c);
-                auto gmBlockC = gmC.Slice(
-                    Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                                              reinterpret_cast<__gm__ ElementC *>(workSet.gmmAddrInfo.gmm2OutGlobal)),
+                                          workSet.layouts.c);
+                auto gmBlockC = gmC.Slice(Te::MakeCoord(mLoc, nLoc),
+                                          Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
                 if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
-                    NotifyCombineConsumersOfTileCompletion(
-                        mLoc, groupSyncSlotLayout, workSet.gmmAddrInfo.gmm2CombineSyncCounter);
+                    NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout,
+                                                           workSet.gmmAddrInfo.gmm2CombineSyncCounter);
                 }
             }
         }
@@ -155,12 +156,12 @@ __aicore__ inline void AicComputeGeneric(
 
 // Prototype: AicComputeA8W4. Executes the A8W4 GMM tile loop and its AIC-AIV1 handshake.
 template <uint8_t CombineQuantMode, typename Policy, bool IsShared, bool IsLayered = false, typename BlockMmad,
-    typename Scheduler, typename TensorA, typename TensorScaleA, typename TensorScaleB,
-    typename TensorC, typename Config, bool TopkWeightsPrefetch>
-__aicore__ inline void AicComputeA8W4(
-    BlockMmad& blockMmad, Scheduler& scheduler, TensorA& gmA, TensorScaleA& gmScaleA, TensorScaleB& gmScaleB,
-    TensorC& l0cOutGm, const GMMAddrInfo& gmmAddrInfo, const Config& config,
-    uint32_t startLoopIdx, uint32_t tileNum, const Params& params, uint32_t expertIdx)
+          typename Scheduler, typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC,
+          typename Config, bool TopkWeightsPrefetch>
+__aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
+                                      TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
+                                      const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
+                                      const Params &params, uint32_t expertIdx)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
@@ -206,12 +207,11 @@ __aicore__ inline void AicComputeA8W4(
         } else {
             auto gmBlockScaleB =
                 gmScaleB.Slice(Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
-            auto tensorBlockGm = l0cOutGm.Slice(
-                Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
+                                                Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
             if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
-                NotifyCombineConsumersOfTileCompletion(
-                    mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
+                NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
             }
         }
         constexpr bool hasAiv1GmEpilogue =
@@ -220,8 +220,8 @@ __aicore__ inline void AicComputeA8W4(
             if constexpr (Policy::IS_GMM1 && TopkWeightsPrefetch) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-                __gm__ int32_t* statusAddr =
-                    reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.gmm1TileStatusPtr) +
+                __gm__ int32_t *statusAddr =
+                    reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
                     static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx;
                 AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
             } else {

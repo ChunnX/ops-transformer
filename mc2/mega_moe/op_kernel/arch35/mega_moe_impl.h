@@ -62,24 +62,24 @@ __aicore__ inline __gm__ int32_t *GetCombineSyncCounterAddress(__gm__ int32_t *e
 // ComputeCoreGrouping：计算当前 core 所属的 group 及其在 group 内的位置
 // =================================================================================================
 // 将 totalCores 个 core 均匀分配到 numGroups 个 group 中，余数分配给前 remainder 个 group。
-__aicore__ inline void ComputeCoreGrouping(uint32_t coreId, uint32_t numGroups, uint32_t totalCores,
-    uint32_t& myGroup, uint32_t& myIdxInGrp, uint32_t& myGrpSize)
+__aicore__ inline void ComputeCoreGrouping(uint32_t coreId, uint32_t numGroups, uint32_t totalCores, uint32_t &myGroup,
+                                           uint32_t &myIdxInGrp, uint32_t &myGrpSize)
 {
-    uint32_t baseSize = totalCores / numGroups;      // 每个 group 的基础 core 数
-    uint32_t remainder = totalCores % numGroups;     // 余数，前 remainder 个 group 多分配 1 个 core
-    uint32_t boundary = remainder * (baseSize + 1);  // 前 remainder 个 group 占用的 core 总数
+    uint32_t baseSize = totalCores / numGroups;     // 每个 group 的基础 core 数
+    uint32_t remainder = totalCores % numGroups;    // 余数，前 remainder 个 group 多分配 1 个 core
+    uint32_t boundary = remainder * (baseSize + 1); // 前 remainder 个 group 占用的 core 总数
 
     // 判断当前 core 是否在前 remainder 个 group 中（这些 group 有 baseSize+1 个 core）
     if (coreId < boundary) {
-        myGroup = coreId / (baseSize + 1);           // 所属 group 索引
-        myIdxInGrp = coreId % (baseSize + 1);        // 在 group 内的索引
-        myGrpSize = baseSize + 1;                    // 当前 group 的 core 数
+        myGroup = coreId / (baseSize + 1);    // 所属 group 索引
+        myIdxInGrp = coreId % (baseSize + 1); // 在 group 内的索引
+        myGrpSize = baseSize + 1;             // 当前 group 的 core 数
     } else {
         // 当前 core 在后面的 group 中（这些 group 只有 baseSize 个 core）
-        uint32_t adjusted = coreId - boundary;       // 减去前 remainder 个 group 占用的 core 数
-        myGroup = remainder + adjusted / baseSize;   // 所属 group 索引 = remainder + 偏移
-        myIdxInGrp = adjusted % baseSize;            // 在 group 内的索引
-        myGrpSize = baseSize;                        // 当前 group 的 core 数
+        uint32_t adjusted = coreId - boundary;     // 减去前 remainder 个 group 占用的 core 数
+        myGroup = remainder + adjusted / baseSize; // 所属 group 索引 = remainder + 偏移
+        myIdxInGrp = adjusted % baseSize;          // 在 group 内的索引
+        myGrpSize = baseSize;                      // 当前 group 的 core 数
     }
 }
 
@@ -162,19 +162,18 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
     if constexpr (Policy::IS_GMM1) {
         uint32_t waveIdx = mLoc / config.tileM;
         uint32_t targetValue = (mLoc + config.tileM > config.m) ? (config.m - mLoc) : config.tileM;
-        __gm__ int32_t* flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
+        __gm__ int32_t *flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
         while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
             }
         }
     } else {
-        BlockScheduler gmmBlockScheduler(
-            {config.m, config.k, config.n},
-            BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.swigluTileM),
-                static_cast<int64_t>(L1_TILE_N))});
+        BlockScheduler gmmBlockScheduler({config.m, config.k, config.n},
+                                         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.swigluTileM),
+                                                                              static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-        __gm__ int32_t* flagValueAddr = gmmAddrInfo.swigluToGmm2Flag;
+        __gm__ int32_t *flagValueAddr = gmmAddrInfo.swigluToGmm2Flag;
         while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
@@ -201,23 +200,21 @@ struct BlockMmadSelector;
 
 template <typename C>
 struct BlockMmadSelector<false, C> {
-    using type = Blaze::Gemm::Block::BlockMmad<
-        typename C::DispatchPolicy,
-        typename C::ElementAType, typename C::LayoutA,
-        typename C::ElementBType, typename C::LayoutB,
-        typename C::ElementCType, typename C::LayoutC,
-        typename C::BiasType, typename C::LayoutBias>;
+    using type =
+        Blaze::Gemm::Block::BlockMmad<typename C::DispatchPolicy, typename C::ElementAType, typename C::LayoutA,
+                                      typename C::ElementBType, typename C::LayoutB, typename C::ElementCType,
+                                      typename C::LayoutC, typename C::BiasType, typename C::LayoutBias>;
 };
 
 template <typename C>
 struct BlockMmadSelector<true, C> {
-    using type = Blaze::Gemm::Block::BlockMmad<
-        typename C::DispatchPolicy,
-        AscendC::Std::tuple<typename C::ElementAType, typename C::ElementMxScaleAType>,
-        AscendC::Std::tuple<typename C::MakeLayoutA, typename C::MakeLayoutScaleA>,
-        AscendC::Std::tuple<typename C::ElementBType, typename C::ElementMxScaleBType>,
-        AscendC::Std::tuple<typename C::MakeLayoutB, typename C::MakeLayoutScaleB>,
-        typename C::ElementCType, typename C::MakeLayoutC, void, void>;
+    using type =
+        Blaze::Gemm::Block::BlockMmad<typename C::DispatchPolicy,
+                                      AscendC::Std::tuple<typename C::ElementAType, typename C::ElementMxScaleAType>,
+                                      AscendC::Std::tuple<typename C::MakeLayoutA, typename C::MakeLayoutScaleA>,
+                                      AscendC::Std::tuple<typename C::ElementBType, typename C::ElementMxScaleBType>,
+                                      AscendC::Std::tuple<typename C::MakeLayoutB, typename C::MakeLayoutScaleB>,
+                                      typename C::ElementCType, typename C::MakeLayoutC, void, void>;
 };
 
 // ==================================================================================
@@ -250,12 +247,10 @@ struct Config {
 
     using BiasType = float;
     using LayoutBias = Te::NDExtLayoutPtn;
-    using DispatchPolicy = Std::conditional_t<IsA8W4,
-        Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit,
-        Blaze::Gemm::MatmulWithScaleMx<>>;
-    using LayoutB = Std::conditional_t<IsA8W4,
-        Te::ZNLayoutPtn,
-        Std::conditional_t<IsWeightNZ, Te::ZNLayoutPtn, Te::DNExtLayoutPtn>>;
+    using DispatchPolicy =
+        Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, Blaze::Gemm::MatmulWithScaleMx<>>;
+    using LayoutB = Std::conditional_t<IsA8W4, Te::ZNLayoutPtn,
+                                       Std::conditional_t<IsWeightNZ, Te::ZNLayoutPtn, Te::DNExtLayoutPtn>>;
 
     using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<C0_SIZE_A>>;
     using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<C0_SIZE_B>>;
@@ -264,19 +259,18 @@ struct Config {
     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE_C>>;
 
     using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using LayoutAType = decltype(MakeLayoutA{}(uint32_t {}, uint32_t {}));
-    using LayoutBType = decltype(MakeLayoutB{}(uint32_t {}, uint32_t {}));
-    using LayoutScaleAType = decltype(MakeLayoutScaleA{}(uint32_t {}, uint32_t {}));
-    using LayoutScaleBType = decltype(MakeLayoutScaleB{}(uint32_t {}, uint32_t {}));
-    using LayoutCType = decltype(MakeLayoutC{}(uint32_t {}, uint32_t {}));
-    using LayoutBiasType = decltype(Te::MakeFrameLayout<LayoutBias>(uint32_t {}, uint32_t {}));
+    using LayoutAType = decltype(MakeLayoutA{}(uint32_t{}, uint32_t{}));
+    using LayoutBType = decltype(MakeLayoutB{}(uint32_t{}, uint32_t{}));
+    using LayoutScaleAType = decltype(MakeLayoutScaleA{}(uint32_t{}, uint32_t{}));
+    using LayoutScaleBType = decltype(MakeLayoutScaleB{}(uint32_t{}, uint32_t{}));
+    using LayoutCType = decltype(MakeLayoutC{}(uint32_t{}, uint32_t{}));
+    using LayoutBiasType = decltype(Te::MakeFrameLayout<LayoutBias>(uint32_t{}, uint32_t{}));
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
 
     // BlockPrologue（仅 A8W4 使用；A8W8/A4W4 路径用 void 占位）
-    using BlockPrologue = Std::conditional_t<IsA8W4,
-        Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>,
-        void>;
+    using BlockPrologue =
+        Std::conditional_t<IsA8W4, Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
 
     struct ProblemConfig {
         static __aicore__ inline typename BlockMmad::L1Params DefaultL1Params()
@@ -307,11 +301,11 @@ struct Config {
         LayoutScaleAType scaleA;
         LayoutScaleBType scaleB;
         LayoutCType c;
-        LayoutBiasType bias;  // A8W8/A4W4 路径用，A8W4 不使用
+        LayoutBiasType bias; // A8W8/A4W4 路径用，A8W4 不使用
     };
 
-    __aicore__ static inline ProblemConfig BuildProblemConfig(
-        const ProblemShape& problemShape, const BlockJobContext &blockJob)
+    __aicore__ static inline ProblemConfig BuildProblemConfig(const ProblemShape &problemShape,
+                                                              const BlockJobContext &blockJob)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -339,7 +333,7 @@ struct Config {
         return config;
     }
 
-    __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig& config)
+    __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig &config)
     {
         LayoutBundle layouts;
         layouts.a = MakeLayoutA{}(config.m, config.k);
@@ -374,45 +368,44 @@ struct Config {
 
 template <typename SwigluQuantOp>
 struct Gmm1ArgsGeneric {
-    SwigluQuantOp& swigluQuantOp;
-    int32_t& vecSetSyncCom;
+    SwigluQuantOp &swigluQuantOp;
+    int32_t &vecSetSyncCom;
     uint32_t expertBeforeCnt{0};
     uint32_t expertIdx{0};
 };
 
 struct Gmm2ArgsGeneric {
-    int32_t& vecSetSyncCom2;
+    int32_t &vecSetSyncCom2;
     uint32_t groupCnt;
     uint16_t &pingpongIdx;
 };
 
-template <typename Scheduler, typename TensorA, typename TensorB,
-    typename TensorScaleA, typename TensorScaleB, typename TensorBias,
-    typename Config, typename LayoutBundle>
+template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
+          typename TensorBias, typename Config, typename LayoutBundle>
 struct WorkSetGeneric {
-    Scheduler& scheduler;
-    TensorA& gmA;
-    TensorB& gmB;
-    TensorScaleA& gmScaleA;
-    TensorScaleB& gmScaleB;
-    TensorBias& gmBias;
-    const GMMAddrInfo& gmmAddrInfo;
-    const Params& params;
-    const Config& config;
-    const LayoutBundle& layouts;
+    Scheduler &scheduler;
+    TensorA &gmA;
+    TensorB &gmB;
+    TensorScaleA &gmScaleA;
+    TensorScaleB &gmScaleB;
+    TensorBias &gmBias;
+    const GMMAddrInfo &gmmAddrInfo;
+    const Params &params;
+    const Config &config;
+    const LayoutBundle &layouts;
 };
 
-template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB,
-    typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
-    bool IsLayered = false, uint32_t Gmm1TileM = L1_TILE_M_256,
-    bool TopkWeightsPrefetch = false, bool IsShared = false, typename ExtraArgs>
-__aicore__ inline void GroupMatmulImplGeneric(
-    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx,
-    const BlockJobContext &blockJob, ExtraArgs& args)
+template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
+          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
+          uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
+          typename ExtraArgs>
+__aicore__ inline void GroupMatmulImplGeneric(const Params &params,
+                                              const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+                                              const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
+                                              const BlockJobContext &blockJob, ExtraArgs &args)
 {
-    using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC,
-        ElementMxScaleA, ElementMxScaleB, IsWeightNZ, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered>;
+    using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
+                          ElementMxScaleB, IsWeightNZ, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered>;
     auto config = Config::BuildProblemConfig(problemShape, blockJob);
 
     BlockScheduler scheduler(
@@ -429,7 +422,8 @@ __aicore__ inline void GroupMatmulImplGeneric(
             args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
         }
     } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
-        if (GetSubBlockIdx() != 0) return;
+        if (GetSubBlockIdx() != 0)
+            return;
     }
     // GMM2 量化模式：两分支均不匹配，直接往下执行
 
@@ -441,30 +435,25 @@ __aicore__ inline void GroupMatmulImplGeneric(
     using BiasType = typename Config::BiasType;
 
     auto gmA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA *>(gmmAddrInfo.aGlobal)), layouts.a);
     auto gmB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB *>(gmmAddrInfo.bGlobal)), layouts.b);
     auto gmScaleA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA *>(gmmAddrInfo.aScaleGlobal)),
         layouts.scaleA);
     auto gmScaleB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
         layouts.scaleB);
-    auto gmBias = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layouts.bias);
+    auto gmBias =
+        Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(0UL)), layouts.bias);
 
-    using WorkSetType = WorkSetGeneric<BlockScheduler, decltype(gmA), decltype(gmB),
-        decltype(gmScaleA), decltype(gmScaleB), decltype(gmBias),
-        decltype(config), decltype(layouts)>;
-    WorkSetType workSet{
-        scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias,
-        gmmAddrInfo, params, config, layouts
-    };
+    using WorkSetType = WorkSetGeneric<BlockScheduler, decltype(gmA), decltype(gmB), decltype(gmScaleA),
+                                       decltype(gmScaleB), decltype(gmBias), decltype(config), decltype(layouts)>;
+    WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmmAddrInfo, params, config, layouts};
 
     using MakeLayoutC = typename Config::MakeLayoutC;
-    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, ElementC,
-        MakeLayoutC, TopkWeightsPrefetch, IsLayered, IsShared>(
-            workSet, startLoopIdx, tileNum, args);
+    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, ElementC, MakeLayoutC, TopkWeightsPrefetch, IsLayered,
+                           IsShared>(workSet, startLoopIdx, tileNum, args);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -474,45 +463,43 @@ template <typename ElementA, typename EpilogueElementA, typename ElementB, typen
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false>
 __aicore__ inline void GroupMatmulSwigluQuant(
-    BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true,
-        EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch>& epilogueOp,
-    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
-    const BlockJobContext &blockJob, uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+    BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
+                               L1_TILE_N, TopkWeightsPrefetch> &epilogueOp,
+    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, const BlockJobContext &blockJob,
+    uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
-    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{
-        epilogueOp, vecSetSyncCom, expertBeforeCnt, expertIdx};
-    Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC,
-        ElementMxScaleA, ElementMxScaleB, IsWeightNZ, false, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
-            params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args);
+    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom, expertBeforeCnt, expertIdx};
+    Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
+                                   ElementMxScaleB, IsWeightNZ, false, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
+        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args);
 }
 
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false>
 __aicore__ inline void GroupMatmulSwigluQuant(
-    BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true,
-        EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch>& epilogueOp,
-    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
-    uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+    BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
+                               L1_TILE_N, TopkWeightsPrefetch> &epilogueOp,
+    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint32_t expertBeforeCnt,
+    uint32_t expertIdx = 0)
 {
-    BlockJobContext blockJob{
-        static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-        static_cast<uint32_t>(GetBlockNum())};
-    GroupMatmulSwigluQuant<ElementA, EpilogueElementA, ElementB, ElementC, ElementMxScaleA,
-        ElementMxScaleB, IsWeightNZ, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared>(
-            epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom,
-            blockJob, expertBeforeCnt, expertIdx);
+    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                             static_cast<uint32_t>(GetBlockNum())};
+    GroupMatmulSwigluQuant<ElementA, EpilogueElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ,
+                           Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared>(
+        epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom, blockJob, expertBeforeCnt,
+        expertIdx);
 }
 
 // =================================================================================================
 // GroupMatmul2：GMM2 矩阵乘法，支持量化和非量化模式
 // =================================================================================================
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
-          typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
-          uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false>
+          typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false, uint32_t Gmm1TileM = L1_TILE_M_256,
+          bool TopkWeightsPrefetch = false, bool IsShared = false>
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
@@ -520,11 +507,10 @@ __aicore__ inline void GroupMatmul2(const Params &params,
 {
     (void)groupIdx;
     Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
-    BlockJobContext blockJob{
-        static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-        static_cast<uint32_t>(GetBlockNum())};
-    Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC,
-        ElementMxScaleA, ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
+    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                             static_cast<uint32_t>(GetBlockNum())};
+    Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
+                                   ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
         params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args);
 }
 
@@ -542,32 +528,33 @@ struct Gmm1ArgsA8W4 {
 
 struct Gmm2ArgsA8W4 {
     uint32_t groupCnt;
-    uint16_t& pingpongIdx;
+    uint16_t &pingpongIdx;
 };
 
 template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
-    typename TensorC>
+          typename TensorC>
 struct WorkSetA8W4 {
-    Scheduler& scheduler;
-    TensorA& gmA;
-    TensorB& gmB;
-    TensorScaleA& gmScaleA;
-    TensorScaleB& gmScaleB;
-    TensorC& l0cOutGm;
+    Scheduler &scheduler;
+    TensorA &gmA;
+    TensorB &gmB;
+    TensorScaleA &gmScaleA;
+    TensorScaleB &gmScaleB;
+    TensorC &l0cOutGm;
 };
 
 template <uint8_t CombineQuantMode, typename Policy, typename ElementA, typename ElementB, typename ElementC,
-    typename ElementMxScaleA, typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256,
-    bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsLayered = false, typename ExtraArgs>
-__aicore__ inline void GroupMatmulImplA8W4(const Params& params,
-    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
-    uint32_t& startBlockIdx, const BlockJobContext &blockJob, ExtraArgs& args)
+          typename ElementMxScaleA, typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256,
+          bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsLayered = false, typename ExtraArgs>
+__aicore__ inline void GroupMatmulImplA8W4(const Params &params,
+                                           const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+                                           const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
+                                           const BlockJobContext &blockJob, ExtraArgs &args)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
-    using Config = Config<true, Policy, 0, ElementA, ElementB, ElementC, ElementMxScaleA,
-        ElementMxScaleB, false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered>;
+    using Config = Config<true, Policy, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false,
+                          Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered>;
     auto config = Config::BuildProblemConfig(problemShape, blockJob);
 
     if constexpr (Policy::IS_GMM1 && g_coreType == AIV) {
@@ -579,19 +566,18 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params& params,
     using BlockPrologue = typename Config::BlockPrologue;
     using MakeLayoutC = typename Config::MakeLayoutC;
 
-    auto l0cOutGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(
-        Policy::IS_GMM1 ? gmmAddrInfo.gmm1OutGlobal : gmmAddrInfo.gmm2OutGlobal)), layouts.c);
-    auto gmA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
-        reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
-    auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
-        reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
+    auto l0cOutGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC *>(
+                                       Policy::IS_GMM1 ? gmmAddrInfo.gmm1OutGlobal : gmmAddrInfo.gmm2OutGlobal)),
+                                   layouts.c);
+    auto gmA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA *>(gmmAddrInfo.aGlobal)), layouts.a);
+    auto gmB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB *>(gmmAddrInfo.bGlobal)), layouts.b);
     auto gmScaleA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(
-            reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA *>(gmmAddrInfo.aScaleGlobal)),
         layouts.scaleA);
     auto gmScaleB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(
-            reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
         layouts.scaleB);
 
     BlockScheduler scheduler(
@@ -605,12 +591,12 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params& params,
         return;
     }
 
-    using WorkSetType = WorkSetA8W4<
-        BlockScheduler, decltype(gmA), decltype(gmB), decltype(gmScaleA), decltype(gmScaleB), decltype(l0cOutGm)>;
+    using WorkSetType = WorkSetA8W4<BlockScheduler, decltype(gmA), decltype(gmB), decltype(gmScaleA),
+                                    decltype(gmScaleB), decltype(l0cOutGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, l0cOutGm};
-    GroupMatmulExecA8W4<CombineQuantMode, Policy, BlockMmad, BlockPrologue, ElementC,
-        MakeLayoutC, IsShared, IsLayered, WorkSetType, decltype(config), TopkWeightsPrefetch>(
-            workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, args);
+    GroupMatmulExecA8W4<CombineQuantMode, Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared, IsLayered,
+                        WorkSetType, decltype(config), TopkWeightsPrefetch>(workSet, params, gmmAddrInfo, config,
+                                                                            startLoopIdx, tileNum, args);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -619,60 +605,58 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params& params,
 
 // GroupMatmulSwigluQuantA8W4 — A8W4 prologue（W4→W8）+ GMM1 + SwiGLU + 量化
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
-          uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM,
-          bool TopkWeightsPrefetch = false, bool IsShared = false>
+          uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
+          bool IsShared = false>
 __aicore__ inline void GroupMatmulSwigluQuantA8W4(
-    BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true,
-        EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch>& swigluQuantOp,
-    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
-    const BlockJobContext &blockJob, uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+    BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM, L1_TILE_N,
+                               TopkWeightsPrefetch> &swigluQuantOp,
+    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, const BlockJobContext &blockJob,
+    uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
 {
     (void)vecSetSyncCom;
     using SwigluQuantOpType = std::remove_reference_t<decltype(swigluQuantOp)>;
-    Detail::Gmm1ArgsA8W4<SwigluQuantOpType> args{
-        swigluQuantOp, expertBeforeCnt, expertIdx};
-    Detail::GroupMatmulImplA8W4<COMBINE_NO_QUANT, Detail::Gmm1Policy, ElementA, ElementB, ElementC,
-        ElementMxScaleA, ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
-            params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args);
+    Detail::Gmm1ArgsA8W4<SwigluQuantOpType> args{swigluQuantOp, expertBeforeCnt, expertIdx};
+    Detail::GroupMatmulImplA8W4<COMBINE_NO_QUANT, Detail::Gmm1Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
+                                ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
+        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args);
 }
 
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
-    uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM,
-    bool TopkWeightsPrefetch = false, bool IsShared = false>
+          uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
+          bool IsShared = false>
 __aicore__ inline void GroupMatmulSwigluQuantA8W4(
-    BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true,
-        EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch>& swigluQuantOp,
-    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
-    uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+    BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM, L1_TILE_N,
+                               TopkWeightsPrefetch> &swigluQuantOp,
+    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint32_t expertBeforeCnt,
+    uint32_t expertIdx = 0)
 {
-    BlockJobContext blockJob{
-        static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-        static_cast<uint32_t>(GetBlockNum())};
-    GroupMatmulSwigluQuantA8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
-        Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared>(
-            swigluQuantOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom,
-            blockJob, expertBeforeCnt, expertIdx);
+    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                             static_cast<uint32_t>(GetBlockNum())};
+    GroupMatmulSwigluQuantA8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, EpilogueTileM,
+                               TopkWeightsPrefetch, IsShared>(swigluQuantOp, params, problemShape, gmmAddrInfo,
+                                                              startBlockIdx, vecSetSyncCom, blockJob, expertBeforeCnt,
+                                                              expertIdx);
 }
 
 // GroupMatmul2CombineA8W4 — A8W4 prologue（W4→W8）+ GMM2 + Combine
-template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
-    typename ElementMxScaleA, typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256,
-    bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsLayered = false>
-__aicore__ inline void GroupMatmul2CombineA8W4(
-    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupCnt,
-    uint16_t& pingpongIdx, uint32_t groupIdx = 0)
+template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
+          typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false,
+          bool IsShared = false, bool IsLayered = false>
+__aicore__ inline void GroupMatmul2CombineA8W4(const Params &params,
+                                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+                                               const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
+                                               int32_t &vecSetSyncCom2, uint32_t groupCnt, uint16_t &pingpongIdx,
+                                               uint32_t groupIdx = 0)
 {
     (void)vecSetSyncCom2;
     (void)groupIdx;
     Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx};
-    BlockJobContext blockJob{
-        static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-        static_cast<uint32_t>(GetBlockNum())};
-    Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2Policy, ElementA, ElementB, ElementC,
-        ElementMxScaleA, ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered>(
+    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                             static_cast<uint32_t>(GetBlockNum())};
+    Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
+                                ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered>(
         params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args);
 }
 

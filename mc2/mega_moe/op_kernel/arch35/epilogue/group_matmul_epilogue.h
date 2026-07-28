@@ -15,11 +15,10 @@
 // the AIC and AIV GMM implementation headers have been included.
 
 // Prototype: GroupMatmulExecGeneric. Dispatches one generic GMM stage to its AIC or AIV implementation.
-template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, typename ElementC,
-    typename MakeLayoutC, bool TopkWeightsPrefetch, bool IsLayered = false,
-    bool IsShared = false, typename WorkSet, typename ExtraArgs>
-__aicore__ inline void GroupMatmulExecGeneric(
-    WorkSet& workSet, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs& args)
+template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, typename MakeLayoutC,
+          bool TopkWeightsPrefetch, bool IsLayered = false, bool IsShared = false, typename WorkSet, typename ExtraArgs>
+__aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLoopIdx, uint32_t tileNum,
+                                              ExtraArgs &args)
 {
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad;
@@ -32,8 +31,7 @@ __aicore__ inline void GroupMatmulExecGeneric(
             blockMmad, workSet, startLoopIdx, tileNum, args);
     } else {
         if constexpr (Policy::IS_GMM1) {
-            AivGmm1PostGeneric<MakeLayoutC, ElementC, TopkWeightsPrefetch>(
-                workSet, args, startLoopIdx, tileNum);
+            AivGmm1PostGeneric<MakeLayoutC, ElementC, TopkWeightsPrefetch>(workSet, args, startLoopIdx, tileNum);
         } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
             AivGmm2PostGeneric<ElementC>(workSet, args, startLoopIdx, tileNum);
         }
@@ -43,10 +41,11 @@ __aicore__ inline void GroupMatmulExecGeneric(
 
 // Prototype: GroupMatmulExecA8W4. Dispatches one A8W4 GMM stage across the block's AIC and two AIVs.
 template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename BlockPrologue, typename ElementC,
-    typename MakeLayoutC, bool IsShared, bool IsLayered = false, typename WorkSet, typename Config,
-    bool TopkWeightsPrefetch, typename ExtraArgs>
-__aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& params, const GMMAddrInfo& gmmAddrInfo,
-    const Config& config, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs& args)
+          typename MakeLayoutC, bool IsShared, bool IsLayered = false, typename WorkSet, typename Config,
+          bool TopkWeightsPrefetch, typename ExtraArgs>
+__aicore__ inline void GroupMatmulExecA8W4(WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo,
+                                           const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
+                                           ExtraArgs &args)
 {
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
@@ -54,36 +53,32 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
         if constexpr (Policy::IS_GMM1) {
-            AicComputeA8W4<CombineQuantMode, Policy, IsShared, false, BlockMmad,
-                decltype(workSet.scheduler), decltype(workSet.gmA), decltype(workSet.gmScaleA),
-                decltype(workSet.gmScaleB), decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch>(
-                    blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA,
-                    workSet.gmScaleB, workSet.l0cOutGm, gmmAddrInfo, config,
-                    startLoopIdx, tileNum, params, args.expertIdx);
+            AicComputeA8W4<CombineQuantMode, Policy, IsShared, false, BlockMmad, decltype(workSet.scheduler),
+                           decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
+                           decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch>(
+                blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.l0cOutGm,
+                gmmAddrInfo, config, startLoopIdx, tileNum, params, args.expertIdx);
         } else {
-            AicComputeA8W4<CombineQuantMode, Policy, IsShared, IsLayered, BlockMmad,
-                decltype(workSet.scheduler), decltype(workSet.gmA), decltype(workSet.gmScaleA),
-                decltype(workSet.gmScaleB), decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch>(
-                    blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA,
-                    workSet.gmScaleB, workSet.l0cOutGm, gmmAddrInfo, config,
-                    startLoopIdx, tileNum, params, 0);
+            AicComputeA8W4<CombineQuantMode, Policy, IsShared, IsLayered, BlockMmad, decltype(workSet.scheduler),
+                           decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
+                           decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch>(
+                blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.l0cOutGm,
+                gmmAddrInfo, config, startLoopIdx, tileNum, params, 0);
         }
     } else {
         if (GetSubBlockIdx() == 0) {
             BlockPrologue blockPrologue;
-            AivPrologueA8W4<Policy>(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx,
-                tileNum);
+            AivPrologueA8W4<Policy>(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
         } else {
             if constexpr (Policy::IS_GMM1) {
-                AivGmm1PostA8W4<ElementC, MakeLayoutC, decltype(workSet.scheduler),
-                    decltype(workSet.l0cOutGm), decltype(args.swigluQuantOp), Config, TopkWeightsPrefetch>(
-                        args.swigluQuantOp, workSet.scheduler, workSet.l0cOutGm, config,
-                        startLoopIdx, tileNum, params, args.expertBeforeCnt, args.expertIdx);
+                AivGmm1PostA8W4<ElementC, MakeLayoutC, decltype(workSet.scheduler), decltype(workSet.l0cOutGm),
+                                decltype(args.swigluQuantOp), Config, TopkWeightsPrefetch>(
+                    args.swigluQuantOp, workSet.scheduler, workSet.l0cOutGm, config, startLoopIdx, tileNum, params,
+                    args.expertBeforeCnt, args.expertIdx);
             } else {
                 if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
-                    AivGmm2PostA8W4<ElementC, MakeLayoutC>(
-                        workSet.scheduler, workSet.l0cOutGm, params, args.groupCnt, config,
-                        startLoopIdx, tileNum);
+                    AivGmm2PostA8W4<ElementC, MakeLayoutC>(workSet.scheduler, workSet.l0cOutGm, params, args.groupCnt,
+                                                           config, startLoopIdx, tileNum);
                 }
             }
         }

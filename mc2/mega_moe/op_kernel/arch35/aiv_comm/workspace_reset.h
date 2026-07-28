@@ -28,28 +28,26 @@ struct ResetWorkspaceArgs {
 
 // Prototype: MegaMoe::ResetGmm2CombineSyncCounters. Clears one logical AIV job's combine counters in batches.
 // ResetFlagListOneCore validates the job and prepares the zero-filled resetTensor before calling this helper.
-__aicore__ inline void ResetGmm2CombineSyncCountersOneCore(const AivJobContext &job,
-    const ResetWorkspaceArgs &args, LocalTensor<int32_t> &resetTensor)
+__aicore__ inline void ResetGmm2CombineSyncCountersOneCore(const AivJobContext &job, const ResetWorkspaceArgs &args,
+                                                           LocalTensor<int32_t> &resetTensor)
 {
     int32_t jobLen;
     int32_t jobOffset;
-    TilingByJobContext(args.gmm2CombineSyncCounterNum, jobLen, jobOffset,
-        job.jobIndex, job.totalJobs);
+    TilingByJobContext(args.gmm2CombineSyncCounterNum, jobLen, jobOffset, job.jobIndex, job.totalJobs);
     GlobalTensor<int32_t> counterGm;
     counterGm.SetGlobalBuffer((__gm__ int32_t *)args.gmm2CombineSyncCounterPtr);
     for (int32_t offset = 0; offset < jobLen; offset += args.resetBatchElementCount) {
-        int32_t batchCount = jobLen - offset < args.resetBatchElementCount ?
-            jobLen - offset : args.resetBatchElementCount;
-        DataCopyExtParams copyParams{
-            1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
+        int32_t batchCount =
+            jobLen - offset < args.resetBatchElementCount ? jobLen - offset : args.resetBatchElementCount;
+        DataCopyExtParams copyParams{1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(counterGm[jobOffset + offset], resetTensor, copyParams);
     }
 }
 
 // Prototype: MegaMoe::ResetFlagList. Clears one logical AIV job's dispatch flags in bounded UB batches.
 template <bool ResetCombineCounters, bool TopkWeightsPrefetch>
-__aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &context,
-    const ResetWorkspaceArgs &args, LocalTensor<int32_t> &resetTensor)
+__aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &context, const ResetWorkspaceArgs &args,
+                                            LocalTensor<int32_t> &resetTensor)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -64,10 +62,9 @@ __aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &contex
     TilingByJobContext(args.flagNum, jobLen, jobOffset, job.jobIndex, job.totalJobs, 1);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     for (int32_t offset = 0; offset < jobLen; offset += args.resetBatchElementCount) {
-        int32_t batchCount = jobLen - offset < args.resetBatchElementCount ?
-            jobLen - offset : args.resetBatchElementCount;
-        DataCopyExtParams copyParams{
-            1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
+        int32_t batchCount =
+            jobLen - offset < args.resetBatchElementCount ? jobLen - offset : args.resetBatchElementCount;
+        DataCopyExtParams copyParams{1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(flagGm[jobOffset + offset], resetTensor, copyParams);
     }
     if constexpr (ResetCombineCounters) {
@@ -75,20 +72,15 @@ __aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &contex
     }
     if constexpr (TopkWeightsPrefetch) {
         GlobalTensor<int32_t> statusGm;
-        statusGm.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t *>(args.gmm1TileStatusPtr));
-        int32_t statusSlotCount =
-            args.gmm1StatusExpertCapacity * args.maxTilesPerExpert + 1;
+        statusGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(args.gmm1TileStatusPtr));
+        int32_t statusSlotCount = args.gmm1StatusExpertCapacity * args.maxTilesPerExpert + 1;
         int32_t statusJobLen;
         int32_t statusJobOffset;
-        TilingByJobContext(statusSlotCount, statusJobLen, statusJobOffset,
-            job.jobIndex, job.totalJobs, 1);
-        for (int32_t offset = 0; offset < statusJobLen;
-            offset += args.resetBatchElementCount) {
-            int32_t batchCount = statusJobLen - offset < args.resetBatchElementCount ?
-                statusJobLen - offset : args.resetBatchElementCount;
-            DataCopyExtParams copyParams{
-                1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
+        TilingByJobContext(statusSlotCount, statusJobLen, statusJobOffset, job.jobIndex, job.totalJobs, 1);
+        for (int32_t offset = 0; offset < statusJobLen; offset += args.resetBatchElementCount) {
+            int32_t batchCount = statusJobLen - offset < args.resetBatchElementCount ? statusJobLen - offset :
+                                                                                       args.resetBatchElementCount;
+            DataCopyExtParams copyParams{1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
             DataCopyPad(statusGm[statusJobOffset + offset], resetTensor, copyParams);
         }
     }

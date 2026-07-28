@@ -42,35 +42,32 @@ struct QuantProcessScratch {
 };
 
 template <typename TopkWeightsType, typename ActivationType, bool TopkWeightsPrefetch>
-__aicore__ inline void LoadTopkWeightsToUb(
-    const QuantProcessArgs &args, QuantProcessScratch<ActivationType> &scratch,
-    const LocalTensor<ActivationType> &xOutTensor,
-    int32_t tokenIndex, TEventID event)
+__aicore__ inline void LoadTopkWeightsToUb(const QuantProcessArgs &args, QuantProcessScratch<ActivationType> &scratch,
+                                           const LocalTensor<ActivationType> &xOutTensor, int32_t tokenIndex,
+                                           TEventID event)
 {
     if constexpr (TopkWeightsPrefetch) {
         GlobalTensor<TopkWeightsType> weightGm;
         weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ TopkWeightsType *>(
-            args.topkWeightsGmAddr +
-            static_cast<uint64_t>(tokenIndex) * args.topK * sizeof(TopkWeightsType)));
+            args.topkWeightsGmAddr + static_cast<uint64_t>(tokenIndex) * args.topK * sizeof(TopkWeightsType)));
         uint32_t weightOffsetInUb = args.quantTokenAlignBytes + args.quantScaleAlignBytes;
         if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
             LocalTensor<TopkWeightsType> weightBf16Tmp =
                 scratch.mxTempTensor.template ReinterpretCast<TopkWeightsType>();
             DataCopyPad(weightBf16Tmp, weightGm,
-                {1U, static_cast<uint32_t>(args.topK * sizeof(TopkWeightsType)), 0U, 0U, 0U},
-                {false, 0U, 0U, 0U});
+                        {1U, static_cast<uint32_t>(args.topK * sizeof(TopkWeightsType)), 0U, 0U, 0U},
+                        {false, 0U, 0U, 0U});
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-            LocalTensor<float> weightFp32Ub =
-                xOutTensor[weightOffsetInUb].template ReinterpretCast<float>();
+            LocalTensor<float> weightFp32Ub = xOutTensor[weightOffsetInUb].template ReinterpretCast<float>();
             Cast(weightFp32Ub, weightBf16Tmp, AscendC::RoundMode::CAST_NONE, args.topK);
             PipeBarrier<PIPE_V>();
         } else {
             LocalTensor<TopkWeightsType> weightUb =
                 xOutTensor[weightOffsetInUb].template ReinterpretCast<TopkWeightsType>();
             DataCopyPad(weightUb, weightGm,
-                {1U, static_cast<uint32_t>(args.topK * sizeof(TopkWeightsType)), 0U, 0U, 0U},
-                {false, 0U, 0U, 0U});
+                        {1U, static_cast<uint32_t>(args.topK * sizeof(TopkWeightsType)), 0U, 0U, 0U},
+                        {false, 0U, 0U, 0U});
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
         }
@@ -81,19 +78,18 @@ __aicore__ inline void LoadTopkWeightsToUb(
 }
 
 // Prototype: MegaMoe::QuantProcessInRank. Quantizes the local tokens assigned to one logical AIV job.
-template <int32_t QuantMode, typename QuantOutType, typename ActivationType,
-    typename TopkWeightsType, bool TopkWeightsPrefetch>
-__aicore__ inline void QuantProcessInRankOneCore(const DispatchPrepareContext &context,
-    const QuantProcessArgs &args, QuantProcessScratch<ActivationType> &scratch)
+template <int32_t QuantMode, typename QuantOutType, typename ActivationType, typename TopkWeightsType,
+          bool TopkWeightsPrefetch>
+__aicore__ inline void QuantProcessInRankOneCore(const DispatchPrepareContext &context, const QuantProcessArgs &args,
+                                                 QuantProcessScratch<ActivationType> &scratch)
 {
-    if constexpr(g_coreType == AIC) {
+    if constexpr (g_coreType == AIC) {
         return;
     }
     const AivJobContext &job = context.job;
     int32_t currentNum;
     int32_t currentOffset;
-    TilingByJobContext(
-        context.tokenShape.tokenNum, currentNum, currentOffset, job.jobIndex, job.totalJobs, 1);
+    TilingByJobContext(context.tokenShape.tokenNum, currentNum, currentOffset, job.jobIndex, job.totalJobs, 1);
     if (currentNum <= 0) {
         return;
     }
@@ -101,21 +97,21 @@ __aicore__ inline void QuantProcessInRankOneCore(const DispatchPrepareContext &c
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     GlobalTensor<uint8_t> dstGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(args.xGmAddr) +
-        static_cast<uint64_t>(currentOffset) * hiddenDim);
+                                    static_cast<uint64_t>(currentOffset) * hiddenDim);
     dstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(args.quantTokenScalePtr) +
-        static_cast<uint64_t>(currentOffset) * args.quantTokenScaleAlignBytes);
+                                    static_cast<uint64_t>(currentOffset) * args.quantTokenScaleAlignBytes);
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
-    DataCopyExtParams xCopyOutParams = {1U,
-        static_cast<uint32_t>(args.quantTokenAlignBytes + args.quantScaleAlignBytes), 0U, 0U, 0U};
+    DataCopyExtParams xCopyOutParams = {
+        1U, static_cast<uint32_t>(args.quantTokenAlignBytes + args.quantScaleAlignBytes), 0U, 0U, 0U};
     if constexpr (TopkWeightsPrefetch) {
-        xCopyOutParams.blockLen = Ops::Base::CeilAlign(
-            xCopyOutParams.blockLen + args.weightAlignBytes, static_cast<uint32_t>(ALIGN_32));
+        xCopyOutParams.blockLen =
+            Ops::Base::CeilAlign(xCopyOutParams.blockLen + args.weightAlignBytes, static_cast<uint32_t>(ALIGN_32));
     }
-    __ubuf__ uint16_t* maxExpAddr = reinterpret_cast<__ubuf__ uint16_t *>(scratch.mxTempTensor.GetPhyAddr());
-    __ubuf__ uint16_t* halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t *>(
-        scratch.mxTempTensor[Ops::Base::CeilAlign(
-            args.quantScaleNumAlignPerToken, static_cast<uint32_t>(ALIGN_32))].GetPhyAddr());
+    __ubuf__ uint16_t *maxExpAddr = reinterpret_cast<__ubuf__ uint16_t *>(scratch.mxTempTensor.GetPhyAddr());
+    __ubuf__ uint16_t *halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t *>(
+        scratch.mxTempTensor[Ops::Base::CeilAlign(args.quantScaleNumAlignPerToken, static_cast<uint32_t>(ALIGN_32))]
+            .GetPhyAddr());
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < currentNum; index++) {
@@ -124,29 +120,28 @@ __aicore__ inline void QuantProcessInRankOneCore(const DispatchPrepareContext &c
         auto xInTensor = useFirstBuffer ? scratch.xInTensor0 : scratch.xInTensor1;
         auto xOutTensor = useFirstBuffer ? scratch.xOutTensor0 : scratch.xOutTensor1;
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        DataCopyPad(xInTensor, srcGlobalTensor[static_cast<uint64_t>(index) * hiddenDim],
-            xCopyInParams, xCopyInPadParams);
-        LoadTopkWeightsToUb<TopkWeightsType, ActivationType, TopkWeightsPrefetch>(
-            args, scratch, xOutTensor, currentOffset + index, event);
-        __ubuf__ bfloat16_t* srcAddr = (__ubuf__ bfloat16_t*)xInTensor.GetPhyAddr();
-        __ubuf__ int8_t* outDataAddr = (__ubuf__ int8_t*)xOutTensor.GetPhyAddr();
-        __ubuf__ uint16_t* mxScaleAddr = (__ubuf__ uint16_t*)xOutTensor[args.quantTokenAlignBytes].GetPhyAddr();
+        DataCopyPad(xInTensor, srcGlobalTensor[static_cast<uint64_t>(index) * hiddenDim], xCopyInParams,
+                    xCopyInPadParams);
+        LoadTopkWeightsToUb<TopkWeightsType, ActivationType, TopkWeightsPrefetch>(args, scratch, xOutTensor,
+                                                                                  currentOffset + index, event);
+        __ubuf__ bfloat16_t *srcAddr = (__ubuf__ bfloat16_t *)xInTensor.GetPhyAddr();
+        __ubuf__ int8_t *outDataAddr = (__ubuf__ int8_t *)xOutTensor.GetPhyAddr();
+        __ubuf__ uint16_t *mxScaleAddr = (__ubuf__ uint16_t *)xOutTensor[args.quantTokenAlignBytes].GetPhyAddr();
 
         Quant::ComputeMaxExp(srcAddr, maxExpAddr, hiddenDim);
-        Quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr,
-            args.quantScaleNumAlignPerToken);
+        Quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr, args.quantScaleNumAlignPerToken);
         if constexpr (QuantMode == E2M1_QUANT) {
             Quant::ComputeFp4Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
-                AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, hiddenDim);
+                                  AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, hiddenDim);
         } else {
             Quant::ComputeFp8Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
-                AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, hiddenDim);
+                                  AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, hiddenDim);
         }
         SetFlag<AscendC::HardEvent::V_MTE3>(event);
         WaitFlag<AscendC::HardEvent::V_MTE3>(event);
         auto xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
-        DataCopyPad(dstGlobalTensor[static_cast<uint64_t>(index) * args.quantTokenScaleAlignBytes],
-            xOutBytesTensor, xCopyOutParams);
+        DataCopyPad(dstGlobalTensor[static_cast<uint64_t>(index) * args.quantTokenScaleAlignBytes], xOutBytesTensor,
+                    xCopyOutParams);
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
