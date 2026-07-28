@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+鑱? This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -16,7 +16,7 @@
 #include <kernel_operator.h>
 #include <lib/matmul_intf.h>
 #include "common.h"
-#include "../allto_all_matmul_arch35.h"
+#include "../allto_all_matmul_kernel_base.h"
 #include "../allto_all_matmul_pipeline.h"
 #include "allto_all_matmul_tiling_key.h"
 #include "allto_all_matmul_tiling_data.h"
@@ -45,7 +45,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         using SchedulerType = Mc2Kernel::AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType,     \
                                                                 SchedulerContextType>;                                 \
         SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &matmulImplName);                               \
-        Mc2Kernel::AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingData> op(             \
+        Mc2Kernel::AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingData> op(         \
             &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, all2all_out, workspaceGM, &tilingData, &pipe);                                        \
         op.Process();                                                                                                  \

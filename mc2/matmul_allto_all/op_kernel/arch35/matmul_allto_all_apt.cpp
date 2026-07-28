@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+鑱? Copyright (c) 2025 Huawei Technologies Co., Ltd.
+鑱? This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+鑱? CANN Open Software License Agreement Version 2.0 (the "License").
+鑱? Please refer to the License for details. You may not use this file except in compliance with the License.
+鑱? THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+鑱? INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+鑱? See LICENSE in the root of the software repository for the full text of the License.
+鑱?/
 
 /*!
  * \file matmul_allto_all.cpp
@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #endif
 #include "common.h"
-#include "../matmul_allto_all_arch35.h"
+#include "../matmul_allto_all_kernel_base.h"
 #include "../matmul_allto_all_pipeline.h"
 #include "matmul_allto_all_tiling_key.h"
 #include "matmul_allto_all_tiling_data.h"
@@ -49,7 +49,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         using SchedulerType =                                                                                          \
             MatmulAlltoAllPipeLine<ComputationType, TransposeType, CommunicationType, SchedulerContextType>;           \
         SchedulerType SchedulerImpl(&matmulImplName, &transposeImplName, &commImplName);                               \
-        Mc2Kernel::MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingData> op(             \
+        Mc2Kernel::MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingData> op(         \
             &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, workspaceGM, &tilingData, &pipe);                                                     \
         op.Process();                                                                                                  \
@@ -105,15 +105,14 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
                                             GM_ADDR commScale, GM_ADDR x1Offset, GM_ADDR x2Offset, GM_ADDR y,
                                             GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    // kernel的使用类型，这里是cube和vic混用，cube是主核，cube:vec=1:2
+    // kernel閻ㄥ嫪濞囬悽銊ц閸ㄥ绱濇潻娆撳櫡閺勭棗ube閸滃瘉ic濞ｉ鏁ら敍瀹憉be閺勵垯瀵岄弽闈╃礉cube:vec=1:2
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     constexpr HcclServerType commServerType =
         (COMMMODE == COMMMODE_CCU) ? HcclServerType::HCCL_SERVER_TYPE_CCU : HcclServerType::HCCL_SERVER_TYPE_AICPU;
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
-    // 注册默认的tilingdata，需要保证有且只有一个默认tilingdata被注册
-    REGISTER_TILING_DEFAULT(MatmulAlltoAllTilingData);
+    // 濞夈劌鍞芥妯款吇閻ㄥ墖ilingdata閿涘矂娓剁憰浣风箽鐠囦焦婀佹稉鏂垮涧閺堝绔存稉顏堢帛鐠侇槡ilingdata鐞氼偅鏁為崘?    REGISTER_TILING_DEFAULT(MatmulAlltoAllTilingData);
     GET_TILING_DATA_WITH_STRUCT(MatmulAlltoAllTilingData, tilingData, tilingGM);
 
     if constexpr (DTYPEBIAS == DTYPE_BIAS_SAME_WITH_X) {

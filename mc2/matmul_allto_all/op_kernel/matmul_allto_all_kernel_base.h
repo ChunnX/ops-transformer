@@ -9,23 +9,20 @@
  */
 
 /*!
- * \file matmul_allto_all_arch35.h
+ * \file matmul_allto_all_kernel_base.h
  * \brief
  */
 
-#ifndef MATMUL_ALLTO_ALL_ARCH35_H
-#define MATMUL_ALLTO_ALL_ARCH35_H
+#ifndef MATMUL_ALLTO_ALL_KERNEL_BASE_H
+#define MATMUL_ALLTO_ALL_KERNEL_BASE_H
 
 namespace Mc2Kernel {
 /**
- * SchedulerType: 流水线类的数据类型
- * SchedulerContextType: 流水线类使用的上下文的数据类型
- * MatmulAlltoAllTilingDataType: tilingdata的数据类型
- */
+ * SchedulerType: 娴佹按绾跨被鐨勬暟鎹被鍨? * SchedulerContextType: 娴佹按绾跨被浣跨敤鐨勪笂涓嬫枃鐨勬暟鎹被鍨? * MatmulAlltoAllTilingDataType: tilingdata鐨勬暟鎹被鍨? */
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
-class MatmulAlltoAllArch35 {
+class MatmulAlltoAllKernelBase {
 public:
-    __aicore__ inline MatmulAlltoAllArch35(SchedulerType *pipeLine) : pipeLine_(pipeLine){};
+    __aicore__ inline MatmulAlltoAllKernelBase(SchedulerType *pipeLine) : pipeLine_(pipeLine){};
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR workspaceGM,
                                 MatmulAlltoAllTilingDataType *tilingData, AscendC::TPipe *tPipe);
     __aicore__ inline void Process();
@@ -34,14 +31,14 @@ private:
     SchedulerType *pipeLine_;
     SchedulerContextType pipeLineContext_;
     MatmulAlltoAllTilingDataType *tilingData_;
-    // 数据控制
+    // 鏁版嵁鎺у埗
     AscendC::TPipe *tPipe_;
-    // 输入输出矩阵地址
+    // 杈撳叆杈撳嚭鐭╅樀鍦板潃
     GM_ADDR x1_;
     GM_ADDR x2_;
     GM_ADDR y_;
     GM_ADDR bias_;
-    // 临时空间的地址
+    // 涓存椂绌洪棿鐨勫湴鍧€
     GM_ADDR workspaceGM_;
     GM_ADDR tempComputeOutGM_;
     GM_ADDR transOutGM_;
@@ -52,15 +49,16 @@ private:
 };
 
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
-__aicore__ inline void MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Init(
+__aicore__ inline void
+MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Init(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR workspaceGM, MatmulAlltoAllTilingDataType *tilingData,
     AscendC::TPipe *tPipe)
-{
-    // 获取tilingdata数据
+__aicore__ inline void
+MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Init(
+    // 鑾峰彇tilingdata鏁版嵁
     tilingData_ = tilingData;
     auto &&mc2Tiling_ = tilingData_->matmulAlltoAllTilingInfo;
-    // 数据初始化
-    tPipe_ = tPipe;
+    // 鏁版嵁鍒濆鍖?    tPipe_ = tPipe;
     x1_ = x1;
     x2_ = x2;
     y_ = y;
@@ -68,40 +66,39 @@ __aicore__ inline void MatmulAlltoAllArch35<SchedulerType, SchedulerContextType,
     workspaceGM_ = workspaceGM;
     tempComputeOutGM_ = workspaceGM;
     transOutGM_ = (GM_ADDR)(tempComputeOutGM_ + mc2Tiling_.mmResultLen);
-    // 初始化流水线
+    // 鍒濆鍖栨祦姘寸嚎
     pipeLine_->Init();
     pipeLine_->GetContext(&pipeLineContext_);
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
 __aicore__ inline void
-MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Process()
+MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Process()
 {
     auto &&mc2Tiling_ = tilingData_->matmulAlltoAllTilingInfo;
-    // 启动主块流水
+    // 鍚姩涓诲潡娴佹按
     if (mc2Tiling_.tileCnt > 0) {
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
-    // 启动尾块流水
+    // 鍚姩灏惧潡娴佹按
     if (mc2Tiling_.tailCnt > 0) {
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
-    // 结束流水线
-    pipeLine_->End();
+    // 缁撴潫娴佹按绾?    pipeLine_->End();
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
 __aicore__ inline void
-MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::ProcessTile(uint32_t taskCnt)
+MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>
+    ::ProcessTile(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->matmulAlltoAllTilingInfo;
-    // 复用的中间量
+    // 澶嶇敤鐨勪腑闂撮噺
     uint64_t tileMMultiRankN = (uint64_t)mc2Tiling_.tileM * mc2Tiling_.rankN;
     uint64_t rankNDivRankDim = (uint64_t)mc2Tiling_.rankN / mc2Tiling_.rankDim;
-    // matmul矩阵乘计算的输入输出地址，到下一轮计算的数据地址的偏移
-    pipeLineContext_.computationContext->baseData.aGM = x1_;
+    // matmul鐭╅樀涔樿绠楃殑杈撳叆杈撳嚭鍦板潃锛屽埌涓嬩竴杞绠楃殑鏁版嵁鍦板潃鐨勫亸绉?    pipeLineContext_.computationContext->baseData.aGM = x1_;
     pipeLineContext_.computationContext->baseData.bGM = x2_;
     pipeLineContext_.computationContext->baseData.cGM = tempComputeOutGM_;
     pipeLineContext_.computationContext->baseData.biasGM = bias_;
@@ -111,8 +108,7 @@ MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDa
     pipeLineContext_.computationContext->baseData.cOffset = tileMMultiRankN * sizeof(DTYPE_Y);
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2MmV3TileTilingData);
 
-    // 转置操作的输入输出地址，单轮转置内部数据块的偏移，到下一轮转置数据地址的偏移
-    pipeLineContext_.transposeContext->transposeSrcAddr = tempComputeOutGM_;
+    // 杞疆鎿嶄綔鐨勮緭鍏ヨ緭鍑哄湴鍧€锛屽崟杞浆缃唴閮ㄦ暟鎹潡鐨勫亸绉伙紝鍒颁笅涓€杞浆缃暟鎹湴鍧€鐨勫亸绉?    pipeLineContext_.transposeContext->transposeSrcAddr = tempComputeOutGM_;
     pipeLineContext_.transposeContext->transposeDstAddr = transOutGM_;
     pipeLineContext_.transposeContext->transposeSrcOffset = tileMMultiRankN * sizeof(DTYPE_Y);
     pipeLineContext_.transposeContext->nextSrcBlockOffset = rankNDivRankDim;
@@ -125,7 +121,7 @@ MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDa
     pipeLineContext_.transposeContext->innerOffsetIn = (uint64_t)mc2Tiling_.rankN;
     pipeLineContext_.transposeContext->innerOffsetOut = rankNDivRankDim;
 
-    // 通信操作的输入输出地址，到下一轮的地址偏移
+    // 閫氫俊鎿嶄綔鐨勮緭鍏ヨ緭鍑哄湴鍧€锛屽埌涓嬩竴杞殑鍦板潃鍋忕Щ
     pipeLineContext_.communicationContext->taskCnt = mc2Tiling_.tileCnt;
     pipeLineContext_.communicationContext->sendBuffer = pipeLineContext_.transposeContext->transposeDstAddr;
     pipeLineContext_.communicationContext->recvBuffer = y_;
@@ -141,10 +137,11 @@ MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDa
 
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
 __aicore__ inline void
-MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::ProcessTail(uint32_t taskCnt)
+MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>
+    ::ProcessTail(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->matmulAlltoAllTilingInfo;
-    // 复用的中间量
+    // 澶嶇敤鐨勪腑闂撮噺
     uint64_t tileCntMultitileM = (uint64_t)mc2Tiling_.tileCnt * mc2Tiling_.tileM;
     uint64_t rankNDivRankDim = (uint64_t)mc2Tiling_.rankN / mc2Tiling_.rankDim;
 

@@ -9,18 +9,18 @@
  */
 
 /*!
- * \file allto_all_matmul_arch35.h
+ * \file allto_all_matmul_kernel_base.h
  * \brief
  */
 
-#ifndef ALLTO_ALL_MATMUL_ARCH35_H
-#define ALLTO_ALL_MATMUL_ARCH35_H
+#ifndef ALLTO_ALL_MATMUL_KERNEL_BASE_H
+#define ALLTO_ALL_MATMUL_KERNEL_BASE_H
 
 namespace Mc2Kernel {
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
-class AlltoAllMatmulArch35 {
+class AlltoAllMatmulKernelBase {
 public:
-    __aicore__ inline AlltoAllMatmulArch35(SchedulerType *pipeLine) : pipeLine_(pipeLine){};
+    __aicore__ inline AlltoAllMatmulKernelBase(SchedulerType *pipeLine) : pipeLine_(pipeLine){};
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
                                 GM_ADDR workspaceGM, AlltoAllMatmulTilingDataType *tilingData, AscendC::TPipe *tPipe);
     __aicore__ inline void Process();
@@ -45,15 +45,15 @@ private:
 
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
-__aicore__ inline void AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::Init(
+__aicore__ inline void
+AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::Init(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR workspaceGM,
     AlltoAllMatmulTilingDataType *tilingData, AscendC::TPipe *tPipe)
 {
-    // 获取tilingdata数据
+    // 鑾峰彇tilingdata鏁版嵁
     tilingData_ = tilingData;
     auto &&mc2Tiling_ = tilingData_->alltoAllMatmulTilingInfo;
-    // 管道初始化
-    tPipe_ = tPipe;
+    // 绠￠亾鍒濆鍖?    tPipe_ = tPipe;
     x1_ = x1;
     x2_ = x2;
     y_ = y;
@@ -64,40 +64,38 @@ __aicore__ inline void AlltoAllMatmulArch35<SchedulerType, SchedulerContextType,
     if (all2all_out == nullptr) {
         transOutGM_ = (GM_ADDR)((uint64_t)commOutGM_ + mc2Tiling_.commLen);
     }
-    // 初始化流水线
+    // 鍒濆鍖栨祦姘寸嚎
     pipeLine_->Init();
     pipeLine_->GetContext(&pipeLineContext_);
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
 __aicore__ inline void
-AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::Process()
+AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::Process()
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllMatmulTilingInfo;
-    // 启动主块流水
+    // 鍚姩涓诲潡娴佹按
     if (mc2Tiling_.tileCnt > 0) {
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
-    // 启动尾块流水
+    // 鍚姩灏惧潡娴佹按
     if (mc2Tiling_.tailCnt > 0) {
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
-    // 结束流水线
-    pipeLine_->End();
+    // 缁撴潫娴佹按绾?    pipeLine_->End();
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
 __aicore__ inline void
-AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::ProcessTile(uint32_t taskCnt)
+AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>
+    ::ProcessTile(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllMatmulTilingInfo;
-    // 复用的变量
-    uint64_t tileMMultiRankK = (uint64_t)mc2Tiling_.tileM * mc2Tiling_.rankK;
+    // 澶嶇敤鐨勫彉閲?    uint64_t tileMMultiRankK = (uint64_t)mc2Tiling_.tileM * mc2Tiling_.rankK;
 
-    // matmul计算相关地址和偏移
-    pipeLineContext_.computationContext->baseData.aGM = transOutGM_;
+    // matmul璁＄畻鐩稿叧鍦板潃鍜屽亸绉?    pipeLineContext_.computationContext->baseData.aGM = transOutGM_;
     pipeLineContext_.computationContext->baseData.bGM = x2_;
     pipeLineContext_.computationContext->baseData.cGM = y_;
     pipeLineContext_.computationContext->baseData.biasGM = bias_;
@@ -108,8 +106,7 @@ AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDa
         (uint64_t)mc2Tiling_.tileM * mc2Tiling_.rankN * sizeof(DTYPE_Y);
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2MmV3TileTilingData);
 
-    // 转置相关地址和偏移
-    pipeLineContext_.transposeContext->transposeSrcAddr = commOutGM_;
+    // 杞疆鐩稿叧鍦板潃鍜屽亸绉?    pipeLineContext_.transposeContext->transposeSrcAddr = commOutGM_;
     pipeLineContext_.transposeContext->transposeDstAddr = transOutGM_;
     pipeLineContext_.transposeContext->transposeSrcOffset = tileMMultiRankK * sizeof(DTYPE_X1);
     pipeLineContext_.transposeContext->transposeDstOffset = tileMMultiRankK * mc2Tiling_.rankDim * sizeof(DTYPE_X1);
@@ -122,8 +119,7 @@ AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDa
     pipeLineContext_.transposeContext->innerOffsetIn = (uint64_t)mc2Tiling_.rankK;
     pipeLineContext_.transposeContext->innerOffsetOut = (uint64_t)mc2Tiling_.rankK * mc2Tiling_.rankDim;
 
-    // 通信相关地址和偏移
-    pipeLineContext_.communicationContext->taskCnt = mc2Tiling_.tileCnt;
+    // 閫氫俊鐩稿叧鍦板潃鍜屽亸绉?    pipeLineContext_.communicationContext->taskCnt = mc2Tiling_.tileCnt;
     pipeLineContext_.communicationContext->sendBuffer = x1_;
     pipeLineContext_.communicationContext->recvBuffer = commOutGM_;
     pipeLineContext_.communicationContext->sendOffset = tileMMultiRankK * (uint64_t)sizeof(DTYPE_X1);
@@ -137,11 +133,11 @@ AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDa
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
 __aicore__ inline void
-AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::ProcessTail(uint32_t taskCnt)
+AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>
+    ::ProcessTail(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllMatmulTilingInfo;
-    // 复用的变量
-    uint64_t tailMMultiRankK = (uint64_t)mc2Tiling_.tailM * (uint64_t)mc2Tiling_.rankK;
+    // 澶嶇敤鐨勫彉閲?    uint64_t tailMMultiRankK = (uint64_t)mc2Tiling_.tailM * (uint64_t)mc2Tiling_.rankK;
     uint64_t tileCntMultitileMMultiRankK =
         (uint64_t)mc2Tiling_.tileCnt * (uint64_t)mc2Tiling_.tileM * (uint64_t)mc2Tiling_.rankK;
 
