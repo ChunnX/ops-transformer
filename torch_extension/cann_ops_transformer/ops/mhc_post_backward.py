@@ -32,7 +32,7 @@ class MhcPostBackwardOpBuilder(OpBuilder):
         @impl(AS_LIBRARY, self.name, "Meta")
         def mhc_post_backward_meta(grad_output, x, h_res, h_out, h_post):
             grad_x = torch.empty_like(x)
-            if h_res is None:
+            if h_res is None or h_res.numel() == 0:
                 grad_h_res = torch.empty(
                     *x.shape[:-1], x.shape[-2], dtype=torch.float32, device=x.device
                 )
