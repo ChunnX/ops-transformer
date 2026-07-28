@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /*!
  * \file stem_oam_prep_paged_kv_base.h
  * \brief
@@ -62,6 +61,5 @@ __aicore__ inline void EventMsg()
     SetFlag<VAR_T>(event);
     WaitFlag<VAR_T>(event);
 }
-
 
 #endif //  STEM_OAM_PREP_PAGED_KV_BASE_H

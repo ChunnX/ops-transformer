@@ -4,7 +4,7 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -69,9 +69,7 @@ struct StemOamPrepPagedKvCompileInfo {
 
 class StemPrepKvTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit StemPrepKvTiling(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+    explicit StemPrepKvTiling(gert::TilingContext *context) : TilingBaseClass(context) {}
 
 protected:
     bool IsCapable() override;
@@ -87,6 +85,7 @@ protected:
     ge::graphStatus CheckParams();
     ge::graphStatus ContinuousStridesCompute(gert::Shape &shape, gert::Stride &stride, size_t idx);
     ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &inputStride, size_t idx);
+
 private:
     uint64_t totalCoreNum_ = 0;
 
@@ -110,7 +109,7 @@ private:
     gert::Shape vcacheShape_;
     gert::Shape kScaleCacheShape_;
 
-    StemOamPrepPagedKvTilingData* tilingData_ = nullptr;
+    StemOamPrepPagedKvTilingData *tilingData_ = nullptr;
 };
 
 } // namespace optiling
