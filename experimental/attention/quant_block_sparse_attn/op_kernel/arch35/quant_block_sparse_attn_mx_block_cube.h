@@ -113,7 +113,7 @@ public:
         const uint32_t s2CalcSize = GetSubLoopS2Size(runInfo, subLoop);
 
         Buffer<BufferType::L1> qBuf;
-        const uint32_t qScaleOffset = AlignUp32(runInfo.actMSize) * constInfo.dSize;
+        const uint64_t qScaleOffset = static_cast<uint64_t>(AlignUp32(runInfo.actMSize)) * constInfo.dSize;
         if (unlikely(runInfo.isFirstS2Loop && subLoop == 0U)) {
             // Q 用 ND2NZ，QScale 用 DN2NZ；后续 S2 loop 复用。
             qBuf = l1QBuffers_.Get();
@@ -135,7 +135,7 @@ public:
         Buffer<BufferType::L1> kBuf = l1KVBuffers_.Get();
         kBuf.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<INPUT_T> kTensor = kBuf.GetTensor<INPUT_T>();
-        const uint32_t kScaleOffset = AlignUp32(s2CalcSize) * constInfo.dSize;
+        const uint64_t kScaleOffset = static_cast<uint64_t>(AlignUp32(s2CalcSize)) * constInfo.dSize;
         LocalTensor<SCALE_T> kScaleTensor = kBuf.GetTensor<SCALE_T>(kScaleOffset);
         // K/KScale 共用 sparse overlap 计算，分别发起 PA data 与 scale 搬运。
         CopyKeyAndScaleToL1(kTensor, kScaleTensor, runInfo, constInfo, s2CalcSize, subLoop);
@@ -174,7 +174,7 @@ public:
         // C2: P[128,512] x V[512,DV]，P/V 均携带 e8m0 scale。
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> pBuf = inputBuf.GetCube();
         pBuf.WaitCrossCore();
-        constexpr uint32_t pScaleOffset = M_BASE * S2_BASE;
+        constexpr uint64_t pScaleOffset = static_cast<uint64_t>(M_BASE) * S2_BASE;
         if (runInfo.actSingleLoopS2Size > S2_SPLIT) {
             // tail PScale 填 e8m0(1.0)。
             constexpr uint32_t int16Bytes = 2U;
@@ -200,7 +200,7 @@ public:
             InitValuePadding(vTensor, realK, constInfo.dSizeV);
             CopyValueToL1(vTensor, runInfo, constInfo, realK, kIdx);
 
-            const uint32_t vScaleOffset = AlignUp64(realK) * constInfo.dSizeV;
+            const uint64_t vScaleOffset = static_cast<uint64_t>(AlignUp64(realK)) * constInfo.dSizeV;
             LocalTensor<SCALE_T> vScaleTensor = vBuf.GetTensor<SCALE_T>(vScaleOffset);
             // VScale 按 64-token group 寻址。
             CopyValueScaleToL1(vScaleTensor, runInfo, constInfo, realK, kIdx);
@@ -310,7 +310,7 @@ private:
             const uint32_t copyStartInBlock = overlapStart - blockStart;
             const uint32_t copyRowNum = overlapEnd - overlapStart;
 
-            startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlockTokenOffset[i]) + copyStartInBlock;
+            startPos.s2Offset = runInfo.sparseBlockTokenOffset[i] + copyStartInBlock;
             keyShape.copyRowNum = copyRowNum;
             LocalTensor<INPUT_T> keyBlockDstTensor =
                 keyDstTensor[(overlapStart - tileStart) * blockElementCnt];
@@ -360,7 +360,7 @@ private:
             const uint32_t copyStartInBlock = overlapStart - blockStart;
             const uint32_t copyRowNum = overlapEnd - overlapStart;
 
-            startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlockTokenOffset[i]) + copyStartInBlock;
+            startPos.s2Offset = runInfo.sparseBlockTokenOffset[i] + copyStartInBlock;
             valueShape.copyRowNum = copyRowNum;
             LocalTensor<INPUT_T> valueDstTensor = dstTensor[(overlapStart - tileStart) * blockElementCnt];
             GmCopyInToL1PA<INPUT_T>(valueDstTensor, valueGm_, blockTableGm_, KVLAYOUT::BNBD, valueShape, startPos);
@@ -409,8 +409,7 @@ private:
             const uint32_t groupEndInBlock = (copyStartInBlock + copyRowNum + MX_TOKEN_GROUP - 1U) / MX_TOKEN_GROUP;
             const uint32_t copyGroupNum = groupEndInBlock - groupStartInBlock;
 
-            startPos.s2Offset =
-                static_cast<uint32_t>(runInfo.sparseBlockIdx[i]) * scaleBlockSize + groupStartInBlock;
+            startPos.s2Offset = static_cast<uint64_t>(runInfo.sparseBlockIdx[i]) * scaleBlockSize + groupStartInBlock;
             valueScaleShape.copyRowNum = copyGroupNum;
             LocalTensor<SCALE_T> valueScaleDstTensor = dstTensor[copiedGroupCount * blockElementCnt];
             MxGmFlatScaleCopyInToL1PAForND<SCALE_T>(valueScaleDstTensor, vScaleGm_, blockTableGm_, valueScaleShape,

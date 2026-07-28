@@ -273,10 +273,10 @@ __aicore__ inline void MxGmFlatScaleCopyInToL1PAForDN(LocalTensor<L1Type>& l1Ten
     //   L1 拷贝方式：DN2NZ，因为对应的数据操作数按转置方式加载。
     uint32_t copyFinishRowCnt = 0;
     uint64_t blockTableBaseOffset = static_cast<uint64_t>(startPos.bIdx) * shape.maxblockNumPerBatch;
-    uint32_t curS2Idx = startPos.s2Offset;
+    uint64_t curS2Idx = startPos.s2Offset;
     while (copyFinishRowCnt < shape.copyRowNum) {
         uint64_t blockIdOffset = curS2Idx / shape.blockSize;
-        uint32_t remainRowCnt = curS2Idx % shape.blockSize;
+        uint32_t remainRowCnt = static_cast<uint32_t>(curS2Idx % shape.blockSize);
         uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
         uint32_t copyRowCnt = shape.blockSize - remainRowCnt;
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {
@@ -299,16 +299,16 @@ __aicore__ inline void MxGmFlatScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Ten
     const Position &startPos)
 {
     // PA scale helper，用于 value per-channel-group scale：
-    //   GM 逻辑 shape：[physicalBlock, N, blockSize/64, DV, 2]
-    //   每个拷贝行覆盖 block 内 64 个 value token。
+    // GM 逻辑 shape：[physicalBlock, N, blockSize/64, DV, 2]
+    // 每个拷贝行覆盖 block 内 64 个 value token。
     // 这里使用 ND2NZ，因为 V 在 BMM2 中作为非转置右操作数被消费。
     uint32_t copyFinishRowCnt = 0;
     uint64_t blockTableBaseOffset = static_cast<uint64_t>(startPos.bIdx) * shape.maxblockNumPerBatch;
-    uint32_t curS2Idx = startPos.s2Offset;
+    uint64_t curS2Idx = startPos.s2Offset;
     constexpr uint32_t blockElementCnt = 32U / sizeof(L1Type);
     while (copyFinishRowCnt < shape.copyRowNum) {
         uint64_t blockIdOffset = curS2Idx / shape.blockSize;
-        uint32_t remainRowCnt = curS2Idx % shape.blockSize;
+        uint32_t remainRowCnt = static_cast<uint32_t>(curS2Idx % shape.blockSize);
         uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
         uint32_t copyRowCnt = shape.blockSize - remainRowCnt;
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {

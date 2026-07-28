@@ -291,13 +291,14 @@ private:
         SortSparseBlocks(runInfo);
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const int64_t sparseBlkIdx = runInfo.sparseBlockIdx[i];
-            int64_t sparseTokenOffset = 0;
+            uint64_t sparseTokenOffset = 0U;
             uint32_t sparseBlockRealSize = 0U;
             runInfo.sparseBlockTileOffset[i] = runInfo.actSingleLoopS2Size;
             // 负 index 不参与拼接。
             if (sparseBlkIdx >= 0) {
-                sparseTokenOffset = sparseBlkIdx * static_cast<int64_t>(constInfo.kvSparseBlockSize);
-                const int64_t remainS2 = static_cast<int64_t>(runInfo.actS2Size) - sparseTokenOffset;
+                sparseTokenOffset = static_cast<uint64_t>(sparseBlkIdx) * constInfo.kvSparseBlockSize;
+                const int64_t remainS2 =
+                    static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(sparseTokenOffset);
                 sparseBlockRealSize =
                     remainS2 > static_cast<int64_t>(constInfo.kvSparseBlockSize) ? constInfo.kvSparseBlockSize :
                         (remainS2 > 0 ? static_cast<uint32_t>(remainS2) : 0U);
@@ -310,7 +311,8 @@ private:
                     const int64_t causalDelta = static_cast<int64_t>(runInfo.actS2Size) -
                                                 static_cast<int64_t>(runInfo.actS1Size);
                     int64_t sparseBlkIdxForMask = sparseBlkIdx;
-                    AttentionMaskFullProcessingOrRequired(runInfo.s1Idx, sparseTokenOffset, causalDelta,
+                    AttentionMaskFullProcessingOrRequired(static_cast<int64_t>(runInfo.s1Idx),
+                                                          static_cast<int64_t>(sparseTokenOffset), causalDelta,
                                                           sparseBlockRealSize, sparseBlkIdxForMask,
                                                           runInfo.sparseBlockPartialMask[i]);
                 }

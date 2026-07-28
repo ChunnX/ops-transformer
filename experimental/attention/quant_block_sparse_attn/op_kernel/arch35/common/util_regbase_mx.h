@@ -12,8 +12,8 @@
  * \file util_regbase_mx.h
  * \brief QuantBlockSparseAttn 的 MXFP8 全量化运行期参数。
  */
-#ifndef QUANT_BLOCK_SPARSE_ATTN_UTIL_REGBASE_MX_H_
-#define QUANT_BLOCK_SPARSE_ATTN_UTIL_REGBASE_MX_H_
+#ifndef UTIL_REGBASE_MX_H
+#define UTIL_REGBASE_MX_H
 
 #include <cstdint>
 #include "../../quant_block_sparse_attn_common.h"
@@ -57,7 +57,7 @@ struct MxRunInfo {
     // 有效 block id 升序，负 index 在末尾。
     int64_t sparseBlockIdx[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
     // 原始 KV token 起点，用于 PA/mask 寻址。
-    int64_t sparseBlockTokenOffset[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
+    uint64_t sparseBlockTokenOffset[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
     // 拼接后 tile 起点，K/V/scale/mask 共用。
     uint32_t sparseBlockTileOffset[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
     uint32_t sparseBlockRealSize[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
@@ -126,4 +126,4 @@ struct MxConstInfo : MxBaseConstInfo,
                      MxFeatureConstInfo {};
 } // namespace regbasemx
 
-#endif // QUANT_BLOCK_SPARSE_ATTN_UTIL_REGBASE_MX_H_
+#endif // QUANT_BLOCK_SPARSE_ATTN_COMMON_UTIL_REGBASE_MX_H_

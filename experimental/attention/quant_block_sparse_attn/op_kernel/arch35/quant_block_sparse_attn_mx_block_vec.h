@@ -68,6 +68,12 @@ public:
     static constexpr uint32_t DN_VSELR_GROUP_SIZE = DN_VSELR_INDEX_SIZE / DN_VSELR_GROUP_NUM;
     static constexpr uint32_t ATTEN_MASK_UB_SIZE = S2_SPLIT * VEC_M_BASE;
     static constexpr uint32_t MASK_COPY_BLOCK_BYTES = 32U;
+    // VF 输出的 P 使用 DN packed layout：每个 AIV 处理 VEC_M_BASE 行，每行 S2_SPLIT 个 P 元素，
+    // 并额外保留 S2_SPLIT / MX_SCALE_GROUP 个元素作为行内 padding/重排空间。
+    static constexpr uint32_t STAGE1_CAST_ROW_STRIDE = S2_SPLIT + S2_SPLIT / MX_SCALE_GROUP;
+    static constexpr uint32_t STAGE1_OUT_UB_SIZE = VEC_M_BASE * STAGE1_CAST_ROW_STRIDE * sizeof(INPUT_T);
+    static constexpr uint32_t PSCALE_SUB_LOOP_UB_SIZE = VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP * sizeof(SCALE_T);
+    static constexpr uint32_t SOFTMAX_STATE_UB_SIZE = VEC_M_BASE * sizeof(float);
 
     __aicore__ inline void Init(TPipe *pipe, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *attenMask,
@@ -94,27 +100,27 @@ public:
     __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIV {
-            // V2 累计输出：[64,128] fp32。
-            tPipe_->InitBuffer(stage2OutBuf_, 64U * dTemplateAlign64 * sizeof(MM_T));
+            // V2 累计输出：[VEC_M_BASE,dTemplateAlign64] fp32。
+            tPipe_->InitBuffer(stage2OutBuf_, VEC_M_BASE * dTemplateAlign64 * sizeof(MM_T));
             // V1 DN packed P 使用双队列。
-            tPipe_->InitBuffer(stage1OutQue_[0], 1, 16896U);
-            tPipe_->InitBuffer(stage1OutQue_[1], 1, 16896U);
+            tPipe_->InitBuffer(stage1OutQue_[0], 1, STAGE1_OUT_UB_SIZE);
+            tPipe_->InitBuffer(stage1OutQue_[1], 1, STAGE1_OUT_UB_SIZE);
             // 单个 256-column subLoop 的 e8m0 PScale。
-            tPipe_->InitBuffer(pScaleSubLoop0Que_, 1, 512U);
+            tPipe_->InitBuffer(pScaleSubLoop0Que_, 1, PSCALE_SUB_LOOP_UB_SIZE);
             // 三槽 softmax 状态对应 PRELOAD_N+1 环形流水。
-            tPipe_->InitBuffer(softmaxSumBuf_[0], 256U);
-            tPipe_->InitBuffer(softmaxSumBuf_[1], 256U);
-            tPipe_->InitBuffer(softmaxSumBuf_[2], 256U);
-            tPipe_->InitBuffer(softmaxMaxBuf_[0], 256U);
-            tPipe_->InitBuffer(softmaxMaxBuf_[1], 256U);
-            tPipe_->InitBuffer(softmaxMaxBuf_[2], 256U);
-            tPipe_->InitBuffer(softmaxExpBuf_[0], 256U);
-            tPipe_->InitBuffer(softmaxExpBuf_[1], 256U);
-            tPipe_->InitBuffer(softmaxExpBuf_[2], 256U);
+            tPipe_->InitBuffer(softmaxSumBuf_[0], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxSumBuf_[1], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxSumBuf_[2], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxMaxBuf_[0], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxMaxBuf_[1], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxMaxBuf_[2], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxExpBuf_[0], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxExpBuf_[1], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxExpBuf_[2], SOFTMAX_STATE_UB_SIZE);
             // online softmax update 临时状态。
-            tPipe_->InitBuffer(preLoopMaxBuf_, 256U);
-            tPipe_->InitBuffer(preLoopSumBuf_, 256U);
-            tPipe_->InitBuffer(firstLoopSumBuf_, 256U);
+            tPipe_->InitBuffer(preLoopMaxBuf_, SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(preLoopSumBuf_, SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(firstLoopSumBuf_, SOFTMAX_STATE_UB_SIZE);
             if constexpr (HAS_LSE) {
                 tPipe_->InitBuffer(softmaxLseQueue_, 1, (M_BASE >> 1U) * sizeof(float) * 8U);
             }
@@ -191,39 +197,9 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         if constexpr (HAS_ATTEN) {
             attenMaskUb = CopyAttenMaskToUb(runInfo, subLoop, s2CalcSize);
-            // zyhPrint
-            // if (s2CalcSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U) {
-            //     constexpr uint32_t dumpRowsPerBlock = 64U;
-            //     const uint32_t dumpBlockCount = (s2CalcSize + dumpRowsPerBlock - 1U) / dumpRowsPerBlock;
-            //     for (uint32_t i = 0U; i < dumpBlockCount; ++i) {
-            //         const uint32_t rowOffset = i * dumpRowsPerBlock;
-            //         const uint32_t rows =
-            //             rowOffset + dumpRowsPerBlock <= s2CalcSize ? dumpRowsPerBlock : s2CalcSize - rowOffset;
-            //         uint32_t maskShape[] = {rows, VEC_M_BASE};
-            //         AscendC::ShapeInfo maskShapeInfo(2, maskShape);
-            //         AscendC::DumpTensor(attenMaskUb[rowOffset * VEC_M_BASE],
-            //                             1000U + subLoop * 100U + constInfo.subBlockIdx * 10U + i,
-            //                             rows * VEC_M_BASE, maskShapeInfo);
-            //     }
-            // }
         }
         // 先搬 mask，再等待 C1，以重叠 MTE2 与 BMM1。
         bmm1ResBuf.WaitCrossCore();
-        // zyhPrint
-        // if (s2CalcSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U) {
-        //     constexpr uint32_t dumpRowsPerBlock = 64U;
-        //     const uint32_t dumpBlockCount = (s2CalcSize + dumpRowsPerBlock - 1U) / dumpRowsPerBlock;
-        //     for (uint32_t i = 0U; i < dumpBlockCount; ++i) {
-        //         const uint32_t rowOffset = i * dumpRowsPerBlock;
-        //         const uint32_t rows =
-        //             rowOffset + dumpRowsPerBlock <= s2CalcSize ? dumpRowsPerBlock : s2CalcSize - rowOffset;
-        //         uint32_t mmResShape[] = {rows, VEC_M_BASE};
-        //         AscendC::ShapeInfo mmResShapeInfo(2, mmResShape);
-        //         AscendC::DumpTensor(mmRes[rowOffset * VEC_M_BASE],
-        //                             2000U + subLoop * 100U + constInfo.subBlockIdx * 10U + i,
-        //                             rows * VEC_M_BASE, mmResShapeInfo);
-        //     }
-        // }
         constexpr float descaleQK = 1.0f;
         // Q/K scale 已在 C1 随路消费，因此 descaleQK=1。
         if constexpr (USE_DN) {
@@ -248,23 +224,6 @@ public:
             static_assert(USE_DN, "MXFullQuantMode vector currently implements DN VF only; "
                                   "use_dn=false is reserved for future extension");
         }
-        // zyhPrint
-        // if (runInfo.actVecMSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U) {
-        //     uint32_t softmaxStateShape[] = {1U, runInfo.actVecMSize};
-        //     AscendC::ShapeInfo softmaxStateShapeInfo(2, softmaxStateShape);
-        //     AscendC::DumpTensor(maxUb, 3000U + subLoop * 100U + constInfo.subBlockIdx * 10U,
-        //                         runInfo.actVecMSize, softmaxStateShapeInfo);
-        //     AscendC::DumpTensor(sumUb, 4000U + subLoop * 100U + constInfo.subBlockIdx * 10U,
-        //                         runInfo.actVecMSize, softmaxStateShapeInfo);
-        // }
-        // zyhPrint
-        // if (runInfo.actVecMSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U && subLoop == 0U) {
-        //     Duplicate<float>(preLoopMaxUb, constInfo.scaleValue, runInfo.actVecMSize);
-        //     uint32_t scaleShape[] = {1U, runInfo.actVecMSize};
-        //     AscendC::ShapeInfo scaleShapeInfo(2, scaleShape);
-        //     AscendC::DumpTensor(preLoopMaxUb, 6000U + constInfo.subBlockIdx * 10U, runInfo.actVecMSize,
-        //                         scaleShapeInfo);
-        // }
         bmm1ResBuf.SetCrossCore();
         if constexpr (HAS_ATTEN) {
             attenMaskInQue_.template FreeTensor(attenMaskUb);
@@ -307,13 +266,6 @@ public:
         const int64_t vec2CalcSize = static_cast<int64_t>(vecMSize) * dTemplateAlign64;
         LocalTensor<MM_T> vec2ResUb = stage2OutBuf_.template Get<MM_T>();
         LocalTensor<MM_T> mmRes = bmm2ResBuf.template GetTensor<MM_T>();
-        // zyhPrint
-        // if (runInfo.loop == 0U && runInfo.mLoop == 0U && constInfo.subBlockIdx == 0U) {
-        //     uint32_t bmm2Shape[] = {vecMSize, dTemplateAlign64};
-        //     AscendC::ShapeInfo bmm2ShapeInfo(2, bmm2Shape);
-        //     AscendC::DumpTensor(mmRes, 500U + constInfo.subBlockIdx, static_cast<uint32_t>(vec2CalcSize),
-        //                         bmm2ShapeInfo);
-        // }
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         if (unlikely(isFirstS2Loop)) {
             // 首个 S2 tile 直接作为累计值。
@@ -381,7 +333,7 @@ private:
         return (runInfo.actSingleLoopS2Size <= S2_SPLIT) || (subLoop != 0U);
     }
 
-    __aicore__ inline void BoolCopyInMxMask(const LocalTensor<uint8_t> &dstTensor, int64_t srcOffset,
+    __aicore__ inline void BoolCopyInMxMask(const LocalTensor<uint8_t> &dstTensor, uint64_t srcOffset,
                                             uint32_t s2Len, uint32_t qLen)
     {
         // DN mask 按 GM row stride 搬到 [S2,64] UB。
@@ -391,24 +343,26 @@ private:
         dataCopyParams.dstStride = CeilDiv(VEC_M_BASE, MASK_COPY_BLOCK_BYTES) - dataCopyParams.blockLen;
         // Host 固定 mask 为 [2048,2048]，当前 AIV 固定搬 64 列，源/目标行宽均满足 32B 对齐。
         dataCopyParams.srcStride = (attenMaskS2Size_ - qLen) / MASK_COPY_BLOCK_BYTES;
-        DataCopy(dstTensor, attenMaskGm_[static_cast<uint64_t>(srcOffset)], dataCopyParams);
+        DataCopy(dstTensor, attenMaskGm_[srcOffset], dataCopyParams);
     }
 
-    __aicore__ inline int64_t ComputeCausalMaskOffset(const MxRunInfo &runInfo, int64_t segmentS2TokenOffset) const
+    __aicore__ inline uint64_t ComputeCausalMaskOffset(const MxRunInfo &runInfo, uint64_t segmentS2TokenOffset) const
     {
         const int64_t deltaN = static_cast<int64_t>(runInfo.actS1Size) - static_cast<int64_t>(runInfo.actS2Size);
-        const int64_t deltaCausalOrNext = static_cast<int64_t>(runInfo.s1Idx) - segmentS2TokenOffset - deltaN;
-        return regbaseutil::ComputeOffsetForCausal(
+        const int64_t deltaCausalOrNext =
+            static_cast<int64_t>(runInfo.s1Idx) - static_cast<int64_t>(segmentS2TokenOffset) - deltaN;
+        const uint64_t maskOffset = static_cast<uint64_t>(regbaseutil::ComputeOffsetForCausal(
             deltaCausalOrNext, M_BASE, S2_SPLIT, attenMaskS2Size_,
-            static_cast<int64_t>(runInfo.vecMbaseIdx), USE_DN);
+            static_cast<int64_t>(runInfo.vecMbaseIdx), USE_DN));
+        return maskOffset;
     }
 
     __aicore__ inline bool CopyAttenMaskSegment(LocalTensor<uint8_t> &attenMaskUb, const MxRunInfo &runInfo,
                                                 uint32_t dstS2Offset, uint32_t segmentS2Len,
-                                                int64_t segmentS2TokenOffset, bool needAtten)
+                                                uint64_t segmentS2TokenOffset, bool needAtten)
     {
         // 返回值仅表示本段是否发起了 GM->UB 的 MTE2 搬运；Duplicate 写 UB 不需要 MTE2_V 同步。
-        const uint32_t dstOffset = dstS2Offset * VEC_M_BASE;
+        const uint64_t dstOffset = static_cast<uint64_t>(dstS2Offset) * VEC_M_BASE;
         if (unlikely(segmentS2Len == 0U)) {
             return false;
         }
@@ -418,7 +372,7 @@ private:
             return false;
         }
 
-        const int64_t maskOffset = ComputeCausalMaskOffset(runInfo, segmentS2TokenOffset);
+        const uint64_t maskOffset = ComputeCausalMaskOffset(runInfo, segmentS2TokenOffset);
         BoolCopyInMxMask(attenMaskUb[dstOffset], maskOffset, segmentS2Len, VEC_M_BASE);
         return true;
     }
@@ -442,8 +396,7 @@ private:
             const uint32_t overlapEnd = blockTileEnd < subLoopEnd ? blockTileEnd : subLoopEnd;
             const uint32_t segmentS2Len = overlapEnd - overlapStart;
             const uint32_t segmentOffsetInBlock = overlapStart - blockTileStart;
-            const int64_t segmentS2TokenOffset =
-                runInfo.sparseBlockTokenOffset[i] + static_cast<int64_t>(segmentOffsetInBlock);
+            const uint64_t segmentS2TokenOffset = runInfo.sparseBlockTokenOffset[i] + segmentOffsetInBlock;
             const bool hasMte2Copy =
                 CopyAttenMaskSegment(attenMaskUb, runInfo, overlapStart - subLoopStart, segmentS2Len,
                                      segmentS2TokenOffset, runInfo.sparseBlockPartialMask[i]);
@@ -463,18 +416,25 @@ private:
                                          const MxConstInfo &constInfo, uint32_t subLoop)
     {
         // 将 subLoop PScale 整理到完整 P[128,512] 后方。
-        constexpr uint64_t pScaleL1Offset = M_BASE * S2_BASE;
+        constexpr uint64_t pScaleL1Offset = static_cast<uint64_t>(M_BASE) * S2_BASE;
         LocalTensor<SCALE_T> pScaleL1Tensor = outputBuf.GetTensor<SCALE_T>(pScaleL1Offset);
         pScaleSubLoop0Que_.template EnQue(pScaleSubLoopTensor);
         pScaleSubLoop0Que_.template DeQue<SCALE_T>();
-        constexpr uint64_t pScaleDataLen = (M_BASE >> 1U) * S2_SPLIT / MX_SCALE_GROUP;
-        constexpr uint16_t pScaleDstStride = (S2_SPLIT / MX_SCALE_GROUP >> 1) - 1U;
+        // 两个 AIV 各处理 VEC_M_BASE 行；PScale 每 MX_SCALE_GROUP 个 P 元素生成一个 scale，
+        // 因此一个 subBlock 的 PScale 长度为 VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP。
+        constexpr uint64_t pScaleDataLen = VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP;
+        // DataCopy 以 32B 为基本块，fp8_e8m0_t 每块 32 个元素。每行有
+        // S2_SPLIT / MX_SCALE_GROUP 个 scale；DN packed 后按 4 个搬运列组写入。
+        constexpr uint16_t pScaleDstStride = ((S2_SPLIT / MX_SCALE_GROUP) >> 1U) - 1U;
         const uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if (subLoop % 2U == 1U) {
+            // subLoop1 写 P 的后 256 列：4 个 column group，每组起点相隔 32 个 E8M0 元素。
             for (uint16_t i = 0U; i < 4U; ++i) {
                 DataCopy(pScaleL1Tensor[vecOffset + (i << 5U)], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= S2_SPLIT) {
+            // 只有一个 256-token subLoop 时，需要把 PScale 同步填到完整 512-token tile 的两个半区。
+            // 每半区跨度为 256 个 E8M0 元素，即 8 个 32B 块。
             for (uint16_t i = 0U; i < 2U; ++i) {
                 DataCopy(pScaleL1Tensor[vecOffset + (i << 8U)], pScaleSubLoopTensor, {1, 8, 0, 0});
             }
@@ -487,17 +447,17 @@ private:
     {
         // 两个 AIV、两个 subLoop 分别写入 P 的对应象限。
         LocalTensor<INPUT_T> pL1Tensor = outputBuf.GetTensor<INPUT_T>();
-        const int64_t subLoopOffset = static_cast<int64_t>(S2_SPLIT) * M_BASE * subLoop;
+        const uint64_t subLoopOffset = static_cast<uint64_t>(S2_SPLIT) * M_BASE * subLoop;
         constexpr uint16_t elementSize = 32U;
         constexpr uint32_t singleProcessSOuterSize = M_BASE >> 1U;
         constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1U) / elementSize;
         constexpr uint32_t actVec0Align32 = M_BASE >> 1U;
         for (uint32_t i = 0U; i < actCopyCount; ++i) {
-            uint32_t dstOffset = 32U * S2_SPLIT * i + subLoopOffset;
+            uint64_t dstOffset = static_cast<uint64_t>(32U) * S2_SPLIT * i + subLoopOffset;
             if (constInfo.subBlockIdx == 1U) {
                 dstOffset += S2_SPLIT * actVec0Align32;
             }
-            uint32_t srcOffset = i * (65U << 5);
+            uint64_t srcOffset = static_cast<uint64_t>(i) * (65U << 5);
             DataCopy(pL1Tensor[dstOffset], stage1CastTensor[srcOffset], {4, S2_SPLIT >> 2, (S2_SPLIT >> 2) + 2U, 0});
         }
     }
