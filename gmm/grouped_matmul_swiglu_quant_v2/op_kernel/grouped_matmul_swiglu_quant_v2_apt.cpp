@@ -32,7 +32,7 @@
 #else
 // 全量化Mx量化
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
-    #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant_tensor_api.h"
+    #include "arch35/grouped_matmul_swiglu_quant_v2_mxfp8.h"
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxfp4_weight_nz.h"
     #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif

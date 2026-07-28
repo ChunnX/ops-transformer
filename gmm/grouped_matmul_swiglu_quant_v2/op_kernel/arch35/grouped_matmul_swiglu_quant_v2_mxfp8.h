@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file grouped_matmul_swiglu_quant_v2_mxquant_tensor_api.h
+ * \file grouped_matmul_swiglu_quant_v2_mxfp8.h
  * \brief TensorApi entry point for GroupedMatmulSwigluQuantV2 MXFP8 ND scenario.
  *        Assembles Blaze BlockMmad + Blaze Epilogue + Blaze Scheduler + MIX Kernel.
  */
@@ -27,8 +27,8 @@
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
-#include "blaze/gemm/kernel/kernel_gmm_swiglu_mx_tensor_api.h"
-#include "blaze/epilogue/block/block_epilogue_swiglu_mx_quant_te.h"
+#include "blaze/gemm/kernel/kernel_qgmm_swiglu_mx.h"
+#include "blaze/epilogue/block/block_epilogue_swiglu_mx_quant.h"
 #include "../grouped_matmul_swiglu_quant_v2_utils.h"
 #include "grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 
@@ -64,7 +64,7 @@ __aicore__ inline void GmmSwigluAswtTensorApi(
     using SwigluBlockMmad = Blaze::Gemm::Block::BlockMmad<
         BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type, LayoutC, BiasType, LayoutC>;
 
-    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueSwigluMxQuantTe<
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueSwigluMxQuant<
         CType, C1Type, weightscaleType>;
 
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
