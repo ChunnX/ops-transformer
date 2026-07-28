@@ -33,18 +33,6 @@ namespace Blaze {
 namespace Gemm {
 namespace Block {
 
-template<typename T>
-struct IsFragmentTensorImpl : AscendC::Std::false_type {};
-
-template<uint32_t D, uint32_t M, typename L, typename E>
-struct IsFragmentTensorImpl<Apace::Basic::FragmentTensor<D, M, L, E>> : AscendC::Std::true_type {};
-
-template<uint32_t D, uint32_t M, typename L, typename E>
-struct IsFragmentTensorImpl<Apace::Basic::FragmentSlice<D, M, L, E>> : AscendC::Std::true_type {};
-
-template<typename T>
-constexpr bool IsFragmentTensor = IsFragmentTensorImpl<AscendC::Std::remove_cv_t<T>>::value;
-
 template <
     uint64_t A_FULL_LOAD_MODE, bool ATOMIC_ADD, class AType_, class LayoutA_, class BType_, class LayoutB_,
     class CType_, class LayoutC_, class BiasType_, class LayoutBias_>
@@ -246,7 +234,7 @@ public:
                 auto blockScaleA = gmScaleA.Slice(
                     AscendC::Te::MakeCoord(0, scaleKStart),
                     AscendC::Te::MakeShape(tileL1L0Param.curM, scaleKLength));
-                FragmentSliceCopy(CopyScaleGM2L1, tensorScaleAL1, blockScaleA);
+                    FragmentSliceCopy(CopyScaleGM2L1, tensorScaleAL1, blockScaleA);
 
                 auto gmBlockScaleB = gmScaleB.Slice(
                     AscendC::Te::MakeCoord(scaleKStart, 0),
@@ -274,7 +262,7 @@ public:
                 AscendC::Te::Copy(CopyScaleGM2L1, tensorScaleBL1, gmBlockScaleB);
             }
             if (abL1LoopCnt_ == 0) {
-                FragmentSliceCopy(CopyScaleGM2L1, tensorScaleAL1, gmScaleA);
+                    FragmentSliceCopy(CopyScaleGM2L1, tensorScaleAL1, gmScaleA);
             }
             return ScalePair<decltype(tensorScaleAL1), decltype(tensorScaleBL1)>{
                 tensorScaleAL1, tensorScaleBL1};
@@ -293,7 +281,7 @@ public:
                 AscendC::Te::MakeCoord(0, iter0 * kL1_),
                 AscendC::Te::MakeShape(tileL1L0Param.curM, tileL1L0Param.curGmAKL1));
             Apace::Basic::PadMxKAL1Zero(tensorAL1, tileL1L0Param.curGmAKL1);
-            FragmentSliceCopy(copyGM2L1, tensorAL1, blockA);
+                FragmentSliceCopy(copyGM2L1, tensorAL1, blockA);
             return tensorAL1;
         } else {
             auto layoutAL1 = MakeLayoutAL1{}(tileL1L0Param.curM, Blaze::Gemm::CeilAlign(k_, MXFP_DIVISOR_SIZE));
@@ -307,7 +295,7 @@ public:
                     AscendC::Te::MakeCoord(0, iter0 * kL1_),
                     AscendC::Te::MakeShape(tileL1L0Param.curM, tileL1L0Param.curGmAKL1));
                 Apace::Basic::PadMxKAL1Zero(tensorAL1, tileL1L0Param.curGmAKL1);
-                FragmentSliceCopy(copyGM2L1, tensorAL1, blockA);
+                    FragmentSliceCopy(copyGM2L1, tensorAL1, blockA);
             }
             return tensorAL1;
         }
@@ -480,30 +468,18 @@ public:
             abL1LoopCnt_++;
         }
         if (splitKIdx == splitKNum_ - 1) {
-            ScatterL0C2GM(gmA, gmC, tensorL0C, cFragAddrs, mPerRank, tileM, tileCnt, tailM,
-                          remoteRankCnt, cRowStride, mPosGlobal, nPosGlobal, tileL1L0Param);
-        }
-    }
-
-    template <typename TensorA, typename TensorC, typename TensorL0C>
-    __aicore__ inline void ScatterL0C2GM(
-        TensorA const& gmA, TensorC const& gmC, TensorL0C& tensorL0C, GM_ADDR* cFragAddrs,
-        uint64_t mPerRank, uint64_t tileM, uint64_t tileCnt, uint64_t tailM,
-        uint64_t remoteRankCnt, int64_t cRowStride, int64_t mPos,
-        int64_t nPos, TileL1L0Param& tileL1L0Param)
-    {
-        ScatterL0C2GMFragment(gmC, tensorL0C);
-        if (enableL0cPingPong_) {
-            l0cPingPong_++;
+            ScatterL0C2GM(gmC, tensorL0C);
         }
     }
 
     template <typename TensorC, typename TensorL0C>
-    __aicore__ inline void ScatterL0C2GMFragment(
-        TensorC const& gmC, TensorL0C& tensorL0C)
+    __aicore__ inline void ScatterL0C2GM(TensorC const& gmC, TensorL0C& tensorL0C)
     {
         auto copyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
-        FragmentSliceScatter(copyL0C2GM.with(AscendC::Te::FixpipeParams(3)), gmC, tensorL0C);   // 来自fragment_tensor.h
+        FragmentSliceScatter(copyL0C2GM.with(AscendC::Te::FixpipeParams(3)), gmC, tensorL0C);
+        if (enableL0cPingPong_) {
+            l0cPingPong_++;
+        }
     }
 
 private:

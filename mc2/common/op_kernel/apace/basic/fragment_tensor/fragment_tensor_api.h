@@ -20,16 +20,14 @@
 namespace Apace {
 namespace Basic {
 
-using namespace Apace::Utils;
-
 /*!
- * \brief 创建FragmentTensor（简化接口）
+ * \brief 创建FragmentTensor
  */
 template<uint32_t Dims, uint32_t MaxFragments = MAX_FRAGMENT_COUNT, typename LayoutFactory = void, typename ElementType = uint8_t>
 __aicore__ inline auto MakeFragmentTensor(
-    const FragmentTilingData<Dims>& tilingData,
+    const FragmentParam<Dims>& fragParam,
     GM_ADDR* addrList) {
-    return FragmentTensor<Dims, MaxFragments, LayoutFactory, ElementType>(tilingData, addrList);
+    return FragmentTensor<Dims, MaxFragments, LayoutFactory, ElementType>(fragParam, addrList);
 }
 
 } // namespace Basic

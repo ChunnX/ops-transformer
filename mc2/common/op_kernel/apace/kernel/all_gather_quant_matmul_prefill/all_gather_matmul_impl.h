@@ -39,9 +39,9 @@ namespace AllGatherQuantMatmulImpl {
 using namespace AscendC;
 using namespace Apace::AivComm;
 
-using LayoutA   = AscendC::Te::NDExtLayoutPtn;
-using LayoutB   = AscendC::Te::DNExtLayoutPtn;
-using LayoutC   = AscendC::Te::NDExtLayoutPtn;
+using LayoutA = AscendC::Te::NDExtLayoutPtn;
+using LayoutB = AscendC::Te::DNExtLayoutPtn;
+using LayoutC = AscendC::Te::NDExtLayoutPtn;
 using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
 enum RegionTag { HEAD, MAIN, TAIL };
@@ -56,9 +56,9 @@ public:
     const AllGatherMatmulTilingData *tilingData);
   __aicore__ inline void Process();
 
-  using DispatchPolicy  = Blaze::Gemm::MatmulWithScaleMx<0, 0>;
-  using BlockEpilogue   = Blaze::Gemm::Block::BlockEpilogueEmpty;
-  using BlockScheduler  = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<
+  using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, 0>;
+  using BlockEpilogue = Blaze::Gemm::Block::BlockEpilogueEmpty;
+  using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<
     ProblemShape, 0, LayoutA, LayoutB, AType>;
   using BlockMmad = Blaze::Gemm::Block::BlockMmad<
     DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC, float, LayoutC>;
@@ -67,21 +67,21 @@ public:
     AscendC::Std::enable_if_t<
       AscendC::Std::is_same_v<Blaze::Gemm::KernelMmadWithScaleMx,
                   typename BlockMmad::DispatchPolicy::ScheduleType>>>;
-  using GemmParams      = typename GemmKernel::Params;
+  using GemmParams = typename GemmKernel::Params;
   using BlockMmadParams = typename BlockMmad::Params;
-  using L1Params        = typename BlockMmad::L1Params;
-  using SchParams       = typename BlockScheduler::Params;
-  using QBMMTiling      = typename GemmKernel::QBMMTiling;
+  using L1Params = typename BlockMmad::L1Params;
+  using SchParams = typename BlockScheduler::Params;
+  using QBMMTiling = typename GemmKernel::QBMMTiling;
 
   using BlockMmadFragC = Blaze::Gemm::Block::BlockMmadFragCOut<
     0, false, AType, LayoutA, BType, LayoutB, CType, LayoutC, float, LayoutC>;
-  using FragL1Params   = typename BlockMmadFragC::L1Params;
+  using FragL1Params = typename BlockMmadFragC::L1Params;
   using FragBlockShape = typename BlockMmadFragC::BlockShape;
-  using FragTensorA  = Apace::Basic::FragmentTensor<2, Apace::Utils::MAX_FRAGMENT_COUNT,
+  using FragTensorA = Apace::Basic::FragmentTensor<2, Apace::Basic::MAX_FRAGMENT_COUNT,
                             typename GemmKernel::MakeLayoutA, AType>;
-  using FragScaleA   = Apace::Basic::FragmentTensor<2, Apace::Utils::MAX_FRAGMENT_COUNT,
+  using FragScaleA = Apace::Basic::FragmentTensor<2, Apace::Basic::MAX_FRAGMENT_COUNT,
                             typename GemmKernel::MakeLayoutScaleA, AscendC::fp8_e8m0_t>;
-  using FragTensorC  = Apace::Basic::FragmentTensor<2, Apace::Utils::MAX_FRAGMENT_COUNT,
+  using FragTensorC = Apace::Basic::FragmentTensor<2, Apace::Basic::MAX_FRAGMENT_COUNT,
                             typename GemmKernel::MakeLayoutC, CType>;
 
 private:
@@ -94,14 +94,16 @@ private:
   __aicore__ inline void BuildMainFragment(uint32_t roundIdx);
   __aicore__ inline void BuildTailFragment();
   __aicore__ inline void UpdateMainRoundAddrs(uint32_t roundIdx);
-
-  struct TileCtx {
+  __aicore__ inline Apace::Basic::FragmentParam<2> MakeFragParam(
+      uint64_t fragSize, uint64_t realFragSize, uint32_t fragCnt, uint64_t shape1) const;
+    
+   struct TileCtx {
     uint32_t dependId;
     uint32_t roundIdx;
     RegionTag region;
     int64_t regionMPos;
     const FragTensorA* fragA;
-    const FragScaleA*  fragScaleA;
+    const FragScaleA* fragScaleA;
     const FragTensorC* fragC;
     uint64_t rankCnt;
   };
@@ -148,6 +150,8 @@ private:
   uint32_t tailM_{};
   uint32_t paddedTailM_{};
   uint32_t commTurn_{};
+  uint64_t headRows_{};
+  uint64_t scaleKLen_{};
   uint64_t dataBytesPerMRow_{};
   uint64_t scaleBytesPerMRow_{};
   uint64_t cBytesPerM_{};
@@ -159,13 +163,13 @@ private:
 
   // fragment tensor
   FragTensorA headFragA_{};
-  FragScaleA  headFragScaleA_{};
+  FragScaleA headFragScaleA_{};
   FragTensorC headFragC_{};
   FragTensorA curMainA_{};
-  FragScaleA  curMainScaleA_{};
+  FragScaleA curMainScaleA_{};
   FragTensorC curMainC_{};
   FragTensorA tailFragA_{};
-  FragScaleA  tailFragScaleA_{};
+  FragScaleA tailFragScaleA_{};
   FragTensorC tailFragC_{};
 
   // 地址状态
@@ -228,16 +232,17 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::Init(
                     static_cast<uint32_t>(GetBlockIdx()));
 
   commTilingData_.splitAxisTileSize = tileM_;   // 每个 tile 搬 tileM 行
-  commTilingData_.splitAxisTileCnt  = tileCnt_;   // head 段 tile 数量
+  commTilingData_.splitAxisTileCnt = tileCnt_;   // head 段 tile 数量
   commTilingData_.splitAxisTailSize = tailM_;   // tail 行数
-  commTilingData_.splitAxisTailCnt  = tailCnt_;
+  commTilingData_.splitAxisTailCnt = tailCnt_;
   commTilingData_.nonSplitAxisSize = k_;    // 非切分轴k
 
   commTilingScale_.splitAxisTileSize = tileM_;
-  commTilingScale_.splitAxisTileCnt  = tileCnt_;
+  commTilingScale_.splitAxisTileCnt = tileCnt_;
   commTilingScale_.splitAxisTailSize = tailM_;
-  commTilingScale_.splitAxisTailCnt  = tailCnt_;
-  commTilingScale_.nonSplitAxisSize = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE);
+  commTilingScale_.splitAxisTailCnt = tailCnt_;
+  scaleKLen_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE);
+  commTilingScale_.nonSplitAxisSize = scaleKLen_;
 
   all_gather_data_.Init(udmaCtx_, teamBarrier_, commTilingData_,
                         aGM_, commUbBuf, rankSize_,
@@ -260,6 +265,7 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::InitBasePa
   tailM_ = td->tailM;
   paddedTailM_ = td->paddedTailM;
   commTurn_ = td->commTurn;
+  headRows_ = static_cast<uint64_t>(tileCnt_) * tileM_;
 
   scaleKGroups_ = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(k_), Blaze::Gemm::MXFP_DIVISOR_SIZE);
   dataBytesPerMRow_ = static_cast<uint64_t>(k_) * sizeof(AType);
@@ -311,15 +317,30 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::AllGatherP
 }
 
 template <typename AType, typename BType, typename CType>
+__aicore__ inline Apace::Basic::FragmentParam<2>
+AllGatherQuantMatmulImpl<AType, BType, CType>::MakeFragParam(
+    uint64_t fragSize, uint64_t realFragSize, uint32_t fragCnt, uint64_t shape1) const
+{
+  Apace::Basic::FragmentParam<2> param{};
+  param.assembleAxis = 0;
+  param.assembledShape[0] = fragSize * fragCnt;
+  param.assembledShape[1] = shape1;
+  param.fragmentSize = fragSize;
+  param.realFragmentSize = realFragSize;
+  param.fragmentCnt = fragCnt;
+  return param;
+}
+
+template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::BuildFragmentTensors()
 {
-  constexpr uint32_t MAX_FRAG = Apace::Utils::MAX_FRAGMENT_COUNT;
+  constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
 
   for (uint32_t r = 0; r < rankSize_; ++r) {
     cFragAddrs_[r] = cGM_ + static_cast<uint64_t>(r) * m_ * cBytesPerM_;
   }
 
-  tileMDataStride_  = static_cast<uint64_t>(tileM_) * dataBytesPerMRow_;
+  tileMDataStride_ = static_cast<uint64_t>(tileM_) * dataBytesPerMRow_;
   tileMScaleStride_ = static_cast<uint64_t>(tileM_) * scaleBytesPerMRow_;
   tileMCStride_ = static_cast<uint64_t>(tileM_) * cBytesPerM_;
 
@@ -328,12 +349,12 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::BuildFragm
     GM_ADDR addrListA[MAX_FRAG] = {aGM_};
     GM_ADDR addrListScale[MAX_FRAG] = {aScaleGM_};
     GM_ADDR addrListC[MAX_FRAG] = {cFragAddrs_[rankId_]};
-    headFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutA, AType>(  // 2表示这是一个二维张量
-        tilingData_->fragTilingSelfA, addrListA);
+    headFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutA, AType>(
+        MakeFragParam(headRows_, headRows_, 1, k_), addrListA);
     headFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
-        tilingData_->fragTilingSelfScaleA, addrListScale);
+        MakeFragParam(headRows_, headRows_, 1, scaleKLen_), addrListScale);
     headFragC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutC, CType>(
-        tilingData_->fragTilingSelfC, addrListC);
+        MakeFragParam(headRows_, headRows_, 1, n_), addrListC);
   }
   // main / tail 的 fragment tensor 延迟到首次使用时构建，构建开销被 comm wait 掩盖。
 }
@@ -341,13 +362,13 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::BuildFragm
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::EnsureWinRankBasesReady()
 {
-  if (winBasesReady_) {
-    return; 
+  if (winBasesReady_) { 
+    return;
   }
-  GM_ADDR winDataBase  = GetWinDataRegionBase();
+  GM_ADDR winDataBase = GetWinDataRegionBase();
   GM_ADDR winScaleBase = GetWinScaleRegionBase();
   for (uint32_t r = 0; r < rankSize_; ++r) {
-    winDataRankBase_[r]  = winDataBase  + static_cast<uint64_t>(r) * m_ * dataBytesPerMRow_;
+    winDataRankBase_[r] = winDataBase + static_cast<uint64_t>(r) * m_ * dataBytesPerMRow_;
     winScaleRankBase_[r] = winScaleBase + static_cast<uint64_t>(r) * m_ * scaleBytesPerMRow_;
   }
   winBasesReady_ = true;
@@ -358,10 +379,10 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::BuildMainF
 {
   EnsureWinRankBasesReady();
 
-  constexpr uint32_t MAX_FRAG = Apace::Utils::MAX_FRAGMENT_COUNT;
+  constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
 
   // 绝对偏移：支持任意起始 roundIdx（调度器按 mPos 升序，首次必为 0）
-  curRoundDataOff_  = static_cast<uint64_t>(roundIdx) * tileMDataStride_;
+  curRoundDataOff_ = static_cast<uint64_t>(roundIdx) * tileMDataStride_;
   curRoundScaleOff_ = static_cast<uint64_t>(roundIdx) * tileMScaleStride_;
   curRoundCOff_ = static_cast<uint64_t>(roundIdx) * tileMCStride_;
 
@@ -370,7 +391,7 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::BuildMainF
   GM_ADDR addrListC[MAX_FRAG];
   uint32_t fragIdx = 0;
   for (uint32_t r = 0; r < rankSize_; ++r) {
-    if (r == rankId_) {
+    if (r == rankId_) { 
       continue; 
     }
     addrListA[fragIdx] = winDataRankBase_[r] + curRoundDataOff_;
@@ -379,11 +400,11 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::BuildMainF
     fragIdx++;
   }
   curMainA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutA, AType>(
-      tilingData_->fragTilingRemoteA, addrListA);
+      MakeFragParam(tileM_, tileM_, rankSize_ - 1, k_), addrListA);
   curMainScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
-      tilingData_->fragTilingRemoteScaleA, addrListScale);
+      MakeFragParam(tileM_, tileM_, rankSize_ - 1, scaleKLen_), addrListScale);
   curMainC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutC, CType>(
-      tilingData_->fragTilingRemoteC, addrListC);
+      MakeFragParam(tileM_, tileM_, rankSize_ - 1, n_), addrListC);
   curMainRoundIdx_ = roundIdx;
 }
 
@@ -392,32 +413,32 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::BuildTailF
 {
   EnsureWinRankBasesReady();
 
-  constexpr uint32_t MAX_FRAG = Apace::Utils::MAX_FRAGMENT_COUNT;
+  constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
 
-  uint64_t tailRowOff   = static_cast<uint64_t>(tileCnt_) * tileM_;
-  uint64_t tailDataOff  = tailRowOff * dataBytesPerMRow_;
+  uint64_t tailRowOff = headRows_;
+  uint64_t tailDataOff = tailRowOff * dataBytesPerMRow_;
   uint64_t tailScaleOff = tailRowOff * scaleBytesPerMRow_;
-  uint64_t tailCOff     = tailRowOff * cBytesPerM_;
+  uint64_t tailCOff = tailRowOff * cBytesPerM_;
 
   GM_ADDR addrListA[MAX_FRAG];
   GM_ADDR addrListScale[MAX_FRAG];
   GM_ADDR addrListC[MAX_FRAG];
   for (uint32_t r = 0; r < rankSize_; ++r) {
     if (r == rankId_) {
-      addrListA[r]     = aGM_           + tailDataOff;
-      addrListScale[r] = aScaleGM_      + tailScaleOff;
+      addrListA[r] = aGM_ + tailDataOff;
+      addrListScale[r] = aScaleGM_ + tailScaleOff;
     } else {
-      addrListA[r]     = winDataRankBase_[r]  + tailDataOff;
+      addrListA[r] = winDataRankBase_[r] + tailDataOff;
       addrListScale[r] = winScaleRankBase_[r] + tailScaleOff;
     }
     addrListC[r] = cFragAddrs_[r] + tailCOff;
   }
   tailFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutA, AType>(
-      tilingData_->fragTilingTailA, addrListA);
+      MakeFragParam(paddedTailM_, tailM_, rankSize_, k_), addrListA);
   tailFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
-      tilingData_->fragTilingTailScaleA, addrListScale);
+      MakeFragParam(paddedTailM_, tailM_, rankSize_, scaleKLen_), addrListScale);
   tailFragC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutC, CType>(
-      tilingData_->fragTilingTailC, addrListC);
+      MakeFragParam(paddedTailM_, tailM_, rankSize_, n_), addrListC);
 }
 
 template <typename AType, typename BType, typename CType>
@@ -428,7 +449,7 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::UpdateMain
   curRoundScaleOff_ += static_cast<uint64_t>(delta) * tileMScaleStride_;
   curRoundCOff_ += static_cast<uint64_t>(delta) * tileMCStride_;
 
-  constexpr uint32_t MAX_FRAG = Apace::Utils::MAX_FRAGMENT_COUNT;
+  constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
   GM_ADDR addrListA[MAX_FRAG];
   GM_ADDR addrListScale[MAX_FRAG];
   GM_ADDR addrListC[MAX_FRAG];
@@ -499,15 +520,15 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::MatmulProc
   auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BType *>(bGM_)),
                typename GemmKernel::MakeLayoutB{}(Ki, Ni));
   auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
-                    reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(bScaleGM_)),
-                    typename GemmKernel::MakeLayoutScaleB{}(scaleKLen, Ni));
+                     reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(bScaleGM_)),
+                     typename GemmKernel::MakeLayoutScaleB{}(scaleKLen, Ni));
   __gm__ float *biasNull = nullptr;
   auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasNull),
                   Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
 
   // 总 logical M = head + main 段 + tail。
   bool hasTail = (tailCnt_ > 0 && tailM_ > 0);
-  const int64_t headMainRows = static_cast<int64_t>(tileCnt_) * static_cast<int64_t>(tileM_);
+  const int64_t headMainRows = static_cast<int64_t>(headRows_);
   const int64_t mainRoundRows = static_cast<int64_t>(rankSize_ - 1) * static_cast<int64_t>(tileM_);   // 单主round的行数
   const int64_t mainSectionRows = static_cast<int64_t>(tileCnt_) * mainRoundRows;   // 主round所有行
   const int64_t tailRows = hasTail ? static_cast<int64_t>(rankSize_) * static_cast<int64_t>(paddedTailM_) : 0;
@@ -545,8 +566,8 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::MatmulProc
     int64_t curMtile = Te::Get<0>(singleShape);
     int64_t curNtile = Te::Get<1>(singleShape);
     if (curMtile <= 0 || curNtile <= 0) { 
-      break; 
-    }
+      break;
+     }
     sch.GetTileCoord(blockIdx, mPos, nPos); // 根据调度器得到当前block的m/n坐标
 
     auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows);  // 用于计算当前块用于fragment的context
