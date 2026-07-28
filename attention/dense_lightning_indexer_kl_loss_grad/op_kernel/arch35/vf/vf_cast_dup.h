@@ -32,7 +32,7 @@ __simd_vf__ inline void CastDupBasicVF(__ubuf__ OUT_T *dstUb, __ubuf__ T *srcUb,
     RegTensor<float> vreg_dw_float;
     RegTensor<float> vreg_dw_float_even;
     RegTensor<float> vreg_dw_float_odd;
-    RegTensor<float> vreg_zero;
+    RegTensor<float> vreg_zero; //
 
     MaskReg pregFullExeB16 = CreateMask<OUT_T, MaskPattern::ALL>();
     MaskReg preg_tail_n = UpdateMask<float>(m);
