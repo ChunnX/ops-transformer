@@ -50,7 +50,10 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("sparse_indices").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
+        this->Output("sparse_indices")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
         this->Output("sparse_values")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16})
