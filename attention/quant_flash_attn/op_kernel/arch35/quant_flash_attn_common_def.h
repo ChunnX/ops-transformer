@@ -153,10 +153,6 @@ struct FDparamsX {
     uint32_t fdWorkspaceIdx;
 };
 
-enum class FiaKernelType : uint8_t {
-    FULL_QUANT = 2
-};
-
 struct RunInfoX {
     uint32_t loop = 0;
     uint32_t mloop = 0;
@@ -247,14 +243,10 @@ struct TensorListConstInfo {
     bool isKvContinuous;
 };
 
-template <FiaKernelType>
-struct ConstInfo_t;
-
-template <>
-struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,
-                                                PAConstInfo,
-                                                LseConstInfo,
-                                                SinkConstInfo,
-                                                TensorListConstInfo {};
+struct ConstInfo_t : CommonConstInfo,
+                     PAConstInfo,
+                     LseConstInfo,
+                     SinkConstInfo,
+                     TensorListConstInfo {};
 
 #endif // QUANT_FLASH_ATTN_COMMON_DEF_H_

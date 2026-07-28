@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_flash_attn_tiling_mx.cpp
+ * \file quant_flash_attn_tiling_mxfp8.cpp
  * \brief QuantFlashAttn arch35 tiling implementation (MXFP8_FP32)
  */
 
-#include "quant_flash_attn_tiling_mx.h"
+#include "quant_flash_attn_tiling_mxfp8.h"
 #include "../quant_flash_attn_tiling.h"
 #include <vector>
 #include <graph/utils/type_utils.h>
@@ -199,22 +199,24 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyInfo()
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyQuantMode()
 {
-    tilingKeyInfo_.quantMode =
-        decodeS1GMerge_ ? static_cast<uint64_t>(QFA_MXFP8_FP32_DECODE) : static_cast<uint64_t>(QFA_MXFP8_FP32_PREFILL);
+    tilingKeyInfo_.quantMode = decodeS1GMerge_
+        ? static_cast<uint64_t>(QFA_MXFP8_FP32_DECODE)
+        : static_cast<uint64_t>(QFA_MXFP8_FP32_PREFILL);
 }
 
 void QuantFlashAttnTilingImpl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
-    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.quantMode,
-                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
+    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config,
+                                    tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask,
+                                    tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
 
     OP_LOGI(qfaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(qfaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, quantMode: %llu, "
             "hasAttenMask: %u, kvLayoutType: %llu, isFd: %u.",
-            tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask,
-            tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
+            tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.quantMode,
+            tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
 }
 
 void QuantFlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
@@ -293,9 +295,9 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
     tilingData_.baseTiling.quantFlashAttnBaseParams.dSizeV = qfaInfo_->vHeadDim;
     tilingData_.baseTiling.quantFlashAttnBaseParams.scaleValue = qfaInfo_->softmaxScale;
     tilingData_.baseTiling.quantFlashAttnBaseParams.cuSeqLensQSize =
-        (qfaInfo_->qLayout == QfaLayout::TND && cuSeqLenQFlag_) ? qfaInfo_->bSize : 0;
+        (qfaInfo_->qLayout == QfaLayout::TND && cuSeqLenQFlag_) ? qfaInfo_->bSize: 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.cuSeqLensKVSize =
-        (qfaInfo_->kvLayout == QfaLayout::TND && cuSeqLenKVFlag_) ? qfaInfo_->bSize : 0;
+        (qfaInfo_->kvLayout == QfaLayout::TND && cuSeqLenKVFlag_) ? qfaInfo_->bSize: 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? qfaInfo_->bSize : 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? qfaInfo_->bSize : 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.isKvContinuous = true;
@@ -409,5 +411,5 @@ void QuantFlashAttnTilingImpl::PrintAllTilingData()
 using quant_flash_attn::QuantFlashAttnTilingImpl;
 
 REGISTER_TILING_TEMPLATE_FIA(QuantFlashAttn, QuantFlashAttnTilingImpl,
-                             std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 1);
+                              std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 1);
 } // namespace optiling

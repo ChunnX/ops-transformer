@@ -54,7 +54,7 @@ ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST,
-            InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
+            InOutLayoutType_TND_TND),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
             Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
             Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),

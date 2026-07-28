@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_flash_attn_tiling_mx.h
+ * \file quant_flash_attn_tiling_mxfp8.h
  * \brief QuantFlashAttn arch35 tiling implementation
  */
-#ifndef QUANT_FLASH_ATTN_TILING_MX_IMPL_H_
-#define QUANT_FLASH_ATTN_TILING_MX_IMPL_H_
+#ifndef QUANT_FLASH_ATTN_TILING_MXFP8_IMPL_H_
+#define QUANT_FLASH_ATTN_TILING_MXFP8_IMPL_H_
 
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
@@ -74,7 +74,7 @@ private:
     void InitImplParam();
     void PrintAllTilingData();
     void CalcScheduleMode();
-    void CalcNumBlocks(uint32_t aicNum);
+void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();
     ge::graphStatus SetTilingData(QuantFlashAttnTilingData &tilingData);
     bool CheckNeedInitOutput() const;
