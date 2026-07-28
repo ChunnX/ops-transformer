@@ -280,9 +280,9 @@ public:
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
                         AscendC::DumpTensor(ubOTmpTensor, 130, 128);
                         ComputeVec2(delay20TileInfo);
-                        auto gmOLayoutTla = tla::MakeLayout<ElementO, LayoutO>(qBaseTile_, oShapeCol);
+                        auto gmOLayoutTla = tla::MakeLayout<ElementO, LayoutO>(qBaseTile_, delay20TaskInfo.oShapeCol);
                         auto gmOTensorTla = tla::MakeTensor(gO[delay20TaskInfo.gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
-                        auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(qBaseTile_, lseShapeCol);
+                        auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(qBaseTile_, delay20TaskInfo.lseShapeCol);
                         auto gmLseTensorTla = tla::MakeTensor(gLse[delay20TaskInfo.gmOffsetLse], gmLseLayoutTla, Arch::PositionGM{});
                         GemmCoord actualBlockShapeVPT{embed_, delay20TaskInfo.qsActBaseTile, delay20TileInfo.kvsActBaseTile};
                         epilogueRescaleO(gmOTensorTla, gmLseTensorTla, actualBlockShapeVPT, delay20TaskInfo, delay20TileInfo);
