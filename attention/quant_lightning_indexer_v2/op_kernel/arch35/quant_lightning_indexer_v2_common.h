@@ -25,11 +25,7 @@ constexpr uint32_t FP8_TWO = 2;              // 2个FP8E8M0打包成1个BF16
 constexpr uint32_t FP4_PACK_NUM = 2;         // 2个FP4E2M1打包成1个字节存储
 
 // 与tiling的layout保持一致
-enum class LI_LAYOUT : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BBND = 2
-};
+enum class LI_LAYOUT : uint32_t { BSND = 0, TND = 1, PA_BBND = 2 };
 
 template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T,
           const bool PAGE_ATTENTION = false, LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND,

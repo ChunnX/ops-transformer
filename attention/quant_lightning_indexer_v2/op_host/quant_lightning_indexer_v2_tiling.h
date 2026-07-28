@@ -37,11 +37,7 @@ struct TilingOptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-enum class DataLayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BBND = 2
-};
+enum class DataLayout : uint32_t { BSND = 0, TND = 1, PA_BBND = 2 };
 
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -193,9 +189,7 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class QLIV2InfoParser {
 public:
-    explicit QLIV2InfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit QLIV2InfoParser(gert::TilingContext *context) : context_(context) {}
     ~QLIV2InfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
