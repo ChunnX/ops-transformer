@@ -135,11 +135,11 @@ cann_ops_transformer.quant_lightning_indexer(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
-| query | Tensor | 必选 | 公式中的量化输入$Q_{index}^{Quant}$。不支持空tensor。数据格式为ND。 | INT8、FLOAT8_e4m3fn、HIFLOAT8、FLOAT4_e2m1 | layout_q为BSND时shape为(B,S1,N1,D)；layout_q为TND时shape为(T1,N1,D) |
-| key | Tensor | 必选 | 公式中的量化输入$K_{index}^{Quant}$。不支持空tensor。数据格式为ND，仅PA_BBND场景下0轴支持非连续。PA_BBND场景下block_size取值为16的倍数，最大支持1024。 | INT8、FLOAT8_e4m3fn、HIFLOAT8、FLOAT4_e2m1 | layout_k为BSND时shape为(B,S2,N2,D)；layout_k为TND时shape为(T2,N2,D)；layout_k为PA_BBND时shape为(block_num,block_size,N2,D) |
+| query | Tensor | 必选 | 公式中的量化输入$Q_{index}^{Quant}$。不支持空tensor。数据格式为ND。 | int8、float8_e4m3fn、HIfloat8、float4_e2m1 | layout_q为BSND时shape为(B,S1,N1,D)；layout_q为TND时shape为(T1,N1,D) |
+| key | Tensor | 必选 | 公式中的量化输入$K_{index}^{Quant}$。不支持空tensor。数据格式为ND，仅PA_BBND场景下0轴支持非连续。PA_BBND场景下block_size取值为16的倍数，最大支持1024。 | int8、float8_e4m3fn、HIfloat8、float4_e2m1 | layout_k为BSND时shape为(B,S2,N2,D)；layout_k为TND时shape为(T2,N2,D)；layout_k为PA_BBND时shape为(block_num,block_size,N2,D) |
 | weights | Tensor | 必选 | 公式中的权重系数$W$。不支持空tensor。数据格式为ND。 | float16、float32 | layout_q为BSND时shape为(B,S1,N1)；layout_q为TND时shape为(T1,N1) |
-| query_dequant_scale | Tensor | 必选 | 公式中的$Scale_Q$，表示Index Query的反量化系数。不支持空tensor。数据格式为ND。 | float16、float32、FLOAT8_e8m0 | quant_mode为3/5时，layout_q为BSND时shape为(B,S1,N1,D/64,2)，layout_q为TND时shape为(T1,N1,D/64,2)；quant_mode为4时shape必须为(1,)；其他场景shape与weights保持一致 |
-| key_dequant_scale | Tensor | 必选 | 公式中的$Scale_K$，表示Index Key的反量化系数。不支持空tensor。数据格式为ND，仅PA_BBND场景下0轴支持非连续。 | float16、float32、FLOAT8_e8m0 | quant_mode为3/5时，layout_k为PA_BBND时shape为(block_num,block_size,N2,D/64,2)，layout_k为BSND时shape为(B,S2,N2,D/64,2)，layout_k为TND时shape为(T2,N2,D/64,2)；quant_mode为4时shape必须为(1,)；其他场景分别为(block_num,block_size,N2)、(B,S2,N2)或(T2,N2) |
+| query_dequant_scale | Tensor | 必选 | 公式中的$Scale_Q$，表示Index Query的反量化系数。不支持空tensor。数据格式为ND。 | float16、float32、float8_e8m0 | quant_mode为3/5时，layout_q为BSND时shape为(B,S1,N1,D/64,2)，layout_q为TND时shape为(T1,N1,D/64,2)；quant_mode为4时shape必须为(1,)；其他场景shape与weights保持一致 |
+| key_dequant_scale | Tensor | 必选 | 公式中的$Scale_K$，表示Index Key的反量化系数。不支持空tensor。数据格式为ND，仅PA_BBND场景下0轴支持非连续。 | float16、float32、float8_e8m0 | quant_mode为3/5时，layout_k为PA_BBND时shape为(block_num,block_size,N2,D/64,2)，layout_k为BSND时shape为(B,S2,N2,D/64,2)，layout_k为TND时shape为(T2,N2,D/64,2)；quant_mode为4时shape必须为(1,)；其他场景分别为(block_num,block_size,N2)、(B,S2,N2)或(T2,N2) |
 | topk | int | 必选 | topK阶段需要保留的block数量，当前支持[1, 2048]。 | int32 | - |
 | quant_mode | int | 必选 | 表示量化模式，当前支持1/2/3/4/5。1表示qk: fp8(e4m3fn) per-token-head, scale: fp32；2表示qk: int8 per-token-head, scale: fp16, w: fp16；3表示qk: mxfp8(e4m3fn), scale: fp8(e8m0)；4表示qk: hifloat8 per-tensor, scale: fp32；5表示qk: mxfp4(e2m1), scale: fp8(e8m0)。 | int32 | - |
 | cu_seqlens_q | Tensor | 可选 | 当前Batch及前序Batch中query的有效token数的累加和，后一个元素的值必须大于等于前一个元素的值。仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND。 | int32 | (B+1,) |
@@ -159,8 +159,9 @@ cann_ops_transformer.quant_lightning_indexer(
 
 <!-- npu="950" id10 -->
 - <term>Ascend 950PR/Ascend 950DT</term>:
-  - query、key在quant_mode为1/3时支持FLOAT8_e4m3fn，quant_mode为4时支持HIFLOAT8，quant_mode为5时支持FLOAT4_e2m1，不支持INT8。
-  - weights支持float32，不支持float16；query_dequant_scale和key_dequant_scale在quant_mode为3/5时支持FLOAT8_e8m0，其他支持模式下为float32。
+  - query、key在quant_mode为1/3时支持float8_e4m3fn，quant_mode为4时支持HIfloat8，quant_mode为5时支持float4_e2m1，不支持int8。
+  - query_dequant_scale和key_dequant_scale在quant_mode为3/5时支持float8_e8m0，其他支持模式下为float32。
+  - weights支持float32，不支持float16。
   - query的N支持32或64。
 <!-- end id10 -->
 <!-- npu="A3,910b" id11 -->
@@ -172,11 +173,6 @@ cann_ops_transformer.quant_lightning_indexer(
   - cmp_ratio仅支持2的幂次方值：1/2/4/8/16/32/64/128。
   - 不支持return_value功能，不建议传入该参数。
 <!-- end id11 -->
-
-- PyTorch接口中，quant_mode = 3/5时query_dequant_scale和key_dequant_scale必须为torch.float8_e8m0fnu。
-- PyTorch接口中，quant_mode = 5时，query和key的逻辑数据类型为FLOAT4_E2M1，每个物理字节打包两个E2M1逻辑元素：
-  - PyTorch提供torch.float4_e2m1fn_x2时，优先使用该原生类型。
-  - PyTorch未提供该类型时，使用torch.uint8承载已打包数据；封装层会将其按ACL_FLOAT4_E2M1传入算子。
 
 ## 返回值说明
 
