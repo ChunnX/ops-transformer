@@ -368,6 +368,9 @@ def tilelang_grad_kl_loss_single_kernel(
             if d_rope > 0:
                 T.tile.cast(v0_zero_rope, v0_zero_rope_fp32, "CAST_RINT", d_rope)
             T.pipe_barrier("v")
+            # 无效索引通过 UB->UB 补零，MTE2 必须等待 Vector 完成 BF16 zero cast。
+            T.set_flag("v", "mte2", 0)
+            T.wait_flag("v", "mte2", 0)
 
             T.set_flag("mte3", "mte2", 0)
             T.set_flag("mte3", "mte2", 1)
