@@ -322,8 +322,6 @@ public:
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
         auto pScaleSubLoop0Tensor = this->pScaleSubLoop0Que.template AllocTensor<fp8_e8m0_t>();
 
-        AscendC::DumpTensor(mmRes, 20001, mBaseSize * (s2BaseSize >> 1) / 2);
-
         float descaleQK = 1.0;
         static constexpr int32_t s2BaseSizeCur = s2BaseSize >> 1;
         uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
@@ -410,7 +408,6 @@ public:
                      {4, s2BaseSizeCur / 4, s2BaseSizeCur / 4 + 2, 0});
         }
         //-----------------------------------------------------------------
-        AscendC::DumpTensor(stage1CastTensor, 10001, mBaseSize * (s2BaseSize >> 1) / 2);
         this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
 
         if (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
@@ -712,7 +709,6 @@ public:
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-        AscendC::DumpTensor(mmRes, 30001, 256);
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
