@@ -104,21 +104,27 @@ private:
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx, int32_t copyStartIdx,
                                               int32_t copyNum);
+    __aicore__ inline void ResetContiguousGm(GM_ADDR dstAddr, uint64_t sizeBytes);
     __aicore__ inline void ResetDispatchState();
     __aicore__ inline void DispatchTokenToRmtServer(int32_t localExpertId);
     __aicore__ inline void DispatchComputeKernel(int32_t localExpertId, uint32_t realComputeCoreNum, int32_t roundTag);
     __aicore__ inline void DispatchComputeToken(GlobalTensor<int32_t> &topkIdsGlobal, int32_t localExpertId,
                                                 uint32_t tokenIdx, uint32_t tokenStart, uint32_t dedupWordsPerServer);
-    __aicore__ inline void DispatchSendKernel(uint32_t senderCoreStart, uint32_t senderCoreNum,
+    __aicore__ inline void DispatchSendKernel(uint32_t senderCoreNum, uint32_t remoteServerNum,
                                               uint32_t realComputeCoreNum, int32_t roundTag);
     __aicore__ inline void DispatchToken(uint32_t targetServerForSender, int32_t slot);
     __aicore__ inline int32_t UpdateDispatchTokenCnt(uint32_t targetServerForSender, int32_t cursor, int32_t endCount);
     __aicore__ inline bool DispatchSyncWithCompute(uint32_t realComputeCoreNum, int32_t roundTag);
-    __aicore__ inline void ReceiveTokenFromRmtServer(uint32_t relayRank, uint64_t remoteCopyOffset, int32_t bufferIdx,
-                                                     uint32_t copyInNum);
-    __aicore__ inline void QuantTokenToWorkspaceRecord(uint32_t tokenIdx, GM_ADDR recordAddr);
+    __aicore__ inline void LoadTokenFromLocalRelay(uint32_t srcServer, uint32_t tokenIndex, int32_t bufferIdx,
+                                                   uint32_t copyInNum);
+    __aicore__ inline void CopyTokensFromLocalRelay(int32_t rowDstOffsetInCore, uint32_t srcServer, int32_t copyNum,
+                                                    int64_t widthA, int64_t widthAScale, uint32_t copyInNum);
+    __aicore__ inline void CopyTokensFromRemoteRelay(int32_t rowDstOffsetInCore, uint32_t relayRank, uint32_t srcServer,
+                                                     int32_t copyNum, int64_t widthA, int64_t widthAScale);
+    __aicore__ inline void QuantTokenToLocalRelay(uint32_t tokenIdx);
     __aicore__ inline uint64_t SendWorkspaceServerOffset(uint32_t targetServer);
     __aicore__ inline uint64_t RelayTokenOffset(uint32_t sourceServer, uint32_t tokenId);
+    __aicore__ inline uint64_t RelayFlagOffset(uint32_t sourceServer, uint32_t tokenId);
     __aicore__ inline void SharedExpertCopyInput();
     __aicore__ inline void ProcessSharedExpertGmm1(const TupleShape &initShape, const BlockOffset &initOffset);
     __aicore__ inline void ProcessSharedExpertGmm2(const TupleShape &initShape, const BlockOffset &initOffset);
@@ -198,10 +204,13 @@ private:
     uint64_t maskWinOffset_ = 0;              // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
     uint64_t quantWinOffset_ = 0;             // quantTokenScalePtr 相对 win 基址的偏移
     uint64_t dispatchWinOffset_ = 0;          // peermemInfo dispatchRecivePtr 相对 URMA win 基址的偏移
+    uint64_t dispatchFlagWinOffset_ = 0;      // peermemInfo dispatchFlagPtr 相对 URMA win 基址的偏移
     uint32_t relayRecordBytes_ = 0;
-    uint64_t sendWorkspaceRecordBytes_ = 0;
+    uint64_t sendWorkspaceMetaBytes_ = ALIGN_32;
     uint64_t sendWorkspaceServerBytes_ = 0;
+    uint64_t dispatchL2ScratchBytes_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
+    uint32_t resetBatchElementCount_ = 0; // resetTensor_ 单批可搬运的 int32_t 元素数
     int32_t compareCount_ = 0;
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
     uint32_t topKWeightsChunkLen_ = 0;
@@ -232,6 +241,8 @@ private:
     LocalTensor<int32_t> validTopkIndexTensor_;
     LocalTensor<int32_t> cumsumInfoTensor_;
     LocalTensor<ActivationType> copyTmpTensors_[DISPATCH_BUFFER_NUM]; // 6-buffer 软流水：占满 EVENT_ID0..EVENT_ID5。
+    LocalTensor<uint64_t> relayFlagTensor_;    // 完整 [bs] relay flag 快照，复用 copyTmp 起始地址。
+    LocalTensor<int32_t> relayReceivedTensor_; // 当前 chunk 每个 copyIdx 的接收状态。
     LocalTensor<int32_t> metaInfoTensor_;
     LocalTensor<bfloat16_t> xInTensor1_;
     LocalTensor<bfloat16_t> xInTensor2_;
@@ -339,6 +350,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     dispatchWinOffset_ =
         static_cast<uint64_t>(params_.peermemInfo.dispatchRecivePtr - params_.peermemInfo.rankSyncInWorldPtr);
+    dispatchFlagWinOffset_ =
+        static_cast<uint64_t>(params_.peermemInfo.dispatchFlagPtr - params_.peermemInfo.rankSyncInWorldPtr);
     // maskAlignSize_ 必与 PeermemInfo 中 maskAlignSize 公式数值一致。
     compareCount_ =
         Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_256)) /
@@ -353,10 +366,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     mxQuantScaleAlignBytes_ = mxQuantScaleNumAlignPerToken_ * sizeof(uint8_t);
     mxQuantTokenScaleAlignBytes_ =
         Ops::Base::CeilAlign(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_, static_cast<uint32_t>(ALIGN_32));
-    relayRecordBytes_ = Ops::Base::CeilAlign(mxQuantTokenScaleAlignBytes_ + static_cast<uint64_t>(ALIGN_32),
-                                             static_cast<uint64_t>(ALIGN_512));
-    sendWorkspaceRecordBytes_ = relayRecordBytes_;
-    sendWorkspaceServerBytes_ = static_cast<uint64_t>(ALIGN_32) + static_cast<uint64_t>(m_) * sendWorkspaceRecordBytes_;
+    relayRecordBytes_ =
+        Ops::Base::CeilAlign(static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_), static_cast<uint64_t>(ALIGN_512));
+    sendWorkspaceServerBytes_ = static_cast<uint64_t>(ALIGN_32) + static_cast<uint64_t>(m_) * sendWorkspaceMetaBytes_;
+    uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
+    dispatchL2ScratchBytes_ = Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<uint64_t>(ALIGN_512));
 }
 
 // =================================================================================================
@@ -388,8 +402,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     {
         uint32_t tokenScaleSize = Ops::Base::CeilAlign(
             static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), static_cast<int64_t>(ALIGN_32));
-        dispatchFixedCost = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * tokenScaleSize + SEND_DEDUP_MASK_UB_BYTES +
-                            MX_QUANT_TEMP_UB_BYTES + mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32) +
+        uint32_t copyTmpBytes = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * tokenScaleSize;
+        uint32_t relayFlagBytes =
+            Ops::Base::CeilAlign(static_cast<uint32_t>(m_ * sizeof(uint64_t)), static_cast<uint32_t>(ALIGN_32));
+        uint32_t relayReceivedBytes = Ops::Base::CeilAlign(
+            static_cast<uint32_t>(MegaMoeImpl::L1_TILE_M_256 * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
+        uint32_t relayAndCopyTmpBytes =
+            (relayFlagBytes > copyTmpBytes ? relayFlagBytes : copyTmpBytes) + relayReceivedBytes;
+        dispatchFixedCost = relayAndCopyTmpBytes + SEND_DEDUP_MASK_UB_BYTES + MX_QUANT_TEMP_UB_BYTES +
+                            mxQuantTokenScaleAlignBytes_ +
                             Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t) +
                             Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)),
                                                  static_cast<int64_t>(ALIGN_32)) +
@@ -448,27 +469,39 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
         static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), static_cast<int64_t>(ALIGN_32));
     uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
     uint32_t copyTmpBaseAddr = gatherMaskTensorAddr + gatherMaskTensorSize;
+    uint32_t copyTmpTotalSize = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * COPY_TMP_BUFFER_SIZE;
     for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
         copyTmpTensors_[index] = LocalTensor<ActivationType>(
             TPosition::VECCALC, copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
             COPY_TMP_BUFFER_SIZE / sizeof(ActivationType));
     }
+    uint32_t relayFlagTensorSize =
+        Ops::Base::CeilAlign(static_cast<uint32_t>(m_ * sizeof(uint64_t)), static_cast<uint32_t>(ALIGN_32));
+    relayFlagTensor_ =
+        LocalTensor<uint64_t>(TPosition::VECCALC, copyTmpBaseAddr, relayFlagTensorSize / sizeof(uint64_t));
+    uint32_t relayReceivedTensorAddr =
+        copyTmpBaseAddr + (relayFlagTensorSize > copyTmpTotalSize ? relayFlagTensorSize : copyTmpTotalSize);
+    uint32_t relayReceivedTensorSize = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(MegaMoeImpl::L1_TILE_M_256 * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
+    relayReceivedTensor_ =
+        LocalTensor<int32_t>(TPosition::VECCALC, relayReceivedTensorAddr, relayReceivedTensorSize / sizeof(int32_t));
     // Tensor用处：Level1DispatchUrma 中按 (targetServer, localTokenIdx) 去重。
-    uint32_t sendDedupMaskTensorAddr =
-        copyTmpBaseAddr + static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * COPY_TMP_BUFFER_SIZE;
+    // 本 server 位同时表示 canonical 量化数据和 relay ready flag 已发布到本地 win。
+    // 该状态跨 expert 保持，必须放在 relay flag/state 临时区之后，避免完整 flag 快照覆盖。
+    uint32_t sendDedupMaskTensorAddr = relayReceivedTensorAddr + relayReceivedTensorSize;
     sendDedupMaskTensor_ =
         LocalTensor<uint32_t>(TPosition::VECCALC, sendDedupMaskTensorAddr, SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
     Duplicate<uint32_t>(sendDedupMaskTensor_, 0, SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
-    // Tensor用处：QuantTokenToWorkspaceRecord 函数中用于量化计算中间区域。
+    // Tensor用处：QuantTokenToLocalRelay 函数中用于量化计算中间区域。
     uint32_t urmaMxTempTensorAddr = sendDedupMaskTensorAddr + SEND_DEDUP_MASK_UB_BYTES;
     mxTempTensor_ =
         LocalTensor<uint16_t>(TPosition::VECCALC, urmaMxTempTensorAddr, MX_QUANT_TEMP_UB_BYTES / sizeof(uint16_t));
-    // Tensor用处：QuantTokenToWorkspaceRecord 函数中用于存储量化输出和 32B meta。
+    // Tensor用处：QuantTokenToLocalRelay 函数中用于存储量化输出。
     uint32_t urmaXOutTensorAddr = urmaMxTempTensorAddr + MX_QUANT_TEMP_UB_BYTES;
-    uint32_t urmaXOutTensorSize = mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32);
+    uint32_t urmaXOutTensorSize = mxQuantTokenScaleAlignBytes_;
     xOutTensor1_ = LocalTensor<ActivationType>(TPosition::VECCALC, urmaXOutTensorAddr,
                                                urmaXOutTensorSize / sizeof(ActivationType));
-    // Tensor用处：QuantTokenToWorkspaceRecord 函数中用于存储输入 token。
+    // Tensor用处：QuantTokenToLocalRelay 函数中用于存储输入 token。
     uint32_t urmaXInTensorAddr = urmaXOutTensorAddr + urmaXOutTensorSize;
     uint32_t urmaXInTensorSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
     xInTensor1_ =
@@ -515,6 +548,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     uint32_t resetTensorSize =
         Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore), static_cast<uint64_t>(INT32_PER_256B)) *
         sizeof(int32_t);
+    resetBatchElementCount_ = resetTensorSize / sizeof(int32_t);
 
     // 分轮次参数计算：UB 预算扣除固定开销后，求解最大 roundSendTotalNum_
     // round 张量: topkIds(R*4) + 2*maskSlot(CeilAlign(R/8,32)+32) + gatherOut(R*4)
@@ -761,53 +795,68 @@ __aicore__ inline uint64_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::RelayTokenOf
 }
 
 template <TemplateMegaMoeTypeClass>
+__aicore__ inline uint64_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::RelayFlagOffset(uint32_t sourceServer,
+                                                                                    uint32_t tokenId)
+{
+    return (static_cast<uint64_t>(sourceServer) * static_cast<uint64_t>(m_) + tokenId) * sizeof(uint64_t);
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetContiguousGm(GM_ADDR dstAddr, uint64_t sizeBytes)
+{
+    if (sizeBytes == 0 || resetBatchElementCount_ == 0) {
+        return;
+    }
+    GlobalTensor<int32_t> dstGm;
+    dstGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(dstAddr));
+
+    uint64_t totalElements = sizeBytes / sizeof(int32_t);
+    uint64_t elementsPerCore = Ops::Base::CeilDiv(totalElements, static_cast<uint64_t>(blockAivNum_));
+    elementsPerCore = Ops::Base::CeilAlign(elementsPerCore, static_cast<uint64_t>(INT32_PER_256B));
+    uint64_t coreOffset = static_cast<uint64_t>(aivCoreIdx_) * elementsPerCore;
+    if (coreOffset >= totalElements) {
+        return;
+    }
+
+    uint64_t coreElements = totalElements - coreOffset;
+    coreElements = coreElements < elementsPerCore ? coreElements : elementsPerCore;
+    for (uint64_t resetOffset = 0; resetOffset < coreElements; resetOffset += resetBatchElementCount_) {
+        uint64_t remainingElements = coreElements - resetOffset;
+        uint32_t currentElements =
+            static_cast<uint32_t>(remainingElements < static_cast<uint64_t>(resetBatchElementCount_) ?
+                                      remainingElements :
+                                      static_cast<uint64_t>(resetBatchElementCount_));
+        DataCopyExtParams copyParams{1U, static_cast<uint32_t>(currentElements * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(dstGm[coreOffset + resetOffset], resetTensor_, copyParams);
+    }
+}
+
+template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetDispatchState()
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
 
-    for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
-        __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
-                                                                      SendWorkspaceServerOffset(serverIdx));
-        WriteGmByPassDCache(countPtr, int32_t(0));
-    }
-    uint32_t sendRecordNum = serverNum_ * m_;
-    for (uint32_t idx = aivCoreIdx_; idx < sendRecordNum; idx += blockAivNum_) {
-        uint32_t serverIdx = idx / m_;
-        uint32_t slotIdx = idx - serverIdx * m_;
-        uint64_t recordOffset = SendWorkspaceServerOffset(serverIdx) + ALIGN_32 +
-                                static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
-        __gm__ int32_t *metaPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
-                                                                     recordOffset + mxQuantTokenScaleAlignBytes_);
-        WriteGmByPassDCache(metaPtr + 1, int32_t(0));
-    }
-    __gm__ int32_t *cursorPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchCursorPtr);
-    for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
-        WriteGmByPassDCache(cursorPtr + serverIdx, int32_t(0));
-    }
-    __gm__ int32_t *donePtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchDonePtr);
-    for (uint32_t idx = aivCoreIdx_; idx < blockNum_; idx += blockAivNum_) {
-        WriteGmByPassDCache(donePtr + idx, int32_t(0));
-    }
-    uint32_t relayRecordNum = serverNum_ * m_;
-    for (uint32_t idx = aivCoreIdx_; idx < relayRecordNum; idx += blockAivNum_) {
-        uint64_t recordOffset = static_cast<uint64_t>(idx) * static_cast<uint64_t>(relayRecordBytes_);
-        __gm__ int32_t *metaPtr = reinterpret_cast<__gm__ int32_t *>(params_.peermemInfo.dispatchRecivePtr +
-                                                                     recordOffset + mxQuantTokenScaleAlignBytes_);
-        WriteGmByPassDCache(metaPtr, int32_t(0));
-        WriteGmByPassDCache(metaPtr + 1, int32_t(0));
-    }
+    // count 与 meta state 原本是离散位置；tokenId 和 padding 可一并清零后，整个 L1 comm 区连续。
+    ResetContiguousGm(params_.workspaceInfo.dispatchL1CommPtr,
+                      static_cast<uint64_t>(serverNum_) * sendWorkspaceServerBytes_);
+    // cursor、done 和 relay ready flag 各自在独立地址区内连续，不跨逻辑分配合并。
+    ResetContiguousGm(params_.workspaceInfo.dispatchCursorPtr, static_cast<uint64_t>(serverNum_) * sizeof(int32_t));
+    ResetContiguousGm(params_.workspaceInfo.dispatchDonePtr, static_cast<uint64_t>(blockNum_) * sizeof(int32_t));
+    ResetContiguousGm(params_.peermemInfo.dispatchFlagPtr,
+                      static_cast<uint64_t>(serverNum_) * static_cast<uint64_t>(m_) * sizeof(uint64_t));
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWorkspaceRecord(uint32_t tokenIdx,
-                                                                                            GM_ADDR recordAddr)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToLocalRelay(uint32_t tokenIdx)
 {
     LocalTensor<uint8_t> xOutBytesTensor = xOutTensor1_.template ReinterpretCast<uint8_t>();
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
         params_.aGmAddr + static_cast<uint64_t>(tokenIdx) * k_ * sizeof(bfloat16_t)));
+    uint64_t relayOffset = RelayTokenOffset(serverId_, tokenIdx);
+    GM_ADDR recordAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_) + relayOffset;
     GlobalTensor<uint8_t> workspaceDstGlobal;
     workspaceDstGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(recordAddr));
 
@@ -835,15 +884,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
             srcAddr, halfScaleAddr, outDataAddr, k_);
     }
 
-    LocalTensor<int32_t> metaTensor = xOutBytesTensor[mxQuantTokenScaleAlignBytes_].template ReinterpretCast<int32_t>();
-    metaTensor.SetValue(0, static_cast<int32_t>(tokenIdx));
-    metaTensor.SetValue(1, int32_t(1));
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID1>();
-    SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopyPad(workspaceDstGlobal, xOutBytesTensor, {1U, mxQuantTokenScaleAlignBytes_, 0U, 0U, 0U});
-    PipeBarrier<PIPE_MTE3>();
-    DataCopyPad(workspaceDstGlobal[mxQuantTokenScaleAlignBytes_], xOutBytesTensor[mxQuantTokenScaleAlignBytes_],
-                {1U, static_cast<uint32_t>(ALIGN_32), 0U, 0U, 0U});
+    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
+    __gm__ uint64_t *readyFlag =
+        reinterpret_cast<__gm__ uint64_t *>(params_.peermemInfo.dispatchFlagPtr + RelayFlagOffset(serverId_, tokenIdx));
+    WriteGmByPassDCache(readyFlag, uint64_t(1));
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -860,24 +906,35 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeT
         uint32_t targetRank = static_cast<uint32_t>(globalExpertId) / expertPerRank_;
         uint32_t targetServer = targetRank / rankPerServer_;
         uint32_t localTokenIdx = tokenIdx - tokenStart;
-        uint32_t dedupWordIdx = targetServer * dedupWordsPerServer + localTokenIdx / SEND_DEDUP_MASK_BITS_PER_WORD;
+        uint32_t targetDedupWordIdx =
+            targetServer * dedupWordsPerServer + localTokenIdx / SEND_DEDUP_MASK_BITS_PER_WORD;
         uint32_t dedupBit = 1U << (localTokenIdx & (SEND_DEDUP_MASK_BITS_PER_WORD - 1U));
-        uint32_t dedupWord = sendDedupMaskTensor_.GetValue(dedupWordIdx);
-        if ((dedupWord & dedupBit) != 0U) {
+        uint32_t targetDedupWord = sendDedupMaskTensor_.GetValue(targetDedupWordIdx);
+        if ((targetDedupWord & dedupBit) != 0U) {
             continue;
         }
-        sendDedupMaskTensor_.SetValue(dedupWordIdx, dedupWord | dedupBit);
-        uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-        GM_ADDR recordAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_) + relayOffset;
-        if (targetServer != serverId_) {
-            __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
-                                                                          SendWorkspaceServerOffset(targetServer));
-            int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
-            uint64_t recordOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
-                                    static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
-            recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
+
+        uint32_t localDedupWordIdx = serverId_ * dedupWordsPerServer + localTokenIdx / SEND_DEDUP_MASK_BITS_PER_WORD;
+        uint32_t localDedupWord = sendDedupMaskTensor_.GetValue(localDedupWordIdx);
+        if ((localDedupWord & dedupBit) == 0U) {
+            QuantTokenToLocalRelay(tokenIdx);
+            sendDedupMaskTensor_.SetValue(localDedupWordIdx, localDedupWord | dedupBit);
         }
-        QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
+        if (targetServer == serverId_) {
+            continue;
+        }
+
+        __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
+                                                                      SendWorkspaceServerOffset(targetServer));
+        int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
+        uint64_t metaOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
+                              static_cast<uint64_t>(slotIdx) * sendWorkspaceMetaBytes_;
+        __gm__ int32_t *metaPtr =
+            reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr + metaOffset);
+        WriteGmByPassDCache(metaPtr, static_cast<int32_t>(tokenIdx));
+        // PipeBarrier<PIPE_ALL>();
+        WriteGmByPassDCache(metaPtr + 1, int32_t(1));
+        sendDedupMaskTensor_.SetValue(targetDedupWordIdx, targetDedupWord | dedupBit);
     }
 }
 
@@ -908,24 +965,22 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchToken(uint32_t targetServerForSender,
                                                                               int32_t slot)
 {
-    uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
-                            static_cast<uint64_t>(slot) * sendWorkspaceRecordBytes_;
-    GM_ADDR recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
-    __gm__ int32_t *srcMetaPtr = reinterpret_cast<__gm__ int32_t *>(recordAddr + mxQuantTokenScaleAlignBytes_);
+    uint64_t metaOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
+                          static_cast<uint64_t>(slot) * sendWorkspaceMetaBytes_;
+    __gm__ int32_t *srcMetaPtr =
+        reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr + metaOffset);
     if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(1)) {
         return;
     }
     int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
     uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
+    GM_ADDR srcAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_) + relayOffset;
     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankIdInServer_;
     GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_) + relayOffset;
-    hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr, recordAddr,
-                    mxQuantTokenScaleAlignBytes_);
-    hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
-    hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr + mxQuantTokenScaleAlignBytes_,
-                    recordAddr + mxQuantTokenScaleAlignBytes_, ALIGN_32);
-    hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
-    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID1>();
+    GM_ADDR remoteFlagAddr = GetRankWinAddrWithOffset(peerRank, dispatchFlagWinOffset_) +
+                             RelayFlagOffset(serverId_, static_cast<uint32_t>(tokenIdx));
+    ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
+    hcomm_.WriteWithNotifyNbi(channel, dstAddr, srcAddr, mxQuantTokenScaleAlignBytes_, remoteFlagAddr, uint64_t(1));
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
 }
 
@@ -934,10 +989,10 @@ __aicore__ inline int32_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateDispatc
     uint32_t targetServerForSender, int32_t cursor, int32_t endCount)
 {
     while (cursor < endCount) {
-        uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
-                                static_cast<uint64_t>(cursor) * sendWorkspaceRecordBytes_;
-        GM_ADDR recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
-        __gm__ int32_t *srcMetaPtr = reinterpret_cast<__gm__ int32_t *>(recordAddr + mxQuantTokenScaleAlignBytes_);
+        uint64_t metaOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
+                              static_cast<uint64_t>(cursor) * sendWorkspaceMetaBytes_;
+        __gm__ int32_t *srcMetaPtr =
+            reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr + metaOffset);
         if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(2)) {
             break;
         }
@@ -960,18 +1015,15 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSyncWith
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKernel(uint32_t senderCoreStart,
-                                                                                   uint32_t senderCoreNum,
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKernel(uint32_t senderCoreNum,
+                                                                                   uint32_t remoteServerNum,
                                                                                    uint32_t realComputeCoreNum,
                                                                                    int32_t roundTag)
 {
     __gm__ int32_t *cursorPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchCursorPtr);
-    uint32_t senderIdx = blockIdx_ - senderCoreStart;
-    for (uint32_t targetServerForSender = senderIdx; targetServerForSender < serverNum_;
-         targetServerForSender += senderCoreNum) {
-        if (targetServerForSender == serverId_) {
-            continue;
-        }
+    uint32_t senderIdx = blockIdx_ - realComputeCoreNum;
+    for (uint32_t remoteServerIdx = senderIdx; remoteServerIdx < remoteServerNum; remoteServerIdx += senderCoreNum) {
+        uint32_t targetServerForSender = (remoteServerIdx < serverId_) ? remoteServerIdx : remoteServerIdx + 1U;
         __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
                                                                       SendWorkspaceServerOffset(targetServerForSender));
         int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
@@ -1008,56 +1060,34 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchTokenToRmtServer(int32_t localExpertId)
 {
-    uint32_t senderCoreLimit = (serverNum_ < MAX_CORENUM_USE_SEND) ? serverNum_ : MAX_CORENUM_USE_SEND;
-    uint32_t senderCoreNum = (senderCoreLimit < blockNum_) ? senderCoreLimit : blockNum_;
-    uint32_t senderCoreStart = blockNum_ - senderCoreNum;
+    uint32_t remoteServerNum = serverNum_ - 1U;
+    uint32_t senderCoreNum = (remoteServerNum < MAX_CORENUM_USE_SEND) ? remoteServerNum : MAX_CORENUM_USE_SEND;
     uint32_t realComputeCoreNum = blockNum_ - senderCoreNum;
     int32_t roundTag = localExpertId + 1;
 
-    if (blockIdx_ < senderCoreStart) {
+    if (blockIdx_ < realComputeCoreNum) {
         DispatchComputeKernel(localExpertId, realComputeCoreNum, roundTag);
     } else {
-        DispatchSendKernel(senderCoreStart, senderCoreNum, realComputeCoreNum, roundTag);
+        DispatchSendKernel(senderCoreNum, remoteServerNum, realComputeCoreNum, roundTag);
     }
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFromRmtServer(uint32_t relayRank,
-                                                                                          uint64_t remoteCopyOffset,
-                                                                                          int32_t bufferIdx,
-                                                                                          uint32_t copyInNum)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::LoadTokenFromLocalRelay(uint32_t srcServer,
+                                                                                        uint32_t tokenIndex,
+                                                                                        int32_t bufferIdx,
+                                                                                        uint32_t copyInNum)
 {
-    GM_ADDR remoteRecordAddr = GetRankWinAddrWithOffset(relayRank, dispatchWinOffset_) + remoteCopyOffset;
-    uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
-    if (relayRank == rankId_) {
-        __gm__ int32_t *readyFlag = reinterpret_cast<__gm__ int32_t *>(remoteRecordAddr + flagOffset);
-        GmSignalWaitBarrier(readyFlag, int32_t(1));
-        GlobalTensor<ActivationType> relayGlobalTensor;
-        relayGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(remoteRecordAddr));
-        DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
-        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-        return;
+    __gm__ uint64_t *readyFlag = reinterpret_cast<__gm__ uint64_t *>(params_.peermemInfo.dispatchFlagPtr +
+                                                                     RelayFlagOffset(srcServer, tokenIndex));
+    while (ReadGmByPassDCache(readyFlag) != uint64_t(1)) {
     }
-    GM_ADDR scratchAddr = params_.workspaceInfo.dispatchL2CommPtr +
-                          (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
-    __gm__ int32_t *localReadyFlag = reinterpret_cast<__gm__ int32_t *>(scratchAddr + flagOffset);
-    do {
-        hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr + flagOffset,
-                             remoteRecordAddr + flagOffset, sizeof(int32_t));
-        hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
-        PipeBarrier<PIPE_ALL>();
-        int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
-        if (readyValue == int32_t(1)) {
-            WriteGmByPassDCache(localReadyFlag, int32_t(0));
-            break;
-        }
-    } while (true);
-    hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr, remoteRecordAddr, copyInNum);
-    hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
-    PipeBarrier<PIPE_ALL>();
-    GlobalTensor<ActivationType> scratchGlobalTensor;
-    scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(scratchAddr));
-    DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
+
+    uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, tokenIndex);
+    GM_ADDR localRecordAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_) + remoteCopyOffset;
+    GlobalTensor<ActivationType> relayGlobalTensor;
+    relayGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(localRecordAddr));
+    DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 }
 
@@ -1111,13 +1141,138 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32
 }
 
 // ============================================================================
-// CopyGMToGMPerToken：6-buffer 软流水，搬运对端rank数据至本专家卡
+// CopyTokensFromLocalRelay：本卡中转使用 UB 多 buffer 搬运 token 与 scale
 // ----------------------------------------------------------------------------
-//   Phase 1: 所有 token 的三元组 (rank, tokenIndex, topkIndex) 组装写入metaInfoTensor_
-//   Phase 2 prime: 连发 6 个 MTE2,中间不插 WaitFlag<MTE2_MTE3>, 让 MTE2 引擎同时持有 6 个跨卡读请求。
-//   Phase 2 steady: 每轮做 (MTE3_out[i] + MTE2_in[i+6]), 槽位循环复用。
-//   Phase 2 drain: 收尾不再发新 MTE2,只等 MTE3。
-//   Phase 3: metaInfo 三元组搬出。
+//   prime: 发出前 BufferNum 个 token 的 MTE2。
+//   steady: 每轮执行 MTE3_out[i] + MTE2_in[i + BufferNum]，循环复用槽位。
+//   drain: 收尾不再发新 MTE2，只等待 MTE3 完成。
+// ============================================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromLocalRelay(
+    int32_t rowDstOffsetInCore, uint32_t srcServer, int32_t copyNum, int64_t widthA, int64_t widthAScale,
+    uint32_t copyInNum)
+{
+    constexpr int32_t BufferNum = 5;
+    constexpr TEventID kBufEvents[BufferNum] = {EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
+    GlobalTensor<ActivationType> tokenRevGlobalTensor;
+    GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor;
+    tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(
+        params_.workspaceInfo.dispatchRevDataPtr + rowDstOffsetInCore * widthA));
+    scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType *>(
+        params_.workspaceInfo.dispatchRevScalePtr + rowDstOffsetInCore * widthAScale));
+
+    for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
+    }
+
+    int32_t primeCount = (copyNum < BufferNum) ? copyNum : BufferNum;
+    for (int32_t primeIdx = 0; primeIdx < primeCount; ++primeIdx) {
+        int32_t tokenIndex = metaInfoTensor_[primeIdx * INT32_PER_256B].GetValue(TOKEN_ID);
+        TEventID eventId = kBufEvents[primeIdx];
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        LoadTokenFromLocalRelay(srcServer, static_cast<uint32_t>(tokenIndex), primeIdx, copyInNum);
+        SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+    }
+
+    for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
+        int32_t outIdx = copyIdx % BufferNum;
+        TEventID eventId = kBufEvents[outIdx];
+        WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+
+        LocalTensor<ActivationType> tokenScaleBuf = copyTmpTensors_[outIdx];
+        LocalTensor<QuantScaleOutType> scaleBuf =
+            tokenScaleBuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
+        DataCopyPad(tokenRevGlobalTensor[copyIdx * widthA], tokenScaleBuf,
+                    {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
+        DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], scaleBuf,
+                    {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+
+        int32_t nextIdx = copyIdx + BufferNum;
+        if (nextIdx < copyNum) {
+            int32_t tokenIndex = metaInfoTensor_[nextIdx * INT32_PER_256B].GetValue(TOKEN_ID);
+            // 等待本轮 MTE3 完成后再复用 outIdx 槽。
+            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+            LoadTokenFromLocalRelay(srcServer, static_cast<uint32_t>(tokenIndex), outIdx, copyInNum);
+            SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+        }
+    }
+
+    for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
+    }
+}
+
+// ============================================================================
+// CopyTokensFromRemoteRelay：远端完整 flag slice 经本地 GM 搬入 UB 后轮询
+// ============================================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyTokensFromRemoteRelay(
+    int32_t rowDstOffsetInCore, uint32_t relayRank, uint32_t srcServer, int32_t copyNum, int64_t widthA,
+    int64_t widthAScale)
+{
+    if (copyNum <= 0) {
+        return;
+    }
+
+    SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID4>();
+    Duplicate<int32_t>(relayReceivedTensor_, 0, static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256));
+    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+
+    uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
+    GM_ADDR scratchAddr =
+        params_.workspaceInfo.dispatchL2CommPtr + static_cast<uint64_t>(blockIdx_) * dispatchL2ScratchBytes_;
+    GlobalTensor<uint64_t> scratchFlagGlobalTensor;
+    scratchFlagGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(scratchAddr));
+    GM_ADDR remoteFlagAddr =
+        GetRankWinAddrWithOffset(relayRank, dispatchFlagWinOffset_) + RelayFlagOffset(srcServer, 0);
+    ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
+    DataCopyExtParams flagCopyParams{1U, static_cast<uint32_t>(flagSnapshotBytes), 0U, 0U, 0U};
+    DataCopyPadExtParams<uint64_t> flagCopyPadParams{true, 0U, 0U, 0U};
+
+    int32_t receivedCount = 0;
+    while (receivedCount < copyNum) {
+        hcomm_.ReadNbi<true>(channel, scratchAddr, remoteFlagAddr, flagSnapshotBytes);
+        hcomm_.Drain(channel);
+        SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
+        // flag 在 win/L2 中按 bs * sizeof(uint64_t) 紧凑存放；搬入 UB 时由 DataCopyPad 处理非 32B 尾块。
+        DataCopyPad(relayFlagTensor_, scratchFlagGlobalTensor, flagCopyParams, flagCopyPadParams);
+        SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID1>();
+
+        for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
+            if (relayReceivedTensor_.GetValue(copyIdx) != int32_t(0)) {
+                continue;
+            }
+            int32_t tokenIndex = metaInfoTensor_[copyIdx * INT32_PER_256B].GetValue(TOKEN_ID);
+            if (relayFlagTensor_.GetValue(tokenIndex) != uint64_t(1)) {
+                continue;
+            }
+
+            uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
+            GM_ADDR remoteRecordAddr = GetRankWinAddrWithOffset(relayRank, dispatchWinOffset_) + remoteCopyOffset;
+            GM_ADDR tokenDstAddr =
+                params_.workspaceInfo.dispatchRevDataPtr +
+                static_cast<uint64_t>(rowDstOffsetInCore + copyIdx) * widthA * sizeof(ActivationType);
+            GM_ADDR scaleDstAddr =
+                params_.workspaceInfo.dispatchRevScalePtr +
+                static_cast<uint64_t>(rowDstOffsetInCore + copyIdx) * widthAScale * sizeof(QuantScaleOutType);
+            hcomm_.ReadNbi<true>(channel, tokenDstAddr, remoteRecordAddr, widthA * sizeof(ActivationType));
+            hcomm_.ReadNbi<true>(channel, scaleDstAddr, remoteRecordAddr + mxQuantTokenAlignBytes_,
+                                 widthAScale * sizeof(QuantScaleOutType));
+            relayReceivedTensor_.SetValue(copyIdx, int32_t(1));
+            ++receivedCount;
+        }
+        SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID1>();
+    }
+    hcomm_.Drain(channel);
+}
+
+// ============================================================================
+// CopyGMToGMPerToken：组装 token 三元组并按 relay 位置选择搬运路径
+// ----------------------------------------------------------------------------
+//   Phase 1: 所有 token 的三元组 (rank, tokenIndex, topkIndex) 组装写入 tripleTensor_。
+//   Phase 2: 本卡中转使用 UB 多 buffer；远端中转直接 GM->GM 到 GMM1 输入 workspace。
+//   Phase 3: triple 三元组搬出。
 // ============================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffsetInCore,
@@ -1128,30 +1283,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
     if (copyNum <= 0) {
         return;
     }
-    constexpr int32_t BufferNum = 5;
-    constexpr TEventID kBufEvents[BufferNum] = {EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
     int64_t widthA = k_ / A_ELEMS_PER_BYTE;
     int64_t widthAScale = Ops::Base::CeilDiv(static_cast<int64_t>(k_), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
                           MXFP_MULTI_BASE_SIZE; // 输出 token-scale 长度,紧密排列
     uint32_t copyInNum = Ops::Base::CeilAlign(static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
                                               static_cast<int64_t>(ALIGN_32)); // 输入 token-scale 拼接,非紧密排列
-    GlobalTensor<ActivationType> remoteRankGlobalTensor;
-    GlobalTensor<ActivationType> tokenRevGlobalTensor;
-    GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor;
-    tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(
-        params_.workspaceInfo.dispatchRevDataPtr + rowDstOffsetInCore * widthA));
-    scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType *>(
-        params_.workspaceInfo.dispatchRevScalePtr + rowDstOffsetInCore * widthAScale));
     uint32_t srcServer = static_cast<uint32_t>(remoteRankIdx) / rankPerServer_;
     uint32_t srcRankInServer = static_cast<uint32_t>(remoteRankIdx) % rankPerServer_;
     uint32_t relayRank = serverId_ * rankPerServer_ + srcRankInServer;
 
-    // 预置 6 个 MTE3_MTE2 flag,Phase 2 的 prime/steady 的 WaitFlag 可立即通过。
-    for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
-        SetFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
-    }
-    PipeBarrier<PIPE_ALL>();
-    // Phase 1: token三元组信息组装(rank, tokenIndex, topkIndex)
     for (int32_t i = 0; i < copyNum; ++i) {
         int32_t topkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + i);
         int32_t tokenIndex = topkIndex / topK_;
@@ -1160,48 +1300,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         metaInfoTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
     }
 
-    // 6-buffer SW 流水 MTE2 + MTE3
-    // Phase 2 prime: 发出前 BufferNum 个 token 的 MTE2
-    int32_t primeCount = (copyNum < BufferNum) ? copyNum : BufferNum;
-    for (int32_t primeIdx = 0; primeIdx < primeCount; ++primeIdx) {
-        int32_t tokenIndex = metaInfoTensor_[primeIdx * INT32_PER_256B].GetValue(TOKEN_ID);
-        TEventID eventId = kBufEvents[primeIdx];
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-        uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
-        ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, primeIdx, copyInNum);
-        SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+    if (relayRank == rankId_) {
+        CopyTokensFromLocalRelay(rowDstOffsetInCore, srcServer, copyNum, widthA, widthAScale, copyInNum);
+    } else {
+        CopyTokensFromRemoteRelay(rowDstOffsetInCore, relayRank, srcServer, copyNum, widthA, widthAScale);
     }
-    // Phase 2 steady: MTE3[copyIdx] + issueMTE2[copyIdx + BufferNum]
-    for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
-        int32_t outIdx = copyIdx % BufferNum;
-        TEventID eventId = kBufEvents[outIdx];
-        WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
 
-        LocalTensor<ActivationType> tokenScalebuf = copyTmpTensors_[outIdx];
-        LocalTensor<QuantScaleOutType> bufScale =
-            tokenScalebuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
-        DataCopyPad(tokenRevGlobalTensor[copyIdx * widthA], tokenScalebuf,
-                    {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
-        DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], bufScale,
-                    {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
-        SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-
-        // 发下一个槽的 MTE2 (copyIdx + BufferNum,复用 outIdx 槽)
-        int32_t nextIdx = copyIdx + BufferNum;
-        if (nextIdx < copyNum) {
-            int32_t tokenIndex = metaInfoTensor_[nextIdx * INT32_PER_256B].GetValue(TOKEN_ID);
-            // WaitFlag 此处等待的是本轮刚发出的 SetFlag<MTE3_MTE2>(eventId),即等本槽 MTE3 完成。
-            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-            uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
-            ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, outIdx, copyInNum);
-            SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
-        }
-    }
-    // Phase 2 drain: 6 个 buffer-free flag
-    for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
-    }
-    // Phase 3: metaInfo 三元组搬出
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
     DataCopy(metaInfoGlobalTensor_[rowDstOffsetInCore * INT32_PER_256B], metaInfoTensor_, copyNum * INT32_PER_256B);
 }
