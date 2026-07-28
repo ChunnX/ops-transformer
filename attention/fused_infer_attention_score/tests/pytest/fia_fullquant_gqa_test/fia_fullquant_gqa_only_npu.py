@@ -121,6 +121,8 @@ def create_block_table(actual_seq_kv, block_size, seed=SEED_BLOCK_TABLE, run_idx
     max_blocks = max(block_num_per_batch)
     if BLOCK_TABLE_PATTERN == "sequential":
         block_idx_list = np.arange(total_blocks, dtype=np.int32)
+    elif BLOCK_TABLE_PATTERN == "reverse":
+        block_idx_list = np.arange(total_blocks - 1, -1, -1, dtype=np.int32)
     else:
         block_idx_list = np.random.default_rng(seed + run_idx).permutation(np.arange(total_blocks, dtype=np.int32))
     block_table = np.full((len(actual_seq_kv), max_blocks), -1, dtype=np.int32)
