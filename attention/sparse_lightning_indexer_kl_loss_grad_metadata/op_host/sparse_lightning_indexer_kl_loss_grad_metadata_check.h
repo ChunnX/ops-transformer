@@ -15,7 +15,6 @@
 
 #include "log/log.h"
 #include "opdev/format_utils.h"
-#include "opdev/op_log.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/tensor_view_utils.h"
 
@@ -82,36 +81,36 @@ inline std::string GetSourceDescSli(const std::string &source)
 }
 
 int64_t GetQueryBatchSizeSli(int64_t batchSize, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
-                             const char *layoutQOptional, std::string &source)
+                             const char *layoutQOptional, std::string *source)
 {
     if (IsTensorExistSli(sequsedQOptional)) {
-        source = "seqused_q";
+        *source = "seqused_q";
         return sequsedQOptional->GetViewShape().GetDim(0);
     }
     if (strcmp(layoutQOptional, "TND") == 0) {
         if (IsTensorExistSli(cuSeqlensQOptional)) {
-            source = "cu_seqlens_q";
+            *source = "cu_seqlens_q";
             return cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    source = "batch_size";
+    *source = "batch_size";
     return batchSize;
 }
 
 int64_t GetKeyBatchSizeSli(int64_t batchSize, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedKOptional,
-                           const char *layoutKOptional, std::string &source)
+                           const char *layoutKOptional, std::string *source)
 {
     if (IsTensorExistSli(sequsedKOptional)) {
-        source = "seqused_k";
+        *source = "seqused_k";
         return sequsedKOptional->GetViewShape().GetDim(0);
     }
     if (strcmp(layoutKOptional, "TND") == 0) {
         if (IsTensorExistSli(cuSeqlensKOptional)) {
-            source = "cu_seqlens_k";
+            *source = "cu_seqlens_k";
             return cuSeqlensKOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    source = "batch_size";
+    *source = "batch_size";
     return batchSize;
 }
 
@@ -361,10 +360,10 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     // 校验batch
     std::string querySource;
     int64_t queryBatchSize =
-        GetQueryBatchSizeSli(batchSize, cuSeqlensQOptional, sequsedQOptional, layoutQOptional, querySource);
+        GetQueryBatchSizeSli(batchSize, cuSeqlensQOptional, sequsedQOptional, layoutQOptional, &querySource);
     std::string keySource;
     int64_t keyBatchSize =
-        GetKeyBatchSizeSli(batchSize, cuSeqlensKOptional, sequsedKOptional, layoutKOptional, keySource);
+        GetKeyBatchSizeSli(batchSize, cuSeqlensKOptional, sequsedKOptional, layoutKOptional, &keySource);
     if (queryBatchSize != keyBatchSize) {
         if (IsTensorSourceSli(querySource) && IsTensorSourceSli(keySource)) {
             OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
