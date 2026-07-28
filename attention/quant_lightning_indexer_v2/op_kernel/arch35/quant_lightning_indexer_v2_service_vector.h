@@ -160,7 +160,7 @@ private:
     uint32_t topkCountAlign16_ = 0;  // LD读取到UB，需要满足32B对齐
     float globalQScale_ = 1.0f;      // quantMode=4时全局query scale
     float globalKScale_ = 1.0f;      // quantMode=4时全局key scale
-    uint32_t trunkLen_ = 0;   // ProcessTopK（非LD路径）每次处理的s2长度
+    uint32_t trunkLen_ = 0;          // ProcessTopK（非LD路径）每次处理的s2长度
     uint32_t trunkLenLd_ = 0; // ProcessLD路径每次处理的s2长度，根据sparseCount动态计算以填满UB
     bool returnValueFlag = false;
 
@@ -172,8 +172,7 @@ private:
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(resMm1Buf_,
-                     2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));
+    pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     // weight buffer按WEIGHT_T访问；UB_BANK_DEPTH_STRIDE的单位已经是字节，无需再乘数据类型大小。
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
@@ -924,7 +923,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
     AscendC::DataCopyPadExtParams<SCORE_T> scorePadParams{true, 0, 0, 0};
     AscendC::DataCopyPadExtParams<uint32_t> indexPadParams{true, 0, 0, 0};
     AscendC::DataCopyExtParams ldScoreParams;
-    ldScoreParams.blockLen = topkCountAlign16_ * sizeof(SCORE_T);      // bytes
+    ldScoreParams.blockLen = topkCountAlign16_ * sizeof(SCORE_T);                      // bytes
     ldScoreParams.srcStride = (s1BaseSize_ - 1) * topkCountAlign16_ * sizeof(SCORE_T); // 两个基本块之间的距离
     ldScoreParams.dstStride = 0;
     AscendC::DataCopyExtParams ldIndexParams;
@@ -937,8 +936,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
         return;
     }
     uint64_t mrgValueLen = trunkLenLd_ + topkCountAlign256_;
-    uint32_t ldWorkspaceNum =
-        (ldProcessLen > mrgValueLen) ? (trunkLenLd_ / topkCountAlign16_) : ldInfo_.workspaceNum;
+    uint32_t ldWorkspaceNum = (ldProcessLen > mrgValueLen) ? (trunkLenLd_ / topkCountAlign16_) : ldInfo_.workspaceNum;
     // 搬运次数，一次搬运ldworkspaceNum块
     uint32_t ldProcessNum = CeilDiv(ldInfo_.workspaceNum, ldWorkspaceNum);
     uint32_t ldProcessOffset = 0;

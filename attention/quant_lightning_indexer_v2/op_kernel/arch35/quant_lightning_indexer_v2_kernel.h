@@ -425,10 +425,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
         } else { // BSND
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : static_cast<uint64_t>(ldInfo.bIdx) * constInfo.qSeqSize;
         }
-        ldInfo.indiceOutCoreOffset =
-            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount +
-            static_cast<uint64_t>(ldInfo.n2Idx) * constInfo.sparseCount +
-            static_cast<uint64_t>(ldInfo.mIdx) * constInfo.s1BaseSize * constInfo.kHeadNum * constInfo.sparseCount; // 搬出Topk的初始偏移地址
+        ldInfo.indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount +
+                                     static_cast<uint64_t>(ldInfo.n2Idx) * constInfo.sparseCount +
+                                     static_cast<uint64_t>(ldInfo.mIdx) * constInfo.s1BaseSize * constInfo.kHeadNum *
+                                         constInfo.sparseCount; // 搬出Topk的初始偏移地址
     }
 }
 
@@ -443,7 +443,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::DealActSeqLenIsZero(uint32_t bIdx, 
             for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
                 uint64_t indiceOutOffset =
                     (static_cast<uint64_t>(tBase) + s1Idx) * constInfo.kHeadNum * constInfo.sparseCount +
-                    static_cast<uint64_t>(n2Idx) * constInfo.sparseCount;                                 // N2轴偏移
+                    static_cast<uint64_t>(n2Idx) * constInfo.sparseCount; // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         } else if (constInfo.outputLayout == LI_LAYOUT::BSND) {
@@ -452,7 +452,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::DealActSeqLenIsZero(uint32_t bIdx, 
                 uint64_t indiceOutOffset =
                     static_cast<uint64_t>(bIdx) * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount +
                     static_cast<uint64_t>(s1Idx) * constInfo.kHeadNum * constInfo.sparseCount +
-                    static_cast<uint64_t>(n2Idx) * constInfo.sparseCount;                       // N2轴偏移
+                    static_cast<uint64_t>(n2Idx) * constInfo.sparseCount; // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         }
