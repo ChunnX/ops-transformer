@@ -32,10 +32,13 @@ ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
     //    Config (10-bit)
     //    0: Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64
     //    1: Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128
+    //    2: Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64
+    //    3: Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128
     ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_10_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 1023),
     //    QuantMode (5-bit)
     //    1: QFA_MXFP8_FP32_PREFILL
     //    2: QFA_MXFP8_FP32_DECODE
+    //    3: QFA_HIF8_FP32_PREFILL
     ASCENDC_TPL_UINT_DECL(QuantMode, ASCENDC_TPL_5_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 31),
     //    HasAttenMask
     //    false / true
@@ -60,9 +63,11 @@ ASCENDC_TPL_SEL(
             InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
             Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
-            Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
+            Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
+            Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64,
+            Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128),
         ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, QFA_MXFP8_FP32_PREFILL,
-                             QFA_MXFP8_FP32_DECODE),
+                             QFA_MXFP8_FP32_DECODE, QFA_HIF8_FP32_PREFILL),
         ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
         ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST,
             KvLayoutType_NO_PA, KvLayoutType_PA_BNBD, KvLayoutType_PA_NZ),
