@@ -10,6 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import math
+
 import torch
 
 
@@ -41,6 +43,11 @@ def to_float32(value):
     return float(torch.tensor(value, dtype=torch.float32).item())
 
 
+def fma_float32(multiplier, multiplicand, addend):
+    # Emulate one correctly rounded float32 multiply-add used by the AICore scalar expression.
+    return to_float32(float(multiplier) * float(multiplicand) + float(addend))
+
+
 def parse_special_setting(setting):
     parsed = {}
     if not setting:
@@ -69,7 +76,10 @@ def dtype_from_name(dtype_name):
 
 def get_topk_score_precision(case):
     precision = int(case.get("topk_score_precision", DEFAULT_TOPK_SCORE_PRECISION))
-    if precision not in TOPK_SCORE_TYPE_BY_PRECISION:
+    if (
+        case.get("expected_result", "PASS") != "FAIL"
+        and precision not in TOPK_SCORE_TYPE_BY_PRECISION
+    ):
         raise ValueError(
             f"topk_score_precision must be 1(uint32) or 2(uint16), but got {precision}"
         )
@@ -220,15 +230,16 @@ def calc_topk_budget(case, q_block_idx, q_block_num, kv_block_num, prompt_len):
 
     s1_pos = q_block_idx + kv_block_num - q_block_num
     decay_len = prompt_block_num - k_start
-    if s1_pos < k_start or decay_len < 1:
+    if s1_pos < k_start or decay_len <= 1:
         return k_start
 
+    k_start_float = to_float32(k_start)
     alpha = to_float32(case["alpha"])
-    k_end = int(to_float32(to_float32(k_start) * alpha))
+    k_end = to_float32(k_start_float * alpha)
     t = to_float32(to_float32(s1_pos - k_start) / to_float32(decay_len - 1))
-    topk_count = int(
-        to_float32(to_float32(k_start) + to_float32(t * to_float32(k_end - k_start)))
-    )
+    decay_delta = to_float32(k_end - k_start_float)
+    interpolated_topk_count = fma_float32(t, decay_delta, k_start_float)
+    topk_count = math.floor(interpolated_topk_count)
     return min(max(topk_count, 1), k_start)
 
 

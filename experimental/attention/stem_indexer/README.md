@@ -51,6 +51,7 @@
 -   该接口支持图模式。
 -   当前仅适配Ascend 950PR/Ascend 950DT（A5），不支持A3/A2。
 -   `qflat`/`kflat`仅支持BF16，`vbias`仅支持FP32，`q_seq_lens`/`kv_seq_lens`/`num_prompt_tokens`/`metadata`及输出仅支持INT32。
+-   每个batch需满足`num_prompt_tokens[b] >= kv_seq_lens[b]`。
 -   `q_heads`仅支持32/64，`kv_heads`仅支持2/4/8，且需满足`q_heads % kv_heads == 0`（GQA）。
 -   `headDim`固定为128；`stem_block_size`固定为128，`stem_stride`固定为16，因此`qflat`/`kflat`最后一维固定为`stem_stride * D = 16 * 128 = 2048`。
 -   `metadata`首维必须为2048。

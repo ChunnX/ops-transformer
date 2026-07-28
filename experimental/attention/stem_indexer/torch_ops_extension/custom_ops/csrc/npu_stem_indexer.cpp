@@ -26,15 +26,6 @@ const int64_t KFLAT_KB_DIM = 2;
 const int64_t TOPK_SCORE_PRECISION_UINT32 = 1;
 const int64_t TOPK_SCORE_PRECISION_UINT16 = 2;
 
-// 可选张量兜底：未提供或未定义时返回一个空的 int32 张量，供 aclnn IR 的 REQUIRED 输入使用
-c10::optional<at::Tensor> get_stem_valid_tensor(const c10::optional<at::Tensor> &tensorOpt, const at::Device &device)
-{
-    if (tensorOpt.has_value() && tensorOpt.value().defined()) {
-        return tensorOpt;
-    }
-    return c10::optional<at::Tensor>(torch::empty({0}, torch::dtype(torch::kInt32).device(device)));
-}
-
 // 工具函数，推导输出 sparse_indices / sparse_seq_len 的 shape 与 dtype
 //   - sparse_indices: INT32 [B, q_heads, Qb, Kb]
 //   - sparse_seq_len: INT32 [B, q_heads, Qb]
@@ -63,7 +54,7 @@ std::tuple<at::Tensor, at::Tensor> construct_stem_output_tensors(const at::Tenso
 std::tuple<at::Tensor, at::Tensor>
 npu_stem_indexer_npu(const at::Tensor &qflat, const at::Tensor &kflat, const at::Tensor &vbias,
                      const at::Tensor &q_seq_lens, const at::Tensor &kv_seq_lens,
-                     const c10::optional<at::Tensor> &num_prompt_tokens, const c10::optional<at::Tensor> &metadata,
+                     const at::Tensor &num_prompt_tokens, const at::Tensor &metadata,
                      bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha, int64_t initial_blocks,
                      int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
                      double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)
@@ -94,14 +85,9 @@ npu_stem_indexer_npu(const at::Tensor &qflat, const at::Tensor &kflat, const at:
     at::Tensor sparse_indices = std::get<0>(outputs);
     at::Tensor sparse_seq_len = std::get<1>(outputs);
 
-    // 可选张量兜底
-    at::Device output_device = qflat.device();
-    auto num_prompt_tokens_value = get_stem_valid_tensor(num_prompt_tokens, output_device);
-    auto metadata_value = get_stem_valid_tensor(metadata, output_device);
-
     // EXEC_NPU_CMD_V1 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出），与 schema 形参顺序不同
-    EXEC_NPU_CMD_V1(aclnnStemIndexer, qflat, kflat, vbias, q_seq_lens, kv_seq_lens, num_prompt_tokens_value,
-                    metadata_value, causal, stem_block_size, stem_stride, alpha, initial_blocks, window_size,
+    EXEC_NPU_CMD_V1(aclnnStemIndexer, qflat, kflat, vbias, q_seq_lens, kv_seq_lens, num_prompt_tokens, metadata,
+                    causal, stem_block_size, stem_stride, alpha, initial_blocks, window_size,
                     k_block_num_rate_medium, k_block_num_bias_medium, k_block_num_rate_large, k_block_num_bias_large,
                     topk_score_precision, sparse_indices, sparse_seq_len);
 
@@ -112,7 +98,7 @@ npu_stem_indexer_npu(const at::Tensor &qflat, const at::Tensor &kflat, const at:
 std::tuple<at::Tensor, at::Tensor>
 npu_stem_indexer_meta(const at::Tensor &qflat, const at::Tensor &kflat, const at::Tensor &vbias,
                       const at::Tensor &q_seq_lens, const at::Tensor &kv_seq_lens,
-                      const c10::optional<at::Tensor> &num_prompt_tokens, const c10::optional<at::Tensor> &metadata,
+                      const at::Tensor &num_prompt_tokens, const at::Tensor &metadata,
                       bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha, int64_t initial_blocks,
                       int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
                       double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)

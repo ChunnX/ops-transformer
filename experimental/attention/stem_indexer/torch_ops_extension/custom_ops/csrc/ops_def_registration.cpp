@@ -13,13 +13,12 @@
 
 // 在custom命名空间里注册stem_indexer算子，每次新增自定义aten ir都需先增加定义
 // step1, 为新增自定义算子添加定义
-//   - schema 入参顺序：必选张量 + 必选标量在前，'*' 之后为可选张量与带默认值的属性
+//   - schema 入参顺序：必选张量在前，'*' 之后为带默认值的属性
 //   - 张量 dtype / 属性默认值对齐 op_host/stem_indexer_def.cpp
 TORCH_LIBRARY(custom, m)
 {
     m.def("npu_stem_indexer(Tensor qflat, Tensor kflat, Tensor vbias, Tensor q_seq_lens, "
-          "Tensor kv_seq_lens, *, "
-          "Tensor? num_prompt_tokens=None, Tensor? metadata=None, "
+          "Tensor kv_seq_lens, Tensor num_prompt_tokens, Tensor metadata, *, "
           "bool causal=True, int stem_block_size=128, int stem_stride=16, float alpha=1.0, "
           "int initial_blocks=4, int window_size=4, float k_block_num_rate_medium=0.2, "
           "int k_block_num_bias_medium=30, float k_block_num_rate_large=0.1, "

@@ -84,4 +84,5 @@ sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
 - `qflat` / `kflat` 为 BF16 `[B, N, Qb/Kb, stem_stride*D]`；`vbias` 为 FP32 `[B, kv_heads, Kb]`；
   其余 `q_seq_lens` / `kv_seq_lens` / `num_prompt_tokens` / `metadata` 为 INT32，
   `metadata` 长度 2048；输出 `sparse_indices` / `sparse_seq_len` 为 INT32。
-- `num_prompt_tokens` / `metadata` 为可选张量（`c10::optional<at::Tensor>`），未提供时内部以空张量兜底。
+- `num_prompt_tokens` / `metadata` 为必传张量，分别要求 shape 为 `[batch]` 和 `[2048]`。
+- 每个batch需满足 `num_prompt_tokens[b] >= kv_seq_lens[b]`。
