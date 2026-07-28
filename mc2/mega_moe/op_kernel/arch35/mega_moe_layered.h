@@ -112,7 +112,8 @@ private:
                                                 uint32_t tokenIdx, uint32_t tokenStart, uint32_t dedupWordsPerServer);
     __aicore__ inline void DispatchSendKernel(uint32_t senderCoreNum, uint32_t remoteServerNum,
                                               uint32_t realComputeCoreNum, int32_t roundTag);
-    __aicore__ inline void DispatchToken(uint32_t targetServerForSender, int32_t slot);
+    __aicore__ inline void DispatchToken(uint32_t targetServerForSender, uint32_t peerRank, ChannelHandle channel,
+                                         int32_t slot);
     __aicore__ inline int32_t UpdateDispatchTokenCnt(uint32_t targetServerForSender, int32_t cursor, int32_t endCount);
     __aicore__ inline bool DispatchSyncWithCompute(uint32_t realComputeCoreNum, int32_t roundTag);
     __aicore__ inline void LoadTokenFromLocalRelay(uint32_t srcServer, uint32_t tokenIndex, int32_t bufferIdx,
@@ -964,6 +965,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
 
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchToken(uint32_t targetServerForSender,
+                                                                                     uint32_t peerRank,
+                                                                                     ChannelHandle channel,
                                                                                      int32_t slot)
 {
     uint64_t metaOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
@@ -976,11 +979,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchT
     int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
     uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     GM_ADDR srcAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_) + relayOffset;
-    uint32_t peerRank = targetServerForSender * rankPerServer_ + rankIdInServer_;
     GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_) + relayOffset;
     GM_ADDR remoteFlagAddr = GetRankWinAddrWithOffset(peerRank, dispatchFlagWinOffset_) +
                              RelayFlagOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-    ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
     hcomm_.WriteWithNotifyNbi(channel, dstAddr, srcAddr, mxQuantTokenScaleAlignBytes_, remoteFlagAddr, uint64_t(1));
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
 }
@@ -1025,6 +1026,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
     uint32_t senderIdx = blockIdx_ - realComputeCoreNum;
     for (uint32_t remoteServerIdx = senderIdx; remoteServerIdx < remoteServerNum; remoteServerIdx += senderCoreNum) {
         uint32_t targetServerForSender = (remoteServerIdx < serverId_) ? remoteServerIdx : remoteServerIdx + 1U;
+        uint32_t peerRank = targetServerForSender * rankPerServer_ + rankIdInServer_;
+        ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
         __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
                                                                       SendWorkspaceServerOffset(targetServerForSender));
         int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
@@ -1040,7 +1043,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
                 scanEnd = endCount;
             }
             for (int32_t slot = scanCursor; slot < scanEnd; ++slot) {
-                DispatchToken(targetServerForSender, slot);
+                DispatchToken(targetServerForSender, peerRank, channel, slot);
             }
             scanCursor = scanEnd;
             if (scanCursor >= endCount) {
