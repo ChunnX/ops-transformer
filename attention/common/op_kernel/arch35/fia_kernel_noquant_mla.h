@@ -30,11 +30,6 @@
 
 #include "fia_tiling_data_noquant_gqa.h"
 
-using namespace AscendC;
-using namespace optiling;
-using namespace AscendC::Impl::Detail;
-using namespace regbaseutil;
-
 namespace BaseApi {
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class FlashAttentionNoQuantMlaKernel {
@@ -71,17 +66,17 @@ public:
     // mm1和mm2右矩阵，在L1上复用，其中K_rope内存空间与bmm2的左矩阵p复用
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1KvPBuffers;
 
-    GlobalTensor<uint64_t> actualSeqLengthsGmQ;
-    GlobalTensor<uint64_t> actualSeqLengthsGmKv;
-    GlobalTensor<uint32_t> fiaMetaDataGm;
-    GlobalTensor<float> softmaxLseGm;
+    AscendC::GlobalTensor<uint64_t> actualSeqLengthsGmQ;
+    AscendC::GlobalTensor<uint64_t> actualSeqLengthsGmKv;
+    AscendC::GlobalTensor<uint32_t> fiaMetaDataGm;
+    AscendC::GlobalTensor<float> softmaxLseGm;
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
 
     ConstInfoX constInfo;
 
-    const NoQuantTilingArch35 *__restrict tilingData;
-    TPipe *pipe = nullptr;
+    const optiling::NoQuantTilingArch35 *__restrict tilingData;
+    AscendC::TPipe *pipe = nullptr;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
     VecFdBlockType vecFdBlock;
@@ -118,7 +113,7 @@ public:
                                 __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
-                                const NoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
+                                const optiling::NoQuantTilingArch35 *__restrict tiling, AscendC::TPipe *tPipe)
     {
         printf("MLA D512 noquant kernel Init: not implemented, skip.\n");
         // return;
@@ -182,11 +177,11 @@ public:
     __aicore__ inline void InitConstInfo()
     {
         if ASCEND_IS_AIC {
-            constInfo.aicIdx = GetBlockIdx();
+            constInfo.aicIdx = AscendC::GetBlockIdx();
         } else {
-            constInfo.aivIdx = GetBlockIdx();
-            constInfo.aicIdx = constInfo.aivIdx / GetSubBlockNum();
-            constInfo.subBlockIdx = GetSubBlockIdx();
+            constInfo.aivIdx = AscendC::GetBlockIdx();
+            constInfo.aicIdx = constInfo.aivIdx / AscendC::GetSubBlockNum();
+            constInfo.subBlockIdx = AscendC::GetSubBlockIdx();
         }
 
         const auto &fiaBaseParams = this->tilingData->fiaBaseParams;
@@ -772,7 +767,7 @@ public:
 
         FDparamsX fdParams = {fdCoreEnable, fdBN2Idx, fdMIdx, fdS2SplitNum, mStart, mLen, fdWorkspaceIdx};
         vecFdBlock.AllocEventID();
-        SyncAll();
+        AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams);
         vecFdBlock.FreeEventID();
     }
