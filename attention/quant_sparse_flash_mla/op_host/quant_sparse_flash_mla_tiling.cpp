@@ -37,10 +37,7 @@ ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus QSMLAInfoParser::CheckRequiredParaExistence() const
 {
@@ -592,9 +589,17 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
         OP_CHECK_IF(tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr,
                     OP_LOGE("QuantSparseFlashMla", "cmpSparseIndices must be empty when cmpKv is not provided."),
                     return ge::GRAPH_FAILED);
-        perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
+        if (tilingInfo->opParamInfo.oriSparseIndices.tensor != nullptr) {
+            perfMode_ = QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
+        } else {
+            perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
+        }
     } else if (tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
+        if (tilingInfo->opParamInfo.oriSparseIndices.tensor != nullptr) {
+            perfMode_ = QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE;
+        } else {
+            perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
+        }
     } else {
         perfMode_ = QSMLATemplateMode::HCA_TEMPLATE_MODE;
     }
@@ -627,8 +632,10 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
         static_cast<uint64_t>(alignedSparseBlockCount) * sizeof(int32_t) +
         static_cast<uint64_t>(alignedSparseBlockCount) * sizeof(int64_t); // 物理地址计算向量化所需ub大小
     uint32_t vectorizeFlag =
-        static_cast<uint32_t>((perfMode_ == QSMLATemplateMode::CSA_TEMPLATE_MODE) && (vectorizeUbSize <= UB_SIZE) &&
-                              blocksizeFlag && (tilingInfo->kvLayout == QSMLALayout::PA_BBND)); // 是否满足向量化条件
+        static_cast<uint32_t>((perfMode_ == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
+                               perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
+                              (vectorizeUbSize <= UB_SIZE) && blocksizeFlag &&
+                              (tilingInfo->kvLayout == QSMLALayout::PA_BBND)); // 是否满足向量化条件
     uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (tilingInfo->gSize > 64) {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
