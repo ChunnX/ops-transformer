@@ -423,11 +423,12 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
             actualSeqQPrefixSum = cuSeqlensQGm.GetValue(ldInfo.bIdx);
         } else { // BSND
-            actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : ldInfo.bIdx * constInfo.qSeqSize;
+            actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : static_cast<uint64_t>(ldInfo.bIdx) * constInfo.qSeqSize;
         }
         ldInfo.indiceOutCoreOffset =
-            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + ldInfo.n2Idx * constInfo.sparseCount +
-            ldInfo.mIdx * constInfo.s1BaseSize * constInfo.kHeadNum * constInfo.sparseCount; // 搬出Topk的初始偏移地址
+            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount +
+            static_cast<uint64_t>(ldInfo.n2Idx) * constInfo.sparseCount +
+            static_cast<uint64_t>(ldInfo.mIdx) * constInfo.s1BaseSize * constInfo.kHeadNum * constInfo.sparseCount; // 搬出Topk的初始偏移地址
     }
 }
 
@@ -441,16 +442,17 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::DealActSeqLenIsZero(uint32_t bIdx, 
 
             for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
                 uint64_t indiceOutOffset =
-                    (tBase + s1Idx) * constInfo.kHeadNum * constInfo.sparseCount + // T轴、s1轴偏移
-                    n2Idx * constInfo.sparseCount;                                 // N2轴偏移
+                    (static_cast<uint64_t>(tBase) + s1Idx) * constInfo.kHeadNum * constInfo.sparseCount +
+                    static_cast<uint64_t>(n2Idx) * constInfo.sparseCount;                                 // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         } else if (constInfo.outputLayout == LI_LAYOUT::BSND) {
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
                 // B,S1,N2,K
-                uint64_t indiceOutOffset = bIdx * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount +
-                                           s1Idx * constInfo.kHeadNum * constInfo.sparseCount + // B轴、S1轴偏移
-                                           n2Idx * constInfo.sparseCount;                       // N2轴偏移
+                uint64_t indiceOutOffset =
+                    static_cast<uint64_t>(bIdx) * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount +
+                    static_cast<uint64_t>(s1Idx) * constInfo.kHeadNum * constInfo.sparseCount +
+                    static_cast<uint64_t>(n2Idx) * constInfo.sparseCount;                       // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         }
@@ -495,10 +497,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
     // 大小为s1BaseSize * sparseCount * 2，一个核内最多有两个s1BaseSize需要LD
     GlobalTensor<SCORE_T> ldScoreGm; // 存放进行LD的s2 score
     ldScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset));
-    offset += GetBlockNum() * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(SCORE_T);
+    offset += static_cast<uint64_t>(GetBlockNum()) * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(SCORE_T);
     GlobalTensor<int32_t> ldIndexGm; // 存放进行LD的s2 Index
     ldIndexGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + offset));
-    offset += GetBlockNum() * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(int32_t);
+    offset += static_cast<uint64_t>(GetBlockNum()) * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(int32_t);
 
     if ASCEND_IS_AIV {
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
@@ -660,7 +662,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
                 }
             }
         } else { // BSND
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
+            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : static_cast<uint64_t>(runInfo.bIdx) * constInfo.qSeqSize;
         }
         uint64_t tndBIdxOffset = actualSeqQPrefixSum * constInfo.qHeadNum * qkHeadDim;
         // B,S1,N1(N2,G),D
@@ -727,8 +729,8 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2; // 2 means c:v = 1:2
-        uint64_t totalOutputSize =
-            constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
+        uint64_t totalOutputSize = static_cast<uint64_t>(constInfo.batchSize) * constInfo.qSeqSize *
+                                   constInfo.kHeadNum * constInfo.sparseCount;
         uint64_t singleCoreSize =
             QLIV2Common::Align((totalOutputSize + aivCoreNum - 1) / aivCoreNum, GM_ALIGN_BYTES / sizeof(OUT_T));
         uint64_t baseSize = tmpBlockIdx * singleCoreSize;
