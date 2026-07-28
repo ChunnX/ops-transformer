@@ -10,20 +10,11 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 
 #include "sliding_tile_attention_case_guard.h"
 
 namespace {
-
-using sliding_tile_attention::WindowArray;
-
-bool Accepted(int64_t batch, int64_t sequence, bool bf16, int64_t textLength, bool hasText, int64_t seqShape,
-              const WindowArray &windows)
-{
-    return sliding_tile_attention::IsSupportedNormalizedSignature(batch, sliding_tile_attention::SUPPORTED_HEADS,
-                                                                  sequence, sliding_tile_attention::SUPPORTED_HEAD_DIM,
-                                                                  bf16, textLength, hasText, seqShape, windows);
-}
 
 bool Check(bool condition, const char *message)
 {
@@ -41,66 +32,54 @@ int main()
     using namespace sliding_tile_attention;
     bool ok = true;
 
-    for (bool bf16 : {false, true}) {
-        ok &= Check(Accepted(1, FASTVIDEO_SEQUENCE, bf16, FASTVIDEO_TEXT_LENGTH, true, FASTVIDEO_SEQ_SHAPE_ID,
-                             SOURCE_WINDOW_PATTERN),
-                    "FastVideo source window must be accepted");
-        ok &= Check(Accepted(1, FASTVIDEO_SEQUENCE, bf16, FASTVIDEO_TEXT_LENGTH, true, FASTVIDEO_SEQ_SHAPE_ID,
-                             WIDE_WINDOW_PATTERN),
-                    "FastVideo wide window must be accepted");
-        ok &= Check(Accepted(1, FASTVIDEO_SEQUENCE, bf16, FASTVIDEO_TEXT_LENGTH, true, FASTVIDEO_SEQ_SHAPE_ID,
-                             UNIFORM_333_WINDOW_PATTERN),
-                    "FastVideo uniform window must be accepted");
-        ok &= Check(Accepted(1, STEPVIDEO_SEQUENCE, bf16, 0, false, STEPVIDEO_SEQ_SHAPE_ID, SOURCE_WINDOW_PATTERN),
-                    "StepVideo source window must be accepted");
-        ok &= Check(Accepted(1, STEPVIDEO_SEQUENCE, bf16, 0, false, STEPVIDEO_SEQ_SHAPE_ID, WIDE_WINDOW_PATTERN),
-                    "StepVideo wide window must be accepted");
-        ok &= Check(Accepted(1, STEPVIDEO_SEQUENCE, bf16, 0, false, STEPVIDEO_SEQ_SHAPE_ID, UNIFORM_333_WINDOW_PATTERN),
-                    "StepVideo uniform window must be accepted");
-        ok &= Check(Accepted(1, WAN_SEQUENCE, bf16, 0, false, WAN_SEQ_SHAPE_ID, UNIFORM_333_WINDOW_PATTERN),
-                    "Wan uniform window must be accepted");
-        ok &= Check(Accepted(1, WAN_SEQUENCE, bf16, 0, false, WAN_SEQ_SHAPE_ID, WAN_MIXED_WINDOW_PATTERN),
-                    "Wan mixed window must be accepted");
+    for (int64_t heads : {1, 7, 8, 9, 127, 128}) {
+        int64_t broadcast[] = {3, 5, 7};
+        WindowValues windows;
+        ok &= Check(NormalizeWindows(broadcast, WINDOW_VALUES_PER_HEAD, heads, windows),
+                    "broadcast window must normalize for every supported head count");
+        ok &= Check(static_cast<int64_t>(windows.size()) == heads * WINDOW_VALUES_PER_HEAD,
+                    "normalized window length must be 3*N");
+        ok &= Check(IsSupportedMetadata(3, heads, STEPVIDEO_SEQUENCE, 64, 0, false, STEPVIDEO_SEQ_SHAPE_ID, windows),
+                    "positive batch and supported N must be accepted");
     }
-    ok &= Check(Accepted(2, WAN_SEQUENCE, false, 0, false, WAN_SEQ_SHAPE_ID, UNIFORM_333_WINDOW_PATTERN),
-                "Wan batch-two fp16 case must be accepted");
 
-    ok &= Check(!Accepted(2, WAN_SEQUENCE, true, 0, false, WAN_SEQ_SHAPE_ID, UNIFORM_333_WINDOW_PATTERN),
-                "Wan batch-two bf16 must be rejected");
-    ok &= Check(!Accepted(1, FASTVIDEO_SEQUENCE, false, 256, true, FASTVIDEO_SEQ_SHAPE_ID, SOURCE_WINDOW_PATTERN),
-                "textLength=256 is outside the fixed task cases");
-    ok &= Check(!Accepted(1, FASTVIDEO_SEQUENCE, false, FASTVIDEO_TEXT_LENGTH, false, FASTVIDEO_SEQ_SHAPE_ID,
-                          SOURCE_WINDOW_PATTERN),
-                "FastVideo without text must be rejected");
-    ok &= Check(!Accepted(1, STEPVIDEO_SEQUENCE, false, 0, false, STEPVIDEO_SEQ_SHAPE_ID, WAN_MIXED_WINDOW_PATTERN),
-                "StepVideo mixed Wan window must be rejected");
-    ok &= Check(!IsSupportedNormalizedSignature(1, 16, STEPVIDEO_SEQUENCE, SUPPORTED_HEAD_DIM, false, 0, false,
-                                                STEPVIDEO_SEQ_SHAPE_ID, UNIFORM_333_WINDOW_PATTERN),
-                "N=16 must be rejected");
-    ok &= Check(!IsSupportedNormalizedSignature(1, SUPPORTED_HEADS, STEPVIDEO_SEQUENCE, 128, false, 0, false,
-                                                STEPVIDEO_SEQ_SHAPE_ID, UNIFORM_333_WINDOW_PATTERN),
-                "D=128 must be rejected");
-
-    int64_t seqShape = 0;
-    int64_t windowPattern = 0;
-    const int64_t runtimeSignature = EncodeRuntimeSignature(FASTVIDEO_SEQ_SHAPE_ID, SOURCE_WINDOW_PATTERN_ID);
-    ok &= Check(DecodeRuntimeSignature(runtimeSignature, seqShape, windowPattern) &&
-                    seqShape == FASTVIDEO_SEQ_SHAPE_ID && windowPattern == SOURCE_WINDOW_PATTERN_ID,
-                "runtime signature round trip must pass");
-    ok &= Check(!DecodeRuntimeSignature(0, seqShape, windowPattern), "zero runtime signature must fail");
-    WindowArray broadcastWindows{};
-    for (int64_t head = 0; head < SUPPORTED_HEADS; ++head) {
-        const int64_t offset = head * WINDOW_VALUES_PER_HEAD;
-        broadcastWindows[offset] = 3;
-        broadcastWindows[offset + 1] = 3;
-        broadcastWindows[offset + 2] = 3;
+    ok &= Check(!IsSupportedHeads(0), "N=0 must be rejected");
+    ok &= Check(!IsSupportedHeads(129), "N=129 must be rejected");
+    for (int64_t headDim : {8, 16, 56, 64, 72, 128, 256}) {
+        ok &= Check(IsSupportedHeadDim(headDim), "positive multiples of eight must be accepted");
     }
-    ok &= Check(WindowsEqual(broadcastWindows, UNIFORM_333_WINDOW_PATTERN),
-                "single [3,3,3] window must normalize to the fixed eight-head pattern");
+    ok &= Check(!IsSupportedHeadDim(0), "D=0 must be rejected for non-empty tensors");
+    ok &= Check(!IsSupportedHeadDim(7), "D not divisible by eight must be rejected");
+
+    WindowValues perHead;
+    int64_t perHeadValues[] = {1, 3, 5, 7, 9, 11};
+    ok &= Check(NormalizeWindows(perHeadValues, 6, 2, perHead), "arbitrary per-head windows must be accepted");
+    ok &= Check(perHead[0] == 1 && perHead[5] == 11, "per-head windows must preserve values");
+    int64_t invalidWindow[] = {3, 0, 3};
+    ok &= Check(!NormalizeWindows(invalidWindow, 3, 1, perHead), "non-positive window values must be rejected");
+    int64_t evenWindow[] = {3, 4, 5};
+    ok &= Check(!NormalizeWindows(evenWindow, 3, 1, perHead), "even window values must be rejected");
+    int64_t wideWindow[] = {(1LL << 32) + 1, std::numeric_limits<int64_t>::max(), 3};
+    ok &= Check(NormalizeWindows(wideWindow, 3, 1, perHead),
+                "positive odd int64 windows must be preserved for device-side extent saturation");
+    ok &= Check(perHead[0] == wideWindow[0] && perHead[1] == wideWindow[1],
+                "window normalization must not narrow int64 values");
+    ok &= Check(!NormalizeWindows(perHeadValues, 6, 3, perHead), "window length other than 3 or 3*N must fail");
+
+    WindowValues oneHead = {3, 3, 3};
+    ok &= Check(!IsSupportedMetadata(0, 1, STEPVIDEO_SEQUENCE, 8, 0, false, STEPVIDEO_SEQ_SHAPE_ID, oneHead),
+                "non-empty execution metadata requires positive batch");
+    ok &= Check(!IsSupportedMetadata(1, 1, STEPVIDEO_SEQUENCE, 8, 1, false, STEPVIDEO_SEQ_SHAPE_ID, oneHead),
+                "hasText must match textLength");
+    ok &= Check(!IsSupportedMetadata(1, 1, STEPVIDEO_SEQUENCE + 8, 8, 0, false, STEPVIDEO_SEQ_SHAPE_ID, oneHead),
+                "sequence must match the selected canvas plus textLength");
+    ok &= Check(!IsSupportedMetadata(1, 1, FASTVIDEO_IMAGE_SEQUENCE + 256, 8, 256, true,
+                                     FASTVIDEO_SEQ_SHAPE_ID, oneHead),
+                "text and canvas families remain task-book fixed");
 
     if (!ok) {
         return EXIT_FAILURE;
     }
-    std::cout << "ALL_SLIDING_TILE_ATTENTION_CASE_GUARD_TESTS_PASSED signatures=17 cases=18\n";
+    std::cout << "ALL_SLIDING_TILE_ATTENTION_CASE_GUARD_TESTS_PASSED dynamic_heads=1..128 head_dim_multiple=8\n";
     return EXIT_SUCCESS;
 }

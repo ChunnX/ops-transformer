@@ -72,13 +72,17 @@ for required in "${CUSTOM_INCLUDE}/aclnnop/aclnn_sliding_tile_attention.h" "${CU
 done
 
 g++ -std=c++17 -O2 -Wall -Wextra -Werror \
-    "${SCRIPT_DIR}/test_aclnn_sliding_tile_attention_18cases.cpp" \
+    "${SCRIPT_DIR}/test_aclnn_sliding_tile_attention_22cases.cpp" \
     -I"${CANN_INCLUDE}" -I"${CUSTOM_INCLUDE}" \
     "${CUSTOM_LIBRARY}" "${CANN_LIBRARY}/libascendcl.so" "${CANN_LIBRARY}/libnnopbase.so" \
     -Wl,-rpath,"${CUSTOM_OPP_ROOT}/op_api/lib" -Wl,-rpath,"${CANN_LIBRARY}" \
-    -o "${RUNNER_BUILD_DIR}/sliding_tile_attention_18cases"
+    -o "${RUNNER_BUILD_DIR}/sliding_tile_attention_22cases"
 
 export ASCEND_CUSTOM_OPP_PATH="${CUSTOM_OPP_ROOT}${ASCEND_CUSTOM_OPP_PATH:+:${ASCEND_CUSTOM_OPP_PATH}}"
 export LD_LIBRARY_PATH="${CUSTOM_OPP_ROOT}/op_api/lib:${CANN_LIBRARY}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 export SLIDING_TILE_ATTENTION_DEVICE_ID="${DEVICE_ID}"
-"${RUNNER_BUILD_DIR}/sliding_tile_attention_18cases"
+export SLIDING_TILE_ATTENTION_WARMUP="${SLIDING_TILE_ATTENTION_WARMUP:-0}"
+export SLIDING_TILE_ATTENTION_MEASURE_REPEAT="${SLIDING_TILE_ATTENTION_MEASURE_REPEAT:-1}"
+export SLIDING_TILE_ATTENTION_REPORT_PATH="${SLIDING_TILE_ATTENTION_REPORT_PATH:-${REPO_ROOT}/sliding_tile_attention_self_validation.csv}"
+"${RUNNER_BUILD_DIR}/sliding_tile_attention_22cases"
+echo "SLIDING_TILE_ATTENTION_SELF_VALIDATION_REPORT=${SLIDING_TILE_ATTENTION_REPORT_PATH}"

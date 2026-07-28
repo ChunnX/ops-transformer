@@ -483,6 +483,12 @@ function(add_ops_src_copy)
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SRC_COPY_DST}
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_COPY_SRC} ${SRC_COPY_DST}
         )
+        set(CATLASS_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/3rdparty/catlass/include/catlass)
+        if (EXISTS "${SRC_COPY_SRC}/op_kernel/catlass" AND EXISTS "${CATLASS_INCLUDE_DIR}")
+            list(APPEND SYNC_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${CATLASS_INCLUDE_DIR} ${SRC_COPY_DST}/op_kernel/catlass
+            )
+        endif()
         list(APPEND SYNC_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${_BUILD_FLAG})
         add_custom_command(
             OUTPUT ${_BUILD_FLAG}

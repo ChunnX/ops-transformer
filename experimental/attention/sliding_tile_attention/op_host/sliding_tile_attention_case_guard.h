@@ -11,16 +11,17 @@
 #ifndef SLIDING_TILE_ATTENTION_CASE_GUARD_H_
 #define SLIDING_TILE_ATTENTION_CASE_GUARD_H_
 
-#include <array>
 #include <cstdint>
+#include <vector>
 
 namespace sliding_tile_attention {
 
 constexpr int64_t SUPPORTED_RANK = 4;
-constexpr int64_t SUPPORTED_HEADS = 8;
-constexpr int64_t SUPPORTED_HEAD_DIM = 64;
+constexpr int64_t MIN_HEADS = 1;
+constexpr int64_t MAX_HEADS = 128;
+constexpr int64_t HEAD_DIM_ALIGNMENT = 8;
 constexpr int64_t WINDOW_VALUES_PER_HEAD = 3;
-constexpr int64_t WINDOW_VALUE_COUNT = SUPPORTED_HEADS * WINDOW_VALUES_PER_HEAD;
+constexpr int64_t MAX_WINDOW_VALUE_COUNT = MAX_HEADS * WINDOW_VALUES_PER_HEAD;
 constexpr int64_t TILE_TIME = 6;
 constexpr int64_t TILE_HEIGHT = 8;
 constexpr int64_t TILE_WIDTH = 8;
@@ -38,127 +39,105 @@ constexpr int64_t FASTVIDEO_TEXT_LENGTH = 128;
 constexpr int64_t FASTVIDEO_SEQUENCE = FASTVIDEO_IMAGE_SEQUENCE + FASTVIDEO_TEXT_LENGTH;
 constexpr int64_t STEPVIDEO_SEQUENCE = STEPVIDEO_CANVAS_TIME * STEPVIDEO_CANVAS_HEIGHT * STEPVIDEO_CANVAS_WIDTH;
 constexpr int64_t WAN_SEQUENCE = WAN_CANVAS_TIME * WAN_CANVAS_HEIGHT * WAN_CANVAS_WIDTH;
-constexpr int64_t INVALID_WINDOW_PATTERN = 0;
-constexpr int64_t SOURCE_WINDOW_PATTERN_ID = 1;
-constexpr int64_t WIDE_WINDOW_PATTERN_ID = 2;
-constexpr int64_t UNIFORM_333_WINDOW_PATTERN_ID = 3;
-constexpr int64_t WAN_MIXED_WINDOW_PATTERN_ID = 4;
-constexpr int64_t RUNTIME_SIGNATURE_RADIX = 8;
 constexpr int64_t FASTVIDEO_SEQ_SHAPE_ID = 1;
 constexpr int64_t STEPVIDEO_SEQ_SHAPE_ID = 2;
 constexpr int64_t WAN_SEQ_SHAPE_ID = 3;
 
-using WindowArray = std::array<int64_t, WINDOW_VALUE_COUNT>;
+using WindowValues = std::vector<int64_t>;
 
-constexpr WindowArray SOURCE_WINDOW_PATTERN = {
-    1, 1, 1, 3, 3, 3, 3, 5, 5, 5, 5, 5, 1, 3, 3, 3, 3, 5, 5, 5, 7, 7, 7, 7,
-};
-constexpr WindowArray WIDE_WINDOW_PATTERN = {
-    7, 7, 7, 7, 5, 7, 5, 7, 7, 5, 5, 7, 7, 3, 5, 3, 7, 5, 5, 7, 3, 7, 7, 5,
-};
-constexpr WindowArray UNIFORM_333_WINDOW_PATTERN = {
-    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-};
-constexpr WindowArray WAN_MIXED_WINDOW_PATTERN = {
-    3, 3, 5, 3, 1, 9, 1, 3, 5, 5, 5, 5, 3, 5, 7, 5, 3, 7, 1, 1, 1, 7, 7, 7,
-};
-
-inline bool WindowsEqual(const WindowArray &lhs, const WindowArray &rhs)
+inline bool IsSupportedHeads(int64_t heads)
 {
-    for (int64_t index = 0; index < WINDOW_VALUE_COUNT; ++index) {
-        if (lhs[index] != rhs[index]) {
+    return heads >= MIN_HEADS && heads <= MAX_HEADS;
+}
+
+inline bool IsSupportedHeadDim(int64_t headDim)
+{
+    return headDim > 0 && headDim % HEAD_DIM_ALIGNMENT == 0;
+}
+
+inline bool IsValidWindowValue(int64_t value)
+{
+    return value > 0 && (value & 1) != 0;
+}
+
+inline bool IsSupportedSeqShape(int64_t seqShape)
+{
+    return seqShape >= FASTVIDEO_SEQ_SHAPE_ID && seqShape <= WAN_SEQ_SHAPE_ID;
+}
+
+inline bool IsValidSequenceMetadata(int64_t sequence, int64_t textLength, bool hasText, int64_t seqShape)
+{
+    switch (seqShape) {
+        case FASTVIDEO_SEQ_SHAPE_ID:
+            return sequence == FASTVIDEO_SEQUENCE && textLength == FASTVIDEO_TEXT_LENGTH && hasText;
+        case STEPVIDEO_SEQ_SHAPE_ID:
+            return sequence == STEPVIDEO_SEQUENCE && textLength == 0 && !hasText;
+        case WAN_SEQ_SHAPE_ID:
+            return sequence == WAN_SEQUENCE && textLength == 0 && !hasText;
+        default:
             return false;
+    }
+}
+
+inline bool NormalizeWindows(const int64_t *values, int64_t valueCount, int64_t heads, WindowValues &windows)
+{
+    if (values == nullptr || !IsSupportedHeads(heads)) {
+        return false;
+    }
+    const int64_t normalizedCount = heads * WINDOW_VALUES_PER_HEAD;
+    if (valueCount != WINDOW_VALUES_PER_HEAD && valueCount != normalizedCount) {
+        return false;
+    }
+    windows.resize(static_cast<size_t>(normalizedCount));
+    for (int64_t head = 0; head < heads; ++head) {
+        for (int64_t axis = 0; axis < WINDOW_VALUES_PER_HEAD; ++axis) {
+            const int64_t value = values[valueCount == WINDOW_VALUES_PER_HEAD ? axis :
+                                         head * WINDOW_VALUES_PER_HEAD + axis];
+            if (!IsValidWindowValue(value)) {
+                return false;
+            }
+            windows[static_cast<size_t>(head * WINDOW_VALUES_PER_HEAD + axis)] = value;
         }
     }
     return true;
 }
 
-inline int64_t GetWindowPatternId(const WindowArray &windows)
+inline bool GetCanvasMetadata(int64_t seqShape, int64_t &canvasT, int64_t &canvasH, int64_t &canvasW)
 {
-    if (WindowsEqual(windows, SOURCE_WINDOW_PATTERN)) {
-        return SOURCE_WINDOW_PATTERN_ID;
-    }
-    if (WindowsEqual(windows, WIDE_WINDOW_PATTERN)) {
-        return WIDE_WINDOW_PATTERN_ID;
-    }
-    if (WindowsEqual(windows, UNIFORM_333_WINDOW_PATTERN)) {
-        return UNIFORM_333_WINDOW_PATTERN_ID;
-    }
-    if (WindowsEqual(windows, WAN_MIXED_WINDOW_PATTERN)) {
-        return WAN_MIXED_WINDOW_PATTERN_ID;
-    }
-    return INVALID_WINDOW_PATTERN;
-}
-
-inline bool FillWindowPattern(int64_t patternId, WindowArray &windows)
-{
-    switch (patternId) {
-        case SOURCE_WINDOW_PATTERN_ID:
-            windows = SOURCE_WINDOW_PATTERN;
+    switch (seqShape) {
+        case FASTVIDEO_SEQ_SHAPE_ID:
+            canvasT = FASTVIDEO_CANVAS_TIME;
+            canvasH = FASTVIDEO_CANVAS_HEIGHT;
+            canvasW = FASTVIDEO_CANVAS_WIDTH;
             return true;
-        case WIDE_WINDOW_PATTERN_ID:
-            windows = WIDE_WINDOW_PATTERN;
+        case STEPVIDEO_SEQ_SHAPE_ID:
+            canvasT = STEPVIDEO_CANVAS_TIME;
+            canvasH = STEPVIDEO_CANVAS_HEIGHT;
+            canvasW = STEPVIDEO_CANVAS_WIDTH;
             return true;
-        case UNIFORM_333_WINDOW_PATTERN_ID:
-            windows = UNIFORM_333_WINDOW_PATTERN;
-            return true;
-        case WAN_MIXED_WINDOW_PATTERN_ID:
-            windows = WAN_MIXED_WINDOW_PATTERN;
+        case WAN_SEQ_SHAPE_ID:
+            canvasT = WAN_CANVAS_TIME;
+            canvasH = WAN_CANVAS_HEIGHT;
+            canvasW = WAN_CANVAS_WIDTH;
             return true;
         default:
             return false;
     }
 }
 
-inline int64_t EncodeRuntimeSignature(int64_t seqShape, int64_t windowPattern)
+inline bool IsSupportedMetadata(int64_t batch, int64_t heads, int64_t sequence, int64_t headDim, int64_t textLength,
+                                bool hasText, int64_t seqShape, const WindowValues &windows)
 {
-    return seqShape * RUNTIME_SIGNATURE_RADIX + windowPattern;
-}
-
-inline bool DecodeRuntimeSignature(int64_t runtimeSignature, int64_t &seqShape, int64_t &windowPattern)
-{
-    if (runtimeSignature <= 0) {
+    if (batch <= 0 || !IsSupportedHeads(heads) || !IsSupportedHeadDim(headDim) || !IsSupportedSeqShape(seqShape) ||
+        static_cast<int64_t>(windows.size()) != heads * WINDOW_VALUES_PER_HEAD) {
         return false;
     }
-    seqShape = runtimeSignature / RUNTIME_SIGNATURE_RADIX;
-    windowPattern = runtimeSignature % RUNTIME_SIGNATURE_RADIX;
-    WindowArray windows{};
-    return seqShape >= FASTVIDEO_SEQ_SHAPE_ID && seqShape <= WAN_SEQ_SHAPE_ID &&
-           FillWindowPattern(windowPattern, windows) &&
-           EncodeRuntimeSignature(seqShape, windowPattern) == runtimeSignature;
-}
-
-inline bool IsSupportedNormalizedSignature(int64_t batch, int64_t heads, int64_t sequence, int64_t headDim, bool isBf16,
-                                           int64_t textLength, bool hasText, int64_t seqShape,
-                                           const WindowArray &windows)
-{
-    if (heads != SUPPORTED_HEADS || headDim != SUPPORTED_HEAD_DIM) {
-        return false;
-    }
-
-    const int64_t windowPattern = GetWindowPatternId(windows);
-    const bool isSource = windowPattern == SOURCE_WINDOW_PATTERN_ID;
-    const bool isWide = windowPattern == WIDE_WINDOW_PATTERN_ID;
-    const bool isUniform333 = windowPattern == UNIFORM_333_WINDOW_PATTERN_ID;
-    const bool isWanMixed = windowPattern == WAN_MIXED_WINDOW_PATTERN_ID;
-
-    // The task acceptance table contains 18 fixed inputs. Its single-triple [3,3,3] shorthand is normalized to
-    // eight triples before ACLNN, so the 18 inputs become 17 unique device-side metadata signatures.
-    if (seqShape == FASTVIDEO_SEQ_SHAPE_ID) {
-        return batch == 1 && sequence == FASTVIDEO_SEQUENCE && hasText && textLength == FASTVIDEO_TEXT_LENGTH &&
-               (isSource || isWide || isUniform333);
-    }
-    if (seqShape == STEPVIDEO_SEQ_SHAPE_ID) {
-        return batch == 1 && sequence == STEPVIDEO_SEQUENCE && !hasText && textLength == 0 &&
-               (isSource || isWide || isUniform333);
-    }
-    if (seqShape == WAN_SEQ_SHAPE_ID) {
-        if (batch == 1 && sequence == WAN_SEQUENCE && !hasText && textLength == 0) {
-            return isUniform333 || isWanMixed;
+    for (int64_t value : windows) {
+        if (!IsValidWindowValue(value)) {
+            return false;
         }
-        return batch == 2 && sequence == WAN_SEQUENCE && !hasText && textLength == 0 && !isBf16 && isUniform333;
     }
-    return false;
+    return IsValidSequenceMetadata(sequence, textLength, hasText, seqShape);
 }
 
 } // namespace sliding_tile_attention

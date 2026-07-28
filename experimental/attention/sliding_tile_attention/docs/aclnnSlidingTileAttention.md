@@ -46,46 +46,54 @@ aclnnStatus aclnnSlidingTileAttention(
 
 | 参数 | 输入/输出 | 说明 | 数据类型/格式 |
 | --- | --- | --- | --- |
-| `q` | 输入 | Query，连续 BNSD，shape 为 `[B,8,S,64]` | FLOAT16/BFLOAT16，ND |
-| `k` | 输入 | Key，shape、dtype 与 `q` 一致 | FLOAT16/BFLOAT16，ND |
-| `v` | 输入 | Value，shape、dtype 与 `q` 一致 | FLOAT16/BFLOAT16，ND |
-| `windowSize` | 输入 | 一个 `[t,h,w]` 三元组，或按 8 个 head 展平的 24 个整数 | INT64 数组 |
-| `textLength` | 输入 | 固定 case 的 text 长度；有 text 场景为 128，无 text 场景为 0 | INT64 |
+| `q` | 输入 | Query，rank-4 BNSD，shape 为 `[B,N,S,D]`；可非连续 | FLOAT16/BFLOAT16，ND |
+| `k` | 输入 | Key，shape、dtype 与 `q` 一致；可非连续 | FLOAT16/BFLOAT16，ND |
+| `v` | 输入 | Value，shape、dtype 与 `q` 一致；可非连续 | FLOAT16/BFLOAT16，ND |
+| `windowSize` | 输入 | 一个 `[t,h,w]` 三元组，或按 N 个 head 展平的 `3*N` 个值；每个三元组的三个值均为正奇数 | INT64 数组 |
+| `textLength` | 输入 | 序列尾部 text token 数；必须非负并与 `hasText` 一致 | INT64 |
 | `hasText` | 输入 | 是否包含序列尾部 text token | BOOL |
 | `seqShape` | 输入 | 画布枚举：1=`30x48x80`，2=`36x48x48`，3=`18x48x80` | INT64 |
 | `output` | 输出 | 输出 Tensor，shape、dtype 与 `q` 一致 | FLOAT16/BFLOAT16，ND |
-| `workspaceSize` | 输出 | 执行所需 workspace 字节数 | UINT64 |
+| `workspaceSize` | 输出 | 执行所需 workspace 字节数；空 Tensor 返回 0 | UINT64 |
 | `executor` | 输出 | 封装当前计算流程的 ACLNN executor | `aclOpExecutor*` |
 | `workspace` | 输入 | Device workspace；大小由第一段接口返回 | `void*` |
 | `stream` | 输入 | ACL runtime stream | `aclrtStream` |
 
 ## 约束说明
 
-根据任务书验收范围，本次交付只支持 `docs/self_validation.md` 声明的 18 个固定 case：
-
-- `q/k/v/output` 必须是相同 shape、dtype 的连续 rank-4 BNSD Tensor。
+- `q/k/v/output` 必须是相同 shape、dtype 的 rank-4 BNSD Tensor。
 - dtype 仅支持 FLOAT16 和 BFLOAT16。
-- head 数固定为 8，head dimension 固定为 64。
-- tile 固定为 `[6,8,8]`。
-- `windowSize` 只接受固定 case 中的窗口模式；单个 `[3,3,3]` 会在 L2 广播为 8 个 head。
-- 有 text 的固定 case 使用 `seqShape=1`、`textLength=128`；无 text case 使用 `textLength=0`。
-- 不支持动态扩展。范围外 metadata 返回 `ACLNN_ERR_PARAM_INVALID`，不做任何 runtime fallback。
+- 非空输入满足 `B > 0`、`1 <= N <= 128`、`D > 0` 且 `D % 8 == 0`。
+- tile 固定为 `[6,8,8]`；`S` 必须等于 `seqShape` 对应画布 token 数加 `textLength`。
+- `windowSize` 长度必须为 3 或 `3*N`；长度 3 广播到全部 head，每个三元组的三个值均须为正奇数。
+- `textLength >= 0`，且 `hasText == (textLength > 0)`。
+- ACLNN L2 对 `q/k/v` 显式调用 `Contiguous`。非连续输入会 materialize 为连续 Tensor，调用方无需预先拷贝。
+- shape 一致的任意空 Tensor 在 `GetWorkspaceSize` 直接返回 `ACLNN_SUCCESS`，workspace 为 0，不进入 L0，
+  不创建 AI Core launcher，也不发射 kernel。
+- `N=8,D=64` 选择固定快路径；其他合法 N/D 选择动态通用路径。该选择仅依赖运行时 shape/dtype/属性，
+  不依赖 case id、输入值或已知 workload。
+- 范围外 metadata 返回 `ACLNN_ERR_PARAM_INVALID`，不做 framework、vendor 或其他 backend fallback。
 
 ## 返回值
 
-- `ACLNN_SUCCESS`：成功。
+- `ACLNN_SUCCESS`：成功；空 Tensor 快返也使用该返回值。
 - `ACLNN_ERR_PARAM_NULLPTR`：必需指针为空。
-- `ACLNN_ERR_PARAM_INVALID`：dtype、shape、window 或其他 metadata 不在固定验收范围内。
+- `ACLNN_ERR_PARAM_INVALID`：dtype、rank、shape、window 或其他 metadata 不满足接口契约。
 - 其他返回值：ACLNN executor 或 runtime 执行失败。
 
 ## 调用示例
 
-完整 C++ 调用和固定 18-case 复跑入口位于：
+完整 C++ 调用、原 18-case 保护集及动态/非连续/空 Tensor 代表性检查入口位于：
 
 ```text
 experimental/attention/sliding_tile_attention/examples/
 ```
 
 ```bash
-bash experimental/attention/sliding_tile_attention/examples/run_18cases.sh
+bash experimental/attention/sliding_tile_attention/examples/run_22cases.sh
 ```
+
+该 runner 共执行 22 个设备 case 和一个空 Tensor API 检查，不代表接口完整动态支持域。case 20、21、22、26
+按本次 PR 自测范围不进入 runner；它们仍不触发 case-id 分派或运行时 fallback。其非零、非均匀
+Q/K 输入和 host 解析期望值会实际验证 runtime `1/sqrt(D)`，并覆盖所有合法的
+`0,7,63,64,127,128,D-1` 输出列采样。

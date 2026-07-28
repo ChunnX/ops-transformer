@@ -20,6 +20,8 @@ struct SlidingTileAttentionTilingData {
     int64_t total_work = 0;
     int64_t work_per_block = 0;
     int64_t dtype = 0; // 0=fp16 direct, 1=bf16 input staging with half FAI compute
+    float softmax_scale = 0.0f;
+    uint32_t reserved = 0;
     int64_t workspace_elems = 0;
     int64_t workspace_blocks = 0;
     int64_t workspace_block_elems = 0;

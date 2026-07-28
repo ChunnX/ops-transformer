@@ -35,10 +35,13 @@ TILING_DATA_FIELD_DEF(int64_t, gridT);
 TILING_DATA_FIELD_DEF(int64_t, gridH);
 TILING_DATA_FIELD_DEF(int64_t, gridW);
 TILING_DATA_FIELD_DEF(int64_t, tileNumel);
+TILING_DATA_FIELD_DEF(int64_t, windowCount);
 TILING_DATA_FIELD_DEF_ARR(int64_t, SLIDING_TILE_ATTENTION_WINDOW_VALUE_COUNT, windows);
 TILING_DATA_FIELD_DEF(int64_t, totalWork);
 TILING_DATA_FIELD_DEF(int64_t, workPerBlock);
 TILING_DATA_FIELD_DEF(int64_t, dtype);
+TILING_DATA_FIELD_DEF(float, softmaxScale);
+TILING_DATA_FIELD_DEF(uint32_t, reserved);
 TILING_DATA_FIELD_DEF(int64_t, workspaceElems);
 TILING_DATA_FIELD_DEF(int64_t, workspaceBlocks);
 TILING_DATA_FIELD_DEF(int64_t, workspaceBlockElems);
@@ -46,8 +49,14 @@ END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(SlidingTileAttentionFai, SlidingTileAttentionHostTilingData)
 
-static_assert(sizeof(SlidingTileAttentionTilingData) == 47 * sizeof(int64_t),
-              "SlidingTileAttention device tiling ABI must remain 376 bytes");
+constexpr size_t SLIDING_TILE_ATTENTION_META_SCALAR_COUNT = 18;
+constexpr size_t SLIDING_TILE_ATTENTION_RUNTIME_SCALAR_COUNT = 7;
+constexpr size_t SLIDING_TILE_ATTENTION_TILING_FIELD_COUNT =
+    SLIDING_TILE_ATTENTION_META_SCALAR_COUNT + SLIDING_TILE_ATTENTION_WINDOW_VALUE_COUNT +
+    SLIDING_TILE_ATTENTION_RUNTIME_SCALAR_COUNT;
+static_assert(sizeof(SlidingTileAttentionTilingData) ==
+                  SLIDING_TILE_ATTENTION_TILING_FIELD_COUNT * sizeof(int64_t),
+              "SlidingTileAttention host/device tiling ABI fields must stay aligned");
 
 } // namespace optiling
 

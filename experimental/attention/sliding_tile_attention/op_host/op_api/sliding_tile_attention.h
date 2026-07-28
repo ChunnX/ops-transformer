@@ -16,8 +16,9 @@
 
 namespace l0op {
 
-const aclTensor *SlidingTileAttention(const aclTensor *q, const aclTensor *k, const aclTensor *v, int64_t windowPattern,
-                                      int64_t seqShape, aclTensor *output, aclOpExecutor *executor);
+const aclTensor *SlidingTileAttention(const aclTensor *q, const aclTensor *k, const aclTensor *v,
+                                      const aclIntArray *windowSize, int64_t textLength, bool hasText,
+                                      int64_t seqShape, const aclTensor *output, aclOpExecutor *executor);
 
 } // namespace l0op
 

@@ -34,21 +34,28 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("runtimeSignature")
+        this->Input("windows")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_UINT8, ge::DT_UINT8})
+            .DataType({ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .ValueDepend(REQUIRED);
         this->Output("output")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+        this->Attr("batch").Int();
+        this->Attr("heads").Int();
+        this->Attr("sequence").Int();
+        this->Attr("headDim").Int();
+        this->Attr("textLength").Int();
+        this->Attr("hasText").Bool();
+        this->Attr("seqShape").Int();
 
         OpAICoreConfig config910B;
-        // CANN requires dynamic-shape packaging for these three declared long-sequence signatures. Runtime support
-        // remains the closed task-case set enforced by ACLNN validation and host tiling; rank is fixed to BNSD.
+        // Runtime N/D/window metadata is validated by ACLNN and host tiling; rank remains fixed to BNSD.
         config910B.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(false)
             .DynamicRankSupportFlag(false)

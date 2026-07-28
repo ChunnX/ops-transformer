@@ -17,10 +17,9 @@
 #define GM_ADDR void *
 #endif
 
-constexpr int64_t SLIDING_TILE_ATTENTION_HEAD_COUNT = 8;
 constexpr int64_t SLIDING_TILE_ATTENTION_WINDOW_VALUES_PER_HEAD = 3;
 constexpr int64_t SLIDING_TILE_ATTENTION_WINDOW_VALUE_COUNT =
-    SLIDING_TILE_ATTENTION_HEAD_COUNT * SLIDING_TILE_ATTENTION_WINDOW_VALUES_PER_HEAD;
+    128 * SLIDING_TILE_ATTENTION_WINDOW_VALUES_PER_HEAD;
 
 struct SlidingTileAttentionMeta {
     int64_t batch = 0;
@@ -40,7 +39,7 @@ struct SlidingTileAttentionMeta {
     int64_t grid_h = 0;
     int64_t grid_w = 0;
     int64_t tile_numel = 0;
-    // The fixed task acceptance boundary has one [t,h,w] window triple for each of eight heads.
+    int64_t window_count = 0;
     int64_t windows[SLIDING_TILE_ATTENTION_WINDOW_VALUE_COUNT] = {0};
 };
 
