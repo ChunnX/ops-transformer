@@ -403,8 +403,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     // 预留 metaInfoTensor_: MegaMoeImpl::L1_TILE_M_256 * ALIGN_32
     uint32_t dispatchFixedCost = 0;
     {
-        dispatchFixedCost = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * mxQuantTokenScaleAlignBytes_ +
-                            SEND_DEDUP_MASK_UB_BYTES +
+        uint32_t tokenScaleSize = Ops::Base::CeilAlign(	 
+            static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), static_cast<int64_t>(ALIGN_32));
+        dispatchFixedCost = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * tokenScaleSize + SEND_DEDUP_MASK_UB_BYTES +
                             MX_QUANT_TEMP_UB_BYTES + mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32) +
                             Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t) +
                             Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)),
@@ -460,7 +461,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
         LocalTensor<uint8_t>(TPosition::VECCALC, gatherMaskTensorAddr, gatherMaskTensorSize / sizeof(uint8_t));
     gatherMaskInt32Tensor_ =
         LocalTensor<uint32_t>(TPosition::VECCALC, gatherMaskTensorAddr, gatherMaskTensorSize / sizeof(uint32_t));
-    uint32_t COPY_TMP_BUFFER_SIZE = mxQuantTokenScaleAlignBytes_;
+    uint32_t tokenScaleSize = Ops::Base::CeilAlign(	 
+        static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), static_cast<int64_t>(ALIGN_32)); 
+    uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
     uint32_t copyTmpBaseAddr = gatherMaskTensorAddr + gatherMaskTensorSize;
     for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
         copyTmpTensors_[index] = LocalTensor<ActivationType>(
@@ -1214,7 +1217,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
     int64_t widthA = k_ / A_ELEMS_PER_BYTE;
     int64_t widthAScale = Ops::Base::CeilDiv(static_cast<int64_t>(k_), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
                           MXFP_MULTI_BASE_SIZE; // 输出 token-scale 长度,紧密排列
-    uint32_t copyInNum = mxQuantTokenScaleAlignBytes_;
+    uint32_t copyInNum = Ops::Base::CeilAlign(static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),	 
+                                              static_cast<int64_t>(ALIGN_32)); // 输入 token-scale 拼接,非紧密排列
     GlobalTensor<ActivationType> remoteRankGlobalTensor;
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
     GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor;
