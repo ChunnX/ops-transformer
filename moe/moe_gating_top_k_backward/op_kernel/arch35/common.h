@@ -24,7 +24,6 @@ constexpr int64_t BLOCK_BYTES = 32;
 constexpr int64_t SIZE_OF_FLOAT32 = 4;
 constexpr int64_t SIZE_OF_INT32 = 4;
 constexpr uint32_t VL_FLOAT_SIZE = VECTOR_REG_WIDTH / sizeof(float);
-constexpr MicroAPI::DivSpecificMode divMode = {MicroAPI::MaskMergeMode::ZEROING, true};
 
 __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
 {
