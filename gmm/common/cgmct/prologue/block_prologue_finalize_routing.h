@@ -192,23 +192,40 @@ __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::VFDoSharedCastAndMuls(
     __ubuf__ DataTypeOut *dstPtr, __ubuf__ DataTypeIn *residualLocalUbAddr, float sharedWeight, uint64_t curCount)
 {
-    constexpr uint32_t vectorRegLen = VECTOR_REG_WIDTH / sizeof(DataTypeOut);
+    constexpr uint32_t vectorRegLen =
+        IsSameType<DataTypeOut, bfloat16_t>::value ? VECTOR_REG_WIDTH / sizeof(float) :
+                                                     VECTOR_REG_WIDTH / sizeof(DataTypeOut);
     uint16_t loopNum = CeilDiv(static_cast<uint64_t>(curCount), static_cast<uint64_t>(vectorRegLen));
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
-        AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCast;
-        AscendC::MicroAPI::RegTensor<DataTypeOut> vDstReg;
         uint32_t elementNum = static_cast<uint32_t>(curCount);
         AscendC::MicroAPI::MaskReg mask;
         uint16_t oneRepeatSize = vectorRegLen;
         for (uint16_t i = 0; i < loopNum; ++i) {
-            mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
-            AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
-            AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
-            AscendC::MicroAPI::Muls(vDstReg, vRegCast, sharedWeight, mask);
-            AscendC::MicroAPI::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
+            if constexpr (IsSameType<DataTypeOut, bfloat16_t>::value) {
+                mask = AscendC::MicroAPI::UpdateMask<float>(elementNum);
+                AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
+                AscendC::MicroAPI::RegTensor<bfloat16_t> vSharedWeightReg;
+                AscendC::MicroAPI::RegTensor<bfloat16_t> vDstReg;
+                AscendC::MicroAPI::Duplicate<bfloat16_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(
+                    vSharedWeightReg, static_cast<bfloat16_t>(sharedWeight), mask);
+                AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
+                AscendC::MicroAPI::Mul<bfloat16_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(
+                    vDstReg, vSrcReg, vSharedWeightReg, mask);
+                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
+                    dstPtr + i * oneRepeatSize, vDstReg, mask);
+            } else {
+                mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
+                AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
+                AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCast;
+                AscendC::MicroAPI::RegTensor<DataTypeOut> vDstReg;
+                AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
+                AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
+                AscendC::MicroAPI::Muls(vDstReg, vRegCast, sharedWeight, mask);
+                AscendC::MicroAPI::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
+            }
         }
     }
 }

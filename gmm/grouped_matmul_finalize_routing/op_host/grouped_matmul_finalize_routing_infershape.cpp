@@ -58,6 +58,7 @@ const int64_t GMMFR_SPLIT_SIZE = 64;
 const int64_t GMMFR_QUANT_SCALE_PARAM_COUNT = 2;
 const int ND_N_VALUE_ALIGN = 8;
 const int ND_K0_VALUE_INT8 = 64;
+const int64_t OUT_DTYPE_BF16 = 2;
 }
 
 using namespace gert;
@@ -373,6 +374,10 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
 
     if (CheckType(context->GetInputDataType(xIndex), MX_IN_TYPE_SUPPORT_LIST) &&
         CheckType(context->GetInputDataType(wIndex), MX_IN_TYPE_SUPPORT_LIST)) {
+        auto attrs = context->GetAttrs();
+        const int64_t *outputDtype = attrs == nullptr ? nullptr : attrs->GetAttrPointer<int64_t>(0);
+        ge::DataType expectedLogitDtype =
+            (outputDtype != nullptr && *outputDtype == OUT_DTYPE_BF16) ? ge::DT_BF16 : ge::DT_FLOAT;
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(scaleOptionIndex) != ge::DT_FLOAT8_E8M0),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
@@ -389,9 +394,9 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
                                       "The MXFP4/MXFP8 InputDataType of rowIndex is wrong.Supported type:INT64"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
-            (context->GetOptionalInputDataType(logitOptionIndex) != ge::DT_FLOAT),
+            (context->GetOptionalInputDataType(logitOptionIndex) != expectedLogitDtype),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
-                                      "The MXFP4/MXFP8 InputDataType of logit is wrong.Supported type:FLOAT"),
+                                      "The MXFP4/MXFP8 InputDataType of logit is wrong."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((context->GetOptionalInputDataType(pertokenScaleOptionIndex) != ge::DT_FLOAT8_E8M0),
                     OPS_REPORT_CUBE_INNER_ERR(
@@ -415,14 +420,16 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
     return ge::GRAPH_FAILED;
 }
 
-static bool IsSupportMX(const gert::InferDataTypeContext *context)
+static bool IsSupportMX(const gert::InferDataTypeContext *context, const int64_t *outputDtype)
 {
+    ge::DataType expectedLogitDtype =
+        (outputDtype != nullptr && *outputDtype == OUT_DTYPE_BF16) ? ge::DT_BF16 : ge::DT_FLOAT;
     if (CheckType(context->GetInputDataType(xIndex), MX_IN_TYPE_SUPPORT_LIST) &&
         CheckType(context->GetInputDataType(wIndex), MX_IN_TYPE_SUPPORT_LIST) &&
         context->GetOptionalInputDataType(scaleOptionIndex) == ge::DT_FLOAT8_E8M0 &&
         context->GetOptionalInputDataType(groupListOptionIndex) == ge::DT_INT64 &&
         context->GetOptionalInputDataType(rowIndexOptionIndex) == ge::DT_INT64 &&
-        context->GetOptionalInputDataType(logitOptionIndex) == ge::DT_FLOAT &&
+        context->GetOptionalInputDataType(logitOptionIndex) == expectedLogitDtype &&
         context->GetOptionalInputDataType(pertokenScaleOptionIndex) == ge::DT_FLOAT8_E8M0) {
         return true;
     }
@@ -433,7 +440,9 @@ static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferData
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
         return ge::GRAPH_FAILED);
-    bool supportDataTypeMX = IsSupportMX(context);
+    auto attrs = context->GetAttrs();
+    const int64_t *outputDtype = attrs == nullptr ? nullptr : attrs->GetAttrPointer<int64_t>(0);
+    bool supportDataTypeMX = IsSupportMX(context, outputDtype);
 
     bool supportDataTypeW8A8 = (context->GetInputDataType(xIndex) == ge::DT_INT8 ||
                                 context->GetInputDataType(xIndex) == ge::DT_FLOAT8_E4M3FN ||
@@ -475,7 +484,11 @@ static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferData
                     return ge::GRAPH_FAILED);
     }
     
-    context->SetOutputDataType(0, ge::DT_FLOAT);
+    if (supportDataTypeMX && outputDtype != nullptr && *outputDtype == OUT_DTYPE_BF16) {
+        context->SetOutputDataType(0, ge::DT_BF16);
+    } else {
+        context->SetOutputDataType(0, ge::DT_FLOAT);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
