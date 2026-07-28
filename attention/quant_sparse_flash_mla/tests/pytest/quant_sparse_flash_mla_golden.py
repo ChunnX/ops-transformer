@@ -155,7 +155,7 @@ class GeneralizedSFAQuant:
                         logging.info(
                             f"      进度：{current_pct:.1f}% | 步数：{i_S1:>{len(str(cur_act_q))}}/{cur_act_q}"
                         )
-                    if self.ori_mask_mode != 0 and i_S1 < cur_act_q - cur_ori_act_kv:
+                    if self.ori_mask_mode == 3 and i_S1 < cur_act_q - cur_ori_act_kv:
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
                             [G, self.D], dtype=torch.float
                         )
@@ -185,7 +185,7 @@ class GeneralizedSFAQuant:
                                 max(ori_threshold + self.ori_win_right, 0),
                                 cur_ori_act_kv,
                             )
-                    ori_win_start = min(ori_win_start, cur_ori_act_kv)
+                    # ori_win_start = min(ori_win_start, cur_ori_act_kv)
 
                     cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
 
