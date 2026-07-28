@@ -124,11 +124,11 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertSwigluScalePtr{nullptr};
     GM_ADDR gmm1TileStatusPtr{nullptr}; // GMM1 tile 就绪状态位区（仅 prefetch 软同步分配）
 
-    GM_ADDR maskSlotPtr{nullptr};       // urma发送mask临时GM
-    GM_ADDR dispatchL1CommPtr{nullptr}; // dispatch L1 communication workspace
-    GM_ADDR dispatchCursorPtr{nullptr}; // dispatch cnt for each expert
-    GM_ADDR dispatchDonePtr{nullptr};   // dispatch done
-    GM_ADDR dispatchL2CommPtr{nullptr}; // dispatch l2 communication workspace
+    GM_ADDR maskSlotPtr{nullptr};          // urma发送mask临时GM
+    GM_ADDR dispatchL1CommPtr{nullptr};    // dispatch L1 communication workspace
+    GM_ADDR dispatchCursorPtr{nullptr};    // dispatch cnt for each expert
+    GM_ADDR dispatchDonePtr{nullptr};      // dispatch done
+    GM_ADDR dispatchL2CommPtr{nullptr};    // dispatch l2 communication workspace
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
