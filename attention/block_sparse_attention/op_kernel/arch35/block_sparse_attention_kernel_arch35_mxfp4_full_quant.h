@@ -253,7 +253,7 @@ public:
                     //   非标 RowMajor（stride≠cols），由 block 的 FixpipeMm2 经 CopyL0CToUBTla SPLIT_N 消费；
                     //   isRowMajor 只查 stride<1>==1 → 命中。block 直传此 tla（不再 .data() 重包）。
                      auto ubOTmpLayoutTla = tla::MakeLayout(
- 	                         tla::MakeShape(embed_ + 1, CeilDiv(delay20TaskInfo.qsActBaseTile, 128u) * 128),
+ 	                         tla::MakeShape(embed_ + 1, delay20TaskInfo.qsActBaseTileAlign128),
  	                         tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
                     auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor, ubOTmpLayoutTla, Arch::PositionUB{});
 
@@ -717,6 +717,8 @@ public:
         info.xBlockIdx = xBlockIdx;
         info.gatheredKvSeqlen = gatheredKvSeqlen;
         info.qsActBaseTile = qsActBaseTile;
+        info.qsActBaseTileAlign128 = CeilDiv(qsActBaseTile, 128u) * 128;
+        
         info.qsBaseTile = qBaseTile_;
         info.kvsBaseTile = kvBaseTile_;
         info.taskTileNum = taskTileNum;
@@ -789,8 +791,8 @@ public:
             (taskInfo.gatheredKvSeqlen - (taskInfo.taskTileNum - 1) * kvBaseTile_) : kvBaseTile_;
         // PV 稀疏 gather 用：当前 tile 在 task 内 gather 后的 KV base tile 序号
         info.pvGatheredKvSTileIdx = curTaskTileIdx;
-        info.kvsActBaseTileAlign32 = (info.kvsActBaseTile + 31) / 32;
-        info.kvsActBaseTileAlign64 = (info.kvsActBaseTile + 63) / 64;;
+        info.kvsActBaseTileAlign32 = (info.kvsActBaseTile + 31) / 32 * 32;
+        info.kvsActBaseTileAlign64 = (info.kvsActBaseTile + 63) / 64 * 64;
     }
 
     
