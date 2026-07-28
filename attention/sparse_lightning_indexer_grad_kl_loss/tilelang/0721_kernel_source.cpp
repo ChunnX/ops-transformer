@@ -224,8 +224,13 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
             tl::ascend::copy_ub_to_gm<bfloat16_t, 128, 16>(GatherKeyRope_ws[((((pipe_iter * 3145728) + (cid * 131072)) + (vid * 65536)) + (chunk_id * 2048))], v0_rope_ub[((chunk_id % 2) * 2048)], 128, 16, 128);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>((chunk_id % 2));
           }
-          AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
-          AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(2);
+          if ((pipe_iter % 2) == 0) {
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(2);
+          } else {
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(1);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(3);
+          }
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(1);
         }
@@ -249,7 +254,11 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(4);
           tl::ascend::copy_gm_to_l1<bfloat16_t, 64, 128>(c1_qi_l1[0], QueryIndex[(((pipe_iter * 196608) + (cid * 8192)) - 196608)], 128, 64, 128, true);
           AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(5);
-          AscendC::CrossCoreWaitFlag(0);
+          if (((pipe_iter + 1) % 2) == 0) {
+            AscendC::CrossCoreWaitFlag(0);
+          } else {
+            AscendC::CrossCoreWaitFlag(1);
+          }
           for (int32_t k_inner = 0; k_inner < 8; ++k_inner) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
             tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKey_ws[((((pipe_iter * 12582912) + (cid * 524288)) + (k_inner * 65536)) - 12582912)], 512, 128, 128, true);
@@ -315,7 +324,11 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
           tl::ascend::copy_l1_to_l0a<bfloat16_t, 64, 128, false>(c1_qi_l0a[0], c1_qi_l1[0], 64, 128);
           AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(1);
-          AscendC::CrossCoreWaitFlag(2);
+          if (((pipe_iter + 1) % 2) == 0) {
+            AscendC::CrossCoreWaitFlag(2);
+          } else {
+            AscendC::CrossCoreWaitFlag(3);
+          }
           for (int32_t k_inner_1 = 0; k_inner_1 < 8; ++k_inner_1) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
             tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_ki_l1[0], GatherKeyIndex_ws[((((pipe_iter * 3145728) + (cid * 131072)) + (k_inner_1 * 16384)) - 3145728)], 128, 128, 128, true);
