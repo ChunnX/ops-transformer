@@ -2,6 +2,7 @@
 #define MHC_PRE_LOW_API_BASE_ARCH35_H
 
 #include "kernel_operator.h"
+#include "lib/matmul_intf.h"
 
 namespace MhcPre {
 
