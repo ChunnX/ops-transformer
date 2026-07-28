@@ -64,10 +64,9 @@ struct GDRStageOneInitParams {
     GM_ADDR ws;
     GlobalTensor<float> stageOneMask; // (Nv, cg_len, C)
     ChunkGroup cg;
-    bool gOptional;
 };
 
-template <bool kStateIsFp32 = false>
+template <bool kStateIsFp32 = false, bool gOptional = false>
 class Stage1 {
 public:
     using vInnerType = std::conditional_t<kStateIsFp32, float, bfloat16_t>;
@@ -91,7 +90,7 @@ public:
         outQkGm_ = initParams.qK;
         stageOneMask_ = initParams.stageOneMask;
 
-        if (gOptional_) {
+        if constexpr (gOptional) {
             gGm_ = initParams.g;
         }
         // ckOffset_
@@ -124,7 +123,7 @@ public:
         maxLen_ = AscendC::Std::max(AscendC::Std::max(dvAligned_ / HALF_TWO, dkAligned_ / HALF_TWO), chunkSize_);
         pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, chunkSize_ * maxLen_ * sizeof(float));
         pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, chunkSize_ * maxLen_ * sizeof(float));
-        if (gOptional_) {
+        if constexpr (gOptional) {
             pipe_->InitBuffer(gOutQueue_, BUFFER_NUM_ONE, chunkSize_ * sizeof(float));
         }
 
@@ -216,7 +215,6 @@ public:
         scale_ = tiling_->scale;
         coreNum_ = tiling_->aiCoreNum;
         cg_ = initParams.cg;
-        gOptional_ = initParams.gOptional;
         vRowStride_ = nv_ * dv_;
         numChunk_ = (cg_.length + chunkSize_ - 1) / chunkSize_;
         subBlockIdx_ = GetSubBlockIdx();
@@ -353,7 +351,7 @@ private:
             QKPreProcess(keyGm_[qk_base], keyConGm_[wsOffset_], outKgGm_, subValidLenBatch_[i], true);
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x9); // 同步0
         }
-        if (gOptional_) {
+        if constexpr (gOptional) {
             for (uint32_t i = 0; i < curParaNum; ++i) {
                 // g_cum_exp = g.cumsum(dim=-1).exp()
                 GCumExpCompute(gGm_[bgOffsetBatch_[i]], outGCumExpGm_[chunkRowBase_[i]],
@@ -432,8 +430,10 @@ private:
         DataCopyExtParams outParams{static_cast<uint16_t>(halfChunkSize_),
                                     static_cast<uint32_t>(dk_ * sizeof(bfloat16_t)), srcStride, 0, 0};
         DataCopyPad(dstGm, tmpTensor, outParams);
-        if (!gOptional_ && kgFlag) {
-            DataCopyPad(outKgGm[subOffset_ * dk_], tmpTensor, outParams);
+        if constexpr (!gOptional) {
+            if (kgFlag) {
+                DataCopyPad(outKgGm[subOffset_ * dk_], tmpTensor, outParams);
+            }
         }
         outQueue_.FreeTensor(tmpTensor);
     }
@@ -518,7 +518,7 @@ private:
     __aicore__ inline void InverseCompute(const GlobalTensor<bfloat16_t> dst, LocalTensor<float> gammaUbFloat)
     {
         uint64_t curVecLen = chunkSize_ * halfChunkSize_;
-        if (gOptional_) {
+        if constexpr (gOptional) {
             Mul(attnUbFloat_, attnUbFloat_, gammaUbFloat[subOffset_ * chunkSize_], curVecLen);
         } else {
             DataCopyInFp32(curVecLen, stageOneMask_[GetBlockIdx() * ccOffset_ + subOffset_ * chunkSize_]);
@@ -591,7 +591,7 @@ private:
                                       LocalTensor<float> betaUbFloat, LocalTensor<float> gCumSumUbFloat,
                                       LocalTensor<float> gCumExpUbFloat, const GlobalTensor<bfloat16_t> keyContinousGm)
     {
-        if (gOptional_) {
+        if constexpr (gOptional) {
             // tmp = -1.0 * beta * exp(g_cum)
             Mul(gBUbFloat_, betaUbFloat, gCumExpUbFloat[subOffset_], halfChunkSize_);
             PipeBarrier<PIPE_V>();
@@ -620,7 +620,7 @@ private:
         uint64_t gBKBeginOffset = subOffset_ * dk_;
         DataCopyOutBf16(halfChunkSize_, dk_, dkAligned_, gBKWsGm[gBKBeginOffset]);
         PipeBarrier<PIPE_V>();
-        if (gOptional_) {
+        if constexpr (gOptional) {
             // kg = k * (g_cum_exp[-1, None] / g_cum_exp)[..., None]
             uint32_t gEndShape[2] = {1, 1};
             uint32_t gBroadShape[2] = {halfChunkSize_, 1};
@@ -681,7 +681,7 @@ private:
         PipeBarrier<PIPE_V>();
         inQueue_.FreeTensor(bf16Query);
         // query * scale
-        if (gOptional_) {
+        if constexpr (gOptional) {
             Muls(qUbFloat_, qUbFloatCon_, scale_, halfChunkSize_ * dkAligned_);
             PipeBarrier<PIPE_V>();
             uint32_t gCumExpShape[2] = {halfChunkSize_, 1};
@@ -845,7 +845,6 @@ private:
     uint32_t maxLen_;
     uint32_t coreNum_;
     float scale_;
-    bool gOptional_;
     uint32_t paraNum_;
     uint64_t ccOffset_;
     uint64_t ckOffset_;
