@@ -17,7 +17,6 @@
 
 #include <cstdint>
 #include "apace/tiling/quant_matmul_tiling_data.h"
-#include "apace/basic/fragment_tensor/fragment_tiling_data.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
 
 namespace Apace {
@@ -55,19 +54,5 @@ struct alignas(8) AllGatherMatmulTilingData {
   uint32_t commTurn{0};   // Total communication rounds (= tileCnt + tailCnt)
   // paddedTailM: physical rows per slot in the tail band = ceil(tailM, 16).
   uint32_t paddedTailM{0};
-
-  // FragmentTilingData (host 侧预计算, kernel 直接读取)
-  // Self main: 1 fragment from aGM
-  Apace::Utils::FragmentTilingData<2> fragTilingSelfA;
-  Apace::Utils::FragmentTilingData<2> fragTilingSelfScaleA;
-  Apace::Utils::FragmentTilingData<2> fragTilingSelfC;
-  // Remote round: R-1 fragments from Win (所有 round 共用同一 tiling)
-  Apace::Utils::FragmentTilingData<2> fragTilingRemoteA;
-  Apace::Utils::FragmentTilingData<2> fragTilingRemoteScaleA;
-  Apace::Utils::FragmentTilingData<2> fragTilingRemoteC;
-  // Tail: R fragments from Win + aGM (A/ScaleA), R fragments to cGM (C)
-  Apace::Utils::FragmentTilingData<2> fragTilingTailA;
-  Apace::Utils::FragmentTilingData<2> fragTilingTailScaleA;
-  Apace::Utils::FragmentTilingData<2> fragTilingTailC;
 };
 #pragma pack(pop)
