@@ -544,7 +544,7 @@ AscendC::Select<float, float>(v1_sy_reduce[0], v1_sy_valid_mask[0], v1_sy_reduce
         }
         if ASCEND_IS_AIV {
           tl::ascend::Fill<float>(v1_bw_eps[0], 1.000000e-08f, 64);
-          AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(2);
+          AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(2);
           AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(3);
           tl::ascend::Fill<float>(v1_bw_dw_accum[0], 0.000000e+00f, 32);
           tl::ascend::Fill<float>(v1_bw_loss_accum[0], 0.000000e+00f, 1);
@@ -562,13 +562,13 @@ AscendC::Select<float, float>(v1_sy_reduce[0], v1_sy_valid_mask[0], v1_sy_reduce
           for (int32_t n_idx_4 = 0; n_idx_4 < 8; ++n_idx_4) {
             for (int32_t bw_col_id = 0; bw_col_id < 2; ++bw_col_id) {
               AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
-              AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(2);
               tl::ascend::copy_gm_to_ub<float, 64>(v1_bw_p[0], PReduced[(((((pipe_iter * 24576) + (cid * 1024)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 24576)], 2097152, 1, 64, 0.000000e+00f);
               tl::ascend::copy_gm_to_ub<float, 64>(v1_bw_sy[0], SoftmaxI[(((((pipe_iter * 24576) + (cid * 1024)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 24576)], 2097152, 1, 64, 0.000000e+00f);
               tl::ascend::copy_gm_to_ub<float, 64, 32>(v1_bw_bmm2[0], bmm2Res[((((((pipe_iter * 1572864) + (cid * 65536)) + (vid * 32768)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 1572864)], 1024, 32, 64, 0.000000e+00f);
               tl::ascend::copy_gm_to_ub<float, 64>(v1_bw_valid[0], ValidKMask[(((((pipe_iter * 24576) + (cid * 1024)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 24576)], 2097152, 1, 64, 0.000000e+00f);
               AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(3);
               AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(3);
+              AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(2);
               AscendC::Sub(v1_bw_diff[0], v1_bw_sy[0], v1_bw_p[0], 64);
               AscendC::PipeBarrier<PIPE_V>();
               tl::ascend::Broadcast<float, 2, 0, false>(v1_bw_diff_2d[0],v1_bw_diff[0],tmp_ub,(uint32_t[]){32, 64}, (uint32_t[]){1, 64});
@@ -589,7 +589,7 @@ AscendC::Select<float, float>(v1_bw_bmm2[0], v1_bw_mask[0], v1_bw_rg[0], static_
               AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(2);
               AscendC::PipeBarrier<PIPE_MTE3>();
               tl::ascend::copy_ub_to_gm<bfloat16_t, 64, 32>(reluGradRes[((((((pipe_iter * 1572864) + (cid * 65536)) + (vid * 32768)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 1572864)], v1_bw_rg_half[0], 1024, 32, 64);
-              AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(2);
+              AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(2);
               if ((n_idx_4 % 2) == vid) {
                 AscendC::Max(v1_bw_p[0], v1_bw_p[0], v1_bw_eps[0], 64);
                 AscendC::Max(v1_bw_sy[0], v1_bw_sy[0], v1_bw_eps[0], 64);
@@ -619,7 +619,7 @@ AscendC::Select<float, float>(v1_bw_bmm2[0], v1_bw_mask[0], v1_bw_rg[0], static_
           tl::ascend::copy_ub_to_gm<bfloat16_t, 32>(dWeightOut[((((pipe_iter * 1536) + (cid * 64)) + (vid * 32)) - 1536)], v1_bw_dw_half[0], 131072, 1, 32);
           tl::ascend::copy_ub_to_gm<float, 1>(LossPartial[(((((((pipe_iter * 24) + cid) - 24) / 512) * 8192) + (((((pipe_iter * 24) + cid) + 488) % 512) * 16)) + (vid * 8))], v1_bw_loss_accum[0], 32768, 1, 1);
           AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(3);
-          AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(2);
+          AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(2);
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(3);
           if (((pipe_iter + 1) % 2) == 0) {
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(8);
