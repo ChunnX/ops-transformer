@@ -559,7 +559,7 @@ custom::graphStatus IFATiling::GetInOutLayout4BSH(const std::string layout, uint
         headDimV_ = ifaContext_->value.shape[2] / numKvHeads_; // 2, V dim of H
     }
     sOfHeadnum = numHeads_;
-    if ((ifaContext_->kvHeadNums != 0U) && (kDimNum == 3U)) { // 3, dim of kv when the layout of kv is BSH
+    if ((ifaContext_->kvHeadNums != 0U) && (kDimNum == 3U)) {                        // 3, dim of kv when the layout of kv is BSH
         sOfHeadnum = headDim_ * numHeads_ * numKvHeads_ / ifaContext_->key.shape[2]; // 2, dim of H
     }
     return custom::graphStatus::GRAPH_SUCCESS;
@@ -2388,7 +2388,7 @@ void IFATiling::FillTilingSplitKV() const
     if (inputLayout_ == IfaLayout::TND) {
         tilingData_->splitKVParams.set_accumOutSize(tSeqSize_ * numHeads_ * kvSplitPart_ * headDimAlign_);
         tilingData_->splitKVParams.set_logSumExpSize(NUM2 * batchSizeQ_ * numHeads_ * kvSplitPart_ * qSeqSize_ * // 2份
-                                                     (BYTE_BLOCK / blockTypeSize_)); // 2: sum + max
+                                                     (BYTE_BLOCK / blockTypeSize_));                             // 2: sum + max
     } else {
         if (slidingFlag_) {
             tilingData_->splitKVParams.set_accumOutSize(batchSizeQ_ * numHeads_ * kvSplitPart_ * headDimVAlign_);

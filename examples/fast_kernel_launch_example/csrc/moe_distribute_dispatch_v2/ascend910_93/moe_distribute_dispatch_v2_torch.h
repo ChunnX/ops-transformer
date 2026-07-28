@@ -105,5 +105,4 @@ void *get_first_tensor_address(c10::ScalarType dataType, const TensorType &input
     return get_first_tensor_address_by_type<TensorType, void>(input, allow_empty);
 }
 
-
 #endif

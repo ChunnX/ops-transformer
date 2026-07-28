@@ -726,7 +726,10 @@ private:
 
 // Constructor
 ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes)
-    : groupName_(groupName), engramNumCpuBytes_(numCpuBytes), destroyed_(false), engramWriteCalled_(false)
+    : groupName_(groupName),
+      engramNumCpuBytes_(numCpuBytes),
+      destroyed_(false),
+      engramWriteCalled_(false)
 {
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
@@ -930,13 +933,13 @@ int64_t ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hidd
 namespace OpApi {
 namespace {
 
-#define ACL_CHECK(expr)                                                                                                \
-    do {                                                                                                               \
-        aclError _s = (expr);                                                                                          \
-        if (_s != ACL_SUCCESS) {                                                                                       \
-            throw std::runtime_error("ACL error: " + std::string(__FILE__) + ":" + std::to_string(__LINE__) +          \
-                                     " code=" + std::to_string(_s));                                                   \
-        }                                                                                                              \
+#define ACL_CHECK(expr) \
+    do { \
+        aclError _s = (expr); \
+        if (_s != ACL_SUCCESS) { \
+            throw std::runtime_error("ACL error: " + std::string(__FILE__) + ":" + std::to_string(__LINE__) + \
+                                     " code=" + std::to_string(_s)); \
+        } \
     } while (0)
 
 } // namespace

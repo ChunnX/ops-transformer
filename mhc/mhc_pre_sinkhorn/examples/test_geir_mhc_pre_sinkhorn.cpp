@@ -164,9 +164,9 @@ void SetOutputDesc(ge::op::MhcPreSinkhorn &op, DataType xDtype, bool needBackwar
                                                       ge::DT_FLOAT));
         op.update_output_desc_invRms(TensorDesc(ge::Shape({BATCH, SEQ_LEN, 1}), FORMAT_ND, ge::DT_FLOAT));
         op.update_output_desc_sumOut(TensorDesc(ge::Shape({NUM_ITERS * 2, BATCH, SEQ_LEN, HC_MULT}), FORMAT_ND,
-                                               ge::DT_FLOAT));
+                                                ge::DT_FLOAT));
         op.update_output_desc_normOut(TensorDesc(ge::Shape({NUM_ITERS * 2, BATCH, SEQ_LEN, HC_MULT, HC_MULT}),
-                                                FORMAT_ND, ge::DT_FLOAT));
+                                                 FORMAT_ND, ge::DT_FLOAT));
     } else {
         op.update_output_desc_hPre(TensorDesc(ge::Shape({0}), FORMAT_ND, ge::DT_FLOAT));
         op.update_output_desc_hcBeforeNorm(TensorDesc(ge::Shape({0}), FORMAT_ND, ge::DT_FLOAT));

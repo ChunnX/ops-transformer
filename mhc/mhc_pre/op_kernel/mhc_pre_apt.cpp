@@ -34,16 +34,16 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
     TPipe pipe;
     if constexpr (TILING_MODE == MHC_PRE_SPLIT_BS) {
         if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
-                                  h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
+            InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
+                                  h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
             MT mm;
             mm.Init(&tilingData.matmulTiling, &pipe);
             MhcPreKernelSplitBS<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> op(mm);
             op.Init(initParams);
             op.Process();
         } else {
-            InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
-                                  h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
+            InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
+                                  h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
             MT mm;
             mm.Init(&tilingData.matmulTiling, &pipe);
             MhcPreKernelSplitBS<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op(mm);
@@ -52,16 +52,16 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
         }
     } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_ND) {
         if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
-                                  h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
+            InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
+                                  h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
             MT mm;
             mm.Init(&tilingData.matmulTiling, &pipe);
             MhcPreKernelSplitND<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> op(mm);
             op.Init(initParams);
             op.Process();
         } else {
-            InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
-                                  h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
+            InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
+                                  h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
             MT mm;
             mm.Init(&tilingData.matmulTiling, &pipe);
             MhcPreKernelSplitND<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op(mm);

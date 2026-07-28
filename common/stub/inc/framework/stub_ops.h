@@ -93,15 +93,15 @@ REG_OP(Data)
     2147483647).
     */
     REG_OP(Cast)
-    .INPUT(x, TensorType({DT_BOOL,          DT_FLOAT16,     DT_FLOAT,      DT_INT8,      DT_INT32,    DT_UINT32,
-                          DT_UINT8,         DT_INT64,       DT_UINT64,     DT_INT16,     DT_UINT16,   DT_DOUBLE,
-                          DT_COMPLEX64,     DT_COMPLEX128,  DT_QINT8,      DT_QUINT8,    DT_QINT16,   DT_QUINT16,
-                          DT_QINT32,        DT_BF16,        DT_UINT1,      DT_COMPLEX32, DT_HIFLOAT8, DT_FLOAT8_E5M2,
+    .INPUT(x, TensorType({DT_BOOL, DT_FLOAT16, DT_FLOAT, DT_INT8, DT_INT32, DT_UINT32,
+                          DT_UINT8, DT_INT64, DT_UINT64, DT_INT16, DT_UINT16, DT_DOUBLE,
+                          DT_COMPLEX64, DT_COMPLEX128, DT_QINT8, DT_QUINT8, DT_QINT16, DT_QUINT16,
+                          DT_QINT32, DT_BF16, DT_UINT1, DT_COMPLEX32, DT_HIFLOAT8, DT_FLOAT8_E5M2,
                           DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1}))
-    .OUTPUT(y, TensorType({DT_BOOL,        DT_FLOAT16,    DT_FLOAT,     DT_INT8,     DT_INT32,       DT_UINT32,
-                           DT_UINT8,       DT_INT64,      DT_UINT64,    DT_INT16,    DT_UINT16,      DT_DOUBLE,
-                           DT_COMPLEX64,   DT_COMPLEX128, DT_QINT8,     DT_QUINT8,   DT_QINT16,      DT_QUINT16,
-                           DT_QINT32,      DT_BF16,       DT_COMPLEX32, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
+    .OUTPUT(y, TensorType({DT_BOOL, DT_FLOAT16, DT_FLOAT, DT_INT8, DT_INT32, DT_UINT32,
+                           DT_UINT8, DT_INT64, DT_UINT64, DT_INT16, DT_UINT16, DT_DOUBLE,
+                           DT_COMPLEX64, DT_COMPLEX128, DT_QINT8, DT_QUINT8, DT_QINT16, DT_QUINT16,
+                           DT_QINT32, DT_BF16, DT_COMPLEX32, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
                            DT_FLOAT4_E1M2, DT_FLOAT4_E2M1}))
     .REQUIRED_ATTR(dst_type, Int)
     .OP_END_FACTORY_REG(Cast)
@@ -131,11 +131,10 @@ REG_OP(Data)
     .INPUT(dims, TensorType::IndexNumberType())
     .INPUT(value, "T")
     .OUTPUT(y, "T")
-    .DATATYPE(T, TensorType({DT_FLOAT,  DT_DOUBLE,     DT_INT32,   DT_UINT8,  DT_INT16,  DT_INT8,   DT_COMPLEX64,
-                             DT_INT64,  DT_BOOL,       DT_QINT8,   DT_QUINT8, DT_QINT32, DT_QINT16, DT_QUINT16,
-                             DT_UINT16, DT_COMPLEX128, DT_FLOAT16, DT_BF16,   DT_UINT32, DT_UINT64, DT_STRING}))
+    .DATATYPE(T, TensorType({DT_FLOAT, DT_DOUBLE, DT_INT32, DT_UINT8, DT_INT16, DT_INT8, DT_COMPLEX64,
+                             DT_INT64, DT_BOOL, DT_QINT8, DT_QUINT8, DT_QINT32, DT_QINT16, DT_QUINT16,
+                             DT_UINT16, DT_COMPLEX128, DT_FLOAT16, DT_BF16, DT_UINT32, DT_UINT64, DT_STRING}))
     .OP_END_FACTORY_REG(Fill)
-
 
 } // namespace ge
 

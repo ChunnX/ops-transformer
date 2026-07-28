@@ -17,7 +17,6 @@
 
 #include "ffn_glu.h"
 
-
 namespace FFN {
 template <typename T>
 __aicore__ inline void FFNGlu<T>::Init(__gm__ uint8_t *x, __gm__ uint8_t *weight1, __gm__ uint8_t *weight2,

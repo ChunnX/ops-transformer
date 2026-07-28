@@ -30,7 +30,6 @@ constexpr int64_t MASK_BUFFER = 64;
 constexpr int64_t MAX_BUFFER_BACKWARD = 256 * BUFFER_NUM;
 constexpr int64_t MAX_BUFFER_FORWARD = 256 * BUFFER_NUM;
 
-
 MhcSinkhornSplitCoreInfo MhcSinkhornBaseTiling::BaseSplitCores(int64_t tSize, int64_t nSize, int64_t xDtypeSize,
                                                                int64_t outFlag)
 {

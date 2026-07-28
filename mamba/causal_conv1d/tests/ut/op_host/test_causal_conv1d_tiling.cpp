@@ -64,7 +64,7 @@ TEST_F(CausalConv1dFnTiling, fn_3d_fp16_b2_s16_d8192_w4_bias)
                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // query_start_loc
                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // cache_indices
                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // initial_state_mode
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // num_accepted_tokens
+                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // num_accepted_tokens
                               },
                               {
                                   {{{2, 3, 8192}, {2, 3, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // conv_states
@@ -84,10 +84,10 @@ TEST_F(CausalConv1dFnTiling, fn_2d_varlen_fp16_d8192_w4)
                                   {{{4, 8192}, {4, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // weight
                                   {{{8192}, {8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},             // bias
                                   {{{2, 3, 8192}, {2, 3, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // conv_states
-                                  {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND}, // query_start_loc (batch=2)
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // cache_indices
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // initial_state_mode
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // num_accepted_tokens
+                                  {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND},                     // query_start_loc (batch=2)
+                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                       // cache_indices
+                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                       // initial_state_mode
+                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                       // num_accepted_tokens
                               },
                               {
                                   {{{2, 3, 8192}, {2, 3, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // conv_states
@@ -125,8 +125,8 @@ TEST_F(CausalConv1dUpdateTiling, upd_3d_fp16_b128_s1_d8192_w4_bias)
                                   {{{128, 3, 8192}, {128, 3, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // conv_states
                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                           // query_start_loc
                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                           // cache_indices
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // initial_state_mode
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // num_accepted_tokens
+                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                           // initial_state_mode
+                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                           // num_accepted_tokens
                               },
                               {
                                   {{{128, 3, 8192}, {128, 3, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // conv_states
@@ -153,7 +153,7 @@ TEST_F(CausalConv1dUpdateTiling, reject_int32_dtype)
                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // query_start_loc
                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // cache_indices
                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // initial_state_mode
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // num_accepted_tokens
+                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // num_accepted_tokens
                               },
                               {
                                   {{{128, 3, 8192}, {128, 3, 8192}}, ge::DT_INT32, ge::FORMAT_ND}, // conv_states

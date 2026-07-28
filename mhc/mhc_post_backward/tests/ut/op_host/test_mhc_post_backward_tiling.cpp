@@ -79,7 +79,6 @@ TEST_F(MhcPostBackwardTilingTest, case_normal_typical_t4k_n4_d2560_fp16)
     TestMhcPostBackwardTND("case_normal_typical_t4k_n4_d2560_fp16", 4096, 4, 2560, ge::DT_FLOAT16, kSocVersion950);
 }
 
-
 // ======================== 异常用例 ===========================
 // ======================== 空指针/空tensor ===========================
 TEST_F(MhcPostBackwardTilingTest, case_error_wrong_shape_grad_output_null_desc)
@@ -237,7 +236,6 @@ TEST_F(MhcPostBackwardTilingTest, case_error_wrong_dtype_grad_h_post_not_fp32)
 {
     TestMhcPostBackwardTND("case_error_wrong_dtype_grad_h_post_not_fp32", 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::GRAD_H_POST_DTYPE_NOT_FP32);
 }
-
 
 // ======================== 不支持的 shape ===========================
 

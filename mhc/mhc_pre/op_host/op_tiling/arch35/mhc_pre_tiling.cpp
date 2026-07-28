@@ -136,7 +136,7 @@ ge::graphStatus MhcPreBaseTiling::GetInputShape()
     auto alphaShape = alphaTensor->GetStorageShape();
     OP_CHECK_IF(alphaShape.GetDimNum() != 1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "alpha",
-                                              std::to_string(alphaShape.GetDimNum()).c_str(), "1"),
+                                             std::to_string(alphaShape.GetDimNum()).c_str(), "1"),
                 return ge::GRAPH_FAILED);
     int64_t alphaSize = alphaShape.GetDim(0);
     OP_CHECK_IF(alphaSize != 2 && alphaSize != 3,
@@ -591,7 +591,6 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
     return ge::GRAPH_SUCCESS;
 }
 
-
 void MhcPreBaseTiling::FillTilingData()
 {
     tilingData_.matmulTiling.set_dbL0C(DB_L0C);
@@ -722,8 +721,7 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     }
 
     if (hasGamma_) {
-        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_BS) ? SPLIT_BS_GAMMA_BUFFER_LENGTH
-                                                                         : SPLIT_ND_GAMMA_BUFFER_LENGTH;
+        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_BS) ? SPLIT_BS_GAMMA_BUFFER_LENGTH : SPLIT_ND_GAMMA_BUFFER_LENGTH;
         dynamicBufferSize += gammaBufferLength * floatSize;
     }
 
@@ -732,13 +730,13 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "required UB size",
                                               std::to_string(totalUbRequired).c_str(),
                                               ("must not exceed available UB size " +
-                                               std::to_string(ubSize_) + " bytes").c_str());
+                                               std::to_string(ubSize_) + " bytes")
+                                                  .c_str());
         return ge::GRAPH_FAILED;
     }
 
     return ge::GRAPH_SUCCESS;
 }
-
 
 ge::graphStatus MhcPreBaseTiling::DoOpTiling()
 {
@@ -815,7 +813,6 @@ static ge::graphStatus TilingFunc4mHCPre(gert::TilingContext *context)
 
     return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
 }
-
 
 static ge::graphStatus TilingPrepare4mHCPre(gert::TilingParseContext *context)
 {

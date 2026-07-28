@@ -42,7 +42,8 @@ template <typename T, bool OUT_FLAG>
 class MhcSinkhornSimd {
 public:
     __aicore__ inline MhcSinkhornSimd(TPipe &pipe, const MhcSinkhornTilingData &tilingData)
-        : pipe_(pipe), tilingData_(tilingData){};
+        : pipe_(pipe),
+          tilingData_(tilingData){};
     __aicore__ inline void Init(GM_ADDR h_res, GM_ADDR y, GM_ADDR norm_out, GM_ADDR sum_out, GM_ADDR tiling);
     __aicore__ inline void Process();
 
@@ -382,7 +383,6 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcRowNorm(int32_t handleN
     sumColQue_.EnQue(sumColLocal);
     sumRowQue_.EnQue(sumRowLocal);
 }
-
 
 template <typename T, bool OUT_FLAG>
 __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::ScatterOutFromNorm(int32_t handleNum)

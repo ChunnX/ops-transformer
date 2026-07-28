@@ -48,9 +48,9 @@ private:
     __aicore__ inline void CopyInHPost(int64_t bsIdx, int64_t nIdx, int64_t nNum);
     __aicore__ inline void CopyInHRes(int64_t bsIdx, int64_t nIdx, int64_t nNum);
     __aicore__ inline void DoMulAndAdd(LocalTensor<float> hPostUb, LocalTensor<float> hResUb,
-        int64_t nNum, int64_t dNum);
+                                       int64_t nNum, int64_t dNum);
     __aicore__ inline void DoMulAndAdd_N4(LocalTensor<float> hPostUb, LocalTensor<float> hResUb,
-        int64_t nNum, int64_t dNum);
+                                          int64_t nNum, int64_t dNum);
     __aicore__ inline void CopyOutY(int64_t bsIdx, int64_t nIdx, int64_t nNum, int64_t dIdx, int64_t dNum);
 
 private:
@@ -80,8 +80,8 @@ private:
 
     int64_t curBS_;
     uint32_t blockIdx_;
-    constexpr static AscendC::MicroAPI::CastTrait castB16ToB32 = { AscendC::MicroAPI::RegLayout::ZERO,
-        AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN };
+    constexpr static AscendC::MicroAPI::CastTrait castB16ToB32 = {AscendC::MicroAPI::RegLayout::ZERO,
+                                                                  AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 };
 
 REGBASE_TEMPLATE_DECLARE
@@ -140,11 +140,11 @@ __aicore__ inline void MhcPostRegbase<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd(
 
     LocalTensor<float> yTileBuf = yTileBuf_.Get<float>();
 
-    auto xAddr = (__ubuf__ T*)xUb.GetPhyAddr();
-    auto hResAddr = (__ubuf__ float*)hResUb.GetPhyAddr();
-    auto hPostAddr = (__ubuf__ float*)hPostUb.GetPhyAddr();
-    auto hOutAddr = (__ubuf__ T*)hOutUb.GetPhyAddr();
-    auto yAddr = (__ubuf__ float*)yTileBuf.GetPhyAddr();
+    auto xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
+    auto hResAddr = (__ubuf__ float *)hResUb.GetPhyAddr();
+    auto hPostAddr = (__ubuf__ float *)hPostUb.GetPhyAddr();
+    auto hOutAddr = (__ubuf__ T *)hOutUb.GetPhyAddr();
+    auto yAddr = (__ubuf__ float *)yTileBuf.GetPhyAddr();
 
     __VEC_SCOPE__
     {
@@ -162,18 +162,18 @@ __aicore__ inline void MhcPostRegbase<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd(
             for (uint16_t j = 0; j < dRepeatTimes; j++) {
                 pMask = AscendC::MicroAPI::UpdateMask<float>(dNumU32);
                 AscendC::MicroAPI::DataCopy<T,
-                    AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                        hOutReg, hOutAddr + j * VL_FP32);
+                                            AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    hOutReg, hOutAddr + j * VL_FP32);
                 AscendC::MicroAPI::Cast<float, T, castB16ToB32>(hOutRegFloat, hOutReg, pMask);
                 AscendC::MicroAPI::Mul(outRegFloat, hOutRegFloat, hPostReg, pMask);
                 for (uint16_t i = 0; i < nTotal; i++) {
                     AscendC::MicroAPI::DataCopy<T,
-                        AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                            xReg, xAddr + i * dAlign + j * VL_FP32);
+                                                AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                        xReg, xAddr + i * dAlign + j * VL_FP32);
                     AscendC::MicroAPI::Cast<float, T, castB16ToB32>(xRegFloat, xReg, pMask);
                     AscendC::MicroAPI::DataCopy<float,
-                        AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
-                            hResReg, hResAddr + i * nAlign + nIndex);
+                                                AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                        hResReg, hResAddr + i * nAlign + nIndex);
                     AscendC::MicroAPI::MulAddDst(outRegFloat, xRegFloat, hResReg, pMask);
                 }
                 AscendC::MicroAPI::DataCopy(yAddr + nIndex * dAlign + j * VL_FP32, outRegFloat, pMask);
@@ -201,11 +201,11 @@ __aicore__ inline void MhcPostRegbase<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd_N4(
     LocalTensor<T> hOutUb = hOutTileQueue_.DeQue<T>();
     LocalTensor<float> yTileBuf = yTileBuf_.Get<float>();
 
-    auto xAddr = (__ubuf__ T*)xUb.GetPhyAddr();
-    auto hResAddr = (__ubuf__ float*)hResUb.GetPhyAddr();
-    auto hPostAddr = (__ubuf__ float*)hPostUb.GetPhyAddr();
-    auto hOutAddr = (__ubuf__ T*)hOutUb.GetPhyAddr();
-    auto yAddr = (__ubuf__ float*)yTileBuf.GetPhyAddr();
+    auto xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
+    auto hResAddr = (__ubuf__ float *)hResUb.GetPhyAddr();
+    auto hPostAddr = (__ubuf__ float *)hPostUb.GetPhyAddr();
+    auto hOutAddr = (__ubuf__ T *)hOutUb.GetPhyAddr();
+    auto yAddr = (__ubuf__ float *)yTileBuf.GetPhyAddr();
 
     __VEC_SCOPE__
     {
@@ -375,6 +375,6 @@ __aicore__ inline void MhcPostRegbase<REGBASE_TEMPLATE_ARGS>::CopyOutY(
     yTileQueue_.FreeTensor(yTileLocal);
 }
 
-}  // namespace MhcPost
+} // namespace MhcPost
 
-#endif  // ASCENDC_MHC_POST_REGBASE_H
+#endif // ASCENDC_MHC_POST_REGBASE_H

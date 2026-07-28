@@ -31,7 +31,6 @@
 namespace optiling {
 using Ops::Transformer::OpTiling::TilingBaseClass;
 
-
 struct MhcSinkhornCompileInfo {
     int64_t coreNum{0};
     int64_t ubSize{0};
@@ -39,7 +38,8 @@ struct MhcSinkhornCompileInfo {
 
 class MhcSinkhornTiling : public MhcSinkhornBaseTiling {
 public:
-    explicit MhcSinkhornTiling(gert::TilingContext *context) : MhcSinkhornBaseTiling(context)
+    explicit MhcSinkhornTiling(gert::TilingContext *context)
+        : MhcSinkhornBaseTiling(context)
     {
     }
 

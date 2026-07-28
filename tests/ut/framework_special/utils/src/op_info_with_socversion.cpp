@@ -19,7 +19,8 @@
 
 using namespace ops::adv::tests::utils;
 
-OpInfoWithSocversion::OpInfoWithSocversion() : OpInfoWithSocversion(ControlInfo(true, false))
+OpInfoWithSocversion::OpInfoWithSocversion()
+    : OpInfoWithSocversion(ControlInfo(true, false))
 {
 }
 
@@ -35,7 +36,10 @@ OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo &ctr, const ExpectI
 
 OpInfoWithSocversion::OpInfoWithSocversion(const char *name, const ControlInfo &ctr,
                                            const ExpectInfoWithSocversion &exp)
-    : mName(name), mCtr(ctr), mExp(exp), mCtx(nullptr)
+    : mName(name),
+      mCtr(ctr),
+      mExp(exp),
+      mCtx(nullptr)
 {
 }
 

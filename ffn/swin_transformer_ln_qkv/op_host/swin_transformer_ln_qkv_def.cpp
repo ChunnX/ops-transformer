@@ -17,48 +17,49 @@
 namespace ops {
 class SwinTransformerLnQKV : public OpDef {
 public:
-    explicit SwinTransformerLnQKV(const char *name) : OpDef(name)
+    explicit SwinTransformerLnQKV(const char *name)
+        : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("gamma")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("beta")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("weight")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("bias")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("query_output")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("key_output")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("value_output")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Attr("head_num")
             .AttrType(REQUIRED)
             .Int();
@@ -81,4 +82,4 @@ public:
 };
 
 OP_ADD(SwinTransformerLnQKV);
-}
+} // namespace ops

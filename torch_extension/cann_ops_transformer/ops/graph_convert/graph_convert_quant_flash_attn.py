@@ -5,10 +5,18 @@ try:
     from torch.library import impl
     from torchair._ge_concrete_graph import ge_apis as ge
     from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
+    from torchair._ge_concrete_graph.fx2ge_converter import (
+        declare_supported,
+        register_fx_node_ge_converter,
+    )
     from torchair._ge_concrete_graph.supported_declaration import Support
     from typing import Any, Dict, List, Tuple, Union, Callable, Optional
-    from torchair._ge_concrete_graph.ge_ir_pb2 import GraphDef, OpDef, TensorDescriptor, TensorDef
+    from torchair._ge_concrete_graph.ge_ir_pb2 import (
+        GraphDef,
+        OpDef,
+        TensorDescriptor,
+        TensorDef,
+    )
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair.ge._ge_graph import Tensor, TensorSpec, DataType, TensorType
@@ -17,14 +25,45 @@ try:
     from torchair.ge._ge_graph import get_invalid_desc
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair.ge import attr
+
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
+
     @auto_convert_to_tensor(
-        [False, False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, True, True, True, True, True, True, True, True, True, True])
+        [
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+        ],
+        [
+            False,
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+        ],
+    )
     def QuantFlashAttn(
         q: Tensor,
         k: Tensor,
@@ -51,12 +90,14 @@ if _TORCHAIR_AVAILABLE:
         layout_q: str = "BSND",
         layout_kv: str = "BSND",
         layout_out: str = "BSND",
-        return_softmax_lse: bool = False):
-
+        return_softmax_lse: bool = False,
+    ):
         result = q.new_empty(q.size())
         return result
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.quant_flash_attn.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.quant_flash_attn.default
+    )
     def convert_quant_flash_attn(
         q: Tensor,
         k: Tensor,
@@ -83,6 +124,6 @@ if _TORCHAIR_AVAILABLE:
         layout_q: str = "BSND",
         layout_kv: str = "BSND",
         layout_out: str = "BSND",
-        return_softmax_lse: bool = False):
-
-        raise AssertionError(f"GE not supported!")
+        return_softmax_lse: bool = False,
+    ):
+        raise AssertionError("GE not supported!")

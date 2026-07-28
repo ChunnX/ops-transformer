@@ -57,35 +57,35 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
                                                     str layout_query='BSND') -> Tensor)");
 }
 
-#define LAUNCH_INCRE_FA(FD, LAYOUT, ANTIQ)                                                                             \
-    incre_flash_attention<FD, LAYOUT, ANTIQ><<<blockDim, nullptr, aclstream>>>(                                        \
-        (GM_ADDR)(query.data_ptr()), (GM_ADDR)(key.data_ptr()), (GM_ADDR)(value.data_ptr()),                           \
-        (GM_ADDR)(pse_shift.has_value() ? pse_shift->data_ptr() : nullptr),                                            \
-        (GM_ADDR)(atten_mask.has_value() ? atten_mask->data_ptr() : nullptr),                                          \
-        (GM_ADDR)(actual_seq_qlen.has_value() ? actual_seq_qlen->data_ptr() : nullptr),                                \
-        (GM_ADDR)(actual_seq_kvlen.has_value() ? actual_seq_kvlen->data_ptr() : nullptr),                              \
-        (GM_ADDR)(nullptr), /* deqScale1 */                                                                            \
-        (GM_ADDR)(nullptr), /* quantScale1 */                                                                          \
-        (GM_ADDR)(nullptr), /* deqScale2 */                                                                            \
-        (GM_ADDR)(nullptr), /* quantScale2 */                                                                          \
-        (GM_ADDR)(nullptr), /* quantOffset2 */                                                                         \
-        (GM_ADDR)(nullptr), /* antiquantScale */                                                                       \
-        (GM_ADDR)(nullptr), /* antiquantOffset */                                                                      \
-        (GM_ADDR)(block_table.has_value() ? block_table->data_ptr() : nullptr),                                        \
-        (GM_ADDR)(nullptr), /* queryPaddingSize */                                                                     \
-        (GM_ADDR)(nullptr), /* kvPaddingSize */                                                                        \
-        (GM_ADDR)(dequant_scale_key.has_value() ? dequant_scale_key->data_ptr() : nullptr),                            \
-        (GM_ADDR)(nullptr), /* keyAntiquantOffset */                                                                   \
-        (GM_ADDR)(dequant_scale_value.has_value() ? dequant_scale_value->data_ptr() : nullptr),                        \
-        (GM_ADDR)(nullptr), /* valueAntiquantOffset */                                                                 \
-        (GM_ADDR)(nullptr), /* keySharedPrefix */                                                                      \
-        (GM_ADDR)(nullptr), /* valueSharedPrefix */                                                                    \
-        (GM_ADDR)(nullptr), /* actualSharedPrefixLen */                                                                \
-        (GM_ADDR)(query_rope.has_value() ? query_rope->data_ptr() : nullptr),                                          \
-        (GM_ADDR)(key_rope.has_value() ? key_rope->data_ptr() : nullptr),                                              \
-        (GM_ADDR)(dequant_scale_key_rope.has_value() ? dequant_scale_key_rope->data_ptr() : nullptr),                  \
-        (GM_ADDR)(dequant_scale_query.has_value() ? dequant_scale_query->data_ptr() : nullptr),                        \
-        (GM_ADDR)(metadata.has_value() ? metadata->data_ptr() : nullptr), (GM_ADDR)(output.data_ptr()),                \
+#define LAUNCH_INCRE_FA(FD, LAYOUT, ANTIQ) \
+    incre_flash_attention<FD, LAYOUT, ANTIQ><<<blockDim, nullptr, aclstream>>>( \
+        (GM_ADDR)(query.data_ptr()), (GM_ADDR)(key.data_ptr()), (GM_ADDR)(value.data_ptr()), \
+        (GM_ADDR)(pse_shift.has_value() ? pse_shift->data_ptr() : nullptr), \
+        (GM_ADDR)(atten_mask.has_value() ? atten_mask->data_ptr() : nullptr), \
+        (GM_ADDR)(actual_seq_qlen.has_value() ? actual_seq_qlen->data_ptr() : nullptr), \
+        (GM_ADDR)(actual_seq_kvlen.has_value() ? actual_seq_kvlen->data_ptr() : nullptr), \
+        (GM_ADDR)(nullptr), /* deqScale1 */ \
+        (GM_ADDR)(nullptr), /* quantScale1 */ \
+        (GM_ADDR)(nullptr), /* deqScale2 */ \
+        (GM_ADDR)(nullptr), /* quantScale2 */ \
+        (GM_ADDR)(nullptr), /* quantOffset2 */ \
+        (GM_ADDR)(nullptr), /* antiquantScale */ \
+        (GM_ADDR)(nullptr), /* antiquantOffset */ \
+        (GM_ADDR)(block_table.has_value() ? block_table->data_ptr() : nullptr), \
+        (GM_ADDR)(nullptr), /* queryPaddingSize */ \
+        (GM_ADDR)(nullptr), /* kvPaddingSize */ \
+        (GM_ADDR)(dequant_scale_key.has_value() ? dequant_scale_key->data_ptr() : nullptr), \
+        (GM_ADDR)(nullptr), /* keyAntiquantOffset */ \
+        (GM_ADDR)(dequant_scale_value.has_value() ? dequant_scale_value->data_ptr() : nullptr), \
+        (GM_ADDR)(nullptr), /* valueAntiquantOffset */ \
+        (GM_ADDR)(nullptr), /* keySharedPrefix */ \
+        (GM_ADDR)(nullptr), /* valueSharedPrefix */ \
+        (GM_ADDR)(nullptr), /* actualSharedPrefixLen */ \
+        (GM_ADDR)(query_rope.has_value() ? query_rope->data_ptr() : nullptr), \
+        (GM_ADDR)(key_rope.has_value() ? key_rope->data_ptr() : nullptr), \
+        (GM_ADDR)(dequant_scale_key_rope.has_value() ? dequant_scale_key_rope->data_ptr() : nullptr), \
+        (GM_ADDR)(dequant_scale_query.has_value() ? dequant_scale_query->data_ptr() : nullptr), \
+        (GM_ADDR)(metadata.has_value() ? metadata->data_ptr() : nullptr), (GM_ADDR)(output.data_ptr()), \
         (GM_ADDR)(softmax_lse.data_ptr()), (GM_ADDR)(workspaceTensor.data_ptr()), tilingData)
 
 const static int FLASH_THRESHOLD = 512;

@@ -59,7 +59,6 @@ static bool CheckAlphaShape(const aclTensor *alphaTensor);
 static bool ValidateNDParams(int64_t n, int64_t d);
 static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int64_t> expectedShape, const char *name);
 
-
 static std::string TensorShapeToString(const aclTensor *tensor)
 {
     const auto shape = tensor->GetViewShape();
@@ -258,9 +257,9 @@ static bool CheckOptionalOutputGroup(const MhcParamsBase &params)
         params.invRmsOptional != nullptr && params.hMixOptional != nullptr && params.hPreOptional != nullptr;
     if (hasAnyOptional && !hasAllOptional) {
         const std::string pointerStates = std::string("invRmsOptional=") +
-            (params.invRmsOptional == nullptr ? "nullptr" : "non-null") + ", hMixOptional=" +
-            (params.hMixOptional == nullptr ? "nullptr" : "non-null") + ", hPreOptional=" +
-            (params.hPreOptional == nullptr ? "nullptr" : "non-null");
+                                          (params.invRmsOptional == nullptr ? "nullptr" : "non-null") + ", hMixOptional=" +
+                                          (params.hMixOptional == nullptr ? "nullptr" : "non-null") + ", hPreOptional=" +
+                                          (params.hPreOptional == nullptr ? "nullptr" : "non-null");
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(ACLNN_OP_NAME, "invRmsOptional, hMixOptional, hPreOptional",
                                                pointerStates.c_str(),
                                                "all optional outputs must be nullptr or all must be non-null");
@@ -268,7 +267,6 @@ static bool CheckOptionalOutputGroup(const MhcParamsBase &params)
     }
     return true;
 }
-
 
 static bool CheckOptionalOutputDims(const MhcParamsBase &params)
 {
@@ -428,7 +426,6 @@ static bool ValidateNDParams(int64_t n, int64_t d)
     }
     return true;
 }
-
 
 static bool CheckInputDtype(const MhcParamsBase &params)
 {

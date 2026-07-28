@@ -17,7 +17,8 @@
 namespace ops {
 class FFN : public OpDef {
 public:
-    explicit FFN(const char *name) : OpDef(name)
+    explicit FFN(const char *name)
+        : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)

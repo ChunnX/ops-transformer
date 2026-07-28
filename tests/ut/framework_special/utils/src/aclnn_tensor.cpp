@@ -46,8 +46,10 @@ AclnnTensor::AclnnTensor(const char *name, const std::initializer_list<int64_t> 
 
 AclnnTensor::AclnnTensor(const char *name, const std::vector<int64_t> &shape, const char *shapeType, ge::DataType dType,
                          ge::Format format, TensorType type)
-    : TensorIntf(name, shape, shapeType, dType, format, type), aclDataType_(ACL_DT_UNDEFINED),
-      aclTensorDataStrides_({}), aclTensor_(nullptr)
+    : TensorIntf(name, shape, shapeType, dType, format, type),
+      aclDataType_(ACL_DT_UNDEFINED),
+      aclTensorDataStrides_({}),
+      aclTensor_(nullptr)
 {
     /* 计算连续 tensor 的 strides */
     aclTensorDataStrides_.resize(shape_.GetDimNum(), 1);

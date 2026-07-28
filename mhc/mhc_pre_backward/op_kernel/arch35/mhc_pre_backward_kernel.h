@@ -30,7 +30,9 @@ using namespace MhcPreBackwardUtils;
 template <class T, class P>
 class MhcPreBackwardKernel {
 public:
-    __aicore__ inline MhcPreBackwardKernel(MT_C0 &matmul0, MT_C1 &matmul1) : mm0(matmul0), mm1(matmul1)
+    __aicore__ inline MhcPreBackwardKernel(MT_C0 &matmul0, MT_C1 &matmul1)
+        : mm0(matmul0),
+          mm1(matmul1)
     {
     }
     // 入口函数
@@ -958,7 +960,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
         }
     }
 }
-
 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, uint32_t currentNDBlock,

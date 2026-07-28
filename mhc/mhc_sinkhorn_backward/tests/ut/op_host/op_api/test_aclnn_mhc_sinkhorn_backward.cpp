@@ -43,8 +43,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_basic_4d_fp32)
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -60,8 +59,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_basic_3d_fp32)
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -77,8 +75,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_empty_tensor)
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -96,8 +93,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_invalid_dtype_gra
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -114,8 +110,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_invalid_dtype_nor
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -132,8 +127,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_invalid_dtype_sum
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -150,8 +144,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_invalid_dtype_out
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -168,8 +161,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_output_shape_mism
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -185,8 +177,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_n8_4d)
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -202,8 +193,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_n6_3d)
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -219,8 +209,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_n4_4d)
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -236,8 +225,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_n4_3d)
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -253,8 +241,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_large_batch)
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -270,8 +257,7 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_large_t)
     auto ut = OP_API_UT(
         aclnnMhcSinkhornBackward,
         INPUT(gradOutput, normOut, sumOut),
-        OUTPUT(out)
-    );
+        OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);

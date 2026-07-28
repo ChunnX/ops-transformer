@@ -16,63 +16,62 @@
 
 namespace ops {
 static const std::vector<ge::DataType> xDtype = {
-    ge::DT_FLOAT16
-};
+    ge::DT_FLOAT16};
 static const std::vector<ge::Format> xFormat = {
-    ge::FORMAT_ND
-};
+    ge::FORMAT_ND};
 class SwinTransformerLnQkvQuant : public OpDef {
 public:
-    explicit SwinTransformerLnQkvQuant(const char *name) : OpDef(name)
+    explicit SwinTransformerLnQkvQuant(const char *name)
+        : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType(xDtype)
             .Format(xFormat)
             .UnknownShapeFormat(xFormat)
-	        .AutoContiguous();
+            .AutoContiguous();
         this->Input("gamma")
             .ParamType(REQUIRED)
             .DataType(xDtype)
             .Format(xFormat)
             .UnknownShapeFormat(xFormat)
-	        .AutoContiguous();
+            .AutoContiguous();
         this->Input("beta")
             .ParamType(REQUIRED)
             .DataType(xDtype)
             .Format(xFormat)
             .UnknownShapeFormat(xFormat)
-	        .AutoContiguous();
+            .AutoContiguous();
         this->Input("weight")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT8})
             .Format(xFormat)
             .UnknownShapeFormat(xFormat)
-	        .AutoContiguous();
+            .AutoContiguous();
         this->Input("bias")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
             .Format(xFormat)
             .UnknownShapeFormat(xFormat)
-	        .AutoContiguous();
+            .AutoContiguous();
         this->Input("quant_scale")
             .ParamType(REQUIRED)
             .DataType(xDtype)
             .Format(xFormat)
             .UnknownShapeFormat(xFormat)
-	        .AutoContiguous();
+            .AutoContiguous();
         this->Input("quant_offset")
             .ParamType(REQUIRED)
             .DataType(xDtype)
             .Format(xFormat)
             .UnknownShapeFormat(xFormat)
-	        .AutoContiguous();
+            .AutoContiguous();
         this->Input("dequant_scale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_UINT64})
             .Format(xFormat)
             .UnknownShapeFormat(xFormat)
-	        .AutoContiguous();
+            .AutoContiguous();
         this->Output("query_output")
             .ParamType(REQUIRED)
             .DataType(xDtype)
@@ -95,14 +94,14 @@ public:
         this->Attr("ori_weight").Int();
         this->Attr("h_win_size").Int();
         this->Attr("w_win_size").Int();
-        this->Attr("weight_transpose").Bool(true);  // true is B transposed
+        this->Attr("weight_transpose").Bool(true); // true is B transposed
 
         OpAICoreConfig config;
         config.DynamicCompileStaticFlag(true)
-              .DynamicFormatFlag(true)
-              .DynamicRankSupportFlag(true)
-              .DynamicShapeSupportFlag(true)
-              .NeedCheckSupportFlag(false);
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false);
         this->AICore().AddConfig("ascend310p", config);
         this->AICore().AddConfig("kirinx90", config);
         this->AICore().AddConfig("kirin9030", config);
@@ -110,4 +109,4 @@ public:
 };
 
 OP_ADD(SwinTransformerLnQkvQuant);
-}
+} // namespace ops

@@ -17,7 +17,8 @@
 namespace ops {
 class MhcPreBackward : public OpDef {
 public:
-    explicit MhcPreBackward(const char *name) : OpDef(name)
+    explicit MhcPreBackward(const char *name)
+        : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)

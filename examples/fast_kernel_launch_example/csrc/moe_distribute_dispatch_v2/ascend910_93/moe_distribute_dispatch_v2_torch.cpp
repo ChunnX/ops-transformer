@@ -246,7 +246,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     }
     ep_recv_cnt_num = ep_world_size * local_moe_expert_num;
 
-
     auto output_dtype = (!scales.has_value() && quant_mode == 0) ? x.scalar_type() : at::kChar;
     char *group_ep_ptr = const_cast<char *>(group_ep.data());
     at::Tensor expand_x;
@@ -330,7 +329,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
         }
     }
     ep_recv_cnt_num = ep_world_size * local_moe_expert_num;
-
 
     auto output_dtype = (!scales.has_value() && quant_mode == 0) ? x.scalar_type() : at::kChar;
     char *group_ep_ptr = const_cast<char *>(group_ep.data());

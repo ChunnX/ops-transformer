@@ -764,7 +764,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     for (uint32_t curExpertId = startExpertId; curExpertId < endExpertId; ++curExpertId) {
         int32_t curExpertCnt = 0;
         int32_t cntPosIndex =
-            (curExpertId - startExpertId) * 8 + 1; // 一个block有8个int32的元素，第一个元素为flag位，第二个为发送token数
+            (curExpertId - startExpertId) * 8 + 1;                            // 一个block有8个int32的元素，第一个元素为flag位，第二个为发送token数
         if ((curExpertId < sharedExpertRankNum_) && (activeMaskBsCnt_ > 0)) { // 当前处理专家id为共享专家
             if (curExpertId % rankNumPerSharedExpert_ == epRankId_ % rankNumPerSharedExpert_) {
                 curExpertCnt = activeMaskBsCnt_;

@@ -16,10 +16,18 @@ try:
     from torch.library import impl
     from torchair._ge_concrete_graph import ge_apis as ge
     from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
+    from torchair._ge_concrete_graph.fx2ge_converter import (
+        declare_supported,
+        register_fx_node_ge_converter,
+    )
     from torchair._ge_concrete_graph.supported_declaration import Support
     from typing import Any, Dict, List, Tuple, Union, Callable, Optional
-    from torchair._ge_concrete_graph.ge_ir_pb2 import GraphDef, OpDef, TensorDescriptor, TensorDef
+    from torchair._ge_concrete_graph.ge_ir_pb2 import (
+        GraphDef,
+        OpDef,
+        TensorDescriptor,
+        TensorDef,
+    )
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair.ge._ge_graph import Tensor, TensorSpec, DataType, TensorType
@@ -28,16 +36,28 @@ try:
     from torchair.ge._ge_graph import get_invalid_desc
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair.ge import attr
+
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
+
     @auto_convert_to_tensor([False, False, False, False], [False, False, False, False])
-    def MhcPreSinkhorn(x: Tensor, phi: Tensor, alpha: Tensor, bias: Tensor, *,
-                       hc_mult: int = 4, num_iters: int = 20, hc_eps: float = 1e-6,
-                       norm_eps: float = 1e-6, need_backward: bool = True,
-                       dependencies=[], node_name=None):
+    def MhcPreSinkhorn(
+        x: Tensor,
+        phi: Tensor,
+        alpha: Tensor,
+        bias: Tensor,
+        *,
+        hc_mult: int = 4,
+        num_iters: int = 20,
+        hc_eps: float = 1e-6,
+        norm_eps: float = 1e-6,
+        need_backward: bool = True,
+        dependencies=[],
+        node_name=None,
+    ):
         """REG_OP(MhcPreSinkhorn)\n
         .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))\n
         .INPUT(phi, TensorType({DT_FLOAT}))\n
@@ -89,27 +109,29 @@ if _TORCHAIR_AVAILABLE:
             attrs=attrs,
             outputs=outputs,
             dependencies=dependencies,
-            ir=IrDef("MhcPreSinkhorn") \
-                .input("x", "DT_BF16, DT_FLOAT16") \
-                .input("phi", "DT_FLOAT") \
-                .input("alpha", "DT_FLOAT") \
-                .input("bias", "DT_FLOAT") \
-                .attr("hc_mult", attr.Int(4)) \
-                .attr("num_iters", attr.Int(20)) \
-                .attr("hc_eps", attr.Float(1e-6)) \
-                .attr("norm_eps", attr.Float(1e-6)) \
-                .attr("need_backward", attr.Bool(True)) \
-                .output("hin", "DT_BF16, DT_FLOAT16") \
-                .output("hPost", "DT_FLOAT") \
-                .output("hRes", "DT_FLOAT") \
-                .output("hPre", "DT_FLOAT") \
-                .output("hcBeforeNorm", "DT_FLOAT") \
-                .output("invRms", "DT_FLOAT") \
-                .output("sumOut", "DT_FLOAT") \
-                .output("normOut", "DT_FLOAT")
+            ir=IrDef("MhcPreSinkhorn")
+            .input("x", "DT_BF16, DT_FLOAT16")
+            .input("phi", "DT_FLOAT")
+            .input("alpha", "DT_FLOAT")
+            .input("bias", "DT_FLOAT")
+            .attr("hc_mult", attr.Int(4))
+            .attr("num_iters", attr.Int(20))
+            .attr("hc_eps", attr.Float(1e-6))
+            .attr("norm_eps", attr.Float(1e-6))
+            .attr("need_backward", attr.Bool(True))
+            .output("hin", "DT_BF16, DT_FLOAT16")
+            .output("hPost", "DT_FLOAT")
+            .output("hRes", "DT_FLOAT")
+            .output("hPre", "DT_FLOAT")
+            .output("hcBeforeNorm", "DT_FLOAT")
+            .output("invRms", "DT_FLOAT")
+            .output("sumOut", "DT_FLOAT")
+            .output("normOut", "DT_FLOAT"),
         )
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.mhc_pre_sinkhorn.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.mhc_pre_sinkhorn.default
+    )
     def convert_mhc_pre_sinkhorn(
         x: Tensor,
         phi: Tensor,
@@ -120,14 +142,16 @@ if _TORCHAIR_AVAILABLE:
         hc_eps: float,
         norm_eps: float,
         out_flag: bool,
-        meta_outputs: TensorSpec = None):
-
-        return MhcPreSinkhorn(x=x,
-                              phi=phi,
-                              alpha=alpha,
-                              bias=bias,
-                              hc_mult=hc_mult,
-                              num_iters=num_iters,
-                              hc_eps=hc_eps,
-                              norm_eps=norm_eps,
-                              need_backward=out_flag)
+        meta_outputs: TensorSpec = None,
+    ):
+        return MhcPreSinkhorn(
+            x=x,
+            phi=phi,
+            alpha=alpha,
+            bias=bias,
+            hc_mult=hc_mult,
+            num_iters=num_iters,
+            hc_eps=hc_eps,
+            norm_eps=norm_eps,
+            need_backward=out_flag,
+        )

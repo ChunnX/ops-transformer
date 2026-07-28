@@ -114,9 +114,21 @@ aclnnStatus RunMhcPreNoOptional(TensorDesc &x, TensorDesc &phi, TensorDesc &alph
     return ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
 }
 
-enum class RequiredTensor { X, Phi, Alpha, Bias, HIn, HPost, HRes };
+enum class RequiredTensor {
+    X,
+    Phi,
+    Alpha,
+    Bias,
+    HIn,
+    HPost,
+    HRes
+};
 
-enum class RequiredPointer { None, WorkspaceSize, Executor };
+enum class RequiredPointer {
+    None,
+    WorkspaceSize,
+    Executor
+};
 
 aclnnStatus RunMhcPreMissingRequired(MhcPreTensors &tensors, RequiredTensor missing)
 {
@@ -196,9 +208,12 @@ TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_valid_4d_fp16_with_optional_outputs)
 TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_missing_required_tensor_cases)
 {
     const std::vector<std::pair<const char *, RequiredTensor>> cases = {
-        {"missing_x", RequiredTensor::X},           {"missing_phi", RequiredTensor::Phi},
-        {"missing_alpha", RequiredTensor::Alpha},   {"missing_bias", RequiredTensor::Bias},
-        {"missing_hin", RequiredTensor::HIn},       {"missing_hpost", RequiredTensor::HPost},
+        {"missing_x", RequiredTensor::X},
+        {"missing_phi", RequiredTensor::Phi},
+        {"missing_alpha", RequiredTensor::Alpha},
+        {"missing_bias", RequiredTensor::Bias},
+        {"missing_hin", RequiredTensor::HIn},
+        {"missing_hpost", RequiredTensor::HPost},
         {"missing_hres", RequiredTensor::HRes},
     };
     for (const auto &[name, missing] : cases) {

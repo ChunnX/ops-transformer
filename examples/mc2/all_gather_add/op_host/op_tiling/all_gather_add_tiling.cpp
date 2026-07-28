@@ -85,7 +85,7 @@ static ge::graphStatus AllGatherAddTilingFunc(gert::TilingContext *context)
     tilingData->addTileElemNum = tilingData->blockElemNum / tilingData->tileNum;
     uint32_t rankSize = *context->GetAttrs()->GetAttrPointer<uint32_t>(static_cast<int>(1));
     tilingData->addCoresPerRank =
-        context->GetBlockDim() / rankSize; // 进行Add计算之前需要根据每个rank分到的核数来判断当前核的计算地址偏移
+        context->GetBlockDim() / rankSize;                                                      // 进行Add计算之前需要根据每个rank分到的核数来判断当前核的计算地址偏移
     tilingData->gatherTileElemNum = tilingData->totalElemNum / rankSize / tilingData->commTurn; // 每轮通信的数据长度
 
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));

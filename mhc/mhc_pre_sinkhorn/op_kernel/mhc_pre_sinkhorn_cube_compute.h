@@ -52,7 +52,7 @@ struct MmParams {
 };
 #define MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM template <bool enableSquareSum>
 #define MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS HcCubeComputeSplitK<enableSquareSum>
-#define MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM template<typename T>
+#define MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM template <typename T>
 #define MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS HcCubeCompute<T>
 
 // 切K使用的矩阵乘实现
@@ -61,24 +61,24 @@ class HcCubeComputeSplitK {
 public:
     __aicore__ inline HcCubeComputeSplitK(){};
 
-    __aicore__ inline void Init(const GlobalTensor<float>& xGm, const GlobalTensor<float>& phiGm, TPipe *tpipe);
+    __aicore__ inline void Init(const GlobalTensor<float> &xGm, const GlobalTensor<float> &phiGm, TPipe *tpipe);
     __aicore__ inline void ComputeDecode(const AscendC::GlobalTensor<float> &xGm, const AscendC::GlobalTensor<float> &workspaceGlobalA2,
-        const AscendC::GlobalTensor<float> &workspaceGlobalAB, const MmParams &mmParams);
+                                         const AscendC::GlobalTensor<float> &workspaceGlobalAB, const MmParams &mmParams);
     __aicore__ inline void CopyInB1(
-    uint64_t mGmOffset, uint64_t kGmOffset, uint64_t kL1Size, const MmParams &mmParams);
+        uint64_t mGmOffset, uint64_t kGmOffset, uint64_t kL1Size, const MmParams &mmParams);
     __aicore__ inline void SetBL1Mte1ToMte2Flag();
     __aicore__ inline void WaitBL1Mte1ToMte2Flag();
     __aicore__ inline void End();
 
 private:
     __aicore__ inline void CopyInA1(
-    uint64_t kL1Size,
-    const GlobalTensor<float> &aGlobal, const LocalTensor<float> &al1Local, const MmParams &mmParams);
+        uint64_t kL1Size,
+        const GlobalTensor<float> &aGlobal, const LocalTensor<float> &al1Local, const MmParams &mmParams);
     //__aicore__ inline void DataCopyGmToL1(uint64_t kGmOffset, uint64_t l1LoopIdx, const MmParams &mmParams);
     __aicore__ inline void CopyOut(const AscendC::GlobalTensor<float> &workspaceGlobal,
-        const AscendC::LocalTensor<float> &c1Local, uint64_t baseM, uint64_t baseN, bool enableNz2Nd, uint64_t N);
+                                   const AscendC::LocalTensor<float> &c1Local, uint64_t baseM, uint64_t baseN, bool enableNz2Nd, uint64_t N);
     __aicore__ inline void Fixp(const AscendC::GlobalTensor<float> &workspaceGlobalA2,
-        const AscendC::GlobalTensor<float> &workspaceGlobalAB, const MmParams &mmParams);
+                                const AscendC::GlobalTensor<float> &workspaceGlobalAB, const MmParams &mmParams);
     __aicore__ inline void LoadAToL0A(
         uint64_t kL1Offset, uint64_t kL0Size, uint64_t l1LoopIdx, const MmParams &mmParams);
     __aicore__ inline void LoadAToL0B(
@@ -87,7 +87,7 @@ private:
     __aicore__ inline void LoadBToL0B(
         uint64_t kL1Offset, uint64_t kL0Size, uint64_t l1LoopIdx, const MmParams &mmParams);
     __aicore__ inline void MmadAB(
-    uint64_t kGmOffset, uint64_t kL0Size, bool isLastK, const MmParams &mmParams);
+        uint64_t kGmOffset, uint64_t kL0Size, bool isLastK, const MmParams &mmParams);
 
     TPipe *pipe_;
     const MhcPreSinkhornTilingData *tiling_;
@@ -147,7 +147,7 @@ private:
 };
 
 MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Init(const GlobalTensor<float>& xGm, const GlobalTensor<float>& phiGm, TPipe *tpipe)
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Init(const GlobalTensor<float> &xGm, const GlobalTensor<float> &phiGm, TPipe *tpipe)
 {
     phiGm_ = phiGm;
 
@@ -192,7 +192,7 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Cop
     nd2nzParams.nValue = mmParams.curML1;
     nd2nzParams.dValue = kL1Size;
     nd2nzParams.srcNdMatrixStride = 1;
-    nd2nzParams.srcDValue = mmParams.xWsKSize;  // vec处理的singleK
+    nd2nzParams.srcDValue = mmParams.xWsKSize; // vec处理的singleK
     nd2nzParams.dstNzC0Stride = (mmParams.curML1 + BLOCK_CUBE - 1) / BLOCK_CUBE * BLOCK_CUBE;
     nd2nzParams.dstNzNStride = 1;
     nd2nzParams.dstNzMatrixStride = 1;
@@ -208,7 +208,7 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Cop
     nd2nzParams.nValue = mmParams.curNL1;
     nd2nzParams.dValue = kL1Size;
     nd2nzParams.srcNdMatrixStride = 1;
-    nd2nzParams.srcDValue = mmParams.kGmSize;  // 原始k
+    nd2nzParams.srcDValue = mmParams.kGmSize; // 原始k
     nd2nzParams.dstNzC0Stride = (mmParams.curNL1 + BLOCK_CUBE - 1) / BLOCK_CUBE * BLOCK_CUBE;
     nd2nzParams.dstNzNStride = 1;
     nd2nzParams.dstNzMatrixStride = 1;
@@ -217,7 +217,7 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Cop
 
 MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
 __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::CopyOut(const AscendC::GlobalTensor<float> &workspaceGlobal,
-    const AscendC::LocalTensor<float> &c1Local, uint64_t baseM, uint64_t baseN, bool enableNz2Nd, uint64_t N)
+                                                                                     const AscendC::LocalTensor<float> &c1Local, uint64_t baseM, uint64_t baseN, bool enableNz2Nd, uint64_t N)
 {
     AscendC::DataCopyCO12DstParams intriParams;
     intriParams.nSize = baseN;
@@ -226,36 +226,36 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Cop
     intriParams.quantPre = QuantMode_t::NoQuant;
     intriParams.nz2ndEn = enableNz2Nd;
     if (enableNz2Nd) {
-        intriParams.dstStride = N;  // NZ -> ND
+        intriParams.dstStride = N; // NZ -> ND
         intriParams.srcStride = CeilAlign(baseM, AscendC::BLOCK_CUBE);
         AscendC::SetFixpipeNz2ndFlag(1, 1, 1);
     } else {
-        intriParams.dstStride = CeilAlign(intriParams.nSize, AscendC::BLOCK_CUBE);  // NZ -> NZ
+        intriParams.dstStride = CeilAlign(intriParams.nSize, AscendC::BLOCK_CUBE); // NZ -> NZ
         intriParams.srcStride = CeilAlign(baseM, AscendC::BLOCK_CUBE);
     }
-    intriParams.unitFlag = UNIT_FLAG_ENABLE_AUTO_CLOSE;  // 3
+    intriParams.unitFlag = UNIT_FLAG_ENABLE_AUTO_CLOSE; // 3
 
     AscendC::DataCopy(workspaceGlobal, c1Local, intriParams);
 }
 
 MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
 __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Fixp(const AscendC::GlobalTensor<float> &workspaceGlobalA2,
-    const AscendC::GlobalTensor<float> &workspaceGlobalAB, const MmParams &mmParams)
+                                                                                  const AscendC::GlobalTensor<float> &workspaceGlobalAB, const MmParams &mmParams)
 {
     // Copy MmadA2
     CopyOut(workspaceGlobalA2,
-        l0c_[(l0cLoopIdx_ % L0C_BUF_NUM) * L0C_BUF_OFFSET],
-        mmParams.curML1,
-        BLOCK_CUBE,
-        false,
-        BLOCK_CUBE);  // nz m,16
+            l0c_[(l0cLoopIdx_ % L0C_BUF_NUM) * L0C_BUF_OFFSET],
+            mmParams.curML1,
+            BLOCK_CUBE,
+            false,
+            BLOCK_CUBE); // nz m,16
     // Copy MmadAB
     CopyOut(workspaceGlobalAB,
-        l0c_[(l0cLoopIdx_ % L0C_BUF_NUM) * L0C_BUF_OFFSET + L0C_A2_BUF_OFFSET],
-        mmParams.curML1,
-        mmParams.curNL1,
-        true,
-        mmParams.nOutSize);  // nd m,n 512B对齐
+            l0c_[(l0cLoopIdx_ % L0C_BUF_NUM) * L0C_BUF_OFFSET + L0C_A2_BUF_OFFSET],
+            mmParams.curML1,
+            mmParams.curNL1,
+            true,
+            mmParams.nOutSize); // nd m,n 512B对齐
 }
 
 MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
@@ -292,23 +292,23 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Com
         SetFlag<HardEvent::MTE2_MTE1>(MM1_MTE2_MTE1_EVENT + (l1aLoopIdx_ + 1) % L1_BUF_NUM);
         WaitFlag<HardEvent::MTE2_MTE1>(MM1_MTE2_MTE1_EVENT + l1aLoopIdx_ % L1_BUF_NUM);
 
-        for (uint64_t kL1Offset = 0; kL1Offset < curKL1Size; kL1Offset += K_L0_SIZE) {  // K_L0_SIZE 32
+        for (uint64_t kL1Offset = 0; kL1Offset < curKL1Size; kL1Offset += K_L0_SIZE) { // K_L0_SIZE 32
             WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0A + l0aLoopIdx_ % L0A_BUF_NUM);
             LoadAToL0A(kL1Offset, K_L0_SIZE, l1aLoopIdx_, mmParams);
 
             WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0B + l0bLoopIdx_ % L0B_BUF_NUM);
             LoadAToL0B(kL1Offset, K_L0_SIZE, l1aLoopIdx_, mmParams);
             MmadA2(kGmOffset + kL1Offset - mmParams.curKL1, K_L0_SIZE,
-            false,
-            mmParams);
+                   false,
+                   mmParams);
             SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0B + l0bLoopIdx_ % L0B_BUF_NUM);
             l0bLoopIdx_++;
 
             WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0B + l0bLoopIdx_ % L0B_BUF_NUM);
             LoadBToL0B((kGmOffset + kL1Offset - mmParams.curKL1) % mmParams.xWsKSize, K_L0_SIZE, l1bLoopIdx_, mmParams);
             MmadAB(kGmOffset + kL1Offset - mmParams.curKL1, K_L0_SIZE,
-                false,
-                mmParams);
+                   false,
+                   mmParams);
             SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0B + l0bLoopIdx_ % L0B_BUF_NUM);
             l0bLoopIdx_++;
 
@@ -324,20 +324,20 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Com
     WaitFlag<HardEvent::MTE2_MTE1>(MM1_MTE2_MTE1_EVENT + l1aLoopIdx_ % L1_BUF_NUM);
     for (uint64_t kL1Offset = 0; kL1Offset < curKL1Size; kL1Offset += K_L0_SIZE) {
         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0A + l0aLoopIdx_ % L0A_BUF_NUM);
-        LoadAToL0A(kL1Offset, K_L0_SIZE, l1aLoopIdx_, mmParams);  // to l0a
+        LoadAToL0A(kL1Offset, K_L0_SIZE, l1aLoopIdx_, mmParams); // to l0a
 
         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0B + l0bLoopIdx_ % L0B_BUF_NUM);
-        LoadAToL0B(kL1Offset, K_L0_SIZE, l1aLoopIdx_, mmParams);  // to l0b
+        LoadAToL0B(kL1Offset, K_L0_SIZE, l1aLoopIdx_, mmParams); // to l0b
         MmadA2(kGmOffset + kL1Offset - mmParams.curKL1, K_L0_SIZE,
-            mmParams.isLastK && kL1Offset + K_L0_SIZE >= curKL1Size, mmParams);
+               mmParams.isLastK && kL1Offset + K_L0_SIZE >= curKL1Size, mmParams);
         SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0B + l0bLoopIdx_ % L0B_BUF_NUM);
         l0bLoopIdx_++;
 
         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0B + l0bLoopIdx_ % L0B_BUF_NUM);
-        LoadBToL0B((kGmOffset + kL1Offset - mmParams.curKL1)  % mmParams.xWsKSize, K_L0_SIZE, l1bLoopIdx_, mmParams);  // to l0b
+        LoadBToL0B((kGmOffset + kL1Offset - mmParams.curKL1) % mmParams.xWsKSize, K_L0_SIZE, l1bLoopIdx_, mmParams); // to l0b
         MmadAB(kGmOffset + kL1Offset - mmParams.curKL1, K_L0_SIZE,
-            mmParams.isLastK && kL1Offset + K_L0_SIZE >= curKL1Size,
-            mmParams);
+               mmParams.isLastK && kL1Offset + K_L0_SIZE >= curKL1Size,
+               mmParams);
         SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0B + l0bLoopIdx_ % L0B_BUF_NUM);
         l0bLoopIdx_++;
 
@@ -346,7 +346,7 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Com
     }
     SetFlag<HardEvent::MTE1_MTE2>(X_MTE1_MTE2_EVENT + l1aLoopIdx_ % L1_BUF_NUM);
     l1aLoopIdx_++;
-    Fixp(workspaceGlobalA2, workspaceGlobalAB, mmParams);  // l0cLoopIdx_++;
+    Fixp(workspaceGlobalA2, workspaceGlobalAB, mmParams); // l0cLoopIdx_++;
 }
 
 MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
@@ -369,18 +369,18 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Loa
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true};
     LoadData3DParamsV2<float> loadData3DParams;
     // SetFmatrixParams
-    loadData3DParams.l1H = CeilDiv(mmParams.curML1, BLOCK_CUBE);  // Hin=M1=8
-    loadData3DParams.l1W = BLOCK_CUBE;                          // Win=M0
-    loadData3DParams.channelSize = kL0Size;          // Cin=K
+    loadData3DParams.l1H = CeilDiv(mmParams.curML1, BLOCK_CUBE); // Hin=M1=8
+    loadData3DParams.l1W = BLOCK_CUBE;                           // Win=M0
+    loadData3DParams.channelSize = kL0Size;                      // Cin=K
 
     loadData3DParams.padList[0] = 0;
     loadData3DParams.padList[1] = 0;
     loadData3DParams.padList[2] = 0;
-    loadData3DParams.padList[3] = 255;  // 尾部数据不影响滑窗的结果
+    loadData3DParams.padList[3] = 255; // 尾部数据不影响滑窗的结果
 
     // SetLoadToA0Params
-    loadData3DParams.mExtension = CeilAlign(mmParams.curML1, BLOCK_CUBE);  // M height维度目的
-    loadData3DParams.kExtension = kL0Size;                    // K   width维度目的
+    loadData3DParams.mExtension = CeilAlign(mmParams.curML1, BLOCK_CUBE); // M height维度目的
+    loadData3DParams.kExtension = kL0Size;                                // K   width维度目的
     loadData3DParams.mStartPt = 0;
     loadData3DParams.kStartPt = 0;
     loadData3DParams.strideW = 1;
@@ -395,9 +395,9 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Loa
     loadData3DParams.fMatrixCtrl = 0;
 
     LoadData<float, LOAD3DV2_CONFIG>(l0a_[(l0aLoopIdx_ % L0AB_BUF_NUM) * L0AB_BUF_OFFSET],
-                                   l1a_[(l1LoopIdx % L1_BUF_NUM) * L1_BUF_OFFSET +
-             CeilAlign(mmParams.curML1, static_cast<uint64_t>(BLOCK_CUBE)) * kL1Offset],
-                                   loadData3DParams);
+                                     l1a_[(l1LoopIdx % L1_BUF_NUM) * L1_BUF_OFFSET +
+                                          CeilAlign(mmParams.curML1, static_cast<uint64_t>(BLOCK_CUBE)) * kL1Offset],
+                                     loadData3DParams);
 }
 
 MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
@@ -413,10 +413,10 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Loa
         l1ToL0bParams.dstGap = 0;
         LoadData(l0b_[(l0bLoopIdx_ % L0AB_BUF_NUM) * L0AB_BUF_OFFSET +
                       mL0Offset * CeilAlign(kL0Size, (uint64_t)BLOCK_CUBE >> 1)],
-            l1a_[(l1LoopIdx % L1_BUF_NUM) * L1_BUF_OFFSET +
-                 CeilAlign(mmParams.curML1, static_cast<uint64_t>(BLOCK_CUBE)) * kL1Offset +
-                 mL0Offset * (uint64_t)(BLOCK_CUBE >> 1)],
-            l1ToL0bParams);
+                 l1a_[(l1LoopIdx % L1_BUF_NUM) * L1_BUF_OFFSET +
+                      CeilAlign(mmParams.curML1, static_cast<uint64_t>(BLOCK_CUBE)) * kL1Offset +
+                      mL0Offset * (uint64_t)(BLOCK_CUBE >> 1)],
+                 l1ToL0bParams);
     }
 }
 
@@ -436,9 +436,9 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Mma
         mmadParams.unitFlag = isLastK ? UNIT_FLAG_ENABLE_AUTO_CLOSE : UNIT_FLAG_ENABLE;
         // mk zz @ mk zz
         Mmad(l0c_[(l0cLoopIdx_ % L0C_BUF_NUM) * L0C_BUF_OFFSET + mL0Offset * BLOCK_CUBE],
-            l0a_[(l0aLoopIdx_ % L0A_BUF_NUM) * L0AB_BUF_OFFSET + mL0Offset * CeilAlign(kL0Size, 8)],
-            l0b_[(l0bLoopIdx_ % L0AB_BUF_NUM) * L0AB_BUF_OFFSET + mL0Offset * CeilAlign(kL0Size, 8)],
-            mmadParams);
+             l0a_[(l0aLoopIdx_ % L0A_BUF_NUM) * L0AB_BUF_OFFSET + mL0Offset * CeilAlign(kL0Size, 8)],
+             l0b_[(l0bLoopIdx_ % L0AB_BUF_NUM) * L0AB_BUF_OFFSET + mL0Offset * CeilAlign(kL0Size, 8)],
+             mmadParams);
     }
 }
 
@@ -454,9 +454,9 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Loa
     l1ToL0bParams.dstGap = 0;
     // n,k nz -> n,k nz
     LoadData(l0b_[(l0bLoopIdx_ % L0AB_BUF_NUM) * L0AB_BUF_OFFSET],
-        l1b_[(l1LoopIdx % L1_BUF_NUM) * L1_BUF_OFFSET +
-             CeilAlign(mmParams.curNL1, static_cast<uint64_t>(BLOCK_CUBE)) * kL1Offset],
-        l1ToL0bParams);
+             l1b_[(l1LoopIdx % L1_BUF_NUM) * L1_BUF_OFFSET +
+                  CeilAlign(mmParams.curNL1, static_cast<uint64_t>(BLOCK_CUBE)) * kL1Offset],
+             l1ToL0bParams);
 }
 
 MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
@@ -470,15 +470,15 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Mma
     MmadParams mmadParams;
     mmadParams.m = CeilAlign(mmParams.curML1, BLOCK_CUBE);
     mmadParams.n = mmParams.curNL1;
-    mmadParams.k = kL0Size;  // kl0Size
+    mmadParams.k = kL0Size; // kl0Size
     mmadParams.cmatrixInitVal = mmParams.isFirstK && kGmOffset == 0;
     mmadParams.cmatrixSource = false;
     mmadParams.unitFlag = isLastK ? UNIT_FLAG_ENABLE_AUTO_CLOSE : UNIT_FLAG_ENABLE;
     // mk zz @ nk nz
     Mmad(l0c_[(l0cLoopIdx_ % L0C_BUF_NUM) * L0C_BUF_OFFSET + L0C_A2_BUF_OFFSET],
-        l0a_[(l0aLoopIdx_ % L0A_BUF_NUM) * L0AB_BUF_OFFSET],
-        l0b_[(l0bLoopIdx_ % L0AB_BUF_NUM) * L0AB_BUF_OFFSET],
-        mmadParams);
+         l0a_[(l0aLoopIdx_ % L0A_BUF_NUM) * L0AB_BUF_OFFSET],
+         l0b_[(l0bLoopIdx_ % L0AB_BUF_NUM) * L0AB_BUF_OFFSET],
+         mmadParams);
     AscendC::SetHF32Mode(0);
 }
 
@@ -498,7 +498,7 @@ public:
     using AType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
     using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, true>;
     using CType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
-    
+
     matmul::MatmulImpl<AType, BType, CType, CType, MHC_PRE_GRAD_MM1_CFG> mm1_;
 
     int64_t n_, c_, curBs_;
@@ -523,7 +523,7 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::Init(const 
     c_ = c;
     curBs_ = bs;
 
-    mm1N_= n_ * n_ + 2 * n_;
+    mm1N_ = n_ * n_ + 2 * n_;
     mm1K_ = n_ * c_;
 }
 
@@ -532,16 +532,16 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::ProcessMatm
 {
     if (mm1M <= 0)
         return;
-    uint64_t xxoffset = blockIdx_ * curBs_* 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_*  mm1K_;
-    mm1_.SetTensorA(xGm_[blockIdx_ * curBs_* 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_*  mm1K_]);
+    uint64_t xxoffset = blockIdx_ * curBs_ * 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_ * mm1K_;
+    mm1_.SetTensorA(xGm_[blockIdx_ * curBs_ * 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_ * mm1K_]);
     mm1_.SetTensorB(phiGm_, true);
     mm1_.SetHF32(true, 1);
     mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
-    mm1_.template IterateAll<false> (workspaceGlobalAB_[taskOffset * mm1N_]);
+    mm1_.template IterateAll<false>(workspaceGlobalAB_[taskOffset * mm1N_]);
     mm1_.End();
     ping4Cub = 1 - ping4Cub;
 }
-}  // namespace MhcPreSinkhorn
+} // namespace MhcPreSinkhorn
 
-#endif  // MHC_PRE_SINKHORN_CUBE_COMPUTE_H
+#endif // MHC_PRE_SINKHORN_CUBE_COMPUTE_H

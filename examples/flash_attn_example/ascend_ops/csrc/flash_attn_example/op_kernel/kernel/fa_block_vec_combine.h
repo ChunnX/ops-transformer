@@ -115,7 +115,8 @@ private:
     TBuf<> combineLseUbBuf;
 
 public:
-    __aicore__ inline FaBlockVecCombine(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FaBlockVecCombine(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     template <typename U> // 避免重名用U
     __aicore__ inline U Align(U num, U rnd)

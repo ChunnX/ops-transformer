@@ -33,11 +33,15 @@ public:
         VT_LIST_INT = static_cast<int32_t>(VT_LIST_BASE) + static_cast<int32_t>(VT_INT),
     };
 
-    AnyValue(ValueType type, const std::shared_ptr<void> &valuePtr) : type_(type), valuePtr_(valuePtr)
+    AnyValue(ValueType type, const std::shared_ptr<void> &valuePtr)
+        : type_(type),
+          valuePtr_(valuePtr)
     {
     }
     ~AnyValue() = default;
-    AnyValue(const AnyValue &anyValue) : type_(anyValue.type_), valuePtr_(anyValue.valuePtr_)
+    AnyValue(const AnyValue &anyValue)
+        : type_(anyValue.type_),
+          valuePtr_(anyValue.valuePtr_)
     {
     }
 

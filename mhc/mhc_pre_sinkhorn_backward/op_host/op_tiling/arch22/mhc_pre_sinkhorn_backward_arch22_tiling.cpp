@@ -20,9 +20,9 @@
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch22/mhc_pre_sinkhorn_backward_data_arch22.h"
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch22/mhc_pre_sinkhorn_backward_key_arch22.h"
 
-#define CHECK_NULLPTR(ptr)                                                                                             \
-    if (ptr == nullptr) {                                                                                              \
-        return ge::GRAPH_FAILED;                                                                                       \
+#define CHECK_NULLPTR(ptr) \
+    if (ptr == nullptr) { \
+        return ge::GRAPH_FAILED; \
     }
 
 namespace {
@@ -397,8 +397,8 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch22(gert::TilingContext *context)
     int64_t mm2M = n * n + 2 * n;
     int64_t mm2N = n * c;
 
-    MhcPreSinkhornBackwardArch22TilingData* tilingData =
-    context->GetTilingData<MhcPreSinkhornBackwardArch22TilingData>();
+    MhcPreSinkhornBackwardArch22TilingData *tilingData =
+        context->GetTilingData<MhcPreSinkhornBackwardArch22TilingData>();
     auto featureDataType = matmul_tiling::DataType::DT_FLOAT;
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
     matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);

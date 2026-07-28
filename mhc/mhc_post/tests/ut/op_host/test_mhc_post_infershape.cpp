@@ -17,8 +17,7 @@
 #define private public
 #include "platform/platform_info.h"
 
-class MhcPost : public testing::Test
-{
+class MhcPost : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -40,17 +39,15 @@ TEST_F(MhcPost, MhcPost_normal_dims4)
     fe::PlatformInfoManager::Instance().platform_info_map_["Ascend950"] = platformInfo;
     fe::PlatformInfoManager::Instance().SetOptionalCompilationInfo(optiCompilationInfo);
     gert::InfershapeContextPara infershapeContextPara(
-                                                      "MhcPost",
-                                                      {
-                                                        {{{512, 2, 4, 512}, {512, 2, 4, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                        {{{512, 2, 4, 4}, {512, 2, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                        {{{512, 2, 512}, {512, 2, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                        {{{512, 2, 4}, {512, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-                                                      {
-                                                        {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                      },
-                                                      {}
-                                                      );
+        "MhcPost",
+        {{{{512, 2, 4, 512}, {512, 2, 4, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512, 2, 4, 4}, {512, 2, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{512, 2, 512}, {512, 2, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512, 2, 4}, {512, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {});
     std::vector<std::vector<int64_t>> expectOutputShape = {{512, 2, 4, 512}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -65,16 +62,15 @@ TEST_F(MhcPost, MhcPost_normal_dims3)
     fe::PlatformInfoManager::Instance().SetOptionalCompilationInfo(optiCompilationInfo);
     gert::InfershapeContextPara infershapeContextPara("MhcPost",
                                                       {
-                                                        {{{1024, 4, 512}, {1024, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-                                                        {{{1024, 4, 4}, {1024, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                        {{{1024, 512}, {1024, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                        {{{1024, 4}, {1024, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{1024, 4, 512}, {1024, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                          {{{1024, 4, 4}, {1024, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{1024, 512}, {1024, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{1024, 4}, {1024, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
                                                       {
-                                                        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
                                                       },
-                                                      {}
-                                                      );
+                                                      {});
     std::vector<std::vector<int64_t>> expectOutputShape = {{1024, 4, 512}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -89,16 +85,15 @@ TEST_F(MhcPost, MhcPost_unknowrank)
     fe::PlatformInfoManager::Instance().SetOptionalCompilationInfo(optiCompilationInfo);
     gert::InfershapeContextPara infershapeContextPara("MhcPost",
                                                       {
-                                                        {{{-2}, {-2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                        {{{512, 2, 4, 4}, {512, 2, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                        {{{512, 2, 512}, {512, 2, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                        {{{512, 2, 4}, {512, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{-2}, {-2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{512, 2, 4, 4}, {512, 2, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{512, 2, 512}, {512, 2, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{512, 2, 4}, {512, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
                                                       {
-                                                        {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                       },
-                                                      {}
-                                                      );
+                                                      {});
     std::vector<std::vector<int64_t>> expectOutputShape = {{-2}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -113,17 +108,16 @@ TEST_F(MhcPost, MhcPost_unknowshape)
     fe::PlatformInfoManager::Instance().SetOptionalCompilationInfo(optiCompilationInfo);
     gert::InfershapeContextPara infershapeContextPara("MhcPost",
                                                       {
-                                                        {{{-1,-1,-1,-1}, {-1,-1,-1,-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                        {{{512, 2, 4, 4}, {512, 2, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                        {{{512, 2, 512}, {512, 2, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                        {{{512, 2, 4}, {512, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{-1, -1, -1, -1}, {-1, -1, -1, -1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{512, 2, 4, 4}, {512, 2, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{512, 2, 512}, {512, 2, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{512, 2, 4}, {512, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
                                                       {
-                                                        {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                       },
-                                                      {}
-                                                      );
-    std::vector<std::vector<int64_t>> expectOutputShape = {{-1,-1,-1,-1}};
+                                                      {});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{-1, -1, -1, -1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -137,16 +131,15 @@ TEST_F(MhcPost, MhcPost_xDims5)
     fe::PlatformInfoManager::Instance().SetOptionalCompilationInfo(optiCompilationInfo);
     gert::InfershapeContextPara infershapeContextPara("MhcPost",
                                                       {
-                                                        {{{1, 512, 2, 4, 512}, {1, 512, 2, 4, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                        {{{512, 2, 4, 4}, {512, 2, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                        {{{512, 2, 512}, {512, 2, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                        {{{512, 2, 4}, {512, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{1, 512, 2, 4, 512}, {1, 512, 2, 4, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{512, 2, 4, 4}, {512, 2, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{512, 2, 512}, {512, 2, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{512, 2, 4}, {512, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
                                                       {
-                                                        {{{512, 2, 4, 512}, {512, 2, 4, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{512, 2, 4, 512}, {512, 2, 4, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                       },
-                                                      {}
-                                                      );
+                                                      {});
     std::vector<std::vector<int64_t>> expectOutputShape = {{512, 2, 4, 512}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
 }

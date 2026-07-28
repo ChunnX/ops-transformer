@@ -33,7 +33,11 @@ static void AclTensorListReleaseWrapper(aclTensorList *p)
 
 TensorDesc::TensorDesc(const vector<int64_t> &view_dims, aclDataType data_type, aclFormat format,
                        const vector<int64_t> &stride, int64_t offset, const vector<int64_t> &storage_dims)
-    : view_dims_(view_dims), data_type_(data_type), format_(format), stride_(stride), offset_(offset),
+    : view_dims_(view_dims),
+      data_type_(data_type),
+      format_(format),
+      stride_(stride),
+      offset_(offset),
       storage_dims_(storage_dims)
 {
 }
@@ -262,7 +266,6 @@ void DescToJson(json &root, const TensorListDesc &tensor_list_desc, bool is_inpu
 {
     tensor_list_desc.ToJson(root, is_input);
 }
-
 
 ///////////////////////////////////////////////////////////////////////////
 

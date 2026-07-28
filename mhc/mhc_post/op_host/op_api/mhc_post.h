@@ -36,6 +36,6 @@ const aclTensor *MhcPost(const aclTensor *x, const aclTensor *h_res,
                          const aclTensor *h_out, const aclTensor *h_post,
                          aclOpExecutor *executor);
 
-}
+} // namespace l0op
 
 #endif

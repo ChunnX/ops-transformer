@@ -21,13 +21,17 @@ using namespace ops::adv::tests::utils;
 
 void *CaseWithSocversion::mCurrentCasePtr = nullptr;
 
-CaseWithSocversion::CaseWithSocversion() : CaseWithSocversion("Undefined", true, "", kTilingTemplatePriority_Invalid)
+CaseWithSocversion::CaseWithSocversion()
+    : CaseWithSocversion("Undefined", true, "", kTilingTemplatePriority_Invalid)
 {
 }
 
 CaseWithSocversion::CaseWithSocversion(const char *name, bool enable, const char *dbgInfo,
                                        int32_t tilingTemplatePriority)
-    : mName(name), mEnable(enable), mDbgInfo(dbgInfo), mTilingTemplatePriority(tilingTemplatePriority)
+    : mName(name),
+      mEnable(enable),
+      mDbgInfo(dbgInfo),
+      mTilingTemplatePriority(tilingTemplatePriority)
 {
 }
 

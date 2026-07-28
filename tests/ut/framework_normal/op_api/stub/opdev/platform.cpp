@@ -87,10 +87,7 @@ const PlatformInfo &GetCurrentPlatformInfo()
 NpuArch PlatformInfo::GetCurNpuArch() const
 {
     static const std::map<SocVersion, NpuArch> soc2ArchMap = {
-        {SocVersion::ASCEND910, NpuArch::DAV_1001},    {SocVersion::ASCEND910B, NpuArch::DAV_2201},
-        {SocVersion::ASCEND910_93, NpuArch::DAV_2201}, {SocVersion::ASCEND950, NpuArch::DAV_3510},
-        {SocVersion::ASCEND310P, NpuArch::DAV_2002},   {SocVersion::ASCEND310B, NpuArch::DAV_3002},
-        {SocVersion::ASCEND610LITE, NpuArch::DAV_3102}};
+        {SocVersion::ASCEND910, NpuArch::DAV_1001}, {SocVersion::ASCEND910B, NpuArch::DAV_2201}, {SocVersion::ASCEND910_93, NpuArch::DAV_2201}, {SocVersion::ASCEND950, NpuArch::DAV_3510}, {SocVersion::ASCEND310P, NpuArch::DAV_2002}, {SocVersion::ASCEND310B, NpuArch::DAV_3002}, {SocVersion::ASCEND610LITE, NpuArch::DAV_3102}};
     const auto it = soc2ArchMap.find(g_socVersion);
     if (it != soc2ArchMap.end()) {
         return it->second;

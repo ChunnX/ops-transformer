@@ -30,7 +30,6 @@ struct MoeDistributeDispatchV2SkArgs {
     MoeDistributeDispatchV2Info tilingData;
 };
 
-
 // <<<>>>调用函数声明
 void moe_distribute_dispatch_v2_entry(int32_t tilingKey, uint32_t blockDim, void *stream, GM_ADDR x, GM_ADDR expertIds,
                                       GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,

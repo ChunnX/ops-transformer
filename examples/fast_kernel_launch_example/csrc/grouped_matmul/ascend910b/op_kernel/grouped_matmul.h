@@ -32,7 +32,6 @@
 #include "gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h"
 #include "gmm/grouped_matmul/op_kernel/grouped_matmul_tiling_key.h"
 
-
 #include "grouped_matmul_tiling.h"
 
 namespace GROUPED_MATMUL {
@@ -124,7 +123,8 @@ protected:
 
 public:
     /** @brief constructor */
-    __aicore__ inline GMMProcess(ComputeType &computeOp_) : computeOp(computeOp_)
+    __aicore__ inline GMMProcess(ComputeType &computeOp_)
+        : computeOp(computeOp_)
     {
     }
 
@@ -283,7 +283,8 @@ public:
     constexpr static bool transposeW = mmType::BT::isTrans;
 
     /** @brief constructor */
-    __aicore__ inline GMMCompute(typename mmType::MT &mm_) : mm(mm_)
+    __aicore__ inline GMMCompute(typename mmType::MT &mm_)
+        : mm(mm_)
     {
     }
 

@@ -18,7 +18,6 @@
 
 #include <cstdint>
 
-
 struct CausalConv1dTilingData {
     int64_t dim;
     int64_t cuSeqlen;

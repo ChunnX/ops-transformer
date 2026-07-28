@@ -75,7 +75,6 @@ public:
         tilingData.gmmBaseParams.set_k(maxK_);
         tilingData.gmmBaseParams.set_n(maxN_);
 
-
         tilingData.gmmArray.kList[0] = maxK_;
         tilingData.gmmArray.nList[0] = maxN_;
     }
@@ -89,7 +88,6 @@ public:
         platformInfo.l0ASize = 64 * 1024;
         platformInfo.l0BSize = 64 * 1024;
     }
-
 
     static bool GMMSetMMTiling(GroupedMatmulTilingData &tilingData, uint64_t ubSize_)
     {

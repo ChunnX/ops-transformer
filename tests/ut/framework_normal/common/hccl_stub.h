@@ -91,7 +91,6 @@ struct IbVerbsData {
     uint8_t res[24];
 };
 
-
 constexpr int8_t INVALID_HANDLE_ID = -1;
 constexpr uint32_t HCCL_GROUP_ID_0 = 0;
 constexpr uint32_t HCCL_MAX_RANK_NUM = 32U;

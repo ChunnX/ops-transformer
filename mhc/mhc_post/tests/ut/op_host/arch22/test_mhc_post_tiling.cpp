@@ -76,20 +76,21 @@ TEST_F(MhcPostTilingArch22, test_mhc_post_4d_fp16_success)
                                               {
                                                   // input info: x, h_res, h_out, h_post
                                                   {{{1, 1024, 4, 5120}, {1, 1024, 4, 5120}},
-                                                      ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1, 1024, 4, 4}, {1, 1024, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 1024, 5120}, {1, 1024, 5120}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1, 1024, 4}, {1, 1024, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{1, 1024, 4, 5120}, {1, 1024, 4, 5120}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {
-            // attr
-        },
-        &compileInfo,
-        kSocVersion910B);
+                                                   ge::DT_FLOAT16,
+                                                   ge::FORMAT_ND},
+                                                  {{{1, 1024, 4, 4}, {1, 1024, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1, 1024, 5120}, {1, 1024, 5120}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 1024, 4}, {1, 1024, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{1, 1024, 4, 5120}, {1, 1024, 4, 5120}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // attr
+                                              },
+                                              &compileInfo,
+                                              kSocVersion910B);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "4 5120 64 16 16 1 1024 1 5120 1 5120 5120 ";
     std::vector<size_t> expectWorkspaces = {16777216};

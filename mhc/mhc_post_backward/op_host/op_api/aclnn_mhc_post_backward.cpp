@@ -133,7 +133,7 @@ static aclnnStatus CheckShape3D(const MhcPostBackwardParams &params)
     auto xDim0 = params.x->GetViewShape().GetDim(DIM_IDX_0);
     auto xDim1 = params.x->GetViewShape().GetDim(DIM_IDX_1);
     auto xDim2 = params.x->GetViewShape().GetDim(DIM_IDX_2);
-    
+
     // gradOutput: [T, n, D]
     auto gradOutputDim0 = params.gradOutput->GetViewShape().GetDim(DIM_IDX_0);
     auto gradOutputDim1 = params.gradOutput->GetViewShape().GetDim(DIM_IDX_1);
@@ -144,7 +144,7 @@ static aclnnStatus CheckShape3D(const MhcPostBackwardParams &params)
                "gradOutput dim[1] %ld is not equal to x dim[1] %ld", gradOutputDim1, xDim1);
     CHECK_COND(gradOutputDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
                "gradOutput dim[2] %ld is not equal to x dim[2] %ld", gradOutputDim2, xDim2);
-    
+
     // hRes shape: [T, n, n]
     auto hResDim0 = params.hRes->GetViewShape().GetDim(DIM_IDX_0);
     auto hResDim1 = params.hRes->GetViewShape().GetDim(DIM_IDX_1);
@@ -182,7 +182,7 @@ static aclnnStatus CheckShape3D(const MhcPostBackwardParams &params)
                "gradX dim[1] %ld is not equal to x dim[1] %ld", gradXDim1, xDim1);
     CHECK_COND(gradXDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
                "gradX dim[2] %ld is not equal to x dim[2] %ld", gradXDim2, xDim2);
-    
+
     // gradHres shape: [T, n, n]
     auto gradHresDim0 = params.gradHres->GetViewShape().GetDim(DIM_IDX_0);
     auto gradHresDim1 = params.gradHres->GetViewShape().GetDim(DIM_IDX_1);
@@ -284,7 +284,7 @@ static aclnnStatus CheckShape4D(const MhcPostBackwardParams &params)
                "gradX dim[2] %ld is not equal to x dim[2] %ld", gradXDim2, xDim2);
     CHECK_COND(gradXDim3 == xDim3, ACLNN_ERR_PARAM_INVALID,
                "gradX dim[3] %ld is not equal to x dim[3] %ld", gradXDim3, xDim3);
-    
+
     // gradHres shape: [B, S, n, n]
     auto gradHresDim0 = params.gradHres->GetViewShape().GetDim(DIM_IDX_0);
     auto gradHresDim1 = params.gradHres->GetViewShape().GetDim(DIM_IDX_1);
@@ -298,7 +298,7 @@ static aclnnStatus CheckShape4D(const MhcPostBackwardParams &params)
                "gradHres dim[2] %ld must equal hRes dim[2] %ld", gradHresDim2, hResDim2);
     CHECK_COND(gradHresDim3 == hResDim3, ACLNN_ERR_PARAM_INVALID,
                "gradHres dim[3] %ld must equal hRes dim[3] %ld", gradHresDim3, hResDim3);
-            
+
     // gradHout shape: [B, S, D]
     auto gradHoutDim0 = params.gradHout->GetViewShape().GetDim(DIM_IDX_0);
     auto gradHoutDim1 = params.gradHout->GetViewShape().GetDim(DIM_IDX_1);
@@ -409,15 +409,15 @@ static aclnnStatus CheckFormat(const MhcPostBackwardParams &params)
     op::Format hOutFormat = params.hOut->GetStorageFormat();
     op::Format hPostFormat = params.hPost->GetStorageFormat();
     CHECK_COND(!op::IsPrivateFormat(gradOutputFormat), ACLNN_ERR_PARAM_INVALID, "format of gradOutput %s is invalid.",
-            op::ToString(gradOutputFormat).GetString());
+               op::ToString(gradOutputFormat).GetString());
     CHECK_COND(!op::IsPrivateFormat(xFormat), ACLNN_ERR_PARAM_INVALID, "format of x %s is invalid.",
-            op::ToString(xFormat).GetString());
+               op::ToString(xFormat).GetString());
     CHECK_COND(!op::IsPrivateFormat(hResFormat), ACLNN_ERR_PARAM_INVALID, "format of hRes %s is invalid.",
-            op::ToString(hResFormat).GetString());
+               op::ToString(hResFormat).GetString());
     CHECK_COND(!op::IsPrivateFormat(hOutFormat), ACLNN_ERR_PARAM_INVALID, "format of hOut %s is invalid.",
-            op::ToString(hOutFormat).GetString());
+               op::ToString(hOutFormat).GetString());
     CHECK_COND(!op::IsPrivateFormat(hPostFormat), ACLNN_ERR_PARAM_INVALID, "format of hPost %s is invalid.",
-            op::ToString(hPostFormat).GetString());
+               op::ToString(hPostFormat).GetString());
     return ACLNN_SUCCESS;
 }
 
@@ -431,13 +431,13 @@ static aclnnStatus CheckParam(const MhcPostBackwardParams &params)
 }
 
 aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes,
-    const aclTensor *hOut, const aclTensor *hPost, aclTensor *gradX,
-    aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                 const aclTensor *hOut, const aclTensor *hPost, aclTensor *gradX,
+                                                 aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost,
+                                                 uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     CHECK_COND(CheckNotNull(gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost) == ACLNN_SUCCESS,
-        ACLNN_ERR_PARAM_NULLPTR,
-        "one of required inputs for aclnnMhcPostBackwardGetWorkspaceSize is nullptr.");
+               ACLNN_ERR_PARAM_NULLPTR,
+               "one of required inputs for aclnnMhcPostBackwardGetWorkspaceSize is nullptr.");
     // Check if input tensors are empty
     if (gradOutput->IsEmpty() || x->IsEmpty() || hRes->IsEmpty() || hOut->IsEmpty() || hPost->IsEmpty()) {
         OP_LOGE(ACLNN_ERR_INNER, "aclnn_mhc_post_backward do not support empty tensor!");
@@ -450,13 +450,13 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
     // Create OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-    aclTensor* outGradX = nullptr;
-    aclTensor* outGradHres = nullptr;
-    aclTensor* outGradHout = nullptr;
-    aclTensor* outGradHpost = nullptr;
+    aclTensor *outGradX = nullptr;
+    aclTensor *outGradHres = nullptr;
+    aclTensor *outGradHout = nullptr;
+    aclTensor *outGradHpost = nullptr;
 
     L2_DFX_PHASE_1(aclnnMhcPostBackward, DFX_IN(params.gradOutput, params.x, params.hRes, params.hOut, params.hPost),
-        DFX_OUT(params.gradX, params.gradHres, params.gradHout, params.gradHpost));
+                   DFX_OUT(params.gradX, params.gradHres, params.gradHout, params.gradHpost));
 
     // Convert input tensors to contiguous
     auto reformatedGradOutput = l0op::Contiguous(gradOutput, uniqueExecutor.get());
@@ -472,8 +472,8 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
 
     // Call l0 interface: MhcPostBackward kernel
     const auto Result = l0op::MhcPostBackward(reformatedGradOutput, reformatedX,
-        reformatedHRes, reformatedHOut, reformatedHPost, uniqueExecutor.get());
-    
+                                              reformatedHRes, reformatedHOut, reformatedHPost, uniqueExecutor.get());
+
     CHECK_RET(std::get<0>(Result) != nullptr, ACLNN_ERR_INNER_NULLPTR);
     outGradX = std::get<0>(Result);
     outGradHres = std::get<1>(Result);
@@ -482,17 +482,17 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
     CHECK_RET(outGradHres != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(outGradHout != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(outGradHpost != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     // Convert output tensor to contiguous tensor and copy to output
     auto viewCopygradXResult = l0op::ViewCopy(outGradX, gradX, uniqueExecutor.get());
     CHECK_RET(viewCopygradXResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     auto viewCopygradHresResult = l0op::ViewCopy(outGradHres, gradHres, uniqueExecutor.get());
     CHECK_RET(viewCopygradHresResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     auto viewCopygradHoutResult = l0op::ViewCopy(outGradHout, gradHout, uniqueExecutor.get());
     CHECK_RET(viewCopygradHoutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     auto viewCopygradHpostResult = l0op::ViewCopy(outGradHpost, gradHpost, uniqueExecutor.get());
     CHECK_RET(viewCopygradHpostResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

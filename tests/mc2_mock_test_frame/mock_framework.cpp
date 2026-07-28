@@ -46,7 +46,9 @@ using namespace mock_hccl;
 class MockContext {
 public:
     MockContext(uint32_t rankNum, uint32_t rankId, int deviceId)
-        : rankNum_(rankNum), rankId_(rankId), deviceId_(deviceId)
+        : rankNum_(rankNum),
+          rankId_(rankId),
+          deviceId_(deviceId)
     {
     }
 
@@ -213,7 +215,9 @@ private:
 // ============================================================
 class PyMultiRankContext {
 public:
-    PyMultiRankContext(uint32_t rankNum, int deviceId) : rankNum_(rankNum), deviceId_(deviceId)
+    PyMultiRankContext(uint32_t rankNum, int deviceId)
+        : rankNum_(rankNum),
+          deviceId_(deviceId)
     {
     }
 

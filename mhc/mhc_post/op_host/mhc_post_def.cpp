@@ -17,7 +17,8 @@
 namespace ops {
 class MhcPost : public OpDef {
 public:
-    explicit MhcPost(const char *name) : OpDef(name)
+    explicit MhcPost(const char *name)
+        : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)

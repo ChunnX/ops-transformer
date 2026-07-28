@@ -19,7 +19,8 @@
 namespace ops {
 class FfnWorkerBatching : public OpDef {
 public:
-    explicit FfnWorkerBatching(const char *name) : OpDef(name)
+    explicit FfnWorkerBatching(const char *name)
+        : OpDef(name)
     {
         this->Input("schedule_context")
             .ParamType(REQUIRED)

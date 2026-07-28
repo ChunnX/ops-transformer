@@ -22,28 +22,32 @@ constexpr uint32_t UB_ALIGN_SIZE = 32;
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t FLAG_ID_MAX = 16;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
-constexpr uint16_t AIV_SYNC_AIC_FLAG = 6; 
+constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint16_t VEC0_FLAG_ID_OFFSET = 0;
 constexpr uint16_t VEC1_FLAG_ID_OFFSET = FLAG_ID_MAX;
 
 template <typename T>
-__aicore__ inline T Max(T a, T b) {
+__aicore__ inline T Max(T a, T b)
+{
     return a > b ? a : b;
 }
 
 template <typename T>
-__aicore__ inline T Min(T a, T b) {
+__aicore__ inline T Min(T a, T b)
+{
     return a > b ? b : a;
 }
 
-__aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b) {
+__aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b)
+{
     if (b == 0) {
         return a;
     }
     return (a + b - 1) / b;
 }
 
-__aicore__ inline uint64_t Align(uint64_t a, uint64_t b) {
+__aicore__ inline uint64_t Align(uint64_t a, uint64_t b)
+{
     return CeilDiv(a, b) * b;
 }
 /**
@@ -57,6 +61,6 @@ __aicore__ inline constexpr uint32_t GetVRegSize()
     return 256U;
 #endif
 }
-}
+} // namespace MhcPreUtils
 
-#endif  // ASCENDC_MHC_PRE_UTILS_H
+#endif // ASCENDC_MHC_PRE_UTILS_H

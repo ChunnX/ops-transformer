@@ -305,4 +305,3 @@ make: *** [Makefile:462: prepare_build] Error 2
 ```bash
 bash build.sh --pkg --soc=${soc_version} --ops=${op_list} --aicpu_kernel
 ```
-

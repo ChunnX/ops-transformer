@@ -17,7 +17,8 @@
 namespace ops {
 class AddExample : public OpDef {
 public:
-    explicit AddExample(const char *name) : OpDef(name)
+    explicit AddExample(const char *name)
+        : OpDef(name)
     {
         this->Input("x1")                                       // 输入x1定义
             .ParamType(REQUIRED)                                // 必选输入

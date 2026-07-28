@@ -23,7 +23,6 @@ const int64_t QUANT_MODE_MXFP4 = 3;
 const int64_t FLOAT4_E2M1 = 296;
 const int64_t FLOAT8_E8M0 = 293;
 
-
 inline int64_t GetQkvDtypeRatio(int64_t quant_mode)
 {
     // mxfp4 时 q/k/v 在 Python 端被 pack 成 uint8（每 byte 2 个 fp4 元素），

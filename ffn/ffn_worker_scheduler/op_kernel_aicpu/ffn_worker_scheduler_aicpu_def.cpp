@@ -15,7 +15,8 @@ namespace ops {
 
 class FfnWorkerScheduler : public OpDef {
 public:
-    explicit FfnWorkerScheduler(const char *name) : OpDef(name)
+    explicit FfnWorkerScheduler(const char *name)
+        : OpDef(name)
     {
         this->Input("schedule_context").ParamType(REQUIRED).DataType({ge::DT_INT8});
         this->Output("schedule_context").ParamType(REQUIRED).DataType({ge::DT_INT8});
@@ -26,4 +27,4 @@ public:
 };
 
 OP_ADD(FfnWorkerScheduler);
-}  // namespace ops
+} // namespace ops

@@ -30,10 +30,10 @@ struct MMParam {
     bool cmatrixInitVal = true;
     bool isOutKFisrt = true; // 默认值为true，true：在L1切K轴的场景中，表示首轮K
     uint32_t unitFlag = 0;   // 0：disable: 不配置unitFlag
-                           // 2：enable: 行为在切K接口中（MatmulK），会将mmadParams.unitFlag设置为 0b10
-                           // 3：enable: 行为在切K接口中（MatmulK），在k的最后一轮循环，会将mmadParams.unitFlag设置为
-                           // 0b11 外部使用时，在外层k循环的最后一轮将该参数配置为3
-    uint32_t realM = 0; // bmm2以s1realsize为M轴，不赋值时不影响现有代码逻辑
+                             // 2：enable: 行为在切K接口中（MatmulK），会将mmadParams.unitFlag设置为 0b10
+                             // 3：enable: 行为在切K接口中（MatmulK），在k的最后一轮循环，会将mmadParams.unitFlag设置为
+                             // 0b11 外部使用时，在外层k循环的最后一轮将该参数配置为3
+    uint32_t realM = 0;      // bmm2以s1realsize为M轴，不赋值时不影响现有代码逻辑
 };
 
 __aicore__ inline MMParam MakeMMParam(uint32_t singleM, uint32_t singleN, uint32_t singleK, bool isLeftTranspose,
@@ -75,9 +75,9 @@ template <typename T>
 __aicore__ inline void LoadDataToL0A(LocalTensor<T> &aL0Tensor, const LocalTensor<T> &aL1Tensor, const MMParam &mmParam,
                                      uint64_t L1Aoffset, uint32_t kSplitSize, uint32_t mSplitSize)
 {
-    LoadData2DParamsV2 loadData2DParamsA; // 基础API LoadData的参数结构体
-    loadData2DParamsA.mStartPosition = 0; // 以M*K矩阵为例，源矩阵M轴方向的起始位置，单位为16 element
-    loadData2DParamsA.kStartPosition = 0; // 以M*K矩阵为例，源矩阵K轴方向的起始位置，单位为32B
+    LoadData2DParamsV2 loadData2DParamsA;                    // 基础API LoadData的参数结构体
+    loadData2DParamsA.mStartPosition = 0;                    // 以M*K矩阵为例，源矩阵M轴方向的起始位置，单位为16 element
+    loadData2DParamsA.kStartPosition = 0;                    // 以M*K矩阵为例，源矩阵K轴方向的起始位置，单位为32B
     loadData2DParamsA.ifTranspose = mmParam.isLeftTranspose; // 是否启用转置功能，对每个分型矩阵进行转置
     if (loadData2DParamsA.ifTranspose) {
         loadData2DParamsA.mStep = ((kSplitSize + 15) >> 4 << 4) >> 4; // 以M*K矩阵为例,源矩阵M轴方向搬运长度(S1向上对齐分形(512B),16*16个f16->向上对齐16)，单位为16
@@ -104,9 +104,9 @@ template <typename T>
 __aicore__ inline void LoadDataToL0B(LocalTensor<T> &bL0Tensor, const LocalTensor<T> &bL1Tensor, const MMParam &mmParam,
                                      uint64_t L1Boffset, uint32_t kSplitSize, uint32_t nSplitSize, int nLoops = 1)
 {
-    LoadData2DParamsV2 loadData2DParamsB; // 基础API LoadData的参数结构体
-    loadData2DParamsB.mStartPosition = 0; // 以M*K矩阵为例，源矩阵M轴方向的起始位置，单位为16 element
-    loadData2DParamsB.kStartPosition = 0; // 以M*K矩阵为例，源矩阵K轴方向的起始位置，单位为32B
+    LoadData2DParamsV2 loadData2DParamsB;                      // 基础API LoadData的参数结构体
+    loadData2DParamsB.mStartPosition = 0;                      // 以M*K矩阵为例，源矩阵M轴方向的起始位置，单位为16 element
+    loadData2DParamsB.kStartPosition = 0;                      // 以M*K矩阵为例，源矩阵K轴方向的起始位置，单位为32B
     loadData2DParamsB.ifTranspose = !mmParam.isRightTranspose; // 是否启用转置功能，对每个分型矩阵进行转置
     if (loadData2DParamsB.ifTranspose) {
         loadData2DParamsB.mStep = ((kSplitSize + 15) >> 4 << 4) >> 4; // 以M*K矩阵为例,源矩阵M轴方向搬运长度(S1向上对齐分形(512B),16*16个f16->向上对齐16)，单位为16

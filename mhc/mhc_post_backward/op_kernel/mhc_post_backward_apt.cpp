@@ -22,7 +22,6 @@
 using namespace AscendC;
 using namespace MhcPostBackward;
 
-
 template <int64_t TILING_KEY>
 __global__ __aicore__ void mhc_post_backward(
     GM_ADDR gradOutput, GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,

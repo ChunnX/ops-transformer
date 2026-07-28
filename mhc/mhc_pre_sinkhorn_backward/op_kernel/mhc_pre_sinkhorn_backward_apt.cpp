@@ -23,7 +23,7 @@
 using namespace AscendC;
 using namespace MicroAPI;
 
-template<bool DETERMINISTIC>
+template <bool DETERMINISTIC>
 __global__ __aicore__ void mhc_pre_sinkhorn_backward(
     GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_res, GM_ADDR x,
     GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias, GM_ADDR h_pre,
@@ -51,8 +51,8 @@ __global__ __aicore__ void mhc_pre_sinkhorn_backward(
         op.mm2_.SetSubBlockIdx(0);
         op.mm2_.Init(&tilingData.mm2TilingData, &pipe);
         op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias,
-            hc_before_norm, inv_rms, sum_out, norm_out, grad_x, grad_phi,
-            grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
+                hc_before_norm, inv_rms, sum_out, norm_out, grad_x, grad_phi,
+                grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
         op.Process();
     } else {
         REGISTER_TILING_FOR_TILINGKEY("DETERMINISTIC == false", MhcPreSinkhornBackwardArch35TilingData);
@@ -63,8 +63,8 @@ __global__ __aicore__ void mhc_pre_sinkhorn_backward(
         op.mm2_.SetSubBlockIdx(0);
         op.mm2_.Init(&tilingData.mm2TilingData, &pipe);
         op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias,
-            hc_before_norm, inv_rms, sum_out, norm_out, grad_x, grad_phi,
-            grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
+                hc_before_norm, inv_rms, sum_out, norm_out, grad_x, grad_phi,
+                grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
         op.Process();
     }
 }

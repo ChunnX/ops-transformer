@@ -35,7 +35,6 @@ static ge::graphStatus Tiling4MhcPostBackward(gert::TilingContext *context)
     return TilingRegistryNew::GetInstance().DoTilingImpl(context);
 }
 
-
 static ge::graphStatus TilingPrepareForMhcPostBackward(gert::TilingParseContext *context)
 {
     (void)context;

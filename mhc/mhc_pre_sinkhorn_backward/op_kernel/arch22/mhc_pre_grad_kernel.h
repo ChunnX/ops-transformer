@@ -412,7 +412,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
         Adds(skColSumLocal_, skColSumLocal_, eps_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
 
-
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN += 1) {
             Div(gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
                 gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT,

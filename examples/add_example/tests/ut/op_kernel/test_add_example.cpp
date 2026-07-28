@@ -31,7 +31,8 @@ class AddExampleTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        cout << "AddExampleTest SetUp\n" << endl;
+        cout << "AddExampleTest SetUp\n"
+             << endl;
         std::cout << "is_finite_test SetUp" << std::endl;
         const string cmd = "cp -rf " + dataPath + " ./";
         system(cmd.c_str());
@@ -39,7 +40,8 @@ protected:
     }
     static void TearDownTestCase()
     {
-        cout << "AddExampleTest TearDown\n" << endl;
+        cout << "AddExampleTest TearDown\n"
+             << endl;
     }
 
 private:

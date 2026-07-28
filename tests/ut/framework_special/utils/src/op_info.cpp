@@ -19,20 +19,26 @@
 
 using namespace ops::adv::tests::utils;
 
-OpInfo::OpInfo() : OpInfo(ControlInfo(true, false))
+OpInfo::OpInfo()
+    : OpInfo(ControlInfo(true, false))
 {
 }
 
-OpInfo::OpInfo(const ControlInfo &ctr) : OpInfo(ctr, ExpectInfo())
+OpInfo::OpInfo(const ControlInfo &ctr)
+    : OpInfo(ctr, ExpectInfo())
 {
 }
 
-OpInfo::OpInfo(const ControlInfo &ctr, const ExpectInfo &exp) : OpInfo("Undefined", ctr, exp)
+OpInfo::OpInfo(const ControlInfo &ctr, const ExpectInfo &exp)
+    : OpInfo("Undefined", ctr, exp)
 {
 }
 
 OpInfo::OpInfo(const char *name, const ControlInfo &ctr, const ExpectInfo &exp)
-    : mName(name), mCtr(ctr), mExp(exp), mCtx(nullptr)
+    : mName(name),
+      mCtr(ctr),
+      mExp(exp),
+      mCtx(nullptr)
 {
 }
 

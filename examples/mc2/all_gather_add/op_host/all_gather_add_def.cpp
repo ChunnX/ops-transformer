@@ -17,7 +17,8 @@
 namespace ops {
 class AllGatherAdd : public OpDef {
 public:
-    explicit AllGatherAdd(const char *name) : OpDef(name)
+    explicit AllGatherAdd(const char *name)
+        : OpDef(name)
     {
         this->Input("a").ParamType(REQUIRED).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
         this->Input("b").ParamType(REQUIRED).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});

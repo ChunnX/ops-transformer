@@ -283,7 +283,7 @@ aclnnStatus aclnnMhcPostGetWorkspaceSize(const aclTensor *x, const aclTensor *hR
     if (hRes == nullptr) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                "Optional h_res (nullptr) is only supported on Ascend950.");
+                    "Optional h_res (nullptr) is only supported on Ascend950.");
             return ACLNN_ERR_RUNTIME_ERROR;
         }
     }

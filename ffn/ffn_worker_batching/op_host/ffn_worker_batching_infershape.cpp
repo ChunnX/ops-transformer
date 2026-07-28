@@ -126,7 +126,6 @@ static graphStatus InferDataType4FfnWorkerBatching(gert::InferDataTypeContext *c
     return ge::GRAPH_SUCCESS;
 }
 
-
 IMPL_OP_INFERSHAPE(FfnWorkerBatching)
     .InferShape(InferShape4FfnWorkerBatching)
     .InferDataType(InferDataType4FfnWorkerBatching);

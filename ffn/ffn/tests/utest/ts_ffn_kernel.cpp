@@ -247,8 +247,7 @@ const auto Tc_FFN_Kernel_Case = ::testing::Values(
                GenTensor("deqScale2", {4, 5120}, ge::DataType::DT_FLOAT),
                GenTensor("y", {8, 5120}, ge::DataType::DT_FLOAT16)},
               {2, 2, 2, 2}, "relu", 1, -1),
-        0)
-    );
+        0));
 
 // INSTANTIATE_TEST_SUITE_P(FFN, Ts_FFN_WithParam_Ascend910B3, Tc_FFN_Kernel_Case);
 } // namespace

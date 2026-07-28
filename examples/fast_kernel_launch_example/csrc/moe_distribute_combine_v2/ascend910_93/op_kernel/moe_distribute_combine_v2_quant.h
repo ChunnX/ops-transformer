@@ -47,7 +47,7 @@ public:
     {
         hAlign32Size_ = Ceil(axisH_, UB_ALIGN) * UB_ALIGN;
         scaleValFloat_ = static_cast<float>(1.0f / SCALE_PARAM);
-        uint32_t scaleGranu = static_cast<uint32_t>(UB_ALIGN / sizeof(float)); // 计算每个block得到的reducemax结果数量
+        uint32_t scaleGranu = static_cast<uint32_t>(UB_ALIGN / sizeof(float));      // 计算每个block得到的reducemax结果数量
         quantScaleNum_ = (hExpandXAlign32Size_ / sizeof(ExpandXType)) / scaleGranu; // 得到有效scale的个数
         scaleNum_ = quantScaleNum_;
         repeatNum_ = static_cast<uint32_t>(hFloatAlign256Size_ /
@@ -64,7 +64,7 @@ public:
                                             LocalTensor<float> scaleDupLocalTensor_)
     {
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        castLocalTensor_ = sendLocalTensor_.template ReinterpretCast<int8_t>(); // 长度为int8H_Align + scaleNum
+        castLocalTensor_ = sendLocalTensor_.template ReinterpretCast<int8_t>();                    // 长度为int8H_Align + scaleNum
         scaleDivTensor_ = castLocalTensor_[hAlign32Size_].template ReinterpretCast<ExpandXType>(); // 偏移前面的int8
 
         Cast(winTpSendCountFloatTensor_, gmTpSendCountTensor_, RoundMode::CAST_NONE, axisH_);

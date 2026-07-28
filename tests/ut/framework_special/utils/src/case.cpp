@@ -21,12 +21,16 @@ using namespace ops::adv::tests::utils;
 
 void *Case::mCurrentCasePtr = nullptr;
 
-Case::Case() : Case("Undefined", true, "", kTilingTemplatePriority_Invalid)
+Case::Case()
+    : Case("Undefined", true, "", kTilingTemplatePriority_Invalid)
 {
 }
 
 Case::Case(const char *name, bool enable, const char *dbgInfo, int32_t tilingTemplatePriority)
-    : mName(name), mEnable(enable), mDbgInfo(dbgInfo), mTilingTemplatePriority(tilingTemplatePriority)
+    : mName(name),
+      mEnable(enable),
+      mDbgInfo(dbgInfo),
+      mTilingTemplatePriority(tilingTemplatePriority)
 {
 }
 

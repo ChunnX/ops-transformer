@@ -45,10 +45,10 @@ using _HcclKfcOpArgsSetCommEngine = HcclResult (*)(void *, uint8_t);            
 using _HcclCreateOpResCtx = HcclResult (*)(HcclComm, uint8_t, void *, void **);           // 创建HcclContext
 using _HcclGetRemoteIpcHcclBuf = HcclResult (*)(HcclComm, uint64_t, void **, uint64_t *); // 获取远端地址
 using _HcclKfcFreeOpArgs = HcclResult (*)(void *);                                        // 释放通信配置对象
-using _HcclCommGetHandleWithName = HcclResult (*)(const char *, HcclComm *); // 通过groupName获取groupHandle
-using _HcclGetRankSize = HcclResult (*)(HcclComm, uint32_t *);               // 获取通信域大小
-using _HcclGetRankId = HcclResult (*)(HcclComm, uint32_t *);                 // 获取卡号
-using _HcclGetHcclBuffer = HcclResult (*)(HcclComm, void **, uint64_t *);    // 获取本卡地址
+using _HcclCommGetHandleWithName = HcclResult (*)(const char *, HcclComm *);              // 通过groupName获取groupHandle
+using _HcclGetRankSize = HcclResult (*)(HcclComm, uint32_t *);                            // 获取通信域大小
+using _HcclGetRankId = HcclResult (*)(HcclComm, uint32_t *);                              // 获取卡号
+using _HcclGetHcclBuffer = HcclResult (*)(HcclComm, void **, uint64_t *);                 // 获取本卡地址
 
 // 通过group名称获取comm handle
 using _HcomGetCommHandleByGroup = HcclResult (*)(const char *, HcclComm *);

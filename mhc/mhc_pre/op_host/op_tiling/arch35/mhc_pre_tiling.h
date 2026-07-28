@@ -60,7 +60,8 @@ struct MhcPreCompileInfo {
 
 class MhcPreBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MhcPreBaseTiling(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
+    explicit MhcPreBaseTiling(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
     ~MhcPreBaseTiling() override = default;
 

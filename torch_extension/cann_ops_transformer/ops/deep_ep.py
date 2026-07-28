@@ -60,14 +60,15 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return ("npu_moe_distribute_dispatch(Tensor context, Tensor x, Tensor expert_ids, " \
-            "int ep_world_size, int ep_rank_id, int moe_expert_num, int ccl_buffer_size, " \
-            "*, Tensor? scales=None, Tensor? x_active_mask=None, " \
-            "Tensor? expert_scales=None, Tensor? elastic_info=None, Tensor? performance_info=None, "\
-            "int tp_world_size=0, int tp_rank_id=0, int expert_shard_type=0, int shared_expert_num=1, " \
-            "int shared_expert_rank_num=0, int quant_mode=0, int global_bs=0, int expert_token_nums_type=1, " \
-            "str comm_alg=\"\", int zero_expert_num=0, int copy_expert_num=0, int const_expert_num=0, " \
-            "int? y_dtype=None, int? x_dtype=None, int? x_smooth_scales_dtype=None) " \
+        return (
+            "npu_moe_distribute_dispatch(Tensor context, Tensor x, Tensor expert_ids, "
+            "int ep_world_size, int ep_rank_id, int moe_expert_num, int ccl_buffer_size, "
+            "*, Tensor? scales=None, Tensor? x_active_mask=None, "
+            "Tensor? expert_scales=None, Tensor? elastic_info=None, Tensor? performance_info=None, "
+            "int tp_world_size=0, int tp_rank_id=0, int expert_shard_type=0, int shared_expert_num=1, "
+            "int shared_expert_rank_num=0, int quant_mode=0, int global_bs=0, int expert_token_nums_type=1, "
+            'str comm_alg="", int zero_expert_num=0, int copy_expert_num=0, int const_expert_num=0, '
+            "int? y_dtype=None, int? x_dtype=None, int? x_smooth_scales_dtype=None) "
             "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
         )
 
@@ -76,6 +77,7 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
+
         def has_tensor(tensor):
             return tensor is not None
 
@@ -91,13 +93,20 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             except Exception:
                 return False
 
-        def get_dispatch_dynamic_scales_dtype(x, scales, x_smooth_scales_dtype, quant_mode):
+        def get_dispatch_dynamic_scales_dtype(
+            x, scales, x_smooth_scales_dtype, quant_mode
+        ):
             dynamic_scales_dtype = torch.float32
             if quant_mode == 0:
-                if x.dtype != torch.bfloat16 and x.dtype != torch.float16 and scales is not None:
+                if (
+                    x.dtype != torch.bfloat16
+                    and x.dtype != torch.float16
+                    and scales is not None
+                ):
                     dynamic_scales_dtype = (
                         get_dtype_from_enum(x_smooth_scales_dtype)
-                        if x_smooth_scales_dtype is not None else scales.dtype
+                        if x_smooth_scales_dtype is not None
+                        else scales.dtype
                     )
             elif quant_mode == 4 or quant_mode == 5:
                 dynamic_scales_dtype = torch.uint8  # float8_e8m0
@@ -107,7 +116,9 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             shape = tuple([a])
             if quant_mode == 0 and scales is not None:
                 if scales.dim() < 2:
-                    raise RuntimeError(f"Expected scales to be at least 2-d, but got {scales.dim()}-d.")
+                    raise RuntimeError(
+                        f"Expected scales to be at least 2-d, but got {scales.dim()}-d."
+                    )
                 shape = tuple([a, scales.shape[1]])
             elif quant_mode == 2:
                 shape = tuple([a])
@@ -117,8 +128,13 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                 shape = tuple([a, (math.ceil(h / 32) + 1) // 2 * 2])
             return shape
 
-        def check_dispatch_meta_args(ep_world_size, ep_rank_id, shared_expert_num, shared_expert_rank_num,
-                                     expert_token_nums_type):
+        def check_dispatch_meta_args(
+            ep_world_size,
+            ep_rank_id,
+            shared_expert_num,
+            shared_expert_rank_num,
+            expert_token_nums_type,
+        ):
             torch._check(
                 (ep_rank_id >= 0) and (ep_rank_id < ep_world_size),
                 lambda: (
@@ -161,15 +177,41 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             return is_shared_default, is_no_shared
 
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_moe_distribute_dispatch_meta(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
-                                             ccl_buffer_size, scales=None, x_active_mask=None, expert_scales=None,
-                                             elastic_info=None, performance_info=None, tp_world_size=0, tp_rank_id=0,
-                                             expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0,
-                                             quant_mode=0, global_bs=0, expert_token_nums_type=1, comm_alg="",
-                                             zero_expert_num=0, copy_expert_num=0, const_expert_num=0, y_dtype=None,
-                                             x_dtype=None, x_smooth_scales_dtype=None):
+        def npu_moe_distribute_dispatch_meta(
+            context,
+            x,
+            expert_ids,
+            ep_world_size,
+            ep_rank_id,
+            moe_expert_num,
+            ccl_buffer_size,
+            scales=None,
+            x_active_mask=None,
+            expert_scales=None,
+            elastic_info=None,
+            performance_info=None,
+            tp_world_size=0,
+            tp_rank_id=0,
+            expert_shard_type=0,
+            shared_expert_num=1,
+            shared_expert_rank_num=0,
+            quant_mode=0,
+            global_bs=0,
+            expert_token_nums_type=1,
+            comm_alg="",
+            zero_expert_num=0,
+            copy_expert_num=0,
+            const_expert_num=0,
+            y_dtype=None,
+            x_dtype=None,
+            x_smooth_scales_dtype=None,
+        ):
             is_shared_default, is_no_shared = check_dispatch_meta_args(
-                ep_world_size, ep_rank_id, shared_expert_num, shared_expert_rank_num, expert_token_nums_type
+                ep_world_size,
+                ep_rank_id,
+                shared_expert_num,
+                shared_expert_rank_num,
+                expert_token_nums_type,
             )
 
             bs = x.size(0)
@@ -242,13 +284,22 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             assist_info_for_combine_shape = max(bs * k, a * 128)
             expand_x_shape = tuple([max(a, a * tp_world_size), h])
             if y_dtype is not None and is_packed_float4(y_dtype) and scales is None:
-                torch._check((h % 2) == 0, lambda: "h must be divisible by 2 when y_dtype is packed float4.")
+                torch._check(
+                    (h % 2) == 0,
+                    lambda: "h must be divisible by 2 when y_dtype is packed float4.",
+                )
                 expand_x_shape = tuple([max(a, a * tp_world_size), h // 2])
             expand_x = x.new_empty(expand_x_shape, dtype=out_dtype)
-            dynamic_scales_dtype = get_dispatch_dynamic_scales_dtype(x, scales, x_smooth_scales_dtype, quant_mode)
+            dynamic_scales_dtype = get_dispatch_dynamic_scales_dtype(
+                x, scales, x_smooth_scales_dtype, quant_mode
+            )
             if is_ascend950():
-                dynamic_scales_shape = get_dispatch_dynamic_shape(scales, quant_mode, max(a, a * tp_world_size), h)
-                dynamic_scales = x.new_empty(dynamic_scales_shape, dtype=dynamic_scales_dtype)
+                dynamic_scales_shape = get_dispatch_dynamic_shape(
+                    scales, quant_mode, max(a, a * tp_world_size), h
+                )
+                dynamic_scales = x.new_empty(
+                    dynamic_scales_shape, dtype=dynamic_scales_dtype
+                )
             elif tp_world_size == 0:
                 dynamic_scales = x.new_empty((a), dtype=dynamic_scales_dtype)
             else:
@@ -261,10 +312,16 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             expand_scales = x.new_empty((0), dtype=torch.float32)
             if has_tensor(expert_scales):
                 if not is_ascend950():
-                    expert_scales_recv_extra = global_bs_real * 2 * k * (ep_world_size // 8)
-                    ep_recv_cnt_num = ep_world_size * local_moe_expert_num + expert_scales_recv_extra
+                    expert_scales_recv_extra = (
+                        global_bs_real * 2 * k * (ep_world_size // 8)
+                    )
+                    ep_recv_cnt_num = (
+                        ep_world_size * local_moe_expert_num + expert_scales_recv_extra
+                    )
                     ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
-                    assist_info_for_combine_shape = max(assist_info_for_combine_shape, expert_scales_recv_extra)
+                    assist_info_for_combine_shape = max(
+                        assist_info_for_combine_shape, expert_scales_recv_extra
+                    )
                 expand_scales = x.new_empty((a), dtype=torch.float32)
             expand_idx = x.new_empty(assist_info_for_combine_shape, dtype=torch.int32)
             return (
@@ -363,21 +420,65 @@ def _get_hccl_comm_name(group, rank_id):
 
 
 @impl(AS_LIBRARY, moe_distribute_dispatch_op_builder.name, "PrivateUse1")
-def _npu_moe_distribute_dispatch(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
-                                 ccl_buffer_size, scales=None, x_active_mask=None, expert_scales=None,
-                                 elastic_info=None, performance_info=None, tp_world_size=0, tp_rank_id=0,
-                                 expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0,
-                                 quant_mode=0, global_bs=0, expert_token_nums_type=1, comm_alg="",
-                                 zero_expert_num=0, copy_expert_num=0, const_expert_num=0, y_dtype=None,
-                                 x_dtype=None, x_smooth_scales_dtype=None):
+def _npu_moe_distribute_dispatch(
+    context,
+    x,
+    expert_ids,
+    ep_world_size,
+    ep_rank_id,
+    moe_expert_num,
+    ccl_buffer_size,
+    scales=None,
+    x_active_mask=None,
+    expert_scales=None,
+    elastic_info=None,
+    performance_info=None,
+    tp_world_size=0,
+    tp_rank_id=0,
+    expert_shard_type=0,
+    shared_expert_num=1,
+    shared_expert_rank_num=0,
+    quant_mode=0,
+    global_bs=0,
+    expert_token_nums_type=1,
+    comm_alg="",
+    zero_expert_num=0,
+    copy_expert_num=0,
+    const_expert_num=0,
+    y_dtype=None,
+    x_dtype=None,
+    x_smooth_scales_dtype=None,
+):
     op_module = moe_distribute_dispatch_op_builder.load()
-    return op_module.npu_moe_distribute_dispatch(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
-                                                 ccl_buffer_size, scales, x_active_mask, expert_scales, elastic_info,
-                                                 performance_info, tp_world_size, tp_rank_id,
-                                                 expert_shard_type, shared_expert_num, shared_expert_rank_num,
-                                                 quant_mode, global_bs, expert_token_nums_type, comm_alg,
-                                                 zero_expert_num, copy_expert_num, const_expert_num, y_dtype,
-                                                 x_dtype, x_smooth_scales_dtype)
+    return op_module.npu_moe_distribute_dispatch(
+        context,
+        x,
+        expert_ids,
+        ep_world_size,
+        ep_rank_id,
+        moe_expert_num,
+        ccl_buffer_size,
+        scales,
+        x_active_mask,
+        expert_scales,
+        elastic_info,
+        performance_info,
+        tp_world_size,
+        tp_rank_id,
+        expert_shard_type,
+        shared_expert_num,
+        shared_expert_rank_num,
+        quant_mode,
+        global_bs,
+        expert_token_nums_type,
+        comm_alg,
+        zero_expert_num,
+        copy_expert_num,
+        const_expert_num,
+        y_dtype,
+        x_dtype,
+        x_smooth_scales_dtype,
+    )
 
 
 @impl(AS_LIBRARY, moe_distribute_combine_op_builder.name, "PrivateUse1")
@@ -456,12 +557,15 @@ class MoeDistributeBuffer:
         self.rank_id = torch.distributed.get_rank(group)
         self.world_size = torch.distributed.get_world_size(group)
         self.group_name = _get_hccl_comm_name(group, self.rank_id)
-        self._ctx_manager = CommContextManager(self.group_name, self.world_size, backend={
-            "Ascend910B": "kfc",
-            "Ascend910_93": "kfc",
-            "Ascend950": "channel"
-        },
-        customCclBufferSize=ccl_buffer_size,
+        self._ctx_manager = CommContextManager(
+            self.group_name,
+            self.world_size,
+            backend={
+                "Ascend910B": "kfc",
+                "Ascend910_93": "kfc",
+                "Ascend950": "channel",
+            },
+            customCclBufferSize=ccl_buffer_size,
         )
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
@@ -614,52 +718,108 @@ class MoeDistributeBuffer:
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
         return True
 
-    def low_latency_dispatch(self, x, topk_idx, num_experts: int, *,
-                             quant_mode=0, comm_alg="", x_smooth_scale=None,
-                             x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0,
-                             const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1,
-                             shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank=0,
-                             y_dtype=None, x_dtype=None, x_smooth_scales_dtype=None):
-        (expand_x, dynamic_scales, expand_idx, expert_token_nums, ep_recv_counts, tp_recv_counts, expand_scales) \
-            = torch.ops.cann_ops_transformer.npu_moe_distribute_dispatch(
-                                             context=self.context,
-                                             x=x,
-                                             expert_ids=topk_idx,
-                                             ep_world_size=self.world_size,
-                                             ep_rank_id=self.rank_id,
-                                             moe_expert_num=num_experts,
-                                             ccl_buffer_size=self.ccl_buffer_size,
-                                             scales=x_smooth_scale,
-                                             x_active_mask=x_active_mask,
-                                             expert_scales=topk_weights,
-                                             elastic_info=elastic_info,
-                                             performance_info=None,
-                                             expert_shard_type=expert_shard_type,
-                                             shared_expert_num=shared_expert_num,
-                                             shared_expert_rank_num=shared_expert_rank_num,
-                                             quant_mode=quant_mode,
-                                             expert_token_nums_type=expert_token_nums_type,
-                                             global_bs=num_max_dispatch_tokens_per_rank * self.world_size,
-                                             comm_alg=comm_alg,
-                                             zero_expert_num=zero_expert_num,
-                                             copy_expert_num=copy_expert_num,
-                                             const_expert_num=const_expert_num,
-                                             y_dtype=y_dtype,
-                                             x_dtype=x_dtype,
-                                             x_smooth_scales_dtype=x_smooth_scales_dtype)
-        return expand_x, dynamic_scales, expand_idx, expert_token_nums, ep_recv_counts, expand_scales
+    def low_latency_dispatch(
+        self,
+        x,
+        topk_idx,
+        num_experts: int,
+        *,
+        quant_mode=0,
+        comm_alg="",
+        x_smooth_scale=None,
+        x_active_mask=None,
+        topk_weights=None,
+        zero_expert_num=0,
+        copy_expert_num=0,
+        const_expert_num=0,
+        elastic_info=None,
+        expert_shard_type=0,
+        shared_expert_num=1,
+        shared_expert_rank_num=0,
+        expert_token_nums_type=1,
+        num_max_dispatch_tokens_per_rank=0,
+        y_dtype=None,
+        x_dtype=None,
+        x_smooth_scales_dtype=None,
+    ):
+        (
+            expand_x,
+            dynamic_scales,
+            expand_idx,
+            expert_token_nums,
+            ep_recv_counts,
+            tp_recv_counts,
+            expand_scales,
+        ) = torch.ops.cann_ops_transformer.npu_moe_distribute_dispatch(
+            context=self.context,
+            x=x,
+            expert_ids=topk_idx,
+            ep_world_size=self.world_size,
+            ep_rank_id=self.rank_id,
+            moe_expert_num=num_experts,
+            ccl_buffer_size=self.ccl_buffer_size,
+            scales=x_smooth_scale,
+            x_active_mask=x_active_mask,
+            expert_scales=topk_weights,
+            elastic_info=elastic_info,
+            performance_info=None,
+            expert_shard_type=expert_shard_type,
+            shared_expert_num=shared_expert_num,
+            shared_expert_rank_num=shared_expert_rank_num,
+            quant_mode=quant_mode,
+            expert_token_nums_type=expert_token_nums_type,
+            global_bs=num_max_dispatch_tokens_per_rank * self.world_size,
+            comm_alg=comm_alg,
+            zero_expert_num=zero_expert_num,
+            copy_expert_num=copy_expert_num,
+            const_expert_num=const_expert_num,
+            y_dtype=y_dtype,
+            x_dtype=x_dtype,
+            x_smooth_scales_dtype=x_smooth_scales_dtype,
+        )
+        return (
+            expand_x,
+            dynamic_scales,
+            expand_idx,
+            expert_token_nums,
+            ep_recv_counts,
+            expand_scales,
+        )
 
-    def low_latency_combine(self, x, topk_idx, topk_weights, assist_info_for_combine, ep_send_counts, *,
-                            num_experts=0, comm_alg="", comm_quant_mode=0, x_active_mask=None, expand_scales=None,
-                            shared_expert_x=None, elastic_info=None, ori_x=None, const_expert_alpha_1=None,
-                            const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0,
-                            const_expert_num=0, expert_shared_type=0, shared_expert_num=1, shared_expert_rank_num=0,
-                            num_max_dispatch_tokens_per_rank=0):
+    def low_latency_combine(
+        self,
+        x,
+        topk_idx,
+        topk_weights,
+        assist_info_for_combine,
+        ep_send_counts,
+        *,
+        num_experts=0,
+        comm_alg="",
+        comm_quant_mode=0,
+        x_active_mask=None,
+        expand_scales=None,
+        shared_expert_x=None,
+        elastic_info=None,
+        ori_x=None,
+        const_expert_alpha_1=None,
+        const_expert_alpha_2=None,
+        const_expert_v=None,
+        zero_expert_num=0,
+        copy_expert_num=0,
+        const_expert_num=0,
+        expert_shared_type=0,
+        shared_expert_num=1,
+        shared_expert_rank_num=0,
+        num_max_dispatch_tokens_per_rank=0,
+    ):
         if assist_info_for_combine is None:
             raise ValueError("assist_info_for_combine must be provided.")
         if ep_send_counts is None:
             raise ValueError("ep_send_counts must be provided.")
-        topk_weights = _empty_topk_weights_like(x) if topk_weights is None else topk_weights
+        topk_weights = (
+            _empty_topk_weights_like(x) if topk_weights is None else topk_weights
+        )
         return torch.ops.cann_ops_transformer.npu_moe_distribute_combine(
             context=self.context,
             expand_x=x,

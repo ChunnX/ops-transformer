@@ -87,4 +87,3 @@
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_mhc_sinkhorn](examples/test_aclnn_mhc_sinkhorn.cpp) | 通过[aclnnMhcSinkhorn](docs/aclnnMhcSinkhorn.md)方式调用算子。|
-	 
