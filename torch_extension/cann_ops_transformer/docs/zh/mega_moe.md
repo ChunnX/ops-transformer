@@ -1122,7 +1122,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
             <td>l1_weights</td>
             <td>num_experts_per_rank（bfloat16/int8/int4场景）或1（float8_e5m2/float8_e4m3fn/float4_E2M1场景）</td>
             <td>否（bfloat16/int8/int4场景）/是（float8_e5m2/float8_e4m3fn/float4_E2M1场景）</td>
-            <td>不支持<</td>
+            <td>不支持</td>
         </tr>
         <tr>
             <td>l2_weights</td>
