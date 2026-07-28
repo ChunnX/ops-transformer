@@ -106,7 +106,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     } else {
         x_exp_1 = x_exp + (ubN * 4);
     }
-
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
@@ -878,7 +877,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-        x_exp_1 = x_exp + (ubN * 4);
+        x_exp_1 = x_exp + 32;
     } else {
         x_exp_1 = x_exp + (ubN * 4);
     }
@@ -1283,7 +1282,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-        x_exp_1 = x_exp + (ubN * 4);
+        x_exp_1 = x_exp + 32;
     } else {
         x_exp_1 = x_exp + (ubN * 4);
     }
