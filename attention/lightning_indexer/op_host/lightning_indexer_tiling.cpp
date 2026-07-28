@@ -86,12 +86,10 @@ ge::graphStatus LIInfoParser::CheckTensorShapes() const
                     "Shape of tensor weights is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attenOut",
-                    "Shape of tensor attenOut is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attention_out", "Shape of tensor attenOut is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.valuesOut.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "valuesOut",
-                    "Shape of tensor valuesOut is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_values", "Shape of tensor valuesOut is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -112,12 +110,10 @@ ge::graphStatus LIInfoParser::CheckTensorDescriptions() const
                     "Desc of tensor weights is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attenOut",
-                    "Desc of tensor attenOut is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attention_out", "Desc of tensor attenOut is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.valuesOut.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "valuesOut",
-                    "Desc of tensor valuesOut is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_values", "Desc of tensor valuesOut is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -176,8 +172,7 @@ ge::graphStatus LIInfoParser::CheckRequiredParaExistence() const
 ge::graphStatus LIInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("LightningIndexer", "opName",
-            "opName got from TilingContext is nullptr");
+        OP_LOGE("LightningIndexer", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -188,8 +183,7 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo_ == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "GetPlatformInfo",
-                    "GetPlatformInfo is nullptr"),
+                OP_LOGE(opName_, "GetPlatformInfo is nullptr"),
                 return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
@@ -204,13 +198,12 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
 
         return GRAPH_FAILED;
     }
-    OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "workSpaceSize",
-                    "workSpaceSize got from ge is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context_->GetWorkspaceSizes(1) == nullptr,
+        OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "RawTilingData",
-                    "RawTilingData got from GE context is nullptr"),
+                OP_LOGE(opName_, "RawTilingData got from GE context is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
