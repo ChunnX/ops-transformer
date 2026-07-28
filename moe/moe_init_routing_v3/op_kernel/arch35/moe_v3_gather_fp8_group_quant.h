@@ -89,6 +89,7 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         MaskReg maskRight;
         MaskReg maskScalar = CreateMask<float, MaskPattern::VL1>();
         MaskReg maskMantNonZero;
+        MaskReg maskExpZero;
 
         Duplicate(maxReg, 0.0f, maskAll);
         Duplicate(fp8MaxReg, fp8MaxValue, maskAll);
@@ -124,6 +125,8 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         And(mantBitsReg, (RegTensor<uint32_t> &)rawScaleReg, mantMaskReg, maskAllUint);
         Compare<uint32_t, CMPMODE::NE>(maskMantNonZero, mantBitsReg, zeroIntReg, maskAllUint);
         Select(mantAddReg, oneIntReg, zeroIntReg, maskMantNonZero);
+        Compare<uint32_t, CMPMODE::EQ>(maskExpZero, expBitsReg, zeroIntReg, maskAllUint);
+        Select(mantAddReg, oneIntReg, mantAddReg, maskExpZero);
         Add(roundedExpBitsReg, expBitsReg, mantAddReg, maskAllUint);
         ShiftLefts((RegTensor<uint32_t> &)roundScaleReg, roundedExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
 
