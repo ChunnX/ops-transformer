@@ -53,11 +53,10 @@ struct StageTwoParams {
     int64_t Dk;
     int64_t stateStride1;
     bool useInitialState;
-    bool gOptional;
     bool isFirstGroup;
 };
 
-template <typename stateType = bfloat16_t>
+template <typename stateType = bfloat16_t, bool gOptional = false>
 class Stage2 {
 public:
     static constexpr bool kIsFp32 = std::is_same_v<stateType, float>;
@@ -79,7 +78,6 @@ public:
         curChunkSize_ = chunkSize_;
         useInitialState_ = sTP_->useInitialState;
         stateStride1_ = (useInitialState_) ? sTP_->stateStride1 : Dv_ * Dk_;
-        gOptional_ = sTP_->gOptional;
         isFirstGroup_ = sTP_->isFirstGroup;
         InitLocalBuffers();
     }
@@ -247,7 +245,7 @@ public:
 
     __aicore__ inline void CalGCumExpBf16(GlobalTensor<float> gCum)
     {
-        if (gOptional_) {
+        if constexpr (gOptional) {
             DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
                 gCum[curChunkSize_ - 1]);
             float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
@@ -443,7 +441,6 @@ private:
     int32_t coreNum_;
     int64_t stateStride1_;
     bool useInitialState_;
-    bool gOptional_;
     bool isFirstGroup_;
 };
 } // namespace ChunkGatedDeltaRule
