@@ -40,16 +40,28 @@ struct MoeEpDispatchInfo {
     uint32_t isTopkWeights;
     uint32_t isMxQuant;
     uint32_t networkMode;
+    uint32_t rankSizePerServer; // 单超节点内rank数
     uint32_t numScaleupRanks;
     uint32_t numScaleoutRanks;
     uint32_t numAivStage1;
     uint32_t numAivStage2;
     uint32_t aivNum;
+    uint32_t scaleoutMaskWordCount;   // scaleup目标rank mask的uint32数量
+    uint32_t scaleupSlotAlignedBytes;  // scaleup最终接收slot字节数
+    uint32_t scaleoutSlotAlignedBytes; // scaleout数据和转发元信息slot字节数
     uint64_t hostPinnedCounterAddr;
+    uint64_t routeWorkspaceOffset;
     uint64_t cntWinStateOffset;
     uint64_t slotWinStateOffset;
     uint64_t winDataOffset;
     uint64_t dispatchSendWinOffset;
+    uint64_t scaleoutRecvDataOffset;
+    uint64_t scaleupFinalRecvDataOffset;
+    uint64_t scaleoutRecvStatusOffset;
+    uint64_t scaleupRecvStatusOffset;
+    uint64_t combineDataOffset;
+    uint64_t scaleupSendWinOffset;
+    uint64_t scaleoutSendWinOffset;
     uint64_t totalWinSizeEp;
     uint64_t totalUbSize;
 };
