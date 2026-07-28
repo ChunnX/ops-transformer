@@ -293,15 +293,11 @@ D=128 能过是因为 `nSize == mBaseSize == 128`（巧合）；D=256 `nSize=256
 | 10 | T=32 dump 探针 | PRINTF/DumpTensor 触发 AICore error | `f5999f1b4`→`c1ecf82c7` |
 | 11 | x_exp_1 ubN*4→32（MxFP8 路径） | **修复 V1，25%→25.18%**（保留） | `6dd2100ad` |
 | 12 | srcOffset 65→vec1BlockStride | 更差（25%→23.27%，65 是 M 派生非 N 派生） | `0522bccac`→`5f212e89e` |
+| 13 | bmm2Buffers SingleBuffer→DB + 2× UB + 双 Set/WaitCrossCore（对齐 noquant） | **507015 崩**（健康设备 0 稳定复现，非探针/非瞬态；回退后回 25.18% 不崩，对照确证 DB 是崩因）。DB 乒乓与 MX PRELOAD 同步冲突或 UB 溢出。"分配/2"假设未验证 | `8fa0bbc8b`→`09b799b5d` |
 
-### DumpTensor 探针（当前在代码中）
+### DumpTensor 探针（已移除）
 
-`fia_block_vec_fullquant_mx.h` 内：
-- `desc=10001`：P 数据（stage1CastTensor，fp8，8192B）——V1 softmax 后、UB→L1 copy 前
-- `desc=20001`：BMM1 结果（mmRes，float）——不工作（float 类型 dump 不出）
-- `desc=30001`：BMM2 结果（ProcessVec2OnUb 中的 mmRes，float，256B）——C2 fixpipe 后
-
-启用：pytest 前 `export ASCENDC_DUMP=1`。探针源码无 `#ifdef DEBUG_DUMP` 守卫（无条件编译进），但真机运行仍需 `--debug` 构建分配缓冲，否则触发 507015（见上文「Kernel 调试陷阱」）。
+探针（`desc=10001/20001/30001`）已于 commit `93704dd84` 从 `fia_block_vec_fullquant_mx.h` 移除——定位使命完成（V1 x_exp_1、C2 dualDstCtl 落点），且非 `--debug` 构建会触发 507015。需要时重新加回，注意：源码无 `#ifdef DEBUG_DUMP` 守卫（无条件编进），真机运行需 `--debug` 构建分配缓冲，否则 507015；`desc=20001` 当年"float dump 不出"实为 dumpSize 过大（8192），非 float/L0C 不支持。
 
 ### 关键文件（调试）
 
