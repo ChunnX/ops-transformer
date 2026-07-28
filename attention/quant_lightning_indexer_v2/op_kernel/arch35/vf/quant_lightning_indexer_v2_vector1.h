@@ -586,14 +586,14 @@ __simd_vf__ void MulWeightAndReduceSumOptionalScaleVF(__ubuf__ uint16_t *out, __
 }
 
 template <bool WITH_SCALE>
-__aicore__ inline void
-MulWeightAndReduceSumOptionalScaleImpl(const LocalTensor<uint16_t> &out_, // out    [S2Base]     [128   ]
-                                       const LocalTensor<float> &qk_,     // q*k^t  [G, S2Base]  [64 128]
-                                       const uint32_t qkVLStride,
-                                       const LocalTensor<float> &weight_, // w      [G]          [64    ]
-                                       const float kScaleValue,           // kScale scalar
-                                       const float qScaleValue,           // qScale scalar
-                                       const int gSize)                   // G 64
+__aicore__ inline void MulWeightAndReduceSumOptionalScaleImpl(
+    const LocalTensor<uint16_t> &out_, // out    [S2Base]     [128   ]
+    const LocalTensor<float> &qk_,     // q*k^t  [G, S2Base]  [64 128]
+    const uint32_t qkVLStride,
+    const LocalTensor<float> &weight_, // w      [G]          [64    ]
+    const float kScaleValue,           // kScale scalar
+    const float qScaleValue,           // qScale scalar
+    const int gSize)                   // G 64
 {
     __ubuf__ uint16_t *out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
     __ubuf__ float *weight = (__ubuf__ float *)weight_.GetPhyAddr();
@@ -710,16 +710,16 @@ __simd_vf__ void MulWeightAndReduceSumOptionalScale2VF(__ubuf__ uint16_t *out0, 
 }
 
 template <bool WITH_SCALE>
-__aicore__ inline void
-MulWeightAndReduceSumOptionalScale2Impl(const LocalTensor<uint16_t> &out_, // out    [2, S2Base]     [128   ]
-                                        uint32_t outStride,
-                                        const LocalTensor<float> &qk_, // q*k^t  [2, G, S2Base]  [64 128]
-                                        uint32_t qkVLStride, uint32_t qkStride,
-                                        const LocalTensor<float> &weight_, // w      [2, G]          [64    ]
-                                        uint32_t weightStride, const LocalTensor<float> &weightTemp_,
-                                        const float kScaleValue, // kScale scalar
-                                        const float qScaleValue, // qScale scalar for batch 0和1
-                                        const int gSize)         // G 64
+__aicore__ inline void MulWeightAndReduceSumOptionalScale2Impl(
+    const LocalTensor<uint16_t> &out_, // out    [2, S2Base]     [128   ]
+    uint32_t outStride,
+    const LocalTensor<float> &qk_, // q*k^t  [2, G, S2Base]  [64 128]
+    uint32_t qkVLStride, uint32_t qkStride,
+    const LocalTensor<float> &weight_, // w      [2, G]          [64    ]
+    uint32_t weightStride, const LocalTensor<float> &weightTemp_,
+    const float kScaleValue, // kScale scalar
+    const float qScaleValue, // qScale scalar for batch 0和1
+    const int gSize)         // G 64
 {
     __ubuf__ float *weight0 = (__ubuf__ float *)weight_.GetPhyAddr();
     __ubuf__ float *weightTemp = (__ubuf__ float *)weightTemp_.GetPhyAddr();
@@ -734,16 +734,16 @@ MulWeightAndReduceSumOptionalScale2Impl(const LocalTensor<uint16_t> &out_, // ou
                                                       kScaleValue, qScaleValue, (uint16_t)gSize);
 }
 
-__aicore__ inline void
-MulWeightAndReduceSumPerTensor2(const LocalTensor<uint16_t> &out_, // out    [2, S2Base]     [128   ]
-                                uint32_t outStride,
-                                const LocalTensor<float> &qk_, // q*k^t  [2, G, S2Base]  [64 128]
-                                uint32_t qkVLStride, uint32_t qkStride,
-                                const LocalTensor<float> &weight_, // w      [2, G]          [64    ]
-                                uint32_t weightStride, const LocalTensor<float> &weightTemp_,
-                                const float kScaleValue, // kScale scalar
-                                const float qScaleValue, // qScale scalar for batch 0和1
-                                const int gSize)         // G 64
+__aicore__ inline void MulWeightAndReduceSumPerTensor2(
+    const LocalTensor<uint16_t> &out_, // out    [2, S2Base]     [128   ]
+    uint32_t outStride,
+    const LocalTensor<float> &qk_, // q*k^t  [2, G, S2Base]  [64 128]
+    uint32_t qkVLStride, uint32_t qkStride,
+    const LocalTensor<float> &weight_, // w      [2, G]          [64    ]
+    uint32_t weightStride, const LocalTensor<float> &weightTemp_,
+    const float kScaleValue, // kScale scalar
+    const float qScaleValue, // qScale scalar for batch 0和1
+    const int gSize)         // G 64
 {
     MulWeightAndReduceSumOptionalScale2Impl<true>(out_, outStride, qk_, qkVLStride, qkStride, weight_, weightStride,
                                                   weightTemp_, kScaleValue, qScaleValue, gSize);
@@ -904,14 +904,14 @@ __aicore__ inline void BatchMulWeightAndReduceSumMX(const LocalTensor<SCORE_T> &
 }
 
 template <typename QK_T, typename SCORE_T, typename WEIGHT_T>
-__aicore__ inline void
-BatchMulWeightAndReduceSumPerTensor(const LocalTensor<SCORE_T> &out_,
-                                    uint32_t outStride,           // out    [S2Base]     [128   ]
-                                    const LocalTensor<QK_T> &qk_, // q*k^t  [G, S2Base]  [64 128]
-                                    uint32_t qkVLStride, uint32_t qkStride,
-                                    const LocalTensor<WEIGHT_T> &weight_, // w  [G]          [64    ]
-                                    uint32_t weightStride, const LocalTensor<float> &weightTemp_,
-                                    const float kScaleValue, const float qScaleValue, const int gSize, const int batch)
+__aicore__ inline void BatchMulWeightAndReduceSumPerTensor(
+    const LocalTensor<SCORE_T> &out_,
+    uint32_t outStride,           // out    [S2Base]     [128   ]
+    const LocalTensor<QK_T> &qk_, // q*k^t  [G, S2Base]  [64 128]
+    uint32_t qkVLStride, uint32_t qkStride,
+    const LocalTensor<WEIGHT_T> &weight_, // w  [G]          [64    ]
+    uint32_t weightStride, const LocalTensor<float> &weightTemp_, const float kScaleValue, const float qScaleValue,
+    const int gSize, const int batch)
 {
     // 暂只支持这两种情况, 后续改成循环
     if (batch != 2 && batch != 1) {

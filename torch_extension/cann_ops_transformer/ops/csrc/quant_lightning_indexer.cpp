@@ -24,15 +24,9 @@ inline TensorWrapper MakeWrapper(const at::Tensor &tensor)
     return {tensor, ConvertToAclDataType(tensor.scalar_type())};
 }
 
-inline bool IsMxQuantMode(int64_t quantMode)
-{
-    return quantMode == 3 || quantMode == 5;
-}
+inline bool IsMxQuantMode(int64_t quantMode) { return quantMode == 3 || quantMode == 5; }
 
-inline bool IsE8M0Tensor(const at::Tensor &tensor)
-{
-    return tensor.scalar_type() == at::kFloat8_e8m0fnu;
-}
+inline bool IsE8M0Tensor(const at::Tensor &tensor) { return tensor.scalar_type() == at::kFloat8_e8m0fnu; }
 
 inline bool IsFp4CompatibleTensor(const at::Tensor &tensor)
 {
@@ -130,9 +124,9 @@ at::Tensor QuantLightningIndexerMetadata(int64_t numHeadsQ, int64_t numHeadsK, i
 }
 
 // 工具函数，推导输出shape
-std::tuple<at::Tensor, at::Tensor>
-ConstructQuantLightningIndexerOutputTensor(const at::Tensor &query, const at::Tensor &key, int64_t sparseCount,
-                                           std::string queryLayoutStr, std::string keyLayoutStr, int64_t returnValue)
+std::tuple<at::Tensor, at::Tensor> ConstructQuantLightningIndexerOutputTensor(
+    const at::Tensor &query, const at::Tensor &key, int64_t sparseCount, std::string queryLayoutStr,
+    std::string keyLayoutStr, int64_t returnValue)
 {
     at::SmallVector<int64_t, SIZE> outputSize;
     for (size_t i = 0; i < query.sizes().size(); i++) {
@@ -167,15 +161,14 @@ ConstructQuantLightningIndexerOutputTensor(const at::Tensor &query, const at::Te
     return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
 }
 
-std::tuple<at::Tensor, at::Tensor>
-QuantLightningIndexer(const at::Tensor &query, const at::Tensor &key, const at::Tensor &weights,
-                      const at::Tensor &queryDequantScale, const at::Tensor &keyDequantScale, int64_t topk,
-                      int64_t quantMode, const c10::optional<at::Tensor> &cuSeqlensQ,
-                      const c10::optional<at::Tensor> &cuSeqlensK, const c10::optional<at::Tensor> &sequsedQ,
-                      const c10::optional<at::Tensor> &sequsedK, const c10::optional<at::Tensor> &cmpResidualK,
-                      const c10::optional<at::Tensor> &blockTable, const c10::optional<at::Tensor> &outputIdxOffset,
-                      const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ, c10::string_view layoutQ,
-                      c10::string_view layoutK, int64_t maskMode, int64_t cmpRatio, int64_t returnValue)
+std::tuple<at::Tensor, at::Tensor> QuantLightningIndexer(
+    const at::Tensor &query, const at::Tensor &key, const at::Tensor &weights, const at::Tensor &queryDequantScale,
+    const at::Tensor &keyDequantScale, int64_t topk, int64_t quantMode, const c10::optional<at::Tensor> &cuSeqlensQ,
+    const c10::optional<at::Tensor> &cuSeqlensK, const c10::optional<at::Tensor> &sequsedQ,
+    const c10::optional<at::Tensor> &sequsedK, const c10::optional<at::Tensor> &cmpResidualK,
+    const c10::optional<at::Tensor> &blockTable, const c10::optional<at::Tensor> &outputIdxOffset,
+    const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ, c10::string_view layoutQ, c10::string_view layoutK,
+    int64_t maskMode, int64_t cmpRatio, int64_t returnValue)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.")
     TORCH_CHECK(key.numel() > 0, "Tensor key is empty.")

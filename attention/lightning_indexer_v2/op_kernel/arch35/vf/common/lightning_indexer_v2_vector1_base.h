@@ -60,10 +60,10 @@ __simd_callee__ inline void InitUIntSortConstCtx(UIntSortConstCtx<FloatT> &ctx, 
 }
 
 template <typename FloatT>
-__simd_callee__ inline void
-UIntToSortableKey(AscendC::MicroAPI::RegTensor<FloatT> &outKey,
-                  AscendC::MicroAPI::RegTensor<typename UIntSortConstCtx<FloatT>::UInt> &inVal,
-                  UIntSortConstCtx<FloatT> &ctx, AscendC::MicroAPI::MaskReg &maskAll)
+__simd_callee__ inline void UIntToSortableKey(
+    AscendC::MicroAPI::RegTensor<FloatT> &outKey,
+    AscendC::MicroAPI::RegTensor<typename UIntSortConstCtx<FloatT>::UInt> &inVal, UIntSortConstCtx<FloatT> &ctx,
+    AscendC::MicroAPI::MaskReg &maskAll)
 {
     using Traits = UIntSortTraits<FloatT>;
     using UInt = typename Traits::UInt;

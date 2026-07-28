@@ -270,11 +270,12 @@ __aicore__ inline uint32_t QLIV2Preload<QLIV2T>::GetActualSeqLen(uint32_t bIdx, 
 }
 
 template <typename QLIV2T>
-__aicore__ inline uint32_t
-QLIV2Preload<QLIV2T>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, uint32_t cmpResiduaKLenDims,
-                                         bool isAccumSeq, GlobalTensor<uint32_t> &cuSeqlensKGm,
-                                         GlobalTensor<uint32_t> &sequsedKGm, GlobalTensor<uint32_t> &cmpResidualKGm,
-                                         uint32_t defaultSeqLen, uint32_t cmpRatio)
+__aicore__ inline uint32_t QLIV2Preload<QLIV2T>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
+                                                                    uint32_t cmpResiduaKLenDims, bool isAccumSeq,
+                                                                    GlobalTensor<uint32_t> &cuSeqlensKGm,
+                                                                    GlobalTensor<uint32_t> &sequsedKGm,
+                                                                    GlobalTensor<uint32_t> &cmpResidualKGm,
+                                                                    uint32_t defaultSeqLen, uint32_t cmpRatio)
 {
     uint32_t residual = hasCmpResidualK ? cmpResidualKGm.GetValue(bIdx) : 0;
     if (hasSequsedK) {
@@ -457,13 +458,12 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::DealActSeqLenIsZero(uint32_t bIdx, 
 }
 
 template <typename QLIV2T>
-__aicore__ inline void
-QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
-                           __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale, __gm__ uint8_t *cuSeqlensQ,
-                           __gm__ uint8_t *cuSeqlensK, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
-                           __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset,
-                           __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
-                           __gm__ uint8_t *workspace, const QLIV2TilingData *__restrict tiling, TPipe *tPipe)
+__aicore__ inline void QLIV2Preload<QLIV2T>::Init(
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights, __gm__ uint8_t *queryScale,
+    __gm__ uint8_t *keyScale, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK, __gm__ uint8_t *sequsedQ,
+    __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset,
+    __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues, __gm__ uint8_t *workspace,
+    const QLIV2TilingData *__restrict tiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -678,8 +678,8 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
             // MX: qScale offset, shape [B, S1, N1, D/64, 2]
             uint64_t qScalePrefixSum =
                 actualSeqQPrefixSum * constInfo.qHeadNum * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
-            uint64_t qScaleS1Offset = static_cast<uint64_t>(runInfo.gS1Idx) * constInfo.mBaseSize *
-                                      (constInfo.headDim / MX_SCALE_GROUP_SIZE);
+            uint64_t qScaleS1Offset =
+                static_cast<uint64_t>(runInfo.gS1Idx) * constInfo.mBaseSize * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
             qScaleCoreOffset = qScalePrefixSum + qScaleS1Offset;
         }
     }
@@ -691,12 +691,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     }
     uint64_t tndBIdxOffsetForK = actualSeqKPrefixSum * constInfo.kHeadNum * qkHeadDim;
     keyCoreOffset = tndBIdxOffsetForK + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * qkHeadDim;
-    uint64_t keyScaleS2Offset =
-        actualSeqKPrefixSum + static_cast<uint64_t>(runInfo.s2Idx) * constInfo.s2BaseSize;
+    uint64_t keyScaleS2Offset = actualSeqKPrefixSum + static_cast<uint64_t>(runInfo.s2Idx) * constInfo.s2BaseSize;
     if constexpr (IS_MX) {
         // MX: kScale offset, shape [B, S2, N2, D/64, 2]
-        keyScaleCoreOffset =
-            keyScaleS2Offset * constInfo.kHeadNum * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
+        keyScaleCoreOffset = keyScaleS2Offset * constInfo.kHeadNum * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
     } else {
         keyScaleCoreOffset = keyScaleS2Offset * constInfo.kHeadNum;
     }
