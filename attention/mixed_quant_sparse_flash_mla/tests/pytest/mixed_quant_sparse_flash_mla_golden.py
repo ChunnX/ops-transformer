@@ -224,7 +224,7 @@ class GeneralizedSFAQuant:
                             f"      进度：{current_pct:.1f}% | 步数：{i_S1:>{len(str(cur_act_q))}}/{cur_act_q}"
                         )
                     if (
-                        self.ori_mask_mode != 0 and i_S1 < cur_act_q - cur_ori_act_kv
+                        self.ori_mask_mode == 3 and i_S1 < cur_act_q - cur_ori_act_kv
                     ):  # 根据 win_kv 判断行无效
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
                             [G, self.D], dtype=torch.float
@@ -251,7 +251,7 @@ class GeneralizedSFAQuant:
                     else:
                         ori_win_start = 0
                         ori_win_end = cur_ori_act_kv
-                    ori_win_start = min(ori_win_start, cur_ori_act_kv)
+                    # ori_win_start = min(ori_win_start, cur_ori_act_kv)
 
                     if ori_win_start >= ori_win_end:  # 根据 win_kv 判断行无效
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
