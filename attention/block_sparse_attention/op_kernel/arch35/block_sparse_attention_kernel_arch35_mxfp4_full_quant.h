@@ -41,7 +41,7 @@ public:
     using ElementK = typename BlockMmadQK::ElementB;
     using ElementS = typename EpilogueOnlineSoftmax::ElementInput;
     using ElementP = typename BlockMmadPV::ElementA;
-    using ElementDisguiseP = uint8_t;
+    using ElementDisguiseP = EpilogueOnlineSoftmax::ElementDisguiseP;
     using ElementV = typename BlockMmadPV::ElementB;
     using ElementOTmp = typename BlockMmadPV::ElementC;
     using ElementO = typename EpilogueOnlineSoftmax::ElementInput;
@@ -82,9 +82,6 @@ public:
     static constexpr uint32_t DELAY_PSCALE_N = 3;
 
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PV_RE_DELAY_N + 1;
-    static constexpr uint32_t TILE_GROUP_N = 16;
-
-    static constexpr uint32_t DATA_BLOCK_BYTE = 32;
 
     // Methods
     __aicore__ inline
@@ -199,9 +196,7 @@ public:
         TileInfo tileInfos[PRELOAD_TASK_CACHE_SIZE] = {};
 
 
-        int64_t qBOffset = 0;
         int64_t oBOffset = 0;
-        int64_t lseBOffset = 0;
 
         while (coreTaskId < coreTaskNum || delay20CoreTaskId < coreTaskNum || delay3CoreTaskId < coreTaskNum)
         {
@@ -221,13 +216,12 @@ public:
             // 创建qs任务
             if (curTaskTileIdx == 0 && coreTaskId < coreTaskNum) {
                 CreateTaskInfo(curTaskInfo, coreTaskId, coreIdx, coreNum,
-                               gActualQseqlen, gActualKvseqlen, gSparseCount, gSparseIdx,
-                               oBOffset, lseBOffset, qBOffset);
+                               gActualQseqlen, gActualKvseqlen, gSparseCount,
+                               gSparseIdx,oBOffset);
             }
 
             // main process
             if (coreTileLoop >= PV_RE_DELAY_N && delay20CoreTaskId < coreTaskNum) {
-                // delay20TileInfo = tileInfos[(coreTileLoop - PV_RE_DELAY_N) % PRELOAD_TASK_CACHE_SIZE];
                 if ASCEND_IS_AIC {
                     if (delay20TileInfo.isTileGoupFirstTile) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2);
@@ -282,10 +276,12 @@ public:
                         ComputeVec2(delay20TileInfo);
                         auto gmOLayoutTla = tla::MakeLayout<ElementO, LayoutO>(qBaseTile_, delay20TaskInfo.oShapeCol);
                         auto gmOTensorTla = tla::MakeTensor(gO[delay20TaskInfo.gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
-                        auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(qBaseTile_, delay20TaskInfo.lseShapeCol);
-                        auto gmLseTensorTla = tla::MakeTensor(gLse[delay20TaskInfo.gmOffsetLse], gmLseLayoutTla, Arch::PositionGM{});
                         GemmCoord actualBlockShapeVPT{embed_, delay20TaskInfo.qsActBaseTile, delay20TileInfo.kvsActBaseTile};
-                        epilogueRescaleO(gmOTensorTla, gmLseTensorTla, actualBlockShapeVPT, delay20TaskInfo, delay20TileInfo);
+                        epilogueRescaleO(
+                            gmOTensorTla, 
+                            actualBlockShapeVPT, 
+                            delay20TaskInfo, 
+                            delay20TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
                     }
                 }
@@ -305,14 +301,15 @@ public:
                     } else {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
                         // UpdatePScale(delay3TileInfo);
-                        epilogueComputePScale(l1PScaleTensorTla, delay3TileInfo);
+                        epilogueComputePScale(
+                            l1PScaleTensorTla, 
+                            delay3TileInfo);
                         AscendC::DumpTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], 168, 128);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2);
                     }
                 }
             }
             if (coreTaskId < coreTaskNum) {
-                // curTileInfo = tileInfos[coreTileLoop % PRELOAD_TASK_CACHE_SIZE];
                 CreateTileInfo(curTileInfo, coreTileLoop,
                               static_cast<uint32_t>(curTaskTileIdx), curTaskInfo);// 创建任务
 
@@ -334,14 +331,19 @@ public:
                         auto l1PLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutP>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE / 2);
                         auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
                         GemmCoord actualBlockShapeQK{curTileInfo.kvsActBaseTile, curTaskInfo.qsActBaseTile, embed_};
-                        epilogueOnlineSoftmax(l1PTensorTla, actualBlockShapeQK, curTileInfo);
+                        epilogueOnlineSoftmax(
+                            l1PTensorTla, 
+                            actualBlockShapeQK, 
+                            curTileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
                     }
                     if (curTileInfo.isUpdatePScale) {
                         auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(2, EpMXFP4::QS_BASE_SIZE);
                         auto l1GMaxTensorTla = tla::MakeTensor(l1LocalGlobalMaxTensor[curTileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionL1{});
                         // CopyGMaxUbToL1(curTileInfo);
-                        epilogueCopyGlobalMaxUbToL1(l1GMaxTensorTla, curTileInfo);
+                        epilogueCopyGlobalMaxUbToL1(
+                            l1GMaxTensorTla, 
+                            curTileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
                     }
 #endif
@@ -473,24 +475,17 @@ public:
     __aicore__ inline
     void InitLayoutStride()
     {
-        // O & lse stride
+        // O stride
         if constexpr (qFormat == Format::TND) {
             strideO_ = static_cast<int64_t>(qHeads_) * embed_;
-            strideLse_ = static_cast<int64_t>(qHeads_);
         } else if constexpr (qFormat == Format::BNSD) {
             strideOB_ = static_cast<int64_t>(qHeads_) * qSeqlenAligned_ * embed_;
             strideON_ = qSeqlenAligned_ * embed_;
             strideOS_ = embed_;
-            strideLseB_ = static_cast<int64_t>(qHeads_) * qSeqlenAligned_;
-            strideLseN_ = qSeqlenAligned_;
-            strideLseS_ = 1;
         } else if constexpr (qFormat == Format::BSND) {
             strideOB_ = qSeqlenAligned_ * static_cast<int64_t>(qHeads_) * embed_;
             strideOS_ = static_cast<int64_t>(qHeads_) * embed_;
             strideON_ = embed_;
-            strideLseB_ = qSeqlenAligned_ * static_cast<int64_t>(qHeads_);
-            strideLseS_ = static_cast<int64_t>(qHeads_);
-            strideLseN_ = 1;
         }
         // v stride
         if constexpr (kvFormat == Format::TND) {
@@ -559,9 +554,7 @@ public:
         AscendC::GlobalTensor<int64_t>& gActualKvseqlen,
         AscendC::GlobalTensor<ElementSparseCount>& gSparseCount,
         AscendC::GlobalTensor<ElementSparseIdx>& gSparseIdx,
-        int64_t &oBOffset,
-        int64_t &lseBOffset,
-        int64_t &qBOffset)
+        int64_t &oBOffset)
     {
         uint32_t taskIdx = coreTaskId * coreNum + coreIdx;  // 反推全局 task 序号
 
@@ -584,7 +577,6 @@ public:
             // TND: 跨 batch 时累加上一 batch 实际长度（此时 kvSeqlen 仍为上一 batch 值）
             if constexpr (qFormat == Format::TND) {
                  oBOffset += qSeqlen * strideO_;
-                 lseBOffset += qSeqlen * strideLse_;
               }
             if constexpr (kvFormat == Format::TND) {
                 vBOffset += kvSeqlen * strideKVData_;
@@ -629,33 +621,25 @@ public:
         uint32_t taskTileNum = static_cast<uint32_t>(
             CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
 
-        // O / Lse GM offset
+        // O GM offset
         int64_t qSOffset = static_cast<int64_t>(xBlockIdx) * blockShapeX_ + qSTileIdxCurXBlock * qBaseTile_;
         if constexpr (qFormat == Format::TND) {
             info.gmOffsetO = oBOffset + qSOffset * strideO_ + qHeadIdx * embed_;
-            info.gmOffsetLse = lseBOffset + qSOffset * strideLse_ + qHeadIdx;
         } else if constexpr (qFormat == Format::BNSD) {
             oBOffset = static_cast<int64_t>(curBatch) * strideOB_;
-            lseBOffset = static_cast<int64_t>(curBatch) * strideLseB_;
             info.gmOffsetO = oBOffset + qHeadIdx * strideON_ + qSOffset * strideOS_;
-            info.gmOffsetLse = lseBOffset + qHeadIdx * strideLseN_ + qSOffset * strideLseS_;
         } else if constexpr (qFormat == Format::BSND) {
             oBOffset = static_cast<int64_t>(curBatch) * strideOB_;
-            lseBOffset = static_cast<int64_t>(curBatch) * strideLseB_;
             info.gmOffsetO = oBOffset + qSOffset * strideOS_ + qHeadIdx * strideON_;
-            info.gmOffsetLse = lseBOffset + qSOffset * strideLseS_ + qHeadIdx * strideLseN_;
         }
-        // O / Lse shape col
+        // O shape col
          if constexpr (qFormat == Format::TND) {
              info.oShapeCol = static_cast<uint32_t>(strideO_);
-             info.lseShapeCol = static_cast<uint32_t>(strideLse_);
          } else if constexpr (qFormat == Format::BNSD) {
              info.oShapeCol = static_cast<uint32_t>(strideOS_);
-             info.lseShapeCol = static_cast<uint32_t>(strideLseS_);
          } else if constexpr (qFormat == Format::BSND) {
              info.oShapeCol = static_cast<uint32_t>(strideOS_);
-             info.lseShapeCol = static_cast<uint32_t>(strideLseS_);
-        }
+         }
 
         info.batchIdx = curBatch;
         info.qHeadIdx = qHeadIdx;
@@ -856,15 +840,11 @@ private:
     uint32_t mm2L1AddrStart_ = 0;
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
-    // ===== stride 族（O / Lse / V 数据 / V-scale）=====
+    // ===== stride 族（O / V 数据 / V-scale）=====
     int64_t strideO_;
-    int64_t strideLse_;
     int64_t strideOB_;
     int64_t strideON_;
     int64_t strideOS_;
-    int64_t strideLseB_;
-    int64_t strideLseN_;
-    int64_t strideLseS_;
     // ===== V 数据 / V-scale stride（PV 稀疏 gather 用，operator() 内预算一次）=====
     // V 数据为 fp4，sizeof(fp4x2_e2m1_t)=1，元素偏移即字节偏移
     int64_t strideKVData_ = 0;   // TND: 每 token 跨 kvHead 的步长（fp4 元素）
