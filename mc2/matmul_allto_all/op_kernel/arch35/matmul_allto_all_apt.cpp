@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #endif
 #include "common.h"
-#include "../matmul_allto_all_arch35.h"
+#include "../matmul_allto_all_kernel_base.h"
 #include "../matmul_allto_all_pipeline.h"
 #include "matmul_allto_all_tiling_key.h"
 #include "matmul_allto_all_tiling_data.h"

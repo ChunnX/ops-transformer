@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file all_gather_matmul_tiling_arch35.h
+ * \file all_gather_matmul_tiling_data.h
  * \brief
  */
-#ifndef __ALL_GATHER_MATMUL_TILING_arch35_H_
-#define __ALL_GATHER_MATMUL_TILING_arch35_H_
+#ifndef __ALL_GATHER_MATMUL_TILING_DATA_H_
+#define __ALL_GATHER_MATMUL_TILING_DATA_H_
 
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../common/op_kernel/mc2_tiling_struct.h"

@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file allto_all_matmul_arch35.h
+ * \file allto_all_matmul_kernel_base.h
  * \brief
  */
 
-#ifndef ALLTO_ALL_MATMUL_ARCH35_H
-#define ALLTO_ALL_MATMUL_ARCH35_H
+#ifndef ALLTO_ALL_MATMUL_KERNEL_BASE_H
+#define ALLTO_ALL_MATMUL_KERNEL_BASE_H
 
 namespace Mc2Kernel {
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
