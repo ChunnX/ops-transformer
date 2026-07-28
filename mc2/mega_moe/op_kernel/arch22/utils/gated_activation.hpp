@@ -20,6 +20,7 @@ enum class GatedActivationMode : uint32_t {
     SWIGLU_GPT_OSS = 1,
     SITU = 2,
     SWIGLU_STEP = 3,
+    SWIGLU_OAI = 4,
 };
 
 // All gated activations used by MegaMoe follow this interface. A new
@@ -114,6 +115,43 @@ struct GptOssSwigluActivation {
         }
 
         AscendC::Adds(up, up, 1.0f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Muls(output, gate, -alpha, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Exp(output, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(output, output, 1.0f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Div(output, gate, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Mul(output, output, up, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+};
+
+// MiniMax M3 SwiGLU-OAI uses the same activation math as GPT-OSS, but its
+// gate/up projection is stored as two contiguous halves rather than
+// interleaved columns:
+//     (up + beta) * gate * sigmoid(alpha * gate).
+struct SwigluOaiActivation {
+    static constexpr float DEFAULT_ALPHA = 1.702f;
+    static constexpr float DEFAULT_BETA = 1.0f;
+
+    CATLASS_DEVICE
+    static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
+                        AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
+                        uint32_t dataLength, float clampLimit, float alpha = DEFAULT_ALPHA, float beta = DEFAULT_BETA)
+    {
+        if (clampLimit > 0.0f) {
+            AscendC::ClampMax(gate, gate, sharedTmpBuffer, clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::ClampMax(up, up, sharedTmpBuffer, clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::ClampMin(up, up, sharedTmpBuffer, -clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+
+        AscendC::Adds(up, up, beta, dataLength);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Muls(output, gate, -alpha, dataLength);
         AscendC::PipeBarrier<PIPE_V>();
@@ -265,6 +303,11 @@ struct GatedActivation {
     {
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_GPT_OSS)) {
             GptOssSwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit, activationAlpha);
+            return;
+        }
+        if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_OAI)) {
+            SwigluOaiActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit, activationAlpha,
+                                         activationBeta);
             return;
         }
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SITU)) {

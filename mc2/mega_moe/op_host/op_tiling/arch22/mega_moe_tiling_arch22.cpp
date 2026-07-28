@@ -50,8 +50,8 @@ constexpr uint32_t ATTR_COMM_ALG_INDEX = 7;                // 通信算法配置
 constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 8; // 每个 rank 的最大 token 数(bs数量)
 constexpr uint32_t ATTR_ACTIVATION_INDEX = 9;              // 激活函数类型（如 "swiglu"）
 constexpr uint32_t ATTR_ACTIVATION_CLAMP_INDEX = 10;       // 激活函数 clamp 值
-constexpr uint32_t ATTR_ACTIVATION_ALPHA_INDEX = 11;       // GPT-OSS alpha / SiTU linear beta
-constexpr uint32_t ATTR_ACTIVATION_BETA_INDEX = 12;        // SiTU gate branch beta
+constexpr uint32_t ATTR_ACTIVATION_ALPHA_INDEX = 11;       // GPT-OSS/MiniMax alpha / SiTU linear beta
+constexpr uint32_t ATTR_ACTIVATION_BETA_INDEX = 12;        // MiniMax up bias / SiTU gate branch beta
 constexpr uint32_t ATTR_ACTIVATION_OUT_DTYPE_INDEX = 13;   // 激活函数输出数据类型
 constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 14;      // weight1 是否转置
 constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 15;      // weight2 是否转置
@@ -61,6 +61,7 @@ constexpr uint32_t ACTIVATION_CODE_SWIGLU = 0;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_GPT_OSS = 1;
 constexpr uint32_t ACTIVATION_CODE_SITU = 2;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_STEP = 3;
+constexpr uint32_t ACTIVATION_CODE_SWIGLU_OAI = 4;
 
 // 输入 tensor 索引
 constexpr uint32_t CONTEXT_INDEX = 0;        // context，shape = [?]
@@ -279,10 +280,12 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
         activationCode = ACTIVATION_CODE_SITU;
     } else if (activationStr == "swiglustep") {
         activationCode = ACTIVATION_CODE_SWIGLU_STEP;
+    } else if (activationStr == "swigluoai") {
+        activationCode = ACTIVATION_CODE_SWIGLU_OAI;
     } else {
         OP_LOGE(K_INNER_DEBUG,
-                "activation is invalid, support 'swiglu', 'swiglustep', 'swiglu_gpt_oss' and "
-                "'situ', but got '%s'.",
+                "activation is invalid, support 'swiglu', 'swiglustep', 'swiglu_gpt_oss', "
+                "'swigluoai' and 'situ', but got '%s'.",
                 ptr);
         return GRAPH_FAILED;
     }

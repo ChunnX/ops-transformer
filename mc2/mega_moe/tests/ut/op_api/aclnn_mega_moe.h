@@ -60,9 +60,11 @@ extern "C" {
  * @param [in] numMaxTokensPerRank:
  * 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示所有卡的token数相同且为当前bs（x的dim0）。
  * @param [in] activation:
- * 计算可选输入，str。激活函数类型，A2/A3支持"swiglu"、"swiglustep"、"swiglu_gpt_oss"和"situ"，
+ * 计算可选输入，str。激活函数类型，A2/A3支持"swiglu"、"swiglustep"、"swiglu_gpt_oss"、"swigluoai"和"situ"，
  * A5仅支持"swiglu"，默认值为"swiglu"。
  * @param [in] activationClamp: 计算可选输入，float。激活函数截断值，默认值为float最大值。
+ * @param [in] activationAlpha: 计算可选输入，float。GPT-OSS/MiniMax的sigmoid增益，默认值为1.702。
+ * @param [in] activationBeta: 计算可选输入，float。MiniMax的up分支偏置或SiTU的gate分支beta，默认值为1.0。
  * @param [in] topoType: 计算可选输入，int。通信拓扑类型，默认值为0。
  * @param [in] topkWeightsType: 计算可选输入，int。权重前移模式，0=不开启（默认），1=开启权重前移。
  * @param [out] yOut: 计算输出，Tensor，必选输出，数据类型bfloat16，仅支持2维，数据格式支持ND。
