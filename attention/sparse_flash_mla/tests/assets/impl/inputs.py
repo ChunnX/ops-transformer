@@ -19,6 +19,109 @@ from pathlib import Path
 import torch
 
 
+class TorchBatchRandomContext:
+    """Make declared batch slices deterministic while pytest builds the case."""
+
+    SEED_MODULUS = (1 << 63) - 1
+
+    def __init__(self, q, kwargs):
+        self.batch_size = int(q.shape[0])
+        self.relations = self.parse_relations(q, kwargs)
+        self.base_seed = self.relations[0][1]
+        self.call_index = 0
+        self.original_rand = None
+
+    @classmethod
+    def from_case(cls, q, kwargs):
+        fields = tuple(kwargs.get(name) for name in (
+            "batch_axis", "batch_slice_info", "batch_seed"
+        ))
+        if all(field is None for field in fields):
+            return None
+        if any(field is None for field in fields):
+            raise ValueError(
+                "batch_axis, batch_slice_info and batch_seed must be set together"
+            )
+        if kwargs.get("layout_q", "BSND") != "BSND" or kwargs.get(
+                "layout_kv", "BSND") != "BSND":
+            raise ValueError("SMLA batch consistency currently supports BSND/BSND only")
+        return cls(q, kwargs)
+
+    @staticmethod
+    def parse_relations(q, kwargs):
+        batch_axis = kwargs["batch_axis"]
+        batch_slices = kwargs["batch_slice_info"]
+        batch_seed = kwargs["batch_seed"]
+        if not batch_axis or batch_axis[0] != (0,):
+            raise ValueError("SMLA batch consistency requires q batch_axis=((0,), ...)")
+        if not batch_slices or batch_slices[0] is None or batch_seed[0] is None:
+            raise ValueError("SMLA batch consistency requires slices and seeds on q")
+        if any(slices is not None for slices in batch_slices[1:]):
+            raise ValueError("SMLA batch consistency relations must be declared on q only")
+
+        relations = list(zip(batch_slices[0][0], batch_seed[0][0]))
+        if not relations:
+            raise ValueError("SMLA batch consistency requires at least one q slice")
+        if len({seed for _, seed in relations}) != 1:
+            raise ValueError("SMLA batch consistency supports one relation seed per case")
+        for slice_value, _ in relations:
+            start, stop, step = slice_value
+            if step != 1 or start < 0 or start >= stop or stop > int(q.shape[0]):
+                raise ValueError(
+                    "SMLA batch consistency requires in-range, contiguous q batch slices"
+                )
+        return relations
+
+    def validate_params(self, params):
+        if params.get("template_mode") not in ("SWA", "HCA"):
+            raise ValueError("SMLA batch consistency currently excludes sparse modes")
+
+    @classmethod
+    def derive_seed(cls, seed, call_index):
+        return (int(seed) + (call_index + 1) * 1000003) % cls.SEED_MODULUS
+
+    @staticmethod
+    def create_generator(seed, device):
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
+        return generator
+
+    def random_values(self, *size, **kwargs):
+        call_index = self.call_index
+        self.call_index += 1
+        call_kwargs = dict(kwargs)
+        device = call_kwargs.get("device") or "cpu"
+        call_kwargs["generator"] = self.create_generator(
+            self.derive_seed(self.base_seed, call_index), device
+        )
+        value = self.original_rand(*size, **call_kwargs)
+        if value.ndim < 2 or int(value.shape[0]) != self.batch_size:
+            return value
+
+        for slice_value, seed in self.relations:
+            selector = (slice(*slice_value),) + (slice(None),) * (value.ndim - 1)
+            piece = value[selector]
+            piece_generator = self.create_generator(
+                self.derive_seed(seed, call_index), value.device
+            )
+            value[selector] = self.original_rand(
+                tuple(piece.shape),
+                generator=piece_generator,
+                dtype=value.dtype,
+                device=value.device,
+            )
+        return value
+
+    def __enter__(self):
+        self.original_rand = torch.rand
+        torch.rand = self.random_values
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        torch.rand = self.original_rand
+        return False
+
+
 class SparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
 
@@ -240,7 +343,7 @@ class SparseFlashMlaInputAdapter:
             )
         dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
 
-    def generate_case(self, params):
+    def generate_case(self, params, batch_random=None):
         pytest_utils = self.load_pytest_module("utils", "utils.py")
         pytest_golden = self.load_pytest_module("golden", "sparse_flash_mla_golden.py")
         pytest_input = {name: [value] for name, value in params.items()}
@@ -250,18 +353,27 @@ class SparseFlashMlaInputAdapter:
                 f"expected one pytest parameter combination, got {len(param_combinations)}"
             )
         case_params = pytest_utils.generate_case_with_default_param(param_combinations[0])
-        data = pytest_golden.gen_data(case_params, prepare_device_storage=False)
+        if batch_random is None:
+            data = pytest_golden.gen_data(
+                case_params, prepare_device_storage=False
+            )
+        else:
+            batch_random.validate_params(case_params)
+            with batch_random:
+                data = pytest_golden.gen_data(
+                    case_params, prepare_device_storage=False
+                )
         testcase_name = params.get("testcase_name") or case_params.get("testcase_name")
         self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data
 
     def customize(self, q, ori_kv, cmp_kv, ori_sparse_indices,
-                  cmp_sparse_indices, layout_q, layout_kv, kwargs):
+                  cmp_sparse_indices, layout_q, layout_kv, kwargs, batch_random=None):
         params = self.build_case_params(
             q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
             layout_q, layout_kv, kwargs
         )
-        return self.generate_case(params)
+        return self.generate_case(params, batch_random)
 
 
 INPUT_ADAPTER = SparseFlashMlaInputAdapter()
@@ -275,6 +387,7 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
                                      cmp_residual_kv=None, ori_topk_length=None,
                                      cmp_topk_length=None, sinks=None, **kwargs):
     """Reuse the pytest parameter and input processing for a TTK case."""
+    batch_random = TorchBatchRandomContext.from_case(q, kwargs)
     data = INPUT_ADAPTER.customize(
         q,
         ori_kv,
@@ -284,6 +397,7 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
         kwargs.get("layout_q"),
         kwargs.get("layout_kv"),
         kwargs,
+        batch_random,
     )
     op_input = data["input"]
     metadata_input = data.get("metadata_input", {})
