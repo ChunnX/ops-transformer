@@ -948,16 +948,16 @@ ge::graphStatus CheckFAISeqlenDataInTND(
         int64_t keyT = keyShape->GetStorageShape().GetDim(DIM_0);
         int64_t valueT = valueShape->GetStorageShape().GetDim(DIM_0);
 
-        OP_CHECK_IF(queryT != lastSeqLen,
+        OP_CHECK_IF(queryT < lastSeqLen,
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "When layout is TND, queryT(%ld) must be equal to the last element of actualSequenceLengthQ(%ld)",
+                "When layout is TND, queryT(%ld) must be greater than or equal to the last element of actualSequenceLengthQ(%ld)",
                 queryT, lastSeqLen),
                 return ge::GRAPH_FAILED);
         if (!isPageAttention) {
-            OP_CHECK_IF((keyT != lastSeqLenKV) || (valueT != lastSeqLenKV),
+            OP_CHECK_IF((keyT < lastSeqLenKV) || (valueT < lastSeqLenKV),
                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                     "When layout is TND and PA not enabled, "
-                    "keyT(%ld) and valueT(%ld) must be equal to the last element of actualSeqenceLengthKV(%ld)",
+                    "keyT(%ld) and valueT(%ld) must be greater than or equal to the last element of actualSeqenceLengthKV(%ld)",
                     keyT, valueT, lastSeqLenKV),
                     return ge::GRAPH_FAILED);
         }
@@ -1067,9 +1067,9 @@ ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
         "When layout is TND, actualSequenceLengthKV is required, but the number of element in it is 0!"),
         return ge::GRAPH_FAILED);
-    // if (CheckFAISeqlenDataInTND(context, isPageAttention, actSeqLenDims, actSeqLenKVDims) != ge::GRAPH_SUCCESS) {
-    //     return ge::GRAPH_FAILED;
-    // }
+    if (CheckFAISeqlenDataInTND(context, isPageAttention, actSeqLenDims, actSeqLenKVDims) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     int32_t sparseMode = static_cast<int32_t>(*(context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
     if (sparseMode == 4 && CheckSparseModeParams(context, actSeqLenDims) != ge::GRAPH_SUCCESS) { // 4: sparseMode
         return ge::GRAPH_FAILED;
@@ -2238,7 +2238,7 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         OP_CHECK_IF(TilingProcess4SplitFuse(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for split fuse failed"),
             return ge::GRAPH_FAILED);
-        // qs=0场景：query序列长度为0时仅需单核执行，避免BATCH_MODE_SCHEDULE下多核空转导致同步异常
+        // qs=0场景：所有batch的query序列长度均为0时，totalTaskNum=0
         if (queryS == 0) {
             context->SetBlockDim(1);
         }
