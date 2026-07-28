@@ -21,12 +21,9 @@ using namespace ge;
 namespace optiling {
 
 ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(
-    gert::TilingContext* context, int64_t layout, int64_t maskMode,
-    int64_t cmpRatio, const std::string& layoutQStr, const std::string& layoutKStr,
-    int64_t bSize, int64_t s1Size, int64_t s2Size,
-    int64_t n1Size, int64_t n2Size, int64_t dSize,
-    int64_t keyB, int64_t keyD,
-    int64_t weightB, int64_t weightS1, int64_t weightN1)
+    gert::TilingContext *context, int64_t layout, int64_t maskMode, int64_t cmpRatio, const std::string &layoutQStr,
+    const std::string &layoutKStr, int64_t bSize, int64_t s1Size, int64_t s2Size, int64_t n1Size, int64_t n2Size,
+    int64_t dSize, int64_t keyB, int64_t keyD, int64_t weightB, int64_t weightS1, int64_t weightN1)
 {
     OP_CHECK_IF(layoutQStr != layoutKStr,
                 OP_LOGE(context->GetNodeName(), "layoutQ and layoutK must be the same, but got %s and %s.",
@@ -41,12 +38,12 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(
                 OP_LOGE(context->GetNodeName(), "cmp_ratio must be in [1, 128], but got %ld.", cmpRatio),
                 return ge::GRAPH_PARAM_INVALID);
 
-    OP_CHECK_IF(dSize != 128,
-                OP_LOGE(context->GetNodeName(), "head_dim must be 128, but got %ld.", dSize),
+    OP_CHECK_IF(dSize != 128, OP_LOGE(context->GetNodeName(), "head_dim must be 128, but got %ld.", dSize),
                 return ge::GRAPH_PARAM_INVALID);
 
     OP_CHECK_IF(keyD != dSize,
-                OP_LOGE(context->GetNodeName(), "keyIndex D dim must be equal to queryIndex D dim, "
+                OP_LOGE(context->GetNodeName(),
+                        "keyIndex D dim must be equal to queryIndex D dim, "
                         "but got qD=%ld kD=%ld.",
                         dSize, keyD),
                 return ge::GRAPH_PARAM_INVALID);
@@ -55,29 +52,26 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(
                 OP_LOGE(context->GetNodeName(), "num_heads_q must be in [1, 128], but got %ld.", n1Size),
                 return ge::GRAPH_PARAM_INVALID);
 
-    OP_CHECK_IF(n2Size != 1,
-                OP_LOGE(context->GetNodeName(), "num_heads_k must be 1, but got %ld.", n2Size),
+    OP_CHECK_IF(n2Size != 1, OP_LOGE(context->GetNodeName(), "num_heads_k must be 1, but got %ld.", n2Size),
                 return ge::GRAPH_PARAM_INVALID);
 
-    OP_CHECK_IF(bSize <= 0,
-                OP_LOGE(context->GetNodeName(), "batch_size must be positive, but got %ld.", bSize),
+    OP_CHECK_IF(bSize <= 0, OP_LOGE(context->GetNodeName(), "batch_size must be positive, but got %ld.", bSize),
                 return ge::GRAPH_PARAM_INVALID);
 
     if (layout == 0) {
         OP_CHECK_IF(keyB != bSize,
-                    OP_LOGE(context->GetNodeName(), "keyIndex B dim must be equal to queryIndex B dim, "
+                    OP_LOGE(context->GetNodeName(),
+                            "keyIndex B dim must be equal to queryIndex B dim, "
                             "but got qB=%ld kB=%ld.",
                             bSize, keyB),
                     return ge::GRAPH_PARAM_INVALID);
-        OP_CHECK_IF(s1Size <= 0,
-                    OP_LOGE(context->GetNodeName(), "S1 must be positive for BSND, but got %ld.", s1Size),
+        OP_CHECK_IF(s1Size <= 0, OP_LOGE(context->GetNodeName(), "S1 must be positive for BSND, but got %ld.", s1Size),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF(s2Size < 0,
                     OP_LOGE(context->GetNodeName(), "S2 must be non-negative for BSND, but got %ld.", s2Size),
                     return ge::GRAPH_PARAM_INVALID);
     } else {
-        OP_CHECK_IF(s1Size <= 0,
-                    OP_LOGE(context->GetNodeName(), "T1 must be positive for TND, but got %ld.", s1Size),
+        OP_CHECK_IF(s1Size <= 0, OP_LOGE(context->GetNodeName(), "T1 must be positive for TND, but got %ld.", s1Size),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF(s2Size < 0,
                     OP_LOGE(context->GetNodeName(), "T2 must be non-negative for TND, but got %ld.", s2Size),
@@ -99,14 +93,15 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(
         auto cmpResidualKShape = context->GetOptionalInputShape(7);
         OP_CHECK_IF(cmpResidualKShape == nullptr,
                     OP_LOGE(context->GetNodeName(), "cmp_residual_k must be provided when "
-                            "mask_mode=3 and cmp_ratio>1."),
+                                                    "mask_mode=3 and cmp_ratio>1."),
                     return ge::GRAPH_PARAM_INVALID);
     }
 
     auto cuSeqLensQShape = context->GetOptionalInputShape(3);
     if (cuSeqLensQShape != nullptr) {
         OP_CHECK_IF(cuSeqLensQShape->GetStorageShape().GetDim(0) != bSize + 1,
-                    OP_LOGE(context->GetNodeName(), "cu_seqlens_q length must be batch_size + 1, "
+                    OP_LOGE(context->GetNodeName(),
+                            "cu_seqlens_q length must be batch_size + 1, "
                             "but got %ld and batch_size=%ld.",
                             cuSeqLensQShape->GetStorageShape().GetDim(0), bSize),
                     return ge::GRAPH_PARAM_INVALID);
@@ -115,7 +110,8 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(
     auto cuSeqLensKShape = context->GetOptionalInputShape(4);
     if (cuSeqLensKShape != nullptr) {
         OP_CHECK_IF(cuSeqLensKShape->GetStorageShape().GetDim(0) != bSize + 1,
-                    OP_LOGE(context->GetNodeName(), "cu_seqlens_k length must be batch_size + 1, "
+                    OP_LOGE(context->GetNodeName(),
+                            "cu_seqlens_k length must be batch_size + 1, "
                             "but got %ld and batch_size=%ld.",
                             cuSeqLensKShape->GetStorageShape().GetDim(0), bSize),
                     return ge::GRAPH_PARAM_INVALID);
@@ -124,7 +120,8 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(
     auto seqUsedQShape = context->GetOptionalInputShape(5);
     if (seqUsedQShape != nullptr) {
         OP_CHECK_IF(seqUsedQShape->GetStorageShape().GetDim(0) != bSize,
-                    OP_LOGE(context->GetNodeName(), "seqused_q length must be batch_size, "
+                    OP_LOGE(context->GetNodeName(),
+                            "seqused_q length must be batch_size, "
                             "but got %ld and batch_size=%ld.",
                             seqUsedQShape->GetStorageShape().GetDim(0), bSize),
                     return ge::GRAPH_PARAM_INVALID);
@@ -133,7 +130,8 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(
     auto seqUsedKShape = context->GetOptionalInputShape(6);
     if (seqUsedKShape != nullptr) {
         OP_CHECK_IF(seqUsedKShape->GetStorageShape().GetDim(0) != bSize,
-                    OP_LOGE(context->GetNodeName(), "seqused_k length must be batch_size, "
+                    OP_LOGE(context->GetNodeName(),
+                            "seqused_k length must be batch_size, "
                             "but got %ld and batch_size=%ld.",
                             seqUsedKShape->GetStorageShape().GetDim(0), bSize),
                     return ge::GRAPH_PARAM_INVALID);
@@ -142,7 +140,8 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(
     auto cmpResidualKShape = context->GetOptionalInputShape(7);
     if (cmpResidualKShape != nullptr) {
         OP_CHECK_IF(cmpResidualKShape->GetStorageShape().GetDim(0) != bSize,
-                    OP_LOGE(context->GetNodeName(), "cmp_residual_k length must be batch_size, "
+                    OP_LOGE(context->GetNodeName(),
+                            "cmp_residual_k length must be batch_size, "
                             "but got %ld and batch_size=%ld.",
                             cmpResidualKShape->GetStorageShape().GetDim(0), bSize),
                     return ge::GRAPH_PARAM_INVALID);
@@ -163,7 +162,7 @@ ge::graphStatus DenseLISoftmaxLseV2CompileInfo::ParamCheck(
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingContext* context)
+static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingContext *context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -175,7 +174,7 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
     auto attrs = context->GetAttrs();
     int64_t maskMode = 0;
     int64_t cmpRatio = 1;
-    int64_t layout = 0;  // 0=BSND, 1=TND
+    int64_t layout = 0; // 0=BSND, 1=TND
     std::string layoutQStr = "BSND";
     std::string layoutKStr = "BSND";
     if (attrs != nullptr) {
@@ -255,11 +254,9 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
     }
 
     // Unified parameter validation
-    auto ret = DenseLISoftmaxLseV2CompileInfo::ParamCheck(
-        context, layout, maskMode, cmpRatio, layoutQStr, layoutKStr,
-        bSize, s1Size, s2Size, n1Size, n2Size, dSize,
-        keyB, keyD,
-        weightB, weightS1, weightN1);
+    auto ret = DenseLISoftmaxLseV2CompileInfo::ParamCheck(context, layout, maskMode, cmpRatio, layoutQStr, layoutKStr,
+                                                          bSize, s1Size, s2Size, n1Size, n2Size, dSize, keyB, keyD,
+                                                          weightB, weightS1, weightN1);
     OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "DenseLISoftmaxLseV2CompileInfo::ParamCheck failed."),
                 return ge::GRAPH_PARAM_INVALID);
@@ -288,11 +285,9 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
 
     // TilingKey: bit0=is_long_s2, bit1=has_seq_used_q, bit2=has_seq_used_k,
     //            bits3-4=mask_mode, bit5=layout
-    uint64_t tilingKey = static_cast<uint64_t>(isLongS2)
-                       | (static_cast<uint64_t>(hasSeqUsedQ) << 1)
-                       | (static_cast<uint64_t>(hasSeqUsedK) << 2)
-                       | (static_cast<uint64_t>(maskMode) << 3)
-                       | (static_cast<uint64_t>(layout) << 5);
+    uint64_t tilingKey = static_cast<uint64_t>(isLongS2) | (static_cast<uint64_t>(hasSeqUsedQ) << 1) |
+                         (static_cast<uint64_t>(hasSeqUsedK) << 2) | (static_cast<uint64_t>(maskMode) << 3) |
+                         (static_cast<uint64_t>(layout) << 5);
     context->SetTilingKey(tilingKey);
 
     // Workspace: system reserve + workspace_max [1,72] FP32 (288 bytes) + workspace_sum [1,72] FP32 (288 bytes)
@@ -304,19 +299,19 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
     if (isLongS2) {
         workspaceSize += static_cast<size_t>(WS_MAX_CORES) * static_cast<size_t>(s2Size) * sizeof(float);
     }
-    size_t* workSpaces = context->GetWorkspaceSizes(1);
+    size_t *workSpaces = context->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     OP_LOGI(context->GetNodeName(),
             "DenseLightningIndexerSoftmaxLseV2 tiling completed: blockDim=%u, aivNum=%u, aicNum=%u, "
             "layout=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, D=%ld, isLongS2=%ld, "
             "maskMode=%ld, cmpRatio=%ld, hasSeqUsedQ=%ld, hasSeqUsedK=%ld, workspaceSize=%zu.",
-            blockDim, aivNum, aicNum, layout, bSize, s1Size, s2Size, n1Size, n2Size, dSize,
-            isLongS2, maskMode, cmpRatio, hasSeqUsedQ, hasSeqUsedK, workspaceSize);
+            blockDim, aivNum, aicNum, layout, bSize, s1Size, s2Size, n1Size, n2Size, dSize, isLongS2, maskMode,
+            cmpRatio, hasSeqUsedQ, hasSeqUsedK, workspaceSize);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParseForDenseLightningIndexerSoftmaxLseV2(gert::TilingParseContext* context)
+static ge::graphStatus TilingParseForDenseLightningIndexerSoftmaxLseV2(gert::TilingParseContext *context)
 {
     return ge::GRAPH_SUCCESS;
 }

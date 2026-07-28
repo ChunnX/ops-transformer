@@ -443,6 +443,8 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2(
 #include <vector>
 #include <cstdint>
 #include <cmath>
+#include <cstring>
+#include "securec.h"
 #include "acl/acl.h"
 #include "aclnnop/aclnn_dense_lightning_indexer_softmax_lse_v2.h"
 
@@ -522,12 +524,13 @@ int main() {
   int64_t S1 = 128;
   int64_t S2 = 256;
   int64_t N1 = 8;
+  int64_t N2 = 1;
   int64_t D = 128;
 
   std::vector<int64_t> qIndexShape = {B, S1, N1, D};
-  std::vector<int64_t> kIndexShape = {B, S2, 1, D};
+  std::vector<int64_t> kIndexShape = {B, S2, N2, D};
   std::vector<int64_t> weightShape = {B, S1, N1};
-  std::vector<int64_t> softmaxLseShape = {B, S1};
+  std::vector<int64_t> softmaxLseShape = {B, N2, S1};
   std::vector<int64_t> metadataShape = {64};
 
   void* qIndexDeviceAddr = nullptr;
@@ -560,8 +563,23 @@ int main() {
   ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadata);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  const char *layoutQ = "BSND";
-  const char *layoutK = "BSND";
+  // BSND layout, maskMode=0 (defaultMask), cmpRatio=1
+  constexpr const char layoutQStr[] = "BSND";
+  constexpr const char layoutKStr[] = "BSND";
+  constexpr size_t layoutQLen = sizeof(layoutQStr);
+  constexpr size_t layoutKLen = sizeof(layoutKStr);
+  char layoutQ[layoutQLen];
+  char layoutK[layoutKLen];
+  errno_t memcpyRet = memcpy_s(layoutQ, sizeof(layoutQ), layoutQStr, layoutQLen);
+  if (memcpyRet != 0) {
+    LOG_PRINT("memcpy_s layoutQ failed. ERROR: %d\n", memcpyRet);
+    return -1;
+  }
+  memcpyRet = memcpy_s(layoutK, sizeof(layoutK), layoutKStr, layoutKLen);
+  if (memcpyRet != 0) {
+    LOG_PRINT("memcpy_s layoutK failed. ERROR: %d\n", memcpyRet);
+    return -1;
+  }
   int64_t maskMode = 0;
   int64_t cmpRatio = 1;
 
@@ -592,6 +610,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
   PrintOutResult(softmaxLseShape, &softmaxLseDeviceAddr);
+  LOG_PRINT("pass\n");
 
   aclDestroyTensor(qIndex);
   aclDestroyTensor(kIndex);

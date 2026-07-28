@@ -17,7 +17,7 @@
 namespace ops {
 class DenseLightningIndexerSoftmaxLseV2 : public OpDef {
 public:
-    explicit DenseLightningIndexerSoftmaxLseV2(const char* name) : OpDef(name)
+    explicit DenseLightningIndexerSoftmaxLseV2(const char *name) : OpDef(name)
     {
         this->Input("query_index")
             .ParamType(REQUIRED)
