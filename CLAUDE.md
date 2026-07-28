@@ -74,8 +74,11 @@ bash build.sh --ophost_test --noexec -O3   # 只编译不运行
 bash build.sh --run_example flash_attention_score eager cust --vendor_name=custom
 #   mode: eager | graph；pkg: cust；可选 --soc= --example_name=
 
-# 仿真模式（无需真实 NPU，需配合 --soc）
-bash build.sh --run_example add_example eager --simulator --soc=ascend910b
+# 仿真模式（无需真实 NPU，需配合 --soc）；camodel 仿真当前仅 Ascend950 支持
+bash build.sh --run_example <op_name> eager --simulator=camodel --soc=ascend950
+
+# 只改 tiling、不重编 kernel 二进制的打包方式（JIT 包）
+bash build.sh --jit --soc=ascend910b --ops=<op_name> -j16
 
 # experimental 算子需要该开关
 bash build.sh --pkg --experimental --soc=ascend910b
@@ -90,12 +93,25 @@ bash build.sh --make_clean
 
 `--noexec` 只编译 UT 不执行。`--cov` / `--asan` / `--valgrind` / `--oom` 分别开启覆盖率、AddressSanitizer（host 侧）、valgrind、kernel 侧 OOM。`--ops=` / `--module=` 用逗号分隔；合法 module：`mc2,attention,moe,ffn,mhc,posembedding,gmm,mamba`。
 
+**`--pkg` 行为**：不带 `--ops`/`--module` 时编 built-in 包；带 `--ops`/`--module` 时编 custom vendor 包。默认 vendor 名 `custom`（产物装到 `$ASCEND_HOME_PATH/opp/vendors/custom_transformer/`），用 `--vendor_name=<name>` 覆盖。`--module=mc2` 会自动并入 `gmm`。CMake `ENABLE_CCACHE` 默认 ON（自动探测 ccache）。`--ops` 用 snake_case 算子名。
+
 ### 安装与运行构建产物
 
 ```bash
 ./build_out/cann-ops-transformer-*linux*.run     # 安装到 $ASCEND_HOME_PATH/opp/vendors/<vendor>
 export LD_LIBRARY_PATH=$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/lib:$LD_LIBRARY_PATH
 ```
+
+### Python pytest
+
+各算子自带 `<op>/tests/pytest/`，含 `pytest.ini` 与 `conftest.py`（提供 `golden_mode`、`cache_dir` 等 fixture），测试参数在 `*_paramset_*.py` 里。CI 测试配置见 `tests/test_config.yaml`。
+
+```bash
+pytest <op>/tests/pytest/ -k "test_name"     # 直接跑某算子的 python 用例
+ASCEND_DEVICE_ID=3 pytest ...                 # 指定 NPU device（默认 0）
+```
+
+**测试隔离陷阱**：kernel 崩溃会毒化同会话后续用例——失败用例单独跑（`pytest -k "specific_test_name"`），崩后先 `npu-smi set -t reset -i <device_id>` 或等设备恢复再继续。部分用例用 `ThreadPoolExecutor(max_workers=1)`，会掩盖真实异常，要看完整 traceback。
 
 ### Kernel 调试陷阱：PRINTF / DumpTensor（重要）
 
@@ -106,6 +122,15 @@ AscendC `PRINTF`（大写，NPU 模式）和 `DumpTensor` 在真机上把数据�
 - 小写 `printf` 仅 CPU 仿真（`--simulator`）可用，真机不识别。
 - 改完 kernel 务必 `rm -rf build/`（kernel 二进制缓存会让旧 bin 混进来）。
 - 精度调试优先用 `ascendc-precision-debug` skill（DumpTensor 7 步法 / printf 调试法）。
+
+### 运行时调试与排错
+
+- **DumpTensor 运行期开关**：`export ASCENDC_DUMP=1` 开 / `=0` 关（仍需 `--debug` 构建才分配缓冲，见上）。
+- **plog 定位实际加载的 kernel**：`grep "binPath.*<OpName>" $HOME/ascend/log/debug/plog/plog-*.log | head -5`。若路径是 `built-in` 而非 `vendors/custom_transformer`，说明 custom 包没装或没生效。
+- **CANN built-in kernel 覆盖 vendor kernel**：同 hash 时 CANN 优先加载 built-in。custom 包改了 kernel 但行为没变时，删掉冲突的 built-in `.o`/`.json`（`$ASCEND_HOME_PATH/opp/built-in/op_impl/ai_core/tbe/kernel/<soc>/<op_dir>/`，**先备份**），这是每次 CANN 安装的一次性操作。
+- **kernel 缓存导致旧二进制**：除 `rm -rf build/` 外，清 `$HOME/atc_data/kernel_cache/` 等缓存目录。
+- **设备状态跨崩溃持久**：kernel 崩溃（507015 aicore timeout）会把设备留脏，后续用例连带失败。`npu-smi set -t reset -i <device_id>` 重置或等恢复。
+- **常见错误码**：`507015` = aicore timeout（kernel 挂死/非法内存，常因同步或越界）；`507014` = aicore error（内存访问违例/非法指令）。
 
 ## 算子目录结构
 
@@ -143,9 +168,13 @@ ${op_class}/${op_name}/
 
 Device 侧 kernel 使用 **Ascend C** 编程模型（`AscendC::` 命名空间）：`LocalTensor`、`GlobalTensor`、`TPipe` / `TQue` / `TBuf`、`DataCopy`、`MMAD`/matmul、`GetTilingData()`。Host 侧 Tiling（`op_host/*_tiling.cpp`）计算如何在 AI Core 间切分任务，并写入 `TilingData` 结构供 kernel 读取；`TilingKey` 在 kernel 运行期选择不同 Tiling 策略。`common/include/op_kernel/` 中的 iterator 所面向的存储层级为：GM → L1 → L0A/L0B → L0C → UB。最近提交历史（BMM1/BMM2、s2SplitSize、splitD、SINNER/SOUTER、MXFP group）反映的是 FlashAttention 式 kernel 的 Tiling 调优 —— D/QS/KVS 维度切分与“写 UB 还是写 GM”的权衡。
 
+## CLAUDE.md vs AGENTS.md
+
+`CLAUDE.md`（本文件）是权威单一源：build/test、目录结构、kernel 模型、FIA 流水架构、运行时调试，以及下文「D256 活跃调试日志」都已收录于此。`AGENTS.md` 是历史镜像，内容可能滞后；两份冲突时以 `CLAUDE.md` 为准。调试状态易变（每次实验后更新），改实验记录时更新本文件即可，不必再维护 AGENTS.md。
+
 ## FIA MXFP8 arch35 split-core 流水（当前工作焦点）
 
-`attention/common/op_kernel/arch35/fia_*fullquant_mx*` 是 FIA（fused_infer_attention_score）MXFP8 量化路径，A5（ascend950）专属。这是当前主要调试对象。理解它需要跨 host/kernel 多个文件，下面是架构要点。
+`attention/common/op_kernel/arch35/fia_*fullquant_mx*` 是 FIA（fused_infer_attention_score）MXFP8 量化路径，A5（ascend950）专属。这是当前主要调试对象。理解它需要跨 host/kernel 多个文件，下面是架构要点。**当前正在追的 D256 T=32 边界 bug 的实验记录见下文「D256 活跃调试日志」一节。**
 
 **Split-core（AIC cube + AIV vector）**：同一份 kernel 二进制跑在两种物理核上，运行期 `g_coreType` 选分支（`AIC` vs `AIV`）。模板分发器 `fia_template_dispatcher.h` 在匹配核型上实例化 `CubBlock`/`VecFaBlock`/`VecFdBlock` 为 Normal，另一核上实例化为 **`Dummy`（空体）**。⚠️ **Dummy 类与 Normal 类的 constexpr 成员（`mBaseSize`/`dVBaseSize`/`USE_DN`…）必须逐字一致**——只在一处改 constexpr 而忘另一处，会造成 AIC/AIV 静默不匹配（历史上一度导致 D256 输出全 0）。
 
@@ -168,6 +197,127 @@ Device 侧 kernel 使用 **Ascend C** 编程模型（`AscendC::` 命名空间）
 
 **关键文件**：`fia_block_cube_fullquant_mx.h`（BMM1/BMM2/fixpipe）、`fia_block_vec_fullquant_mx.h`（V1/V2）、`fia_kernel_fullquant_mx.h`（PRELOAD 编排）、`fia_template_dispatcher.h`（编译期配置 useDn/bmm2Write2Ub/splitD）、`fia_tiling_data_fullquant.h`、host 侧 `fia_tiling_fullquant_mx.cpp`。`examples/flash_attn_example/.../FA_IMPL.md` 是同款 noquant 流水线的最佳入门文档（内存层级 + PRELOAD 图示）。
 
+## D256 活跃调试日志（MxFP8 Prefill）
+
+> 本节状态易变，记录当前 D256 边界 bug 的调查进度。调查前先读这里，避免重做已验证无效的二分。
+
+**基线**：V1 修复前 master pass rate ≈ 25%；V1 修复（`x_exp_1=32`，commit `6dd2100ad`，已合入 master）后 25.18%，T=0..31 全对。剩余 T=32 边界 bug 在 C2（FixpipeMm2）。（注：commit hash 为快照，随 master 演进。）
+
+**测试用例**：`TND_B1_QS128_KVS128_Nq8_Nkv8_D256_SP0`，位于 `attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/`。
+
+**错误模式**（V1 修复后）：
+- T=0..31：全对（65536 元素，first_fail_idx=65536）
+- T=32..127：全错（axis0 range=[32,127]，96/128 errors）
+- 8 个 head 全受影响，256 个 D 维全受影响
+
+### 二分法定界（DumpTensor + sentinel）
+
+**方法**：在阶段边界用 DumpTensor（desc=10001/20001/30001）+ sentinel 填充（`Duplicate<half>(1000.0)`）探测未写入的 UB 位置。
+
+阶段边界：
+```
+C1(AIC) → [BMM1结果 UB] → V1(AIV) → [P数据 UB] → C2(AIC) → [BMM2结果 UB] → V2(AIV) → [输出]
+           desc=20001❌        desc=10001✅       desc=30001✅
+           (float没dump出)    (fp8,8192B)       (float,256B)
+```
+
+**V1 bug（已修）**：VF softmax StoreAlign 只把 P 数据写到了一半 NZ 位置（每 128 元素行：32 非零 + 32 零交替）。根因：MxFP8 fp8 路径 `x_exp_1 = x_exp + (ubN * 4)` 应为 `x_exp + 32`。第二次 StoreAlign 写到了 512 而非 32，奇数 32-block 留零，BMM2 读到零导致输出错乱。修复：`vf_mul_sel_softmaxflashv2_cast_nz_dn.h` 行 880、1285（MxFP8 NoUpdate/Update fp8 分支），commit `6dd2100ad`。
+
+> 注：扩展分支 `21a3ac09a` 曾有一个"revert"提交（`ef4424a03`）想把 x_exp_1 改回 32，但 diff 方向反了（重新应用了 ubN*4 而非回退到 32），修复直到现在才真正落地。
+
+**C2 bug（剩余）**：T=32 边界错。P 数据已确认正确（fp8 roundtrip 后 5792/8192 与 golden P 匹配，其余 2400 个零是 NZ padding，DataCopy 不读）。bug 在 `FixpipeMm2` `dualDstCtl=1`（M-split）。
+
+#### dump 实测结论（2026-07-28，A5 @ bc86ac703，25.18% 构建）
+
+对 16 个 AIV block 的 `desc=30001`（BMM2 fixpipe 后首 row，256 float）统计零/非零，得到干净的 50/50：
+
+```
+block= 0,2,4,6,8,10,12,14 (偶=subBlock0)  → 256/256 非零（满）
+block= 1,3,5,7,9,11,13,15 (奇=subBlock1)  →   0/256 非零（全零）
+```
+
+16 block = 8 heads × 2 subBlock，偶=subBlock0（处理 Sq 0-63）、奇=subBlock1（处理 Sq 64-127）。**subBlock1 的 BMM2 结果 UB 从未被写入（全零）**，subBlock0 首 row 正确。结合测试 row 0-31 对、32-127 错：`dualDstCtl=1` 的 M-split 第二半（M/2）**落进了 subBlock0 的 UB（覆盖 row 32-63 区），而不是 subBlock1 的 UB**。两者叠加 = row 0-31 对、32-127 错，与 axis0 range=[32,127] 吻合。**T=32 的真身是 M-split 第二目标落点偏了 32 行**，与 S1 tiling / actMSize 收缩无关。
+
+#### 行错位实锤（2026-07-28，读已保存的 npu/cpu 输出，无重新构建）
+
+直接比对 25.18% 那次跑保存的 `golden_cache/..._cpu_output.pt`（`cpu_out` [1,8,128,256]）与 `..._npu_output.pt`（`atten_out` [128,8,256]，TND）。对每个 npu Sq 行找 L2 最匹配的 cpu 行：
+
+```
+npu[ 0..31] -> cpu[ 0..31]   dist=0.0000        ← 完全正确
+npu[32..63] -> cpu[64..95]   dist≈0 (fp16 噪声)  ← 第二半 rows 64-95 错位 +32 落到 rows 32-63
+npu[64..127] -> 全零          (best-match 都是 cpu[39]，dist 恒定)  ← subBlock1 饿死
+```
+
+精确诊断：cube 的 `dualDstCtl=1` M-split 第二目标写到 **subBlock0 缓冲区内 offset = 8192 元素（= 32 行 = mm2ResultSize/2）**处——覆盖 subBlock0 rows 32-63（写入第二半的 rows 64-95），第二半的 rows 96-127 溢出丢失；subBlock1 缓冲区从未被写 → rows 64-127 全零。第二目标本应跨到 subBlock1 的 UB，却落到 subBlock0 内部半偏移。**根因实锤，三方吻合**（行错位 + dump 50/50 零 + axis0 range=[32,127]）。
+
+> 复现脚本：A5 容器内 `TORCH_DEVICE_BACKEND_AUTOLOAD=0 python3`，load 两个 .pt（dict：cpu `cpu_out`/`cpu_lse`、npu `atten_out`/`lse_out`），逐行 L2 匹配。torch_npu 自动加载会炸 sqlite3，必须 `TORCH_DEVICE_BACKEND_AUTOLOAD=0`。
+
+#### 关键 narrowing：bug 在 DN 专属路径，noquant 不能用来洗清参数
+
+⚠️ **noquant 不是有效的对照**：noquant 的 `IterateBmm2`（`fia_block_cube_noquant_gqa.h:496`）→ `IterateBmm2l0Split`，**noquant 根本没有 DN 路径**（无 `USE_DN`）。noquant D256 是靠 **ND l0Split**（`MatmulN`、单 matmul、无 K-split）跑通的，与 MX prefill 的 `IterateBmm2Dn`（`MatmulFullMX` + K-split + `FixpipeMm2` `dualDstCtl=1`）是**不同代码路径**。虽然两者 fixpipe 参数（nSize=256/mSize=128/srcStride=128/dstStride=256/dualDstCtl=1/ndNum=1）在满 tile 下相同，但 noquant 在 ND l0Split 下用、MX 在 DN K-split 下用——不能据"noquant 能跑"排除这组参数在 DN 路径下的问题。
+
+**D128 vs D256 都走同一条 MX DN 路径**（`BMM2_TOUB` 对 prefill 恒 true：`GetC2Position` 因 `optionalDn=useDn=true` 直接返回 VECCALC，与 D 无关），D128 能跑、D256 挂。差异仅在 nSize/dstStride（128 vs 256）、L0B 单/双缓冲、s2BaseSize/s2SplitSize。dump 症状（subBlock1 饿死 + subBlock0 row 32-63 被覆盖）指向 `dualDstCtl=1` 第二目标 offset 落在 32×256 而非 64×256——一个 2× 偏移错误，仅在 nSize≠mBaseSize（D256）时暴露。失败尝试 #6（srcStride→nSize）、#7/#8（ndNum/M-split）改的是 fixpipe 参数，**未触及 dualDstCtl 第二目标 offset**（可能是硬件固定或别处设定），故均无效。
+
+#### 已证伪的假设（勿再试）
+
+- ❌ **「cube `mSize=mBaseSize` vs vec `actVecMSize` 在 T=32 失配」**：核实 `CalcParams`（`fia_kernel_fullquant_mx.h:601-657`），本用例 `gS1Size=128*1=128`、单 S1 tile、`actMSize=mBaseSize=128`、`actVecMSize=64`、`dualDstCtl=1`（M/2=64+64），cube/vec 完全自洽，无失配。把 DN fixpipe `mSize/srcStride` 改成 `actMSize` 是无效改动（actMSize 本就等于 mBaseSize）。
+
+### D128 vs D256 tiling 差异
+
+| 参数 | D=128（正常） | D=256（异常） |
+|------|--------------|----------------|
+| sInnerFactor_ | SINNER_512 | SINNER_256 |
+| s2BaseSize | 512 | 256 |
+| s2BaseSizeCur (ubN) | 256 | 128 |
+| s2SplitSize | 256 | 128 |
+| blockStride (StoreAlign) | 65 | 33 |
+| nSize (FixpipeMm2) | 128 | 256 |
+| mBaseSize | 128 | 128 |
+| srcStride (FixpipeMm2) | 128 | 128 |
+
+D=128 能过是因为 `nSize == mBaseSize == 128`（巧合）；D=256 `nSize=256 ≠ mBaseSize=128`。
+
+### 已尝试的修复（均回退，除非注明）
+
+| # | 尝试 | 结果 | Commit |
+|---|------|------|--------|
+| 1 | splitD mode | L0C 够大，不需要 | `cf9f28019`→`27f18af48` |
+| 2 | BMM2 DN N-split | 回到 K-split | `d17b29f50`→`27f18af48` |
+| 3 | PScale dual copy stride | 部分保留 | `2f94fb881` |
+| 4 | P 数据 UB→L1 srcOffset 硬编 65 | 无效（65=mBaseSize/2+1，M 派生，正确） | `0a1a5046c`→`f5135c65a` |
+| 5 | P store 第二组 offset x_exp+(ubN/8) | 崩 | `77c9e0a28`→`93de962ae` |
+| 6 | FixpipeMm2 srcStride mBaseSize→nSize | 更差（25%→1.66%） | `30ac6eee8`→`fed381273` |
+| 7 | BMM2 M-half split（试过两次） | 更差（25%→1%） | `86f1754a0`→`5380aca4e`、`0a6def89e`→reverted |
+| 8 | BMM2 ndNum=2 N-split | 更差（25%→1%） | `41a5fb07d`→`eec05cc07` |
+| 9 | D-gate 止血（D256 禁用 DN） | host/kernel 不匹配，D256 全 0 | `8f9f9d83c`→`e8309ca24` |
+| 10 | T=32 dump 探针 | PRINTF/DumpTensor 触发 AICore error | `f5999f1b4`→`c1ecf82c7` |
+| 11 | x_exp_1 ubN*4→32（MxFP8 路径） | **修复 V1，25%→25.18%**（保留） | `6dd2100ad` |
+| 12 | srcOffset 65→vec1BlockStride | 更差（25%→23.27%，65 是 M 派生非 N 派生） | `0522bccac`→`5f212e89e` |
+
+### DumpTensor 探针（当前在代码中）
+
+`fia_block_vec_fullquant_mx.h` 内：
+- `desc=10001`：P 数据（stage1CastTensor，fp8，8192B）——V1 softmax 后、UB→L1 copy 前
+- `desc=20001`：BMM1 结果（mmRes，float）——不工作（float 类型 dump 不出）
+- `desc=30001`：BMM2 结果（ProcessVec2OnUb 中的 mmRes，float，256B）——C2 fixpipe 后
+
+启用：pytest 前 `export ASCENDC_DUMP=1`。探针源码无 `#ifdef DEBUG_DUMP` 守卫（无条件编译进），但真机运行仍需 `--debug` 构建分配缓冲，否则触发 507015（见上文「Kernel 调试陷阱」）。
+
+### 关键文件（调试）
+
+- `attention/common/op_kernel/arch35/fia_block_cube_fullquant_mx.h` —— IterateBmm2Dn、FixpipeMm2（C2 bug 位置）
+- `attention/common/op_kernel/arch35/fia_block_vec_fullquant_mx.h` —— ProcessVec1Dn（V1 已修）、ProcessVec2OnUb（V2）、P copy UB→L1、DumpTensor 探针
+- `attention/common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h` —— VF softmax、x_exp_1 offset（V1 修复）、StoreAlign 写入模式
+- `attention/common/op_kernel/arch35/fia_template_dispatcher.h` —— 模板分发、useDn、bmm2Write2Ub、D-gate 位置
+- `attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.cpp:1246` —— `sInnerFactor_ = (vHeadDim==DSIZE_256) ? SINNER_256 : SINNER_512`
+
+### 下一步待试（按新 dump 结论收敛）
+
+1. **查 `dualDstCtl=1` 第二目标 offset**（主攻）——dump 症状指向 M-split 第二半落在 32×256 而非 64×256。需确认第二目标地址如何由 dstTensor/dstStride/mSize/nSize 派生（可能是硬件固定），以及为何 nSize=256 时偏 2×。可加一个 desc 在 `IterateBmm2Dn` fixpipe 前后分别 dump `outputBuf`，对比 subBlock0/subBlock1 区域的实际写入 offset。
+2. **dump L0C 源布局**——在 `FixpipeMm2` 前 dump `mm2ResL0C`，确认 `MatmulFullMX` 产出的 L0C NZ 形态是否与 fixpipe `srcStride=mBaseSize` 的假设一致（D128 vs D256 对比）。
+3. **D-gate 止血**（保底，带 host+kernel 修复重试 #9）——对 D=256 禁用 DN 走 ND 路径（noquant 已证 ND l0Split 能跑 D256）。但 MX prefill 的 MXFP8 scale/布局需同步改 AIV 侧，非简单 gate（#9 即因单边改挂掉）。
+4. **咨询华为支持**——`dualDstCtl=1` 第二目标的硬件寻址规则、`MatmulFullMX` 的 L0C 输出 NZ 布局、以及 nSize≠mBaseSize 时 M-split 的正确配置。
+
 ## 仓库全局代码位置
 
 - `common/include/` —— 共享头文件，按层划分：`op_kernel/`（iterator、mma、mem、simd、hardware）、`op_host/`、`op_api/`、`op_graph/`、`util/`、`framework/`、`tiling_sink/`、`err/`。
@@ -183,8 +333,8 @@ Device 侧 kernel 使用 **Ascend C** 编程模型（`AscendC::` 命名空间）
 ## 规范与合规
 
 - 不确定某个 flag 时，查 `bash build.sh -h` 及 `bash build.sh <topic>`（如 `bash build.sh package`）会打印该 topic 的专属帮助。
-- `.clang-format`（style `file`）约束 C/C++ 格式；pre-commit 通过 clang-format v18 强制。修改 kernel 时遵循周边风格。
-- pre-commit 钩子（`.pre-commit-config.yaml`）：trailing-whitespace、end-of-file-fixer、clang-format（C/C++）、ruff check+format（Python）、codespell，以及本地 OAT license 合规检查（`scripts/oat_check.sh`）。codespell 设有领域专有白名单（`CANN`、`ascend`、`EnQue`、`CopyIn`、`ArchType` 等）—— 需要时优先扩展白名单，而非禁用。
+- `.clang-format`（style `file`）约束 C/C++ 格式：ColumnLimit 120、IndentWidth 4、PointerAlignment Right、BreakBeforeBraces Custom（AfterFunction true）；pre-commit 通过 clang-format v18 强制。修改 kernel 时遵循周边风格。本地跑：`pre-commit run --all-files`。
+- pre-commit 钩子（`.pre-commit-config.yaml`）：trailing-whitespace、end-of-file-fixer、check-yaml、clang-format（C/C++）、ruff check+format（Python）、codespell，以及本地 OAT license 合规检查（`scripts/oat_check.sh`）。codespell 跳过 `.py/.cpp/.hpp/.c/.h/.md`，并设有领域专有白名单（`CANN`、`ascend`、`EnQue`、`CopyIn`、`ArchType` 等）—— 需要时优先扩展白名单，而非禁用。
 - Python 依赖（`requirements.txt`）：`numpy<2.0`、`jinja2`、`sympy`、`scipy` 等。`install_deps.sh` 安装构建工具链依赖。
 - `3rdparty/catlass` 是 git 子模块（matmul 辅助库）。若 kernel 构建报缺失 `3rdparty/` 下头文件，执行 `git submodule update --init`。
 
