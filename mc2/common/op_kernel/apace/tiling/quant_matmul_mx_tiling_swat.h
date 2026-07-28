@@ -42,7 +42,7 @@ protected:
         // The streaming path can reuse the common base block search directly,
         // then specializes only the tail split and L1-depth decisions.
         CalcBasicBlock();
-        OptimizeEdgeBasicBlock();
+        // OptimizeEdgeBasicBlock();
         CalcTailBasicBlock();
         CalcPathSpecificL1();
 
