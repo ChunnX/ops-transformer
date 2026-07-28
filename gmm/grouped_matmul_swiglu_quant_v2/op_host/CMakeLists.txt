@@ -14,6 +14,15 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
     grouped_matmul_swiglu_quant_v2_def.cpp
     )
+    add_ops_compile_options(
+        OP_NAME GroupedMatmulSwigluQuantV2
+        OPTIONS --cce-auto-sync=off
+                -I${OPTENSOR_INCLUDE_ROOT}
+                -I${TENSOR_API_INCLUDE_ROOT}
+                -I${TENSOR_API_IMPL_INCLUDE_ROOT}
+                -Wno-deprecated-declarations
+                -Werror
+    )
 endif()
 
 if (BUILD_OPS_RTY_KERNEL) # 回黄kernel

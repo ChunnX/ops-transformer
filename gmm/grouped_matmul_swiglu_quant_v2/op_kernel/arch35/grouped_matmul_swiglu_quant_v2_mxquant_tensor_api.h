@@ -69,7 +69,7 @@ __aicore__ inline void GmmSwigluAswtTensorApi(
 
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
 
-    using SwigluKernel = Blaze::Gemm::Kernel::KernelGmmSwiGluMixMx<
+    using SwigluKernel = Blaze::Gemm::Kernel::GemmUniversal<
         ProblemShape, SwigluBlockMmad, BlockEpilogue, BlockScheduler>;
 
     using Params = typename SwigluKernel::Params;
