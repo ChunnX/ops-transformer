@@ -42,11 +42,8 @@ using namespace optiling;
         op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, cuSeqlensQ, cuSeqlensKv, \
                        seqUsedQ, seqUsedKv, blockTable, nullptr /* queryPaddingSize */, nullptr /* kvPaddingSize */, \
                        qScale /* deqScaleQ */, kScale /* deqScaleK */, vScale /* deqScaleV */, pScale /* pScale */, \
-                       nullptr /* keySharedPrefix */, nullptr /* valueSharedPrefix */, \
-                       nullptr /* actualSharedPrefixLen */, nullptr /* queryRope */, nullptr /* keyRope */, \
-                       nullptr /* learnableSink */, nullptr /* softmaxMax */, nullptr /* softmaxSum */, \
-                       nullptr /* softmaxOut */, softmaxLse, attentionOut, user /* workspace */, tilingDataPtr, \
-                       &tPipe); \
+                       nullptr /* softmaxMax */, nullptr /* softmaxSum */, softmaxLse, attentionOut, \
+                       user /* workspace */, tilingDataPtr, &tPipe); \
         op.Process(); \
     } while (0)
 
@@ -93,7 +90,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr BSALayout kvLayout = static_cast<BSALayout>(KV_LAYOUT_T);
     // isPa: KV 连续 -> false; PA_ND -> true
     constexpr bool bsaIsPa = true;
-    constexpr bool bsaUseDn = true;
+    constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     if constexpr (QUANT_MODE == MXFullQuantMode) {
         // MX 当前支持 TND + PA BNBD，S2 logical tile 为 512。
