@@ -597,7 +597,7 @@ void QSFATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberLi
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
         qsfaOssNum << std::to_string(expectNumberList[i]);
         if (i < expectNumberList.size() - 1) {
-            qsfaOssNum << ", ";
+            qsfaOssNum << " or ";
         }
     }
 
@@ -843,11 +843,8 @@ void QSFATilingCheck::SetQSFAShapeCompare()
 ge::graphStatus QSFATilingCheck::CheckBlockTable() const
 {
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
-        OP_CHECK_IF(
-            opParamInfo_.blockTable.tensor != nullptr,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                opName_, BLOCK_TABLE_NAME.c_str(),
-                Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
+        OP_CHECK_IF(opParamInfo_.blockTable.tensor != nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, BLOCK_TABLE_NAME.c_str(),
                 "When the layout_kv is " + QSFALayoutToSerialString(kvLayout_) + ", block_table should be null"),
             return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
@@ -1093,10 +1090,10 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
 ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSizes() const
 {
     OP_CHECK_IF(bSize_ <= 0,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "query", Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
-                    "batch_size should be greater than 0, but got " + std::to_string(bSize_)),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
+            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+            "batch_size should be greater than 0, but got " + std::to_string(bSize_)),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == QSFALayout::TND),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -1197,7 +1194,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantLayout() const
     OP_CHECK_IF(std::find(qsfaLayoutSupportList.begin(), qsfaLayoutSupportList.end(), layoutQuery) ==
                     qsfaLayoutSupportList.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_query", layoutQuery.c_str(),
-                                                      "layoutQuery only supports BSND/TND"),
+                    "layoutQuery only supports BSND or TND"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1214,10 +1211,12 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
     if (isA5_) {
         OP_CHECK_IF(
             inputKvType_ != ge::DT_FLOAT8_E4M3FN && inputKvType_ != ge::DT_HIFLOAT8 && inputKvType_ != ge::DT_INT8,
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                opName_, "key and value", QSFADataTypeToSerialString(inputKvType_).c_str(),
-                "The dtype of key and value must be " + QSFADataTypeToSerialString(ge::DT_FLOAT8_E4M3FN) + ", " +
-                    QSFADataTypeToSerialString(ge::DT_HIFLOAT8) + ", " + QSFADataTypeToSerialString(ge::DT_INT8)),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "key and value",
+                QSFADataTypeToSerialString(inputKvType_).c_str(),
+                "The dtype of key and value must be " +
+                QSFADataTypeToSerialString(ge::DT_FLOAT8_E4M3FN) + " or " +
+                QSFADataTypeToSerialString(ge::DT_HIFLOAT8) + " or " +
+                QSFADataTypeToSerialString(ge::DT_INT8)),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(inputKvType_ != ge::DT_INT8,
@@ -1284,17 +1283,18 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantPa() const
     }
 
     OP_CHECK_IF(blockSize_ <= 0 || blockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "key", Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
-                    "when page attention is enabled, block_size(" + std::to_string(blockSize_) +
-                        ") should be in range (0, " + std::to_string(MAX_BLOCK_SIZE) + "]"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+            "when page attention is enabled, block_size(" + std::to_string(blockSize_) +
+            ") should be in range (0, " + std::to_string(MAX_BLOCK_SIZE) + "]"),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         blockSize_ % 16 > 0,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            opName_, "key", Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
-            "when page attention is enabled, block_size(" + std::to_string(blockSize_) + ") should be 16-aligned"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+            "when page attention is enabled, block_size(" + std::to_string(blockSize_) +
+            ") should be 16-aligned"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(blockSize_ % sparseBlockSize_ > 0,
