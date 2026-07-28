@@ -290,9 +290,6 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
 {
     LocalTensor<int32_t> expertCountTempInLocal = expertCountTempInQueue_.DeQue<int32_t>();
     LocalTensor<int64_t> expertCountOutLocal = expertIdxCountOutQueue_.AllocTensor<int64_t>();
-    event_t eventIDMte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
-    SetFlag<HardEvent::MTE2_S>(eventIDMte2ToS);
-    WaitFlag<HardEvent::MTE2_S>(eventIDMte2ToS);
     if (expertTokensNumType_ == KEY_VALUE_MODE) {
         int64_t expertOffset = 0;
         Duplicate(expertCountOutLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
@@ -311,6 +308,9 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
         }
         expertCountElements_ = Min(expertCountElements_, static_cast<int64_t>((expertOffset + 1) * KEY_VALUE_MODE));
     } else if (expertTokensNumType_ == COUNT_MODE) {
+        event_t eventIDMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        SetFlag<HardEvent::MTE2_V>(eventIDMte2ToV);
+        WaitFlag<HardEvent::MTE2_V>(eventIDMte2ToV);
         Cast(expertCountOutLocal, expertCountTempInLocal, RoundMode::CAST_NONE, actualExpertNum_);
         PipeBarrier<PIPE_V>();
         if (needExpertTotalCount_ && useFp32Vector_) {
@@ -330,6 +330,9 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
         }
     } else if (expertTokensNumType_ == CUMSUM_MODE) {
         if (actualExpertNum_ > 0 && useFp32Vector_) {
+            event_t eventIDMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+            SetFlag<HardEvent::MTE2_V>(eventIDMte2ToV);
+            WaitFlag<HardEvent::MTE2_V>(eventIDMte2ToV);
             const uint32_t cumsumInner = static_cast<uint32_t>(Align(actualExpertNum_, sizeof(float)));
             LocalTensor<float> cumsumSrcLocal = reduceFloatBuf_.Get<float>();
             LocalTensor<float> cumsumDstLocal = cumsumDstBuf_.Get<float>();
@@ -357,6 +360,9 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
                 actualExpertTotalNum_ = static_cast<int64_t>(cumsumDstLocal.GetValue(actualExpertNum_ - 1));
             }
         } else {
+            event_t eventIDMte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
+            SetFlag<HardEvent::MTE2_S>(eventIDMte2ToS);
+            WaitFlag<HardEvent::MTE2_S>(eventIDMte2ToS);
             int64_t cumsumCount = 0;
             for (int64_t i = 0; i < actualExpertNum_; i++) {
                 int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
