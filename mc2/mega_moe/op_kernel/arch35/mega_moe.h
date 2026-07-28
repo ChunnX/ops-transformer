@@ -1742,18 +1742,17 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteSharedExpert(int32_t tokenIdx, int32_
 {
     GlobalTensor<bfloat16_t> sharedResult;
     sharedResult.SetGlobalBuffer((__gm__ bfloat16_t *)params_.workspaceInfo.sharedExpertResultPtr);
-    GlobalTensor<int32_t> tileCounter;
-    tileCounter.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.sharedExpertGmm2TileCounterPtr);
 
     // 当前 token 对应的 tile group index (GMM1_TILE_M=COMBINE_TOKEN_GROUP_SIZE=256)
     uint32_t tokenGroupIndex = static_cast<uint32_t>(tokenIdx) / GMM1_TILE_M;
     uint32_t tokenGroupCount = Ops::Base::CeilDiv(m_, GMM1_TILE_M);
+    uint64_t sharedExpertStride = static_cast<uint64_t>(tokenGroupCount) * static_cast<uint64_t>(INT_CACHELINE);
 
     for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
         // 轮询: 等待 C 核完成当前 shared expert 的当前 token group tile
         __gm__ int32_t *counterAddr = MegaMoeImpl::GetCombineSyncCounterAddress(
             (__gm__ int32_t *)params_.workspaceInfo.sharedExpertGmm2TileCounterPtr +
-                static_cast<uint64_t>(sharedIdx) * tokenGroupCount * static_cast<uint64_t>(INT_CACHELINE),
+                static_cast<uint64_t>(sharedIdx) * sharedExpertStride,
             tokenGroupIndex);
         while (AscendC::ReadGmByPassDCache(counterAddr) != static_cast<int32_t>(sharedExpertNTilesPerGroup_)) {
             int64_t waitStartCycle = AscendC::GetSystemCycle();
