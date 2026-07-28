@@ -65,7 +65,6 @@ def _normalize_params(params):
     normalized.setdefault("S1EQS2", False)
     normalized.setdefault("seed", 0)
     normalized.setdefault("sparse_pattern", "sequential")
-    normalized.setdefault("scale_pattern", "ones")
     normalized.setdefault("block_table_pattern", "sequential")
     normalized.setdefault("pa_block_padding_bytes", 0)
     normalized.setdefault("p_scale_value", 1.0)
@@ -255,10 +254,8 @@ def _make_fullquant_tensors(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths, gener
 
     if layout_q == "NTD":
         query_source = _rand_fullquant_source((n1, total_q, head_dim), amp_high * 0.01, amp_high, generator)
-        q_shape = (n1, total_q)
     else:
         query_source = _rand_fullquant_source((total_q, n1, head_dim), amp_high * 0.01, amp_high, generator)
-        q_shape = (total_q, n1)
     query, q_scale = _quantize_per_token_head(query_source)
 
     dense_key_source = _rand_fullquant_source((batch, case["S2"], n2, head_dim), 1.0, amp_high, generator)
