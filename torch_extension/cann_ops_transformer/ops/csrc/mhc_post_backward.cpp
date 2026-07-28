@@ -42,9 +42,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPostBackward(const
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(gradX, gradHres, gradHout, gradHpost);
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
-{
-    m.def("mhc_post_backward", &MhcPostBackward, "mhc_post_backward");
-}
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("mhc_post_backward", &MhcPostBackward, "mhc_post_backward"); }
 
 } // namespace op_api

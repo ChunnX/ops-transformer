@@ -27,20 +27,11 @@
 
 namespace optiling {
 
-inline int64_t CeilDiv(int64_t a, int64_t b)
-{
-    return (b == 0) ? 0 : (a + b - 1) / b;
-}
+inline int64_t CeilDiv(int64_t a, int64_t b) { return (b == 0) ? 0 : (a + b - 1) / b; }
 
-inline uint32_t AlignUp(uint32_t value, uint32_t align)
-{
-    return ((value + align - 1) / align) * align;
-}
+inline uint32_t AlignUp(uint32_t value, uint32_t align) { return ((value + align - 1) / align) * align; }
 
-inline uint32_t AlignDown(uint32_t value, uint32_t align)
-{
-    return (value / align) * align;
-}
+inline uint32_t AlignDown(uint32_t value, uint32_t align) { return (value / align) * align; }
 
 constexpr uint64_t TILING_KEY_GENERALIZED = 0;
 constexpr uint32_t BF16_FP16_ALIGN_SIZE = 16;
@@ -73,10 +64,7 @@ public:
     }
 
 protected:
-    bool IsCapable() override
-    {
-        return true;
-    }
+    bool IsCapable() override { return true; }
 
     ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus GetShapeAttrsInfo() override;
@@ -443,12 +431,12 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
             return ge::GRAPH_FAILED;
         }
         if (hOutShape->GetDim(0) != B || hOutShape->GetDim(1) != S || hOutShape->GetDim(2) != D) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "h_out, grad_output",
-                                                   (std::to_string(hOutShape->GetDim(0)) + "," +
-                                                    std::to_string(hOutShape->GetDim(1)) + "," +
-                                                    std::to_string(hOutShape->GetDim(2)))
-                                                       .c_str(),
-                                                   "h_out shape must be (B,S,D)");
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context_->GetNodeName(), "h_out, grad_output",
+                (std::to_string(hOutShape->GetDim(0)) + "," + std::to_string(hOutShape->GetDim(1)) + "," +
+                 std::to_string(hOutShape->GetDim(2)))
+                    .c_str(),
+                "h_out shape must be (B,S,D)");
             return ge::GRAPH_FAILED;
         }
 
@@ -460,12 +448,12 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
             return ge::GRAPH_FAILED;
         }
         if (hPostShape->GetDim(0) != B || hPostShape->GetDim(1) != S || hPostShape->GetDim(2) != n) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "h_post, grad_output",
-                                                   (std::to_string(hPostShape->GetDim(0)) + "," +
-                                                    std::to_string(hPostShape->GetDim(1)) + "," +
-                                                    std::to_string(hPostShape->GetDim(2)))
-                                                       .c_str(),
-                                                   "h_post shape must be (B,S,n)");
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context_->GetNodeName(), "h_post, grad_output",
+                (std::to_string(hPostShape->GetDim(0)) + "," + std::to_string(hPostShape->GetDim(1)) + "," +
+                 std::to_string(hPostShape->GetDim(2)))
+                    .c_str(),
+                "h_post shape must be (B,S,n)");
             return ge::GRAPH_FAILED;
         }
 
@@ -515,12 +503,12 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
             return ge::GRAPH_FAILED;
         }
         if (gradHOutShape->GetDim(0) != B || gradHOutShape->GetDim(1) != S || gradHOutShape->GetDim(2) != D) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "grad_h_out, grad_output",
-                                                   (std::to_string(gradHOutShape->GetDim(0)) + "," +
-                                                    std::to_string(gradHOutShape->GetDim(1)) + "," +
-                                                    std::to_string(gradHOutShape->GetDim(2)))
-                                                       .c_str(),
-                                                   "grad_h_out shape must be (B,S,D)");
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context_->GetNodeName(), "grad_h_out, grad_output",
+                (std::to_string(gradHOutShape->GetDim(0)) + "," + std::to_string(gradHOutShape->GetDim(1)) + "," +
+                 std::to_string(gradHOutShape->GetDim(2)))
+                    .c_str(),
+                "grad_h_out shape must be (B,S,D)");
             return ge::GRAPH_FAILED;
         }
 
@@ -532,12 +520,12 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
             return ge::GRAPH_FAILED;
         }
         if (gradHPostShape->GetDim(0) != B || gradHPostShape->GetDim(1) != S || gradHPostShape->GetDim(2) != n) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "grad_h_post, grad_output",
-                                                   (std::to_string(gradHPostShape->GetDim(0)) + "," +
-                                                    std::to_string(gradHPostShape->GetDim(1)) + "," +
-                                                    std::to_string(gradHPostShape->GetDim(2)))
-                                                       .c_str(),
-                                                   "grad_h_post shape must be (B,S,n)");
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context_->GetNodeName(), "grad_h_post, grad_output",
+                (std::to_string(gradHPostShape->GetDim(0)) + "," + std::to_string(gradHPostShape->GetDim(1)) + "," +
+                 std::to_string(gradHPostShape->GetDim(2)))
+                    .c_str(),
+                "grad_h_post shape must be (B,S,n)");
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -553,12 +541,12 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
             return ge::GRAPH_FAILED;
         }
         if (xShape->GetDim(0) != T || xShape->GetDim(1) != n || xShape->GetDim(2) != D) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x, grad_output",
-                                                   (std::to_string(xShape->GetDim(0)) + "," +
-                                                    std::to_string(xShape->GetDim(1)) + "," +
-                                                    std::to_string(xShape->GetDim(2)))
-                                                       .c_str(),
-                                                   "x shape must match grad_output shape (T,n,D)");
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context_->GetNodeName(), "x, grad_output",
+                (std::to_string(xShape->GetDim(0)) + "," + std::to_string(xShape->GetDim(1)) + "," +
+                 std::to_string(xShape->GetDim(2)))
+                    .c_str(),
+                "x shape must match grad_output shape (T,n,D)");
             return ge::GRAPH_FAILED;
         }
 
@@ -572,12 +560,12 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
                 return ge::GRAPH_FAILED;
             }
             if (hResShape->GetDim(0) != T || hResShape->GetDim(1) != n || hResShape->GetDim(2) != n) {
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "h_res, grad_output",
-                                                       (std::to_string(hResShape->GetDim(0)) + "," +
-                                                        std::to_string(hResShape->GetDim(1)) + "," +
-                                                        std::to_string(hResShape->GetDim(2)))
-                                                           .c_str(),
-                                                       "h_res shape must be (T,n,n)");
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    context_->GetNodeName(), "h_res, grad_output",
+                    (std::to_string(hResShape->GetDim(0)) + "," + std::to_string(hResShape->GetDim(1)) + "," +
+                     std::to_string(hResShape->GetDim(2)))
+                        .c_str(),
+                    "h_res shape must be (T,n,n)");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -621,12 +609,12 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
             return ge::GRAPH_FAILED;
         }
         if (gradXShape->GetDim(0) != T || gradXShape->GetDim(1) != n || gradXShape->GetDim(2) != D) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "grad_x, grad_output",
-                                                   (std::to_string(gradXShape->GetDim(0)) + "," +
-                                                    std::to_string(gradXShape->GetDim(1)) + "," +
-                                                    std::to_string(gradXShape->GetDim(2)))
-                                                       .c_str(),
-                                                   "grad_x shape must match grad_output shape (T,n,D)");
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context_->GetNodeName(), "grad_x, grad_output",
+                (std::to_string(gradXShape->GetDim(0)) + "," + std::to_string(gradXShape->GetDim(1)) + "," +
+                 std::to_string(gradXShape->GetDim(2)))
+                    .c_str(),
+                "grad_x shape must match grad_output shape (T,n,D)");
             return ge::GRAPH_FAILED;
         }
 
@@ -639,12 +627,12 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
             return ge::GRAPH_FAILED;
         }
         if (gradHResShape->GetDim(0) != T || gradHResShape->GetDim(1) != n || gradHResShape->GetDim(2) != n) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "grad_h_res, grad_output",
-                                                   (std::to_string(gradHResShape->GetDim(0)) + "," +
-                                                    std::to_string(gradHResShape->GetDim(1)) + "," +
-                                                    std::to_string(gradHResShape->GetDim(2)))
-                                                       .c_str(),
-                                                   "grad_h_res shape must be (T,n,n)");
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context_->GetNodeName(), "grad_h_res, grad_output",
+                (std::to_string(gradHResShape->GetDim(0)) + "," + std::to_string(gradHResShape->GetDim(1)) + "," +
+                 std::to_string(gradHResShape->GetDim(2)))
+                    .c_str(),
+                "grad_h_res shape must be (T,n,n)");
             return ge::GRAPH_FAILED;
         }
 
@@ -820,10 +808,7 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::DoOpTiling()
     return ComputeTiling();
 }
 
-ge::graphStatus MhcPostBackwardTilingBaseArch35::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus MhcPostBackwardTilingBaseArch35::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus MhcPostBackwardTilingBaseArch35::GetWorkspaceSize()
 {

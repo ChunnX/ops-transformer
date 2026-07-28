@@ -118,15 +118,9 @@ static aclnnStatus CheckDtype(const MhcPostBackwardParams &params)
     return ACLNN_SUCCESS;
 }
 
-static bool IsTNDFormat(size_t dimNum)
-{
-    return dimNum == DIM_NUM_3;
-}
+static bool IsTNDFormat(size_t dimNum) { return dimNum == DIM_NUM_3; }
 
-static bool IsBSNDFormat(size_t dimNum)
-{
-    return dimNum == DIM_NUM_4;
-}
+static bool IsBSNDFormat(size_t dimNum) { return dimNum == DIM_NUM_4; }
 
 static aclnnStatus CheckDimD(int64_t dimD)
 {
