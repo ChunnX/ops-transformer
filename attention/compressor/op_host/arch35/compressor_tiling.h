@@ -194,9 +194,9 @@ struct CompressorBaseShapeInfo {
     uint32_t drSize = 0;   // Dr
 };
 
-const std::vector<int> COFF {1, 2};
-const std::vector<uint32_t> HEAD_DIM {128, 512};
-const std::vector<int> CACHE_MODE {1, 2};
+const std::vector<int> COFF{1, 2};
+const std::vector<uint32_t> HEAD_DIM{128, 512};
+const std::vector<int> CACHE_MODE{1, 2};
 
 enum class CACHE_MODE : uint8_t { LINEAR_BUFFER = 1, RING_BUFFER = 2 };
 
