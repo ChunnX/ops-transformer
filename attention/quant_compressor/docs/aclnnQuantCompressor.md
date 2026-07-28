@@ -114,27 +114,209 @@ aclnnStatus aclnnQuantCompressor(
 
 - **参数说明**
 
-    | 参数名                      | 输入/输出 | 描述  |  使用说明  | 数据类型       | 数据格式   | 维度（shape） | 非连续Tensor |
-    |----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|-|-|-|
-    | x | 输入 | 公式中的$X$，表示原始不经压缩的数据，HIFLOAT8量化输入。 |  支持B=0,S=0,T=0的空Tensor。  | HIFLOAT8 | ND         | BS合轴：[T,H]、BS非合轴：[B,S,H]|×|
-    | wkv | 输入 | 公式中的$W^{KV}$，表示kv压缩权重，HIFLOAT8量化输入。  |不支持空Tensor。| HIFLOAT8 | ND |[coff* D,H]|×|
-    | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重，HIFLOAT8量化输入。 |不支持空Tensor。| HIFLOAT8 | ND |[coff* D,H]|×|
-    | stateCacheRef | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 |不支持空Tensor| FLOAT32     | ND         |[block_num,block_size,2* coff* D]|支持0轴非连续|
-    | ape | 输入 | 公式中的$Ape$，表示positional biases。 | 不支持空Tensor。|FLOAT32       | ND         |[cmp_ratio,coff* D]|×|
-    | xDescale | 可选输入 | x的反量化缩放因子，per-tensor缩放。quant_mode=1时必选。 |FLOAT32       | ND         |[1,]|×|
-    | wkvDescale | 可选输入 | wkv的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。 |FLOAT32       | ND         |[coff* D,]|×|
-    | wgateDescale | 可选输入 | wgate的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。 |FLOAT32       | ND         |[coff* D,]|×|
-    | stateBlockTable | 可选输入 | 表示state\_cache存储使用的block映射表。|当其中元素的值为0时，表示当前位置无需进行更新state\_cache操作；不支持空Tensor。| INT32 | ND         |cache_mode=1时，shape为[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length，当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。cache_mode=2时，shape为[B]。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作|×|
-    | cuSeqlens | 可选输入 | 表示不同Batch中的有效token数。  |支持B=0,S=0,T=0的空Tensor；当x的shape为[B,S,H]时，参数必须为空。| INT32          | ND         |当x的shape为[T,H]时，输入shape为[B+1,]|×|
-    | seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数。 |如果指定为None时，表示和每个Batch上的Sequence Length长度相同；支持B=0的空Tensor；如果指定为None时，表示和每个Batch上的Sequence Length长度相同。该入参中每个Batch的有效token数要求小于等于对应Sequence Length长度。当x的shape为[B,S,H]时，要求seqused[n] <= S，且不小于0；当x的shape为[T,H]时，要求seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。| INT32          | ND         |[B,]|×|
-    | startPos | 可选输入 | 表示计算起始位置。 |支持B=0,T=0的空Tensor；当输入为None时，表示从0开始进行计算。| INT32          | ND         |[B,]|×|
-    | quantMode | 输入 | 量化模式。 |取值范围为[1]，1表示A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL（HIFLOAT8输入，x按per-tensor缩放、wkv/wgate按per-channel缩放反量化）。| INT32          | -         |-|-|
-    | cmpRatio | 输入 | 用于稀疏计算，表示数据压缩率。 |取值范围为[2, 4, 8, 16, 32, 64, 128]。| INT32          | -         |-|-|
-    | coff | 可选输入 | 表示是否进行overlap数据重排。 |取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。| INT32          | -         |-|-|
-    | cacheMode | 可选输入 | 表示state_cache的存储模式。 |取值范围为[1, 2]；1表示连续buffer，2表示循环buffer。| INT32          | -         |-|-|
-    | stateCacheStrideDim0 | 可选输入 | 表示state_cache的0轴stride。 |-| INT32     | -         |-|-|
-    | cmpKv | 输出 | 表示压缩后的数据。 |支持B=0,S=0,T=0的空Tensor。| BFLOAT16         | ND          |BS合轴：[min(T,T//cmp_ratio+B),D]、BS非合轴：[B,ceil(S/cmp_ratio),D]|×|
-    | stateCache | 输出 | 表示更新后的state_cache，与stateCacheRef为同一地址（inplace更新）。 |-| FLOAT32     | ND         |[block_num,block_size,2* coff* D]|支持0轴非连续|
+  <table style="undefined;table-layout: fixed; width: 1500px"><colgroup>
+  <col style="width: 220px">
+  <col style="width: 110px">
+  <col style="width: 300px">
+  <col style="width: 300px">
+  <col style="width: 240px">
+  <col style="width: 100px">
+  <col style="width: 160px">
+  <col style="width: 110px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>x（const aclTensor*）</td>
+      <td>输入</td>
+      <td>公式中的$X$，表示原始不经压缩的数据，HIFLOAT8量化输入。</td>
+      <td>支持B=0,S=0,T=0的空Tensor。</td>
+      <td>HIFLOAT8</td>
+      <td>ND</td>
+      <td>BS合轴：[T,H]、BS非合轴：[B,S,H]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>wkv（const aclTensor*）</td>
+      <td>输入</td>
+      <td>公式中的$W^{KV}$，表示kv压缩权重，HIFLOAT8量化输入。</td>
+      <td>不支持空Tensor。</td>
+      <td>HIFLOAT8</td>
+      <td>ND</td>
+      <td>[coff* D,H]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>wgate（const aclTensor*）</td>
+      <td>输入</td>
+      <td>公式中的$W^{Gate}$，表示gate压缩权重，HIFLOAT8量化输入。</td>
+      <td>不支持空Tensor。</td>
+      <td>HIFLOAT8</td>
+      <td>ND</td>
+      <td>[coff* D,H]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>stateCacheRef（aclTensor*）</td>
+      <td>输入/输出</td>
+      <td>公式中的$\left[kv\_state, score\_state\right]$, 表示kv_state和score_state的历史数据，原地更新。</td>
+      <td>不支持空Tensor。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[block_num,block_size,2* coff* D]</td>
+      <td>支持0轴非连续</td>
+    </tr>
+    <tr>
+      <td>ape（const aclTensor*）</td>
+      <td>输入</td>
+      <td>公式中的$Ape$，表示positional biases。</td>
+      <td>不支持空Tensor。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[cmp_ratio,coff* D]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>xDescale（const aclTensor*）</td>
+      <td>可选输入</td>
+      <td>x的反量化缩放因子，per-tensor缩放。quant_mode=1时必选。</td>
+      <td>不支持空Tensor。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[1,]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>wkvDescale（const aclTensor*）</td>
+      <td>可选输入</td>
+      <td>wkv的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。</td>
+      <td>不支持空Tensor。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[coff* D,]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>wgateDescale（const aclTensor*）</td>
+      <td>可选输入</td>
+      <td>wgate的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。</td>
+      <td>不支持空Tensor。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[coff* D,]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>stateBlockTable（const aclTensor*）</td>
+      <td>可选输入</td>
+      <td>表示state_cache存储使用的block映射表。</td>
+      <td>当其中元素的值为0时，表示当前位置无需进行更新state_cache操作；不支持空Tensor。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>cache_mode=1时，shape为[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length，当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。cache_mode=2时，shape为[B]。</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>cuSeqlens（const aclTensor*）</td>
+      <td>可选输入</td>
+      <td>表示不同Batch中的有效token数。</td>
+      <td>支持B=0,S=0,T=0的空Tensor；当x的shape为[B,S,H]时，参数必须为空。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>当x的shape为[T,H]时，输入shape为[B+1,]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>seqused（const aclTensor*）</td>
+      <td>可选输入</td>
+      <td>表示不同Batch中实际参与压缩的token数。</td>
+      <td>如果指定为None时，表示和每个Batch上的Sequence Length长度相同；支持B=0的空Tensor。该入参中每个Batch的有效token数要求小于等于对应Sequence Length长度。当x的shape为[B,S,H]时，要求seqused[n] <= S，且不小于0；当x的shape为[T,H]时，要求seqused[n] <= cu_seqlens[n+1] - cu_seqlens[n]，且不小于0。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>[B,]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>startPos（const aclTensor*）</td>
+      <td>可选输入</td>
+      <td>表示计算起始位置。</td>
+      <td>支持B=0,T=0的空Tensor；当输入为None时，表示从0开始进行计算。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>[B,]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>quantMode（int64_t）</td>
+      <td>输入</td>
+      <td>量化模式。</td>
+      <td>取值范围为[1]，1表示A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL（HIFLOAT8输入，x按per-tensor缩放、wkv/wgate按per-channel缩放反量化）。</td>
+      <td>INT32</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>cmpRatio（int64_t）</td>
+      <td>输入</td>
+      <td>用于稀疏计算，表示数据压缩率。</td>
+      <td>取值范围为[2, 4, 8, 16, 32, 64, 128]。</td>
+      <td>INT32</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>coff（int64_t）</td>
+      <td>输入</td>
+      <td>表示是否进行overlap数据重排。</td>
+      <td>取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。</td>
+      <td>INT32</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>cacheMode（int64_t）</td>
+      <td>输入</td>
+      <td>表示state_cache的存储模式。</td>
+      <td>取值范围为[1, 2]；1表示连续buffer，2表示循环buffer。</td>
+      <td>INT32</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>stateCacheStrideDim0（int64_t）</td>
+      <td>输入</td>
+      <td>表示state_cache的0轴stride。</td>
+      <td>-</td>
+      <td>INT32</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>cmpKv（aclTensor*）</td>
+      <td>输出</td>
+      <td>表示压缩后的数据。</td>
+      <td>支持B=0,S=0,T=0的空Tensor。</td>
+      <td>BFLOAT16</td>
+      <td>ND</td>
+      <td>BS合轴：[min(T,T//cmp_ratio+B),D]、BS非合轴：[B,ceil(S/cmp_ratio),D]</td>
+      <td>×</td>
+    </tr>
+  </tbody></table>
 
 - **返回值**
 
