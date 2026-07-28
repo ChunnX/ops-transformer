@@ -285,9 +285,7 @@ struct QSFATilingInfo {
 // ---------------算子Tiling类---------------
 class QSFAMlaTiling {
 public:
-    explicit QSFAMlaTiling(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit QSFAMlaTiling(gert::TilingContext *context) : context_(context) {}
     ge::graphStatus DoOpTiling(QSFATilingInfo *qsfaInfo);
 
 private:
@@ -500,9 +498,7 @@ private:
 
 class QSFAInfoParser {
 public:
-    explicit QSFAInfoParser(const gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit QSFAInfoParser(const gert::TilingContext *context) : context_(context) {}
     ~QSFAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;

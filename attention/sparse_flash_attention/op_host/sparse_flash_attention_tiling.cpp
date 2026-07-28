@@ -2135,7 +2135,7 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
 
     bool keyNonContiguous = false;
     if (!keyStrides_.empty() && keyShape_.GetDimNum() > 0) {
-        if (kvLayout_ == SFALayout::PA_BSND || kvLayout_ == SFALayout::BSND) {
+        if (kvLayout_ == SFALayout::PA_BSND) {
             std::vector<uint64_t> keyExpectedStrides;
             uint64_t dim1 = static_cast<uint64_t>(keyShape_.GetDim(1));
             uint64_t dim2 = static_cast<uint64_t>(keyShape_.GetDim(2));
