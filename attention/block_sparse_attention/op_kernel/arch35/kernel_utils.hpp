@@ -43,6 +43,11 @@ struct TaskInfo {
     int64_t  kvSeqlen = 0;           // 当前 batch 实际 KV 长度
     uint32_t yBlockNumAval = 0;      // CeilDiv(kvSeqlen, blockShapeY)，实际 Y-block 总数
     uint32_t yBlockNumRsvd = 0;      // 本 task 选中 Y-block 数（来自 gSparseCount）
+    // O / Lse GM 偏移
+    int64_t  gmOffsetO = 0;
+    int64_t  gmOffsetLse = 0;
+    uint32_t oShapeCol = 0;
+    uint32_t lseShapeCol = 0;
 };
 
 struct TileInfo {
