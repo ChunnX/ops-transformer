@@ -127,7 +127,7 @@ private:
  	                                           int32_t index, TEventID event);
     template <bool IsShared = false>
     __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-                                                      int32_t &vecSetSyncCom);
+                                                      uint32_t expertIdx, int32_t &vecSetSyncCom);
     template <bool IsShared = false>
     __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                                   uint32_t expertIdx, int32_t &vecSetSyncCom);
@@ -242,6 +242,7 @@ private:
     LocalTensor<ActivationType> xOutTensor2_;
     LocalTensor<uint16_t> mxTempTensor_;
     LocalTensor<int32_t> resetTensor_;
+    int32_t resetBatchElementCount_ = 0;
     LocalTensor<int32_t> topkIdsTensor_;
     LocalTensor<uint8_t> sendMaskTensor_[DOUBLE_BUFFER]; // SendMaskCal 源卡算 [mask|count] 的 ping-pong 缓冲
     LocalTensor<int32_t> sendGatherOutTensor_;           // SendMaskCal GatherMask 计 count 的废弃输出 scratch
@@ -525,8 +526,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
                          static_cast<int64_t>(totalFlagInt32) :
                          tokenGroupResetSize;
     uint32_t resetNumPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
+    resetBatchElementCount_ = resetNumPerCore < static_cast<uint32_t>(DISPATCH_RESET_BATCH) ?
+                                  static_cast<int32_t>(resetNumPerCore) :
+                                  DISPATCH_RESET_BATCH;
     uint32_t resetTensorSize =
-        Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore), static_cast<uint64_t>(INT32_PER_256B)) *
+        Ops::Base::CeilAlign(static_cast<uint64_t>(resetBatchElementCount_), static_cast<uint64_t>(INT32_PER_256B)) *
         sizeof(int32_t);
 
     // 分轮次参数计算：UB 预算扣除固定开销后，求解最大 roundSendTotalNum_
