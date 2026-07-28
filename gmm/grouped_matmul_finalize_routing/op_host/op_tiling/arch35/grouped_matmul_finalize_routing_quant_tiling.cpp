@@ -126,12 +126,6 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "y", "nullptr",
                                                       "input outDesc cannot be nullptr"),
                 return false);
-    inputParams_.cDtype = outDesc->GetDataType();
-    OP_CHECK_IF(inputParams_.cDtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype), "DT_FLOAT"),
-                return false);
-
     auto biasStorageShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
     inputParams_.hasBias = !(biasStorageShape == nullptr || biasStorageShape->GetStorageShape().GetShapeSize() == 0);
     auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
@@ -140,6 +134,14 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
                                                       "bias from tensor is nonnull, but bias from desc is nullptr"),
                 return false);
     inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : ge::DT_BF16;
+    inputParams_.cDtype = outDesc->GetDataType();
+    bool isSupportedOut = inputParams_.cDtype == ge::DT_FLOAT ||
+                          (IsMicroScaling() && inputParams_.cDtype == ge::DT_BF16);
+    OP_CHECK_IF(!isSupportedOut,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    inputParams_.opType, "y", ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype),
+                    "y must be DT_FLOAT, or DT_BF16 in mx quant mode"),
+                return false);
 
     OP_CHECK_IF(!CheckDtype(), OP_LOGE(context_->GetNodeName(), "Required input check failed."), return false);
     return CheckOptionalInputsForRouting();
