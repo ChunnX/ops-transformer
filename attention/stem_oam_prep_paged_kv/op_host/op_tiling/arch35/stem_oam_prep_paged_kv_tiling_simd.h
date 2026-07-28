@@ -101,6 +101,8 @@ private:
     int64_t maxKb_ = 0;
     int64_t kflatDim_ = 0;
     int64_t rVal_ = 0;
+    uint32_t meanMinSize_ = 0;
+    uint32_t meanMaxSize_ = 0;
 
     gert::Stride kCacheStride_;
     gert::Stride vCacheStride_;

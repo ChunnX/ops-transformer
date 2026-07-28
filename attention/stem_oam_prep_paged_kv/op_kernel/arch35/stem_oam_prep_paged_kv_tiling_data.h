@@ -30,6 +30,7 @@ struct StemOamPrepPagedKvTilingData {
     int64_t stemBlockSize = 0;
     int64_t stemStride = 0;
     float lambdaMag = 0;
+    int64_t meanSize = 0;
     int64_t rVal = 0;
     int64_t kCacheStride[4] = {0};
     int64_t vCacheStride[4] = {0};

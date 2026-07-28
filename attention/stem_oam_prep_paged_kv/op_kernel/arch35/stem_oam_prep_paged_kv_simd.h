@@ -30,6 +30,7 @@ using namespace AscendC;
 constexpr static int64_t KVMAXLEN = 256 * 1024;
 constexpr static int64_t STEMBLOCKMINSIZE = 32;
 constexpr static float EPSILON = 1e-6;
+constexpr static uint32_t BLOCKSIZE = 32;
 
 class StemOamPrepPagedKvSimd {
 public:
@@ -89,6 +90,7 @@ private:
 
     TBuf<TPosition::VECCALC> kScalarBuf_;
     TBuf<TPosition::VECCALC> totalStemBlockIndexBuf_;
+    TBuf<TPosition::VECCALC> meanTempBuf_;
 
     int64_t blockIdx_ = 0;
     int64_t blockNum_ = 0;
@@ -114,6 +116,7 @@ private:
     int64_t curCoreProcessStemBlock_ = 0;
     int64_t tailCoreProcessStemBlock_ = 0;
     int64_t kvUsedCoreNum_ = 0;
+    int64_t meanSize_ = 0;
 
     constexpr static int64_t V_REG_SIZE = Ops::Base::GetVRegSize();
 };
@@ -148,6 +151,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::Init(GM_ADDR kCache, GM_ADDR vCac
     stemStride_ = tilingData->stemStride;
     lambdaMag_ = tilingData->lambdaMag;
     maxKb_ = tilingData->maxKb;
+    meanSize_ = tilingData->meanSize;
     r_ = tilingData->rVal;
     for (uint16_t i = 0; i < 4; i++) {
         kCacheStride_[i] = tilingData->kCacheStride[i];
@@ -168,8 +172,6 @@ __aicore__ inline void StemOamPrepPagedKvSimd::Init(GM_ADDR kCache, GM_ADDR vCac
     pipe_->InitBuffer(kScalarBuf_, stemBlockSize_ * sizeof(float));             // 1K
     pipe_->InitBuffer(totalStemBlockIndexBuf_, maxStemlockNum * sizeof(float)); // 24K
 
-    pipe_->InitBuffer(vFLatOutQue_, 1, maxKb_ * r_ * sizeof(float)); // 64k
-    pipe_->InitBuffer(vBiasOutQue_, 1, maxKb_ * sizeof(float));      // 32K
     if (blockIdx_ == 0) {
         InitOutput<bfloat16_t>(kFlatGm_, batchSize_ * hKv_ * maxKb_ * kflatDim_, bfloat16_t(0));
         InitOutput<float>(vBiasGm_, batchSize_ * hKv_ * maxKb_, float(0));
@@ -514,12 +516,8 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVMean(int64_t numStemBlock
             AscendC::MicroAPI::LoadAlign(vFLatOutReg, vFLatOutAddr, vFLatOutAddrOfst);
             AscendC::MicroAPI::Adds(vFLatOutReg, vFLatOutReg, EPSILON, valueMaskReg);
             AscendC::MicroAPI::Log(logValsReg, vFLatOutReg, valueMaskReg);
-            AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float>(logValsSumReg, logValsReg, valueMaskReg);
-            AscendC::MicroAPI::Add(vMeanReg, vMeanReg, logValsSumReg, oneMaskReg);
             AscendC::MicroAPI::StoreAlign(logValsAddrStart + i * vfLen, logValsReg, valueMaskReg);
         }
-        AscendC::MicroAPI::Muls(vMeanReg, vMeanReg, divNum, oneMaskReg);
-        AscendC::MicroAPI::Store(vMeanAddrStart, vMeanReg, 1);
     }
 }
 
@@ -629,11 +627,18 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBiasOut(int32_t batchIdx,
 {
     LocalTensor<float> vBiasOutLocal = vBiasOutQue_.AllocTensor<float>();
     LocalTensor<float> vFLatOutLocal = vFLatOutQue_.DeQue<float>();
+    LocalTensor<float> meanTempLocal = meanTempBuf_.Get<float>();
 
     __local_mem__ float *vBiasOutAddr = (__ubuf__ float *)vBiasOutLocal.GetPhyAddr();
     __local_mem__ float *vFLatOutAddr = (__ubuf__ float *)vFLatOutLocal.GetPhyAddr();
 
     ComputeVMean(numStemBlocks, vBiasOutAddr, vFLatOutAddr); //  保存在vBiasOutAddr第一个位置,vFLatOutAddr保存LogVals
+    uint32_t n = static_cast<uint32_t>(numStemBlocks * r_);
+    AscendC::MeanParams meanPara;
+    meanPara.outter = 1;
+    meanPara.n = n;
+    meanPara.inner = static_cast<uint32_t>(Ops::Base::CeilAlign(int64_t(n * sizeof(float)), BLOCKSIZE) / sizeof(float));
+    AscendC::Mean<float, float>(vBiasOutLocal, vFLatOutLocal, meanTempLocal, meanPara);
     EventMsg<HardEvent::V_S>();
     float vMean = vBiasOutLocal.GetValue(0);
     EventMsg<HardEvent::S_V>();
@@ -652,6 +657,10 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBiasOut(int32_t batchIdx,
 
 __aicore__ inline void StemOamPrepPagedKvSimd::ProcessVBias(void)
 {
+    pipe_->Reset();
+    pipe_->InitBuffer(vFLatOutQue_, 1, maxKb_ * r_ * sizeof(float)); // 64k
+    pipe_->InitBuffer(vBiasOutQue_, 1, maxKb_ * sizeof(float));      // 32
+    pipe_->InitBuffer(meanTempBuf_, meanSize_ * sizeof(float));
     for (int32_t bhIdx_ = blockIdx_; bhIdx_ < totalBh_; bhIdx_ += blockNum_) {
         int32_t batchIdx = bhIdx_ / hKv_;
         int32_t headIdx = bhIdx_ % hKv_;

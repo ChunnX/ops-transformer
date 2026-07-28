@@ -293,6 +293,9 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::DoOpTiling()
         OP_LOGE(context_->GetNodeName(), "batchSize or numKvHeads is 0!");
         return ge::GRAPH_FAILED;
     }
+
+    GetMeanMaxMinTmpSize(maxKb_ * rVal_, sizeof(float), sizeof(float), false, meanMaxSize_, meanMinSize_);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -337,6 +340,7 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::PostTiling()
     tilingData_->lambdaMag = lambdaMag_;
     tilingData_->kvLayout = kvLayout_;
     tilingData_->rVal = rVal_;
+    tilingData_->meanSize = static_cast<int64_t>(meanMinSize_);
 
     context_->SetBlockDim(usedCoreNum);
     context_->SetScheduleMode(1);
