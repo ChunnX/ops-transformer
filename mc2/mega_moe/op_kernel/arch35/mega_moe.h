@@ -1283,11 +1283,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateSharedGlobalBuffe
         gmmAddrInfo.bGlobal = params_.sharedB2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal =
             params_.sharedB2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
-        // tile counter: 每个 shared expert 独立一组 slot
+        // tile counter: 每个 shared expert 独立一组 slot, 用 expertBeforeCnt/m_ 算出 sharedIdx
         uint32_t tokenGroupCount = Ops::Base::CeilDiv(m_, static_cast<uint32_t>(256U));
+        uint32_t sharedIdx = static_cast<uint32_t>(state.expertBeforeCnt) / m_;
         gmmAddrInfo.gmm2CombineSyncCounter =
             (__gm__ int32_t *)params_.workspaceInfo.sharedExpertGmm2TileCounterPtr +
-            static_cast<uint64_t>(state.expertBeforeCnt) * tokenGroupCount * static_cast<uint64_t>(INT_CACHELINE);
+            static_cast<uint64_t>(sharedIdx) * tokenGroupCount * static_cast<uint64_t>(INT_CACHELINE);
     }
     gmmAddrInfo.swigluToGmm2Flag = nullptr;
     gmmAddrInfo.dispatchToGmm1Flag = nullptr;
