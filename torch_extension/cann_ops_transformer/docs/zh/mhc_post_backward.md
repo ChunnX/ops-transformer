@@ -34,7 +34,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) \
 |---|---|---|---|---|---|---|
 | grad_output | 输入 | bfloat16、float16 | ND | (B, S, N, D) | (T, N, D) | 支持 |
 | x | 输入 | 与grad_output一致 | ND | (B, S, N, D) | (T, N, D) | 支持 |
-| h_res | 输入 | float32 | ND | (B, S, N, N) | (T, N, N) | 支持 |
+| h_res | 输入（可选） | float32 | ND | (B, S, N, N) | (T, N, N) | 支持 |
 | h_out | 输入 | 与grad_output一致 | ND | (B, S, D) | (T, D) | 支持 |
 | h_post | 输入 | float32 | ND | (B, S, N) | (T, N) | 支持 |
 | grad_x | 输出 | 与x一致 | ND | (B, S, N, D) | (T, N, D) | 支持 |
@@ -43,6 +43,8 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) \
 | grad_h_post | 输出 | 与h_post一致 | ND | (B, S, N) | (T, N) | 支持 |
 
 所有输入必须位于同一NPU设备且不能为空。`x`仅支持3维TND或4维BSND排布；各输入的B、S、T、N、D维度必须按上表保持一致。
+
+`h_res`为可选参数，仅<term>Ascend 950PR/Ascend 950DT</term>支持置为`None`；此时`grad_x`等于`grad_output`，`grad_h_res`仍按`x`对应的`(B,S,N,N)`/`(T,N,N)`形状以float32输出。其他平台`h_res`必须传入。图模式不支持`h_res=None`。
 
 ## 约束说明
 
@@ -64,6 +66,12 @@ h_out = torch.randn(B, S, D, device="npu", dtype=torch.float16)
 h_post = torch.randn(B, S, N, device="npu", dtype=torch.float32)
 
 grads = mhc_post_backward(grad_output, x, h_res, h_out, h_post)
+```
+
+`h_res`不传的场景（仅<term>Ascend 950PR/Ascend 950DT</term>）：
+
+```python
+grads = mhc_post_backward(grad_output, x, None, h_out, h_post)
 ```
 
 ## 图模式调用
