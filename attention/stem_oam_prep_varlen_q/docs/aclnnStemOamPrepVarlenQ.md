@@ -23,7 +23,7 @@
 
 ## 功能说明
 
-- 接口功能：完成 Stem OAM block-sparse attention 中 Q 侧预处理计算。将变长 Q tensor 从 paged 存储格式转化为按 stem block (128 token) 分组的 flattened qFlat 输出，供后续 OAM score 计算。
+- 接口功能：完成Stem OAM block-sparse attention中Q侧预处理计算。将变长Q tensor从paged存储格式转化为按stem block(128 token)分组的flattened qFlat输出，供后续OAM score计算。
 - 计算公式：
 
   阶段1 Scale Fusion:
@@ -41,11 +41,11 @@
   阶段5 Cast输出:
   $$qflat\_out = qflat.to(\text{BF16})$$
 
-- 关键特性：Q 侧 stride 维度为自然顺序（不翻转），与 K 侧的翻转处理不同。
+- 关键特性：Q侧stride维度为自然顺序（不翻转），与K侧的翻转处理不同。
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用"aclnnStemOamPrepVarlenQGetWorkspaceSize"接口获取计算所需 workspace 大小以及包含了算子计算流程的执行器，再调用"aclnnStemOamPrepVarlenQ"接口执行计算。
+每个算子分为两段式接口，必须先调用"aclnnStemOamPrepVarlenQGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnStemOamPrepVarlenQ"接口执行计算。
 
 ```cpp
 aclnnStatus aclnnStemOamPrepVarlenQGetWorkspaceSize(
@@ -278,7 +278,7 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-<term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 推理系列产品</term>：
+<term>Ascend 950PR/Ascend 950DT</term>：
 
 ```Cpp
 // 1. 创建输入tensor

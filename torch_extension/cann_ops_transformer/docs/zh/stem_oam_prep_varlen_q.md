@@ -26,7 +26,7 @@
 
 - **接口功能**：
 
-  完成 Stem OAM block-sparse attention 中 Q 侧预处理计算。将变长 Q tensor 从 paged 存储格式转化为按 stem block 分组的 flattened qFlat 输出，供后续 OAM score 计算。
+  完成Stem OAM block-sparse attention中Q侧预处理计算。将变长Q tensor从paged存储格式转化为按stem block分组的flattened qFlat输出，供后续OAM score计算。
 
 - **计算公式**：
 
@@ -45,7 +45,7 @@
   阶段5 Cast输出:
   $$qflat\_out = qflat.to(\text{BF16})$$
 
-- **关键特性**：Q 侧 stride 维度为自然顺序（不翻转），与 K 侧的翻转处理不同。
+- **关键特性**：Q侧stride维度为自然顺序（不翻转），与K侧的翻转处理不同。
 
 ## 函数原型
 
