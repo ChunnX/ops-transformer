@@ -33,7 +33,7 @@ constexpr uint32_t DIM_NUM_4 = 4;
 ge::graphStatus InferShapeKvQuantSparseFlashAttention(gert::InferShapeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("KvQuantSparseFlashAttention", "InferShapeContext is nullptr"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     gert::Shape *attentionOutShape = context->GetOutputShape(0);
@@ -51,14 +51,14 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttention(gert::InferShapeContext *c
         attentionOutShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
         attentionOutShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_1));
         attentionOutShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_2)); // 2:dim2
-        if(queryShape->GetDim(DIM_INDEX_3) != -1){
+        if (queryShape->GetDim(DIM_INDEX_3) != -1) {
             attentionOutShape->SetDim(DIM_INDEX_3, queryShape->GetDim(DIM_INDEX_3) - ropeHeadDim); // 3:dim3
         }
     } else { // TND
         attentionOutShape->SetDimNum(DIM_NUM_3);
         attentionOutShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
         attentionOutShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_1));
-        if(queryShape->GetDim(DIM_INDEX_2) != -1){
+        if (queryShape->GetDim(DIM_INDEX_2) != -1) {
             attentionOutShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_2) - ropeHeadDim); // 2:dim2
         }
     }
@@ -68,7 +68,7 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttention(gert::InferShapeContext *c
 ge::graphStatus InferDataTypeKvQuantSparseFlashAttention(gert::InferDataTypeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("KvQuantSparseFlashAttention", "InferShapeContext is nullptr"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(0, inputDataType);
     return ge::GRAPH_SUCCESS;
@@ -78,4 +78,3 @@ IMPL_OP_INFERSHAPE(KvQuantSparseFlashAttention)
     .InferShape(InferShapeKvQuantSparseFlashAttention)
     .InferDataType(InferDataTypeKvQuantSparseFlashAttention);
 } // namespace ops
-

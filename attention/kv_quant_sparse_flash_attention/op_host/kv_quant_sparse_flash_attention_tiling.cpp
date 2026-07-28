@@ -1081,9 +1081,9 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensShape()
         return ge::GRAPH_FAILED;
     }
     if (qsfaShapeSizeKv != bSize_) {
-        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "actual_seq_lengths_kv", std::to_string(qsfaShapeSizeKv).c_str(),
-                                                  "The shape size of actualSeqLengths should be equal to batch size " +
-                                                      std::to_string(bSize_));
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            opName_, "actual_seq_lengths_kv", std::to_string(qsfaShapeSizeKv).c_str(),
+            "The shape size of actualSeqLengths should be equal to batch size " + std::to_string(bSize_));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
