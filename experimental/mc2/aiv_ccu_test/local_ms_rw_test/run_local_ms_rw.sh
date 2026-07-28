@@ -26,7 +26,7 @@ CURRENT_DIR=$(
     pwd
 )
 
-BUILD_TYPE="Release"
+BUILD_TYPE="Debug"
 INSTALL_PREFIX="${CURRENT_DIR}/out"
 SOC_VERSION="ascend950pr_9599"
 CMAKE_REBUILD="OFF"
@@ -123,17 +123,23 @@ if [[ "$RUN_TEST" == "ON" ]]; then
     echo "data_size:                          $DATA_SIZE bytes ($(($DATA_SIZE / 1024)) KB)"
     echo "ranksize:                           $RANKSIZE"
     echo "================================================="
-    for ((rank_id=0; rank_id<RANKSIZE; rank_id++))
-    do
-        (
-            ./out/bin/test_local_ms_rw \
-                --rank_id ${rank_id} \
-                --ranksize ${RANKSIZE} \
-                --mode0 ${MODE0} \
-                --mode1 ${MODE1} \
-                --data_size ${DATA_SIZE}
-        ) &
-    done
-    wait
+    # for ((rank_id=0; rank_id<RANKSIZE; rank_id++))
+    # do
+    #     (
+    #         ./out/bin/test_local_ms_rw \
+    #             --rank_id ${rank_id} \
+    #             --ranksize ${RANKSIZE} \
+    #             --mode0 ${MODE0} \
+    #             --mode1 ${MODE1} \
+    #             --data_size ${DATA_SIZE}
+    #     ) &
+    # done
+    # wait
+    ./out/bin/test_local_ms_rw \
+        --rank_id ${rank_id} \
+        --ranksize ${RANKSIZE} \
+        --mode0 ${MODE0} \
+        --mode1 ${MODE1} \
+        --data_size ${DATA_SIZE}
     echo "========== 程序执行完成 =========="
 fi

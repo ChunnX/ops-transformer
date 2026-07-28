@@ -51,6 +51,9 @@ public:
 
 private:
     __aicore__ inline void WriteMode();
+    __aicore__ inline void WriteWarmup();
+    __aicore__ inline void ReadWarmup();
+    __aicore__ inline void WriteThenReadWarmup();
     __aicore__ inline void ReadMode();
     __aicore__ inline void ReadWriteMode();
     __aicore__ inline void WriteThenReadMode();
@@ -96,8 +99,7 @@ __aicore__ inline void LocalMsRw<T>::Init(uint32_t mode0, uint32_t mode1, uint64
     }
     timeGm_.SetGlobalBuffer((__gm__ uint64_t *)timeAddr);
 
-    if (mode0_ == MODE_WRITE_THEN_READ) {
-        // WriteThenRead 模式：按 dataSize 分配 buffer，一次搬运
+    if (mode0_ == MODE_WRITE_THEN_READ || mode0_ == MODE_WRITE || mode0_ == MODE_READ) {
         pipe->InitBuffer(dataBuf_, dataSize);
         pipe->InitBuffer(readBuf_, dataSize);
         totalElem_ = static_cast<uint32_t>(dataSize / sizeof(T));
@@ -108,18 +110,18 @@ __aicore__ inline void LocalMsRw<T>::Init(uint32_t mode0, uint32_t mode1, uint64
         pipe->InitBuffer(dataBuf_, BLOCK_4K_BYTES);
         pipe->InitBuffer(readBuf_, BLOCK_4K_BYTES);
 
-    totalBlocks_ = static_cast<uint32_t>(dataSize / BLOCK_4K_BYTES);
-    blocksPerCore_ = totalBlocks_ / blockDim_;
-    uint32_t tailBlocks = totalBlocks_ % blockDim_;
-    // 顺序分核，序号小的核多搬一轮
-    if (aivId_ < tailBlocks) {
-        myStartBlock_ = aivId_ * (blocksPerCore_ + 1);
-        myBlocks_ = blocksPerCore_ + 1;
-    } else {
-        myStartBlock_ = aivId_ * blocksPerCore_ + tailBlocks;
-        myBlocks_ = blocksPerCore_;
+        totalBlocks_ = static_cast<uint32_t>(dataSize / BLOCK_4K_BYTES);
+        blocksPerCore_ = totalBlocks_ / blockDim_;
+        uint32_t tailBlocks = totalBlocks_ % blockDim_;
+        // 顺序分核，序号小的核多搬一轮
+        if (aivId_ < tailBlocks) {
+            myStartBlock_ = aivId_ * (blocksPerCore_ + 1);
+            myBlocks_ = blocksPerCore_ + 1;
+        } else {
+            myStartBlock_ = aivId_ * blocksPerCore_ + tailBlocks;
+            myBlocks_ = blocksPerCore_;
+        }
     }
-}
 }
 
 template <typename T>
@@ -142,35 +144,45 @@ __aicore__ inline void LocalMsRw<T>::GetBlockTargetAddr(uint64_t blockIdx, uint3
         offsetBytes = (blockIdx % BLOCKS_PER_CCUA) * BLOCK_4K_BYTES;
     }
 }
+template <typename T>
+__aicore__ inline void LocalMsRw<T>::WriteWarmup()
+{
+    DataCopy(msGm_[0], dataLocal_, totalElem_);
+    PipeBarrier<PIPE_ALL>();  // 确保读完
+}
+
 
 template <typename T>
 __aicore__ inline void LocalMsRw<T>::WriteMode()
 {
-    uint32_t elemPerBlock = BLOCK_4K_BYTES / sizeof(T);
-    for (uint32_t i = 0; i < myBlocks_; i++) {
-        uint64_t blockIdx = myStartBlock_ + i;
-        uint32_t ccuaIdx;
-        uint64_t offsetBytes;
-        GetBlockTargetAddr(blockIdx, ccuaIdx, offsetBytes);
-        uint64_t offsetElem = offsetBytes / sizeof(T);
-        DataCopy(msGm_[ccuaIdx][offsetElem], dataLocal_, elemPerBlock);
+    for (int i = 0; i < 100; i++) {
+        DataCopy(msGm_[0], dataLocal_, totalElem_);
+        PipeBarrier<PIPE_ALL>();  // 确保读完
     }
+    // DataCopy(msGm_[3], dataLocal_, totalElem_);
+    // PipeBarrier<PIPE_ALL>();  // 确保读完
+}
+
+template <typename T>
+__aicore__ inline void LocalMsRw<T>::ReadWarmup()
+{
+    // // === 读阶段：一次读全部 ===
+    DataCopy(readLocal_, msGm_[3], totalElem_);  // MS → UB
+
+    PipeBarrier<PIPE_ALL>();  // 确保读完
 }
 
 template <typename T>
 __aicore__ inline void LocalMsRw<T>::ReadMode()
 {
-    LocalTensor<T> readLocal = readBuf_.Get<T>();
-    uint32_t elemPerBlock = BLOCK_4K_BYTES / sizeof(T);
-
-    for (uint32_t i = 0; i < myBlocks_; i++) {
-        uint64_t blockIdx = myStartBlock_ + i;
-        uint32_t ccuaIdx;
-        uint64_t offsetBytes;
-        GetBlockTargetAddr(blockIdx, ccuaIdx, offsetBytes);
-        uint64_t offsetElem = offsetBytes / sizeof(T);
-        DataCopy(readLocal, msGm_[ccuaIdx][offsetElem], elemPerBlock);
+    for (int i = 0; i < 100; i++) {
+        DataCopy(readLocal_, msGm_[3], totalElem_);
+        PipeBarrier<PIPE_ALL>();  // 确保读完
     }
+
+    // // === 读阶段：一次读全部 ===
+    // DataCopy(readLocal_, msGm_[3], totalElem_);  // MS → UB
+    // PipeBarrier<PIPE_ALL>();  // 确保读完
 }
 
 template <typename T>
@@ -191,17 +203,55 @@ __aicore__ inline void LocalMsRw<T>::ReadWriteMode()
 }
 
 template <typename T>
-__aicore__ inline void LocalMsRw<T>::WriteThenReadMode()
+__aicore__ inline void LocalMsRw<T>::WriteThenReadWarmup()
 {
-    // === 写阶段：一次写全部 ===
-    DataCopy(msGm_[0], dataLocal_, totalElem_);  // UB → MS
+    // // === 写阶段：一次写全部 ===
+    DataCopy(msGm_[3], dataLocal_, totalElem_);  // UB → MS
 
     PipeBarrier<PIPE_ALL>();  // 确保写完
 
-    // === 读阶段：一次读全部 ===
-    DataCopy(readLocal_, msGm_[0], totalElem_);  // MS → UB
+    // // === 读阶段：一次读全部 ===
+    DataCopy(readLocal_, msGm_[3], totalElem_);  // MS → UB
 
     PipeBarrier<PIPE_ALL>();  // 确保读完
+}
+
+template <typename T>
+__aicore__ inline void LocalMsRw<T>::WriteThenReadMode()
+{
+    for (int i = 0; i < 100; i++) {
+        // // === 写阶段：一次写全部 ===
+        DataCopy(msGm_[3], dataLocal_, totalElem_);  // UB → MS
+
+        PipeBarrier<PIPE_ALL>();  // 确保写完
+
+        // // === 读阶段：一次读全部 ===
+        DataCopy(readLocal_, msGm_[3], totalElem_);  // MS → UB
+
+        PipeBarrier<PIPE_ALL>();  // 确保读完
+    }
+
+/*
+    uint64_t s0, e0, s1, e1;
+    // // === 写阶段：一次写全部 ===
+    s0 = GetSystemCycle();
+    DataCopy(msGm_[1], dataLocal_, totalElem_);  // UB → MS
+
+    PipeBarrier<PIPE_ALL>();  // 确保写完
+    e0 = GetSystemCycle();
+
+    // // === 读阶段：一次读全部 ===
+    s1 = GetSystemCycle();
+    DataCopy(readLocal_, msGm_[1], totalElem_);  // MS → UB
+
+    PipeBarrier<PIPE_ALL>();  // 确保读完
+    e1 = GetSystemCycle();
+
+    printf("[lgx] startCycle0 = %llu\n", s0);
+    printf("[lgx] endCycle0 = %llu\n", e0);
+    printf("[lgx] startCycle1 = %llu\n", s1);
+    printf("[lgx] endCycle1 = %llu\n", e1);
+*/
 }
 
 template <typename T>
@@ -217,9 +267,10 @@ __aicore__ inline void LocalMsRw<T>::VerifyResult()
 {
     verifyResult_ = 0;  // 0=通过, 1=失败
 
-    DataCopy(readLocal_, msGm_[0], totalElem_);  // 重读一次
     for (uint32_t i = 0; i < totalElem_; i++) {
-        if (readLocal_.GetValue(i) != static_cast<T>(i & 0xFF)) {
+        T actual = readLocal_.GetValue(i);
+        if (actual != static_cast<T>(i & 0xFF)) {
+            printf("[lgx] current actual = %u, expected = %u\n", actual, static_cast<T>(i & 0xFF));
             verifyResult_ = 1;
             return;
         }
@@ -235,11 +286,20 @@ __aicore__ inline void LocalMsRw<T>::Process()
     if (mode0_ == MODE_WRITE_THEN_READ) {
         FillData();
     } else {
-        uint32_t elemPerBlock = BLOCK_4K_BYTES / sizeof(T);
-        Duplicate<T>(dataLocal_, (T)1, elemPerBlock);
+        // uint32_t elemPerBlock = BLOCK_4K_BYTES / sizeof(T);
+        // Duplicate<T>(dataLocal_, (T)1, elemPerBlock);
     }
 
+    PipeBarrier<PIPE_ALL>();
     // 打点内
+
+    uint64_t startCycle0 = GetSystemCycle();
+    // WriteWarmup();
+    // ReadWarmup();
+    WriteThenReadWarmup();
+    uint64_t endCycle0 = GetSystemCycle();
+    printf("[lgx] warmup cycle is %llu", endCycle0 - startCycle0);
+
     uint64_t startCycle = GetSystemCycle();
 
     switch (mode0_) {
@@ -259,8 +319,10 @@ __aicore__ inline void LocalMsRw<T>::Process()
             break;
     }
 
-    PipeBarrier<PIPE_ALL>();
+    // PipeBarrier<PIPE_ALL>();
     uint64_t endCycle = GetSystemCycle();
+    printf("[lgx] startCycle = %llu\n", startCycle);
+    printf("[lgx] endCycle = %llu\n", endCycle);
 
     // 打点外：校验（仅新模式）
     if (mode0_ == MODE_WRITE_THEN_READ) {
@@ -271,6 +333,7 @@ __aicore__ inline void LocalMsRw<T>::Process()
     timeGm_.SetValue(0, startCycle);
     timeGm_.SetValue(1, endCycle);
     timeGm_.SetValue(2, verifyResult_);
+    DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(timeGm_);
 }
 
 } // namespace LocalMsRwImpl

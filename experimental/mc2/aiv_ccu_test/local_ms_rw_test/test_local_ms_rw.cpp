@@ -43,24 +43,22 @@ using namespace std;
 typedef int32_t CcuResult;
 constexpr CcuResult CCU_SUCCESS = 0;
 
-// MS 内存信息结构体
-struct CcuMemInfo {
-    uint64_t memType{0};
-    uint64_t memVa{0};
-    uint32_t memSize{0};
-    uint32_t resv{0};
-};
+typedef enum {
+    RES_ADD_TYPE_CCU = 4, /**< CCUA MS address. resId 0..3 maps to CCUA0..CCUA3. */
+    RES_ADD_TYPE_RESERVED = 255
+} CcuResAddrType;
 
-constexpr uint64_t CCU_MEMTYPE_MS_BLOCK0 = 1ULL << 32;
-constexpr uint64_t CCU_MEMTYPE_MS_BLOCK1 = 1ULL << 33;
-constexpr uint64_t CCU_MEMTYPE_MS_BLOCK2 = 1ULL << 34;
-constexpr uint64_t CCU_MEMTYPE_MS_BLOCK3 = 1ULL << 35;
-
-// hcomm 暴露的接口
+/**
+ * @brief 将CCU设备资源映射为当前进程可访问的VA。
+ * @param[in]  resType 资源类型。当前支持RES_ADD_TYPE_CCU。
+ * @param[in]  resId   资源ID。RES_ADD_TYPE_CCU场景下，0..3分别表示CCUA0..CCUA3的MS地址。
+ * @param[out] va      输出映射后的VA，不可为nullptr。
+ * @return CcuResult。CCU_SUCCESS表示成功；CCU_E_PARA表示resType/resId非法；
+ *         CCU_E_PTR表示va为nullptr；其余为底层runtime错误。
+ */
+extern "C" CcuResult HcommCcuResAddrGet(uint32_t resType, uint32_t resId, uint64_t *va);
 extern "C" CcuResult CcuGetTlvHandle(uint32_t devLogicId, void **outTlvHandle);
 extern "C" CcuResult CcuPutTlvHandle(void *tlvHandle);
-extern "C" CcuResult CcuGetMemInfo(void *tlvHandle, uint32_t udieIdx, uint64_t memTypeBitmap,
-                                    void *memInfoList, uint32_t count);
 
 // ========== 系统周期频率 ==========
 constexpr uint32_t SYS_CYCLE_FREQ_MHZ = 1000U;
@@ -72,7 +70,7 @@ constexpr int64_t HCCL_BUFFER_SIZE = 200;
 constexpr uint64_t MAX_DATA_SIZE = 120 * 1024; // 120KB，WriteThenRead 模式单次搬运上限
 int32_t g_rankId = 0;
 int32_t g_ranksize = 1;        // 卡数（本地测试默认单卡）
-uint32_t g_mode0 = 0;          // 0=写, 1=读, 2=读写混合, 3=先写后读
+uint32_t g_mode0 = 3;          // 0=写, 1=读, 2=读写混合, 3=先写后读
 uint32_t g_mode1 = 1;          // 0=不交织, 1=交织
 uint64_t g_dataSize = 4096;    // 默认 4KB
 
@@ -172,24 +170,22 @@ int main(int argc, char *argv[])
     CHECK_RET(ret == HCCL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitClusterInfoConfig failed. ret: %d\n", ret);
               return ret);
     LOG_PRINT("[INFO] 通信域初始化成功。\n");
+    ret = aclrtSetCurrentContext(context);
 
-    // ========== 获取 MS 地址 ==========
-    LOG_PRINT("[INFO] 获取 TLV Handle...\n");
-    void *tlvHandle = nullptr;
-    CcuResult ccuRet = CcuGetTlvHandle((uint32_t)g_rankId, &tlvHandle);
+    // ========== 初始化 CCU Handle ==========
+    LOG_PRINT("[INFO] 获取 CCU TLV Handle...\n");
+    void *ccuHandle = nullptr;
+    CcuResult ccuRet = CcuGetTlvHandle((uint32_t)g_rankId, &ccuHandle);
     CHECK_RET(ccuRet == CCU_SUCCESS, LOG_PRINT("[ERROR] CcuGetTlvHandle failed. ret: %d\n", ccuRet); return -1);
-    CHECK_RET(tlvHandle != nullptr, LOG_PRINT("[ERROR] tlvHandle is nullptr.\n"); return -1);
-
-    uint64_t msBitmap = CCU_MEMTYPE_MS_BLOCK0 | CCU_MEMTYPE_MS_BLOCK1 | CCU_MEMTYPE_MS_BLOCK2 | CCU_MEMTYPE_MS_BLOCK3;
-    CcuMemInfo memInfoList[4];
-    LOG_PRINT("[INFO] 查询 MS 地址...\n");
-    ccuRet = CcuGetMemInfo(tlvHandle, 0, msBitmap, memInfoList, 4);
-    CHECK_RET(ccuRet == CCU_SUCCESS, LOG_PRINT("[ERROR] CcuGetMemInfo failed. ret: %d\n", ccuRet); return -1);
-
+    CHECK_RET(ccuHandle != nullptr, LOG_PRINT("[ERROR] ccuHandle is nullptr.\n"); return -1);
+    LOG_PRINT("[INFO] ccuHanle=%p\n", ccuHandle);
+    // ========== 获取 MS 地址 ==========
     uint64_t msAddrs[4];
     for (uint32_t i = 0; i < 4; i++) {
-        msAddrs[i] = memInfoList[i].memVa;
-        LOG_PRINT("[INFO] MSAddr%d (CCUA%d): va=0x%016lx, size=%u bytes\n", i, i, msAddrs[i], memInfoList[i].memSize);
+        ccuRet = HcommCcuResAddrGet(RES_ADD_TYPE_CCU, i, &msAddrs[i]);
+        CHECK_RET(ccuRet == CCU_SUCCESS,
+                  LOG_PRINT("[ERROR] HcommCcuResAddrGet failed. resId: %u, ret: %d\n", i, ccuRet); return -1);
+        LOG_PRINT("[INFO] MSAddr%d (CCUA%d): va=0x%016lx\n", i, i, msAddrs[i]);
     }
 
     // ========== 分配计时 GM ==========
@@ -241,8 +237,8 @@ int main(int argc, char *argv[])
 
     // ========== 释放资源 ==========
     aclrtFree(timeGm);
-    if (tlvHandle != nullptr) {
-        CcuPutTlvHandle(tlvHandle);
+    if (ccuHandle != nullptr) {
+        CcuPutTlvHandle(ccuHandle);
     }
     HcclCommDestroy(comms);
     aclrtDestroyStream(stream);

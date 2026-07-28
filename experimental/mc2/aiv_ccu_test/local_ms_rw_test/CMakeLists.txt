@@ -57,6 +57,7 @@ target_compile_definitions(test_local_ms_rw PRIVATE
 
 target_include_directories(test_local_ms_rw PRIVATE
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
+    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/include
     ${ASCEND_CANN_PACKAGE_PATH}/include
 )
 
