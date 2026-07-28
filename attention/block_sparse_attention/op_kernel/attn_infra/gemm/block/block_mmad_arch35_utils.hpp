@@ -78,9 +78,17 @@ namespace MXFP4 {
     static constexpr uint32_t L0C_PV_BUF_SIZE = 72 * KB_SIZE;
     static constexpr uint32_t L0C_PV_BUF_OFFSET = 64 * KB_SIZE;
 
+    static constexpr uint32_t BLOCK_SIZE = 32; 
+
     static constexpr uint32_t V_SCALE_L0A_SIZE = (256 / 64) * ((128 + 16) / 16) * 32 ;
 
     static constexpr uint32_t mBaseSize = 128;     // [#9] M 方向基准 tile（对应 QFA mBaseSize），用于 pad 满块判断
+
+    static constexpr uint32_t CONST_32 = 32; 
+    static constexpr uint32_t CONST_64 = 64; 
+    static constexpr uint32_t CONST_128 = 128; 
+
+    static constexpr uint32_t ROW_SUM_PAD_NUM = 16; 
 
 }  // namespace MXFP4
 
