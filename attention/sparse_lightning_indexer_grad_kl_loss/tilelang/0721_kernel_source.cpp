@@ -261,11 +261,11 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
             AscendC::CrossCoreWaitFlag(1);
           }
           for (int32_t k_inner = 0; k_inner < 8; ++k_inner) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
-            tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKey_ws[((((pipe_iter * 12582912) + (cid * 524288)) + (k_inner * 65536)) - 12582912)], 512, 128, 128, true);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
             for (int32_t d_idx = 0; d_idx < 4; ++d_idx) {
               AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
+              AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+              tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKey_ws[(((((pipe_iter * 12582912) + (cid * 524288)) + (k_inner * 65536)) + (d_idx * 128)) - 12582912)], 512, 128, 128, true);
+              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
               AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
               if (d_idx == 0) {
                 tl::ascend::copy_l1_to_l0a<bfloat16_t, 128, 128, false>(c1_q_l0a[0], c1_query_chunk_0_l1[0], 128, 128);
@@ -282,16 +282,6 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
               tl::ascend::copy_l1_to_l0b<bfloat16_t, 128, 128, true>(c1_key_l0b[0], c1_key_l1[0], 128, 128);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
-              if (d_idx < 3) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
-                tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKey_ws[(((((pipe_iter * 12582912) + (cid * 524288)) + (k_inner * 65536)) + (d_idx * 128)) - 12582784)], 512, 128, 128, true);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
-              }
-              if (d_idx == 3) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
-                tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKeyRope_ws[((((pipe_iter * 3145728) + (cid * 131072)) + (k_inner * 16384)) - 3145728)], 128, 128, 128, true);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
-              }
               AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
               AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
               tl::ascend::mma<bfloat16_t, float, 128, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (d_idx == 0), 128);
@@ -299,6 +289,9 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
               AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
             }
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+            tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKeyRope_ws[((((pipe_iter * 3145728) + (cid * 131072)) + (k_inner * 16384)) - 3145728)], 128, 128, 128, true);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
             tl::ascend::copy_l1_to_l0a<bfloat16_t, 128, 128, false>(c1_q_l0a[0], c1_query_rope_cache_l1[0], 128, 128);
             tl::ascend::copy_l1_to_l0b<bfloat16_t, 128, 128, true>(c1_key_l0b[0], c1_key_l1[0], 128, 128);
