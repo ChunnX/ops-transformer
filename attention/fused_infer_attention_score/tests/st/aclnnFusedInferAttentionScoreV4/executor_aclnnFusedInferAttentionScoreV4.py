@@ -9497,6 +9497,13 @@ class TestFIAV4SplitFuse():
         for i in range(batch):
             q_seqlen = int(attention_inputs.q_seqlen_list[i])
             k_seqlen = int(attention_inputs.k_seqlen_list[i])
+            # qs=0场景（TND累加和数组中actualSeqQ[i]==actualSeqQ[i-1]或首轴为0）：
+            # 该batch无query token，输出区域为空切片无需填充，跳过计算避免
+            # np.max对zero-size数组归约报错。
+            if q_seqlen == 0:
+                cu_seqlen += q_seqlen
+                kv_seqlen_now += k_seqlen
+                continue
 
             q = None
             if attention_inputs.auxAttrs.layout_dtype == 1:
