@@ -115,7 +115,7 @@ __aicore__ inline void ComputeParamBatch(
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo &constInfo, bool lastBN,
-                                         int64_t nextGs1Idx, int64_t gS1StartIdx, int64_t s2EndIdx)
+                                         int64_t nextGs1Idx, int64_t gS1StartIdx, int64_t tileEndIdx)
 {
     // 计算每个基本块可以拷贝多少行s
     runParam.qSNumInOneBlock = 1;
@@ -143,8 +143,8 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo 
     if (!lastBN) {
         runParam.gs1LoopEndIdx = gs1LoopEndIdx;
     } else {
-        uint32_t actualNextGs1Idx = s2EndIdx == 0 ? nextGs1Idx : nextGs1Idx + 1;
-        runParam.gs1LoopEndIdx = (nextGs1Idx == 0 && s2EndIdx == 0) ? gs1LoopEndIdx : actualNextGs1Idx;
+        uint32_t actualNextGs1Idx = tileEndIdx == 0 ? nextGs1Idx : nextGs1Idx + 1;
+        runParam.gs1LoopEndIdx = (nextGs1Idx == 0 && tileEndIdx == 0) ? gs1LoopEndIdx : actualNextGs1Idx;
     }
 
     if (runParam.gs1LoopStartIdx > runParam.gs1LoopEndIdx) {

@@ -12,6 +12,7 @@
 
 import itertools
 import torch
+import torch_npu
 from mixed_quant_sparse_flash_mla_paramset import ENABLED_PARAMS
 import result_compare_method
 import check_valid_param
@@ -30,6 +31,9 @@ pt_save_path = "mqsmla_testcase"
 device_id = 0
 save_pt = False
 result_path = Path("result.xlsx")
+
+det_level = int(os.environ.get("MQSMLA_DET_LEVEL", 1))
+torch_npu.npu.set_deterministic_level(det_level)
 
 param_combinations = []
 for params in ENABLED_PARAMS:
@@ -65,7 +69,7 @@ for params in ENABLED_PARAMS:
         "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
         "ori_win_left": params.get("ori_win_left"),
         "ori_win_right": params.get("ori_win_right"),
-        "quant_mode": params.get("quant_mode"),
+        "quant_mode": params.get("quant_mode", params.get("kv_quant_mode")),
         "tile_size": params.get("tile_size"),
         "rope_head_dim": params.get("rope_head_dim"),
         "template_run_mode": params.get("template_run_mode"),

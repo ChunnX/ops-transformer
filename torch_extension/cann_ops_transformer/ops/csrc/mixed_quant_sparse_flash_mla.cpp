@@ -136,7 +136,7 @@ ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::T
         }
     } else {
         // 不返回时tensor传空
-        softmaxLseSize = {};
+        softmaxLseSize = {0};
     }
     at::Tensor softmaxLse = at::empty(softmaxLseSize, q.options().dtype(torch::kFloat32));
 

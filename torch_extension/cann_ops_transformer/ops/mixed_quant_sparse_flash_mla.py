@@ -167,7 +167,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                         device="meta",
                     )
             else:
-                softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
+                softmax_lse = torch.empty([0], dtype=torch.float32, device="meta")
             return (attn_out, softmax_lse)
 
 
