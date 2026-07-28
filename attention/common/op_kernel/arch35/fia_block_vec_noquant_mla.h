@@ -307,7 +307,6 @@ public:
         uint32_t pseStride = 0;
         float descaleQK = 1.0;
         float deSCaleKValue = 1.0;
-        int64_t stage1Offset = runInfo.loop % DB;
 
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
@@ -647,14 +646,19 @@ public:
 
     __aicore__ inline void SoftmaxInitBuffer()
     {
-        tPipe->InitBuffer(softmaxSumBuf[0], 128); // [32, 1]
-        tPipe->InitBuffer(softmaxSumBuf[1], 128); // [64, 1]
+        // SOFTMAX的VF中max/sum/exp读写按256B对齐的, 实际使用需按256B向上对齐分配
+        static constexpr uint32_t REG_BYTES = 256U;
+        static constexpr uint32_t SOFTMAX_BUF_BYTES = (mBaseSize / CV_RATIO) * sizeof(float); // 实际只需使用32 * 4 =128B
+        static constexpr uint32_t ACT_BYTES = (SOFTMAX_BUF_BYTES + REG_BYTES - 1) / REG_BYTES * REG_BYTES;
 
-        tPipe->InitBuffer(softmaxMaxBuf[0], 128); // [64, 1]
-        tPipe->InitBuffer(softmaxMaxBuf[1], 128); // [64, 1]
+        tPipe->InitBuffer(softmaxSumBuf[0], ACT_BYTES);
+        tPipe->InitBuffer(softmaxSumBuf[1], ACT_BYTES);
 
-        tPipe->InitBuffer(softmaxExpBuf[0], 128); // [64, 1]
-        tPipe->InitBuffer(softmaxExpBuf[1], 128); // [64, 1]
+        tPipe->InitBuffer(softmaxMaxBuf[0], ACT_BYTES);
+        tPipe->InitBuffer(softmaxMaxBuf[1], ACT_BYTES);
+
+        tPipe->InitBuffer(softmaxExpBuf[0], ACT_BYTES);
+        tPipe->InitBuffer(softmaxExpBuf[1], ACT_BYTES);
 
         tPipe->InitBuffer(maxBrdcst, 1, 1024); // [32, 8]
         tPipe->InitBuffer(sumBrdcst, 1, 1024); // [32, 8]
@@ -662,9 +666,6 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-        uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVTemplateAlign64 * sizeof(T);
-
         SoftmaxInitBuffer();
         if constexpr (hasAtten) {
             tPipe->InitBuffer(attenMaskInQue[0], 1, 4096);
@@ -673,7 +674,7 @@ public:
 
         tPipe->InitBuffer(commonTBuf, 512); // 实际上只需要512Bytes
         // Bmm2结果和Vec2结果都在UB
-        tPipe->InitBuffer(stage2OutBuf, mBaseSize * dVTemplateAlign64 * sizeof(T));
+        tPipe->InitBuffer(stage2OutBuf, mBaseSize / CV_RATIO * dVTemplateAlign64 * sizeof(T));
 
         tPipe->InitBuffer(stage1OutQue, 1, (mBaseSize / CV_RATIO + 1) * s2BaseSize * sizeof(INPUT_T));
 
