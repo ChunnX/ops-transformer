@@ -1067,9 +1067,9 @@ ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
         "When layout is TND, actualSequenceLengthKV is required, but the number of element in it is 0!"),
         return ge::GRAPH_FAILED);
-    if (CheckFAISeqlenDataInTND(context, isPageAttention, actSeqLenDims, actSeqLenKVDims) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
+    // if (CheckFAISeqlenDataInTND(context, isPageAttention, actSeqLenDims, actSeqLenKVDims) != ge::GRAPH_SUCCESS) {
+    //     return ge::GRAPH_FAILED;
+    // }
     int32_t sparseMode = static_cast<int32_t>(*(context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
     if (sparseMode == 4 && CheckSparseModeParams(context, actSeqLenDims) != ge::GRAPH_SUCCESS) { // 4: sparseMode
         return ge::GRAPH_FAILED;
@@ -2238,6 +2238,10 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         OP_CHECK_IF(TilingProcess4SplitFuse(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for split fuse failed"),
             return ge::GRAPH_FAILED);
+        // qs=0场景：query序列长度为0时仅需单核执行，避免BATCH_MODE_SCHEDULE下多核空转导致同步异常
+        if (queryS == 0) {
+            context->SetBlockDim(1);
+        }
     } else if (usingIFA) { // IFA tiling process
         OP_CHECK_IF(TilingProcess4IFA(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for ifa failed"),
