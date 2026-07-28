@@ -65,28 +65,18 @@ project(apace_st LANGUAGES CXX ASC)
 #   "tensor_api/tensor.h"      -> ops-tensor/include/tensor_api/include/
 #   "include/tensor_api/..."   -> ops-tensor/include/tensor_api/
 # tensor_api 子目录是 submodule（指向 asc-devkit），需要 --init --recursive。
-set(OPS_TENSOR_GIT_URL "https://gitcode.com/cann/ops-tensor.git" CACHE STRING "ops-tensor git url")
-set(OPS_TENSOR_GIT_BRANCH "master" CACHE STRING "ops-tensor git branch")
-set(OPS_TENSOR_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.third_party/ops-tensor" CACHE PATH "ops-tensor source root")
+# 复用主仓 ops-tensor（commit 锁定版，路径为 ${OPS_TRANSFORMER_ROOT}/third_party/ops-tensor）
+get_filename_component(OPS_TRANSFORMER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../.." REALPATH)
+if(NOT CANN_3RD_LIB_PATH)
+  set(CANN_3RD_LIB_PATH "${OPS_TRANSFORMER_ROOT}/third_party")
+endif()
+include(FetchContent)
+include("${OPS_TRANSFORMER_ROOT}/cmake/third_party/ops-tensor.cmake")
+set(OPS_TENSOR_ROOT "${OPTENSOR_SOURCE_PATH}")
 
 find_package(Git QUIET)
 if(NOT GIT_FOUND)
-    message(FATAL_ERROR "Git is required to clone ops-tensor: ${OPS_TENSOR_GIT_URL}")
-endif()
-
-# clone（若目录不存在或非 git 仓库）
-if(NOT EXISTS "${OPS_TENSOR_ROOT}/.git")
-    message(STATUS "Cloning ops-tensor into ${OPS_TENSOR_ROOT} ...")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.third_party")
-    execute_process(
-        COMMAND ${GIT_EXECUTABLE} clone --depth 1 -b ${OPS_TENSOR_GIT_BRANCH} ${OPS_TENSOR_GIT_URL} "${OPS_TENSOR_ROOT}"
-        RESULT_VARIABLE _clone_rc
-        OUTPUT_VARIABLE _clone_out
-        ERROR_VARIABLE _clone_err
-    )
-    if(NOT _clone_rc EQUAL 0)
-        message(FATAL_ERROR "git clone ops-tensor failed:\n${_clone_err}")
-    endif()
+    message(FATAL_ERROR "Git is required for ops-tensor submodule init")
 endif()
 
 # init submodule include/tensor_api（asc-devkit，提供 tensor.h / pointer.h）

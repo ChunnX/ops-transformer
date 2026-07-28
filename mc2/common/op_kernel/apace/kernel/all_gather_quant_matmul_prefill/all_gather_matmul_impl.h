@@ -24,12 +24,12 @@
 #include "apace/block/aiv_comm/barrier/barrier_ubmem.h"
 #include "apace/tiling/comm_tiling_data.h"
 
+#include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/kernel/kernel_qbmm_mx.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "blaze/epilogue/block/block_epilogue_empty.h"
 #include "blaze/gemm/utils/layout_utils.h"
-#include "blaze/gemm/policy/dispatch_policy.h"
 #include "apace/block/blaze_ext/gemm/block/block_mmad_qbmm_mx_fragment.h"
 #include "apace/basic/fragment_tensor/fragment_tensor.h"
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
@@ -67,22 +67,28 @@ public:
     AscendC::Std::enable_if_t<
       AscendC::Std::is_same_v<Blaze::Gemm::KernelMmadWithScaleMx,
                   typename BlockMmad::DispatchPolicy::ScheduleType>>>;
-  using GemmParams = typename GemmKernel::Params;
   using BlockMmadParams = typename BlockMmad::Params;
   using L1Params = typename BlockMmad::L1Params;
   using SchParams = typename BlockScheduler::Params;
-  using QBMMTiling = typename GemmKernel::QBMMTiling;
+
+  // Layout factories — replicated from GemmKernel (private in this ops-tensor version)
+  static constexpr int64_t kC0Size = 32;   // C0_SIZE_B8 for non-fp4
+  using MakeLayoutA = AscendC::Te::FrameLayoutFormat<LayoutA, AscendC::Std::Int<kC0Size>>;
+  using MakeLayoutScaleA = AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleANDLayoutPtn, AscendC::Std::Int<2>>;
+  using MakeLayoutB = AscendC::Te::FrameLayoutFormat<LayoutB, AscendC::Std::Int<kC0Size>>;
+  using MakeLayoutScaleB = AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<2>>;
+  using MakeLayoutC = AscendC::Te::FrameLayoutFormat<LayoutC, AscendC::Std::Int<AscendC::Te::C0_ELEMENT<CType>>>;
 
   using BlockMmadFragC = Blaze::Gemm::Block::BlockMmadFragCOut<
     0, false, AType, LayoutA, BType, LayoutB, CType, LayoutC, float, LayoutC>;
   using FragL1Params = typename BlockMmadFragC::L1Params;
   using FragBlockShape = typename BlockMmadFragC::BlockShape;
   using FragTensorA = Apace::Basic::FragmentTensor<2, Apace::Basic::MAX_FRAGMENT_COUNT,
-                            typename GemmKernel::MakeLayoutA, AType>;
+                            MakeLayoutA, AType>;
   using FragScaleA = Apace::Basic::FragmentTensor<2, Apace::Basic::MAX_FRAGMENT_COUNT,
-                            typename GemmKernel::MakeLayoutScaleA, AscendC::fp8_e8m0_t>;
+                            MakeLayoutScaleA, AscendC::fp8_e8m0_t>;
   using FragTensorC = Apace::Basic::FragmentTensor<2, Apace::Basic::MAX_FRAGMENT_COUNT,
-                            typename GemmKernel::MakeLayoutC, CType>;
+                            MakeLayoutC, CType>;
 
 private:
   __aicore__ inline void InitBaseParams(const AllGatherMatmulTilingData *td);
@@ -349,11 +355,11 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::BuildFragm
     GM_ADDR addrListA[MAX_FRAG] = {aGM_};
     GM_ADDR addrListScale[MAX_FRAG] = {aScaleGM_};
     GM_ADDR addrListC[MAX_FRAG] = {cFragAddrs_[rankId_]};
-    headFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutA, AType>(
+    headFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
         MakeFragParam(headRows_, headRows_, 1, k_), addrListA);
-    headFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
+    headFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
         MakeFragParam(headRows_, headRows_, 1, scaleKLen_), addrListScale);
-    headFragC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutC, CType>(
+    headFragC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutC, CType>(
         MakeFragParam(headRows_, headRows_, 1, n_), addrListC);
   }
   // main / tail 的 fragment tensor 延迟到首次使用时构建，构建开销被 comm wait 掩盖。
@@ -399,11 +405,11 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::BuildMainF
     addrListC[fragIdx] = cFragAddrs_[r] + curRoundCOff_;
     fragIdx++;
   }
-  curMainA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutA, AType>(
+  curMainA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
       MakeFragParam(tileM_, tileM_, rankSize_ - 1, k_), addrListA);
-  curMainScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
+  curMainScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
       MakeFragParam(tileM_, tileM_, rankSize_ - 1, scaleKLen_), addrListScale);
-  curMainC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutC, CType>(
+  curMainC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutC, CType>(
       MakeFragParam(tileM_, tileM_, rankSize_ - 1, n_), addrListC);
   curMainRoundIdx_ = roundIdx;
 }
@@ -433,11 +439,11 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::BuildTailF
     }
     addrListC[r] = cFragAddrs_[r] + tailCOff;
   }
-  tailFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutA, AType>(
+  tailFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
       MakeFragParam(paddedTailM_, tailM_, rankSize_, k_), addrListA);
-  tailFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
+  tailFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
       MakeFragParam(paddedTailM_, tailM_, rankSize_, scaleKLen_), addrListScale);
-  tailFragC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, typename GemmKernel::MakeLayoutC, CType>(
+  tailFragC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutC, CType>(
       MakeFragParam(paddedTailM_, tailM_, rankSize_, n_), addrListC);
 }
 
@@ -518,10 +524,10 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::MatmulProc
 
   // B / scaleB / bias 全局共享。
   auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BType *>(bGM_)),
-               typename GemmKernel::MakeLayoutB{}(Ki, Ni));
+               MakeLayoutB{}(Ki, Ni));
   auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
                      reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(bScaleGM_)),
-                     typename GemmKernel::MakeLayoutScaleB{}(scaleKLen, Ni));
+                     MakeLayoutScaleB{}(scaleKLen, Ni));
   __gm__ float *biasNull = nullptr;
   auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasNull),
                   Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
