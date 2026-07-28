@@ -372,7 +372,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<
         ArchTag, ElementO, LayoutO, LayoutOTmp>;
     using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<
-        DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS, TileCopyRescaleO, Arch::PositionL0C>;
+        DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementDm, TileCopyRescaleO, Arch::PositionL0C>;
 
     using BsaMXFP4FullQuantKernelArch35 = BsaMXFP4FullQuantKernelArch35<
         EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO,
