@@ -76,6 +76,9 @@ for params in ENABLED_PARAMS:
         "S1EQS2": params.get("S1EQS2", [False]),
         "isSink": params.get("isSink", [True]),
         "return_softmax_lse": params.get("return_softmax_lse", [False]),
+        "q_datarange": params.get("q_datarange", [[-5, 5]]),
+        "ori_kv_datarange": params.get("ori_kv_datarange", [[-5, 5]]),
+        "cmp_kv_datarange": params.get("cmp_kv_datarange", [[-5, 5]]),
     }
 
     param_names = list(param_values.keys())
