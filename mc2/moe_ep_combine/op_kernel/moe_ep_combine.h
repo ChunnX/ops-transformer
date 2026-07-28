@@ -399,19 +399,36 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
     uint32_t channelIndex = splitRankTokens ? coreIndexInGroup : 0;
-    uint32_t targetRankTokenIndex = 0;
+    uint64_t scanStart = 0;
+    uint64_t scanEnd = actualA_;
+    if (splitRankTokens) {
+        // Split the metadata range among the cores assigned to the same rank.
+        uint64_t tokensPerCore = actualA_ / groupSize;
+        uint64_t remainder = actualA_ % groupSize;
+        uint64_t myScanTokenCount = tokensPerCore + ((coreIndexInGroup < remainder) ? 1UL : 0UL);
+        scanStart = tokensPerCore * coreIndexInGroup +
+                    ((coreIndexInGroup < remainder) ? coreIndexInGroup : remainder);
+        scanEnd = scanStart + myScanTokenCount;
+        if (scanStart >= scanEnd) {
+            return;
+        }
+    }
     Duplicate<uint32_t>(statusTensor_, (uint32_t)1, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
     constexpr uint32_t metaChunkTokenMax = 8192U; // 分块上限，平衡UB占用与搬运次数（128KB，A5 UB 256KB余量充足）
 
-    uint32_t metaChunkTokens = (actualA_ < metaChunkTokenMax) ? actualA_ : metaChunkTokenMax;
+    uint64_t scanTokenCount = scanEnd - scanStart;
+    uint32_t metaChunkTokens = metaChunkTokenMax;
+    if (scanTokenCount < metaChunkTokenMax) {
+        metaChunkTokens = static_cast<uint32_t>(scanTokenCount);
+    }
     uint32_t metaChunkBytes = Ceil(metaChunkTokens * metaBytesPerToken, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(metadataBuf_, metaChunkBytes);
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
     const DataCopyPadExtParams<int32_t> metaPadParams{false, 0U, 0U, 0U};
-    for (uint64_t chunkStart = 0; chunkStart < actualA_; chunkStart += metaChunkTokens) {
-        uint64_t chunkEnd = (chunkStart + metaChunkTokens > actualA_) ? actualA_ : (chunkStart + metaChunkTokens);
+    for (uint64_t chunkStart = scanStart; chunkStart < scanEnd; chunkStart += metaChunkTokens) {
+        uint64_t chunkEnd = (chunkStart + metaChunkTokens > scanEnd) ? scanEnd : (chunkStart + metaChunkTokens);
         uint32_t curChunkTokens = static_cast<uint32_t>(chunkEnd - chunkStart);
 
         DataCopyExtParams metaCopyParams{1U, curChunkTokens * metaBytesPerToken, 0U, 0U, 0U};
@@ -428,10 +445,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             }
             if (splitRankTokens) {
                 if (src_rank != static_cast<int32_t>(targetRank)) {
-                    continue;
-                }
-                uint32_t currentRankTokenIndex = targetRankTokenIndex++;
-                if (currentRankTokenIndex % groupSize != coreIndexInGroup) {
                     continue;
                 }
             } else if (static_cast<uint32_t>(src_rank) % activeAivNum != aivId_) {
