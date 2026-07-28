@@ -43,4 +43,3 @@ def cpu_quant_sparse_flash_mla(q, *, return_softmax_lse=False,
     if bool(return_softmax_lse):
         raise RuntimeError("QSMLA pytest golden does not provide softmax_lse")
     return data["cpu_output"], None
-

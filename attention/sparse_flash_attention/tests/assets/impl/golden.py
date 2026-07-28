@@ -46,28 +46,70 @@ class CaseDataStore:
 CASE_DATA = CaseDataStore()
 
 
-def _package_version(*distribution_names):
-    for name in distribution_names:
-        try:
-            return metadata.version(name)
-        except metadata.PackageNotFoundError:
-            continue
-    return "not-installed"
+class SparseFlashAttentionGoldenAdapter:
+    """Keep pytest-loader diagnostics and parameter normalization local to the golden hook."""
 
+    @staticmethod
+    def package_version(*distribution_names):
+        for name in distribution_names:
+            try:
+                return metadata.version(name)
+            except metadata.PackageNotFoundError:
+                continue
+        return "not-installed"
 
-def _pytest_load_error(module_path, dependency_path, exc):
-    versions = (
-        f"python={sys.version.split()[0]}, "
-        f"tensorflow={_package_version('tensorflow', 'tensorflow-cpu')}, "
-        f"numpy={_package_version('numpy')}"
-    )
-    return RuntimeError(
-        "Failed to load SparseFlashAttention pytest golden during module execution; "
-        f"module={module_path}; dependency={dependency_path}; {versions}; "
-        "generate_tensor_data imports TensorFlow at module import time. Verify that "
-        "TensorFlow and generate_tensor_data can be imported in this Python/CANN "
-        f"environment. Original error: {type(exc).__name__}: {exc}"
-    )
+    @classmethod
+    def pytest_load_error(cls, module_path, dependency_path, exc):
+        versions = (
+            f"python={sys.version.split()[0]}, "
+            f"tensorflow={cls.package_version('tensorflow', 'tensorflow-cpu')}, "
+            f"numpy={cls.package_version('numpy')}"
+        )
+        return RuntimeError(
+            "Failed to load SparseFlashAttention pytest golden during module execution; "
+            f"module={module_path}; dependency={dependency_path}; {versions}; "
+            "generate_tensor_data imports TensorFlow at module import time. Verify that "
+            "TensorFlow and generate_tensor_data can be imported in this Python/CANN "
+            f"environment. Original error: {type(exc).__name__}: {exc}"
+        )
+
+    @staticmethod
+    def range_at(input_ranges, index, default):
+        if input_ranges and index < len(input_ranges) and input_ranges[index] is not None:
+            value = input_ranges[index]
+            if isinstance(value, (list, tuple)) and len(value) in (1, 2):
+                return list(value)
+        return list(default)
+
+    @staticmethod
+    def prefix_lengths(values, total, field):
+        if not values:
+            return [int(total)]
+        values = [int(item) for item in values]
+        if values[-1] == int(total) and all(
+                values[idx] >= values[idx - 1] for idx in range(1, len(values))):
+            return values
+        if sum(values) == int(total) and all(item >= 0 for item in values):
+            total_value = 0
+            prefix = []
+            for item in values:
+                total_value += item
+                prefix.append(total_value)
+            return prefix
+        raise ValueError(f"{field} must be cumulative or sum to T={total}, got {values}")
+
+    @classmethod
+    def sequence_values(cls, value, values_override, layout, total, batch, field):
+        values = to_int_list(values_override) if values_override is not None else to_int_list(value)
+        if layout == "TND":
+            return cls.prefix_lengths(values, total, field)
+        if not values:
+            return [int(total)] * int(batch)
+        if len(values) == 1 and int(batch) > 1:
+            return values * int(batch)
+        if len(values) != int(batch):
+            raise ValueError(f"{field} length must be 1 or batch={batch}, got {values}")
+        return values
 
 
 def load_pytest_golden_module():
@@ -91,7 +133,9 @@ def load_pytest_golden_module():
         spec.loader.exec_module(module)
     except Exception as exc:
         sys.modules.pop(module_name, None)
-        raise _pytest_load_error(module_path, dependency_path, exc) from exc
+        raise SparseFlashAttentionGoldenAdapter.pytest_load_error(
+            module_path, dependency_path, exc
+        ) from exc
     finally:
         sys.path.remove(str(pytest_dir))
         sys.modules.pop("generate_tensor_data", None)
@@ -132,43 +176,6 @@ def dtype_name(tensor):
         raise ValueError(f"Unsupported SparseFlashAttention pytest dtype: {tensor.dtype}") from exc
 
 
-def _range_at(input_ranges, index, default):
-    if input_ranges and index < len(input_ranges) and input_ranges[index] is not None:
-        value = input_ranges[index]
-        if isinstance(value, (list, tuple)) and len(value) in (1, 2):
-            return list(value)
-    return list(default)
-
-
-def _prefix_lengths(values, total, field):
-    if not values:
-        return [int(total)]
-    values = [int(item) for item in values]
-    if values[-1] == int(total) and all(values[idx] >= values[idx - 1] for idx in range(1, len(values))):
-        return values
-    if sum(values) == int(total) and all(item >= 0 for item in values):
-        total_value = 0
-        prefix = []
-        for item in values:
-            total_value += item
-            prefix.append(total_value)
-        return prefix
-    raise ValueError(f"{field} must be cumulative or sum to T={total}, got {values}")
-
-
-def _sequence_values(value, values_override, layout, total, batch, field):
-    values = to_int_list(values_override) if values_override is not None else to_int_list(value)
-    if layout == "TND":
-        return _prefix_lengths(values, total, field)
-    if not values:
-        return [int(total)] * int(batch)
-    if len(values) == 1 and int(batch) > 1:
-        return values * int(batch)
-    if len(values) != int(batch):
-        raise ValueError(f"{field} length must be 1 or batch={batch}, got {values}")
-    return values
-
-
 def build_pytest_params(query, key, value, sparse_indices, scale_value, *, block_table=None,
                         actual_seq_lengths_query=None, actual_seq_lengths_kv=None,
                         query_rope=None, key_rope=None, sparse_block_size=1,
@@ -192,7 +199,7 @@ def build_pytest_params(query, key, value, sparse_indices, scale_value, *, block
         q_heads = int(query.shape[2])
         q_seq = int(query.shape[1])
 
-    actual_q = _sequence_values(
+    actual_q = SparseFlashAttentionGoldenAdapter.sequence_values(
         actual_seq_lengths_query,
         kwargs.get("actual_seq_lengths_query_values"),
         layout_query,
@@ -221,7 +228,7 @@ def build_pytest_params(query, key, value, sparse_indices, scale_value, *, block
         kv_total = int(key.shape[1])
         key_shape = list(key.shape)
 
-    actual_kv = _sequence_values(
+    actual_kv = SparseFlashAttentionGoldenAdapter.sequence_values(
         actual_seq_lengths_kv,
         kwargs.get("actual_seq_lengths_kv_values"),
         layout_kv,
@@ -279,12 +286,20 @@ def build_pytest_params(query, key, value, sparse_indices, scale_value, *, block
             "sinks": "fp32",
         },
         "range_input": {
-            "query": _range_at(input_ranges, 0, (-10.0, 10.0)),
-            "key": _range_at(input_ranges, 1, (-10.0, 10.0)),
-            "sparse_indices": _range_at(input_ranges, 3, (0, max(int(sparse_indices.shape[-1]) - 1, 0))),
-            "block_table": _range_at(input_ranges, 4, (0, max(block_num - 1, 0))),
-            "query_rope": _range_at(input_ranges, 7, (-10.0, 10.0)),
-            "key_rope": _range_at(input_ranges, 8, (-10.0, 10.0)),
+            "query": SparseFlashAttentionGoldenAdapter.range_at(input_ranges, 0, (-10.0, 10.0)),
+            "key": SparseFlashAttentionGoldenAdapter.range_at(input_ranges, 1, (-10.0, 10.0)),
+            "sparse_indices": SparseFlashAttentionGoldenAdapter.range_at(
+                input_ranges, 3, (0, max(int(sparse_indices.shape[-1]) - 1, 0))
+            ),
+            "block_table": SparseFlashAttentionGoldenAdapter.range_at(
+                input_ranges, 4, (0, max(block_num - 1, 0))
+            ),
+            "query_rope": SparseFlashAttentionGoldenAdapter.range_at(
+                input_ranges, 7, (-10.0, 10.0)
+            ),
+            "key_rope": SparseFlashAttentionGoldenAdapter.range_at(
+                input_ranges, 8, (-10.0, 10.0)
+            ),
             "sinks": (-0.2, 0.2),
         },
         "dtype_output": [dtype_name(query)],

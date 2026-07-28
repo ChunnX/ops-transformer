@@ -19,19 +19,19 @@ from pathlib import Path
 import torch
 
 
-def _module_load_error(stage, path, exc):
-    return RuntimeError(
-        "Failed to load MixedQuantSparseFlashMla module; "
-        f"stage={stage}; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
-
-
 class MixedQuantSparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
 
     def __init__(self):
         self.pytest_modules = {}
+
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load MixedQuantSparseFlashMla module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
 
     @staticmethod
     def load_golden_store():
@@ -48,7 +48,9 @@ class MixedQuantSparseFlashMlaInputAdapter:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("assets Golden store", path, exc) from exc
+            raise MixedQuantSparseFlashMlaInputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -75,7 +77,7 @@ class MixedQuantSparseFlashMlaInputAdapter:
             return module
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error(f"pytest {stem}", module_path, exc) from exc
+            raise self.module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))

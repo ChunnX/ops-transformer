@@ -19,54 +19,58 @@ from pathlib import Path
 import torch
 
 
-def _module_load_error(path, exc):
-    return RuntimeError(
-        "Failed to load SparseFlashAttention module; "
-        f"stage=assets Golden store; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
+class SparseFlashAttentionInputAdapter:
+    """Own internal module loading and tensor-copy details for the TTK input hook."""
 
-
-def _golden_module():
-    name = "sfa_ttk_golden"
-    if name in sys.modules:
-        return sys.modules[name]
-    path = Path(__file__).with_name("golden.py")
-    try:
-        spec = importlib.util.spec_from_file_location(name, path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"cannot create import spec for {path}")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-    except Exception as exc:
-        sys.modules.pop(name, None)
-        raise _module_load_error(path, exc) from exc
-    return module
-
-
-def _copy_tensor(destination, source, name):
-    if destination is None:
-        return
-    if source is None:
-        raise ValueError(f"{name} is declared by CSV but pytest did not produce it")
-    source_cpu = source.detach().cpu() if torch.is_tensor(source) else torch.as_tensor(source)
-    if tuple(destination.shape) != tuple(source_cpu.shape):
-        raise ValueError(
-            f"{name} shape mismatch: TTK={tuple(destination.shape)}, pytest={tuple(source_cpu.shape)}"
+    @staticmethod
+    def module_load_error(path, exc):
+        return RuntimeError(
+            "Failed to load SparseFlashAttention module; "
+            f"stage=assets Golden store; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
         )
-    destination.copy_(source_cpu.to(dtype=destination.dtype, device=destination.device))
 
+    @staticmethod
+    def load_golden_module():
+        name = "sfa_ttk_golden"
+        if name in sys.modules:
+            return sys.modules[name]
+        path = Path(__file__).with_name("golden.py")
+        try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise SparseFlashAttentionInputAdapter.module_load_error(path, exc) from exc
+        return module
 
-def _copy_sequence(destination, values, name):
-    if destination is None:
-        return
-    source = torch.tensor(values, dtype=destination.dtype, device=destination.device)
-    if source.numel() != destination.numel():
-        raise ValueError(
-            f"{name} size mismatch: TTK={destination.numel()}, pytest={source.numel()}"
-        )
-    destination.copy_(source.reshape(destination.shape))
+    @staticmethod
+    def copy_tensor(destination, source, name):
+        if destination is None:
+            return
+        if source is None:
+            raise ValueError(f"{name} is declared by CSV but pytest did not produce it")
+        source_cpu = source.detach().cpu() if torch.is_tensor(source) else torch.as_tensor(source)
+        if tuple(destination.shape) != tuple(source_cpu.shape):
+            raise ValueError(
+                f"{name} shape mismatch: TTK={tuple(destination.shape)}, pytest={tuple(source_cpu.shape)}"
+            )
+        destination.copy_(source_cpu.to(dtype=destination.dtype, device=destination.device))
+
+    @staticmethod
+    def copy_sequence(destination, values, name):
+        if destination is None:
+            return
+        source = torch.tensor(values, dtype=destination.dtype, device=destination.device)
+        if source.numel() != destination.numel():
+            raise ValueError(
+                f"{name} size mismatch: TTK={destination.numel()}, pytest={source.numel()}"
+            )
+        destination.copy_(source.reshape(destination.shape))
 
 
 def generate_sfa_inputs(query, key, value, sparse_indices, scale_value, *, block_table=None,
@@ -76,7 +80,7 @@ def generate_sfa_inputs(query, key, value, sparse_indices, scale_value, *, block
                         attention_mode=0, return_softmax_lse=False, testcase_name=None,
                         input_ranges=None, **kwargs):
     """Generate the final API tensors and CPU golden through the pytest implementation."""
-    golden_module = _golden_module()
+    golden_module = SparseFlashAttentionInputAdapter.load_golden_module()
     params = golden_module.build_pytest_params(
         query,
         key,
@@ -106,15 +110,27 @@ def generate_sfa_inputs(query, key, value, sparse_indices, scale_value, *, block
     if hasattr(torch, "npu"):
         torch.npu.synchronize()
 
-    _copy_tensor(query, generated.get("query"), "query")
-    _copy_tensor(key, generated.get("key_cache", generated.get("key")), "key")
-    _copy_tensor(value, generated.get("value_cache", generated.get("value")), "value")
-    _copy_tensor(sparse_indices, generated.get("sparse_indices"), "sparse_indices")
-    _copy_tensor(block_table, generated.get("block_table"), "block_table")
-    _copy_sequence(actual_seq_lengths_query, params["actualseqlengths"], "actual_seq_lengths_query")
-    _copy_sequence(actual_seq_lengths_kv, params["actualseqlengthskv"], "actual_seq_lengths_kv")
-    _copy_tensor(query_rope, generated.get("query_rope"), "query_rope")
-    _copy_tensor(key_rope, generated.get("key_rope_cache", generated.get("key_rope")), "key_rope")
+    SparseFlashAttentionInputAdapter.copy_tensor(query, generated.get("query"), "query")
+    SparseFlashAttentionInputAdapter.copy_tensor(
+        key, generated.get("key_cache", generated.get("key")), "key"
+    )
+    SparseFlashAttentionInputAdapter.copy_tensor(
+        value, generated.get("value_cache", generated.get("value")), "value"
+    )
+    SparseFlashAttentionInputAdapter.copy_tensor(
+        sparse_indices, generated.get("sparse_indices"), "sparse_indices"
+    )
+    SparseFlashAttentionInputAdapter.copy_tensor(block_table, generated.get("block_table"), "block_table")
+    SparseFlashAttentionInputAdapter.copy_sequence(
+        actual_seq_lengths_query, params["actualseqlengths"], "actual_seq_lengths_query"
+    )
+    SparseFlashAttentionInputAdapter.copy_sequence(
+        actual_seq_lengths_kv, params["actualseqlengthskv"], "actual_seq_lengths_kv"
+    )
+    SparseFlashAttentionInputAdapter.copy_tensor(query_rope, generated.get("query_rope"), "query_rope")
+    SparseFlashAttentionInputAdapter.copy_tensor(
+        key_rope, generated.get("key_rope_cache", generated.get("key_rope")), "key_rope"
+    )
 
     golden_module.CASE_DATA.put(
         testcase_name,

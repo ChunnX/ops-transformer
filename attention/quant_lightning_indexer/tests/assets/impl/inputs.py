@@ -23,19 +23,19 @@ from pathlib import Path
 import torch
 
 
-def _module_load_error(stage, path, exc):
-    return RuntimeError(
-        "Failed to load QuantLightningIndexer module; "
-        f"stage={stage}; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
-
-
 class QuantLightningIndexerInputAdapter:
     """Translate a TTK case and reuse the canonical pytest case generator."""
 
     def __init__(self):
         self.pytest_golden = None
+
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load QuantLightningIndexer module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
 
     @staticmethod
     def load_golden_store():
@@ -52,7 +52,9 @@ class QuantLightningIndexerInputAdapter:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("assets Golden store", path, exc) from exc
+            raise QuantLightningIndexerInputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_golden(self):
@@ -78,7 +80,7 @@ class QuantLightningIndexerInputAdapter:
             return module
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("pytest Golden", path, exc) from exc
+            raise self.module_load_error("pytest Golden", path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))

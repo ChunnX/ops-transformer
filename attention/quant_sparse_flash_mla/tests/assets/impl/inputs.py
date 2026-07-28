@@ -20,19 +20,19 @@ import numpy as np
 import torch
 
 
-def _module_load_error(stage, path, exc):
-    return RuntimeError(
-        "Failed to load QuantSparseFlashMla module; "
-        f"stage={stage}; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
-
-
 class QuantSparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
 
     def __init__(self):
         self.pytest_modules = {}
+
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load QuantSparseFlashMla module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
 
     @staticmethod
     def load_golden_store():
@@ -49,7 +49,9 @@ class QuantSparseFlashMlaInputAdapter:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("assets Golden store", path, exc) from exc
+            raise QuantSparseFlashMlaInputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -76,7 +78,7 @@ class QuantSparseFlashMlaInputAdapter:
             return module
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error(f"pytest {stem}", module_path, exc) from exc
+            raise self.module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -287,5 +289,3 @@ def generate_quant_sparse_flash_mla_inputs(
         ("sinks", sinks),
     ):
         INPUT_ADAPTER.copy_tensor(tensor, op_input.get(name), name)
-
-
