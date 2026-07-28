@@ -279,8 +279,8 @@ __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatch
     uint32_t localIdxStart = rankId_ * numEntriesPerRank;
     uint32_t rankStart = rankOffsets(rankId_);
     uint32_t cnt = rankCounts(rankId_);
-    for (uint32_t b = tokenOffset; b < cnt; b += tokenStride) {
-        uint32_t i = tokenIdxInRank(rankStart + b);
+    for (uint32_t tokenPos = tokenOffset; tokenPos < cnt; tokenPos += tokenStride) {
+        uint32_t i = tokenIdxInRank(rankStart + tokenPos);
         int32_t globalIdx = indicesLocal(i);
         uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - localIdxStart;
         uint64_t globalTokenIdx = indicesBatchStart + i;
@@ -315,8 +315,8 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
     uint32_t pendingReadCount = 0;
     uint32_t threshold = READ_COMMIT_FIRST_THRESHOLD;
 
-    for (uint32_t b = channelIdxInRank; b < cnt; b += channelCount) {
-        uint32_t i = tokenIdxInRank(rankStart + b);
+    for (uint32_t tokenPos = channelIdxInRank; tokenPos < cnt; tokenPos += channelCount) {
+        uint32_t i = tokenIdxInRank(rankStart + tokenPos);
         int32_t globalIdx = indicesLocal(i);
         uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - idxStart;
         uint64_t globalTokenIdx = indicesBatchStart + i;
