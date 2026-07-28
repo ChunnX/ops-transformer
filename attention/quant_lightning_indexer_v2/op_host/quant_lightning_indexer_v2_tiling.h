@@ -37,11 +37,7 @@ struct TilingOptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-enum class DataLayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BBND = 2
-};
+enum class DataLayout : uint32_t { BSND = 0, TND = 1, PA_BBND = 2 };
 
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -270,5 +266,5 @@ private:
     QLIV2TilingData tilingData_;
 };
 
-}  // namespace optiling
-#endif  // QUANT_LIGHTNING_INDEXER_V2_TILING_H
+} // namespace optiling
+#endif // QUANT_LIGHTNING_INDEXER_V2_TILING_H
