@@ -627,7 +627,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBiasOut(int32_t batchIdx,
 {
     LocalTensor<float> vBiasOutLocal = vBiasOutQue_.AllocTensor<float>();
     LocalTensor<float> vFLatOutLocal = vFLatOutQue_.DeQue<float>();
-    LocalTensor<float> meanTempLocal = meanTempBuf_.Get<float>();
+    LocalTensor<uint8_t> meanTempLocal = meanTempBuf_.Get<uint8_t>();
 
     __local_mem__ float *vBiasOutAddr = (__ubuf__ float *)vBiasOutLocal.GetPhyAddr();
     __local_mem__ float *vFLatOutAddr = (__ubuf__ float *)vFLatOutLocal.GetPhyAddr();
@@ -637,7 +637,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBiasOut(int32_t batchIdx,
     AscendC::MeanParams meanPara;
     meanPara.outter = 1;
     meanPara.n = n;
-    meanPara.inner = static_cast<uint32_t>(Ops::Base::CeilAlign(int64_t(n * sizeof(float)), BLOCKSIZE) / sizeof(float));
+    meanPara.inner = static_cast<uint32_t>(Ops::Base::CeilAlign(uint32_t(n * sizeof(float)), BLOCKSIZE) / sizeof(float));
     AscendC::Mean<float, float>(vBiasOutLocal, vFLatOutLocal, meanTempLocal, meanPara);
     EventMsg<HardEvent::V_S>();
     float vMean = vBiasOutLocal.GetValue(0);
