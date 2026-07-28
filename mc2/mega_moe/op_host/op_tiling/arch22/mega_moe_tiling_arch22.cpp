@@ -60,6 +60,7 @@ constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 16;     // weight1 交错模�
 constexpr uint32_t ACTIVATION_CODE_SWIGLU = 0;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_GPT_OSS = 1;
 constexpr uint32_t ACTIVATION_CODE_SITU = 2;
+constexpr uint32_t ACTIVATION_CODE_SWIGLU_STEP = 3;
 
 // 输入 tensor 索引
 constexpr uint32_t CONTEXT_INDEX = 0;        // context，shape = [?]
@@ -276,9 +277,13 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
         activationCode = ACTIVATION_CODE_SWIGLU_GPT_OSS;
     } else if (activationStr == "situ") {
         activationCode = ACTIVATION_CODE_SITU;
+    } else if (activationStr == "swiglustep") {
+        activationCode = ACTIVATION_CODE_SWIGLU_STEP;
     } else {
         OP_LOGE(K_INNER_DEBUG,
-                "activation is invalid, support 'swiglu', 'swiglu_gpt_oss' and 'situ', but got '%s'.", ptr);
+                "activation is invalid, support 'swiglu', 'swiglustep', 'swiglu_gpt_oss' and "
+                "'situ', but got '%s'.",
+                ptr);
         return GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -297,11 +302,10 @@ static ge::graphStatus CheckActivationClampAttr(const float *ptr)
 static ge::graphStatus CheckActivationAlphaAttr(const float *ptr)
 {
     OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "activationAlpha is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(
-        *ptr != std::numeric_limits<float>::max() && (!std::isfinite(*ptr) || *ptr <= 0.0f),
-        OP_LOGE(K_INNER_DEBUG,
-                "activation_alpha is invalid, should be finite and > 0 when specified, but got %f.", *ptr),
-        return GRAPH_FAILED);
+    OP_TILING_CHECK(*ptr != std::numeric_limits<float>::max() && (!std::isfinite(*ptr) || *ptr <= 0.0f),
+                    OP_LOGE(K_INNER_DEBUG,
+                            "activation_alpha is invalid, should be finite and > 0 when specified, but got %f.", *ptr),
+                    return GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
