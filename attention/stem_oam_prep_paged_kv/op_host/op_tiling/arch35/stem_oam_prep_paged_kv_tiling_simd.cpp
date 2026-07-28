@@ -227,7 +227,7 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     if (stemStride_ % STEM_STRIDE_ALIGN != 0 || stemStride_ > STEM_STRIDE_MAX || stemStride_ > stemBlocks_ ||
         stemBlocks_ % stemStride_ != 0) {
         std::string reason = "stemStride must be multiple of 16, <=64, <=stemBlockSize(" +
-                             std::to_string(stemBlocks_) + "), and stemBlockSize must be divisible by stemStride.";
+                             std::to_string(stemBlocks_) + "), and stemBlockSize must be a multiple of stemStride.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "stemStride",
             std::to_string(stemStride_).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;

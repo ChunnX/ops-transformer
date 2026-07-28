@@ -184,7 +184,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
     <tr>
       <td class="tg-0lax">stemBlockSize（int64_t）</td>
       <td class="tg-0lax">ATTR</td>
-      <td class="tg-0lax">Stem block大小，%32==0，≤256，推荐128。</td>
+      <td class="tg-0lax">Stem block大小，%32==0，≤256，且stemBlockSize必须是stemStride的整数倍，推荐128。</td>
       <td class="tg-0lax">必填。</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
@@ -194,7 +194,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
     <tr>
       <td class="tg-0lax">stemStride（int64_t）</td>
       <td class="tg-0lax">ATTR</td>
-      <td class="tg-0lax">Stride大小，%16==0，≤64，≤stemBlockSize且能被stemBlockSize整除，推荐16。</td>
+      <td class="tg-0lax">Stride大小，%16==0，≤64，≤stemBlockSize，推荐16。</td>
       <td class="tg-0lax">必填。</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
@@ -340,7 +340,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
 - kScaleCache shape随cacheLayout变化：Layout A `[total_blocks, kvBlockSize, H_kv, 1]`，Layout B `[total_blocks, H_kv, kvBlockSize, 1]`。当前仅支持Layout B。
 - vScale shape：`[H_kv]`。
 - kvBlockSize ∈ {64, 128}。
-- stemBlockSize % 32 == 0，≤256；stemStride % 16 == 0，≤64，且stemStride ≤ stemBlockSize。
+- stemBlockSize % 32 == 0，≤256；stemStride % 16 == 0，≤64，且stemStride ≤ stemBlockSize，stemBlockSize必须是stemStride的整数倍。
 - 派生值：R = stemBlockSize / stemStride，kflat_dim = stemStride × 128，k_down_len = num_Kb × R。
 - 边界：kvSeqLens[b]=0时该batch对应的kFlat/vBias输出全零；kScaleCache padding rows（beyond kv_len）→ zero。
 - 仅支持arch35架构（Ascend 950PR/Ascend 950DT、Atlas A3系列），不支持arch22。
@@ -425,7 +425,6 @@ aclnnStatus aclnnStemOamPrepPagedKv(
 
     std::vector<int64_t> kCacheShape = {totalBlocks, numKvHeads, kvBlockSize, dimQk};
     std::vector<int64_t> kvIndicesShape = {batch, maxKvBlocks};
-    std::vector<int64_t> kvSeqLensShape = {batch};
     std::vector<int64_t> kScaleCacheShape = {totalBlocks, numKvHeads, kvBlockSize, 1};
     std::vector<int64_t> vScaleShape = {numKvHeads};
     std::vector<int64_t> kFlatShape = {batch, numKvHeads, maxKb, kflatDim};
@@ -434,7 +433,6 @@ aclnnStatus aclnnStemOamPrepPagedKv(
     void* kCacheDeviceAddr = nullptr;
     void* vCacheDeviceAddr = nullptr;
     void* kvIndicesDeviceAddr = nullptr;
-    void* kvSeqLensDeviceAddr = nullptr;
     void* kScaleCacheDeviceAddr = nullptr;
     void* vScaleDeviceAddr = nullptr;
     void* kFlatDeviceAddr = nullptr;
@@ -443,7 +441,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
     aclTensor* kCache = nullptr;
     aclTensor* vCache = nullptr;
     aclTensor* kvIndices = nullptr;
-    aclTensor* kvSeqLens = nullptr;
+    aclIntArray* kvSeqLens = nullptr;
     aclTensor* kScaleCache = nullptr;
     aclTensor* vScale = nullptr;
     aclTensor* kFlat = nullptr;
@@ -464,8 +462,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(hostKvIndices, kvIndicesShape, &kvIndicesDeviceAddr, aclDataType::ACL_INT32, &kvIndices, aclFormat::ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(hostKvSeqLens, kvSeqLensShape, &kvSeqLensDeviceAddr, aclDataType::ACL_INT32, &kvSeqLens, aclFormat::ACL_FORMAT_ND);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    kvSeqLens = aclCreateIntArray(hostKvSeqLens.data(), hostKvSeqLens.size(), ACL_INT32);
     ret = CreateAclTensor(hostKScaleCache, kScaleCacheShape, &kScaleCacheDeviceAddr, aclDataType::ACL_FLOAT, &kScaleCache, aclFormat::ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(hostVScale, vScaleShape, &vScaleDeviceAddr, aclDataType::ACL_FLOAT, &vScale, aclFormat::ACL_FORMAT_ND);
@@ -506,7 +503,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
     aclDestroyTensor(kCache);
     aclDestroyTensor(vCache);
     aclDestroyTensor(kvIndices);
-    aclDestroyTensor(kvSeqLens);
+    aclDestroyIntArray(kvSeqLens);
     aclDestroyTensor(kScaleCache);
     aclDestroyTensor(vScale);
     aclDestroyTensor(kFlat);
@@ -515,7 +512,6 @@ aclnnStatus aclnnStemOamPrepPagedKv(
     aclrtFree(kCacheDeviceAddr);
     aclrtFree(vCacheDeviceAddr);
     aclrtFree(kvIndicesDeviceAddr);
-    aclrtFree(kvSeqLensDeviceAddr);
     aclrtFree(kScaleCacheDeviceAddr);
     aclrtFree(vScaleDeviceAddr);
     aclrtFree(kFlatDeviceAddr);

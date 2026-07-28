@@ -129,7 +129,7 @@ inline static bool CheckAttr(int64_t stemBlockSize, int64_t stemStride)
     if (stemStride % STEM_STRIDE_ALIGN != 0 || stemStride > STEM_STRIDE_MAX || stemStride > stemBlockSize ||
         stemBlockSize % stemStride != 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "stemStride must be multiple of 16, <=64, <=stemBlockSize(%ld), "
-                "and stemBlockSize must be divisible by stemStride, got %ld.",
+                "and stemBlockSize must be a multiple of stemStride, got %ld.",
                 stemBlockSize, stemStride);
         return false;
     }

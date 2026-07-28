@@ -150,7 +150,7 @@
 - kScaleCache shape随cacheLayout变化：Layout A `[total_blocks, kvBlockSize, H_kv, 1]`，Layout B `[total_blocks, H_kv, kvBlockSize, 1]`。当前仅支持Layout B。
 - vScale shape：`[H_kv]`。
 - kvBlockSize ∈ {64, 128}。
-- stemBlockSize % 32 == 0，≤256；stemStride % 16 == 0，≤64，且stemStride ≤ stemBlockSize。
+- stemBlockSize % 32 == 0，≤256；stemStride % 16 == 0，≤64，且stemStride ≤ stemBlockSize，stemBlockSize必须是stemStride的整数倍。
 - 派生值：R = stemBlockSize / stemStride，kflat_dim = stemStride × 128，k_down_len = num_Kb × R。
 - 边界：kvSeqLens[b]=0时该batch对应的kFlat/vBias输出全零；kScaleCache padding rows（beyond kv_len）→ zero。
 - 仅支持arch35架构（Ascend 950PR/Ascend 950DT），不支持arch22。
