@@ -26,6 +26,7 @@ constexpr int64_t CUMSUM_MODE = 0LL;
 constexpr int64_t COUNT_MODE = 1LL;
 constexpr int64_t KEY_VALUE_MODE = 2LL;
 constexpr int64_t KEY_VALUE_MODE_DIM_NUM = 2LL;
+constexpr int64_t FP32_EXACT_INT_MAX = 1LL << 24;
 constexpr CumSumConfig CUMSUM_MODE_CONFIG{true, false, false,
                                           CumSumAlgorithm::CUMSUM_ALGORITHM_LINEBYLINE};
 
@@ -75,6 +76,7 @@ private:
     int64_t perCoreLastLoopElements_ = 0;
     int64_t actualExpertTotalNum_ = 0;
     int64_t expertNum_ = 0;
+    int64_t useFp32Vector_ = 0;
     int64_t expertTokensNumType_ = 0;
     int64_t expertCountElements_ = 0;
     int64_t coreNum_ = 0;
@@ -134,6 +136,7 @@ __aicore__ inline void ExpertTokensCount::InitBasicParams(const MoeInitRoutingV3
     dropPadMode_ = tilingData->dropPadMode;
     useGatherCopy_ = tilingData->useGatherCopy;
     needExpertTotalCount_ = static_cast<int64_t>(dropPadMode_ != DROP_PAD_MODE);
+    useFp32Vector_ = static_cast<int64_t>(tilingData->n * tilingData->k <= FP32_EXACT_INT_MAX);
 
     if (blockIdx_ == needCoreNum_ - 1) {
         curCoreElements_ = expertTokensCountTilingData_->lastCoreElements;
@@ -200,10 +203,10 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
     if (needExpertTotalCount_) {
         pipe_->InitBuffer(expertTotalCountQueue_, 1, AlignBytes(1, sizeof(int32_t)));
     }
-    if (expertTokensNumType_ == COUNT_MODE && needExpertTotalCount_) {
+    if (expertTokensNumType_ == COUNT_MODE && needExpertTotalCount_ && useFp32Vector_) {
         pipe_->InitBuffer(reduceFloatBuf_, AlignBytes(actualExpertNum_, sizeof(float)));
     }
-    if (expertTokensNumType_ == CUMSUM_MODE) {
+    if (expertTokensNumType_ == CUMSUM_MODE && useFp32Vector_) {
         pipe_->InitBuffer(reduceFloatBuf_, AlignBytes(actualExpertNum_, sizeof(float)));
         pipe_->InitBuffer(cumsumDstBuf_, AlignBytes(actualExpertNum_, sizeof(float)));
         pipe_->InitBuffer(cumsumLastRowBuf_, AlignBytes(1, sizeof(float)));
@@ -310,7 +313,7 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
     } else if (expertTokensNumType_ == COUNT_MODE) {
         Cast(expertCountOutLocal, expertCountTempInLocal, RoundMode::CAST_NONE, actualExpertNum_);
         PipeBarrier<PIPE_V>();
-        if (needExpertTotalCount_) {
+        if (needExpertTotalCount_ && useFp32Vector_) {
             LocalTensor<float> reduceFloatLocal = reduceFloatBuf_.Get<float>();
             Cast(reduceFloatLocal, expertCountTempInLocal, RoundMode::CAST_NONE, actualExpertNum_);
             PipeBarrier<PIPE_V>();
@@ -320,9 +323,13 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
             SetFlag<HardEvent::V_S>(eventIDVToS);
             WaitFlag<HardEvent::V_S>(eventIDVToS);
             actualExpertTotalNum_ = static_cast<int64_t>(reduceFloatLocal.GetValue(0));
+        } else if (needExpertTotalCount_) {
+            for (int64_t i = 0; i < actualExpertNum_; i++) {
+                actualExpertTotalNum_ += static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
+            }
         }
     } else if (expertTokensNumType_ == CUMSUM_MODE) {
-        if (actualExpertNum_ > 0) {
+        if (actualExpertNum_ > 0 && useFp32Vector_) {
             const uint32_t cumsumInner = static_cast<uint32_t>(Align(actualExpertNum_, sizeof(float)));
             LocalTensor<float> cumsumSrcLocal = reduceFloatBuf_.Get<float>();
             LocalTensor<float> cumsumDstLocal = cumsumDstBuf_.Get<float>();
@@ -348,6 +355,14 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
                 SetFlag<HardEvent::V_S>(eventIDVToS);
                 WaitFlag<HardEvent::V_S>(eventIDVToS);
                 actualExpertTotalNum_ = static_cast<int64_t>(cumsumDstLocal.GetValue(actualExpertNum_ - 1));
+            }
+        } else {
+            int64_t cumsumCount = 0;
+            for (int64_t i = 0; i < actualExpertNum_; i++) {
+                int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
+                cumsumCount += expertCount;
+                expertCountOutLocal.SetValue(i, cumsumCount);
+                actualExpertTotalNum_ += expertCount;
             }
         }
     }
