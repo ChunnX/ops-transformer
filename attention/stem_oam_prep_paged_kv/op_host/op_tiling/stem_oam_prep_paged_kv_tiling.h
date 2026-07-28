@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/* !
+/*!
  * \file stem_oam_prep_paged_kv_tiling.h
  * \brief
  */
@@ -20,7 +20,6 @@
 #include <register/tilingdata_base.h>
 #include <tiling/tiling_api.h>
 
-namespace optiling {
-} // namespace optiling
+namespace optiling {} // namespace optiling
 
 #endif // STEM_OAM_PREP_PAGED_KV_TILING_H_
