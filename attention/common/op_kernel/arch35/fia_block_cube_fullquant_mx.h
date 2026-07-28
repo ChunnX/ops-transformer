@@ -247,25 +247,26 @@ public:
         __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
         // constInfo需要增加一个strides参数传入init中，该参数的值通过tiling传递进来
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                        constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_,
-                        constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
+                     constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_, constInfo.keyStrides.bnStride,
+                     constInfo.keyStrides.n2Stride);
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                        constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
-                        constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
+                     constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
+                     constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
         InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                            constInfo.n2Size, constInfo.blockSize, constInfo.dSize / MXFP_GROUP_SIZE, keyScaleGm,
-                            dequantScaleKey, constInfo.kScaleStrides.bnStride, constInfo.kScaleStrides.n2Stride);
+                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize / MXFP_GROUP_SIZE, keyScaleGm,
+                         dequantScaleKey, constInfo.kScaleStrides.bnStride, constInfo.kScaleStrides.n2Stride);
         InitVScaleBuffer(constInfo.bSize, constInfo.s2Size / MXFP_DIVISOR_SIZE, actualSeqLengthsGmKv,
-                            constInfo.actualSeqLenKVSize, constInfo.n2Size, constInfo.blockSize / MXFP_DIVISOR_SIZE,
-                            constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, valueScaleGm, dequantScaleValue,
-                            constInfo.vScaleStrides.bnStride, constInfo.vScaleStrides.n2Stride);
+                         constInfo.actualSeqLenKVSize, constInfo.n2Size, constInfo.blockSize / MXFP_DIVISOR_SIZE,
+                         constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, valueScaleGm, dequantScaleValue,
+                         constInfo.vScaleStrides.bnStride, constInfo.vScaleStrides.n2Stride);
 
         if constexpr (HAS_ROPE) {
             InitQRopeBuffer(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                        constInfo.dSizeRope, actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryRopeGm, queryRope);
+                            constInfo.dSizeRope, actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryRopeGm,
+                            queryRope);
             InitKRopeBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope,
-                         constInfo.kRopeStrides.bnStride, constInfo.kRopeStrides.n2Stride);
+                            constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope,
+                            constInfo.kRopeStrides.bnStride, constInfo.kRopeStrides.n2Stride);
         }
     }
 
@@ -372,8 +373,8 @@ public:
             kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize1, headDim / MXFP_MULTI_BASE_SIZE, bs0,
                                                  blockTableGm, constInfo.maxBlockNumPerBatch, bnStrides, n2Strides);
         } else if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            kScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLenGmKv,
-                                                 actualLenDims, false, 0);
+            kScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLenGmKv, actualLenDims,
+                                                 false, 0);
         } else if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
             kScaleGmTensor.offsetCalculator.Init(n2Size, headDim, actualSeqLenGmKv, actualLenDims);
         }
@@ -395,8 +396,8 @@ public:
             vScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
                                                  constInfo.maxBlockNumPerBatch, bnStrides, n2Strides);
         } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            vScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLenGmKv,
-                                                 actualLenDims, false, 0);
+            vScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLenGmKv, actualLenDims,
+                                                 false, 0);
         } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
             vScaleGmTensor.offsetCalculator.Init(n2Size, headDim, actualSeqLenGmKv, actualLenDims);
         } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_V_SCALE_TND) {
@@ -425,38 +426,30 @@ public:
         constexpr uint32_t blockNumDtype = 32 / sizeof(Q_T);
         uint32_t nopeDealSize = dRealSize;
         uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
-        FaL1Tensor<Q_T, L1Format::NZ> l1Tensor {
-            .tensor = dstTensor,
-            .rowCount = dstStride
-        };
+        FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord {
-            .bIdx = runInfo.bIdx,
-            .n2Idx = runInfo.realN2Idx,
-            .gS1Idx = runInfo.gS1Idx,
-            .dIdx = dOffset,
-            .gS1DealSize = runInfo.actMSize,
-            .dDealSize = nopeDealSize
-        };
+        GmCoord gmCoord{.bIdx = runInfo.bIdx,
+                        .n2Idx = runInfo.realN2Idx,
+                        .gS1Idx = runInfo.gS1Idx,
+                        .dIdx = dOffset,
+                        .gS1DealSize = runInfo.actMSize,
+                        .dDealSize = nopeDealSize};
         copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
 
         if constexpr (HAS_ROPE) {
             uint32_t ropeDealSize = constInfo.dSizeRope;
             uint32_t dstStrideRope = (runInfo.actMSize + 15) >> 4 << 4;
-            uint32_t offset =  AttentionCommon::Align(nopeDealSize, blockNumDtype) *  AttentionCommon::Align(runInfo.actMSize, blockNumDtype);
-            FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor {
-                .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
-                .rowCount = dstStrideRope
-            };
+            uint32_t offset = AttentionCommon::Align(nopeDealSize, blockNumDtype) *
+                              AttentionCommon::Align(runInfo.actMSize, blockNumDtype);
+            FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor{.tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
+                                                      .rowCount = dstStrideRope};
 
-            GmCoord gmCoord = {
-                .bIdx = runInfo.bIdx,
-                .n2Idx = runInfo.realN2Idx,
-                .gS1Idx = runInfo.gS1Idx,
-                .dIdx = 0,
-                .gS1DealSize = runInfo.actMSize,
-                .dDealSize = ropeDealSize
-            };
+            GmCoord gmCoord = {.bIdx = runInfo.bIdx,
+                               .n2Idx = runInfo.realN2Idx,
+                               .gS1Idx = runInfo.gS1Idx,
+                               .dIdx = 0,
+                               .gS1DealSize = runInfo.actMSize,
+                               .dDealSize = ropeDealSize};
             copyQueryRopeGmToL1(l1Tensor, queryRopeGm, gmCoord);
         }
     }
@@ -471,19 +464,14 @@ public:
                                                uint32_t dRealSize, RunInfoX &runInfo)
     {
         uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor {
-            .tensor = dstTensor,
-            .rowCount = dstStride
-        };
+        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord {
-            .bIdx = runInfo.bIdx,
-            .n2Idx = runInfo.realN2Idx,
-            .gS1Idx = runInfo.gS1Idx,
-            .dIdx = dOffset,
-            .gS1DealSize = runInfo.actMSize,
-            .dDealSize = dRealSize
-        };
+        GmCoord gmCoord{.bIdx = runInfo.bIdx,
+                        .n2Idx = runInfo.realN2Idx,
+                        .gS1Idx = runInfo.gS1Idx,
+                        .dIdx = dOffset,
+                        .gS1DealSize = runInfo.actMSize,
+                        .dDealSize = dRealSize};
         copyQueryScaleGmToL1(l1Tensor, queryScaleGm, gmCoord);
     }
 
@@ -500,38 +488,30 @@ public:
         uint32_t dstStride = (s2RealSize + 31) >> 5 << 5;
 
         uint32_t nopeDealSize = dRealSize;
-        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor {
-            .tensor = dstTensor,
-            .rowCount = dstStride
-        };
+        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
         // CopyKey的控制参数
-        GmKvCoord gmCoord {
-            .bIdx = runInfo.bIdx,
-            .n2Idx = runInfo.n2Idx,
-            .s2Idx = s2Offset,
-            .dIdx = dOffset,
-            .s2DealSize = s2RealSize,
-            .dDealSize = nopeDealSize
-        };
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
+                          .n2Idx = runInfo.n2Idx,
+                          .s2Idx = s2Offset,
+                          .dIdx = dOffset,
+                          .s2DealSize = s2RealSize,
+                          .dDealSize = nopeDealSize};
         copyKvGmToL1(l1Tensor, keyGm, gmCoord);
 
         if constexpr (HAS_ROPE) {
             uint32_t ropeDealSize = constInfo.dSizeRope;
             uint32_t dstStrideRope = (s2RealSize + 15) >> 4 << 4;
-            uint32_t offset =  AttentionCommon::Align(nopeDealSize, blockNumDtype) *  AttentionCommon::Align(s2RealSize, blockNumDtype);
-            FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor =  {
-                .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
-                .rowCount = dstStrideRope
-            };
+            uint32_t offset =
+                AttentionCommon::Align(nopeDealSize, blockNumDtype) * AttentionCommon::Align(s2RealSize, blockNumDtype);
+            FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor = {
+                .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(), .rowCount = dstStrideRope};
 
-            GmKvCoord gmCoord = {
-                .bIdx = runInfo.bIdx,
-                .n2Idx = runInfo.n2Idx,
-                .s2Idx = s2Offset,
-                .dIdx = 0,
-                .s2DealSize = s2RealSize,
-                .dDealSize = ropeDealSize
-            };
+            GmKvCoord gmCoord = {.bIdx = runInfo.bIdx,
+                                 .n2Idx = runInfo.n2Idx,
+                                 .s2Idx = s2Offset,
+                                 .dIdx = 0,
+                                 .s2DealSize = s2RealSize,
+                                 .dDealSize = ropeDealSize};
             copyKeyRopeGmToL1(l1Tensor, keyRopeGm, gmCoord);
         }
     }
@@ -550,19 +530,14 @@ public:
                                              RunInfoX &runInfo)
     {
         uint32_t dstStride = (s2RealSize + 31) >> 5 << 5;
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor {
-            .tensor = dstTensor,
-            .rowCount = dstStride
-        };
+        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmKvCoord gmCoord {
-            .bIdx = runInfo.bIdx,
-            .n2Idx = runInfo.n2Idx,
-            .s2Idx = s2Offset,
-            .dIdx = dOffset,
-            .s2DealSize = s2RealSize,
-            .dDealSize = dRealSize
-        };
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
+                          .n2Idx = runInfo.n2Idx,
+                          .s2Idx = s2Offset,
+                          .dIdx = dOffset,
+                          .s2DealSize = s2RealSize,
+                          .dDealSize = dRealSize};
         copyKeyScaleGmToL1(l1Tensor, keyScaleGm, gmCoord);
     }
 
@@ -579,19 +554,14 @@ public:
                                           uint32_t dOffset, uint32_t dRealSize, RunInfoX &runInfo)
     {
         uint32_t dstStride = (s2RealSize + 63) >> 6 << 6;
-        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor {
-            .tensor = dstTensor,
-            .rowCount = dstStride
-        };
+        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmKvCoord gmCoord {
-            .bIdx = runInfo.bIdx,
-            .n2Idx = runInfo.n2Idx,
-            .s2Idx = s2Offset,
-            .dIdx = dOffset,
-            .s2DealSize = s2RealSize,
-            .dDealSize = dRealSize
-        };
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
+                          .n2Idx = runInfo.n2Idx,
+                          .s2Idx = s2Offset,
+                          .dIdx = dOffset,
+                          .s2DealSize = s2RealSize,
+                          .dDealSize = dRealSize};
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
     }
 
@@ -605,19 +575,14 @@ public:
                                                uint32_t s2RealSize, uint32_t dOffset, uint32_t dRealSize,
                                                RunInfoX &runInfo)
     {
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor {
-            .tensor = dstTensor,
-            .rowCount = s2RealSize
-        };
+        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = s2RealSize};
 
-        GmKvCoord gmCoord {
-            .bIdx = runInfo.bIdx,
-            .n2Idx = runInfo.n2Idx,
-            .s2Idx = s2Offset,
-            .dIdx = dOffset,
-            .s2DealSize = s2RealSize,
-            .dDealSize = dRealSize
-        };
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
+                          .n2Idx = runInfo.n2Idx,
+                          .s2Idx = s2Offset,
+                          .dIdx = dOffset,
+                          .s2DealSize = s2RealSize,
+                          .dDealSize = dRealSize};
         copyValueScaleGmToL1(l1Tensor, valueScaleGm, gmCoord);
     }
 
@@ -671,7 +636,8 @@ public:
             }
         }
         Buffer<BufferType::L1> mm1A;
-        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize; // QScale在mm1A的偏移量（单位：元素）
+        uint32_t qScaleOffset =
+            ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize; // QScale在mm1A的偏移量（单位：元素）
         if constexpr (HAS_ROPE) {
             qScaleOffset += ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSizeRope * sizeof(ROPE_T);
         }
@@ -706,15 +672,12 @@ public:
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
-        MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CurSize,
-                                    (uint32_t)constInfo.dSize, false, true);
-        MatmulFullMX<Q_T, KV_T, T, 128, 256, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
-                   SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
-            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
-            mmL0ABuffers, mmL0BBuffers,
-            mm1ResL0C.GetTensor<T>(),
-            param,
-            mm1A.GetTensor<SCALE_T>(qScaleOffset), mm1B.GetTensor<SCALE_T>(kScaleOffset));
+        MMParam param =
+            MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CurSize, (uint32_t)constInfo.dSize, false, true);
+        MatmulFullMX<Q_T, KV_T, T, 128, 256, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType, SCALE_T, SCALE_T,
+                     mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+            param, mm1A.GetTensor<SCALE_T>(qScaleOffset), mm1B.GetTensor<SCALE_T>(kScaleOffset));
 
         if constexpr (HAS_ROPE) {
             uint32_t qRopeOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize / sizeof(ROPE_T);
@@ -722,10 +685,8 @@ public:
             MMParam ropeParam = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CurSize,
                                             (uint32_t)constInfo.dSizeRope, false, true, true, false);
             MatmulFullMX<ROPE_T, ROPE_T, T, 128, 256, 64, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<ROPE_T>(qRopeOffset), mm1B.GetTensor<ROPE_T>(kRopeOffset),
-                mmL0ABuffers, mmL0BBuffers,
-                mm1ResL0C.GetTensor<T>(),
-                ropeParam);
+                mm1A.GetTensor<ROPE_T>(qRopeOffset), mm1B.GetTensor<ROPE_T>(kRopeOffset), mmL0ABuffers, mmL0BBuffers,
+                mm1ResL0C.GetTensor<T>(), ropeParam);
         }
         if (unlikely(runInfo.isLastS2Loop && (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
                                               (runInfo.actSingleLoopS2Size <= s2SplitSize)))) {
@@ -755,7 +716,7 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
         fixpipeParams.dstStride = s2SplitSize; // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.dualDstCtl = 1;          // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -774,8 +735,8 @@ public:
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
-        fixpipeParams.dstStride = 64;  // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.dualDstCtl = 2;  // 双目标模式，按M维度拆分， M * N / 2写入每个UB，M必须为2的倍数
+        fixpipeParams.dstStride = 64; // mmResUb上两行之间的间隔，单位：element
+        fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分， M * N / 2写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -797,13 +758,14 @@ public:
             }
         }
         Buffer<BufferType::L1> mm1B;
-        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize; // QScale在mm1A的偏移量（单位：元素）
+        uint32_t qScaleOffset =
+            ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize; // QScale在mm1A的偏移量（单位：元素）
         if constexpr (HAS_ROPE) {
             qScaleOffset += ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSizeRope * sizeof(ROPE_T);
         }
         if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
             mm1B = l1QBuffers.Get();
-            mm1B.Wait<HardEvent::MTE1_MTE2>();   // B矩阵常驻，两次Sub中，只有第一次搬B
+            mm1B.Wait<HardEvent::MTE1_MTE2>(); // B矩阵常驻，两次Sub中，只有第一次搬B
             LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
             CopyQueryTile(mm1BTensor, runInfo);
 
@@ -832,15 +794,12 @@ public:
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
-        MMParam param = MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize,
-                                    (uint32_t)constInfo.dSize, false, true);
-        MatmulFullMX<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
-                   SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
-            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
-            mmL0ABuffers, mmL0BBuffers,
-            mm1ResL0C.GetTensor<T>(),
-            param,
-            mm1A.GetTensor<SCALE_T>(kScaleOffset), mm1B.GetTensor<SCALE_T>(qScaleOffset));
+        MMParam param =
+            MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize, (uint32_t)constInfo.dSize, false, true);
+        MatmulFullMX<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType, SCALE_T, SCALE_T,
+                     mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+            param, mm1A.GetTensor<SCALE_T>(kScaleOffset), mm1B.GetTensor<SCALE_T>(qScaleOffset));
 
         if constexpr (HAS_ROPE) {
             uint32_t qRopeOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize / sizeof(ROPE_T);
@@ -848,10 +807,8 @@ public:
             MMParam ropeParam = MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize,
                                             (uint32_t)constInfo.dSizeRope, false, true, true, false);
             MatmulFullMX<ROPE_T, ROPE_T, T, 128, 256, 64, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<ROPE_T>(kRopeOffset), mm1B.GetTensor<ROPE_T>(qRopeOffset),
-                mmL0ABuffers, mmL0BBuffers,
-                mm1ResL0C.GetTensor<T>(),
-                ropeParam);
+                mm1A.GetTensor<ROPE_T>(kRopeOffset), mm1B.GetTensor<ROPE_T>(qRopeOffset), mmL0ABuffers, mmL0BBuffers,
+                mm1ResL0C.GetTensor<T>(), ropeParam);
         }
         if (unlikely(runInfo.isLastS2Loop && (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
                                               (runInfo.actSingleLoopS2Size <= s2SplitSize)))) {
@@ -883,7 +840,8 @@ public:
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
-        uint32_t pScaleOffset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）; // VScale在mm1B的偏移量（单位：元素）
+        uint32_t pScaleOffset =
+            mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）; // VScale在mm1B的偏移量（单位：元素）
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
@@ -917,19 +875,16 @@ public:
             mm2B.Set<HardEvent::MTE2_MTE1>();
 
             mm2B.Wait<HardEvent::MTE2_MTE1>();
-            MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
-                                        (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE,
-                                        false, false, kIdx == 0, kIdx == 0);
+            MMParam param =
+                MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
+                            (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, false, false, kIdx == 0, kIdx == 0);
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
             }
             MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
-                       SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
-                mm2A.GetTensor<INPUT_T>()[kIdx * l1BaseKOffset],
-                mm2BTensor, mmL0ABuffers, mmL0BBuffers,
-                mm2ResL0C.GetTensor<T>(),
-                param,
-                mm2AScaleFakeTensor[kIdx * l1ScaleOffset], mm2BScaleTensor);
+                         SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+                mm2A.GetTensor<INPUT_T>()[kIdx * l1BaseKOffset], mm2BTensor, mmL0ABuffers, mmL0BBuffers,
+                mm2ResL0C.GetTensor<T>(), param, mm2AScaleFakeTensor[kIdx * l1ScaleOffset], mm2BScaleTensor);
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
         mm2ResL0C.Set<HardEvent::M_FIX>();
@@ -937,7 +892,7 @@ public:
         if constexpr (BMM2_TOUB) {
             outputBuf.WaitCrossCore();
         }
-        FixpipeMm2(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), runInfo);  // 数据搬出
+        FixpipeMm2(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), runInfo); // 数据搬出
         mm2ResL0C.Set<HardEvent::FIX_M>();
         outputBuf.SetCrossCore();
     }
@@ -980,10 +935,10 @@ public:
         constexpr uint32_t pScaleOffset = mBaseSize * s2BaseSize; // pScale在L1的偏移量
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             constexpr uint32_t sizeOfInt16 = 2U;
-            LocalTensor<int16_t> mm2AScaleTensor = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16 +
-                mBaseSize * s2SplitSize / MXFP_GROUP_SIZE / sizeOfInt16);
+            LocalTensor<int16_t> mm2AScaleTensor = mm2A.GetTensor<int16_t>(
+                pScaleOffset / sizeOfInt16 + mBaseSize * s2SplitSize / MXFP_GROUP_SIZE / sizeOfInt16);
             InitConstValue(mm2AScaleTensor,
-                {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
+                           {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
         }
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
 
@@ -1018,19 +973,16 @@ public:
             mm2B.Set<HardEvent::MTE2_MTE1>();
 
             mm2B.Wait<HardEvent::MTE2_MTE1>();
-            MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
-                                        (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE,
-                                        USE_DN, false, k == 0, k == 0);
+            MMParam param =
+                MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
+                            (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, USE_DN, false, k == 0, k == 0);
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
             }
             MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
-                       SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
-                mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
-                mm2BTensor, mmL0ABuffers, mmL0BBuffers,
-                mm2ResL0C.GetTensor<T>(),
-                param,
-                mm2AScaleFakeTensor[k * l1ScaleOffset], mm2BScaleTensor);
+                         SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+                mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset], mm2BTensor, mmL0ABuffers, mmL0BBuffers,
+                mm2ResL0C.GetTensor<T>(), param, mm2AScaleFakeTensor[k * l1ScaleOffset], mm2BScaleTensor);
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
 
@@ -1046,8 +998,8 @@ public:
         outputBuf.SetCrossCore();
     }
 
-    __aicore__ inline void InitValueL1BufferNoTrans(const LocalTensor<KV_T> &valueL1,
-        const uint32_t realK, const uint32_t curN)
+    __aicore__ inline void InitValueL1BufferNoTrans(const LocalTensor<KV_T> &valueL1, const uint32_t realK,
+                                                    const uint32_t curN)
     {
         InitConstValueParams<half> initConstValueParams;
         uint64_t offset = 0;
@@ -1065,8 +1017,8 @@ public:
         InitConstValue(valueL1.template ReinterpretCast<half>()[offset], initConstValueParams);
     }
 
-    __aicore__ inline void InitValueL1BufferTrans(const LocalTensor<KV_T> &valueL1,
-        const uint32_t realK, const uint32_t curN)
+    __aicore__ inline void InitValueL1BufferTrans(const LocalTensor<KV_T> &valueL1, const uint32_t realK,
+                                                  const uint32_t curN)
     {
         InitConstValueParams<half> initConstValueParams;
         uint64_t offset = 0;
@@ -1115,7 +1067,7 @@ public:
     using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
-    __aicore__ inline FAFullQuantMxBlockCubeDummy(ConstInfoX &constInfo) {};
+    __aicore__ inline FAFullQuantMxBlockCubeDummy(ConstInfoX &constInfo){};
 };
 } // namespace BaseApi
 

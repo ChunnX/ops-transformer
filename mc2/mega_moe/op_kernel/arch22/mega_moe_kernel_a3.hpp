@@ -1516,7 +1516,7 @@ private:
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         blockEpilogue(gmC2, gmPerTokenScale2, reinterpret_cast<__gm__ float *>(params.ptrBias2),
-                                      realTileCoord, realTileShape, groupIdx, preSrcExpertSum, preSumBeforeRank,
+                                      realTileCoord, realTileShape, groupIdx, preSrcExpertSum * 2, preSumBeforeRank,
                                       params.listLen);
                     } else if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue(gmC2, gmPerTokenScale2, realTileCoord, realTileShape, groupIdx, preSrcExpertSum,
@@ -1528,7 +1528,11 @@ private:
                 }
             }
 
-            preSrcExpertSum += currentExpertM;
+            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                preSrcExpertSum += currentExpertM / 2;
+            } else {
+                preSrcExpertSum += currentExpertM;
+            }
             startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
         }
 

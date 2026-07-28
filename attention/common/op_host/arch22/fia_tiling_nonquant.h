@@ -26,7 +26,9 @@ namespace optiling {
 
 class FiaTilingNonQuant : public FiaTilingBase {
 public:
-    explicit FiaTilingNonQuant(gert::TilingContext *context) : FiaTilingBase(context) {}
+    explicit FiaTilingNonQuant(gert::TilingContext *context) : FiaTilingBase(context)
+    {
+    }
     ~FiaTilingNonQuant() override = default;
 
 protected:
@@ -73,10 +75,10 @@ private:
     void CalcWorkspaceSize();
     void CalcMaxWorkspaceSize();
     void CalcNumBlocks(uint32_t coreNum);
-    void GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
-                         int64_t &safePreToken, int64_t &safeNextToken) const;
+    void GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &safePreToken,
+                         int64_t &safeNextToken) const;
     bool IsExistRowInvalid(const BaseInfo &baseInfo) const;
-    bool GetIsEmptyBatchOverHalf() const;       // 临时操作，用于检查是否超过一半的batch为空batch
+    bool GetIsEmptyBatchOverHalf() const; // 临时操作，用于检查是否超过一半的batch为空batch
 
     bool splitKVFlag_ = false;
 

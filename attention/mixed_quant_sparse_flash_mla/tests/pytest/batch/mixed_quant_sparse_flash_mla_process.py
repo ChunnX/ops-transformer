@@ -31,7 +31,7 @@ class Network(torch.nn.Module):
         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, sinks, metadata, quant_mode, rope_head_dim,
         softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv,
         topk_value_mode, return_softmax_lse):
-        npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
+        npu_result, npu_lse = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
                                 q=q,
                                 ori_kv=ori_kv,
                                 cmp_kv=cmp_kv,
@@ -56,21 +56,22 @@ class Network(torch.nn.Module):
                                 cmp_ratio=cmp_ratio,
                                 ori_mask_mode=ori_mask_mode,
                                 cmp_mask_mode=cmp_mask_mode,
-                                ori_win_left=ori_win_left,
-                                ori_win_right=ori_win_right,
+                                **({'ori_win_left': ori_win_left} if ori_win_left is not None else {}),
+                                **({'ori_win_right': ori_win_right} if ori_win_right is not None else {}),
                                 layout_q=layout_q,
                                 layout_kv=layout_kv,
                                 topk_value_mode=topk_value_mode,
                                 return_softmax_lse=return_softmax_lse,
                                 key_dtype=None,
                                 value_dtype=None)
-        return npu_result
+        return npu_result, npu_lse
 
 def test_mqsmla_quant_process_graph(test_data, device_id=0):
     params = test_data['params']
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']
     cpu_output = test_data['cpu_output']
+    cpu_lse = test_data.get('cpu_lse')
     torch_npu.npu.set_device(device_id)
 
     torch._dynamo.reset()
@@ -98,21 +99,21 @@ def test_mqsmla_quant_process_graph(test_data, device_id=0):
                                 seqused_ori_kv=op_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else None,
                                 seqused_cmp_kv=op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
                                 cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
-                                ori_topk_length=None,
-                                cmp_topk_length=None,
+                                ori_topk_length=op_input['ori_topk_length'].npu() if op_input.get('ori_topk_length') is not None else None,
+                                cmp_topk_length=op_input['cmp_topk_length'].npu() if op_input.get('cmp_topk_length') is not None else None,
                                 quant_mode=op_input['quant_mode'],
                                 batch_size = metadata_input['batch_size'],
                                 max_seqlen_q = metadata_input['max_seqlen_q'],
                                 max_seqlen_ori_kv = metadata_input['max_seqlen_ori_kv'],
                                 max_seqlen_cmp_kv = metadata_input['max_seqlen_cmp_kv'],
-                                ori_topk = 0,
+                                ori_topk = metadata_input.get('ori_topk', 0),
                                 cmp_topk = metadata_input['topk'],
                                 rope_head_dim=op_input['rope_head_dim'],
                                 cmp_ratio = metadata_input['cmp_ratio'],
                                 ori_mask_mode = metadata_input['ori_mask_mode'],
                                 cmp_mask_mode = metadata_input['cmp_mask_mode'],
-                                ori_win_left = metadata_input['ori_win_left'],
-                                ori_win_right = metadata_input['ori_win_right'],
+                                **({'ori_win_left': metadata_input['ori_win_left']} if metadata_input.get('ori_win_left') is not None else {}),
+                                **({'ori_win_right': metadata_input['ori_win_right']} if metadata_input.get('ori_win_right') is not None else {}),
                                 layout_q = metadata_input['layout_q'],
                                 layout_kv = metadata_input['layout_kv'],
                                 has_ori_kv = metadata_input['has_ori_kv'],
@@ -123,7 +124,7 @@ def test_mqsmla_quant_process_graph(test_data, device_id=0):
     metadata.npu()
 
     print("mixed_quant_sparse_flash_mla...")
-    npu_result = npu_mode(
+    npu_result, npu_lse = npu_mode(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
                                 ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
                                 cmp_kv=op_input['cmp_kv'].npu() if op_input['cmp_kv'] is not None else None,
@@ -137,8 +138,8 @@ def test_mqsmla_quant_process_graph(test_data, device_id=0):
                                 seqused_ori_kv=op_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else None,
                                 seqused_cmp_kv=op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
                                 cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
-                                ori_topk_length=None,
-                                cmp_topk_length=None,
+                                ori_topk_length=op_input['ori_topk_length'].npu() if op_input.get('ori_topk_length') is not None else None,
+                                cmp_topk_length=op_input['cmp_topk_length'].npu() if op_input.get('cmp_topk_length') is not None else None,
                                 sinks=op_input['sinks'].npu() if op_input['sinks'] is not None else None,
                                 metadata=metadata,
                                 quant_mode=op_input['quant_mode'],
@@ -155,13 +156,14 @@ def test_mqsmla_quant_process_graph(test_data, device_id=0):
                                 return_softmax_lse=op_input.get('return_softmax_lse', False))
 
     torch.npu.synchronize()
-    return npu_result, cpu_output
+    return npu_result, cpu_output, npu_lse, cpu_lse
 
 def test_mqsmla_quant_process_ci(test_data, device_id=0):
     params = test_data['params']
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']
     cpu_output = test_data['cpu_output']
+    cpu_lse = test_data.get('cpu_lse')
     torch_npu.npu.set_device(device_id)
 
     print("test_data:", params)
@@ -177,21 +179,21 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
                                 seqused_ori_kv=op_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else None,
                                 seqused_cmp_kv=op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
                                 cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
-                                ori_topk_length=None,
-                                cmp_topk_length=None,
+                                ori_topk_length=op_input['ori_topk_length'].npu() if op_input.get('ori_topk_length') is not None else None,
+                                cmp_topk_length=op_input['cmp_topk_length'].npu() if op_input.get('cmp_topk_length') is not None else None,
                                 quant_mode=op_input['quant_mode'],
                                 batch_size = metadata_input['batch_size'],
                                 max_seqlen_q = metadata_input['max_seqlen_q'],
                                 max_seqlen_ori_kv = metadata_input['max_seqlen_ori_kv'],
                                 max_seqlen_cmp_kv = metadata_input['max_seqlen_cmp_kv'],
-                                ori_topk = 0,
+                                ori_topk = metadata_input.get('ori_topk', 0),
                                 cmp_topk = metadata_input['topk'],
                                 rope_head_dim=op_input['rope_head_dim'],
                                 cmp_ratio = metadata_input['cmp_ratio'],
                                 ori_mask_mode = metadata_input['ori_mask_mode'],
                                 cmp_mask_mode = metadata_input['cmp_mask_mode'],
-                                ori_win_left = metadata_input['ori_win_left'],
-                                ori_win_right = metadata_input['ori_win_right'],
+                                **({'ori_win_left': metadata_input['ori_win_left']} if metadata_input.get('ori_win_left') is not None else {}),
+                                **({'ori_win_right': metadata_input['ori_win_right']} if metadata_input.get('ori_win_right') is not None else {}),
                                 layout_q = metadata_input['layout_q'],
                                 layout_kv = metadata_input['layout_kv'],
                                 has_ori_kv = metadata_input['has_ori_kv'],
@@ -200,11 +202,11 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
     torch.npu.synchronize()
     metadata.npu()
     print("mixed_quant_sparse_flash_mla...")
-    npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
+    npu_result, npu_lse = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
                                 ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
                                 cmp_kv=op_input['cmp_kv'].npu() if op_input['cmp_kv'] is not None else None,
-                                ori_sparse_indices=None,
+                                ori_sparse_indices=op_input['ori_sparse_indices'].npu() if op_input.get('ori_sparse_indices') is not None else None,
                                 cmp_sparse_indices=op_input['cmp_sparse_indices'].npu() if op_input['cmp_sparse_indices'] is not None else None,
                                 ori_block_table=op_input['ori_block_table'].npu() if op_input['ori_block_table'] is not None else None,
                                 cmp_block_table=op_input['cmp_block_table'].npu() if op_input['cmp_block_table'] is not None else None,
@@ -215,8 +217,8 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
                                 seqused_ori_kv=op_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else None,
                                 seqused_cmp_kv=op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
                                 cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
-                                ori_topk_length=None,
-                                cmp_topk_length=None,
+                                ori_topk_length=op_input['ori_topk_length'].npu() if op_input.get('ori_topk_length') is not None else None,
+                                cmp_topk_length=op_input['cmp_topk_length'].npu() if op_input.get('cmp_topk_length') is not None else None,
                                 sinks=op_input['sinks'].npu() if op_input['sinks'] is not None else None,
                                 metadata=metadata,
                                 quant_mode=op_input['quant_mode'],
@@ -225,8 +227,8 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
                                 cmp_ratio=op_input['cmp_ratio'],
                                 ori_mask_mode=op_input['ori_mask_mode'],
                                 cmp_mask_mode=op_input['cmp_mask_mode'],
-                                ori_win_left=op_input['ori_win_left'],
-                                ori_win_right=op_input['ori_win_right'],
+                                **({'ori_win_left': op_input['ori_win_left']} if op_input.get('ori_win_left') is not None else {}),
+                                **({'ori_win_right': op_input['ori_win_right']} if op_input.get('ori_win_right') is not None else {}),
                                 layout_q=op_input['layout_q'],
                                 layout_kv=op_input['layout_kv'],
                                 topk_value_mode=op_input.get('topk_value_mode', 1),
@@ -236,4 +238,4 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
 
     torch.npu.synchronize()
 
-    return npu_result, cpu_output
+    return npu_result, cpu_output, cpu_lse, npu_lse

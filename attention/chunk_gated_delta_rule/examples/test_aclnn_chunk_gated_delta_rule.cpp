@@ -39,7 +39,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr, const char* name)
+void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr, const char *name)
 {
     auto size = GetShapeSize(shape);
     std::vector<aclFloat16> resultData(size, 0);
@@ -141,7 +141,7 @@ int main()
     std::vector<float> gamaHostData(GetShapeSize(gamaShape));
     std::vector<int16_t> betaHostData(GetShapeSize(gamaShape));
     std::vector<int32_t> actSeqLenHostData(batchSize, seqLength);
-    int16_t bfloatOne = 16256;  // int16_t的16256的二进制对应bfloat16的1.0
+    int16_t bfloatOne = 16256; // int16_t的16256的二进制对应bfloat16的1.0
     for (int i = 0; i < initStateHostData.size(); i++) {
         initStateHostData[i] = bfloatOne;
     }
@@ -185,8 +185,8 @@ int main()
     float scale = 1.0;
     aclOpExecutor *executor;
     // 调用aclnnChunkGatedDeltaRuleGetWorkspaceSize第一段接口
-    ret = aclnnChunkGatedDeltaRuleGetWorkspaceSize(query, key, value, beta, initState, actSeqLen, gama,
-                                                       scale, attnOut, finalState, &workspaceSize, &executor);
+    ret = aclnnChunkGatedDeltaRuleGetWorkspaceSize(query, key, value, beta, initState, actSeqLen, gama, scale, attnOut,
+                                                   finalState, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnChunkGatedDeltaRuleGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 

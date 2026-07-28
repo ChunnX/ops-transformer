@@ -26,7 +26,9 @@ constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024
 
 constexpr uint32_t BUFFER_SIZE_16K = 16384; // 16384表示16 * 1024
 constexpr uint32_t BUFFER_SIZE_32K = 32768; // 32768表示32 * 1024
-constexpr uint32_t BUFFER_SIZE_128K = 131072; // 131072表示128 * 1024
+constexpr uint32_t BUFFER_SIZE_64K = 65536; // 65536表示64 * 1024
+constexpr uint32_t BUFFER_SIZE_96K = 98304; // 98304表示96 * 1024
+constexpr uint32_t BUFFER_SIZE_256K = 262144; // 262144表示256 * 1024
 
 constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
@@ -60,10 +62,10 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
 
 #define TEMPLATE_INTF \
     template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool isFd, bool isPa, QSMLA_LAYOUT LAYOUT_T, \
-    QSMLA_LAYOUT KV_LAYOUT_T, QSMLATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G>
+    QSMLA_LAYOUT KV_LAYOUT_T, QSMLATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G, bool IS_VEC_S2PHYADDR>
 
 #define TEMPLATE_INTF_ARGS \
-    Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G
+    Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G, IS_VEC_S2PHYADDR
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(Q_T) \
@@ -78,6 +80,7 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
     X(KV_LAYOUT_T, QSMLA_LAYOUT, QSMLA_LAYOUT::PA_BBND) \
     X(TEMPLATE_MODE, QSMLATemplateMode, QSMLATemplateMode::CSA_TEMPLATE_MODE) \
     X(IS_SPLIT_G, bool, false) \
+    X(IS_VEC_S2PHYADDR, bool, false)
 
 
 /* 1. 生成带默认值的模版Template */

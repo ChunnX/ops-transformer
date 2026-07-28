@@ -15,27 +15,27 @@
 
 - 接口功能：Native Sparse Attention推理过程中，Selected Attention的计算。
 - 计算公式：
-  
+
   Self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
-  
+
   Selected Attention的计算由topk索引取数与attention计算融合而成，外加paged attention取kvCache。首先，通过$topkIndices$索引从$key$中取出$key_{topk}$，从$value$中取出$value_{topk}$，计算self_attention公式如下：
-  
+
   $$
   Attention(query,key,value)=Softmax(\frac{query · key_{topk}^T}{\sqrt{d}})value_{topk}
   $$
-  
+
   其中$query$和$key_{topk}^T$乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$value_{topk}$相乘后得到一个$n*d$的矩阵。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNsaSelectedAttentionInferGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaSelectedAttentionInfer”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnNsaSelectedAttentionInferGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaSelectedAttentionInfer”接口执行计算。
 
 ```c++
 aclnnStatus aclnnNsaSelectedAttentionInferGetWorkspaceSize(
-    const aclTensor     *query, 
-    const aclTensor     *key, 
-    const aclTensor     *value, 
-    const aclTensor     *topkIndices, 
+    const aclTensor     *query,
+    const aclTensor     *key,
+    const aclTensor     *value,
+    const aclTensor     *topkIndices,
     const aclTensor     *attenMaskOptional,
     const aclTensor     *blockTableOptional,
     const aclIntArray   *actualQSeqLenOptional,
@@ -55,8 +55,8 @@ aclnnStatus aclnnNsaSelectedAttentionInferGetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnNsaSelectedAttentionInfer(
-    void                *workspace, 
-    uint64_t             workspaceSize, 
+    void                *workspace,
+    uint64_t             workspaceSize,
     aclOpExecutor       *executor,
     const aclrtStream    stream)
 ```
@@ -64,7 +64,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 ## aclnnNsaSelectedAttentionInferGetWorkspaceSize
 
 - **参数说明**
-  
+
   <div style="overflow-x: auto;">
     <table style="undefined;table-layout: fixed; width: 1567px">
       <colgroup>
@@ -178,7 +178,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>输入</td>
           <td>表示paged attention中KV存储使用的block映射表。</td>
           <td>
-            - 
+            -
           </td>
           <td>INT32</td>
           <td>ND</td>
@@ -229,7 +229,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>输入</td>
           <td>代表head个数。</td>
           <td>
-            - 
+            -
           </td>
           <td>INT64</td>
           <td>-</td>
@@ -241,7 +241,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>输入</td>
           <td>代表kvHead个数。</td>
           <td>
-            - 
+            -
           </td>
           <td>INT64</td>
           <td>-</td>
@@ -255,7 +255,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>
             <ul style="list-style-type: circle; margin: 0; padding-left: 20px;">
               <li>在计算importance score时使用。</li>
-              <li>仅支持selectBlockSize取值为16的整数倍，最大支持到128。</li>  
+              <li>仅支持selectBlockSize取值为16的整数倍，最大支持到128。</li>
             </ul>
           </td>
           <td>INT64</td>
@@ -346,19 +346,19 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
       </tbody>
     </table>
   </div>
-  
+
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <div style="overflow-x: auto;">
-  <table style="table-layout: fixed; width: 1030px">  <colgroup>     
-      <col style="width: 250px">     
-      <col style="width: 130px">     
-      <col style="width: 650px">   
-      </colgroup> 
+  <table style="table-layout: fixed; width: 1030px">  <colgroup>
+      <col style="width: 250px">
+      <col style="width: 130px">
+      <col style="width: 650px">
+      </colgroup>
     <thead>
       <tr>
         <th>返回值</th>
@@ -388,7 +388,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 ## aclnnNsaSelectedAttentionInfer
 
 - **参数说明**
-  
+
   <div style="overflow-x: auto;">
       <table style="undefined;table-layout: fixed; width: 1030px">
       <colgroup>
@@ -429,8 +429,8 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
   </div>
 
 - **返回值**
-  
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -442,7 +442,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -551,7 +551,7 @@ int main(int argc, char **argv)
     int64_t d1 = 192;
     int64_t d2 = 128;
     int64_t g = 1;
-    
+
     int64_t n2 = 1;
     int64_t blockSize = 64;
     int64_t selectBlockSize = 64;
@@ -577,7 +577,7 @@ int main(int argc, char **argv)
     std::vector<op::fp16_t> valueHostData(valueShapeSize, 1);
     std::vector<int32_t> blockTableOptionalHostData(blockTableOptionalShapeSize, 0);
     std::vector<op::fp16_t> outputHostData(outputShapeSize, 1);
-    
+
     std::vector<int32_t> topkIndicesHostData;
     for (int b = 0; b < batch; ++b) {
        for (int s = 0; s < s1; ++s) {
@@ -612,7 +612,7 @@ int main(int argc, char **argv)
     aclTensor *blockTableOptionalTensor = nullptr;
     aclTensor *outputTensor = nullptr;
     aclTensor *topkIndicesTensor = nullptr;
-    
+
     uint64_t workspaceSize = 0;
     void *workspaceAddr = nullptr;
 
@@ -664,7 +664,7 @@ int main(int argc, char **argv)
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaSelectedAttentionInfer aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     LOG_PRINT("aclnn execute success : %d\n", ret);
-    
+
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
     auto size = GetShapeSize(outputShape);
     std::vector<op::fp16_t> resultData(size, 0);
