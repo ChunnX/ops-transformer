@@ -1706,13 +1706,18 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4ExpertTokensCountCompute()
     tokensCountTiling->lastCoreElements = lastCoreElements;
 
     int64_t expertNumElement = (tilingDataPtr_->expertTokensNumType != EXPERT_TOKENS_TYPE_KEY_VALUE) ?
-                                   tilingDataPtr_->actualExpertNum :
-                                   (tilingDataPtr_->actualExpertNum + 1) * DIM_TWO;
+                                    tilingDataPtr_->actualExpertNum :
+                                    (tilingDataPtr_->actualExpertNum + 1) * DIM_TWO;
+    int64_t expertTensorBytes = Ops::Base::CeilAlign(expertNumElement, UB_BLOCK_SIZE) * UB_BLOCK_SIZE;
+    int64_t cumsumWorkspaceBytes = 0;
+    if (tilingDataPtr_->expertTokensNumType == EXPERT_TOKENS_TYPE_CUMSUM) {
+        // CumSum uses distinct FP32 source, destination, and work tensors.
+        cumsumWorkspaceBytes = AlignBytes(tilingDataPtr_->actualExpertNum, sizeof(float)) * NUM_THREE;
+    }
     int64_t maxElementsPerLoop =
-        (availUbSize_ -
-         Ops::Base::CeilAlign(expertNumElement, UB_BLOCK_SIZE) *
+        (availUbSize_ - expertTensorBytes *
              (static_cast<int64_t>(sizeof(int32_t)) * NUM_TWO + static_cast<int64_t>(sizeof(int64_t))) -
-         UB_BLOCK_SIZE) /
+         cumsumWorkspaceBytes - UB_BLOCK_SIZE) /
         static_cast<int64_t>(sizeof(int32_t));
     int64_t perCoreLoops = Ops::Base::CeilDiv(perCoreElements, maxElementsPerLoop);
     int64_t perCorePerLoopElements = Ops::Base::CeilDiv(perCoreElements, perCoreLoops);

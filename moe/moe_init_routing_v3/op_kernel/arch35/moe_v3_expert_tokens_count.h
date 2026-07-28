@@ -57,6 +57,8 @@ private:
     TQue<QuePosition::VECOUT, 1> expertIdxCountOutQueue_;
     TQue<QuePosition::VECOUT, 1> expertTotalCountQueue_;
     TBuf<TPosition::VECCALC> reduceFloatBuf_;
+    TBuf<TPosition::VECCALC> cumsumDstBuf_;
+    TBuf<TPosition::VECCALC> cumsumWorkBuf_;
 
     const MoeV3Arch35ExpertTokensCountTilingData *expertTokensCountTilingData_;
     int64_t blockIdx_;
@@ -187,7 +189,14 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
     pipe_->InitBuffer(expertIdxCountOutQueue_, 1, AlignBytes(expertCountElements_, sizeof(int64_t)));
     if (needExpertTotalCount_) {
         pipe_->InitBuffer(expertTotalCountQueue_, 1, AlignBytes(1, sizeof(int32_t)));
+    }
+    if (expertTokensNumType_ == COUNT_MODE && needExpertTotalCount_) {
         pipe_->InitBuffer(reduceFloatBuf_, AlignBytes(actualExpertNum_, sizeof(float)));
+    }
+    if (expertTokensNumType_ == CUMSUM_MODE) {
+        pipe_->InitBuffer(reduceFloatBuf_, AlignBytes(actualExpertNum_, sizeof(float)));
+        pipe_->InitBuffer(cumsumDstBuf_, AlignBytes(actualExpertNum_, sizeof(float)));
+        pipe_->InitBuffer(cumsumWorkBuf_, AlignBytes(actualExpertNum_, sizeof(float)));
     }
 }
 
@@ -304,12 +313,30 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
             actualExpertTotalNum_ = static_cast<int64_t>(reduceFloatLocal.GetValue(0));
         }
     } else if (expertTokensNumType_ == CUMSUM_MODE) {
-        int64_t cumsumCount = 0;
-        for (int64_t i = 0; i < actualExpertNum_; i++) {
-            int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
-            cumsumCount += expertCount;
-            expertCountOutLocal.SetValue(i, cumsumCount);
-            actualExpertTotalNum_ += expertCount;
+        const uint32_t cumsumInner = static_cast<uint32_t>(Align(actualExpertNum_, sizeof(float)));
+        LocalTensor<float> cumsumSrcLocal = reduceFloatBuf_.Get<float>();
+        LocalTensor<float> cumsumDstLocal = cumsumDstBuf_.Get<float>();
+        LocalTensor<float> cumsumWorkLocal = cumsumWorkBuf_.Get<float>();
+
+        Duplicate(cumsumSrcLocal, 0.0f, cumsumInner);
+        PipeBarrier<PIPE_V>();
+        Cast(cumsumSrcLocal, expertCountTempInLocal, RoundMode::CAST_NONE, actualExpertNum_);
+        PipeBarrier<PIPE_V>();
+
+        CumSumInfo cumsumInfo{1U, cumsumInner};
+        CumSum<float>(cumsumDstLocal, cumsumSrcLocal, cumsumWorkLocal, cumsumInfo);
+        PipeBarrier<PIPE_V>();
+
+        Cast(expertCountTempInLocal, cumsumDstLocal, RoundMode::CAST_NONE, actualExpertNum_);
+        PipeBarrier<PIPE_V>();
+        Cast(expertCountOutLocal, expertCountTempInLocal, RoundMode::CAST_NONE, actualExpertNum_);
+        PipeBarrier<PIPE_V>();
+
+        if (needExpertTotalCount_) {
+            event_t eventIDVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+            SetFlag<HardEvent::V_S>(eventIDVToS);
+            WaitFlag<HardEvent::V_S>(eventIDVToS);
+            actualExpertTotalNum_ = static_cast<int64_t>(cumsumDstLocal.GetValue(actualExpertNum_ - 1));
         }
     }
     event_t eventIDSToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
