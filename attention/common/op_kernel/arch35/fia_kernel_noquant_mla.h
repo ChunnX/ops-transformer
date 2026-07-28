@@ -46,7 +46,7 @@ public:
 
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
     // todo zhj mla老模板使用preload 1，新模板是preload 2，需要看下为什么不使用2，能否切到2
-    static constexpr uint32_t PRELOAD_N = 1; // C1 C1 C1 C2
+    static constexpr uint32_t PRELOAD_N = 1; // C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
@@ -69,7 +69,7 @@ public:
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
     // mm1和mm2右矩阵，在L1上复用，其中K_rope内存空间与bmm2的左矩阵p复用
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm12Bmm2AL1Buffers;
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1KvPBuffers;
 
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
     GlobalTensor<uint64_t> actualSeqLengthsGmKv;
@@ -170,11 +170,10 @@ public:
     {
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        uint32_t mm12RightSize =
-            max(static_cast<uint32_t>(dBaseSize), static_cast<uint32_t>(dVBaseSize)) * s2BaseSize * sizeof(INPUT_T);
+        uint32_t mm12RightSize = s2BaseSize * 576 * sizeof(INPUT_T);
         l1BufferManager.Init(pipe, 524288); // 512 * 1024
         // 3Buffer
-        mm12Bmm2AL1Buffers.Init(l1BufferManager, mm12RightSize); // L1: 144k * 3 = 432k
+        l1KvPBuffers.Init(l1BufferManager, mm12RightSize); // L1: 144k * 3 = 432k
         ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
         bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
@@ -206,7 +205,7 @@ public:
         constInfo.s2Size = fiaBaseParams.s2Size;
         constInfo.dSize = fiaBaseParams.dSize;
         constInfo.dSizeV = fiaBaseParams.dSizeV;
-        constInfo.dSizeRope = 0;
+        constInfo.dSizeRope = 64; // todo 修改成传入值
         constInfo.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
         constInfo.scaleValue = fiaBaseParams.scaleValue;
@@ -549,17 +548,18 @@ public:
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
-        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), this->mm12Bmm2AL1Buffers.Get(), runInfo);
+        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), this->l1KvPBuffers.Get(), runInfo);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
-        cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->mm12Bmm2AL1Buffers.GetReused(), runInfo);
+        cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1KvPBuffers.GetReused(), runInfo);
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        vecFaBlock.ProcessVec1(this->mm12Bmm2AL1Buffers.Get(), this->bmm1Buffers.Get(), runInfo);
+        // c v都会独立get，所以mm1和vec1能一致
+        vecFaBlock.ProcessVec1(this->l1KvPBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
