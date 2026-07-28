@@ -259,7 +259,10 @@ __aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::Cal
     // sorted_indices is consumed by scalar GetValue below. The VECIN queue
     // synchronization does not guarantee MTE2-to-Scalar visibility, so wait
     // once per indices tile before reading it.
-    SyncFunc<HardEvent::MTE2_S>();
+    event_t eventIdMte2ToScalar =
+        static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
+    SetFlag<HardEvent::MTE2_S>(eventIdMte2ToScalar);
+    WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToScalar);
     for (int64_t out_token_idx = 0; out_token_idx < out_tokens_number; ++out_token_idx) {
         CalSingleOutToken(out_token_idx * this->top_k, out_offset + out_token_idx);
     }
