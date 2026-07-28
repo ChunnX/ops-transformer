@@ -58,9 +58,9 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
 
 template <typename DataType, bool IsQuantized = true>
 __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
-                                                uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t> &metaInfoTensor,
-                                                LocalTensor<DataType> &ubQuant, const Params &params,
-                                                GM_ADDR localSrcPtr)
+                                                uint32_t groupIdx, uint32_t rankId,
+                                                LocalTensor<int32_t> &metaInfoTensor, LocalTensor<DataType> &ubQuant,
+                                                const Params &params, GM_ADDR localSrcPtr)
 {
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID3>();
     int64_t quantTokenSize = IsQuantized ? (n + nScale) : n;
@@ -77,7 +77,8 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
     }
 
     gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ DataType *>(srcAddr));
-    uint64_t dstBaseOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSize; // 元素个数
+    uint64_t dstBaseOffset =
+        (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSize; // 元素个数
     AscendC::DataCopyExtParams singleCopyParams{1, static_cast<uint32_t>(quantTokenSize * sizeof(DataType)), 0, 0, 0};
 
     if constexpr (!IsQuantized) {
@@ -90,7 +91,6 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
             SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID4>();
         }
     }
-    
     if (IsQuantized || toRankId == rankId) {
         uint64_t dstOffset = toRankId == rankId ? dstBaseOffset : 0;
         AscendC::DataCopyPad(gmLocalD[dstOffset], ubQuant, singleCopyParams);
@@ -99,7 +99,7 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
 
     if (toRankId != rankId) {
         uint64_t channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, toRankId, rankId);
-        GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId,gmRemoteOffset) + dstBaseOffset * sizeof(DataType);
+        GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset) + dstBaseOffset * sizeof(DataType);
         params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr, quantTokenSize * sizeof(DataType));
     }
 }
@@ -265,11 +265,12 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
         using SendType = typename std::conditional<IsQuantized, Fp8Type, T>::type;
         LocalTensor<SendType> ubQuantSend = ubQuantData.template ReinterpretCast<SendType>();
         if constexpr (IsLayered) {
-           if constexpr (!IsQuantized) {
+            if constexpr (!IsQuantized) {
                 ubQuantSend = ubBf16;
-           }
-           GM_ADDR localSrcPtr = gmm2OutAddr + (tokenStart + i) * n * sizeof(T);
-           CombineSendTokenToRemote<SendType,IsQuantized>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params, localSrcPtr);
+            }
+            GM_ADDR localSrcPtr = gmm2OutAddr + (tokenStart + i) * n * sizeof(T);
+            CombineSendTokenToRemote<SendType, IsQuantized>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor,
+                                                            ubQuantSend, params, localSrcPtr);
         } else {
             CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params);
         }
