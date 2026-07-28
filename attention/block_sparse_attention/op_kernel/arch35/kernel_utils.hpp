@@ -16,8 +16,7 @@
 
 #include "../attn_infra/arch/bsa_cross_core_sync.hpp"
 #include "../attn_infra/arch/bsa_resource.hpp"
-#include "../attn_infra/epilogue/block/bsa_block_epilogue.hpp"
-#include "../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
+
 #include "../tla/tensor_bsa.hpp"
 #include "../tla/layout_bsa.hpp"
 #include "kernel_operator.h"
@@ -49,7 +48,6 @@ struct TaskInfo {
     // O GM 偏移
     int64_t  gmOffsetO = 0;
     uint32_t oShapeCol = 0;
-    uint32_t lseShapeCol = 0;
 
     uint32_t qsActBaseTileAlign128 = 0;
 };
