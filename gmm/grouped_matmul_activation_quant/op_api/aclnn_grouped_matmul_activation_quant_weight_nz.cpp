@@ -61,6 +61,17 @@ bool IsFp8(DataType dtype)
     return dtype == DataType::DT_FLOAT8_E4M3FN || dtype == DataType::DT_FLOAT8_E5M2;
 }
 
+bool IsFp4(DataType dtype)
+{
+    return dtype == DataType::DT_FLOAT4_E2M1 || dtype == DataType::DT_FLOAT4_E1M2;
+}
+
+bool IsSupportedMxInputPair(DataType xDtype, DataType weightDtype)
+{
+    return (IsFp8(xDtype) && weightDtype == DataType::DT_FLOAT8_E4M3FN) ||
+           (IsFp4(xDtype) && IsFp4(weightDtype));
+}
+
 bool IsFp8DtypeValue(int64_t dtype)
 {
     return dtype == FLOAT8_E4M3FN_VALUE || dtype == FLOAT8_E5M2_VALUE;
@@ -80,12 +91,12 @@ aclnnStatus CheckMxQuantDtype(const aclTensor *x, const aclTensor *weight, const
                               const aclTensor *weightScale, const aclTensor *y, const aclTensor *yScale,
                               int64_t effectiveYDtype)
 {
-    GMMAQ_CHECK_WITH_LOG(IsFp8(x->GetDataType()), ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "x", op::ToString(x->GetDataType()).GetString(),
-            "when the quantization mode is mx, the dtype of x must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
-    GMMAQ_CHECK_WITH_LOG(weight->GetDataType() == DataType::DT_FLOAT8_E4M3FN, ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "weight", op::ToString(weight->GetDataType()).GetString(),
-            "when the quantization mode is mx, the dtype of weight must be FLOAT8_E4M3FN"));
+    GMMAQ_CHECK_WITH_LOG(IsSupportedMxInputPair(x->GetDataType(), weight->GetDataType()),
+        ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(OP_NAME, "x, weight",
+            FormatString("{%s, %s}", op::ToString(x->GetDataType()).GetString(),
+                         op::ToString(weight->GetDataType()).GetString()).c_str(),
+            "when the quantization mode is mx, x and weight must be a supported FP8 pair or both be FLOAT4"));
     GMMAQ_CHECK_WITH_LOG(IsMxScaleDtype(xScaleOptional->GetDataType()), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "xScaleOptional",
             op::ToString(xScaleOptional->GetDataType()).GetString(),
@@ -364,6 +375,7 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
     int64_t e = groupList->GetViewShape().GetDim(gmaq::DIM_0);
     int64_t n = transposeWeight ? weightScale->GetViewShape().GetDim(gmaq::DIM_1) :
                                            weightScale->GetViewShape().GetDim(gmaq::DIM_2);
+    const bool isMxfp4 = IsFp4(x->GetDataType()) && IsFp4(weight->GetDataType());
     bool emptyOutput = y->IsEmpty() || groupList->IsEmpty() || yScale->IsEmpty();
     GMMAQ_CHECK_WITH_LOG((e >= 1 && e <= MAX_GROUP_NUM) || (e == 0 && emptyOutput),
         ACLNN_ERR_PARAM_INVALID,
@@ -376,6 +388,10 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
     GMMAQ_CHECK_WITH_LOG(n % gmaq::MX_GROUP_SIZE == 0, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "N", std::to_string(n),
                                              "N must be divisible by 64"));
+    GMMAQ_CHECK_WITH_LOG(!isMxfp4 || (k % gmaq::MXFP4_PACK_FACTOR == 0 && k != gmaq::MXFP4_PACK_FACTOR),
+        ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "K", std::to_string(k),
+            "when x and weight are FLOAT4, K must be even and must not be 2"));
 
     const auto &weightShape = weight->GetStorageShape();
     const auto &weightViewShape = weight->GetViewShape();
@@ -399,21 +415,22 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
 
     op::Shape weightExpectShape;
     op::Shape weightScaleExpectShape;
+    const int64_t nzLastDim = isMxfp4 ? gmaq::NZ_LAST_DIM_FP4 : gmaq::NZ_LAST_DIM_FP8;
     if (transposeWeight) {
         weightExpectShape = {
             e,
-            Ops::Base::CeilDiv(k, gmaq::NZ_LAST_DIM),
+            Ops::Base::CeilDiv(k, nzLastDim),
             Ops::Base::CeilDiv(n, gmaq::NZ_C0_DIM),
             gmaq::NZ_C0_DIM,
-            gmaq::NZ_LAST_DIM};
+            nzLastDim};
         weightScaleExpectShape = {e, n, Ops::Base::CeilDiv(k, gmaq::MX_GROUP_SIZE), gmaq::MX_SCALE_PAIR};
     } else {
         weightExpectShape = {
             e,
-            Ops::Base::CeilDiv(n, gmaq::NZ_LAST_DIM),
+            Ops::Base::CeilDiv(n, nzLastDim),
             Ops::Base::CeilDiv(k, gmaq::NZ_C0_DIM),
             gmaq::NZ_C0_DIM,
-            gmaq::NZ_LAST_DIM};
+            nzLastDim};
         weightScaleExpectShape = {e, Ops::Base::CeilDiv(k, gmaq::MX_GROUP_SIZE), n, gmaq::MX_SCALE_PAIR};
     }
     op::Shape weightViewExpectShape = transposeWeight ? op::Shape({e, n, k}) : op::Shape({e, k, n});
@@ -469,7 +486,8 @@ aclnnStatus ResolveAndCheckQuantMode(const aclTensor *x, const aclTensor *xScale
         return ACLNN_SUCCESS;
     }
 
-    if (xScaleOptional != nullptr && IsFp8(x->GetDataType()) && IsMxScaleDtype(xScaleOptional->GetDataType())) {
+    if (xScaleOptional != nullptr && (IsFp8(x->GetDataType()) || IsFp4(x->GetDataType())) &&
+        IsMxScaleDtype(xScaleOptional->GetDataType())) {
         effectiveQuantMode = QUANT_MODE_MX;
         return ACLNN_SUCCESS;
     }
