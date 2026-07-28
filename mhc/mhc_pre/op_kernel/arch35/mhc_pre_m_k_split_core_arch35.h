@@ -534,6 +534,8 @@ private:
                 CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_CONSUMED_FLAG);
                 CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_READY_FLAG);
             }
+            // No matmul rows are consumed, but the completion token must still be drained.
+            CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::MM_READY_FLAG);
             this->invRmsOutQueue_.FreeTensor(this->invRmsUb_);
             return;
         }
