@@ -1045,9 +1045,9 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_row_tmp = T.alloc_ub((rows_per_aiv, 8), calc_dtype)
 
             T.tile.fill(v1_bw_eps, 1e-8)
-            # FP16 reluGrad store 与下一次 FP32 BMM2 load 共享物理 UB 区域，
-            # 因此 MTE2 必须直接等待 MTE3 完成。
-            T.set_flag("mte3", "mte2", 2)
+            # FP16 reluGrad store 与下一轮 FP32 diff_2d 共享物理 UB。
+            # 下一轮的覆写者是 Vector，不是 MTE2，故由 MTE3 直接归还给 V。
+            T.set_flag("mte3", "v", 2)
             T.set_flag("mte3", "v", 3)
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
@@ -1097,7 +1097,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         bw_col_end = bw_col_start + bw_col_block
 
                         T.wait_flag("v", "mte2", 3)
-                        T.wait_flag("mte3", "mte2", 2)
                         T.copy(
                             PReduced[bz_task, s1_id,
                                      bw_col_start:bw_col_end],
@@ -1123,6 +1122,9 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                         T.set_flag("mte2", "v", 3)
                         T.wait_flag("mte2", "v", 3)
+                        # v1_bw_diff_2d 与上一块正在被 MTE3 读取的
+                        # v1_bw_rg_half 复用同一物理 UB，覆写前必须等待归还。
+                        T.wait_flag("mte3", "v", 2)
 
                         T.tile.sub(
                             v1_bw_diff,
@@ -1279,7 +1281,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                         g_start:g_start + rows_per_aiv,
                                         bw_col_start:bw_col_end],
                         )
-                        T.set_flag("mte3", "mte2", 2)
+                        T.set_flag("mte3", "v", 2)
 
                         # 对齐 VectorLoss：在 AIV 对之间拆分外层 K 分块，
                         # 由所属 AIV 消费两个物理子 tile。
@@ -1361,7 +1363,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 )
                 T.set_flag("mte3", "v", 3)
 
-            T.wait_flag("mte3", "mte2", 2)
+            T.wait_flag("mte3", "v", 2)
             T.wait_flag("mte3", "v", 3)
             if task_slot == 0:
                 T.set_cross_flag("MTE3", V1_TO_C2_FLAGS[0])
