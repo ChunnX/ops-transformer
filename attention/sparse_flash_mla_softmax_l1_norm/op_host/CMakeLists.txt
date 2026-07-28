@@ -18,10 +18,10 @@ endif()
 
 # ascend950 条件编译——缺少此项会导致 kernel binary 未编译
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+enable_pypto_kernel(sparse_flash_mla_softmax_l1_norm)
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
     # PyPTO kernel: runs codegen at configure time and exposes PYPTO_GEN_DIR for the host tiling -I below.
     # Must be called BEFORE add_modules_sources(...) (which reads PYPTO_GEN_DIR).
-    enable_pypto_kernel(sparse_flash_mla_softmax_l1_norm)
     add_ops_compile_options(
         OP_NAME SparseFlashMlaSoftmaxL1Norm
         COMPUTE_UNIT Ascend950PR_9599
