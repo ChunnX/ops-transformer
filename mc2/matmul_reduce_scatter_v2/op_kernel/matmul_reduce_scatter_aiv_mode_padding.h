@@ -36,10 +36,20 @@ public:
     using ElementB = typename BType_::Element;
     using LayoutB = typename BType_::Layout;
 
-    static const uint32_t COMPUTE_LENGTH_A = 96 * 1024 / sizeof(ElementA);
-    using PaddingA = PaddingMatrixND<ArchTag, ElementA, LayoutA, COMPUTE_LENGTH_A>;
-    static const uint32_t COMPUTE_LENGTH_B = 96 * 1024 / sizeof(ElementB);
-    using PaddingB = PaddingMatrixND<ArchTag, ElementB, LayoutB, COMPUTE_LENGTH_B>;
+    // Ascend950 FP8 types support tensor/pointer operations only. The generic
+    // PaddingMatrixND path constructs a scalar padding value through
+    // DataCopyPadExtParams<Element>, which is illegal for FP8. Padding is a
+    // byte-preserving copy, so use uint8_t as the storage element for FP8.
+    template <typename Element>
+    using PaddingStorageElement = std::conditional_t<
+        std::is_same_v<Element, float8_e4m3_t> || std::is_same_v<Element, float8_e5m2_t>, uint8_t, Element>;
+    using PaddingElementA = PaddingStorageElement<ElementA>;
+    using PaddingElementB = PaddingStorageElement<ElementB>;
+
+    static const uint32_t COMPUTE_LENGTH_A = 96 * 1024 / sizeof(PaddingElementA);
+    using PaddingA = PaddingMatrixND<ArchTag, PaddingElementA, LayoutA, COMPUTE_LENGTH_A>;
+    static const uint32_t COMPUTE_LENGTH_B = 96 * 1024 / sizeof(PaddingElementB);
+    using PaddingB = PaddingMatrixND<ArchTag, PaddingElementB, LayoutB, COMPUTE_LENGTH_B>;
 
     /// Parameters structure
     struct Params {
@@ -83,19 +93,19 @@ public:
     CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         if (params.alignA) {
-            AscendC::GlobalTensor<ElementA> gmA;
-            AscendC::GlobalTensor<ElementA> gmWA;
-            gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(params.ptrA));
-            gmWA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(params.ptrWA));
+            AscendC::GlobalTensor<PaddingElementA> gmA;
+            AscendC::GlobalTensor<PaddingElementA> gmWA;
+            gmA.SetGlobalBuffer(reinterpret_cast<__gm__ PaddingElementA *>(params.ptrA));
+            gmWA.SetGlobalBuffer(reinterpret_cast<__gm__ PaddingElementA *>(params.ptrWA));
             PaddingA paddingA(resource);
             paddingA(gmWA, gmA, params.layoutWA, params.layoutA);
         }
 
         if (params.alignB) {
-            AscendC::GlobalTensor<ElementB> gmB;
-            AscendC::GlobalTensor<ElementB> gmWB;
-            gmB.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB *>(params.ptrB));
-            gmWB.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB *>(params.ptrWB));
+            AscendC::GlobalTensor<PaddingElementB> gmB;
+            AscendC::GlobalTensor<PaddingElementB> gmWB;
+            gmB.SetGlobalBuffer(reinterpret_cast<__gm__ PaddingElementB *>(params.ptrB));
+            gmWB.SetGlobalBuffer(reinterpret_cast<__gm__ PaddingElementB *>(params.ptrWB));
             PaddingB paddingB(resource);
             paddingB(gmWB, gmB, params.layoutWB, params.layoutB);
         }
