@@ -112,8 +112,6 @@ public:
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
                                 const optiling::NoQuantTilingArch35 *__restrict tiling, AscendC::TPipe *tPipe)
     {
-        printf("MLA D512 noquant kernel Init: not implemented, skip.\n");
-        // return;
         this->pipe_ = tPipe;
         this->tilingData_ = tiling;
 
@@ -257,6 +255,8 @@ public:
                 fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
         }
         constInfo_.dBasicBlock = AttentionCommon::Align(constInfo_.dSizeV, 64U);
+        constInfo_.kRopeStrides.bnStride = fiaBaseParams.kRopeStrides.bnStride;
+        constInfo_.kRopeStrides.n2Stride = fiaBaseParams.kRopeStrides.n2Stride;
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx)
@@ -788,8 +788,6 @@ public:
 
     __aicore__ inline void Process()
     {
-        printf("MLA D512 noquant kernel Process: not implemented, skip.\n");
-        // return;
         if (constInfo_.aicIdx < constInfo_.coreNum) {
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {
