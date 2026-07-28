@@ -340,8 +340,8 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ uint8_t *workspace)
+__aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitMMResBuf(
+    __gm__ uint8_t *workspace)
 {
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
@@ -646,10 +646,9 @@ SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAn
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::SetRunInfo(RunInfo &runInfo, RunParamStr &runParam,
-                                                                       int64_t taskId, int64_t s2LoopCount,
-                                                                       int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
+__aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::SetRunInfo(
+    RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
+    int64_t multiCoreInnerIdx)
 {
     if (s2LoopCount < runParam.kvLoopEndIdx) {
         runInfo.s2StartIdx = runParam.s2LineStartIdx;

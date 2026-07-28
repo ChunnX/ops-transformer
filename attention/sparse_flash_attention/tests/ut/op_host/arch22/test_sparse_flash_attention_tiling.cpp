@@ -16,15 +16,9 @@ using namespace std;
 
 class SparseFlashAttentionTiling : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "SparseFlashAttentionTiling SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "SparseFlashAttentionTiling SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "SparseFlashAttentionTiling TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "SparseFlashAttentionTiling TearDown" << std::endl; }
 };
 
 // Shape of tensor softmaxMax is nullptr

@@ -329,7 +329,6 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     cubeBlock.InitCubeInput(actualSeqLengthsQ, constInfo);
 }
 
-
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
 KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ uint8_t *workspace)
@@ -642,10 +641,9 @@ KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnA
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::SetRunInfo(RunInfo &runInfo, RunParamStr &runParam,
-                                                                        int64_t taskId, int64_t s2LoopCount,
-                                                                        int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
+__aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::SetRunInfo(
+    RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
+    int64_t multiCoreInnerIdx)
 {
     if (s2LoopCount < runParam.kvLoopEndIdx) {
         runInfo.s2StartIdx = runParam.s2LineStartIdx;

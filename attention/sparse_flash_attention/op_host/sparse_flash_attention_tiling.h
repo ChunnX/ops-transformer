@@ -66,13 +66,7 @@ constexpr uint32_t BYTE_BLOCK = 32;
 const uint32_t SFA_MAX_AIC_CORE_NUM = 26; // 25 + 1 保证数组8字节对齐
 
 // ------------------公共定义--------------------------
-enum class SFALayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BSND = 2,
-    BNSG = 3,
-    NTG = 4
-};
+enum class SFALayout : uint32_t { BSND = 0, TND = 1, PA_BSND = 2, BNSG = 3, NTG = 4 };
 
 struct SFATilingShapeCompareParam {
     int64_t B = 1;
@@ -86,15 +80,9 @@ struct SFATilingShapeCompareParam {
     int64_t Bn = 1;
 };
 
-enum class KvStorageMode : uint32_t {
-    BATCH_CONTINUOUS = 0,
-    PAGE_ATTENTION = 1
-};
+enum class KvStorageMode : uint32_t { BATCH_CONTINUOUS = 0, PAGE_ATTENTION = 1 };
 
-enum class SFAPerfMode : uint32_t {
-    C_TEMPLATE_MODE = 0,
-    V_TEMPLATE_MODE
-};
+enum class SFAPerfMode : uint32_t { C_TEMPLATE_MODE = 0, V_TEMPLATE_MODE };
 
 enum class SFAAxis : uint32_t {
     B = 0,
