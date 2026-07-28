@@ -150,6 +150,17 @@ __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOf
     }
 }
 
+// 共享专家专用: 每个 token group 独立 slot, 直接 AtomicAdd 通知对应 group 的 tile 完成
+__aicore__ inline void NotifySharedExpertTileCompletion(uint32_t rowTileOffset,
+                                                        __gm__ int32_t *sharedExpertCounterBase)
+{
+    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+
+    uint32_t tokenGroupIndex = rowTileOffset / COMBINE_TOKEN_GROUP_SIZE;
+    AscendC::AtomicAdd(GetCombineSyncCounterAddress(sharedExpertCounterBase, tokenGroupIndex), int32_t(1));
+}
+
 // =================================================================================================
 // WaitForUpstreamReady：等待上游 GMM 计算完成，GMM1/GMM2 分流（A8W8/A4W4 和 A8W4 共用）
 // =================================================================================================
@@ -385,9 +396,6 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
     if constexpr (!Policy::IS_GMM1 && CombineQuantMode != COMBINE_NO_QUANT && !IsShared) {
         uint32_t logicalCoreCount = config.blockNum * 2U;
         groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
-    } else if constexpr (!Policy::IS_GMM1 && IsShared) {
-        // 共享专家: slot 数 = token group 数, 每个 group 独立 slot, 不做多核协作
-        groupSyncSlotLayout = {1, 0};
     }
 
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -503,8 +511,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                     NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout,
                                                            workSet.gmmAddrInfo.gmm2CombineSyncCounter);
                 } else if constexpr (IsShared) {
-                    NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout,
-                                                           workSet.gmmAddrInfo.gmm2CombineSyncCounter);
+                    NotifySharedExpertTileCompletion(mLoc, workSet.gmmAddrInfo.sharedExpertGmm2TileCounter);
                 }
             }
         }
