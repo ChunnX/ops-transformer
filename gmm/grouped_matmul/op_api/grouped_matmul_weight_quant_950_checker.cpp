@@ -353,7 +353,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
         }
         if (IsMxA8W4NZ()) {
             if (unlikely(weightDimNum != MULTI_WEIGHT_DIM && weightDimNum != SPLIT_M_SINGLE_WEIGHT_DIM)) {
-                std::string reason = "In weight quant case fp8_e4m3-fp4_e2m1, The shape dim of weight[" +
+                std::string reason = "In weight quant case fp8_e4m3-fp4_e2m1/fp4_e1m2, The shape dim of weight[" +
                                      std::to_string(wIdx) + "] must be 2 or 3";
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "weight", std::to_string(weightDimNum),
                                                          reason);
@@ -403,8 +403,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTransposeStatus() 
         if (unlikely(!gmmParams_.transposeWeight)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 GetAclnnName(), "transposeWeight", "false",
-                "In weight quant case fp16/bf16-int8, fp16/bf16-fp8/hif8 and fp8_e4m3-fp4_e2m1, weight must be "
-                "transposed");
+                "In weight quant case fp16/bf16-int8, fp16/bf16-fp8/hif8 and "
+                "fp8_e4m3-fp4_e2m1/fp4_e1m2, weight must be transposed");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else if (IsA16MxFp4NZ() || IsS8S4NZ()) {
@@ -808,8 +808,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckUnsupportedApi() c
                    "Only AclnnGroupedMatmulV4/V5 support fp16/bf16-fp8/hif8/int4 for xDtype-weightDtype.");
     } else if (IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ()) {
         CHECK_COND(gmmParams_.apiVersion == GMMApiVersion::WeightNz, ACLNN_ERR_PARAM_INVALID,
-                   "Only AclnnGroupedMatmulNz supports fp16/bf16-fp4_e2m1, fp8_e4m3fn-fp4_e2m1 and int8-int4 for "
-                   "xDtype-weightDtype.");
+                   "Only AclnnGroupedMatmulNz supports fp16/bf16-fp4_e2m1, "
+                   "fp8_e4m3fn-fp4_e2m1/fp4_e1m2 and int8-int4 for xDtype-weightDtype.");
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Weight quant case with x dtype [%s] and weight dtype [%s] is not supported.",
                 op::ToString(xDtype_).GetString(), op::ToString(weightDtype_).GetString());
