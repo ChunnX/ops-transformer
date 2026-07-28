@@ -505,8 +505,10 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SendAndQuantBuffInit()
 
     uint32_t mxTempTensorSize = 2 * 1024;
     uint32_t xOutTokenBytes =
-        Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE), static_cast<uint32_t>(ALIGN_256));
-    uint32_t xOutTensorSize = xOutTokenBytes + Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
+        Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_256)) * sizeof(ActivationType);
+    uint32_t xOutScaleBytes =
+        Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32)) * static_cast<uint32_t>(sizeof(uint8_t));
+    uint32_t xOutTensorSize = Ops::Base::CeilAlign(xOutTokenBytes + xOutScaleBytes, static_cast<uint32_t>(ALIGN_32));
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
     uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * expertPerRank_, blockAivNum_);
     uint32_t sendCntAccSize =
