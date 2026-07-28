@@ -25,14 +25,20 @@ def load_impl_module(stem):
     if name in sys.modules:
         return sys.modules[name]
     path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
     try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
         spec.loader.exec_module(module)
-    except Exception:
+    except Exception as exc:
         sys.modules.pop(name, None)
-        raise
+        raise RuntimeError(
+            "Failed to load QuantLightningIndexer assets module; "
+            f"stage=impl/{stem}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        ) from exc
     return module
 
 
@@ -49,8 +55,17 @@ class QuantLightningIndexerSpec:
         "bfloat16": {"standard": "stat_rel_err"},
     }
 
-    def compare(*outputs, **kwargs):
-        return compare_module.compare(*outputs, scores=golden_module.get_topk_scores())
+    def compare(*outputs, compare_context=None, **kwargs):
+        del kwargs
+        scores = golden_module.get_topk_scores()
+        if (
+            compare_context is not None
+            and not golden_module.has_compare_data(compare_context.testcase_name)
+        ):
+            data = inputs_module.rebuild_qli_compare_data(compare_context)
+            golden_module.set_compare_data(compare_context.testcase_name, data)
+            scores = data["scores"]
+        return compare_module.compare(*outputs, scores=scores)
 
 
 __spec__ = {

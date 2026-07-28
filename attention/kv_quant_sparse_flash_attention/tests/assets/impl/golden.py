@@ -331,5 +331,6 @@ def cpu_kv_quant_sparse_flash_attention(query, key, value, sparse_indices, scale
 __golden__ = {
     "e2e": {
         "torch_npu.npu_kv_quant_sparse_flash_attention": "cpu_kv_quant_sparse_flash_attention",
+        "qsfa_ttk_ops.kv_quant_sparse_flash_attention_ttk": "cpu_kv_quant_sparse_flash_attention",
     }
 }

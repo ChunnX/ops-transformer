@@ -23,6 +23,14 @@ from pathlib import Path
 import torch
 
 
+def _module_load_error(stage, path, exc):
+    return RuntimeError(
+        "Failed to load QuantLightningIndexer module; "
+        f"stage={stage}; module={path.resolve()}; "
+        f"original error: {type(exc).__name__}: {exc}"
+    )
+
+
 class QuantLightningIndexerInputAdapter:
     """Translate a TTK case and reuse the canonical pytest case generator."""
 
@@ -35,14 +43,16 @@ class QuantLightningIndexerInputAdapter:
         if name in sys.modules:
             return sys.modules[name]
         path = Path(__file__).with_name("golden.py")
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
         try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception as exc:
             sys.modules.pop(name, None)
-            raise
+            raise _module_load_error("assets Golden store", path, exc) from exc
         return module
 
     def load_pytest_golden(self):
@@ -59,15 +69,16 @@ class QuantLightningIndexerInputAdapter:
                 module = sys.modules[name]
             else:
                 spec = importlib.util.spec_from_file_location(name, path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"cannot create import spec for {path}")
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[name] = module
-                try:
-                    spec.loader.exec_module(module)
-                except Exception:
-                    sys.modules.pop(name, None)
-                    raise
+                spec.loader.exec_module(module)
             self.pytest_golden = module
             return module
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise _module_load_error("pytest Golden", path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -192,6 +203,78 @@ class QuantLightningIndexerInputAdapter:
             "score_values": data["score_values"].detach().cpu(),
         }
 
+    @staticmethod
+    def restore_paged_tensor(tensor, block_table, batch_size, sequence_length):
+        """Restore a paged key or scale tensor to its logical BNS(D) layout."""
+        physical = tensor.detach().cpu()
+        table = block_table.detach().cpu().to(torch.int64)
+        if physical.ndim not in (3, 4):
+            raise ValueError(
+                f"paged tensor must be 3-D or 4-D, got shape {tuple(physical.shape)}"
+            )
+        block_size, head_num = int(physical.shape[1]), int(physical.shape[2])
+        trailing = (int(physical.shape[3]),) if physical.ndim == 4 else ()
+        logical = torch.zeros(
+            (batch_size, head_num, sequence_length, *trailing), dtype=physical.dtype
+        )
+        for batch_idx in range(batch_size):
+            for logical_block, block_id_value in enumerate(table[batch_idx].tolist()):
+                if block_id_value < 0:
+                    continue
+                if block_id_value >= physical.shape[0]:
+                    raise ValueError(f"block id {block_id_value} exceeds paged block count")
+                start = logical_block * block_size
+                if start >= sequence_length:
+                    break
+                count = min(block_size, sequence_length - start)
+                block = physical[block_id_value, :count]
+                permutation = (1, 0, 2) if physical.ndim == 4 else (1, 0)
+                logical[batch_idx, :, start:start + count] = block.permute(*permutation)
+        return logical
+
+    def rebuild_compare_data(self, compare_context):
+        """Rebuild score context from replayed inputs without random generation."""
+        tensors = tuple(compare_context.input_tensors or ())
+        if len(tensors) < 8:
+            raise ValueError("QuantLightningIndexer compare context requires eight tensor slots")
+        query, key, weights, query_scale, key_scale = tensors[:5]
+        actual_q, actual_k, block_table = tensors[5:8]
+        attrs = dict(compare_context.attributes)
+        attrs["actual_seq_lengths_query_values"] = self.list_value(actual_q)
+        attrs["actual_seq_lengths_key_values"] = self.list_value(actual_k)
+        layout_query = attrs.get("layout_query", "BSND")
+        layout_key = attrs.get("layout_key", "BSND")
+        query_quant_mode = int(attrs.get("query_quant_mode", 0))
+        key_quant_mode = int(attrs.get("key_quant_mode", 0))
+        params = self.build_case_params(
+            query, key, weights, query_scale, actual_q, actual_k,
+            query_quant_mode, key_quant_mode, layout_query, layout_key, attrs,
+        )
+        model = self.load_pytest_golden().GeneralizedQLI(*params[:22])
+        key_for_cpu = key
+        key_scale_for_cpu = key_scale
+        if layout_key == "PA_BSND":
+            if block_table is None:
+                raise ValueError("PA_BSND compare context requires block_table")
+            sequence_length = max(params[15])
+            key_for_cpu = self.restore_paged_tensor(
+                key, block_table, params[0], sequence_length
+            )
+            key_scale_for_cpu = self.restore_paged_tensor(
+                key_scale, block_table, params[0], sequence_length
+            )
+        _, scores_bnsd = model.forward(
+            query, key_for_cpu, weights, query_scale, key_scale_for_cpu,
+            actual_q, actual_k, block_table,
+        )
+        scores = model.trans_bnsd_to_layout(
+            scores_bnsd,
+            list(scores_bnsd.shape),
+            layout_query,
+            model.actual_seq_lengths_query,
+        )
+        return {"scores": scores}
+
     def customize(self, query, key, weights, query_dequant_scale,
                   key_dequant_scale, query_quant_mode, key_quant_mode,
                   actual_seq_lengths_query, actual_seq_lengths_key,
@@ -219,6 +302,10 @@ class QuantLightningIndexerInputAdapter:
 
 
 INPUT_ADAPTER = QuantLightningIndexerInputAdapter()
+
+
+def rebuild_qli_compare_data(compare_context):
+    return INPUT_ADAPTER.rebuild_compare_data(compare_context)
 
 
 def generate_qli_inputs(query, key, weights,

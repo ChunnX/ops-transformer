@@ -13,10 +13,121 @@
 """Input customization for MixedQuantSparseFlashMla TTK cases."""
 
 import importlib.util
+import random
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
+
+
+def _module_load_error(stage, path, exc):
+    return RuntimeError(
+        "Failed to load MixedQuantSparseFlashMla module; "
+        f"stage={stage}; module={path.resolve()}; "
+        f"original error: {type(exc).__name__}: {exc}"
+    )
+
+
+class NumpyBatchRandomContext:
+    """Make declared batch slices deterministic before quantized KV packing."""
+
+    SEED_MODULUS = (1 << 63) - 1
+
+    def __init__(self, q, kwargs):
+        self.batch_size = int(q.shape[0])
+        self.relations = self._parse_relations(q, kwargs)
+        self.base_seed = self.relations[0][1]
+        self.call_index = 0
+        self.original_numpy_uniform = None
+        self.original_python_uniform = None
+
+    @classmethod
+    def from_case(cls, q, kwargs):
+        fields = tuple(kwargs.get(name) for name in (
+            "batch_axis", "batch_slice_info", "batch_seed"
+        ))
+        if all(field is None for field in fields):
+            return None
+        if any(field is None for field in fields):
+            raise ValueError(
+                "batch_axis, batch_slice_info and batch_seed must be set together"
+            )
+        if kwargs.get("layout_q", "BSND") != "BSND" or kwargs.get(
+                "layout_kv", "BSND") != "BSND":
+            raise ValueError("MQSMLA batch consistency currently supports BSND/BSND only")
+        return cls(q, kwargs)
+
+    @staticmethod
+    def _parse_relations(q, kwargs):
+        batch_axis = kwargs["batch_axis"]
+        batch_slices = kwargs["batch_slice_info"]
+        batch_seed = kwargs["batch_seed"]
+        if not batch_axis or batch_axis[0] != (0,):
+            raise ValueError("MQSMLA batch consistency requires q batch_axis=((0,), ...)")
+        if not batch_slices or batch_slices[0] is None or batch_seed[0] is None:
+            raise ValueError("MQSMLA batch consistency requires slices and seeds on q")
+        if any(slices is not None for slices in batch_slices[1:]):
+            raise ValueError("MQSMLA batch consistency relations must be declared on q only")
+
+        relations = list(zip(batch_slices[0][0], batch_seed[0][0]))
+        if not relations:
+            raise ValueError("MQSMLA batch consistency requires at least one q slice")
+        if len({seed for _, seed in relations}) != 1:
+            raise ValueError("MQSMLA batch consistency currently supports one relation seed per case")
+        for slice_value, _ in relations:
+            start, stop, step = slice_value
+            if step != 1 or start < 0 or start >= stop or stop > int(q.shape[0]):
+                raise ValueError(
+                    "MQSMLA batch consistency requires in-range, contiguous q batch slices"
+                )
+        return relations
+
+    def validate_params(self, params):
+        if params.get("template_run_mode") not in ("SWA", "HCA"):
+            raise ValueError("MQSMLA batch consistency currently excludes sparse modes")
+        if int(params.get("quant_mode")) != 1:
+            raise ValueError("MQSMLA batch consistency currently supports quant_mode=1 only")
+
+    @classmethod
+    def _derive_seed(cls, seed, call_index):
+        return (int(seed) + (call_index + 1) * 1000003) % cls.SEED_MODULUS
+
+    def _numpy_uniform(self, low=0.0, high=1.0, size=None):
+        call_index = self.call_index
+        self.call_index += 1
+        rng = np.random.default_rng(self._derive_seed(self.base_seed, call_index))
+        value = rng.uniform(low, high, size)
+        if size is None:
+            return value
+        value = np.asarray(value)
+        if value.ndim < 2 or int(value.shape[0]) != self.batch_size:
+            return value
+
+        for slice_value, seed in self.relations:
+            selector = (slice(*slice_value),) + (slice(None),) * (value.ndim - 1)
+            piece = value[selector]
+            piece_rng = np.random.default_rng(self._derive_seed(seed, call_index))
+            value[selector] = piece_rng.uniform(low, high, piece.shape)
+        return value
+
+    def _python_uniform(self, low, high):
+        call_index = self.call_index
+        self.call_index += 1
+        rng = random.Random(self._derive_seed(self.base_seed, call_index))
+        return rng.uniform(low, high)
+
+    def __enter__(self):
+        self.original_numpy_uniform = np.random.uniform
+        self.original_python_uniform = random.uniform
+        np.random.uniform = self._numpy_uniform
+        random.uniform = self._python_uniform
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        np.random.uniform = self.original_numpy_uniform
+        random.uniform = self.original_python_uniform
+        return False
 
 
 class MixedQuantSparseFlashMlaInputAdapter:
@@ -31,14 +142,16 @@ class MixedQuantSparseFlashMlaInputAdapter:
         if name in sys.modules:
             return sys.modules[name]
         path = Path(__file__).with_name("golden.py")
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
         try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception as exc:
             sys.modules.pop(name, None)
-            raise
+            raise _module_load_error("assets Golden store", path, exc) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -56,15 +169,16 @@ class MixedQuantSparseFlashMlaInputAdapter:
                 module = sys.modules[name]
             else:
                 spec = importlib.util.spec_from_file_location(name, module_path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"cannot create import spec for {module_path}")
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[name] = module
-                try:
-                    spec.loader.exec_module(module)
-                except Exception:
-                    sys.modules.pop(name, None)
-                    raise
+                spec.loader.exec_module(module)
             self.pytest_modules[stem] = module
             return module
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise _module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -181,7 +295,7 @@ class MixedQuantSparseFlashMlaInputAdapter:
             )
         dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
 
-    def generate_case(self, params):
+    def generate_case(self, params, batch_random=None):
         pytest_utils = self.load_pytest_module("utils", "utils.py")
         pytest_check = self.load_pytest_module("check", "check_valid_param.py")
         pytest_golden = self.load_pytest_module(
@@ -191,7 +305,12 @@ class MixedQuantSparseFlashMlaInputAdapter:
         if filled.get("Testcase_Name") is None:
             filled["Testcase_Name"] = params.get("testcase_name")
         pytest_check.check_valid_param(filled)
-        data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
+        if batch_random is None:
+            data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
+        else:
+            batch_random.validate_params(filled)
+            with batch_random:
+                data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
         testcase_name = params.get("testcase_name") or filled.get("Testcase_Name")
         self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data
@@ -209,6 +328,7 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
                                                  cmp_residual_kv=None, ori_topk_length=None,
                                                  cmp_topk_length=None, sinks=None, **kwargs):
     """Reuse the pytest parameter validation and input processing for a TTK case."""
+    batch_random = NumpyBatchRandomContext.from_case(q, kwargs)
     params = INPUT_ADAPTER.build_case_params(
         q,
         ori_kv,
@@ -218,7 +338,7 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
         kwargs.get("layout_kv", "BSND"),
         kwargs,
     )
-    data = INPUT_ADAPTER.generate_case(params)
+    data = INPUT_ADAPTER.generate_case(params, batch_random)
     op_input = data["op_input"]
     for name, tensor in (
         ("q", q),
@@ -240,3 +360,121 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
         ("sinks", sinks),
     ):
         INPUT_ADAPTER.copy_tensor(tensor, op_input.get(name), name)
+
+
+def _load_metadata_module():
+    name = "mqsmla_ttk_aclnn_ops"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).resolve().parents[1] / "mqsmla_ttk_ops.py"
+    try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(name, None)
+        raise _module_load_error("ACLNN metadata wrapper", path, exc) from exc
+    return module
+
+
+def _synchronize_metadata():
+    npu = getattr(torch, "npu", None)
+    if npu is not None and npu.is_available():
+        npu.synchronize()
+
+
+def _metadata_tensor(tensor):
+    npu = getattr(torch, "npu", None)
+    if tensor is not None and npu is not None and npu.is_available():
+        return tensor.to("npu")
+    return tensor
+
+
+def generate_mixed_quant_sparse_flash_mla_aclnn_inputs(
+        q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
+        ori_block_table, cmp_block_table, cu_seqlens_q,
+        cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
+        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+        ori_topk_length, cmp_topk_length, sinks, metadata,
+        quant_mode, rope_head_dim, softmax_scale, cmp_ratio,
+        ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right,
+        layout_q, layout_kv, topk_value_mode, return_softmax_lse,
+        attn_out, softmax_lse_out, **kwargs):
+    """Prepare canonical ACLNN inputs and fill the required metadata tensor."""
+    del attn_out, softmax_lse_out
+    if metadata is None:
+        raise ValueError(
+            "aclnnMixedQuantSparseFlashMla requires a metadata tensor placeholder"
+        )
+
+    generate_mixed_quant_sparse_flash_mla_inputs(
+        q,
+        ori_kv=ori_kv,
+        cmp_kv=cmp_kv,
+        ori_sparse_indices=ori_sparse_indices,
+        cmp_sparse_indices=cmp_sparse_indices,
+        ori_block_table=ori_block_table,
+        cmp_block_table=cmp_block_table,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+        seqused_q=seqused_q,
+        seqused_ori_kv=seqused_ori_kv,
+        seqused_cmp_kv=seqused_cmp_kv,
+        cmp_residual_kv=cmp_residual_kv,
+        ori_topk_length=ori_topk_length,
+        cmp_topk_length=cmp_topk_length,
+        sinks=sinks,
+        quant_mode=quant_mode,
+        rope_head_dim=rope_head_dim,
+        softmax_scale=softmax_scale,
+        cmp_ratio=cmp_ratio,
+        ori_mask_mode=ori_mask_mode,
+        cmp_mask_mode=cmp_mask_mode,
+        ori_win_left=ori_win_left,
+        ori_win_right=ori_win_right,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        topk_value_mode=topk_value_mode,
+        return_softmax_lse=return_softmax_lse,
+        **kwargs,
+    )
+    generated = _load_metadata_module().build_mixed_quant_sparse_flash_mla_metadata(
+        q,
+        ori_kv=ori_kv,
+        cmp_kv=cmp_kv,
+        ori_sparse_indices=ori_sparse_indices,
+        cmp_sparse_indices=cmp_sparse_indices,
+        cu_seqlens_q=_metadata_tensor(cu_seqlens_q),
+        cu_seqlens_ori_kv=_metadata_tensor(cu_seqlens_ori_kv),
+        cu_seqlens_cmp_kv=_metadata_tensor(cu_seqlens_cmp_kv),
+        seqused_q=_metadata_tensor(seqused_q),
+        seqused_ori_kv=_metadata_tensor(seqused_ori_kv),
+        seqused_cmp_kv=_metadata_tensor(seqused_cmp_kv),
+        cmp_residual_kv=_metadata_tensor(cmp_residual_kv),
+        ori_topk_length=_metadata_tensor(ori_topk_length),
+        cmp_topk_length=_metadata_tensor(cmp_topk_length),
+        quant_mode=quant_mode,
+        rope_head_dim=rope_head_dim,
+        cmp_ratio=cmp_ratio,
+        ori_mask_mode=ori_mask_mode,
+        cmp_mask_mode=cmp_mask_mode,
+        ori_win_left=ori_win_left,
+        ori_win_right=ori_win_right,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+    )
+    _synchronize_metadata()
+    INPUT_ADAPTER.copy_tensor(metadata, generated, "metadata")
+
+
+__input__ = {
+    "aclnn": {
+        "aclnnMixedQuantSparseFlashMla": (
+            "generate_mixed_quant_sparse_flash_mla_aclnn_inputs"
+        ),
+    }
+}

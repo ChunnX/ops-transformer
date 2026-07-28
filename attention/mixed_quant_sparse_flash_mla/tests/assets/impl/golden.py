@@ -12,6 +12,8 @@
 
 """CPU golden adapter for MixedQuantSparseFlashMla TTK cases."""
 
+import sys
+
 
 class CaseDataStore:
     """Share pytest-generated case data between input and golden callbacks."""
@@ -44,3 +46,44 @@ def cpu_mixed_quant_sparse_flash_mla(q, *, return_softmax_lse=False,
     if bool(return_softmax_lse):
         raise RuntimeError("MQSMLA pytest golden does not provide softmax_lse")
     return data["cpu_output"], None
+
+
+def cpu_mixed_quant_sparse_flash_mla_aclnn(
+        q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
+        ori_block_table, cmp_block_table, cu_seqlens_q,
+        cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
+        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+        ori_topk_length, cmp_topk_length, sinks, metadata,
+        quant_mode, rope_head_dim, softmax_scale, cmp_ratio,
+        ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right,
+        layout_q, layout_kv, topk_value_mode, return_softmax_lse,
+        attn_out, softmax_lse_out, **kwargs):
+    """Expose the canonical mixed-quant Golden through the ACLNN ABI."""
+    del (
+        ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
+        ori_block_table, cmp_block_table, cu_seqlens_q,
+        cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
+        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+        ori_topk_length, cmp_topk_length, sinks, metadata,
+        quant_mode, rope_head_dim, softmax_scale, cmp_ratio,
+        ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right,
+        layout_q, layout_kv, topk_value_mode, attn_out, softmax_lse_out,
+    )
+    golden_func = cpu_mixed_quant_sparse_flash_mla
+    canonical_module = sys.modules.get("mqsmla_ttk_golden")
+    if canonical_module is not None:
+        golden_func = canonical_module.cpu_mixed_quant_sparse_flash_mla
+    return golden_func(
+        q,
+        return_softmax_lse=return_softmax_lse,
+        testcase_name=kwargs.get("testcase_name"),
+    )
+
+
+__golden__ = {
+    "aclnn": {
+        "aclnnMixedQuantSparseFlashMla": (
+            "cpu_mixed_quant_sparse_flash_mla_aclnn"
+        ),
+    }
+}

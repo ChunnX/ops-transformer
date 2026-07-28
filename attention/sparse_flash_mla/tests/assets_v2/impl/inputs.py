@@ -284,6 +284,7 @@ class SparseFlashMlaInputAdapter:
         params.setdefault("ori_sparse_indices_mode", "full")
         params.setdefault("cmp_sparse_indices_mode", "full")
         params.setdefault("actlen_mode", "full")
+        params.setdefault("random_seq", False)
         return params
 
     @staticmethod
@@ -304,11 +305,11 @@ class SparseFlashMlaInputAdapter:
         pytest_golden = self.load_pytest_module("golden", "sparse_flash_mla_golden.py")
         case_params = pytest_utils.generate_case_with_default_param(params)
         if batch_random is None:
-            data = pytest_golden.gen_data(case_params, case_params.get("template_mode"))
+            data = pytest_golden.gen_data(case_params)
         else:
             batch_random.validate_params(case_params)
             with batch_random:
-                data = pytest_golden.gen_data(case_params, case_params.get("template_mode"))
+                data = pytest_golden.gen_data(case_params)
         testcase_name = params.get("testcase_name") or case_params.get("testcase_name")
         self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data

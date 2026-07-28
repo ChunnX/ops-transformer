@@ -19,6 +19,14 @@ from pathlib import Path
 import torch
 
 
+def _module_load_error(stage, path, exc):
+    return RuntimeError(
+        "Failed to load LightningIndexerV2 module; "
+        f"stage={stage}; module={path.resolve()}; "
+        f"original error: {type(exc).__name__}: {exc}"
+    )
+
+
 class LightningIndexerV2InputAdapter:
     """Translate a TTK case and reuse the pytest input/golden generator."""
 
@@ -31,14 +39,16 @@ class LightningIndexerV2InputAdapter:
         if name in sys.modules:
             return sys.modules[name]
         path = Path(__file__).with_name("golden.py")
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
         try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception as exc:
             sys.modules.pop(name, None)
-            raise
+            raise _module_load_error("assets Golden store", path, exc) from exc
         return module
 
     def load_pytest_golden(self):
@@ -55,15 +65,16 @@ class LightningIndexerV2InputAdapter:
                 module = sys.modules[name]
             else:
                 spec = importlib.util.spec_from_file_location(name, path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"cannot create import spec for {path}")
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[name] = module
-                try:
-                    spec.loader.exec_module(module)
-                except Exception:
-                    sys.modules.pop(name, None)
-                    raise
+                spec.loader.exec_module(module)
             self.pytest_golden = module
             return module
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise _module_load_error("pytest Golden", path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -123,7 +134,9 @@ class LightningIndexerV2InputAdapter:
             block_num = 0
         elif layout_k == "PA_BBND":
             block_num, block_size, k_head_num, _ = [int(item) for item in k.shape]
-            k_seq = max(k_lengths, default=block_size)
+            capacity = block_num * block_size
+            per_batch_capacity = capacity // batch_size if batch_size > 0 else block_size
+            k_seq = max(k_lengths, default=per_batch_capacity)
             k_t_size = 0
         else:
             raise ValueError(f"unsupported LI_V2 key layout: {layout_k}")
@@ -192,6 +205,119 @@ class LightningIndexerV2InputAdapter:
             "cu_seqlens_q": cu_q,
         }
 
+    @staticmethod
+    def tensor_values(tensor):
+        if tensor is None:
+            return None
+        return [int(value) for value in tensor.detach().cpu().reshape(-1).tolist()]
+
+    @staticmethod
+    def restore_paged_key(key, block_table, batch_size, sequence_length):
+        """Restore the logical BNSD key consumed by the pytest CPU model."""
+        physical = key.detach().cpu()
+        table = block_table.detach().cpu().to(torch.int64)
+        if physical.ndim != 4:
+            raise ValueError(f"paged key must be 4-D, got shape {tuple(physical.shape)}")
+        block_size, head_num, head_dim = (
+            int(physical.shape[1]), int(physical.shape[2]), int(physical.shape[3])
+        )
+        logical = torch.zeros(
+            (batch_size, head_num, sequence_length, head_dim), dtype=physical.dtype
+        )
+        for batch_idx in range(batch_size):
+            for logical_block, block_id_value in enumerate(table[batch_idx].tolist()):
+                if block_id_value < 0:
+                    continue
+                if block_id_value >= physical.shape[0]:
+                    raise ValueError(f"block id {block_id_value} exceeds key block count")
+                start = logical_block * block_size
+                if start >= sequence_length:
+                    break
+                count = min(block_size, sequence_length - start)
+                logical[batch_idx, :, start:start + count, :] = physical[
+                    block_id_value, :count
+                ].permute(1, 0, 2)
+        return logical
+
+    @staticmethod
+    def normalize_compare_attributes(compare_context):
+        attrs = dict(compare_context.attributes)
+        aliases = {
+            "maxSeqlenQ": "max_seqlen_q",
+            "layoutQOptional": "layout_q",
+            "layoutKOptional": "layout_k",
+            "maskMode": "mask_mode",
+            "cmpRatio": "cmp_ratio",
+            "returnValue": "return_value",
+        }
+        for source, target in aliases.items():
+            if target not in attrs and source in attrs:
+                attrs[target] = attrs[source]
+        return attrs
+
+    def rebuild_compare_data(self, compare_context):
+        """Rebuild replay-safe TopK score context from restored API inputs."""
+        tensors = tuple(compare_context.input_tensors or ())
+        if len(tensors) < 10:
+            raise ValueError("LightningIndexerV2 compare context requires ten input slots")
+        q, k, w, cu_q, cu_k, seq_q, seq_k, residual, block_table, offset = tensors[:10]
+        attrs = self.normalize_compare_attributes(compare_context)
+        for name, tensor in (
+            ("cu_seqlens_q", cu_q),
+            ("cu_seqlens_k", cu_k),
+            ("seqused_q", seq_q),
+            ("seqused_k", seq_k),
+            ("cmp_residual_k", residual),
+        ):
+            values = self.tensor_values(tensor)
+            if values is not None:
+                attrs[f"{name}_values"] = values
+
+        layout_q = attrs.get("layout_q", "BSND")
+        layout_k = attrs.get("layout_k", "BSND")
+        params = self.build_case_params(q, k, layout_q, layout_k, attrs)
+        (
+            batch_size, q_seq, k_seq, q_t_size, k_t_size,
+            q_head_num, k_head_num, head_dim, block_size, block_num,
+            _, cu_q_values, cu_k_values, seq_q_values, seq_k_values,
+            residual_values, _, _, _, topk, mask_mode, _, _, _,
+            cmp_ratio, return_value, max_seqlen_q,
+        ) = params
+
+        def as_int_tensor(value):
+            return None if value is None else torch.tensor(value, dtype=torch.int32)
+
+        cu_q_cpu = as_int_tensor(cu_q_values)
+        cu_k_cpu = as_int_tensor(cu_k_values)
+        seq_q_cpu = as_int_tensor(seq_q_values)
+        seq_k_cpu = as_int_tensor(seq_k_values)
+        residual_cpu = as_int_tensor(residual_values)
+        model = self.load_pytest_golden().GeneralizedLIV2(
+            batch_size, q_seq, k_seq, q_t_size, k_t_size,
+            q_head_num, k_head_num, head_dim, block_size, block_num,
+            q.dtype, cu_q_cpu, cu_k_cpu, seq_q_cpu, seq_k_cpu,
+            residual_cpu, layout_q, layout_k, topk, max_seqlen_q,
+            mask_mode, cmp_ratio, return_value,
+        )
+
+        key_for_cpu = k
+        if layout_k == "PA_BBND":
+            if block_table is None or not seq_k_values:
+                raise ValueError("PA_BBND compare context requires block_table and seqused_k")
+            key_for_cpu = self.restore_paged_key(
+                k, block_table, batch_size, max(seq_k_values)
+            )
+        _, scores, _ = model.forward(
+            q, key_for_cpu, w, cu_q_cpu, cu_k_cpu, seq_q_cpu, seq_k_cpu,
+            residual_cpu, block_table, offset,
+        )
+        return {
+            "scores": scores,
+            "index_offsets": None if offset is None else offset.detach().cpu(),
+            "score_layout": layout_q,
+            "cu_seqlens_q": cu_q_cpu,
+        }
+
     def customize(self, q, k, w, cu_seqlens_q, cu_seqlens_k,
                   seqused_q, seqused_k, cmp_residual_k, block_table,
                   output_idx_offset, layout_q, layout_k, kwargs):
@@ -223,6 +349,10 @@ class LightningIndexerV2InputAdapter:
 INPUT_ADAPTER = LightningIndexerV2InputAdapter()
 
 
+def rebuild_li_v2_compare_data(compare_context):
+    return INPUT_ADAPTER.rebuild_compare_data(compare_context)
+
+
 def generate_li_v2_inputs(q, k, w, *, cu_seqlens_q=None, cu_seqlens_k=None,
                           seqused_q=None, seqused_k=None, cmp_residual_k=None,
                           block_table=None, output_idx_offset=None,
@@ -243,3 +373,89 @@ def generate_li_v2_inputs(q, k, w, *, cu_seqlens_q=None, cu_seqlens_k=None,
         layout_k,
         kwargs,
     )
+
+
+def _load_metadata_module():
+    name = "li_v2_ttk_aclnn_ops"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).resolve().parents[1] / "li_v2_ttk_ops.py"
+    try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(name, None)
+        raise _module_load_error("ACLNN metadata wrapper", path, exc) from exc
+    return module
+
+
+def _synchronize_metadata():
+    npu = getattr(torch, "npu", None)
+    if npu is not None and npu.is_available():
+        npu.synchronize()
+
+
+def _metadata_tensor(tensor):
+    npu = getattr(torch, "npu", None)
+    if tensor is not None and npu is not None and npu.is_available():
+        return tensor.to("npu")
+    return tensor
+
+
+def generate_li_v2_aclnn_inputs(
+        q, k, w, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, block_table, output_idx_offset, metadata, topk,
+        max_seqlen_q, layout_q, layout_k, mask_mode, cmp_ratio,
+        return_value, sparse_indices, sparse_values, **kwargs):
+    """Prepare canonical ACLNN inputs and fill the required metadata tensor."""
+    del sparse_indices, sparse_values
+    if metadata is None:
+        raise ValueError("aclnnLightningIndexerV2 requires a metadata tensor placeholder")
+
+    generate_li_v2_inputs(
+        q,
+        k,
+        w,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        seqused_q=seqused_q,
+        seqused_k=seqused_k,
+        cmp_residual_k=cmp_residual_k,
+        block_table=block_table,
+        output_idx_offset=output_idx_offset,
+        topk=topk,
+        max_seqlen_q=max_seqlen_q,
+        layout_q=layout_q,
+        layout_k=layout_k,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        return_value=return_value,
+        **kwargs,
+    )
+    generated = _load_metadata_module().LightningIndexerMetadataBuilder.build(
+        q,
+        k,
+        cu_seqlens_q=_metadata_tensor(cu_seqlens_q),
+        cu_seqlens_k=_metadata_tensor(cu_seqlens_k),
+        seqused_q=_metadata_tensor(seqused_q),
+        seqused_k=_metadata_tensor(seqused_k),
+        cmp_residual_k=_metadata_tensor(cmp_residual_k),
+        topk=topk,
+        layout_q=layout_q,
+        layout_k=layout_k,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+    )
+    _synchronize_metadata()
+    INPUT_ADAPTER.copy_tensor(metadata, generated, "metadata")
+
+
+__input__ = {
+    "aclnn": {
+        "aclnnLightningIndexerV2": "generate_li_v2_aclnn_inputs",
+    }
+}

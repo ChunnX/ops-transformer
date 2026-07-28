@@ -12,6 +12,8 @@
 
 """CPU golden adapter for LightningIndexer V2 TTK cases."""
 
+import sys
+
 import torch
 
 
@@ -24,6 +26,7 @@ class CaseDataStore:
         self.index_offsets = None
         self.score_layout = None
         self.cu_seqlens_q = None
+        self.active_testcase_name = None
 
     def clear(self):
         self.case_data.clear()
@@ -31,6 +34,7 @@ class CaseDataStore:
         self.index_offsets = None
         self.score_layout = None
         self.cu_seqlens_q = None
+        self.active_testcase_name = None
 
     def put(self, testcase_name, data):
         if testcase_name is not None:
@@ -44,6 +48,7 @@ class CaseDataStore:
                 "LightningIndexer V2 TTK golden requires customize_inputs "
                 "to generate pytest data first"
             )
+        self.active_testcase_name = str(testcase_name)
         self.topk_scores = data["topk_value"]
         self.index_offsets = data.get("output_idx_offset")
         self.score_layout = data.get("score_layout")
@@ -66,6 +71,22 @@ def get_score_context():
     return CASE_DATA.score_layout, CASE_DATA.cu_seqlens_q
 
 
+def has_compare_data(testcase_name):
+    return (
+        testcase_name is not None
+        and CASE_DATA.active_testcase_name == str(testcase_name)
+        and CASE_DATA.topk_scores is not None
+    )
+
+
+def set_compare_data(testcase_name, data):
+    CASE_DATA.active_testcase_name = str(testcase_name)
+    CASE_DATA.topk_scores = data["scores"]
+    CASE_DATA.index_offsets = data["index_offsets"]
+    CASE_DATA.score_layout = data["score_layout"]
+    CASE_DATA.cu_seqlens_q = data["cu_seqlens_q"]
+
+
 def cpu_lightning_indexer_v2(q, k, w, *, return_value=0,
                              testcase_name=None, **kwargs):
     """Return the CPU outputs produced while generating this exact pytest case."""
@@ -76,3 +97,35 @@ def cpu_lightning_indexer_v2(q, k, w, *, return_value=0,
     else:
         sparse_value = torch.zeros(0, dtype=data["topk_value"].dtype)
     return data["cpu_result"], sparse_value
+
+
+def cpu_lightning_indexer_v2_aclnn(
+        q, k, w, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, block_table, output_idx_offset, metadata, topk,
+        max_seqlen_q, layout_q, layout_k, mask_mode, cmp_ratio,
+        return_value, sparse_indices, sparse_values, **kwargs):
+    """Expose the canonical LightningIndexerV2 Golden through the ACLNN ABI."""
+    del (
+        cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, block_table, output_idx_offset, metadata, topk,
+        max_seqlen_q, layout_q, layout_k, mask_mode, cmp_ratio,
+        sparse_indices, sparse_values,
+    )
+    golden_func = cpu_lightning_indexer_v2
+    canonical_module = sys.modules.get("li_v2_ttk_golden")
+    if canonical_module is not None:
+        golden_func = canonical_module.cpu_lightning_indexer_v2
+    return golden_func(
+        q,
+        k,
+        w,
+        return_value=return_value,
+        testcase_name=kwargs.get("testcase_name"),
+    )
+
+
+__golden__ = {
+    "aclnn": {
+        "aclnnLightningIndexerV2": "cpu_lightning_indexer_v2_aclnn",
+    }
+}

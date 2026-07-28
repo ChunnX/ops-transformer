@@ -24,14 +24,20 @@ def load_impl_module(stem):
     if name in sys.modules:
         return sys.modules[name]
     path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
     try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
         spec.loader.exec_module(module)
-    except Exception:
+    except Exception as exc:
         sys.modules.pop(name, None)
-        raise
+        raise RuntimeError(
+            "Failed to load SparseFlashMla assets module; "
+            f"stage=impl/{stem}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        ) from exc
     return module
 
 
@@ -53,6 +59,12 @@ class SparseFlashMlaSpec:
     torch_graph = graph_module.SparseFlashMlaAclGraph
 
 
+class SparseFlashMlaAclnnSpec:
+    tolerance = SparseFlashMlaSpec.tolerance
+    compare = staticmethod(SparseFlashMlaSpec.compare)
+
+
 __spec__ = {
+    "aclnnSparseFlashMla": "SparseFlashMlaAclnnSpec",
     "smla_ttk_ops.sparse_flash_mla_ttk": "SparseFlashMlaSpec",
 }

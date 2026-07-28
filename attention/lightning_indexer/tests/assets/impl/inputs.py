@@ -23,6 +23,14 @@ from pathlib import Path
 import torch
 
 
+def _module_load_error(stage, path, exc):
+    return RuntimeError(
+        "Failed to load LightningIndexer module; "
+        f"stage={stage}; module={path.resolve()}; "
+        f"original error: {type(exc).__name__}: {exc}"
+    )
+
+
 class LightningIndexerInputAdapter:
     """Translate a TTK case and reuse the canonical pytest case generator."""
 
@@ -35,14 +43,16 @@ class LightningIndexerInputAdapter:
         if name in sys.modules:
             return sys.modules[name]
         path = Path(__file__).with_name("golden.py")
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
         try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception as exc:
             sys.modules.pop(name, None)
-            raise
+            raise _module_load_error("assets Golden store", path, exc) from exc
         return module
 
     def load_pytest_golden(self):
@@ -59,15 +69,16 @@ class LightningIndexerInputAdapter:
                 module = sys.modules[name]
             else:
                 spec = importlib.util.spec_from_file_location(name, path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"cannot create import spec for {path}")
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[name] = module
-                try:
-                    spec.loader.exec_module(module)
-                except Exception:
-                    sys.modules.pop(name, None)
-                    raise
+                spec.loader.exec_module(module)
             self.pytest_golden = module
             return module
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise _module_load_error("pytest Golden", path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -183,6 +194,68 @@ class LightningIndexerInputAdapter:
             "value_dtype": data["query"].dtype,
         }
 
+    @staticmethod
+    def restore_paged_tensor(tensor, block_table, batch_size, sequence_length):
+        """Restore the logical BNSD tensor consumed by the pytest CPU model."""
+        physical = tensor.detach().cpu()
+        table = block_table.detach().cpu().to(torch.int64)
+        if physical.ndim != 4:
+            raise ValueError(f"paged key must be 4-D, got shape {tuple(physical.shape)}")
+        block_size, head_num, head_dim = (
+            int(physical.shape[1]), int(physical.shape[2]), int(physical.shape[3])
+        )
+        logical = torch.zeros(
+            (batch_size, head_num, sequence_length, head_dim), dtype=physical.dtype
+        )
+        for batch_idx in range(batch_size):
+            for logical_block, block_id_value in enumerate(table[batch_idx].tolist()):
+                if block_id_value < 0:
+                    continue
+                if block_id_value >= physical.shape[0]:
+                    raise ValueError(f"block id {block_id_value} exceeds key block count")
+                start = logical_block * block_size
+                if start >= sequence_length:
+                    break
+                count = min(block_size, sequence_length - start)
+                logical[batch_idx, :, start:start + count, :] = physical[
+                    block_id_value, :count
+                ].permute(1, 0, 2)
+        return logical
+
+    def rebuild_compare_data(self, compare_context):
+        """Rebuild score context from replayed inputs without regenerating a case."""
+        tensors = tuple(compare_context.input_tensors or ())
+        if len(tensors) < 6:
+            raise ValueError("LightningIndexer compare context requires six tensor slots")
+        query, key, weights, actual_q, actual_k, block_table = tensors[:6]
+        attrs = dict(compare_context.attributes)
+        attrs["actual_seq_lengths_query_values"] = self.list_value(actual_q)
+        attrs["actual_seq_lengths_key_values"] = self.list_value(actual_k)
+        layout_query = attrs.get("layout_query", "BSND")
+        layout_key = attrs.get("layout_key", "BSND")
+        params = self.build_case_params(
+            query, key, weights, actual_q, actual_k,
+            layout_query, layout_key, attrs,
+        )
+        model = self.load_pytest_golden().GeneralizedLI(*params[:19])
+        key_for_cpu = key
+        if layout_key == "PA_BSND":
+            if block_table is None:
+                raise ValueError("PA_BSND compare context requires block_table")
+            key_for_cpu = self.restore_paged_tensor(
+                key, block_table, params[0], max(params[14])
+            )
+        _, scores_bnsd = model.forward(
+            query, key_for_cpu, weights, actual_q, actual_k, block_table
+        )
+        scores = model.trans_bnsd_to_layout(
+            scores_bnsd,
+            list(scores_bnsd.shape),
+            layout_query,
+            model.actual_seq_lengths_query,
+        )
+        return {"scores": scores}
+
     def customize(self, query, key, weights, actual_seq_lengths_query,
                   actual_seq_lengths_key, block_table,
                   layout_query, layout_key, kwargs):
@@ -206,6 +279,10 @@ class LightningIndexerInputAdapter:
 
 
 INPUT_ADAPTER = LightningIndexerInputAdapter()
+
+
+def rebuild_li_compare_data(compare_context):
+    return INPUT_ADAPTER.rebuild_compare_data(compare_context)
 
 
 def generate_li_inputs(query, key, weights, *,

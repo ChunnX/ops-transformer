@@ -19,19 +19,29 @@ from pathlib import Path
 import torch
 
 
+def _module_load_error(path, exc):
+    return RuntimeError(
+        "Failed to load SparseFlashAttention module; "
+        f"stage=assets Golden store; module={path.resolve()}; "
+        f"original error: {type(exc).__name__}: {exc}"
+    )
+
+
 def _golden_module():
     name = "sfa_ttk_golden"
     if name in sys.modules:
         return sys.modules[name]
     path = Path(__file__).with_name("golden.py")
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
     try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
         spec.loader.exec_module(module)
-    except Exception:
+    except Exception as exc:
         sys.modules.pop(name, None)
-        raise
+        raise _module_load_error(path, exc) from exc
     return module
 
 

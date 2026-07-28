@@ -19,10 +19,12 @@ class CaseDataStore:
     def __init__(self):
         self.case_data = {}
         self.topk_scores = None
+        self.active_testcase_name = None
 
     def clear(self):
         self.case_data.clear()
         self.topk_scores = None
+        self.active_testcase_name = None
 
     def put(self, testcase_name, data):
         if testcase_name is not None:
@@ -36,6 +38,7 @@ class CaseDataStore:
                 "LightningIndexer TTK golden requires customize_inputs "
                 "to generate pytest data first"
             )
+        self.active_testcase_name = str(testcase_name)
         self.topk_scores = data["score_values"]
         return data
 
@@ -45,6 +48,19 @@ CASE_DATA = CaseDataStore()
 
 def get_topk_scores():
     return CASE_DATA.topk_scores
+
+
+def has_compare_data(testcase_name):
+    return (
+        testcase_name is not None
+        and CASE_DATA.active_testcase_name == str(testcase_name)
+        and CASE_DATA.topk_scores is not None
+    )
+
+
+def set_compare_data(testcase_name, data):
+    CASE_DATA.active_testcase_name = str(testcase_name)
+    CASE_DATA.topk_scores = data["scores"]
 
 
 __golden__ = {
