@@ -47,7 +47,7 @@ public:
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1; // 解bank冲突，需要加1行
-    static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
+    static constexpr uint32_t dVTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
 
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 1; // C1 C1 C2
@@ -148,7 +148,6 @@ public:
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        RunInfoX runInfo)
     {
-        printf("debug, mla ProcessVec1\n");
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
@@ -389,7 +388,7 @@ public:
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
         LocalTensor<INPUT_T> mm2AL1Tensor;
-        mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+        mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>()[dVTemplateType];
 
         if (likely(runInfo.actVecMSize != 0)) {
             DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
@@ -427,7 +426,7 @@ public:
             return;
         }
 
-        int64_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
+        int64_t vec2CalcSize = runInfo.actVecMSize * dVTemplateAlign64;
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
@@ -438,12 +437,12 @@ public:
             LocalTensor<T> pScaleUb;
 
             if (likely(!runInfo.isLastS2Loop)) {
-                FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64, 1.0, 1.0);
+                FlashUpdateNew<T, INPUT_T, OUTPUT_T, dVTemplateAlign64, false, false>(
+                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dVTemplateAlign64, 1.0, 1.0);
             } else {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
-                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64, 1.0,
+                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dVTemplateAlign64, false, false>(
+                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dVTemplateAlign64, 1.0,
                     1.0);
             }
         }
@@ -451,8 +450,8 @@ public:
         if (unlikely(runInfo.isLastS2Loop)) {
             if (unlikely(runInfo.isFirstS2Loop)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
-                LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
-                    vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, 0.0F);
+                LastDivNew<T, INPUT_T, OUTPUT_T, dVTemplateAlign64, false>(
+                    vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize, (uint16_t)dVTemplateAlign64, 0.0F);
             }
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
         }
@@ -553,7 +552,7 @@ public:
                         .gS1DealSize = dealRowCount,
                         .dDealSize = (uint32_t)constInfo.dSizeV};
         FaUbTensor<OUTPUT_T, false> ubTensor{
-            .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = (uint32_t)(dTemplateAlign64)};
+            .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = (uint32_t)(dVTemplateAlign64)};
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
@@ -660,44 +659,26 @@ public:
     __aicore__ inline void InitBuffers()
     {
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-        uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
-        if constexpr (s2BaseSize == 256) {    // mBaseSize = 128
-            if constexpr (mBaseSize == 128) { // mBaseSize = 128 s2BaseSize = 256
-                tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
-                SoftmaxInitBuffer();
-                tPipe->InitBuffer(stage1OutQue[0], 1, 33024);
-                tPipe->InitBuffer(stage1OutQue[1], 1, 33024);
-            } else { // mBaseSize = 64 s2BaseSize = 256
-                SoftmaxInitBuffer();
-                tPipe->InitBuffer(commonTBuf, 512); // 实际上只需要512Bytes
-                tPipe->InitBuffer(stage2OutBuf, 32 * dTemplateAlign64 * sizeof(T));
-                tPipe->InitBuffer(stage1OutQue[0], 1, 16896);
-                tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
-                if constexpr (hasAtten) {
-                    tPipe->InitBuffer(attenMaskInQue[0], 1, 8192);
-                    tPipe->InitBuffer(attenMaskInQue[1], 1, 8192);
-                }
-            }
-        } else {
-            SoftmaxInitBuffer();
-            if constexpr (hasAtten) {
-                tPipe->InitBuffer(attenMaskInQue[0], 1, 8192);
-                tPipe->InitBuffer(attenMaskInQue[1], 1, 8192);
-            }
-
-            tPipe->InitBuffer(commonTBuf, 512); // 实际上只需要512Bytes
-            // Bmm2结果和Vec2结果都在UB
-            tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
-
-            tPipe->InitBuffer(stage1OutQue[0], 1, 16896);
-            tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
+        uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVTemplateAlign64 * sizeof(T);
+        
+        SoftmaxInitBuffer();
+        if constexpr (hasAtten) {
+            tPipe->InitBuffer(attenMaskInQue[0], 1, 4096);
+            tPipe->InitBuffer(attenMaskInQue[1], 1, 4096);
         }
 
-        if (unlikely(constInfo.isSoftmaxLseEnable)) {
-            // 8: 适配TND，每行的结果存为8个重复lse元素（32B对齐）
-            this->tPipe->InitBuffer(softmaxLseQueue, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
-        }
+        tPipe->InitBuffer(commonTBuf, 512); // 实际上只需要512Bytes
+        // Bmm2结果和Vec2结果都在UB
+        tPipe->InitBuffer(stage2OutBuf, mBaseSize * dVTemplateAlign64 * sizeof(T));
+
+        tPipe->InitBuffer(stage1OutQue[0], 1, (mBaseSize / CV_RATIO + 1) * s2BaseSize * sizeof(INPUT_T));
     }
+
+    if (unlikely(constInfo.isSoftmaxLseEnable)) {
+        // 8: 适配TND，每行的结果存为8个重复lse元素（32B对齐）
+        this->tPipe->InitBuffer(softmaxLseQueue, 1, mBaseSize / CV_RATIO * sizeof(float) * 8);
+    }
+    
 
     __aicore__ inline void AllocEventID()
     {
