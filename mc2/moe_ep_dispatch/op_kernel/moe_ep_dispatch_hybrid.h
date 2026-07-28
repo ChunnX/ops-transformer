@@ -105,7 +105,7 @@ private:
     __aicore__ inline void GetRecvCount();
     __aicore__ inline void SetRecvNumPerExpert();
     __aicore__ inline void SetRecvNumPerRank(LocalTensor<int32_t> recvTmpTensor);
-    __aicore__ inline uint32_t DedupAndSend(uint32_t tokenId);
+    __aicore__ inline uint32_t DedupAndStage(uint32_t tokenId);
     __aicore__ inline void GetSlotStartNum();
     __aicore__ inline void ReduceCounterRange(GlobalTensor<int32_t> counterGMTensor, LocalTensor<int32_t> dstTensor,
                                               uint32_t counterAlign512, uint32_t counterCnt,
@@ -155,13 +155,13 @@ private:
     __aicore__ inline void ClearScaleoutReceiveStatus(GM_ADDR localScaleoutStatusBase, uint32_t statusOffset);
     __aicore__ inline void WriteSlotToLocal(uint32_t dstRankId, uint32_t slot);
     __aicore__ inline void WriteToRemoteWindow();
-    __aicore__ inline void InitSendPhaseBuffers();
+    __aicore__ inline void InitPreparePayloadsBuffers();
     __aicore__ inline void InitRouteStateTensors(uint32_t slotIndexBytes, uint32_t rankSlotBytes,
                                                  uint32_t routeStateBytes, uint32_t routeCountOffset);
     __aicore__ inline void InitRouteStateForToken(uint32_t tokenId);
     __aicore__ inline void PrepareTokenPayload(uint32_t tokenId, uint32_t topkOffset);
     __aicore__ inline uint32_t ProcessCachedTokenRoutes(uint32_t tokenId, uint32_t topkOffset);
-    __aicore__ inline void SendPhase();
+    __aicore__ inline void PreparePayloads();
     __aicore__ inline bool IsActiveRank(uint32_t rankId);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
                                        uint32_t &sendNum);
@@ -205,7 +205,7 @@ private:
     LocalTensor<int32_t> sendCntPerRankTensor_;
     LocalTensor<int32_t> sendCntPerExpertTensor_;
     LocalTensor<uint8_t> hcommTensor_;
-    // SendPhase 使用的 UB tensor 切片，在 SendPhase 初始化时从 numRecvPerRankBuf_ 切出
+    // PreparePayloads 使用的 UB tensor 切片，在 PreparePayloads 初始化时从 numRecvPerRankBuf_ 切出
     LocalTensor<int32_t> slotIdxPerRankTensor_;
     LocalTensor<int32_t> counterSumTensor_; // prefix/fanout 归约结果，发送阶段与 rank slot 映射复用 UB
     LocalTensor<int32_t> sendRankSlotTensor_;
@@ -293,8 +293,8 @@ private:
     DataCopyParams statusCopyParams_;
     DataCopyParams clearStatusCopyParams_;
     DataCopyParams topkCopyParams_;
-    DataCopyParams xCopyParams_;      // SendPhase 复制单 token x payload
-    DataCopyParams scalesCopyParams_; // SendPhase 复制 fp8 scales payload
+    DataCopyParams xCopyParams_;      // PreparePayloads 复制单 token x payload
+    DataCopyParams scalesCopyParams_; // PreparePayloads 复制 fp8 scales payload
     DataCopyParams fanoutPayloadCopyParams_; // fanout 搬运完整 slot payload
     DataCopyExtParams routeCountCopyParams_;
     DataCopyExtParams routeCopyParams_;
@@ -1140,7 +1140,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
-__aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::DedupAndSend(uint32_t tokenId)
+__aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::DedupAndStage(uint32_t tokenId)
 {
     uint32_t routeEntryCount = 0U;
     for (uint32_t topkIndex = 0; topkIndex < axisK_; topkIndex++) {
@@ -1715,7 +1715,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
-__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::InitSendPhaseBuffers()
+__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::InitPreparePayloadsBuffers()
 {
     tpipe_->InitBuffer(perSlotQueue_, BUFFER_NUM, perSlotBytes_);
     tpipe_->InitBuffer(dstSlotQueue_, 1, kAlignSize_);
@@ -1812,9 +1812,9 @@ __aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFu
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
-__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendPhase()
+__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::PreparePayloads()
 {
-    InitSendPhaseBuffers();
+    InitPreparePayloadsBuffers();
 
     // count 阶段已经按 token 分核生成 counter，这里只计算本核 slot 前缀。
     GetSlotStartNum();
@@ -1826,7 +1826,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 
         uint32_t routeEntryCount = 0U;
         if constexpr (!IsCached) {
-            routeEntryCount = DedupAndSend(tokenId);
+            routeEntryCount = DedupAndStage(tokenId);
             dstSlotQueue_.EnQue(dstSlotIdxTensor_);
             dstSlotIdxTensor_ = dstSlotQueue_.DeQue<int32_t>();
         } else {
@@ -1838,7 +1838,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         dstSlotQueue_.FreeTensor<int32_t>(dstSlotIdxTensor_);
     }
     if (sendTokenNum_ > 0U) {
-        PipeBarrier<PIPE_ALL>(); // SendPhase 写 GM 后，SyncAll 后会继续消费这些 GM 输出
+        PipeBarrier<PIPE_ALL>(); // PreparePayloads 写 GM 后，SyncAll 后会继续消费这些 GM 输出
     }
 }
 
@@ -1853,7 +1853,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
 
-    SendPhase();
+    PreparePayloads();
     SyncAll<true>();
 
     // 通信初始化
