@@ -75,8 +75,6 @@ protected:
 private:
     ge::graphStatus SetPlatMemoryInfo();
     void SplitPolicy();
-    bool CheckS1OutSplit();
-    void SplitOutSeq();
     void ComputeTilingData();
     void SetAttenMaskTilingData();
     void SetStartIdxTilingData();
@@ -115,8 +113,6 @@ private:
     bool actualSharedPrefixLenFlag_ = false;
     std::vector<int64_t> actualSeqLengthsQ_ = {};
     std::vector<int64_t> actualSeqLengthsKV_ = {};
-    bool needInit_ = false;
-    bool enableS1OutSplit = false;
     uint64_t tilingKey_ = 0;
     uint64_t workspaceSize_ = 0;
     ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;

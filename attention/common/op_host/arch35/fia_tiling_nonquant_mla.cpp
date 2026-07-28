@@ -31,7 +31,7 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 using namespace arch35FIA;
-constexpr uint64_t PRE_LOAD_NUM_MLA_ARCH35 = 3;
+constexpr uint64_t PRE_LOAD_NUM_MLA_ARCH35 = 2;
 
 void FiaTilingNonQuantMlaArch35::InitTilingInfo(TilingInfo *tilingInfo)
 {
@@ -119,7 +119,7 @@ bool FiaTilingNonQuantMlaArch35::IsCapable()
 
 void FiaTilingNonQuantMlaArch35::CalcMaxWorkspaceSize()
 {
-    constexpr int32_t mSize = 128;
+    constexpr int32_t mSize = 64;
     constexpr int32_t dVSize = 512;
 
     size_t sysWorkspaceSize = platformInfo_.defaultSysWorkspaceSize;
@@ -144,36 +144,6 @@ ge::graphStatus FiaTilingNonQuantMlaArch35::DoOpTiling()
 {
     OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo_->opName, "Set plat memory info fail."),
                 return ge::GRAPH_FAILED);
-
-    if (fiaInfo_->emptyTensorFlag) {
-        int64_t outSize = fiaInfo_->opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
-        int64_t lseSize =
-            fiaInfo_->softmaxLseFlag ? fiaInfo_->opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
-        uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
-        if (fiaInfo_->isOutQuantEnable) {
-            singleCoreSize = AlignUp(singleCoreSize, 2U);
-        }
-        tilingData_.baseTiling.fiaEmptyTensorParams.singleCoreSize = singleCoreSize;
-        tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
-        tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
-        tilingData_.baseTiling.fiaEmptyTensorParams.needInit = 1;
-
-        tilingKeyInfo_.emptyTensor = true;
-        tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
-                                        tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope,
-                                        tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor,
-                                        tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit);
-
-        workspaceSize_ = platformInfo_.defaultSysWorkspaceSize;
-        CalcNumBlocks(platformInfo_.aicNum);
-
-        if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
-            (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
-            (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS)) {
-            return ge::GRAPH_FAILED;
-        }
-        return ge::GRAPH_SUCCESS;
-    }
 
     if (fiaInfo_->isMaxWorkspace) {
         // tiling下沉场景，无法获取到actual_seq，分核结果未知，workspace设置成最大
@@ -251,29 +221,21 @@ void FiaTilingNonQuantMlaArch35::InitImplParam()
 {
     const gert::Tensor *actSeqLenQ = fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor;
     const gert::Tensor *actSeqLenKV = fiaInfo_->opParamInfo.actualSeqLengths.tensor;
-    const gert::Tensor *actSharedPrefixLen = fiaInfo_->opParamInfo.actualSharedPrefixLen.tensor;
     uint32_t actSeqLenQDims = 0;
     uint32_t actSeqLenKVDims = 0;
-    uint32_t actSharedPrefixLenDims = 0;
     if (fiaInfo_->isMaxWorkspace) {
         actualSeqLenQFlag_ = false;
         actualSeqLenKVFlag_ = false;
     } else {
         actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
         actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-        actSharedPrefixLenDims = (actSharedPrefixLen != nullptr) ? actSharedPrefixLen->GetShapeSize() : 0;
         actualSeqLenQFlag_ =
             !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
         actualSeqLenKVFlag_ =
             !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int64_t>() == nullptr));
     }
 
-    if (!fiaInfo_->sysPrefixFlag) {
-        actualSharedPrefixLenFlag_ = false;
-    } else {
-        actualSharedPrefixLenFlag_ = !((actSharedPrefixLenDims == 0) || (actSharedPrefixLen == nullptr) ||
-                                       (actSharedPrefixLen->GetData<int64_t>() == nullptr));
-    }
+    actualSharedPrefixLenFlag_ = false;
 
     for (uint32_t bIdx = 0; bIdx < fiaInfo_->bSize; bIdx++) {
         if (actualSeqLenQFlag_) {
@@ -299,65 +261,6 @@ void FiaTilingNonQuantMlaArch35::AdjustSinnerAndSouter()
     sInnerFactor_ = SINNER_128;
 
     OP_LOGI(fiaInfo_->opName, "Souter:%u SInner:%u", sOuterFactor_, sInnerFactor_);
-}
-
-bool FiaTilingNonQuantMlaArch35::CheckS1OutSplit()
-{
-    if (fiaInfo_->isOutQuantEnable) {
-        return false;
-    }
-
-    if (fiaInfo_->sysPrefixFlag || fiaInfo_->kvPaddingSizeFlag || fiaInfo_->qPaddingSizeFlag ||
-        fiaInfo_->learnableSinkFlag || fiaInfo_->enableAlibiPse) {
-        return false;
-    }
-
-    if (fiaInfo_->sparseMode == SPARSE_MODE_BAND ||
-        (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
-        return false;
-    }
-
-    // 仅支持非量化，占用2B
-    const int64_t dataTypeSize = 2U;
-    // isCapable阶段，platformInfo_中还没有l2Size和aicNum，额外获取一次
-    auto platformInfoPtr = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(fiaInfo_->opName, "The platformInfoPtr is null!"),
-                return ge::GRAPH_FAILED);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    platformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
-    int64_t bnSize = std::min(fiaInfo_->bSize * fiaInfo_->n2Size, platformInfo_.aicNum);
-
-    // 当所需的L2cache资源的超过系统配置一半时，开启S1外切分核优化L2cache复用率，乘2是经验值，后续进行优化
-    return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=
-           platformInfo_.l2Size;
-}
-
-void FiaTilingNonQuantMlaArch35::SplitOutSeq()
-{
-    uint32_t curCoreNum = platformInfo_.aicNum;
-    uint32_t sOuterSize = sOuterFactor_ * CV_RATIO;
-    int64_t totalSize = 0;
-    for (uint32_t bIdx = 0; bIdx < fiaInfo_->bSize; bIdx++) {
-        int64_t outerBlockNums = (actualSeqLengthsQ_[bIdx] * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) /
-                                 static_cast<int64_t>(sOuterSize) * fiaInfo_->n2Size;
-        if (actualSeqLengthsQ_[bIdx] == 0) {
-            outerBlockNums = fiaInfo_->n2Size * fiaInfo_->gSize;
-        }
-        totalSize += outerBlockNums;
-        OP_LOGD(fiaInfo_->opName,
-                "bIdx:%u, sOuterSize:%u, sactualSeqLengthsQ_[bIdx]:%lld, actualSeqLengthsKV_[bIdx]:%lld, "
-                "outerBlockNums:%lld, totalSize:%lld\n",
-                bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
-    }
-
-    int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(curCoreNum));
-    CalcNumBlocks(actualUsedCoreNum);
-    tilingData_.baseTiling.fiaS1OuterSplitCoreParams.totalSize = totalSize;
-    tilingData_.baseTiling.fiaS1OuterSplitCoreParams.enableS1OutSplit = true;
-    OP_LOGD(fiaInfo_->opName, "actualUsedCoreNum:%lld\n", actualUsedCoreNum);
-    OP_LOGD(fiaInfo_->opName, "totalSize:%lld\n", totalSize);
-    OP_LOGD(fiaInfo_->opName, "mla enableS1OutSplit\n");
 }
 
 void FiaTilingNonQuantMlaArch35::CreateSplitInput(split_core_v2::BaseInfo &baseInfo, split_core_v2::SplitParam &splitParam)
@@ -398,9 +301,6 @@ void FiaTilingNonQuantMlaArch35::CreateSplitInput(split_core_v2::BaseInfo &baseI
         for (uint32_t i = 0; i < baseInfo.bSize; i++) {
             baseInfo.actualSeqS2Size.emplace_back(s2Ptr[i]);
         }
-    }
-    if (fiaInfo_->sysPrefixFlag) {
-        baseInfo.actualSeqPrefixSize = fiaInfo_->systemPrefixLen;
     }
     splitParam.mBaseSize = sOuterFactor_ * CV_RATIO;
     splitParam.s2BaseSize = sInnerFactor_;
@@ -552,11 +452,7 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyLayout()
 
 void FiaTilingNonQuantMlaArch35::UpdateTilingKeyPseMode()
 {
-    if (!fiaInfo_->pseShiftFlag && !fiaInfo_->enableAlibiPse) {
-        tilingKeyInfo_.pseMode = PSE_MODE_PSE_NONE_TYPE;
-    } else {
-        tilingKeyInfo_.pseMode = *(fiaInfo_->opParamInfo.pseType);
-    }
+    tilingKeyInfo_.pseMode = PSE_MODE_PSE_NONE_TYPE;
 }
 
 void FiaTilingNonQuantMlaArch35::UpdateTilingKeyQuantMode()
@@ -566,44 +462,36 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyQuantMode()
 
 void FiaTilingNonQuantMlaArch35::UpdateTilingKeyHasRope()
 {
-    tilingKeyInfo_.hasRope = false;
-    // MLA D512 的 rope 信息已编码在 D=576 的 Config 中
+    tilingKeyInfo_.hasRope = true;
 }
 
 void FiaTilingNonQuantMlaArch35::UpdateTilingKeyInfo()
 {
-    if (fiaInfo_->emptyTensorFlag) {
-        tilingKeyInfo_.emptyTensor = fiaInfo_->emptyTensorFlag;
+    UpdateTilingKeyLayout();
+    UpdateTilingKeyConfig();
+    UpdateTilingKeyPseMode();
+    UpdateTilingKeyQuantMode();
+    tilingKeyInfo_.isFd = flashDecodeFlag_;
+    tilingKeyInfo_.hasAttenMask = fiaInfo_->attenMaskFlag;
+    UpdateTilingKeyHasRope();
+
+    tilingKeyInfo_.kvLayoutType = tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType;
+
+    if (fiaInfo_->pageAttentionFlag) {
+        if (tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType == 0) { // BNBD
+            tilingKeyInfo_.kvLayoutType = 2;
+        } else if (tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType == 1) { // BBH
+            tilingKeyInfo_.kvLayoutType = 1;
+        } else { // PA NZ
+            tilingKeyInfo_.kvLayoutType = 3;
+        }
     } else {
-        UpdateTilingKeyLayout();
-        UpdateTilingKeyConfig();
-        UpdateTilingKeyPseMode();
-        UpdateTilingKeyQuantMode();
-        tilingKeyInfo_.isFd = flashDecodeFlag_;
-        if (fiaInfo_->sysPrefixFlag) {
-            tilingKeyInfo_.isFd = false;
-        }
-        tilingKeyInfo_.hasAttenMask = fiaInfo_->attenMaskFlag;
-        UpdateTilingKeyHasRope();
-
-        tilingKeyInfo_.kvLayoutType = tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType;
-
-        if (fiaInfo_->pageAttentionFlag) {
-            if (tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType == 0) { // BNBD
-                tilingKeyInfo_.kvLayoutType = 2;
-            } else if (tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType == 1) { // BBH
-                tilingKeyInfo_.kvLayoutType = 1;
-            } else { // PA NZ
-                tilingKeyInfo_.kvLayoutType = 3;
-            }
-        } else {
-            tilingKeyInfo_.kvLayoutType = 0;
-        }
-
-        tilingKeyInfo_.emptyTensor = fiaInfo_->emptyTensorFlag;
-        tilingKeyInfo_.enableKvPrefix = fiaInfo_->sysPrefixFlag;
-        tilingKeyInfo_.isReconstructTemp = true;
+        tilingKeyInfo_.kvLayoutType = 0;
     }
+
+    tilingKeyInfo_.emptyTensor = fiaInfo_->emptyTensorFlag;
+    tilingKeyInfo_.enableKvPrefix = fiaInfo_->sysPrefixFlag;
+    tilingKeyInfo_.isReconstructTemp = true;
 }
 
 void FiaTilingNonQuantMlaArch35::GenTilingKey()
@@ -805,7 +693,7 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
     tilingData_.baseTiling.fiaEmptyTensorParams.singleCoreSize = singleCoreSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
-    tilingData_.baseTiling.fiaEmptyTensorParams.needInit = fiaInfo_->needInit || needInit_;
+    tilingData_.baseTiling.fiaEmptyTensorParams.needInit = fiaInfo_->needInit;
 
     if (fiaInfo_->hasViewStride) {
         tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyBnStride;
@@ -922,5 +810,5 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
 // 3. 个位代表特化模板到泛化模板的优先级排序
 REGISTER_TILING_TEMPLATE_FIA(FusedInferAttentionScore, FiaTilingNonQuantMlaArch35,
                              std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}),
-                             20); // 0xx-非量化, x0x-mla, 优先级高于 GQA(28)
+                             5); // 0xx-非量化, x0x-mla, 优先级 005
 } // namespace optiling
