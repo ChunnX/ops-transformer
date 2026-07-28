@@ -251,17 +251,11 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
     }
 
-    __aicore__ inline void UnInitCrossCoreSync()
-    {
-    }
+    __aicore__ inline void UnInitCrossCoreSync() {}
 
-    __aicore__ inline void AllocEventID()
-    {
-    }
+    __aicore__ inline void AllocEventID() {}
 
-    __aicore__ inline void FreeEventID()
-    {
-    }
+    __aicore__ inline void FreeEventID() {}
 
     __aicore__ inline void ProcessVec1(RunInfoX runInfo)
     {

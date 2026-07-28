@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /*!
  * \file flash_attn_def.cpp
  * \brief FlashAttn算子定义（训练推理归一，仅非量化）
@@ -16,12 +15,9 @@
  *        支持BSND/BNSD/TND三种layout，支持分页KV缓存（PA_ND/PA_Nz）。
  */
 
-
 #include "register/op_def_registry.h"
 
-
 namespace ops {
-
 
 class FlashAttn : public OpDef {
 public:
@@ -107,7 +103,6 @@ public:
         this->Attr("layout_out").AttrType(OPTIONAL).String("BSND");
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Int(0);
 
-
         OpAICoreConfig aicore_config_95;
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -119,13 +114,10 @@ public:
             .ExtendCfgInfo("coreType.value", "AiCore")
             .ExtendCfgInfo("opFile.value", "flash_attn");
 
-
         this->AICore().AddConfig("ascend950", aicore_config_95);
     }
 };
 
-
 OP_ADD(FlashAttn);
-
 
 } // namespace ops

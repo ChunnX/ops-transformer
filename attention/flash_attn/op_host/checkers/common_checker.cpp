@@ -51,12 +51,12 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
-                    supportedKvLayouts.end(),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
-                    "The value of layout_kv(layout of K/V) can only be BNSD/BSND/TND/PA_BBND/PA_BNBD/PA_NZ"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) == supportedKvLayouts.end(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
+            "The value of layout_kv(layout of K/V) can only be BNSD/BSND/TND/PA_BBND/PA_BNBD/PA_NZ"),
+        return ge::GRAPH_FAILED);
 
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
         supportedOutLayouts.end()) {
@@ -239,11 +239,11 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
                                                        std::to_string(faInfo.qkHeadDim).c_str(),
                                                        "The value of axis D of query and key can only be 64/128/256"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.vHeadDim, supportedHeadDims),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis D of value",
-                                                      std::to_string(faInfo.vHeadDim).c_str(),
-                                                      "The value of axis D of value can only be 64/128/256"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.vHeadDim, supportedHeadDims),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis D of value", std::to_string(faInfo.vHeadDim).c_str(),
+                                              "The value of axis D of value can only be 64/128/256"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.qkHeadDim != faInfo.vHeadDim,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     faInfo.opName, "axis D of query/key and value",

@@ -196,9 +196,7 @@ public:
         }
     }
 
-    __aicore__ inline void InitCrossCoreSync()
-    {
-    }
+    __aicore__ inline void InitCrossCoreSync() {}
 
     __aicore__ inline void UnInitCrossCoreSync()
     {
