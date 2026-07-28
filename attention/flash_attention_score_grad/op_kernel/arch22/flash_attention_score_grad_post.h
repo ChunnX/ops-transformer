@@ -478,7 +478,10 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
     if (size <= 0 || usedCoreNum <= 0) {
         return;
     }
+    // 32B地址对齐: InitOutput要求GM地址32字节对齐, 否则非0核清空会失败导致padding残留
+    constexpr int64_t alignElems = 32 / sizeof(OUT_TYPE);
     int64_t perSize = (size + usedCoreNum - 1) / usedCoreNum;
+    perSize = (perSize + alignElems - 1) / alignElems * alignElems;
     int64_t usedCore = (size + perSize - 1) / perSize;
     int64_t tailSize = size - perSize * (usedCore - 1);
     int64_t initSize = perSize;
@@ -1277,7 +1280,10 @@ public:
         if (size <= 0 || usedCoreNum <= 0) {
             return;
         }
+        // 32B地址对齐: InitOutput要求GM地址32字节对齐, 否则非0核清空会失败导致padding残留
+        constexpr int64_t alignElems = 32 / sizeof(OUT_TYPE);
         int64_t perSize = (size + usedCoreNum - 1) / usedCoreNum;
+        perSize = (perSize + alignElems - 1) / alignElems * alignElems;
         int64_t usedCore = (size + perSize - 1) / perSize;
         int64_t tailSize = size - perSize * (usedCore - 1);
         int64_t initSize = perSize;
@@ -1978,7 +1984,10 @@ public:
         if (size <= 0 || usedCoreNum <= 0) {
             return;
         }
+        // 32B地址对齐: InitOutput要求GM地址32字节对齐, 否则非0核清空会失败导致padding残留
+        constexpr int64_t alignElems = 32 / sizeof(OUT_TYPE);
         int64_t perSize = (size + usedCoreNum - 1) / usedCoreNum;
+        perSize = (perSize + alignElems - 1) / alignElems * alignElems;
         int64_t usedCore = (size + perSize - 1) / perSize;
         int64_t tailSize = size - perSize * (usedCore - 1);
         int64_t initSize = perSize;
