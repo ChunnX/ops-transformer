@@ -14,10 +14,10 @@ if (BUILD_OPEN_PROJECT)
     dense_lightning_indexer_softmax_lse_v2_def.cpp
     )
     add_modules_sources(OPTYPE dense_lightning_indexer_softmax_lse_v2 ACLNNTYPE aclnn)
+    enable_pypto_kernel(dense_lightning_indexer_softmax_lse_v2)
 endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-enable_pypto_kernel(dense_lightning_indexer_softmax_lse_v2)
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
     add_ops_compile_options(
         OP_NAME DenseLightningIndexerSoftmaxLseV2
