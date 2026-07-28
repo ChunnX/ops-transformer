@@ -25,8 +25,10 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
 
 
-DATA_RANGE_LEFT = -1.0
-DATA_RANGE_RIGHT = 1.0
+DATA_RANGE_LEFT = -448.0
+DATA_RANGE_RIGHT = 448.0
+FP8_E4M3_MAX = 448.0
+SCALE_EPSILON = 1e-8
 EMPTY_LSE = -3.4028234663852886e38
 MASK_VALUE = -10000.0
 
@@ -97,12 +99,46 @@ def _prefix(lengths):
     return torch.tensor(values, dtype=torch.int32)
 
 
-def _rand_float(shape, generator):
-    return torch.empty(shape, dtype=torch.float32).uniform_(DATA_RANGE_LEFT, DATA_RANGE_RIGHT, generator=generator)
+def _source_absmax():
+    return max(max(abs(DATA_RANGE_LEFT), abs(DATA_RANGE_RIGHT)), 1.0)
 
 
-def _rand_fp8(shape, generator):
-    return _rand_float(shape, generator).to(_fp8_dtype())
+def _log_uniform_amplitude(shape, low, high, generator):
+    high = max(float(high), SCALE_EPSILON)
+    low = max(min(float(low), high), SCALE_EPSILON)
+    log_low = math.log10(low)
+    log_high = math.log10(high)
+    exponent = torch.empty(shape, dtype=torch.float32).uniform_(log_low, log_high, generator=generator)
+    return torch.pow(torch.tensor(10.0, dtype=torch.float32), exponent)
+
+
+def _rand_fullquant_source(shape, amp_low, amp_high, generator, amp_shape=None):
+    base = torch.empty(shape, dtype=torch.float32).uniform_(-1.0, 1.0, generator=generator)
+    if amp_shape is None:
+        amp_shape = shape[:-1] + (1,)
+    amps = _log_uniform_amplitude(amp_shape, amp_low, amp_high, generator)
+    return base * amps
+
+
+def _quant_fp32_to_fp8(tensor, quant_scale):
+    quantized = tensor.to(torch.float32) * quant_scale
+    quantized = torch.clamp(quantized, -FP8_E4M3_MAX, FP8_E4M3_MAX)
+    return quantized.to(_fp8_dtype()).contiguous()
+
+
+def _quantize_per_token_head(tensor):
+    row_max = torch.abs(tensor).amax(dim=-1, keepdim=True)
+    row_max = torch.maximum(row_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device))
+    quant_scale = FP8_E4M3_MAX / row_max
+    return _quant_fp32_to_fp8(tensor, quant_scale), (1.0 / quant_scale).squeeze(-1).contiguous()
+
+
+def _quantize_value_per_head(tensor):
+    head_max = torch.abs(tensor).amax(dim=(0, 1, 3), keepdim=True)
+    head_max = torch.maximum(head_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device))
+    quant_scale = FP8_E4M3_MAX / head_max
+    value = _quant_fp32_to_fp8(tensor, quant_scale)
+    return value, (1.0 / quant_scale).reshape(tensor.shape[2]).contiguous()
 
 
 def _physical_ids(start, count, pattern, rng):
@@ -207,35 +243,43 @@ def _set_lse(softmax_lse, cu_seqlens_q, batch_idx, q_idx, head_idx, value):
     token_idx = _query_index(cu_seqlens_q, batch_idx, q_idx)
     softmax_lse[head_idx, token_idx] = value
 
-
-def _make_scale_tensor(shape, pattern):
-    if pattern == "ones":
-        return torch.ones(shape, dtype=torch.float32)
-    numel = math.prod(shape)
-    values = torch.linspace(0.25, 2.0, steps=numel, dtype=torch.float32)
-    return values.reshape(shape)
-
-
-def _make_scales(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths):
+def _make_fullquant_tensors(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths, generator):
     layout_q = case["layout_q"]
-    if layout_q == "NTD":
-        q_shape = (case["N1"], int(cu_seqlens_q[-1].item()))
-    else:
-        q_shape = (int(cu_seqlens_q[-1].item()), case["N1"])
-    k_shape = (int(cu_seqlens_kv[-1].item()), case["N2"])
+    total_q = int(cu_seqlens_q[-1].item())
+    total_kv = int(cu_seqlens_kv[-1].item())
+    batch = case["B"]
+    n1 = case["N1"]
+    n2 = case["N2"]
+    head_dim = case["D"]
+    amp_high = _source_absmax()
 
-    q_scale = _make_scale_tensor(q_shape, case["scale_pattern"])
-    k_scale = _make_scale_tensor(k_shape, case["scale_pattern"])
-    dense_k_scale = torch.zeros((case["B"], case["S2"], case["N2"]), dtype=torch.float32)
+    if layout_q == "NTD":
+        query_source = _rand_fullquant_source((n1, total_q, head_dim), amp_high * 0.01, amp_high, generator)
+        q_shape = (n1, total_q)
+    else:
+        query_source = _rand_fullquant_source((total_q, n1, head_dim), amp_high * 0.01, amp_high, generator)
+        q_shape = (total_q, n1)
+    query, q_scale = _quantize_per_token_head(query_source)
+
+    dense_key_source = _rand_fullquant_source((batch, case["S2"], n2, head_dim), 1.0, amp_high, generator)
+    dense_key, dense_k_scale_base = _quantize_per_token_head(dense_key_source)
+    k_scale = torch.zeros((total_kv, n2), dtype=torch.float32)
+    for batch_idx, kv_len in enumerate(kv_lengths):
+        start = int(cu_seqlens_kv[batch_idx].item())
+        k_scale[start:start + kv_len] = dense_k_scale_base[batch_idx, :kv_len]
+
+    dense_k_scale = torch.zeros((batch, case["S2"], n2), dtype=torch.float32)
     for batch_idx, kv_len in enumerate(kv_lengths):
         start = int(cu_seqlens_kv[batch_idx].item())
         dense_k_scale[batch_idx, :kv_len] = k_scale[start:start + kv_len]
-    if case["scale_pattern"] == "ones":
-        v_scale = torch.ones((case["N2"],), dtype=torch.float32)
-    else:
-        v_scale = torch.linspace(0.5, 1.75, steps=case["N2"], dtype=torch.float32)
+
+    dense_value_source = _rand_fullquant_source(
+        (batch, case["S2"], n2, head_dim), 1.0, amp_high, generator, amp_shape=(batch, 1, n2, 1))
+    dense_value, v_scale = _quantize_value_per_head(dense_value_source)
+    v_scale = v_scale.contiguous()
+
     p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
-    return q_scale, k_scale, dense_k_scale, v_scale, p_scale
+    return query, dense_key, dense_value, q_scale, k_scale, dense_k_scale, v_scale, p_scale
 
 
 def _mask_positions(case, q_idx, positions, q_len, kv_len):
@@ -587,18 +631,17 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
     seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
 
-    if case["layout_q"] == "NTD":
-        query = _rand_fp8((n1, int(cu_seqlens_q[-1].item()), head_dim), generator)
-    else:
-        query = _rand_fp8((int(cu_seqlens_q[-1].item()), n1, head_dim), generator)
     cu_seqlens_q_input = cu_seqlens_q
     cu_seqlens_kv_input = cu_seqlens_kv
 
-    dense_key = _rand_fp8((batch, s2, n2, head_dim), generator)
-    dense_value = _rand_fp8((batch, s2, n2, head_dim), generator)
     block_table = _make_block_table(batch, s2, sparse_kv_block_size, case["block_table_pattern"], rng)
-    q_scale, k_scale, dense_k_scale, v_scale, p_scale = _make_scales(
-        case, cu_seqlens_q, cu_seqlens_kv, kv_lengths)
+    case["data_generation_mode"] = "fia_style_fullquant"
+    case["data_range_left"] = DATA_RANGE_LEFT
+    case["data_range_right"] = DATA_RANGE_RIGHT
+    case["source_absmax"] = _source_absmax()
+    case["raw_fp8_absmax"] = FP8_E4M3_MAX
+    query, dense_key, dense_value, q_scale, k_scale, dense_k_scale, v_scale, p_scale = _make_fullquant_tensors(
+        case, cu_seqlens_q, cu_seqlens_kv, kv_lengths, generator)
     kv_cache_storage, kv_cache_meta = combined_kv_cache.pack_combined_kv_cache(
         dense_key, dense_value, dense_k_scale, block_table, sparse_kv_block_size,
         case["pa_block_padding_bytes"], case["layout_kv"])
