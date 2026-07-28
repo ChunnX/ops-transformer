@@ -1976,7 +1976,9 @@ TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_Boundary)
     CheckMkGeneralizedTiling(512U, 4U, 6144U, 2);
     CheckMkGeneralizedTiling(1536U, 4U, 6144U, 2);
     CheckMkGeneralizedTiling(2048U, 4U, 5120U, 2);
-    CheckMkGeneralizedTiling(10240U, 4U, 5120U, 2);
+    CheckMkGeneralizedTiling(8192U, 4U, 5120U, 2);
+    CheckMkGeneralizedTiling(8193U, 4U, 5120U, 0);
+    CheckMkGeneralizedTiling(10240U, 4U, 5120U, 0);
     CheckMkGeneralizedTiling(10241U, 4U, 5120U, 0);
 }
 

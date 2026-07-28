@@ -639,7 +639,11 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
 bool MhcPreBaseTiling::CanUseMk() const
 {
     bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
+    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
+    // Each M-K AIC owns one M tile; reject shapes that cannot be covered by all active AICs.
+    uint64_t maxCoveredM = activeCoreNum * M_K_M_L1_MAX_SIZE;
     return supportedN && totalLength_ <= M_K_MAX_VALIDATED_TOTAL_LENGTH &&
+           totalLength_ <= maxCoveredM &&
            matK_ >= M_K_MIN_MAT_K &&
            context_->GetDeterministicLevel() != BATCH_CONSISTENCY_LEVEL;
 }

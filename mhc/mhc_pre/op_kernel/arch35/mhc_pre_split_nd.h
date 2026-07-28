@@ -401,7 +401,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::VFDoV0ProcessXInSing
                 uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * eleNumPerVf_;
                 MicroAPI::StoreAlign(xDst + dstUbOffset, xMulReg, blockMask);
                 MicroAPI::Mul(squareReg, xFp32Reg, xFp32Reg, blockMask);
-                MicroAPI::Add(squareSumReg, squareSumReg, squareReg, blockMask);
+                MicroAPI::Add<P, MicroAPI::MaskMergeMode::MERGING>(
+                    squareSumReg, squareSumReg, squareReg, blockMask);
             }
             MicroAPI::RegTensor<P> partialReg;
             MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(partialReg, squareSumReg, fullMask);
