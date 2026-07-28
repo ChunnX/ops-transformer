@@ -358,6 +358,26 @@ def fill_none_params(params_dict):
 
     quant_mode = params_dict.get("quant_mode")
 
+    q_datarange = params_dict.get("q_datarange")
+    ori_kv_datarange = params_dict.get("ori_kv_datarange")
+    cmp_kv_datarange = params_dict.get("cmp_kv_datarange")
+    q_descale_datarange = params_dict.get("q_descale_datarange")
+    ori_kv_descale_datarange = params_dict.get("ori_kv_descale_datarange")
+    cmp_kv_descale_datarange = params_dict.get("cmp_kv_descale_datarange")
+
+    if q_datarange is None:
+        q_datarange = [-5, 5]
+    if ori_kv_datarange is None:
+        ori_kv_datarange = [-5, 5]
+    if cmp_kv_datarange is None:
+        cmp_kv_datarange = [-5, 5]
+    if q_descale_datarange is None:
+        q_descale_datarange = [-1, 1]
+    if ori_kv_descale_datarange is None:
+        ori_kv_descale_datarange = [-1, 1]
+    if cmp_kv_descale_datarange is None:
+        cmp_kv_descale_datarange = [-1, 1]
+
     # 构建完整参数字典
     filled_params = {
         "Testcase_Name": params_dict.get("Testcase_Name"),
@@ -396,6 +416,12 @@ def fill_none_params(params_dict):
         "topk_value_mode": params_dict.get("topk_value_mode", 1),
         "return_softmax_lse": params_dict.get("return_softmax_lse", False),
         "isSink": params_dict.get("isSink", True),
+        "q_datarange": q_datarange,
+        "ori_kv_datarange": ori_kv_datarange,
+        "cmp_kv_datarange": cmp_kv_datarange,
+        "q_descale_datarange": q_descale_datarange,
+        "ori_kv_descale_datarange": ori_kv_descale_datarange,
+        "cmp_kv_descale_datarange": cmp_kv_descale_datarange,
     }
 
     return filled_params
@@ -462,6 +488,12 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             "cu_seqlens_ori_kv",
             "cu_seqlens_cmp_kv",
             "cmp_residual_kv",
+            "q_datarange",
+            "ori_kv_datarange",
+            "cmp_kv_datarange",
+            "q_descale_datarange",
+            "ori_kv_descale_datarange",
+            "cmp_kv_descale_datarange"
         ]
         # 检查是否缺少必要列
         missing_cols = [col for col in required_columns if col not in df.columns]
