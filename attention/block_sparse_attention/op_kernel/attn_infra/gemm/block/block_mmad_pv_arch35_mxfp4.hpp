@@ -368,7 +368,7 @@ public:
     {
         // L0C tla：rows=D+16（与 MatmulPV 的 mMmad=D+16 一致）→ srcStride=D+16
         auto l0CTensorTla = tla::MakeTensor(l0CTensor[0],
-            tla::MakeLayoutL0C(embedReal + 16, s1Align128), Arch::PositionL0C{});
+            tla::MakeLayoutL0C(embedReal + MXFP4::ROW_SUM_PAD_NUM , s1Align128), Arch::PositionL0C{});
         // 模板参序 (ArchTag, TensorSrc=L0C, TensorDst=UB, SPLIT_N, NO_QUANT, ReluEnable=false)
         using CopyL0CToDst = Tile::CopyL0CToUBTla<ArchTag, decltype(l0CTensorTla), TensorUB,
                                                    Tile::CopyL0CToUBMode::SPLIT_N,
@@ -405,14 +405,14 @@ public:
         //   V 数据 = 0x6666（fp4 4.0）、V scale = 0x7d7d（e8m0 0x25→2^(125-127)=0.25）→ 有效 4.0×0.25=1.0
         //   原 0x2222(1.0)×0x7f7f(1.0)=1.0 也是 1.0，但 QFA 用 4.0×0.25（规避 fp4 0x2 编码问题）
         //   对应 QFA Fill kvL1[kvBufId]（当前 slot，非固定 slot 0）
-        AscendC::InitConstValueParams<uint16_t> vFillParams(1, static_cast<uint16_t>(MXFP4::L0A_PV_BUF_SIZE / 32 ), 0, 0x6666);
+        AscendC::InitConstValueParams<uint16_t> vFillParams(1, static_cast<uint16_t>(MXFP4::L0A_PV_BUF_SIZE / MXFP4::BLOCK_SIZE ), 0, 0x6666);
         AscendC::Fill(l1ATensor[l1ABufId].template ReinterpretCast<uint16_t>(), vFillParams);          // V 数据
         AscendC::PipeBarrier<PIPE_MTE2>();
-        AscendC::InitConstValueParams<uint16_t> vscaleFillParams(1, static_cast<uint16_t>(MXFP4::V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
+        AscendC::InitConstValueParams<uint16_t> vscaleFillParams(1, static_cast<uint16_t>(MXFP4::V_SCALE_L0A_SIZE / MXFP4::BLOCK_SIZE), 0, 0x7d7d);
         AscendC::Fill(l1AScaleTensor[l1ABufId].template ReinterpretCast<uint16_t>(), vscaleFillParams); // V scale
         AscendC::PipeBarrier<PIPE_MTE2>();
-        AscendC::InitConstValueParams<uint16_t> pFillParams(1, static_cast<uint16_t>(MXFP4::L1_P_BUF_SIZE / 32), 0, 0x6666);
-        AscendC::InitConstValueParams<uint16_t> pscaleFillParams(1, static_cast<uint16_t>(MXFP4::L1_P_SCALE_BUF_SIZE / 32), 0, 0x7d7d);
+        AscendC::InitConstValueParams<uint16_t> pFillParams(1, static_cast<uint16_t>(MXFP4::L1_P_BUF_SIZE / MXFP4::BLOCK_SIZE), 0, 0x6666);
+        AscendC::InitConstValueParams<uint16_t> pscaleFillParams(1, static_cast<uint16_t>(MXFP4::L1_P_SCALE_BUF_SIZE / MXFP4::BLOCK_SIZE), 0, 0x7d7d);
         // P/P-scale：填满全部 20 槽（确保假数据可观测，任意 pSlot 都有数据）
         // [TODO]BSA stub 阶段需要，生产阶段删
         for (uint32_t i = 0; i < MXFP4::L1_P_BUF_CNT; i++) {
@@ -433,7 +433,7 @@ public:
         AscendC::LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
         loadData2DParamsA.kStartPosition = 0;
-        loadData2DParamsA.mStep = (128 + 16) / 16;   // m = D+16
+        loadData2DParamsA.mStep = (128 + MXFP4::ROW_SUM_PAD_NUM) / 16;   // m = D+16
         loadData2DParamsA.kStep = 256 / 64;              // k = S2（对齐 64），与 mmad k 一致
         loadData2DParamsA.srcStride = loadData2DParamsA.mStep;
         loadData2DParamsA.dstStride = loadData2DParamsA.mStep;
@@ -442,7 +442,7 @@ public:
         AscendC::LoadData2DMxParams loadData2DMXParamsA;
         loadData2DMXParamsA.xStartPosition = 0;
         loadData2DMXParamsA.yStartPosition = 0;
-        loadData2DMXParamsA.xStep = (128 + 16) / 16; // x = m = D+16
+        loadData2DMXParamsA.xStep = (128 + MXFP4::ROW_SUM_PAD_NUM) / 16; // x = m = D+16
         loadData2DMXParamsA.yStep = 256 / 64;            // y = k = S2（对齐 64）
         loadData2DMXParamsA.srcStride = loadData2DMXParamsA.yStep;
         loadData2DMXParamsA.dstStride = loadData2DMXParamsA.yStep;
@@ -517,11 +517,11 @@ public:
         AscendC::printf("[P-CHK] loop=%u pSlot=%u\n", (unsigned)delay20TileInfo.loop, (unsigned)pSlot);
         // l1ABufId 是成员变量，不再 local 声明
         // mmad 维度：C = Vᵀ@P = Oᵀ
-        uint32_t s2Align64 = RoundUp(curBaseTileSize, 64);
-        uint32_t s2Align32 = RoundUp(curBaseTileSize, 32);
-        uint32_t s1Align128 = RoundUp(rowNum, 128);
+        uint32_t s2Align64 = RoundUp(curBaseTileSize, MXFP4::CONST_64);
+        uint32_t s2Align32 = RoundUp(curBaseTileSize, MXFP4::CONST_32);
+        uint32_t s1Align128 = RoundUp(rowNum, MXFP4::CONST_128);
         
-        uint32_t mMmad = embedReal + 16;   // m = D+16（含 rowsum seed 行）
+        uint32_t mMmad = embedReal + MXFP4::ROW_SUM_PAD_NUM;   // m = D+16（含 rowsum seed 行）
         uint32_t nMmad = s1Align128;           // n = M
         uint32_t kMmad = s2Align64;        // k = S2（对齐 64）
 
