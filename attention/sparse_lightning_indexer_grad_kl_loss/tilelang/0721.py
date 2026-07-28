@@ -432,7 +432,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     # 模式 2 的 AIC wait 会汇聚两个 AIV 的同一组 flag。
                     # 每个 AIV 完成自己的一半后再发布就绪 flag，
                     # 避免 C1 过早观察到尚未完成的工作区。
-                    if k_outer % 2 == 0:
+                    flag_slot = (task_slot + k_outer) % 2
+                    if flag_slot == 0:
                         T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[0])
                         T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[0])
                     else:
@@ -495,7 +496,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_flag("mte2", "mte1", 5)
 
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
-                    if k_outer % 2 == 0:
+                    flag_slot = (task_slot + k_outer) % 2
+                    if flag_slot == 0:
                         T.wait_cross_flag(V0_TO_C1_P_FLAGS[0])
                     else:
                         T.wait_cross_flag(V0_TO_C1_P_FLAGS[1])
@@ -574,7 +576,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.copy(c1_qi_l1, c1_qi_l0a)
                     T.set_flag("m", "mte1", 1)
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
-                    if k_outer % 2 == 0:
+                    flag_slot = (task_slot + k_outer) % 2
+                    if flag_slot == 0:
                         T.wait_cross_flag(V0_TO_C1_SY_FLAGS[0])
                     else:
                         T.wait_cross_flag(V0_TO_C1_SY_FLAGS[1])

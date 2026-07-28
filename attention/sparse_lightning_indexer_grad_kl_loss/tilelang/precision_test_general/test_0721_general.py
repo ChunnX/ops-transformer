@@ -682,13 +682,13 @@ def _print_batch_diagnostics(
         print(f"  batch={batch_id} {' '.join(values)}")
 
 
-def _per_query_normalized_errors(
+def _per_batch_query_normalized_errors(
     actual: torch.Tensor, expected: torch.Tensor
-) -> List[float]:
-    """按 S1 维归约，一次性取回全部 query 的归一化误差。"""
+) -> List[List[float]]:
+    """按 batch 和 query 归约，保留真实 task 的二维误差表。"""
     actual_f32 = actual.float()
     expected_f32 = expected.float()
-    reduce_dims = (0,) + tuple(range(2, actual_f32.dim()))
+    reduce_dims = tuple(range(2, actual_f32.dim()))
     difference_norm = torch.sqrt(
         torch.sum((actual_f32 - expected_f32) ** 2, dim=reduce_dims)
     )
@@ -703,7 +703,7 @@ def _print_query_diagnostics(
     tilelang_outputs: Sequence[torch.Tensor],
     official_outputs: Sequence[torch.Tensor],
 ) -> None:
-    """定位多 query task 的首个错误轮次，不展开无法逐 task 拆分的 dKey。"""
+    """按真实 batch/query task 定位首个错误轮次，不展开无法逐 task 拆分的 dKey。"""
     if case["layout"] != "BSND":
         print("  query诊断：TND 输出已展平，本轮仅对 BSND 做逐 query 定位")
         return
@@ -722,36 +722,53 @@ def _print_query_diagnostics(
     dq_actual, dw_actual = tilelang_outputs[0], tilelang_outputs[2]
     dq_expected, dw_expected = official_outputs[0], official_outputs[2]
 
-    dq_query_errors = _per_query_normalized_errors(dq_actual, dq_expected)
-    dw_query_errors = _per_query_normalized_errors(dw_actual, dw_expected)
+    dq_query_errors = _per_batch_query_normalized_errors(dq_actual, dq_expected)
+    dw_query_errors = _per_batch_query_normalized_errors(dw_actual, dw_expected)
     query_metrics = [
-        (query_id, dq_query_errors[query_id], dw_query_errors[query_id])
+        (
+            batch_id,
+            query_id,
+            batch_id * case["S1"] + query_id,
+            dq_query_errors[batch_id][query_id],
+            dw_query_errors[batch_id][query_id],
+        )
+        for batch_id in range(case["B"])
         for query_id in range(case["S1"])
     ]
 
     failed_queries = [
         values for values in query_metrics
-        if max(values[1], values[2]) > NORM_REL_TOLERANCE
+        if max(values[3], values[4]) > NORM_REL_TOLERANCE
     ]
-    first_failed = failed_queries[0][0] if failed_queries else None
+    first_failed = failed_queries[0] if failed_queries else None
+    first_failed_text = (
+        f"b={first_failed[0]} q={first_failed[1]} task={first_failed[2]}"
+        if first_failed is not None
+        else "None"
+    )
+    task_count = case["B"] * case["S1"]
     print(
         f"  query诊断：launch_cores={launch_cores} "
         f"tasks_per_core={schedule.tasks_per_core} "
-        f"first_failed={first_failed} failed={len(failed_queries)}/{case['S1']}"
+        f"first_failed={first_failed_text} failed={len(failed_queries)}/{task_count}"
     )
 
-    checkpoints = {0, 1, case["S1"] - 2, case["S1"] - 1}
-    for boundary in range(launch_cores, case["S1"], launch_cores):
+    checkpoints = {0, 1, task_count - 2, task_count - 1}
+    for boundary in range(launch_cores, task_count, launch_cores):
         checkpoints.update((boundary - 1, boundary, boundary + 1))
     if first_failed is not None:
-        checkpoints.update((first_failed - 1, first_failed, first_failed + 1))
-    checkpoints = sorted(query_id for query_id in checkpoints if 0 <= query_id < case["S1"])
+        checkpoints.update(
+            (first_failed[2] - 1, first_failed[2], first_failed[2] + 1)
+        )
+    checkpoints = sorted(task_id for task_id in checkpoints if 0 <= task_id < task_count)
+    metrics_by_task = {values[2]: values for values in query_metrics}
 
-    for query_id in checkpoints:
-        _, dq_norm_rel, dw_norm_rel = query_metrics[query_id]
+    for task_id in checkpoints:
+        batch_id, query_id, _, dq_norm_rel, dw_norm_rel = metrics_by_task[task_id]
         print(
-            f"    q={query_id:4d} round={query_id // launch_cores:2d} "
-            f"core={query_id % launch_cores:2d} kReal={valid_lengths[query_id]:5d} "
+            f"    b={batch_id:2d} q={query_id:4d} task={task_id:4d} "
+            f"round={task_id // launch_cores:2d} core={task_id % launch_cores:2d} "
+            f"kReal={valid_lengths[query_id]:5d} "
             f"dQ_norm={dq_norm_rel:.2e} dW_norm={dw_norm_rel:.2e}"
         )
 
@@ -763,8 +780,8 @@ def _print_query_diagnostics(
     print(
         "  query最差："
         + ", ".join(
-            f"q{query_id}(dQ={dq_norm_rel:.1e},dW={dw_norm_rel:.1e})"
-            for query_id, dq_norm_rel, dw_norm_rel in worst_queries
+            f"b{batch_id}q{query_id}(task={task_id},dQ={dq_norm_rel:.1e},dW={dw_norm_rel:.1e})"
+            for batch_id, query_id, task_id, dq_norm_rel, dw_norm_rel in worst_queries
         )
     )
 
