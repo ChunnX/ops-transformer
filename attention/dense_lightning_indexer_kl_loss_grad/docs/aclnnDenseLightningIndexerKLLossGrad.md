@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：DenseLightningIndexerKLLossGrad算子是LightningIndexer KL Loss的反向计算算子（Dense模式）。该接口接收Lightning Indexer分支的q、k、w，以及由主Attention分支预先计算得到的attnSoftmaxL1Norm和softmaxLse，计算并输出dq、dk、dw和softmaxOut。本接口对全部key做dense注意力计算，不再依赖sparseIndices做top-k筛选；也不需要在kernel内部重算主Attention的`Q @ K -> softmax -> reduce/l1 norm`，不再输出loss；主Attention的目标分布由attnSoftmaxL1Norm输入提供，softmaxOut可用于后续loss计算。
+- 接口功能：DenseLightningIndexerKLLossGrad算子是LightningIndexer KL Loss的反向计算算子（Dense模式）。该接口接收Lightning Indexer分支的q、k、w，以及由主Attention分支预先计算得到的attnSoftmaxL1Norm和softmaxLse，计算并输出dq、dk、dw和softmaxOut。本接口对全部key做dense注意力计算，不再依赖sparseIndices做top-k筛选；也不需要在kernel内部重算主Attention的`Q @ K -> softmax -> reduce/l1 norm`，不再输出loss；主Attention的目标分布由attnSoftmaxL1Norm输入提供，softmaxOut 可用于后续loss计算。
 
 - 计算公式：
     Indexer logits可表示为：
