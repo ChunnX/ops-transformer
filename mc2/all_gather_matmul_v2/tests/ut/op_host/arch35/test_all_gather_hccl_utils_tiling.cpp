@@ -32,13 +32,15 @@ CutResult MakeCutResult(uint64_t longTileLen)
 TEST(AllGatherHcclUtilsTest, CalcMaxTileMNoAdjustment)
 {
     auto cut = MakeCutResult(128);
-    EXPECT_EQ(CalcMaxTileMFromHcclLimit(cut, 8192, 2, 8, "ut"), HCCL_NO_ADJUSTMENT);
+    CommSizeInfo commSize{8192, 2, 8};
+    EXPECT_EQ(CalcMaxTileMFromHcclLimit(cut, commSize, "ut"), HCCL_NO_ADJUSTMENT);
 }
 
 TEST(AllGatherHcclUtilsTest, CalcMaxTileMRequiresAdjustment)
 {
     auto cut = MakeCutResult(4096);
-    uint64_t maxTileM = CalcMaxTileMFromHcclLimit(cut, 8192, 2, 8, "ut");
+    CommSizeInfo commSize{8192, 2, 8};
+    uint64_t maxTileM = CalcMaxTileMFromHcclLimit(cut, commSize, "ut");
     EXPECT_GT(maxTileM, HCCL_NO_ADJUSTMENT);
     EXPECT_NE(maxTileM, HCCL_UNSUPPORTED);
     EXPECT_EQ(maxTileM, 2048U);
@@ -47,13 +49,15 @@ TEST(AllGatherHcclUtilsTest, CalcMaxTileMRequiresAdjustment)
 TEST(AllGatherHcclUtilsTest, CalcMaxTileMUnsupportedWhenBelowAlign)
 {
     auto cut = MakeCutResult(2048);
-    EXPECT_EQ(CalcMaxTileMFromHcclLimit(cut, 65800, 2, 8, "ut"), HCCL_UNSUPPORTED);
+    CommSizeInfo commSize{65800, 2, 8};
+    EXPECT_EQ(CalcMaxTileMFromHcclLimit(cut, commSize, "ut"), HCCL_UNSUPPORTED);
 }
 
 TEST(AllGatherHcclUtilsTest, CalcMaxTileMZeroSingleRowSize)
 {
     auto cut = MakeCutResult(128);
-    EXPECT_EQ(CalcMaxTileMFromHcclLimit(cut, 0, 2, 8, "ut"), HCCL_UNSUPPORTED);
+    CommSizeInfo commSize{0, 2, 8};
+    EXPECT_EQ(CalcMaxTileMFromHcclLimit(cut, commSize, "ut"), HCCL_UNSUPPORTED);
 }
 
 TEST(AllGatherHcclUtilsTest, SelectOptimalCandidateTileM)
@@ -66,29 +70,34 @@ TEST(AllGatherHcclUtilsTest, SelectOptimalCandidateTileM)
 
 TEST(AllGatherHcclUtilsTest, DetermineFinalTileMWithin63Tiles)
 {
-    EXPECT_EQ(DetermineFinalTileMWithLimit(1200, 256, 2048, 8192, 2, 8, "ut"), 256U);
+    CommSizeInfo commSize{8192, 2, 8};
+    EXPECT_EQ(DetermineFinalTileMWithLimit(1200, 256, 2048, commSize, "ut"), 256U);
 }
 
 TEST(AllGatherHcclUtilsTest, DetermineFinalTileMRecalcWhenTooManyTiles)
 {
     // 候选列表从大到小取第一个 >= minTileM_align，故返回 2048 而非 512。
-    EXPECT_EQ(DetermineFinalTileMWithLimit(16384, 256, 2048, 8192, 2, 8, "ut"), 2048U);
+    CommSizeInfo commSize{8192, 2, 8};
+    EXPECT_EQ(DetermineFinalTileMWithLimit(16384, 256, 2048, commSize, "ut"), 2048U);
 }
 
 TEST(AllGatherHcclUtilsTest, DetermineFinalTileMUsesAlignedFallback)
 {
-    EXPECT_EQ(DetermineFinalTileMWithLimit(137088, 2048, 65536, 256, 2, 8, "ut"), 2304U);
+    CommSizeInfo commSize{256, 2, 8};
+    EXPECT_EQ(DetermineFinalTileMWithLimit(137088, 2048, 65536, commSize, "ut"), 2304U);
 }
 
 TEST(AllGatherHcclUtilsTest, DetermineFinalTileMUnsupportedWhenExceedsMax)
 {
-    EXPECT_EQ(DetermineFinalTileMWithLimit(200000, 256, 256, 65535, 2, 8, "ut"), HCCL_UNSUPPORTED);
+    CommSizeInfo commSize{65535, 2, 8};
+    EXPECT_EQ(DetermineFinalTileMWithLimit(200000, 256, 256, commSize, "ut"), HCCL_UNSUPPORTED);
 }
 
 TEST(AllGatherHcclUtilsTest, ApplyTileSplitWithTail)
 {
     auto cut = MakeCutResult(4096);
-    ApplyTileSplit(cut, 1200, 256, 8192, 2, 8, "ut");
+    CommSizeInfo commSize{8192, 2, 8};
+    ApplyTileSplit(cut, 1200, 256, commSize, "ut");
     EXPECT_EQ(cut.longTileLen, 256U);
     EXPECT_EQ(cut.numLongTile, 4U);
     EXPECT_EQ(cut.shortTileLen, 176U);
@@ -98,7 +107,8 @@ TEST(AllGatherHcclUtilsTest, ApplyTileSplitWithTail)
 TEST(AllGatherHcclUtilsTest, ApplyTileSplitPerfectAlign)
 {
     auto cut = MakeCutResult(4096);
-    ApplyTileSplit(cut, 512, 256, 8192, 2, 8, "ut");
+    CommSizeInfo commSize{8192, 2, 8};
+    ApplyTileSplit(cut, 512, 256, commSize, "ut");
     EXPECT_EQ(cut.shortTileLen, 0U);
     EXPECT_EQ(cut.numShortTile, 0U);
     EXPECT_EQ(cut.numLongTile, 2U);
@@ -107,7 +117,8 @@ TEST(AllGatherHcclUtilsTest, ApplyTileSplitPerfectAlign)
 TEST(AllGatherHcclUtilsTest, ApplyTileSplitSingleBlockWhenMLessThanTileM)
 {
     auto cut = MakeCutResult(4096);
-    ApplyTileSplit(cut, 100, 256, 8192, 2, 8, "ut");
+    CommSizeInfo commSize{8192, 2, 8};
+    ApplyTileSplit(cut, 100, 256, commSize, "ut");
     EXPECT_EQ(cut.longTileLen, 100U);
     EXPECT_EQ(cut.numLongTile, 1U);
     EXPECT_EQ(cut.shortTileLen, 0U);
@@ -116,22 +127,79 @@ TEST(AllGatherHcclUtilsTest, ApplyTileSplitSingleBlockWhenMLessThanTileM)
 TEST(AllGatherHcclUtilsTest, ApplyTileSplitExceedsLimitEarlyReturn)
 {
     auto cut = MakeCutResult(4096);
-    ApplyTileSplit(cut, 500, 512, 65535, 2, 8, "ut");
+    CommSizeInfo commSize{65535, 2, 8};
+    ApplyTileSplit(cut, 500, 512, commSize, "ut");
     EXPECT_EQ(cut.longTileLen, 4096U);
 }
 
-TEST(AllGatherHcclUtilsTest, AdjustCutResultForHCCLFullPath)
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForCCUFullPath)
 {
     auto cut = MakeCutResult(4096);
-    AdjustCutResultForHCCL(cut, 5000, 8192, 2, 8, "ut");
+    CommSizeInfo commSize{8192, 2, 8};
+    AdjustCutResultForCCU(cut, 5000, commSize, "ut");
     EXPECT_EQ(cut.longTileLen, 2048U);
     EXPECT_EQ(cut.shortTileLen, 904U);
     EXPECT_EQ(cut.numShortTile, 1U);
 }
 
-TEST(AllGatherHcclUtilsTest, AdjustCutResultForHCCLNoOp)
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForCCUNoOp)
 {
     auto cut = MakeCutResult(128);
-    AdjustCutResultForHCCL(cut, 512, 8192, 2, 8, "ut");
+    CommSizeInfo commSize{8192, 2, 8};
+    AdjustCutResultForCCU(cut, 512, commSize, "ut");
     EXPECT_EQ(cut.longTileLen, 128U);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUReducesTileCount)
+{
+    CutResult cut{};
+    cut.longTileLen = 2048;
+    cut.numLongTile = 16;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 16;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 32768, 256, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 8192U);
+    EXPECT_EQ(cut.numLongTile, 4U);
+    EXPECT_EQ(cut.shortTileLen, 0U);
+    EXPECT_EQ(cut.numShortTile, 0U);
+    EXPECT_EQ(cut.totalTileCnt, 4U);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUNoOpWhenTileCountSmall)
+{
+    CutResult cut{};
+    cut.longTileLen = 1024;
+    cut.numLongTile = 4;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 4;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 4096, 256, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 1024U);
+    EXPECT_EQ(cut.numLongTile, 4U);
+    EXPECT_EQ(cut.totalTileCnt, 4U);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUSingleBlockWhenMSmall)
+{
+    CutResult cut{};
+    cut.longTileLen = 256;
+    cut.numLongTile = 7;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 7;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 100, 256, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 100U);
+    EXPECT_EQ(cut.numLongTile, 1U);
+    EXPECT_EQ(cut.shortTileLen, 0U);
+    EXPECT_EQ(cut.totalTileCnt, 1U);
 }
