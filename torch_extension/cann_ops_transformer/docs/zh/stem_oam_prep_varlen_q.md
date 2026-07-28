@@ -187,7 +187,7 @@ cann_ops_transformer.stem_oam_prep_varlen_q(q, q_seq_lens, cu_seq_lens_q, *, q_s
   D = 128
   batch = 2
 
-  q = torch.randn(total_tokens, H_q, D, dtype=torch.float8_e4m3fn).npu()
+  q = torch.randn(total_tokens, H_q, D, dtype=torch.float32).to(torch.float8_e4m3fn).npu()
   q_scale = torch.randn(total_tokens, H_q, dtype=torch.float32).npu()
 
   q_seq_lens = [128, 128]
@@ -223,7 +223,7 @@ cann_ops_transformer.stem_oam_prep_varlen_q(q, q_seq_lens, cu_seq_lens_q, *, q_s
   npu_backend = torchair.get_npu_backend()
   model = torch.compile(model, backend=npu_backend, dynamic=False)
 
-  q = torch.randn(total_tokens, H_q, D, dtype=torch.float8_e4m3fn).npu()
+  q = torch.randn(total_tokens, H_q, D, dtype=torch.float32).to(torch.float8_e4m3fn).npu()
   q_scale = torch.randn(total_tokens, H_q, dtype=torch.float32).npu()
 
   output = model(q, q_scale)
