@@ -2381,6 +2381,27 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         _PROFILE = os.environ.get("SLIG_PROFILE", "0") == "1"
         _DEBUG_REQUESTED = os.environ.get("SLIG_DEBUG", "0") == "1"
+        _DEBUG_TASK_TEXT = os.environ.get("SLIG_DEBUG_TASK", "").strip()
+        _DEBUG_TASK = None
+        if _DEBUG_TASK_TEXT:
+            _DEBUG_TASK_PARTS = _DEBUG_TASK_TEXT.split(",")
+            if len(_DEBUG_TASK_PARTS) != 2:
+                raise ValueError(
+                    "SLIG_DEBUG_TASK must use the format 'batch,query', for example '0,25'"
+                )
+            try:
+                _DEBUG_TASK = (
+                    int(_DEBUG_TASK_PARTS[0].strip()),
+                    int(_DEBUG_TASK_PARTS[1].strip()),
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "SLIG_DEBUG_TASK must contain two integer values: 'batch,query'"
+                ) from exc
+            if not (0 <= _DEBUG_TASK[0] < B and 0 <= _DEBUG_TASK[1] < S1):
+                raise ValueError(
+                    f"SLIG_DEBUG_TASK={_DEBUG_TASK_TEXT!r} is outside BSND shape B={B}, S1={S1}"
+                )
         _SERIAL_TASK_PIPELINE = (
             os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1"
         )
@@ -2537,7 +2558,121 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         # DEBUG：定位第一个产生非有限值的阶段。
         _DEBUG = _DEBUG_REQUESTED and not _debug_dump_done
-        if _DEBUG:
+        _DEBUG_TASK_ACTIVE = _DEBUG_TASK is not None and not _debug_dump_done
+        if _DEBUG_TASK_ACTIVE:
+            debug_b, debug_q = _DEBUG_TASK
+
+            def _debug_task_tensor(name, tensor):
+                tensor_fp32 = tensor.float()
+                finite = torch.isfinite(tensor_fp32)
+                finite_count = int(finite.sum().item())
+                nonfinite_count = tensor_fp32.numel() - finite_count
+                finite_abs_max = (
+                    tensor_fp32[finite].abs().max().item()
+                    if finite_count > 0 else float("nan")
+                )
+                print(
+                    f"[DEBUG_TASK] {name}: shape={tuple(tensor.shape)}, "
+                    f"nonfinite={nonfinite_count}, finite_abs_max={finite_abs_max:.6e}"
+                )
+
+            def _debug_task_compare(name, actual, expected):
+                actual_fp32 = actual.float()
+                expected_fp32 = expected.float()
+                finite = torch.isfinite(actual_fp32) & torch.isfinite(expected_fp32)
+                nonfinite_count = actual_fp32.numel() - int(finite.sum().item())
+                if finite.any().item():
+                    diff = (actual_fp32[finite] - expected_fp32[finite]).abs()
+                    max_diff = diff.max().item()
+                    mean_diff = diff.mean().item()
+                    norm_rel = torch.linalg.vector_norm(diff).item() / (
+                        torch.linalg.vector_norm(expected_fp32[finite]).item() + 1e-6
+                    )
+                else:
+                    max_diff = float("nan")
+                    mean_diff = float("nan")
+                    norm_rel = float("nan")
+                print(
+                    f"[DEBUG_TASK] {name}: max_diff={max_diff:.6e}, "
+                    f"mean_diff={mean_diff:.6e}, norm_rel={norm_rel:.6e}, "
+                    f"nonfinite={nonfinite_count}"
+                )
+
+            debug_sparse_indices = sparse_indices[debug_b, debug_q, 0, :K].to(torch.long)
+            debug_index_valid = (
+                (debug_sparse_indices >= 0) & (debug_sparse_indices < source_s2)
+            )
+            debug_safe_indices = debug_sparse_indices.clamp(0, source_s2 - 1)
+            debug_valid_mask = (
+                torch.ones(K, dtype=torch.float32, device=query.device)
+                if full_valid else valid_k_mask[debug_b, debug_q].float()
+            )
+            debug_expected_gki = torch.index_select(
+                key_index[debug_b, :, 0, :], 0, debug_safe_indices
+            )
+            debug_expected_gki = debug_expected_gki * debug_index_valid.unsqueeze(-1).to(
+                debug_expected_gki.dtype
+            )
+            debug_gki = gather_key_index_ws[debug_b, debug_q]
+            debug_bmm2 = bmm2_res_ws[debug_b, debug_q]
+            debug_bmm1 = bmm1_res_ws[debug_b, debug_q]
+            debug_query_index = query_index[debug_b, debug_q].float()
+            debug_bmm2_from_gather = torch.relu(
+                torch.matmul(debug_query_index, debug_gki.float().transpose(0, 1))
+            )
+            debug_bmm2_from_host_gather = torch.relu(
+                torch.matmul(
+                    debug_query_index, debug_expected_gki.float().transpose(0, 1)
+                )
+            )
+            debug_softmax_max = softmax_max[debug_b, 0, debug_q].float()
+            debug_softmax_sum = softmax_sum[debug_b, 0, debug_q].float().abs().clamp_min(1e-8)
+            debug_expected_p = (
+                torch.exp(debug_bmm1.float() * scale_value - debug_softmax_max.unsqueeze(-1))
+                / debug_softmax_sum.unsqueeze(-1)
+            ).mean(dim=0) * debug_valid_mask
+            debug_reduce_sum_y = (
+                debug_bmm2.float() * weights[debug_b, debug_q].float().unsqueeze(-1)
+            ).sum(dim=0)
+            debug_reduce_sum_y = debug_reduce_sum_y.masked_fill(
+                debug_valid_mask == 0, -1e30
+            )
+            debug_expected_softmax_i = torch.softmax(debug_reduce_sum_y, dim=-1) * debug_valid_mask
+            debug_diff = debug_expected_softmax_i - debug_expected_p
+            debug_expected_dweight = (debug_bmm2.float() * debug_diff.unsqueeze(0)).sum(dim=-1)
+            debug_expected_relu = (
+                weights[debug_b, debug_q].float().unsqueeze(-1)
+                * debug_diff.unsqueeze(0)
+                * (debug_bmm2.float() > 0).float()
+            ).to(relu_grad_out.dtype).float()
+            debug_relu = relu_grad_out[debug_b, debug_q].float()
+            debug_expected_dq = torch.matmul(debug_relu, debug_gki.float())
+            debug_expected_dk = torch.matmul(
+                debug_relu.transpose(0, 1), debug_query_index
+            )
+
+            print(
+                f"[DEBUG_TASK] selected b={debug_b} q={debug_q} "
+                f"kReal={int(k_real_size[debug_b, debug_q].item())} full_valid={full_valid}"
+            )
+            _debug_task_tensor("GatherKeyIndex_ws", debug_gki)
+            _debug_task_tensor("bmm1Res", debug_bmm1)
+            _debug_task_tensor("bmm2Res", debug_bmm2)
+            _debug_task_tensor("PReduced", p_reduced_ws[debug_b, debug_q])
+            _debug_task_tensor("SoftmaxI", softmax_i_ws[debug_b, debug_q])
+            _debug_task_tensor("dWeightOut", d_weight[debug_b, debug_q])
+            _debug_task_tensor("reluGradRes", relu_grad_out[debug_b, debug_q])
+            _debug_task_compare("GatherKeyIndex_ws vs host gather", debug_gki, debug_expected_gki)
+            _debug_task_compare("bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T", debug_bmm2, debug_bmm2_from_gather)
+            _debug_task_compare("bmm2 host-gather cross-check", debug_bmm2_from_gather, debug_bmm2_from_host_gather)
+            _debug_task_compare("PReduced vs BMM1 formula", p_reduced_ws[debug_b, debug_q], debug_expected_p)
+            _debug_task_compare("SoftmaxI vs BMM2 formula", softmax_i_ws[debug_b, debug_q], debug_expected_softmax_i)
+            _debug_task_compare("dWeightOut vs BMM2/P/SY formula", d_weight[debug_b, debug_q], debug_expected_dweight)
+            _debug_task_compare("reluGradRes vs BF16 formula", relu_grad_out[debug_b, debug_q], debug_expected_relu)
+            _debug_task_compare("C2 dQueryAccum vs stored reluGrad", d_query_index_accum[debug_b, debug_q], debug_expected_dq)
+            _debug_task_compare("C2 dk_partial vs stored reluGrad", dk_matmul_partial[debug_b, debug_q], debug_expected_dk)
+            _debug_dump_done = True
+        elif _DEBUG:
             def _debug_tensor(name, tensor):
                 tensor_fp32 = tensor.float()
                 nan_count = torch.isnan(tensor_fp32).sum().item()

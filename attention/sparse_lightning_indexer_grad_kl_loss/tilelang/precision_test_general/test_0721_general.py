@@ -774,7 +774,7 @@ def _print_query_diagnostics(
 
     worst_queries = sorted(
         query_metrics,
-        key=lambda values: max(values[1], values[2]),
+        key=lambda values: max(values[3], values[4]),
         reverse=True,
     )[: min(10, case["S1"])]
     print(
@@ -914,8 +914,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if os.environ.get("SLIG_DEBUG", "0") == "1" or os.environ.get("SLIG_PROFILE", "0") == "1":
-        print("WARNING: SLIG_DEBUG/SLIG_PROFILE is enabled; disable it for benchmark numbers.")
+    if (
+        os.environ.get("SLIG_DEBUG", "0") == "1"
+        or os.environ.get("SLIG_DEBUG_TASK", "").strip()
+        or os.environ.get("SLIG_PROFILE", "0") == "1"
+    ):
+        print("WARNING: SLIG_DEBUG/SLIG_DEBUG_TASK/SLIG_PROFILE is enabled; disable it for benchmark numbers.")
     if os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1":
         print("WARNING: SLIG_SERIAL_TASK_PIPELINE=1，当前使用串行 task 诊断版本，禁止用于性能测试。")
     selected_cases = list(_select_cases(args))
