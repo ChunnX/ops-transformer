@@ -161,21 +161,7 @@ static bool CheckMxFp8Params(const aclTensor *x1, const aclTensor *x2, const acl
                                               "non-nullptr", "MXFP8 does not support output quantization.");
         return false;
     }
-    aclFormat x1Format = aclFormat::ACL_FORMAT_UNDEFINED;
-    aclFormat x2Format = aclFormat::ACL_FORMAT_UNDEFINED;
-    aclFormat x1ScaleFormat = aclFormat::ACL_FORMAT_UNDEFINED;
-    aclFormat x2ScaleFormat = aclFormat::ACL_FORMAT_UNDEFINED;
-    aclGetFormat(x1, &x1Format);
-    aclGetFormat(x2, &x2Format);
-    aclGetFormat(x1Scale, &x1ScaleFormat);
-    aclGetFormat(x2Scale, &x2ScaleFormat);
-    if (x1Format != aclFormat::ACL_FORMAT_ND || x2Format != aclFormat::ACL_FORMAT_ND ||
-        x1ScaleFormat != aclFormat::ACL_FORMAT_ND || x2ScaleFormat != aclFormat::ACL_FORMAT_ND) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize",
-                                              "x1/x2/x1Scale/x2Scale", "non-ND",
-                                              "MXFP8 supports ND format only.");
-        return false;
-    }
+    // Validate storage formats in tiling from tensor descriptors. aclGetFormat may return undefined for FP8 wrappers.
     return true;
 }
 
