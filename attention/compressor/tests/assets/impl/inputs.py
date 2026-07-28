@@ -197,9 +197,6 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, state_block_table, ape,
                 continue
             sliced_shape = list(tensor.shape)
             for sl, seed_value in zip(slices[axis_pos],seed[axis_pos]):
-                print("=============sl============seed")
-                print(sl)
-                print(seed_value)
                 rng = np.random.RandomState(seed_value)
                 if sl is None:
                     continue
@@ -272,7 +269,7 @@ def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
 def aclnn_compressor_input(x, wkv, wgate, stateCacheRef, ape,
                             stateBlockTable, cuSeqlens, seqused, startPos,
                             cmpRatio, coff, cacheMode, stateCacheStrideDim0,
-                            cmpKv, stateCache, **kwargs):
+                            cmpKv, **kwargs):
     cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size = \
         _fill_seq_descriptors(x, stateCacheRef, cmpRatio, coff, cacheMode,
                               cuSeqlens, seqused, startPos, **kwargs)
@@ -280,13 +277,10 @@ def aclnn_compressor_input(x, wkv, wgate, stateCacheRef, ape,
     if x is None or not torch.is_tensor(x):
         return
 
-    cmp_ratio_val = int(cmpRatio) if cmpRatio is not None else 4
-    cache_mode_val = int(cacheMode) if cacheMode is not None else 1
-
     if stateBlockTable is not None and torch.is_tensor(stateBlockTable):
         build_block_table(stateCacheRef, stateBlockTable, B, S_max, block_size,
-                          cmp_ratio_val, start_pos_list,
-                          seqused_list, cu_seqlens_list, cache_mode_val, S)
+                          cmpRatio, start_pos_list,
+                          seqused_list, cu_seqlens_list, cacheMode, S)
 
-    apply_batch_slice_seeded(x, wkv, wgate, stateCacheRef, ape, cmp_ratio_val,
-                             int(coff) if coff else 1, **kwargs)
+    apply_batch_slice_seeded(x, wkv, wgate, stateCacheRef, stateBlockTable, ape, cmpRatio,
+                             coff, **kwargs)

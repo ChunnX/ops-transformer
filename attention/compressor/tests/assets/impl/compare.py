@@ -327,7 +327,6 @@ def compare(*outputs, **kwargs):
     GOLDEN_OUTPUT_COUNT = 2
     golden_outputs = list(outputs[-GOLDEN_OUTPUT_COUNT:])
     npu_outputs = list(outputs[:-GOLDEN_OUTPUT_COUNT])
-
     cmp_kv_mask = kwargs.get('cmp_kv_mask', None)
 
     # Fallback: single NPU output (cmp_kv only) — compare cmp_kv, skip state_cache

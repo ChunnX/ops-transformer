@@ -179,7 +179,7 @@ def cpu_compressor(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
 def aclnn_compressor_golden(x, wkv, wgate, stateCacheRef, ape,
                              stateBlockTable, cuSeqlens, seqused, startPos,
                              cmpRatio, coff, cacheMode, stateCacheStrideDim0,
-                             cmpKv, stateCache, **kwargs):
+                             cmpKv, **kwargs):
     x_cpu = ttk_to_cpu(x)
     wkv_cpu = ttk_to_cpu(wkv)
     wgate_cpu = ttk_to_cpu(wgate)
