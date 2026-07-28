@@ -181,6 +181,8 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           AscendC::Cast(v0_zero_ki[0], v0_zero_ki_fp32[0], AscendC::RoundMode::CAST_RINT, 128);
           AscendC::Cast(v0_zero_rope[0], v0_zero_rope_fp32[0], AscendC::RoundMode::CAST_RINT, 128);
           AscendC::PipeBarrier<PIPE_V>();
+          AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+          AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
           AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
           AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(1);
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
