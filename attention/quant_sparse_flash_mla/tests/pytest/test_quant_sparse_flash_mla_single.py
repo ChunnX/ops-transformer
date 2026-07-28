@@ -79,7 +79,6 @@ for params in ENABLED_PARAMS:
         "q_datarange": params.get("q_datarange", [[-5, 5]]),
         "ori_kv_datarange": params.get("ori_kv_datarange", [[-5, 5]]),
         "cmp_kv_datarange": params.get("cmp_kv_datarange", [[-5, 5]]),
-        "sinks_datarange": params.get("sinks_datarange", [[-1, 1]]),
     }
 
     param_names = list(param_values.keys())

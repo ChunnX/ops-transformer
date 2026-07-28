@@ -891,7 +891,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     q_descale_datarange = [q_datarange[0] / FP8_DATA_RANGE_LEFT, q_datarange[1] / FP8_DATA_RANGE_RIGHT]
     ori_kv_descale_datarange = [ori_kv_datarange[0] / FP8_DATA_RANGE_LEFT, ori_kv_datarange[1] / FP8_DATA_RANGE_RIGHT]
     cmp_kv_descale_datarange = [cmp_kv_datarange[0] / FP8_DATA_RANGE_LEFT, cmp_kv_datarange[1] / FP8_DATA_RANGE_RIGHT]
-    sinks_datarange = params.get("sinks_datarange")
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     seqused_q = torch.tensor(seqused_q).to(torch.int32)

@@ -58,7 +58,6 @@ for _, params in enumerate(ENABLED_PARAMS):
         "q_datarange",
         "ori_kv_datarange",
         "cmp_kv_datarange",
-        "sinks_datarange",
     ]:
         normalized_params[key] = utils.parse_list_param(params.get(key))
     template_run_mode = normalized_params["template_run_mode"]
@@ -104,7 +103,6 @@ for _, params in enumerate(ENABLED_PARAMS):
         "q_datarange",
         "ori_kv_datarange",
         "cmp_kv_datarange",
-        "sinks_datarange",
     ]
 
     param_values = [
@@ -146,7 +144,6 @@ for _, params in enumerate(ENABLED_PARAMS):
         [normalized_params["q_datarange"]],
         [normalized_params["ori_kv_datarange"]],
         [normalized_params["cmp_kv_datarange"]],
-        [normalized_params["sinks_datarange"]],
     ]
 
     # 生成所有的组合，并转换为字典列表

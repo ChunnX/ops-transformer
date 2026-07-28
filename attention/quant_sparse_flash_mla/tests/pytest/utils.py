@@ -361,7 +361,6 @@ def fill_none_params(params_dict):
     q_datarange = params_dict.get("q_datarange")
     ori_kv_datarange = params_dict.get("ori_kv_datarange")
     cmp_kv_datarange = params_dict.get("cmp_kv_datarange")
-    sinks_datarange = params_dict.get("sinks_datarange")
 
     if q_datarange is None:
         q_datarange = [-5, 5]
@@ -369,8 +368,6 @@ def fill_none_params(params_dict):
         ori_kv_datarange = [-5, 5]
     if cmp_kv_datarange is None:
         cmp_kv_datarange = [-5, 5]
-    if sinks_datarange is None:
-        sinks_datarange = [-1, 1]
 
     # 构建完整参数字典
     filled_params = {
@@ -413,7 +410,6 @@ def fill_none_params(params_dict):
         "q_datarange": q_datarange,
         "ori_kv_datarange": ori_kv_datarange,
         "cmp_kv_datarange": cmp_kv_datarange,
-        "sinks_datarange": sinks_datarange,
     }
 
     return filled_params
@@ -483,7 +479,6 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             "q_datarange",
             "ori_kv_datarange",
             "cmp_kv_datarange",
-            "sinks_datarange",
         ]
         # 检查是否缺少必要列
         missing_cols = [col for col in required_columns if col not in df.columns]
