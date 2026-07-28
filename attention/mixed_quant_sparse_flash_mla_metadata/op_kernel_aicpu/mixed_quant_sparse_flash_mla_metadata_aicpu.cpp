@@ -912,7 +912,8 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, co
     if (isBatchConsistency_) {
         // 计算规约级切分大小
         uint64_t actTotalS2Size = s1GCache.actOriS2Size + s1GCache.actCmpS2Size;
-        s1GCache.reductionTileSize = (actTotalS2Size / 32 + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_;
+        s1GCache.reductionTileSize = (actTotalS2Size / reductionTileNum + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_;
+        s1GCache.reductionTileSize = s1GCache.reductionTileSize == 0U ? s2BaseSize_ : s1GCache.reductionTileSize;
         // 使用规约级切分大小对基本块进行重新划分
         s1GCache.oriS2End =
             s1GCache.actOriS2Size == 0 ? 0 : (s1GCache.actOriS2Size - 1) / s1GCache.reductionTileSize + 1U;

@@ -29,6 +29,7 @@ namespace aicpu {
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
 constexpr uint32_t COST_WEIGHT_M = 6U;
 constexpr uint32_t COST_WEIGHT_S2 = 10U;
+constexpr uint32_t reductionTileNum = 32U;
 constexpr bool ORI_KV = false;
 constexpr bool CMP_KV = true;
 constexpr uint32_t NO_MASK = 0;
