@@ -97,8 +97,8 @@ private:
     int64_t blocksPerCore_;
 };
 
-template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Init(GM_ADDR targetScore, GM_ADDR indexProbs,
+template <typename T, bool isDeterministic, bool weightType>
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::Init(GM_ADDR targetScore, GM_ADDR indexProbs,
     GM_ADDR loss, GM_ADDR workspace, const LightningIndexerKLLossTilingData* tilingData, TPipe *pipe)
 {
     totalLength_ = tilingData->totalLength;
@@ -171,8 +171,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Init(GM_ADDR 
 }
 
 /* ---------- InitWorkspaceDet: 初始化 deterministic workspace ---------- */
-template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::InitWorkspaceDet(GM_ADDR workspace)
+template <typename T, bool isDeterministic, bool weightType>
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::InitWorkspaceDet(GM_ADDR workspace)
 {
     perCoreSumWS.SetGlobalBuffer((__gm__ float*)(workspace) + blockIdx_ * FLOAT_BLOCK_SIZE, FLOAT_BLOCK_SIZE);
     Fill(perCoreSumWS, FLOAT_BLOCK_SIZE, (float)0);
@@ -180,8 +180,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::InitWorkspace
 }
 
 /* ---------- InitHalfBufs: half/bf16 版本 ubHalf 指向 float buffer 后半段 ---------- */
-template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::InitHalfBufs()
+template <typename T, bool isDeterministic, bool weightType>
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::InitHalfBufs()
 {
     uint32_t tileElemsAligned = tileLength_ * KAligned_ * 2;
     uint32_t floatDword = tileLength_ * KAligned_ * sizeof(float);
@@ -195,8 +195,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::InitHalfBufs(
 
 }
 
-template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::CopyIn(uint32_t rowOffset, uint32_t curTileLen)
+template <typename T, bool isDeterministic, bool weightType>
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::CopyIn(uint32_t rowOffset, uint32_t curTileLen)
 {
     uint64_t offset = (uint64_t)rowOffset * (uint64_t)K_;
     copyParams.blockCount = curTileLen;
@@ -221,8 +221,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::CopyIn(uint32
 }
 
 /* ---------- Compute: Vector 全部计算，含 setflag/waitflag ---------- */
-template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Compute(uint32_t tileElems, uint32_t curTileLen)
+template <typename T, bool isDeterministic, bool weightType>
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::Compute(uint32_t tileElems, uint32_t curTileLen)
 {
     uint32_t repeat, remain;
     constexpr uint32_t MAX_REPEAT_TIME = 255;
@@ -343,8 +343,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Compute(uint3
     SetFlag<HardEvent::V_MTE3>(eventVToMTE3_);
 }
 
-template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::CopyOut()
+template <typename T, bool isDeterministic, bool weightType>
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::CopyOut()
 {
     // 等待 Vector 完成 ReduceSum，ubOut 已就绪
     WaitFlag<HardEvent::V_MTE3>(eventVToMTE3_);
@@ -361,8 +361,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::CopyOut()
 }
 
 /* ---------- Process: 主循环，isHalf 区分 half/fp32 分支 ---------- */
-template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Process()
+template <typename T, bool isDeterministic, bool weightType>
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::Process()
 {
     uint32_t tileId, rowOffset, curTileLen, tileElems;
     rowOffset = blockIdx_ * tileLength_;
@@ -397,8 +397,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::Process()
 
 
 /* ---------- WriteBackDet: 确定性结果写回 ---------- */
-template <typename T, bool isDeterministic>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic>::WriteBackDet()
+template <typename T, bool isDeterministic, bool weightType>
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::WriteBackDet()
 {
     SyncAll();
     if (blockIdx_ == 0) {

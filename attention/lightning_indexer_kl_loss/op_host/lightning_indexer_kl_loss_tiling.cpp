@@ -135,8 +135,8 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
 
     auto attrs = context->GetAttrs();
     float eps = *attrs->GetFloat(0);
-    char* weightTypeStr = *attrs->GetStr(1);
-    int64_t weightType = (weightTypeStr == "probs") ? 1 : 0;
+    std::string weightTypeStr = std::string(attrs->GetStr(1));
+    uint64_t weightType = (weightTypeStr == "probs") ? 1 : 0;
     bool deterministic = context->GetDeterministic() == 1;
     // UB 统一按 fp32 划分
     int64_t fp32Size = sizeof(float);

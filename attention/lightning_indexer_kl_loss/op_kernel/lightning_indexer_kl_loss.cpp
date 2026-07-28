@@ -23,7 +23,7 @@ using namespace NsLightningIndexerKLLoss;
  *   DeterType=0/1  |  DataType=0(FLOAT16),1(FLOAT32),2(BFLOAT16),3(FLOAT16_PRECISION)
  *   isHalf = (dataType != 1)  i.e. only FLOAT32 is full-precision
  */
-template <bool isDeterministic, uint8_t dataType>
+template <bool isDeterministic, uint8_t dataType, bool weightType>
 __global__ __aicore__ void lightning_indexer_kl_loss(GM_ADDR targetScore, GM_ADDR indexProbs,
     GM_ADDR loss, GM_ADDR workspace, GM_ADDR tiling)
 {
@@ -33,19 +33,19 @@ __global__ __aicore__ void lightning_indexer_kl_loss(GM_ADDR targetScore, GM_ADD
     GM_ADDR user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
     if constexpr (dataType == 0) { // FLOAT16
-        LightningIndexerKLLoss<half, isDeterministic> op;
+        LightningIndexerKLLoss<half, isDeterministic, weightType> op;
         op.Init(targetScore, indexProbs, loss, user, &tilingData, &pipe);
         op.InitHalfBufs();
         op.Process();
         op.WriteBackDet();
     } else if constexpr (dataType == 2) { // BFLOAT16
-        LightningIndexerKLLoss<bfloat16_t, isDeterministic> op;
+        LightningIndexerKLLoss<bfloat16_t, isDeterministic, weightType> op;
         op.Init(targetScore, indexProbs, loss, user, &tilingData, &pipe);
         op.InitHalfBufs();
         op.Process();
         op.WriteBackDet();
     } else { // FLOAT32
-        LightningIndexerKLLoss<float, isDeterministic> op;
+        LightningIndexerKLLoss<float, isDeterministic, weightType> op;
         GM_ADDR user = GetUserWorkspace(workspace);
         op.Init(targetScore, indexProbs, loss, user, &tilingData, &pipe);
         op.Process();
