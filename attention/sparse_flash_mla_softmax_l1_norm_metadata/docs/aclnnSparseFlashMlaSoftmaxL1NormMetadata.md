@@ -22,7 +22,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize"获取workspace大小，再调用"aclnnSparseFlashMlaSoftmaxL1NormMetadata"执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize"获取workspace大小，再调用"aclnnSparseFlashMlaSoftmaxL1NormMetadata"执行计算。
 
 ``` cpp
 aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize(
@@ -289,7 +289,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## aclnnSparseFlashMlaSoftmaxL1NormMetadata
 
@@ -332,7 +332,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -448,7 +448,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ``` cpp
 #include <algorithm>

@@ -265,20 +265,18 @@ def _muls_sel_vf_pse_type1_inner(
     src_m,
     repeat_times,
     tail_size,
-    p_scalar,
+    g_scalar,
 ):
     preg_full = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     preg_tail = vf.update_mask(tail_size, dtype=pl.DT_FP32)
     
     vreg_reduce_sum_muls = vf.full(0.0, preg_full)
     vreg_reduce_sum_muls_tail = vf.full(0.0, preg_tail)
+    vreg_g_scale = vf.full(g_scalar, preg_full)
     
     un_roll_num = 8
     n1_main = src_m // un_roll_num * un_roll_num
-    n1_tail = src_m % un_roll_num
-    
     tail_offset = repeat_times * 64
-    
     for _ in pl.range(0, repeat_times):
         for m_idx in pl.range(0, n1_main, un_roll_num):
             vreg_lse0 = vf.load_align(lse_tiles, m_idx, dist=pl.LoadDist.BRC_B32)
@@ -395,9 +393,9 @@ def _muls_sel_vf_pse_type1_inner(
         vreg_reduce_sum_muls_tail = vf.add(vreg_reduce_sum_muls_tail, vreg_exp, preg_tail)
     
     for _ in pl.range(0, repeat_times):
-        vreg_reduce_sum_muls = vf.muls(vreg_reduce_sum_muls, p_scalar, preg_full)
+        vreg_reduce_sum_muls = vf.div(vreg_reduce_sum_muls, vreg_g_scale, preg_full)
         vf.store_align(softmax_l1_tiles, vreg_reduce_sum_muls, preg_full)
-    vreg_reduce_sum_muls_tail = vf.muls(vreg_reduce_sum_muls_tail, p_scalar, preg_tail)
+    vreg_reduce_sum_muls_tail = vf.div(vreg_reduce_sum_muls_tail, vreg_g_scale, preg_tail)
     vf.store_align(softmax_l1_tiles + tail_offset, vreg_reduce_sum_muls_tail, preg_full)
 
 
@@ -408,7 +406,7 @@ def muls_sel_vf_pse_type1_multi_tile(
     scale,
     src_m,
     s2_real_size,
-    p_scalar=1.0,
+    g_scalar=1.0,
 ):
     """
     Alternative VF kernel using pre-configured tiles per block.
@@ -428,7 +426,7 @@ def muls_sel_vf_pse_type1_multi_tile(
         src_m,
         repeat_times,
         tail_size,
-        p_scalar,
+        g_scalar,
     )
 
 
@@ -444,7 +442,7 @@ def compute_softmax_l1_norm(softmax_l1_norm, qk_vec_db, lse_vec_slot, out_vec_db
             const_info.softmax_scale,
             const_info.current_g_size,
             run_info.s2_base_size,
-            const_info.softmax_l1_norm_scale,
+            const_info.g_scale,
         )
         
         pl.set_validshape(out_vec_slot, [1, run_info.s2_base_size])
@@ -705,7 +703,7 @@ def sparse_flash_mla_softmax_l1_norm(
         current_half_g = second_half_g
 
     const_info = pl.make_tuple(
-        b_size=tiling.b, g_size=tiling.g,
+        b_size=tiling.b, g_size=tiling.g, g_scale=tiling.g * 1.0,
         s1_size=tiling.sq, s2_size=tiling.sk,
         is_sparse=IS_SPARSE, k_length=tiling.k_length,
         mask_mode=SPARSE_MODE, cmp_ratio=tiling.cmp_ratio,

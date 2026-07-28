@@ -220,7 +220,7 @@
   <tr>
     <td class="tg-9wq8" rowspan="6">aclnn接口</td>
     <td class="tg-0pky">
-    <a href="./example/test_aclnn_sparse_flash_mla_softmax_l1_norm.cpp">test_aclnn_sparse_flash_mla_softmax_l1_norm
+    <a href="./examples/test_aclnn_sparse_flash_mla_softmax_l1_norm.cpp">test_aclnn_sparse_flash_mla_softmax_l1_norm
     </a>
     </td>
     <td class="tg-lboi" rowspan="6">
