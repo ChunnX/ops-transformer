@@ -820,27 +820,26 @@ def _select_worst_query_for_kernel_debug(
 def _report_kernel_task_debug(
     case_prefix: str,
     case: Dict[str, Any],
-    inputs: Dict[str, Any],
     tilelang_outputs: Sequence[torch.Tensor],
     official_outputs: Sequence[torch.Tensor],
 ) -> None:
     """输出官方对比选出的最差 query；默认由新进程执行详细诊断。"""
-    if os.environ.get("SLIG_DEBUG_TASK", "").strip().lower() != "auto":
+    if os.environ.get("SLIG_SELECT_DEBUG_TASK", "0") != "1":
         return
     worst = _select_worst_query_for_kernel_debug(
         case, tilelang_outputs, official_outputs
     )
     if worst is None:
-        print(f"{case_prefix} DEBUG_TASK auto rerun skipped: TND has no BSND batch/query mapping")
+        print(f"{case_prefix} SELECT_DEBUG_TASK skipped: TND 没有 BSND batch/query 映射")
         return
 
     batch_id, query_id, dq_norm_rel, dw_norm_rel = worst
     print(
-        f"{case_prefix} DEBUG_TASK selected b={batch_id} q={query_id} "
+        f"{case_prefix} SELECT_DEBUG_TASK selected b={batch_id} q={query_id} "
         f"dQ_norm={dq_norm_rel:.2e} dW_norm={dw_norm_rel:.2e}"
     )
     print(
-        f"{case_prefix} DEBUG_TASK rerun disabled to avoid an NPU memory peak; "
+        f"{case_prefix} SELECT_DEBUG_TASK finished without an in-process rerun; "
         f"rerun in a fresh process with SLIG_DEBUG_TASK={batch_id},{query_id}."
     )
 
@@ -887,17 +886,16 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
         status = "PASS" if passed else "PRECISION_FAIL"
         if args.verbose:
             _print_metrics(metrics)
-        auto_debug_task = os.environ.get("SLIG_DEBUG_TASK", "").strip().lower() == "auto"
-        if args.diagnose and not auto_debug_task:
+        select_debug_task = os.environ.get("SLIG_SELECT_DEBUG_TASK", "0") == "1"
+        if args.diagnose and not select_debug_task:
             _print_batch_diagnostics(case, tilelang_outputs, official_outputs)
             _print_query_diagnostics(case, tilelang_outputs, official_outputs)
         elif args.diagnose:
-            print(f"{case_prefix} DEBUG_TASK auto: skip full-tensor diagnostics to limit NPU peak memory")
+            print(f"{case_prefix} SELECT_DEBUG_TASK: 跳过 NPU 全量诊断以限制峰值显存")
         if not passed:
             _report_kernel_task_debug(
                 case_prefix,
                 case,
-                inputs,
                 tilelang_outputs,
                 official_outputs,
             )
@@ -984,13 +982,41 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    debug_task_text = os.environ.get("SLIG_DEBUG_TASK", "").strip()
+    select_debug_task = os.environ.get("SLIG_SELECT_DEBUG_TASK", "0") == "1"
+    if debug_task_text.lower() == "auto":
+        print(
+            "ERROR: SLIG_DEBUG_TASK=auto 已禁用；请先使用 "
+            "SLIG_SELECT_DEBUG_TASK=1 选点，再用 SLIG_DEBUG_TASK=batch,query 诊断。"
+        )
+        return 2
+    if select_debug_task and debug_task_text:
+        print("ERROR: SLIG_SELECT_DEBUG_TASK 与 SLIG_DEBUG_TASK 不能同时设置。")
+        return 2
+    if select_debug_task:
+        conflicting_flags = [
+            name
+            for name in (
+                "SLIG_DEBUG",
+                "SLIG_SERIAL_TASK_PIPELINE",
+                "SLIG_C1_SERIAL",
+            )
+            if os.environ.get(name, "0") == "1"
+        ]
+        if conflicting_flags:
+            print(
+                "ERROR: SLIG_SELECT_DEBUG_TASK 必须运行普通 kernel；请先取消："
+                + ", ".join(conflicting_flags)
+            )
+            return 2
     if (
         os.environ.get("SLIG_DEBUG", "0") == "1"
-        or os.environ.get("SLIG_DEBUG_TASK", "").strip()
+        or debug_task_text
+        or select_debug_task
         or os.environ.get("SLIG_PROFILE", "0") == "1"
         or os.environ.get("SLIG_C1_SERIAL", "0") == "1"
     ):
-        print("WARNING: SLIG_DEBUG/SLIG_DEBUG_TASK/SLIG_PROFILE/SLIG_C1_SERIAL is enabled; disable it for benchmark numbers.")
+        print("WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。")
     if os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1":
         print("WARNING: SLIG_SERIAL_TASK_PIPELINE=1，当前使用串行 task 诊断版本，禁止用于性能测试。")
     if os.environ.get("SLIG_C1_SERIAL", "0") == "1":

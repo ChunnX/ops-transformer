@@ -2475,10 +2475,14 @@ def sparse_lightning_indexer_grad_kl_loss(
         _DEBUG_REQUESTED = os.environ.get("SLIG_DEBUG", "0") == "1"
         _DEBUG_TASK_TEXT = os.environ.get("SLIG_DEBUG_TASK", "").strip()
         _DEBUG_TASK = None
-        _DEBUG_TASK_SOURCE = None
         _DEBUG_BMM1_COORD = None
-        _DEBUG_TASK_AUTO = _DEBUG_TASK_TEXT.lower() == "auto"
-        if _DEBUG_TASK_TEXT and not _DEBUG_TASK_AUTO:
+        if _DEBUG_TASK_TEXT.lower() == "auto":
+            raise ValueError(
+                "SLIG_DEBUG_TASK=auto is disabled because scanning the full BMM1 "
+                "workspace can allocate several GiB; use SLIG_SELECT_DEBUG_TASK=1 "
+                "in test_0721_general.py, then rerun with SLIG_DEBUG_TASK=batch,query"
+            )
+        if _DEBUG_TASK_TEXT:
             _DEBUG_TASK_PARTS = _DEBUG_TASK_TEXT.split(",")
             if len(_DEBUG_TASK_PARTS) != 2:
                 raise ValueError(
@@ -2656,61 +2660,6 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         # DEBUG：定位第一个产生非有限值的阶段。
         _DEBUG = _DEBUG_REQUESTED and not _debug_dump_done
-        if _DEBUG_TASK_AUTO and not _debug_dump_done:
-            # 仅检查语义有效的 K，避免无效尾部工作区影响首错定位。
-            debug_bmm1_valid = torch.isfinite(bmm1_res_ws.float())
-            if not full_valid:
-                debug_bmm1_valid = debug_bmm1_valid | (
-                    valid_k_mask.unsqueeze(2).float() == 0
-                )
-            debug_bad_bmm1 = torch.nonzero(~debug_bmm1_valid, as_tuple=False)
-            if debug_bad_bmm1.numel() > 0:
-                _DEBUG_TASK = (
-                    int(debug_bad_bmm1[0, 0].item()),
-                    int(debug_bad_bmm1[0, 1].item()),
-                )
-                _DEBUG_BMM1_COORD = (
-                    int(debug_bad_bmm1[0, 2].item()),
-                    int(debug_bad_bmm1[0, 3].item()),
-                )
-                _DEBUG_TASK_SOURCE = "the first non-finite valid BMM1 element"
-            else:
-                debug_large_bmm1 = torch.isfinite(bmm1_res_ws.float()) & (
-                    bmm1_res_ws.float().abs() > 1e6
-                )
-                if not full_valid:
-                    debug_large_bmm1 = debug_large_bmm1 & (
-                        valid_k_mask.unsqueeze(2).float() != 0
-                    )
-                debug_large_bmm1 = torch.nonzero(debug_large_bmm1, as_tuple=False)
-                if debug_large_bmm1.numel() > 0:
-                    _DEBUG_TASK = (
-                        int(debug_large_bmm1[0, 0].item()),
-                        int(debug_large_bmm1[0, 1].item()),
-                    )
-                    _DEBUG_BMM1_COORD = (
-                        int(debug_large_bmm1[0, 2].item()),
-                        int(debug_large_bmm1[0, 3].item()),
-                    )
-                    _DEBUG_TASK_SOURCE = "the first implausibly large valid BMM1 element"
-                else:
-                    debug_nonfinite_dweight = torch.nonzero(
-                        ~torch.isfinite(d_weight.float()), as_tuple=False
-                    )
-                    if debug_nonfinite_dweight.numel() > 0:
-                        _DEBUG_TASK = (
-                            int(debug_nonfinite_dweight[0, 0].item()),
-                            int(debug_nonfinite_dweight[0, 1].item()),
-                        )
-                        _DEBUG_TASK_SOURCE = "the first non-finite dWeightOut element"
-                    else:
-                        print("[DEBUG_TASK] auto: no non-finite or implausibly large valid BMM1/dWeight value")
-                        _debug_dump_done = True
-            if _DEBUG_TASK is not None:
-                print(
-                    f"[DEBUG_TASK] auto selected b={_DEBUG_TASK[0]} q={_DEBUG_TASK[1]} "
-                    f"from {_DEBUG_TASK_SOURCE}"
-                )
         _DEBUG_TASK_ACTIVE = _DEBUG_TASK is not None and not _debug_dump_done
         if _DEBUG_TASK_ACTIVE:
             debug_b, debug_q = _DEBUG_TASK
