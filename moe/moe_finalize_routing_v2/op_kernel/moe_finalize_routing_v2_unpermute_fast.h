@@ -137,7 +137,6 @@ __aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T>::ProcessRows(int64_t
     indicesQueue_.EnQue(indicesLocal_);
     indicesLocal_ = indicesQueue_.DeQue<int32_t>();
 
-#pragma bisheng auto_sync parallel
     for (int64_t row = 0; row < rowCount; ++row) {
         ProcessOneRow(row, outputOffset + row);
     }
