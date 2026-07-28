@@ -12,6 +12,9 @@
 
 import os
 import torch
+import torch_npu
+import check_valid_param
+import pytest
 import random
 import numpy as np
 import math
@@ -27,7 +30,6 @@ DATA_RANGE_RIGHT = 2
 # hifp8FullQuant 量化参数范围
 quant_param_range_left = DATA_RANGE_LEFT / -1  # = 2.0
 quant_param_range_right = DATA_RANGE_RIGHT / 1  # = 2.0
-
 
 class GeneralizedSFAQuant:
     def __init__(
@@ -111,20 +113,8 @@ class GeneralizedSFAQuant:
         seqused_cmp_kv,
         cmp_residual_kv,
         sinks,
-        return_softmax_lse=False,
     ):
         attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
-        softmax_lse = None
-        if return_softmax_lse:
-            softmax_lse = torch.zeros(
-                (
-                    q_bnsd.shape[0],
-                    ori_k_bnsd.shape[1],
-                    q_bnsd.shape[2],
-                    q_bnsd.shape[1] // ori_k_bnsd.shape[1],
-                ),
-                dtype=torch.float32,
-            )
         B = q_bnsd.shape[0]
         act_q = self.seqused_q
         G = int(self.N1 / self.N2)
@@ -135,16 +125,12 @@ class GeneralizedSFAQuant:
             cur_act_q = act_q[i_B]
             cur_ori_act_kv = seqused_ori_kv[i_B]
             cur_cmp_act_kv = seqused_cmp_kv[i_B] if seqused_cmp_kv is not None else 0
-            cur_cmp_residual = (
-                cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
-            )
+            cur_cmp_residual = cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
             cur_cmp_restored = cur_cmp_act_kv * self.cmp_ratio + cur_cmp_residual
 
             for i_N2 in range(self.N2):
                 logging.info(f"    i_N2 = {i_N2}/{self.N2}")
-                cur_sinks = (
-                    sinks[i_N2 * G : (i_N2 + 1) * G] if sinks is not None else None
-                )
+                cur_sinks = sinks[i_N2 * G : (i_N2 + 1) * G] if sinks is not None else None
                 for i_S1 in range(cur_act_q):
                     milestones = [
                         int(cur_act_q * pct / 100) for pct in range(10, 101, 10)
@@ -155,21 +141,29 @@ class GeneralizedSFAQuant:
                         logging.info(
                             f"      进度：{current_pct:.1f}% | 步数：{i_S1:>{len(str(cur_act_q))}}/{cur_act_q}"
                         )
-                    if i_S1 < cur_act_q - cur_ori_act_kv:  # 根据 win_kv 判断行无效
+                    if self.ori_mask_mode != 0 and i_S1 < cur_act_q - cur_ori_act_kv:
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
                             [G, self.D], dtype=torch.float
                         )
                         continue
 
-                    if self.ori_mask_mode == 4:
+                    if self.ori_mask_mode == 0:
+                        ori_win_start = 0
+                        ori_win_end = cur_ori_act_kv
+                    elif self.ori_mask_mode == 3:
+                        ori_win_start = 0
+                        ori_win_end = min(max(cur_ori_act_kv - cur_act_q + i_S1 + 1, 0), cur_ori_act_kv)
+                    elif self.ori_mask_mode == 4:
                         ori_threshold = cur_ori_act_kv - cur_act_q + i_S1 + 1
-                        ori_win_end = ori_threshold + self.ori_win_right
                         if self.ori_win_left == -1:
                             ori_win_start = 0
                         else:
-                            ori_win_start = max(
-                                ori_threshold - self.ori_win_left - 1, 0
-                            )
+                            ori_win_start = max(ori_threshold - self.ori_win_left - 1, 0)
+                        if self.ori_win_right == -1:
+                            ori_win_end = cur_ori_act_kv
+                        else:
+                            ori_win_end = min(max(ori_threshold + self.ori_win_right, 0), cur_ori_act_kv)
+                    ori_win_start = min(ori_win_start, cur_ori_act_kv)
 
                     cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
 
@@ -178,7 +172,7 @@ class GeneralizedSFAQuant:
                         and cmp_sparse_indices_bnsd is not None
                     ):
                         topk_id = cmp_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
-                        _, cur_cmp_k = self.gather_cmp_kv(
+                        empty_flag, cur_cmp_k = self.gather_cmp_kv(
                             cmp_k_bnsd,
                             topk_id,
                             i_B,
@@ -188,10 +182,11 @@ class GeneralizedSFAQuant:
                             cur_act_q,
                         )
                     elif self.template_run_mode == "HCA":
-                        _, cur_cmp_k = self.mask_cmp_kv(
+                        empty_flag, cur_cmp_k = self.mask_cmp_kv(
                             cmp_k_bnsd, i_B, i_N2, i_S1, cur_cmp_restored, cur_act_q
                         )
                     else:
+                        empty_flag = True
                         cur_cmp_k = []
                     if cur_cmp_k == []:
                         cmp_s2_loop_time = 0
@@ -208,11 +203,7 @@ class GeneralizedSFAQuant:
                     # hifp8FullQuant: online softmax with hif8 quantized attention scores
                     hifp8_scale_value = 16.0
                     score_max_pre = torch.ones((G,)).to(torch.float) * (-torch.inf)
-                    score_max = (
-                        cur_sinks.clone()
-                        if cur_sinks is not None
-                        else torch.ones((G,)).to(torch.float) * (-torch.inf)
-                    )
+                    score_max = cur_sinks.clone() if cur_sinks is not None else torch.ones((G,)).to(torch.float) * (-torch.inf)
                     acc_o = torch.zeros((G, self.D)).to(torch.float32)
                     sumexp = torch.ones((G,)).to(torch.float32)
 
@@ -227,9 +218,8 @@ class GeneralizedSFAQuant:
                         else:  # cmp_kv
                             if i_S2 < total_s2_loop_time - 1:
                                 k_tile = cur_cmp_k_fp32[
-                                    (i_S2 - ori_s2_loop_time) * s2_base_size : (
-                                        i_S2 - ori_s2_loop_time + 1
-                                    )
+                                    (i_S2 - ori_s2_loop_time)
+                                    * s2_base_size : (i_S2 - ori_s2_loop_time + 1)
                                     * s2_base_size,
                                     :,
                                 ]
@@ -241,20 +231,12 @@ class GeneralizedSFAQuant:
                         # MM1
                         mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
                         # scale过程与NPU一致 保证精度统一
-                        is_cmp_tile = i_S2 >= ori_s2_loop_time
+                        is_cmp_tile = (i_S2 >= ori_s2_loop_time)
                         if is_cmp_tile:
-                            combined_scale = (
-                                self.softmax_scale
-                                * self.q_descale_val
-                                * self.cmp_kv_descale_val
-                            )
+                            combined_scale = self.softmax_scale * self.q_descale_val * self.cmp_kv_descale_val
                             cur_v_descale = self.cmp_kv_descale_val
                         else:
-                            combined_scale = (
-                                self.softmax_scale
-                                * self.q_descale_val
-                                * self.ori_kv_descale_val
-                            )
+                            combined_scale = self.softmax_scale * self.q_descale_val * self.ori_kv_descale_val
                             cur_v_descale = self.ori_kv_descale_val
                         scale_res = mm1_res * combined_scale
 
@@ -281,14 +263,8 @@ class GeneralizedSFAQuant:
 
                     acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
                     acc_o = acc_o / hifp8_scale_value
-                    attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
-                        torch.bfloat16
-                    )
-                    if return_softmax_lse:
-                        softmax_lse[i_B, i_N2, i_S1, :] = score_max + torch.log(
-                            sumexp + 1e-10
-                        )
-        return attn_out, softmax_lse
+                    attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(torch.bfloat16)
+        return attn_out
 
     def gather_cmp_kv(
         self,
@@ -355,6 +331,7 @@ class GeneralizedSFAQuant:
             tensor = tensor.permute(0, 2, 1, 3)
             return tensor, [B, N, S, D]
         elif layout in ["TND"]:
+            T = shape[0]
             N = shape[1]
             D = shape[2]
             B = len(cu_seqlens_q) - 1
@@ -408,34 +385,6 @@ class GeneralizedSFAQuant:
         else:
             return tensor
 
-    def lse_trans_bnsd_to_target_layout(self, tensor, layout, act_seq=None):
-        if layout in ["BSND"]:  # B N S G
-            return tensor
-        elif layout in ["TND"]:  # B N2 S1 G  --> T1 N2 G --> N2 T1 G
-            T = act_seq[-1]
-            B = tensor.shape[0]
-            N2 = tensor.shape[1]
-            G = tensor.shape[3]
-            output = torch.zeros((N2, T, G), dtype=torch.float)
-            t_start = 0
-            act_seq_per_batch = prefix_sum_to_original(
-                act_seq
-            )  # prefix_sum_to_original 还原成每个batch的真实长度
-            for b_index in range(B):
-                cur_act_seq = act_seq_per_batch[b_index]
-                t_end = t_start + cur_act_seq
-                if cur_act_seq == 0:
-                    continue
-                for n_index in range(N2):
-                    output[n_index, t_start:t_end, :] = tensor[
-                        b_index, n_index, :cur_act_seq, :
-                    ]
-                t_start += cur_act_seq
-            output = output.transpose(0, 1).contiguous()
-            return output
-        else:
-            return tensor
-
     def forward(
         self,
         q,
@@ -447,7 +396,6 @@ class GeneralizedSFAQuant:
         seqused_cmp_kv,
         cmp_residual_kv,
         sinks,
-        return_softmax_lse,
     ):
         logging.info("cpu执行中...")
         logging.info(f"template_run_mode = {self.template_run_mode}")
@@ -468,7 +416,7 @@ class GeneralizedSFAQuant:
                 )
             )
 
-        attn_out, softmax_lse = self.calculate_by_bnsd(
+        attn_out = self.calculate_by_bnsd(
             q_bnsd,
             ori_k_bnsd,
             cmp_k_bnsd,
@@ -478,17 +426,12 @@ class GeneralizedSFAQuant:
             seqused_cmp_kv,
             cmp_residual_kv,
             sinks,
-            return_softmax_lse,
         )
 
         attn_out = self.trans_bnsd_to_target_layout(
             attn_out, self.layout_q, cu_seqlens_q, self.seqused_q
         )
-        if return_softmax_lse:
-            softmax_lse = self.lse_trans_bnsd_to_target_layout(
-                softmax_lse, self.layout_q, cu_seqlens_q
-            )
-        return attn_out, softmax_lse
+        return attn_out
 
 
 def prefix_sum_to_original(cu_seqlens_q):
@@ -554,9 +497,7 @@ def get_max_adjacent_diff(cu_seqlens_q):
     return max_diff
 
 
-def gen_cmp_sparse_indices_bsnd(
-    cmp_ratio, B, S1, N2, K, cmp_restored_len, seqused_q, cmp_mask_mode
-):
+def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, cmp_restored_len, seqused_q, cmp_mask_mode):
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
     cmp_sparse_indices = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
@@ -803,9 +744,7 @@ def gen_cmp_kv(
     # generate cmp_sparse_indices
     cmp_sparse_indices = None
     if template_run_mode == "CSA" and cmp_max_s2 != 0:
-        cmp_restored_len = [
-            seqused_cmp_kv[i] * cmp_ratio + cmp_residual_kv[i] for i in range(B)
-        ]
+        cmp_restored_len = [seqused_cmp_kv[i] * cmp_ratio + cmp_residual_kv[i] for i in range(B)]
         if layout_q == "BSND":
             cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(
                 cmp_ratio, B, S1, N2, K, cmp_restored_len, seqused_q, cmp_mask_mode
@@ -893,7 +832,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     return_softmax_lse = params.get("return_softmax_lse", False)
     quant_mode = params.get("quant_mode", False)
     isSink = params.get("isSink", True)
-    return_softmax_lse = params.get("return_softmax_lse", False)
+
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     seqused_q = torch.tensor(seqused_q).to(torch.int32)
     seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
@@ -996,13 +935,11 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_k_bnsd = None
         cmp_kv_descale = None
 
-    if cmp_k_bnsd is None:  # 如果cmp_k_bnsd为None
-        cmp_mask_mode = 0  # cmp_mask_mode 设置为0，防止拦截
-    if (
-        layout_kv == "PA_BBND"
-        and (template_run_mode == "HCA" or template_run_mode == "CSA")
-        and cmp_k_in_pa_shape is not None
-    ):
+    if cmp_k_bnsd is None: # 如果cmp_k_bnsd为None
+            cmp_mask_mode = 0 # cmp_mask_mode 设置为0，防止拦截
+    if layout_kv == "PA_BBND" and (
+        template_run_mode == "HCA" or template_run_mode == "CSA"
+    ) and cmp_k_in_pa_shape is not None:
         total_block = block_size1 + block_size2
         fusion_base = torch.zeros((block_num, total_block, N2, D), dtype=ori_kv_type)
         fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
@@ -1012,16 +949,14 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         stride_n2 = D
         stride_d = 1
         ori_k_in_pa_shape = torch.as_strided(
-            fusion_base,
-            size=[block_num, block_size1, N2, D],
-            stride=[stride_n, stride_bs, stride_n2, stride_d],
-        )
+                fusion_base,
+                size=[block_num, block_size1, N2, D],
+                stride=[stride_n, stride_bs, stride_n2, stride_d])
         cmp_k_in_pa_shape = torch.as_strided(
-            fusion_base,
-            size=[block_num, block_size2, N2, D],
-            stride=[stride_n, stride_bs, stride_n2, stride_d],
-            storage_offset=block_size1 * N2 * D,
-        )
+                fusion_base,
+                size=[block_num, block_size2, N2, D],
+                stride=[stride_n, stride_bs, stride_n2, stride_d],
+                storage_offset=block_size1 * N2 * D)
 
     test_qsmla = GeneralizedSFAQuant(
         layout_q,
@@ -1056,11 +991,9 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         template_run_mode,
         q_descale_val=q_descale.item(),
         ori_kv_descale_val=ori_kv_descale.item(),
-        cmp_kv_descale_val=cmp_kv_descale.item()
-        if cmp_kv_descale is not None
-        else None,
+        cmp_kv_descale_val=cmp_kv_descale.item() if cmp_kv_descale is not None else None,
     )
-    cpu_result, cpu_lse = test_qsmla.forward(
+    cpu_result = test_qsmla.forward(
         q,
         ori_k_bnsd,
         cmp_k_bnsd,
@@ -1070,7 +1003,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         seqused_cmp_kv,
         cmp_residual_kv,
         sinks,
-        return_softmax_lse,
     )
 
     logging.info("mode:%s\n", template_run_mode)
@@ -1134,9 +1066,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "layout_q": layout_q,
             "layout_kv": layout_kv,
             "has_ori_kv": True,
-            "has_cmp_kv": False
-            if (template_run_mode == "SWA" or cmp_k_in_pa_shape is None)
-            else True,
+            "has_cmp_kv": False if (template_run_mode == "SWA" or cmp_k_in_pa_shape is None) else True,
         },
         "op_input": {
             "q": q_npu,
@@ -1169,7 +1099,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "return_softmax_lse": return_softmax_lse,
         },
         "cpu_output": cpu_result,
-        "cpu_lse": cpu_lse if return_softmax_lse else None,
     }
 
     if save_pt:
