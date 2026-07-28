@@ -29,14 +29,15 @@ using namespace AscendC;
 
 constexpr static int64_t KVMAXLEN = 256 * 1024;
 constexpr static int64_t STEMBLOCKMINSIZE = 32;
+constexpr static float EPSILON = 1e-6;
 
 class StemOamPrepPagedKvSimd {
 public:
     __aicore__ inline StemOamPrepPagedKvSimd() = default;
     __aicore__ inline void Process(void);
     __aicore__ inline void Init(GM_ADDR kCache, GM_ADDR vCache, GM_ADDR kvIndices, GM_ADDR kvSeqLens,
-                                GM_ADDR kScaleCache, GM_ADDR vScale, GM_ADDR kFlat, GM_ADDR vBias,
-                                GM_ADDR workspace, const StemOamPrepPagedKvTilingData *tilingData, TPipe *pipe);
+                                GM_ADDR kScaleCache, GM_ADDR vScale, GM_ADDR kFlat, GM_ADDR vBias, GM_ADDR workspace,
+                                const StemOamPrepPagedKvTilingData *tilingData, TPipe *pipe);
 
 private:
     __aicore__ inline void CopyInKVCache(int32_t batchIdx, int32_t headIDx, int32_t stemBlockIdx, int64_t actualRows);
@@ -511,7 +512,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVMean(int64_t numStemBlock
             valueMaskReg = AscendC::MicroAPI::UpdateMask<float>(maskLen);
             AscendC::MicroAPI::AddrReg vFLatOutAddrOfst = AscendC::MicroAPI::CreateAddrReg<float>(i, vfLen);
             AscendC::MicroAPI::LoadAlign(vFLatOutReg, vFLatOutAddr, vFLatOutAddrOfst);
-            AscendC::MicroAPI::Adds(vFLatOutReg, vFLatOutReg, float(1e-6), valueMaskReg);
+            AscendC::MicroAPI::Adds(vFLatOutReg, vFLatOutReg, EPSILON, valueMaskReg);
             AscendC::MicroAPI::Log(logValsReg, vFLatOutReg, valueMaskReg);
             AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float>(logValsSumReg, logValsReg, valueMaskReg);
             AscendC::MicroAPI::Add(vMeanReg, vMeanReg, logValsSumReg, oneMaskReg);
@@ -568,7 +569,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBias(int64_t numStemBlock
                                                             __local_mem__ float *logValsAddr, float vMean, float vSTd)
 {
     float vMeanNum = vMean * (-1);
-    float invStd = float(1.0) / (vSTd + float(1e-6));
+    float invStd = float(1.0) / (vSTd + EPSILON);
     float divNum = 1 / float(r_);
 
     uint32_t vfLen = V_REG_SIZE / sizeof(float);
