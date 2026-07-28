@@ -121,7 +121,7 @@ public:
                                 const NoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
     {
         printf("MLA D512 noquant kernel Init: not implemented, skip.\n");
-        return;
+        // return;
         this->pipe = tPipe;
         this->tilingData = tiling;
 
@@ -780,7 +780,7 @@ public:
     __aicore__ inline void Process()
     {
         printf("MLA D512 noquant kernel Process: not implemented, skip.\n");
-        return;
+        // return;
         if (constInfo.aicIdx < constInfo.coreNum) {
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {

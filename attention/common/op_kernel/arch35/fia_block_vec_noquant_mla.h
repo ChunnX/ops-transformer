@@ -15,7 +15,11 @@
 #ifndef FIA_BLOCK_VEC_NOQUANT_MLA_H_
 #define FIA_BLOCK_VEC_NOQUANT_MLA_H_
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 
 #include "flash_attention_score_common_regbase.h"
 #include "adv_api/activation/softmax.h"
@@ -661,7 +665,7 @@ public:
     {
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
         uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVTemplateAlign64 * sizeof(T);
-        
+
         SoftmaxInitBuffer();
         if constexpr (hasAtten) {
             tPipe->InitBuffer(attenMaskInQue[0], 1, 4096);
