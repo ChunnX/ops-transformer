@@ -265,12 +265,12 @@ __aicore__ inline uint32_t SIPreload<SIT>::CalcS2ValidSize(uint32_t gS1Idx, uint
 template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::GetFASectionInfo(uint32_t sectionIdx)
 {
-    uint32_t bN2StartIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_BN2_START_INDEX, sectionIdx);
-    uint32_t mStartIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_M_START_INDEX, sectionIdx);
-    uint32_t s2StartIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_S2_START_INDEX, sectionIdx);
-    uint32_t bN2EndIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_BN2_END_INDEX, sectionIdx);
-    uint32_t mEndIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_M_END_INDEX, sectionIdx);
-    uint32_t s2EndIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_S2_END_INDEX, sectionIdx);
+    uint32_t bN2StartIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_SEC_BN2_START_INDEX, sectionIdx);
+    uint32_t mStartIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_SEC_M_START_INDEX, sectionIdx);
+    uint32_t s2StartIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_SEC_S2_START_INDEX, sectionIdx);
+    uint32_t bN2EndIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_SEC_BN2_END_INDEX, sectionIdx);
+    uint32_t mEndIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_SEC_M_END_INDEX, sectionIdx);
+    uint32_t s2EndIndex = GetFASectionMetaIndex(aiCoreIdx, SLI_SEC_S2_END_INDEX, sectionIdx);
 
     uint32_t bN2EndRhs = faMetaDataGm.GetValue(bN2EndIndex);
     if (bN2EndRhs == 0U) {

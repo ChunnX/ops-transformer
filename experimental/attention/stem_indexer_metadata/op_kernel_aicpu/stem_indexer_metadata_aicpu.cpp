@@ -140,7 +140,7 @@ bool StemIndexerMetadataCpuKernel::GenerateDeviceInfo(DeviceInfo &deviceInfo)
 {
     deviceInfo.aicCoreMaxNum = aicCoreNum_;
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
-    deviceInfo.aicCoreMinNum = 1;
+    deviceInfo.aicCoreMinNum = aicCoreNum_;
     deviceInfo.aivCoreMinNum = aivCoreNum_;
     return true;
 }
@@ -186,7 +186,7 @@ bool StemIndexerMetadataCpuKernel::GenerateBaseInfo(StemIndexerBaseInfo &baseInf
 
 bool StemIndexerMetadataCpuKernel::GenerateSectionStreamKParam(load_balance::SectionStreamKParam &param)
 {
-    param.l2Byte = 96468992;
+    param.l2Byte = 96U * 1024U * 1024U;
     param.mBaseSize = 64;   // 64: Fix mBaseSize
     param.s2BaseSize = 256; // 256: Fix s2BaseSize
     param.fdOn = false;

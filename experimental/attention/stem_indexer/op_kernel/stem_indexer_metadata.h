@@ -34,6 +34,15 @@ constexpr uint32_t FD_METADATA_SIZE = 8U;
 constexpr uint32_t SLI_PER_CORE_STRIDE = 16U;
 constexpr uint32_t SLI_METADATA_HEADER_OFFSET = SLI_PER_CORE_STRIDE * sizeof(uint32_t);
 
+// Section-based FA Metadata Index (0-based, matching AICPU flash_attn_metadata format)
+constexpr uint32_t SLI_SEC_BN2_START_INDEX = 0U;
+constexpr uint32_t SLI_SEC_M_START_INDEX = 1U;
+constexpr uint32_t SLI_SEC_S2_START_INDEX = 2U;
+constexpr uint32_t SLI_SEC_BN2_END_INDEX = 3U;
+constexpr uint32_t SLI_SEC_M_END_INDEX = 4U;
+constexpr uint32_t SLI_SEC_S2_END_INDEX = 5U;
+constexpr uint32_t SLI_SEC_FIRST_FD_WORKSPACE_IDX_INDEX = 6U;
+
 // FA Metadata Index Definitions
 constexpr uint32_t SLI_CORE_ENABLE_INDEX = 0U;
 constexpr uint32_t SLI_BN2_START_INDEX = 1U;
