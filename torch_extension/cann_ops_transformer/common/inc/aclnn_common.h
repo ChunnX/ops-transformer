@@ -298,16 +298,16 @@ inline void *GetOpApiLibHandler(const char *libName)
 inline std::vector<void *> GetCustOpApiHandlers()
 {
     std::vector<void *> handlers;
-    const char *env = std::getenv("ASCEND_CUSTOM_OPP_PATH");
-    if (env != nullptr) {
-        std::string envStr(env);
-        std::istringstream iss(envStr);
-        std::string path;
-        while (std::getline(iss, path, ':')) {
-            if (path.empty()) {
+    const char *customOppPathEnv = std::getenv("ASCEND_CUSTOM_OPP_PATH");
+    if (customOppPathEnv != nullptr) {
+        std::string customOppPathStr(customOppPathEnv);
+        std::istringstream customOppPathStream(customOppPathStr);
+        std::string customOppDir;
+        while (std::getline(customOppPathStream, customOppDir, ':')) {
+            if (customOppDir.empty()) {
                 continue;
             }
-            std::string soPathStr = path + "/op_api/lib/" + GetCustOpApiLibName();
+            std::string soPathStr = customOppDir + "/op_api/lib/" + GetCustOpApiLibName();
             char soPath[PATH_MAX] = {0};
             if (realpath(soPathStr.c_str(), soPath) == nullptr) {
                 ASCEND_LOGW("realpath failed for %s.", soPathStr.c_str());
@@ -321,6 +321,30 @@ inline std::vector<void *> GetCustOpApiHandlers()
             }
         }
     }
+
+    const char *ldLibraryPathEnv = std::getenv("LD_LIBRARY_PATH");
+    if (ldLibraryPathEnv != nullptr) {
+        std::string ldLibraryPathStr(ldLibraryPathEnv);
+        std::istringstream ldLibraryPathStream(ldLibraryPathStr);
+        std::string ldLibraryDir;
+        while (std::getline(ldLibraryPathStream, ldLibraryDir, ':')) {
+            if (ldLibraryDir.empty()) {
+                continue;
+            }
+            std::string soPathStr = ldLibraryDir + "/" + GetCustOpApiLibName();
+            char soPath[PATH_MAX] = {0};
+            if (realpath(soPathStr.c_str(), soPath) == nullptr) {
+                continue;
+            }
+            auto handler = dlopen(soPath, RTLD_LAZY);
+            if (handler != nullptr) {
+                handlers.push_back(handler);
+            } else {
+                ASCEND_LOGW("dlopen %s failed, error:%s.", soPath, dlerror());
+            }
+        }
+    }
+
     if (handlers.empty()) {
         auto handler = GetOpApiLibHandler(GetCustOpApiLibName());
         if (handler != nullptr) {
