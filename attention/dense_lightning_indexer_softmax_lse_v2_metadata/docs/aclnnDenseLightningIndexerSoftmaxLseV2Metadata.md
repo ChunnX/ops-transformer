@@ -1,4 +1,4 @@
-﻿# aclnnDenseLightningIndexerSoftmaxLseV2Metadata
+# aclnnDenseLightningIndexerSoftmaxLseV2Metadata
 
 ## 产品支持情况
 
@@ -22,7 +22,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize"获取workspace大小，再调用"aclnnDenseLightningIndexerSoftmaxLseV2Metadata"执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize"获取workspace大小，再调用"aclnnDenseLightningIndexerSoftmaxLseV2Metadata"执行计算。
 
 ``` cpp
 aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize(
@@ -85,7 +85,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
     <tr>
       <td>cuSeqLensQOptional</td>
       <td>输入</td>
-      <td>表示不同batch中query的累积sequence length。</br>TND场景下必传，并可通过该入参shape推导batch。</br>第一个值固定为0。</td>
+      <td>表示不同batch中query的累积sequence length。<br>TND场景下必传，并可通过该入参shape推导batch。<br>第一个值固定为0。</td>
       <td>支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -95,7 +95,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
     <tr>
       <td>cuSeqLensKOptional</td>
       <td>输入</td>
-      <td>表示不同batch中key的累积sequence length。</br>TND场景下必传。</br>第一个值固定为0。</td>
+      <td>表示不同batch中key的累积sequence length。<br>TND场景下必传。<br>第一个值固定为0。</td>
       <td>支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -216,7 +216,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
       <td>maskMode</td>
       <td>输入</td>
       <td>表示sparse mask模式。</td>
-      <td>0: No mask</br>3: Causal</td>
+      <td>0: No mask<br>3: Causal</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -267,7 +267,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## aclnnDenseLightningIndexerSoftmaxLseV2Metadata
 
@@ -310,7 +310,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -399,35 +399,35 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
     </thead>
     <tbody>
         <tr>
-        <td>totalNum</td>
+        <td>forecore_num</td>
         <td>0</td>
-        <td>参与负载均衡的seq总数。TND场景为各batch的seqQ累加值；BSND场景为B*S；当seqUsedQOptional存在时，按每个batch实际用到的seq累加。</td>
+        <td>前置核数，即处理较多任务的核数。当totalNum不能被aicCoreNum整除时，forecore_num = totalNum % aicCoreNum，每个前置核处理 ceil(totalNum / aicCoreNum) 个任务；当能整除时，forecore_num = aicCoreNum。</td>
         </tr>
         <tr>
-        <td>blockSize</td>
+        <td>tail_core_num</td>
         <td>1</td>
-        <td>每核正常基本块数，即ceil(totalNum / aicCoreNum)。后续kernel中通过coreIdx * blockSize算出每个核要算的基本块起点及终点。</td>
+        <td>尾核数，即处理较少任务的核数。tail_core_num = aicCoreNum - forecore_num，每个尾核处理 floor(totalNum / aicCoreNum) 个任务。当totalNum能被aicCoreNum整除时为0。</td>
         </tr>
         <tr>
-        <td>actualCoreNum</td>
+        <td>b_s1_per_core</td>
         <td>2</td>
-        <td>实际有效核数，即ceil(totalNum / blockSize)。恒小于等于aicCoreNum。</td>
+        <td>前置核每核处理的 B*S1 任务数，即 ceil(totalNum / aicCoreNum)。</td>
         </tr>
         <tr>
-        <td>tailBlockSize</td>
+        <td>b_s1_per_tail_core</td>
         <td>3</td>
-        <td>尾核处理的基本块数，即totalNum - (actualCoreNum - 1) * blockSize。当totalNum能被blockSize整除时等于blockSize。</td>
+        <td>尾核每核处理的 B*S1 任务数，即 floor(totalNum / aicCoreNum)。当totalNum能被aicCoreNum整除时为0。</td>
         </tr>
     </tbody>
   </table>
 
-  采用鸽巢原理的连续分块切分方式。先通过ceil(totalNum / aicCoreNum)计算每核正常基本块数blockSize，再通过ceil(totalNum / blockSize)计算实际需要的有效核数actualCoreNum。每个核coreIdx处理seq区间[coreIdx * blockSize, min((coreIdx + 1) * blockSize, totalNum))。例如totalNum=127，aicCoreNum=36时，blockSize=ceil(127/36)=4，actualCoreNum=ceil(127/4)=32，核0处理seq[0:4]，核1处理seq[4:8]，...，核31处理seq[124:127]。
+  采用前后核差异化分块切分方式。设totalNum为参与负载均衡的seq总数，N为aicCoreNum。当totalNum能被N整除时，forecore_num=N，tail_core_num=0，每核处理totalNum/N个任务。当不能整除时，设base=floor(totalNum/N)，rem=totalNum%N，则forecore_num=rem，每个前置核处理base+1个任务，tail_core_num=N-rem，每个尾核处理base个任务。例如totalNum=16，N=36时，16<36，forecore_num=16，tail_core_num=0，b_s1_per_core=1，前16个核各处理1个任务，其余核不工作。
 
 </details>
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ``` cpp
 #include <algorithm>
@@ -452,10 +452,10 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
 constexpr uint32_t DLI_METADATA_SIZE = 64;
 
 struct DenseLISoftmaxLseV2MetaData {
-    int32_t totalNum;
-    int32_t blockSize;
-    int32_t actualCoreNum;
-    int32_t tailBlockSize;
+    int32_t forecore_num;
+    int32_t tail_core_num;
+    int32_t b_s1_per_core;
+    int32_t b_s1_per_tail_core;
 };
 
 struct ScopeGuard
@@ -624,16 +624,23 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
         context.batchSize = batchSize;
     }
 
+    // cmp_residual_k is required when maskMode=3 and cmpRatio>1
+    if (context.maskMode == 3 && context.cmpRatio > 1) {
+        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize }, context.cmpResidualKOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cmpResidualKOptional failed. Error: %d", ret);
+        SetInt32TensorData(context.cmpResidualKOptional, std::vector<int32_t>(batchSize, 0));
+    }
+
     argsGuard.Dismiss();
     return ACL_SUCCESS;
 }
 
 void PrintMetadata(const DenseLISoftmaxLseV2MetaData &metadata)
 {
-    printf("totalNum       : %d\n", metadata.totalNum);
-    printf("blockSize      : %d\n", metadata.blockSize);
-    printf("actualCoreNum  : %d\n", metadata.actualCoreNum);
-    printf("tailBlockSize  : %d\n", metadata.tailBlockSize);
+    printf("forecore_num      : %d\n", metadata.forecore_num);
+    printf("tail_core_num     : %d\n", metadata.tail_core_num);
+    printf("b_s1_per_core     : %d\n", metadata.b_s1_per_core);
+    printf("b_s1_per_tail_core: %d\n", metadata.b_s1_per_tail_core);
 }
 
 int main() {
@@ -683,6 +690,7 @@ int main() {
     ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d", ret);
     PrintMetadata(result);
+    printf("pass\n");
 
     return 0;
 }
