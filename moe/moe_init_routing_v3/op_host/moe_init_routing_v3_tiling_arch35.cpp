@@ -1706,13 +1706,29 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4ExpertTokensCountCompute()
     tokensCountTiling->lastCoreElements = lastCoreElements;
 
     int64_t expertNumElement = (tilingDataPtr_->expertTokensNumType != EXPERT_TOKENS_TYPE_KEY_VALUE) ?
-                                   tilingDataPtr_->actualExpertNum :
-                                   (tilingDataPtr_->actualExpertNum + 1) * DIM_TWO;
+                                    tilingDataPtr_->actualExpertNum :
+                                    (tilingDataPtr_->actualExpertNum + 1) * DIM_TWO;
+    int64_t expertTensorBytes = Ops::Base::CeilAlign(expertNumElement, UB_BLOCK_SIZE) * UB_BLOCK_SIZE;
+    int64_t expertTokensCountVecWorkspaceBytes = 0;
+    if (tilingDataPtr_->expertTokensNumType == EXPERT_TOKENS_TYPE_COUNT &&
+        dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
+        expertTokensCountVecWorkspaceBytes = AlignBytes(tilingDataPtr_->actualExpertNum, sizeof(float));
+    }
+    if (tilingDataPtr_->expertTokensNumType == EXPERT_TOKENS_TYPE_CUMSUM &&
+        tilingDataPtr_->actualExpertNum > 0) {
+        int64_t cumsumInner = Align(tilingDataPtr_->actualExpertNum, sizeof(float));
+        uint32_t maxTmpBytes = 0;
+        uint32_t minTmpBytes = 0;
+        AscendC::GetCumSumMaxMinTmpSize(ge::Shape({1, cumsumInner}), sizeof(float), true, false,
+                                         maxTmpBytes, minTmpBytes);
+        // Reserve separate FP32 source/destination, last-row, and minimum CumSum workspace.
+        expertTokensCountVecWorkspaceBytes = AlignBytes(tilingDataPtr_->actualExpertNum, sizeof(float)) * NUM_TWO +
+                                              UB_BLOCK_SIZE + AlignBytes(minTmpBytes, 1);
+    }
     int64_t maxElementsPerLoop =
-        (availUbSize_ -
-         Ops::Base::CeilAlign(expertNumElement, UB_BLOCK_SIZE) *
+        (availUbSize_ - expertTensorBytes *
              (static_cast<int64_t>(sizeof(int32_t)) * NUM_TWO + static_cast<int64_t>(sizeof(int64_t))) -
-         UB_BLOCK_SIZE) /
+         expertTokensCountVecWorkspaceBytes - UB_BLOCK_SIZE) /
         static_cast<int64_t>(sizeof(int32_t));
     int64_t perCoreLoops = Ops::Base::CeilDiv(perCoreElements, maxElementsPerLoop);
     int64_t perCorePerLoopElements = Ops::Base::CeilDiv(perCoreElements, perCoreLoops);
