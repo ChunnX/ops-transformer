@@ -21,8 +21,7 @@
 #include "matmul_allto_all_tiling_key.h"
 #include "matmul_allto_all_tiling.h"
 #include "matmul_allto_all.h"
-#include "../matmul_allto_all_pipeline.h" // A3调用kernel模板库
-#include "../matmul_allto_all_arch35.h"   // A3非量化与A5共用流水
+#include "../matmul_allto_all_pipeline.h" // A3调用kernel模板�?#include "../matmul_allto_all_kernel_base.h"   // A3非量化与A5共用流水
 
 using namespace AscendC;
 using namespace matmul_allto_all_910b_tiling_key;
@@ -45,7 +44,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         using SchedulerType =                                                                                          \
             MatmulAlltoAllPipeLine<ComputationType, TransposeType, CommunicationType, SchedulerContextType>;           \
         SchedulerType SchedulerImpl(&matmulImplName, &transposeImplName, &commImplName);                               \
-        Mc2Kernel::MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataA3> op(           \
+        Mc2Kernel::MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataA3> op(       \
             &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, workspaceGM, &tilingData, &pipe);                                                     \
         op.Process();                                                                                                  \
@@ -58,7 +57,7 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
                                             GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
                                             GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2); // A2、A3的kernel task都采用1:2模式
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2); // A2、A3的kernel task都采�?:2模式
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     if constexpr (MM_ALLTO_ALL_SOC_VERSION == SOC_ASCEND910B) {
         MatmulAlltoAll<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_X1_SCALE, DTYPE_X2_SCALE, DTYPE_Y, MM_ALLTO_ALL_HAS_BIAS,

@@ -20,7 +20,7 @@
 #include "lib/matmul_intf.h"
 #include "allto_all_matmul_tiling_key.h"
 #include "allto_all_matmul.h"
-#include "../allto_all_matmul_arch35.h" // A3非量化与A5共用流水
+#include "../allto_all_matmul_kernel_base.h" // A3非量化与A5共用流水
 #include "../allto_all_matmul_pipeline.h"
 
 using namespace AscendC;
@@ -51,7 +51,7 @@ using namespace Mc2Kernel;
         using SchedulerType =                                                                                          \
             AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, SchedulerContextType>;           \
         SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &matmulImplName);                               \
-        AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataA3> op(&SchedulerImpl);      \
+        AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataA3> op(&SchedulerImpl);  \
         op.Init(x1, x2, bias, y, all2all_out, workspaceGM, &tilingData, &pipe);                                        \
         op.Process();                                                                                                  \
     } while (0)
@@ -63,10 +63,9 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
                                             GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
                                             GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2); // A2、A3的kernel task都采用1:2模式
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2); // A2、A3的kernel task都采�?:2模式
 
-#if (QUANT_TYPE == MC2_NON_QUANT) // int4类型tensor不为cast的src参数，需要隔离
-    if constexpr (ALLTO_ALL_MM_SOC_VERSION == SOC_ASCEND910B) {
+#if (QUANT_TYPE == MC2_NON_QUANT) // int4类型tensor不为cast的src参数，需要隔�?    if constexpr (ALLTO_ALL_MM_SOC_VERSION == SOC_ASCEND910B) {
         // A2结构体注册由tilingkey的编译宏ASCENDC_TPL_TILING_STRUCT_SEL实现
         GET_TILING_DATA_WITH_STRUCT(AlltoAllMatmulTilingData, tilingData, tilingGM);
 
@@ -94,8 +93,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     GET_TILING_DATA_WITH_STRUCT(AlltoAllMatmulTilingData, tilingData, tilingGM);
 
     if constexpr ((ALLTO_ALL_MM_QUANT_TYPE == TILINGKEY_TPL_A16W8 || ALLTO_ALL_MM_QUANT_TYPE == TILINGKEY_TPL_A16W4) &&
-                  ALLTO_ALL_MM_QUANT_BIAS_DTYPE == TILINGKEY_TPL_FP16) { // x1量化，bias是fp16，x1Scale与x1类型一致
-        AlltoAllMatmul<DTYPE_X1, DTYPE_X2, float16_t, DTYPE_X1, DTYPE_X2_SCALE, DTYPE_Y, DTYPE_ALL2ALL_OUT,
+                  ALLTO_ALL_MM_QUANT_BIAS_DTYPE == TILINGKEY_TPL_FP16) { // x1量化，bias是fp16，x1Scale与x1类型一�?        AlltoAllMatmul<DTYPE_X1, DTYPE_X2, float16_t, DTYPE_X1, DTYPE_X2_SCALE, DTYPE_Y, DTYPE_ALL2ALL_OUT,
                        ALLTO_ALL_MM_HAS_BIAS, ALLTO_ALL_MM_TRANSPOSE_X2, QUANT_TYPE>
             op;
         op.Init(x1, x2, bias, x1_scale, x2_scale, y, all2all_out, workspaceGM, tilingGM);
@@ -103,8 +101,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     } else if constexpr ((ALLTO_ALL_MM_QUANT_TYPE == TILINGKEY_TPL_A16W8 ||
                           ALLTO_ALL_MM_QUANT_TYPE == TILINGKEY_TPL_A16W4) &&
                          ALLTO_ALL_MM_QUANT_BIAS_DTYPE ==
-                             TILINGKEY_TPL_BF16) { // x1量化，int8，bias是bf16，x1Scale与x1类型一致
-        AlltoAllMatmul<DTYPE_X1, DTYPE_X2, bfloat16_t, DTYPE_X1, DTYPE_X2_SCALE, DTYPE_Y, DTYPE_ALL2ALL_OUT,
+                             TILINGKEY_TPL_BF16) { // x1量化，int8，bias是bf16，x1Scale与x1类型一�?        AlltoAllMatmul<DTYPE_X1, DTYPE_X2, bfloat16_t, DTYPE_X1, DTYPE_X2_SCALE, DTYPE_Y, DTYPE_ALL2ALL_OUT,
                        ALLTO_ALL_MM_HAS_BIAS, ALLTO_ALL_MM_TRANSPOSE_X2, QUANT_TYPE>
             op;
         op.Init(x1, x2, bias, x1_scale, x2_scale, y, all2all_out, workspaceGM, tilingGM);
@@ -112,8 +109,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     } else if constexpr ((ALLTO_ALL_MM_QUANT_TYPE == TILINGKEY_TPL_A16W8 ||
                           ALLTO_ALL_MM_QUANT_TYPE == TILINGKEY_TPL_A16W4) &&
                          ALLTO_ALL_MM_QUANT_BIAS_DTYPE ==
-                             TILINGKEY_TPL_FP32) { // x1量化，int8，bias是fp32，x1Scale与x1类型一致
-        AlltoAllMatmul<DTYPE_X1, DTYPE_X2, float32_t, DTYPE_X1, DTYPE_X2_SCALE, DTYPE_Y, DTYPE_ALL2ALL_OUT,
+                             TILINGKEY_TPL_FP32) { // x1量化，int8，bias是fp32，x1Scale与x1类型一�?        AlltoAllMatmul<DTYPE_X1, DTYPE_X2, float32_t, DTYPE_X1, DTYPE_X2_SCALE, DTYPE_Y, DTYPE_ALL2ALL_OUT,
                        ALLTO_ALL_MM_HAS_BIAS, ALLTO_ALL_MM_TRANSPOSE_X2, QUANT_TYPE>
             op;
         op.Init(x1, x2, bias, x1_scale, x2_scale, y, all2all_out, workspaceGM, tilingGM);

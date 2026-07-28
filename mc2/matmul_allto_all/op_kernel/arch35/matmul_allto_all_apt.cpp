@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #endif
 #include "common.h"
-#include "../matmul_allto_all_arch35.h"
+#include "../matmul_allto_all_kernel_base.h"
 #include "../matmul_allto_all_pipeline.h"
 #include "matmul_allto_all_tiling_key.h"
 #include "matmul_allto_all_tiling_data.h"
@@ -49,7 +49,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         using SchedulerType =                                                                                          \
             MatmulAlltoAllPipeLine<ComputationType, TransposeType, CommunicationType, SchedulerContextType>;           \
         SchedulerType SchedulerImpl(&matmulImplName, &transposeImplName, &commImplName);                               \
-        Mc2Kernel::MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingData> op(             \
+        Mc2Kernel::MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingData> op(         \
             &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, workspaceGM, &tilingData, &pipe);                                                     \
         op.Process();                                                                                                  \
@@ -112,8 +112,7 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         (COMMMODE == COMMMODE_CCU) ? HcclServerType::HCCL_SERVER_TYPE_CCU : HcclServerType::HCCL_SERVER_TYPE_AICPU;
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
-    // 注册默认的tilingdata，需要保证有且只有一个默认tilingdata被注册
-    REGISTER_TILING_DEFAULT(MatmulAlltoAllTilingData);
+    // 注册默认的tilingdata，需要保证有且只有一个默认tilingdata被注�?    REGISTER_TILING_DEFAULT(MatmulAlltoAllTilingData);
     GET_TILING_DATA_WITH_STRUCT(MatmulAlltoAllTilingData, tilingData, tilingGM);
 
     if constexpr (DTYPEBIAS == DTYPE_BIAS_SAME_WITH_X) {
