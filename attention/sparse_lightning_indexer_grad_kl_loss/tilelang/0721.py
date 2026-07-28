@@ -2383,7 +2383,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         _DEBUG_REQUESTED = os.environ.get("SLIG_DEBUG", "0") == "1"
         _DEBUG_TASK_TEXT = os.environ.get("SLIG_DEBUG_TASK", "").strip()
         _DEBUG_TASK = None
-        if _DEBUG_TASK_TEXT:
+        _DEBUG_TASK_AUTO = _DEBUG_TASK_TEXT.lower() == "auto"
+        if _DEBUG_TASK_TEXT and not _DEBUG_TASK_AUTO:
             _DEBUG_TASK_PARTS = _DEBUG_TASK_TEXT.split(",")
             if len(_DEBUG_TASK_PARTS) != 2:
                 raise ValueError(
@@ -2558,6 +2559,22 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         # DEBUG：定位第一个产生非有限值的阶段。
         _DEBUG = _DEBUG_REQUESTED and not _debug_dump_done
+        if _DEBUG_TASK_AUTO and not _debug_dump_done:
+            debug_nonfinite_dweight = torch.nonzero(
+                ~torch.isfinite(d_weight.float()), as_tuple=False
+            )
+            if debug_nonfinite_dweight.numel() == 0:
+                print("[DEBUG_TASK] auto: dWeightOut contains no non-finite task in this run")
+                _debug_dump_done = True
+            else:
+                _DEBUG_TASK = (
+                    int(debug_nonfinite_dweight[0, 0].item()),
+                    int(debug_nonfinite_dweight[0, 1].item()),
+                )
+                print(
+                    f"[DEBUG_TASK] auto selected b={_DEBUG_TASK[0]} q={_DEBUG_TASK[1]} "
+                    "from the first non-finite dWeightOut element"
+                )
         _DEBUG_TASK_ACTIVE = _DEBUG_TASK is not None and not _debug_dump_done
         if _DEBUG_TASK_ACTIVE:
             debug_b, debug_q = _DEBUG_TASK
@@ -2607,6 +2624,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 torch.ones(K, dtype=torch.float32, device=query.device)
                 if full_valid else valid_k_mask[debug_b, debug_q].float()
             )
+            debug_k_real = K if full_valid else int(k_real_size[debug_b, debug_q].item())
             debug_expected_gki = torch.index_select(
                 key_index[debug_b, :, 0, :], 0, debug_safe_indices
             )
@@ -2653,7 +2671,7 @@ def sparse_lightning_indexer_grad_kl_loss(
 
             print(
                 f"[DEBUG_TASK] selected b={debug_b} q={debug_q} "
-                f"kReal={int(k_real_size[debug_b, debug_q].item())} full_valid={full_valid}"
+                f"kReal={debug_k_real} full_valid={full_valid}"
             )
             _debug_task_tensor("GatherKeyIndex_ws", debug_gki)
             _debug_task_tensor("bmm1Res", debug_bmm1)
@@ -2662,9 +2680,19 @@ def sparse_lightning_indexer_grad_kl_loss(
             _debug_task_tensor("SoftmaxI", softmax_i_ws[debug_b, debug_q])
             _debug_task_tensor("dWeightOut", d_weight[debug_b, debug_q])
             _debug_task_tensor("reluGradRes", relu_grad_out[debug_b, debug_q])
-            _debug_task_compare("GatherKeyIndex_ws vs host gather", debug_gki, debug_expected_gki)
-            _debug_task_compare("bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T", debug_bmm2, debug_bmm2_from_gather)
-            _debug_task_compare("bmm2 host-gather cross-check", debug_bmm2_from_gather, debug_bmm2_from_host_gather)
+            _debug_task_compare(
+                "GatherKeyIndex_ws vs host gather (valid K)",
+                debug_gki[:debug_k_real], debug_expected_gki[:debug_k_real],
+            )
+            _debug_task_compare(
+                "bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T (valid K)",
+                debug_bmm2[:, :debug_k_real], debug_bmm2_from_gather[:, :debug_k_real],
+            )
+            _debug_task_compare(
+                "bmm2 host-gather cross-check (valid K)",
+                debug_bmm2_from_gather[:, :debug_k_real],
+                debug_bmm2_from_host_gather[:, :debug_k_real],
+            )
             _debug_task_compare("PReduced vs BMM1 formula", p_reduced_ws[debug_b, debug_q], debug_expected_p)
             _debug_task_compare("SoftmaxI vs BMM2 formula", softmax_i_ws[debug_b, debug_q], debug_expected_softmax_i)
             _debug_task_compare("dWeightOut vs BMM2/P/SY formula", d_weight[debug_b, debug_q], debug_expected_dweight)
