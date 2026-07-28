@@ -65,9 +65,10 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
 }
 
 template <typename ElementMMadOut2, typename BlockShape>
-__aicore__ inline void
-CombineTokensLayered(uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &metaInfoTensor,
-                     LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape, const Params &params)
+__aicore__ inline void CombineTokensLayered(uint32_t mLoc, uint32_t nLoc, uint32_t n,
+                                            LocalTensor<int32_t> &metaInfoTensor,
+                                            LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape,
+                                            const Params &params)
 {
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     uint32_t actualDataLength = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
@@ -132,12 +133,13 @@ CombineTokensLayered(uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32
 // 返回已完成 rank 数 (本卡 + 0-token)
 // =============================================
 template <typename ElementMMadOut2>
-__aicore__ inline uint32_t
-ComputeRecvTokenCounts(uint32_t startRankId, uint32_t endRankId, uint32_t rankId, uint32_t expertPerRank,
-                       uint32_t worldSize, int64_t maskSlotSize, uint32_t slotCopyStride, uint32_t countWordIdx,
-                       LocalTensor<uint32_t> &slotReadTensor, LocalTensor<uint8_t> &slotCopyTensor,
-                       AscendC::GlobalTensor<uint8_t> &maskSrcGlobal, LocalTensor<int32_t> &totalTokenCnt,
-                       const Params &params)
+__aicore__ inline uint32_t ComputeRecvTokenCounts(uint32_t startRankId, uint32_t endRankId, uint32_t rankId,
+                                                  uint32_t expertPerRank, uint32_t worldSize, int64_t maskSlotSize,
+                                                  uint32_t slotCopyStride, uint32_t countWordIdx,
+                                                  LocalTensor<uint32_t> &slotReadTensor,
+                                                  LocalTensor<uint8_t> &slotCopyTensor,
+                                                  AscendC::GlobalTensor<uint8_t> &maskSrcGlobal,
+                                                  LocalTensor<int32_t> &totalTokenCnt, const Params &params)
 {
     uint32_t completedRank = 0;
     for (uint32_t index = startRankId; index < endRankId; index++) {
@@ -172,10 +174,11 @@ ComputeRecvTokenCounts(uint32_t startRankId, uint32_t endRankId, uint32_t rankId
 // initialCompletedRank: Phase 1 已完成的 rank 数 (本卡 + 0-token)
 // =============================================
 template <typename ElementMMadOut2>
-__aicore__ inline void
-PollNotifyAndSendData(uint32_t startRankId, uint32_t initialCompletedRank, uint32_t processRankNum, uint32_t rankId,
-                      uint32_t maxDataLengthPerBlock, uint32_t maxDataSizePerToken, LocalTensor<int32_t> &sendTokenCnt,
-                      LocalTensor<int32_t> &totalTokenCnt, LocalTensor<int32_t> &sendTensor, const Params &params)
+__aicore__ inline void PollNotifyAndSendData(uint32_t startRankId, uint32_t initialCompletedRank,
+                                             uint32_t processRankNum, uint32_t rankId, uint32_t maxDataLengthPerBlock,
+                                             uint32_t maxDataSizePerToken, LocalTensor<int32_t> &sendTokenCnt,
+                                             LocalTensor<int32_t> &totalTokenCnt, LocalTensor<int32_t> &sendTensor,
+                                             const Params &params)
 {
     uint32_t completedRank = initialCompletedRank;
     uint32_t rankIndex = 0;
@@ -320,7 +323,6 @@ __aicore__ inline void CombineSendTokenToRemote(const Params &params)
     DrainUrmaConnections(startRankId, endRankId, rankId, params);
 }
 
-
 // =============================================
 // QuantMxFp8：将 bf16 数据量化为 MXFP8 格式
 // =============================================
@@ -336,7 +338,10 @@ __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType> &outLocal, LocalTenso
     __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)floatTemp.GetPhyAddr();
     __ubuf__ uint16_t *halfScaleLocalAddr = (__ubuf__ uint16_t *)floatTemp[Align32(mxScaleNum)].GetPhyAddr();
     __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)castFp8LocalTensor.GetPhyAddr();
-    __ubuf__ uint16_t *mxScaleLocalAddr = (__ubuf__ uint16_t *)castFp8LocalTensor[processLen].GetPhyAddr();
+    // 每个 FP8 元素占 1B，按 256 个元素对齐即按 256B 对齐；scale 紧接在 token 区之后。
+    uint32_t tokenStorageElementCount = Align256<uint32_t>(static_cast<uint32_t>(processLen));
+    __ubuf__ uint16_t *mxScaleLocalAddr =
+        (__ubuf__ uint16_t *)castFp8LocalTensor[tokenStorageElementCount].GetPhyAddr();
     Quant::ComputeMaxExp(srcAddr, maxExpAddr, processLen); // 计算最大Exp
     // 计算scales并填充
     Quant::ComputeScale<Fp8Type>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
@@ -353,8 +358,9 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType> &inLocal, LocalTensor<flo
                                     uint32_t scaleLen, uint32_t tokenLen)
 {
     LocalTensor<T> castFp8LocalTensor_ = inLocal.template ReinterpretCast<T>();
+    uint32_t tokenStorageBytes = Align256<uint32_t>(tokenLen * static_cast<uint32_t>(sizeof(T)));
     LocalTensor<fp8_e8m0_t> scaleDivFp8Tensor_ =
-        inLocal[Align256<uint32_t>(tokenLen) / 2].template ReinterpretCast<fp8_e8m0_t>();
+        inLocal[tokenStorageBytes / sizeof(XType)].template ReinterpretCast<fp8_e8m0_t>();
     __ubuf__ bfloat16_t *dyScaleBf16Ptr = (__ubuf__ bfloat16_t *)scaleBf16Tensor.GetPhyAddr();
     __ubuf__ float *dyScaleFp32Ptr = (__ubuf__ float *)scaleFP32Tensor.GetPhyAddr();
     __ubuf__ fp8_e8m0_t *srcPtr0 = (__ubuf__ fp8_e8m0_t *)scaleDivFp8Tensor_.GetPhyAddr();
@@ -419,9 +425,9 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType> &inLocal, LocalTensor<flo
 template <typename QuantOutType>
 __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
                                               uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t> &metaInfoTensor,
-                                              LocalTensor<QuantOutType> &ubQuant, const Params &params)
+                                              LocalTensor<QuantOutType> &ubQuant, const Params &params,
+                                              uint32_t quantTokenSizeBytes)
 {
-    int64_t quantTokenSize = n + nScale;
     uint32_t toRankId = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + RANK_ID);
     uint32_t tokenIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOKEN_ID);
     uint32_t topkIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOPK_INDEX);
@@ -431,9 +437,10 @@ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curR
     __gm__ void *dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset);
     gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType *>(dstPeermemPtr));
 
-    uint64_t dstBaseOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSize;
+    uint64_t dstBaseOffset =
+        (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSizeBytes;
 
-    AscendC::DataCopyExtParams singleCopyParams{1, static_cast<uint32_t>(quantTokenSize), 0, 0, 0};
+    AscendC::DataCopyExtParams singleCopyParams{1, quantTokenSizeBytes, 0, 0, 0};
     AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
 }
 
@@ -450,8 +457,10 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
     offset += ubTensorSize * sizeof(T);
 
     uint32_t nScale = Ops::Base::CeilDiv(n, uint32_t(MXFP_SCALE_GROUP_NUM));
+    uint32_t mxScaleNum = Align2(nScale);
     uint32_t nAlign32 = Ops::Base::CeilAlign(n, static_cast<uint32_t>(ALIGN_32));
-    uint32_t floatTempSize = nScale + nScale / 2;
+    // floatTemp 前半段存 maxExp，后半段存每个 scale 对应的 BF16 halfScale。
+    uint32_t floatTempSize = Align32(mxScaleNum) + mxScaleNum / 2;
     LocalTensor<float> floatTemp = LocalTensor<float>(TPosition::VECIN, offset, floatTempSize);
 
     GlobalTensor<T> gmm2OutGm;
@@ -479,7 +488,8 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
 
         // MTE3: send to GM
         LocalTensor<Fp8Type> ubQuantDataFp8 = ubQuantData.template ReinterpretCast<Fp8Type>();
-        CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantDataFp8, params);
+        CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantDataFp8, params,
+                                        quantTokenSizeBytes);
     }
 
     // Wait for all MTE3 operations to complete
