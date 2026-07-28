@@ -32,8 +32,7 @@ constexpr uint32_t DIM_NUM_4 = 4;
 static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantLightningIndexer", "InferShapeContext",
-            "context is nullptr");
+        OP_LOGE("QuantLightningIndexer", "context is nullptr");
         return ge::GRAPH_FAILED;
     }
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
