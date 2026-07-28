@@ -1,4 +1,4 @@
-﻿# aclnnDenseLightningIndexerSoftmaxLseV2Metadata
+# aclnnDenseLightningIndexerSoftmaxLseV2Metadata
 
 ## 产品支持情况
 
@@ -22,7 +22,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize"获取workspace大小，再调用"aclnnDenseLightningIndexerSoftmaxLseV2Metadata"执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize"获取workspace大小，再调用"aclnnDenseLightningIndexerSoftmaxLseV2Metadata"执行计算。
 
 ``` cpp
 aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize(
@@ -85,7 +85,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
     <tr>
       <td>cuSeqLensQOptional</td>
       <td>输入</td>
-      <td>表示不同batch中query的累积sequence length。</br>TND场景下必传，并可通过该入参shape推导batch。</br>第一个值固定为0。</td>
+      <td>表示不同batch中query的累积sequence length。<br>TND场景下必传，并可通过该入参shape推导batch。<br>第一个值固定为0。</td>
       <td>支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -95,7 +95,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
     <tr>
       <td>cuSeqLensKOptional</td>
       <td>输入</td>
-      <td>表示不同batch中key的累积sequence length。</br>TND场景下必传。</br>第一个值固定为0。</td>
+      <td>表示不同batch中key的累积sequence length。<br>TND场景下必传。<br>第一个值固定为0。</td>
       <td>支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -216,7 +216,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
       <td>maskMode</td>
       <td>输入</td>
       <td>表示sparse mask模式。</td>
-      <td>0: No mask</br>3: Causal</td>
+      <td>0: No mask<br>3: Causal</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -267,7 +267,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## aclnnDenseLightningIndexerSoftmaxLseV2Metadata
 
@@ -310,7 +310,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -427,7 +427,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ``` cpp
 #include <algorithm>

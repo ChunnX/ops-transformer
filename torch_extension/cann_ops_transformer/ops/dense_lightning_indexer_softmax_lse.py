@@ -1,3 +1,4 @@
+# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -5,6 +6,7 @@
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 
 from typing import Optional, Tuple
 
@@ -39,13 +41,12 @@ class DenseLightningIndexerSoftmaxLseOpBuilder(OpBuilder):
             "int? max_seqlen_q=None, int? max_seqlen_k=None, "
             "str? layout_q=None, str? layout_k=None, int? mask_mode=None, "
             "int? cmp_ratio=None) -> Tensor",
-
             "dense_lightning_indexer_softmax_lse("
             "Tensor query_index, Tensor key_index, Tensor weight, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, "
             "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, Tensor? metadata=None, "
-            "str layout_q=\"BSND\", str layout_k=\"BSND\", int mask_mode=0, "
-            "int cmp_ratio=1) -> Tensor"
+            'str layout_q="BSND", str layout_k="BSND", int mask_mode=0, '
+            "int cmp_ratio=1) -> Tensor",
         ]
 
     def register_meta(self):
@@ -88,13 +89,19 @@ class DenseLightningIndexerSoftmaxLseOpBuilder(OpBuilder):
             cmp_ratio=1,
         ):
             if layout_q == "BSND":
-                out_shape = (query_index.shape[0], key_index.shape[2], query_index.shape[1])
+                out_shape = (
+                    query_index.shape[0],
+                    key_index.shape[2],
+                    query_index.shape[1],
+                )
             else:
                 out_shape = (key_index.shape[1], query_index.shape[0])
             return torch.empty(out_shape, dtype=torch.float32, device="meta")
 
 
-dense_lightning_indexer_softmax_lse_op_builder = DenseLightningIndexerSoftmaxLseOpBuilder()
+dense_lightning_indexer_softmax_lse_op_builder = (
+    DenseLightningIndexerSoftmaxLseOpBuilder()
+)
 op_module = dense_lightning_indexer_softmax_lse_op_builder.load()
 
 
