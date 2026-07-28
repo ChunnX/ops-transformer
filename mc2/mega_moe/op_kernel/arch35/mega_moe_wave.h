@@ -2079,13 +2079,13 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
     }
     if constexpr (IsShared) {
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
-            MegaMoeImpl::GroupMatmulSwigluQuantWave<
+            MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, ActivationType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
                 GMM1_TILE_M, MegaMoeImpl::L1_TILE_M_256, false, IsShared, GMM1_INTERLEAVED, true>(
                 sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
                 state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
         } else {
-            MegaMoeImpl::GroupMatmulSwigluQuantWave<
+            MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, ActivationType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, false,
                 GMM1_TILE_M, MegaMoeImpl::L1_TILE_M_256, false, IsShared, GMM1_INTERLEAVED, true>(
                 sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
@@ -2093,13 +2093,13 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
         }
     } else {
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
-            MegaMoeImpl::GroupMatmulSwigluQuantWave<
+            MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, ActivationType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
                 GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared, GMM1_INTERLEAVED, true>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
                 state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
         } else {
-            MegaMoeImpl::GroupMatmulSwigluQuantWave<
+            MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, ActivationType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, false,
                 GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared, GMM1_INTERLEAVED, true>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
