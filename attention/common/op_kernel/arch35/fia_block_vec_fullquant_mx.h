@@ -322,9 +322,6 @@ public:
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
         auto pScaleSubLoop0Tensor = this->pScaleSubLoop0Que.template AllocTensor<fp8_e8m0_t>();
 
-        Duplicate<half>(stage1CastTensor.template ReinterpretCast<half>(),
-                         static_cast<half>(1000.0), 16640 / sizeof(half));
-
         AscendC::DumpTensor(mmRes, 20001, mBaseSize * (s2BaseSize >> 1) / 2);
 
         float descaleQK = 1.0;
