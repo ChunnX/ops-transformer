@@ -677,7 +677,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
     if (tilingInfo->batchConsistency) {
         size_t combineElemSize = static_cast<size_t>(fdStagingMSize) * D_SIZE +
             static_cast<size_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
-        workspaceSize += 33ULL * combineElemSize * FLOAT_ELEM_SIZE; // 33: 同token最大规约块数
+        workspaceSize += 2ULL * fdStagingSlotNum * combineElemSize * FLOAT_ELEM_SIZE;
         workspaceSize += 32ULL * 33ULL * combineElemSize * FLOAT_ELEM_SIZE; // 32: 跨核数, 33: 同token最大规约块数
         printf("aicNum: %d\n", aicNum);
     } else {

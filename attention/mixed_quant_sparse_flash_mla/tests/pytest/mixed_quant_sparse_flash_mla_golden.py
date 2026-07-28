@@ -188,7 +188,9 @@ class GeneralizedSFAQuant:
                         topk_id = cmp_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
                         empty_flag, cur_cmp_k = self.gather_cmp_kv(cmp_k_bnsd, topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q, cmp_topk_length_bnsd)
                     elif self.template_run_mode == "HCA":
-                        empty_flag, cur_cmp_k = self.mask_cmp_kv(cmp_k_bnsd, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q)
+                        empty_flag, cur_cmp_k = self.mask_cmp_kv(
+                            cmp_k_bnsd, i_B, i_N2, i_S1, cur_ori_act_kv, cur_cmp_act_kv, cur_act_q
+                        )
                     elif self.template_run_mode == "ORI_SPARSE" and ori_sparse_indices_bnsd is not None:
                         topk_id = ori_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
                         empty_flag, cur_ori_k = self.gather_ori_kv(ori_k_bnsd, topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q, ori_topk_length_bnsd)
@@ -345,12 +347,13 @@ class GeneralizedSFAQuant:
             k_sparse = k_tensor[i_B, i_N2, s2_sparse, :]
         return empty_flag, k_sparse
 
-    def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_act_kv, cur_act_q):
+    def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_act_kv, cur_act_cmp_kv, cur_act_q):
         threshold = 0
         if self.cmp_mask_mode == 3:
             threshold = (cur_act_kv - cur_act_q + i_S1 + 1) // self.cmp_ratio
         elif self.cmp_mask_mode == 0:
             threshold = cur_act_kv // self.cmp_ratio
+        threshold = min(threshold, cur_act_cmp_kv)
         empty_flag = True
         k_sparse = []
         if threshold > 0:
