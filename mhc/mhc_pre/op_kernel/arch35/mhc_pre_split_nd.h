@@ -273,6 +273,10 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::Process()
         if (coreIdx_ < ndBlockNum) {
             AICProcess();
         }
+        // All launched AICs must join this barrier, including cores without a K slice.
+        AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(SYNC_CtoC);
+        AscendC::CrossCoreWaitFlag(SYNC_CtoC);
+        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_CtoV1);
         mmService_.End(this->implMode_);
     }
 
@@ -329,9 +333,6 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AICProcess()
         }
         aL1BufferId ^= 1U;
     }
-    AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(SYNC_CtoC);
-    AscendC::CrossCoreWaitFlag(SYNC_CtoC);
-    AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_CtoV1);
 }
 
 template <class T, class P, int8_t HAS_RESI>
