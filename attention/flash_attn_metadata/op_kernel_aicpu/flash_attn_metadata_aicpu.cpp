@@ -137,7 +137,7 @@ bool FlashAttnMetadataCpuKernel::CheckActualQuerySeq()
         actualSeqlenQ_ = sequsedQ;
     } else if (!cuSeqlensQ.empty()) {
         isActualSeqlenQAccum_ = true;
-        actualSeqlenQ_(cuSeqlensQ.begin() + 1, cuSeqlensQ.end());
+        actualSeqlenQ_.assign(cuSeqlensQ.begin() + 1, cuSeqlensQ.end());
     }
 
     return true;
@@ -186,7 +186,7 @@ bool FlashAttnMetadataCpuKernel::CheckActualKvSeq()
         actualSeqlenKv_ = sequsedKv;
     } else if (!cuSeqlensKv.empty()) {
         isActualSeqlenKvAccum_ = true;
-        actualSeqlenKv_(cuSeqlensKv.begin() + 1, cuSeqlensKv.end());
+        actualSeqlenKv_.assign(cuSeqlensKv.begin() + 1, cuSeqlensKv.end());
     }
 
     return true;
