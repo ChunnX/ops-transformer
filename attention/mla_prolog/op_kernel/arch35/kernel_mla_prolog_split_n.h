@@ -288,12 +288,12 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut,
     __gm__ uint8_t *workspace)
 {
+    cvRatio_ = GetSubBlockNum(); // CV1:2场景返回2，其他场景返回1
     blockIdx_ = GetBlockIdx(); // cube:0-23  vec:0-47
-    if ASCEND_IS_AIV {
-        cvRatio_ = GetSubBlockNum(); // CV1:2场景返回2，其他场景返回1
-        cubeBlockIdx_ = blockIdx_ / cvRatio_;
-    } else {
+    if ASCEND_IS_AIC {
         cubeBlockIdx_ = blockIdx_;
+    } else {
+        cubeBlockIdx_ = blockIdx_ / cvRatio_;
     }
     curVectorBlockNum_ = static_cast<int64_t>(baseParams_->stepBatchSize);
     vectorCoreNum_ = static_cast<int64_t>(baseParams_->vectorBlockNum); // aivNum 48
@@ -1183,14 +1183,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::PreloadQnAndSync(AicOffset &a
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQnWeightPreload(int64_t weightUkOffset)
 {
-    if constexpr (MLAPT::enableGroupComputeOpt) {
-        if (blockIdx_ >= QC_CORE_NUM) {
-            return;
-        }
-    } else {
-        if (blockIdx_ >= baseParams_->mm4BlockNum) {
-            return;
-        }
+    uint32_t maxBlockIdx = MLAPT::enableGroupComputeOpt ? QC_CORE_NUM : baseParams_->mm4BlockNum;
+    if (blockIdx_ >= maxBlockIdx) {
+        return;
     }
     if (mmQnParam_.k > mmQnParam_.baseK) {
         return;
@@ -2057,8 +2052,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
     LocalTensor<float> scale2Local = dequantTool_.deQuantScaleCqLocal_;
     LocalTensor<mmQcQrOutputType> inputLocal = shareTmpUb.ReinterpretCast<mmQcQrOutputType>();
+    // 可以和inputLocal共享内存地址，减少UB使用
+    LocalTensor<float> computeLocal = shareTmpUb.ReinterpretCast<float>();
     LocalTensor<float> scaleLocal = inputLocal[count + FP32_BLOCK_ELEMENT_NUM].template ReinterpretCast<float>();
-    LocalTensor<mmQnInputType> outputLocal = scaleLocal[colQcSingle].template ReinterpretCast<mmQnInputType>();
+    // outputLocal比scaleLocal占用UB少，且不会同时使用，故可以复用UB内存
+    LocalTensor<mmQnInputType> outputLocal = scaleLocal.template ReinterpretCast<mmQnInputType>();
 
     Rectangle dequantParams{
         row,         //  row
@@ -2073,7 +2071,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
     SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
     // cast
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
-    Dequant<mmQcQrOutputType, mmQnInputType>(outputLocal, inputLocal, scaleLocal, scale2Local, dequantParams);
+    Dequant(computeLocal, inputLocal, scaleLocal, scale2Local, dequantParams);
+    AscendC::PipeBarrier<PIPE_V>();
+    // cast
+    Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
     SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
     // copy out
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);

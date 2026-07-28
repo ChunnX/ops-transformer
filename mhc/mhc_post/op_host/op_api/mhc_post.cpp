@@ -53,8 +53,6 @@ const aclTensor* MhcPost(
     const aclTensor* x, const aclTensor* hRes, const aclTensor* hOut, const aclTensor* hPost,
     aclOpExecutor* executor)
 {
-    L0_DFX(MhcPost, x, hRes, hOut, hPost);
-
     auto output = executor->AllocTensor(x->GetViewShape(), x->GetDataType(), x->GetViewFormat());
     if (output == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER, "MhcPost AllocTensor failed.");

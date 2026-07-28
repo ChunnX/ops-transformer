@@ -20,12 +20,17 @@ extern "C" {
 
 /**
  * @brief aclnnCausalConv1dUpdate (decode / update) 的第一段接口，计算workspace大小。
- * @param [in] x 输入张量，shape为[B, 1, D]（batch模式）或[B, D]（varlen模式），数据类型为FLOAT16或BFLOAT16
+ * @param [in] x 输入张量，shape为[B, 1, D]（3D），数据类型为FLOAT16或BFLOAT16。
+ *               2D [N, D]仅在提供numAcceptedTokens（投机解码）时支持
  * @param [in] weight 卷积权重张量，shape为[W, D]，数据类型与x相同
  * @param [in, out] convStatesRef 卷积状态张量，shape为[numCacheLines, stateLen, D]，数据类型与x相同
  * @param [in] biasOptional 可选偏置张量，shape为[D]，数据类型与x相同
  * @param [in] queryStartLocOptional 可选的变长序列起始位置，shape为[batch+1]，数据类型为INT32
- * @param [in] cacheIndicesOptional 可选的缓存索引，shape为[batch]，数据类型为INT32
+ * @param [in] cacheIndicesOptional 可选的缓存索引，shape为[batch]，数据类型为INT32。
+ *            将每个序列映射到convStatesRef中对应的缓存槽位，取值范围为[0, numCacheLines)。
+ *            cacheIndices[i]等于nullBlockId的序列将被跳过，nullBlockId可被多个序列重复使用。
+ *            除nullBlockId外的值不应重复，否则多个序列读写同一缓存槽位会导致历史状态错误和写入冲突。
+ *            不提供时，序列i直接使用缓存槽位i（恒等映射）。
  * @param [in] numAcceptedTokensOptional 可选的已接受token数，shape为[batch]，数据类型为INT32，用于投机解码
  * @param [in] blockIdxLastScheduledTokenOptional 可选的最后调度token块索引，shape为[batch]，数据类型为INT32
  * @param [in] initialStateIdxOptional 可选的初始状态索引，shape为[batch]，数据类型为INT32

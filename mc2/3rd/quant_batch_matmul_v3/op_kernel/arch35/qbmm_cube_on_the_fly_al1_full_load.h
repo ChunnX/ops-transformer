@@ -28,7 +28,9 @@ using namespace matmul;
 LOCAL_TEMPLATE_CLASS_PARAMS
 class MatmulAswKernelAL1FullLoad : public MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS> {
 public:
-    __aicore__ inline MatmulAswKernelAL1FullLoad() {}
+    __aicore__ inline MatmulAswKernelAL1FullLoad()
+    {
+    }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR bias, GM_ADDR scale, GM_ADDR perTokenScale,
                                 GM_ADDR cGM, GM_ADDR workspace, const void *tilingData, TPipe *pipe);
     __aicore__ inline void Process();
@@ -108,9 +110,9 @@ __aicore__ inline void MatmulAswKernelAL1FullLoad<LOCAL_TEMPLATE_FUNC_PARAMS>::P
         this->block_.params_.totalCnt = this->block_.params_.nCnt;
     }
     if constexpr (DequantBmm::IsFp4<x1Type>()) {
-        pipe_->InitBuffer(InQueueAL1_, 1, mAligned * kAligned * sizeof(x1Type) / 2);  // 2 means fp4 is half a byte
+        pipe_->InitBuffer(InQueueAL1_, 1, mAligned * kAligned * sizeof(x1Type) / 2); // 2 means fp4 is half a byte
     } else {
-        pipe_->InitBuffer(InQueueAL1_, 1, mAligned * kAligned * sizeof(x1Type));  // m k的计算
+        pipe_->InitBuffer(InQueueAL1_, 1, mAligned * kAligned * sizeof(x1Type)); // m k的计算
     }
 
     al1Local_ = InQueueAL1_.AllocTensor<x1Type>();
@@ -130,12 +132,12 @@ __aicore__ inline void MatmulAswKernelAL1FullLoad<LOCAL_TEMPLATE_FUNC_PARAMS>::P
     CopyInA1<x1Type, aTrans>(this->block_, this->blockIdx_, isMultiCore_, al1Local_, this->aGlobal_);
 
     if constexpr (DequantBmm::IsMxType<scaleType>()) {
-        pipe_->InitBuffer(
-            InQueueScaleA_, 1,
-            mAligned * DequantBmm::CeilDiv(kAligned, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE * sizeof(fp8_e8m0_t));
+        pipe_->InitBuffer(InQueueScaleA_, 1,
+                          mAligned * DequantBmm::CeilDiv(kAligned, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
+                              MXFP_MULTI_BASE_SIZE * sizeof(fp8_e8m0_t));
         scaleALocal_ = InQueueScaleA_.AllocTensor<fp8_e8m0_t>();
         CopyInScaleA<fp8_e8m0_t, aTrans>(this->block_, this->blockIdx_, isMultiCore_, scaleALocal_,
-                                            this->scaleAGlobal_);
+                                         this->scaleAGlobal_);
     }
     mm_.SetSubBlockIdx(0);
     mm_.Init(&this->block_.tilingData_->matmulTiling, pipe_);
@@ -196,7 +198,7 @@ __aicore__ inline void MatmulAswKernelAL1FullLoad<LOCAL_TEMPLATE_FUNC_PARAMS>::P
                 mm_.SetTensorB(this->bGlobal_[this->block_.offset_.offsetB], bTrans);
                 mm_.SetSingleShape(this->block_.params_.singleCoreM, this->block_.params_.singleCoreN,
                                    this->block_.tilingData_->matmulTiling.singleCoreK);
-                if (isMultiCore_) {  // MDL模板，L1输入场景默认al1M=M，分核全载需要通过设置SetOrgShape指定al1M=singleCoreM
+                if (isMultiCore_) { // MDL模板，L1输入场景默认al1M=M，分核全载需要通过设置SetOrgShape指定al1M=singleCoreM
                     mm_.SetOrgShape(this->block_.params_.singleCoreM, this->block_.tilingData_->matmulTiling.N,
                                     this->block_.tilingData_->matmulTiling.Ka);
                 }
@@ -207,6 +209,6 @@ __aicore__ inline void MatmulAswKernelAL1FullLoad<LOCAL_TEMPLATE_FUNC_PARAMS>::P
     }
 }
 
-}  // namespace Mc2QuantBatchMatmulV3
+} // namespace Mc2QuantBatchMatmulV3
 
-#endif  // QBMM_CUBE_ON_THE_FLY_AL1_FULL_LOAD_H
+#endif // QBMM_CUBE_ON_THE_FLY_AL1_FULL_LOAD_H

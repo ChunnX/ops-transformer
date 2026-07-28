@@ -7,12 +7,14 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-set(OPTENSOR_TAG_ID b24535e30a6f7a3909c53c8b09713a9c0d08e54b)
+set(OPTENSOR_TAG_ID 966ef9c338aeb18d73eeb905f60bafc1b7adc9d9)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${PROJECT_SOURCE_DIR}/../ops-tensor REALPATH)
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
+  get_filename_component(TENSOR_API
+                         ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc REALPATH)
 elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)
@@ -45,6 +47,32 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   if(NOT CHECKOUT_RESULT EQUAL 0)
     message(FATAL_ERROR "Git checkout failed: ${CHECKOUT_ERROR}")
   endif()
+
+  # Submodule: try local cache first (offline-friendly), fall back to network
+  execute_process(
+    COMMAND git submodule update --init --recursive --no-fetch
+    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
+    RESULT_VARIABLE SUBMODULE_RESULT
+    OUTPUT_QUIET ERROR_QUIET
+  )
+  if(NOT SUBMODULE_RESULT EQUAL 0)
+    message(STATUS "ops-tensor submodule: local cache insufficient, fetching from remote")
+    execute_process(
+      COMMAND git submodule update --init --recursive
+      WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
+      TIMEOUT 20
+      RESULT_VARIABLE SUBMODULE_RESULT
+      ERROR_VARIABLE SUBMODULE_ERROR
+      OUTPUT_QUIET
+    )
+    if(NOT SUBMODULE_RESULT EQUAL 0)
+      message(WARNING "ops-tensor submodule update failed: ${SUBMODULE_ERROR}")
+    else()
+      message(STATUS "ops-tensor submodule update")
+    endif()
+  endif()
+  get_filename_component(TENSOR_API
+                         ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
 else()
   execute_process(
     COMMAND git remote get-url origin
@@ -72,5 +100,20 @@ else()
   FetchContent_Populate(ops-tensor)
 
   set(OPTENSOR_SOURCE_PATH ${CANN_3RD_LIB_PATH}/ops-tensor)
+
+  execute_process(
+    COMMAND git submodule update --init --recursive
+    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
+    RESULT_VARIABLE SUBMODULE_RESULT
+    ERROR_VARIABLE SUBMODULE_ERROR
+    OUTPUT_QUIET
+  )
+  if(NOT SUBMODULE_RESULT EQUAL 0)
+    message(FATAL_ERROR "[ThirdPartyLib][ops-tensor] Git submodule update failed: ${SUBMODULE_ERROR}")
+  else()
+    message(STATUS "[ThirdPartyLib][ops-tensor] Git submodule update")
+    get_filename_component(TENSOR_API
+                           ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
+  endif()
 
 endif()

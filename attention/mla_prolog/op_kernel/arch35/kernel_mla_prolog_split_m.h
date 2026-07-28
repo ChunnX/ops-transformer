@@ -1209,8 +1209,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::ComputeBlkScatterOffsets(Global
                                                                           CkvkrParams &ropeAndScatterKrParams)
 {
     int64_t batchTokenIndex = 0;
-    int64_t batchSeqSize = 0;
     int64_t batchIndexOffset = 0;
+    int64_t batchSeqSize = 0;
     int64_t rowsThisStep = 0;
     int64_t nextPageId = 0;
     bool spill = false;

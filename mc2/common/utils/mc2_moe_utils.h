@@ -18,8 +18,8 @@
 #include "mc2_log.h"
 
 namespace Mc2Moe {
-const size_t SUPPORT_DIM_NUM = 3;       // E, C, H, x weight current only support 3-dim
-const size_t BIAS_SUPPORT_DIM_NUM = 2;  // bias can be 2 or 3 dims
+const size_t SUPPORT_DIM_NUM = 3;      // E, C, H, x weight current only support 3-dim
+const size_t BIAS_SUPPORT_DIM_NUM = 2; // bias can be 2 or 3 dims
 
 // 对于 moe gather, x = [E, C, H], w = [E, H, M], weight 可能会转置，其 dim 设为局部变量
 // 对于 moe scatter, x = [E, C, M], w = [E, M, H], weight 可能会转置，其 dim 设为局部变量
@@ -49,16 +49,16 @@ bool DimNumCheck(const char *nodeName, const gert::Shape *xShape, const gert::Sh
 
 bool GroupCheck(const char *nodeName, const char *groupEp, const char *groupTp);
 
-void DynamicShapeCheck(
-    const gert::Shape *xShape, const gert::Shape *weightShape, const size_t wDim, OutShapeInfo &outShapeInfo);
+void DynamicShapeCheck(const gert::Shape *xShape, const gert::Shape *weightShape, const size_t wDim,
+                       OutShapeInfo &outShapeInfo);
 
-void EmptyShapeCheck(
-    const gert::Shape *xShape, const gert::Shape *weightShape, const size_t wDim, OutShapeInfo &outShapeInfo);
+void EmptyShapeCheck(const gert::Shape *xShape, const gert::Shape *weightShape, const size_t wDim,
+                     OutShapeInfo &outShapeInfo);
 
 bool CheckBiasDtype(const char *nodeName, const ge::DataType xType, const ge::DataType biasType);
 
-bool CheckTensorDtype(
-    const char *nodeName, const ge::DataType xType, const ge::DataType weightType, const ge::DataType biasType);
+bool CheckTensorDtype(const char *nodeName, const ge::DataType xType, const ge::DataType weightType,
+                      const ge::DataType biasType);
 
 void SetShape(gert::Shape *shape, const OutShapeInfo &outShapeInfo);
 
@@ -66,6 +66,6 @@ void TransDimHMIdx(const bool isTransW, size_t &wDimH, size_t &wDimM);
 
 void PrintTensorShape(const char *nodeName, const gert::Shape *shape, const char *shapeName);
 
-}  // namespace Mc2Moe
+} // namespace Mc2Moe
 
-#endif  // OPS_COMMON_INC_MC2_MOE_UTIL_H
+#endif // OPS_COMMON_INC_MC2_MOE_UTIL_H

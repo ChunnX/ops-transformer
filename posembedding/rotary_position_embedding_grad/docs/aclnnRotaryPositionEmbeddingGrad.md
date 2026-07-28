@@ -17,7 +17,7 @@
 
 - 接口功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
 - 计算公式：
-  
+
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -27,15 +27,15 @@
     $$
     dy1, dy2 = chunk(dy, chunks=2, dim=-1)
     $$
-    
+
     $$
     cos1, cos2 = chunk(cos, chunks=2, dim=-1)
     $$
-    
+
     $$
     sin1, sin2 = chunk(sin, chunks=2, dim=-1)
     $$
-    
+
     $$
     x1, x2 = chunk(x, chunks=2, dim=-1)
     $$
@@ -57,15 +57,15 @@
     $$
     dy1, dy2 = dy[..., :: 2], dy[..., 1 :: 2]
     $$
-    
+
     $$
     cos1, cos2 = cos[..., :: 2], cos[..., 1 :: 2]
     $$
-    
+
     $$
     sin1, sin2 = sin[..., :: 2], sin[..., 1 :: 2]
     $$
-    
+
     $$
     x1, x2 = x[..., :: 2], x[..., 1 :: 2]
     $$
@@ -81,21 +81,21 @@
     $$
     dsin = sum(dy * stack((-x2, x1), dim=-1).reshape(dy.shape), dims)
     $$
-    
+
     （3）quarter模式（mode等于2）：
 
     $$
     dy1, dy2, dy3, dy4 = chunk(dy, chunks=4, dim=-1)
     $$
-    
+
     $$
     cos1, cos2, cos3, cos4 = chunk(cos, chunks=4, dim=-1)
     $$
-    
+
     $$
     sin1, sin2, sin3, sin4 = chunk(sin, chunks=4, dim=-1)
     $$
-    
+
     $$
     x1, x2, x3, x4 = chunk(x, chunks=4, dim=-1)
     $$
@@ -117,15 +117,15 @@
     $$
     dy1, dy2 = chunk(dy, chunks=2, dim=-1)
     $$
-    
+
     $$
     cos1, cos2 = chunk(cos, chunks=2, dim=-1)
     $$
-    
+
     $$
     sin1, sin2 = chunk(sin, chunks=2, dim=-1)
     $$
-    
+
     $$
     x1, x2 = x[..., :: 2], x[..., 1 :: 2]
     $$
@@ -144,7 +144,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingGradGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnRotaryPositionEmbeddingGradGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGradGetWorkspaceSize(
@@ -304,7 +304,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -383,7 +383,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -393,7 +393,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     输入张量dy支持BNSD、BSND、SBND、TND排布。各参数的shape约束可以描述如下：
     - 输入张量dy、cos、sin及输出张量dx的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
     - 输入张量dy和输出张量dx的shape必须完全相同。
-    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与dy满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于dy的shape。
+    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与dy满足[broadcast关系](../../../docs/zh/context/broadcast_relationship.md)，且广播后的shape必须等于dy的shape。
     - 当dy为TND时，cos、sin支持T1D、TND。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
@@ -416,7 +416,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
@@ -552,7 +552,7 @@ int main()
                               emptyTensorOutShape.size(), nullptr);
     dsinOut = aclCreateTensor(emptyTensorOutShape.data(), emptyTensorOutShape.size(), aclDataType::ACL_FLOAT,
                               emptyTensorStride.data(), 0, aclFormat::ACL_FORMAT_ND, emptyTensorOutShape.data(),
-                              emptyTensorOutShape.size(), nullptr);                               
+                              emptyTensorOutShape.size(), nullptr);
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;

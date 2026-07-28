@@ -252,9 +252,10 @@ ge::graphStatus RopeCheckInputShape(
 
     uint64_t inputDimNum = INPUT_DIM_NUM;
     uint64_t headDimIndex = INPUT_DIM_3;
-    if (xDimNum == TND_INPUT_DIM_NUM) {
+
+    isTndLayout = (xDimNum == TND_INPUT_DIM_NUM);
+    if (isTndLayout) {
         OP_LOGD(context->GetNodeName(), "Enter TND layout.");
-        isTndLayout = true;
         inputDimNum = TND_INPUT_DIM_NUM;
         headDimIndex = INPUT_DIM_2;
     }

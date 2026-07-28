@@ -42,7 +42,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnLightningIndexerGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnLightningIndexerGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnLightningIndexerGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnLightningIndexerGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
@@ -53,7 +53,7 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
   const aclTensor   *weights,
   const aclTensor   *actualSeqLengthsQuery,
   const aclTensor   *actualSeqLengthsKey,
-  int64_t            headNum,  
+  int64_t            headNum,
   char              *layout,
   int64_t            sparseMode,
   int64_t            preTokens,
@@ -68,9 +68,9 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnLightningIndexerGrad(
-  void             *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor    *executor, 
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   aclrtStream       stream)
 ```
 
@@ -287,7 +287,7 @@ aclnnStatus aclnnLightningIndexerGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -361,7 +361,7 @@ aclnnStatus aclnnLightningIndexerGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -370,7 +370,7 @@ aclnnStatus aclnnLightningIndexerGrad(
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - inputLayout支持TND/BSND。
 - 关于数据shape的约束，以Layout的BSND举例。其中：
-  
+
   - B（Batchsize）：取值范围为1\~1024。
   - N（Head-Num）：取值为1\~64。
   - G（Group）：取值为N。
@@ -381,7 +381,7 @@ aclnnStatus aclnnLightningIndexerGrad(
 
 ## 调用示例
 
-通过aclnn单算子调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+通过aclnn单算子调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -414,7 +414,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-template <typename T> 
+template <typename T>
 void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
     auto size = GetShapeSize(shape);
     std::vector<float> resultData(size, 0);
@@ -471,10 +471,10 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 }
 
 
-void FreeResource(aclTensor *q, aclTensor *k, aclTensor *dy, aclTensor *sparseIndices, aclTensor *weights, 
-                  aclTensor *dQuery, aclTensor *dKey, aclTensor *dWeights, void *qDeviceAddr, void *kDeviceAddr, 
-                  void *dyDeviceAddr, void *sparseIndicesDeviceAddr, void *weightsDeviceAddr, void *dQueryAddr, 
-                  void *dKeyAddr, void *dWeightsAddr, uint64_t workspaceSize, void *workspaceAddr, int32_t deviceId, 
+void FreeResource(aclTensor *q, aclTensor *k, aclTensor *dy, aclTensor *sparseIndices, aclTensor *weights,
+                  aclTensor *dQuery, aclTensor *dKey, aclTensor *dWeights, void *qDeviceAddr, void *kDeviceAddr,
+                  void *dyDeviceAddr, void *sparseIndicesDeviceAddr, void *weightsDeviceAddr, void *dQueryAddr,
+                  void *dKeyAddr, void *dWeightsAddr, uint64_t workspaceSize, void *workspaceAddr, int32_t deviceId,
                   aclrtContext *context, aclrtStream *stream)
 {
     // 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
@@ -638,7 +638,7 @@ int main()
                 sparseIndicesDeviceAddr, weightsDeviceAddr, dQueryAddr, dKeyAddr, dWeightsAddr, workspaceSize, workspaceAddr,
                   deviceId, &context, &stream);
               return ret);
-    
+
     ret = CreateAclTensor(dQueryHostData, dQueryShape, &dQueryAddr, aclDataType::ACL_FLOAT16, &dQuery);
     CHECK_RET(ret == ACL_SUCCESS,
               FreeResource(q, k, dy, sparseIndices, weights, dQuery, dKey, dWeights, qDeviceAddr, kDeviceAddr, dyDeviceAddr,

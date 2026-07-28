@@ -41,7 +41,7 @@ ops-transformer是[CANN](https://hiascend.com/software/cann)（Compute Architect
 git clone -b 9.0.0 https://gitcode.com/cann/ops-transformer.git
 ```
 
-> 说明：若环境中已存在配套分支源码，**可跳过本步骤**，例如CANNLab默认已提供最新商发版CANN对应的源码。
+> 说明：若环境中已存在配套分支源码，**可跳过本步骤**，例如CANNLab默认已提供最新版本CANN对应的源码。
 
 ## 📖学习教程
 
@@ -55,6 +55,7 @@ git clone -b 9.0.0 https://gitcode.com/cann/ops-transformer.git
 - [安全声明](SECURITY.md)
 - [许可证](LICENSE)
 - [所属SIG](https://gitcode.com/cann/community/tree/master/CANN/sigs/ops-transformer)
+- [联系我们] 微信名：Clark_Dan
 
 -----
 PS：本项目功能和文档正在持续更新和完善中，欢迎您关注最新版本。
@@ -64,4 +65,4 @@ PS：本项目功能和文档正在持续更新和完善中，欢迎您关注最
 - **技术专栏**：通过GitCode[【Wiki】](https://gitcode.com/cann/ops-transformer/wiki)获取技术文章，如系列化教程、优秀实践等。
 
 
-​    
+​

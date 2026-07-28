@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file engram_fetch_tiling_data.h
-* \brief kernel侧tiling data结构
-*/
+ * \file engram_fetch_tiling_data.h
+ * \brief kernel侧tiling data结构
+ */
 
 #ifndef ASCENDC_ENGRAM_FETCH_TILING_H
 #define ASCENDC_ENGRAM_FETCH_TILING_H
@@ -25,5 +25,9 @@ struct EngramFetchTilingData {
     int64_t hiddenBytes;
     uint32_t aivNum;
     uint64_t ubSize;
+    uint32_t rankSize;
+    int64_t numMaxTokensPerRank;
+    int64_t totalRecv;
+    int64_t commBufferSize;
 };
 #endif
