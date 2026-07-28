@@ -23,7 +23,6 @@ using AscendC::LocalTensor;
 using namespace AscendC;
 using namespace MicroAPI;
 
-
 namespace fa_base_vector {
 
 template <typename T1, typename T2>

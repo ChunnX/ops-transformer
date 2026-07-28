@@ -15,7 +15,6 @@
 
 #include "fa_tiling_info.h"
 
-
 namespace optiling {
 namespace flash_attn {
 

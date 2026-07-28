@@ -22,7 +22,6 @@
 namespace ge {
 // REG_OP(FlashAttn)
 
-
 } // namespace ge
 
 #endif // FLASH_ATTENTION_SCORE_PROTO_H_

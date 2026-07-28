@@ -17,15 +17,9 @@ namespace FlashAttnUT {
 
 class FlashAttnInferDTypeTest : public testing::TestWithParam<FlashAttnInferDTypeUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "FlashAttn InferDTypeTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "FlashAttn InferDTypeTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "FlashAttn InferDTypeTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "FlashAttn InferDTypeTest TearDown" << std::endl; }
 };
 
 TEST_P(FlashAttnInferDTypeTest, param)

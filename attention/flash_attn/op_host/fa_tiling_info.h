@@ -102,11 +102,7 @@ constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
 // Enums
 // ============================================================
 
-enum class MaskMode : int32_t {
-    NO_MASK = 0,
-    CAUSAL = 3,
-    BAND = 4
-};
+enum class MaskMode : int32_t { NO_MASK = 0, CAUSAL = 3, BAND = 4 };
 
 enum class FaLayout : uint32_t {
     BSND = 0,
@@ -139,21 +135,11 @@ enum class FaAxis : uint32_t {
     CONST = 12
 };
 
-enum class FaQuantMode : uint32_t {
-    NO_QUANT = 0,
-    ANTI_QUANT,
-    FULL_QUANT
-};
+enum class FaQuantMode : uint32_t { NO_QUANT = 0, ANTI_QUANT, FULL_QUANT };
 
-enum class KvStorageMode : uint32_t {
-    BATCH_CONTINUOUS = 0,
-    PAGE_ATTENTION = 1
-};
+enum class KvStorageMode : uint32_t { BATCH_CONTINUOUS = 0, PAGE_ATTENTION = 1 };
 
-enum class FaTilingInOutMode : uint32_t {
-    FP16_FP16 = 0,
-    BF16_BF16 = 1
-};
+enum class FaTilingInOutMode : uint32_t { FP16_FP16 = 0, BF16_BF16 = 1 };
 
 // ============================================================
 // Function declarations
