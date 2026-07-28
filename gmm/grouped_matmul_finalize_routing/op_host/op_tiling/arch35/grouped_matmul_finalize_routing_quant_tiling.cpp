@@ -27,6 +27,18 @@ using namespace GMMFinalizeRoutingArch35Tiling;
 
 namespace optiling {
 
+namespace {
+uint16_t FloatToBf16Bits(float value)
+{
+    union {
+        float f;
+        uint32_t u;
+    } converter{value};
+    uint32_t roundingBias = 0x7FFFU + ((converter.u >> 16) & 1U);
+    return static_cast<uint16_t>((converter.u + roundingBias) >> 16);
+}
+} // namespace
+
 void GroupedMatmulFinalizeRoutingQuantTiling::Reset()
 {
     tilingData_ = GMMFinalizeRoutingTilingData();
@@ -124,12 +136,6 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
         outDesc == nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "y", "nullptr", "input outDesc cannot be nullptr"),
         return false);
-    inputParams_.cDtype = outDesc->GetDataType();
-    OP_CHECK_IF(inputParams_.cDtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype), "DT_FLOAT"),
-                return false);
-
     auto biasStorageShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
     inputParams_.hasBias = !(biasStorageShape == nullptr || biasStorageShape->GetStorageShape().GetShapeSize() == 0);
     auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
@@ -138,6 +144,14 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
                                                       "bias from tensor is nonnull, but bias from desc is nullptr"),
                 return false);
     inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : ge::DT_BF16;
+    inputParams_.cDtype = outDesc->GetDataType();
+    bool isSupportedOut = inputParams_.cDtype == ge::DT_FLOAT ||
+                          (IsMicroScaling() && inputParams_.cDtype == ge::DT_BF16);
+    OP_CHECK_IF(!isSupportedOut,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    inputParams_.opType, "y", ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype),
+                    "y must be DT_FLOAT, or DT_BF16 in mx quant mode"),
+                return false);
 
     OP_CHECK_IF(!CheckDtype(), OP_LOGE(context_->GetNodeName(), "Required input check failed."), return false);
     return CheckOptionalInputsForRouting();
@@ -181,7 +195,8 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsForRouting()
                 OP_LOGE(context_->GetNodeName(), "GroupList check failed."), return false);
     OP_CHECK_IF(!CheckOptional(SHARE_INPUT_INDEX, "SharedInput", ge::DT_BF16),
                 OP_LOGE(context_->GetNodeName(), "SharedInput check failed."), return false);
-    OP_CHECK_IF(!CheckOptional(LOGIT_INDEX, "LogitIndex", ge::DT_FLOAT),
+    auto expectedLogitDtype = inputParams_.cDtype == ge::DT_BF16 ? ge::DT_BF16 : ge::DT_FLOAT;
+    OP_CHECK_IF(!CheckOptional(LOGIT_INDEX, "LogitIndex", expectedLogitDtype),
                 OP_LOGE(context_->GetNodeName(), "LogitIndex check failed."), return false);
     if (inputParams_.aDtype != ge::DT_INT8) {
         OP_CHECK_IF(!CheckOptional(ROW_INDEX_INDEX, "RowIndex", ge::DT_INT64),
@@ -523,6 +538,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
     tilingData_.gmmFinalizeRoutingDataParams.sharedInputOffset = static_cast<uint32_t>(sharedInputOffset_);
     tilingData_.gmmFinalizeRoutingDataParams.sharedInputLen = static_cast<uint32_t>(sharedInputLen_);
     tilingData_.gmmFinalizeRoutingDataParams.residualScale = static_cast<float>(sharedInputWeight_);
+    tilingData_.gmmFinalizeRoutingDataParams.residualScaleBf16 = FloatToBf16Bits(sharedInputWeight_);
     tilingData_.gmmFinalizeRoutingDataParams.aQuantMode = static_cast<uint32_t>(inputParams_.aQuantMode);
     tilingData_.gmmFinalizeRoutingDataParams.bQuantMode = static_cast<uint32_t>(inputParams_.bQuantMode);
     tilingData_.gmmFinalizeRoutingDataParams.biasDtype = static_cast<uint32_t>(inputParams_.biasDtype);
