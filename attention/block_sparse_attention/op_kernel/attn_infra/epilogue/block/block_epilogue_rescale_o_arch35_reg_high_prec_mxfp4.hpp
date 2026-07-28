@@ -65,15 +65,13 @@ public:
             dmUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDm>(
                 MXFP4::UB_UPDATE_SCALE_OFFSET + MXFP4::UB_UPDATE_SCALE_SIZE * i);
         }
-        indexUBTensor = resource.ubBuf.template GetBufferByByte<ElementIndex>(MXFP4::UB_INDEX_OFFSET);
     }
 
     __aicore__ inline ~BlockEpilogue() {}
 
-    template <class TensorO, class TensorLse>
+    template <class TensorO>
     __aicore__ inline
     void operator()(TensorO &gOTensor,
-                    TensorLse &gLseTensor,
                     GemmCoord &actualOriShape,
                     TaskInfo &taskInfo,
                     TileInfo &tileInfo)
@@ -104,8 +102,8 @@ public:
                 AscendC::LocalTensor<ElementOTmp> outTensorFp32Ub = oTransUBTensor.template ReinterpretCast<ElementOTmp>(); // 空间复用P, bf16 vf写出是强解释fp32
                 Mxfp4VF::processOut(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
                 AscendC::PipeBarrier<PIPE_V>();
-                LocalTensor<ElementO> oTransUBTensorB16 = oTransUBTensor.template ReinterpretCast<ElementO>();
-                LocalTensor<ElementO> oUBTensorB16 = oUBTensor.template ReinterpretCast<ElementO>();
+                AscendC::LocalTensor<ElementO> oTransUBTensorB16 = oTransUBTensor.template ReinterpretCast<ElementO>();
+                AscendC::LocalTensor<ElementO> oUBTensorB16 = oUBTensor.template ReinterpretCast<ElementO>();
                 // embding size actualOriShape.m()
                 uint32_t embdingSize = actualOriShape.m();
                 uint32_t embedColumnCnt = embdingSize + MXFP4::DATA_BLOCK_BYTE / sizeof(ElementO);
@@ -142,7 +140,7 @@ private:
     AscendC::LocalTensor<ElementO> oTransUBTensor;                       // attnTrans(空间复用P)
     AscendC::LocalTensor<ElementOTmp> oUBTensor;                            // attentionOut
     AscendC::LocalTensor<ElementDm>        dmUBTensor[MXFP4::UB_UPDATE_SCALE_CNT]; // updateScale
-    AscendC::LocalTensor<ElementIndex> indexUBTensor;                        // Index
+    CopyUbToGmO copyUbToGmO;
     static constexpr uint32_t VEC0 = 0;
 };
 

@@ -310,7 +310,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using ElementScale = uint8_t; // e8m0
     using ElementOTmp = REDtype; // float
     using ElementDm = REDtype;
-    using ElementO = Otype; // bfloat16_t / fp16
+    using ElementO = bfloat16_t; // bfloat16_t / fp16
     using ElementGroupMax = SMDtype;
     using ElementLocalGlobalMax = SMDtype;
     // layout tags
