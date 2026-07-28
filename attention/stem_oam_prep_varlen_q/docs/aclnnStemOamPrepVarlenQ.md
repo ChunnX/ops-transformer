@@ -11,7 +11,7 @@
 | <term>Atlas 推理系列产品</term> | × |
 | <term>Atlas 训练系列产品</term> | × |
 
-## 功能说明
+> 仅支持 arch35 (DAV_3510) 架构芯片。
 
 - 接口功能：完成 Stem OAM block-sparse attention 中 Q 侧预处理计算。将变长 Q tensor 从 paged 存储格式转化为按 stem block (128 token) 分组的 flattened qFlat 输出，供后续 OAM score 计算。
 - 计算公式：
@@ -268,7 +268,7 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/context/编译与运行样例.md)。
 
-<term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 推理系列产品</term>：
+<term>Ascend 950PR/Ascend 950DT</term>：
 
 ```Cpp
 // 1. 创建输入tensor

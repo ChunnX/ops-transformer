@@ -587,6 +587,16 @@
     <td>训练场景下，更新KvCache中指定位置的key和value，同时更新key的scale值。</td>
   </tr>
   <tr>
+    <td>attention</td>
+    <td><a href="../../attention/stem_oam_prep_varlen_q/README.md">stem_oam_prep_varlen_q</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>完成Stem OAM block-sparse attention中Q侧预处理计算，将变长Q tensor转化为按stem block分组的flattened qFlat输出。</td>
+  </tr>
+  <tr>
     <td>ffn</td>
     <td><a href="../../ffn/ffn/README.md">ffn</a></td>
     <td>✓</td>
