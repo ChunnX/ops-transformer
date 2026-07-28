@@ -32,15 +32,9 @@ namespace optiling {
 namespace flash_attn {
 constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
 
-void FlashAttnTilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
-{
-    faInfo_ = static_cast<FaTilingInfo *>(tilingInfo);
-}
+void FlashAttnTilingImpl::InitTilingInfo(TilingInfo *tilingInfo) { faInfo_ = static_cast<FaTilingInfo *>(tilingInfo); }
 
-bool FlashAttnTilingImpl::IsCapable()
-{
-    return true;
-}
+bool FlashAttnTilingImpl::IsCapable() { return true; }
 
 void FlashAttnTilingImpl::CalcScheduleMode()
 {
@@ -194,7 +188,6 @@ void FlashAttnTilingImpl::GenTilingKey()
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
             tilingKeyInfo_.config);
 }
-
 
 void FlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
 {

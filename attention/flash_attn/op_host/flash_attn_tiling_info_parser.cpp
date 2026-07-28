@@ -541,10 +541,7 @@ ge::graphStatus FaInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::GetActualSeqInfo()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus FaInfoParser::GetActualSeqInfo() { return ge::GRAPH_SUCCESS; }
 
 void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo)
 {

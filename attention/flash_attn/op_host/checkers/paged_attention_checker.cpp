@@ -37,17 +37,17 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
         return ge::GRAPH_SUCCESS;
     }
 
-    OP_CHECK_IF(faInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || faInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size",
-                                                      std::to_string(faInfo.blockSize).c_str(),
-                                                      "The value of block_size must be within the range [16, 1024]"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        faInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || faInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
+                                              "The value of block_size must be within the range [16, 1024]"),
+        return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(faInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size",
-                                                      std::to_string(faInfo.blockSize).c_str(),
-                                                      "The value of block_size must be 16-aligned"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        faInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
+                                              "The value of block_size must be 16-aligned"),
+        return ge::GRAPH_FAILED);
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     // 这里和存在性校验冲突了，但是为了在单参数校验校验dtype需要先判空

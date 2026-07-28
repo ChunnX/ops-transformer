@@ -16,14 +16,8 @@ namespace FlashAttnUT {
 
 class FlashAttnArch35TilingTest : public testing::TestWithParam<FlashAttnTilingUtParam> {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "FlashAttn Arch35 TilingTest SetUp" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "FlashAttn Arch35 TilingTest TearDown" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "FlashAttn Arch35 TilingTest SetUp" << std::endl; }
+    static void TearDownTestCase() { std::cout << "FlashAttn Arch35 TilingTest TearDown" << std::endl; }
 };
 
 TEST_P(FlashAttnArch35TilingTest, tiling)
