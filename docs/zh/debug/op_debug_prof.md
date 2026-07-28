@@ -64,7 +64,44 @@
     AscendC::DataCopy(outputGMZ[progress * tileLength_], zLocal, tileLength_);
     ```
 
-对于复杂场景的问题定位，比如算子卡死、GM/UB访问越界等场景，可以采取**单步调试**的方式，具体操作请参见[msDebug](https://www.hiascend.com/document/redirect/CannCommunityToolMsdebug)算子调试工具。
+* **msDebug单步调试**
+
+  对于复杂场景的问题定位，比如算子卡死、GM/UB访问越界等场景，可以采取[msDebug](https://www.hiascend.com/document/redirect/CannCommunityToolMsdebug)单步调试的方式，具体操作步骤如下：
+
+  1. **编译O0 -g的Kernel**
+
+     使用msDebug调试前，需要编译不带优化且带调试信息的Kernel，通过`--op_debug_config "ccec_O0,ccec_g"`选项实现：
+
+     ```bash
+     bash build.sh --pkg --ops=add_example --soc=ascend910b --op_debug_config "ccec_O0,ccec_g"
+     ```
+
+     若上述编译失败，或运行算子本身就存在精度问题，可能是由于该算子tilingKey较多（大算子），需要对目标tilingKey对应的分支代码单独调试。此时需要增加`--tiling_key`选项指定目标tilingKey。
+
+     首先可用msdebug直接运行一次算子，观察Kernel启动信息来确定目标tilingKey：
+
+     ```
+     [Launch of Kernel RunAicpuKfcResInit on Device 0]
+     [Launch of Kernel RunAicpuKfcResInit on Device 1]
+     [Launch of Kernel AddExample_c9e4347749ac13425bf7e31c6a5e306a_7 on Device 1]
+     [Launch of Kernel AddExample_c9e4347749ac13425bf7e31c6a5e306a_7 on Device 0]
+     ```
+
+     其中`_c9e4347749ac13425bf7e31c6a5e306a`即为tilingKey。确定目标tilingKey后，编译命令如下：
+
+     ```bash
+     bash build.sh --pkg --ops=add_example --soc=ascend910b --op_debug_config "ccec_O0,ccec_g" --tiling_key=c9e4347749ac13425bf7e31c6a5e306a
+     ```
+
+  2. **启动msDebug调试**
+
+     安装算子包后，进入算子可执行文件所在目录，使用msdebug启动调试：
+
+     ```bash
+     msdebug ./test_aclnn_add_example
+     ```
+
+     更多msDebug使用方法请参见[msDebug](https://www.hiascend.com/document/redirect/CannCommunityToolMsdebug)算子调试工具文档。
 
 ## 性能调优
 
