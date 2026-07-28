@@ -135,6 +135,7 @@ MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDa
         (uint64_t)mc2Tiling_.tileM * pipeLineContext_.transposeContext->innerAxis;
     pipeLineContext_.communicationContext->strideCount = pipeLineContext_.transposeContext->nextDstBlockOffset;
     pipeLineContext_.communicationContext->hcclDataType = mc2Tiling_.hcclDataType;
+    pipeLineContext_.communicationContext->repeat = mc2Tiling_.tileCnt;
 
     pipeLine_->Process(taskCnt);
 }
@@ -177,6 +178,8 @@ MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDa
     pipeLineContext_.communicationContext->recvOffset = pipeLineContext_.communicationContext->sendOffset;
     pipeLineContext_.communicationContext->sendCount =
         (uint64_t)mc2Tiling_.tailM * pipeLineContext_.transposeContext->innerAxis;
+    pipeLineContext_.communicationContext->strideCount = pipeLineContext_.transposeContext->nextDstBlockOffset;
+    pipeLineContext_.communicationContext->repeat = mc2Tiling_.tailCnt;
 
     pipeLine_->Process(taskCnt);
 }

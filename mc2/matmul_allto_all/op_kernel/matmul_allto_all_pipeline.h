@@ -95,19 +95,19 @@ __aicore__ inline void
 MatmulAlltoAllPipeLine<ComputationType, TransposeType, CommunicationType, ContextType, IsKCQuantMode>::ProcessDefault(
     uint32_t taskCnt)
 {
-    commStage_->PrepareAll(taskCnt);
+    commStage_->PrepareAll();
     for (uint32_t index = 0; index < taskCnt; index++) {
         if ASCEND_IS_AIC {
-            computeStage_->Process(index);
-            AscendC::CrossCoreSetFlag<0, PIPE_FIX>(8);
-            AscendC::CrossCoreWaitFlag(8);
-            AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
+            // computeStage_->Process(index);
+            // AscendC::CrossCoreSetFlag<0, PIPE_FIX>(8);
+            // AscendC::CrossCoreWaitFlag(8);
+            // AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
         }
         if ASCEND_IS_AIV {
-            AscendC::CrossCoreWaitFlag(9);
-            transStage_->Process(index);
+            // AscendC::CrossCoreWaitFlag(9);
+            // transStage_->Process(index);
             AscendC::SyncAll<true>();
-            commStage_->Process(index);
+            commStage_->Process();
         }
     }
 }
