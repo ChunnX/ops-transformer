@@ -212,10 +212,10 @@ public:
     std::string CompareTypeToSerialString(const QfaCompareType compareType) const;
     std::string CompareTypeToSerialSymbolString(const QfaCompareType &compareType) const;
     ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const QfaTilingShapeCompareParam &param,
-                                      const std::string &funcName) const;
+                                     const std::string &funcName) const;
     QfaCompareType GetCompareType(const std::map<QfaAxis, QfaCompareType> &compareTypeMap, const QfaAxis &axis) const;
     ge::graphStatus GetCompareFunc(const QfaCompareType &compareType, QfaCompareFunc<int64_t> &compareFunc,
-                                    const std::string &funcName) const;
+                                   const std::string &funcName) const;
     ge::graphStatus CompareShape(QfaTilingShapeCompareParam &param, const std::string &funcName) const;
 };
 
