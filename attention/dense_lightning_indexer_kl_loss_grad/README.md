@@ -135,21 +135,21 @@
     <tr>
         <td>seqUsedQOptional</td>
         <td>可选输入</td>
-        <td>预留字段，表示每个batch实际使用的q长度。</td>
+        <td>表示每个batch实际使用的q长度。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>seqUsedKOptional</td>
         <td>可选输入</td>
-        <td>预留字段，表示每个batch实际使用的k长度。</td>
+        <td>表示每个batch实际使用的k长度。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>cmpResidualKOptional</td>
         <td>可选输入</td>
-        <td>maskMode=3且cmpRatio!=1时的预留字段。</td>
+        <td>maskMode=3且cmpRatio!=1时用于计算压缩前S2长度。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
