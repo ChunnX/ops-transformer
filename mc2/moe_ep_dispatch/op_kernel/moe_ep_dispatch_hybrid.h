@@ -62,6 +62,7 @@ constexpr uint32_t EXPERT_NUM_PER_GROUP = 256U; // GetExpertFreq 单次最多256
 constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint8_t BUFFER_NUM = 2;
 constexpr int64_t STATUS_POLL_BACKOFF_CYCLES = 100; // ready 未就绪时的轮询退避周期
+constexpr int64_t HANG_TRACE_TIMEOUT_CYCLES = 1000000000; // 仅在异常长时间轮询时输出一次诊断
 
 template <TemplateMoeEpDispatchHybridTypeClass>
 class MoeEpDispatchHybrid {
@@ -874,6 +875,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         topkIdsBuf_.GetWithOffset<float>(serverRankCount * UB_STRIDE, serverRankCount * UB_ALIGN);
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
+    int64_t waitStartCycle = GetSystemCycle();
+    bool hasPrintedWaitStatus = false;
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待本核上轮计数器清0(buf 复用)
     while (sumOfFlag != compareFlag) {      // 状态位check
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
@@ -881,6 +884,19 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, serverRankCount, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = numRecvPerRankTensor_.GetValue(0);
+        if (!hasPrintedWaitStatus && GetSystemCycle() - waitStartCycle > HANG_TRACE_TIMEOUT_CYCLES) {
+            uint64_t invalidStatusMask = 0UL;
+            for (uint32_t srcRankId = 0U; srcRankId < serverRankCount && srcRankId < 64U; srcRankId++) {
+                if (recvCounterTensor.GetValue(srcRankId * UB_STRIDE) != 1) {
+                    invalidStatusMask |= 1UL << srcRankId;
+                }
+            }
+            printf("[MOE_EP_HANG] rank=%u aiv=%u wait=count status_sum=%d expected=%d "
+                   "invalid_mask_low=%u invalid_mask_high=%u\n",
+                   epRankId_, aivId_, sumOfFlag, compareFlag, static_cast<uint32_t>(invalidStatusMask),
+                   static_cast<uint32_t>(invalidStatusMask >> 32U));
+            hasPrintedWaitStatus = true;
+        }
     }
     SetRecvNumPerExpert();                // 计算本卡上各专家接收的token总数
     SetRecvNumPerRank(recvCounterTensor); // 计算本端接收来自各卡的token总数
@@ -1366,6 +1382,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
             remoteScaleoutAddr += dataBytes;
         }
         hcomm_.Drain(commHandle);
+        printf("[MOE_EP_HANG] rank=%u aiv=%u scaleout_payload_drain=complete proxy=%u bytes=%u slots=%u\n",
+               epRankId_, aivId_, proxyRankId, static_cast<uint32_t>(sendDataSize), scaleoutSlotCount);
     }
 
     GM_ADDR remoteNotifyAddr =
@@ -1374,6 +1392,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     hcomm_.WriteNbi(commHandle, remoteNotifyAddr,
                     scaleoutNotifyWorkspaceAddr_ + dstScaleoutIndex * sizeof(uint64_t), sizeof(uint64_t));
     hcomm_.Drain(commHandle);
+    printf("[MOE_EP_HANG] rank=%u aiv=%u scaleout_notify_drain=complete proxy=%u\n",
+           epRankId_, aivId_, proxyRankId);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1609,7 +1629,15 @@ __aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFu
     GM_ADDR statusAddr)
 {
     __gm__ int32_t *statusValueAddr = (__gm__ int32_t *)statusAddr;
+    int64_t waitStartCycle = GetSystemCycle();
+    bool hasPrintedWaitStatus = false;
     while (ReadGmByPassDCache(statusValueAddr) != 1) {
+        if (!hasPrintedWaitStatus && GetSystemCycle() - waitStartCycle > HANG_TRACE_TIMEOUT_CYCLES) {
+            printf("[MOE_EP_HANG] rank=%u aiv=%u wait=scaleout_ready status=%d slot_count=%d\n",
+                   epRankId_, aivId_, ReadGmByPassDCache(statusValueAddr),
+                   ReadGmByPassDCache(statusValueAddr + 1));
+            hasPrintedWaitStatus = true;
+        }
         PollBackoff();
     }
     return static_cast<uint32_t>(ReadGmByPassDCache(statusValueAddr + 1));
@@ -1879,6 +1907,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     if ASCEND_IS_AIV { // 全aiv处理
         PrepareDispatchPayloads();
         TransferDispatchPayloads();
+        if (aivId_ == 0U) {
+            printf("[MOE_EP_HANG] rank=%u aiv=%u dispatch=complete\n", epRankId_, aivId_);
+        }
     }
 }
 } // namespace MoeEpDispatchHybridImpl
