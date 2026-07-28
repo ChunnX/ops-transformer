@@ -3,13 +3,13 @@
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列加速卡产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+| :----------------------------------------- | ------|
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
 ## 功能说明
 
@@ -76,13 +76,12 @@
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px">
-  <colgroup>
+<table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
   <col style="width: 220px">
-  <col style="width: 150px">
+  <col style="width: 170px">
   <col style="width: 700px">
-  <col style="width: 180px">
-  <col style="width: 100px">
+  <col style="width: 286px">
+  <col style="width: 200px">
   </colgroup>
   <thead>
     <tr>
@@ -296,7 +295,9 @@
 
 ## 调用说明
 
-| 调用方式 | 样例代码 | 说明 |
-| ------- | ------- | ---- |
-| aclnn接口 | [test_aclnn_quant_compressor](./examples/test_aclnn_quant_compressor.cpp) | 通过[aclnnQuantCompressor](./docs/aclnnQuantCompressor.md)接口方式调用QuantCompressor算子。 |
-| PyTorch API | - | 通过[quant_compressor](../../torch_extension/cann_ops_transformer/docs/zh/quant_compressor.md)接口调用QuantCompressor算子。|
+- <term>Ascend 950PR/Ascend 950DT</term>：
+
+  | 调用方式 | 样例代码 | 说明 |
+  | ------- | ------- | ---- |
+  | aclnn API | [test_aclnn_quant_compressor](./examples/test_aclnn_quant_compressor.cpp) | 通过[aclnnQuantCompressor](./docs/aclnnQuantCompressor.md)接口调用QuantCompressor算子。 |
+  | PyTorch API | - | 通过[quant_compressor](../../torch_extension/cann_ops_transformer/docs/zh/quant_compressor.md)接口调用QuantCompressor算子。 |
