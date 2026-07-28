@@ -373,6 +373,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
     const aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnBlockSparseAttentionGrad);
+    if (workspace != nullptr && workspaceSize > 0) {
+        aclrtMemset(workspace, workspaceSize, 0, workspaceSize);
+    }
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 

@@ -39,6 +39,8 @@ namespace BSA {
     constexpr uint32_t CUBE2VEC = 7;
     constexpr uint32_t VEC2CUBE = 8;
     constexpr uint32_t CUBE2POST = 9;
+    constexpr uint32_t DETER_C2V = 10; // deter: cube→AIV 私有 tile 就绪
+    constexpr uint32_t DETER_V2C = 11; // deter: AIV→cube 聚合完成
 
     constexpr int32_t PRE_LAUNCH = 2;
     constexpr uint64_t WORKSPACE_BLOCK_SIZE = 128 * 128 * 2;
@@ -46,6 +48,12 @@ namespace BSA {
     constexpr uint64_t WORKSPACE_P16_OFFSET = 128 * 128 * 4; // dp, P 的在workspace相对起始地址后偏移字节数
     constexpr uint64_t WORKSPACE_BLOCK_SIZE_DB = 128 * 128 * 2 * 2;
     constexpr uint64_t L1_SIZE_OFFSET = 131072;
+    // ===== deterministic 模式常量 =====
+    constexpr uint32_t DETER_CORE_INFO_NUM = 8; // runInfo int64 个数: globKvOff/curKvSize/headDim/valid/...
+    constexpr uint32_t DETER_ALIGN = 256;
+    constexpr uint32_t DETER_AG_UB_OFFSET = 184U * 1024U;         // 聚合 tile UB(8KB 空闲区, 分块)
+    constexpr uint32_t DETER_INFO_UB_OFFSET = 184U * 1024U;      // runInfo UB(未使用, WriteGmByPassDCache 不需 UB)
+    constexpr uint32_t DETER_AG_UB_FLOATS = 2048U;               // 聚合分块(8KB, 192K-184K=8K 刚好)
     constexpr uint32_t PINGPONG_OFFSET_2 = 2;
     constexpr uint32_t PINGPONG_OFFSET_4 = 4;
 
@@ -326,6 +334,21 @@ namespace BSA {
             uint32_t tailTaskNum = tilingData->tailTaskNum;
             uint32_t taskLength = tailTaskNum > coreIdx ? taskNumPerCore + 1 : taskNumPerCore;
 
+            // ===== deterministic 模式参数 =====
+            uint8_t deter = tilingData->deterministic;
+            uint32_t deterMaxLoop = tilingData->maxLoopSize;
+            uint32_t deterAicNum = tilingData->deterAicNum;
+            uint64_t perCoreDkTileSize = tilingData->perCoreDkTileSize; // 单轮单核 dk tile 字节数
+            uint64_t dkDeterGmOffset = tilingData->dkDeterGmOffset;
+            uint64_t dvDeterGmOffset = tilingData->dvDeterGmOffset;
+            uint64_t deterCoreInfoGmOffset = tilingData->deterCoreInfoGmOffset;
+            uint64_t dkSlotOffset = tilingData->dkSlotOffset;
+            uint64_t dvSlotOffset = tilingData->dvSlotOffset;
+            uint64_t dkFinalOffset = tilingData->dkFinalOffset;
+            uint64_t dvFinalOffset = tilingData->dvFinalOffset;
+            uint64_t dkSlotSize = tilingData->dkSlotSize;
+            uint64_t dvSlotSize = tilingData->dvSlotSize;
+
             if (groupSize == 0 || blockShapeX == 0 || blockShapeY == 0) {
                 return;
             }
@@ -357,9 +380,21 @@ namespace BSA {
             AscendC::GlobalTensor<float> gDq;
             gDq.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize));
             AscendC::GlobalTensor<float> gDk;
-            gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize));
+            gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + (deter ? tilingData->dkFinalOffset : (sOutSize + dPOutSize + dQOutSize))));
             AscendC::GlobalTensor<float> gDv;
-            gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
+            gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + (deter ? tilingData->dvFinalOffset : (sOutSize + dPOutSize + dQOutSize + dKOutSize))));
+
+            // ===== deterministic: 每核私有 dK/dV 缓冲(单 slot, 逐轮复用) =====
+            // 注: runInfo 由 AIV 侧发布(cube 核不支持 SetValue 标量 GM 写)
+            AscendC::GlobalTensor<float> gDkDeter;
+            AscendC::GlobalTensor<float> gDvDeter;
+            if (deter) {
+                gDkDeter.SetGlobalBuffer((__gm__ float *)(params.workspace + dkSlotOffset));
+                gDvDeter.SetGlobalBuffer((__gm__ float *)(params.workspace + dvSlotOffset));
+            }
+            // 单 slot 偏移(元素数): coreIdx * perTile(元素)
+            uint64_t deterSlotElem = perCoreDkTileSize / sizeof(float);
+            uint64_t deterDkOff = coreIdx * deterSlotElem;
 
             TaskInfo taskInfo[2];
             TaskInfo preTaskInfo;
@@ -380,13 +415,18 @@ namespace BSA {
             BlockMmadBSAG1 blockMmad1(resource);
             BlockMmadBSAG2 blockMmad2(resource, L1_SIZE_OFFSET, PINGPONG_OFFSET_2, true);
             BlockMmadBSAG3 blockMmad3(resource, L1_SIZE_OFFSET * 2, PINGPONG_OFFSET_4, true);
+            if (false && deter) {
+                blockMmad3.SetAtomicAdd(false); // deter: 私有 slot 单次写, 关闭原子加(arch22 FIX 管线需显式 SetAtomicAdd, 关闭后 crash)
+            }
             uint32_t count = 0;
+            uint32_t deterRoundCnt = 0; // deter 已处理的 dK/dV 轮次
             uint32_t pingpongFlag = 0;
             uint64_t gSOffset = coreIdx * WORKSPACE_BLOCK_SIZE_DB;
             uint32_t mmadFlag = 0;
 
             AscendC::SyncAll<false>();
 
+            // deter: 方案D — 无需等待 AIV 清零 (cube 写共享 gDk/gDv)
             SetFlag();
             uint32_t vec2CubeFlag = 0;
             for (uint32_t i = 0; i < taskLength; i++) {
@@ -491,6 +531,8 @@ namespace BSA {
                                     layoutC3,
                                     actualShape3,
                                     mmadFlag);
+
+                                // deter: 方案D — cube 写共享 gDk/gDv, 无逐轮 SyncAll
                             }
                             preTaskInfo = curInfo;
                             preTaskInfo.sOffset = curInfo.sOffset * 2; // float32偏移转成bf16/half偏移
@@ -553,7 +595,9 @@ namespace BSA {
                     layoutC3,
                     actualShape3,
                     mmadFlag);
+                // deter: 方案D — final mmad3 写共享, 无 SyncAll
             }
+            // deter: 方案D — 无需 padding SyncAll
             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
             WaitFlag();
         }
@@ -573,7 +617,7 @@ namespace BSA {
             AscendC::WaitEvent(CUBE2POST);
             AscendC::SyncAll<true>();
 
-            // post
+            // post (deter 模式下 VecPost 读 final)
             VecPost(params);
         }
 
@@ -582,6 +626,7 @@ namespace BSA {
         {
             uint32_t vecCoreIdx = AscendC::GetBlockIdx(); // vecore 核数idx
             uint32_t coreIdx = vecCoreIdx / 2; // cube 核数idx
+            uint32_t subBlockIdx = vecCoreIdx % 2;
 
             __gm__ BlockSparseAttentionGradTilingData *tilingData = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
             uint32_t batch = tilingData->batch;
@@ -607,7 +652,52 @@ namespace BSA {
             uint64_t dKOutSize = tilingData->dKOutSize;
             uint64_t dVOutSize = tilingData->dVOutSize;
 
-            // Initialize global tensors
+            // ===== deterministic 参数 =====
+            uint8_t deter = tilingData->deterministic;
+            uint32_t deterMaxLoop = tilingData->maxLoopSize;
+            uint32_t deterAicNum = tilingData->deterAicNum;
+            uint32_t deterLaunchedAic = (tilingData->usedVecCoreNum + 1) / 2; // 实际启动的 AIC 核数=blockDim
+            uint64_t perCoreDkTileSize = tilingData->perCoreDkTileSize;
+            uint64_t deterSlotElem = perCoreDkTileSize / sizeof(float);
+            uint64_t dkSlotOffset = tilingData->dkSlotOffset;
+            uint64_t dvSlotOffset = tilingData->dvSlotOffset;
+            uint64_t dkFinalOffset = tilingData->dkFinalOffset;
+            uint64_t dvFinalOffset = tilingData->dvFinalOffset;
+            uint64_t dkSlotSize = tilingData->dkSlotSize;
+            uint64_t dvSlotSize = tilingData->dvSlotSize;
+            uint32_t deterRoundCntVec = 0;
+            AscendC::GlobalTensor<float> gDkShared;
+            AscendC::GlobalTensor<float> gDvShared;
+            AscendC::GlobalTensor<float> gDkDeterVec;
+            AscendC::GlobalTensor<float> gDvDeterVec;
+            AscendC::GlobalTensor<int32_t> gDeterCoreInfoVec;
+            __gm__ int32_t* deterInfoGm = nullptr; // deter runInfo GM 指针(WriteGmByPassDCache 用)
+            if (deter) {
+                // 方案B: slots 在共享区域, final 是最终结果
+                gDkDeterVec.SetGlobalBuffer((__gm__ float *)(params.workspace + dkSlotOffset));
+                gDvDeterVec.SetGlobalBuffer((__gm__ float *)(params.workspace + dvSlotOffset));
+                gDkShared.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize));
+                gDvShared.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
+                gDeterCoreInfoVec.SetGlobalBuffer((__gm__ int32_t *)(params.workspace + tilingData->deterCoreInfoGmOffset));
+                deterInfoGm = (__gm__ int32_t *)(params.workspace + tilingData->deterCoreInfoGmOffset);
+                // 清零 slots + final (cube 用 isAtomicAdd=true 写 slots, 需清零)
+                AscendC::LocalTensor<float> zeroUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET);
+                AscendC::Duplicate(zeroUb, 0.0f, DETER_AG_UB_FLOATS);
+                AscendC::PipeBarrier<PIPE_ALL>();
+                uint64_t totalDk = tilingData->dkDeterGmSize / sizeof(float);
+                uint64_t totalDv = tilingData->dvDeterGmSize / sizeof(float);
+                for (uint64_t off = 0; off < totalDk; off += DETER_AG_UB_FLOATS) {
+                    uint32_t chunk = (totalDk - off > DETER_AG_UB_FLOATS) ? DETER_AG_UB_FLOATS : (uint32_t)(totalDk - off);
+                    AscendC::DataCopy(gDkDeterVec[off], zeroUb, chunk);
+                }
+                AscendC::PipeBarrier<PIPE_ALL>();
+                for (uint64_t off = 0; off < totalDv; off += DETER_AG_UB_FLOATS) {
+                    uint32_t chunk = (totalDv - off > DETER_AG_UB_FLOATS) ? DETER_AG_UB_FLOATS : (uint32_t)(totalDv - off);
+                    AscendC::DataCopy(gDvDeterVec[off], zeroUb, chunk);
+                }
+                AscendC::PipeBarrier<PIPE_ALL>();
+                AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(DETER_V2C); // 通知 AIC: slot 清零完成(用 DETER_V2C, 不复用 CUBE2VEC)
+            }
             AscendC::GlobalTensor<bool> gBlcokSpaseMask;
             gBlcokSpaseMask.SetGlobalBuffer((__gm__ bool *)params.blockSparseMask);
             AscendC::GlobalTensor<int64_t> gActualQseqlen;
@@ -636,6 +726,8 @@ namespace BSA {
             for (uint32_t i = 0; i < taskLengthVec; i++) {
                 TaskInfo curInfo = taskInfoVec[i % 2];
                 uint64_t beginKVOffset = curInfo.kvOffset;
+                uint64_t kvBlockOffsetVec = 0; // deter: 镜像 AIC 的 kv 块偏移跟踪, 用于发布正确的 runInfo kvOffset
+                uint64_t kvStrideVec = (inputLayout == 0) ? (uint64_t)kvHeads * headDim : (uint64_t)headDim;
 
                 // idx, 计算的行数
                 // 一个ai core里的aiv 0执行的行数：actualRow / 2 + actualRow % 2
@@ -647,7 +739,6 @@ namespace BSA {
                 //     vecSftmg(curInfo.qOffset / headDim, curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2);
                 // }
 
-                uint32_t subBlockIdx = vecCoreIdx % 2;
                 if (inputLayout == 0) {
                     vecSftmg(curInfo.qOffset / headDim + subBlockIdx * (curInfo.curCalQSize + 1) / 2 * numHeads,
                         (curInfo.curCalQSize + 1 - subBlockIdx) / 2);
@@ -665,9 +756,13 @@ namespace BSA {
                         uint32_t kvBlockSize =
                             (idx != curKvBlockNum - 1) ? blockShapeY : curInfo.kvSeqlen - blockShapeY * idx;
                         uint32_t kvLoop = (kvBlockSize + basicKVBlockSize - 1) / basicKVBlockSize;
+                        uint64_t kvBlockBasicOffsetVec = 0;
                         for (uint32_t loop = 0; loop < kvLoop; loop++) {
                             curInfo.curCalKVSize = (loop != kvLoop - 1) ? basicKVBlockSize : kvBlockSize - basicKVBlockSize * loop;
                             curInfo.sOffset = gSOffset + WORKSPACE_BLOCK_SIZE * pingpongFlag;
+                            // deter: 同步更新 kvOffset 以发布正确的 runInfo(镜像 AIC 逻辑)
+                            curInfo.kvOffset = beginKVOffset + (kvBlockOffsetVec + kvBlockBasicOffsetVec) * kvStrideVec;
+                            kvBlockBasicOffsetVec += basicKVBlockSize;
 
                             uint64_t actualRow = curInfo.curCalQSize;
                             uint64_t actualCol = curInfo.curCalKVSize;
@@ -732,11 +827,14 @@ namespace BSA {
 
                             AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(VEC2CUBE);
 
+                            // deter: 方案D — 无逐轮同步/聚合
+
                             preTaskInfo = curInfo;
                             pingpongFlag = 1 - pingpongFlag;
                             preTaskInfo.sOffset = curInfo.sOffset * 2; // float32偏移转成bf16/half偏移
                         }
                     }
+                    kvBlockOffsetVec += blockShapeY; // deter: 镜像 AIC 的 kvBlock 偏移递增
                 }
 
                 if (i != taskLengthVec - 1) {
@@ -744,7 +842,9 @@ namespace BSA {
                         blockShapeX, basicQBlockSize, inputLayout, taskInfoVec[i % 2], taskInfoVec[(i + 1) % 2]);
                 }
             }
+            // deter: 方案D — 无需 padding
         }
+
 
         __aicore__ inline
         void VecPost(Params const &params)
@@ -758,8 +858,9 @@ namespace BSA {
             uint64_t dVOutSize = tilingData->dVOutSize;
 
             GM_ADDR gDqGm = params.workspace + sOutSize + dPOutSize;
-            GM_ADDR gDkGm = params.workspace + sOutSize + dPOutSize + dQOutSize;
-            GM_ADDR gDvGm = params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize;
+            __gm__ BlockSparseAttentionGradTilingData *tdPost = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+            GM_ADDR gDkGm = tdPost->deterministic ? (params.workspace + tdPost->dkFinalOffset) : (params.workspace + sOutSize + dPOutSize + dQOutSize);
+            GM_ADDR gDvGm = tdPost->deterministic ? (params.workspace + tdPost->dvFinalOffset) : (params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize);
             GM_ADDR actualSeqQlen = params.actualQseqlen;
             GM_ADDR actualSeqKvlen = params.actualKvseqlen;
 
@@ -787,6 +888,46 @@ namespace BSA {
             PreParams preParms(gDqWrkGm, gDkWrkGm, gDvWrkGm, params.tiling);
             EpilogueFAGPre vecPre(preParms);
             vecPre();
+
+            // 方案L: deter 模式下清零 dkFinalOffset/dvFinalOffset (SetAtomicAdd 需要初始值为零)
+            if (tilingData->deterministic) {
+                uint64_t dkFinalOff = tilingData->dkFinalOffset;
+                uint64_t dvFinalOff = tilingData->dvFinalOffset;
+                uint64_t dkFinalSize = tilingData->dKOutSize;
+                uint64_t dvFinalSize = tilingData->dVOutSize;
+                __gm__ float* dkFinalGm = (__gm__ float*)(params.workspace + dkFinalOff);
+                __gm__ float* dvFinalGm = (__gm__ float*)(params.workspace + dvFinalOff);
+                // 用 AscendC::InitOutput 清零
+                AscendC::GlobalTensor<float> gDkFinalPre;
+                gDkFinalPre.SetGlobalBuffer(dkFinalGm);
+                AscendC::GlobalTensor<float> gDvFinalPre;
+                gDvFinalPre.SetGlobalBuffer(dvFinalGm);
+                uint64_t dkFinalElem = dkFinalSize / sizeof(float);
+                uint64_t dvFinalElem = dvFinalSize / sizeof(float);
+                // 分核清零
+                uint32_t aivNum = tilingData->usedVecCoreNum;
+                uint32_t cBlockIdx = AscendC::GetBlockIdx();
+                uint64_t dkPerCore = dkFinalElem / aivNum;
+                uint64_t dvPerCore = dvFinalElem / aivNum;
+                uint64_t dkStart = cBlockIdx * dkPerCore;
+                uint64_t dkEnd = (cBlockIdx == aivNum - 1) ? dkFinalElem : (dkStart + dkPerCore);
+                uint64_t dvStart = cBlockIdx * dvPerCore;
+                uint64_t dvEnd = (cBlockIdx == aivNum - 1) ? dvFinalElem : (dvStart + dvPerCore);
+                constexpr uint32_t ZERO_CHUNK = 2048;
+                AscendC::LocalTensor<float> zeroUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET);
+                AscendC::Duplicate(zeroUb, 0.0f, ZERO_CHUNK);
+                AscendC::PipeBarrier<PIPE_ALL>();
+                for (uint64_t off = dkStart; off < dkEnd; off += ZERO_CHUNK) {
+                    uint32_t chunk = (dkEnd - off > ZERO_CHUNK) ? ZERO_CHUNK : (uint32_t)(dkEnd - off);
+                    AscendC::DataCopy(gDkFinalPre[off], zeroUb, chunk);
+                }
+                AscendC::PipeBarrier<PIPE_ALL>();
+                for (uint64_t off = dvStart; off < dvEnd; off += ZERO_CHUNK) {
+                    uint32_t chunk = (dvEnd - off > ZERO_CHUNK) ? ZERO_CHUNK : (uint32_t)(dvEnd - off);
+                    AscendC::DataCopy(gDvFinalPre[off], zeroUb, chunk);
+                }
+                AscendC::PipeBarrier<PIPE_ALL>();
+            }
         }
 
     private:

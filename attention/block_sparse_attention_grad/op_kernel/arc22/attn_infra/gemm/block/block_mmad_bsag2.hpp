@@ -111,6 +111,9 @@ public:
     __aicore__ inline
     ~BlockMmad() {}
 
+    // deter 模式下关闭跨核原子加(每核私有 slot 只写一次)
+    __aicore__ inline void SetAtomicAdd(bool v) { isAtomicAdd = v; }
+
     __aicore__ inline
     void operator()(AscendC::GlobalTensor<ElementA> gA,
                     AscendC::GlobalTensor<ElementB> gB,
@@ -159,6 +162,7 @@ public:
         if (isAtomicAdd) {
             AscendC::SetAtomicAdd<ElementC>();
             copyL0CToGm(gC, l0CTensor[pingpongFlag], layoutC, layoutInL0C);
+            AscendC::PipeBarrier<PIPE_FIX>();
             AscendC::SetAtomicNone();
         } else {
             copyL0CToGm(gC, l0CTensor[pingpongFlag], layoutC, layoutInL0C);

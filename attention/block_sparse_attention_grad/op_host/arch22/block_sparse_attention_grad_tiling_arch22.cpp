@@ -216,6 +216,10 @@ ge::graphStatus BSAGradTiling::ProcessAttrs(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
+    // deterministic 开关: GQA 同组多 Q 头跨核原子加 dK/dV 会引入非确定性, 开启后走私有缓冲+固定顺序聚合
+    deterministic_ = (context->GetDeterministic() == 1);
+    OP_LOGD(context->GetNodeName(), "deterministic[%d].", deterministic_);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -410,6 +414,54 @@ ge::graphStatus BSAGradTiling::CalculateTaskSplit(gert::TilingContext *context) 
     return ge::GRAPH_SUCCESS;
 }
 
+// 计算单个 batch 的 kv 方向最坏情况(所有 kvBlock mask=true) tile 数
+static uint32_t CountKvLoopsWorstCase(uint32_t kvSeqlen, uint32_t blockShapeY, uint32_t basicKVBlockSize)
+{
+    if (kvSeqlen == 0 || blockShapeY == 0 || basicKVBlockSize == 0) {
+        return 0;
+    }
+    uint32_t kvBlockNum = CeilDiv(kvSeqlen, blockShapeY);
+    uint32_t total = 0;
+    for (uint32_t idx = 0; idx < kvBlockNum; idx++) {
+        uint32_t kvBlockSize = (idx != kvBlockNum - 1) ? blockShapeY : (kvSeqlen - blockShapeY * idx);
+        total += CeilDiv(kvBlockSize, basicKVBlockSize);
+    }
+    return total;
+}
+
+// deterministic: 计算锁步最大轮次(最坏情况上界)与批数
+ge::graphStatus BSAGradTiling::CalcMaxLoop(gert::TilingContext *context)
+{
+    if (!deterministic_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const uint32_t basicKVBlockSize = BASIC_BLOCK_SIZE;
+    const uint32_t blockY = static_cast<uint32_t>(blockShapeY_);
+
+    // 每个 task 的最坏 tile 数 = 其 batch 的 kv loop 数; 取所有 batch 的最大值作为上界
+    uint32_t maxTilesPerTask = 0;
+    for (uint32_t b = 0; b < batch_; b++) {
+        uint32_t kvSeqlen = (layout_ == InputLayout::TND) ? static_cast<uint32_t>(kvSeqLenList[b]) : maxKvSeqlen_;
+        uint32_t tiles = CountKvLoopsWorstCase(kvSeqlen, blockY, basicKVBlockSize);
+        maxTilesPerTask = std::max(maxTilesPerTask, tiles);
+    }
+
+    // 每核 task 数: 前 tailTaskNum_ 个核多 1
+    maxLoopSize_ = 0;
+    for (uint32_t c = 0; c < aicNum_; c++) {
+        uint32_t taskLen = taskNumPerCore_ + (c < tailTaskNum_ ? 1 : 0);
+        uint32_t coreLoops = taskLen * maxTilesPerTask;
+        maxLoopSize_ = std::max(maxLoopSize_, coreLoops);
+    }
+    if (maxLoopSize_ == 0) {
+        maxLoopSize_ = 1; // 至少 1 轮, 避免除 0
+    }
+    numBatches_ = CeilDiv(maxLoopSize_, deterBatchSize_);
+    OP_LOGD(context->GetNodeName(), "CalcMaxLoop maxLoopSize=%u numBatches=%u deterBatchSize=%u",
+            maxLoopSize_, numBatches_, deterBatchSize_);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
 {
     if (blockDim_ == 0) {
@@ -432,6 +484,38 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
     }
 
     workSpaceSize_ = libapiSize_ + sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_;
+
+    // 方案B: per-core slot(共享区域) + final + runInfo
+    if (deterministic_) {
+        constexpr uint64_t DETER_CORE_INFO_NUM = 8;
+        constexpr uint64_t WORKSPACE_ALIGN = 256;
+        constexpr uint64_t GAP = 67108864; // 64MB gap 防 sftmgGm 溢出
+
+        dkSlotSize_ = dKOutSize_;
+        dvSlotSize_ = dVOutSize_;
+        uint64_t dkSlotsTotal = static_cast<uint64_t>(aicNum_) * dkSlotSize_;
+        uint64_t dvSlotsTotal = static_cast<uint64_t>(aicNum_) * dvSlotSize_;
+
+        // runInfo (WriteGmByPassDCache 用, 不需 slot)
+        perCoreDkTileSize_ = BASIC_BLOCK_SIZE * headDim_ * sizeof(float); // 保留兼容
+        dkDeterGmSize_ = dkSlotsTotal; // 复用字段
+        dvDeterGmSize_ = dvSlotsTotal;
+        deterCoreInfoGmSize_ = static_cast<uint64_t>(aicNum_) * DETER_CORE_INFO_NUM * sizeof(int32_t);
+
+        // 布局: data + GAP + dkSlots + dvSlots + dkFinal + dvFinal + runInfo
+        uint64_t dataEnd = sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_;
+        uint64_t base = (dataEnd + GAP + WORKSPACE_ALIGN - 1) / WORKSPACE_ALIGN * WORKSPACE_ALIGN;
+        dkSlotOffset_ = base;           base += dkSlotsTotal;
+        dvSlotOffset_ = base;           base += dvSlotsTotal;
+        dkFinalOffset_ = base;          base += dKOutSize_;
+        dvFinalOffset_ = base;          base += dVOutSize_;
+        deterCoreInfoGmOffset_ = base;  base += deterCoreInfoGmSize_;
+        // 兼容旧字段
+        dkDeterGmOffset_ = dkSlotOffset_;
+        dvDeterGmOffset_ = dvSlotOffset_;
+        workSpaceSize_ = libapiSize_ + base;
+    }
+
     context->GetWorkspaceSizes(1)[0] = workSpaceSize_;
     
     return ge::GRAPH_SUCCESS;
@@ -482,6 +566,28 @@ ge::graphStatus BSAGradTiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_dkvSize(dkvSize_);
     tilingData_->set_postUbBaseSize(postUbBaseSize_);
     tilingData_->set_ubSize(ubSize_ - sizeof(BlockSparseAttentionGradTilingData) - 2 * 1024);
+
+    // deterministic 字段下发(不新增 tilingKey, kernel 运行期分支)
+    tilingData_->set_deterministic(static_cast<uint8_t>(deterministic_ ? 1 : 0));
+    tilingData_->set_maxLoopSize(maxLoopSize_);
+    tilingData_->set_deterBatchSize(deterBatchSize_);
+    tilingData_->set_numBatches(numBatches_);
+    tilingData_->set_deterAicNum(aicNum_);
+    tilingData_->set_deterAivNum(aivNum_);
+    tilingData_->set_perCoreDkTileSize(perCoreDkTileSize_);
+    tilingData_->set_dkDeterGmSize(dkDeterGmSize_);
+    tilingData_->set_dvDeterGmSize(dvDeterGmSize_);
+    tilingData_->set_deterCoreInfoGmSize(deterCoreInfoGmSize_);
+    tilingData_->set_dkDeterGmOffset(dkDeterGmOffset_);
+    tilingData_->set_dvDeterGmOffset(dvDeterGmOffset_);
+    tilingData_->set_deterCoreInfoGmOffset(deterCoreInfoGmOffset_);
+    // 方案B 新增字段
+    tilingData_->set_dkSlotOffset(dkSlotOffset_);
+    tilingData_->set_dvSlotOffset(dvSlotOffset_);
+    tilingData_->set_dkFinalOffset(dkFinalOffset_);
+    tilingData_->set_dvFinalOffset(dvFinalOffset_);
+    tilingData_->set_dkSlotSize(dkSlotSize_);
+    tilingData_->set_dvSlotSize(dvSlotSize_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -523,6 +629,12 @@ ge::graphStatus BSAGradTiling::GetBSAGradTiling(gert::TilingContext *context,
     ret = CalculateTaskSplit(context);
     if (ret != ge::GRAPH_SUCCESS) {
         OP_LOGE(context->GetNodeName(), "CalculateTaskSplit failed");
+        return ret;
+    }
+    
+    ret = CalcMaxLoop(context);
+    if (ret != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context->GetNodeName(), "CalcMaxLoop failed");
         return ret;
     }
     

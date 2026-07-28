@@ -100,6 +100,28 @@ TILING_DATA_FIELD_DEF(uint64_t, dkvSize);
 TILING_DATA_FIELD_DEF(uint64_t, postUbBaseSize);
 TILING_DATA_FIELD_DEF(uint64_t, ubSize);
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradTilingData);
+
+// ===== deterministic 模式相关字段 =====
+TILING_DATA_FIELD_DEF(uint8_t,  deterministic);        // 是否确定性模式
+TILING_DATA_FIELD_DEF(uint32_t, maxLoopSize);          // 锁步最大轮次(dK/dV tile 总数)
+TILING_DATA_FIELD_DEF(uint32_t, deterBatchSize);       // 一批缓冲的轮次, 固定 40
+TILING_DATA_FIELD_DEF(uint32_t, numBatches);           // 批数 = ceil(maxLoopSize / 40)
+TILING_DATA_FIELD_DEF(uint32_t, deterAicNum);
+TILING_DATA_FIELD_DEF(uint32_t, deterAivNum);
+TILING_DATA_FIELD_DEF(uint64_t, perCoreDkTileSize);    // 单轮单核 dk tile 字节数
+TILING_DATA_FIELD_DEF(uint64_t, dkDeterGmSize);        // 每核私有 dK 缓冲 = 40 * perCoreDkTileSize
+TILING_DATA_FIELD_DEF(uint64_t, dvDeterGmSize);
+TILING_DATA_FIELD_DEF(uint64_t, deterCoreInfoGmSize);  // 每核 run info 缓冲
+TILING_DATA_FIELD_DEF(uint64_t, dkDeterGmOffset);      // workspace 内偏移
+TILING_DATA_FIELD_DEF(uint64_t, dvDeterGmOffset);
+TILING_DATA_FIELD_DEF(uint64_t, deterCoreInfoGmOffset);
+// 方案B: per-core slot + final
+TILING_DATA_FIELD_DEF(uint64_t, dkSlotOffset);         // gDk_slots 起始偏移
+TILING_DATA_FIELD_DEF(uint64_t, dvSlotOffset);         // gDv_slots 起始偏移
+TILING_DATA_FIELD_DEF(uint64_t, dkFinalOffset);        // gDk_final 起始偏移
+TILING_DATA_FIELD_DEF(uint64_t, dvFinalOffset);        // gDv_final 起始偏移
+TILING_DATA_FIELD_DEF(uint64_t, dkSlotSize);           // 单核 dK slot 字节数(=dKOutSize)
+TILING_DATA_FIELD_DEF(uint64_t, dvSlotSize);           // 单核 dV slot 字节数(=dVOutSize)
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad, BlockSparseAttentionGradTilingData)
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1000, BlockSparseAttentionGradTilingDataArch35)
@@ -212,6 +234,27 @@ private:
     ge::DataType dataType_ = ge::DT_FLOAT16;
 
     BlockSparseAttentionGradTilingData *tilingData_ = nullptr;
+
+    // ===== deterministic 模式相关成员 =====
+    bool deterministic_ = false;
+    uint32_t maxLoopSize_ = 0;
+    uint32_t deterBatchSize_ = 40;
+    uint32_t numBatches_ = 0;
+    uint64_t perCoreDkTileSize_ = 0;
+    uint64_t dkDeterGmSize_ = 0;
+    uint64_t dvDeterGmSize_ = 0;
+    uint64_t deterCoreInfoGmSize_ = 0;
+    uint64_t dkDeterGmOffset_ = 0;
+    uint64_t dvDeterGmOffset_ = 0;
+    uint64_t deterCoreInfoGmOffset_ = 0;
+    uint64_t dkSlotOffset_ = 0;
+    uint64_t dvSlotOffset_ = 0;
+    uint64_t dkFinalOffset_ = 0;
+    uint64_t dvFinalOffset_ = 0;
+    uint64_t dkSlotSize_ = 0;
+    uint64_t dvSlotSize_ = 0;
+
+    ge::graphStatus CalcMaxLoop(gert::TilingContext *context);
 };
 
 } // namespace optiling
