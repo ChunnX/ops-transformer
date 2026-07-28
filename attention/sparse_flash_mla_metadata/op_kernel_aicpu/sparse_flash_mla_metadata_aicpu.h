@@ -206,6 +206,9 @@ struct S1GCache {
     int64_t cmpS1GNormalBlockCost { 0 };
     int64_t oriS2TailSize {0};
     int64_t cmpS2TailSize {0};
+    uint32_t actOriS2Size {0U};
+    uint32_t actCmpS2Size {0U};
+    uint32_t reductionTileSize {0U};
 };
 
 // 分核功能模块内部使用：记录分配过程中，当前核的负载信息
@@ -267,7 +270,7 @@ private:
     Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache, bool isCmpKv);
     int64_t OriCalcCost(uint32_t basicM, uint32_t basicS2);
     int64_t CmpCalcCost(uint32_t basicM, uint32_t basicS2);
-    void CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t oriS2TailSize,
+    void CalcCostTable(uint32_t s1GTailSize, uint32_t reductionTileSize, uint32_t oriS2TailSize,
         uint32_t cmpS2TailSize);
 
     // cache calculation
@@ -296,6 +299,7 @@ private:
 
     // FD
     bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes);
+    bool IsFirstReductionTile(const AssignContext &assignContext, const SplitResult &splitRes);
     void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result);
 
     // main
@@ -338,6 +342,7 @@ private:
     bool hasCmpKv_ = true;
     uint32_t aicCoreNum_ = optiling::AIC_CORE_MAX_NUM;
     uint32_t aivCoreNum_ = optiling::AIV_CORE_MAX_NUM;
+    bool isBatchConsistency_ = false;
 
     // attr
     std::string socVersion_ = "Ascend950";
@@ -349,14 +354,15 @@ private:
     uint32_t mBaseSize_ = 0;
     uint32_t s2BaseSize_ = 128U;
     bool isS1G_ = true;
-    bool supportFd = false;
+    bool supportFd_ = false;
     uint32_t oriAttentionMode_ = HAS_MASK;
     uint32_t cmpAttentionMode_ = HAS_MASK;
     BlockCost<int64_t> typeCost_ = {};
     bool isSplitG_ = false;
     bool isSparseOriKv_ = false;
     bool isSparseCmpKv_ = false;
-    
+    uint32_t remainedBlockNum_ = 0U;
+
 private:
     enum class ParamId : uint32_t {
     // input

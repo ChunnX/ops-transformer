@@ -38,6 +38,7 @@ ASCENDC_TPL_ARGS_DECL(SparseFlashMla, // 算子OpType
                                             HCA_TEMPLATE, CSA_TEMPLATE),
                       ASCENDC_TPL_BOOL_DECL(SPLIT_G, 0, 1),
                       ASCENDC_TPL_BOOL_DECL(HEAD_RATIO_ONE, 0, 1),
+                      ASCENDC_TPL_BOOL_DECL(BATCH_CONSISTENCY, 0, 1),
 );
 
 // 支持的模板参数组合
@@ -51,6 +52,7 @@ ASCENDC_TPL_SEL(
                                               HCA_TEMPLATE, CSA_TEMPLATE),
                          ASCENDC_TPL_BOOL_SEL(SPLIT_G, 0, 1),
                          ASCENDC_TPL_BOOL_SEL(HEAD_RATIO_ONE, 0, 1),
+                         ASCENDC_TPL_BOOL_SEL(BATCH_CONSISTENCY, 0, 1),
     )
 );
 

@@ -85,6 +85,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     bool isS2Split = false;
     int64_t s2SplitIdx = 0;
     bool isFirstS2SplitCore = true;
+    int64_t baseBlockNumInTile = 1;
 };
 
 #define COMMON_RUN_INFO \
@@ -129,6 +130,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     bool    isS2Split = false; \
     int64_t s2SplitIdx = 0; \
     bool    isFirstS2SplitCore = true; \
+    int64_t baseBlockNumInTile = 1; \
 
 struct RunInfo {
     COMMON_RUN_INFO;
@@ -142,6 +144,10 @@ struct RunInfo {
     uint32_t oriSparseBlockCount;
     uint32_t cmpSparseBlockCount;
     int64_t firstFdDataWorkspaceIdx = 0;
+    bool isFirstBase = true;
+    bool isLastBase = true;
+    bool needReduce = false;
+    int64_t reduceBlockId = 0;
 };
 
 #define COMMON_CONST_INFO \
