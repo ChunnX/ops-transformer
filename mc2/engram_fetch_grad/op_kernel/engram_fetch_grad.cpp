@@ -31,7 +31,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "engram_fetch_grad_tiling_data.h"
 #include "engram_fetch_grad_tiling_key.h"
-#include "../../engram_fetch/op_kernel/engram_fetch_utils.h"
+#include "arch35/engram_fetch_grad_arch35.h"
 
 using namespace Mc2Kernel;
 
@@ -44,4 +44,11 @@ __global__ __aicore__ void engram_fetch_grad(GM_ADDR commContext, GM_ADDR gradFe
     REGISTER_TILING_DEFAULT(EngramFetchGradTilingData);
     GET_TILING_DATA_WITH_STRUCT(EngramFetchGradTilingData, tilingData, tilingGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    if constexpr (EngramFetchGradMode == ENGRAM_FETCH_GRAD_DEFAULT_MODE) {
+        AscendC::TPipe pipe;
+        EngramFetchGradArch35 op;
+        op.Init(commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv, gradUniqueOut,
+                uniqueLocalEntryOut, numUniqueOut, workspaceGM, &pipe, &tilingData);
+        op.Process();
+    }
 }
