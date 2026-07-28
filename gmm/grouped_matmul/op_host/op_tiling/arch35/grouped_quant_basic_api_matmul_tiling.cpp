@@ -104,7 +104,7 @@ bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
         basicTiling_.baseM * CeilAlign(kAL1, MX_GROUP_SIZE), inputParams_.aDtype);
     const uint64_t bL1Size = GetSizeWithDataType(
         basicTiling_.baseN * CeilAlign(kBL1, MX_GROUP_SIZE), inputParams_.bDtype);
-    const uint64_t scaleKSize = CeilDiv(scaleKL1, MX_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
+    const uint64_t scaleKSize = CeilDiv(scaleKL1, MXFP_BASEK_FACTOR) * MXFP_MULTI_BASE_SIZE;
     const uint64_t scaleAL1Size = GetSizeWithDataType(
         basicTiling_.baseM * scaleKSize, inputParams_.perTokenScaleDtype);
     const uint64_t scaleBL1Size = GetSizeWithDataType(
