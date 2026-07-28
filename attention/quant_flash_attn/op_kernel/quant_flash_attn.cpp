@@ -15,6 +15,7 @@
 
 #include "kernel_operator.h"
 #include "arch35/quant_flash_attn_entry_regbase.h"
+#include "arch35/quant_flash_attn_entry_regbase_hif8.h"
 #include "arch35/quant_flash_attn_template_tiling_key.h"
 #include "arch35/quant_flash_attn_tiling_data.h"
 
@@ -41,5 +42,19 @@ quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *val
         query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale,
         cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse,
         user, tiling);
+#elif (ORIG_DTYPE_Q == DT_HIFLOAT8)
+    #if (ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
+    quant_flash_attn_kernel_run_hif8<hifloat8_t, half, inOutLayoutType, KvLayoutType, hasAttenMask, config,
+                                     quantMode>(
+        query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale,
+        cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse,
+        user, tiling);
+    #else
+    quant_flash_attn_kernel_run_hif8<hifloat8_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask, config,
+                                     quantMode>(
+        query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale,
+        cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse,
+        user, tiling);
+    #endif
 #endif
 }

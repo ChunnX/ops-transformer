@@ -40,7 +40,8 @@ bool QuantFlashAttnTilingImpl::IsCapable()
     if (qfaInfo_ == nullptr) {
         return false;
     }
-    if (qfaInfo_->quantMode != QfaQuantMode::MXFP8_FP32) {
+    if (qfaInfo_->quantMode != QfaQuantMode::MXFP8_FP32 &&
+        qfaInfo_->quantMode != QfaQuantMode::HIF8_FP32) {
         return false;
     }
     return true;
@@ -200,9 +201,15 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyInfo()
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyQuantMode()
 {
-    tilingKeyInfo_.quantMode = decodeS1GMerge_
-        ? static_cast<uint64_t>(QFA_MXFP8_FP32_DECODE)
-        : static_cast<uint64_t>(QFA_MXFP8_FP32_PREFILL);
+    if (qfaInfo_->quantMode == QfaQuantMode::HIF8_FP32) {
+        tilingKeyInfo_.quantMode = decodeS1GMerge_
+            ? static_cast<uint64_t>(QFA_HIF8_FP32_DECODE)
+            : static_cast<uint64_t>(QFA_HIF8_FP32_PREFILL);
+    } else {
+        tilingKeyInfo_.quantMode = decodeS1GMerge_
+            ? static_cast<uint64_t>(QFA_MXFP8_FP32_DECODE)
+            : static_cast<uint64_t>(QFA_MXFP8_FP32_PREFILL);
+    }
 }
 
 void QuantFlashAttnTilingImpl::GenTilingKey()

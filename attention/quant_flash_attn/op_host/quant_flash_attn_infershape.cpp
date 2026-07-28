@@ -199,7 +199,22 @@ ge::graphStatus InferDataTypeQuantFlashAttn(gert::InferDataTypeContext *context)
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    context->SetOutputDataType(OUTPUT_IDX_ATTN_OUT, ge::DT_BF16);
+    auto attrs = context->GetAttrs();
+    if (attrs != nullptr) {
+        auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_IDX_QUANT_MODE);
+        if (quantModePtr != nullptr && *quantModePtr == 3) {
+            auto outDtype = context->GetInputDataType(INPUT_IDX_Q);
+            if (outDtype == ge::DT_HIFLOAT8) {
+                context->SetOutputDataType(OUTPUT_IDX_ATTN_OUT, ge::DT_FLOAT16);
+            } else {
+                context->SetOutputDataType(OUTPUT_IDX_ATTN_OUT, ge::DT_BF16);
+            }
+        } else {
+            context->SetOutputDataType(OUTPUT_IDX_ATTN_OUT, ge::DT_BF16);
+        }
+    } else {
+        context->SetOutputDataType(OUTPUT_IDX_ATTN_OUT, ge::DT_BF16);
+    }
     context->SetOutputDataType(OUTPUT_IDX_SOFTMAX_LSE, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }

@@ -72,7 +72,8 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
         metadataOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 
-    auto attentionOutAlloc = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
+    auto attentionOutAlloc = executor->AllocTensor(
+        (quantMode == 3) ? DataType::DT_FLOAT16 : DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxLseAlloc = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
     auto ret = INFER_SHAPE(QuantFlashAttn,
