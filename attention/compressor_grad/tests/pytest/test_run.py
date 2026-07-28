@@ -120,9 +120,12 @@ def npu_test(case, device, seed=42):
     layout = case["input_layout"]
     sps = case["start_pos"]
     sqs = case["seqused_q"]
+    seqlens_list_q = case["seqlens_list_q"]
     dataType = case["dtype"]
 
     tokenSize = batchSize * seqSize
+    if layoutId == 0:
+        tokenSize = seqlens_list_q[-1]
 
     dtypeMap   = {"float16": torch.float16, "bfloat16": torch.bfloat16}
     ioDtype    = dtypeMap[dataType]
