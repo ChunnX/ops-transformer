@@ -1157,7 +1157,8 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
             uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
             uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
             OP_CHECK_IF(dimValueQueryScale != dimValueQuery,
-                        OP_LOGE(opName_, "query_dequant_scale's shape[%u] %u and query's shape[%u] %u is not same", i,
+                        OP_LOGE(opName_,
+                                "query_dequant_scale's shape[%u] %u and query's shape[%u] %u are not the same", i,
                                 dimValueQueryScale, i, dimValueQuery),
                         return ge::GRAPH_FAILED);
         }
@@ -1165,7 +1166,7 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
             uint32_t dimValueKeyScale = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(i);
             uint32_t dimValueKey = opParamInfo_.key.shape->GetStorageShape().GetDim(i);
             OP_CHECK_IF(dimValueKeyScale != dimValueKey,
-                        OP_LOGE(opName_, "key_dequant_scale's shape[%u] %u and key's shape[%u] %u is not same", i,
+                        OP_LOGE(opName_, "key_dequant_scale's shape[%u] %u and key's shape[%u] %u are not the same", i,
                                 dimValueKeyScale, i, dimValueKey),
                         return ge::GRAPH_FAILED);
         }
@@ -1203,7 +1204,7 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
                             Ops::Base::ToString(opParamInfo_.query_dequant_scale.shape->GetStorageShape()) + " and " +
                                 Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()),
                             "query_dequant_scale's shape[" + std::to_string(i) + "] and query's shape[" +
-                                std::to_string(i) + "] is not same"),
+                                std::to_string(i) + "] are not the same"),
                         return ge::GRAPH_FAILED);
         }
         // check k scale
@@ -1216,7 +1217,7 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
                             Ops::Base::ToString(opParamInfo_.key_dequant_scale.shape->GetStorageShape()) + " and " +
                                 Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()),
                             "key_dequant_scale's shape[" + std::to_string(i) + "] and key's shape[" +
-                                std::to_string(i) + "] is not same"),
+                                std::to_string(i) + "] are not the same"),
                         return ge::GRAPH_FAILED);
         }
     }

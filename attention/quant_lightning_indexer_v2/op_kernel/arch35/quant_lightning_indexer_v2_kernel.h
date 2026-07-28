@@ -678,8 +678,9 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
             // MX: qScale offset, shape [B, S1, N1, D/64, 2]
             uint64_t qScalePrefixSum =
                 actualSeqQPrefixSum * constInfo.qHeadNum * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
-            qScaleCoreOffset =
-                qScalePrefixSum + runInfo.gS1Idx * constInfo.mBaseSize * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
+            uint64_t qScaleS1Offset = static_cast<uint64_t>(runInfo.gS1Idx) * constInfo.mBaseSize *
+                                      (constInfo.headDim / MX_SCALE_GROUP_SIZE);
+            qScaleCoreOffset = qScalePrefixSum + qScaleS1Offset;
         }
     }
     uint64_t actualSeqKPrefixSum;
@@ -690,12 +691,14 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     }
     uint64_t tndBIdxOffsetForK = actualSeqKPrefixSum * constInfo.kHeadNum * qkHeadDim;
     keyCoreOffset = tndBIdxOffsetForK + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * qkHeadDim;
+    uint64_t keyScaleS2Offset =
+        actualSeqKPrefixSum + static_cast<uint64_t>(runInfo.s2Idx) * constInfo.s2BaseSize;
     if constexpr (IS_MX) {
         // MX: kScale offset, shape [B, S2, N2, D/64, 2]
-        keyScaleCoreOffset = (actualSeqKPrefixSum + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.kHeadNum *
-                             (constInfo.headDim / MX_SCALE_GROUP_SIZE);
+        keyScaleCoreOffset =
+            keyScaleS2Offset * constInfo.kHeadNum * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
     } else {
-        keyScaleCoreOffset = (actualSeqKPrefixSum + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.kHeadNum;
+        keyScaleCoreOffset = keyScaleS2Offset * constInfo.kHeadNum;
     }
     runInfo.tensorQueryOffset = queryCoreOffset;
     runInfo.tensorKeyOffset = keyCoreOffset;
