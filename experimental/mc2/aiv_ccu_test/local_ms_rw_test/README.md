@@ -34,8 +34,8 @@ export RANK_TABLE_FILE=/path/to/rank_table.json
 ### 一键编译运行
 
 ```shell
-# 编译 + 运行（先写后读，4KB，非交织，单卡）
-bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c ON -r ON -m 3 -i 0 -s 4096 -n 1
+# 编译 + 运行（先写后读，MS0，预热关闭，正式循环 100 次，4KB，非交织，单卡）
+bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c ON -r ON -m 3 -i 0 -w 0 -u 0 -l 100 -s 4096 -n 1
 ```
 
 ### 仅编译
@@ -47,7 +47,7 @@ bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c ON -r OFF
 ### 仅运行（复用编译产物）
 
 ```shell
-bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c OFF -r ON -m 3 -i 0 -s 4096
+bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c OFF -r ON -m 3 -i 0 -w 1 -u 3 -l 100 -s 4096
 ```
 
 ### 选项说明
@@ -60,23 +60,27 @@ bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c OFF -r ON -m 3 -i 0 -s
 | `-r` | 是否运行 ON/OFF | OFF |
 | `-m` | mode0：0=写, 1=读, 2=读写混合, 3=先写后读 | 0 |
 | `-i` | mode1：0=非交织, 1=交织 | 1 |
+| `-w` | warmup：0=不预热, 1=正式打点前执行一次相同操作 | 0 |
+| `-u` | ms_id：选择测试的 MS，范围 0..3 | 0 |
+| `-l` | loop_count：正式打点内循环次数 | 100 |
 | `-s` | 数据量（字节） | 4096 |
 | `-n` | 卡数 | 1 |
+| `-a` | rank ID | 0 |
 
 ### 常用组合
 
 ```shell
 # 先写后读 4KB（验证链路）
-bash run_local_ms_rw.sh -c ON -r ON -m 3 -i 0 -s 4096
+bash run_local_ms_rw.sh -c ON -r ON -m 3 -i 0 -w 1 -u 0 -l 100 -s 4096
 
-# 先写后读 64KB
-bash run_local_ms_rw.sh -c OFF -r ON -m 3 -i 0 -s 65536
+# 测 MS3，先写后读 64KB，正式循环 1000 次
+bash run_local_ms_rw.sh -c OFF -r ON -m 3 -i 0 -w 1 -u 3 -l 1000 -s 65536
 
 # 先写后读 120KB（接近单次搬运上限）
-bash run_local_ms_rw.sh -c OFF -r ON -m 3 -i 0 -s 122880
+bash run_local_ms_rw.sh -c OFF -r ON -m 3 -i 0 -w 0 -u 0 -l 100 -s 122880
 
 # 纯写 4KB 交织
-bash run_local_ms_rw.sh -c OFF -r ON -m 0 -i 1 -s 4096
+bash run_local_ms_rw.sh -c OFF -r ON -m 0 -i 1 -w 0 -u 0 -l 100 -s 4096
 ```
 
 ## 模式说明
@@ -130,7 +134,7 @@ WriteThenRead 模式一次搬运全部数据，受 UB 容量约束：
 
 ```
 [INFO] ===== 本地读写 MS 测试 =====
-[INFO] rank_id=0, ranksize=1, mode0=WRITE_THEN_READ, mode1=SEQUENTIAL, data_size=4096 bytes (4.00 KB)
+[INFO] rank_id=0, ranksize=1, mode0=WRITE_THEN_READ, mode1=SEQUENTIAL, warmup=1, ms_id=0, loop_count=100, data_size=4096 bytes (4.00 KB)
 [INFO] 通信域初始化成功。
 [INFO] 获取 TLV Handle...
 [INFO] 查询 MS 地址...
@@ -144,7 +148,11 @@ WriteThenRead 模式一次搬运全部数据，受 UB 容量约束：
 ===== 性能结果 =====
   模式:       WRITE_THEN_READ
   交织:       SEQUENTIAL
+  warmup:     1
+  MS ID:      0
+  循环次数:   100
   数据量:     4.00 KB (4096 bytes)
+  warmup耗时: 100 cycles
   startCycle: 1234567890
   endCycle:   1234567990
   耗时:       100.00 ns (0.10 us)
