@@ -811,14 +811,14 @@ def _select_worst_query_for_kernel_debug(
     return worst
 
 
-def _rerun_kernel_task_debug(
+def _report_kernel_task_debug(
     case_prefix: str,
     case: Dict[str, Any],
     inputs: Dict[str, Any],
     tilelang_outputs: Sequence[torch.Tensor],
     official_outputs: Sequence[torch.Tensor],
 ) -> None:
-    """使用官方对比选出的最差 query 重跑一次内核阶段诊断。"""
+    """输出官方对比选出的最差 query；默认由新进程执行详细诊断。"""
     if os.environ.get("SLIG_DEBUG_TASK", "").strip().lower() != "auto":
         return
     worst = _select_worst_query_for_kernel_debug(
@@ -833,9 +833,21 @@ def _rerun_kernel_task_debug(
     os.environ["SLIG_DEBUG_TASK"] = f"{batch_id},{query_id}"
     MODULE._debug_dump_done = False
     print(
-        f"{case_prefix} DEBUG_TASK rerun b={batch_id} q={query_id} "
+        f"{case_prefix} DEBUG_TASK selected b={batch_id} q={query_id} "
         f"dQ_norm={dq_norm_rel:.2e} dW_norm={dw_norm_rel:.2e}"
     )
+    if os.environ.get("SLIG_DEBUG_TASK_RERUN", "0") != "1":
+        print(
+            f"{case_prefix} DEBUG_TASK rerun skipped to avoid an NPU memory peak; "
+            f"rerun in a fresh process with SLIG_DEBUG_TASK={batch_id},{query_id}."
+        )
+        if old_debug_task is None:
+            os.environ.pop("SLIG_DEBUG_TASK", None)
+        else:
+            os.environ["SLIG_DEBUG_TASK"] = old_debug_task
+        return
+
+    print(f"{case_prefix} DEBUG_TASK in-process rerun enabled")
     try:
         _call_tilelang(inputs, case)
         torch.npu.synchronize()
@@ -894,7 +906,7 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
             _print_batch_diagnostics(case, tilelang_outputs, official_outputs)
             _print_query_diagnostics(case, tilelang_outputs, official_outputs)
         if not passed:
-            _rerun_kernel_task_debug(
+            _report_kernel_task_debug(
                 case_prefix,
                 case,
                 inputs,
