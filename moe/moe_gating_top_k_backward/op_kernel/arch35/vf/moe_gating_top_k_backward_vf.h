@@ -200,15 +200,10 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
         __ubuf__ float *gradYRow = gradYBase + row * kAlign;
         __ubuf__ float *gradNormXRow = gradNormXBase + row * n;
 
-        // ---- Phase 1: accumulate global D and betaNum across all chunks. ----
-        MicroAPI::RegTensor<float> globalD, globalBetaNum;
+        // ---- Phase 1a: accumulate global D across all chunks. ----
+        MicroAPI::RegTensor<float> globalD;
         MicroAPI::Duplicate(globalD, eps, maskLane0);
-        MicroAPI::Duplicate(globalBetaNum, 0.0f, maskLane0);
 
-        // remainingK1 is decremented by UpdateMask each call (branch-free tail
-        // handling: it naturally yields a full chunkSize mask for every chunk
-        // except the last, which gets whatever is left). Kept separate from
-        // Phase 2's counter since UpdateMask mutates its argument.
         uint32_t remainingK1 = k;
         for (uint16_t c = 0; c < repeatTimes; c++) {
             uint16_t chunkOffset = c * chunkSize;
@@ -216,7 +211,7 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
 
             MicroAPI::RegTensor<int32_t> idxReg;
             MicroAPI::RegTensor<uint32_t> idxU32Reg;
-            MicroAPI::RegTensor<float> wPrimeReg, gradYReg, tmpReg, chunkSum;
+            MicroAPI::RegTensor<float> wPrimeReg, chunkSum;
 
             MicroAPI::LoadAlign(idxReg, idxRow + chunkOffset);
             idxU32Reg = (MicroAPI::RegTensor<uint32_t> &)idxReg;
@@ -224,17 +219,42 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
 
             MicroAPI::ReduceSum(chunkSum, wPrimeReg, chunkMask);
             MicroAPI::Add(globalD, globalD, chunkSum, maskLane0);
+        }
+
+        // ---- Phase 1b: re-gather w', compute w'/D, multiply by gradY, accumulate betaNum. ----
+        // A3-style: normalize each w' by D first, then multiply by gradY.
+        // This avoids the (w'*gradY)/D rounding path which causes catastrophic
+        // cancellation residue in K=1 (A3's w/D=1.0 exact, then gradY*1.0=gradY exact).
+        MicroAPI::RegTensor<float> globalBetaNum;
+        MicroAPI::Duplicate(globalBetaNum, 0.0f, maskLane0);
+
+        uint32_t remainingK1b = k;
+        for (uint16_t c = 0; c < repeatTimes; c++) {
+            uint16_t chunkOffset = c * chunkSize;
+            MicroAPI::MaskReg chunkMask = MicroAPI::UpdateMask<int32_t>(remainingK1b);
+
+            MicroAPI::RegTensor<int32_t> idxReg;
+            MicroAPI::RegTensor<uint32_t> idxU32Reg;
+            MicroAPI::RegTensor<float> wPrimeReg, gradYReg, wNormReg, tmpReg, chunkSum;
+
+            MicroAPI::LoadAlign(idxReg, idxRow + chunkOffset);
+            idxU32Reg = (MicroAPI::RegTensor<uint32_t> &)idxReg;
+            MicroAPI::DataCopyGather(wPrimeReg, xNormRow, idxU32Reg, chunkMask);
+
+            // Broadcast D (lane0) to every lane for this chunk's w'/D.
+            MicroAPI::RegTensor<float> bcastDReg1b;
+            MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(
+                bcastDReg1b, globalD, chunkMask);
+            MicroAPI::Div(wNormReg, wPrimeReg, bcastDReg1b, chunkMask);
 
             MicroAPI::LoadAlign(gradYReg, gradYRow + chunkOffset);
-            MicroAPI::Mul(tmpReg, wPrimeReg, gradYReg, chunkMask);
+            MicroAPI::Mul(tmpReg, gradYReg, wNormReg, chunkMask);
             MicroAPI::ReduceSum(chunkSum, tmpReg, chunkMask);
             MicroAPI::Add(globalBetaNum, globalBetaNum, chunkSum, maskLane0);
         }
 
-        MicroAPI::RegTensor<float> invDReg, betaReg;
-        MicroAPI::Duplicate(invDReg, 1.0f, maskLane0);
-        MicroAPI::Div(invDReg, invDReg, globalD, maskLane0);
-        MicroAPI::Mul(betaReg, globalBetaNum, invDReg, maskLane0);
+        // betaNum already includes /D (each element was divided by D before reduce).
+        // No additional Div needed here — matches A3's Sigmoid() + GetGradXNorm() chain.
 
         // ---- Phase 2: recompute gradWPrime per chunk, scatter. ----
         uint32_t remainingK2 = k;
@@ -250,15 +270,16 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
             idxU32Reg = (MicroAPI::RegTensor<uint32_t> &)idxReg;
             MicroAPI::LoadAlign(gradYReg, gradYRow + chunkOffset);
 
-            // Broadcast the row-global invD/beta (lane0) to every lane of this chunk.
-            MicroAPI::RegTensor<float> bcastReg;
+            // Broadcast the row-global D/betaNum (lane0) to every lane of this chunk.
+            // betaNum already includes /D from Phase 1b.
+            MicroAPI::RegTensor<float> bcastDReg;
             MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(
-                bcastReg, invDReg, chunkMask);
+                bcastDReg, globalD, chunkMask);
             MicroAPI::RegTensor<float> gradWPrimeReg;
             MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(
-                gradWPrimeReg, betaReg, chunkMask);
+                gradWPrimeReg, globalBetaNum, chunkMask);
             MicroAPI::Sub(gradWPrimeReg, gradYReg, gradWPrimeReg, chunkMask);
-            MicroAPI::Mul(gradWPrimeReg, gradWPrimeReg, bcastReg, chunkMask);
+            MicroAPI::Div(gradWPrimeReg, gradWPrimeReg, bcastDReg, chunkMask);
 
             MicroAPI::DataCopyScatter(gradNormXRow, gradWPrimeReg, idxU32Reg, chunkMask);
         }
