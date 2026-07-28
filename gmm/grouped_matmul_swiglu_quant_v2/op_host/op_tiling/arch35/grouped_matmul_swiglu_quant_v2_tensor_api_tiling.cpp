@@ -303,16 +303,16 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoOpTiling()
 ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
-    // auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
-    // basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
+    auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
+    basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
-    if (inputParams_.mSize >= TENSOR_API_M_SPLIT_THRESHOLD) {
-        basicTiling_.baseM = TENSOR_API_LARGE_M_BASE_M;
-    }
-    if (inputParams_.nSize > TENSOR_API_N_SPLIT_THRESHOLD && inputParams_.kSize >= TENSOR_API_K_SPLIT_THRESHOLD) {
-        basicTiling_.baseN = TENSOR_API_LARGE_N_BASE_N;
-    }
+    // if (inputParams_.mSize >= TENSOR_API_M_SPLIT_THRESHOLD) {
+    //     basicTiling_.baseM = TENSOR_API_LARGE_M_BASE_M;
+    // }
+    // if (inputParams_.nSize > TENSOR_API_N_SPLIT_THRESHOLD && inputParams_.kSize >= TENSOR_API_K_SPLIT_THRESHOLD) {
+    //     basicTiling_.baseN = TENSOR_API_LARGE_N_BASE_N;
+    // }
 
     auto &mmTiling = tilingData_.mmTilingData;
     mmTiling.m = static_cast<uint32_t>(inputParams_.mSize);
