@@ -525,12 +525,22 @@ AscendC::Select<float, float>(v1_sy_reduce[0], v1_sy_valid_mask[0], v1_sy_reduce
             }
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
           }
-          AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(10);
-          AscendC::CrossCoreWaitFlag(12);
+          if (((pipe_iter + 1) % 2) == 0) {
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(10);
+            AscendC::CrossCoreWaitFlag(12);
+          } else {
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(11);
+            AscendC::CrossCoreWaitFlag(13);
+          }
         }
         if ASCEND_IS_AIC {
-          AscendC::CrossCoreWaitFlag(10);
-          AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(12);
+          if (((pipe_iter + 1) % 2) == 0) {
+            AscendC::CrossCoreWaitFlag(10);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(12);
+          } else {
+            AscendC::CrossCoreWaitFlag(11);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(13);
+          }
         }
         if ASCEND_IS_AIV {
           tl::ascend::Fill<float>(v1_bw_eps[0], 1.000000e-08f, 64);
