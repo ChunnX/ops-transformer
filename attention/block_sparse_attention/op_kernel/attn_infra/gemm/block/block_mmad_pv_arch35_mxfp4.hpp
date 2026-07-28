@@ -517,27 +517,24 @@ public:
         AscendC::printf("[P-CHK] loop=%u pSlot=%u\n", (unsigned)delay20TileInfo.loop, (unsigned)pSlot);
         // l1ABufId 是成员变量，不再 local 声明
         // mmad 维度：C = Vᵀ@P = Oᵀ
-        uint32_t s2Align64 = RoundUp(curBaseTileSize, MXFP4::CONST_64);
-        uint32_t s2Align32 = RoundUp(curBaseTileSize, MXFP4::CONST_32);
-        uint32_t s1Align128 = RoundUp(rowNum, MXFP4::CONST_128);
         
+        AscendC::printf("[P-CHK] s2Align64=%u s2Align32=%u s1Align128=%u\n", (unsigned)delay20TileInfo.kvsActBaseTileAlign64, (unsigned)delay20TileInfo.kvsActBaseTileAlign32, (unsigned)delay20TaskInfo.qsActBaseTileAlign128);
+
         uint32_t mMmad = embedReal + MXFP4::ROW_SUM_PAD_NUM;   // m = D+16（含 rowsum seed 行）
-        uint32_t nMmad = s1Align128;           // n = M
-        uint32_t kMmad = s2Align64;        // k = S2（对齐 64）
 
         // --- P 尾部补零（S2 对齐 32 但没到 64 → P pad 到 align64）---
-        if (curBaseTileSize != s2Align64) {
-            PadPS2NotAlign64(s2Align64, curBaseTileSize, embedReal, pSlot);
+        if (curBaseTileSize != delay20TileInfo.kvsActBaseTileAlign64) {
+            PadPS2NotAlign64(delay20TileInfo.kvsActBaseTileAlign64, curBaseTileSize, embedReal, pSlot);
         }
         // [TODO] 目前为了单体测试正确性，正确内容如下
-        // if (s2Align32 != s2Align64) {
-        //     PadPS2NotAlign64(s2Align64, s2Align32, embedReal, pSlot);
+        // if (delay20TileInfo.kvsActBaseTileAlign32 != delay20TileInfo.kvsActBaseTileAlign64) {
+        //     PadPS2NotAlign64(delay20TileInfo.kvsActBaseTileAlign64, delay20TileInfo.kvsActBaseTileAlign32, embedReal, pSlot);
         // }
 
         // AscendC::PipeBarrier<PIPE_ALL>();
         // // --- V 尾部补零（S2 没到 64 对齐 → V pad 到 align64）---
-        if (curBaseTileSize != s2Align64) {
-            PadVS2NotAlign64(s2Align64,curBaseTileSize,embedReal);
+        if (curBaseTileSize != delay20TileInfo.kvsActBaseTileAlign64) {
+            PadVS2NotAlign64(delay20TileInfo.kvsActBaseTileAlign64,curBaseTileSize,embedReal);
         }
 
         AscendC::PipeBarrier<PIPE_MTE2>();
@@ -552,24 +549,24 @@ public:
         //   l1A 直接构 nZ(D, s2Align64)——V GM=ColumnMajor→L1 nZ 是布局定论（恒成立），
         //   不用 LayoutTagL1A（主模板默认 LayoutTagA=RowMajor→zN，与 V 不一致）。
         auto l1ATensorTla = tla::MakeTensor(l1ATensor[l1ABufId],
-            tla::MakeLayout<ElementA, layout::nZ>(embedReal, s2Align64), Arch::PositionL1{});
+            tla::MakeLayout<ElementA, layout::nZ>(embedReal, delay20TileInfo.kvsActBaseTileAlign64), Arch::PositionL1{});
         SparseVBaseTileL1FullLoad(
             gV, l1ATensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
-            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, s2Align64);
+            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, delay20TileInfo.kvsActBaseTileAlign64);
         // [step2] V-scale gather 走 tla：gVScale MxScaleA(ColumnMajor,trans) + l1AScale zZ。
         //   实参 (rows=embed, cols=s2Align64/32) 反推自 raw（nValue=s2Align64/64, dValue=D,
         //   srcDValue=D, dstNzC0Stride=s2Align64/64）。gVScale（line 500 已取 gVScale=base[gmOffsetVScale]）
         //   重解释为 fp8_e8m0_t；mx 特化内部再 reinterpret 成 half 做 B16 Nd2Nz（与 raw 一致）。
         auto gVScaleTensorTla = tla::MakeTensor(
             gVScale.ReinterpretCast<AscendC::fp8_e8m0_t>(),
-            tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::ColumnMajor, false>(embedReal, s2Align64 / 32),
+            tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::ColumnMajor, false>(embedReal, delay20TileInfo.kvsActBaseTileAlign64 / 32),
             Arch::PositionGM{});
         auto l1AScaleTensorTla = tla::MakeTensor(l1AScaleTensor[l1ABufId].ReinterpretCast<AscendC::fp8_e8m0_t>(),
-            tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::zZ, false>(embedReal, s2Align64 / 32),
+            tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::zZ, false>(embedReal, delay20TileInfo.kvsActBaseTileAlign64 / 32),
             Arch::PositionL1{});
         SparseVScaleBaseTileL1FullLoad(
             gVScaleTensorTla, l1AScaleTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
-            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, s2Align64);
+            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, delay20TileInfo.kvsActBaseTileAlign64);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
@@ -595,14 +592,14 @@ public:
         // [验证] L0A/B bufId 轮转
         AscendC::printf("[L0-CHK] pvL0abBufId=%u\n", (unsigned)pvL0abBufId);
 
-        LoadPToL0(pSlot, l0BBufId, s1Align128, s2Align64, embedReal);
+        LoadPToL0(pSlot, l0BBufId, delay20TaskInfo.qsActBaseTileAlign128, delay20TileInfo.kvsActBaseTileAlign64, embedReal);
 
-        LoadVToL0(l1ABufId, l0ABufId, embedReal, s2Align64);
+        LoadVToL0(l1ABufId, l0ABufId, embedReal, delay20TileInfo.kvsActBaseTileAlign64);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
 
         // [#1] initC=isTileGoupFirstTile：TileGroup 首 tile 重置 L0C、tile 内累加
-        MatmulPV(l0ABufId, l0BBufId, mMmad, nMmad, kMmad, delay20TileInfo.isTileGoupFirstTile);
+        MatmulPV(l0ABufId, l0BBufId, mMmad, delay20TaskInfo.qsActBaseTileAlign128, delay20TileInfo.kvsActBaseTileAlign64, delay20TileInfo.isTileGoupFirstTile);
 
         // [#3] Mmad 完成 → 释放 L0A/B 槽给下次（M_MTE1：M→MTE1），轮转
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
@@ -614,7 +611,7 @@ public:
         if (delay20TileInfo.isUpdatePScale) {  // tile 末尾 → Fixpipe L0C→UB
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            FixpipeMm2(s1Align128,embedReal,ubOTmpTensor);
+            FixpipeMm2(delay20TaskInfo.qsActBaseTileAlign128,embedReal,ubOTmpTensor);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);  // [#5] FIX→M: fixpipe 完成，L0C 释放给下一 TileGroup
         }
 
