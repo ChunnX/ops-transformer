@@ -48,6 +48,8 @@ struct TaskInfo {
     int64_t  gmOffsetLse = 0;
     uint32_t oShapeCol = 0;
     uint32_t lseShapeCol = 0;
+
+    uint32_t qsActBaseTileAlign128 = 0;
 };
 
 struct TileInfo {
