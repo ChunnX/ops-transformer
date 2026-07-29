@@ -1179,73 +1179,73 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <!-- npu="910b" id11 -->
      **Atlas A2 训练系列产品/Atlas A2 推理系列产品：**
 
-      ```text
-      offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
+    ```text
+    offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
 
-      // winIn
-      offsetAAfterDispatch = max_recv_token_num × (quant ? hidden + 512 : hidden × 2)
-      offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
-      winInTensorSize      = offsetAAfterDispatch + offsetD
+    // winIn
+    offsetAAfterDispatch = max_recv_token_num × (quant ? hidden + 512 : hidden × 2)
+    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
+    winInTensorSize      = offsetAAfterDispatch + offsetD
 
-      // winOut
-      offsetA              = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
-      offsetC              = max_recv_token_num × hidden × 2B
-      winOutTensorSize     = offsetA + offsetC
+    // winOut
+    offsetA              = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
+    offsetC              = max_recv_token_num × hidden × 2B
+    winOutTensorSize     = offsetA + offsetC
 
-      offsetTensor         = max(winInTensorSize, winOutTensorSize)
-                           + (quant ? max_recv_token_num × 4B : 0)
+    offsetTensor         = max(winInTensorSize, winOutTensorSize)
+                        + (quant ? max_recv_token_num × 4B : 0)
 
-      // sync flags
-      offsetFlag           = ep_world_size × 512B
-                          + ep_world_size × maxExpertPerRank × 64B
-                          + ep_world_size × 64B
-      ```
+    // sync flags
+    offsetFlag           = ep_world_size × 512B
+                        + ep_world_size × maxExpertPerRank × 64B
+                        + ep_world_size × 64B
+    ```
     <!-- end id11 -->
 
     <!-- npu="A3" id12 -->
      **Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
 
-      ```text
-      offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
+    ```text
+    offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
 
-      // winIn（仅winIn，无winOut）
-      offsetAAfterDispatch = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
-      offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
-      winInTensorSize      = offsetAAfterDispatch + offsetD
+    // winIn（仅winIn，无winOut）
+    offsetAAfterDispatch = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
+    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
+    winInTensorSize      = offsetAAfterDispatch + offsetD
 
-      offsetTensor         = winInTensorSize
-                          + (quant ? num_max_tokens_per_rank × num_topk × 4B : 0)
+    offsetTensor         = winInTensorSize
+                        + (quant ? num_max_tokens_per_rank × num_topk × 4B : 0)
 
-      // sync flags（仅CrossRankSync）
-      offsetFlag           = ep_world_size × 512B
-      ```
+    // sync flags（仅CrossRankSync）
+    offsetFlag           = ep_world_size × 512B
+    ```
     <!-- end id12 -->
 
      **Ascend 950PR/Ascend 950DT：**
 
-        ```
-        expertPerRank = moeExpertNum / epWorldSize;
+    ```text
+    expertPerRank = moeExpertNum / epWorldSize;
 
-        // 全卡软同步使用 60KB
-        peermemDataOffset = 60LL * 1024LL;
+    // 全卡软同步使用 60KB
+    peermemDataOffset = 60LL * 1024LL;
 
-        // mask_recv_size
-        compareCount = CeilAlign(numMaxTokensPerRank * numTopk * 4, 256) / 4;
-        maskAlignSize = CeilAlign(compareCount / 8, 32);
-        maskSlotSize = maskAlignSize + 32;
-        maskRecvSize = CeilAlign(expertPerRank * epWorldSize * maskSlotSize, 512);
+    // mask_recv_size
+    compareCount = CeilAlign(numMaxTokensPerRank * numTopk * 4, 256) / 4;
+    maskAlignSize = CeilAlign(compareCount / 8, 32);
+    maskSlotSize = maskAlignSize + 32;
+    maskRecvSize = CeilAlign(expertPerRank * epWorldSize * maskSlotSize, 512);
 
-        // quant_token_scale_size
-        mxScaleNum = (hidden + 31) / 32;
-        dataBytes = CeilAlign(hidden, 256);
-        tokenBytes = CeilAlign(dataBytes + mxScaleNum, 32);
-        quantTokenScaleSize = CeilAlign(numMaxTokensPerRank * tokenBytes, 512);
+    // quant_token_scale_size
+    mxScaleNum = (hidden + 31) / 32;
+    dataBytes = CeilAlign(hidden, 256);
+    tokenBytes = CeilAlign(dataBytes + mxScaleNum, 32);
+    quantTokenScaleSize = CeilAlign(numMaxTokensPerRank * tokenBytes, 512);
 
-        // combine_send_size
-        combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
+    // combine_send_size
+    combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
 
-        totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
-        ```
+    totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
+    ```
     其中 `ep_world_size` 即通信域大小，$maxExpertPerRank$ 表示每张卡上可能专家数的最大值，$\mathrm{quant}$ 表示是否开启dispatch量化（`dispatch_quant_mode = 2`）。预留空间10 MB为内部元数据对齐与安全余量。
   - 通信域各节点的驱动版本应当相同。
   <!-- npu="910b" id13 -->
