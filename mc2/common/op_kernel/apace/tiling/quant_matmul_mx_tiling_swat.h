@@ -30,6 +30,7 @@ private:
     using Base::args_;
     using Base::platformInfo_;
     using Base::runInfo_;
+    using Base::isOpenOptimize_;
 
 protected:
     const char* TilingName() const override
@@ -42,7 +43,9 @@ protected:
         // The streaming path can reuse the common base block search directly,
         // then specializes only the tail split and L1-depth decisions.
         CalcBasicBlock();
-        // OptimizeEdgeBasicBlock();
+        if (isOpenOptimize_) {
+            OptimizeEdgeBasicBlock();
+        }
         CalcTailBasicBlock();
         CalcPathSpecificL1();
 

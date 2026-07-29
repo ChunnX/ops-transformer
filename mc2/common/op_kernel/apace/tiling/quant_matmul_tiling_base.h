@@ -53,10 +53,14 @@ public:
         GetTilingData(m, n, k, false, true, tilingData);
     }
 
+    void SetOptimizeEnable(bool enable) { isOpenOptimize_ = enable; }
+
 protected:
     QuantMatmulArgs args_{};
     QuantMatmulPlatformInfo platformInfo_{};
     QuantMatmulRunInfo runInfo_{};
+
+    bool isOpenOptimize_{true};
 
     virtual const char* TilingName() const = 0;
 

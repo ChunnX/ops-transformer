@@ -50,12 +50,12 @@ run_single() {
         cmake -S "$ST_DIR" -B "$BUILD_DIR" || { echo "ERROR: cmake failed"; return 1; }
         cmake --build "$BUILD_DIR" --target apace_ag_qmm_st --parallel 4 || { echo "ERROR: build failed"; return 1; }
     else
-        [ -x "$BUILD_DIR/all_gather_quant_matmul_prefill/apace_ag_qmm_st" ] || { echo "ERROR: --skip-build but binary missing"; return 1; }
+        [ -x "$BUILD_DIR/all_gather_quant_matmul/apace_ag_qmm_st" ] || { echo "ERROR: --skip-build but binary missing"; return 1; }
         echo "[2/4] Skip build (--skip-build)"
     fi
 
     echo "[3/4] NPU run ($RANK_NUM ranks)..."
-    local EXE_PATH="$BUILD_DIR/all_gather_quant_matmul_prefill/apace_ag_qmm_st"
+    local EXE_PATH="$BUILD_DIR/all_gather_quant_matmul/apace_ag_qmm_st"
     local EXE_DIR="$(dirname "$EXE_PATH")"
     rm -rf "$EXE_DIR/input" "$EXE_DIR/output"
     cp -r input "$EXE_DIR/input"
