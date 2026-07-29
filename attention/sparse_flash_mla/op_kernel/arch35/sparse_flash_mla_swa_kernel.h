@@ -387,7 +387,8 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     uint32_t combineElemSize = gSize * constInfo.dSize + FD_MAX_SUM_REGION_NUM * gSize *
         static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
     if constexpr (BATCH_CONSISTENCY) {
-        uint32_t intraCoreCombineSize = GetBlockNum() * combineElemSize * sizeof(float);
+        uint32_t intraCoreSlotNum = IS_SPLIT_G ? GetBlockNum() : (GetBlockNum() << 1U);
+        uint32_t intraCoreCombineSize = intraCoreSlotNum * combineElemSize * sizeof(float);
         uint32_t crossCoreCombineSize = GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
             combineElemSize * sizeof(float);
         intraCoreCombineBuffer.Init(fdStagingBufferManager, intraCoreCombineSize);
@@ -454,11 +455,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
         ParseFdRunInfo(fdRunInfo);
     }
     ProcessMainLoop();
-    if constexpr (BATCH_CONSISTENCY) {
-        SyncAll();
-    } else if ASCEND_IS_AIV {
-        SyncAll();
-    }
+    SyncAll<false>();
     if ASCEND_IS_AIV {
         if (fdRunInfo.coreEnable) {
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);

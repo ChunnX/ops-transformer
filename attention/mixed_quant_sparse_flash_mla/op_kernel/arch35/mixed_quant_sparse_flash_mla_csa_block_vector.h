@@ -162,11 +162,6 @@ public:
     }
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo);
-    __aicore__ inline void WaitFaStagingMte3()
-    {
-        SetFlag<HardEvent::MTE3_S>(mte3ToSBeforeFdId);
-        WaitFlag<HardEvent::MTE3_S>(mte3ToSBeforeFdId);
-    }
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, ConstInfo &constInfo);
@@ -303,7 +298,6 @@ private:
     TEventID vToMte3Id;
     TEventID intraLseMte3ToMte2Id[2];
     TEventID intraAttnOutMte3ToMte2Id[2];
-    TEventID mte3ToSBeforeFdId;
     TEventID mte3ToVLseOutId;
     TEventID vToMte3LseOutId;
     TEventID mte2ToVV0Id[2];
@@ -1352,6 +1346,21 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                     maxUb, sumUb, tmpUb, vToMte3Id, mte3ToVId);
         }
     }
+    if (constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid && runInfo.halfMRealSize > 0 &&
+        runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+        LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+        DataCopyExtParams lseParams;
+        lseParams.blockCount = 1;
+        lseParams.blockLen = static_cast<uint32_t>(runInfo.halfMRealSize * sizeof(float));
+        lseParams.srcStride = 0;
+        lseParams.dstStride = 0;
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        ComputeLse<float>(outLse, sumUb, maxUb, static_cast<uint32_t>(runInfo.halfMRealSize));
+        SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+        DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], outLse, lseParams);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1469,21 +1478,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
         intraLseMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
     SetFlag<HardEvent::MTE3_MTE2>(
         intraAttnOutMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
-    if (constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid && runInfo.halfMRealSize > 0 &&
-        runInfo.s2LoopCount == runInfo.s2LoopLimit) {
-        LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-        DataCopyExtParams lseParams;
-        lseParams.blockCount = 1;
-        lseParams.blockLen = static_cast<uint32_t>(runInfo.halfMRealSize * sizeof(float));
-        lseParams.srcStride = 0;
-        lseParams.dstStride = 0;
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
-        ComputeLse<float>(outLse, sumUb, maxUb, static_cast<uint32_t>(runInfo.halfMRealSize));
-        SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
-        DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], outLse, lseParams);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
-    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1639,6 +1633,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     int64_t attentionOutOffset = seqOffset * constInfo.n2GDv +
         fdRunInfo.mIdx * constInfo.n2GDv +
         fdRunInfo.mStartIdx * constInfo.dSizeV;
+    int64_t softmaxLseOffset = 0;
+    if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
+        softmaxLseOffset = (seqOffset + fdRunInfo.mIdx) * constInfo.gSize + fdRunInfo.mStartIdx;
+    } else {
+        softmaxLseOffset = (fdRunInfo.bn2Idx * constInfo.s1Size + fdRunInfo.mIdx) *
+            constInfo.gSize + fdRunInfo.mStartIdx;
+    }
     LocalTensor<T> accumulatedO = this->fdBuffers.accumOut.template Get<T>();
     LocalTensor<float> lseExpUb = this->fdBuffers.lseExp.template Get<float>();
     LocalTensor<float> blockMaxUb = this->fdBuffers.blockMax.template Get<float>();
@@ -1648,12 +1649,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
         dTemplateAlign64, GetStagingSlotNum(), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
         AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-    AttentionCommon::Reduce<T, dTemplateAlign64>(stagingLayout, fdStagingBase,
+    AttentionCommon::ReduceWithLse<T, dTemplateAlign64>(stagingLayout, fdStagingBase,
         fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
         static_cast<int64_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
         static_cast<int64_t>(constInfo.dSizeV),
         accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
-        vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id[0]);
+        constInfo.isSoftmaxLseEnable, softmaxLseGm, softmaxLseOffset,
+        vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id[0],
+        vToMte3LseOutId, mte3ToVLseOutId);
 
     RunInfo runInfo;
     runInfo.vec2MRealSize = fdRunInfo.mNum;
@@ -1859,7 +1862,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
             intraAttnOutMte3ToMte2Id[eventIdx] =
                 GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
         }
-        mte3ToSBeforeFdId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_S>();
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
     if (constInfo.isSoftmaxLseEnable) {
