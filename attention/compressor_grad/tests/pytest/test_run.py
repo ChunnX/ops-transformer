@@ -107,7 +107,7 @@ def reduce_ape_workspace(workspace_raw, headDim, coff, cmpRatio, roundCnt, total
 #  Test runner
 # ================================================================
 
-def npu_test(case, device, seed=42):
+def npu_test(case, device):
     """Run one test case and return result dict."""
     name = case["testcase_name"]
     batchSize = case["B"]
@@ -122,6 +122,7 @@ def npu_test(case, device, seed=42):
     sqs = case["seqused_q"]
     seqlens_list_q = case["seqlens_list_q"]
     dataType = case["dtype"]
+    seed = case["manual_seed"]
 
     dtypeMap   = {"float16": torch.float16, "bfloat16": torch.bfloat16}
     ioDtype    = dtypeMap[dataType]
@@ -478,7 +479,7 @@ def main():
               f"B={c['B']} hd={c['D']} cr={c['cmp_ratio']} "
               f"coff={c['coff']} {c['input_layout']}")
         try:
-            r = npu_test(c, device, seed=42 + i)
+            r = npu_test(c, device)
             results.append(r)
 
             parts = []
