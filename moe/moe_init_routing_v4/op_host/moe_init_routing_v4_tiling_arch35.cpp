@@ -12,7 +12,7 @@
  * \file moe_init_routing_v4_tiling.cpp
  * \brief
  */
-#include "moe_init_routing_v4_tiling.h"
+#include "moe_init_routing_v4_tiling_arch35.h"
 #include "../../moe_init_routing_v3/op_host/moe_init_routing_v3_tiling_arch35.h"
 #include "../../moe_init_routing_v3/op_kernel/arch35/moe_init_routing_v3_arch35_tiling_def.h"
 #include "register/op_def_registry.h"
@@ -105,11 +105,11 @@ protected:
         if (isInputActiveNum_) {
             OP_CHECK_IF(activeNumDtype != ge::DT_INT64,
                         OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "active_num",
-                                                   Ops::Base::ToString(activeNumDtype), "DT_INT64"),
+                                                  Ops::Base::ToString(activeNumDtype), "DT_INT64"),
                         return ge::GRAPH_FAILED);
         }
         MIRV3_CHECK_GE_RET(GetOptionalInputShapeDtype(topkWeightShape_, topkWeightDtype_, isInputTopkWeight_,
-                                                       V4_INPUT_TOPK_WEIGHT_INDEX));
+                                                      V4_INPUT_TOPK_WEIGHT_INDEX));
         tilingDataPtr_->isInputTopkWeight = isInputTopkWeight_;
         OP_LOGD(context_, "Got optional input topk_weight: isInputTopkWeight = %ld.", isInputTopkWeight_);
 
@@ -123,16 +123,16 @@ protected:
         MIRV3_CHECK_GE_RET(
             GetTensorShapeDtype<false>(expandedXShape_, expandedXDtype_, V4_OUTPUT_EXPANDED_X_INDEX));
         MIRV3_CHECK_GE_RET(GetTensorShapeDtype<false>(expandedRowIdxShape_, expandedRowIdxDtype_,
-                                                       V4_OUTPUT_EXPANDED_ROW_IDX_INDEX));
+                                                      V4_OUTPUT_EXPANDED_ROW_IDX_INDEX));
         MIRV3_CHECK_GE_RET(GetTensorShapeDtype<false>(expertTokensCountOrCumsumShape_,
-                                                       expertTokensCountOrCumsumDtype_,
-                                                       V4_OUTPUT_EXPERT_TOKENS_COUNT_INDEX));
+                                                      expertTokensCountOrCumsumDtype_,
+                                                      V4_OUTPUT_EXPERT_TOKENS_COUNT_INDEX));
         MIRV3_CHECK_GE_RET(
             GetTensorShapeDtype<false>(expandedScaleShape_, expandedScaleDtype_, V4_OUTPUT_EXPANDED_SCALE_INDEX));
         if (context_->GetOutputShape(V4_OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX) != nullptr) {
             isOutputExpandedTopkWeight_ = 1;
             MIRV3_CHECK_GE_RET(GetTensorShapeDtype<false>(expandedTopkWeightShape_, expandedTopkWeightDtype_,
-                                                           V4_OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX));
+                                                          V4_OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX));
         } else {
             isOutputExpandedTopkWeight_ = 0;
         }

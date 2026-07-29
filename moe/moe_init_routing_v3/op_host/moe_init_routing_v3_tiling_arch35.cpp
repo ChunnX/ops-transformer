@@ -500,7 +500,7 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckInputX()
     static const unordered_set<DataType> STATIC_QUANT_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
                                                                           DataType::DT_BF16};
     static const unordered_set<DataType> UNQUANT_SUPPORTED_DTYPES = {
-        DataType::DT_FLOAT,    DataType::DT_FLOAT16,     DataType::DT_BF16,          DataType::DT_INT8,
+        DataType::DT_FLOAT, DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_INT8,
         DataType::DT_HIFLOAT8, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT4_E2M1};
     static const unordered_set<DataType> MXFP4QUANT_SUPPORTED_DTYPES = {DataType::DT_FLOAT16, DataType::DT_BF16};
     static const unordered_set<DataType> INT4_DYNAMIC_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_BF16};
@@ -744,7 +744,7 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckTopkWeightConsistency()
     // topk_weight和expanded_topk_weight必须同时传入或同时不传入
     OP_CHECK_IF(isInputTopkWeight_ != isOutputExpandedTopkWeight_,
                 OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(),
-                    "topk_weight and expanded_topk_weight must be both present or both absent"),
+                                           "topk_weight and expanded_topk_weight must be both present or both absent"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -956,7 +956,9 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckOutputExpertTokensCountOrCums
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::CheckOutputExpertTokensCountOrCumsum()");
 
-    int64_t expectedRank{-1}, expectedDim0{-1}, expectedDim1{-1};
+    int64_t expectedRank{-1};
+    int64_t expectedDim0{-1};
+    int64_t expectedDim1{-1};
     if (expertTokensNumType_ == EXPERT_TOKENS_TYPE_CUMSUM || expertTokensNumType_ == EXPERT_TOKENS_TYPE_COUNT) {
         expectedRank = RANK_ONE;
         expectedDim0 = expertEnd_ - expertStart_;
@@ -991,7 +993,7 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckOutputExpertTokensCountOrCums
 }
 
 void MoeInitRoutingV3TilingArch35::CalculateExpectedScaleShape(int64_t &expectedRank, int64_t &expectedDim0,
-                                                                    int64_t &expectedDim1, int64_t &expectedDim2)
+                                                               int64_t &expectedDim1, int64_t &expectedDim2)
 {
     if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || IsAnyDynamicQuantCase()) {
         if (IsMXFPXNoQuantCase(quantMode_, xDtype_)) {
@@ -1031,7 +1033,7 @@ void MoeInitRoutingV3TilingArch35::CalculateExpectedScaleShape(int64_t &expected
 }
 
 ge::graphStatus MoeInitRoutingV3TilingArch35::ValidateScaleShape(int64_t expectedRank, int64_t expectedDim0,
-                                                                      int64_t expectedDim1, int64_t expectedDim2)
+                                                                 int64_t expectedDim1, int64_t expectedDim2)
 {
     auto rank = static_cast<int64_t>(expandedScaleShape_.GetDimNum());
     if (expectedRank != -1) {
@@ -1140,7 +1142,9 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckOutputs()
 void MoeInitRoutingV3TilingArch35::LogBaseTilingData()
 {
     std::stringstream ss;
-    ss << "\n[TilingKey]\n" << tilingKey_ << "\n[WorkspaceSize]\n" << workspaceSize_ << "\n";
+    ss << "\n[TilingKey]\n"
+       << tilingKey_ << "\n[WorkspaceSize]\n"
+       << workspaceSize_ << "\n";
     ss << "[MoeInitRoutingV3Arch35TilingData]\n";
     ss << "coreNum = " << tilingDataPtr_->coreNum << "\n";
     ss << "n = " << tilingDataPtr_->n << "\n";
@@ -1420,7 +1424,7 @@ MultipleParams MoeInitRoutingV3TilingArch35::GetMultipleParams()
 }
 
 PerLoopParams MoeInitRoutingV3TilingArch35::GetPerLoopParams(MultipleParams &multipleParams,
-                                                                  int64_t perCoreIndicesElements)
+                                                             int64_t perCoreIndicesElements)
 {
     PerLoopParams perLoopParams;
     perLoopParams.perLoopCols = tilingDataPtr_->cols;
@@ -1472,7 +1476,7 @@ void MoeInitRoutingV3TilingArch35::AlignInt4DynamicQuantPerLoopCols(PerLoopParam
 }
 
 void MoeInitRoutingV3TilingArch35::SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams,
-                                                                         const int64_t perCoreIndicesElements)
+                                                                    const int64_t perCoreIndicesElements)
 {
     perLoopParams.perLoopMaxIndicesElements = availUbSize_ / NUM_TWO /
                                               (AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_) +
@@ -1498,8 +1502,8 @@ void MoeInitRoutingV3TilingArch35::SetPerLoopParams4NoQuantDropLess(PerLoopParam
 }
 
 void MoeInitRoutingV3TilingArch35::SetPerLoopParams4NoQuantDropPad(const MultipleParams &multipleParams,
-                                                                        PerLoopParams &perLoopParams,
-                                                                        const int64_t perCoreIndicesElements)
+                                                                   PerLoopParams &perLoopParams,
+                                                                   const int64_t perCoreIndicesElements)
 {
     perLoopParams.perLoopMaxIndicesElements =
         (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
@@ -1622,10 +1626,10 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutMxFP8NoQuantCompute()
         int64_t rowIdxSize = NUM_TWO * static_cast<int64_t>(sizeof(int32_t)) *
                              std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
         int64_t oneRowSize = Align(perLoopParams.perLoopCols, inputXDtypeSize_) * inputXDtypeSize_ * NUM_TWO +
-            Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
-                NUM_TWO;
+                             Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
+                                 NUM_TWO;
         perLoopParams.xCopyInQueueBufferNum = std::min(MAX_QUEUE_BUFFER_NUM,
-            (availUbSize_ - rowIdxSize) / oneRowSize * NUM_TWO);
+                                                       (availUbSize_ - rowIdxSize) / oneRowSize * NUM_TWO);
     }
 
     while (perLoopParams.perLoopMaxIndicesElements <= 0) {

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file moe_init_routing_v4_tiling.h
+ * \file moe_init_routing_v4_tiling_arch35.h
  * \brief
  */
-#ifndef MOE_INIT_ROUTING_V4_TILING_H_
-#define MOE_INIT_ROUTING_V4_TILING_H_
+#ifndef MOE_INIT_ROUTING_V4_TILING_ARCH35_H_
+#define MOE_INIT_ROUTING_V4_TILING_ARCH35_H_
 
 #include "../../moe_init_routing_v3/op_host/moe_init_routing_v3_tiling_arch35.h"
 
