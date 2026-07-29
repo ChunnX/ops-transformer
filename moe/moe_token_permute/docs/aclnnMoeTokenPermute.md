@@ -96,17 +96,17 @@ aclnnStatus aclnnMoeTokenPermute(
       <td>tokens</td>
       <td>输入</td>
       <td>输入token特征。</td>
-      <td><ul><li>支持空tensor。</li><li>要求为一个维度大于等于2的Tensor，第一维的大小为num_tokens。</li><li>INT8仅支持Ascend 950，按非量化方式处理。</li></ul></td>
+      <td><ul><li>支持空tensor。</li><li>要求为一个2D Tensor，第一维的大小为num_tokens。</li><li>INT8仅支持Ascend 950，按非量化方式处理。</li></ul></td>
       <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
       <td>ND</td>
-      <td>≥2</td>
+      <td>2</td>
       <td>√</td>
     </tr>
     <tr>
       <td>indices</td>
       <td>输入</td>
       <td>输入indices索引。</td>
-      <td><ul><li>支持空tensor。</li><li>要求shape为2D或1D。</li><li>paddedMode为false时表示每一个输入token对应的topK个处理专家索引，shape为(num_tokens, topK)或(num_tokens)。</li><li>paddedMode为true时表示每个专家选中的token索引（暂不支持）。</li><li>元素个数小于16777215，值大于等于0且小于16777215。</li><li>tokens数据类型为INT8时，元素个数不大于10240。</li></ul></td>
+      <td><ul><li>支持空tensor。</li><li>要求shape为2D或1D。</li><li>paddedMode为false时表示每一个输入token对应的topK个处理专家索引，shape为(num_tokens, topK)或(num_tokens)。</li><li>paddedMode为true时表示每个专家选中的token索引（暂不支持）。</li><li>元素个数小于16777215，值大于等于0且小于16777215。</li><li>在Ascend 950上调用本接口且tokens数据类型为INT8时，元素表示expert ID，取值范围为[0, 10240)，最大值为10239，不支持10240。</li><li>tokens数据类型为INT8时，元素个数不大于10240。</li></ul></td>
       <td>INT32、INT64</td>
       <td>ND</td>
       <td>1或2</td>
@@ -266,6 +266,8 @@ aclnnStatus aclnnMoeTokenPermute(
 
 - INT8类型的tokens和permuteTokensOut仅支持Ascend 950，且二者数据类型必须一致。
 - tokens数据类型为INT8时，indices元素个数不大于`10240`，numOutTokens不大于`10240`。
+- 在Ascend 950上调用本接口且`tokens`数据类型为INT8时，`indices`表示expert ID，取值范围为`[0, 10240)`，最大值为`10239`，不支持`10240`。
+- 调用本接口时，`tokens`必须为2D，`indices`必须为1D或2D；不满足时接口直接返回参数错误。
 - 确定性计算：
   - aclnnMoeTokenPermute默认确定性实现。
 
