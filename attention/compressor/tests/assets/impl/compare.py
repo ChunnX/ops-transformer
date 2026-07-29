@@ -18,7 +18,6 @@ kv_state_origin, score_state_origin.
 """
 
 import numpy as np
-import logging
 import datetime
 import os
 import sys
@@ -32,10 +31,16 @@ _MAX_DIFF_HD = 10.0
 _PCT_THD = 0.005
 _MAX_ERROR_IDX = 10000000
 
-_OUTPUT_NAMES = ["cmp_kv", "kv_state_update", "score_state_update",
-                 "kv_state_origin", "score_state_origin"]
+_OUTPUT_NAMES = [
+    "cmp_kv",
+    "kv_state_update",
+    "score_state_update",
+    "kv_state_origin",
+    "score_state_origin",
+]
 
 _BATCH_CONSISTENCY_CACHE = {}
+
 
 def as_numpy(value):
     if hasattr(value, "detach"):
@@ -44,48 +49,87 @@ def as_numpy(value):
 
 
 def _get_thresholds(dtype_str):
-    if dtype_str == 'bfloat16':
+    if dtype_str == "bfloat16":
         return _BF16_RTOL, _BF16_ATOL, _PCT_THD
     return _FP16_RTOL, _FP16_ATOL, _PCT_THD
 
-def cal_relative_diff_np_isclose(real_data, expect_data, type_str='fp16'):
+
+def cal_relative_diff_np_isclose(real_data, expect_data, type_str="fp16"):
     diff = abs(float(real_data) - float(expect_data))
     result = diff / (np.abs(expect_data) + 10e-10)
     return result
 
-def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_data=None):
+
+def display_output_np_isclose(
+    real_data, expect_data, start, end, expect_fp32_data=None
+):
     def display_inner(idx):
         j = idx + start
-        diff_rate = cal_relative_diff_np_isclose(
-            real_data[j], expect_data[j])
+        diff_rate = cal_relative_diff_np_isclose(real_data[j], expect_data[j])
 
         if "inf" in str(expect_data[j]) or "nan" in str(expect_data[j]):
             diff_abs = "inf" if "inf" in str(expect_data[j]) else "nan"
             if expect_fp32_data is not None:
-                print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s \t %-7s' % (
-                    start + idx + 1, expect_fp32_data[j], expect_data[j], real_data[j], diff_abs, diff_rate))
+                print_log(
+                    "%08d \t %-7s \t %-7s \t %-7s \t %-7s \t %-7s"
+                    % (
+                        start + idx + 1,
+                        expect_fp32_data[j],
+                        expect_data[j],
+                        real_data[j],
+                        diff_abs,
+                        diff_rate,
+                    )
+                )
             else:
-                print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s' % (
-                    start + idx + 1, expect_data[j], real_data[j], diff_abs, diff_rate))
+                print_log(
+                    "%08d \t %-7s \t %-7s \t %-7s \t %-7s"
+                    % (
+                        start + idx + 1,
+                        expect_data[j],
+                        real_data[j],
+                        diff_abs,
+                        diff_rate,
+                    )
+                )
         else:
-            diff_abs = abs(np.float64(
-                expect_data[j]) - np.float64(real_data[j]))
+            diff_abs = abs(np.float64(expect_data[j]) - np.float64(real_data[j]))
             if expect_fp32_data is not None:
-                print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
-                    start + idx + 1, expect_fp32_data[j], expect_data[j], real_data[j], diff_abs, diff_rate))
+                print_log(
+                    "%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f \t %0.7f"
+                    % (
+                        start + idx + 1,
+                        expect_fp32_data[j],
+                        expect_data[j],
+                        real_data[j],
+                        diff_abs,
+                        diff_rate,
+                    )
+                )
             else:
-                print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
-                    start + idx + 1, expect_data[j], real_data[j], diff_abs, diff_rate))
+                print_log(
+                    "%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f"
+                    % (
+                        start + idx + 1,
+                        expect_data[j],
+                        real_data[j],
+                        diff_abs,
+                        diff_rate,
+                    )
+                )
 
     print_log(
-        '---------------------------------------------------------------------------------------')
+        "---------------------------------------------------------------------------------------"
+    )
     if expect_fp32_data is not None:
         print_log(
-            'Loop \t ExpFP32Out \t ExpFP16Out \t NPUOut \tFpDiff(min) \t RateDiff')
+            "Loop \t ExpFP32Out \t ExpFP16Out \t NPUOut \tFpDiff(min) \t RateDiff"
+        )
     else:
-        print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
+        print_log("Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff")
     print_log(
-        '---------------------------------------------------------------------------------------')
+        "---------------------------------------------------------------------------------------"
+    )
     split_count = int(end - start)
     if split_count <= 20:
         for i in range(split_count + 1):
@@ -93,54 +137,81 @@ def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_da
     else:
         for i in range(10):
             display_inner(i)
-        print_log('...   \t   ...   \t   ...   \t   ...    \t   ...')
+        print_log("...   \t   ...   \t   ...   \t   ...    \t   ...")
         for i in range(split_count - 10 + 1, split_count + 1):
             display_inner(i)
 
-def print_log(data=None, level='INFO'):
-    print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
-        "%Y/%m/%d %H:%M:%S"), level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
-                                    str(sys._getframe().f_back.f_lineno).zfill(4), data))
+
+def print_log(data=None, level="INFO"):
+    print(
+        "[%s] [%s]-%s:%s - %s"
+        % (
+            datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
+            level,
+            os.path.basename(sys._getframe().f_back.f_code.co_filename),
+            str(sys._getframe().f_back.f_lineno).zfill(4),
+            data,
+        )
+    )
+
 
 def display_error_output(real_data, expect_data, err_idx, relative_diff):
     print_log(
-        'Error Line-----------------------------------------------------------------------------')
-    print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
+        "Error Line-----------------------------------------------------------------------------"
+    )
+    print_log("Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff")
     print_log(
-        '---------------------------------------------------------------------------------------')
+        "---------------------------------------------------------------------------------------"
+    )
     count = 0
     len_err = len(err_idx)
     for i in err_idx:
         count += 1
         if count < 10 or (90 < count < 100):
-            print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
-                i, expect_data[i], real_data[i], abs(np.float64(
-                    expect_data[i]) - np.float64(real_data[i])),
-                relative_diff[count - 1]))
+            print_log(
+                "%08d \t %.7f \t %.7f \t %.7f \t %.7f"
+                % (
+                    i,
+                    expect_data[i],
+                    real_data[i],
+                    abs(np.float64(expect_data[i]) - np.float64(real_data[i])),
+                    relative_diff[count - 1],
+                )
+            )
         elif count == 10 or (count == 100 and len_err > 100):
-            dot_3 = '...'
-            print_log('%08s \t %07s \t %07s \t %07s \t %07s' %
-                      (dot_3, dot_3, dot_3, dot_3, dot_3))
+            dot_3 = "..."
+            print_log(
+                "%08s \t %07s \t %07s \t %07s \t %07s"
+                % (dot_3, dot_3, dot_3, dot_3, dot_3)
+            )
         elif count > 100:
             break
 
     print_log(
-        'Max-RE line:---------------------------------------------------------------------------')
+        "Max-RE line:---------------------------------------------------------------------------"
+    )
     max_error = max(relative_diff)
     m_idx_list = err_idx[np.where(relative_diff == max_error)]
     m_count = 0
     for m_idx in m_idx_list:
         m_count += 1
         if m_count < 4:
-            print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
-                m_idx, expect_data[m_idx], real_data[m_idx],
-                abs(np.float64(expect_data[m_idx]) -
-                    np.float64(real_data[m_idx])),
-                max_error))
+            print_log(
+                "%08d \t %.7f \t %.7f \t %.7f \t %.7f"
+                % (
+                    m_idx,
+                    expect_data[m_idx],
+                    real_data[m_idx],
+                    abs(np.float64(expect_data[m_idx]) - np.float64(real_data[m_idx])),
+                    max_error,
+                )
+            )
         else:
             break
     print_log(
-        '---------------------------------------------------------------------------------------')
+        "---------------------------------------------------------------------------------------"
+    )
+
 
 def _tensor_compare(npu_out, golden_out, name):
     npu = as_numpy(npu_out)
@@ -153,8 +224,13 @@ def _tensor_compare(npu_out, golden_out, name):
         return {
             "pass": True,
             "precision": 100.0,
-            "metrics": {"standard": "check_result", "name": name,
-                        "pct_rlt": 100.0, "max_rel_err": 0.0, "err_count": 0},
+            "metrics": {
+                "standard": "check_result",
+                "name": name,
+                "pct_rlt": 100.0,
+                "max_rel_err": 0.0,
+                "err_count": 0,
+            },
             "error_info": None,
         }
 
@@ -162,20 +238,31 @@ def _tensor_compare(npu_out, golden_out, name):
         return {
             "pass": False,
             "precision": 0.0,
-            "metrics": {"standard": "check_result", "name": name, "reason": "size mismatch",
-                        "npu_size": int(real_data.size), "golden_size": int(data_compe.size)},
+            "metrics": {
+                "standard": "check_result",
+                "name": name,
+                "reason": "size mismatch",
+                "npu_size": int(real_data.size),
+                "golden_size": int(data_compe.size),
+            },
             "error_info": f"{name} size mismatch: npu={real_data.size}, golden={data_compe.size}",
         }
 
-    dtype_str = str(golden.dtype).split('.')[-1]
+    dtype_str = str(golden.dtype).split(".")[-1]
     rtol, atol, pct_thd = _get_thresholds(dtype_str)
-    if name == _OUTPUT_NAMES[3] or name == _OUTPUT_NAMES[4] or name == "batch_consisteny":
+    if (
+        name == _OUTPUT_NAMES[3]
+        or name == _OUTPUT_NAMES[4]
+        or name == "batch_consisteny"
+    ):
         rtol = 0
         atol = 0
         pct_thd = 0
 
-    diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
-    err_idx = np.where(diff_result != True)[0]
+    diff_result = np.isclose(
+        real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True
+    )
+    err_idx = np.where(~diff_result)[0]
 
     split_count = real_data.size
     fulfill_percent = float(split_count - err_idx.size) / float(split_count) * 100.0
@@ -187,12 +274,14 @@ def _tensor_compare(npu_out, golden_out, name):
     eps = 10e-10
     err_diff = diff_abs / (b + eps)
     err_diff = err_diff[err_idx]
-    max_rel_err = float(np.max(err_diff[0:_MAX_ERROR_IDX])) if len(err_diff) > 0 else 0.0
+    max_rel_err = (
+        float(np.max(err_diff[0:_MAX_ERROR_IDX])) if len(err_diff) > 0 else 0.0
+    )
 
     print_log(
-        f"---------------------------------------check {name}------------------------------------------------")
-    print_log('split_count:%s; max_diff_hd:%s;' %
-              (float(split_count), _MAX_DIFF_HD))
+        f"---------------------------------------check {name}------------------------------------------------"
+    )
+    print_log("split_count:%s; max_diff_hd:%s;" % (float(split_count), _MAX_DIFF_HD))
 
     start = 0
     end = real_data.size - 1
@@ -207,18 +296,22 @@ def _tensor_compare(npu_out, golden_out, name):
             is_pass = False
 
     print_log(
-        '---------------------------------------------------------------------------------------')
-    print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
+        "---------------------------------------------------------------------------------------"
+    )
+    print_log("Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result")
     print_log(
-        '---------------------------------------------------------------------------------------')
-    print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
-                (rtol, atol, (1 - pct_thd) * 100.0, fulfill_percent, result))
+        "---------------------------------------------------------------------------------------"
+    )
+    print_log(
+        "%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s"
+        % (rtol, atol, (1 - pct_thd) * 100.0, fulfill_percent, result)
+    )
     if len(err_diff) > 0:
-        print_log('Max-RelativeError is: %s. Threshold is: %s.' %
-                    (max_error, _MAX_DIFF_HD))
+        print_log(
+            "Max-RelativeError is: %s. Threshold is: %s." % (max_error, _MAX_DIFF_HD)
+        )
     if result == "Failed":
-        display_error_output(real_data, data_compe,
-                                err_idx, err_diff[0:_MAX_ERROR_IDX])
+        display_error_output(real_data, data_compe, err_idx, err_diff[0:_MAX_ERROR_IDX])
 
     error_info = None
     if not is_pass:
@@ -245,6 +338,7 @@ def _tensor_compare(npu_out, golden_out, name):
         },
     }
 
+
 def _batch_consistency_check(npu_outputs, kwargs):
     """Compare NPU output slices across cases sharing the same batch_consistency_id.
 
@@ -252,15 +346,15 @@ def _batch_consistency_check(npu_outputs, kwargs):
     encountered for each (batch_consistency_id, output_idx) pair, then compares
     subsequent cases via np.array_equal.
     """
-    batch_consistency_id = kwargs.get('batch_consistency_id')
-    batch_axis = kwargs.get('batch_axis')
-    batch_slice_info = kwargs.get('batch_slice_info')
+    batch_consistency_id = kwargs.get("batch_consistency_id")
+    batch_axis = kwargs.get("batch_axis")
+    batch_slice_info = kwargs.get("batch_slice_info")
 
-    start_pos_list = kwargs.get('start_pos_list')
-    cu_seqlens_list = kwargs.get('cu_seqlens_list')
-    seqused_list = kwargs.get('seqused_list')
-    cmp_ratio = kwargs.get('cmp_ratio')
-    is_th = kwargs.get('is_th')
+    start_pos_list = kwargs.get("start_pos_list")
+    cu_seqlens_list = kwargs.get("cu_seqlens_list")
+    seqused_list = kwargs.get("seqused_list")
+    cmp_ratio = kwargs.get("cmp_ratio")
+    is_th = kwargs.get("is_th")
 
     if batch_consistency_id is None or not npu_outputs:
         return
@@ -274,10 +368,10 @@ def _batch_consistency_check(npu_outputs, kwargs):
     cache_key = batch_consistency_id
     result = []
 
-    for axis_pos, slices, cache_key_idx in zip(batch_axis ,batch_slice_info, cache_key):
+    for axis_pos, slices, cache_key_idx in zip(batch_axis, batch_slice_info, cache_key):
         if axis_pos is None or slices is None or cache_key_idx is None:
             continue
-        for axis_idx , slices_idx, key_idx in zip(axis_pos, slices, cache_key_idx):
+        for axis_idx, slices_idx, key_idx in zip(axis_pos, slices, cache_key_idx):
             if axis_idx is None or slices_idx is None or key_idx is None:
                 continue
             for sl, kl in zip(slices_idx, key_idx):
@@ -291,7 +385,7 @@ def _batch_consistency_check(npu_outputs, kwargs):
                     tc_idx = 0
                     batch_size = len(cu_seqlens_list) - 1
                     for b_idx in range(batch_size):
-                        if start >= cu_seqlens_list[b_idx+1] - cu_seqlens_list[0]:
+                        if start >= cu_seqlens_list[b_idx + 1] - cu_seqlens_list[0]:
                             tc_idx += seqused_list[b_idx] // cmp_ratio
                             continue
                         else:
@@ -301,58 +395,82 @@ def _batch_consistency_check(npu_outputs, kwargs):
                     headSize = cmp_ratio - (start + start_pos_list[b_idx]) % cmp_ratio
                     compare_len = (stop - start - headSize % cmp_ratio) // cmp_ratio
                     cache_len = cmp_ratio - start_pos_list[b_idx] % cmp_ratio
-                    start_idx = (start - cache_len) // cmp_ratio + 1 if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
+                    start_idx = (
+                        (start - cache_len) // cmp_ratio + 1
+                        if headSize == cmp_ratio
+                        else (start + headSize + cmp_ratio - 1) // cmp_ratio
+                    )
                     start_idx += tc_idx
-                    slice_output = npu_np[start_idx:(start_idx+compare_len),:]
+                    slice_output = npu_np[start_idx : (start_idx + compare_len), :]
                 else:
                     if axis_idx == 1:
                         headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
                         compare_len = (stop - start - headSize % cmp_ratio) // cmp_ratio
                         cache_len = cmp_ratio - start_pos_list[0] % cmp_ratio
-                        start_idx = (start - cache_len) // cmp_ratio + 1 if headSize == cmp_ratio else (start + headSize + cmp_ratio - 1) // cmp_ratio
-                        slice_output = npu_np[0,start_idx:(start_idx + compare_len),:]
+                        start_idx = (
+                            (start - cache_len) // cmp_ratio + 1
+                            if headSize == cmp_ratio
+                            else (start + headSize + cmp_ratio - 1) // cmp_ratio
+                        )
+                        slice_output = npu_np[
+                            0, start_idx : (start_idx + compare_len), :
+                        ]
                     else:
-                        slice_output = npu_np[start:stop,1:,:]                                                    
-                dl = '_'.join(kl.split('_')[:2])
+                        slice_output = npu_np[start:stop, 1:, :]
+                dl = "_".join(kl.split("_")[:2])
                 if dl not in _BATCH_CONSISTENCY_CACHE:
                     _BATCH_CONSISTENCY_CACHE[dl] = {
-                        'base': slice_output.copy(),
-                        'comparisons': []
+                        "base": slice_output.copy(),
+                        "comparisons": [],
                     }
                     print(f"[batch_consistency]: base for id={kl}")
                 else:
                     cached = _BATCH_CONSISTENCY_CACHE[dl]
-                    compare_result = _tensor_compare(cached['base'], slice_output, "batch_consisteny")
+                    compare_result = _tensor_compare(
+                        cached["base"], slice_output, "batch_consisteny"
+                    )
                     result.append(compare_result)
                     status = "Pass" if compare_result["pass"] else "Failed"
-                    cached['comparisons'].append({
-                        'status': status,
-                        'batch_consistency_id': kl,
-                    })
-                    print(f"[batch_consistency]  {status}" f"(id={kl})")
+                    cached["comparisons"].append(
+                        {
+                            "status": status,
+                            "batch_consistency_id": kl,
+                        }
+                    )
+                    print(f"[batch_consistency]  {status}(id={kl})")
 
     return result
 
+
 def compare(*outputs, **kwargs):
     if len(outputs) < 2:
-        return {"pass": False, "precision": "invalid",
-                "error_info": "compare expects NPU outputs followed by golden outputs"}
+        return {
+            "pass": False,
+            "precision": "invalid",
+            "error_info": "compare expects NPU outputs followed by golden outputs",
+        }
 
     GOLDEN_OUTPUT_COUNT = 2
     golden_outputs = list(outputs[-GOLDEN_OUTPUT_COUNT:])
     npu_outputs = list(outputs[:-GOLDEN_OUTPUT_COUNT])
-    cmp_kv_mask = kwargs.get('cmp_kv_mask', None)
+    cmp_kv_mask = kwargs.get("cmp_kv_mask", None)
 
     # Fallback: single NPU output (cmp_kv only) — compare cmp_kv, skip state_cache
     if len(npu_outputs) == 1:
-        results = [_tensor_compare(npu_outputs[0][cmp_kv_mask], golden_outputs[0][cmp_kv_mask], "cmp_kv")]
+        results = [
+            _tensor_compare(
+                npu_outputs[0][cmp_kv_mask], golden_outputs[0][cmp_kv_mask], "cmp_kv"
+            )
+        ]
         for i in range(1, len(golden_outputs)):
             name = _OUTPUT_NAMES[i] if i < len(_OUTPUT_NAMES) else f"output_{i}"
-            results.append({
-                "pass": True,
-                "precision": "N/A",
-                "error_info": f"{name}: NPU state_cache not captured",
-            })
+            results.append(
+                {
+                    "pass": True,
+                    "precision": "N/A",
+                    "error_info": f"{name}: NPU state_cache not captured",
+                }
+            )
         return results
 
     npu_cmp_kv = npu_outputs[0]
@@ -360,21 +478,37 @@ def compare(*outputs, **kwargs):
     cpu_cmp_kv = golden_outputs[0]
     cpu_state_cache = golden_outputs[1]
 
-    update_kv = kwargs.get('update_kv', None)
-    update_score = kwargs.get('update_score', None)
+    update_kv = kwargs.get("update_kv", None)
+    update_score = kwargs.get("update_score", None)
 
     npu_sub_outputs = [npu_cmp_kv[cmp_kv_mask]]
     golden_sub_outputs = [cpu_cmp_kv[cmp_kv_mask]]
 
-    npu_sub_outputs.append(npu_state_cache[:, :, :npu_state_cache.shape[2]//2][update_kv])
-    npu_sub_outputs.append(npu_state_cache[:, :, npu_state_cache.shape[2]//2:][update_score])
-    npu_sub_outputs.append(npu_state_cache[:, :, :npu_state_cache.shape[2]//2][~update_kv])
-    npu_sub_outputs.append(npu_state_cache[:, :, npu_state_cache.shape[2]//2:][~update_score])
+    npu_sub_outputs.append(
+        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
+    )
+    npu_sub_outputs.append(
+        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
+    )
+    npu_sub_outputs.append(
+        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
+    )
+    npu_sub_outputs.append(
+        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
+    )
 
-    golden_sub_outputs.append(cpu_state_cache[:, :, :cpu_state_cache.shape[2]//2][update_kv])
-    golden_sub_outputs.append(cpu_state_cache[:, :, cpu_state_cache.shape[2]//2:][update_score])
-    golden_sub_outputs.append(cpu_state_cache[:, :, :cpu_state_cache.shape[2]//2][~update_kv])
-    golden_sub_outputs.append(cpu_state_cache[:, :, cpu_state_cache.shape[2]//2:][~update_score])
+    golden_sub_outputs.append(
+        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
+    )
+    golden_sub_outputs.append(
+        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
+    )
+    golden_sub_outputs.append(
+        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
+    )
+    golden_sub_outputs.append(
+        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
+    )
 
     results = []
     for idx in range(len(golden_sub_outputs)):
@@ -382,15 +516,17 @@ def compare(*outputs, **kwargs):
         npu_out = npu_sub_outputs[idx]
         golden_out = golden_sub_outputs[idx]
         if npu_out is None and golden_out is None:
-            results.append({
-                "pass": True,
-                "precision": "N/A",
-                "error_info": f"{name} is None",
-            })
+            results.append(
+                {
+                    "pass": True,
+                    "precision": "N/A",
+                    "error_info": f"{name} is None",
+                }
+            )
         else:
             results.append(_tensor_compare(npu_out, golden_out, name))
 
-    result_consistency =_batch_consistency_check(npu_outputs, kwargs)
+    result_consistency = _batch_consistency_check(npu_outputs, kwargs)
     if result_consistency is not None:
         results.append(result_consistency)
 

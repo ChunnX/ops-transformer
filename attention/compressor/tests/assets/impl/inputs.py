@@ -14,6 +14,7 @@ import torch
 import random
 import numpy as np
 
+
 def to_list(value):
     if value is None:
         return []
@@ -41,8 +42,19 @@ def get_seq_used_by_batch(batch_idx, S, seqused, cu_seqlens):
     return S
 
 
-def build_block_table(state_cache, block_table, B, S_max, block_size, cmp_ratio,
-                      start_pos, seqused, cu_seqlens, cache_mode, S):
+def build_block_table(
+    state_cache,
+    block_table,
+    B,
+    S_max,
+    block_size,
+    cmp_ratio,
+    start_pos,
+    seqused,
+    cu_seqlens,
+    cache_mode,
+    S,
+):
     if block_table is None or not torch.is_tensor(block_table):
         return
 
@@ -52,7 +64,6 @@ def build_block_table(state_cache, block_table, B, S_max, block_size, cmp_ratio,
 
     next_block_id = 1
     if cache_mode == 1:
-        max_block_num_per_batch = block_table.shape[1]
         block_num = state_cache.shape[0]
         for i in range(B):
             cur_start = start_pos[i] // cmp_ratio * cmp_ratio - cmp_ratio
@@ -62,7 +73,9 @@ def build_block_table(state_cache, block_table, B, S_max, block_size, cmp_ratio,
             cur_end = min(cur_end, start_pos[i] + S)
             cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
             cur_end_block_id = (cur_end - 1) // block_size
-            for j in range(cur_start_block_id, min(cur_end_block_id + 1, block_table.shape[1])):
+            for j in range(
+                cur_start_block_id, min(cur_end_block_id + 1, block_table.shape[1])
+            ):
                 if next_block_id < block_num:
                     block_table[i][j] = next_block_id
                     next_block_id += 1
@@ -74,7 +87,9 @@ def build_block_table(state_cache, block_table, B, S_max, block_size, cmp_ratio,
             next_end = min(next_end, start_pos[i] + end_pos)
             next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
             next_end_block_id = (next_end - 1) // block_size
-            for j in range(next_start_block_id, min(next_end_block_id + 1, block_table.shape[1])):
+            for j in range(
+                next_start_block_id, min(next_end_block_id + 1, block_table.shape[1])
+            ):
                 if next_block_id < block_num and int(block_table[i][j].item()) == 0:
                     block_table[i][j] = next_block_id
                     next_block_id += 1
@@ -85,24 +100,34 @@ def build_block_table(state_cache, block_table, B, S_max, block_size, cmp_ratio,
             for i in range(B):
                 block_table[i] = perm[i]
 
-def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
-                          cu_seqlens, seqused, start_pos, **kwargs):
+
+def _fill_seq_descriptors(
+    x,
+    state_cache,
+    cmp_ratio,
+    coff,
+    cache_mode,
+    cu_seqlens,
+    seqused,
+    start_pos,
+    **kwargs,
+):
     if x is None or not torch.is_tensor(x):
         return None, None, None, 0, 0, 0, 128
 
-    cmp_ratio_val = int(cmp_ratio) if cmp_ratio is not None else 4
-    coff_val = int(coff) if coff is not None else 1
-    cache_mode_val = int(cache_mode) if cache_mode is not None else 1
-
     block_size = 128
-    if state_cache is not None and torch.is_tensor(state_cache) and state_cache.dim() >= 2:
+    if (
+        state_cache is not None
+        and torch.is_tensor(state_cache)
+        and state_cache.dim() >= 2
+    ):
         block_size = int(state_cache.shape[1])
 
     is_th = x.dim() == 2
     S_max = 0
-    cu_seqlens_values = kwargs.get('cu_seqlens_values')
-    seqused_values = kwargs.get('seqused_values')
-    start_pos_values = kwargs.get('start_pos_values')
+    cu_seqlens_values = kwargs.get("cu_seqlens_values")
+    seqused_values = kwargs.get("seqused_values")
+    start_pos_values = kwargs.get("start_pos_values")
 
     if is_th:
         T = x.shape[0]
@@ -111,7 +136,7 @@ def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
             if cu_seqlens is not None and torch.is_tensor(cu_seqlens):
                 fill_tensor_from_value(cu_seqlens, cu_seqlens_list)
         else:
-            print(f"Error: layout of x is [T, hidden_size], cu_seqlens is required!!!")
+            print("Error: layout of x is [T, hidden_size], cu_seqlens is required!!!")
         B = len(cu_seqlens_list) - 1
         S = T // B
     else:
@@ -123,7 +148,9 @@ def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
         seqused_list = [int(v) for v in seqused_values]
     else:
         if is_th:
-            seqused_list = [cu_seqlens_list[i + 1] - cu_seqlens_list[i] for i in range(B)]
+            seqused_list = [
+                cu_seqlens_list[i + 1] - cu_seqlens_list[i] for i in range(B)
+            ]
         else:
             seqused_list = [x.shape[1]] * B
     fill_tensor_from_value(seqused, seqused_list)
@@ -133,57 +160,68 @@ def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
     else:
         start_pos_list = [0] * B
     fill_tensor_from_value(start_pos, start_pos_list)
-    
+
     if is_th:
         for i in range(B):
-            if start_pos_list[i] + cu_seqlens_list[i+1] - cu_seqlens_list[i] > S_max:
-                S_max = start_pos_list[i] + cu_seqlens_list[i+1] - cu_seqlens_list[i]
+            if start_pos_list[i] + cu_seqlens_list[i + 1] - cu_seqlens_list[i] > S_max:
+                S_max = start_pos_list[i] + cu_seqlens_list[i + 1] - cu_seqlens_list[i]
     else:
         S_max = max(start_pos_list) + S
-    
+
     if is_th:
         S = max(seqused_list)
 
-
     return cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size
 
-def apply_batch_slice_seeded(x, wkv, wgate, state_cache, state_block_table, ape, cmp_ratio, coff, cache_mode, **kwargs):
+
+def apply_batch_slice_seeded(
+    x,
+    wkv,
+    wgate,
+    state_cache,
+    state_block_table,
+    ape,
+    cmp_ratio,
+    coff,
+    cache_mode,
+    **kwargs,
+):
     """根据 batch_axis/batch_slice_info/batch_seed 生成切片数据并替换输入。
 
     - batch_axis: 标记每个输入的 batch/seq 轴位置
     - batch_slice_info: 切片信息，指定要替换的 batch/seq 范围
     - batch_seed: 随机种子，确保跨用例相同 seed 生成相同数据
     - input_ranges: ttk 框架自动传递，按 tensor 索引给出 (lo, hi) 取值范围
-    
+
     流程：
     1. 使用 batch_seed 生成 slice 片段的数据输入(取值范围取自 input_ranges[idx])
     2. 将 slice 片段的数据，根据 slice 信息替换对应的输入位置
     """
-    batch_axis = kwargs.get('batch_axis')
-    batch_slice_info = kwargs.get('batch_slice_info')
-    batch_seed = kwargs.get('batch_seed')
-    input_ranges = kwargs.get('input_ranges')
-    
+    batch_axis = kwargs.get("batch_axis")
+    batch_slice_info = kwargs.get("batch_slice_info")
+    batch_seed = kwargs.get("batch_seed")
+    input_ranges = kwargs.get("input_ranges")
+
     if batch_axis is None or batch_slice_info is None or batch_seed is None:
         return
-    batch_axis = kwargs.get('batch_axis')
+    batch_axis = kwargs.get("batch_axis")
     # 输入 tensor 列表（与 tensor_view_shapes 顺序一致）
     is_th = x.dim() == 2
     input_tensors = [x, wkv, wgate, state_cache, ape]
-    
+
     for idx, tensor in enumerate(input_tensors):
         if tensor is None or not torch.is_tensor(tensor):
             continue
         if idx >= len(batch_axis) or idx >= len(batch_slice_info):
             continue
-        
+
         axes = batch_axis[idx]
 
         slices = batch_slice_info[idx]
         seed = batch_seed[idx]
         if axes is None or slices is None:
             continue
-        
+
         # 从 input_ranges 取该 tensor 的取值范围，缺省 (-10, 10)
         if input_ranges and idx < len(input_ranges) and input_ranges[idx] is not None:
             rng_range = input_ranges[idx]
@@ -196,86 +234,154 @@ def apply_batch_slice_seeded(x, wkv, wgate, state_cache, state_block_table, ape,
             if slices[axis_pos] is None or seed[axis_pos] is None:
                 continue
             sliced_shape = list(tensor.shape)
-            for sl, seed_value in zip(slices[axis_pos],seed[axis_pos]):
+            for sl, seed_value in zip(slices[axis_pos], seed[axis_pos]):
                 rng = np.random.RandomState(seed_value)
                 if sl is None:
                     continue
                 start = sl[0]
                 end = sl[1]
-                length = end - start            
+                length = end - start
                 if coff == 1:
                     if is_th:
                         sliced_shape[axis_pos] = length
-                        data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
-                        tensor[start:end,:]= torch.from_numpy(data).to(tensor.dtype)
+                        data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(
+                            np.float32
+                        )
+                        tensor[start:end, :] = torch.from_numpy(data).to(tensor.dtype)
                     else:
                         if axis_pos == 1:
                             sliced_shape[0] = 1
                             sliced_shape[axis_pos] = length
-                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
-                            tensor[0, start:end,:]= torch.from_numpy(data).to(tensor.dtype)
+                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(
+                                np.float32
+                            )
+                            tensor[0, start:end, :] = torch.from_numpy(data).to(
+                                tensor.dtype
+                            )
                         else:
                             sliced_shape[axis_pos] = length
-                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
-                            tensor[start:end,:,:]= torch.from_numpy(data).to(tensor.dtype)
+                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(
+                                np.float32
+                            )
+                            tensor[start:end, :, :] = torch.from_numpy(data).to(
+                                tensor.dtype
+                            )
                             if cache_mode == 2:
                                 cache_shape = list(state_cache.shape)
                                 cache_shape[0] = length
                                 cache_rng = np.random.RandomState(seed_value)
                                 cache_range = input_ranges[3]
                                 cache_lo, cache_hi = cache_range[0], cache_range[1]
-                                cache_data = cache_rng.uniform(cache_lo, cache_hi, size=tuple(cache_shape)).astype(np.float32)
-                                state_cache[start:end,:,:] = torch.from_numpy(cache_data).to(state_cache.dtype)
+                                cache_data = cache_rng.uniform(
+                                    cache_lo, cache_hi, size=tuple(cache_shape)
+                                ).astype(np.float32)
+                                state_cache[start:end, :, :] = torch.from_numpy(
+                                    cache_data
+                                ).to(state_cache.dtype)
                             else:
                                 cache_shape = list(state_cache.shape)
                                 cache_shape[0] = length * state_block_table.shape[1]
                                 cache_rng = np.random.RandomState(seed_value)
                                 cache_range = input_ranges[3]
                                 cache_lo, cache_hi = cache_range[0], cache_range[1]
-                                cache_data = cache_rng.uniform(cache_lo, cache_hi, size=tuple(cache_shape)).astype(np.float32)
-                                state_cache[start * state_block_table.shape[1]:end * state_block_table.shape[1],:,:] = torch.from_numpy(cache_data).to(state_cache.dtype)
+                                cache_data = cache_rng.uniform(
+                                    cache_lo, cache_hi, size=tuple(cache_shape)
+                                ).astype(np.float32)
+                                state_cache[
+                                    start * state_block_table.shape[1] : end
+                                    * state_block_table.shape[1],
+                                    :,
+                                    :,
+                                ] = torch.from_numpy(cache_data).to(state_cache.dtype)
                 elif coff == 2:
                     if is_th:
                         if start < cmp_ratio:
                             continue
                         sliced_shape[axis_pos] = length + cmp_ratio
-                        data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)                    
-                        tensor[(start - cmp_ratio):end,:]= torch.from_numpy(data).to(tensor.dtype)
+                        data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(
+                            np.float32
+                        )
+                        tensor[(start - cmp_ratio) : end, :] = torch.from_numpy(
+                            data
+                        ).to(tensor.dtype)
                     else:
                         if axis_pos == 1:
                             if start < cmp_ratio:
                                 continue
                             sliced_shape[0] = 1
                             sliced_shape[axis_pos] = length + cmp_ratio
-                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
-                            tensor[0, (start - cmp_ratio):end,:]= torch.from_numpy(data).to(tensor.dtype)
+                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(
+                                np.float32
+                            )
+                            tensor[0, (start - cmp_ratio) : end, :] = torch.from_numpy(
+                                data
+                            ).to(tensor.dtype)
                         else:
                             sliced_shape[axis_pos] = length
-                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
-                            tensor[start:end,:,:]= torch.from_numpy(data).to(tensor.dtype)
+                            data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(
+                                np.float32
+                            )
+                            tensor[start:end, :, :] = torch.from_numpy(data).to(
+                                tensor.dtype
+                            )
                             if cache_mode == 2:
                                 cache_shape = list(state_cache.shape)
                                 cache_shape[0] = length
                                 cache_rng = np.random.RandomState(seed_value)
                                 cache_range = input_ranges[3]
                                 cache_lo, cache_hi = cache_range[0], cache_range[1]
-                                cache_data = cache_rng.uniform(cache_lo, cache_hi, size=tuple(cache_shape)).astype(np.float32)
-                                state_cache[start:end,:,:] = torch.from_numpy(cache_data).to(state_cache.dtype)
+                                cache_data = cache_rng.uniform(
+                                    cache_lo, cache_hi, size=tuple(cache_shape)
+                                ).astype(np.float32)
+                                state_cache[start:end, :, :] = torch.from_numpy(
+                                    cache_data
+                                ).to(state_cache.dtype)
                             else:
                                 cache_shape = list(state_cache.shape)
                                 cache_shape[0] = length * state_block_table.shape[1]
                                 cache_rng = np.random.RandomState(seed_value)
                                 cache_range = input_ranges[3]
                                 cache_lo, cache_hi = cache_range[0], cache_range[1]
-                                cache_data = cache_rng.uniform(cache_lo, cache_hi, size=tuple(cache_shape)).astype(np.float32)
-                                state_cache[start * state_block_table.shape[1]:end * state_block_table.shape[1],:,:] = torch.from_numpy(cache_data).to(state_cache.dtype)
-                                                           
-def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
-                                state_block_table=None, cu_seqlens=None, seqused=None,
-                                start_pos=None, coff=1, cache_mode=1, **kwargs):
-    cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size = \
-        _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
-                              cu_seqlens, seqused, start_pos, **kwargs)
+                                cache_data = cache_rng.uniform(
+                                    cache_lo, cache_hi, size=tuple(cache_shape)
+                                ).astype(np.float32)
+                                state_cache[
+                                    start * state_block_table.shape[1] : end
+                                    * state_block_table.shape[1],
+                                    :,
+                                    :,
+                                ] = torch.from_numpy(cache_data).to(state_cache.dtype)
+
+
+def generate_compressor_inputs(
+    x,
+    wkv,
+    wgate,
+    state_cache,
+    ape,
+    cmp_ratio=4,
+    *,
+    state_block_table=None,
+    cu_seqlens=None,
+    seqused=None,
+    start_pos=None,
+    coff=1,
+    cache_mode=1,
+    **kwargs,
+):
+    cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size = (
+        _fill_seq_descriptors(
+            x,
+            state_cache,
+            cmp_ratio,
+            coff,
+            cache_mode,
+            cu_seqlens,
+            seqused,
+            start_pos,
+            **kwargs,
+        )
+    )
 
     if x is None or not torch.is_tensor(x):
         return
@@ -284,27 +390,92 @@ def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
     cache_mode_val = int(cache_mode) if cache_mode is not None else 1
 
     if state_block_table is not None and torch.is_tensor(state_block_table):
-        build_block_table(state_cache, state_block_table, B, S_max, block_size,
-                          cmp_ratio_val, start_pos_list,
-                          seqused_list, cu_seqlens_list, cache_mode_val, S)
+        build_block_table(
+            state_cache,
+            state_block_table,
+            B,
+            S_max,
+            block_size,
+            cmp_ratio_val,
+            start_pos_list,
+            seqused_list,
+            cu_seqlens_list,
+            cache_mode_val,
+            S,
+        )
     # batch一致性切片赋值
-    apply_batch_slice_seeded(x, wkv, wgate, state_cache, state_block_table, ape, cmp_ratio, coff, cache_mode_val, **kwargs)
+    apply_batch_slice_seeded(
+        x,
+        wkv,
+        wgate,
+        state_cache,
+        state_block_table,
+        ape,
+        cmp_ratio,
+        coff,
+        cache_mode_val,
+        **kwargs,
+    )
 
-def aclnn_compressor_input(x, wkv, wgate, stateCacheRef, ape,
-                            stateBlockTable, cuSeqlens, seqused, startPos,
-                            cmpRatio, coff, cacheMode, stateCacheStrideDim0,
-                            cmpKv, **kwargs):
-    cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size = \
-        _fill_seq_descriptors(x, stateCacheRef, cmpRatio, coff, cacheMode,
-                              cuSeqlens, seqused, startPos, **kwargs)
+
+def aclnn_compressor_input(
+    x,
+    wkv,
+    wgate,
+    stateCacheRef,
+    ape,
+    stateBlockTable,
+    cuSeqlens,
+    seqused,
+    startPos,
+    cmpRatio,
+    coff,
+    cacheMode,
+    stateCacheStrideDim0,
+    cmpKv,
+    **kwargs,
+):
+    cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size = (
+        _fill_seq_descriptors(
+            x,
+            stateCacheRef,
+            cmpRatio,
+            coff,
+            cacheMode,
+            cuSeqlens,
+            seqused,
+            startPos,
+            **kwargs,
+        )
+    )
 
     if x is None or not torch.is_tensor(x):
         return
 
     if stateBlockTable is not None and torch.is_tensor(stateBlockTable):
-        build_block_table(stateCacheRef, stateBlockTable, B, S_max, block_size,
-                          cmpRatio, start_pos_list,
-                          seqused_list, cu_seqlens_list, cacheMode, S)
+        build_block_table(
+            stateCacheRef,
+            stateBlockTable,
+            B,
+            S_max,
+            block_size,
+            cmpRatio,
+            start_pos_list,
+            seqused_list,
+            cu_seqlens_list,
+            cacheMode,
+            S,
+        )
 
-    apply_batch_slice_seeded(x, wkv, wgate, stateCacheRef, stateBlockTable, ape, cmpRatio,
-                             coff, cacheMode, **kwargs)
+    apply_batch_slice_seeded(
+        x,
+        wkv,
+        wgate,
+        stateCacheRef,
+        stateBlockTable,
+        ape,
+        cmpRatio,
+        coff,
+        cacheMode,
+        **kwargs,
+    )

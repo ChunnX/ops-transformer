@@ -22,7 +22,8 @@ _IMPL_DIR = _ASSETS_DIR / "impl"
 def _load_impl(stem):
     path = _IMPL_DIR / f"{stem}.py"
     spec = importlib.util.spec_from_file_location(
-        f"compressor_assets_{stem}_{abs(hash(path))}", path)
+        f"compressor_assets_{stem}_{abs(hash(path))}", path
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
