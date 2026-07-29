@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -53,9 +53,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_re_ro
     if (tokens_dtype.has_value()) {
         auto td = tokens_dtype.value();
         TORCH_CHECK(td == static_cast<int64_t>(DType::HIFLOAT8) ||
-                    td == static_cast<int64_t>(DType::FLOAT4_E2M1) ||
-                    td == static_cast<int64_t>(DType::FLOAT4_E1M2),
-            "tokens_dtype only supports hifloat8, float4_e2m1fn_x2, float4_e1m2fn_x2 or None, but got ", td);
+                        td == static_cast<int64_t>(DType::FLOAT4_E2M1) ||
+                        td == static_cast<int64_t>(DType::FLOAT4_E1M2),
+                    "tokens_dtype only supports hifloat8, float4_e2m1fn_x2, float4_e1m2fn_x2 or None, but got ", td);
     }
 
     const at::Tensor &per_token_scales = c10::value_or_else(per_token_scales_opt, [] { return at::Tensor(); });
@@ -103,9 +103,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_re_ro
         }
         permute_tokens = at::empty(permute_tokens_size, permute_tokens_options);
 
-        permute_per_token_scales = per_token_scales.defined()
-            ? at::empty(permute_per_token_scales_size, per_token_scales.options())
-            : at::empty(permute_per_token_scales_size, tokens.options().dtype(at::kFloat));
+        permute_per_token_scales = per_token_scales.defined() ? at::empty(permute_per_token_scales_size, per_token_scales.options()) : at::empty(permute_per_token_scales_size, tokens.options().dtype(at::kFloat));
 
         permute_token_idx = at::empty(permute_token_idx_size, tokens.options().dtype(at::kInt));
         expert_token_num = at::empty(expert_token_num_size, expert_token_num_per_rank.options());
@@ -119,12 +117,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_re_ro
         }
     }
 
-    TensorWrapper tokens_wrapper = {tokens, tokens_dtype.has_value()
-        ? GetAclDataType(tokens_dtype.value())
-        : ConvertToAclDataType(tokens.scalar_type())};
-    TensorWrapper permute_tokens_wrapper = {permute_tokens, tokens_dtype.has_value()
-        ? GetAclDataType(tokens_dtype.value())
-        : ConvertToAclDataType(permute_tokens.scalar_type())};
+    TensorWrapper tokens_wrapper = {tokens, tokens_dtype.has_value() ? GetAclDataType(tokens_dtype.value()) : ConvertToAclDataType(tokens.scalar_type())};
+    TensorWrapper permute_tokens_wrapper = {permute_tokens, tokens_dtype.has_value() ? GetAclDataType(tokens_dtype.value()) : ConvertToAclDataType(permute_tokens.scalar_type())};
 
     if (per_token_scales_dtype == at::kByte) {
         TensorWrapper per_token_scales_wrapper = {per_token_scales, aclDataType::ACL_FLOAT8_E8M0};

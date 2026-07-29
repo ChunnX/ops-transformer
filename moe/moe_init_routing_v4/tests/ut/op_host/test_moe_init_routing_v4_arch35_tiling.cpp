@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <limits>
 #include <gtest/gtest.h>
-#include "../../../op_host/moe_init_routing_v4_tiling.h"
+#include "../../../op_host/moe_init_routing_v4_tiling_arch35.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
@@ -324,7 +324,7 @@ gert::TilingContextPara MakeV4TilingContextPara(
     auto inputDesc = BuildV4Inputs(n, h, k, xDataType, scaleShape, scaleDtype, offsetShape, offsetDtype,
                                    hasActiveNum, activeNumVal, hasTopkWeight, totalLength);
     auto outputDesc = BuildV4Outputs(totalLength, h, expandedXDtype, expertTokensShape, expandedScale,
-                                      hasTopkWeight, n, k, dropPadMode, expertNum, expertCapacity);
+                                     hasTopkWeight, n, k, dropPadMode, expertNum, expertCapacity);
     auto attrs = BuildV4Attrs(expertCapacity, expertNum, dropPadMode, expertTokensNumType,
                               expertTokensNumFlag, quantMode, aciveExpertRange, rowIdxType);
     return gert::TilingContextPara("MoeInitRoutingV4", inputDesc, outputDesc, attrs, compileInfo, "Ascend950", A5SocInfo,
