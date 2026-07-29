@@ -102,7 +102,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>h_res</td>
         <td>Tensor或None</td>
         <td>可选</td>
-        <td>残差连接矩阵，对应公式中的H<sub>l</sub><sup>res</sup>。仅<term>Ascend 950PR/Ascend 950DT</term>在eager模式下支持置为None或传入空Tensor（二者均按未传入处理）；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>与<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>必须传入非空Tensor。</td>
+        <td>残差连接矩阵，对应公式中的H<sub>l</sub><sup>res</sup>。支持情况与取值约束请参见“约束说明”。</td>
         <td>float32</td>
         <td>
             <ul>
@@ -216,7 +216,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
 </tbody>
 </table>
 
-> **说明**：当`h_res`为`None`或空Tensor时（仅<term>Ascend 950PR/Ascend 950DT</term> eager模式支持），`grad_x`等于`grad_output`，`grad_h_res`仍以float32输出，shape按`x`推导为`(B, S, n, n)`（BSND格式）或`(T, n, n)`（TND格式）。
+> **说明**：当`h_res`为`None`或空Tensor时，`grad_x`等于`grad_output`，`grad_h_res`仍以float32输出，shape按`x`推导为`(B, S, n, n)`（BSND格式）或`(T, n, n)`（TND格式）。相关使用约束请参见“约束说明”。
 
 ## 约束说明
 
@@ -274,7 +274,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
   print(f"grad_x shape: {grad_x.shape}")
   ```
 
-  `h_res`不传入的场景（仅<term>Ascend 950PR/Ascend 950DT</term> eager模式支持，此时`grad_x`等于`grad_output`）：
+  `h_res`不传入的eager模式场景（此时`grad_x`等于`grad_output`）：
 
   ```python
   grad_x, grad_h_res, grad_h_out, grad_h_post = cann_ops_transformer.mhc_post_backward(
