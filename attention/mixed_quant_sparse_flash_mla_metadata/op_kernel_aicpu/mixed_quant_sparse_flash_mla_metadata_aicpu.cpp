@@ -74,7 +74,6 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "has_ori_kv", hasOriKv_);
     GetAttrValueOpt(ctx, "has_cmp_kv", hasCmpKv_);
     GetAttrValueOpt(ctx, "is_batch_consistency", isBatchConsistency_);
-
     return (ParamsCheck() && ParamsInit());
 }
 
@@ -607,16 +606,16 @@ int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CmpCalcCost(uint32_t basicM, 
     return static_cast<int64_t>(COST_WEIGHT_M * cmpAlignBasicM + COST_WEIGHT_S2 * cmpAlignBasicS2);
 }
 
-void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1GTailSize, uint32_t reductionTileSize,
+void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1GTailSize, uint32_t reductionBlockSize,
                                                               uint32_t oriS2TailSize, uint32_t cmpS2TailSize)
 {
     // ori 部分 cost
     if (hasOriKv_) {
         typeCost_[ORI_NORMAL_BLOCK][ORI_NORMAL_BLOCK] =
-            isBatchConsistency_ ? OriCalcCost(mBaseSize_, reductionTileSize) : OriCalcCost(mBaseSize_, s2BaseSize_);
+            isBatchConsistency_ ? OriCalcCost(mBaseSize_, reductionBlockSize) : OriCalcCost(mBaseSize_, s2BaseSize_);
         typeCost_[ORI_TAIL_BLOCK][ORI_NORMAL_BLOCK] =
             (s1GTailSize == 0U) ? 0U :
-                                  (isBatchConsistency_ ? OriCalcCost(s1GTailSize, reductionTileSize) :
+                                  (isBatchConsistency_ ? OriCalcCost(s1GTailSize, reductionBlockSize) :
                                                          OriCalcCost(s1GTailSize, s2BaseSize_));
         typeCost_[ORI_NORMAL_BLOCK][ORI_TAIL_BLOCK] =
             (oriS2TailSize == 0U) ? 0U : OriCalcCost(mBaseSize_, oriS2TailSize);
@@ -626,10 +625,10 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1GTailSi
     // cmp 部分 cost
     if (hasCmpKv_) {
         typeCost_[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK] =
-            isBatchConsistency_ ? CmpCalcCost(mBaseSize_, reductionTileSize) : CmpCalcCost(mBaseSize_, s2BaseSize_);
+            isBatchConsistency_ ? CmpCalcCost(mBaseSize_, reductionBlockSize) : CmpCalcCost(mBaseSize_, s2BaseSize_);
         typeCost_[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK] =
             (s1GTailSize == 0U) ? 0U :
-                                  (isBatchConsistency_ ? CmpCalcCost(s1GTailSize, reductionTileSize) :
+                                  (isBatchConsistency_ ? CmpCalcCost(s1GTailSize, reductionBlockSize) :
                                                          CmpCalcCost(s1GTailSize, s2BaseSize_));
         typeCost_[CMP_NORMAL_BLOCK][CMP_TAIL_BLOCK] =
             (cmpS2TailSize == 0U) ? 0U : CmpCalcCost(mBaseSize_, cmpS2TailSize);
@@ -912,19 +911,23 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, co
     if (isBatchConsistency_) {
         // 计算规约级切分大小
         uint64_t actTotalS2Size = s1GCache.actOriS2Size + s1GCache.actCmpS2Size;
-        s1GCache.reductionTileSize = (actTotalS2Size / reductionTileNum + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_;
-        s1GCache.reductionTileSize = s1GCache.reductionTileSize == 0U ? s2BaseSize_ : s1GCache.reductionTileSize;
+        s1GCache.reductionBlockSize =
+            (actTotalS2Size / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS + s2BaseSize_ - 1U) /
+            s2BaseSize_ * s2BaseSize_;
+        s1GCache.reductionBlockSize =
+            s1GCache.reductionBlockSize == 0U ? s2BaseSize_ : s1GCache.reductionBlockSize;
         // 使用规约级切分大小对基本块进行重新划分
         s1GCache.oriS2End =
-            s1GCache.actOriS2Size == 0 ? 0 : (s1GCache.actOriS2Size - 1) / s1GCache.reductionTileSize + 1U;
-        s1GCache.oriS2TailSize = s1GCache.actOriS2Size % s1GCache.reductionTileSize;
+            s1GCache.actOriS2Size == 0 ? 0 : (s1GCache.actOriS2Size - 1) / s1GCache.reductionBlockSize + 1U;
+        s1GCache.oriS2TailSize = s1GCache.actOriS2Size % s1GCache.reductionBlockSize;
         s1GCache.cmpS2End = s1GCache.actCmpS2Size == 0 ?
                                 s1GCache.cmpS2Start :
-                                s1GCache.cmpS2Start + (s1GCache.actCmpS2Size - 1) / s1GCache.reductionTileSize + 1U;
-        s1GCache.cmpS2TailSize = s1GCache.actCmpS2Size % s1GCache.reductionTileSize;
+                                s1GCache.cmpS2Start +
+                                    (s1GCache.actCmpS2Size - 1) / s1GCache.reductionBlockSize + 1U;
+        s1GCache.cmpS2TailSize = s1GCache.actCmpS2Size % s1GCache.reductionBlockSize;
     }
     // 计算基本块负载
-    CalcCostTable(splitInfo.s1GTailSize[s1GCache.bIdx], s1GCache.reductionTileSize, s1GCache.oriS2TailSize,
+    CalcCostTable(splitInfo.s1GTailSize[s1GCache.bIdx], s1GCache.reductionBlockSize, s1GCache.oriS2TailSize,
                   s1GCache.cmpS2TailSize);
     // 计算 ori 和 cmp 部分的 cost 和 block 信息
     CalcOriS1GCache(s1GCache, splitInfo);
@@ -1194,7 +1197,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::IsNeedRecordFDInfo(const AssignC
     return true;
 }
 
-bool MixedQuantSparseFlashMlaMetadataCpuKernel::isFirstReductionTile(const AssignContext &assignContext,
+bool MixedQuantSparseFlashMlaMetadataCpuKernel::isFirstReductionBlock(const AssignContext &assignContext,
                                                                      const SplitResult &splitRes)
 {
     // 如果核0的s2终止点落在s2Start和s2End之间，其规约部分一定是首个规约块
@@ -1281,7 +1284,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitCo
     if (assignContext.curS2Idx > assignContext.s1GCache.s2Start &&
         assignContext.curS2Idx <= assignContext.s1GCache.s2End) {
         if (isBatchConsistency_) {                             // batch一致性场景
-            if (isFirstReductionTile(assignContext, result)) { // 首个规约切分
+            if (isFirstReductionBlock(assignContext, result)) { // 首个规约切分
                 assignContext.curKvSplitPart++;
             } else { // 非首个规约切分
                 assignContext.curKvSplitPart +=

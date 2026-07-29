@@ -1293,33 +1293,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                     maxUb, sumUb, tmpUb, vToMte3Id, mte3ToVId);
                 SetFlag<HardEvent::MTE3_MTE2>(
                     intraLseMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
-#ifdef MQSMLA_DEBUG_DUMP
-                if (runInfo.boIdx == 0) {
-                    printf("[MQSMLA_DBG_STAGE_LSE] aiv=%lld sub=%lld rb=%lld loop=%lld/%lld slot=%u mOffset=%lld rows=%lld\n",
-                        static_cast<long long>(constInfo.aivIdx),
-                        static_cast<long long>(constInfo.subBlockIdx),
-                        static_cast<long long>(runInfo.reduceBlockId),
-                        static_cast<long long>(runInfo.s2LoopCount),
-                        static_cast<long long>(runInfo.s2LoopLimit),
-                        GetIntraCoreWorkspaceIdx(runInfo, constInfo),
-                        static_cast<long long>(stagingMOffset),
-                        static_cast<long long>(runInfo.halfMRealSize));
-                    int64_t debugMaxSumBytes = stagingLayout.StagingMaxSumBytes();
-                    int64_t debugOffset =
-                        GetIntraCoreWorkspaceIdx(runInfo, constInfo) * (debugMaxSumBytes / sizeof(float)) +
-                        stagingMOffset * stagingLayout.broadcastElems;
-                    GlobalTensor<float> debugMaxGm;
-                    debugMaxGm.SetGlobalBuffer(
-                        (__gm__ float *)stagingLayout.MaxRegion(intraCoreCombineBase));
-                    GlobalTensor<float> debugSumGm;
-                    debugSumGm.SetGlobalBuffer(
-                        (__gm__ float *)stagingLayout.SumRegion(intraCoreCombineBase));
-                    DumpTensor(debugSumGm[debugOffset], 110, 8);
-                    DumpTensor(debugMaxGm[debugOffset], 111, 8);
-                    DumpTensor(sumUb, 142, 8);
-                    DumpTensor(maxUb, 143, 8);
-                }
-#endif
             } else if (runInfo.isCrossCoreSplit && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0) {
                 AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                     dTemplateAlign64, GetStagingSlotNum(false),
@@ -1411,49 +1384,11 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
         LocalTensor<T> chunkCurrent = vec2ResUb[startRow * dTemplateAlign64];
         LocalTensor<float> chunkMaxUb = maxUb[startRow];
         LocalTensor<float> chunkSumUb = sumUb[startRow];
-        if (runInfo.boIdx == 0 && startRow == 0) {
-#ifdef MQSMLA_DEBUG_DUMP
-            int64_t debugMaxSumBytes = intraLayout.StagingMaxSumBytes();
-            GlobalTensor<float> debugPreviousMaxGm;
-            debugPreviousMaxGm.SetGlobalBuffer((__gm__ float *)(intraLayout.MaxRegion(intraCoreCombineBase) +
-                intraWorkspaceIdx * debugMaxSumBytes));
-            GlobalTensor<float> debugPreviousSumGm;
-            debugPreviousSumGm.SetGlobalBuffer((__gm__ float *)(intraLayout.SumRegion(intraCoreCombineBase) +
-                intraWorkspaceIdx * debugMaxSumBytes));
-            GlobalTensor<float> debugPreviousPartialOGm;
-            debugPreviousPartialOGm.SetGlobalBuffer((__gm__ float *)(intraLayout.AttenOutRegion(
-                intraCoreCombineBase) + intraWorkspaceIdx * intraLayout.StagingAttenOutElems() * sizeof(float)));
-            int64_t debugMaxSumOffset = stagingMOffset * intraLayout.broadcastElems;
-            int64_t debugPartialOOffset = stagingMOffset * static_cast<int64_t>(constInfo.dSizeV);
-            printf("[MQSMLA_DBG_MERGE_IN] aiv=%lld sub=%lld rb=%lld loop=%lld/%lld slot=%u mOffset=%lld rows=%lld\n",
-                static_cast<long long>(constInfo.aivIdx),
-                static_cast<long long>(constInfo.subBlockIdx),
-                static_cast<long long>(runInfo.reduceBlockId),
-                static_cast<long long>(runInfo.s2LoopCount),
-                static_cast<long long>(runInfo.s2LoopLimit),
-                intraWorkspaceIdx,
-                static_cast<long long>(stagingMOffset),
-                static_cast<long long>(runInfo.vec2MRealSize));
-            DumpTensor(debugPreviousMaxGm[debugMaxSumOffset], 113, 8);
-            DumpTensor(debugPreviousSumGm[debugMaxSumOffset], 114, 8);
-            DumpTensor(debugPreviousPartialOGm[debugPartialOOffset], 115, 16);
-            DumpTensor(chunkCurrent, 116, 16);
-            DumpTensor(chunkMaxUb, 126, 8);
-            DumpTensor(chunkSumUb, 127, 8);
-#endif
-        }
         AttentionCommon::MergeStagedAndCurrentChunk<T, dTemplateAlign64>(intraLayout,
             intraCoreCombineBase, intraWorkspaceIdx, stagingMOffset + startRow,
             dealRowCount, static_cast<int64_t>(constInfo.dSizeV), chunkMaxUb, chunkSumUb,
             chunkCurrent, blockMaxUb, blockSumUb, partialTmpUb, lseBroadcastUb, sumBroadcastUb,
             vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id[0]);
-#ifdef MQSMLA_DEBUG_DUMP
-        if (runInfo.boIdx == 0 && startRow == 0) {
-            DumpTensor(chunkCurrent, 118, 16);
-            DumpTensor(lseBroadcastUb, 121, 8);
-            DumpTensor(sumBroadcastUb, 123, 8);
-        }
-#endif
 
         AttentionCommon::StageBroadcastMaxSum(intraLayout, intraCoreCombineBase, intraWorkspaceIdx,
             stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb,
@@ -1557,24 +1492,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                         static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb, vToMte3Id, mte3ToVId);
                     SetFlag<HardEvent::MTE3_MTE2>(
                         intraAttnOutMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
-#ifdef MQSMLA_DEBUG_DUMP
-                    if (runInfo.boIdx == 0) {
-                        printf("[MQSMLA_DBG_STAGE_O] aiv=%lld sub=%lld rb=%lld loop=%lld/%lld slot=%u mOffset=%lld rows=%lld\n",
-                            static_cast<long long>(constInfo.aivIdx),
-                            static_cast<long long>(constInfo.subBlockIdx),
-                            static_cast<long long>(runInfo.reduceBlockId),
-                            static_cast<long long>(runInfo.s2LoopCount),
-                            static_cast<long long>(runInfo.s2LoopLimit),
-                            GetIntraCoreWorkspaceIdx(runInfo, constInfo),
-                            static_cast<long long>(stagingMOffset),
-                            static_cast<long long>(runInfo.vec2MRealSize));
-                        int64_t debugOffset =
-                            GetIntraCoreWorkspaceIdx(runInfo, constInfo) * stagingLayout.StagingAttenOutElems() +
-                            stagingMOffset * static_cast<int64_t>(constInfo.dSizeV);
-                        DumpTensor(intraCoreCombineGm[debugOffset], 112, 16);
-                        DumpTensor(vec2ResUb, 139, 16);
-                    }
-#endif
                 }
                 if (runInfo.isCrossCoreSplit &&
                     (!runInfo.isFirstS2SplitCore ||
