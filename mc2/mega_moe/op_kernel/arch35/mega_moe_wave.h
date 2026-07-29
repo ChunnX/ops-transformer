@@ -323,9 +323,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     if (expertsPerBatch_ > moeExpertPerRank_) {
         expertsPerBatch_ = moeExpertPerRank_;
     }
-    if (expertsPerBatch_ > MEGA_MOE_MAX_EXPERTS_PER_BATCH) {
-        expertsPerBatch_ = MEGA_MOE_MAX_EXPERTS_PER_BATCH;
-    }
     blockNumPerRank_ = tilingData->blockNumPerEP;
     maxOutputSize_ = tilingData->maxOutputSize;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
@@ -2142,8 +2139,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
     uint32_t batchIdx = 0;
     // Merge a final tail containing strictly less than half of a normal wave
     // into its predecessor, for example 5+5+5+1 becomes 5+5+6.
-    const uint32_t smallTailMergeBegin = MegaMoeImpl::GetSmallTailMergeBegin(
-        moeExpertPerRank_, expertsPerWave, MEGA_MOE_MAX_EXPERTS_PER_BATCH);
+    const uint32_t smallTailMergeBegin =
+        MegaMoeImpl::GetSmallTailMergeBegin(moeExpertPerRank_, expertsPerWave);
     uint32_t batchEnd = 0U;
     for (uint32_t batchBegin = 0; batchBegin < moeExpertPerRank_; batchBegin = batchEnd, ++batchIdx) {
         batchEnd = MegaMoeImpl::GetWaveEnd(

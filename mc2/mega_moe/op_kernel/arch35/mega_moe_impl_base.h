@@ -46,15 +46,13 @@ struct TokenRange {
 // final tail.  expertCount is returned as a sentinel when the regular fixed
 // wave partition should be retained.  The strict half-wave threshold keeps a
 // useful near-full tail as a separate overlap opportunity.
-MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetSmallTailMergeBegin(uint32_t expertCount, uint32_t expertsPerWave,
-                                                            uint32_t maxExpertsPerWave)
+MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetSmallTailMergeBegin(uint32_t expertCount, uint32_t expertsPerWave)
 {
     if (expertCount == 0U || expertsPerWave == 0U || expertsPerWave >= expertCount) {
         return expertCount;
     }
     uint32_t tailExperts = expertCount % expertsPerWave;
-    bool mergeSmallTail = tailExperts != 0U && 2U * tailExperts < expertsPerWave &&
-                          expertsPerWave + tailExperts <= maxExpertsPerWave;
+    bool mergeSmallTail = tailExperts != 0U && 2U * tailExperts < expertsPerWave;
     return mergeSmallTail ? expertCount - expertsPerWave - tailExperts : expertCount;
 }
 
