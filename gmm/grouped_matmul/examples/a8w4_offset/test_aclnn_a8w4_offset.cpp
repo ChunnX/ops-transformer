@@ -533,28 +533,37 @@ bool RunCase(bool withOffset) {
     int64_t rawMmad = 0;
     int64_t rowSum = 0;
     float ref = 0.0f;
+    std::vector<int64_t> groupMmad(static_cast<size_t>(G), 0);
     for (int64_t k = 0; k < K; ++k) {
       float s = floatScale[(e * G + (withOffset ? 0 : k / GS)) * N + n];
       const int8_t logicalWeight = logicalWeightAt(e, k, n);
       float w = logicalWeight * s + (withOffset ? fusedOffset[e * N + n] : 0.0f);
       ref += x[m * K + k] * w;
-      rawMmad += static_cast<int64_t>(x[m * K + k]) * logicalWeight;
+      const int64_t mmadValue = static_cast<int64_t>(x[m * K + k]) * logicalWeight;
+      rawMmad += mmadValue;
+      groupMmad[static_cast<size_t>(withOffset ? 0 : k / GS)] += mmadValue;
       if (n == 0) rowSum += x[m * K + k];
     }
     if (n != 0) {
       for (int64_t k = 0; k < K; ++k) rowSum += x[m * K + k];
     }
     const float channelScale = floatScale[e * G * N + n];
-    const float fixpipeGolden = static_cast<float>(rawMmad) * channelScale;
+    float fixpipeGolden = 0.0F;
+    float fixpipeUlpSum = 0.0F;
+    for (int64_t g = 0; g < G; ++g) {
+      const float partial = static_cast<float>(groupMmad[static_cast<size_t>(g)]) *
+                            floatScale[(e * G + g) * N + n];
+      fixpipeGolden += partial;
+      fixpipeUlpSum += HalfUlp(partial);
+    }
     const float offsetCorrection = withOffset ? static_cast<float>(rowSum) * fusedOffset[e * N + n] : 0.0f;
     const float got = HalfToFloat(output[m * N + n]);
     const float inferredFixpipe = got - offsetCorrection;
     const float err = std::fabs(got - ref);
-    // FixPipe rounds the scaled INT32 accumulator to FP16 before the vector
-    // offset correction. Cancellation can therefore expose the FixPipe ULP
-    // even when the final result is small.
-    const float tolerance =
-        0.2F + 1.5F * (HalfUlp(fixpipeGolden) + HalfUlp(ref));
+    // Each per-group partial is independently converted by FixPipe before the
+    // FP16 partials are accumulated. Sum their ULPs so cancellation and a
+    // large number of quant groups receive a scale-aware tolerance.
+    const float tolerance = 0.2F + 1.5F * (fixpipeUlpSum + HalfUlp(ref));
     if (printedSamples < 8) {
       std::cout << "value[" << m << ',' << n << "] raw=" << rawMmad
                 << " scale=" << channelScale

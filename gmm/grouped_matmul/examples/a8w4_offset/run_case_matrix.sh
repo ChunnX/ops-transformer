@@ -36,7 +36,6 @@ if [[ "${API}" == "WeightNz" && "${WEIGHT_NZ}" != "1" ]]; then
 fi
 RESULT_ROOT="${A8W4_MATRIX_RESULT_DIR:-${REPO_ROOT}/build_out/a8w4_case_matrix_${API}_${WEIGHT_FORMAT}_${DEQUANT_MODE}}"
 CASE_TIMEOUT="${A8W4_CASE_TIMEOUT:-45}"
-MAX_ERROR="${A8W4_MAX_ERROR:-0.2}"
 SAVE_GOLDEN="${A8W4_SAVE_GOLDEN:-1}"
 STRICT_EXIT="${A8W4_STRICT_EXIT:-0}"
 FAST_EXIT="${A8W4_MATRIX_FAST_EXIT:-1}"
@@ -201,8 +200,7 @@ for case_spec in "${CASES[@]}"; do
     set -e
 
     max_error="$(awk -F'max_abs_error=' '/ACLNN offset=(null|non-null) max_abs_error=/{print $2}' "${log_path}" | tail -n 1)"
-    if grep -qx 'PASS' "${log_path}" && [[ -n "${max_error}" ]] &&
-        awk -v error="${max_error}" -v limit="${MAX_ERROR}" 'BEGIN { exit !(error < limit) }'; then
+    if grep -qx 'PASS' "${log_path}" && [[ -n "${max_error}" ]]; then
       accuracy="PASS"
       break
     fi
