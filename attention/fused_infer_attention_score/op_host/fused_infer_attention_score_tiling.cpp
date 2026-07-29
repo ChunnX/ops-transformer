@@ -2238,10 +2238,6 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         OP_CHECK_IF(TilingProcess4SplitFuse(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for split fuse failed"),
             return ge::GRAPH_FAILED);
-        // 支持qs=0场景：TND布局下actualSeqLengthQ为累加和数组，某batch的qs=0
-        // if (queryS == 0) {
-        //     context->SetBlockDim(1);
-        // }
     } else if (usingIFA) { // IFA tiling process
         OP_CHECK_IF(TilingProcess4IFA(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for ifa failed"),

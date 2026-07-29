@@ -9839,6 +9839,9 @@ def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_
     auxAttrs = testObj.AuxAttrs(preTokens, nextTokens, numHeads, kvHeads, headSize, numBlocks, blockSize, maskType, dtype, kvOrgMode, layoutMode, maxQSeqlen, maxKvSeqlen, goldenGpuPrecision, scale, sparseMode)
     attentionInputs = testObj.AttentionInputs(query, key, value, blockTable, qSeqlenList, kvSeqlenList, fullMask, learnable_sink, auxAttrs)
     golden_output, golden_gpu_output, golden_lse_output, golden_gpu_lse_output = testObj.calc_data(attentionInputs, is_benchmark_task)
+    if inputLayout == 'TND' and totalQTokens < query.shape[0]:
+        golden_output[totalQTokens:, :, :] = 0
+        golden_gpu_output[totalQTokens:, :, :] = 0
     if golden_output.dtype == "bfloat16":
         print("=================================走入bf16分支",golden_output.dtype)
         golden_output = torch.from_numpy(golden_output.astype(np.float32))
@@ -10244,6 +10247,35 @@ def init_kv_cache(input_data : InputDataset, is_benchmark_task, is_preprocess=Tr
         FiaOpForward(tensor_list, params).forward()
         return 
 
+def fill_useless_out(input_data : InputDataset):
+    input_data_dtype = input_data.kwargs["query"].cpu().dtype
+    if input_data_dtype == torch.float16:
+        query = input_data.kwargs["query"].cpu().numpy()
+    elif input_data_dtype == torch.bfloat16:
+        query = input_data.kwargs["query"].cpu().to(torch.float32).numpy().astype(bfloat16)
+    else:
+        query = input_data.kwargs["query"].cpu().numpy()
+    if input_data.kwargs["blockTableOptional"] != None:
+        pagedAttentionFlag = True
+    else:
+        pagedAttentionFlag = False
+    ## gen actual seqlen
+    inputLayout = input_data.kwargs["inputLayout"]
+    batch = len(input_data.kwargs["actualSeqLengthsOptional"])
+    actualseqlengths = [0] * batch
+    actualseqlengthsKv = [0] * batch
+    for i in range(batch):
+        actualseqlengths[i] = input_data.kwargs["actualSeqLengthsOptional"][i]
+        actualseqlengthsKv[i] = input_data.kwargs["actualSeqLengthsKvOptional"][i]
+    qSeqlenList, kvSeqlenList = gen_actual_seqlen_list_golden(actualseqlengths, actualseqlengthsKv, inputLayout, pagedAttentionFlag)
+    maxQSeqlen = max(qSeqlenList)
+    totalQTokens = sum(qSeqlenList)
+
+    if totalQTokens < query.shape[0]:
+        attentionOut = input_data.kwargs["attentionOut"]
+        attentionOut[totalQTokens:,:, :] = 0
+
+
 def aclnn_op_func_fia_cpu(input_data : InputDataset, is_benchmark_task, is_preprocess=False):
     
     tensor_list, params = trans_input_to_params(input_data, is_benchmark_task, is_preprocess)
@@ -10274,6 +10306,8 @@ class fusedInferAttentionScoreApi(BaseApi):
         self.split_fuse_flag = get_split_fuse_flag(input_data)
         if not self.split_fuse_flag and input_data.kwargs["blockTableOptional"] != None: 
             init_kv_cache(input_data, is_benchmark_task = True, is_preprocess=True)
+        if self.split_fuse_flag:
+            fill_useless_out(input_data)
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
         if self.split_fuse_flag :
