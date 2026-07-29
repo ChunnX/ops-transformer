@@ -30,7 +30,7 @@ CANN Simulator集成在CANN toolkit包里，参考[环境部署](../install/quic
 
 # 快速开始
 
-下面以[add_examples](../../../examples/add_example/)为例，对算子仿真进行详细说明
+下面以[add_example](../../../examples/add_example/)为例，对算子仿真进行详细说明
 
 ## 算子编译
 
@@ -53,7 +53,6 @@ cannsim record ./test_aclnn_add_example -s Ascend950 --gen-report
 
 仿真工具执行日志文件在examples/add_example/examples/build/bin/cannsim_*目录，执行日志文件为cannsim.log。
 
-
 从仿真工具日志文件可以看到示例中的打印信息：
 
 ```bash
@@ -68,7 +67,7 @@ add_example first input[6] is: 1.000000, second input[6] is: 1.000000, result[6]
 
 ## 查看性能流水
 
-仿真性能流水文件在本项目`examples/add_example/examples/build/bin/cannsim_*/report目录，流水相关文件为：
+仿真性能流水文件在本项目`examples/add_example/examples/build/bin/cannsim_*/report/results/kernel_*/core_*`目录，流水相关文件为：
 
 ```bash
 trace_core0.json
@@ -105,19 +104,19 @@ cannsim record [options] user_app
 2. 执行仿真命令，可参考以下使用示例
 
     ```bash
-    方式一：启用仿真，并将输出保存至 ./output目录，/path/to/app为算子程序
+    # 方式一:启用仿真，并将输出保存至 ./output目录，/path/to/app为算子程序
     $ cannsim record /path/to/app -o ./output -s Ascend950
 
-    方式二：启用仿真并生成报告，用于后续性能分析
+    # 方式二:启用仿真并生成报告，用于后续性能分析
     $ cannsim record /path/to/app -o ./output -s Ascend950 --gen-report
     ```
 
 3. 命令完成后，会在默认路径或指定的“output”目录下生成以“cannsim_{timestamp}_${user_app}”命名的文件夹，结构示例如下：
 
-```bash
-├─cannsim_{timestamp}_${user_app}
-├── cannsim.log
-```
+    ```bash
+    ├─cannsim_{timestamp}_${user_app}
+    ├── cannsim.log
+    ```
 
 4. 用户可以获取算子执行结果，并进行精度的对比，结果展示在cannsim.log，示例如下
 
@@ -155,14 +154,14 @@ cannsim report [options]
 
 ## 使用示例
 
-1. 参考仿真执行执行算子仿真，对比输出示例，确保对应的结果执行正确。
+1. 参考仿真执行算子仿真，对比输出示例，确保对应的结果执行正确。
 2. 执行仿真结果解析命令，可参考以下执行用例。
 
     ```bash
-    在当前目录下生成性能分析报告（默认仅分析核0）
-    cannsim report -e /path/to/cannsim_{timestamp}_${user_app} 
+    # 在当前目录下生成性能分析报告(默认仅分析核0)
+    cannsim report -e /path/to/cannsim_{timestamp}_${user_app}
 
-    在指定目录下生成核0、核1、核11、核12的性能分析报告
+    # 在指定目录下生成核0、核1、核11、核12的性能分析报告
     cannsim report -e /path/to/cannsim_{timestamp}_${user_app} -o /path/to/report -n '0-1, 11-12'
     ```
 
@@ -211,11 +210,11 @@ cannsim --help
 ```bash
 cannsim record --help
 ```
-  
+
 查询工具report子命令的帮助信息：
 
  ```bash
- cannsim report --help 
+ cannsim report --help
  ```
 
 ## 参数说明

@@ -1,6 +1,6 @@
 # 贡献指南
 
-本项目欢迎广大开发者体验并参与贡献，在参与社区贡献之前。请参见[cann-community](https://gitcode.com/cann/community)了解行为准则，进行CLA协议签署，了解源码仓的贡献流程。
+本项目欢迎广大开发者体验并参与贡献，在参与社区贡献之前，请参见[cann-community](https://gitcode.com/cann/community)了解行为准则，进行CLA协议签署，了解源码仓的贡献流程。
 
 开发者准备本地代码与提交PR时需要重点关注如下几点：
 
@@ -21,8 +21,8 @@
 
 新建`Requirement|需求建议`类Issue，并阐明新增算子的设计方案。Issue一般需包含以下内容：
 
-- **背景信息**  
-- **价值/作用**  
+- **背景信息**
+- **价值/作用**
 - **设计方案**
 
 请在提交的Issue中评论`/assign @yourself`认领该任务。
@@ -33,7 +33,7 @@ Sig组将指派Committer对您提交的Issue进行评审并反馈修改意见。
 
 若需求被接纳，[sig成员](https://gitcode.com/cann/community/blob/master/CANN/sigs/ops-transformer/README.md)将为您分配合适的算子分类路径（如：`experimental/attention`），请将贡献的算子提交至`experimental`对应算子分类目录。
 
-### 3. PR提交  
+### 3. PR提交
 
 生态最简算子交付件如下：
 
@@ -41,7 +41,7 @@ Sig组将指派Committer对您提交的Issue进行评审并反馈修改意见。
 ${op_class}                                          # 算子分类
 ├── ${op_name}                                       # 算子名
 │   ├── ${op_name}.cpp                               # 算子Kernel实现文件
-│   └── tests                                        
+│   └── tests
 │   │   ├── test_${op_name}.py                       # 算子测试文件
 │   ├── CMakeLists.txt                               # 算子编译配置文件
 │   ├── README.md                                    # 算子README文档

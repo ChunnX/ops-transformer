@@ -48,16 +48,6 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>attention</td>
-    <td><a href="../../attention/block_sparse_attention_grad/README.md">block_sparse_attention_grad</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>训练场景下BlockSparseAttention的反向计算。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
     <td><a href="../../attention/dense_lightning_indexer_softmax_lse/README.md">dense_lightning_indexer_softmax_lse</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -134,7 +124,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>在Sparse Flash Attention的基础上支持了[Per-Token-Head-Tile-128量化]输入。</td>
+    <td>在Sparse Flash Attention的基础上支持了`Per-Token-Head-Tile-128量化`输入。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -277,6 +267,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
   </tr>
   <tr>
+    <td>attention</td>
+    <td><a href="../../attention/compressor/README.md">compressor</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。</td>
+  </tr>
+  <tr>
     <td>gmm</td>
     <td><a href="../../gmm/grouped_matmul/README.md">grouped_matmul</a></td>
     <td>✓</td>
@@ -364,7 +364,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，先通信后计算。</td>
+    <td>完成路由专家AlltoAllV、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，先通信后计算。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -374,7 +374,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>完成路由专家AlltoAllv、Permute、QuantGroupedMatMul融合并实现与共享专家MatMul并行融合。</td>
+    <td>完成路由专家AlltoAllV、Permute、QuantGroupedMatMul融合并实现与共享专家MatMul并行融合。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -414,7 +414,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，先计算后通信。</td>
+    <td>完成路由专家GroupedMatMul、Unpermute、AlltoAllV融合并实现与共享专家MatMul并行融合，先计算后通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -544,7 +544,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
+    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AlltoAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AlltoAllV通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -574,7 +574,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
+    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AlltoAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AlltoAllV通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -584,7 +584,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
+    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AlltoAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AlltoAllV通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -614,7 +614,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>完成路由专家QuantGroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合。</td>
+    <td>完成路由专家QuantGroupedMatMul、Unpermute、AlltoAllV融合并实现与共享专家MatMul并行融合。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -885,6 +885,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>AI Core</td>
     <td>执行旋转位置编码计算，推理网络为了提升性能，将query和key两路算子融合成一路。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/inplace_partial_rotary_mul_grad/README.md">inplace_partial_rotary_mul_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>执行局部旋转位置编码InplacePartialRotaryMul的反向计算，对输入dy的D维度上切片[start, end)区域执行旋转位置编码梯度计算，结果inplace写回dy。</td>
   </tr>
   <tr>
     <td>posembedding</td>

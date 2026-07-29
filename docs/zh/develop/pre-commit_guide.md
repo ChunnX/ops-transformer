@@ -19,7 +19,9 @@ pre-commit是一个Git Hooks框架，用于在`git commit`时自动运行代码�
 - **pre-commit**: 2.0+ (Hook框架)
 
 ## 安装步骤
+
 注：若需要使用pre-commit提供的代码检查功能，需要按照如下步骤进行安装配置；若无需pre-commit提供的代码检查功能，可不安装。
+
 ### 1. 安装pre-commit
 
 ```bash
@@ -48,7 +50,8 @@ pre-commit install
 ```
 
 安装成功后会显示：
-```
+
+```bash
 pre-commit installed at .git/hooks/pre-commit
 ```
 
@@ -64,7 +67,8 @@ git commit -m "your commit message"
 ```
 
 输出示例：
-```
+
+```text
 clang-format.............................................................Passed
 OAT Compliance Check.....................................................Passed
 ```
@@ -97,11 +101,10 @@ git commit --no-verify -m "emergency fix"
 
 自动格式化C/C++ 代码，遵循项目`.clang-format`配置：
 
-- **缩进**: 4空格
-- **列宽**: 120字符
+- **缩进**: 4 空格
+- **列宽**: 120 字符
 - **大括号**: 函数定义换行，控制语句同行
 - **指针对齐**: 右对齐(`int *ptr`)
-
 
 ### 2. OAT Compliance Check
 
@@ -113,11 +116,11 @@ OAT (Open Source Audit Tool)检查开源合规性：
 | 二进制文件检查 | 禁止提交二进制文件 |
 | 归档文件检查 | 禁止提交zip/tar等归档文件 |
 
-
 OAT检查脚本，首次运行时会自动：
+
 1. 检测/安装Java 17
 2. 检测/安装Maven
-3. 克隆并编译tools_oat工具（约1-2分钟）
+3. 克隆并编译tools_oat工具（约1-2 分钟）
 
 ## 常见问题
 
@@ -126,7 +129,6 @@ OAT检查脚本，首次运行时会自动：
 **原因**: 首次运行需要克隆并编译OAT工具。
 
 **解决**: 这是正常现象，后续提交会使用缓存的JAR，速度会很快。
-
 
 ## 相关文档
 
