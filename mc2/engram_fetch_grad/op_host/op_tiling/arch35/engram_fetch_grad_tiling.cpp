@@ -13,7 +13,7 @@
  * \brief host侧tiling实现 — EngramFetchGrad
  *        校验 7 input + 3 output（dtype/shape/format）
  *        hiddenBytes 按 fp32 计算（反向 FP32 聚合）
- *        rankSize 从 sendCounts dim0 获取
+ *        rankSize 从 recvCounts dim0 获取（sendCounts 可有 32b 对齐 padding）
  *        totalRecv 从 recvLocalEntry dim0 获取
  *        workspace: gradSorted + recvGrad + sdispls + rdispls
  *                 + counterScratch + flagScratch + 16MB
@@ -254,7 +254,7 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
                         (std::string("dim0 must equal gradFetched dim0=") + std::to_string(numTokens)).c_str()),
                     return ge::GRAPH_FAILED);
 
-    // sendCounts: 1D (W,)
+    // sendCounts: 1D (W,), 32b对齐时 dim0 可大于 rankSize
     const gert::StorageShape *sendCountsShape = context->GetInputShape(IN_SEND_COUNTS);
     OP_TILING_CHECK(sendCountsShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "sendCounts"),
                     return ge::GRAPH_FAILED);
@@ -270,9 +270,8 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
                         (std::string("dim0=") + std::to_string(sendCountsShape->GetStorageShape().GetDim(0))).c_str(),
                         "> 0"),
                     return ge::GRAPH_FAILED);
-    rankSize = static_cast<uint32_t>(sendCountsShape->GetStorageShape().GetDim(0));
 
-    // recvCounts: 1D (W,)
+    // recvCounts: 1D (W,), rankSize 从 recvCounts dim0 获取（sendCounts 可有 32b 对齐 padding）
     const gert::StorageShape *recvCountsShape = context->GetInputShape(IN_RECV_COUNTS);
     OP_TILING_CHECK(recvCountsShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "recvCounts"),
                     return ge::GRAPH_FAILED);
@@ -288,6 +287,7 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
                         (std::string("dim0=") + std::to_string(recvCountsShape->GetStorageShape().GetDim(0))).c_str(),
                         "> 0"),
                     return ge::GRAPH_FAILED);
+    rankSize = static_cast<uint32_t>(recvCountsShape->GetStorageShape().GetDim(0));
 
     // recvLocalEntry: 1D (R,)
     const gert::StorageShape *recvLocalEntryShape = context->GetInputShape(IN_RECV_LOCAL_ENTRY);

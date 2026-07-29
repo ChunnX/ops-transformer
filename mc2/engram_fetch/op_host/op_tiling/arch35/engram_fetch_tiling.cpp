@@ -525,10 +525,10 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
 
     if (isTraining) {
         auto permOutShape = context->GetOutputShape(PERM_OUT_INDEX);
-        auto sendCountsOutShape = context->GetOutputShape(SEND_COUNTS_OUT_INDEX);
+        auto recvCountsOutShape = context->GetOutputShape(RECV_COUNTS_OUT_INDEX);
         auto recvLocalEntryOutShape = context->GetOutputShape(RECV_LOCAL_ENTRY_OUT_INDEX);
-        if (permOutShape != nullptr && sendCountsOutShape != nullptr) {
-            tilingData.rankSize = static_cast<uint32_t>(sendCountsOutShape->GetStorageShape().GetDim(0));
+        if (permOutShape != nullptr && recvCountsOutShape != nullptr) {
+            tilingData.rankSize = static_cast<uint32_t>(recvCountsOutShape->GetStorageShape().GetDim(0));
         }
         if (recvLocalEntryOutShape != nullptr) {
             tilingData.totalRecv = recvLocalEntryOutShape->GetStorageShape().GetDim(0);
