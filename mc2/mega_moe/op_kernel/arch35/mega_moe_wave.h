@@ -2057,17 +2057,21 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
         currentEpilogueOp.UpdateGlobalAddr(vecBaseOffset);
     }
 
-    if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+    const bool useWeightNz =
+        params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+    if (useWeightNz) {
+        constexpr bool isWeightNz = true;
         MegaMoeImpl::GroupMatmulSwigluQuant<
             QuantOutType, ActivationType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-            true, GMM1_TILE_M, EpilogueTileM, EnableTopkWeightsPrefetch, isShared, IsInterleaved,
+            isWeightNz, GMM1_TILE_M, EpilogueTileM, EnableTopkWeightsPrefetch, isShared, IsInterleaved,
             IsWaveFlagGrained>(
             currentEpilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
             state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
     } else {
+        constexpr bool isWeightNz = false;
         MegaMoeImpl::GroupMatmulSwigluQuant<
             QuantOutType, ActivationType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-            false, GMM1_TILE_M, EpilogueTileM, EnableTopkWeightsPrefetch, isShared, IsInterleaved,
+            isWeightNz, GMM1_TILE_M, EpilogueTileM, EnableTopkWeightsPrefetch, isShared, IsInterleaved,
             IsWaveFlagGrained>(
             currentEpilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
             state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
