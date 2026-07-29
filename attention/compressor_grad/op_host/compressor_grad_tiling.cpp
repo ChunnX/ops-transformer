@@ -22,10 +22,6 @@
 #include "register/op_def_registry.h"
 #include "compressor_grad_tiling.h"
 
-// TODO 临时规避写法，解决和compressor同时编译时报错
-#include "CompressorGradTiling_tiling.h"
-// TODO 临时规避写法，解决和compressor同时编译时报错
-
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
