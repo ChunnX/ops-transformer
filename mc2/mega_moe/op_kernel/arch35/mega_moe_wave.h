@@ -17,6 +17,7 @@
 #define MEGA_MOE_WAVE_H
 
 #include "kernel_operator.h"
+#include "adv_api/reduce/reduce.h"
 #include "kernel_tiling/kernel_tiling.h"
 #if __has_include("../../common/mc2_kernel_utils.h")
 #include "../../common/mc2_kernel_utils.h"
@@ -250,10 +251,10 @@ private:
         MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
             MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) :
             ALIGN_512;
-    static constexpr uint32_t GMM2_READY_PARTIAL_UB_ADDR =
+    static constexpr uint32_t GMM2_READY_REDUCE_TMP_UB_ADDR =
         GMM2_READY_SCAN_UB_ADDR +
         ((GMM2_READY_MAX_SCAN_BYTES + ALIGN_512 - 1U) / ALIGN_512) * ALIGN_512;
-    static constexpr uint32_t GMM2_READY_SUM_UB_ADDR = GMM2_READY_PARTIAL_UB_ADDR + ALIGN_512;
+    static constexpr uint32_t GMM2_READY_SUM_UB_ADDR = GMM2_READY_REDUCE_TMP_UB_ADDR + ALIGN_512;
     static_assert(GMM2_READY_SUM_UB_ADDR + ALIGN_512 <= META_INFO_TENSOR_ADDR,
                   "GMM2 ready scan scratch overlaps meta-info arena");
     static constexpr uint32_t COMBINE_META_INFO_TOKEN_CAPACITY =
@@ -1453,17 +1454,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::WaitGmm2Ready(u
             return;
         }
 
-        constexpr uint32_t INT32_PER_DATABLOCK = ALIGN_32 / sizeof(int32_t);
-        constexpr uint32_t INT32_PER_REPEAT = 256U / sizeof(int32_t);
         // ready workspace 按 [slot][AIC][64B cache line] 排列。每个 AIC 只写
         // 自己 cache line 的首个 int32=1，其余位置由 ResetFlagList 保持为 0；
         // 因此整段求和就是已经完成 GMM2 写回的 AIC 数量。
         uint32_t readyElements = blockNum_ * static_cast<uint32_t>(INT_CACHELINE);
-        uint32_t copyElements =
-            (readyElements + INT32_PER_DATABLOCK - 1U) / INT32_PER_DATABLOCK * INT32_PER_DATABLOCK;
-        uint32_t fullRepeats = readyElements / INT32_PER_REPEAT;
-        uint32_t tailElements = readyElements % INT32_PER_REPEAT;
-        uint32_t partialCount = fullRepeats + (tailElements == 0U ? 0U : 1U);
 
         __gm__ int32_t *readyBase =
             reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2ReadyPtr);
@@ -1471,35 +1465,22 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::WaitGmm2Ready(u
         GlobalTensor<int32_t> readyGm;
         readyGm.SetGlobalBuffer(readyBase);
         // scanUb：一次轮询从 GM 搬入的完整 ready 区，包含每个 AIC 的 cache-line padding。
-        LocalTensor<int32_t> scanUb(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR, copyElements);
-        // partialUb：ready 区超过一个 256B vector repeat 时，保存每个 repeat 的局部和。
-        LocalTensor<int32_t> partialUb(TPosition::VECCALC, GMM2_READY_PARTIAL_UB_ADDR, INT_CACHELINE);
+        LocalTensor<int32_t> scanUb(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR, readyElements);
+        // reduceTmpUb：显式提供固定 scratch，避免高阶 ReduceSum 依赖 TPipe 自动栈。
+        LocalTensor<uint8_t> reduceTmpUb(TPosition::VECCALC, GMM2_READY_REDUCE_TMP_UB_ADDR, ALIGN_512);
         // sumUb：保存最终到达数，V->S 同步后由 Scalar 读取第 0 个元素。
         LocalTensor<int32_t> sumUb(TPosition::VECCALC, GMM2_READY_SUM_UB_ADDR, INT_CACHELINE);
+        const uint32_t readyShape[] = {1U, readyElements};
 
         while (true) {
-            DataCopy(scanUb, readyGm[readySlotOffset], copyElements);
+            DataCopy(scanUb, readyGm[readySlotOffset], readyElements);
             SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 
-            // 这里使用基础向量接口 WholeReduceSum，而不是高阶 Sum：
-            // 1. ready flag 是 int32；当前 Sum 面向 half/float 张量归约，还需要 SumParams/临时空间；
-            // 2. ready 区是一段已知长度的小数组，WholeReduceSum 可直接把每个 256B repeat 归约成一个标量。
-            // 超过一个 repeat 时先写 partialUb，再做第二级归约，避免引入通用 Sum 的 tiling 和额外 UB。
-            if (readyElements <= INT32_PER_REPEAT) {
-                WholeReduceSum<int32_t>(sumUb, scanUb, static_cast<int32_t>(readyElements), 1, 1, 1, 8);
-            } else {
-                if (fullRepeats != 0U) {
-                    WholeReduceSum<int32_t>(partialUb, scanUb, static_cast<int32_t>(INT32_PER_REPEAT),
-                                            static_cast<int32_t>(fullRepeats), 1, 1, 8);
-                }
-                if (tailElements != 0U) {
-                    WholeReduceSum<int32_t>(partialUb[fullRepeats], scanUb[fullRepeats * INT32_PER_REPEAT],
-                                            static_cast<int32_t>(tailElements), 1, 1, 1, 8);
-                }
-                PipeBarrier<PIPE_V>();
-                WholeReduceSum<int32_t>(sumUb, partialUb, static_cast<int32_t>(partialCount), 1, 1, 1, 8);
-            }
+            // ReduceSum 直接得到整段 ready flag 的总和。允许复用 scanUb 是安全的：
+            // 下一轮轮询会先由 DataCopy 完整覆盖它；每个 AIC 占 64B，末维天然满足 32B 对齐。
+            ReduceSum<int32_t, AscendC::Pattern::Reduce::AR, true>(
+                sumUb, scanUb, reduceTmpUb, readyShape, true);
 
             SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
             WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
