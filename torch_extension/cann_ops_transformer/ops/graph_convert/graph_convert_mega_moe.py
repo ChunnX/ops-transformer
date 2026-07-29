@@ -85,8 +85,8 @@ if _TORCHAIR_AVAILABLE:
         num_max_tokens_per_rank: int = 0,
         activation: str = "swiglu",
         activation_clamp: float = 3.4028234663852886e38,
-        beta: float = 1.0,
-        linear_beta: float = 3.4028234663852886e38,
+        activation_alpha: float = 1.702,
+        activation_beta: float = 1.0,
         topk_weights_type: int = 0,
         dependencies=[],
         node_name=None,
@@ -120,8 +120,8 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(num_max_tokens_per_rank, Int, 0)\n
         .ATTR(activation, String, "swiglu")\n
         .ATTR(activation_clamp, Float, 3.4028234663852886e+38)\n
-        .ATTR(beta, Float, 1.0)\n
-        .ATTR(linear_beta, Float, 3.4028234663852886e+38)\n
+        .ATTR(activation_alpha, Float, 1.702)\n
+        .ATTR(activation_beta, Float, 1.0)\n
         """
         inputs = {
             "context": context,
@@ -150,8 +150,8 @@ if _TORCHAIR_AVAILABLE:
             "num_max_tokens_per_rank": attr.Int(num_max_tokens_per_rank),
             "activation": attr.Str(activation),
             "activation_clamp": attr.Float(activation_clamp),
-            "beta": attr.Float(beta),
-            "linear_beta": attr.Float(linear_beta),
+            "activation_alpha": attr.Float(activation_alpha),
+            "activation_beta": attr.Float(activation_beta),
             "topk_weights_type": attr.Int(topk_weights_type),
         }
 
@@ -201,8 +201,8 @@ if _TORCHAIR_AVAILABLE:
             .attr("num_max_tokens_per_rank", attr.Int(0))
             .attr("activation", attr.Str("swiglu"))
             .attr("activation_clamp", attr.Float(3.4028234663852886e38))
-            .attr("beta", attr.Float(1.0))
-            .attr("linear_beta", attr.Float(3.4028234663852886e38))
+            .attr("activation_alpha", attr.Float(1.702))
+            .attr("activation_beta", attr.Float(1.0))
             .attr("topk_weights_type", attr.Int(0))
             .output("y", "DT_BF16, DT_FLOAT16")
             .output("expert_token_nums", "DT_INT32"),
@@ -231,16 +231,22 @@ if _TORCHAIR_AVAILABLE:
         comm_alg: str = "",
         num_max_tokens_per_rank: int = 0,
         activation: str = "swiglu",
-        activation_clamp: float = 3.4028234663852886e38,
-        beta: float = 1.0,
-        linear_beta: Optional[float] = None,
+        activation_clamp: Optional[float] = None,
+        activation_alpha: float = 1.702,
+        activation_beta: float = 1.0,
+        activation_linear_beta: Optional[float] = None,
         dispatch_quant_out_dtype: int = 28,
         weight1_type: int = 28,
         weight2_type: int = 28,
         topk_weights_type: int = 0,
         meta_outputs: TensorSpec = None,
     ):
-        linear_beta_value = 3.4028234663852886e38 if linear_beta is None else linear_beta
+        activation_clamp_value = 3.4028234663852886e38 if activation_clamp is None else activation_clamp
+        activation_alpha_value = activation_alpha
+        if activation == "situ":
+            activation_alpha_value = (
+                3.4028234663852886e38 if activation_linear_beta is None else activation_linear_beta
+            )
         return MegaMoe(
             context=context,
             x=x,
@@ -263,8 +269,8 @@ if _TORCHAIR_AVAILABLE:
             comm_alg=comm_alg,
             num_max_tokens_per_rank=num_max_tokens_per_rank,
             activation=activation,
-            activation_clamp=activation_clamp,
-            beta=beta,
-            linear_beta=linear_beta_value,
+            activation_clamp=activation_clamp_value,
+            activation_alpha=activation_alpha_value,
+            activation_beta=activation_beta,
             topk_weights_type=topk_weights_type,
         )
