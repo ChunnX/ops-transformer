@@ -14,6 +14,7 @@ from typing import Callable, Optional, Tuple, Union
 import torch
 import torch.distributed as dist
 from torch.library import impl
+from torch import _check as _torch_check
 
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -25,6 +26,25 @@ _ENGRAM_DTYPE_TO_INT = {
     torch.bfloat16: 15,
 }
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
+
+
+@dataclass
+class EngramFetchCtx:
+    """训练前向的 save-for-backward, 传给 engram_fetch_grad。
+
+    Attributes:
+        perm: (T,) int32 — 桶排列序索引, pos反向步骤①按此重排 grad
+        send_counts: (W,) int32 — 每 rank 发送的 index 数，反向 a2a 的 send 量
+        recv_counts: (W,) int32 — 每 rank 接收的 index 数，反向 a2a 的 recv 量
+        recv_local_entry: (R_max,) int32 — 收到的 local entry,反向步骤③ scatter-add 按此聚合
+        num_recv: (1,) int32 — 实际接收行数 R(前 num_recv 个有效)
+    """
+
+    perm: torch.Tensor
+    send_counts: torch.Tensor
+    recv_counts: torch.Tensor
+    recv_local_entry: torch.Tensor
+    num_recv: torch.Tensor
 
 
 class ElasticBufferOpBuilder(OpBuilder):
@@ -42,6 +62,10 @@ class ElasticBufferOpBuilder(OpBuilder):
         return [
             "engram_fetch(Tensor context, Tensor indices, int hidden_size, "
             "int num_entries, int dtype) -> Tensor",
+            "engram_fetch_train(Tensor context, Tensor indices, int hidden_size, "
+            "int num_entries, int dtype, Tensor local_storage_addr, "
+            "int num_max_tokens_per_rank, int comm_buffer_size, int rank_size) "
+            "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)",
             "engram_fetch_wait(Tensor context, Tensor fetched) -> Tensor",
         ]
 
@@ -55,6 +79,33 @@ class ElasticBufferOpBuilder(OpBuilder):
                 dtype=_ENGRAM_INT_TO_DTYPE[dtype],
                 device="meta",
             )
+
+        @impl(AS_LIBRARY, "engram_fetch_train", "Meta")
+        def engram_fetch_train_meta(
+            context,
+            indices,
+            hidden_size,
+            num_entries,
+            dtype,
+            local_storage_addr,
+            num_max_tokens_per_rank,
+            comm_buffer_size,
+            rank_size,
+        ):
+            num_tokens = indices.size(0)
+            max_r = num_max_tokens_per_rank * rank_size
+            data_dtype = _ENGRAM_INT_TO_DTYPE[dtype]
+            fetched = torch.empty(
+                (num_tokens, hidden_size), dtype=data_dtype, device="meta"
+            )
+            perm = torch.empty((num_tokens,), dtype=torch.int32, device="meta")
+            send_counts = torch.empty(
+                (rank_size * 8,), dtype=torch.int32, device="meta"
+            )
+            recv_counts = torch.empty((rank_size,), dtype=torch.int32, device="meta")
+            recv_local_entry = torch.empty((max_r,), dtype=torch.int32, device="meta")
+            num_recv = torch.empty((1,), dtype=torch.int32, device="meta")
+            return fetched, perm, send_counts, recv_counts, recv_local_entry, num_recv
 
         @impl(AS_LIBRARY, "engram_fetch_wait", "Meta")
         def engram_fetch_wait_meta(context, fetched):
@@ -87,6 +138,32 @@ def engram_fetch(context, indices, hidden_size, num_entries, dtype):
     op_module = _elastic_buffer_op_builder.load()
     return op_module.ElasticBuffer.engram_fetch(
         context, indices, hidden_size, num_entries, dtype
+    )
+
+
+@impl(AS_LIBRARY, "engram_fetch_train", "PrivateUse1")
+def engram_fetch_train(
+    context,
+    indices,
+    hidden_size,
+    num_entries,
+    dtype,
+    local_storage_addr,
+    num_max_tokens_per_rank,
+    comm_buffer_size,
+    rank_size,
+):
+    op_module = _elastic_buffer_op_builder.load()
+    return op_module.ElasticBuffer.engram_fetch_train(
+        context,
+        indices,
+        hidden_size,
+        num_entries,
+        dtype,
+        local_storage_addr,
+        num_max_tokens_per_rank,
+        comm_buffer_size,
+        rank_size,
     )
 
 
@@ -139,6 +216,7 @@ class ElasticBuffer:
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
+        with_grad: bool = False,
     ):
         """
         Initialize the ElasticBuffer.
@@ -160,21 +238,23 @@ class ElasticBuffer:
             ),
         )
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
-        moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
-        missing_args = [
-            name for name, val in zip(moe_arg_names, moe_args) if val is None
-        ]
-        torch._check(
-            len(missing_args) == 0 or len(missing_args) == len(moe_args),
-            lambda: (
-                "num_max_tokens_per_rank, hidden and num_topk "
-                "must be specified together for MoE dispatch/combine, "
-                f"missing: {', '.join(missing_args)}."
-            ),
-        )
+        if not with_grad:
+            moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
+            missing_args = [
+                name for name, val in zip(moe_arg_names, moe_args) if val is None
+            ]
+            torch._check(
+                len(missing_args) == 0 or len(missing_args) == len(moe_args),
+                lambda: (
+                    "num_max_tokens_per_rank, hidden and num_topk "
+                    "must be specified together for MoE dispatch/combine, "
+                    f"missing: {', '.join(missing_args)}."
+                ),
+            )
 
         self._group = group
         self._num_cpu_bytes = num_cpu_bytes
+        self._with_grad = with_grad
         self._rank_id = dist.get_rank(self._group)
         self._ep_world_size = dist.get_world_size(self._group)
 
@@ -188,7 +268,10 @@ class ElasticBuffer:
         )
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         self._runtime = _elastic_buffer_ops.ElasticBuffer(
-            self._group_name, self._num_cpu_bytes
+            self._group_name,
+            self._num_cpu_bytes,
+            num_max_tokens_per_rank if num_max_tokens_per_rank is not None else 0,
+            self._with_grad,
         )
 
         self._num_max_tokens_per_rank = num_max_tokens_per_rank
@@ -200,6 +283,9 @@ class ElasticBuffer:
         self._engram_num_entries = None
         self._engram_dtype_int = None
         self._engram_fetch_in_progress = False
+        self._local_storage_addr = None
+        self._comm_buffer_size = 0
+        self._rank_size = 0
 
     @staticmethod
     def get_engram_storage_size_hint(
@@ -339,8 +425,11 @@ class ElasticBuffer:
         self._engram_hidden_size = storage.size(1)
         self._engram_num_entries = storage.size(0)
         self._engram_dtype_int = _ENGRAM_DTYPE_TO_INT[storage.dtype]
+        self._local_storage_addr = self._runtime.get_local_storage_addr()
+        self._comm_buffer_size = self._runtime.get_comm_buffer_size()
+        self._rank_size = self._runtime.get_rank_size()
 
-    def engram_fetch(self, indices: torch.Tensor) -> Callable[[], torch.Tensor]:
+    def engram_fetch(self, indices: torch.Tensor) -> Callable:
         """
         Fetch Engram data from remote ranks via RDMA.
 
@@ -349,6 +438,8 @@ class ElasticBuffer:
 
         Returns:
             wait_callable: a callable that returns the fetched tensor when invoked.
+            In training mode (with_grad=True), the callable returns a tuple of
+            (fetched_tensor, EngramFetchCtx) for save-for-backward.
         """
         if indices.device.type != torch.device("npu").type:
             raise RuntimeError(f"indices must be on NPU, got device: {indices.device}")
@@ -370,14 +461,46 @@ class ElasticBuffer:
                 "please invoke the callback function returned by the previous engram_fetch first"
             )
         self._engram_fetch_in_progress = True
+        context = self._engram_context_tensor
+
+        if self._with_grad:
+            fetched, perm, send_counts, recv_counts, recv_local_entry, num_recv = (
+                torch.ops.cann_ops_transformer.engram_fetch_train(
+                    context,
+                    indices,
+                    self._engram_hidden_size,
+                    self._engram_num_entries,
+                    self._engram_dtype_int,
+                    self._local_storage_addr,
+                    self._num_max_tokens_per_rank,
+                    self._comm_buffer_size,
+                    self._rank_size,
+                )
+            )
+            ctx = EngramFetchCtx(
+                perm=perm,
+                send_counts=send_counts,
+                recv_counts=recv_counts,
+                recv_local_entry=recv_local_entry,
+                num_recv=num_recv,
+            )
+
+            def _wait_train():
+                result = torch.ops.cann_ops_transformer.engram_fetch_wait(
+                    context, fetched
+                )
+                self._engram_fetch_in_progress = False
+                return result, ctx
+
+            return _wait_train
+
         fetched = torch.ops.cann_ops_transformer.engram_fetch(
-            self._engram_context_tensor,
+            context,
             indices,
             self._engram_hidden_size,
             self._engram_num_entries,
             self._engram_dtype_int,
         )
-        context = self._engram_context_tensor
 
         def _wait():
             result = torch.ops.cann_ops_transformer.engram_fetch_wait(context, fetched)
@@ -399,6 +522,34 @@ class ElasticBuffer:
                 to fully drain the device.
         """
         self._runtime.engram_barrier(use_comm_stream, with_cpu_sync)
+
+    def engram_fetch_grad(
+        self, grad_fetched: torch.Tensor, fetch_ctx: EngramFetchCtx
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Backward: launch fused kernel aclnnEngramFetchGrad.
+
+        Returns:
+            (grad_unique, unique_local_entry):
+                grad_unique (K, H) fp32 — 累加后的稀疏梯度，喂优化器。
+                unique_local_entry (K,) int32 — 1D sparse index。
+        """
+        _torch_check(
+            grad_fetched.device.type == torch.device("npu").type,
+            lambda: f"grad_fetched must be on NPU, got device: {grad_fetched.device}",
+        )
+        _torch_check(
+            grad_fetched.dim() == 2,
+            lambda: f"grad_fetched must be 2D, got dimensions: {grad_fetched.dim()}",
+        )
+        return self._runtime.engram_fetch_grad(
+            grad_fetched,
+            fetch_ctx.perm,
+            fetch_ctx.send_counts,
+            fetch_ctx.recv_counts,
+            fetch_ctx.recv_local_entry,
+            fetch_ctx.num_recv,
+        )
 
     def dispatch(
         self,
@@ -582,6 +733,9 @@ class ElasticBuffer:
         self._engram_num_entries = None
         self._engram_dtype_int = None
         self._engram_fetch_in_progress = False
+        self._local_storage_addr = None
+        self._comm_buffer_size = 0
+        self._rank_size = 0
 
     def _ensure_moe_config(self):
         moe_args = (self._num_max_tokens_per_rank, self._hidden, self._num_topk)
