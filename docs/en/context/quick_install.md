@@ -55,7 +55,7 @@ For users without an environment, you can directly use the WebIDE development pl
 
 2. Follow the page prompts to create and start the cloud development environment. Click "`Connect > WebIDE`" to enter the operator one-stop development platform. The open-source project resources are in the `/mnt/workspace` directory by default.
 
-   <!-- <img src="../figures/webIDE.png" alt="Cloud Platform"  width="1000px" height="150px"> -->
+   <img src="../figures/webIDE.png" alt="Cloud Platform"  width="1000px" height="150px">
 
 ### Using Docker Deployment
 

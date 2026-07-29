@@ -177,7 +177,7 @@ Table 1 Simulation Result Parsing Parameter Description
 
 4. Simulation result viewing
     Enter "chrome://tracing" in the Chrome browser address bar, and drag the generated instruction pipeline diagram file (trace.json) to the blank area to open it. Use keyboard shortcuts (W: zoom in, S: zoom out, A: move left, D: move right) to view.
-    <!-- ![Instruction Pipeline Diagram](../figures/指令流水图.png) -->
+    ![Instruction Pipeline Diagram](../figures/Instruction_pipeline.png)
 
     Table 2 Key Field Description
 
