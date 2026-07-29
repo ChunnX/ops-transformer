@@ -40,15 +40,15 @@ using namespace arch35QFA;
 
 ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QfaTilingInfo &qfaInfo)
 {
-    // 文档约束: data_type 支持 INT32；支持输入范围为 1、2、3
+    // 文档约束: data_type 支持 INT32；支持输入范围为 1~10
     // quantMode 为属性，QfaTilingInfo 中存储为 QfaQuantMode 枚举
-    const std::vector<uint32_t> supportedQuantModes = {1, 2, 3};
+    const std::vector<uint32_t> supportedQuantModes = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     uint32_t quantModeVal = static_cast<uint32_t>(qfaInfo.quantMode);
     OP_CHECK_IF(
         std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) == supportedQuantModes.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, QUANT_MODE_NAME.c_str(),
                                               std::to_string(quantModeVal).c_str(),
-                                              "The value of quant_mode must be in {1, 2, 3}"),
+                                              "The value of quant_mode must be in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

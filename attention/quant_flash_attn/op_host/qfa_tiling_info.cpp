@@ -31,7 +31,7 @@ std::string QfaLayoutToSerialString(QfaLayout layout)
     return "UNKNOWN";
 }
 
-static const std::string QFA_AXIS_SERIAL_STRINGS[] = {"B",  "S",  "N",  "D",  "H",  "T",    "D1",
+static const std::string QFA_AXIS_SERIAL_STRINGS[] = {"B", "S", "N", "D", "H", "T", "D1",
                                                       "D0", "S1", "S2", "Bn", "Bs", "CONST"};
 
 std::string QfaAxisToSerialString(QfaAxis axis)
