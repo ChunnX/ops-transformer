@@ -35,6 +35,7 @@
 #include "arch35/moe_v3_full_load_static_quant.h"
 #include "arch35/moe_v3_row_idx_gather_droppad.h"
 #include "arch35/moe_v3_gather_out_droppad.h"
+#include "arch35/moe_v3_cut_origin_t.h"
 
 /*
  * 非量化
@@ -76,9 +77,9 @@
 /*
  * FP8 PerGroup量化
  */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER 10050000 // 单核排序、FP8 PerGroup量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER 10051000 // 单核排序、FP8 PerGroup量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER 11050000 // 多核排序、FP8 PerGroup量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER 10050000    // 单核排序、FP8 PerGroup量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER 10051000   // 单核排序、FP8 PerGroup量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER 11050000  // 多核排序、FP8 PerGroup量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_SCATTER 11051000 // 多核排序、FP8 PerGroup量化、SCATTER索引
 
 /*
@@ -131,9 +132,9 @@
 /*
  * FP8 PerBlock量化
  */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER 10120000 // 单核排序、FP8 PerBlock量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_SCATTER 10121000 // 单核排序、FP8 PerBlock量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER 11120000 // 多核排序、FP8 PerBlock量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER 10120000    // 单核排序、FP8 PerBlock量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_SCATTER 10121000   // 单核排序、FP8 PerBlock量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER 11120000  // 多核排序、FP8 PerBlock量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_SCATTER 11121000 // 多核排序、FP8 PerBlock量化、SCATTER索引
 
 /*
@@ -160,6 +161,8 @@
 #define MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT 220000 // 全载、动态量化
 
 #define EMPTY_TENSOR 3000000
+
+#define MOE_INIT_ROUTING_V3_COUNTING_SORT 4000000
 
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
@@ -303,6 +306,20 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             fullLoadOp.Process();
             fullLoadPipe.Destroy();
         }
+
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    }
+
+    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_COUNTING_SORT)) {
+        TPipe countSortPipe;
+        MoeV3CutOriginT<DTYPE_X> op;
+        op.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS, t,
+                &countSortPipe);
+        op.Process();
+        countSortPipe.Destroy();
 
 #if (__NPU_ARCH__ == 3510)
         SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
