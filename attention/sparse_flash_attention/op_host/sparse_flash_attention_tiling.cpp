@@ -1667,10 +1667,6 @@ ge::graphStatus SFAInfoParser::CheckTensorDescriptions() const
     OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attenOut", "Desc of tensor output is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        opParamInfo_.attenOut.desc == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor output", "Desc of tensor output is nullptr"),
-        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.softmaxMax.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "softmaxMax", "Desc of tensor softmaxMax is nullptr"),
                 return ge::GRAPH_FAILED);

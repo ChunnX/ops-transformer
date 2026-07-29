@@ -280,9 +280,7 @@ struct SFATilingInfo {
 // ---------------算子Tiling类---------------
 class SFAMlaTiling {
 public:
-    explicit SFAMlaTiling(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit SFAMlaTiling(gert::TilingContext *context) : context_(context) {}
     ge::graphStatus DoOpTiling(SFATilingInfo *sfaInfo);
 
 private:
@@ -508,9 +506,7 @@ private:
 
 class SFAInfoParser {
 public:
-    explicit SFAInfoParser(const gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit SFAInfoParser(const gert::TilingContext *context) : context_(context) {}
     ~SFAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;

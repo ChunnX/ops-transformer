@@ -818,9 +818,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void
-SFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx,
-                                                         uint8_t subBlockIdx)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
+    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
 {
     auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
     sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
@@ -863,8 +862,8 @@ SFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams &sharedP
     }
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void
-SFAVectorService<TEMPLATE_ARGS>::ComputeNeedInitSFA(CVSharedParams &sharedParams) const
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ComputeNeedInitSFA(
+    CVSharedParams &sharedParams) const
 {
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {

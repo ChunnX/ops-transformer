@@ -330,8 +330,8 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ uint8_t *workspace)
+__aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitMMResBuf(
+    __gm__ uint8_t *workspace)
 {
     uint32_t mm1RightSize = constInfo.s2BaseSize * 576 * sizeof(Q_T);
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
@@ -625,9 +625,8 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index,
-                                                                                      RunParamStr &runParam)
+__aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
+    int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam)
 {
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
@@ -677,16 +676,15 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitUniqueRunInfo(const RunParamStr &runParam,
-                                                                               RunInfo &runInfo)
+__aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
+    const RunParamStr &runParam, RunInfo &runInfo)
 {
     InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam)
+__aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::ComputeBmm1Tail(
+    RunInfo &runInfo, RunParamStr &runParam)
 {
     // ------------------------S1 Base Related---------------------------
     runInfo.s1RealSize = runParam.s1RealSize;

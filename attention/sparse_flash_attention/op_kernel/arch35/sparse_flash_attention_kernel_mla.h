@@ -628,9 +628,8 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index,
-                                                                                     RunParamStr &runParam)
+__aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
+    int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam)
 {
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
@@ -679,16 +678,15 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitUniqueRunInfo(const RunParamStr &runParam,
-                                                                              RunInfo &runInfo)
+__aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
+    const RunParamStr &runParam, RunInfo &runInfo)
 {
     InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam)
+__aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::ComputeBmm1Tail(
+    RunInfo &runInfo, RunParamStr &runParam)
 {
     // ------------------------S1 Base Related---------------------------
     runInfo.s1RealSize = runParam.s1RealSize;

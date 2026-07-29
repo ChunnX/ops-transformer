@@ -418,10 +418,9 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2L1(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-QSFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                                 LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow,
-                                                 int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, LocalTensor<Q_T> antiKvTensorAsB16,
+    int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
     uint64_t blockElementNum = 16;
@@ -493,10 +492,9 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                                  Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                                  const RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (qsfaSparseCalSize == 0) {
         return;
@@ -794,9 +792,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void
-QSFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx,
-                                                          uint8_t subBlockIdx)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
+    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
 {
     auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
     sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
@@ -838,8 +835,8 @@ QSFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams &shared
     }
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void
-QSFAVectorService<TEMPLATE_ARGS>::ComputeNeedInitQSFA(CVSharedParams &sharedParams) const
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ComputeNeedInitQSFA(
+    CVSharedParams &sharedParams) const
 {
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
