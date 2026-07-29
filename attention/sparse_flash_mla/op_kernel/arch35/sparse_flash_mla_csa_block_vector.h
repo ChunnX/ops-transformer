@@ -656,14 +656,15 @@ CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_C
                 includeSink = includeSink && runInfo.reduceBlockId == 0;
             }
             if (includeSink) {
-            // s1切1,vec0: 0 ~ halfMRealSize - 1, vec1: gSize - halfMRealSize ~ gSize
-            int64_t sinksOffset = 0;
-            if constexpr (!IS_SPLIT_G) {
-                sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
-            } else {
-                sinksOffset = runInfo.goIdx;
-                if (constInfo.subBlockIdx == 1) {
-                    sinksOffset += runInfo.firstHalfMRealSize;
+                // s1切1,vec0: 0 ~ halfMRealSize - 1, vec1: gSize - halfMRealSize ~ gSize
+                int64_t sinksOffset = 0;
+                if constexpr (!IS_SPLIT_G) {
+                    sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
+                } else {
+                    sinksOffset = runInfo.goIdx;
+                    if (constInfo.subBlockIdx == 1) {
+                        sinksOffset += runInfo.firstHalfMRealSize;
+                    }
                 }
                 LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
                 InitSoftmaxFromSinks<T>(sumUb, maxUb, sinksUb, sinksOffset, R0, runInfo.halfMRealSize);

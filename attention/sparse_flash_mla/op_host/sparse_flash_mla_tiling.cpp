@@ -372,7 +372,7 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", (int32_t)npuArch_);
         return ge::GRAPH_FAILED;
     }
-    batchConsistency_ = true; //npuArch_ == NpuArch::DAV_3510 && IsBatchConsistencyEnabled(context_, opName_);
+    batchConsistency_ = npuArch_ == NpuArch::DAV_3510 && IsBatchConsistencyEnabled(context_, opName_);
 
     return ge::GRAPH_SUCCESS;
 }

@@ -681,7 +681,6 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
         workspaceSize += 2ULL * fdStagingSlotNum * combineElemSize * FLOAT_ELEM_SIZE;
         workspaceSize += static_cast<size_t>(aicNum) * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
             combineElemSize * FLOAT_ELEM_SIZE;
-        printf("aicNum: %d\n", aicNum);
     } else {
         // 末尾的2对应每个split分别暂存max和sum。
         size_t s2SplitStagingPerSlot = static_cast<size_t>(fdStagingMSize) * D_SIZE * FLOAT_ELEM_SIZE *
