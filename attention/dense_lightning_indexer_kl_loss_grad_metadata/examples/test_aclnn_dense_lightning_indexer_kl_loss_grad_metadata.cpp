@@ -129,7 +129,7 @@ aclnnStatus CreateTensor(aclDataType dataType, const std::vector<int64_t> &shape
     auto size = GetShapeSize(shape) * aclDataTypeSize(dataType);
     auto ret = aclrtMallocHost(&(tensor.hostAddr), size);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMallocHost failed. ERROR: %d", ret);
-    memset(tensor.hostAddr, 0, size);
+    memset_s(tensor.hostAddr, 0, size);
 
     ret = aclrtMalloc(&(tensor.deviceAddr), size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMalloc failed. ERROR: %d", ret);
@@ -217,24 +217,13 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
 
 void PrintMetadata(const SliGradKLLossMetaData &metadata)
 {
-    const char *socName = aclrtGetSocName();
-    std::string socVersion = (socName != nullptr) ? std::string(socName) : std::string();
-    bool isA5 = socVersion.find("Ascend910") == std::string::npos;
-    if (isA5) {
-        const int32_t *data = reinterpret_cast<const int32_t *>(&metadata);
-        printf("TOTAL_NUM               : %d\n", data[TOTAL_NUM]);
-        printf("FORMER_CORE_PROCESS_NUM : %d\n", data[FORMER_CORE_PROCESS_NUM]);
-        printf("REMAIN_CORE_PROCESS_NUM : %d\n", data[REMAIN_CORE_PROCESS_NUM]);
-        printf("REMAIN_CORE_NUM         : %d\n", data[REMAIN_CORE_NUM]);
-        printf("USED_CORE_NUM           : %d\n", data[USED_CORE_NUM]);
-        return;
-    }
-    printf("coreNum          : %d\n", metadata.coreNum);
-    printf("totalSize        : %d\n", metadata.totalSize);
-    printf("splitFactorSize  : %d\n", metadata.splitFactorSize);
-    for (uint32_t i = 0; i < std::min<uint32_t>(metadata.coreNum, SLI_METADATA_MAX_CORE_NUM); ++i) {
-        printf("bS1Index[%u]      : %d\n", i, metadata.bS1Index[i]);
-    }
+    const int32_t *data = reinterpret_cast<const int32_t *>(&metadata);
+    printf("TOTAL_NUM               : %d\n", data[TOTAL_NUM]);
+    printf("FORMER_CORE_PROCESS_NUM : %d\n", data[FORMER_CORE_PROCESS_NUM]);
+    printf("REMAIN_CORE_PROCESS_NUM : %d\n", data[REMAIN_CORE_PROCESS_NUM]);
+    printf("REMAIN_CORE_NUM         : %d\n", data[REMAIN_CORE_NUM]);
+    printf("USED_CORE_NUM           : %d\n", data[USED_CORE_NUM]);
+    return;
 }
 
 int main()
