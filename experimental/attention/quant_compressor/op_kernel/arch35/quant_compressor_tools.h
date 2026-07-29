@@ -13,6 +13,7 @@
  * \brief 放算子都需要、与算子联系紧密、但是又不方便单独独立出来的公共工具
  */
 
+
 #ifndef QUANT_COMPRESSOR_TOOLS_H
 #define QUANT_COMPRESSOR_TOOLS_H
 
