@@ -21,6 +21,18 @@ bash build_and_run_aclnn.sh null
 bash build_and_run_aclnn.sh non-null
 ```
 
+Build, install and run the custom package against the A8W4 V5 per-group
+kernel (`scale=[E,K/256,N]`, `offset=null`):
+
+```bash
+A8W4_DEQUANT_MODE=pergroup A8W4_API=V5 \
+  A8W4_E=2 A8W4_M=16 A8W4_N=32 A8W4_K=512 \
+  bash build_install_run_custom.sh all
+```
+
+`A8W4_DEQUANT_MODE` accepts `pergroup` and `perchannel`; `perchannel` is
+the default and preserves the previous non-null-offset behavior.
+
 Use the WeightNz ACLNN entry with an NZ weight:
 
 ```bash
