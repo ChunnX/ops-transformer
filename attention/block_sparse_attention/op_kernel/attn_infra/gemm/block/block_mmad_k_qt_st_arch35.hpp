@@ -88,6 +88,8 @@ public:
     static constexpr uint32_t L0C_HALF_BUF_SIZE = ArchTag::L0C_SIZE / 2;
     static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = L0C_HALF_BUF_SIZE / L0_STAGES;
 
+    static constexpr bool MIXED_PRECISION_SOFTMAX = std::is_same<ElementS, bfloat16_t>::value || std::is_same<ElementS, half>::value;
+    static constexpr bool HIGH_PRECISION_SOFTMAX = std::is_same<ElementS, float>::value;
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementQ, fp8_e4m3fn_t>::value;
 
     __aicore__ inline
@@ -326,20 +328,27 @@ public:
                 }
                 AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
                 AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-                // 需要kernel传输ubSTensor的时候确保其shape的m，n是满足32B（8个32位元素）对齐的
-                // rounded up by 8 and splited in half to each AIV
-                // valid cols in AIV0: [0, mFixPAligned8 / 2 - 1]
-                // valid cols in AIV1: [mFixPAligned8 / 2, qSTile - 1]
-                // if constexpr (std::is_same<ElementS, float>::value &&
-                //     (mm1L0C2UBMode == Gemm::Tile::CopyL0CToUBMode::SPLIT_N)) {
-                //     uint32_t mFixPAligned8 = RoundUp(l0TileMAct, 8);
-                //     uint32_t nFixPAligned8 = RoundUp(qSTile, 8);
-                //     auto ubSTensorTlaTile = GetTile(ubSTensor,
-                //         tla::MakeCoord(mL0Itr * L0_TILE_M, 0), tla::MakeShape(mFixPAligned8, nFixPAligned8));
-                //     CopyL0CToDst copyL0CToDst;
-                //     copyL0CToDst(ubSTensorTlaTile, l0CTensorTla);
-                if constexpr (std::is_same<ElementS, float>::value &&
-                              (mm1L0C2UBMode == Gemm::Tile::CopyL0CToUBMode::SPLIT_N)) {
+
+                if constexpr (MIXED_PRECISION_SOFTMAX) {
+                    uint32_t mFixPAligned16 = RoundUp(l0TileMAct, 16);
+                    uint32_t nFixPAligned = FULL_QUANT_FP8 ? RoundUp(qSTile, 64) : RoundUp(qSTile, 32);
+                    uint32_t nPerSubCore = nFixPAligned / 2;
+                    auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mL0Itr * L0_TILE_M, 0),
+                                                    tla::MakeShape(mFixPAligned16, nPerSubCore));
+                    auto l0CTensorTlaTileSub0 =
+                        GetTile(l0CTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(l0TileMAct, nPerSubCore));
+                    auto l0CTensorTlaTileSub1 =
+                        GetTile(l0CTensorTla, tla::MakeCoord(0, nPerSubCore), tla::MakeShape(l0TileMAct, nPerSubCore));
+                    CopyL0CToDst copyL0CToDstSub0;
+                    CopyL0CToDst copyL0CToDstSub1;
+                    if constexpr (FULL_QUANT_FP8) {
+                        copyL0CToDstSub0(ubSTensorTlaTile, l0CTensorTlaTileSub0, deqScalar, false);
+                        copyL0CToDstSub1(ubSTensorTlaTile, l0CTensorTlaTileSub1, deqScalar, true);
+                    } else {
+                        copyL0CToDstSub0(ubSTensorTlaTile, l0CTensorTlaTileSub0, false);
+                        copyL0CToDstSub1(ubSTensorTlaTile, l0CTensorTlaTileSub1, true);
+                    }
+                } else if constexpr (HIGH_PRECISION_SOFTMAX) {
                     uint32_t mFixPAligned8 = RoundUp(l0TileMAct, 8);
                     uint32_t nFixPAligned8 = RoundUp(qSTile, 8);
                     if constexpr (FULL_QUANT_FP8) {
@@ -359,27 +368,6 @@ public:
                                                         tla::MakeShape(mFixPAligned8, nFixPAligned8));
                         CopyL0CToDst copyL0CToDst;
                         copyL0CToDst(ubSTensorTlaTile, l0CTensorTla);
-                    }
-                } else if constexpr ((std::is_same<ElementS, bfloat16_t>::value ||
-                                      std::is_same<ElementS, half>::value) &&
-                                     (mm1L0C2UBMode == Gemm::Tile::CopyL0CToUBMode::NO_SPLIT)) {
-                    uint32_t mFixPAligned16 = RoundUp(l0TileMAct, 16);
-                    uint32_t nFixPAligned8 = RoundUp(qSTile, 32);
-                    uint32_t nPerSubCore = nFixPAligned8 / 2;
-                    auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mL0Itr * L0_TILE_M, 0),
-                                                    tla::MakeShape(mFixPAligned16, nPerSubCore));
-                    auto l0CTensorTlaTileSub0 =
-                        GetTile(l0CTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(l0TileMAct, nPerSubCore));
-                    auto l0CTensorTlaTileSub1 =
-                        GetTile(l0CTensorTla, tla::MakeCoord(0, nPerSubCore), tla::MakeShape(l0TileMAct, nPerSubCore));
-                    CopyL0CToDst copyL0CToDstSub0;
-                    CopyL0CToDst copyL0CToDstSub1;
-                    if constexpr (FULL_QUANT_FP8) {
-                        copyL0CToDstSub0(ubSTensorTlaTile, l0CTensorTlaTileSub0, deqScalar, false);
-                        copyL0CToDstSub1(ubSTensorTlaTile, l0CTensorTlaTileSub1, deqScalar, true);
-                    } else {
-                        copyL0CToDstSub0(ubSTensorTlaTile, l0CTensorTlaTileSub0, false);
-                        copyL0CToDstSub1(ubSTensorTlaTile, l0CTensorTlaTileSub1, true);
                     }
                 }
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);

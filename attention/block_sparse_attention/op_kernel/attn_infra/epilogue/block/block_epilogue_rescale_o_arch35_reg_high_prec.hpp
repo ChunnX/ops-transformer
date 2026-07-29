@@ -539,8 +539,11 @@ public:
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         uint32_t subBlockNum = AscendC::GetSubBlockNum();
 
-        uint32_t rowNumOriAligned =
-            DispatchPolicy::transposedMm1 ? RoundUp(rowNumOri, 32) : RoundUp(rowNumOri, 8);
+        if (DispatchPolicy::transposedMm1) {
+            rowNumOriAligned = FULL_QUANT_FP8 ? RoundUp(rowNumOri, 64) : RoundUp(rowNumOri, 32);
+        } else {
+            RoundUp(rowNumOri, 8);
+        }
         uint32_t colNumOriAligned = RoundUp(colNumOri, 8);
 
         uint32_t rowNumSplit = rowNumOriAligned / subBlockNum;

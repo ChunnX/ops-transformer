@@ -94,7 +94,8 @@ public:
         uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
          Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag)
     {
-        uint32_t nCopyOffset = RoundUp(actualBlockShape.m(), 32) / 2;
+        uint32_t nCopyOffset =
+            FULL_QUANT_FP8 ? RoundUp(actualBlockShape.m(), 64) / 2 : RoundUp(actualBlockShape.m(), 32) / 2;
         uint32_t n = actualBlockShape.m() < nCopyOffset ? actualBlockShape.m() : nCopyOffset;
         n = subBlockIdx_ == 0 ? n : actualBlockShape.m() - n;
         if (n == 0) {
@@ -185,7 +186,7 @@ public:
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
         AscendC::DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = nRound / 16;
+        dataCopyParams.blockCount = nRound / ELE_NUM_PER_DATABLOCK;
         dataCopyParams.blockLen = mRound;
         dataCopyParams.srcStride = 1;
         dataCopyParams.dstStride = 0;
@@ -411,7 +412,7 @@ private:
         };
 
         __ubuf__ bfloat16_t *pUb0 = pUb;
-        __ubuf__ bfloat16_t *pUb1 = pUb + (mRound * 8); // *pUb1 = pUb0 + (mRound / 4 * ELE_NUM_PER_DATABLOCK)
+        __ubuf__ bfloat16_t *pUb1 = pUb + (mRound * 8); // *pUb1 = pUb0 + (mRound / 2 * ELE_NUM_PER_DATABLOCK)
 
         LoadAlign(hmVreg, lmUb);
         for (uint16_t i = 0; i < mFirstTile; i++) {
@@ -568,7 +569,7 @@ private:
         };
 
         __ubuf__ fp8_e4m3fn_t *pUb0 = pUb;
-        __ubuf__ fp8_e4m3fn_t *pUb1 = pUb + (mRound * 16); // *pUb1 = pUb0 + (mRound / 4 * ELE_NUM_PER_DATABLOCK)
+        __ubuf__ fp8_e4m3fn_t *pUb1 = pUb + (mRound * 16); // *pUb1 = pUb0 + (mRound / 2 * ELE_NUM_PER_DATABLOCK)
 
         constexpr float maxValueFP8 = static_cast<float>(448.0f);
 

@@ -339,40 +339,7 @@ public:
                     auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
 
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-                    if constexpr (DispatchPolicy::transposedMm1) {
-                        AscendC::LoadData2DParamsV2 loadData2DParamsA;
-                        if constexpr (std::is_same<ElementA, fp8_e4m3fn_t>::value) {
-                            loadData2DParamsA.mStartPosition = kL0Itr * L0_TILE_K / 16; // kL0ITR * (128L0K大小/16元素)
-                            loadData2DParamsA.kStartPosition = mL0Itr * L0_TILE_M * sizeof(ElementA) / 32; // mL0ITR * (128L0M大小 * sizeof(T) / 32b
-                            loadData2DParamsA.ifTranspose = 1;
-                            loadData2DParamsA.mStep = RoundUp(l0TileKAct, 16) / 16;
-                            loadData2DParamsA.kStep = RoundUp(l0TileMAct, 32) / 32;
-                            loadData2DParamsA.srcStride = RoundUp(curBaseTileSize, 16) / 16;
-                            loadData2DParamsA.dstStride = RoundUp(l0TileMAct, 16) / 16;
-                        } else if constexpr (std::is_same<ElementA, half>::value || std::is_same<ElementA, bfloat16_t>::value) {
-                            if constexpr (std::is_same<ElementS, half>::value || std::is_same<ElementS, bfloat16_t>::value) {
-                                loadData2DParamsA.mStartPosition = kL0Itr * L0_TILE_K / 16; // kL0ITR * (128L0K大小/16元素)
-                                loadData2DParamsA.kStartPosition = mL0Itr * L0_TILE_M * sizeof(ElementA) / 32; // mL0ITR * (128L0M大小 * sizeof(T) / 32b
-                                loadData2DParamsA.ifTranspose = 1;
-                                loadData2DParamsA.mStep = RoundUp(l0TileKAct, 16) / 16;
-                                loadData2DParamsA.kStep = RoundUp(l0TileMAct, 16) / 16;
-                                loadData2DParamsA.srcStride = RoundUp(curBaseTileSize, 16) / 16;
-                                loadData2DParamsA.dstStride = RoundUp(l0TileMAct, 16) / 16;
-                            } else { // std::is_same<ElementS, float>::value 128*128
-                                loadData2DParamsA.mStartPosition = 0;
-                                loadData2DParamsA.kStartPosition = 0;
-                                loadData2DParamsA.ifTranspose = 1;
-                                loadData2DParamsA.mStep = RoundUp(l0TileKAct, 16) / 16;
-                                loadData2DParamsA.kStep = RoundUp(l0TileMAct, 16) / 16;
-                                loadData2DParamsA.srcStride = RoundUp(l0TileKAct, 16) / 16;
-                                loadData2DParamsA.dstStride = RoundUp(l0TileMAct, 16) / 16;                               
-                            }
-                        }
-                        AscendC::LoadData(l0ATensor[l0ABufId], l1ATensorTla.data(), loadData2DParamsA);
-
-                    } else {
-                        copyL1ToL0A(l0ATensorTla, l1ATensorTlaTile);
-                    }
+                    copyL1ToL0A(l0ATensorTla, l1ATensorTlaTile);
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
                     // reverse crossCoreSync for P
                     if ((mL0Itr == mL0LoopNum - 1) && (nL0Itr == nL0LoopNum - 1) && (kL0Itr == kL0LoopNum - 1)) {
@@ -407,17 +374,14 @@ public:
             }
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            // 需要kernel传输ubCTensor的时候确保其shape的m，n是满足32B（8个32位元素）对齐的
-            // rounded up by 8 and splited in half to each AIV
-            // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
-            // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
+
             uint32_t mFixPAligned = 0;
             if constexpr (DispatchPolicy::transposedMm1) {
-                mFixPAligned = RoundUp(rowNum, 32); // consistent with K*Q^t splitN 
+                mFixPAligned =
+                    FULL_QUANT_FP8 ? RoundUp(rowNum, 64) : RoundUp(rowNum, 32); // consistent with K*Q^t splitN
             } else {
                 mFixPAligned = RoundUp(rowNum, 8);
             }
-            // uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
             uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
             if constexpr (FULL_QUANT_FP8) {
                 CopyL0CToDst copyL0CToDstSub0;

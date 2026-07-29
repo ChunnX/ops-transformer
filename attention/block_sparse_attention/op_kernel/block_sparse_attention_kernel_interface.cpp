@@ -148,7 +148,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
     // S is rowMajor on UB(dst)
     using LayoutS = layout::RowMajor;
     // P is actually zN on UB(src), since there is no nd2nz in MTE1
-    using LayoutPDummy = layout::zN;
+    using LayoutPDummy = std::conditional_t<transposedMm1, layout::nZ, layout::zN>;
     using LayoutV = layout::RowMajor;
     using LayoutO = layout::RowMajor;
     // OTmp is rowMajor on UB(dst)
@@ -226,7 +226,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     // S is rowMajor on UB(dst)
     using LayoutS = layout::RowMajor;
     // P is actually zN on UB(src), since there is no nd2nz in MTE1
-    using LayoutPDummy = layout::zN;
+    using LayoutPDummy = std::conditional_t<transposedMm1, layout::nZ, layout::zN>;
     using LayoutV = layout::RowMajor;
     using LayoutO = layout::RowMajor;
     // OTmp is rowMajor on UB(dst)

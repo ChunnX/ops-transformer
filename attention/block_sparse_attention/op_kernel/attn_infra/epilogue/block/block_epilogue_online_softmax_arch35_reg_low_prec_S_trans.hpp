@@ -92,7 +92,8 @@ public:
         uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
          Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag)
     {
-        uint32_t nCopyOffset = RoundUp(actualBlockShape.m(), 32) / 2;
+        uint32_t nCopyOffset =
+            FULL_QUANT_FP8 ? RoundUp(actualBlockShape.m(), 64) / 2 : RoundUp(actualBlockShape.m(), 32) / 2;
         uint32_t n = actualBlockShape.m() < nCopyOffset ? actualBlockShape.m() : nCopyOffset;
         n = subBlockIdx_ == 0 ? n : actualBlockShape.m() - n;
         if (n == 0) {
@@ -128,22 +129,22 @@ public:
         // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
-        AscendC::printf("tkd lsUbTensor[ubSBufId]\n");
-        AscendC::DumpTensor(lsUbTensor[ubSBufId], 1, 128);
+        // AscendC::printf("tkd lsUbTensor[ubSBufId]\n");
+        // AscendC::DumpTensor(lsUbTensor[ubSBufId], 1, 128);
 
         ComputeLocalMax(sUbAddr, lmUbAddr, m, s2BaseSize, tailN, scaleValue);
 
-        AscendC::printf("tkd lmUbTensor\n");
-        AscendC::DumpTensor(lmUbTensor, 1, 32);
+        // AscendC::printf("tkd lmUbTensor\n");
+        // AscendC::DumpTensor(lmUbTensor, 1, 32);
 
         if (!isFirstKvSTile) {
             UpdateHistoricalMax(lmUbAddr, gmUbAddr, tailN);
-            AscendC::printf("tkd historical max\n");
-            AscendC::DumpTensor(lmUbTensor, 1, 32);
+            // AscendC::printf("tkd historical max\n");
+            // AscendC::DumpTensor(lmUbTensor, 1, 32);
         }
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
 
-        AscendC::printf("tkd FULL_QUANT_FP8: %u\n", static_cast<uint32_t>(FULL_QUANT_FP8));
+        // AscendC::printf("tkd FULL_QUANT_FP8: %u\n", static_cast<uint32_t>(FULL_QUANT_FP8));
         if constexpr (FULL_QUANT_FP8) {
             if (mAligned16TileNum == 0) {
                 ComputePAndLocalSumFP8<MAlignedTileNum::Zero>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
@@ -168,10 +169,10 @@ public:
             }
         }
 
-        AscendC::printf("tkd lpUbTensor[ubSBufId]\n");
-        AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 128);
-        AscendC::printf("tkd llUbTensor\n");
-        AscendC::DumpTensor(llUbTensor, 1, 128);
+        // AscendC::printf("tkd lpUbTensor[ubSBufId]\n");
+        // AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 128);
+        // AscendC::printf("tkd llUbTensor\n");
+        // AscendC::DumpTensor(llUbTensor, 1, 128);
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
@@ -191,14 +192,14 @@ public:
         dataCopyParams.dstStride = 0;
         DataCopy(l1PTensorTla.data()[subBlockIdx_ * mRound * nCopyOffset], lpUbTensor[ubSBufId], dataCopyParams);
 
-        // AscendC::printf("tkd blockCount: %u\n", dataCopyParams.blockCount);
-        // AscendC::printf("tkd blockLen: %u\n", dataCopyParams.blockLen);
-        // AscendC::printf("tkd srcStride: %u\n", dataCopyParams.srcStride);
-        // AscendC::printf("tkd dstStride: %u\n", dataCopyParams.dstStride);
-        // AscendC::printf("tkd mRound: %u\n", mRound);
-        // AscendC::printf("tkd nCopyOffset: %u\n", nCopyOffset);
-        // AscendC::printf("tkd blockStride: %u\n", blockStride);
-        // AscendC::printf("tkd DataCopy1 dst offset: %u\n", subBlockIdx_ * mRound * nCopyOffset);
+        // // AscendC::printf("tkd blockCount: %u\n", dataCopyParams.blockCount);
+        // // AscendC::printf("tkd blockLen: %u\n", dataCopyParams.blockLen);
+        // // AscendC::printf("tkd srcStride: %u\n", dataCopyParams.srcStride);
+        // // AscendC::printf("tkd dstStride: %u\n", dataCopyParams.dstStride);
+        // // AscendC::printf("tkd mRound: %u\n", mRound);
+        // // AscendC::printf("tkd nCopyOffset: %u\n", nCopyOffset);
+        // // AscendC::printf("tkd blockStride: %u\n", blockStride);
+        // // AscendC::printf("tkd DataCopy1 dst offset: %u\n", subBlockIdx_ * mRound * nCopyOffset);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         // crossCoreSync after PIPE_MTE1 move
@@ -206,18 +207,18 @@ public:
 
         if (isFirstKvSTile) {
             SetGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, tailN);
-            AscendC::printf("tkd SetGlobalMaxAndGlobalSum\n");
-            AscendC::printf("tkd gmUbTensor\n");
-            AscendC::DumpTensor(gmUbTensor, 1, 128);
-            AscendC::printf("tkd glUbTensor\n");
-            AscendC::DumpTensor(glUbTensor, 1, 128);
+            // AscendC::printf("tkd SetGlobalMaxAndGlobalSum\n");
+            // AscendC::printf("tkd gmUbTensor\n");
+            // AscendC::DumpTensor(gmUbTensor, 1, 128);
+            // AscendC::printf("tkd glUbTensor\n");
+            // AscendC::DumpTensor(glUbTensor, 1, 128);
         } else {
             UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, dmUbAddr, tailN);
-            AscendC::printf("tkd UpdateDeltaMaxGlobalMaxAndGlobalSum\n");
-            AscendC::printf("tkd gmUbTensor\n");
-            AscendC::DumpTensor(gmUbTensor, 1, 128);
-            AscendC::printf("tkd glUbTensor\n");
-            AscendC::DumpTensor(glUbTensor, 1, 128);
+            // AscendC::printf("tkd UpdateDeltaMaxGlobalMaxAndGlobalSum\n");
+            // AscendC::printf("tkd gmUbTensor\n");
+            // AscendC::DumpTensor(gmUbTensor, 1, 128);
+            // AscendC::printf("tkd glUbTensor\n");
+            // AscendC::DumpTensor(glUbTensor, 1, 128);
         }
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -346,7 +347,7 @@ private:
         MaskReg maskReg16VL64 = CreateMask<half, MaskPattern::VL64>();
 
         __ubuf__ half *pUb0 = pUb;
-        __ubuf__ half *pUb1 = pUb + (mRound * 8); // *pUb1 = pUb0 + (mRound / 4 * ELE_NUM_PER_DATABLOCK)
+        __ubuf__ half *pUb1 = pUb + (mRound * 8); // *pUb1 = pUb0 + (mRound / 2 * ELE_NUM_PER_DATABLOCK)
 
         LoadAlign(hmVreg, lmUb);
         for (uint16_t i = 0; i < mFirstTile; i++) {
@@ -474,7 +475,7 @@ private:
         };
 
         __ubuf__ fp8_e4m3fn_t *pUb0 = pUb;
-        __ubuf__ fp8_e4m3fn_t *pUb1 = pUb + (mRound * 16); // *pUb1 = pUb0 + (mRound / 4 * ELE_NUM_PER_DATABLOCK)
+        __ubuf__ fp8_e4m3fn_t *pUb1 = pUb + (mRound * 16); // *pUb1 = pUb0 + (mRound / 2 * ELE_NUM_PER_DATABLOCK)
 
         constexpr half maxValueFP8 = static_cast<half>(448.0f);
 

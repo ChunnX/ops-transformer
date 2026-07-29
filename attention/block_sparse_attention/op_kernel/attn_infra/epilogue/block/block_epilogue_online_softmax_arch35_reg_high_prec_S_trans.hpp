@@ -117,59 +117,54 @@ public:
         // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
-        
-        AscendC::printf("tkd m: %u\n", m);
-        AscendC::printf("tkd mRound: %u\n", mRound);
-        AscendC::printf("tkd n: %u\n", n);
-        AscendC::printf("tkd nRound: %u\n", nRound);
 
-        uint32_t mAligendTile = mRound / 4;
-        uint32_t mFirstTile = m % mAligendTile;
-        uint32_t mAligned16TileNum = m / mAligendTile;
+        uint32_t mAlignedTile = mRound / 4;
+        uint32_t mFirstTile = m % mAlignedTile;
+        uint32_t mAligned16TileNum = m / mAlignedTile;
         if (mAligned16TileNum == 4) {
-            mFirstTile = mAligendTile;
+            mFirstTile = mAlignedTile;
         }
         if (isFirstKvSTile) {
             if (mAligned16TileNum == 0) {
-                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAligendTileNum::Zero>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAlignedTileNum::Zero>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 1) {
-                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAligendTileNum::One>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAlignedTileNum::One>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 2) {
-                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAligendTileNum::Two>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAlignedTileNum::Two>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 3) {
-                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAligendTileNum::Three>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAlignedTileNum::Three>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else {
-                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAligendTileNum::Four>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAlignedTileNum::Four>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             }
         } else {
             if (mAligned16TileNum == 0) {
-                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAligendTileNum::Zero>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAlignedTileNum::Zero>(
                     sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 1) {
-                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAligendTileNum::One>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAlignedTileNum::One>(
                     sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 2) {
-                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAligendTileNum::Two>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAlignedTileNum::Two>(
                     sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 3) {
-                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAligendTileNum::Three>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAlignedTileNum::Three>(
                     sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             } else {
-                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAligendTileNum::Four>(
+                ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAlignedTileNum::Four>(
                     sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64, blockStride, nRound,
                     expMaxUbAddr, lastSumAddr);
             }
@@ -225,7 +220,7 @@ private:
     AscendC::LocalTensor<ElementInput> llUbTensor;
     uint32_t subBlockIdx_;
 
-    enum class MAligendTileNum {
+    enum class MAlignedTileNum {
         Zero = 0,
         One = 1,
         Two = 2,
@@ -233,7 +228,7 @@ private:
         Four = 4
     };
 
-    template <typename ElementS, typename ElementP, bool isUpdate, MAligendTileNum mTileNum>
+    template <typename ElementS, typename ElementP, bool isUpdate, MAlignedTileNum mTileNum>
     __simd_vf__ inline void ComputeOnlineSoftmaxDN(__ubuf__ ElementS *srcUb, __ubuf__ ElementS *newMaxUb,
                                                  __ubuf__ ElementS *LastMaxUbStart, __ubuf__ ElementP *expUb,
                                                  __ubuf__ ElementS *expSumUb, uint16_t mRound, uint16_t m,
@@ -361,23 +356,23 @@ private:
                        AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg, blockStride, 1, pregFp16VL128);
 
-            if constexpr (mTileNum >= MAligendTileNum::Zero) {
+            if constexpr (mTileNum >= MAlignedTileNum::Zero) {
                 Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
             }
-            if constexpr (mTileNum >= MAligendTileNum::Two) {
+            if constexpr (mTileNum >= MAlignedTileNum::Two) {
                 Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
             }
             StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
                        AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg, blockStride, 1, pregFp16VL128);
-            if constexpr (mTileNum >= MAligendTileNum::One) {
+            if constexpr (mTileNum >= MAlignedTileNum::One) {
                 Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
             }
-            if constexpr (mTileNum >= MAligendTileNum::Three) {
+            if constexpr (mTileNum >= MAlignedTileNum::Three) {
                 Add(sum3Vreg, exp3Vreg32, sum3Vreg, pregTailN);
             }
         }
-        if constexpr (mTileNum < MAligendTileNum::Four) {
+        if constexpr (mTileNum < MAlignedTileNum::Four) {
             for (int32_t i = mFirstTile; i < int32_t(mRound / 4); i++) {
                 LoadAlign(src0Vreg, srcUb + i * s2BaseSize);
                 LoadAlign(src1Vreg, srcUb + mRound * s2BaseSize / 4 + i * s2BaseSize);
@@ -404,16 +399,16 @@ private:
                            AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                     ((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg, blockStride, 1, pregFp16VL128);
 
-                if constexpr (mTileNum > MAligendTileNum::Zero) {
+                if constexpr (mTileNum > MAlignedTileNum::Zero) {
                     Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
                 }
-                if constexpr (mTileNum > MAligendTileNum::Two) {
+                if constexpr (mTileNum > MAlignedTileNum::Two) {
                     Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
                 }
                 StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
                            AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                     ((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg, blockStride, 1, pregFp16VL128);
-                if constexpr (mTileNum > MAligendTileNum::One) {
+                if constexpr (mTileNum > MAlignedTileNum::One) {
                     Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
                 }
             }
