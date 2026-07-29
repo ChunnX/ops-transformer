@@ -3019,6 +3019,91 @@ def sparse_lightning_indexer_grad_kl_loss(
             _debug_task_compare("SoftmaxI vs BMM2 formula", softmax_i_ws[debug_b, debug_q], debug_expected_softmax_i)
             _debug_task_compare("dWeightOut vs BMM2/P/SY formula", d_weight[debug_b, debug_q], debug_expected_dweight)
             _debug_task_compare("reluGradRes vs BF16 formula", relu_grad_out[debug_b, debug_q], debug_expected_relu)
+            debug_relu_abs_diff = (debug_relu - debug_expected_relu).abs()
+            debug_relu_bad = torch.nonzero(
+                debug_relu_abs_diff != 0,
+                as_tuple=False,
+            )
+            debug_relu_false_zero = (
+                (debug_relu == 0) & (debug_expected_relu != 0)
+            )
+            debug_relu_false_nonzero = (
+                (debug_relu != 0) & (debug_expected_relu == 0)
+            )
+            debug_relu_wrong_nonzero = (
+                (debug_relu != 0)
+                & (debug_expected_relu != 0)
+                & (debug_relu != debug_expected_relu)
+            )
+            print(
+                f"[DEBUG_TASK] reluGrad mismatch summary: "
+                f"total={debug_relu_bad.shape[0]} "
+                f"false_zero={debug_relu_false_zero.sum().item()} "
+                f"false_nonzero={debug_relu_false_nonzero.sum().item()} "
+                f"wrong_nonzero={debug_relu_wrong_nonzero.sum().item()} "
+                f"diff_gt_1e-3={(debug_relu_abs_diff > 1e-3).sum().item()} "
+                f"diff_gt_1e-2={(debug_relu_abs_diff > 1e-2).sum().item()}"
+            )
+            if debug_relu_bad.shape[0] > 0:
+                debug_relu_tile_ids = (
+                    (debug_relu_bad[:, 0] // rows_per_aiv)
+                    * (n_num * bw_col_count)
+                    + debug_relu_bad[:, 1] // bw_col_block
+                )
+                debug_relu_unique_tiles, debug_relu_tile_counts = torch.unique(
+                    debug_relu_tile_ids,
+                    return_counts=True,
+                )
+                debug_relu_tile_order = torch.argsort(
+                    debug_relu_tile_counts,
+                    descending=True,
+                )
+                debug_relu_tile_summary = []
+                for debug_tile_order_id in debug_relu_tile_order[:16].cpu().tolist():
+                    debug_tile_id = int(
+                        debug_relu_unique_tiles[debug_tile_order_id].item()
+                    )
+                    debug_tile_segment = debug_tile_id % (n_num * bw_col_count)
+                    debug_relu_tile_summary.append(
+                        (
+                            debug_tile_id // (n_num * bw_col_count),
+                            debug_tile_segment // bw_col_count,
+                            debug_tile_segment % bw_col_count,
+                            int(debug_relu_tile_counts[debug_tile_order_id].item()),
+                        )
+                    )
+                print(
+                    "[DEBUG_TASK] reluGrad bad tiles "
+                    "(aiv,n_idx,bw_col,count)="
+                    f"{debug_relu_tile_summary}"
+                )
+                for debug_bad_id in range(min(16, debug_relu_bad.shape[0])):
+                    debug_head = int(debug_relu_bad[debug_bad_id, 0].item())
+                    debug_k = int(debug_relu_bad[debug_bad_id, 1].item())
+                    debug_aiv = debug_head // rows_per_aiv
+                    debug_local_head = debug_head % rows_per_aiv
+                    debug_n_idx = debug_k // n_block
+                    debug_bw_col = (debug_k % n_block) // bw_col_block
+                    debug_local_col = debug_k % bw_col_block
+                    debug_unmasked = (
+                        weights[debug_b, debug_q, debug_head].float()
+                        * debug_diff[debug_k]
+                    )
+                    print(
+                        f"[DEBUG_TASK] reluGrad error[{debug_bad_id}]: "
+                        f"coord=(h={debug_head},k={debug_k}) "
+                        f"tile=(aiv={debug_aiv},n_idx={debug_n_idx},"
+                        f"bw_col={debug_bw_col}) "
+                        f"local=(h={debug_local_head},group={debug_local_head // 4},"
+                        f"col={debug_local_col}) "
+                        f"actual={debug_relu[debug_head, debug_k].item():.6e} "
+                        f"expected={debug_expected_relu[debug_head, debug_k].item():.6e} "
+                        f"unmasked={debug_unmasked.item():.6e} "
+                        f"bmm2={debug_bmm2[debug_head, debug_k].item():.6e} "
+                        f"diff={debug_diff[debug_k].item():.6e} "
+                        f"weight={weights[debug_b, debug_q, debug_head].float().item():.6e} "
+                        f"valid={debug_valid_mask[debug_k].item():.0f}"
+                    )
             _debug_task_compare("C2 dQueryAccum vs stored reluGrad", d_query_index_accum[debug_b, debug_q], debug_expected_dq)
             _debug_task_compare("C2 dk_partial vs stored reluGrad", dk_matmul_partial[debug_b, debug_q], debug_expected_dk)
             _debug_dump_done = True
