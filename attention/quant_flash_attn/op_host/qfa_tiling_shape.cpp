@@ -145,8 +145,7 @@ std::string QfaTilingShapeCompare::CompareTypeToSerialString(const QfaCompareTyp
 std::string QfaTilingShapeCompare::CompareTypeToSerialSymbolString(const QfaCompareType &compareType) const
 {
     static const std::map<QfaCompareType, std::string> symbolMap = {
-        {QfaCompareType::EQUAL, "=="}, {QfaCompareType::GREATER, ">"},     {QfaCompareType::GREATER_EQUAL, ">="},
-        {QfaCompareType::LESS, "<"},   {QfaCompareType::LESS_EQUAL, "<="}, {QfaCompareType::NOT_EQUAL, "!="}};
+        {QfaCompareType::EQUAL, "=="}, {QfaCompareType::GREATER, ">"}, {QfaCompareType::GREATER_EQUAL, ">="}, {QfaCompareType::LESS, "<"}, {QfaCompareType::LESS_EQUAL, "<="}, {QfaCompareType::NOT_EQUAL, "!="}};
     auto it = symbolMap.find(compareType);
     return (it != symbolMap.end()) ? it->second : "UNKNOWN";
 }

@@ -21,9 +21,7 @@ namespace quant_flash_attn {
 std::string QfaLayoutToSerialString(QfaLayout layout)
 {
     const std::map<QfaLayout, std::string> layout2Str = {
-        {QfaLayout::BSND, "BSND"},       {QfaLayout::BNSD, "BNSD"},       {QfaLayout::TND, "TND"},
-        {QfaLayout::PA_BBND, "PA_BBND"}, {QfaLayout::PA_BNBD, "PA_BNBD"}, {QfaLayout::PA_NZ, "PA_NZ"},
-        {QfaLayout::LSE_BNS, "LSE_BNS"}, {QfaLayout::LSE_NT, "LSE_NT"},   {QfaLayout::N2TGD, "N2TGD"}};
+        {QfaLayout::BSND, "BSND"}, {QfaLayout::BNSD, "BNSD"}, {QfaLayout::TND, "TND"}, {QfaLayout::PA_BBND, "PA_BBND"}, {QfaLayout::PA_BNBD, "PA_BNBD"}, {QfaLayout::PA_NZ, "PA_NZ"}, {QfaLayout::LSE_BNS, "LSE_BNS"}, {QfaLayout::LSE_NT, "LSE_NT"}, {QfaLayout::N2TGD, "N2TGD"}};
 
     if (layout2Str.find(layout) != layout2Str.end()) {
         return layout2Str.at(layout);
@@ -31,7 +29,7 @@ std::string QfaLayoutToSerialString(QfaLayout layout)
     return "UNKNOWN";
 }
 
-static const std::string QFA_AXIS_SERIAL_STRINGS[] = {"B",  "S",  "N",  "D",  "H",  "T",    "D1",
+static const std::string QFA_AXIS_SERIAL_STRINGS[] = {"B", "S", "N", "D", "H", "T", "D1",
                                                       "D0", "S1", "S2", "Bn", "Bs", "CONST"};
 
 std::string QfaAxisToSerialString(QfaAxis axis)

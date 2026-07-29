@@ -22,7 +22,8 @@ namespace optiling {
 namespace quant_flash_attn {
 class QfaInfoParser {
 public:
-    explicit QfaInfoParser(const gert::TilingContext *context) : context_(context)
+    explicit QfaInfoParser(const gert::TilingContext *context)
+        : context_(context)
     {
     }
     ~QfaInfoParser() = default;
