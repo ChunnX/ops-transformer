@@ -23,6 +23,7 @@
 #include <sstream>
 #include <cstdlib>
 #include <climits>
+#include <iostream>
 #include <functional>
 #include <type_traits>
 #include <unordered_map>
@@ -276,6 +277,59 @@ inline const char *GetOpApiLibName(void) { return "libopapi.so"; }
 inline const char *GetTransformerOpApiLibName(void) { return "libopapi_transformer.so"; }
 
 inline const char *GetCustOpApiLibName(void) { return "libcust_opapi.so"; }
+
+inline const char *GetTorchNpuLibName(void) { return "libtorch_npu.so"; }
+
+struct TorchNpuDeterministicSnapshot {
+    bool deterministicAlgorithmsEnabled;
+    uint32_t requestedLevel;
+    uint32_t effectiveLevel;
+    int32_t backend;
+};
+static_assert(sizeof(TorchNpuDeterministicSnapshot) == 16,
+              "TorchNpuDeterministicSnapshot must match the libtorch_npu ABI");
+
+using CaptureDeterministicSnapshotFunc = TorchNpuDeterministicSnapshot (*)();
+using ApplyDeterministicSnapshotFunc = void (*)(const TorchNpuDeterministicSnapshot &, bool);
+
+inline void LogDeterministicSnapshotPath(bool useNewPath)
+{
+    if (useNewPath) {
+        static const bool logged = []() {
+            return true;
+        }();
+        (void)logged;
+        return;
+    }
+    static const bool logged = []() {
+        return true;
+    }();
+    (void)logged;
+}
+
+inline bool TryApplyDeterministicSnapshot()
+{
+    static auto torchNpuHandler = dlopen(GetTorchNpuLibName(), RTLD_LAZY);
+    if (torchNpuHandler == nullptr) {
+        LogDeterministicSnapshotPath(false);
+        return false;
+    }
+    // Look up the C++ ABI symbols dynamically to avoid a load-time dependency
+    // when an older torch_npu is installed.
+    static const auto captureFunc = reinterpret_cast<CaptureDeterministicSnapshotFunc>(
+        dlsym(torchNpuHandler, "_ZN7c10_npu28CaptureDeterministicSnapshotEv"));
+    static const auto applyFunc = reinterpret_cast<ApplyDeterministicSnapshotFunc>(
+        dlsym(torchNpuHandler,
+              "_ZN6at_npu6native26ApplyDeterministicSnapshotERKN7c10_npu21DeterministicSnapshotEb"));
+    if (captureFunc == nullptr || applyFunc == nullptr) {
+        LogDeterministicSnapshotPath(false);
+        return false;
+    }
+    auto snapshot = captureFunc();
+    applyFunc(snapshot, true);
+    LogDeterministicSnapshotPath(true);
+    return true;
+}
 
 inline void *GetOpApiFuncAddrInLib(void *handler, const char *libName, const char *apiName)
 {
@@ -948,8 +1002,10 @@ auto DecodeDevice(Ts &...args) -> at::Device
         if (initMemFunc) { \
             initMemFunc(nullptr, false); \
         } \
-        auto deterministic = at::globalContext().deterministicAlgorithms(); \
-        aclrtCtxSetSysParamOpt(aclSysParamOpt::ACL_OPT_DETERMINISTIC, deterministic ? 1 : 0); \
+        if (!TryApplyDeterministicSnapshot()) {                                                                        \
+            auto deterministic = at::globalContext().deterministicAlgorithms();                                        \
+            aclrtCtxSetSysParamOpt(aclSysParamOpt::ACL_OPT_DETERMINISTIC, deterministic ? 1 : 0);                      \
+        }                                                                                                              \
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr); \
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr); \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params); \
