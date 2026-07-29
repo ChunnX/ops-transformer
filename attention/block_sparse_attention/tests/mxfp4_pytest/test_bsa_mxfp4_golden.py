@@ -456,83 +456,86 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
         lse = torch.full((B, N, S, 1), float('-inf'), dtype=torch.float32)
         scale_s = torch.as_tensor(scale_value, dtype=s_torch_dtype)  # scale round 到 s_dtype
 
-        for b in range(B):
-            for n in range(N):
-                n2 = n % N2                    # GQA 取模映射(query 头 n -> kv 头 n%N2)
-                for qb in range(ceil_q):      # ── q-block(kernel q-tile)──
-                    q_lo = qb * block_x
-                    q_hi = min(q_lo + block_x, S)
-                    if q_lo >= S:
+        for batch_idx in range(B):
+            for qn_idx in range(N):
+                kvn_idx = qn_idx // N2                    # GQA 映射(query 头 -> kv 头)
+                for q_block_idx in range(ceil_q):      # ── q-block(kernel q-tile)──
+                    q_start = q_block_idx * block_x
+                    q_end = min(q_start + block_x, S)
+                    if q_start >= S:
                         break
                     # 该 q-block允许 attend 的 kv 块(ascending), 同 q-block内所有 q-token 共享。
-                    sel_j = [j for j in range(ceil_kv) if block_sparse_mask[b, n, qb, j] != 0]
-                    if not sel_j:             # 无 kv 块: out 保持 0, lse 保持 -inf
+                    selected_kv_blocks = [j for j in range(ceil_kv) if block_sparse_mask[batch_idx, qn_idx, q_block_idx, j] != 0]
+                    if not selected_kv_blocks:             # 无 kv 块: out 保持 0, lse 保持 -inf
                         continue
                     # 切成 2-kv-block chunk(对齐 kernel s2LoopCount*2)。
-                    chunks = [sel_j[i:i + 2] for i in range(0, len(sel_j), 2)]
-                    Q_blk = q_q[b, n, q_lo:q_hi]              # [nq, D] fp32
-                    nq = q_hi - q_lo
-                    m_run = None                            # online running max(None=首块)
-                    l_run = torch.zeros(nq, dtype=torch.float32)
-                    acc = torch.zeros((nq, D), dtype=torch.float32)
-                    m_lse = torch.full((nq,), float('-inf'), dtype=torch.float32)  # online lse
-                    l_lse = torch.zeros(nq, dtype=torch.float32)
+                    chunks = [selected_kv_blocks[i:i + 2] for i in range(0, len(selected_kv_blocks), 2)]
+                    Q_block = q_q[batch_idx, qn_idx, q_start:q_end]              # [num_q_tokens, D] fp32
+                    num_q_tokens = q_end - q_start
+                    running_max_k = None                            # online running max(None=首块)
+                    running_sum_p = torch.zeros(num_q_tokens, dtype=torch.float32)
+                    output_acc = torch.zeros((num_q_tokens, D), dtype=torch.float32)
+                    lse_running_max = torch.full((num_q_tokens,), float('-inf'), dtype=torch.float32)  # online lse
+                    lse_running_sum = torch.zeros(num_q_tokens, dtype=torch.float32)
                     for chunk in chunks:                   # ── 2-kv-block chunk(kernel kv-tile)──
                         positions = []
                         for j in chunk:
-                            st = j * block_y
-                            ed = min(st + block_y, S2)
-                            positions.extend(range(st, ed))
+                            kv_start = j * block_y
+                            kv_end = min(kv_start + block_y, S2)
+                            positions.extend(range(kv_start, kv_end))
                         if not positions:
                             continue
-                        pos = torch.as_tensor(positions, dtype=torch.long)
-                        K_blk = k_q[b, n2][pos]            # [npos, D] fp32
-                        V_blk = v_q[b, n2][pos]            # [npos, D] fp32
+                        positions_tensor = torch.as_tensor(positions, dtype=torch.long)
+                        K_block = k_q[batch_idx, kvn_idx][positions_tensor]            # [num_kv_tokens, D] fp32
+                        V_block = v_q[batch_idx, kvn_idx][positions_tensor]            # [num_kv_tokens, D] fp32
                         # S: fp32 matmul -> 降到 s_dtype -> s_dtype 上乘 scale
-                        S_fp32 = (K_blk @ Q_blk.t()).to(torch.float32)   # [npos, nq] (DN: S=K@Q^T, 对齐 qfa s_layout="DN" + kernel)
-                        _dump_tensor(S_fp32.to(s_torch_dtype), "mm1Res.bin")   # dump: QK result(对应 kernel desc=5/6)
-                        S_s = S_fp32.to(s_torch_dtype) * scale_s
+                        scores_fp32 = (K_block @ Q_block.t()).to(torch.float32)   # [num_kv_tokens, num_q_tokens] (DN: S=K@Q^T, 对齐 qfa s_layout="DN" + kernel)
+                        if _DUMP_ENABLED:   
+                            _dump_tensor(scores_fp32.to(s_torch_dtype), "mm1Res.bin")   # dump: QK result(对应 kernel desc=5/6)
+                        scores_sdtype = scores_fp32.to(s_torch_dtype) * scale_s
                         if p_quant == 'snap_local':
                             # P 量化在 s_dtype; snap_local 内部已 dump p_packed_x4/p_scale_e8m0/
-                            # local_group_max/global_max。m_run 跨 chunk online。
-                            P_eff_s, m_new = _blockwise_snap_local_quantize_p_eff(
-                                S_s, m_running=m_run, seqk_dim=0)  # DN: seqk=dim0
-                            P_eff_s = torch.nan_to_num(P_eff_s, nan=0.0)
-                            P_fp32 = P_eff_s.float()      # 升 fp32 供 sum/PV
-                            # alpha = exp2(K_old - K_new)(snap_local 的 m 存 K 整数, 位精确)
-                            alpha = (torch.zeros(nq, dtype=torch.float32) if m_run is None
-                                     else torch.exp2(m_run.float() - m_new.float()))
+                            # local_group_max/global_max。running_max_k 跨 chunk online。
+                            P_eff_sdtype, new_max_k = _blockwise_snap_local_quantize_p_eff(
+                                scores_sdtype, m_running=running_max_k, seqk_dim=0)  # DN: seqk=dim0
+                            P_eff_sdtype = torch.nan_to_num(P_eff_sdtype, nan=0.0)
+                            P_fp32 = P_eff_sdtype.float()      # 升 fp32 供 sum/PV
+                            # rescale_alpha = exp2(K_old - K_new)(snap_local 的 m 存 K 整数, 位精确)
+                            rescale_alpha = (torch.zeros(num_q_tokens, dtype=torch.float32) if running_max_k is None
+                                     else torch.exp2(running_max_k.float() - new_max_k.float()))
                         else:  # 'none': 纯 softmax, P 在 s_dtype, online 用实数 max
-                            m_s = S_s.max(dim=0).values   # DN: 沿 seqk=dim0
-                            m_safe_s = torch.where(torch.isinf(m_s) & (m_s < 0), torch.zeros_like(m_s), m_s)
-                            P_ij = torch.exp(S_s - m_safe_s.unsqueeze(0))  # [npos, nq] (DN)
-                            P_fp32 = torch.nan_to_num(P_ij, nan=0.0).float()
-                            m_new = m_safe_s.float()
-                            alpha = (torch.zeros(nq, dtype=torch.float32) if m_run is None
-                                     else torch.exp(m_run - m_new))
+                            scores_max = scores_sdtype.max(dim=0).values   # DN: 沿 seqk=dim0
+                            scores_max_safe = torch.where(torch.isinf(scores_max) & (scores_max < 0), torch.zeros_like(scores_max), scores_max)
+                            P_softmax = torch.exp(scores_sdtype - scores_max_safe.unsqueeze(0))  # [num_kv_tokens, num_q_tokens] (DN)
+                            P_fp32 = torch.nan_to_num(P_softmax, nan=0.0).float()
+                            new_max_k = scores_max_safe.float()
+                            rescale_alpha = (torch.zeros(num_q_tokens, dtype=torch.float32) if running_max_k is None
+                                     else torch.exp(running_max_k - new_max_k))
                         # sum(P) / PV 均在 fp32
-                        reduce_sum = P_fp32.sum(dim=0)                # [nq] (DN: 沿 seqk=dim0)
-                        _dump_tensor(reduce_sum, "mm2ReduceSum.bin")  # dump: rowsum(对应 desc=21/8/...)
-                        pv = V_blk.t() @ P_fp32                      # [D, nq] (DN: V.t()@P, 对应 kernel PV_i dump)
-                        _dump_tensor(pv, "mm2Res_1.bin")              # dump: PV(对应 desc=36/18/19)
-                        l_run = alpha * l_run + reduce_sum
-                        acc = alpha.unsqueeze(-1) * acc + (P_fp32.t() @ V_blk)  # [nq, D] (DN: P.t()@V)
-                        m_run = m_new
+                        sum_P = P_fp32.sum(dim=0)                # [num_q_tokens] (DN: 沿 seqk=dim0)
+                        if _DUMP_ENABLED:   
+                            _dump_tensor(sum_P, "mm2ReduceSum.bin")  # dump: rowsum(对应 desc=21/8/...)
+                        PV_result = V_block.t() @ P_fp32                      # [D, num_q_tokens] (DN: V.t()@P, 对应 kernel PV_i dump)
+                        if _DUMP_ENABLED:   
+                            _dump_tensor(PV_result, "mm2Res_1.bin")              # dump: PV(对应 desc=36/18/19)
+                        running_sum_p = rescale_alpha * running_sum_p + sum_P
+                        output_acc = rescale_alpha.unsqueeze(-1) * output_acc + (P_fp32.t() @ V_block)  # [num_q_tokens, D] (DN: P.t()@V)
+                        running_max_k = new_max_k
                         # online lse(用 fp32 scaled S, 仅参考; mxfp4 NPU 不返回 lse)
-                        s_scaled = S_fp32 * scale_value             # fp32 scaled scores
-                        m_ch = s_scaled.max(dim=0).values   # DN: 沿 seqk=dim0
-                        m_ch = torch.where(torch.isinf(m_ch) & (m_ch < 0), torch.full_like(m_ch, -1e10), m_ch)
-                        m_new_lse = torch.maximum(m_lse, m_ch)
-                        a_lse = (torch.zeros(nq, dtype=torch.float32) if bool((m_lse == float('-inf')).all())
-                                 else torch.exp(m_lse - m_new_lse))
-                        l_lse = a_lse * l_lse + torch.exp(s_scaled - m_new_lse.unsqueeze(0)).sum(dim=0)  # [nq] (DN)
-                        m_lse = m_new_lse
-                    l_safe = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
-                    acc = acc / l_safe.unsqueeze(-1)     # 归一化
-                    out[b, n, q_lo:q_hi] = acc
-                    lse_q = torch.where(l_lse > 0, m_lse + torch.log(l_lse),
-                                        torch.full_like(m_lse, float('-inf')))
-                    lse[b, n, q_lo:q_hi, 0] = lse_q
+                        scores_scaled = scores_fp32 * scale_value             # fp32 scaled scores
+                        max_chunk = scores_scaled.max(dim=0).values   # DN: 沿 seqk=dim0
+                        max_chunk = torch.where(torch.isinf(max_chunk) & (max_chunk < 0), torch.full_like(max_chunk, -1e10), max_chunk)
+                        lse_new_max = torch.maximum(lse_running_max, max_chunk)
+                        lse_alpha = (torch.zeros(num_q_tokens, dtype=torch.float32) if bool((lse_running_max == float('-inf')).all())
+                                 else torch.exp(lse_running_max - lse_new_max))
+                        lse_running_sum = lse_alpha * lse_running_sum + torch.exp(scores_scaled - lse_new_max.unsqueeze(0)).sum(dim=0)  # [num_q_tokens] (DN)
+                        lse_running_max = lse_new_max
+                    sum_p_safe = torch.where(running_sum_p > 0, running_sum_p, torch.ones_like(running_sum_p))
+                    output_acc = output_acc / sum_p_safe.unsqueeze(-1)     # 归一化
+                    out[batch_idx, qn_idx, q_start:q_end] = output_acc
+                    lse_out = torch.where(lse_running_sum > 0, lse_running_max + torch.log(lse_running_sum),
+                                        torch.full_like(lse_running_max, float('-inf')))
+                    lse[batch_idx, qn_idx, q_start:q_end, 0] = lse_out
         return out.to(torch.bfloat16), lse.to(torch.float32)
     finally:
         if dump:

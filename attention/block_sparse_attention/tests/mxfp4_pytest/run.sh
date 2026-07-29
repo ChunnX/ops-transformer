@@ -6,4 +6,4 @@ cd "$(dirname "$0")"
 
 python -m pytest test_bsa_mxfp4_golden.py::TestBSAMxfp4Golden::test_bsa_mxfp4_bnsd_dense \
     -v \
-    --b 2 --n1 8 --n2 8 --s1 128 --s2 128 --qk_d 128
+    --b 1 --n1 8 --n2 8 --s1 128 --s2 512 --qk_d 128
