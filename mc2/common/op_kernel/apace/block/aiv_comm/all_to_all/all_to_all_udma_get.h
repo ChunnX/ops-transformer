@@ -29,15 +29,7 @@ class AllToAllCommGetImpl : public CollectiveCommBase<AllToAllCommGetImpl<Dtype,
 
 private:
     template<uint8_t barrierMode>
-    __aicore__ inline void PostInit()
-    {
-        if constexpr (barrierMode & BARRIER_DEVICE) {
-            this->barrier_.CrossDevice();
-        }
-        if constexpr (barrierMode & BARRIER_CORE) {
-            this->barrier_.CrossCore();
-        }
-    }
+    __aicore__ inline void PostInit() {}
 
     template<uint8_t barrierMode>
     __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize)
