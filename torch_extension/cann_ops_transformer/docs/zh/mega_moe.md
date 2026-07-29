@@ -1388,27 +1388,27 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <tbody>
             <tr>
             <td><strong>A8W8-FP</strong></td>
-            <td>bfloat16</td>
-            <td>float8_e5m2</td>
-            <td>float8_e5m2</td>
-            <td>float8_e8m0</td>
-            <td>float8_e8m0</td>
+            <td>BFLOAT16</td>
+            <td>FLOAT8_E5M2</td>
+            <td>FLOAT8_E5M2</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT8_E8M0</td>
             <td>–</td>
             <td>–</td>
-            <td>bfloat16</td>
+            <td>BFLOAT16</td>
             <td>4</td>
             <td>torch.float8_e5m2</td>
             </tr>
             <tr>
             <td><strong>A8W8-FP</strong></td>
-            <td>bfloat16</td>
-            <td>float8_e4m3fn</td>
-            <td>float8_e4m3fn</td>
-            <td>float8_e8m0</td>
-            <td>float8_e8m0</td>
+            <td>BFLOAT16</td>
+            <td>FLOAT8_E4M3FN</td>
+            <td>FLOAT8_E4M3FN</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT8_E8M0</td>
             <td>–</td>
             <td>–</td>
-            <td>bfloat16</td>
+            <td>BFLOAT16</td>
             <td>4</td>
             <td>torch.float8_e4m3fn</td>
             </tr>
