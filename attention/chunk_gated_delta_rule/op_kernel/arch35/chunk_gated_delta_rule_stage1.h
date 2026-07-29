@@ -421,7 +421,6 @@ private:
         if (subValidRows < halfChunkSize_) {
             Duplicate(tmpTensor[subValidRows * dkAligned_], static_cast<bfloat16_t>(0.0f),
                       (halfChunkSize_ - subValidRows) * dkAligned_);
-            PipeBarrier<PIPE_V>();
         }
         outQueue_.EnQue(tmpTensor);
         tmpTensor = outQueue_.DeQue<bfloat16_t>();
@@ -449,10 +448,8 @@ private:
         uint32_t inner = chunkSize_;
         CumSumInfo cumSumInfo{outer, inner};
         CumSum<float>(gCumSumUbFloat, gCumUbFloat_, gCumUbFloat_, cumSumInfo);
-        PipeBarrier<PIPE_V>();
         // Exp计算
         Exp<float, 0, true>(gCumExpUbFloat, gCumSumUbFloat, chunkSize_);
-        PipeBarrier<PIPE_V>();
 
         if (subBlockIdx_ == 0) {
             auto tmpOut = gOutQueue_.AllocTensor<float>();
@@ -464,7 +461,6 @@ private:
             DataCopyPad(dst, tmpOut, params);
             gOutQueue_.FreeTensor(tmpOut);
         }
-        PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void GammaCompute(const LocalTensor<float> gBroadUbFloat, LocalTensor<float> gammaUbFloat,
@@ -476,24 +472,18 @@ private:
         uint32_t gTransShape[2] = {1, chunkSize_};
         Broadcast<float, BROADCAST_AXIS, 1>(gBroadUbFloat, gCumSumUbFloat, divShape, gShape);
         Broadcast<float, BROADCAST_AXIS, 0>(gTransBroadUbFloat_, gCumSumUbFloat, divShape, gTransShape);
-        PipeBarrier<PIPE_V>();
         // div
         Sub(gammaUbFloat, gBroadUbFloat, gTransBroadUbFloat_, ccOffset_);
-        PipeBarrier<PIPE_V>();
         // mask  1
         DataCopyInFp32(ccOffset_, stageOneMask_[GetBlockIdx() * ccOffset_]);
         auto maskLocal = inQueue_.DeQue<float>();
         Mul(gammaUbFloat, gammaUbFloat, maskLocal, ccOffset_);
-        PipeBarrier<PIPE_V>();
         // exp
         Exp<float, 0, true>(gammaUbFloat, gammaUbFloat, ccOffset_);
-        PipeBarrier<PIPE_V>();
         // mask  2
         Mul(gammaUbFloat, gammaUbFloat, maskLocal, ccOffset_);
-        PipeBarrier<PIPE_V>();
 
         inQueue_.FreeTensor(maskLocal);
-        PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void KKBetaCompute(const GlobalTensor<bfloat16_t> src, LocalTensor<float> betaUbFloat)
@@ -510,9 +500,7 @@ private:
         uint32_t betaShape[2] = {halfChunkSize_, 1};
         uint32_t kkShape[2] = {halfChunkSize_, chunkSize_};
         Broadcast<float, BROADCAST_AXIS, 1>(attnUbFloat_, betaUbFloat, kkShape, betaShape);
-        PipeBarrier<PIPE_V>();
         Mul(attnUbFloat_, kkLocal_, attnUbFloat_, chunkSize_ * halfChunkSize_);
-        PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void InverseCompute(const GlobalTensor<bfloat16_t> dst, LocalTensor<float> gammaUbFloat)
@@ -526,10 +514,8 @@ private:
             Mul(attnUbFloat_, attnUbFloat_, maskLocal, curVecLen);
             inQueue_.FreeTensor(maskLocal);
         }
-        PipeBarrier<PIPE_V>();
 
         Muls(inverseRes_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
-        PipeBarrier<PIPE_V>();
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
         SetFlag<HardEvent::V_S>(eventID);
         WaitFlag<HardEvent::V_S>(eventID);
@@ -585,17 +571,14 @@ private:
         if constexpr (gOptional) {
             // tmp = -1.0 * beta * exp(g_cum)
             Mul(gBUbFloat_, betaUbFloat, gCumExpUbFloat[subOffset_], halfChunkSize_);
-            PipeBarrier<PIPE_V>();
             Muls(gBUbFloat_, gBUbFloat_, static_cast<float>(-1), halfChunkSize_);
         } else {
             Muls(gBUbFloat_, betaUbFloat, static_cast<float>(-1), halfChunkSize_);
         }
-        PipeBarrier<PIPE_V>();
         // k_cumdecay = k * tmp =  -1.0 * k * beta * g_cum_exp
         uint32_t betaShape[2] = {halfChunkSize_, 1};
         uint32_t kShape[2] = {halfChunkSize_, dkAligned_};
         Broadcast<float, BROADCAST_AXIS, 1>(gBKUbFloat_, gBUbFloat_, kShape, betaShape);
-        PipeBarrier<PIPE_V>();
         // data copy in kUbFloatCon_
         DataCopyInBf16WithStride(halfChunkSize_, dk_, keyContinousGm, dk_);
         auto bf16Key = inQueue_.DeQue<bfloat16_t>();
@@ -604,28 +587,21 @@ private:
         inQueue_.FreeTensor(bf16Key);
         // compute
         Mul(gBKUbFloat_, gBKUbFloat_, kUbFloatCon_, halfChunkSize_ * dkAligned_);
-        PipeBarrier<PIPE_V>();
         gBKLocal_ = outQueue_.AllocTensor<bfloat16_t>();
         Cast(gBKLocal_, gBKUbFloat_, RoundMode::CAST_RINT, halfChunkSize_ * dkAligned_);
         outQueue_.EnQue<bfloat16_t>(gBKLocal_);
         uint64_t gBKBeginOffset = subOffset_ * dk_;
         DataCopyOutBf16(halfChunkSize_, dk_, dkAligned_, gBKWsGm[gBKBeginOffset]);
-        PipeBarrier<PIPE_V>();
         if constexpr (gOptional) {
             // kg = k * (g_cum_exp[-1, None] / g_cum_exp)[..., None]
             uint32_t gEndShape[2] = {1, 1};
             uint32_t gBroadShape[2] = {halfChunkSize_, 1};
             Broadcast<float, BROADCAST_AXIS, 0>(gEndBroadUbFloat_, gCumSumUbFloat[chunkSize_ - 1], gBroadShape,
                                                 gEndShape);
-            PipeBarrier<PIPE_V>();
             Sub(gEndBroadUbFloat_, gEndBroadUbFloat_, gCumSumUbFloat[subOffset_], halfChunkSize_);
-            PipeBarrier<PIPE_V>();
             Exp<float, 0, true>(gEndBroadUbFloat_, gEndBroadUbFloat_, halfChunkSize_);
-            PipeBarrier<PIPE_V>();
             Broadcast<float, BROADCAST_AXIS, 1>(kgUbFloat_, gEndBroadUbFloat_, kShape, gBroadShape);
-            PipeBarrier<PIPE_V>();
             Mul(kgUbFloat_, kgUbFloat_, kUbFloatCon_, halfChunkSize_ * dkAligned_);
-            PipeBarrier<PIPE_V>();
             uint64_t kgBeginOffset = subOffset_ * dk_;
             kgLocal_ = outQueue_.AllocTensor<bfloat16_t>();
             Cast(kgLocal_, kgUbFloat_, RoundMode::CAST_RINT, halfChunkSize_ * dkAligned_);
@@ -647,14 +623,11 @@ private:
         if (subValidRows < halfChunkSize_) {
             Duplicate(valueUbFloat[subValidRows * dvAligned_], static_cast<float>(0.0f),
                       (halfChunkSize_ - subValidRows) * dvAligned_);
-            PipeBarrier<PIPE_V>();
         }
         uint32_t betaShape[2] = {halfChunkSize_, 1};
         uint32_t vShape[2] = {halfChunkSize_, dvAligned_};
         Broadcast<float, BROADCAST_AXIS, 1>(vBetaUbFloat_, betaUbFloat, vShape, betaShape);
-        PipeBarrier<PIPE_V>();
         Mul(vBetaUbFloat_, valueUbFloat, vBetaUbFloat_, halfChunkSize_ * dvAligned_);
-        PipeBarrier<PIPE_V>();
         vBetaLocal_ = outQueue_.AllocTensor<bfloat16_t>();
         Cast(vBetaLocal_, vBetaUbFloat_, RoundMode::CAST_RINT, halfChunkSize_ * dvAligned_);
         outQueue_.EnQue<bfloat16_t>(vBetaLocal_);
@@ -674,23 +647,19 @@ private:
         // query * scale
         if constexpr (gOptional) {
             Muls(qUbFloat_, qUbFloatCon_, scale_, halfChunkSize_ * dkAligned_);
-            PipeBarrier<PIPE_V>();
             uint32_t gCumExpShape[2] = {halfChunkSize_, 1};
             uint32_t qShape[2] = {halfChunkSize_, dkAligned_};
             Broadcast<float, BROADCAST_AXIS, 1>(gCumExpBroadUbFloat_, gCumExpUbFloat[subOffset_], qShape, gCumExpShape);
-            PipeBarrier<PIPE_V>();
             // query * scale * exp(g_cum)[:, None]       # (C, Dk)
             Mul(qPrimeUbFloat_, qUbFloat_, gCumExpBroadUbFloat_, halfChunkSize_ * dkAligned_);
         } else {
             Muls(qPrimeUbFloat_, qUbFloatCon_, scale_, halfChunkSize_ * dkAligned_);
         }
-        PipeBarrier<PIPE_V>();
         uint64_t qgBeginOffset = subOffset_ * dk_;
         qPrimeLocal_ = outQueue_.AllocTensor<bfloat16_t>();
         Cast(qPrimeLocal_, qPrimeUbFloat_, RoundMode::CAST_RINT, halfChunkSize_ * dkAligned_);
         outQueue_.EnQue<bfloat16_t>(qPrimeLocal_);
         DataCopyOutBf16(halfChunkSize_, dk_, dkAligned_, outQPrimeGm[qgBeginOffset]); // stage1 out
-        PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void DataCopyInFp32(uint64_t len, GlobalTensor<float> y)
@@ -719,10 +688,8 @@ private:
         betaLocal_ = inQueue_.DeQue<bfloat16_t>();
         if (subValidRows < halfChunkSize_) {
             Duplicate(betaUbBfloat16_, bfloat16_t(0.0f), halfChunkSize_);
-            PipeBarrier<PIPE_V>();
         }
         Gather(betaUbBfloat16_, betaLocal_, inputGatherBuffer_, static_cast<uint32_t>(0), subValidRows);
-        PipeBarrier<PIPE_V>();
 
         Cast(betaUbFloat, betaUbBfloat16_, AscendC::RoundMode::CAST_NONE, halfChunkSize_);
         PipeBarrier<PIPE_V>();
@@ -735,7 +702,6 @@ private:
         gLocal_ = inQueue_.DeQue<float>();
         if (validLen < chunkSize_) {
             Duplicate(gCumUbFloat_, 0.0f, chunkSize_);
-            PipeBarrier<PIPE_V>();
         }
         Gather(gCumUbFloat_, gLocal_, inputGatherBuffer_, static_cast<uint32_t>(0), validLen);
         PipeBarrier<PIPE_V>();
