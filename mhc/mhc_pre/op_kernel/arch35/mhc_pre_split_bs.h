@@ -59,7 +59,8 @@ public:
                 if ASCEND_IS_AIV {
                     uint32_t curNdLen = MhcPreUtils::Min(this->ND_LENGTH, this->matrixInfo_.nD - offsetNd);
                     if (this->vectorCount_ >= 2) {
-                        AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_CONSUMED_FLAG);
+                        AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+                            MhcPreUtils::X_CONSUMED_FLAG);
                     }
                     this->V0Prologue(curNdLen, offsetNd);
                     CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_READY_FLAG);

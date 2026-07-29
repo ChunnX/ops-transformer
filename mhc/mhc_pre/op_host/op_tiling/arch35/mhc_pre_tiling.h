@@ -158,7 +158,6 @@ private:
     uint32_t implMode_ = 0;
     TilingMode tilingMode_ = TilingMode::SPLIT_BS;
     uint32_t hasResi_ = 1;
-
 };
 
 } // namespace optiling

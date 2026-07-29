@@ -413,9 +413,11 @@ public:
             // Seed two availability tokens for each subblock because X staging
             // is ping-ponged. Every later token is returned after AIC consumes X.
             CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG);
-            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
             CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG);
-            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
         }
         if ASCEND_IS_AIV {
             uint32_t rowCapacity = (this->tiling_->mL1Size + 1U) / 2U;
@@ -512,10 +514,12 @@ private:
             if (isLast) {
                 mmService_.CopyOut(mmPartialLocal_);
                 CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_FIX>(MhcPreUtils::MM_READY_FLAG);
-                CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_FIX>(MhcPreUtils::MM_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+                CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_FIX>(
+                    MhcPreUtils::MM_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
             }
             CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG);
-            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
             aL1BufferId ^= 1U;
         }
     }
@@ -523,7 +527,6 @@ private:
     __aicore__ inline void ProcessAiv(uint32_t mStart, uint32_t mReal, uint32_t kIndex,
         uint32_t kStart, uint32_t kEnd)
     {
-
         uint32_t firstRows = (mReal + 1U) / 2U;
         uint32_t rowStart = GetSubBlockIdx() == 0 ? 0U : firstRows;
         uint32_t rowCount = GetSubBlockIdx() == 0 ? firstRows : mReal - firstRows;
