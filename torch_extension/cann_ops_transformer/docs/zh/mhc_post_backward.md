@@ -29,9 +29,15 @@
 
 - 计算公式：
 
-  - MHC Post算子的反向计算公式为：
+  - 当`h_res`为非空Tensor时，`grad_x`的计算公式为：
 
     $$grad\_x_{l} = H_{l}^{res} \times grad\_output$$
+
+  - 当`h_res`为`None`或空Tensor时，`grad_x`的计算公式为：
+
+    $$grad\_x_{l} = grad\_output$$
+
+  - 其余梯度的计算公式为：
 
     $$grad\_h\_res_{l} = x_{l} \times grad\_output^{T}$$
 
@@ -115,7 +121,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>h_out</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>上一层的输出状态，对应公式中的h<sub>l</sub><sup>out</sup>。</td>
+        <td>Attention/MLP层的输出，对应公式中的h<sub>l</sub><sup>out</sup>。</td>
         <td>bfloat16、float16</td>
         <td>
             <ul>
@@ -216,39 +222,38 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
 </tbody>
 </table>
 
-> **说明**：当`h_res`为`None`或空Tensor时，`grad_x`等于`grad_output`，`grad_h_res`仍以float32输出，shape按`x`推导为`(B, S, n, n)`（BSND格式）或`(T, n, n)`（TND格式）。相关使用约束请参见“约束说明”。
-
 ## 约束说明
 
 - 该接口支持训练场景下使用。
 - 该接口支持单算子模式与TorchAir图模式调用。
-- 图模式下`h_res`不可为`None`或空Tensor（底层IR将`h_res`标记为必选输入）。
+- TorchAir图模式下`h_res`不可为`None`，因为底层IR要求该输入存在。
 - `grad_output`、`x`、`h_out`和`h_post`必须为非空Tensor（各维度值大于0），且所有输入Tensor必须位于同一NPU设备上。
 - 数据类型约束：
   - `grad_output`、`x`、`h_out`的数据类型必须相同（bfloat16或float16）。
   - `grad_x`的数据类型与`x`保持一致，`grad_h_out`与`h_out`保持一致，`grad_h_post`与`h_post`保持一致（float32）。
   - `grad_h_res`的数据类型始终为float32，与`h_res`是否传入无关。
 - 维度约束：
-  - `h_res`的维度需与`x`维度格式匹配：4维时为(B, S, n, n)，3维时为(T, n, n)。
+  - 当`h_res`为非空Tensor时，其维度需与`x`维度格式匹配：4维时为(B, S, n, n)，3维时为(T, n, n)。
 - Shape一致性约束：
   - 4维（BSND）格式下：
     - `grad_output`的shape需与`x`一致。
-    - `h_res`的(B, S)维度需与`x`的(B, S)维度一致，`h_res`的后两维为(n, n)，其中n与`x`的第3维一致。
+    - 当`h_res`为非空Tensor时，其(B, S)维度需与`x`的(B, S)维度一致，后两维为(n, n)，其中n与`x`的第3维一致。
     - `h_out`的(B, S)维度需与`x`的(B, S)维度一致，`h_out`的D维度需与`x`的D维度一致。
     - `h_post`的(B, S)维度需与`x`的(B, S)维度一致，`h_post`的n维度需与`x`的n维度一致。
   - 3维（TND）格式下：
     - `grad_output`的shape需与`x`一致。
-    - `h_res`的T维度需与`x`的T维度一致，后两维为(n, n)。
+    - 当`h_res`为非空Tensor时，其T维度需与`x`的T维度一致，后两维为(n, n)。
     - `h_out`的T维度需与`x`的T维度一致，D维度需与`x`的D维度一致。
     - `h_post`的T维度需与`x`的T维度一致，n维度需与`x`的n维度一致。
 <!-- npu="950" id7 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
-  - eager模式下，`h_res`支持置为`None`或传入空Tensor，二者均按未传入处理。
+  - 单算子模式下，`h_res`支持置为`None`或传入空Tensor；TorchAir图模式下，`h_res`不支持为`None`，但支持传入空Tensor。`None`和空Tensor均按未传入`h_res`处理。
+  - 当`h_res`按未传入处理时，`grad_x`等于`grad_output`；`grad_h_res`仍以float32输出，shape按`x`推导为(B, S, n, n)（BSND格式）或(T, n, n)（TND格式）。
   - `n`支持4、6、8。
 <!-- end id7 -->
 <!-- npu="A3,910b" id8 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-  - `h_res`必须为非空Tensor。
+  - 单算子模式和TorchAir图模式下，`h_res`必须为非空Tensor。
   - `n`仅支持4；`D`需按128对齐，取值范围为[1, 100000]。
 <!-- end id8 -->
 
@@ -283,7 +288,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
   ```
 
   <!-- npu="950" id9 -->
-  - **Ascend 950PR/Ascend 950DT**：`h_res`不传入的eager模式场景，此时`grad_x`等于`grad_output`。
+  - **Ascend 950PR/Ascend 950DT**：`h_res`传入`None`的单算子模式场景，此时`grad_x`等于`grad_output`。
 
     ```python
     grad_x, grad_h_res, grad_h_out, grad_h_post = cann_ops_transformer.mhc_post_backward(
@@ -292,9 +297,9 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
     ```
   <!-- end id9 -->
 
-- 图模式调用：
+- TorchAir图模式调用：
 
-  图模式下`h_res`必须传入非空Tensor，不可为`None`或空Tensor。
+  TorchAir图模式下`h_res`必须传入Tensor，不可为`None`。以下示例传入非空Tensor。
 
   ```python
   import torch
