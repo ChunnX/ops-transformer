@@ -259,6 +259,8 @@ def tilelang_grad_kl_loss_single_kernel(
     full_valid=False, k_scatter_exec=None,
     source_s2=None, sparse_k_stride=None, serial_task_pipeline=False,
     c1_serial=False, v0_single_slot=False, v1_select_bypass=False,
+    v1_mask_debug=False, debug_task_b=0, debug_task_q=0,
+    debug_relu_head=0, debug_relu_k=0,
 ):
     source_s2 = S2 if source_s2 is None else source_s2
     sparse_k_stride = K if sparse_k_stride is None else sparse_k_stride
@@ -290,6 +292,17 @@ def tilelang_grad_kl_loss_single_kernel(
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
     rows_per_aiv = Nidx1 // 2
+    if v1_mask_debug:
+        assert rows_per_aiv == 16
+        v1_mask_debug_shape = (2, 4, 32)
+        debug_mask_n_idx = debug_relu_k // n_block
+        debug_mask_bw_col = (
+            debug_relu_k % n_block
+        ) // bw_col_block
+    else:
+        v1_mask_debug_shape = (1,)
+        debug_mask_n_idx = 0
+        debug_mask_bw_col = 0
 
     v3_chunks = Nidx1 // 4
     task_count = B * S1
@@ -1130,6 +1143,7 @@ def tilelang_grad_kl_loss_single_kernel(
         dWeightOut,
         reluGradRes,
         LossPartial,
+        V1MaskDebug,
         bz_task,
         s1_begin_task,
         s1_end_task,
@@ -1190,6 +1204,8 @@ def tilelang_grad_kl_loss_single_kernel(
             # 下一轮的覆写者是 Vector，不是 MTE2，故由 MTE3 直接归还给 V。
             T.set_flag("mte3", "v", 2)
             T.set_flag("mte3", "v", 3)
+            if v1_mask_debug:
+                T.set_flag("mte3", "v", 4)
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 g_start = vector_id * rows_per_aiv
@@ -1310,6 +1326,32 @@ def tilelang_grad_kl_loss_single_kernel(
                                 "GT",
                             )
                             T.pipe_barrier("v")
+                            if v1_mask_debug:
+                                if bz_task == debug_task_b:
+                                    if s1_id == debug_task_q:
+                                        if vector_id == debug_relu_head // rows_per_aiv:
+                                            if n_idx == debug_mask_n_idx:
+                                                if bw_col_id == debug_mask_bw_col:
+                                                    T.wait_flag("mte3", "v", 4)
+                                                    T.set_flag("v", "mte3", 4)
+                                                    T.wait_flag("v", "mte3", 4)
+                                                    T.copy(
+                                                        v1_bw_mask0,
+                                                        V1MaskDebug[vector_id, 0, 0:32],
+                                                    )
+                                                    T.copy(
+                                                        v1_bw_mask1,
+                                                        V1MaskDebug[vector_id, 1, 0:32],
+                                                    )
+                                                    T.copy(
+                                                        v1_bw_mask2,
+                                                        V1MaskDebug[vector_id, 2, 0:32],
+                                                    )
+                                                    T.copy(
+                                                        v1_bw_mask3,
+                                                        V1MaskDebug[vector_id, 3, 0:32],
+                                                    )
+                                                    T.set_flag("mte3", "v", 4)
                             T.tile.mul(
                                 v1_bw_bmm2,
                                 v1_bw_bmm2,
@@ -1526,6 +1568,8 @@ def tilelang_grad_kl_loss_single_kernel(
 
             T.wait_flag("mte3", "v", 2)
             T.wait_flag("mte3", "v", 3)
+            if v1_mask_debug:
+                T.wait_flag("mte3", "v", 4)
             if task_slot == 0:
                 T.set_cross_flag("MTE3", V1_TO_C2_FLAGS[0])
             else:
@@ -2004,7 +2048,7 @@ def tilelang_grad_kl_loss_single_kernel(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
-        # 工作区：13-25
+        # 工作区：13-26
         dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
         dKeyIndexAccum: T.Tensor((dkey_output_rows, DQueryIndex), calc_dtype),
         GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),
@@ -2018,6 +2062,7 @@ def tilelang_grad_kl_loss_single_kernel(
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossPartial: T.Tensor((loss_partial_size,), calc_dtype),
         C2ZeroPad: T.Tensor((8, DQueryIndex), input_dtype),
+        V1MaskDebug: T.Tensor(v1_mask_debug_shape, "uint8"),
         # 输出：-4..-1
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         dKeyIndexOut: T.Tensor((dkey_output_rows, DQueryIndex), input_dtype),
@@ -2096,6 +2141,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 dWeightOut,
                                 reluGradRes,
                                 LossPartial,
+                                V1MaskDebug,
                                 bz_prev,
                                 s1_prev,
                                 s1_prev + 1,
@@ -2625,6 +2671,29 @@ def sparse_lightning_indexer_grad_kl_loss(
         _V1_SELECT_BYPASS = (
             os.environ.get("SLIG_V1_SELECT_BYPASS", "0") == "1"
         )
+        # 将目标 4x64 Compare 的 packed mask 写回 GM，仅用于区分
+        # Compare 生成错误与 Select 消费错误。
+        _V1_MASK_DEBUG = os.environ.get("SLIG_V1_MASK_DEBUG", "0") == "1"
+        if _V1_MASK_DEBUG:
+            if _DEBUG_TASK is None or _DEBUG_RELU_COORD is None:
+                raise ValueError(
+                    "SLIG_V1_MASK_DEBUG=1 requires both SLIG_DEBUG_TASK=batch,query "
+                    "and SLIG_DEBUG_RELU_COORD=head,k"
+                )
+            if Nidx1 != 32:
+                raise ValueError(
+                    "SLIG_V1_MASK_DEBUG=1 currently requires Nidx1=32"
+                )
+        _DEBUG_TASK_B = 0
+        _DEBUG_TASK_Q = 0
+        _DEBUG_RELU_HEAD = 0
+        _DEBUG_RELU_K = 0
+        if _DEBUG_TASK is not None:
+            _DEBUG_TASK_B = _DEBUG_TASK[0]
+            _DEBUG_TASK_Q = _DEBUG_TASK[1]
+        if _DEBUG_RELU_COORD is not None:
+            _DEBUG_RELU_HEAD = _DEBUG_RELU_COORD[0]
+            _DEBUG_RELU_K = _DEBUG_RELU_COORD[1]
         _GATHER_SENTINEL = 123.0
 
         if _PROFILE:
@@ -2680,6 +2749,9 @@ def sparse_lightning_indexer_grad_kl_loss(
             _C1_SERIAL,
             _V0_SINGLE_SLOT,
             _V1_SELECT_BYPASS,
+            _V1_MASK_DEBUG,
+            _DEBUG_TASK,
+            _DEBUG_RELU_COORD,
         )
 
         if cache_key in _kernel_cache:
@@ -2691,6 +2763,9 @@ def sparse_lightning_indexer_grad_kl_loss(
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
                 _SERIAL_TASK_PIPELINE, _C1_SERIAL, _V0_SINGLE_SLOT,
                 _V1_SELECT_BYPASS,
+                _V1_MASK_DEBUG,
+                _DEBUG_TASK_B, _DEBUG_TASK_Q,
+                _DEBUG_RELU_HEAD, _DEBUG_RELU_K,
             )
 
             # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
@@ -2709,6 +2784,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             B, S1, S2_pad, N1, Nidx1, K, DQueryIndex, d_rope,
             input_dtype, query.device, n_num_ws, v2_k_padded,
             loss_partial_size,
+            _V1_MASK_DEBUG,
         )
         if ws_key in _workspace_cache:
             ws = _workspace_cache[ws_key]
@@ -2716,7 +2792,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws, \
                 dk_matmul_partial, relu_grad_out, loss_partial_ws, \
-                c2_zero_pad = ws
+                c2_zero_pad, v1_mask_debug_ws = ws
         else:
             gather_key_ws = torch.zeros(B, S1, K, DQuery, dtype=input_dtype, device=query.device)
             gather_key_rope_ws = torch.zeros(B, S1, K, d_rope, dtype=input_dtype, device=query.device)
@@ -2742,13 +2818,24 @@ def sparse_lightning_indexer_grad_kl_loss(
             c2_zero_pad = torch.zeros(
                 8, DQueryIndex, dtype=input_dtype, device=query.device
             )
+            if _V1_MASK_DEBUG:
+                v1_mask_debug_ws = torch.full(
+                    (2, 4, 32), 0xA5, dtype=torch.uint8, device=query.device
+                )
+            else:
+                v1_mask_debug_ws = torch.zeros(
+                    (1,), dtype=torch.uint8, device=query.device
+                )
             _workspace_cache[ws_key] = (
                 d_query_index_accum, d_key_index_accum,
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws,
                 dk_matmul_partial, relu_grad_out, loss_partial_ws,
-                c2_zero_pad,
+                c2_zero_pad, v1_mask_debug_ws,
             )
+
+        if _V1_MASK_DEBUG:
+            v1_mask_debug_ws.fill_(0xA5)
 
         if _DEBUG_REQUESTED and not _debug_dump_done:
             gather_key_ws.fill_(_GATHER_SENTINEL)
@@ -2772,6 +2859,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             p_reduced_ws, softmax_i_ws,                 # 20-21
             dk_matmul_partial, relu_grad_out,           # 22-23
             loss_partial_ws, c2_zero_pad,               # 24-25
+            v1_mask_debug_ws,                           # 26
         )
         if _PROFILE:
             _t_kernel_end.record()
@@ -2781,6 +2869,41 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_key_index_flat = results[1]
         d_weight = results[2]
         loss_out = results[3]
+
+        if _V1_MASK_DEBUG:
+            debug_relu_head, debug_relu_k = _DEBUG_RELU_COORD
+            debug_rows_per_aiv = Nidx1 // 2
+            debug_vector_id = debug_relu_head // debug_rows_per_aiv
+            debug_local_head = debug_relu_head % debug_rows_per_aiv
+            debug_mask_group = debug_local_head // 4
+            debug_group_row = debug_local_head % 4
+            debug_local_col = debug_relu_k % 64
+            debug_linear_bit = debug_group_row * 64 + debug_local_col
+            debug_mask_byte = debug_linear_bit // 8
+            debug_mask_bit = debug_linear_bit % 8
+            debug_mask_bytes = [
+                int(value)
+                for value in v1_mask_debug_ws[
+                    debug_vector_id, debug_mask_group
+                ].cpu().tolist()
+            ]
+            debug_raw_byte = debug_mask_bytes[debug_mask_byte]
+            debug_bit_value = (debug_raw_byte >> debug_mask_bit) & 1
+            debug_workspace_written = any(
+                value != 0xA5 for value in debug_mask_bytes
+            )
+            debug_mask_hex = " ".join(
+                f"{value:02x}" for value in debug_mask_bytes
+            )
+            print(
+                f"[DEBUG_V1_MASK] task={_DEBUG_TASK} vector={debug_vector_id} "
+                f"group={debug_mask_group} row={debug_group_row} "
+                f"col={debug_local_col} byte={debug_mask_byte} "
+                f"bit={debug_mask_bit} raw_byte=0x{debug_raw_byte:02x} "
+                f"bit_value={debug_bit_value} "
+                f"workspace_written={debug_workspace_written}"
+            )
+            print(f"[DEBUG_V1_MASK] bytes={debug_mask_hex}")
 
         # DEBUG：定位第一个产生非有限值的阶段。
         _DEBUG = _DEBUG_REQUESTED and not _debug_dump_done

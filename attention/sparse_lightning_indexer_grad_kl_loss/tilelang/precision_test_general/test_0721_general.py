@@ -1002,6 +1002,7 @@ def main() -> int:
                 "SLIG_C1_SERIAL",
                 "SLIG_V0_SINGLE_SLOT",
                 "SLIG_V1_SELECT_BYPASS",
+                "SLIG_V1_MASK_DEBUG",
             )
             if os.environ.get(name, "0") == "1"
         ]
@@ -1019,6 +1020,7 @@ def main() -> int:
         or os.environ.get("SLIG_C1_SERIAL", "0") == "1"
         or os.environ.get("SLIG_V0_SINGLE_SLOT", "0") == "1"
         or os.environ.get("SLIG_V1_SELECT_BYPASS", "0") == "1"
+        or os.environ.get("SLIG_V1_MASK_DEBUG", "0") == "1"
     ):
         print("WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。")
     if os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1":
@@ -1029,6 +1031,8 @@ def main() -> int:
         print("WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。")
     if os.environ.get("SLIG_V1_SELECT_BYPASS", "0") == "1":
         print("WARNING: SLIG_V1_SELECT_BYPASS=1，当前写回 Select 前的 v1_bw_rg，仅用于诊断。")
+    if os.environ.get("SLIG_V1_MASK_DEBUG", "0") == "1":
+        print("WARNING: SLIG_V1_MASK_DEBUG=1，当前写回 Compare packed mask，仅用于诊断。")
     selected_cases = list(_select_cases(args))
     if not args.summary_only:
         print(
