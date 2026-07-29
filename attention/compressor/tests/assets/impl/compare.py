@@ -340,7 +340,7 @@ def _tensor_compare(npu_out, golden_out, name):
     }
 
 
-def _batch_consistency_check(npu_outputs, kwargs):
+def _batch_consistency_check(npu_cmp_kv, kwargs):
     """Compare NPU output slices across cases sharing the same batch_consistency_id.
 
     Uses _BATCH_CONSISTENCY_CACHE to keep the base slice from the first case
@@ -357,10 +357,9 @@ def _batch_consistency_check(npu_outputs, kwargs):
     cmp_ratio = kwargs.get("cmp_ratio")
     is_th = kwargs.get("is_th")
 
-    if batch_consistency_id is None or not npu_outputs:
+    if batch_consistency_id is None:
         return
 
-    npu_cmp_kv = npu_outputs[0].to(torch.float32)
     if npu_cmp_kv is None:
         return
 
@@ -460,6 +459,96 @@ def compare(*outputs, **kwargs):
     if len(npu_outputs) == 1:
         results = [
             _tensor_compare(
+                npu_outputs[0][cmp_kv_mask], golden_outputs[0][cmp_kv_mask], "cmp_kv"
+            )
+        ]
+        for i in range(1, len(golden_outputs)):
+            name = _OUTPUT_NAMES[i] if i < len(_OUTPUT_NAMES) else f"output_{i}"
+            results.append(
+                {
+                    "pass": True,
+                    "precision": "N/A",
+                    "error_info": f"{name}: NPU state_cache not captured",
+                }
+            )
+        return results
+
+    npu_cmp_kv = npu_outputs[0]
+    npu_state_cache = npu_outputs[1]
+    cpu_cmp_kv = golden_outputs[0]
+    cpu_state_cache = golden_outputs[1]
+
+    update_kv = kwargs.get("update_kv", None)
+    update_score = kwargs.get("update_score", None)
+
+    npu_sub_outputs = [npu_cmp_kv[cmp_kv_mask]]
+    golden_sub_outputs = [cpu_cmp_kv[cmp_kv_mask]]
+
+    npu_sub_outputs.append(
+        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
+    )
+    npu_sub_outputs.append(
+        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
+    )
+    npu_sub_outputs.append(
+        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
+    )
+    npu_sub_outputs.append(
+        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
+    )
+
+    golden_sub_outputs.append(
+        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
+    )
+    golden_sub_outputs.append(
+        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
+    )
+    golden_sub_outputs.append(
+        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
+    )
+    golden_sub_outputs.append(
+        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
+    )
+
+    results = []
+    for idx in range(len(golden_sub_outputs)):
+        name = _OUTPUT_NAMES[idx]
+        npu_out = npu_sub_outputs[idx]
+        golden_out = golden_sub_outputs[idx]
+        if npu_out is None and golden_out is None:
+            results.append(
+                {
+                    "pass": True,
+                    "precision": "N/A",
+                    "error_info": f"{name} is None",
+                }
+            )
+        else:
+            results.append(_tensor_compare(npu_out, golden_out, name))
+
+    result_consistency = _batch_consistency_check(npu_outputs[0], kwargs)
+    if result_consistency is not None:
+        results.append(result_consistency)
+
+    return results
+
+def compare_aclnn(*outputs, **kwargs):
+    if len(outputs) < 2:
+        return {
+            "pass": False,
+            "precision": "invalid",
+            "error_info": "compare expects NPU outputs followed by golden outputs",
+        }
+
+    GOLDEN_OUTPUT_COUNT = 2
+    golden_outputs = list(outputs[-GOLDEN_OUTPUT_COUNT:])
+    npu_outputs = list(outputs[:-GOLDEN_OUTPUT_COUNT])
+    cmp_kv_mask = kwargs.get("cmp_kv_mask", None)
+
+    # Fallback: single NPU output (cmp_kv only) — compare cmp_kv, skip state_cache
+    if len(npu_outputs) == 1:
+        results = [
+            _tensor_compare(
                 npu_outputs[0][cmp_kv_mask].to(torch.float32), golden_outputs[0][cmp_kv_mask].to(torch.float32), "cmp_kv"
             )
         ]
@@ -526,8 +615,8 @@ def compare(*outputs, **kwargs):
             )
         else:
             results.append(_tensor_compare(npu_out, golden_out, name))
-
-    result_consistency = _batch_consistency_check(npu_outputs, kwargs)
+            
+    result_consistency = _batch_consistency_check(npu_outputs[0].to(torch.float32), kwargs)
     if result_consistency is not None:
         results.append(result_consistency)
 
