@@ -1014,7 +1014,7 @@ def compressor_grad(
             pl.system.wait_cross_core(
                     pipe=pl.PipeType.MTE1, event_id=slot_id,
                 sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
-            if preDealTcSize >= roundBlocks or Coff != 1:
+            if  Coff != 1:
                 # coff=2 CV 路径 L1 布局不同，暂跳过
                 pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
                 # pl.system.set_cross_core(pipe=pl.PipeType.FIX, event_id=slot_id + 2,
@@ -1024,6 +1024,10 @@ def compressor_grad(
                 # pl.system.set_cross_core(pipe=pl.PipeType.FIX, event_id=slot_id,
                 # sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
                 
+                continue
+            
+            if preDealTcSize >= roundBlocks:
+                pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
                 continue
 
 
