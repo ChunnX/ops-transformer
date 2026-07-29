@@ -1,0 +1,140 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file vf_softmax_unaligned64_no_update.h
+ * \brief
+ */
+#ifndef VF_SOFTMAX_UNALIGNED64_NO_UPDATE_H
+#define VF_SOFTMAX_UNALIGNED64_NO_UPDATE_H
+
+#include "vf_softmax_const.h"
+
+namespace FaVectorApi {
+#ifndef __CCE_KT_TEST__
+template <typename T, typename T2, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128, bool hasAttn = 0>
+__simd_vf__ void ProcessVec1NoUpdateImpl64VF(
+    __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb,
+    __ubuf__ T * maxUbStart, __ubuf__ T * srcUb, __ubuf__ uint8_t * indexesUb,
+    __ubuf__ uint32_t * maskUb, const uint32_t blockStride,
+    const uint32_t repeatStride, const uint32_t nPadding, uint32_t pltOriginalN,
+    uint32_t pltSrcN, uint32_t pltSrcN16, const float dScale, const uint16_t m, const T scale, const T minValue)
+{
+    RegTensor<float> vreg_min;
+    RegTensor<float> vreg_sel;
+    RegTensor<float> vreg_input_x;
+    RegTensor<float> vreg_input_max;
+    RegTensor<float> vreg_max_brc;
+    RegTensor<float> vreg_exp;
+    RegTensor<float> vreg_exp_sum;
+    // bfloat16_t
+    RegTensor<bfloat16_t> vreg_exp_even_bf16;
+    RegTensor<bfloat16_t> vreg_exp_bf16;
+    RegTensor<bfloat16_t> vreg_dst_even_bf16;
+    RegTensor<bfloat16_t> vreg_dst_odd_bf16;
+    // half
+    RegTensor<half> vreg_exp_even_f16;
+    RegTensor<half> vreg_exp_f16;
+    RegTensor<half> vreg_dst_even_f16;
+    RegTensor<half> vreg_dst_odd_f16;
+
+    UnalignRegForStore ureg_max;
+    UnalignRegForStore ureg_exp_sum;
+
+    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+    MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
+    MaskReg preg_src_n = UpdateMask<float>(pltSrcN);
+    MaskReg preg_src_n_b16 = UpdateMask<uint16_t>(pltSrcN16);
+
+    MaskReg preg_ori_src_n = UpdateMask<T>(pltOriginalN);
+    MaskReg preg_compare;
+
+    if constexpr (hasAttn == 1) {
+        Duplicate(vreg_min, minValue);
+    }
+    for (uint16_t i = 0; i < m; ++i) {
+        LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
+        Muls(vreg_input_x, vreg_input_x, dScale, preg_ori_src_n);
+        if constexpr (hasAttn == 1) {
+            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
+                preg_compare, (__ubuf__ uint32_t *&)maskUb, nPadding);
+            Select(vreg_sel, vreg_min, vreg_input_x, preg_compare);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel, preg_src_n);
+            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+                vreg_input_max, vreg_sel, preg_ori_src_n);
+        } else {
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x, preg_src_n);
+            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+                vreg_input_max, vreg_input_x, preg_ori_src_n);
+        }
+        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T *&)maxUb), vreg_input_max, ureg_max, 1);
+    }
+    StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T *&)maxUb), ureg_max, 0);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+
+    for (uint16_t i = 0; i < m; ++i) {
+        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(
+            vreg_max_brc, maxUbStart + i);
+        LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
+        ExpSub(vreg_exp, vreg_input_x, vreg_max_brc, preg_ori_src_n);
+
+        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+            vreg_exp_sum, vreg_exp, preg_ori_src_n);
+        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T *&)expSumUb), vreg_exp_sum, ureg_exp_sum, 1);
+
+        Cast<T2, T, castTraitZero>(vreg_exp_bf16, vreg_exp, preg_all_b16);
+        DeInterleave(vreg_dst_even_bf16, vreg_dst_odd_bf16,
+                vreg_exp_bf16, vreg_exp_bf16);
+        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)expUb), vreg_dst_even_bf16, blockStride, repeatStride, preg_src_n_b16);
+    }
+    StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
+}
+
+// no update, originN <= 64
+template <typename T, typename T2, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128, bool hasAttn = 0>
+__aicore__ inline void ProcessVec1NoUpdateImpl64(
+    const LocalTensor<T2>& dstTensor, const LocalTensor<uint8_t>& indexesTensor, const LocalTensor<T>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor,
+    const LocalTensor<T>& inExpSumTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor,
+    const LocalTensor<uint8_t>& sharedTmpBuffer, const uint16_t m, const uint32_t originN,
+    const T scale, const T minValue)
+{
+    __ubuf__ T2 * expUb = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ T * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ T * maxUbStart = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ T * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ uint8_t * indexesUb = (__ubuf__ uint8_t*)indexesTensor.GetPhyAddr();
+
+    __ubuf__ uint32_t * maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
+
+    const uint32_t blockStride = s1BaseSize >> 1 | 0x1;
+    const uint32_t repeatStride = 1;
+    const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
+    uint32_t pltOriginalN = originN;
+
+    uint32_t pltSrcN = s2BaseSize;
+    uint32_t pltSrcN16 = s2BaseSize;
+
+    ProcessVec1NoUpdateImpl64VF<T, T2, s1BaseSize, s2BaseSize, hasAttn>(
+        expUb, expSumUb, maxUb, maxUbStart, srcUb, indexesUb, maskUb,
+        blockStride, repeatStride, nPadding, pltOriginalN, pltSrcN, pltSrcN16, scale, m, scale, minValue);
+}
+#endif
+} // namespace
+
+#endif // VF_SOFTMAX_UNALIGNED64_NO_UPDATE_H
