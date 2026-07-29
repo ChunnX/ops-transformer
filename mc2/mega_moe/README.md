@@ -1,85 +1,54 @@
 # MegaMoE
 
-## 产品支持情况
+## 浜у搧鏀寔鎯呭喌
 
-| 产品                                                         |  是否支持   |
+| 浜у搧                                                         |  鏄惁鏀寔   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                               |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    鈭?   |
+| <term>Atlas A3 璁粌绯诲垪浜у搧/Atlas A3 鎺ㄧ悊绯诲垪浜у搧</term>       |    鈭?   |
+| <term>Atlas A2 璁粌绯诲垪浜у搧/Atlas A2 鎺ㄧ悊绯诲垪浜у搧</term> |    鈭?   |
+| <term>Atlas 200I/500 A2 鎺ㄧ悊浜у搧</term>                      |    脳    |
+| <term>Atlas 鎺ㄧ悊绯诲垪浜у搧</term>                               |    脳    |
+| <term>Atlas 璁粌绯诲垪浜у搧</term>                              |    脳    |
 
-## 功能说明
+## 鍔熻兘璇存槑
 
-- 算子功能：MegaMoE算子 将 MoE 层的专家 FFN 的完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
+- 绠楀瓙鍔熻兘锛歁egaMoE绠楀瓙 灏?MoE 灞傜殑涓撳 FFN 鐨勫畬鏁磋绠楁祦绋嬪強鍓嶅悗鏁版嵁閫氫俊锛堝嵆 Dispatch + Linear1 + SwiGLU + Linear2 + Combine锛夎瀺鍚堜负鍗曚釜绠楀瓙锛屽疄鐜颁簡閫氫俊鍜岃绠楃殑鎺╃洊銆?
+- 璁＄畻鍏紡锛?  - 杈撳叆锛?    - $\mathbf{X} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$锛氭縺娲荤煩闃碉紝瀵瑰簲鍏ュ弬 `x`銆?\text{totalNumTokens}$ 鏄叏灞€鎬?token 鏁帮紝$\text{hidden}$ 鏄殣钘忓眰缁村害銆?    - $\mathbf{E} \in \mathbb{Z}^{\text{totalNumTokens} \times \text{topK}}$锛歵oken 閫夋嫨鐨勪笓瀹剁紪鍙风煩闃碉紝瀵瑰簲鍏ュ弬 `topkIds`銆?\text{topK}$ 鏄瘡涓?token 閫夋嫨鐨勪笓瀹舵暟閲忋€?    - $\mathbf{G} \in \mathbb{R}^{\text{totalNumTokens} \times \text{topK}}$锛歵oken 閫夋嫨鐨勪笓瀹剁殑闂ㄦ帶鏉冮噸鐭╅樀锛屽搴斿叆鍙?`topkWeights`銆?    - $\mathbf{W}_1^{\mathrm{moe}} \in \mathbb{R}^{\text{localMoeExpertNum} \times \text{hidden} \times (2 \text{intermediateHidden})}$锛氳矾鐢?MoE 涓撳鐨?Linear1 鏉冮噸锛屽搴斿叆鍙?`weight1` 鐨?MoE 涓撳閮ㄥ垎銆?    - $\mathbf{W}_2^{\mathrm{moe}} \in \mathbb{R}^{\text{localMoeExpertNum} \times \text{intermediateHidden} \times \text{hidden}}$锛氳矾鐢?MoE 涓撳鐨?Linear2 鏉冮噸锛屽搴斿叆鍙?`weight2` 鐨?MoE 涓撳閮ㄥ垎銆?    - $\mathbf{W}_1^{\mathrm{shared}} \in \mathbb{R}^{\text{sharedExpertNumPerRank} \times \text{hidden} \times (2 \text{intermediateHidden})}$锛氬叡浜笓瀹剁殑 Linear1 鏉冮噸锛屽搴斿叆鍙?`sharedWeight1`銆?    - $\mathbf{W}_2^{\mathrm{shared}} \in \mathbb{R}^{\text{sharedExpertNumPerRank} \times \text{intermediateHidden} \times \text{hidden}}$锛氬叡浜笓瀹剁殑 Linear2 鏉冮噸锛屽搴斿叆鍙?`sharedWeight2`銆?  - 杈撳嚭锛?
+    - $\mathbf{Y} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$锛氭渶缁堣緭鍑虹煩闃碉紝瀵瑰簲鍑哄弬 `y`銆?  - 绾﹀畾锛?    - $鈰? 琛ㄧず鐭╅樀涔樻硶锛?鈯? 琛ㄧず閫愬厓绱犱箻娉曘€?    - $\left \lfloor z\right \rceil$ 琛ㄧず灏?$z$ 鍥涜垗浜斿叆鍒版渶杩戠殑鏁存暟锛?\left \lfloor z\right \rfloor$ 琛ㄧず灏?$z$ 鍚戜笅鍙栨暣銆?    - $|z|$ 琛ㄧず鍙栫粷瀵瑰€硷紝$\max(z)$ 琛ㄧず鍙栨渶澶у€笺€?    - 鍏ㄤ綋 token 鐨勯泦鍚堜负 $\{ \text{token}_i \mid i \in \{0, 1, \dots, \text{totalNumTokens} - 1\} \}$銆?    - $\text{token}_i$ 鐨?token 琛ㄧず锛堝嵆闅愯棌鐘舵€佸悜閲忥級涓?$\mathbf{x}_i \in \mathbb{R}^{1 \times \text{hidden}}$锛屼笖 $\mathbf{x}_i = \mathbf{X}[i,:]$銆?    - $\text{token}_i$ 鐨勪笓瀹剁储寮曚负 $e_{i,k} = \mathbf{E}[i,k],\quad k \in \{0,\dots,\text{topK} - 1\},\quad e_{i,k} \in \{0,\dots,\text{moeExpertNum} - 1\}$銆?    - 婵€娲诲嚱鏁?$\text{SiLU}(z) = z \cdot \sigma(z) = \frac{z}{1+e^{-z}}$锛屽叾涓?$\sigma$ 涓?Sigmoid 鍑芥暟銆?    - $\mathbb{Z}_4 = \{ x \in \mathbb{Z} \mid -8 \le x \le 7 \}, \quad \mathbb{Z}_8^{\text{sym}} = \{ x \in \mathbb{Z} \mid -127 \le x \le 127 \}, \quad \mathbb{Z}_{32} = \{ x \in \mathbb{Z} \mid -2^{31} \le x \le 2^{31}-1 \}$銆傚叾涓?$\mathbb{Z}_8^{\text{sym}}$ 鐨勪笂鏍?$\text{sym}$ 琛ㄧず瀵圭О閲忓寲鍊煎煙鍖洪棿锛氬叾鍊煎煙鍏充簬 $-127$ 涓?$127$ 瀵圭О鍙栨暣锛屼笌鏍囧噯 INT8 鐨?$[-128, 127]$ 鍊煎煙涓嶅悓锛屾晠浠?$\text{sym}$ 涓婃爣鍖哄垎銆?    - 寮犻噺鍒囩墖鎿嶄綔閲囩敤Python椋庢牸鐨?`start:stop:step` 琛ㄧず娉曪紝渚嬪$[0::2, :]$ 浠ｈ〃鍙栧伓鏁拌銆?[1::2, :]$ 浠ｈ〃鍙栧鏁拌銆?    - $\mathrm{bitcast}_{T}(\mathbf{Z})$ 琛ㄧず浜岃繘鍒堕噸瑙ｉ噴鎿嶄綔锛屽皢寮犻噺$\mathbf{Z}$鐨勫簳灞備簩杩涘埗鏁版嵁鎸夌洰鏍囩被鍨?$T$ 閲嶆柊瑙ｉ噴銆?- 璁＄畻杩囩▼
 
-- 计算公式：
-  - 输入：
-    - $\mathbf{X} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$：激活矩阵，对应入参 `x`。$\text{totalNumTokens}$ 是全局总 token 数，$\text{hidden}$ 是隐藏层维度。
-    - $\mathbf{E} \in \mathbb{Z}^{\text{totalNumTokens} \times \text{topK}}$：token 选择的专家编号矩阵，对应入参 `topkIds`。$\text{topK}$ 是每个 token 选择的专家数量。
-    - $\mathbf{G} \in \mathbb{R}^{\text{totalNumTokens} \times \text{topK}}$：token 选择的专家的门控权重矩阵，对应入参 `topkWeights`。
-    - $\mathbf{W}_1^{\mathrm{moe}} \in \mathbb{R}^{\text{localMoeExpertNum} \times \text{hidden} \times (2 \text{intermediateHidden})}$：路由 MoE 专家的 Linear1 权重，对应入参 `weight1` 的 MoE 专家部分。
-    - $\mathbf{W}_2^{\mathrm{moe}} \in \mathbb{R}^{\text{localMoeExpertNum} \times \text{intermediateHidden} \times \text{hidden}}$：路由 MoE 专家的 Linear2 权重，对应入参 `weight2` 的 MoE 专家部分。
-    - $\mathbf{W}_1^{\mathrm{shared}} \in \mathbb{R}^{\text{sharedExpertNumPerRank} \times \text{hidden} \times (2 \text{intermediateHidden})}$：共享专家的 Linear1 权重，对应入参 `sharedWeight1`。
-    - $\mathbf{W}_2^{\mathrm{shared}} \in \mathbb{R}^{\text{sharedExpertNumPerRank} \times \text{intermediateHidden} \times \text{hidden}}$：共享专家的 Linear2 权重，对应入参 `sharedWeight2`。
-  - 输出：
+    鍚勪骇鍝佹敮鎸佺殑**Linear璁＄畻鏃?*鐨勬縺娲荤煩闃礎鍜屾潈閲嶇煩闃礧鐨勬暟鎹被鍨嬪涓嬶細
 
-    - $\mathbf{Y} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$：最终输出矩阵，对应出参 `y`。
-  - 约定：
-    - $⋅$ 表示矩阵乘法，$⊙$ 表示逐元素乘法。
-    - $\left \lfloor z\right \rceil$ 表示将 $z$ 四舍五入到最近的整数，$\left \lfloor z\right \rfloor$ 表示将 $z$ 向下取整。
-    - $|z|$ 表示取绝对值，$\max(z)$ 表示取最大值。
-    - 全体 token 的集合为 $\{ \text{token}_i \mid i \in \{0, 1, \dots, \text{totalNumTokens} - 1\} \}$。
-    - $\text{token}_i$ 的 token 表示（即隐藏状态向量）为 $\mathbf{x}_i \in \mathbb{R}^{1 \times \text{hidden}}$，且 $\mathbf{x}_i = \mathbf{X}[i,:]$。
-    - $\text{token}_i$ 的专家索引为 $e_{i,k} = \mathbf{E}[i,k],\quad k \in \{0,\dots,\text{topK} - 1\},\quad e_{i,k} \in \{0,\dots,\text{moeExpertNum} - 1\}$。
-    - 激活函数 $\text{SiLU}(z) = z \cdot \sigma(z) = \frac{z}{1+e^{-z}}$，其中 $\sigma$ 为 Sigmoid 函数。
-    - $\mathbb{Z}_4 = \{ x \in \mathbb{Z} \mid -8 \le x \le 7 \}, \quad \mathbb{Z}_8^{\text{sym}} = \{ x \in \mathbb{Z} \mid -127 \le x \le 127 \}, \quad \mathbb{Z}_{32} = \{ x \in \mathbb{Z} \mid -2^{31} \le x \le 2^{31}-1 \}$。其中 $\mathbb{Z}_8^{\text{sym}}$ 的上标 $\text{sym}$ 表示对称量化值域区间：其值域关于 $-127$ 与 $127$ 对称取整，与标准 INT8 的 $[-128, 127]$ 值域不同，故以 $\text{sym}$ 上标区分。
-    - 张量切片操作采用Python风格的 `start:stop:step` 表示法，例如$[0::2, :]$ 代表取偶数行、$[1::2, :]$ 代表取奇数行。
-    - $\mathrm{bitcast}_{T}(\mathbf{Z})$ 表示二进制重解释操作，将张量$\mathbf{Z}$的底层二进制数据按目标类型 $T$ 重新解释。
-- 计算过程
-
-    各产品支持的**Linear计算时**的激活矩阵A和权重矩阵W的数据类型如下：
-
-    | 场景名    |  A |  W   |
+    | 鍦烘櫙鍚?   |  A |  W   |
     | --- | :---:  | :---:        |
     | A16W16   | BFLOAT16     |BFLOAT16        |
     | A8W8-INT | INT8   | INT8         |
-    | A8W8-FP  | FLOAT8_E4M3FN、FLOAT8_E5M2 |FLOAT8_E4M3FN、FLOAT8_E5M2 |
+    | A8W8-FP  | FLOAT8_E4M3FN銆丗LOAT8_E5M2 |FLOAT8_E4M3FN銆丗LOAT8_E5M2 |
     | A8W4-INT | INT8        | INT4            |
     | A8W4-FP | FLOAT8_E4M3FN        | FLOAT4_E2M1          |
     | A4W4-FP | FLOAT4_E2M1        | FLOAT4_E2M1            |
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持上表中A8W8-FP场景。
-    - <term>Ascend 950PR/Ascend 950DT</term>：不支持上表中A16W16 、A8W8-INT、A8W4-INT场景。
-
+    - <term>Atlas A2 璁粌绯诲垪浜у搧/Atlas A2 鎺ㄧ悊绯诲垪浜у搧</term>銆?term>Atlas A3 璁粌绯诲垪浜у搧/Atlas A3 鎺ㄧ悊绯诲垪浜у搧</term>锛氫笉鏀寔涓婅〃涓瑼8W8-FP鍦烘櫙銆?    - <term>Ascend 950PR/Ascend 950DT</term>锛氫笉鏀寔涓婅〃涓瑼16W16 銆丄8W8-INT銆丄8W4-INT鍦烘櫙銆?
     <details>
-    <summary> A16W16 非量化场景</summary>
+    <summary> A16W16 闈為噺鍖栧満鏅?/summary>
 
     - **EP Dispatch**
 
-        在 Dispatch 阶段，每个 $\text{token}_i$ 将其token表示 $\mathbf{x}_i$ 发送给专家 $e_{i,0}, e_{i,1}, \dots, e_{i,\text{topK}-1}$。即对于每个 $k$，专家 $e_{i,k}$ 接收一份 $\mathbf{x}_i$。
-
-        记 $I_e = \{\, i \mid \exists k,\ \mathbf{E}[i,k]=e \,\}$ 为所有被分派给专家 $e$ 的 token 索引集合，集合 $I_e$ 的大小 $N_e = |I_e|$ 即为专家 $e$ 需要处理的 token 总数，则有 $\mathbf{X}_e \in \mathbb{R}^{N_e \times \text{hidden}}$ 是由所有满足 $i \in I_e$ 的token表示 $\mathbf{x}_i$ **按任意固定顺序行堆叠**而成的矩阵，该矩阵即为专家 $e$ 经过 Dispatch 后收到的全部 token 表示。
-
-        对于每个 $\text{token}_i$ 及其选中的第 $k$ 个专家 $e_{i,k}$，存在唯一的行索引 $\operatorname{row}(i,k) \in \{0,\dots,N_{e_{i,k}}-1\}$，使得 $\mathbf{X}_{e_{i,k}}[\operatorname{row}(i,k), :] = \mathbf{x}_i$。该映射记录了 $\mathbf{x}_i$ 在专家 $e_{i,k}$ 的输入矩阵 $\mathbf{X}_{e_{i,k}}$ 中的位置。
-
+        鍦?Dispatch 闃舵锛屾瘡涓?$\text{token}_i$ 灏嗗叾token琛ㄧず $\mathbf{x}_i$ 鍙戦€佺粰涓撳 $e_{i,0}, e_{i,1}, \dots, e_{i,\text{topK}-1}$銆傚嵆瀵逛簬姣忎釜 $k$锛屼笓瀹?$e_{i,k}$ 鎺ユ敹涓€浠?$\mathbf{x}_i$銆?
+        璁?$I_e = \{\, i \mid \exists k,\ \mathbf{E}[i,k]=e \,\}$ 涓烘墍鏈夎鍒嗘淳缁欎笓瀹?$e$ 鐨?token 绱㈠紩闆嗗悎锛岄泦鍚?$I_e$ 鐨勫ぇ灏?$N_e = |I_e|$ 鍗充负涓撳 $e$ 闇€瑕佸鐞嗙殑 token 鎬绘暟锛屽垯鏈?$\mathbf{X}_e \in \mathbb{R}^{N_e \times \text{hidden}}$ 鏄敱鎵€鏈夋弧瓒?$i \in I_e$ 鐨則oken琛ㄧず $\mathbf{x}_i$ **鎸変换鎰忓浐瀹氶『搴忚鍫嗗彔**鑰屾垚鐨勭煩闃碉紝璇ョ煩闃靛嵆涓轰笓瀹?$e$ 缁忚繃 Dispatch 鍚庢敹鍒扮殑鍏ㄩ儴 token 琛ㄧず銆?
+        瀵逛簬姣忎釜 $\text{token}_i$ 鍙婂叾閫変腑鐨勭 $k$ 涓笓瀹?$e_{i,k}$锛屽瓨鍦ㄥ敮涓€鐨勮绱㈠紩 $\operatorname{row}(i,k) \in \{0,\dots,N_{e_{i,k}}-1\}$锛屼娇寰?$\mathbf{X}_{e_{i,k}}[\operatorname{row}(i,k), :] = \mathbf{x}_i$銆傝鏄犲皠璁板綍浜?$\mathbf{x}_i$ 鍦ㄤ笓瀹?$e_{i,k}$ 鐨勮緭鍏ョ煩闃?$\mathbf{X}_{e_{i,k}}$ 涓殑浣嶇疆銆?
     - **Expert Compute**
 
-        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用 **SwiGLU** 结构以提升表达能力。整个计算过程分为如下三个子步骤。
+        鍦?MoE 灞備腑锛屾瘡涓笓瀹舵湰璐ㄤ笂鏄竴涓嫭绔嬬殑鍓嶉缃戠粶锛團FN锛夛紝閲囩敤 **SwiGLU** 缁撴瀯浠ユ彁鍗囪〃杈捐兘鍔涖€傛暣涓绠楄繃绋嬪垎涓哄涓嬩笁涓瓙姝ラ銆?
+        **1. Linear1 鎶曞奖**
 
-        **1. Linear1 投影**
-
-        Linear1 投影是专家网络的第一层线性变换，同时产生 **gate 部分** 和 **up 部分** 所需的预激活值。其计算公式为
-        $$
+        Linear1 鎶曞奖鏄笓瀹剁綉缁滅殑绗竴灞傜嚎鎬у彉鎹紝鍚屾椂浜х敓 **gate 閮ㄥ垎** 鍜?**up 閮ㄥ垎** 鎵€闇€鐨勯婵€娲诲€笺€傚叾璁＄畻鍏紡涓?        $$
         \mathbf{H}_e = \mathbf{X}_e \cdot \mathbf{W}_1[e]
         \quad\bigl(\in \mathbb{R}^{N_e \times 2\cdot\text{intermediateHidden}}\bigr)
         $$
-        **2. SwiGLU 激活**
+        **2. SwiGLU 婵€娲?*
 
-        首先将 $\mathbf{H}_e$ 沿列维度拆分为 **gate 部分** $\mathbf{H}_{\text{gate}}$ 和 **up 部分** $\mathbf{H}_{\text{up}}$，然后对 gate 部分应用 SiLU 激活函数，再与 up 部分逐元素相乘，得到专家 $e$ 的中间激活表示 $\mathbf{A}_e$。
-        $$
+        棣栧厛灏?$\mathbf{H}_e$ 娌垮垪缁村害鎷嗗垎涓?**gate 閮ㄥ垎** $\mathbf{H}_{\text{gate}}$ 鍜?**up 閮ㄥ垎** $\mathbf{H}_{\text{up}}$锛岀劧鍚庡 gate 閮ㄥ垎搴旂敤 SiLU 婵€娲诲嚱鏁帮紝鍐嶄笌 up 閮ㄥ垎閫愬厓绱犵浉涔橈紝寰楀埌涓撳 $e$ 鐨勪腑闂存縺娲昏〃绀?$\mathbf{A}_e$銆?        $$
         \mathbf{H}_{\text{gate}} = \mathbf{H}_e\bigl[:,\;\text{:intermediateHidden}\bigr], \qquad
         \mathbf{H}_{\text{up}} = \mathbf{H}_e\bigl[:,\;\text{intermediateHidden:}\bigr]
         $$
@@ -88,73 +57,57 @@
         \quad\bigl(\in \mathbb{R}^{N_e \times \text{intermediateHidden}}\bigr)
         $$
 
-        **3. Linear2 投影**
+        **3. Linear2 鎶曞奖**
 
-        Linear2 投影作为第二层线性变换，将中间激活表示 $\mathbf{A}_e$ 从高维空间投影回原始的隐藏维度 $\text{hidden}$，使专家输出能够与残差连接等后续操作兼容。
-        $$
+        Linear2 鎶曞奖浣滀负绗簩灞傜嚎鎬у彉鎹紝灏嗕腑闂存縺娲昏〃绀?$\mathbf{A}_e$ 浠庨珮缁寸┖闂存姇褰卞洖鍘熷鐨勯殣钘忕淮搴?$\text{hidden}$锛屼娇涓撳杈撳嚭鑳藉涓庢畫宸繛鎺ョ瓑鍚庣画鎿嶄綔鍏煎銆?        $$
         \mathbf{Y}_e = \mathbf{A}_e \cdot \mathbf{W}_2[e]
         \quad\bigl(\in \mathbb{R}^{N_e \times \text{hidden}}\bigr)
         $$
 
-        经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 $\text{token}_i$，它在专家 $e_{i,k}$ 中的输出行即为 $\mathbf{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$。
-    - **Token Combine**
+        缁忚繃浠ヤ笂璁＄畻锛屼笓瀹?$e$ 鐨勬瘡涓€琛岃緭鍑哄搴斿叾鎵规涓殑涓€涓?token銆傚浜?$\text{token}_i$锛屽畠鍦ㄤ笓瀹?$e_{i,k}$ 涓殑杈撳嚭琛屽嵆涓?$\mathbf{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$銆?    - **Token Combine**
 
-        Combine 负责收集所有专家计算出的输出向量，按照每个 token 原先分配到的专家权重进行加权求和，最终为每个 token 生成一个融合后的输出。利用之前记录的位置索引 $\operatorname{row}(i,k)$，从专家 $e_{i,k}$ 的输出矩阵中收回属于 $\text{token}_i$ 的行，并与门控权重相乘后求和：
-
+        Combine 璐熻矗鏀堕泦鎵€鏈変笓瀹惰绠楀嚭鐨勮緭鍑哄悜閲忥紝鎸夌収姣忎釜 token 鍘熷厛鍒嗛厤鍒扮殑涓撳鏉冮噸杩涜鍔犳潈姹傚拰锛屾渶缁堜负姣忎釜 token 鐢熸垚涓€涓瀺鍚堝悗鐨勮緭鍑恒€傚埄鐢ㄤ箣鍓嶈褰曠殑浣嶇疆绱㈠紩 $\operatorname{row}(i,k)$锛屼粠涓撳 $e_{i,k}$ 鐨勮緭鍑虹煩闃典腑鏀跺洖灞炰簬 $\text{token}_i$ 鐨勮锛屽苟涓庨棬鎺ф潈閲嶇浉涔樺悗姹傚拰锛?
         $$
         \mathbf{y}_i = \sum_{k=0}^{\text{topK} - 1} w_k \;\cdot\;
         \mathbf{Y}_{e_{i,k}}\!\bigl[\,\operatorname{row}(i,k),\,:\,\bigr]
         \qquad\bigl(\in \mathbb{R}^{1 \times \text{hidden}}\bigr)
         $$
 
-        其中 $w_k = \mathbf{G}[i,k]$ 为 $\text{token}_i$ 对专家 $e_{i,k}$ 的门控权重。
-
-        所有 token 的输出按输入顺序堆叠为最终输出 $\mathbf{Y} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$。
-    </details>
+        鍏朵腑 $w_k = \mathbf{G}[i,k]$ 涓?$\text{token}_i$ 瀵逛笓瀹?$e_{i,k}$ 鐨勯棬鎺ф潈閲嶃€?
+        鎵€鏈?token 鐨勮緭鍑烘寜杈撳叆椤哄簭鍫嗗彔涓烘渶缁堣緭鍑?$\mathbf{Y} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$銆?    </details>
 
     <details>
-    <summary> A8W8-INT 量化场景</summary>
+    <summary> A8W8-INT 閲忓寲鍦烘櫙</summary>
 
-    - **输入**
-        - $\mathbf{S}^{W1} \in \mathbb{R}^{\text{moeExpertNum} \times (2\times \text{intermediateHidden})}$：Linear1 权重矩阵的逐通道缩放因子，对应入参 `weightScales1`。
-        - $\mathbf{S}^{W2} \in \mathbb{R}^{\text{moeExpertNum} \times \text{hidden}}$：Linear2 权重矩阵的逐通道缩放因子，对应入参 `weightScales2`。
-
+    - **杈撳叆**
+        - $\mathbf{S}^{W1} \in \mathbb{R}^{\text{moeExpertNum} \times (2\times \text{intermediateHidden})}$锛歀inear1 鏉冮噸鐭╅樀鐨勯€愰€氶亾缂╂斁鍥犲瓙锛屽搴斿叆鍙?`weightScales1`銆?        - $\mathbf{S}^{W2} \in \mathbb{R}^{\text{moeExpertNum} \times \text{hidden}}$锛歀inear2 鏉冮噸鐭╅樀鐨勯€愰€氶亾缂╂斁鍥犲瓙锛屽搴斿叆鍙?`weightScales2`銆?
     - **EP Dispatch**
 
-        在 Dispatch 通信之前，首先将原始 BF16 激活矩阵 $\mathbf{X}$ 量化为 INT8。对每个 $\text{token}_i$，计算其逐 token 缩放因子：
-        $$
+        鍦?Dispatch 閫氫俊涔嬪墠锛岄鍏堝皢鍘熷 BF16 婵€娲荤煩闃?$\mathbf{X}$ 閲忓寲涓?INT8銆傚姣忎釜 $\text{token}_i$锛岃绠楀叾閫?token 缂╂斁鍥犲瓙锛?        $$
         s^{X}_i = \frac{\max(|\mathbf{X}[i,:]|)}{127} \in \mathbb{R}
         $$
-        然后量化得到 INT8 表示：
-        $$
+        鐒跺悗閲忓寲寰楀埌 INT8 琛ㄧず锛?        $$
         \mathbf{q}_i = \left\lfloor \frac{\mathbf{X}[i,:]}{s^{X}_i} \right\rceil \quad \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{1 \times \text{hidden}}
         $$
 
-        在 Dispatch 通信阶段，每个 $\text{token}_i$ 将其量化后的向量 $\mathbf{q}_i$ 和缩放因子 $s^{X}_i$ 发送给专家 $e_{i,0}, e_{i,1}, \dots, e_{i,\text{topK}-1}$（$e_{i,k} = \mathbf{E}[i,k]$）。
-
-        记 $I_e = \{\, i \mid \exists k,\ \mathbf{E}[i,k]=e \,\}$ 为所有被分派给专家 $e$ 的 token 索引集合，集合 $I_e$ 的大小 $N_e = |I_e|$ 即为专家 $e$ 需要处理的 token 总数。则有 $\mathbf{Q}_e \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{N_e \times \text{hidden}}$ 是由所有满足 $i \in I_e$ 的 $\mathbf{q}_i$ **按任意固定顺序行堆叠**而成的矩阵，该矩阵即为专家 $e$ 经过 Dispatch 后收到的全部 token 表示；同理，对应的专家 $e$ 收到的缩放因子向量记为 $\mathbf{s}^{X}_e \in \mathbb{R}^{N_e}$，其元素由所有满足 $i \in I_e$ 的 $s^{X}_i$ 按与 $\mathbf{Q}_e$ 相同的行顺序堆叠而成。
-
-        对于每个 $\text{token}_i$ 及其选中的第 $k$ 个专家 $e_{i,k}$，存在唯一的行索引 $\operatorname{row}(i,k) \in \{0,\dots,N_{e_{i,k}}-1\}$，使得 $\mathbf{Q}_{e_{i,k}}[\operatorname{row}(i,k), :] = \mathbf{q}_i$。该映射记录了 $\mathbf{q}_i$ 在专家 $e_{i,k}$ 的输入矩阵中的位置。
-
+        鍦?Dispatch 閫氫俊闃舵锛屾瘡涓?$\text{token}_i$ 灏嗗叾閲忓寲鍚庣殑鍚戦噺 $\mathbf{q}_i$ 鍜岀缉鏀惧洜瀛?$s^{X}_i$ 鍙戦€佺粰涓撳 $e_{i,0}, e_{i,1}, \dots, e_{i,\text{topK}-1}$锛?e_{i,k} = \mathbf{E}[i,k]$锛夈€?
+        璁?$I_e = \{\, i \mid \exists k,\ \mathbf{E}[i,k]=e \,\}$ 涓烘墍鏈夎鍒嗘淳缁欎笓瀹?$e$ 鐨?token 绱㈠紩闆嗗悎锛岄泦鍚?$I_e$ 鐨勫ぇ灏?$N_e = |I_e|$ 鍗充负涓撳 $e$ 闇€瑕佸鐞嗙殑 token 鎬绘暟銆傚垯鏈?$\mathbf{Q}_e \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{N_e \times \text{hidden}}$ 鏄敱鎵€鏈夋弧瓒?$i \in I_e$ 鐨?$\mathbf{q}_i$ **鎸変换鎰忓浐瀹氶『搴忚鍫嗗彔**鑰屾垚鐨勭煩闃碉紝璇ョ煩闃靛嵆涓轰笓瀹?$e$ 缁忚繃 Dispatch 鍚庢敹鍒扮殑鍏ㄩ儴 token 琛ㄧず锛涘悓鐞嗭紝瀵瑰簲鐨勪笓瀹?$e$ 鏀跺埌鐨勭缉鏀惧洜瀛愬悜閲忚涓?$\mathbf{s}^{X}_e \in \mathbb{R}^{N_e}$锛屽叾鍏冪礌鐢辨墍鏈夋弧瓒?$i \in I_e$ 鐨?$s^{X}_i$ 鎸変笌 $\mathbf{Q}_e$ 鐩稿悓鐨勮椤哄簭鍫嗗彔鑰屾垚銆?
+        瀵逛簬姣忎釜 $\text{token}_i$ 鍙婂叾閫変腑鐨勭 $k$ 涓笓瀹?$e_{i,k}$锛屽瓨鍦ㄥ敮涓€鐨勮绱㈠紩 $\operatorname{row}(i,k) \in \{0,\dots,N_{e_{i,k}}-1\}$锛屼娇寰?$\mathbf{Q}_{e_{i,k}}[\operatorname{row}(i,k), :] = \mathbf{q}_i$銆傝鏄犲皠璁板綍浜?$\mathbf{q}_i$ 鍦ㄤ笓瀹?$e_{i,k}$ 鐨勮緭鍏ョ煩闃典腑鐨勪綅缃€?
     - **Expert Compute**
 
-        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用 SwiGLU 结构以提升表达能力。在A8W8场景下，两个线性层都使用 INT8 输入和 INT8 权重进行矩阵乘，得到 INT32 中间结果并反量化。具体分为三个子步骤。
+        鍦?MoE 灞備腑锛屾瘡涓笓瀹舵湰璐ㄤ笂鏄竴涓嫭绔嬬殑鍓嶉缃戠粶锛團FN锛夛紝閲囩敤 SwiGLU 缁撴瀯浠ユ彁鍗囪〃杈捐兘鍔涖€傚湪A8W8鍦烘櫙涓嬶紝涓や釜绾挎€у眰閮戒娇鐢?INT8 杈撳叆鍜?INT8 鏉冮噸杩涜鐭╅樀涔橈紝寰楀埌 INT32 涓棿缁撴灉骞跺弽閲忓寲銆傚叿浣撳垎涓轰笁涓瓙姝ラ銆?
+        **1. Linear1 鎶曞奖锛圛NT8 鐭╅樀涔?+ 鍙嶉噺鍖栵級**
 
-        **1. Linear1 投影（INT8 矩阵乘 + 反量化）**
-
-        Linear1 投影是专家网络的第一层线性变换，同时产生 **gate 部分** 和 **up 部分** 所需的预激活值。计算时执行 INT8 矩阵乘法，得到 INT32 计算结果：
-        $$
+        Linear1 鎶曞奖鏄笓瀹剁綉缁滅殑绗竴灞傜嚎鎬у彉鎹紝鍚屾椂浜х敓 **gate 閮ㄥ垎** 鍜?**up 閮ㄥ垎** 鎵€闇€鐨勯婵€娲诲€笺€傝绠楁椂鎵ц INT8 鐭╅樀涔樻硶锛屽緱鍒?INT32 璁＄畻缁撴灉锛?        $$
         \mathbf{C}_e^{\text{int32}} = \mathbf{Q}_e \cdot \mathbf{W}_1[e]^{\text{int8}} \quad \in \mathbb{Z}_{32}^{N_e \times 2\cdot\text{intermediateHidden}}
         $$
-        然后反量化为预激活值 $\mathbf{H}_e$：
-        $$
+        鐒跺悗鍙嶉噺鍖栦负棰勬縺娲诲€?$\mathbf{H}_e$锛?        $$
         \mathbf{H}_e = \left( \mathbf{C}_e^{\text{int32}} \odot \mathbf{s}^{W1}_e \right) \odot \mathbf{s}^{X}_e \quad \in \mathbb{R}^{N_e \times 2\cdot\text{intermediateHidden}}
         $$
 
-        **2. SwiGLU 激活**
+        **2. SwiGLU 婵€娲?*
 
-        首先将 $\mathbf{H}_e$ 沿列维度拆分为 **gate 部分** $\mathbf{H}_{\text{gate}}$ 和 **up 部分** $\mathbf{H}_{\text{up}}$，然后对 gate 部分应用 SiLU 激活函数，再与 up 部分逐元素相乘，得到专家 $e$ 的中间激活表示 $\mathbf{A}_e$。
-        $$
+        棣栧厛灏?$\mathbf{H}_e$ 娌垮垪缁村害鎷嗗垎涓?**gate 閮ㄥ垎** $\mathbf{H}_{\text{gate}}$ 鍜?**up 閮ㄥ垎** $\mathbf{H}_{\text{up}}$锛岀劧鍚庡 gate 閮ㄥ垎搴旂敤 SiLU 婵€娲诲嚱鏁帮紝鍐嶄笌 up 閮ㄥ垎閫愬厓绱犵浉涔橈紝寰楀埌涓撳 $e$ 鐨勪腑闂存縺娲昏〃绀?$\mathbf{A}_e$銆?        $$
         \mathbf{H}_{\text{gate}} = \mathbf{H}_e[:, :\text{intermediateHidden}], \qquad
         \mathbf{H}_{\text{up}} = \mathbf{H}_e[:, \text{intermediateHidden}:]
         $$
@@ -162,151 +115,125 @@
         \mathbf{A}_e = \operatorname{SiLU}(\mathbf{H}_{\text{gate}}) \odot \mathbf{H}_{\text{up}}
         $$
 
-        **3. Linear2 投影（量化 + INT8 矩阵乘 + 反量化）**
+        **3. Linear2 鎶曞奖锛堥噺鍖?+ INT8 鐭╅樀涔?+ 鍙嶉噺鍖栵級**
 
-        Linear2 投影作为第二层线性变换，将中间激活表示 $\mathbf{A}_e$ 从高维空间投影回原始的隐藏维度 $\text{hidden}$，使专家输出能够与残差连接等后续操作兼容。
-        在 A8W8 场景下，需要将激活值量化为 INT8，因此先对 $\mathbf{A}_e$ 的每一行（每个 token）计算缩放因子：
+        Linear2 鎶曞奖浣滀负绗簩灞傜嚎鎬у彉鎹紝灏嗕腑闂存縺娲昏〃绀?$\mathbf{A}_e$ 浠庨珮缁寸┖闂存姇褰卞洖鍘熷鐨勯殣钘忕淮搴?$\text{hidden}$锛屼娇涓撳杈撳嚭鑳藉涓庢畫宸繛鎺ョ瓑鍚庣画鎿嶄綔鍏煎銆?        鍦?A8W8 鍦烘櫙涓嬶紝闇€瑕佸皢婵€娲诲€奸噺鍖栦负 INT8锛屽洜姝ゅ厛瀵?$\mathbf{A}_e$ 鐨勬瘡涓€琛岋紙姣忎釜 token锛夎绠楃缉鏀惧洜瀛愶細
         $$
         s^{A_e}_i = \frac{\max(|\mathbf{A}_e[i,:]|)}{127}, \quad i=0,\dots,N_e-1
         $$
-        得到专家 $e$ 在 Linear2 计算时的激活缩放因子 $\mathbf{s}^{A_e}_e \in \mathbb{R}^{N_e}$。然后量化：
+        寰楀埌涓撳 $e$ 鍦?Linear2 璁＄畻鏃剁殑婵€娲荤缉鏀惧洜瀛?$\mathbf{s}^{A_e}_e \in \mathbb{R}^{N_e}$銆傜劧鍚庨噺鍖栵細
         $$
         \mathbf{A}_e^{\text{int8}}[i,:] = \left\lfloor \frac{\mathbf{A}_e[i,:]}{s^{A_e}_i} \right\rceil \quad \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{N_e \times \text{intermediateHidden}}
         $$
-        再执行 INT8 矩阵乘法并反量化：
-        $$
+        鍐嶆墽琛?INT8 鐭╅樀涔樻硶骞跺弽閲忓寲锛?        $$
         \mathbf{D}_e^{\text{int32}} = \mathbf{A}_e^{\text{int8}} \cdot \mathbf{W}_2[e]^{\text{int8}} \quad \in \mathbb{Z}_{32}^{N_e \times \text{hidden}}
         $$
         $$
         \mathbf{Y}_e = \left( \mathbf{D}_e^{\text{int32}} \odot \mathbf{s}^{W2}_e \right) \odot \mathbf{s}^{A_e}_e \quad \in \mathbb{R}^{N_e \times \text{hidden}}
         $$
 
-        经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 $\text{token}_i$，它在专家 $e_{i,k}$ 中的输出行即为 $\mathbf{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$。
-
+        缁忚繃浠ヤ笂璁＄畻锛屼笓瀹?$e$ 鐨勬瘡涓€琛岃緭鍑哄搴斿叾鎵规涓殑涓€涓?token銆傚浜?$\text{token}_i$锛屽畠鍦ㄤ笓瀹?$e_{i,k}$ 涓殑杈撳嚭琛屽嵆涓?$\mathbf{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$銆?
     - **Token Combine**
 
-        Combine 负责收集所有专家计算出的输出向量，按照每个 token 原先分配到的专家权重进行加权求和，最终为每个 token 生成一个融合后的输出。利用之前记录的位置索引 $\operatorname{row}(i,k)$，从专家 $e_{i,k}$ 的输出矩阵中收回属于 $\text{token}_i$ 的行，并与门控权重相乘后求和：
-        $$
+        Combine 璐熻矗鏀堕泦鎵€鏈変笓瀹惰绠楀嚭鐨勮緭鍑哄悜閲忥紝鎸夌収姣忎釜 token 鍘熷厛鍒嗛厤鍒扮殑涓撳鏉冮噸杩涜鍔犳潈姹傚拰锛屾渶缁堜负姣忎釜 token 鐢熸垚涓€涓瀺鍚堝悗鐨勮緭鍑恒€傚埄鐢ㄤ箣鍓嶈褰曠殑浣嶇疆绱㈠紩 $\operatorname{row}(i,k)$锛屼粠涓撳 $e_{i,k}$ 鐨勮緭鍑虹煩闃典腑鏀跺洖灞炰簬 $\text{token}_i$ 鐨勮锛屽苟涓庨棬鎺ф潈閲嶇浉涔樺悗姹傚拰锛?        $$
         \mathbf{y}_i = \sum_{k=0}^{\text{topK} - 1} w_k \;\cdot\; \mathbf{Y}_{e_{i,k}}\!\bigl[\,\operatorname{row}(i,k),\,:\,\bigr] \quad \in \mathbb{R}^{1 \times \text{hidden}}
         $$
-        其中 $w_k = \mathbf{G}[i,k]$ 为 $\text{token}_i$ 对专家 $e_{i,k}$ 的门控权重。
-
-        所有 token 的输出按输入顺序堆叠为最终输出 $\mathbf{Y} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$。
-
+        鍏朵腑 $w_k = \mathbf{G}[i,k]$ 涓?$\text{token}_i$ 瀵逛笓瀹?$e_{i,k}$ 鐨勯棬鎺ф潈閲嶃€?
+        鎵€鏈?token 鐨勮緭鍑烘寜杈撳叆椤哄簭鍫嗗彔涓烘渶缁堣緭鍑?$\mathbf{Y} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$銆?
     </details>
 
     <details>
-    <summary> A8W4-INT 量化场景</summary>
+    <summary> A8W4-INT 閲忓寲鍦烘櫙</summary>
 
-    - **输入**
-        - $\mathbf{S}^{W1} \in \mathbb{R}^{\text{moeExpertNum} \times (2\times \text{intermediateHidden})}$：Linear1 权重矩阵的逐通道缩放因子，对应入参 `weightScales1`。
-        - $\mathbf{S}^{W2} \in \mathbb{R}^{\text{moeExpertNum} \times \text{hidden}}$：Linear2 权重矩阵的逐通道缩放因子，对应入参 `weightScales2`。
-        - $\mathbf{B}_1 \in \mathbb{R}^{\text{moeExpertNum} \times (2\times \text{intermediateHidden})}$：Linear1 的偏置矩阵，由 INT4 量化过程离线生成，对应入参 `bias1`。
-        - $\mathbf{B}_2 \in \mathbb{R}^{\text{moeExpertNum} \times \text{hidden}}$：Linear2 的偏置矩阵，由 INT4 量化过程离线生成，对应入参 `bias2`。
-
+    - **杈撳叆**
+        - $\mathbf{S}^{W1} \in \mathbb{R}^{\text{moeExpertNum} \times (2\times \text{intermediateHidden})}$锛歀inear1 鏉冮噸鐭╅樀鐨勯€愰€氶亾缂╂斁鍥犲瓙锛屽搴斿叆鍙?`weightScales1`銆?        - $\mathbf{S}^{W2} \in \mathbb{R}^{\text{moeExpertNum} \times \text{hidden}}$锛歀inear2 鏉冮噸鐭╅樀鐨勯€愰€氶亾缂╂斁鍥犲瓙锛屽搴斿叆鍙?`weightScales2`銆?        - $\mathbf{B}_1 \in \mathbb{R}^{\text{moeExpertNum} \times (2\times \text{intermediateHidden})}$锛歀inear1 鐨勫亸缃煩闃碉紝鐢?INT4 閲忓寲杩囩▼绂荤嚎鐢熸垚锛屽搴斿叆鍙?`bias1`銆?        - $\mathbf{B}_2 \in \mathbb{R}^{\text{moeExpertNum} \times \text{hidden}}$锛歀inear2 鐨勫亸缃煩闃碉紝鐢?INT4 閲忓寲杩囩▼绂荤嚎鐢熸垚锛屽搴斿叆鍙?`bias2`銆?
     - **EP Dispatch**
 
-        在 Dispatch 通信之前，首先将原始 BF16 激活矩阵 $\mathbf{X}$ 量化为 INT8。对每个 $\text{token}_i$，计算其逐 token 缩放因子：
-        $$
+        鍦?Dispatch 閫氫俊涔嬪墠锛岄鍏堝皢鍘熷 BF16 婵€娲荤煩闃?$\mathbf{X}$ 閲忓寲涓?INT8銆傚姣忎釜 $\text{token}_i$锛岃绠楀叾閫?token 缂╂斁鍥犲瓙锛?        $$
         s^{X}_i = \frac{\max(|\mathbf{X}[i,:]|)}{127} \in \mathbb{R}
         $$
-        然后量化得到 INT8 表示：
-        $$
+        鐒跺悗閲忓寲寰楀埌 INT8 琛ㄧず锛?        $$
         \mathbf{q}_i = \left\lfloor \frac{\mathbf{X}[i,:]}{s^{X}_i} \right\rceil \quad \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{1 \times \text{hidden}}
         $$
 
-        在 Dispatch 通信阶段，每个 $\text{token}_i$ 将其量化后的向量 $\mathbf{q}_i$ 和缩放因子 $s^{X}_i$ 发送给专家 $e_{i,0}, e_{i,1}, \dots, e_{i,\text{topK}-1}$
+        鍦?Dispatch 閫氫俊闃舵锛屾瘡涓?$\text{token}_i$ 灏嗗叾閲忓寲鍚庣殑鍚戦噺 $\mathbf{q}_i$ 鍜岀缉鏀惧洜瀛?$s^{X}_i$ 鍙戦€佺粰涓撳 $e_{i,0}, e_{i,1}, \dots, e_{i,\text{topK}-1}$
 
-        记 $I_e = \{\, i \mid \exists k,\ \mathbf{E}[i,k]=e \,\}$ 为所有被分派给专家 $e$ 的 token 索引集合，集合 $I_e$ 的大小 $N_e = |I_e|$ 即为专家 $e$ 需要处理的 token 总数。则有 $\mathbf{Q}_e \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{N_e \times \text{hidden}}$ 是由所有满足 $i \in I_e$ 的 $\mathbf{q}_i$ **按任意固定顺序行堆叠**而成的矩阵，该矩阵即为专家 $e$ 经过 Dispatch 后收到的全部 token 表示；同理，对应的专家 $e$ 收到的缩放因子向量记为 $\mathbf{s}^{X}_e \in \mathbb{R}^{N_e}$，其元素由所有满足 $i \in I_e$ 的 $s^{X}_i$ 按与 $\mathbf{Q}_e$ 相同的行顺序堆叠而成。
-
-        对于每个 $\text{token}_i$ 及其选中的第 $k$ 个专家 $e_{i,k}$，存在唯一的行索引 $\operatorname{row}(i,k) \in \{0,\dots,N_{e_{i,k}}-1\}$，使得 $\mathbf{Q}_{e_{i,k}}[\operatorname{row}(i,k), :] = \mathbf{q}_i$。该映射记录了 $\mathbf{q}_i$ 在专家 $e_{i,k}$ 的输入矩阵中的位置。
-
+        璁?$I_e = \{\, i \mid \exists k,\ \mathbf{E}[i,k]=e \,\}$ 涓烘墍鏈夎鍒嗘淳缁欎笓瀹?$e$ 鐨?token 绱㈠紩闆嗗悎锛岄泦鍚?$I_e$ 鐨勫ぇ灏?$N_e = |I_e|$ 鍗充负涓撳 $e$ 闇€瑕佸鐞嗙殑 token 鎬绘暟銆傚垯鏈?$\mathbf{Q}_e \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{N_e \times \text{hidden}}$ 鏄敱鎵€鏈夋弧瓒?$i \in I_e$ 鐨?$\mathbf{q}_i$ **鎸変换鎰忓浐瀹氶『搴忚鍫嗗彔**鑰屾垚鐨勭煩闃碉紝璇ョ煩闃靛嵆涓轰笓瀹?$e$ 缁忚繃 Dispatch 鍚庢敹鍒扮殑鍏ㄩ儴 token 琛ㄧず锛涘悓鐞嗭紝瀵瑰簲鐨勪笓瀹?$e$ 鏀跺埌鐨勭缉鏀惧洜瀛愬悜閲忚涓?$\mathbf{s}^{X}_e \in \mathbb{R}^{N_e}$锛屽叾鍏冪礌鐢辨墍鏈夋弧瓒?$i \in I_e$ 鐨?$s^{X}_i$ 鎸変笌 $\mathbf{Q}_e$ 鐩稿悓鐨勮椤哄簭鍫嗗彔鑰屾垚銆?
+        瀵逛簬姣忎釜 $\text{token}_i$ 鍙婂叾閫変腑鐨勭 $k$ 涓笓瀹?$e_{i,k}$锛屽瓨鍦ㄥ敮涓€鐨勮绱㈠紩 $\operatorname{row}(i,k) \in \{0,\dots,N_{e_{i,k}}-1\}$锛屼娇寰?$\mathbf{Q}_{e_{i,k}}[\operatorname{row}(i,k), :] = \mathbf{q}_i$銆傝鏄犲皠璁板綍浜?$\mathbf{q}_i$ 鍦ㄤ笓瀹?$e_{i,k}$ 鐨勮緭鍏ョ煩闃典腑鐨勪綅缃€?
     - **Expert Compute**
 
-        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用 **SwiGLU** 结构以提升表达能力。在A8W4-INT场景下，两个线性层都采用MSD（Mixed-precision Split-activation Decomposition，混合精度激活拆分分解）方案进行矩阵乘，通过将 INT8 值拆为高4位和低4位两个有符号 INT4，使得 INT8×INT4 的矩阵乘可分解为两个 INT4×INT4 的矩阵乘，从而利用硬件的 INT4 矩阵乘加速。该方案的数学原理和实现逻辑可参阅[GroupedMatmul W4A8量化与MSD方案](https://gitcode.com/cann/ops-transformer/wiki/GMM--GroupedMatmul%E9%87%8F%E5%8C%96%E6%9E%81%E8%87%B4%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96-%E6%8E%A8%E7%90%86%E6%8F%90%E5%8D%87%E7%99%BE%E5%88%86%E4%B9%8B%E4%B8%89%E5%8D%81)。
+        鍦?MoE 灞備腑锛屾瘡涓笓瀹舵湰璐ㄤ笂鏄竴涓嫭绔嬬殑鍓嶉缃戠粶锛團FN锛夛紝閲囩敤 **SwiGLU** 缁撴瀯浠ユ彁鍗囪〃杈捐兘鍔涖€傚湪A8W4-INT鍦烘櫙涓嬶紝涓や釜绾挎€у眰閮介噰鐢∕SD锛圡ixed-precision Split-activation Decomposition锛屾贩鍚堢簿搴︽縺娲绘媶鍒嗗垎瑙ｏ級鏂规杩涜鐭╅樀涔橈紝閫氳繃灏?INT8 鍊兼媶涓洪珮4浣嶅拰浣?浣嶄袱涓湁绗﹀彿 INT4锛屼娇寰?INT8脳INT4 鐨勭煩闃典箻鍙垎瑙ｄ负涓や釜 INT4脳INT4 鐨勭煩闃典箻锛屼粠鑰屽埄鐢ㄧ‖浠剁殑 INT4 鐭╅樀涔樺姞閫熴€傝鏂规鐨勬暟瀛﹀師鐞嗗拰瀹炵幇閫昏緫鍙弬闃匸GroupedMatmul W4A8閲忓寲涓嶮SD鏂规](https://gitcode.com/cann/ops-transformer/wiki/GMM--GroupedMatmul%E9%87%8F%E5%8C%96%E6%9E%81%E8%87%B4%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96-%E6%8E%A8%E7%90%86%E6%8F%90%E5%8D%87%E7%99%BE%E5%88%86%E4%B9%8B%E4%B8%89%E5%8D%81)銆?
+        **1. 鐢熸垚绮惧害琛ュ伩鐨勫亸缃煩闃碉紙绂荤嚎鐢熸垚锛屽湪绠楀瓙澶栧畬鎴愶紝骞朵綔涓虹畻瀛愯緭鍏ワ級**
 
-        **1. 生成精度补偿的偏置矩阵（离线生成，在算子外完成，并作为算子输入）**
-
-        MSD 方案的核心是将量化后的 INT8 激活值二进制重解释地拆分为两个 INT4 分量。由于低位 INT4 分量按 $(\mathbf{X}^{\text{int8}} \mathbin{\&} 0x0F) - 8$ 定义，其数值范围被映射到 $[-8, 7]$，这相当于在原始无符号低 4 位（0~15）的基础上减去了 8。当将高、低位的 INT4 分别与权重矩阵做矩阵乘并合并时，该偏移会引入一个常数项，需要在最终结果中予以补偿。
-
-        记原始 INT8 激活矩阵为 $\mathbf{X}^{\text{int8}}$，拆分后的高位和低位 INT4 激活矩阵分别为 $\mathbf{X}_1^{\text{int4}}$ 和 $\mathbf{X}_2^{\text{int4}}$，权重矩阵为 $\mathbf{W}$。恢复关系为：
-
+        MSD 鏂规鐨勬牳蹇冩槸灏嗛噺鍖栧悗鐨?INT8 婵€娲诲€间簩杩涘埗閲嶈В閲婂湴鎷嗗垎涓轰袱涓?INT4 鍒嗛噺銆傜敱浜庝綆浣?INT4 鍒嗛噺鎸?$(\mathbf{X}^{\text{int8}} \mathbin{\&} 0x0F) - 8$ 瀹氫箟锛屽叾鏁板€艰寖鍥磋鏄犲皠鍒?$[-8, 7]$锛岃繖鐩稿綋浜庡湪鍘熷鏃犵鍙蜂綆 4 浣嶏紙0~15锛夌殑鍩虹涓婂噺鍘讳簡 8銆傚綋灏嗛珮銆佷綆浣嶇殑 INT4 鍒嗗埆涓庢潈閲嶇煩闃靛仛鐭╅樀涔樺苟鍚堝苟鏃讹紝璇ュ亸绉讳細寮曞叆涓€涓父鏁伴」锛岄渶瑕佸湪鏈€缁堢粨鏋滀腑浜堜互琛ュ伩銆?
+        璁板師濮?INT8 婵€娲荤煩闃典负 $\mathbf{X}^{\text{int8}}$锛屾媶鍒嗗悗鐨勯珮浣嶅拰浣庝綅 INT4 婵€娲荤煩闃靛垎鍒负 $\mathbf{X}_1^{\text{int4}}$ 鍜?$\mathbf{X}_2^{\text{int4}}$锛屾潈閲嶇煩闃典负 $\mathbf{W}$銆傛仮澶嶅叧绯讳负锛?
         $$
         \mathbf{X}^{\text{int8}} = 16 \times \mathbf{X}_1^{\text{int4}} + (\mathbf{X}_2^{\text{int4}} + 8 \cdot \mathbf{1}_{\text{mat}})
         $$
 
-        其中 $\mathbf{1}_{\text{mat}}$ 为与 $\mathbf{X}_2^{\text{int4}}$ 形状相同的全 1 矩阵，用于逐元素加 8。令 $\mathbf{1}$ 为形状与输入特征维度一致的全 1 列向量，则矩阵乘展开为：
+        鍏朵腑 $\mathbf{1}_{\text{mat}}$ 涓轰笌 $\mathbf{X}_2^{\text{int4}}$ 褰㈢姸鐩稿悓鐨勫叏 1 鐭╅樀锛岀敤浜庨€愬厓绱犲姞 8銆備护 $\mathbf{1}$ 涓哄舰鐘朵笌杈撳叆鐗瑰緛缁村害涓€鑷寸殑鍏?1 鍒楀悜閲忥紝鍒欑煩闃典箻灞曞紑涓猴細
 
         $$
         \mathbf{X}^{\text{int8}} \cdot \mathbf{W} = 16 \cdot (\mathbf{X}_1^{\text{int4}} \cdot \mathbf{W}) + (\mathbf{X}_2^{\text{int4}} \cdot \mathbf{W}) + 8 \cdot (\mathbf{1}^\top \cdot \mathbf{W})
         $$
 
-        这里 $\mathbf{1}^\top \cdot \mathbf{W}$ 表示对权重矩阵 $\mathbf{W}$ 的每一列求和，其结果为一个行向量（形状与输出维度相同）。在具体实现中，该行向量会被广播到批次维度，加到所有 token 的输出上。可见，若只计算前两项，会缺失一个正数项。为了精确恢复结果，需预先计算补偿偏置：
-
+        杩欓噷 $\mathbf{1}^\top \cdot \mathbf{W}$ 琛ㄧず瀵规潈閲嶇煩闃?$\mathbf{W}$ 鐨勬瘡涓€鍒楁眰鍜岋紝鍏剁粨鏋滀负涓€涓鍚戦噺锛堝舰鐘朵笌杈撳嚭缁村害鐩稿悓锛夈€傚湪鍏蜂綋瀹炵幇涓紝璇ヨ鍚戦噺浼氳骞挎挱鍒版壒娆＄淮搴︼紝鍔犲埌鎵€鏈?token 鐨勮緭鍑轰笂銆傚彲瑙侊紝鑻ュ彧璁＄畻鍓嶄袱椤癸紝浼氱己澶变竴涓鏁伴」銆備负浜嗙簿纭仮澶嶇粨鏋滐紝闇€棰勫厛璁＄畻琛ュ伩鍋忕疆锛?
         $$
         \text{bias} = 8 \cdot (\mathbf{1}^\top \cdot \mathbf{W}),
         $$
 
-        $\mathbf{B}_1$ 和 $\mathbf{B}_2$ 均按此法，分别使用对应的全 1 列向量（维度分别为 $\text{hidden}$ 和 $\text{intermediateHidden}$）与各自的权重矩阵相乘，得到形状匹配的偏置行向量。这些偏置在离线阶段计算完成后传入算子，在合并高低位结果时直接参与加法，从而消除偏移引入的误差。
+        $\mathbf{B}_1$ 鍜?$\mathbf{B}_2$ 鍧囨寜姝ゆ硶锛屽垎鍒娇鐢ㄥ搴旂殑鍏?1 鍒楀悜閲忥紙缁村害鍒嗗埆涓?$\text{hidden}$ 鍜?$\text{intermediateHidden}$锛変笌鍚勮嚜鐨勬潈閲嶇煩闃电浉涔橈紝寰楀埌褰㈢姸鍖归厤鐨勫亸缃鍚戦噺銆傝繖浜涘亸缃湪绂荤嚎闃舵璁＄畻瀹屾垚鍚庝紶鍏ョ畻瀛愶紝鍦ㄥ悎骞堕珮浣庝綅缁撴灉鏃剁洿鎺ュ弬涓庡姞娉曪紝浠庤€屾秷闄ゅ亸绉诲紩鍏ョ殑璇樊銆?
+        **2. Linear1 鎶曞奖锛圛NT4 脳 INT4 鐭╅樀涔?+ 鍙嶉噺鍖栵級**
 
-        **2. Linear1 投影（INT4 × INT4 矩阵乘 + 反量化）**
+        Linear1 鎶曞奖鏄笓瀹剁綉缁滅殑绗竴灞傜嚎鎬у彉鎹紝鍚屾椂浜х敓 **gate 閮ㄥ垎** 鍜?**up 閮ㄥ垎** 鎵€闇€鐨勯婵€娲诲€笺€?
+        **(1) 婵€娲婚噸瑙ｉ噴涓篒NT4**
 
-        Linear1 投影是专家网络的第一层线性变换，同时产生 **gate 部分** 和 **up 部分** 所需的预激活值。
-
-        **(1) 激活重解释为INT4**
-
-        将 INT8 激活张量 $\mathbf{Q}_e^{\text{int8}} \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{N_e \times \text{hidden}}$ 二进制重解释为两个 INT4 交替拼接的视图：
+        灏?INT8 婵€娲诲紶閲?$\mathbf{Q}_e^{\text{int8}} \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{N_e \times \text{hidden}}$ 浜岃繘鍒堕噸瑙ｉ噴涓轰袱涓?INT4 浜ゆ浛鎷兼帴鐨勮鍥撅細
 
         $$
         \mathbf{Q}_e^{\text{int4}} = \mathrm{bitcast}_{\mathbb{Z}_4^{2N_e \times \text{hidden}}} \left( \mathbf{Q}_e^{\text{int8}} \right) \in \mathbb{Z}_4^{2N_e \times \text{hidden}}
         $$
 
-        其中高位和低位分量直接由 $\mathbf{Q}_e^{\text{int4}}$ 的偶数行和奇数行给出：
-
+        鍏朵腑楂樹綅鍜屼綆浣嶅垎閲忕洿鎺ョ敱 $\mathbf{Q}_e^{\text{int4}}$ 鐨勫伓鏁拌鍜屽鏁拌缁欏嚭锛?
         $$
         \mathbf{Q}_e^{\text{high}} = \mathbf{Q}_e^{\text{int4}}[0::2, :] \in \mathbb{Z}_4^{N_e \times \text{hidden}}, \quad
         \mathbf{Q}_e^{\text{low}} = \mathbf{Q}_e^{\text{int4}}[1::2, :] \in \mathbb{Z}_4^{N_e \times \text{hidden}}
         $$
 
-        它们在数值上可以由原 INT8 经如下计算得到：
+        瀹冧滑鍦ㄦ暟鍊间笂鍙互鐢卞師 INT8 缁忓涓嬭绠楀緱鍒帮細
 
         $$
         \mathbf{Q}_e^{\text{high}} = \left\lfloor \frac{\mathbf{Q}_e^{\text{int8}}}{16} \right\rfloor, \quad
         \mathbf{Q}_e^{\text{low}} = (\mathbf{Q}_e^{\text{int8}} \mathbin{\&} 0x0F) - 8
         $$
 
-        恢复关系为 $\mathbf{Q}_e^{\text{int8}} = 16\mathbf{Q}_e^{\text{high}} + (\mathbf{Q}_e^{\text{low}} + 8)$。由于 $\mathrm{bitcast}$ 仅改变类型视图，$\mathbf{Q}_e^{\text{int4}}$ 与 $\mathbf{Q}_e^{\text{int8}}$ 共享底层物理内存，无需任何数据重排或拷贝。
+        鎭㈠鍏崇郴涓?$\mathbf{Q}_e^{\text{int8}} = 16\mathbf{Q}_e^{\text{high}} + (\mathbf{Q}_e^{\text{low}} + 8)$銆傜敱浜?$\mathrm{bitcast}$ 浠呮敼鍙樼被鍨嬭鍥撅紝$\mathbf{Q}_e^{\text{int4}}$ 涓?$\mathbf{Q}_e^{\text{int8}}$ 鍏变韩搴曞眰鐗╃悊鍐呭瓨锛屾棤闇€浠讳綍鏁版嵁閲嶆帓鎴栨嫹璐濄€?
+        **(2) INT4 脳 INT4 鐭╅樀涔樹笌鏉冮噸鍙嶉噺鍖?*
 
-        **(2) INT4 × INT4 矩阵乘与权重反量化**
-
-        将重解释后的 INT4 激活视图 $\mathbf{Q}_e^{\text{int4}} \in \mathbb{Z}_4^{2N_e \times \text{hidden}}$ 与权重矩阵 $\mathbf{W}_1[e] \in \mathbb{R}^{\text{hidden} \times 2\cdot\text{intermediateHidden}}$ 执行矩阵乘，并应用权重缩放因子 $\mathbf{s}^{W1}_e$ 进行反量化，得到结果：
-
+        灏嗛噸瑙ｉ噴鍚庣殑 INT4 婵€娲昏鍥?$\mathbf{Q}_e^{\text{int4}} \in \mathbb{Z}_4^{2N_e \times \text{hidden}}$ 涓庢潈閲嶇煩闃?$\mathbf{W}_1[e] \in \mathbb{R}^{\text{hidden} \times 2\cdot\text{intermediateHidden}}$ 鎵ц鐭╅樀涔橈紝骞跺簲鐢ㄦ潈閲嶇缉鏀惧洜瀛?$\mathbf{s}^{W1}_e$ 杩涜鍙嶉噺鍖栵紝寰楀埌缁撴灉锛?
         $$
         \mathbf{C}_e = \bigl( \mathbf{Q}_e^{\text{int4}} \cdot \mathbf{W}_1[e] \bigr) \odot \mathbf{s}^{W1}_e
         \;\in\; \mathbb{R}^{2N_e \times 2\cdot\text{intermediateHidden}}
         $$
 
-        将结果按偶数行和奇数行分别记为如下的矩阵视图，它们即对应于$\mathbf{Q}_e^{\text{high}}$和$\mathbf{Q}_e^{\text{low}}$的计算结果：
+        灏嗙粨鏋滄寜鍋舵暟琛屽拰濂囨暟琛屽垎鍒涓哄涓嬬殑鐭╅樀瑙嗗浘锛屽畠浠嵆瀵瑰簲浜?\mathbf{Q}_e^{\text{high}}$鍜?\mathbf{Q}_e^{\text{low}}$鐨勮绠楃粨鏋滐細
 
         $$
         \mathbf{C}_e^{\text{high}} = \mathbf{C}_e[0::2, :] \in \mathbb{R}^{N_e \times 2\cdot\text{intermediateHidden}}, \qquad
         \mathbf{C}_e^{\text{low}}  = \mathbf{C}_e[1::2, :] \in \mathbb{R}^{N_e \times 2\cdot\text{intermediateHidden}}
         $$
 
-        **(3) 精度补偿与激活反量化**
+        **(3) 绮惧害琛ュ伩涓庢縺娲诲弽閲忓寲**
 
-        利用偏置 $\mathbf{B}_1[e]$ 和激活缩放因子 $\mathbf{s}^{X}_e$（行向量）分别进行精度补偿和激活反量化，最终预激活值为：
-
+        鍒╃敤鍋忕疆 $\mathbf{B}_1[e]$ 鍜屾縺娲荤缉鏀惧洜瀛?$\mathbf{s}^{X}_e$锛堣鍚戦噺锛夊垎鍒繘琛岀簿搴﹁ˉ鍋垮拰婵€娲诲弽閲忓寲锛屾渶缁堥婵€娲诲€间负锛?
         $$
         \mathbf{H}_e = \Bigl( 16 \cdot \mathbf{C}_e^{\text{high}} + \mathbf{C}_e^{\text{low}} + \mathbf{B}_1[e] \Bigr) \odot \mathbf{s}^{X}_e \quad\in \mathbb{R}^{N_e \times 2\cdot\text{intermediateHidden}}
         $$
 
-        其中 $\odot \mathbf{s}^{X}_e$ 表示将矩阵的每一行乘以 $\mathbf{s}^{X}_e$ 中对应的标量。
+        鍏朵腑 $\odot \mathbf{s}^{X}_e$ 琛ㄧず灏嗙煩闃电殑姣忎竴琛屼箻浠?$\mathbf{s}^{X}_e$ 涓搴旂殑鏍囬噺銆?
+        **3. SwiGLU 婵€娲?*
 
-        **3. SwiGLU 激活**
-
-        首先将 $\mathbf{H}_e$ 沿列维度拆分为 **gate 部分** $\mathbf{H}_{\text{gate}}$ 和 **up 部分** $\mathbf{H}_{\text{up}}$，然后对 gate 部分应用 SiLU 激活函数，再与 up 部分逐元素相乘，得到专家 $e$ 的中间激活表示 $\mathbf{A}_e$。
-        $$
+        棣栧厛灏?$\mathbf{H}_e$ 娌垮垪缁村害鎷嗗垎涓?**gate 閮ㄥ垎** $\mathbf{H}_{\text{gate}}$ 鍜?**up 閮ㄥ垎** $\mathbf{H}_{\text{up}}$锛岀劧鍚庡 gate 閮ㄥ垎搴旂敤 SiLU 婵€娲诲嚱鏁帮紝鍐嶄笌 up 閮ㄥ垎閫愬厓绱犵浉涔橈紝寰楀埌涓撳 $e$ 鐨勪腑闂存縺娲昏〃绀?$\mathbf{A}_e$銆?        $$
         \mathbf{H}_{\text{gate}} = \mathbf{H}_e[:,\; :\!\text{intermediateHidden}], \qquad
         \mathbf{H}_{\text{up}} = \mathbf{H}_e[:,\; \text{intermediateHidden}:]
         $$
@@ -315,101 +242,85 @@
         \quad\in \mathbb{R}^{N_e \times \text{intermediateHidden}}
         $$
 
-        **4. Linear2 投影（量化 + INT4 × INT4 矩阵乘 + 反量化）**
+        **4. Linear2 鎶曞奖锛堥噺鍖?+ INT4 脳 INT4 鐭╅樀涔?+ 鍙嶉噺鍖栵級**
 
-        Linear2 投影作为第二层线性变换，将中间激活表示 $\mathbf{A}_e$ 从高维空间投影回原始的隐藏维度 $\text{hidden}$，使专家输出能够与残差连接等后续操作兼容。
-        在 A8W4 场景下，首先将激活值量化为 INT8，再通过二进制重解释为两个 INT4 的拼接视图，以一次矩阵乘完成计算，过程如下。
+        Linear2 鎶曞奖浣滀负绗簩灞傜嚎鎬у彉鎹紝灏嗕腑闂存縺娲昏〃绀?$\mathbf{A}_e$ 浠庨珮缁寸┖闂存姇褰卞洖鍘熷鐨勯殣钘忕淮搴?$\text{hidden}$锛屼娇涓撳杈撳嚭鑳藉涓庢畫宸繛鎺ョ瓑鍚庣画鎿嶄綔鍏煎銆?        鍦?A8W4 鍦烘櫙涓嬶紝棣栧厛灏嗘縺娲诲€奸噺鍖栦负 INT8锛屽啀閫氳繃浜岃繘鍒堕噸瑙ｉ噴涓轰袱涓?INT4 鐨勬嫾鎺ヨ鍥撅紝浠ヤ竴娆＄煩闃典箻瀹屾垚璁＄畻锛岃繃绋嬪涓嬨€?
+        **(1) 婵€娲婚噺鍖?*
 
-        **(1) 激活量化**
-
-        对 $\mathbf{A}_e$ 的每一行计算缩放因子并量化至 INT8：
-        $$
+        瀵?$\mathbf{A}_e$ 鐨勬瘡涓€琛岃绠楃缉鏀惧洜瀛愬苟閲忓寲鑷?INT8锛?        $$
         s^{A_e}_i = \frac{\max(|\mathbf{A}_e[i,:]|)}{127}, \quad i=0,\dots,N_e-1
         $$
-        得到专家 $e$ 在 Linear2 计算时的激活缩放因子 $\mathbf{s}^{A_e}_e \in \mathbb{R}^{N_e}$，并计算量化结果：
-        $$
+        寰楀埌涓撳 $e$ 鍦?Linear2 璁＄畻鏃剁殑婵€娲荤缉鏀惧洜瀛?$\mathbf{s}^{A_e}_e \in \mathbb{R}^{N_e}$锛屽苟璁＄畻閲忓寲缁撴灉锛?        $$
         \mathbf{A}_e^{\text{int8}}[i,:] = \left\lfloor \frac{\mathbf{A}_e[i,:]}{s^{A_e}_i} \right\rceil \quad \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{N_e \times \text{intermediateHidden}}
         $$
 
-        **(2) 激活重解释为 INT4**
+        **(2) 婵€娲婚噸瑙ｉ噴涓?INT4**
 
-        将 INT8 激活张量 $\mathbf{A}_e^{\text{int8}} \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{N_e \times \text{intermediateHidden}}$ 二进制重解释为两个 INT4 交替拼接的视图：
+        灏?INT8 婵€娲诲紶閲?$\mathbf{A}_e^{\text{int8}} \in \left(\mathbb{Z}_8^{\text{sym}}\right)^{N_e \times \text{intermediateHidden}}$ 浜岃繘鍒堕噸瑙ｉ噴涓轰袱涓?INT4 浜ゆ浛鎷兼帴鐨勮鍥撅細
 
         $$
         \mathbf{A}_e^{\text{int4}} = \mathrm{bitcast}_{\mathbb{Z}_4^{2N_e \times \text{intermediateHidden}}} \left( \mathbf{A}_e^{\text{int8}} \right) \in \mathbb{Z}_4^{2N_e \times \text{intermediateHidden}}
         $$
 
-        其中高位和低位分量直接由 $\mathbf{A}_e^{\text{int4}}$ 的偶数行和奇数行给出：
-
+        鍏朵腑楂樹綅鍜屼綆浣嶅垎閲忕洿鎺ョ敱 $\mathbf{A}_e^{\text{int4}}$ 鐨勫伓鏁拌鍜屽鏁拌缁欏嚭锛?
         $$
         \mathbf{A}_e^{\text{high}} = \mathbf{A}_e^{\text{int4}}[0::2, :] \in \mathbb{Z}_4^{N_e \times \text{intermediateHidden}}, \quad
         \mathbf{A}_e^{\text{low}} = \mathbf{A}_e^{\text{int4}}[1::2, :] \in \mathbb{Z}_4^{N_e \times \text{intermediateHidden}}
         $$
 
-        它们在数值上可以由原 INT8 经如下计算得到：
+        瀹冧滑鍦ㄦ暟鍊间笂鍙互鐢卞師 INT8 缁忓涓嬭绠楀緱鍒帮細
 
         $$
         \mathbf{A}_e^{\text{high}} = \left\lfloor \frac{\mathbf{A}_e^{\text{int8}}}{16} \right\rfloor, \quad
         \mathbf{A}_e^{\text{low}} = (\mathbf{A}_e^{\text{int8}} \mathbin{\&} 0x0F) - 8
         $$
 
-        恢复关系为 $\mathbf{A}_e^{\text{int8}} = 16\mathbf{A}_e^{\text{high}} + (\mathbf{A}_e^{\text{low}} + 8)$。由于 $\mathrm{bitcast}$ 仅改变类型视图，$\mathbf{A}_e^{\text{int4}}$ 与 $\mathbf{A}_e^{\text{int8}}$ 共享底层物理内存，无需任何数据重排或拷贝。
+        鎭㈠鍏崇郴涓?$\mathbf{A}_e^{\text{int8}} = 16\mathbf{A}_e^{\text{high}} + (\mathbf{A}_e^{\text{low}} + 8)$銆傜敱浜?$\mathrm{bitcast}$ 浠呮敼鍙樼被鍨嬭鍥撅紝$\mathbf{A}_e^{\text{int4}}$ 涓?$\mathbf{A}_e^{\text{int8}}$ 鍏变韩搴曞眰鐗╃悊鍐呭瓨锛屾棤闇€浠讳綍鏁版嵁閲嶆帓鎴栨嫹璐濄€?
+        **(3) INT4 脳 INT4 鐭╅樀涔樹笌鏉冮噸鍙嶉噺鍖?*
 
-        **(3) INT4 × INT4 矩阵乘与权重反量化**
-
-        将重解释后的 INT4 激活视图 $\mathbf{A}_e^{\text{int4}} \in \mathbb{Z}_4^{2N_e \times \text{intermediateHidden}}$ 与权重矩阵 $\mathbf{W}_2[e] \in \mathbb{R}^{\text{intermediateHidden} \times \text{hidden}}$ 执行矩阵乘，并应用权重缩放因子 $\mathbf{s}^{W2}_e$ 进行反量化，得到结果：
-
+        灏嗛噸瑙ｉ噴鍚庣殑 INT4 婵€娲昏鍥?$\mathbf{A}_e^{\text{int4}} \in \mathbb{Z}_4^{2N_e \times \text{intermediateHidden}}$ 涓庢潈閲嶇煩闃?$\mathbf{W}_2[e] \in \mathbb{R}^{\text{intermediateHidden} \times \text{hidden}}$ 鎵ц鐭╅樀涔橈紝骞跺簲鐢ㄦ潈閲嶇缉鏀惧洜瀛?$\mathbf{s}^{W2}_e$ 杩涜鍙嶉噺鍖栵紝寰楀埌缁撴灉锛?
         $$
         \mathbf{D}_e = \bigl( \mathbf{A}_e^{\text{int4}} \cdot \mathbf{W}_2[e] \bigr) \odot \mathbf{s}^{W2}_e
         \;\in\; \mathbb{R}^{2N_e \times \text{hidden}}
         $$
 
-        将结果按偶数行和奇数行分别记为如下的矩阵视图，它们即对应于 $\mathbf{A}_e^{\text{high}}$ 和 $\mathbf{A}_e^{\text{low}}$ 的计算结果：
+        灏嗙粨鏋滄寜鍋舵暟琛屽拰濂囨暟琛屽垎鍒涓哄涓嬬殑鐭╅樀瑙嗗浘锛屽畠浠嵆瀵瑰簲浜?$\mathbf{A}_e^{\text{high}}$ 鍜?$\mathbf{A}_e^{\text{low}}$ 鐨勮绠楃粨鏋滐細
 
         $$
         \mathbf{D}_e^{\text{high}} = \mathbf{D}_e[0::2, :] \in \mathbb{R}^{N_e \times \text{hidden}}, \qquad
         \mathbf{D}_e^{\text{low}}  = \mathbf{D}_e[1::2, :] \in \mathbb{R}^{N_e \times \text{hidden}}
         $$
 
-        **(4) 精度补偿与激活反量化**
+        **(4) 绮惧害琛ュ伩涓庢縺娲诲弽閲忓寲**
 
-        利用偏置 $\mathbf{B}_2[e]$ 和激活缩放因子 $\mathbf{s}^{A_e}_e$（行向量）分别进行精度补偿和激活反量化，最终输出为：
-
+        鍒╃敤鍋忕疆 $\mathbf{B}_2[e]$ 鍜屾縺娲荤缉鏀惧洜瀛?$\mathbf{s}^{A_e}_e$锛堣鍚戦噺锛夊垎鍒繘琛岀簿搴﹁ˉ鍋垮拰婵€娲诲弽閲忓寲锛屾渶缁堣緭鍑轰负锛?
         $$
         \mathbf{Y}_e = \Bigl( 16 \cdot \mathbf{D}_e^{\text{high}} + \mathbf{D}_e^{\text{low}} + \mathbf{B}_2[e] \Bigr) \odot \mathbf{s}^{A_e}_e
         \quad\in \mathbb{R}^{N_e \times \text{hidden}}
         $$
 
-        其中 $\odot \mathbf{s}^{A_e}_e$ 表示将矩阵的每一行乘以 $\mathbf{s}^{A_e}_e$ 中对应的标量。
-
-        经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 $\text{token}_i$，它在专家 $e_{i,k}$ 中的输出行即为 $\mathbf{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$。
-
+        鍏朵腑 $\odot \mathbf{s}^{A_e}_e$ 琛ㄧず灏嗙煩闃电殑姣忎竴琛屼箻浠?$\mathbf{s}^{A_e}_e$ 涓搴旂殑鏍囬噺銆?
+        缁忚繃浠ヤ笂璁＄畻锛屼笓瀹?$e$ 鐨勬瘡涓€琛岃緭鍑哄搴斿叾鎵规涓殑涓€涓?token銆傚浜?$\text{token}_i$锛屽畠鍦ㄤ笓瀹?$e_{i,k}$ 涓殑杈撳嚭琛屽嵆涓?$\mathbf{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$銆?
     - **Token Combine**
 
-        Combine 负责收集所有专家计算出的输出向量，按照每个 token 原先分配到的专家权重进行加权求和，最终为每个 token 生成一个融合后的输出。利用之前记录的位置索引 $\operatorname{row}(i,k)$，从专家 $e_{i,k}$ 的输出矩阵中收回属于 $\text{token}_i$ 的行，并与门控权重相乘后求和：
-        $$
+        Combine 璐熻矗鏀堕泦鎵€鏈変笓瀹惰绠楀嚭鐨勮緭鍑哄悜閲忥紝鎸夌収姣忎釜 token 鍘熷厛鍒嗛厤鍒扮殑涓撳鏉冮噸杩涜鍔犳潈姹傚拰锛屾渶缁堜负姣忎釜 token 鐢熸垚涓€涓瀺鍚堝悗鐨勮緭鍑恒€傚埄鐢ㄤ箣鍓嶈褰曠殑浣嶇疆绱㈠紩 $\operatorname{row}(i,k)$锛屼粠涓撳 $e_{i,k}$ 鐨勮緭鍑虹煩闃典腑鏀跺洖灞炰簬 $\text{token}_i$ 鐨勮锛屽苟涓庨棬鎺ф潈閲嶇浉涔樺悗姹傚拰锛?        $$
         \mathbf{y}_i = \sum_{k=0}^{\text{topK} - 1} w_k \;\cdot\; \mathbf{Y}_{e_{i,k}}\!\bigl[\,\operatorname{row}(i,k),\,:\,\bigr]
         \qquad\bigl(\in \mathbb{R}^{1 \times \text{hidden}}\bigr)
         $$
-        其中 $w_k = \mathbf{G}[i,k]$ 为 $\text{token}_i$ 对专家 $e_{i,k}$ 的门控权重。
-
-        所有 token 的输出按输入顺序堆叠为最终输出 $\mathbf{Y} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$。
-
+        鍏朵腑 $w_k = \mathbf{G}[i,k]$ 涓?$\text{token}_i$ 瀵逛笓瀹?$e_{i,k}$ 鐨勯棬鎺ф潈閲嶃€?
+        鎵€鏈?token 鐨勮緭鍑烘寜杈撳叆椤哄簭鍫嗗彔涓烘渶缁堣緭鍑?$\mathbf{Y} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$銆?
     </details>
 
     <details>
-    <summary> A8W8-FP 量化场景</summary>
+    <summary> A8W8-FP 閲忓寲鍦烘櫙</summary>
 
-    第一阶段对输入 Token 按专家分组收集后做 MXFP8 量化，生成各专家的量化输入与缩放因子：
-
+    绗竴闃舵瀵硅緭鍏?Token 鎸変笓瀹跺垎缁勬敹闆嗗悗鍋?MXFP8 閲忓寲锛岀敓鎴愬悇涓撳鐨勯噺鍖栬緭鍏ヤ笌缂╂斁鍥犲瓙锛?
     $$
     \hat{X}_e,\ S_{X,e} = \mathrm{Q}_{\text{MX}}\!\left(X[\mathcal{T}_e]\right), \quad e = 0, 1, \ldots, E_{\text{local}}-1
     $$
 
-    说明：根据 `topkIds` 将 Token 按专家排序收集，$\mathcal{T}_e$ 为分配到专家 $e$ 的 Token 索引集合，$E_{local}$表示当前专家收到的最大token数，每个专家数值可能不同，$X[\mathcal{T}_e]$ 为对应的子矩阵。$\mathrm{Q}_{\text{MX}}$ 表示 MX 逐组量化（group size = 32），对每组 32 个元素提取共享指数后量化为 FP8 目标类型（FLOAT8_E5M2 或 FLOAT8_E4M3FN），同时输出 FLOAT8_E8M0 缩放因子。量化后的数据将作为 GMM1 的输入。
-
-    第二阶段对每个专家执行 GMM1 矩阵乘法（将 $W_1$ 沿列方向分为两半分别计算）、SwiGLU 激活和 MX 量化：
-
+    璇存槑锛氭牴鎹?`topkIds` 灏?Token 鎸変笓瀹舵帓搴忔敹闆嗭紝$\mathcal{T}_e$ 涓哄垎閰嶅埌涓撳 $e$ 鐨?Token 绱㈠紩闆嗗悎锛?E_{local}$琛ㄧず褰撳墠涓撳鏀跺埌鐨勬渶澶oken鏁帮紝姣忎釜涓撳鏁板€煎彲鑳戒笉鍚岋紝$X[\mathcal{T}_e]$ 涓哄搴旂殑瀛愮煩闃点€?\mathrm{Q}_{\text{MX}}$ 琛ㄧず MX 閫愮粍閲忓寲锛坓roup size = 32锛夛紝瀵规瘡缁?32 涓厓绱犳彁鍙栧叡浜寚鏁板悗閲忓寲涓?FP8 鐩爣绫诲瀷锛團LOAT8_E5M2 鎴?FLOAT8_E4M3FN锛夛紝鍚屾椂杈撳嚭 FLOAT8_E8M0 缂╂斁鍥犲瓙銆傞噺鍖栧悗鐨勬暟鎹皢浣滀负 GMM1 鐨勮緭鍏ャ€?
+    绗簩闃舵瀵规瘡涓笓瀹舵墽琛?GMM1 鐭╅樀涔樻硶锛堝皢 $W_1$ 娌垮垪鏂瑰悜鍒嗕负涓ゅ崐鍒嗗埆璁＄畻锛夈€丼wiGLU 婵€娲诲拰 MX 閲忓寲锛?
     $$
     Z_e^{(x)} = \mathrm{DQ}_{\text{MX}}(\hat{X}_e, S_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{1,e}^{(x)}, S_{1,e}^{(x)}), \quad Z_e^{(y)} = \mathrm{DQ}_{\text{MX}}(\hat{X}_e, S_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{1,e}^{(y)}, S_{1,e}^{(y)})
     $$
@@ -422,60 +333,39 @@
     \hat{U}_e,\ S_{U,e} = \mathrm{Q}_{\text{MX}}(U_e)
     $$
 
-    说明：将 $W_1$ 的前 $N/2$ 列 $W_{1,e}^{(x)}$ 和后 $N/2$ 列 $W_{1,e}^{(y)}$ 分别与 MX 反量化后的输入做矩阵乘法，得到 Swish 分支 $Z_e^{(x)}$ 和门控分支 $Z_e^{(y)}$。SwiGLU 激活对两个分支做逐元素乘积 $x \cdot \sigma(x) \cdot y$，其中 $\sigma$ 为 Sigmoid 函数，将中间维度从 $N$ 减半为 $N/2$。随后对 SwiGLU 输出做 MX 量化，得到 GMM2 的量化输入 $\hat{U}_e$。
-
-    第三阶段对每个专家执行 GMM2 矩阵乘法，并将结果按目标 Rank 分发：
-
+    璇存槑锛氬皢 $W_1$ 鐨勫墠 $N/2$ 鍒?$W_{1,e}^{(x)}$ 鍜屽悗 $N/2$ 鍒?$W_{1,e}^{(y)}$ 鍒嗗埆涓?MX 鍙嶉噺鍖栧悗鐨勮緭鍏ュ仛鐭╅樀涔樻硶锛屽緱鍒?Swish 鍒嗘敮 $Z_e^{(x)}$ 鍜岄棬鎺у垎鏀?$Z_e^{(y)}$銆係wiGLU 婵€娲诲涓や釜鍒嗘敮鍋氶€愬厓绱犱箻绉?$x \cdot \sigma(x) \cdot y$锛屽叾涓?$\sigma$ 涓?Sigmoid 鍑芥暟锛屽皢涓棿缁村害浠?$N$ 鍑忓崐涓?$N/2$銆傞殢鍚庡 SwiGLU 杈撳嚭鍋?MX 閲忓寲锛屽緱鍒?GMM2 鐨勯噺鍖栬緭鍏?$\hat{U}_e$銆?
+    绗笁闃舵瀵规瘡涓笓瀹舵墽琛?GMM2 鐭╅樀涔樻硶锛屽苟灏嗙粨鏋滄寜鐩爣 Rank 鍒嗗彂锛?
     $$
     O_e = \mathrm{DQ}_{\text{MX}}(\hat{U}_e, S_{U,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{2,e}, S_{2,e})
     $$
 
-    说明：将量化后的 SwiGLU 输出与第二组权重 $W_2$ 做 MX 反量化后的矩阵乘法，将 $N/2$ 维中间表示映射回 $H$ 维隐藏空间，得到每个专家的输出 $O_e$。计算完成后通过 RDMA peermem 将结果按目标 Rank 的专家偏移地址写入远端，实现跨 Rank 聚合。
-
-    第四阶段对所有 Token 按路由权重加权求和，恢复为与输入相同形状的输出：
+    璇存槑锛氬皢閲忓寲鍚庣殑 SwiGLU 杈撳嚭涓庣浜岀粍鏉冮噸 $W_2$ 鍋?MX 鍙嶉噺鍖栧悗鐨勭煩闃典箻娉曪紝灏?$N/2$ 缁翠腑闂磋〃绀烘槧灏勫洖 $H$ 缁撮殣钘忕┖闂达紝寰楀埌姣忎釜涓撳鐨勮緭鍑?$O_e$銆傝绠楀畬鎴愬悗閫氳繃 RDMA peermem 灏嗙粨鏋滄寜鐩爣 Rank 鐨勪笓瀹跺亸绉诲湴鍧€鍐欏叆杩滅锛屽疄鐜拌法 Rank 鑱氬悎銆?
+    绗洓闃舵瀵规墍鏈?Token 鎸夎矾鐢辨潈閲嶅姞鏉冩眰鍜岋紝鎭㈠涓轰笌杈撳叆鐩稿悓褰㈢姸鐨勮緭鍑猴細
 
     $$
     Y[i] = \sum_{k=0}^{K-1} W[i,\, k] \cdot O[\pi(i,\, k)]
     $$
 
-    说明：对每个 Token $i$，根据排序后的路由索引 $\pi(i,k)$ 从聚合后的专家结果中取出对应行，按 `topkWeights` 中的权重逐元素加权累加，得到最终输出 $Y$。
-
-    其中，$X$ 表示参数 `x`，$W$ 表示参数 `topkWeights`，$W_1$ 表示参数 `weight1`，$W_2$ 表示参数 `weight2`，$Y$ 表示参数 `y`，$E_{\text{local}}$ 表示 `localMoeExpertNum = moeExpertNum / epWorldSize`（每个 Rank 的路由 MoE 专家数），$K$ 表示 `topkIds` 的第二维度。
-
-    局部变量说明：
-    - $\mathcal{T}_e$：被路由到专家 $e$ 的 Token 索引集合，由 `topkIds` 排序后确定。
-    - $\hat{X}_e,\ S_{X,e}$：专家 $e$ 的量化输入及其 MX 缩放因子，第一阶段中间结果。
-    - $W_{1,e}^{(x)}$、$W_{1,e}^{(y)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由 `weight1` 按 SwiGLU 拆分推导。
-    - $S_{1,e}^{(x)}$、$S_{1,e}^{(y)}$：$W_{1,e}^{(x)}$ 和 $W_{1,e}^{(y)}$ 对应的 MX 缩放因子，从 `weightScales1` 按维度截取。
-    - $S_{2,e}$：$W_{2,e}$ 对应的 MX 缩放因子，来自参数 `weightScales2`。
-    - $Z_e^{(x)},\ Z_e^{(y)}$：GMM1 的两路矩阵乘法输出（Swish 分支和门控分支），中间结果。
-    - $U_e$：SwiGLU 激活输出，维度 $m_e \times N/2$，中间结果。
-    - $\hat{U}_e,\ S_{U,e}$：量化后的 SwiGLU 输出及其 MX 缩放因子，中间结果。
-    - $O_e$：GMM2 的专家级输出，维度 $m_e \times H$，中间结果。
-    - $\pi(i, k)$：Token $i$ 的第 $k$ 个 top-k 专家在展开排序后的行索引，由路由排序确定。
-    - $\mathrm{Q}_{\text{MX}}(\cdot)$：MX 逐组量化操作，block size = 32，输出 FP8 数据和 E8M0 缩放因子。
-    - $\mathrm{DQ}_{\text{MX}}(\cdot)$：MX 逐组反量化操作，在 matmul 内部隐式执行。
-    </details>
+    璇存槑锛氬姣忎釜 Token $i$锛屾牴鎹帓搴忓悗鐨勮矾鐢辩储寮?$\pi(i,k)$ 浠庤仛鍚堝悗鐨勪笓瀹剁粨鏋滀腑鍙栧嚭瀵瑰簲琛岋紝鎸?`topkWeights` 涓殑鏉冮噸閫愬厓绱犲姞鏉冪疮鍔狅紝寰楀埌鏈€缁堣緭鍑?$Y$銆?
+    鍏朵腑锛?X$ 琛ㄧず鍙傛暟 `x`锛?W$ 琛ㄧず鍙傛暟 `topkWeights`锛?W_1$ 琛ㄧず鍙傛暟 `weight1`锛?W_2$ 琛ㄧず鍙傛暟 `weight2`锛?Y$ 琛ㄧず鍙傛暟 `y`锛?E_{\text{local}}$ 琛ㄧず `localMoeExpertNum = moeExpertNum / epWorldSize`锛堟瘡涓?Rank 鐨勮矾鐢?MoE 涓撳鏁帮級锛?K$ 琛ㄧず `topkIds` 鐨勭浜岀淮搴︺€?
+    灞€閮ㄥ彉閲忚鏄庯細
+    - $\mathcal{T}_e$锛氳璺敱鍒颁笓瀹?$e$ 鐨?Token 绱㈠紩闆嗗悎锛岀敱 `topkIds` 鎺掑簭鍚庣‘瀹氥€?    - $\hat{X}_e,\ S_{X,e}$锛氫笓瀹?$e$ 鐨勯噺鍖栬緭鍏ュ強鍏?MX 缂╂斁鍥犲瓙锛岀涓€闃舵涓棿缁撴灉銆?    - $W_{1,e}^{(x)}$銆?W_{1,e}^{(y)}$锛?W_1$ 瀵瑰簲涓撳 $e$ 鐨勫墠 $N/2$ 鍒楀拰鍚?$N/2$ 鍒楀瓙鐭╅樀锛岀敱 `weight1` 鎸?SwiGLU 鎷嗗垎鎺ㄥ銆?    - $S_{1,e}^{(x)}$銆?S_{1,e}^{(y)}$锛?W_{1,e}^{(x)}$ 鍜?$W_{1,e}^{(y)}$ 瀵瑰簲鐨?MX 缂╂斁鍥犲瓙锛屼粠 `weightScales1` 鎸夌淮搴︽埅鍙栥€?    - $S_{2,e}$锛?W_{2,e}$ 瀵瑰簲鐨?MX 缂╂斁鍥犲瓙锛屾潵鑷弬鏁?`weightScales2`銆?    - $Z_e^{(x)},\ Z_e^{(y)}$锛欸MM1 鐨勪袱璺煩闃典箻娉曡緭鍑猴紙Swish 鍒嗘敮鍜岄棬鎺у垎鏀級锛屼腑闂寸粨鏋溿€?    - $U_e$锛歋wiGLU 婵€娲昏緭鍑猴紝缁村害 $m_e \times N/2$锛屼腑闂寸粨鏋溿€?    - $\hat{U}_e,\ S_{U,e}$锛氶噺鍖栧悗鐨?SwiGLU 杈撳嚭鍙婂叾 MX 缂╂斁鍥犲瓙锛屼腑闂寸粨鏋溿€?    - $O_e$锛欸MM2 鐨勪笓瀹剁骇杈撳嚭锛岀淮搴?$m_e \times H$锛屼腑闂寸粨鏋溿€?    - $\pi(i, k)$锛歍oken $i$ 鐨勭 $k$ 涓?top-k 涓撳鍦ㄥ睍寮€鎺掑簭鍚庣殑琛岀储寮曪紝鐢辫矾鐢辨帓搴忕‘瀹氥€?    - $\mathrm{Q}_{\text{MX}}(\cdot)$锛歁X 閫愮粍閲忓寲鎿嶄綔锛宐lock size = 32锛岃緭鍑?FP8 鏁版嵁鍜?E8M0 缂╂斁鍥犲瓙銆?    - $\mathrm{DQ}_{\text{MX}}(\cdot)$锛歁X 閫愮粍鍙嶉噺鍖栨搷浣滐紝鍦?matmul 鍐呴儴闅愬紡鎵ц銆?    </details>
 
     <details>
-    <summary> A8W4-FP 量化场景</summary>
+    <summary> A8W4-FP 閲忓寲鍦烘櫙</summary>
 
-    第一阶段（Token 选择、量化与 Dispatch）：
+    绗竴闃舵锛圱oken 閫夋嫨銆侀噺鍖栦笌 Dispatch锛夛細
 
-    对本 rank 的输入 Token $X \in \mathbb{R}^{B\times H}$，根据 `topkIds` 得到每个专家 $e$ 对应的 Token 下标集合 $T_e$，并将选中的 BF16 Token 按 32 个元素一组量化为 MXFP8 E4M3：
-
+    瀵规湰 rank 鐨勮緭鍏?Token $X \in \mathbb{R}^{B\times H}$锛屾牴鎹?`topkIds` 寰楀埌姣忎釜涓撳 $e$ 瀵瑰簲鐨?Token 涓嬫爣闆嗗悎 $T_e$锛屽苟灏嗛€変腑鐨?BF16 Token 鎸?32 涓厓绱犱竴缁勯噺鍖栦负 MXFP8 E4M3锛?
     $$
     \hat{X}_e,\;S_{X,e}
     = \mathrm{Q}_{\mathrm{MX}}\!\left(X[T_e]\right),
     $$
 
-    其中，$\hat{X}_e$ 的数据类型为 `FLOAT8_E4M3FN`，$S_{X,e}$ 的数据类型为 `FLOAT8_E8M0`。随后将量化后的 Token 及其缩放因子发送到专家所在 rank。
-
-    路由 MoE 专家的第一层和第二层权重 $W_{1,e}$、$W_{2,e}$ 均为 MXFP4 E2M1 数据，缩放因子为 E8M0，$e$ 的范围为 $[0,\text{localMoeExpertNum})$。共享专家权重单独由 `sharedWeight1`、`sharedWeight2` 提供，其第一维为 `sharedExpertNumPerRank`。A8W4 kernel 在矩阵乘 Prologue 中处理 FP4 权重，送入矩阵乘的逻辑数据流为 FP8 激活乘 FP4 权重。
-
-    第二阶段（GMM1、SwiGLU 与再次量化）：
-
-    对专家 $e$ 收到的 Token，第一层分组矩阵乘和 SwiGLU 计算为：
+    鍏朵腑锛?\hat{X}_e$ 鐨勬暟鎹被鍨嬩负 `FLOAT8_E4M3FN`锛?S_{X,e}$ 鐨勬暟鎹被鍨嬩负 `FLOAT8_E8M0`銆傞殢鍚庡皢閲忓寲鍚庣殑 Token 鍙婂叾缂╂斁鍥犲瓙鍙戦€佸埌涓撳鎵€鍦?rank銆?
+    璺敱 MoE 涓撳鐨勭涓€灞傚拰绗簩灞傛潈閲?$W_{1,e}$銆?W_{2,e}$ 鍧囦负 MXFP4 E2M1 鏁版嵁锛岀缉鏀惧洜瀛愪负 E8M0锛?e$ 鐨勮寖鍥翠负 $[0,\text{localMoeExpertNum})$銆傚叡浜笓瀹舵潈閲嶅崟鐙敱 `sharedWeight1`銆乣sharedWeight2` 鎻愪緵锛屽叾绗竴缁翠负 `sharedExpertNumPerRank`銆侫8W4 kernel 鍦ㄧ煩闃典箻 Prologue 涓鐞?FP4 鏉冮噸锛岄€佸叆鐭╅樀涔樼殑閫昏緫鏁版嵁娴佷负 FP8 婵€娲讳箻 FP4 鏉冮噸銆?
+    绗簩闃舵锛圙MM1銆丼wiGLU 涓庡啀娆￠噺鍖栵級锛?
+    瀵逛笓瀹?$e$ 鏀跺埌鐨?Token锛岀涓€灞傚垎缁勭煩闃典箻鍜?SwiGLU 璁＄畻涓猴細
 
     $$
     Z_x = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
@@ -491,51 +381,43 @@
     U_e = Z_x \odot \sigma(Z_x) \odot Z_y.
     $$
 
-    SwiGLU 输出继续按 32 个元素一组量化为 MXFP8 E4M3，供第二层矩阵乘使用：
-
+    SwiGLU 杈撳嚭缁х画鎸?32 涓厓绱犱竴缁勯噺鍖栦负 MXFP8 E4M3锛屼緵绗簩灞傜煩闃典箻浣跨敤锛?
     $$
     \hat{U}_e,\;S_{U,e}
     = \mathrm{Q}_{\mathrm{MX}}\!\left(U_e\right).
     $$
 
-    第三阶段（GMM2）：
+    绗笁闃舵锛圙MM2锛夛細
 
-    第二层矩阵乘仍为 A8W4，即 FP8 E4M3 激活乘 FP4 E2M1 权重：
-
+    绗簩灞傜煩闃典箻浠嶄负 A8W4锛屽嵆 FP8 E4M3 婵€娲讳箻 FP4 E2M1 鏉冮噸锛?
     $$
     O_e = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{U}_e,S_{U,e}\right)
           \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{2,e},S_{2,e}\right).
     $$
 
-    第四阶段（Combine 与加权合并）：
-
-    将各专家输出送回原 rank，并根据 `topkWeights` 做加权合并：
+    绗洓闃舵锛圕ombine 涓庡姞鏉冨悎骞讹級锛?
+    灏嗗悇涓撳杈撳嚭閫佸洖鍘?rank锛屽苟鏍规嵁 `topkWeights` 鍋氬姞鏉冨悎骞讹細
 
     $$
     Y[i] = \sum_{k=0}^{K-1} W[i,k] \cdot O[\pi(i,k)],
     $$
 
-    最终输出 $Y$ 的数据类型为 BF16。A8W4-FP 的主要数据类型流为：`BF16 -> MXFP8 E4M3 -> A8W4 GMM1 -> MXFP8 E4M3 -> A8W4 GMM2 -> BF16`。
-    </details>
+    鏈€缁堣緭鍑?$Y$ 鐨勬暟鎹被鍨嬩负 BF16銆侫8W4-FP 鐨勪富瑕佹暟鎹被鍨嬫祦涓猴細`BF16 -> MXFP8 E4M3 -> A8W4 GMM1 -> MXFP8 E4M3 -> A8W4 GMM2 -> BF16`銆?    </details>
 
     <details>
-    <summary> A4W4-FP 量化场景</summary>
+    <summary> A4W4-FP 閲忓寲鍦烘櫙</summary>
 
-    第一阶段（Token 选择、量化与 Dispatch）：
+    绗竴闃舵锛圱oken 閫夋嫨銆侀噺鍖栦笌 Dispatch锛夛細
 
-    对每个专家 $e$ 对应的 Token 集合 $T_e$，将选中的 BF16 Token 按 32 个元素一组量化为 MXFP4 E2M1：
-
+    瀵规瘡涓笓瀹?$e$ 瀵瑰簲鐨?Token 闆嗗悎 $T_e$锛屽皢閫変腑鐨?BF16 Token 鎸?32 涓厓绱犱竴缁勯噺鍖栦负 MXFP4 E2M1锛?
     $$
     \hat{X}_e,\;S_{X,e}
     = \mathrm{Q}_{\mathrm{MX}}\!\left(X[T_e]\right),
     $$
 
-    其中，$\hat{X}_e$ 的数据类型为 `FLOAT4_E2M1`，$S_{X,e}$ 的数据类型为 `FLOAT8_E8M0`。路由 MoE 专家的第一层和第二层权重 $W_{1,e}$、$W_{2,e}$ 均为 MXFP4 E2M1，$e$ 的范围为 $[0,\text{localMoeExpertNum})$；共享专家权重的第一维为 `sharedExpertNumPerRank`。权重缩放因子为 E8M0。
-
-    第二阶段（A4W4 GMM1、SwiGLU 与输出类型提升）：
-
-    第一层分组矩阵乘为 A4W4：
-
+    鍏朵腑锛?\hat{X}_e$ 鐨勬暟鎹被鍨嬩负 `FLOAT4_E2M1`锛?S_{X,e}$ 鐨勬暟鎹被鍨嬩负 `FLOAT8_E8M0`銆傝矾鐢?MoE 涓撳鐨勭涓€灞傚拰绗簩灞傛潈閲?$W_{1,e}$銆?W_{2,e}$ 鍧囦负 MXFP4 E2M1锛?e$ 鐨勮寖鍥翠负 $[0,\text{localMoeExpertNum})$锛涘叡浜笓瀹舵潈閲嶇殑绗竴缁翠负 `sharedExpertNumPerRank`銆傛潈閲嶇缉鏀惧洜瀛愪负 E8M0銆?
+    绗簩闃舵锛圓4W4 GMM1銆丼wiGLU 涓庤緭鍑虹被鍨嬫彁鍗囷級锛?
+    绗竴灞傚垎缁勭煩闃典箻涓?A4W4锛?
     $$
     Z_x = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
           \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{1,e}^{(x)},S_{1,e}^{(x)}\right),
@@ -550,32 +432,28 @@
     U_e = Z_x \odot \sigma(Z_x) \odot Z_y.
     $$
 
-    这里不能继续把 SwiGLU 输出量化为 FP4。kernel 在 `QuantMode == E2M1_QUANT` 时，将 `SwigluQuantOutType` 指定为 `fp8_e4m3fn_t`，因此输出会提升为 MXFP8 E4M3：
-
+    杩欓噷涓嶈兘缁х画鎶?SwiGLU 杈撳嚭閲忓寲涓?FP4銆俴ernel 鍦?`QuantMode == E2M1_QUANT` 鏃讹紝灏?`SwigluQuantOutType` 鎸囧畾涓?`fp8_e4m3fn_t`锛屽洜姝よ緭鍑轰細鎻愬崌涓?MXFP8 E4M3锛?
     $$
     \hat{U}_e,\;S_{U,e}
     = \mathrm{Q}_{\mathrm{MX}}\!\left(U_e\right).
     $$
 
-    第三阶段（A8W4 GMM2）：
+    绗笁闃舵锛圓8W4 GMM2锛夛細
 
-    由于 SwiGLU 量化输出为 FP8 E4M3，而第二层权重仍为 FP4 E2M1，因此第二层矩阵乘实际为 A8W4，而不是 A4W4：
-
+    鐢变簬 SwiGLU 閲忓寲杈撳嚭涓?FP8 E4M3锛岃€岀浜屽眰鏉冮噸浠嶄负 FP4 E2M1锛屽洜姝ょ浜屽眰鐭╅樀涔樺疄闄呬负 A8W4锛岃€屼笉鏄?A4W4锛?
     $$
     O_e = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{U}_e,S_{U,e}\right)
           \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{2,e},S_{2,e}\right).
     $$
 
-    第四阶段（Combine 与加权合并）：
-
+    绗洓闃舵锛圕ombine 涓庡姞鏉冨悎骞讹級锛?
     $$
     Y[i] = \sum_{k=0}^{K-1} W[i,k] \cdot O[\pi(i,k)],
     $$
 
-    最终输出 $Y$ 的数据类型为 BF16。A4W4-FP 的完整数据类型流为：`BF16 -> MXFP4 E2M1 -> A4W4 GMM1 -> MXFP8 E4M3 -> A8W4 GMM2 -> BF16`。其中所有 MX 缩放因子的类型均为 `FLOAT8_E8M0`，量化粒度均为 32 个连续元素。
-    </details>
+    鏈€缁堣緭鍑?$Y$ 鐨勬暟鎹被鍨嬩负 BF16銆侫4W4-FP 鐨勫畬鏁存暟鎹被鍨嬫祦涓猴細`BF16 -> MXFP4 E2M1 -> A4W4 GMM1 -> MXFP8 E4M3 -> A8W4 GMM2 -> BF16`銆傚叾涓墍鏈?MX 缂╂斁鍥犲瓙鐨勭被鍨嬪潎涓?`FLOAT8_E8M0`锛岄噺鍖栫矑搴﹀潎涓?32 涓繛缁厓绱犮€?    </details>
 
-## 参数说明
+## 鍙傛暟璇存槑
 
 <table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
  <col style="width: 120px">
@@ -586,308 +464,271 @@
  </colgroup>
  <thead>
   <tr>
-   <th>参数名</th>
-   <th>输入/输出/属性</th>
-   <th>描述</th>
-   <th>数据类型</th>
-   <th>数据格式</th>
+   <th>鍙傛暟鍚?/th>
+   <th>杈撳叆/杈撳嚭/灞炴€?/th>
+   <th>鎻忚堪</th>
+   <th>鏁版嵁绫诲瀷</th>
+   <th>鏁版嵁鏍煎紡</th>
   </tr>
  </thead>
  <tbody>
   <tr>
    <td>context</td>
-   <td>输入</td>
-   <td>本卡通信域信息数据。</td>
+   <td>杈撳叆</td>
+   <td>鏈崱閫氫俊鍩熶俊鎭暟鎹€?/td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>x</td>
-   <td>输入</td>
-   <td>MoE层输入的token隐藏状态。</td>
+   <td>杈撳叆</td>
+   <td>MoE灞傝緭鍏ョ殑token闅愯棌鐘舵€併€?/td>
    <td>BF16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>topkIds</td>
-   <td>输入</td>
-   <td>专家索引矩阵，表示每个token选择的topK个专家。元素取值范围为[0, moeExpertNum)，且同一token选择的topK个专家不能重复。</td>
+   <td>杈撳叆</td>
+   <td>涓撳绱㈠紩鐭╅樀锛岃〃绀烘瘡涓猼oken閫夋嫨鐨則opK涓笓瀹躲€傚厓绱犲彇鍊艰寖鍥翠负[0, moeExpertNum)锛屼笖鍚屼竴token閫夋嫨鐨則opK涓笓瀹朵笉鑳介噸澶嶃€?/td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>topkWeights</td>
-   <td>输入</td>
-   <td>表示MoE模型的专家门控网络为当前输入Token选出的topK个专家所对应的门控权重系数。</td>
-   <td>FP32、BF16</td>
+   <td>杈撳叆</td>
+   <td>琛ㄧずMoE妯″瀷鐨勪笓瀹堕棬鎺х綉缁滀负褰撳墠杈撳叆Token閫夊嚭鐨則opK涓笓瀹舵墍瀵瑰簲鐨勯棬鎺ф潈閲嶇郴鏁般€?/td>
+   <td>FP32銆丅F16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>weight1</td>
-   <td>输入</td>
-   <td>MoE专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。路由 MoE 专家数为 <code>localMoeExpertNum</code>。</td>
-   <td>BF16、INT8、INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
-   <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
+   <td>杈撳叆</td>
+   <td>MoE涓撳缃戠粶绗竴绾挎€у眰鐨勬潈閲嶇煩闃碉紙鍖呮嫭闂ㄦ帶涓庝笂鎶曞奖锛夛紝鐢ㄤ簬灏嗚緭鍏ユ槧灏勮嚦涓棿缁村害锛岃緭鍑轰緵缁欐縺娲诲嚱鏁般€傝矾鐢?MoE 涓撳鏁颁负 <code>localMoeExpertNum</code>銆?/td>
+   <td>BF16銆両NT8銆両NT4銆丗LOAT8_E5M2銆丗LOAT8_E4M3FN銆丗LOAT4_E2M1</td>
+   <td>ND銆丗RACTAL_NZ銆丗ORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
   <tr>
    <td>weight2</td>
-   <td>输入</td>
-   <td>MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致。路由 MoE 专家数为 <code>localMoeExpertNum</code>。</td>
-   <td>BF16、INT8、INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
-   <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
+   <td>杈撳叆</td>
+   <td>MoE涓撳缃戠粶绗簩绾挎€у眰鐨勬潈閲嶇煩闃碉紝璐熻矗灏嗘縺娲诲悗鐨勪腑闂寸壒寰佹姇褰卞洖闅愯棌缁村害銆傛暟鎹被鍨嬩笌weight1涓€鑷淬€傝矾鐢?MoE 涓撳鏁颁负 <code>localMoeExpertNum</code>銆?/td>
+   <td>BF16銆両NT8銆両NT4銆丗LOAT8_E5M2銆丗LOAT8_E4M3FN銆丗LOAT4_E2M1</td>
+   <td>ND銆丗RACTAL_NZ銆丗ORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
   <tr>
    <td>weightScales1</td>
-   <td>可选输入</td>
-   <td>MoE专家网络第一线性层的权重矩阵的量化缩放因子。</td>
-   <td>FLOAT8_E8M0、UINT64</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>MoE涓撳缃戠粶绗竴绾挎€у眰鐨勬潈閲嶇煩闃电殑閲忓寲缂╂斁鍥犲瓙銆?/td>
+   <td>FLOAT8_E8M0銆乁INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>weightScales2</td>
-   <td>可选输入</td>
-   <td>MoE专家网络第二线性层的权重矩阵的量化缩放因子。</td>
-   <td>FLOAT8_E8M0、UINT64</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>MoE涓撳缃戠粶绗簩绾挎€у眰鐨勬潈閲嶇煩闃电殑閲忓寲缂╂斁鍥犲瓙銆?/td>
+   <td>FLOAT8_E8M0銆乁INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>bias1</td>
-   <td>可选输入</td>
-   <td>MoE专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>MoE涓撳缃戠粶绗竴绾挎€у眰鐨勫亸缃紝浠呬簬A8W4-INT閲忓寲鍦烘櫙涓嬮渶瑕佽鍙傛暟锛岀敤浜庣簿搴﹁ˉ鍋裤€?/td>
    <td>FP32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>bias2</td>
-   <td>可选输入</td>
-   <td>MoE专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>MoE涓撳缃戠粶绗簩绾挎€у眰鐨勫亸缃紝浠呬簬A8W4-INT閲忓寲鍦烘櫙涓嬮渶瑕佽鍙傛暟锛岀敤浜庣簿搴﹁ˉ鍋裤€?/td>
    <td>FP32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>xActiveMask</td>
-   <td>可选输入</td>
-   <td>表示token是否参与通信。</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>琛ㄧずtoken鏄惁鍙備笌閫氫俊銆?/td>
    <td>INT8</td>
    <td>ND</td>
   </tr>
     <tr>
    <td>sharedWeight1</td>
-   <td>可选输入</td>
-   <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
-   <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
-   <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>鍏变韩涓撳缃戠粶绗竴绾挎€у眰鐨勬潈閲嶇煩闃碉紙鍖呮嫭闂ㄦ帶涓庝笂鎶曞奖锛夛紝鐢ㄤ簬灏嗚緭鍏ユ槧灏勮嚦涓棿缁村害锛岃緭鍑轰緵缁欐縺娲诲嚱鏁般€?/td>
+   <td>FLOAT8_E5M2銆丗LOAT8_E4M3FN銆丗LOAT4_E2M1</td>
+   <td>ND銆丗RACTAL_NZ銆丗ORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
   <tr>
    <td>sharedWeight2</td>
-   <td>可选输入</td>
-   <td>共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致。</td>
-   <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
-   <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>鍏变韩涓撳缃戠粶绗簩绾挎€у眰鐨勬潈閲嶇煩闃碉紝璐熻矗灏嗘縺娲诲悗鐨勪腑闂寸壒寰佹姇褰卞洖闅愯棌缁村害銆傛暟鎹被鍨嬩笌weight1涓€鑷淬€?/td>
+   <td>FLOAT8_E5M2銆丗LOAT8_E4M3FN銆丗LOAT4_E2M1</td>
+   <td>ND銆丗RACTAL_NZ銆丗ORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
   <tr>
    <td>sharedWeightScales1</td>
-   <td>可选输入</td>
-   <td>共享专家网络第一线性层的权重矩阵的量化缩放因子。</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>鍏变韩涓撳缃戠粶绗竴绾挎€у眰鐨勬潈閲嶇煩闃电殑閲忓寲缂╂斁鍥犲瓙銆?/td>
    <td>FLOAT8_E8M0</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sharedWeightScales2</td>
-   <td>可选输入</td>
-   <td>共享专家网络第二线性层的权重矩阵的量化缩放因子。</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>鍏变韩涓撳缃戠粶绗簩绾挎€у眰鐨勬潈閲嶇煩闃电殑閲忓寲缂╂斁鍥犲瓙銆?/td>
    <td>FLOAT8_E8M0</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sharedBias1</td>
-   <td>可选输入</td>
-   <td>共享专家网络第一线性层的偏置，暂不支持。</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>鍏变韩涓撳缃戠粶绗竴绾挎€у眰鐨勫亸缃紝鏆備笉鏀寔銆?/td>
    <td>FP32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sharedBias2</td>
-   <td>可选输入</td>
-   <td>共享专家网络第二线性层的偏置，暂不支持。</td>
+   <td>鍙€夎緭鍏?/td>
+   <td>鍏变韩涓撳缃戠粶绗簩绾挎€у眰鐨勫亸缃紝鏆備笉鏀寔銆?/td>
    <td>FP32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>moeExpertNum</td>
-   <td>属性</td>
-   <td>MoE模型的总专家数量。</td>
+   <td>灞炴€?/td>
+   <td>MoE妯″瀷鐨勬€讳笓瀹舵暟閲忋€?/td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>epWorldSize</td>
-   <td>属性</td>
-   <td>专家并行通信域大小。</td>
+   <td>灞炴€?/td>
+   <td>涓撳骞惰閫氫俊鍩熷ぇ灏忋€?/td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>cclBufferSize</td>
-   <td>属性</td>
-   <td>CCL通信缓冲区大小。</td>
+   <td>灞炴€?/td>
+   <td>CCL閫氫俊缂撳啿鍖哄ぇ灏忋€?/td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>maxRecvTokenNum</td>
-   <td>可选属性</td>
-   <td>每个Rank最大可接收Token数。默认值为0。该值为0时，会按最大值bs*epWorldSize*min(topK,localMoeExpertNum)预留内存大小；不为0时，将按照输入值大小预留内存，该场景下需用户保证填入值大于等于每个rank最大可接收的Token数。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>姣忎釜Rank鏈€澶у彲鎺ユ敹Token鏁般€傞粯璁ゅ€间负0銆傝鍊间负0鏃讹紝浼氭寜鏈€澶у€糱s*epWorldSize*min(topK,localMoeExpertNum)棰勭暀鍐呭瓨澶у皬锛涗笉涓?鏃讹紝灏嗘寜鐓ц緭鍏ュ€煎ぇ灏忛鐣欏唴瀛橈紝璇ュ満鏅笅闇€鐢ㄦ埛淇濊瘉濉叆鍊煎ぇ浜庣瓑浜庢瘡涓猺ank鏈€澶у彲鎺ユ敹鐨凾oken鏁般€?/td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>dispatchQuantMode</td>
-   <td>可选属性</td>
-   <td>dispatch通信时量化模式。0表示非量化（A16W16场景），2表示INT8量化（A8W8-INT、A8W4-INT场景），4表示MXFP量化（A8W8-FP、A8W4-FP、A4W4-FP场景）。默认值为0。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>dispatch閫氫俊鏃堕噺鍖栨ā寮忋€?琛ㄧず闈為噺鍖栵紙A16W16鍦烘櫙锛夛紝2琛ㄧずINT8閲忓寲锛圓8W8-INT銆丄8W4-INT鍦烘櫙锛夛紝4琛ㄧずMXFP閲忓寲锛圓8W8-FP銆丄8W4-FP銆丄4W4-FP鍦烘櫙锛夈€傞粯璁ゅ€间负0銆?/td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>dispatchQuantOutDtype</td>
-   <td>可选属性</td>
-   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FLOAT8_E5M2）、24（FLOAT8_E4M3FN）、296（FLOAT4_E2M1）。默认值为DT_UNDEFINED。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>dispatch閲忓寲鍚庤緭鍑虹殑鏁版嵁绫诲瀷銆傛敮鎸?锛圛NT8锛夈€?3锛團LOAT8_E5M2锛夈€?4锛團LOAT8_E4M3FN锛夈€?96锛團LOAT4_E2M1锛夈€傞粯璁ゅ€间负DT_UNDEFINED銆?/td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>combineQuantMode</td>
-   <td>可选属性</td>
-   <td>combine通信时的量化模式。0表示非量化，3表示MXFP float8_e5m2类型，4表示MXFP float8_e4m3类型, 默认值为0。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>combine閫氫俊鏃剁殑閲忓寲妯″紡銆?琛ㄧず闈為噺鍖栵紝3琛ㄧずMXFP float8_e5m2绫诲瀷锛?琛ㄧずMXFP float8_e4m3绫诲瀷, 榛樿鍊间负0銆?/td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>commAlg</td>
-   <td>可选属性</td>
-   <td>预留参数，暂不支持。默认值为""。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>棰勭暀鍙傛暟锛屾殏涓嶆敮鎸併€傞粯璁ゅ€间负""銆?/td>
    <td>STRING</td>
    <td></td>
   </tr>
   <tr>
    <td>numMaxTokensPerRank</td>
-   <td>可选属性</td>
-   <td>每张卡上的token数量。当每个rank的numTokens不同时，为最大的numTokens大小。默认值为0。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>姣忓紶鍗′笂鐨則oken鏁伴噺銆傚綋姣忎釜rank鐨刵umTokens涓嶅悓鏃讹紝涓烘渶澶х殑numTokens澶у皬銆傞粯璁ゅ€间负0銆?/td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>activation</td>
-   <td>可选属性</td>
-   <td>激活函数类型。默认值为"swiglu"。当前仅支持"swiglu"。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>婵€娲诲嚱鏁扮被鍨嬨€傞粯璁ゅ€间负"swiglu"銆傚綋鍓嶄粎鏀寔"swiglu"銆?/td>
    <td>STRING</td>
    <td></td>
   </tr>
   <tr>
    <td>activationClamp</td>
-   <td>可选属性</td>
-   <td>激活函数输入的对称截断阈值，将输入张量限制在[-activationClamp, activationClamp]区间内。默认值为float最大值，表示不截断，值需≥0。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>婵€娲诲嚱鏁拌緭鍏ョ殑瀵圭О鎴柇闃堝€硷紝灏嗚緭鍏ュ紶閲忛檺鍒跺湪[-activationClamp, activationClamp]鍖洪棿鍐呫€傞粯璁ゅ€间负float鏈€澶у€硷紝琛ㄧず涓嶆埅鏂紝鍊奸渶鈮?銆?/td>
    <td>FLOAT</td>
    <td></td>
   </tr>
   <tr>
    <td>activationOutDtype</td>
-   <td>可选属性</td>
-   <td>激活函数输出的数据类型。默认值为DT_UNDEFINED。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>婵€娲诲嚱鏁拌緭鍑虹殑鏁版嵁绫诲瀷銆傞粯璁ゅ€间负DT_UNDEFINED銆?/td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>transposeWeight1</td>
-   <td>可选属性</td>
-   <td>weight1是否转置。默认值为false。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>weight1鏄惁杞疆銆傞粯璁ゅ€间负false銆?/td>
    <td>BOOL</td>
    <td></td>
   </tr>
   <tr>
    <td>transposeWeight2</td>
-   <td>可选属性</td>
-   <td>weight2是否转置。默认值为false。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>weight2鏄惁杞疆銆傞粯璁ゅ€间负false銆?/td>
    <td>BOOL</td>
    <td></td>
   </tr>
   <tr>
    <td>weight1Interleave</td>
-   <td>可选属性</td>
-   <td>weight1交错参数。预留参数，默认值为0。</td>
+   <td>鍙€夊睘鎬?/td>
+   <td>weight1浜ら敊鍙傛暟銆傞鐣欏弬鏁帮紝榛樿鍊间负0銆?/td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>y</td>
-   <td>输出</td>
-   <td>计算输出结果，数据类型与输入x相同。</td>
+   <td>杈撳嚭</td>
+   <td>璁＄畻杈撳嚭缁撴灉锛屾暟鎹被鍨嬩笌杈撳叆x鐩稿悓銆?/td>
    <td>BF16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertTokenNums</td>
-   <td>输出</td>
-   <td>本卡每个专家实际收到的token数量。</td>
+   <td>杈撳嚭</td>
+   <td>鏈崱姣忎釜涓撳瀹為檯鏀跺埌鐨則oken鏁伴噺銆?/td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
  </tbody>
 </table>
 
-## 约束说明
+## 绾︽潫璇存槑
 
-- **预留和非对外参数说明**：
-  - 参数表格中的部分参数、部分数据类型暂未对外提供，为预留或内部实现使用。接口参数的介绍及其约束在接口文档[MegaMoE算子接口文档](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)中详细说明。
-
-- **参数一致性约束**：
-  - 调用算子过程中使用的`moeExpertNum`、`maxRecvTokenNum`、`dispatchQuantMode`、`dispatchQuantOutDtype`、`numMaxTokensPerRank`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
-
-- **通信域和组网约束**：
-  - 所有卡的`epWorldSize`、`cclBufferSize`参数取值需保持一致。
-  - 通信域各节点的驱动版本应当相同。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机通信域要求交换机组网，不支持双机直连组网。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持UB Memory通信协议。
-- **参数约束**：
-  - **<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>**：
-    - 场景配套矩阵：
-
-      | 场景 | x | weight1 | weight2 | weightScales1 | weightScales2 | bias1 | bias2 | y | dispatchQuantMode | dispatchQuantOutDtype |
+- **棰勭暀鍜岄潪瀵瑰鍙傛暟璇存槑**锛?  - 鍙傛暟琛ㄦ牸涓殑閮ㄥ垎鍙傛暟銆侀儴鍒嗘暟鎹被鍨嬫殏鏈澶栨彁渚涳紝涓洪鐣欐垨鍐呴儴瀹炵幇浣跨敤銆傛帴鍙ｅ弬鏁扮殑浠嬬粛鍙婂叾绾︽潫鍦ㄦ帴鍙ｆ枃妗MegaMoE绠楀瓙鎺ュ彛鏂囨。](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)涓缁嗚鏄庛€?
+- **鍙傛暟涓€鑷存€х害鏉?*锛?  - 璋冪敤绠楀瓙杩囩▼涓娇鐢ㄧ殑`moeExpertNum`銆乣maxRecvTokenNum`銆乣dispatchQuantMode`銆乣dispatchQuantOutDtype`銆乣numMaxTokensPerRank`绛夊弬鏁板彇鍊硷紝鎵€鏈夊崱闇€淇濇寔涓€鑷达紝缃戠粶涓笉鍚屽眰涓篃闇€淇濇寔涓€鑷淬€?
+- **閫氫俊鍩熷拰缁勭綉绾︽潫**锛?  - 鎵€鏈夊崱鐨刞epWorldSize`銆乣cclBufferSize`鍙傛暟鍙栧€奸渶淇濇寔涓€鑷淬€?  - 閫氫俊鍩熷悇鑺傜偣鐨勯┍鍔ㄧ増鏈簲褰撶浉鍚屻€?  - <term>Atlas A2 璁粌绯诲垪浜у搧/Atlas A2 鎺ㄧ悊绯诲垪浜у搧</term>锛氬鏈洪€氫俊鍩熻姹備氦鎹㈡満缁勭綉锛屼笉鏀寔鍙屾満鐩磋繛缁勭綉銆?  - <term>Atlas A3 璁粌绯诲垪浜у搧/Atlas A3 鎺ㄧ悊绯诲垪浜у搧</term>锛氬鏈洪€氫俊鍩熻姹傚湪涓€涓秴鑺傜偣鍐咃紝涓嶆敮鎸佸弻鏈虹洿杩炵粍缃戝拰璺ㄨ秴鑺傜偣缁勭綉銆?  - <term>Ascend 950PR/Ascend 950DT</term>锛氫粎鏀寔UB Memory閫氫俊鍗忚銆?- **鍙傛暟绾︽潫**锛?  - **<term>Atlas A2 璁粌绯诲垪浜у搧/Atlas A2 鎺ㄧ悊绯诲垪浜у搧</term>銆?term>Atlas A3 璁粌绯诲垪浜у搧/Atlas A3 鎺ㄧ悊绯诲垪浜у搧</term>**锛?    - 鍦烘櫙閰嶅鐭╅樀锛?
+      | 鍦烘櫙 | x | weight1 | weight2 | weightScales1 | weightScales2 | bias1 | bias2 | y | dispatchQuantMode | dispatchQuantOutDtype |
       | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-      | A16W16 | BF16 | BF16 | BF16 | – | – | – | – | BF16 | 0 | – |
-      | A8W8-INT | BF16 | INT8 | INT8 | UINT64 | UINT64 | – | – | BF16 | 2 | 1（INT8） |
-      | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
+      | A16W16 | BF16 | BF16 | BF16 | 鈥?| 鈥?| 鈥?| 鈥?| BF16 | 0 | 鈥?|
+      | A8W8-INT | BF16 | INT8 | INT8 | UINT64 | UINT64 | 鈥?| 鈥?| BF16 | 2 | 1锛圛NT8锛?|
+      | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1锛圛NT8锛?|
 
-  - **<term>Ascend 950PR/Ascend 950DT</term>**：
-    - BS（x.dim0）支持[1, maxBS], maxBS = (8 * (totalUbSize - 48K)) / (topK * (64 + epWorldSize)), 其中totalUbSize为UB总大小，950系列产品该值支持到当前环境能申请的最大内存。
-    - H（x.dim1）支持1024、2048、3072、4096、5120、6144、7168、8192。
-    - topK（topkIds.dim1）支持[1, 32]。
-    - expertPerRank 范围 [1, 1024]。
-    - hiddenDim（weight1.dim1）仅支持1024、2048、3072、4096、7168。
-    - epWorldSize范围 [2, 1024]。
-    - moeExpertNum范围 [epWorldSize, 2048]，且moeExpertNum % epWorldSize == 0。
-    - maxRecvTokenNum范围 [0, BS × epWorldSize × min(topK, localMoeExpertNum)]。
-    - dispatchQuantOutDtype仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）或296（FLOAT4_E2M1）。
-    - 当前版本仅支持MXFP量化模式（dispatchQuantMode = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
-    - combineQuantMode取值为0、3、4，0表示非量化，3表示MXFP float8_e5m2类型，4表示MXFP float8_e4m3类型
-    - commAlg必须为空字符串""。
-    - y的数据类型与x相同。
-    - weight1的dim1（hiddenDim）必须等于weight2的dim2的二倍，这是因为SwiGLU激活需要将中间维度从hiddenDim减半为hiddenDim/2。
-    - localMoeExpertNum = moeExpertNum / epWorldSize；sharedExpertNumPerRank = sharedWeight1.dim0（未启用共享专家时为0）；expertPerRank = sharedExpertNumPerRank + localMoeExpertNum。
+  - **<term>Ascend 950PR/Ascend 950DT</term>**锛?    - BS锛坸.dim0锛夋敮鎸乕1, maxBS], maxBS = (8 * (totalUbSize - 48K)) / (topK * (64 + epWorldSize)), 鍏朵腑totalUbSize涓篣B鎬诲ぇ灏忥紝950绯诲垪浜у搧璇ュ€兼敮鎸佸埌褰撳墠鐜鑳界敵璇风殑鏈€澶у唴瀛樸€?    - H锛坸.dim1锛夋敮鎸?024銆?048銆?072銆?096銆?120銆?144銆?168銆?192銆?    - topK锛坱opkIds.dim1锛夋敮鎸乕1, 32]銆?    - expertPerRank 鑼冨洿 [1, 1024]銆?    - hiddenDim锛坵eight1.dim1锛変粎鏀寔1024銆?048銆?072銆?096銆?168銆?    - epWorldSize鑼冨洿 [2, 1024]銆?    - moeExpertNum鑼冨洿 [epWorldSize, 2048]锛屼笖moeExpertNum % epWorldSize == 0銆?    - maxRecvTokenNum鑼冨洿 [0, BS 脳 epWorldSize 脳 min(topK, localMoeExpertNum)]銆?    - dispatchQuantOutDtype浠呮敮鎸?3锛團LOAT8_E5M2锛夋垨24锛團LOAT8_E4M3FN锛夋垨296锛團LOAT4_E2M1锛夈€?    - 褰撳墠鐗堟湰浠呮敮鎸丮XFP閲忓寲妯″紡锛坉ispatchQuantMode = 4锛夛紝dispatch闃舵浣跨敤MX閫愮粍閲忓寲锛坓roup size = 32锛夛紝閲忓寲缂╂斁鍥犲瓙绫诲瀷涓篎LOAT8_E8M0銆?    - combineQuantMode鍙栧€间负0銆?銆?锛?琛ㄧず闈為噺鍖栵紝3琛ㄧずMXFP float8_e5m2绫诲瀷锛?琛ㄧずMXFP float8_e4m3绫诲瀷
+    - commAlg蹇呴』涓虹┖瀛楃涓?"銆?    - y鐨勬暟鎹被鍨嬩笌x鐩稿悓銆?    - weight1鐨刣im1锛坔iddenDim锛夊繀椤荤瓑浜巜eight2鐨刣im2鐨勪簩鍊嶏紝杩欐槸鍥犱负SwiGLU婵€娲婚渶瑕佸皢涓棿缁村害浠巋iddenDim鍑忓崐涓篽iddenDim/2銆?    - localMoeExpertNum = moeExpertNum / epWorldSize锛泂haredExpertNumPerRank = sharedWeight1.dim0锛堟湭鍚敤鍏变韩涓撳鏃朵负0锛夛紱expertPerRank = sharedExpertNumPerRank + localMoeExpertNum銆?
+  - **MXFP閲忓寲鍦烘櫙绾︽潫**锛?      - weight1 shape涓?localMoeExpertNum, hiddenDim, H)锛寃eight2 shape涓?localMoeExpertNum, H, hiddenDim/2)銆?      - weightScales1 shape涓?localMoeExpertNum, hiddenDim, CeilDiv(H, 64), 2)銆?      - weightScales2 shape涓?localMoeExpertNum, H, CeilDiv(hiddenDim/2, 64), 2)銆?      - sharedWeight1 shape涓?sharedExpertNumPerRank, hiddenDim, H)锛宻haredWeight2 shape涓?sharedExpertNumPerRank, H, hiddenDim/2)銆?      - sharedWeightScales1 shape涓?sharedExpertNumPerRank, hiddenDim, CeilDiv(H, 64), 2)锛宻haredWeightScales2 shape涓?sharedExpertNumPerRank, H, CeilDiv(hiddenDim/2, 64), 2)銆?      - weightScales1鐨刣im3鍜寃eightScales2鐨刣im3蹇呴』绛変簬2銆?      - A8W4-FP鍦烘櫙涓嬶紝FLOAT4_E2M1绫诲瀷鐨剋eight1蹇呴』浣跨敤FORMAT_FRACTAL_NZ_C0_32鏍煎紡銆?      - MXFP鍦烘櫙涓嬶紝dispatchQuantOutDtype=23鏃秝eight1鍜寃eight2蹇呴』涓篎LOAT8_E5M2锛宒ispatchQuantOutDtype=24鏃跺繀椤讳负FLOAT8_E4M3FN锛宒ispatchQuantOutDtype=296鏃跺繀椤讳负FLOAT4_E2M1銆?
+## 璋冪敤璇存槑
 
-  - **MXFP量化场景约束**：
-      - weight1 shape为(localMoeExpertNum, hiddenDim, H)，weight2 shape为(localMoeExpertNum, H, hiddenDim/2)。
-      - weightScales1 shape为(localMoeExpertNum, hiddenDim, CeilDiv(H, 64), 2)。
-      - weightScales2 shape为(localMoeExpertNum, H, CeilDiv(hiddenDim/2, 64), 2)。
-      - sharedWeight1 shape为(sharedExpertNumPerRank, hiddenDim, H)，sharedWeight2 shape为(sharedExpertNumPerRank, H, hiddenDim/2)。
-      - sharedWeightScales1 shape为(sharedExpertNumPerRank, hiddenDim, CeilDiv(H, 64), 2)，sharedWeightScales2 shape为(sharedExpertNumPerRank, H, CeilDiv(hiddenDim/2, 64), 2)。
-      - weightScales1的dim3和weightScales2的dim3必须等于2。
-      - A8W4-FP场景下，FLOAT4_E2M1类型的weight1必须使用FORMAT_FRACTAL_NZ_C0_32格式。
-      - MXFP场景下，dispatchQuantOutDtype=23时weight1和weight2必须为FLOAT8_E5M2，dispatchQuantOutDtype=24时必须为FLOAT8_E4M3FN，dispatchQuantOutDtype=296时必须为FLOAT4_E2M1。
-
-## 调用说明
-
-| 调用方式  | 样例代码                                  | 说明                                                     |
+| 璋冪敤鏂瑰紡  | 鏍蜂緥浠ｇ爜                                  | 璇存槑                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| PyTorch接口调用 | - | 通过[mega_moe](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)PyTorch接口方式调用mega_moe算子。 |
+| PyTorch鎺ュ彛璋冪敤 | - | 閫氳繃[mega_moe](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)PyTorch鎺ュ彛鏂瑰紡璋冪敤mega_moe绠楀瓙銆?|
