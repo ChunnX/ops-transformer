@@ -246,7 +246,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
 
 ## 确定性计算
 
-暂不支持确定性计算。
+默认支持确定性计算。
 
 ## 调用说明
 
