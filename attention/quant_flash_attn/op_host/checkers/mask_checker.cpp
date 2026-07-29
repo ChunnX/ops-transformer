@@ -159,7 +159,7 @@ ge::graphStatus MaskChecker::CheckMultiPara(const QfaTilingInfo &qfaInfo)
 ge::graphStatus MaskChecker::CheckMaskModeQuantMode(const QfaTilingInfo &qfaInfo)
 {
     // 文档约束: MxFP8 仅支持 mask_mode 取 0 和 3 (不支持 BAND=4)
-    if (qfaInfo.quantMode == QfaQuantMode::MXFP8_FP32) {
+    if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
         OP_CHECK_IF(qfaInfo.maskMode == static_cast<int64_t>(MaskMode::BAND),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         qfaInfo.opName, MASK_MODE_NAME.c_str(), std::to_string(qfaInfo.maskMode).c_str(),

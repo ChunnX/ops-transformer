@@ -43,7 +43,9 @@ std::string QfaAxisToSerialString(QfaAxis axis)
 
 std::string QfaQuantModeToSerialString(QfaQuantMode qfaQuantMode)
 {
-    const std::map<QfaQuantMode, std::string> quantMode2Str = {{QfaQuantMode::MXFP8_FP32, "MXFP8_FP32"}};
+    const std::map<QfaQuantMode, std::string> quantMode2Str = {
+        {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
+         "A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32"}};
 
     if (quantMode2Str.find(qfaQuantMode) != quantMode2Str.end()) {
         return quantMode2Str.at(qfaQuantMode);

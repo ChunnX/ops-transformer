@@ -248,7 +248,7 @@ ge::graphStatus QuantChecker::CheckQDescaleShape(const QfaTilingInfo &qfaInfo) c
 
     // 约束: MxFP8场景下 q_descale 两种 shape 对应不同使用场景
     //   4D 为 prefill 场景，layout_q_descale 必须为 TND；5D 为 decode 场景，layout_q_descale 必须为 N2TGD
-    if (qfaInfo.quantMode == QfaQuantMode::MXFP8_FP32) {
+    if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
         std::string shapeStr = Ops::Base::ToString(shape->GetStorageShape());
         bool isDecode = (qfaInfo.layoutQDescale == QfaLayout::N2TGD);
         if (dimNum == DIM_NUM_4) {
@@ -382,7 +382,7 @@ ge::graphStatus QuantChecker::CheckMultiPara(const QfaTilingInfo &qfaInfo)
 ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) const
 {
     // 文档约束(一致性校验): MxFP8 场景下, q/k/v descale 的 tensor_type 仅支持 FLOAT8_E8M0
-    if (qfaInfo.quantMode != QfaQuantMode::MXFP8_FP32) {
+    if (qfaInfo.quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
         return ge::GRAPH_SUCCESS;
     }
 
@@ -510,7 +510,7 @@ struct QfaLayoutConstraintConfig {
 };
 
 const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TABLE = {
-    {QfaQuantMode::MXFP8_FP32,
+    {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
      {{QfaLayout::TND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ}, {QfaLayout::TND}, {QfaLayout::TND, QfaLayout::N2TGD}}},
 };
 } // namespace

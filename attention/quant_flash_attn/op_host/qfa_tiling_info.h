@@ -145,7 +145,7 @@ enum class QfaAxis : uint32_t {
 };
 
 enum class QfaQuantMode : uint32_t {
-    MXFP8_FP32 = 1
+    A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1
 };
 
 enum class KvStorageMode : uint32_t {
@@ -237,7 +237,7 @@ public:
     uint64_t totalLseSize = 0;
 
     // Quant Param
-    QfaQuantMode quantMode = QfaQuantMode::MXFP8_FP32;
+    QfaQuantMode quantMode = QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32;
 
     // PageAttention
     bool pageAttentionFlag = false;

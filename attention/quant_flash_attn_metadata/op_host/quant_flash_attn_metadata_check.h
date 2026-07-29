@@ -204,7 +204,8 @@ QuantFlashAttnMetadataCheck::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqle
             // 文档约束: layout_kv不为TND且不为PA场景时, seqused_kv与max_seqlen_kv至少传入其中一个
             // (-1表示max_seqlen_kv未传)
             CHECK_COND(((maxSeqlenKv >= 0) || IsTensorExist(sequsedKvOptional)), ACLNN_ERR_RUNTIME_ERROR,
-                       "When layoutKv is not TND and not PA, at least one of maxSeqlenKv or sequsedKv must be provided");
+                       "When layoutKv is not TND and not PA, at least one of maxSeqlenKv or "
+                       "sequsedKv must be provided");
         }
     }
     return ACLNN_SUCCESS;
@@ -232,7 +233,8 @@ QuantFlashAttnMetadataCheck::CheckConsistency(int64_t batchSize, int64_t numHead
                "sequsedKvOptional is not valid!");
 
     CHECK_COND((numHeadsQ % numHeadsKv == 0), ACLNN_ERR_RUNTIME_ERROR,
-               "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld", numHeadsQ, numHeadsKv);
+               "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld",
+               numHeadsQ, numHeadsKv);
 
     return ACLNN_SUCCESS;
 }
