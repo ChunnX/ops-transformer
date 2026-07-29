@@ -547,7 +547,7 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
             }
         } else {
             uint64_t totalElements = keyStridesVec_[0] * static_cast<uint64_t>(shape.GetDim(0));
-            uint64_t shapeSize = context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize();
+            uint64_t shapeSize = context_->GetOptionalInputTensor(KEY_INDEX)->GetShapeSize();
             keyNonContiguous = (shapeSize != totalElements);
         }
     }
