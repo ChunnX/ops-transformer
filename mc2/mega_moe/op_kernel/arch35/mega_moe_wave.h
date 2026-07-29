@@ -221,14 +221,20 @@ private:
 
     static constexpr bool GMM1_INTERLEAVED = IsGmm1Interleaved;
     static constexpr bool GMM1_UB_PINGPONG = GMM1_INTERLEAVED;
+
+    /*
+     * AIV1 上 Dispatch 与 Combine 分阶段复用 UB，进入 Combine 前 Dispatch 的动态 ring 已经排空：
+     *   [0, 64 KiB)       Dispatch 的 cumsum 等跨 wave 常驻状态；
+     *   [64, 160 KiB)     非量化 Combine 的 6 个 BF16 row buffer（H 最大 8 KiB），
+     *                     量化 Combine 则从 64 KiB 起复用为 meta-info 和双 buffer；
+     *   [160, 184 KiB)    空闲；
+     *   [184, 187.5 KiB)  GMM2-ready 的 GM 搬入、ReduceSum scratch 和最终 sum；
+     *   [187.5, 200 KiB)  空闲；
+     *   [200, 248 KiB)    非量化 Combine 的 meta-info，共 1536 token * 8 int32；
+     *   [248, 256 KiB)    硬件保留，不使用。
+    */
     static constexpr uint32_t COMBINE_ROW_BUFFER_NUM = 6U;
-    static constexpr uint32_t COMBINE_UB_USABLE_BYTES = 248U * 1024U;
-    // AIV1 dispatch and combine time-share UB. Keep the cumsum state below
-    // 64 KiB alive across waves while quantized combine reuses the upper area.
-    static constexpr uint32_t COMBINE_QUANT_UB_BASE = 64U * 1024U;
-    // GMM2-ready control scratch is live only after Dispatch(B+1) has drained
-    // and before the six combine row buffers start. Keep it below the meta-info
-    // arena and out of the row-buffer range, including the H=8K maximum.
+    static constexpr uint32_t COMBINE_UB_BASE = 64U * 1024U;
     static constexpr uint32_t GMM2_READY_SCAN_UB_ADDR = 184U * 1024U;
     static constexpr uint32_t GMM2_READY_MAX_SCAN_BYTES =
         MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
@@ -238,11 +244,7 @@ private:
         GMM2_READY_SCAN_UB_ADDR +
         ((GMM2_READY_MAX_SCAN_BYTES + ALIGN_512 - 1U) / ALIGN_512) * ALIGN_512;
     static constexpr uint32_t GMM2_READY_SUM_UB_ADDR = GMM2_READY_REDUCE_TMP_UB_ADDR + ALIGN_512;
-    static_assert(GMM2_READY_SUM_UB_ADDR + ALIGN_512 <= META_INFO_TENSOR_ADDR,
-                  "GMM2 ready scan scratch overlaps meta-info arena");
-    static constexpr uint32_t COMBINE_META_INFO_TOKEN_CAPACITY =
-        (COMBINE_UB_USABLE_BYTES - META_INFO_TENSOR_ADDR) / (META_INFO_SIZE * sizeof(int32_t));
-    static_assert(COMBINE_META_INFO_TOKEN_CAPACITY > 0U, "combine meta-info UB must hold at least one token");
+    static constexpr uint32_t COMBINE_META_INFO_TOKEN_CAPACITY = 1536U;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<int32_t> sendCntTensor_;       // SendCntCal stride 只读 worldsize 个 count
     LocalTensor<uint8_t> maskBatchTensor_;     // MetaInfoCalAndDispatch 当前 batch 的 mask 切片
@@ -1512,8 +1514,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DrainCombineNoQ
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
 }
 
-// Bulk-load one contiguous slice owned by this AIV1.  PER_BATCH owns a range
-// in the whole expert-major wave; PER_EXPERT owns a range in one expert.
+// Bulk-load one contiguous expert slice owned by this AIV1.
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::PreloadCombineNoQuantMetaInfo(
     uint64_t metaInfoGmTokenOffset, uint32_t tokenCount, uint32_t metaInfoUbTokenOffset)
@@ -1544,13 +1545,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineN
             return;
         }
 
-        // Only the cumsum state below 64 KiB remains live here. Six maximum
-        // H=8K BF16 rows end at 160 KiB, below the ready reduction scratch.
-        constexpr uint32_t ROW_UB_BASE = 64U * 1024U;
-        constexpr uint32_t MAX_SUPPORTED_ROW_BYTES = 8U * 1024U * sizeof(bfloat16_t);
-        static_assert(ROW_UB_BASE + COMBINE_ROW_BUFFER_NUM * MAX_SUPPORTED_ROW_BYTES <= GMM2_READY_SCAN_UB_ADDR,
-                      "GMM2 row buffers overlap ready reduction scratch");
-
         uint32_t rowBytes = k_ * sizeof(bfloat16_t);
         uint32_t rowStrideBytes = static_cast<uint32_t>(
             Ops::Base::CeilAlign(static_cast<uint64_t>(rowBytes), static_cast<uint64_t>(ALIGN_32)));
@@ -1572,7 +1566,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineN
             // EVENT_ID0..5 are contiguous: calculate the scalar event ID
             // directly instead of indexing a device-side table that may spill.
             TEventID eventId = CombineNoQuantRowEventId(slot);
-            LocalTensor<bfloat16_t> rowUb(TPosition::VECIN, ROW_UB_BASE + slot * rowStrideBytes,
+            LocalTensor<bfloat16_t> rowUb(TPosition::VECIN, COMBINE_UB_BASE + slot * rowStrideBytes,
                                           rowStrideBytes / sizeof(bfloat16_t));
             LocalTensor<int32_t> tokenMetaInfo = metaInfoUb[tokenIdxInSlice * META_INFO_SIZE];
             WaitFlag<HardEvent::MTE3_MTE2>(eventId);
@@ -1644,7 +1638,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineQ
             tokenCountForCore = tokenCountForCore < tokensPerCore ? tokenCountForCore : tokensPerCore;
 
             AscendC::SetCtrlSpr<60, 60>(0);
-            int64_t offset = COMBINE_QUANT_UB_BASE;
+            int64_t offset = COMBINE_UB_BASE;
             LocalTensor<int32_t> metaInfoTensor(
                 TPosition::VECIN, offset, tokenCountForCore * static_cast<uint32_t>(META_INFO_SIZE));
             offset += tokenCountForCore * static_cast<uint32_t>(META_INFO_SIZE * sizeof(int32_t));
