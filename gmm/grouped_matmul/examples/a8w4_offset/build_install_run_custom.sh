@@ -12,7 +12,22 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../../../.." && pwd)"
 CANN_PATH="${ASCEND_HOME_PATH:-/usr/local/Ascend/cann}"
 VENDOR_NAME="${VENDOR_NAME:-a8w4test}"
 VENDOR_DIR="${CANN_PATH}/opp/vendors/${VENDOR_NAME}_transformer"
-PACKAGE="${REPO_ROOT}/build_out/cann-ops-transformer-${VENDOR_NAME}_linux-aarch64.run"
+HOST_MACHINE="$(uname -m)"
+case "${HOST_MACHINE}" in
+  x86_64|amd64)
+    PACKAGE_ARCH="x86_64"
+    CANN_DEVLIB_ARCH="x86_64-linux"
+    ;;
+  aarch64|arm64)
+    PACKAGE_ARCH="aarch64"
+    CANN_DEVLIB_ARCH="aarch64-linux"
+    ;;
+  *)
+    echo "unsupported host architecture: ${HOST_MACHINE}" >&2
+    exit 2
+    ;;
+esac
+PACKAGE="${REPO_ROOT}/build_out/cann-ops-transformer-${VENDOR_NAME}_linux-${PACKAGE_ARCH}.run"
 TEST_BIN="${REPO_ROOT}/build_out/test_aclnn_a8w4_offset_custom"
 JOBS="${JOBS:-$(nproc)}"
 DEQUANT_MODE="${A8W4_DEQUANT_MODE:-perchannel}"
@@ -46,7 +61,7 @@ build_test() {
     -I"${VENDOR_DIR}/op_api/include" -I"${VENDOR_DIR}/op_api/include/aclnnop" \
     -L"${VENDOR_DIR}/op_api/lib" -Wl,-rpath,"${VENDOR_DIR}/op_api/lib" \
     -L"${CANN_PATH}/lib64" -Wl,-rpath,"${CANN_PATH}/lib64" \
-    -Wl,-rpath-link,"${CANN_PATH}/aarch64-linux/devlib" \
+    -Wl,-rpath-link,"${CANN_PATH}/${CANN_DEVLIB_ARCH}/devlib" \
     -Wl,--allow-shlib-undefined \
     -lcust_opapi -lopapi_math -lopapi -lascendcl -lnnopbase -lc_sec -lpthread \
     -o "${TEST_BIN}"
