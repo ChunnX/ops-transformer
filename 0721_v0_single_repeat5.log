@@ -1,0 +1,26 @@
+========== V0 SINGLE RUN 1 ==========
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+========== V0 SINGLE RUN 2 ==========
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+========== V0 SINGLE RUN 3 ==========
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[00] bsnd_b1_s1_64_k_1024 PRECISION_FAIL dQ_norm=2.77e-03 dK_norm=2.27e-03 dW_norm=4.16e-03 Loss_norm=1.70e-03
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+========== V0 SINGLE RUN 4 ==========
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+========== V0 SINGLE RUN 5 ==========
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9

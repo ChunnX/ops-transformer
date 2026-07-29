@@ -1,0 +1,52 @@
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_64_k_1024: suite=core kind=coverage layout=BSND B=1 S1=64 S2=1024 N1=64 Nidx1=32 K=1024 valid_k=[961,1024] exec_k=1024 scatter_exec_k=1024 invalid=2016 path=tail-protected dtype=bfloat16
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[DEBUG_TASK] selected b=0 q=23 kReal=984 full_valid=False
+[DEBUG_TASK] GatherKey_ws: shape=(1024, 512), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyRope_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyIndex_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] bmm1Res: shape=(64, 1024), nonfinite=0, finite_abs_max=1.097905e+02
+[DEBUG_TASK] bmm2Res: shape=(32, 1024), nonfinite=0, finite_abs_max=4.818316e+01
+[DEBUG_TASK] PReduced: shape=(1024,), nonfinite=0, finite_abs_max=1.935794e-03
+[DEBUG_TASK] SoftmaxI: shape=(1024,), nonfinite=0, finite_abs_max=9.999874e-01
+[DEBUG_TASK] dWeightOut: shape=(32,), nonfinite=0, finite_abs_max=2.300000e+01
+[DEBUG_TASK] reluGradRes: shape=(32, 1024), nonfinite=0, finite_abs_max=1.914062e+00
+[DEBUG_TASK] GatherKey_ws vs host gather (valid K): max_diff=3.296875e+00, mean_diff=2.761926e-03, norm_rel=5.882401e-02, nonfinite=0
+[DEBUG_TASK] GatherKeyRope_ws vs host gather (valid K): max_diff=3.031250e+00, mean_diff=2.037300e-03, norm_rel=7.232632e-02, nonfinite=0
+[DEBUG_TASK] BMM1 vs Query @ GatherKey.T plus Rope (valid K): max_diff=4.577637e-05, mean_diff=2.328678e-06, norm_rel=1.576923e-07, nonfinite=0
+[DEBUG_TASK] BMM1 host-gather cross-check (valid K): max_diff=5.896722e+01, mean_diff=7.949449e-02, norm_rel=6.037637e-02, nonfinite=0
+[DEBUG_TASK] GatherKeyIndex_ws vs host gather (valid K): max_diff=3.328125e+00, mean_diff=3.881830e-03, norm_rel=6.878654e-02, nonfinite=0
+[DEBUG_TASK] bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T (valid K): max_diff=6.675720e-06, mean_diff=1.528343e-07, norm_rel=6.442205e-08, nonfinite=0
+[DEBUG_TASK] bmm2 host-gather cross-check (valid K): max_diff=2.720971e+01, mean_diff=2.289583e-02, norm_rel=6.895755e-02, nonfinite=0
+[DEBUG_TASK] PReduced vs BMM1 formula: max_diff=4.656613e-10, mean_diff=8.998313e-11, norm_rel=1.217582e-07, nonfinite=0
+[DEBUG_TASK] SoftmaxI vs BMM2 formula: max_diff=1.909939e-10, mean_diff=1.876424e-13, norm_rel=1.909977e-10, nonfinite=0
+[DEBUG_TASK] dWeightOut vs BMM2/P/SY formula: max_diff=5.428505e-02, mean_diff=1.038358e-02, norm_rel=1.858241e-03, nonfinite=0
+[DEBUG_TASK] reluGradRes vs BF16 formula: max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] C2 dQueryAccum vs stored reluGrad: max_diff=2.384186e-06, mean_diff=5.900030e-08, norm_rel=2.585845e-07, nonfinite=0
+[DEBUG_TASK] C2 dk_partial vs stored reluGrad: max_diff=2.384186e-07, mean_diff=1.819949e-11, norm_rel=1.019587e-08, nonfinite=0
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=3.125000e-02 mean_abs=8.112423e-04 mean_rel=8.557372e-02 norm_rel=2.712383e-03
+  dKeyIndex    max_abs=6.250000e-02 mean_abs=8.133932e-04 mean_rel=2.003241e-01 norm_rel=2.236464e-03
+  dWeights     max_abs=2.500000e-01 mean_abs=2.080567e-02 mean_rel=1.714870e-02 norm_rel=3.977479e-03
+  Loss         max_abs=1.246765e+00 mean_abs=1.246765e+00 mean_rel=1.753852e-03 norm_rel=1.753852e-03
+  batch=0 dQueryIndex=2.71e-03 dKeyIndex=2.24e-03 dWeights=3.98e-03
+  query诊断：launch_cores=24 tasks_per_core=3 first_failed=b=0 q=0 task=0 failed=33/64
+    b= 0 q=   0 task=   0 round= 0 core= 0 kReal=  961 dQ_norm=3.06e-03 dW_norm=4.25e-03
+    b= 0 q=   1 task=   1 round= 0 core= 1 kReal=  962 dQ_norm=3.12e-03 dW_norm=3.61e-03
+    b= 0 q=  23 task=  23 round= 0 core=23 kReal=  984 dQ_norm=3.15e-03 dW_norm=4.38e-03
+    b= 0 q=  24 task=  24 round= 1 core= 0 kReal=  985 dQ_norm=4.02e-03 dW_norm=4.97e-03
+    b= 0 q=  25 task=  25 round= 1 core= 1 kReal=  986 dQ_norm=2.14e-03 dW_norm=3.99e-03
+    b= 0 q=  47 task=  47 round= 1 core=23 kReal= 1008 dQ_norm=3.28e-03 dW_norm=5.24e-03
+    b= 0 q=  48 task=  48 round= 2 core= 0 kReal= 1009 dQ_norm=3.48e-03 dW_norm=5.02e-03
+    b= 0 q=  49 task=  49 round= 2 core= 1 kReal= 1010 dQ_norm=2.75e-03 dW_norm=4.66e-03
+    b= 0 q=  62 task=  62 round= 2 core=14 kReal= 1023 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  63 task=  63 round= 2 core=15 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+  query最差：b0q33(task=33,dQ=3.9e-03,dW=7.6e-03), b0q4(task=4,dQ=4.4e-03,dW=7.5e-03), b0q31(task=31,dQ=3.8e-03,dW=7.4e-03), b0q2(task=2,dQ=3.1e-03,dW=6.9e-03), b0q46(task=46,dQ=3.1e-03,dW=6.6e-03), b0q3(task=3,dQ=3.8e-03,dW=6.5e-03), b0q10(task=10,dQ=2.8e-03,dW=6.5e-03), b0q45(task=45,dQ=3.8e-03,dW=6.4e-03), b0q26(task=26,dQ=3.6e-03,dW=6.3e-03), b0q35(task=35,dQ=3.6e-03,dW=6.2e-03)
+[00] bsnd_b1_s1_64_k_1024 PASS dQ_norm=2.71e-03 dK_norm=2.24e-03 dW_norm=3.98e-03 Loss_norm=1.75e-03
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
