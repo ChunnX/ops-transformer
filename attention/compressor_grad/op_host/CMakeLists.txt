@@ -45,6 +45,13 @@ if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE compressor_grad ACLNNTYPE aclnn_exclude)
 endif()
 
+# TODO 临时规避写法，解决和compressor同时编译时报错
+if(NOT BUILD_OPS_RTY_KERNEL AND DEFINED PYPTO_GEN_DIR)
+    add_tiling_modules()
+    target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${PYPTO_GEN_DIR})
+endif()
+# TODO 临时规避写法，解决和compressor同时编译时报错
+
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_tiling_modules()
 endif()

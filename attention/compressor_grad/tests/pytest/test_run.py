@@ -254,6 +254,9 @@ def npu_test(case, device):
     if cache_mode == 1:
         block_table_npu = torch.zeros(batchSize, max_block_num_per_batch,
                                       device="npu:{}".format(DEVICE_ID), dtype=torch.int32)
+    else:
+        block_table_npu = torch.zeros(batchSize,
+                                      device="npu:{}".format(DEVICE_ID), dtype=torch.int32)
 
     if layoutId == 1:  # BSH
         x_npu_input = xNpu.view(batchSize, seqSize, hiddenSize)

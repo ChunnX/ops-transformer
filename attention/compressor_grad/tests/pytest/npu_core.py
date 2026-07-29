@@ -107,7 +107,7 @@ class NPUBackend:
         cu_seqlens = inputs.get("cu_seqlens")
         seqused = inputs.get("seqused")
         start_pos = inputs.get("start_pos")
-        block_table = inputs.get("block_table") if cache_mode == 1 else None
+        block_table = inputs.get("block_table")
 
         x = x.to(self._device).detach()
         wkv = wkv.to(self._device).detach()
