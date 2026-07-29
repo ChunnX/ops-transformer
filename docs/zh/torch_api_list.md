@@ -56,3 +56,4 @@
 |[sparse_flash_mla_grad](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_grad.md)|计算`SparseFlashMla`训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。需与`sparse_flash_mla_grad_metadata`配套使用。 |-|默认确定性实现|
 |[sparse_lightning_indexer_kl_loss_grad](../../torch_extension/cann_ops_transformer/docs/zh/sparse_lightning_indexer_kl_loss_grad.md)| Lightning Indexer KL Loss训练场景下的反向输出。需与`sparse_lightning_indexer_kl_loss_grad_metadata`配套使用。|默认确定性实现|默认确定性实现|
 |[dense_lightning_indexer_kl_loss_grad](../../torch_extension/cann_ops_transformer/docs/zh/dense_lightning_indexer_kl_loss_grad.md)| Lightning Indexer KL Loss训练Dense场景下的反向输出。需与`dense_lightning_indexer_kl_loss_grad_metadata`配套使用。| - |默认确定性实现|
+|[stem_oam_prep_paged_kv](../../torch_extension/cann_ops_transformer/docs/zh/stem_oam_prep_paged_kv.md)| 大模型推理动态稀疏注意力机制的前置评分模块，为block-sparse-attention的前置评分模块。| - |默认确定性实现|
