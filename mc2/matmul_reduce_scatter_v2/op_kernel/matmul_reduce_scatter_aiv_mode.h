@@ -98,7 +98,7 @@ private:
     GM_ADDR gm_a_align;
     GM_ADDR gm_b_align;
     DequantRunner<biasType, cType> dequant_runner;
-    Arch::Resource<Arch::Ascend950> resource;
+    Arch::Resource<MatmulReduceScatterArchTag> resource;
 };
 
 template <TemplateMMReduceScatterV2Class, typename Derived>
@@ -172,7 +172,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
         int32_t peer_mem_m = m0 * loop_num_per_comm * MAX_BLOCK_COUNT;
         uint32_t layout_b_row = (TB && !weight_nz) ? static_cast<uint32_t>(k_align) : static_cast<uint32_t>(k);
         uint32_t layout_b_col = (TB || weight_nz) ? static_cast<uint32_t>(n) : static_cast<uint32_t>(n_align);
-        using ArchTag = Arch::Ascend950;
+        using ArchTag = MatmulReduceScatterArchTag;
         constexpr bool ENABLE_UNIT_FLAG = false;
         constexpr bool ENABLE_SHUFFLE_K = true;
         constexpr bool aicCalBias = !quantFlag && hasBias; // 如果计算量化后的矩阵乘，bias不由CatlassMatmul负责
@@ -196,8 +196,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
 
         constexpr int32_t L1TileShapeK = quantFlag ? TILE_SHAPE_512 : TILE_SHAPE_256;
         constexpr int32_t L0TileShapeK = quantFlag ? TILE_SHAPE_128 : TILE_SHAPE_64;
-        using DispatchPolicy = std::conditional_t<aicCalBias, Gemm::MmadPingpongBias<ArchTag, ENABLE_UNIT_FLAG>,
-                                                  Gemm::MmadPreload<ArchTag, ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>>;
+        using DispatchPolicy = Gemm::MatmulReduceScatterDispatchPolicy<
+            aicCalBias, ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>;
         using AType_ = Gemm::GemmType<ElementA, LayoutA>;
         using CType_ = Gemm::GemmType<ElementC, LayoutC>;
         using BiasType_ = std::conditional_t<aicCalBias, Gemm::GemmType<ElementBias, LayoutBias>, void>;
@@ -228,8 +228,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
             if (m0 == TILE_SHAPE_128) {
                 using L1TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, L0TileShapeK>;
-                using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_,
-                                                            CType_, BiasType_, TileCopy>;
+                using BlockMmadOpt = Gemm::Block::MatmulReduceScatterBlockMmad<
+                    DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
                 using MatmulKernel =
                     Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
                 typename MatmulKernel::Params params{processSize,
@@ -257,8 +257,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
             } else {
                 using L1TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L0TileShapeK>;
-                using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_,
-                                                            CType_, BiasType_, TileCopy>;
+                using BlockMmadOpt = Gemm::Block::MatmulReduceScatterBlockMmad<
+                    DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
                 using MatmulKernel =
                     Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
                 typename MatmulKernel::Params params{processSize,
@@ -314,8 +314,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
             if (m0 == TILE_SHAPE_128) {
                 using L1TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, L0TileShapeK>;
-                using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_,
-                                                            CType_, BiasType_, TileCopy>;
+                using BlockMmadOpt = Gemm::Block::MatmulReduceScatterBlockMmad<
+                    DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
                 using MatmulKernel =
                     Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
                 typename MatmulKernel::Params colMajorParams{processSize,
@@ -343,8 +343,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
             } else {
                 using L1TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L0TileShapeK>;
-                using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_,
-                                                            CType_, BiasType_, TileCopy>;
+                using BlockMmadOpt = Gemm::Block::MatmulReduceScatterBlockMmad<
+                    DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
                 using MatmulKernel =
                     Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
                 typename MatmulKernel::Params colMajorParams{processSize,

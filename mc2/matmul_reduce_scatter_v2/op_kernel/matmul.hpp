@@ -16,6 +16,7 @@
 #ifndef CATLASS_GEMM_KERNEL_MATMUL_REDUCE_SCATTER_AIV_MODE_HPP
 #define CATLASS_GEMM_KERNEL_MATMUL_REDUCE_SCATTER_AIV_MODE_HPP
 
+#include "matmul_reduce_scatter_catlass.h"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/arch/cross_core_sync.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/epilogue/tile/copy_gm_to_ub.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/epilogue/tile/copy_ub_to_gm.hpp"
@@ -77,8 +78,8 @@ public:
     using ElementC = typename BlockMmad::ElementC;
     using LayoutC = typename BlockMmad::LayoutC;
 
-    using FixpipeBlockMmad = Gemm::Block::FixpipeBlockMmad<Gemm::MmadPreload<ArchTag, false, false>, L1TileShape,
-                                                           L0TileShape, LayoutA, LayoutB, LayoutC>;
+    using FixpipeBlockMmad = Gemm::Block::FixpipeBlockMmad<
+        Gemm::MatmulReduceScatterPreloadPolicy<false, false>, L1TileShape, L0TileShape, LayoutA, LayoutB, LayoutC>;
 
     /// Parameters structure
     struct Params {

@@ -16,6 +16,7 @@
 #ifndef CATLASS_GEMM_KERNEL_MATMUL_REDUCE_SCATTER_AIV_MODE_SMALLM_HPP
 #define CATLASS_GEMM_KERNEL_MATMUL_REDUCE_SCATTER_AIV_MODE_SMALLM_HPP
 
+#include "matmul_reduce_scatter_catlass.h"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/catlass.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/coord.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass/gemm_coord.hpp"
@@ -77,8 +78,8 @@ public:
     using ElementAInt8 = int8_t;
     using ElementBInt8 = int8_t;
     using ElementCHalf = half;
-    using FixpipeBlockMmad = Gemm::Block::FixpipeBlockMmad<Gemm::MmadPreload<ArchTag, false, false>, L1TileShape,
-                                                           L0TileShape, LayoutA, LayoutB, LayoutC>;
+    using FixpipeBlockMmad = Gemm::Block::FixpipeBlockMmad<
+        Gemm::MatmulReduceScatterPreloadPolicy<false, false>, L1TileShape, L0TileShape, LayoutA, LayoutB, LayoutC>;
 
     /// Parameters structure
     struct Params {
