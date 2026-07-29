@@ -37,6 +37,7 @@ public:
     using MX_DATA_DST_T = std::conditional_t<QLIV2T::isMxFp8, mx_fp8_e4m3_t, MX_DATA_SRC_T>;
     using L0_Q_T = std::conditional_t<QLIV2T::isMx, MX_DATA_DST_T, Q_T>;
     using L0_K_T = std::conditional_t<QLIV2T::isMx, MX_DATA_DST_T, K_T>;
+    using CL0_T = std::conditional_t<std::is_same_v<QK_T, int32_t>, int32_t, float>;
 
     __aicore__ inline QLIV2Matmul(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -123,7 +124,7 @@ protected:
     LocalTensor<L0_K_T> keyL0_;
 
     TBuf<TPosition::CO1> bufL0C_;
-    LocalTensor<QK_T> cL0_;
+    LocalTensor<CL0_T> cL0_;
 
     TBuf<TPosition::VECCALC> bufUB_;
     LocalTensor<QK_T> mm1ResUB_;
@@ -187,11 +188,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
     keyL0_ = bufKeyL0_.Get<L0_K_T>();
 
     pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(float));
-    if constexpr (std::is_same_v<QK_T, int32_t>) {
-        cL0_ = bufL0C_.Get<int32_t>();
-    } else {
-        cL0_ = bufL0C_.Get<float>();
-    }
+    cL0_ = bufL0C_.Get<CL0_T>();
 }
 
 template <typename QLIV2T>
@@ -676,10 +673,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
             fixpipeParams.params.dstNdStride =
                 constInfo_.s2BaseSize * constInfo_.mBaseSize / 2; // s2BasicBlock_ * M_BASE_SIZE / 2
         }
-        Fixpipe<QK_T, QK_T, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
-                                                    // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
-                                                    cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
-                                                    fixpipeParams);
+        Fixpipe<QK_T, CL0_T, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
+                                                     // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
+                                                     cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
+                                                     fixpipeParams);
     } else {
         uint32_t nSize = CeilAlign(s2L0RealSize, static_cast<uint64_t>(UB_BLOCK / sizeof(QK_T)));
         // 有效数据不足16行，只需输出部分行即可; L0C上bmm1结果矩阵M方向size必须是偶数
@@ -699,11 +696,11 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         fixpipeParams.quantPre = F322BF16;
         fixpipeParams.reluEn = true;
         fixpipeParams.subBlockId = 0;
-        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
+        Fixpipe<QK_T, CL0_T, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
                                                      cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
 
         fixpipeParams.subBlockId = 1;
-        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(
+        Fixpipe<QK_T, CL0_T, QLIV2_CFG_ROW_MAJOR_UB>(
             mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
             cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + mSize / 2 * 16], fixpipeParams);
     }
