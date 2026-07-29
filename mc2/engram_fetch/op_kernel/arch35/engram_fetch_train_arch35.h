@@ -311,7 +311,7 @@ __aicore__ inline void EngramFetchTrainArch35::InitWorkspaceLayout(const EngramF
     recvDataGM_ = workspaceGM_ + wsOffset;
     wsOffset += static_cast<uint64_t>(numTokens_) * static_cast<uint64_t>(hiddenBytes_);
     counterScratchGM_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(tilingData->aivNum) * UB_ALIGN;
+    wsOffset += static_cast<uint64_t>(totalBlocks_) * UB_ALIGN;
     flagScratchGM_ = workspaceGM_ + wsOffset;
 }
 
@@ -930,7 +930,6 @@ __aicore__ inline void EngramFetchTrainArch35::RecvTokensFromPeers()
     }
 }
 
-
 // todo: 直接拷贝到输出
 __aicore__ inline void EngramFetchTrainArch35::ReorderAndSaveCtx()
 {
@@ -1098,7 +1097,6 @@ __aicore__ inline void EngramFetchTrainArch35::LocalCopySlice(GM_ADDR dst, GM_AD
     }
 }
 
-
 // 看看能不能和后面的indices合并
 __aicore__ inline void EngramFetchTrainArch35::CountAndScatterPhase()
 {
@@ -1157,7 +1155,6 @@ __aicore__ inline void EngramFetchTrainArch35::CountAndScatterPhase()
     }
     SyncAll<true>();
 }
-
 
 // 考虑是否需要
 __aicore__ inline void EngramFetchTrainArch35::ComputeSdispls()

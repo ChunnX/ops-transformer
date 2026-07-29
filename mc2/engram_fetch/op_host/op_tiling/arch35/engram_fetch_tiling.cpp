@@ -580,12 +580,17 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
         int64_t hiddenBytes = tilingData.hiddenBytes;
         int64_t totalRecv = tilingData.totalRecv;
 
+        auto platformInfo = context->GetPlatformInfo();
+        OPS_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+        uint32_t numBlocks = ascendcPlatform.CalcTschNumBlocks(tilingData.aivNum, 0, tilingData.aivNum);
+
         int64_t wsSdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
         int64_t wsRdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
         int64_t wsSortedIndices = AlignTo(numTokens * static_cast<int64_t>(sizeof(int32_t)), UB_ALIGN);
         int64_t wsLocalData = totalRecv * hiddenBytes;
         int64_t wsRecvData = numTokens * hiddenBytes;
-        int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
+        int64_t wsCounterScratch = static_cast<int64_t>(numBlocks) * UB_ALIGN;
         int64_t wsFlagScratch = FLAG_SCRATCH_SIZE;
 
         int64_t wsTotal =

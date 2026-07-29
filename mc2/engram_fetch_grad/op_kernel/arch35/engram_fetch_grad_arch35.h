@@ -370,7 +370,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     rdisplsGM_ = workspaceGM_ + wsOffset;
     wsOffset += static_cast<uint64_t>(numRanks_) * UB_ALIGN;
     counterScratchGM_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(tilingData->aivNum) * UB_ALIGN;
+    wsOffset += static_cast<uint64_t>(totalBlocks_) * UB_ALIGN;
     flagScratchGM_ = workspaceGM_ + wsOffset;
     wsOffset += UB_ALIGN;
     uint32_t segLen = (static_cast<uint32_t>(numEntriesPerRank_) + totalBlocks_ - 1U) / totalBlocks_;
@@ -396,7 +396,6 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uint32_t bitmapBufSize = Ceil(Ceil(segLen, BITS_PER_BYTE), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     tpipe_->InitBuffer(bitmapBuf_, bitmapBufSize);
 }
-
 
 // todo : SyncAll<true>();
 

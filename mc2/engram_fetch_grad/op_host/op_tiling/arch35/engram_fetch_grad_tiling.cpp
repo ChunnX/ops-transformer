@@ -583,17 +583,23 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsRecvGrad = totalRecv * hiddenBytes;
     int64_t wsSdispls = numRanks * UB_ALIGN;
     int64_t wsRdispls = numRanks * UB_ALIGN;
-    int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
+    int64_t wsCounterScratch = static_cast<int64_t>(numBlocks) * UB_ALIGN;
     int64_t wsFlagScratch = 32;
     OP_TILING_CHECK(tilingData.aivNum == 0U, OP_LOGE(nodeName, "aivNum is 0, cannot compute segLen"),
                     return ge::GRAPH_FAILED);
+    auto platformInfo = context->GetPlatformInfo();
+    OPS_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint32_t numBlocks = ascendcPlatform.CalcTschNumBlocks(tilingData.aivNum, 0, tilingData.aivNum);
+    OP_TILING_CHECK(numBlocks == 0U, OP_LOGE(nodeName, "numBlocks is 0, cannot compute segLen"),
+                    return ge::GRAPH_FAILED);
     uint32_t segLen =
-        (static_cast<uint32_t>(tilingData.numEntriesPerRank) + tilingData.aivNum - 1U) / tilingData.aivNum;
+        (static_cast<uint32_t>(tilingData.numEntriesPerRank) + numBlocks - 1U) / numBlocks;
 
     int64_t wsPrefixSum = tilingData.numEntriesPerRank * sizeof(int32_t);
     uint32_t bitmapBytesPerCore = (segLen + 7) / 8;
     uint32_t bitmapAlignPerCore = (bitmapBytesPerCore + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    int64_t wsBitmap = static_cast<int64_t>(tilingData.aivNum) * bitmapAlignPerCore;
+    int64_t wsBitmap = static_cast<int64_t>(numBlocks) * bitmapAlignPerCore;
     int64_t wsGradFp32 = totalRecv * tilingData.hiddenDim * static_cast<int64_t>(sizeof(float));
 
     int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch +
