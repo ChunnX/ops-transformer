@@ -66,6 +66,22 @@ static inline bool CheckDtypeValidRegbase(const aclTensor *tokens, const aclTens
     return true;
 }
 
+static inline bool CheckShapeValidRegbase(const aclTensor *tokens, const aclTensor *indices)
+{
+    auto tokensDimNum = tokens->GetViewShape().GetDimNum();
+    OP_CHECK(tokensDimNum == 2,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dimension of tokens should be 2, but got %ld.",
+                     static_cast<int64_t>(tokensDimNum)),
+             return false);
+
+    auto indicesDimNum = indices->GetViewShape().GetDimNum();
+    OP_CHECK(indicesDimNum == 1 || indicesDimNum == 2,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dimension of indices should be 1 or 2, but got %ld.",
+                     static_cast<int64_t>(indicesDimNum)),
+             return false);
+    return true;
+}
+
 static inline bool CheckDtypeValidInt8Regbase(const aclTensor *tokens, const aclTensor *indices,
                                               const aclTensor *permuteTokensOut,
                                               const aclTensor *sortedIndicesOut)
@@ -91,6 +107,7 @@ static aclnnStatus CheckParamsRegbase(const aclTensor *tokens, const aclTensor *
 {
     CHECK_RET(CheckNotNull(tokens, indices, permuteTokensOut, sortedIndicesOut), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtypeValidRegbase(tokens, indices, permuteTokensOut, sortedIndicesOut), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShapeValidRegbase(tokens, indices), ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -213,6 +230,7 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
         CHECK_RET(MoeTokenPermuteCheck::CheckDtypeValidInt8Regbase(
             tokens, indices, permuteTokensOut, sortedIndicesOut),
             ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(MoeTokenPermuteCheck::CheckShapeValidRegbase(tokens, indices), ACLNN_ERR_PARAM_INVALID);
         return BuildMoeInitRoutingV3Executor(
             tokens, indices, permuteTokensOut, sortedIndicesOut, workspaceSize, executor);
     }
