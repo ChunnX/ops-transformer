@@ -283,8 +283,10 @@ public:
     __aicore__ inline void VFDoV0ProcessXIn(__ubuf__ P *xDst, __ubuf__ P *invRmsDst, __ubuf__ T *xIn,
                                             __ubuf__ P *gamma, uint16_t mSize, uint16_t nSize)
     {
-        uint32_t nSrcUbAligned = MhcPreUtils::Align(nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(T)));
-        uint32_t nDstUbAligned = MhcPreUtils::Align(nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(P)));
+        uint32_t nSrcUbAligned = MhcPreUtils::Align(
+            nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(T)));
+        uint32_t nDstUbAligned = MhcPreUtils::Align(
+            nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(P)));
         uint16_t nLoopCnt = MhcPreUtils::CeilDiv(nSize, eleNumPerVf_);
         __VEC_SCOPE__
         {
@@ -754,7 +756,6 @@ protected:
     LocalTensor<T> xLocal_;
     LocalTensor<P> invRmsUb_;
     LocalTensor<P> gammaUb_;
-
 
     TPipe *pipe_;
     MatrixInfo matrixInfo_;

@@ -805,7 +805,6 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
         return ge::GRAPH_FAILED;
     }
 
-
     return ge::GRAPH_SUCCESS;
 }
 
