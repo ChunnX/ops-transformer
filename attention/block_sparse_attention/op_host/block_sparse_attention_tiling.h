@@ -185,7 +185,7 @@ private:
     ge::graphStatus ParseSeqlensInNonTND(gert::TilingContext *bsaContext);
     ge::graphStatus ParseSeqlens(gert::TilingContext *bsaContext);
     ge::graphStatus ParseSparsePattern(gert::TilingContext *bsaContext);
-    ge::graphStatus ParseEffRows(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseAttenMask(gert::TilingContext *bsaContext);
     ge::graphStatus ParseBlockTable(gert::TilingContext *bsaContext);
     ge::graphStatus CheckSparsePattern(gert::TilingContext *bsaContext, const int64_t defaultShape);
     ge::graphStatus ValidateGenericDequantScale(gert::TilingContext *bsaContext, const int parameterIndex);

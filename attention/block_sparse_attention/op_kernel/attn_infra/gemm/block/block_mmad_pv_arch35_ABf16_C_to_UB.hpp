@@ -203,9 +203,11 @@ public:
             while (dealtLenAccum < curBaseTileSize && (*ioCurBlockIdx) < yBlockNumRsvd) {
                 uint32_t oriYBlockIdx = gSparseBlockIdx.GetValue(*ioCurBlockIdx);
                 uint32_t effectiveY = gBlockEffRows.GetValue(gmOffsetEffRows + oriYBlockIdx * 2 + 1);
-                uint32_t tailBlockSize = (kvSeqlen > oriYBlockIdx * blockShapeY) ?
-                    (kvSeqlen - oriYBlockIdx * blockShapeY) : 0;
-                effectiveY = (effectiveY < tailBlockSize) ? effectiveY : tailBlockSize;
+                // 先 clamp 到 blockShapeY，再 clamp 到尾块剩余行数（非尾块时第二步为 no-op）
+                effectiveY = (effectiveY < blockShapeY) ? effectiveY : blockShapeY;
+                uint32_t tailBlockY = (kvSeqlen > static_cast<int64_t>(oriYBlockIdx) * blockShapeY) ?
+                    static_cast<uint32_t>(kvSeqlen - static_cast<int64_t>(oriYBlockIdx) * blockShapeY) : 0;
+                effectiveY = (effectiveY < tailBlockY) ? effectiveY : tailBlockY;
                 uint32_t remaining = (effectiveY > (*ioCurBlockCopied)) ?
                     (effectiveY - (*ioCurBlockCopied)) : 0;
                 uint32_t toCopy = (remaining < (curBaseTileSize - dealtLenAccum)) ?
