@@ -17,7 +17,7 @@
 namespace QkvRmsNormRopeCacheWithKScale {
 
 template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32_t K_QUANT_MODE,
-          uint32_t Q_QUANT_MODE, bool MROPE_COMPACT_PIPELINE>
+          uint32_t Q_QUANT_MODE, bool Q_OUT_L2_UNCACHEABLE>
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch, uint64_t qHeadNum,
@@ -47,11 +47,7 @@ public:
             vec_.PrepareBeforeLoop(coreTokenBegin, coreTokenEnd);
             for (uint32_t i = 0U; i < MROPE_K_CONSUMED_CREDITS; ++i) {
                 if constexpr (DIRECT_MROPE_Q_OUT) {
-                    if constexpr (MROPE_COMPACT_PIPELINE) {
-                        SetAivVToAicFixMropeKConsumed();
-                    } else {
-                        SetAivMte3ToAicFixMropeKConsumed();
-                    }
+                    SetAivVToAicFixMropeKConsumed();
                 } else {
                     SetAivMte3ToAicFixCConsumed();
                 }
@@ -86,7 +82,7 @@ private:
         pendingKQuantBufferId_ = 0U;
         aRotL1Pool_ = LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_K_SCALE_A_ROT_L1_POOL_OFFSET,
                                               QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS);
-        if constexpr (MROPE_COMPACT_PIPELINE) {
+        if constexpr (DIRECT_MROPE_Q_OUT) {
             kRotationDbPoolUb_ = LocalTensor<float>(
                 TPosition::LCM, QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_DB_POOL_OFFSET,
                 QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_DB_POOL_FLOAT_ELEMENTS);
@@ -111,7 +107,7 @@ private:
         pendingKQuantBufferId_ = 0U;
         aRotL1Pool_ = LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_K_SCALE_A_ROT_L1_POOL_OFFSET,
                                               QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS);
-        if constexpr (MROPE_COMPACT_PIPELINE) {
+        if constexpr (DIRECT_MROPE_Q_OUT) {
             qkPreprocessDbPoolUb_ = LocalTensor<float>(
                 TPosition::LCM, QKV_K_SCALE_MROPE_COMPACT_QK_PREPROCESS_DB_POOL_OFFSET,
                 QKV_K_SCALE_MROPE_COMPACT_QK_PREPROCESS_DB_POOL_FLOAT_ELEMENTS);
@@ -134,7 +130,7 @@ private:
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         uint32_t outputBufferId = 0U;
-        if constexpr (MROPE_COMPACT_PIPELINE) {
+        if constexpr (DIRECT_MROPE_Q_OUT) {
             outputBufferId = static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
             WaitAivVToAicFixMropeKConsumed();
         } else {
@@ -147,7 +143,7 @@ private:
             }
         }
         WaitAivMte3ToAicMte1AReady();
-        if constexpr (MROPE_COMPACT_PIPELINE) {
+        if constexpr (DIRECT_MROPE_Q_OUT) {
             cube_.ComputeTile(tile, aRotL1Nz,
                               kRotationDbPoolUb_[outputBufferId *
                                                   QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_ONE_BUFFER_FLOAT_ELEMENTS]);
@@ -172,7 +168,7 @@ private:
         const uint32_t aRotL1BufferId = static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
-        if constexpr (MROPE_COMPACT_PIPELINE) {
+        if constexpr (DIRECT_MROPE_Q_OUT) {
             const uint32_t preprocessBufferId =
                 static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
 
@@ -261,11 +257,7 @@ private:
     {
         for (uint32_t i = 0U; i < MROPE_K_CONSUMED_CREDITS; ++i) {
             if constexpr (DIRECT_MROPE_Q_OUT) {
-                if constexpr (MROPE_COMPACT_PIPELINE) {
-                    WaitAivVToAicFixMropeKConsumed();
-                } else {
-                    WaitAivMte3ToAicFixMropeKConsumed();
-                }
+                WaitAivVToAicFixMropeKConsumed();
             } else {
                 WaitAivMte3ToAicFixCConsumed();
             }
@@ -276,7 +268,7 @@ private:
 
     __aicore__ inline void EndAiv(const TileParam &lastTile)
     {
-        if constexpr (MROPE_COMPACT_PIPELINE) {
+        if constexpr (DIRECT_MROPE_Q_OUT) {
             if (hasPendingKTile_) {
                 vec_.ScatterMropeK(pendingKTile_, pendingKQuantBufferId_);
                 hasPendingKTile_ = false;
@@ -409,14 +401,10 @@ private:
          Q_OUT_LAYOUT == QKV_K_SCALE_LAYOUT_TND &&
          K_QUANT_MODE == QKV_K_SCALE_K_QUANT_MODE_INT8 &&
          Q_QUANT_MODE == QKV_K_SCALE_Q_QUANT_MODE_NO_QUANT);
-    static_assert(!MROPE_COMPACT_PIPELINE || DIRECT_MROPE_Q_OUT,
-                  "compact M-RoPE pipeline requires the direct-Q scene");
-
     static constexpr uint32_t QKV_K_SCALE_AIV_OUTPUT_BUFFER_USES_PER_TILE = 2U;
     static constexpr uint32_t QKV_K_SCALE_C_OUTPUT_BUFFER_CREDITS = 1U;
     static constexpr uint32_t MROPE_K_CONSUMED_CREDITS =
-        (DIRECT_MROPE_Q_OUT && MROPE_COMPACT_PIPELINE) ? QKV_K_SCALE_DOUBLE_BUFFER_NUM
-                                                       : QKV_K_SCALE_C_OUTPUT_BUFFER_CREDITS;
+        DIRECT_MROPE_Q_OUT ? QKV_K_SCALE_DOUBLE_BUFFER_NUM : QKV_K_SCALE_C_OUTPUT_BUFFER_CREDITS;
 
     uint64_t tileCount_;
     uint64_t outputBufferUseId_;
@@ -427,9 +415,8 @@ private:
     LocalTensor<float> outputDbPoolUb_;
     LocalTensor<float> qkPreprocessDbPoolUb_;
     LocalTensor<float> kRotationDbPoolUb_;
-    QkvRmsNormRopeCacheWithKScaleCube<DIRECT_MROPE_Q_OUT, MROPE_COMPACT_PIPELINE> cube_;
-    QkvRmsNormRopeCacheWithKScaleVec<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE,
-                                    MROPE_COMPACT_PIPELINE>
+    QkvRmsNormRopeCacheWithKScaleCube<DIRECT_MROPE_Q_OUT, Q_OUT_L2_UNCACHEABLE> cube_;
+    QkvRmsNormRopeCacheWithKScaleVec<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE>
         vec_;
 };
 

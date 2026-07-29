@@ -19,7 +19,7 @@ constexpr FixpipeConfig QKV_K_SCALE_FIXPIPE_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR
 constexpr FixpipeConfig QKV_K_SCALE_FIXPIPE_ROW_MAJOR_GM = {CO2Layout::ROW_MAJOR, false};
 constexpr uint8_t QKV_K_SCALE_FIXPIPE_DUAL_DST_SPLIT_M = 1;
 
-template <bool DIRECT_MROPE_Q_OUT = false, bool MROPE_COMPACT_PIPELINE = false>
+template <bool DIRECT_MROPE_Q_OUT = false, bool Q_OUT_L2_UNCACHEABLE = false>
 class QkvRmsNormRopeCacheWithKScaleCube {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t qHeadNum, uint64_t kvHeadNum)
@@ -80,7 +80,7 @@ public:
         } else {
             FixpipeSegmentToAivUb(qRows, 0U, l0cBufferId, 0U, qkAfterCubeUb);
         }
-        if constexpr (MROPE_COMPACT_PIPELINE) {
+        if constexpr (DIRECT_MROPE_Q_OUT) {
             FixpipeSegmentToAivUb(kRows, 0U, l0cBufferId, kL0cOffset, qkAfterCubeUb);
         } else {
             FixpipeSegmentToAivUb(kRows, qRowsPerAiv, l0cBufferId, kL0cOffset, qkAfterCubeUb);
@@ -292,7 +292,9 @@ private:
         rotationGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.rotation);
         if constexpr (DIRECT_MROPE_Q_OUT) {
             qOutBf16Gm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.qOut);
-            qOutBf16Gm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            if constexpr (Q_OUT_L2_UNCACHEABLE) {
+                qOutBf16Gm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            }
         }
     }
 

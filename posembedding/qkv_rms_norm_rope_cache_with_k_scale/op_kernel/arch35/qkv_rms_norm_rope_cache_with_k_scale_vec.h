@@ -17,7 +17,7 @@
 namespace QkvRmsNormRopeCacheWithKScale {
 
 template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32_t K_QUANT_MODE,
-          uint32_t Q_QUANT_MODE, bool MROPE_COMPACT_PIPELINE>
+          uint32_t Q_QUANT_MODE>
 class QkvRmsNormRopeCacheWithKScaleVec {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch, uint64_t qHeadNum,
@@ -268,7 +268,7 @@ private:
         (QKV_IS_TND && ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE && Q_OUT_IS_TND &&
          K_QUANT_MODE == QKV_K_SCALE_K_QUANT_MODE_INT8 &&
          Q_QUANT_MODE == QKV_K_SCALE_Q_QUANT_MODE_NO_QUANT);
-    static constexpr bool OPTIMIZED_MROPE = DIRECT_MROPE_Q_OUT && MROPE_COMPACT_PIPELINE;
+    static constexpr bool OPTIMIZED_MROPE = DIRECT_MROPE_Q_OUT;
     static constexpr uint32_t SLOT_MAPPING_ONE_BUFFER_ELEMENTS =
         OPTIMIZED_MROPE ? QKV_K_SCALE_MROPE_COMPACT_SLOT_MAPPING_ONE_BUFFER_ELEMENTS
                         : QKV_K_SCALE_SLOT_MAPPING_ONE_BUFFER_ELEMENTS;

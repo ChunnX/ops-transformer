@@ -11,7 +11,6 @@
 #ifndef QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_BASE_TILING_H_
 #define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_BASE_TILING_H_
 
-#include <array>
 #include <cstdint>
 
 #include "op_host/tiling_base.h"
@@ -139,6 +138,7 @@ private:
     void FillOutputTensorInfos();
     ge::graphStatus BuildContractInput();
     ge::graphStatus ValidateCompileInfo(const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo) const;
+    bool IsMropeCompactTile(uint64_t tokenTile) const;
 
     const char *opName_ = "QkvRmsNormRopeCacheWithKScale";
     const QkvRmsNormRopeCacheWithKScaleCompileInfo *compileInfo_ = nullptr;
@@ -150,10 +150,8 @@ private:
     ge::DataType qOutDtypeAttr_ = ge::DT_FLOAT8_E4M3FN;
     float epsilon_ = 1e-6f;
     uint64_t tilingDataSize_ = 0;
-    std::array<int64_t, 3> mropeSectionValues_{};
     uint64_t mropeSectionSize_ = 0;
     bool hasMropeSection_ = false;
-    bool mropeSectionDataValid_ = true;
     uint64_t mropeSectionH_ = 0;
     uint64_t mropeSectionW_ = 0;
 };

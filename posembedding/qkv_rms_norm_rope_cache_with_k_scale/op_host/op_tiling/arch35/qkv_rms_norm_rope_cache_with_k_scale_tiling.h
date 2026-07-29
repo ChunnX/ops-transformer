@@ -24,6 +24,7 @@ struct QkvRmsNormRopeCacheWithKScaleCompileInfo {
     uint64_t ubSize = 0;
     uint64_t l1Size = 0;
     uint64_t l0cSize = 0;
+    uint64_t l2Size = 0;
     uint64_t opWorkspaceSize = 0;
 };
 
