@@ -45,6 +45,11 @@ struct TaskInfo {
     int64_t  kvSeqlen = 0;           // 当前 batch 实际 KV 长度
     uint32_t yBlockNumAval = 0;      // CeilDiv(kvSeqlen, blockShapeY)，实际 Y-block 总数
     uint32_t yBlockNumRsvd = 0;      // 本 task 选中 Y-block 数（来自 gSparseCount）
+    // ===== QK(Mm1) 所需（mxfp4）=====
+    int64_t  gmOffsetQ = 0;          // Q 数据偏移（含本 task 的 Q seq 起点，fp4 元素单位）
+    int64_t  gmOffsetK = 0;          // K 数据 batch+head 基址（seq 由后续稀疏 gather 处理）
+    int64_t  gmOffsetQScale = 0;     // Q-scale 偏移（E8M0 字节；Host 沿 D）
+    int64_t  gmOffsetKScale = 0;     // K-scale batch+head 基址（E8M0 字节；Host 沿 D）
     // O GM 偏移
     int64_t  gmOffsetO = 0;
     uint32_t oShapeCol = 0;
