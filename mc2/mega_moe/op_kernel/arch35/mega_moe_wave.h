@@ -999,9 +999,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExperts
         if (subBlockIdx_ != 1) {
             return;
         }
-        while (nextDispatchExpert < dispatchEnd) {
+        for (; nextDispatchExpert < dispatchEnd; ++nextDispatchExpert) {
             DispatchExpert(state, gmmAddrInfo, nextDispatchExpert, bufferConfig);
-            ++nextDispatchExpert;
         }
     }
 }
@@ -2217,8 +2216,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
             WaitGmm2Ready(expertIdx);
         }
 
-        uint32_t processedTokenNum = 0U;
-        while (processedTokenNum < currentCoreTokenRange.count) {
+        for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
             uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
             uint32_t chunkTokenNum =
                 remainingTokenNum < COMBINE_META_INFO_TOKEN_CAPACITY ?
@@ -2267,9 +2265,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
     const uint32_t expertsPerWave = expertsPerBatch_;
 
     uint32_t nextDispatchExpert = 0U;
-    uint32_t batchBegin = 0U;
-    while (batchBegin < moeExpertPerRank_) {
-        const uint32_t currentWaveExpertNum =
+    uint32_t currentWaveExpertNum = 0U;
+    for (uint32_t batchBegin = 0U; batchBegin < moeExpertPerRank_;
+         batchBegin += currentWaveExpertNum) {
+        currentWaveExpertNum =
             MegaMoeImpl::GetWaveExpertCount(batchBegin, moeExpertPerRank_, expertsPerWave);
         const uint32_t batchEnd = batchBegin + currentWaveExpertNum;
         const uint32_t waveBeginCursor = startBlockIdx_;
@@ -2304,7 +2303,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
 
         ProcessCombineExperts(
             batchBegin, batchEnd, combineState, combineAddrInfo, combineBufferConfig);
-        batchBegin += currentWaveExpertNum;
     }
 
     // The non-prefetch path still has one outstanding AIC->AIV0 UB consumer
