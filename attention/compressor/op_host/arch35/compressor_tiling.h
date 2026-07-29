@@ -174,9 +174,16 @@ struct OptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-enum class LayoutType { LAYOUT_BSH, LAYOUT_TH };
+enum class LayoutType {
+    LAYOUT_BSH,
+    LAYOUT_TH
+};
 
-enum class TemplateId : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
+enum class TemplateId : uint8_t {
+    NORMAL = 0,
+    EMPTY_X = 1,
+    FULL_LOAD = 2
+};
 
 CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context);
 struct CompressorBaseShapeInfo {
@@ -197,7 +204,10 @@ const std::vector<int> CMP_RATIO{2, 4, 8, 16, 32, 64, 128};
 const std::vector<uint32_t> HEAD_DIM{128, 512};
 const std::vector<int> CACHE_MODE{1, 2};
 
-enum class CACHE_MODE : uint8_t { LINEAR_BUFFER = 1, RING_BUFFER = 2 };
+enum class CACHE_MODE : uint8_t {
+    LINEAR_BUFFER = 1,
+    RING_BUFFER = 2
+};
 
 struct CompressorContext {
     const char *opName;
@@ -232,7 +242,9 @@ struct CompressorContext {
 
 class CompressorTiling {
 public:
-    explicit CompressorTiling(CompressorContext *context) : context_(context) {}
+    explicit CompressorTiling(CompressorContext *context)
+        : context_(context)
+    {}
     ~CompressorTiling() = default;
 
     static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorContext &compressorContext);
