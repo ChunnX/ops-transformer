@@ -131,7 +131,7 @@ public:
     __aicore__ inline void InitS2SplitStaging(
         Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &fdStaging)
     {
-        s2SplitStagingBase = fdStaging.template GetTensor<uint8_t>().GetPhyAddr(0);
+        fdStagingBase = fdStaging.template GetTensor<uint8_t>().GetPhyAddr(0);
         stagingOutGm = fdStaging.template GetTensor<float>();
     }
     __aicore__ inline void InitS2SplitStaging(
@@ -142,7 +142,7 @@ public:
         intraCoreCombineGm = intraCoreCombine.template GetTensor<float>();
         crossCoreCombineBase = crossCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
         crossCoreCombineGm = crossCoreCombine.template GetTensor<float>();
-        s2SplitStagingBase = crossCoreCombineBase;
+        fdStagingBase = crossCoreCombineBase;
         stagingOutGm = crossCoreCombineGm;
     }
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo);
@@ -184,7 +184,7 @@ private:
         return (coreIdx << 1U) + runInfo.multiCoreIdxMod2;
     }
 
-    __aicore__ inline uint32_t GetFaStagingWorkspaceIdx(const RunInfo &runInfo) const
+    __aicore__ inline uint32_t GetCrossCoreWorkspaceIdx(const RunInfo &runInfo) const
     {
         return static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx);
     }
@@ -279,7 +279,7 @@ private:
     TBuf<> outLseBuf[2];
     TBuf<> vselrIndexesBuf[2];
     AttentionCommon::FdBuffers<TBuf<>> fdBuffers;
-    __gm__ uint8_t *s2SplitStagingBase = nullptr;
+    __gm__ uint8_t *fdStagingBase = nullptr;
     GlobalTensor<float> stagingOutGm;
     __gm__ uint8_t *intraCoreCombineBase = nullptr;
     GlobalTensor<float> intraCoreCombineGm;
@@ -651,7 +651,7 @@ CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_C
         }
     } else {
         if (isFirstSoftmaxBase && isSinks) {
-            bool includeSink = !runInfo.isS2Split || runInfo.isFirstS2SplitCore;
+            bool includeSink = !runInfo.isCrossCoreSplit || runInfo.isFirstS2SplitCore;
             if constexpr (BATCH_CONSISTENCY) {
                 includeSink = includeSink && runInfo.reduceBlockId == 0;
             }
@@ -725,11 +725,11 @@ CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_C
                 DataCopy(finalSumUb, sumUb, snapshotElems);
                 PipeBarrier<PIPE_V>();
             }
-            if (runInfo.isS2Split && !runInfo.isFirstS2SplitCore) {
+            if (runInfo.isCrossCoreSplit && !runInfo.isFirstS2SplitCore) {
                 AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                     dTemplateAlign64, GetStagingSlotNum(false), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                     AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-                uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
+                uint32_t workspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
                 int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
                 LocalTensor<float> tmpUb = this->batchReduceTmpBuf.template Get<float>();
                 AttentionCommon::StageVec1Lse(stagingLayout, crossCoreCombineBase,
@@ -746,11 +746,11 @@ CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_C
                     GetIntraCoreWorkspaceIdx(runInfo, constInfo), stagingMOffset, runInfo.halfMRealSize,
                     maxUb, sumUb, tmpUb, vToMte3AttnOutId, mte3ToVAttnOutId);
                 SetFlag<HardEvent::MTE3_MTE2>(intraLseMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
-            } else if (runInfo.isS2Split && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0) {
+            } else if (runInfo.isCrossCoreSplit && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0) {
                 AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                     dTemplateAlign64, GetStagingSlotNum(false), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                     AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-                uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
+                uint32_t workspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
                 int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
                 LocalTensor<float> tmpUb = this->batchReduceTmpBuf.template Get<float>();
                 AttentionCommon::StageVec1Lse(stagingLayout, crossCoreCombineBase,
@@ -758,15 +758,15 @@ CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_C
                     maxUb, sumUb, tmpUb, vToMte3AttnOutId, mte3ToVAttnOutId);
             }
         }
-    } else if (runInfo.isS2Split && runInfo.halfMRealSize > 0 &&
+    } else if (runInfo.isCrossCoreSplit && runInfo.halfMRealSize > 0 &&
         runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
             dTemplateAlign64, GetStagingSlotNum(), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
             AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-        uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
+        uint32_t workspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
         int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
         LocalTensor<float> tmpUb = this->stage2OutBuf.template Get<float>();
-        AttentionCommon::StageVec1Lse(stagingLayout, s2SplitStagingBase, workspaceIdx, stagingMOffset,
+        AttentionCommon::StageVec1Lse(stagingLayout, fdStagingBase, workspaceIdx, stagingMOffset,
                                       static_cast<uint32_t>(runInfo.halfMRealSize), maxUb, sumUb, tmpUb,
                                       vToMte3AttnOutId, mte3ToVAttnOutId);
     }
@@ -837,7 +837,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
         AttentionCommon::StageBroadcastMaxSum(intraLayout, intraCoreCombineBase, intraWorkspaceIdx,
             stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb,
             vToMte3AttnOutId, mte3ToVAttnOutId);
-        if (runInfo.isS2Split && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+        if (runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
             AttentionCommon::StageBroadcastMaxSum(crossLayout, crossCoreCombineBase, crossWorkspaceIdx,
                 stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb,
                 vToMte3AttnOutId, mte3ToVAttnOutId);
@@ -848,7 +848,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
     AttentionCommon::StageVec2PartialOAndWait<T>(intraLayout, intraCoreCombineGm, intraWorkspaceIdx,
         stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
         vToMte3AttnOutId, mte3ToVAttnOutId);
-    if (runInfo.isS2Split && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+    if (runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         AttentionCommon::StageVec2PartialOAndWait<T>(crossLayout, crossCoreCombineGm, crossWorkspaceIdx,
             stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
             vToMte3AttnOutId, mte3ToVAttnOutId);
@@ -929,7 +929,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             }
             if (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId > 0) {
                 ReduceIntraBlockAndStage(runInfo, constInfo, vec2ResUb, mmRes);
-                if (!runInfo.isS2Split && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+                if (!runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
                     this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
                 }
             } else {
@@ -945,19 +945,19 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                         vToMte3AttnOutId, mte3ToVAttnOutId);
                     SetFlag<HardEvent::MTE3_MTE2>(intraAttnOutMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
                 }
-                if (runInfo.isS2Split && (!runInfo.isFirstS2SplitCore ||
+                if (runInfo.isCrossCoreSplit && (!runInfo.isFirstS2SplitCore ||
                     (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0 &&
                     runInfo.s2LoopCount == runInfo.s2LoopLimit))) {
                     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                         dTemplateAlign64, GetStagingSlotNum(false), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                         AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-                    uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
+                    uint32_t workspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
                     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
                     AttentionCommon::StageVec2PartialOAndWait<T>(stagingLayout, crossCoreCombineGm,
                         workspaceIdx, stagingMOffset, runInfo.vec2MRealSize,
                         static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
                         vToMte3AttnOutId, mte3ToVAttnOutId);
-                } else if (!runInfo.isS2Split && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+                } else if (!runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
                     this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
                 }
             }
@@ -968,11 +968,11 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize,
                                                                   dTemplateAlign64, 1.0);
         }
-        if (runInfo.isS2Split) {
+        if (runInfo.isCrossCoreSplit) {
             AttentionCommon::S2SplitFdStagingLayout stagingLayout = {
                 constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                 AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-            uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
+            uint32_t workspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
             int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
             AttentionCommon::StageVec2PartialO<T>(
                 stagingLayout, stagingOutGm, workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.vec2MRealSize),
@@ -1020,7 +1020,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(FdRunInfo 
     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
         dTemplateAlign64, GetStagingSlotNum(), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
         AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-    AttentionCommon::ReduceWithLse<T, dTemplateAlign64>(stagingLayout, s2SplitStagingBase,
+    AttentionCommon::ReduceWithLse<T, dTemplateAlign64>(stagingLayout, fdStagingBase,
         fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
         static_cast<uint32_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
         static_cast<uint32_t>(constInfo.dSizeV),

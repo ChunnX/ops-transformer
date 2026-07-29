@@ -74,7 +74,6 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "has_ori_kv", hasOriKv_);
     GetAttrValueOpt(ctx, "has_cmp_kv", hasCmpKv_);
     GetAttrValueOpt(ctx, "is_batch_consistency", isBatchConsistency_);
-
     return (ParamsCheck() && ParamsInit());
 }
 
@@ -614,10 +613,10 @@ int64_t SparseFlashMlaMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32_t b
     return static_cast<int64_t>(COST_WEIGHT_M * cmpAlignBasicM + COST_WEIGHT_S2 * cmpAlignBasicS2);
 }
 
-void SparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1GTailSize, uint32_t reductionTileSize,
+void SparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1GTailSize, uint32_t reductionBlockSize,
                                                     uint32_t oriS2TailSize, uint32_t cmpS2TailSize)
 {
-    uint32_t normalS2Size = isBatchConsistency_ && reductionTileSize > 0U ? reductionTileSize : s2BaseSize_;
+    uint32_t normalS2Size = isBatchConsistency_ && reductionBlockSize > 0U ? reductionBlockSize : s2BaseSize_;
     // ori 部分 cost
     if (hasOriKv_) {
         typeCost_[ORI_NORMAL_BLOCK][ORI_NORMAL_BLOCK] = OriCalcCost(mBaseSize_, normalS2Size);
@@ -886,7 +885,7 @@ void SparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitC
     s1GCache.s1GIdx = s1GIdx;
     s1GCache.actOriS2Size = 0U;
     s1GCache.actCmpS2Size = 0U;
-    s1GCache.reductionTileSize = 0U;
+    s1GCache.reductionBlockSize = 0U;
     // 计算 ori_kv 有效负载起止
     if (hasOriKv_) {
         // 计算 ori_kv 的 s2Token 起止
@@ -912,26 +911,25 @@ void SparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitC
         s1GCache.cmpS2TailSize = 0;
     }
     if (isBatchConsistency_) {
-        // The tile only depends on this row, so its reduction tree is independent of the surrounding batch.
-        constexpr uint32_t maxReductionParts = 32U;
+        // The reduction block only depends on this row, so its reduction tree is independent of the surrounding batch.
         uint64_t actTotalS2Size = static_cast<uint64_t>(s1GCache.actOriS2Size) + s1GCache.actCmpS2Size;
         if (actTotalS2Size > 0U) {
-            uint64_t rawTileSize = actTotalS2Size / maxReductionParts;
-            s1GCache.reductionTileSize = static_cast<uint32_t>(
-                (rawTileSize + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_);
-            s1GCache.reductionTileSize = std::max(s1GCache.reductionTileSize, s2BaseSize_);
+            uint64_t rawReductionBlockSize = actTotalS2Size / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
+            s1GCache.reductionBlockSize = static_cast<uint32_t>(
+                (rawReductionBlockSize + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_);
+            s1GCache.reductionBlockSize = std::max(s1GCache.reductionBlockSize, s2BaseSize_);
             s1GCache.oriS2End = s1GCache.actOriS2Size == 0U ?
-                0U : (s1GCache.actOriS2Size - 1U) / s1GCache.reductionTileSize + 1U;
-            s1GCache.oriS2TailSize = s1GCache.actOriS2Size % s1GCache.reductionTileSize;
+                0U : (s1GCache.actOriS2Size - 1U) / s1GCache.reductionBlockSize + 1U;
+            s1GCache.oriS2TailSize = s1GCache.actOriS2Size % s1GCache.reductionBlockSize;
             s1GCache.cmpS2Start = s1GCache.oriS2End;
             s1GCache.cmpS2End = s1GCache.actCmpS2Size == 0U ?
                 s1GCache.cmpS2Start :
-                s1GCache.cmpS2Start + (s1GCache.actCmpS2Size - 1U) / s1GCache.reductionTileSize + 1U;
-            s1GCache.cmpS2TailSize = s1GCache.actCmpS2Size % s1GCache.reductionTileSize;
+                s1GCache.cmpS2Start + (s1GCache.actCmpS2Size - 1U) / s1GCache.reductionBlockSize + 1U;
+            s1GCache.cmpS2TailSize = s1GCache.actCmpS2Size % s1GCache.reductionBlockSize;
         }
     }
     // 计算基本块负载
-    CalcCostTable(splitInfo.s1GTailSize[s1GCache.bIdx], s1GCache.reductionTileSize, s1GCache.oriS2TailSize,
+    CalcCostTable(splitInfo.s1GTailSize[s1GCache.bIdx], s1GCache.reductionBlockSize, s1GCache.oriS2TailSize,
                   s1GCache.cmpS2TailSize);
     // 计算 ori 和 cmp 部分的 cost 和 block 信息
     CalcOriS1GCache(s1GCache, splitInfo);
@@ -1195,7 +1193,7 @@ bool SparseFlashMlaMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &as
     return true;
 }
 
-bool SparseFlashMlaMetadataCpuKernel::IsFirstReductionTile(const AssignContext &assignContext,
+bool SparseFlashMlaMetadataCpuKernel::IsFirstReductionBlock(const AssignContext &assignContext,
                                                            const SplitResult &splitRes)
 {
     if (assignContext.curCoreIdx == 0U || splitRes.s2End[assignContext.curCoreIdx - 1U] == 0U) {
@@ -1274,7 +1272,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitContext &spl
     if (assignContext.curS2Idx > assignContext.s1GCache.s2Start &&
         assignContext.curS2Idx <= assignContext.s1GCache.s2End) {
         if (isBatchConsistency_) {
-            if (IsFirstReductionTile(assignContext, result)) {
+            if (IsFirstReductionBlock(assignContext, result)) {
                 assignContext.curKvSplitPart++;
             } else {
                 assignContext.curKvSplitPart +=

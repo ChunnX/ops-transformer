@@ -29,6 +29,7 @@ namespace aicpu {
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
 constexpr uint32_t COST_WEIGHT_M = 6U;
 constexpr uint32_t COST_WEIGHT_S2 = 10U;
+constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCTION_PARTS = 32U;
 constexpr bool ORI_KV = false;
 constexpr bool CMP_KV = true;
 constexpr uint32_t NO_MASK = 0;
@@ -208,7 +209,7 @@ struct S1GCache {
     int64_t cmpS2TailSize {0};
     uint32_t actOriS2Size {0U};
     uint32_t actCmpS2Size {0U};
-    uint32_t reductionTileSize {0U};
+    uint32_t reductionBlockSize {0U};
 };
 
 // 分核功能模块内部使用：记录分配过程中，当前核的负载信息
@@ -270,7 +271,7 @@ private:
     Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache, bool isCmpKv);
     int64_t OriCalcCost(uint32_t basicM, uint32_t basicS2);
     int64_t CmpCalcCost(uint32_t basicM, uint32_t basicS2);
-    void CalcCostTable(uint32_t s1GTailSize, uint32_t reductionTileSize, uint32_t oriS2TailSize,
+    void CalcCostTable(uint32_t s1GTailSize, uint32_t reductionBlockSize, uint32_t oriS2TailSize,
         uint32_t cmpS2TailSize);
 
     // cache calculation
@@ -299,7 +300,7 @@ private:
 
     // FD
     bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes);
-    bool IsFirstReductionTile(const AssignContext &assignContext, const SplitResult &splitRes);
+    bool IsFirstReductionBlock(const AssignContext &assignContext, const SplitResult &splitRes);
     void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result);
 
     // main

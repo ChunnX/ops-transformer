@@ -49,23 +49,17 @@ static const std::string A5_PLATFORM_LOG = "A5";
 constexpr uint32_t FD_MAX_S2_SPLIT_NUM = 2U;
 constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33U;
 constexpr uint32_t FD_BROADCAST_ELEMS = 8U;
+constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
 
-static bool IsBatchConsistencyEnabled(gert::TilingContext *context, const char *opName)
+static bool IsBatchConsistencyEnabled(const char *opName)
 {
-    int32_t deterministicLevel = context->GetDeterministicLevel();
-    if (deterministicLevel == 1) {
-        OP_LOGD(opName, "Tiling context deterministic level is %d.", deterministicLevel);
-        return true;
-    }
-
-    int64_t deterministicValue = 0;
-    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicValue);
+    int64_t batchConsistencyLevel = 0;
+    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &batchConsistencyLevel);
     if (aclRet != ACL_SUCCESS) {
-        OP_LOGW(opName, "Failed to get ACL_OPT_DETERMINISTIC, use non-deterministic path.");
-        return false;
+        OP_LOGW(opName, "Unable to get system param batch consistency level.");
     }
-    OP_LOGD(opName, "ACL_OPT_DETERMINISTIC is %ld.", deterministicValue);
-    return deterministicValue == 1;
+    bool isBatchConsistency = (batchConsistencyLevel == BATCH_CONSISTENCY_LEVEL);
+    return isBatchConsistency;
 }
 static bool IsNonEmptyOptionalTensor(const gert::Tensor *tensor)
 {
@@ -372,7 +366,7 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", (int32_t)npuArch_);
         return ge::GRAPH_FAILED;
     }
-    batchConsistency_ = npuArch_ == NpuArch::DAV_3510 && IsBatchConsistencyEnabled(context_, opName_);
+    batchConsistency_ = IsBatchConsistencyEnabled(opName_);
 
     return ge::GRAPH_SUCCESS;
 }

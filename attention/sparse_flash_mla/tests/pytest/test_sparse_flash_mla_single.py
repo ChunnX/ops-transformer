@@ -24,8 +24,6 @@ pt_save_path = "data"
 
 # 处理所有参数组合
 result_path = os.getenv("SMLA_RESULT_SAVE_PATH", "./result/smla_result_all_sparse.xlsx")
-det_level = int(os.environ.get("SMLA_DET_LEVEL", "1"))
-torch_npu.npu.set_deterministic_level(det_level)
 param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
 
 
