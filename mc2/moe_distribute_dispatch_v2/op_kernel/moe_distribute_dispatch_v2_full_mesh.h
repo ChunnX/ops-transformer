@@ -67,6 +67,7 @@ constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
 constexpr uint8_t VALID_EVENT_FLAG_NUM = 8U;
 constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
 constexpr uint32_t MIN_ACTIVE_BS_FOR_BS_MODE = 16U;
+constexpr uint32_t BS_UTILIZATION_MIN = 90U; // 模式B 非整除时利用率下限(%)，发送开销主导下设 90
 constexpr uint32_t DURATION_OFFSET = sizeof(int64_t) / sizeof(int32_t);
 constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 
@@ -148,6 +149,7 @@ private:
                                        uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront = true);
     __aicore__ inline void SplitExpertNumToCore(uint32_t &delCurExpertGroupNum, uint32_t &groupIdx);
     __aicore__ inline void FillTriple(LocalTensor<XOutType> &xOutTensor, uint32_t tokenIndex, uint32_t k);
+    __aicore__ inline void FillBSTriple(uint32_t slotOffInt32, uint32_t tokenIdx, uint32_t k);
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
     __aicore__ inline void TokenToExpertInQuant(GlobalTensor<XOutType> dstWinGMTensor,
                                                 TQue<QuePosition::VECIN, 1> inQueue, uint32_t srcTokenIndex,
@@ -954,15 +956,37 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             myEndK = myStartK + expPerCore;
         }
     } else {
-        // 模式B：每核处理多个连续 token，每个 token 处理全部 K 个 expert
-        uint32_t tokensPerCore = activeBS / moeUsedAivNum_;
-        startTokenId = tokensPerCore * aivId_;
-        endTokenId = startTokenId + tokensPerCore;
+        // 模式B：每核处理多个连续 token；非整除时前 r 核各 +1，避免丢 token
+        uint32_t q = activeBS / moeUsedAivNum_;
+        uint32_t r = activeBS % moeUsedAivNum_;
+        uint32_t myCnt = (aivId_ < r) ? (q + 1) : q; // 模式B activeBS>=N ⇒ q>=1
+        startTokenId = (aivId_ < r) ? (aivId_ * (q + 1)) : (r * (q + 1) + (aivId_ - r) * q);
         if (startTokenId >= activeBS) {
             startTokenId = 0;
             endTokenId = 0;
             return;
         }
+        endTokenId = startTokenId + myCnt;
+    }
+}
+
+template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::FillBSTriple(
+    uint32_t slotOffInt32, uint32_t tokenIdx, uint32_t k)
+{
+    LocalTensor<int32_t> outInt32 = outTensor_.template ReinterpretCast<int32_t>();
+    uint32_t tripleOutOffset =
+        (tokenQuantAlign_ / SPLIT_BLOCK_DATA_COUNT) * SPLIT_BLOCK_COUNT + (tokenQuantAlign_ % SPLIT_BLOCK_DATA_COUNT);
+    uint32_t tripleBase = slotOffInt32 + tripleOutOffset;
+    outInt32(tripleBase) = epRankId_;
+    outInt32(tripleBase + 1) = tokenIdx;
+    outInt32(tripleBase + 2) = k;
+    if (hasExpertScalesFlag_) {
+        LocalTensor<float> outFp32 = outTensor_.template ReinterpretCast<float>();
+        uint32_t expertScaleOutOffset =
+            (expertScaleAlign_ / SPLIT_BLOCK_DATA_COUNT) * SPLIT_BLOCK_COUNT +
+            (expertScaleAlign_ % SPLIT_BLOCK_DATA_COUNT);
+        outFp32(slotOffInt32 + expertScaleOutOffset) = expertScalesTensor_.GetValue(tokenIdx * axisK_ + k);
     }
 }
 
@@ -973,8 +997,6 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 {
     LocalTensor<int32_t> outTensorInt32 = outTensor_.template ReinterpretCast<int32_t>();
     GlobalTensor<XOutType> dstWinGMTensor;
-    uint32_t tripleOutOffset =
-        (tokenQuantAlign_ / SPLIT_BLOCK_DATA_COUNT) * SPLIT_BLOCK_COUNT + (tokenQuantAlign_ % SPLIT_BLOCK_DATA_COUNT);
 
     // 按 sendTokenBufNum_ 分批处理 expert，批次间等待 MTE3 完成后复用 slot
     for (uint32_t batchStart = kIterStart; batchStart < kIterEnd; batchStart += sendTokenBufNum_) {
@@ -998,8 +1020,18 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
                 toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
             }
 
+            int32_t srcRankSlot = 0;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (!hasElasticInfoFlag_) {
+                srcRankSlot = (epRankId_ + toRankId) % epWorldSize_;
+            } else {
+                srcRankSlot = epRankId_;
+            }
+#else
+            srcRankSlot = epRankId_;
+#endif
             GM_ADDR rankGM = (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) +
-                                                expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ +
+                                                expertPerSizeOnWin_ * (srcRankSlot * moeExpertNumPerRank_ +
                                                                        dstExpertId % moeExpertNumPerRank_) +
                                                 hCommuSize_ * curExpertCnt);
             dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)rankGM);
@@ -1011,13 +1043,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             Copy(outTensorInt32[slotOffInt32 + 64], srcTensorInt32[64], uint64_t(56), uint8_t(blockCntPerToken_),
                  {1, 1, 16, 15});
             SyncFunc<AscendC::HardEvent::V_S>();
-
-            uint32_t tripleBase = slotOffInt32 + tripleOutOffset;
-            outTensorInt32(tripleBase) = epRankId_;
-            outTensorInt32(tripleBase + 1) = tokenIdx;
-            outTensorInt32(tripleBase + 2) = k;
+            FillBSTriple(slotOffInt32, tokenIdx, k);
             SyncFunc<AscendC::HardEvent::S_MTE3>();
-
             DataCopy(dstWinGMTensor, outTensor_[(ki - batchStart) * axisHCommu_], axisHCommu_);
         }
         // 批次间等待 MTE3 完成，slot 可安全复用于下一批
@@ -1054,38 +1081,35 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SendToMoeExpertByB
     event_t eventIdMte3ToV = static_cast<event_t>(tpipe_->FetchEventID(HardEvent::MTE3_V));
 
     for (uint32_t tokenIdx = startTokenId; tokenIdx < endTokenId; ++tokenIdx) {
-        // ① 从 GM 读取 token（每个 token 仅 1 次）
         SyncFunc<HardEvent::V_MTE2>();
         DataCopyPad(xInTensor, xGMTensor_[tokenIdx * axisH_], hCopyParams_, copyPadParams);
         SyncFunc<HardEvent::MTE2_V>();
 
-        // ② 量化（每个 token 仅 1 次）
         if constexpr (QuantMode > UNQUANT) {
             quantInst_.QuantProcess(tempTensor_, xInTensor, 0, scalesCount_, scalesGMTensor_);
-        }
+        } else if constexpr (!Std::IsSame<ExpandXOutType, XType>::value) {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        else { // 非量化直转hifp8
             Cast(floatLocalTemp_, xInTensor, RoundMode::CAST_NONE, axisH_);
             Cast(tempTensor_, floatLocalTemp_, RoundMode::CAST_ROUND, axisH_);
-        }
 #endif
+        }
         if (tokenIdx > startTokenId) {
             WaitFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
         }
 
-        // UNQUANT 非3510路径下 tempTensor_ 未填充，直接从 xInTensor 读取
         LocalTensor<int32_t> srcTensorInt32;
         if constexpr (QuantMode > UNQUANT) {
             srcTensorInt32 = tempTensor_.template ReinterpretCast<int32_t>();
-        } else {
+        } else if constexpr (!Std::IsSame<ExpandXOutType, XType>::value) {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
             srcTensorInt32 = tempTensor_.template ReinterpretCast<int32_t>();
 #else
             srcTensorInt32 = xInTensor.template ReinterpretCast<int32_t>();
 #endif
+        } else {
+            srcTensorInt32 = xInTensor.template ReinterpretCast<int32_t>();
         }
 
-        // ③ 遍历 expert 子集
         SendBSExpertLoop(tokenIdx, kIterStart, kIterEnd, isMultiCorePerToken, srcTensorInt32);
         SetFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
     }
@@ -1172,7 +1196,21 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::AllToAllDispatchA5
     if ((aivId_ >= moeUsedAivNum_) && (sharedExpertRankNum_ != 0)) {
         SendToSharedExpert(inQueue, outBuf);
     } else {
-        SendToMoeExpert(inQueue, expertMaskBuf, outBuf);
+        uint32_t activeBS = static_cast<uint32_t>(activeMaskBsCnt_);
+        // BS 分核：每 token 读入+量化仅一次再 Copy 分发给 K 个 expert。
+        // scalesCount_>axisH_ 表示每个 expert 有独立量化 scales，量化结果因 expert 而异，无法「仅量化一次」。
+        // 模式B(activeBS>=N): 整除 util=100%，或非整除但利用率≥BS_UTILIZATION_MIN 时走 BS
+        bool modeBOk = (activeBS >= moeUsedAivNum_) &&
+            (activeBS * 100 / (moeUsedAivNum_ * Ceil(activeBS, moeUsedAivNum_)) >= BS_UTILIZATION_MIN);
+        // 模式A(activeBS<N): 维持整除
+        bool modeAOk = (activeBS < moeUsedAivNum_) && (moeUsedAivNum_ % activeBS == 0);
+        bool canUseBSMode = (activeBS > MIN_ACTIVE_BS_FOR_BS_MODE) && (moeUsedAivNum_ > 0) &&
+            (modeBOk || modeAOk) && (scalesCount_ <= axisH_) && (!isExpertMaskFlag_);
+        if (canUseBSMode) {
+            SendToMoeExpertByBS(inQueue, outBuf);
+        } else {
+            SendToMoeExpert(inQueue, expertMaskBuf, outBuf);
+        }
     }
 }
 
