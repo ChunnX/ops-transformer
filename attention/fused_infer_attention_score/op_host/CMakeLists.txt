@@ -63,6 +63,7 @@ if(NOT BUILD_OPS_RTY_KERNEL)
     ../../common/op_host/arch22/fia_tiling_nonquant.cpp
     ../../common/op_host/arch22/fia_tiling_empty_tensor.cpp
     ../../common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
+    ../../common/op_host/arch35/fia_tiling_nonquant_mla.cpp
     ../../common/op_host/arch35/fia_tiling_fullquant_mx.cpp
     ../op_host/arch35/fused_infer_attention_score_tiling_v4.cpp
     ../op_host/arch35/fused_infer_attention_score_tiling_impl.cpp
