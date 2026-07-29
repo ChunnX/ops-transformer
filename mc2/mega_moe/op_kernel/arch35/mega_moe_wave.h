@@ -180,22 +180,15 @@ private:
     template <GmmExpertMode Mode = GmmExpertMode::ROUTED>
     __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                                       uint32_t expertIdx, int32_t &vecSetSyncCom);
-    template <GmmExpertMode Mode>
-    __aicore__ inline auto &GetGmm1EpilogueOp();
-    template <GmmWeightLayout Layout, GmmExpertMode Mode, uint32_t CurrentEpilogueTileM,
-              bool CurrentTopkWeightsPrefetch, bool CurrentGmm1Interleaved, bool IsWaveFlagGrained>
-    __aicore__ inline void ExecuteGroupMatmulSwigluQuant(
-        BlockEpilogueSwigluMxQuant<ActivationType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                   CurrentEpilogueTileM, MegaMoeImpl::L1_TILE_N, CurrentTopkWeightsPrefetch,
-                                   CurrentGmm1Interleaved, IsWaveFlagGrained> &currentEpilogueOp,
-        const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx,
-        int32_t &vecSetSyncCom);
+    template <GmmExpertMode Mode, GmmWeightLayout Layout>
+    __aicore__ inline void GroupMatmulWithSwigluQuantImpl(
+        const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx, int32_t &vecSetSyncCom);
     template <GmmExpertMode Mode = GmmExpertMode::ROUTED>
     __aicore__ inline void GroupMatmulGmm2(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                            int32_t &vecSetSyncCom);
-    template <GmmWeightLayout Layout, GmmExpertMode Mode>
-    __aicore__ inline void ExecuteGroupMatmulGmm2(const GMMAddrInfo &gmmAddrInfo,
-                                                  const ExpertLoopState &state, int32_t &vecSetSyncCom);
+    template <GmmExpertMode Mode, GmmWeightLayout Layout>
+    __aicore__ inline void GroupMatmulGmm2Impl(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
+                                               int32_t &vecSetSyncCom);
 
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
     Params params_{};
@@ -2042,47 +2035,17 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SharedExpertCop
 }
 
 template <TemplateMegaMoeWaveTypeClass>
-template <GmmExpertMode Mode>
-__aicore__ inline auto &MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GetGmm1EpilogueOp()
-{
-    if constexpr (Mode == GmmExpertMode::SHARED) {
-        return sharedEpilogueOp_;
-    } else {
-        return epilogueOp_;
-    }
-}
-
-// Layout is named at this boundary so the lower-level bool template parameter
-// never appears as an unexplained true/false at the call site.
-template <TemplateMegaMoeWaveTypeClass>
-template <GmmWeightLayout Layout, GmmExpertMode Mode, uint32_t CurrentEpilogueTileM,
-          bool CurrentTopkWeightsPrefetch, bool CurrentGmm1Interleaved, bool IsWaveFlagGrained>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExecuteGroupMatmulSwigluQuant(
-    BlockEpilogueSwigluMxQuant<ActivationType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                               CurrentEpilogueTileM, MegaMoeImpl::L1_TILE_N, CurrentTopkWeightsPrefetch,
-                               CurrentGmm1Interleaved, IsWaveFlagGrained> &currentEpilogueOp,
+template <GmmExpertMode Mode, GmmWeightLayout Layout>
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWithSwigluQuantImpl(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx, int32_t &vecSetSyncCom)
 {
     constexpr bool isWeightNz = Layout == GmmWeightLayout::NZ;
     constexpr bool isShared = Mode == GmmExpertMode::SHARED;
-    MegaMoeImpl::GroupMatmulSwigluQuant<
-        QuantOutType, ActivationType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, isWeightNz,
-        GMM1_TILE_M, CurrentEpilogueTileM, CurrentTopkWeightsPrefetch, isShared, CurrentGmm1Interleaved,
-        IsWaveFlagGrained>(
-        currentEpilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-        state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
-}
+    constexpr uint32_t currentEpilogueTileM =
+        isShared ? MegaMoeImpl::L1_TILE_M_256 : EPILOGUE_TILE_M;
+    constexpr bool currentTopkWeightsPrefetch = !isShared && TopkWeightsPrefetch;
+    constexpr bool isWaveFlagGrained = true;
 
-// ===============================================================
-// GroupMatmulWithSwigluQuant：shared/routed 只负责选择 epilogue 实例。
-// tileM 与 top-k weight prefetch 从实例类型推导；ND/NZ 再做布局分发。
-// ===============================================================
-template <TemplateMegaMoeWaveTypeClass>
-template <GmmExpertMode Mode>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWithSwigluQuant(
-    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx, int32_t &vecSetSyncCom)
-{
-    auto &currentEpilogueOp = GetGmm1EpilogueOp<Mode>();
     if constexpr (g_coreType == AIV) {
         AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
             Get<IDX_C_OFFSET>(state.baseOffset),
@@ -2091,23 +2054,53 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
             0L,
             0L,
             0L};
-        currentEpilogueOp.UpdateGlobalAddr(vecBaseOffset);
+        if constexpr (isShared) {
+            sharedEpilogueOp_.UpdateGlobalAddr(vecBaseOffset);
+        } else {
+            epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
+        }
     }
 
+    if constexpr (isShared) {
+        MegaMoeImpl::GroupMatmulSwigluQuant<
+            QuantOutType, ActivationType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+            isWeightNz, GMM1_TILE_M, currentEpilogueTileM, currentTopkWeightsPrefetch, isShared,
+            GMM1_INTERLEAVED, isWaveFlagGrained>(
+            sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+            state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
+    } else {
+        MegaMoeImpl::GroupMatmulSwigluQuant<
+            QuantOutType, ActivationType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+            isWeightNz, GMM1_TILE_M, currentEpilogueTileM, currentTopkWeightsPrefetch, isShared,
+            GMM1_INTERLEAVED, isWaveFlagGrained>(
+            epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+            state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
+    }
+}
+
+// ===============================================================
+// GroupMatmulWithSwigluQuant：运行时识别 ND/NZ，进入对应编译期实例。
+// shared/routed 的真实类型差异留在唯一一层 Impl 中。
+// ===============================================================
+template <TemplateMegaMoeWaveTypeClass>
+template <GmmExpertMode Mode>
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWithSwigluQuant(
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx, int32_t &vecSetSyncCom)
+{
     const bool isWeightNz =
         params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
     if (isWeightNz) {
-        ExecuteGroupMatmulSwigluQuant<GmmWeightLayout::NZ, Mode>(
-            currentEpilogueOp, gmmAddrInfo, state, expertIdx, vecSetSyncCom);
+        GroupMatmulWithSwigluQuantImpl<Mode, GmmWeightLayout::NZ>(
+            gmmAddrInfo, state, expertIdx, vecSetSyncCom);
     } else {
-        ExecuteGroupMatmulSwigluQuant<GmmWeightLayout::ND, Mode>(
-            currentEpilogueOp, gmmAddrInfo, state, expertIdx, vecSetSyncCom);
+        GroupMatmulWithSwigluQuantImpl<Mode, GmmWeightLayout::ND>(
+            gmmAddrInfo, state, expertIdx, vecSetSyncCom);
     }
 }
 
 template <TemplateMegaMoeWaveTypeClass>
-template <GmmWeightLayout Layout, GmmExpertMode Mode>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExecuteGroupMatmulGmm2(
+template <GmmExpertMode Mode, GmmWeightLayout Layout>
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulGmm2Impl(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, int32_t &vecSetSyncCom)
 {
     constexpr bool isWeightNz = Layout == GmmWeightLayout::NZ;
@@ -2134,9 +2127,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulGmm2
     const bool isWeightNz =
         params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
     if (isWeightNz) {
-        ExecuteGroupMatmulGmm2<GmmWeightLayout::NZ, Mode>(gmmAddrInfo, state, vecSetSyncCom);
+        GroupMatmulGmm2Impl<Mode, GmmWeightLayout::NZ>(gmmAddrInfo, state, vecSetSyncCom);
     } else {
-        ExecuteGroupMatmulGmm2<GmmWeightLayout::ND, Mode>(gmmAddrInfo, state, vecSetSyncCom);
+        GroupMatmulGmm2Impl<Mode, GmmWeightLayout::ND>(gmmAddrInfo, state, vecSetSyncCom);
     }
 }
 
