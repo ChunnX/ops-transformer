@@ -29,6 +29,7 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
+#include "mega_moe_wave_utils.h"
 #if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../moe_distribute_dispatch_v2/quantize_functions.h"
 #else
@@ -86,8 +87,17 @@ private:
     using UnpermuteBufferConfig = MegaMoeUnpermuteBufferConfig;
     using SendMaskBufferConfig = MegaMoeSendMaskBufferConfig;
     using DispatchBufferConfig = MegaMoeDispatchBufferConfig;
+    struct CombineBufferConfig {
+        uint32_t rowBytes = 0;
+        uint32_t rowStrideBytes = 0;
+        uint32_t quantRowElements = 0;
+        uint32_t quantRowStorageBytes = 0;
+        uint32_t slotStrideBytes = 0;
+        uint32_t quantTempElements = 0;
+    };
 
     __aicore__ inline DispatchBufferConfig DispatchBuffInit();
+    __aicore__ inline CombineBufferConfig CombineBuffInit();
     __aicore__ inline SendMaskBufferConfig SendAndQuantBuffInit();
     __aicore__ inline void ResetFlagList();
     __aicore__ inline void SendMaskCal(const SendMaskBufferConfig &bufferConfig);
@@ -119,13 +129,22 @@ private:
     {
         return static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
     }
-    __aicore__ inline void InitCombineRowRing();
-    __aicore__ inline void DrainCombineRowRing();
+    __aicore__ inline void DrainCombineRowRing(uint32_t issuedRowCount);
     __aicore__ inline void PreloadCombineMetaInfo(uint64_t metaInfoGmTokenOffset, uint32_t tokenCount,
                                                  uint32_t metaInfoUbTokenOffset);
+    template <bool IsBufferReuse>
+    __aicore__ inline void ProcessCombineToken(const CombineBufferConfig &bufferConfig,
+                                               GlobalTensor<bfloat16_t> &gmm2OutGm, uint64_t gmRemoteBaseOffset,
+                                               uint32_t tokenLocal, LocalTensor<int32_t> &tokenMetaInfo,
+                                               uint32_t slot);
     __aicore__ inline void ProcessCombineGm(GM_ADDR gmm2OutGlobal, uint32_t tokenStart, uint32_t tokenCount,
-                                            uint32_t metaInfoUbTokenOffset, uint32_t &rowSequence);
-    __aicore__ inline void ProcessRoutedExpertWaves(const DispatchBufferConfig &bufferConfig,
+                                            uint32_t metaInfoUbTokenOffset,
+                                            const CombineBufferConfig &bufferConfig, uint32_t &rowSequence);
+    __aicore__ inline void ProcessCombineExperts(uint32_t batchBegin, uint32_t batchEnd,
+                                                 ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
+                                                 const CombineBufferConfig &bufferConfig);
+    __aicore__ inline void ProcessRoutedExpertWaves(const DispatchBufferConfig &dispatchBufferConfig,
+                                                    const CombineBufferConfig &combineBufferConfig,
                                                     int32_t &vecSetSyncCom);
     __aicore__ inline void CrossRankSyncInWorldSize();
     __aicore__ inline void ExpertTokenNumCopyOut();
@@ -154,8 +173,8 @@ private:
     __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                                       uint32_t expertIdx, int32_t &vecSetSyncCom);
     template <bool IsShared = false>
-    __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-                                                  int32_t &vecSetSyncCom);
+    __aicore__ inline void GroupMatmulGmm2(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
+                                           int32_t &vecSetSyncCom);
 
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
     Params params_{};
@@ -262,6 +281,9 @@ private:
     LocalTensor<int32_t> sendGatherOutTensor_; // SendMaskCal GatherMask 计 count 的废弃输出 scratch
     LocalTensor<int32_t> sendCntAccTensor_;    // SendMaskCal per-expert 跨 batch count 累加器
     LocalTensor<int32_t> expertTokenNumsOutTensor_;
+    LocalTensor<int32_t> combineMetaInfoTensor_;
+    LocalTensor<bfloat16_t> combineRowBufferTensor_;
+    LocalTensor<float> combineQuantTempTensor_;
     LocalTensor<bfloat16_t> dataResTensor_;
     LocalTensor<float> dataResFp32Tensor_;
     LocalTensor<float> topKWeightsTensor_;
@@ -452,6 +474,47 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffInit()
     metaInfoTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, metaInfoTensorAddr, metaInfoReserveSize / sizeof(int32_t));
     ubBufferUsedAddr_ = metaInfoTensorAddr + metaInfoReserveSize;
+    return bufferConfig;
+}
+
+// ======================================================================================
+// CombineBuffInit：统一管理 wave combine 使用的 row ring、量化 scratch 和 meta-info。
+// Dispatch 与 Combine 分阶段复用 AIV1 UB；这里只建立 tensor 视图，不会覆盖 Dispatch 数据。
+// ======================================================================================
+template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CombineBufferConfig
+MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CombineBuffInit()
+{
+    CombineBufferConfig bufferConfig{};
+    if constexpr (g_coreType == AIC) {
+        return bufferConfig;
+    }
+    if (subBlockIdx_ != 1) {
+        return bufferConfig;
+    }
+
+    bufferConfig.rowBytes = k_ * sizeof(bfloat16_t);
+    bufferConfig.rowStrideBytes = static_cast<uint32_t>(
+        Ops::Base::CeilAlign(static_cast<uint64_t>(bufferConfig.rowBytes), static_cast<uint64_t>(ALIGN_32)));
+    bufferConfig.slotStrideBytes = bufferConfig.rowStrideBytes;
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        uint32_t nScale = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
+        bufferConfig.quantRowElements = k_ + nScale;
+        bufferConfig.quantRowStorageBytes =
+            Ops::Base::CeilAlign(bufferConfig.quantRowElements, static_cast<uint32_t>(ALIGN_32));
+        bufferConfig.slotStrideBytes += bufferConfig.quantRowStorageBytes;
+        bufferConfig.quantTempElements = nScale + nScale / 2U;
+    }
+
+    uint32_t rowRingBytes = COMBINE_ROW_BUFFER_NUM * bufferConfig.slotStrideBytes;
+    combineRowBufferTensor_ = LocalTensor<bfloat16_t>(
+        TPosition::VECIN, COMBINE_UB_BASE, rowRingBytes / sizeof(bfloat16_t));
+    combineMetaInfoTensor_ = LocalTensor<int32_t>(
+        TPosition::VECCALC, META_INFO_TENSOR_ADDR, COMBINE_META_INFO_TOKEN_CAPACITY * META_INFO_SIZE);
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        combineQuantTempTensor_ = LocalTensor<float>(
+            TPosition::VECIN, COMBINE_UB_BASE + rowRingBytes, bufferConfig.quantTempElements);
+    }
     return bufferConfig;
 }
 
@@ -1485,34 +1548,32 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GetCombineOwnedRange(uint32_t tokenCou
     return MegaMoeImpl::GetBalancedTokenRange(tokenCount, aivCoreIdx_ / 2U, logicalAiv1Num);
 }
 
-// Dispatch and combine time-share AIV1's dynamic UB/event resources.  Dispatch
-// is fully drained before this ring is initialized, so the row-slot events can
-// remain live across every expert in the current wave.
 template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::InitCombineRowRing()
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DrainCombineRowRing(uint32_t issuedRowCount)
 {
-    // Keep event IDs as immediates.  A device-side event table may spill to GM
-    // and add a load to every row in this hot path.
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID2);
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID3);
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID4);
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
+    // 每个已使用槽最终保留一个 MTE3_MTE2 完成事件。只回收实际使用的槽，
+    // 这样 token 少于 ring 深度时不会等待一个从未产生过的事件。
+    uint32_t activeSlotCount =
+        issuedRowCount < COMBINE_ROW_BUFFER_NUM ? issuedRowCount : COMBINE_ROW_BUFFER_NUM;
+    if (activeSlotCount > 0U) {
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     }
-}
-
-template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DrainCombineRowRing()
-{
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+    if (activeSlotCount > 1U) {
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+    }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID2);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID3);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID4);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
+        if (activeSlotCount > 2U) {
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID2);
+        }
+        if (activeSlotCount > 3U) {
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID3);
+        }
+        if (activeSlotCount > 4U) {
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID4);
+        }
+        if (activeSlotCount > 5U) {
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
+        }
     }
 }
 
@@ -1524,14 +1585,55 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::PreloadCombineM
     if (tokenCount == 0U) {
         return;
     }
-    uint32_t metaInfoUbByteOffset =
-        metaInfoUbTokenOffset * static_cast<uint32_t>(META_INFO_SIZE * sizeof(int32_t));
-    LocalTensor<int32_t> metaInfoUb(TPosition::VECCALC, META_INFO_TENSOR_ADDR + metaInfoUbByteOffset,
-                                    tokenCount * META_INFO_SIZE);
+    LocalTensor<int32_t> metaInfoUb = combineMetaInfoTensor_[metaInfoUbTokenOffset * META_INFO_SIZE];
     GlobalTensor<int32_t> metaInfoGm;
     metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.metaInfoPtr));
     uint64_t metaInfoGmOffset = metaInfoGmTokenOffset * META_INFO_SIZE;
     DataCopy(metaInfoUb, metaInfoGm[metaInfoGmOffset], tokenCount * META_INFO_SIZE);
+    SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+}
+
+// 搬运、可选量化并发送一个 token。首轮填槽用 <false>，不生成无意义的
+// MTE3_MTE2 wait；ring 回绕后用 <true> 等待旧发送完成再覆盖该槽。
+template <TemplateMegaMoeWaveTypeClass>
+template <bool IsBufferReuse>
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineToken(
+    const CombineBufferConfig &bufferConfig, GlobalTensor<bfloat16_t> &gmm2OutGm, uint64_t gmRemoteBaseOffset,
+    uint32_t tokenLocal, LocalTensor<int32_t> &tokenMetaInfo, uint32_t slot)
+{
+    TEventID eventId = CombineRowEventId(slot);
+    if constexpr (IsBufferReuse) {
+        WaitFlag<HardEvent::MTE3_MTE2>(eventId);
+    }
+
+    uint32_t slotElementOffset = slot * bufferConfig.slotStrideBytes / sizeof(bfloat16_t);
+    LocalTensor<bfloat16_t> rowUb = combineRowBufferTensor_[slotElementOffset];
+    DataCopyExtParams gm2UbParams{1U, bufferConfig.rowBytes, 0U, 0U, 0U};
+    DataCopyPadExtParams<bfloat16_t> gm2UbPad{false, 0U, 0U, 0U};
+    DataCopyPad(rowUb, gmm2OutGm[static_cast<uint64_t>(tokenLocal) * k_], gm2UbParams, gm2UbPad);
+
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        SetFlag<HardEvent::MTE2_MTE3>(eventId);
+        WaitFlag<HardEvent::MTE2_MTE3>(eventId);
+        MegaMoeCombineImpl::CombineTokenRowTiled<bfloat16_t>(
+            k_, gmRemoteBaseOffset, tokenMetaInfo, rowUb, params_);
+    } else {
+        LocalTensor<bfloat16_t> quantUb =
+            combineRowBufferTensor_[slotElementOffset + bufferConfig.rowStrideBytes / sizeof(bfloat16_t)];
+        SetFlag<HardEvent::MTE2_V>(eventId);
+        WaitFlag<HardEvent::MTE2_V>(eventId);
+        MegaMoeCombineImpl::QuantMxFp8<CombineQuantMode, bfloat16_t>(
+            quantUb, rowUb, combineQuantTempTensor_, k_);
+        SetFlag<HardEvent::V_MTE3>(eventId);
+        WaitFlag<HardEvent::V_MTE3>(eventId);
+        using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT,
+                                                  fp8_e4m3fn_t, fp8_e5m2_t>::type;
+        LocalTensor<Fp8Type> quantSendUb = quantUb.template ReinterpretCast<Fp8Type>();
+        MegaMoeCombineImpl::CombineTokenRowTiled<Fp8Type>(
+            bufferConfig.quantRowElements, gmRemoteBaseOffset, tokenMetaInfo, quantSendUb, params_);
+    }
+    SetFlag<HardEvent::MTE3_MTE2>(eventId);
 }
 
 // Token-grain AIV1 combine.  Both modes share the same expert/token schedule
@@ -1541,78 +1643,41 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::PreloadCombineM
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineGm(
     GM_ADDR gmm2OutGlobal, uint32_t tokenStart, uint32_t tokenCount, uint32_t metaInfoUbTokenOffset,
-    uint32_t &rowSequence)
+    const CombineBufferConfig &bufferConfig, uint32_t &rowSequence)
 {
-    if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ != 1 || tokenCount == 0U) {
-            return;
-        }
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (subBlockIdx_ != 1 || tokenCount == 0U) {
+        return;
+    }
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        AscendC::SetCtrlSpr<60, 60>(0);
+    }
 
-        uint32_t rowBytes = k_ * sizeof(bfloat16_t);
-        uint32_t rowStrideBytes = static_cast<uint32_t>(
-            Ops::Base::CeilAlign(static_cast<uint64_t>(rowBytes), static_cast<uint64_t>(ALIGN_32)));
-        uint32_t nScale = 0U;
-        uint32_t quantTokenStorageBytes = 0U;
-        uint32_t slotStrideBytes = rowStrideBytes;
-        LocalTensor<float> quantTemp;
-        if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-            nScale = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
-            quantTokenStorageBytes =
-                Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
-            slotStrideBytes += quantTokenStorageBytes;
-            uint32_t quantTempAddr = COMBINE_UB_BASE + COMBINE_ROW_BUFFER_NUM * slotStrideBytes;
-            uint32_t quantTempSize = nScale + nScale / 2U;
-            quantTemp = LocalTensor<float>(TPosition::VECIN, quantTempAddr, quantTempSize);
-            AscendC::SetCtrlSpr<60, 60>(0);
-        }
-        uint32_t metaInfoUbByteOffset =
-            metaInfoUbTokenOffset * static_cast<uint32_t>(META_INFO_SIZE * sizeof(int32_t));
-        LocalTensor<int32_t> metaInfoUb(TPosition::VECCALC, META_INFO_TENSOR_ADDR + metaInfoUbByteOffset,
-                                        tokenCount * META_INFO_SIZE);
+    GlobalTensor<bfloat16_t> gmm2OutGm;
+    gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(gmm2OutGlobal));
+    uint64_t gmRemoteBaseOffset =
+        params_.peermemInfo.combineSendPtr - params_.peermemInfo.rankSyncInWorldPtr;
 
-        GlobalTensor<bfloat16_t> gmm2OutGm;
-        gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(gmm2OutGlobal));
-        DataCopyExtParams gm2UbParams{1U, rowBytes, 0U, 0U, 0U};
-        DataCopyPadExtParams<bfloat16_t> gm2UbPad{false, 0U, 0U, 0U};
-        uint64_t gmRemoteBaseOffset =
-            params_.peermemInfo.combineSendPtr - params_.peermemInfo.rankSyncInWorldPtr;
-
-        for (uint32_t tokenIdxInSlice = 0; tokenIdxInSlice < tokenCount; ++tokenIdxInSlice, ++rowSequence) {
-            uint32_t tokenLocal = tokenStart + tokenIdxInSlice;
-            uint32_t slot = rowSequence % COMBINE_ROW_BUFFER_NUM;
-            // Slot event IDs are contiguous: calculate the scalar event ID
-            // directly instead of indexing a device-side table that may spill.
-            TEventID eventId = CombineRowEventId(slot);
-            uint32_t slotBaseAddr = COMBINE_UB_BASE + slot * slotStrideBytes;
-            LocalTensor<bfloat16_t> rowUb(TPosition::VECIN, slotBaseAddr,
-                                          rowStrideBytes / sizeof(bfloat16_t));
-            LocalTensor<int32_t> tokenMetaInfo = metaInfoUb[tokenIdxInSlice * META_INFO_SIZE];
-            WaitFlag<HardEvent::MTE3_MTE2>(eventId);
-
-            DataCopyPad(rowUb, gmm2OutGm[static_cast<uint64_t>(tokenLocal) * k_], gm2UbParams, gm2UbPad);
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                SetFlag<HardEvent::MTE2_MTE3>(eventId);
-                WaitFlag<HardEvent::MTE2_MTE3>(eventId);
-                MegaMoeCombineImpl::CombineTokenRowTiled<bfloat16_t>(
-                    k_, gmRemoteBaseOffset, tokenMetaInfo, rowUb, params_);
-            } else {
-                LocalTensor<bfloat16_t> quantUb(TPosition::VECIN, slotBaseAddr + rowStrideBytes,
-                                                 quantTokenStorageBytes / sizeof(bfloat16_t));
-                SetFlag<HardEvent::MTE2_V>(eventId);
-                WaitFlag<HardEvent::MTE2_V>(eventId);
-                MegaMoeCombineImpl::QuantMxFp8<CombineQuantMode, bfloat16_t>(
-                    quantUb, rowUb, quantTemp, k_);
-                SetFlag<HardEvent::V_MTE3>(eventId);
-                WaitFlag<HardEvent::V_MTE3>(eventId);
-                using Fp8Type =
-                    typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT,
-                                              fp8_e4m3fn_t, fp8_e5m2_t>::type;
-                LocalTensor<Fp8Type> quantSendUb = quantUb.template ReinterpretCast<Fp8Type>();
-                MegaMoeCombineImpl::CombineQuantizedTokens<Fp8Type>(
-                    0U, 1U, k_, nScale, 0U, rankId_, tokenMetaInfo, quantSendUb, params_);
-            }
-            SetFlag<HardEvent::MTE3_MTE2>(eventId);
-        }
+    uint32_t tokenIdxInSlice = 0U;
+    uint32_t firstUseCount = rowSequence < COMBINE_ROW_BUFFER_NUM ?
+                                 COMBINE_ROW_BUFFER_NUM - rowSequence :
+                                 0U;
+    firstUseCount = firstUseCount < tokenCount ? firstUseCount : tokenCount;
+    for (; tokenIdxInSlice < firstUseCount; ++tokenIdxInSlice, ++rowSequence) {
+        uint32_t slot = rowSequence % COMBINE_ROW_BUFFER_NUM;
+        LocalTensor<int32_t> tokenMetaInfo =
+            combineMetaInfoTensor_[(metaInfoUbTokenOffset + tokenIdxInSlice) * META_INFO_SIZE];
+        ProcessCombineToken<false>(bufferConfig, gmm2OutGm, gmRemoteBaseOffset,
+                                   tokenStart + tokenIdxInSlice, tokenMetaInfo, slot);
+    }
+    for (; tokenIdxInSlice < tokenCount; ++tokenIdxInSlice, ++rowSequence) {
+        uint32_t slot = rowSequence % COMBINE_ROW_BUFFER_NUM;
+        LocalTensor<int32_t> tokenMetaInfo =
+            combineMetaInfoTensor_[(metaInfoUbTokenOffset + tokenIdxInSlice) * META_INFO_SIZE];
+        ProcessCombineToken<true>(bufferConfig, gmm2OutGm, gmRemoteBaseOffset,
+                                  tokenStart + tokenIdxInSlice, tokenMetaInfo, slot);
     }
 }
 
@@ -2013,15 +2078,15 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
 }
 
 // ===============================================================
-// GroupMatmulWithCombine：按 A8W8 weight layout 将 BF16 GMM2 结果直接写 GM。
+// GroupMatmulGmm2：按 A8W8 weight layout 将 BF16 GMM2 结果直接写 GM。
 // routed-expert 的发送格式由后续 CombineQuantMode 分支决定；IsShared=true
 // 时跳过 swiglu flag 等待，供共享专家使用。
 // ===============================================================
 template <TemplateMegaMoeWaveTypeClass>
 template <bool IsShared>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo,
-                                                                                        const ExpertLoopState &state,
-                                                                                        int32_t &vecSetSyncCom)
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulGmm2(const GMMAddrInfo &gmmAddrInfo,
+                                                                                 const ExpertLoopState &state,
+                                                                                 int32_t &vecSetSyncCom)
 {
     if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
         MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
@@ -2038,6 +2103,58 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
     }
 }
 
+// AIV1 consumes one routed-expert wave after its GMM2-ready fan-in.  Token
+// ownership, meta-info batching and the row ring are kept here so the main
+// GMM scheduler only describes stage order.
+template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineExperts(
+    uint32_t batchBegin, uint32_t batchEnd, ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
+    const CombineBufferConfig &bufferConfig)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (subBlockIdx_ != 1) {
+        return;
+    }
+
+    uint32_t rowSequence = 0U;
+    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
+        if (!UpdateGroupParams<AddrUpdateMode::GMM2>(combineState, expertIdx)) {
+            continue;
+        }
+        UpdateGlobalBuffer<AddrUpdateMode::GMM2>(combineAddrInfo, combineState);
+        uint32_t currentExpertTokenNum =
+            static_cast<uint32_t>(Get<M_VALUE>(combineState.problemShape));
+        MegaMoeImpl::TokenRange currentCoreTokenRange =
+            GetCombineOwnedRange(currentExpertTokenNum);
+        if (currentCoreTokenRange.count != 0U) {
+            WaitGmm2Ready(expertIdx);
+        }
+
+        uint32_t processedTokenNum = 0U;
+        while (processedTokenNum < currentCoreTokenRange.count) {
+            uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
+            uint32_t chunkTokenNum =
+                remainingTokenNum < COMBINE_META_INFO_TOKEN_CAPACITY ?
+                    remainingTokenNum :
+                    COMBINE_META_INFO_TOKEN_CAPACITY;
+            PreloadCombineMetaInfo(
+                static_cast<uint64_t>(combineState.expertBeforeCnt) +
+                    currentCoreTokenRange.start + processedTokenNum,
+                chunkTokenNum, 0U);
+            ProcessCombineGm(
+                combineAddrInfo.gmm2OutGlobal,
+                currentCoreTokenRange.start + processedTokenNum,
+                chunkTokenNum, 0U, bufferConfig, rowSequence);
+            processedTokenNum += chunkTokenNum;
+        }
+    }
+
+    // Dispatch for the following wave reuses the same UB and event IDs.
+    DrainCombineRowRing(rowSequence);
+}
+
 // Rolling MTE wave schedule:
 //   AIC  : GMM1(B) -> GMM2(B) direct GM -> GMM1(B+1)
 //   AIV0 : SwiGLU(B) -> SwiGLU(B+1), never enters combine/ready
@@ -2046,7 +2163,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
 // existing dispatch/SwiGLU dependencies and the expert-grained GMM2 ready fan-in.
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedExpertWaves(
-    const DispatchBufferConfig &bufferConfig, int32_t &vecSetSyncCom)
+    const DispatchBufferConfig &dispatchBufferConfig, const CombineBufferConfig &combineBufferConfig,
+    int32_t &vecSetSyncCom)
 {
     GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;
@@ -2066,7 +2184,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
     uint32_t nextDispatchExpert = 0;
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1 && moeExpertPerRank_ > 0U) {
-            DispatchExpert(dispatchState, dispatchAddrInfo, 0U, bufferConfig);
+            DispatchExpert(dispatchState, dispatchAddrInfo, 0U, dispatchBufferConfig);
             nextDispatchExpert = 1U;
         }
     }
@@ -2086,7 +2204,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
         for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
             if constexpr (g_coreType == AIV) {
                 if (subBlockIdx_ == 1 && nextDispatchExpert < batchEnd) {
-                    DispatchExpert(dispatchState, dispatchAddrInfo, nextDispatchExpert, bufferConfig);
+                    DispatchExpert(dispatchState, dispatchAddrInfo, nextDispatchExpert, dispatchBufferConfig);
                     ++nextDispatchExpert;
                 }
             }
@@ -2112,7 +2230,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
                 while (nextDispatchExpert < nextBatchEnd) {
-                    DispatchExpert(dispatchState, dispatchAddrInfo, nextDispatchExpert, bufferConfig);
+                    DispatchExpert(dispatchState, dispatchAddrInfo, nextDispatchExpert, dispatchBufferConfig);
                     ++nextDispatchExpert;
                 }
             }
@@ -2125,7 +2243,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
                 continue;
             }
             UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
-            GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, vecSetSyncCom);
+            GroupMatmulGmm2(gmm2AddrInfo, gmm2State, vecSetSyncCom);
             PublishGmm2Ready(expertIdx);
         }
         // All core types consume the same real/virtual GMM tile rotations.  If
@@ -2141,42 +2259,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
             startBlockIdx_ = gmm1EndCursor;
         }
 
-        // This block is AIV1-only.  In particular AIV0 never calls the wait
-        // helper and never creates combine UB/event state.
-        if constexpr (g_coreType == AIV) {
-            if (subBlockIdx_ == 1) {
-                InitCombineRowRing();
-                uint32_t rowSequence = 0U;
-                for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-                    if (!UpdateGroupParams<AddrUpdateMode::GMM2>(combineState, expertIdx)) {
-                        continue;
-                    }
-                    UpdateGlobalBuffer<AddrUpdateMode::GMM2>(combineAddrInfo, combineState);
-                    uint32_t mExpert = static_cast<uint32_t>(Get<M_VALUE>(combineState.problemShape));
-                    MegaMoeImpl::TokenRange owned = GetCombineOwnedRange(mExpert);
-                    if (owned.count != 0U) {
-                        WaitGmm2Ready(expertIdx);
-                    }
-                    uint32_t processed = 0U;
-                    while (processed < owned.count) {
-                        uint32_t chunkCount = owned.count - processed < COMBINE_META_INFO_TOKEN_CAPACITY ?
-                                                  owned.count - processed :
-                                                  COMBINE_META_INFO_TOKEN_CAPACITY;
-                        PreloadCombineMetaInfo(
-                            static_cast<uint64_t>(combineState.expertBeforeCnt) + owned.start + processed,
-                            chunkCount, 0U);
-                        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
-                        ProcessCombineGm(combineAddrInfo.gmm2OutGlobal, owned.start + processed,
-                                         chunkCount, 0U, rowSequence);
-                        processed += chunkCount;
-                    }
-                }
-                // A slot can remain in flight across expert boundaries, but
-                // dispatch for the following wave may reuse the same UB/events.
-                DrainCombineRowRing();
-            }
-        }
+        ProcessCombineExperts(
+            batchBegin, batchEnd, combineState, combineAddrInfo, combineBufferConfig);
     }
 
     // The non-prefetch path still has one outstanding AIC->AIV0 UB consumer
@@ -2229,7 +2313,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
             continue;
         }
         UpdateSharedGlobalBuffer<AddrUpdateMode::GMM2>(sharedGmm2AddrInfo, sharedGmm2State);
-        GroupMatmulWithCombine<true>(sharedGmm2AddrInfo, sharedGmm2State, vecSetSyncCom);
+        GroupMatmulGmm2<true>(sharedGmm2AddrInfo, sharedGmm2State, vecSetSyncCom);
     }
     SyncAll<false>();
 }
@@ -2268,9 +2352,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBufferConfig dispatchBufferConfig = DispatchBuffInit();
+    CombineBufferConfig combineBufferConfig = CombineBuffInit();
     int32_t vecSetSyncCom = 0;
 
-    ProcessRoutedExpertWaves(dispatchBufferConfig, vecSetSyncCom);
+    ProcessRoutedExpertWaves(dispatchBufferConfig, combineBufferConfig, vecSetSyncCom);
 
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
