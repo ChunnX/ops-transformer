@@ -96,35 +96,35 @@
     <tr>
       <td>x</td>
       <td>输入</td>
-      <td>公式中的$X$，表示原始不经压缩的数据，HIFLOAT8量化输入。</td>
+      <td>公式中的<span class="math-inline">X</span>，表示原始不经压缩的数据，HIFLOAT8量化输入。</td>
       <td>HIFLOAT8</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>wkv</td>
       <td>输入</td>
-      <td>公式中的$W^{KV}$，表示kv压缩权重，HIFLOAT8量化输入。</td>
+      <td>公式中的<span class="math-inline">W<sup>KV</sup></span>，表示kv压缩权重，HIFLOAT8量化输入。</td>
       <td>HIFLOAT8</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>wgate</td>
       <td>输入</td>
-      <td>公式中的$W^{Gate}$，表示gate压缩权重，HIFLOAT8量化输入。</td>
+      <td>公式中的<span class="math-inline">W<sup>Gate</sup></span>，表示gate压缩权重，HIFLOAT8量化输入。</td>
       <td>HIFLOAT8</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>state_cache</td>
       <td>输入</td>
-      <td>公式中的$\left[kv\_state, score\_state\right]$, 表示kv_state和score_state的历史数据。</td>
+      <td>公式中的<span class="math-inline">[kv_state, score_state]</span>，表示kv_state和score_state的历史数据。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>ape</td>
       <td>输入</td>
-      <td>公式中的$Ape$，表示positional biases。</td>
+      <td>公式中的<span class="math-inline">Ape</span>，表示positional biases。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
@@ -178,13 +178,6 @@
       <td>ND</td>
     </tr>
     <tr>
-      <td>cmp_kv</td>
-      <td>输出</td>
-      <td>表示压缩后的数据。</td>
-      <td>BFLOAT16</td>
-      <td>ND</td>
-    </tr>
-    <tr>
       <td>quant_mode</td>
       <td>属性</td>
       <td>量化模式。取值范围为[1]，1表示A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL（HIFLOAT8输入，x按per-tensor缩放、wkv/wgate按per-channel缩放反量化）。</td>
@@ -218,6 +211,13 @@
       <td>表示state_cache的0轴stride。默认值为0。</td>
       <td>INT32</td>
       <td>-</td>
+    </tr>
+    <tr>
+      <td>cmp_kv</td>
+      <td>输出</td>
+      <td>表示压缩后的数据。</td>
+      <td>BFLOAT16</td>
+      <td>ND</td>
     </tr>
   </tbody>
 </table>
@@ -295,7 +295,6 @@
 
 ## 调用说明
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
 
   | 调用方式 | 样例代码 | 说明 |
   | ------- | ------- | ---- |

@@ -168,7 +168,7 @@ aclnnStatus aclnnQuantCompressor(
     <tr>
       <td>x（const aclTensor*）</td>
       <td>输入</td>
-      <td>公式中的$X$，表示原始不经压缩的数据，HIFLOAT8量化输入。</td>
+      <td>公式中的<span class="math-inline">X</span>，表示原始不经压缩的数据，HIFLOAT8量化输入。</td>
       <td>支持B=0,S=0,T=0的空Tensor。</td>
       <td>HIFLOAT8</td>
       <td>ND</td>
@@ -178,7 +178,7 @@ aclnnStatus aclnnQuantCompressor(
     <tr>
       <td>wkv（const aclTensor*）</td>
       <td>输入</td>
-      <td>公式中的$W^{KV}$，表示kv压缩权重，HIFLOAT8量化输入。</td>
+      <td>公式中的<span class="math-inline">W<sup>KV</sup></span>，表示kv压缩权重，HIFLOAT8量化输入。</td>
       <td>不支持空Tensor。</td>
       <td>HIFLOAT8</td>
       <td>ND</td>
@@ -188,7 +188,7 @@ aclnnStatus aclnnQuantCompressor(
     <tr>
       <td>wgate（const aclTensor*）</td>
       <td>输入</td>
-      <td>公式中的$W^{Gate}$，表示gate压缩权重，HIFLOAT8量化输入。</td>
+      <td>公式中的<span class="math-inline">W<sup>Gate</sup></span>，表示gate压缩权重，HIFLOAT8量化输入。</td>
       <td>不支持空Tensor。</td>
       <td>HIFLOAT8</td>
       <td>ND</td>
@@ -198,7 +198,7 @@ aclnnStatus aclnnQuantCompressor(
     <tr>
       <td>stateCacheRef（aclTensor*）</td>
       <td>输入/输出</td>
-      <td>公式中的$\left[kv\_state, score\_state\right]$, 表示kv_state和score_state的历史数据，原地更新。</td>
+      <td>公式中的<span class="math-inline">[kv_state, score_state]</span>，表示kv_state和score_state的历史数据，原地更新。</td>
       <td>不支持空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -208,7 +208,7 @@ aclnnStatus aclnnQuantCompressor(
     <tr>
       <td>ape（const aclTensor*）</td>
       <td>输入</td>
-      <td>公式中的$Ape$，表示positional biases。</td>
+      <td>公式中的<span class="math-inline">Ape</span>，表示positional biases。</td>
       <td>不支持空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -216,7 +216,7 @@ aclnnStatus aclnnQuantCompressor(
       <td>×</td>
     </tr>
     <tr>
-      <td>xDescale（const aclTensor*）</td>
+      <td>xDescaleOptional（const aclTensor*）</td>
       <td>可选输入</td>
       <td>x的反量化缩放因子，per-tensor缩放。quant_mode=1时必选。</td>
       <td>不支持空Tensor。</td>
@@ -226,7 +226,7 @@ aclnnStatus aclnnQuantCompressor(
       <td>×</td>
     </tr>
     <tr>
-      <td>wkvDescale（const aclTensor*）</td>
+      <td>wkvDescaleOptional（const aclTensor*）</td>
       <td>可选输入</td>
       <td>wkv的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。</td>
       <td>不支持空Tensor。</td>
@@ -236,7 +236,7 @@ aclnnStatus aclnnQuantCompressor(
       <td>×</td>
     </tr>
     <tr>
-      <td>wgateDescale（const aclTensor*）</td>
+      <td>wgateDescaleOptional（const aclTensor*）</td>
       <td>可选输入</td>
       <td>wgate的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。</td>
       <td>不支持空Tensor。</td>
@@ -246,7 +246,7 @@ aclnnStatus aclnnQuantCompressor(
       <td>×</td>
     </tr>
     <tr>
-      <td>stateBlockTable（const aclTensor*）</td>
+      <td>stateBlockTableOptional（const aclTensor*）</td>
       <td>可选输入</td>
       <td>表示state_cache存储使用的block映射表。</td>
       <td>当其中元素的值为0时，表示当前位置无需进行更新state_cache操作；不支持空Tensor。</td>
@@ -256,7 +256,7 @@ aclnnStatus aclnnQuantCompressor(
       <td>×</td>
     </tr>
     <tr>
-      <td>cuSeqlens（const aclTensor*）</td>
+      <td>cuSeqlensOptional（const aclTensor*）</td>
       <td>可选输入</td>
       <td>表示不同Batch中的有效token数。</td>
       <td>支持B=0,S=0,T=0的空Tensor；当x的shape为[B,S,H]时，参数必须为空。</td>
@@ -266,7 +266,7 @@ aclnnStatus aclnnQuantCompressor(
       <td>×</td>
     </tr>
     <tr>
-      <td>seqused（const aclTensor*）</td>
+      <td>sequsedOptional（const aclTensor*）</td>
       <td>可选输入</td>
       <td>表示不同Batch中实际参与压缩的token数。</td>
       <td>如果指定为None时，表示和每个Batch上的Sequence Length长度相同；支持B=0的空Tensor。该入参中每个Batch的有效token数要求小于等于对应Sequence Length长度。当x的shape为[B,S,H]时，要求seqused[n] <= S，且不小于0；当x的shape为[T,H]时，要求seqused[n] <= cu_seqlens[n+1] - cu_seqlens[n]，且不小于0。</td>
@@ -276,7 +276,7 @@ aclnnStatus aclnnQuantCompressor(
       <td>×</td>
     </tr>
     <tr>
-      <td>startPos（const aclTensor*）</td>
+      <td>startPosOptional（const aclTensor*）</td>
       <td>可选输入</td>
       <td>表示计算起始位置。</td>
       <td>支持B=0,T=0的空Tensor；当输入为None时，表示从0开始进行计算。</td>
@@ -336,7 +336,7 @@ aclnnStatus aclnnQuantCompressor(
       <td>-</td>
     </tr>
     <tr>
-      <td>cmpKv（aclTensor*）</td>
+      <td>cmpKvOut（const aclTensor*）</td>
       <td>输出</td>
       <td>表示压缩后的数据。</td>
       <td>支持B=0,S=0,T=0的空Tensor。</td>
@@ -344,6 +344,26 @@ aclnnStatus aclnnQuantCompressor(
       <td>ND</td>
       <td>BS合轴：[min(T,T//cmp_ratio+B),D]、BS非合轴：[B,ceil(S/cmp_ratio),D]</td>
       <td>×</td>
+    </tr>
+    <tr>
+      <td>workspaceSize（uint64_t*）</td>
+      <td>输出</td>
+      <td>表示需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>UINT64</td>
+      <td>-</td>
+      <td>[1,]</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor（aclOpExecutor**）</td>
+      <td>输出</td>
+      <td>op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>aclOpExecutor</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
     </tr>
   </tbody></table>
 
@@ -507,8 +527,6 @@ aclnnStatus aclnnQuantCompressor(
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
-
-- <term>Ascend 950PR/Ascend 950DT</term>：
 
 ```Cpp
 /**
