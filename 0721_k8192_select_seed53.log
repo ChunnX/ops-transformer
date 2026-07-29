@@ -1,0 +1,18 @@
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_64_k_8192: suite=core kind=coverage layout=BSND B=1 S1=64 S2=8192 N1=64 Nidx1=32 K=8192 valid_k=[8129,8192] exec_k=8192 scatter_exec_k=8192 invalid=2016 path=tail-protected dtype=bfloat16
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=7.386230e+00 mean_abs=1.156954e-02 mean_rel=8.999550e-02 norm_rel=1.901351e-01
+  dKeyIndex    max_abs=7.890625e+00 mean_abs=2.852687e-03 mean_rel=8.427551e-01 norm_rel=1.882937e-01
+  dWeights     max_abs=3.906250e-03 mean_abs=2.205372e-06 mean_rel=6.923681e-06 norm_rel=1.008422e-05
+  Loss         max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+[00] bsnd_b1_s1_64_k_8192 SELECT_DEBUG_TASK: 跳过 NPU 全量诊断以限制峰值显存
+[00] bsnd_b1_s1_64_k_8192 SELECT_DEBUG_TASK selected b=0 q=19 dQ_norm=6.21e-01 dW_norm=0.00e+00
+[00] bsnd_b1_s1_64_k_8192 SELECT_DEBUG_TASK finished without an in-process rerun; rerun in a fresh process with SLIG_DEBUG_TASK=0,19.
+[00] bsnd_b1_s1_64_k_8192 PRECISION_FAIL dQ_norm=1.90e-01 dK_norm=1.88e-01 dW_norm=1.01e-05 Loss_norm=0.00e+00
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
