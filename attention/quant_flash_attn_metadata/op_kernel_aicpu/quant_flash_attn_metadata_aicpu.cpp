@@ -53,7 +53,7 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     if (!requiredAttrs) {
         return false;
     }
-    GetAttrValueOpt(ctx, "quant_mode", quantMode_);
+    GetAttrValueOpt(ctx, "quant_compute_mode", quantMode_);
     GetAttrValueOpt(ctx, "batch_size", batchSize_);
     GetAttrValueOpt(ctx, "max_seqlen_q", maxSeqlenQ_);
     GetAttrValueOpt(ctx, "max_seqlen_kv", maxSeqlenKv_);

@@ -11,7 +11,7 @@
 /*!
  * \file quant_flash_attn_def.cpp
  * \brief QuantFlashAttn算子定义（量化注意力推理）
- *        输入数据类型支持FP8_E4M3（quant_mode=1），输出固定BF16。
+ *        输入数据类型支持FP8_E4M3等（详见 quant_mode 枚举），输出固定BF16。
  *        支持BSND/BNSD/TND三种layout，支持分页KV缓存（PA_ND/PA_Nz）。
  */
 
@@ -115,9 +115,9 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Attr("quant_mode")
+        this->Attr("quant_compute_mode")
             .AttrType(REQUIRED)
-            .Int(1);
+            .Int();
         this->Attr("softmax_scale")
             .AttrType(OPTIONAL)
             .Float(0.0f);

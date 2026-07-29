@@ -36,7 +36,7 @@ namespace l0op {
  * @param sinksOptional       learnable sink weights (optional, FLOAT32)
  * @param attnMaskOptional    attention mask (optional, INT8)
  * @param metadataOptional    pre-computed tiling metadata (optional, INT32)
- * @param quantMode           quantization mode (int64_t): 1=MXFP8 softmax FP32
+ * @param quantMode           quantization mode (int64_t): 1=A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32
  * @param softmaxScale        softmax scaling factor (double)
  * @param maskMode            mask mode (int64_t)
  * @param winLeft             left window size (int64_t)
