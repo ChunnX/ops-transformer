@@ -469,7 +469,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::QueryNd2Nz(uint64_t s1gL1RealSize, u
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
-    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
+    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * queryBufferOffset_],
              queryGm_[runInfo.tensorQueryOffset + s1gGmOffset * qkHeadDim_], nd2nzPara);
 }
 
@@ -641,7 +641,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeL0c(uint64_t s1gL0RealSize, u
     mmadParams.cmatrixInitVal = true;
     mmadParams.cmatrixSource = false;
     LocalTensor<L0_Q_T> queryL0Tensor = queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_];
-    LocalTensor<L0_K_T> keyL0Tensor = keyL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_];
+    LocalTensor<L0_K_T> keyL0Tensor = keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET];
     Mmad(cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], queryL0Tensor, keyL0Tensor, mmadParams);
     if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
         PipeBarrier<PIPE_M>();
