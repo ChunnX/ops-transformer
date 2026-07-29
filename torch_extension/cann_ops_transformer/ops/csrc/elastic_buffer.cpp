@@ -22,6 +22,7 @@
 #include <tuple>
 #include <vector>
 #include <cstring>
+#include <cstdlib>
 #include <atomic>
 #include <cstdint>
 #include <algorithm>
@@ -111,6 +112,23 @@ static inline void NpuStreamWait(aclrtStream waitStream, aclrtStream recordStrea
     TORCH_CHECK(ret == ACL_SUCCESS, "aclrtStreamWaitEvent failed, ret: ", ret);
     ret = aclrtDestroyEvent(event);
     TORCH_CHECK(ret == ACL_SUCCESS, "aclrtDestroyEvent failed, ret: ", ret);
+}
+
+static c10::optional<int64_t> ReadEnvInt64(const char *envName)
+{
+    const char *envValue = std::getenv(envName);
+    if (envValue == nullptr || envValue[0] == '\0') {
+        return c10::nullopt;
+    }
+    try {
+        size_t parsedLength = 0;
+        int64_t parsedValue = std::stoll(envValue, &parsedLength, 10);
+        TORCH_CHECK(parsedLength == std::strlen(envValue), envName, " must be an integer, got ", envValue);
+        return parsedValue;
+    } catch (const std::exception &e) {
+        TORCH_CHECK(false, envName, " must be an integer, got ", envValue, ", error: ", e.what());
+    }
+    return c10::nullopt;
 }
 
 // CommContext structure for HCCL communication
@@ -909,6 +927,10 @@ void ElasticBuffer::EnsureMoeContext()
 int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
 {
     int64_t rankNumPerServer = static_cast<int64_t>(moeRankSizePerServer_);
+    c10::optional<int64_t> debugRankNumPerServer = ReadEnvInt64("MOE_EP_DEBUG_RANK_NUM_PER_SERVER");
+    if (debugRankNumPerServer.has_value()) {
+        rankNumPerServer = *debugRankNumPerServer;
+    }
     TORCH_CHECK(rankNumPerServer > 0, "rank_num_per_server must be positive, got ", rankNumPerServer);
     TORCH_CHECK(epWorldSize % rankNumPerServer == 0, "ep_world_size must be divisible by rank_num_per_server, got ",
                 epWorldSize, " and ", rankNumPerServer);
@@ -917,6 +939,19 @@ int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
 
 int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const
 {
+    const char *debugNetworkMode = std::getenv("MOE_EP_DEBUG_FORCE_NETWORK_MODE");
+    if (debugNetworkMode != nullptr && debugNetworkMode[0] != '\0') {
+        if ((std::strcmp(debugNetworkMode, "0") == 0) || (std::strcmp(debugNetworkMode, "direct") == 0) ||
+            (std::strcmp(debugNetworkMode, "DIRECT") == 0)) {
+            return NETWORK_DIRECT;
+        }
+        if ((std::strcmp(debugNetworkMode, "1") == 0) || (std::strcmp(debugNetworkMode, "hybrid") == 0) ||
+            (std::strcmp(debugNetworkMode, "HYBRID") == 0)) {
+            return NETWORK_HYBRID;
+        }
+        TORCH_CHECK(false, "invalid MOE_EP_DEBUG_FORCE_NETWORK_MODE=", debugNetworkMode,
+                    ", expected 0/direct or 1/hybrid");
+    }
     return (epWorldSize / rankNumPerServer > 1) ? NETWORK_HYBRID : NETWORK_DIRECT;
 }
 
