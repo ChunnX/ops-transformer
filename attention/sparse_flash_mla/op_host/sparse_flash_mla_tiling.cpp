@@ -2046,8 +2046,11 @@ uint64_t SparseFlashMlaTiling::CalcFdStagingWorkspaceSize(const SMLATilingInfo *
     // 2表示max和sum两个缓冲区
     const uint64_t bytesPerSlot = tilingInfo->gSize * sizeof(float) * (headDimAlign_ + 2ULL * FD_BROADCAST_ELEMS);
     if (tilingInfo->batchConsistency) {
-        const uint64_t intraCoreSlots = BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM;
-        const uint64_t crossCoreSlots = logicalCoreSlots * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM;
+        // Intra-core reduction ping-pongs by multiCoreIdxMod2. Cross-core staging
+        // keeps one reduce-block range for every physical AIC.
+        const uint64_t intraCoreSlots = 2ULL * logicalCoreSlots;
+        const uint64_t crossCoreSlots =
+            static_cast<uint64_t>(aicNum) * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM;
         return (intraCoreSlots + crossCoreSlots) * bytesPerSlot;
     }
     return logicalCoreSlots * FD_MAX_S2_SPLIT_NUM * bytesPerSlot;
