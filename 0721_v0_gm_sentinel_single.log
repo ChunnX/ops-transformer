@@ -1,0 +1,285 @@
+========== GM SENTINEL SINGLE RUN 1 ==========
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_64_k_1024: suite=core kind=coverage layout=BSND B=1 S1=64 S2=1024 N1=64 Nidx1=32 K=1024 valid_k=[961,1024] exec_k=1024 scatter_exec_k=1024 invalid=2016 path=tail-protected dtype=bfloat16
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[DEBUG_TASK] selected b=0 q=23 kReal=984 full_valid=False
+[DEBUG_TASK] GatherKey_ws: shape=(1024, 512), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyRope_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyIndex_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] bmm1Res: shape=(64, 1024), nonfinite=0, finite_abs_max=1.097905e+02
+[DEBUG_TASK] bmm2Res: shape=(32, 1024), nonfinite=0, finite_abs_max=4.818316e+01
+[DEBUG_TASK] PReduced: shape=(1024,), nonfinite=0, finite_abs_max=1.935794e-03
+[DEBUG_TASK] SoftmaxI: shape=(1024,), nonfinite=0, finite_abs_max=9.999874e-01
+[DEBUG_TASK] dWeightOut: shape=(32,), nonfinite=0, finite_abs_max=2.300000e+01
+[DEBUG_TASK] reluGradRes: shape=(32, 1024), nonfinite=0, finite_abs_max=1.914062e+00
+[DEBUG_TASK] GatherKey_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyRope_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] BMM1 vs Query @ GatherKey.T plus Rope (valid K): max_diff=4.577637e-05, mean_diff=2.336663e-06, norm_rel=1.576819e-07, nonfinite=0
+[DEBUG_TASK] BMM1 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyIndex_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKey_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyRope_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyIndex_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] Gather bad-row overlap: all=[] key_only=[] rope_only=[] key_index_only=[] union_count=0
+[DEBUG_TASK] bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T (valid K): max_diff=6.675720e-06, mean_diff=1.535195e-07, norm_rel=6.439723e-08, nonfinite=0
+[DEBUG_TASK] bmm2 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] PReduced vs BMM1 formula: max_diff=4.656613e-10, mean_diff=9.060841e-11, norm_rel=1.220256e-07, nonfinite=0
+[DEBUG_TASK] SoftmaxI vs BMM2 formula: max_diff=1.909939e-10, mean_diff=1.876424e-13, norm_rel=1.909977e-10, nonfinite=0
+[DEBUG_TASK] dWeightOut vs BMM2/P/SY formula: max_diff=6.069756e-02, mean_diff=9.570681e-03, norm_rel=1.904058e-03, nonfinite=0
+[DEBUG_TASK] reluGradRes vs BF16 formula: max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] C2 dQueryAccum vs stored reluGrad: max_diff=2.384186e-06, mean_diff=5.892688e-08, norm_rel=2.561357e-07, nonfinite=0
+[DEBUG_TASK] C2 dk_partial vs stored reluGrad: max_diff=2.384186e-07, mean_diff=1.827165e-11, norm_rel=1.019594e-08, nonfinite=0
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=3.906250e-03 mean_abs=3.118748e-08 mean_rel=1.584821e-06 norm_rel=1.214083e-05
+  dKeyIndex    max_abs=4.882812e-04 mean_abs=2.916195e-08 mean_rel=3.303967e-06 norm_rel=2.265836e-06
+  dWeights     max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  Loss         max_abs=1.220703e-04 mean_abs=1.220703e-04 mean_rel=1.717190e-07 norm_rel=1.717190e-07
+  batch=0 dQueryIndex=1.21e-05 dKeyIndex=2.27e-06 dWeights=0.00e+00
+  query诊断：launch_cores=24 tasks_per_core=3 first_failed=None failed=0/64
+    b= 0 q=   0 task=   0 round= 0 core= 0 kReal=  961 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=   1 task=   1 round= 0 core= 1 kReal=  962 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  23 task=  23 round= 0 core=23 kReal=  984 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  24 task=  24 round= 1 core= 0 kReal=  985 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  25 task=  25 round= 1 core= 1 kReal=  986 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  47 task=  47 round= 1 core=23 kReal= 1008 dQ_norm=4.53e-05 dW_norm=0.00e+00
+    b= 0 q=  48 task=  48 round= 2 core= 0 kReal= 1009 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  49 task=  49 round= 2 core= 1 kReal= 1010 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  62 task=  62 round= 2 core=14 kReal= 1023 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  63 task=  63 round= 2 core=15 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+  query最差：b0q6(task=6,dQ=8.3e-05,dW=0.0e+00), b0q47(task=47,dQ=4.5e-05,dW=0.0e+00), b0q16(task=16,dQ=6.6e-06,dW=0.0e+00), b0q44(task=44,dQ=6.5e-06,dW=0.0e+00), b0q42(task=42,dQ=5.9e-06,dW=0.0e+00), b0q9(task=9,dQ=4.8e-06,dW=0.0e+00), b0q58(task=58,dQ=4.7e-06,dW=0.0e+00), b0q18(task=18,dQ=1.1e-06,dW=0.0e+00), b0q12(task=12,dQ=6.5e-08,dW=0.0e+00), b0q0(task=0,dQ=0.0e+00,dW=0.0e+00)
+[00] bsnd_b1_s1_64_k_1024 PASS dQ_norm=1.21e-05 dK_norm=2.27e-06 dW_norm=0.00e+00 Loss_norm=1.72e-07
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+========== GM SENTINEL SINGLE RUN 2 ==========
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_64_k_1024: suite=core kind=coverage layout=BSND B=1 S1=64 S2=1024 N1=64 Nidx1=32 K=1024 valid_k=[961,1024] exec_k=1024 scatter_exec_k=1024 invalid=2016 path=tail-protected dtype=bfloat16
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[DEBUG_TASK] selected b=0 q=23 kReal=984 full_valid=False
+[DEBUG_TASK] GatherKey_ws: shape=(1024, 512), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyRope_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyIndex_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] bmm1Res: shape=(64, 1024), nonfinite=0, finite_abs_max=1.097905e+02
+[DEBUG_TASK] bmm2Res: shape=(32, 1024), nonfinite=0, finite_abs_max=4.818316e+01
+[DEBUG_TASK] PReduced: shape=(1024,), nonfinite=0, finite_abs_max=1.935794e-03
+[DEBUG_TASK] SoftmaxI: shape=(1024,), nonfinite=0, finite_abs_max=9.999874e-01
+[DEBUG_TASK] dWeightOut: shape=(32,), nonfinite=0, finite_abs_max=2.300000e+01
+[DEBUG_TASK] reluGradRes: shape=(32, 1024), nonfinite=0, finite_abs_max=1.914062e+00
+[DEBUG_TASK] GatherKey_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyRope_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] BMM1 vs Query @ GatherKey.T plus Rope (valid K): max_diff=4.577637e-05, mean_diff=2.336663e-06, norm_rel=1.576819e-07, nonfinite=0
+[DEBUG_TASK] BMM1 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyIndex_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKey_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyRope_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyIndex_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] Gather bad-row overlap: all=[] key_only=[] rope_only=[] key_index_only=[] union_count=0
+[DEBUG_TASK] bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T (valid K): max_diff=6.675720e-06, mean_diff=1.535195e-07, norm_rel=6.439723e-08, nonfinite=0
+[DEBUG_TASK] bmm2 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] PReduced vs BMM1 formula: max_diff=4.656613e-10, mean_diff=9.060841e-11, norm_rel=1.220256e-07, nonfinite=0
+[DEBUG_TASK] SoftmaxI vs BMM2 formula: max_diff=1.909939e-10, mean_diff=1.876424e-13, norm_rel=1.909977e-10, nonfinite=0
+[DEBUG_TASK] dWeightOut vs BMM2/P/SY formula: max_diff=6.069756e-02, mean_diff=9.570681e-03, norm_rel=1.904058e-03, nonfinite=0
+[DEBUG_TASK] reluGradRes vs BF16 formula: max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] C2 dQueryAccum vs stored reluGrad: max_diff=2.384186e-06, mean_diff=5.892688e-08, norm_rel=2.561357e-07, nonfinite=0
+[DEBUG_TASK] C2 dk_partial vs stored reluGrad: max_diff=2.384186e-07, mean_diff=1.827165e-11, norm_rel=1.019594e-08, nonfinite=0
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=3.906250e-03 mean_abs=3.118748e-08 mean_rel=1.584821e-06 norm_rel=1.214083e-05
+  dKeyIndex    max_abs=4.882812e-04 mean_abs=3.087359e-08 mean_rel=3.347615e-06 norm_rel=2.352793e-06
+  dWeights     max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  Loss         max_abs=1.220703e-04 mean_abs=1.220703e-04 mean_rel=1.717190e-07 norm_rel=1.717190e-07
+  batch=0 dQueryIndex=1.21e-05 dKeyIndex=2.35e-06 dWeights=0.00e+00
+  query诊断：launch_cores=24 tasks_per_core=3 first_failed=None failed=0/64
+    b= 0 q=   0 task=   0 round= 0 core= 0 kReal=  961 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=   1 task=   1 round= 0 core= 1 kReal=  962 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  23 task=  23 round= 0 core=23 kReal=  984 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  24 task=  24 round= 1 core= 0 kReal=  985 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  25 task=  25 round= 1 core= 1 kReal=  986 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  47 task=  47 round= 1 core=23 kReal= 1008 dQ_norm=4.53e-05 dW_norm=0.00e+00
+    b= 0 q=  48 task=  48 round= 2 core= 0 kReal= 1009 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  49 task=  49 round= 2 core= 1 kReal= 1010 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  62 task=  62 round= 2 core=14 kReal= 1023 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  63 task=  63 round= 2 core=15 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+  query最差：b0q6(task=6,dQ=8.3e-05,dW=0.0e+00), b0q47(task=47,dQ=4.5e-05,dW=0.0e+00), b0q16(task=16,dQ=6.6e-06,dW=0.0e+00), b0q44(task=44,dQ=6.5e-06,dW=0.0e+00), b0q42(task=42,dQ=5.9e-06,dW=0.0e+00), b0q9(task=9,dQ=4.8e-06,dW=0.0e+00), b0q58(task=58,dQ=4.7e-06,dW=0.0e+00), b0q18(task=18,dQ=1.1e-06,dW=0.0e+00), b0q12(task=12,dQ=6.5e-08,dW=0.0e+00), b0q0(task=0,dQ=0.0e+00,dW=0.0e+00)
+[00] bsnd_b1_s1_64_k_1024 PASS dQ_norm=1.21e-05 dK_norm=2.35e-06 dW_norm=0.00e+00 Loss_norm=1.72e-07
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+========== GM SENTINEL SINGLE RUN 3 ==========
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_64_k_1024: suite=core kind=coverage layout=BSND B=1 S1=64 S2=1024 N1=64 Nidx1=32 K=1024 valid_k=[961,1024] exec_k=1024 scatter_exec_k=1024 invalid=2016 path=tail-protected dtype=bfloat16
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[DEBUG_TASK] selected b=0 q=23 kReal=984 full_valid=False
+[DEBUG_TASK] GatherKey_ws: shape=(1024, 512), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyRope_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyIndex_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] bmm1Res: shape=(64, 1024), nonfinite=0, finite_abs_max=1.097905e+02
+[DEBUG_TASK] bmm2Res: shape=(32, 1024), nonfinite=0, finite_abs_max=4.818316e+01
+[DEBUG_TASK] PReduced: shape=(1024,), nonfinite=0, finite_abs_max=1.935794e-03
+[DEBUG_TASK] SoftmaxI: shape=(1024,), nonfinite=0, finite_abs_max=9.999874e-01
+[DEBUG_TASK] dWeightOut: shape=(32,), nonfinite=0, finite_abs_max=2.300000e+01
+[DEBUG_TASK] reluGradRes: shape=(32, 1024), nonfinite=0, finite_abs_max=1.914062e+00
+[DEBUG_TASK] GatherKey_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyRope_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] BMM1 vs Query @ GatherKey.T plus Rope (valid K): max_diff=4.577637e-05, mean_diff=2.336663e-06, norm_rel=1.576819e-07, nonfinite=0
+[DEBUG_TASK] BMM1 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyIndex_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKey_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyRope_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyIndex_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] Gather bad-row overlap: all=[] key_only=[] rope_only=[] key_index_only=[] union_count=0
+[DEBUG_TASK] bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T (valid K): max_diff=6.675720e-06, mean_diff=1.535195e-07, norm_rel=6.439723e-08, nonfinite=0
+[DEBUG_TASK] bmm2 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] PReduced vs BMM1 formula: max_diff=4.656613e-10, mean_diff=9.060841e-11, norm_rel=1.220256e-07, nonfinite=0
+[DEBUG_TASK] SoftmaxI vs BMM2 formula: max_diff=1.909939e-10, mean_diff=1.876424e-13, norm_rel=1.909977e-10, nonfinite=0
+[DEBUG_TASK] dWeightOut vs BMM2/P/SY formula: max_diff=6.069756e-02, mean_diff=9.570681e-03, norm_rel=1.904058e-03, nonfinite=0
+[DEBUG_TASK] reluGradRes vs BF16 formula: max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] C2 dQueryAccum vs stored reluGrad: max_diff=2.384186e-06, mean_diff=5.892688e-08, norm_rel=2.561357e-07, nonfinite=0
+[DEBUG_TASK] C2 dk_partial vs stored reluGrad: max_diff=2.384186e-07, mean_diff=1.827165e-11, norm_rel=1.019594e-08, nonfinite=0
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=3.906250e-03 mean_abs=3.118748e-08 mean_rel=1.584821e-06 norm_rel=1.214083e-05
+  dKeyIndex    max_abs=4.882812e-04 mean_abs=2.876279e-08 mean_rel=3.351980e-06 norm_rel=2.181895e-06
+  dWeights     max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  Loss         max_abs=6.103516e-05 mean_abs=6.103516e-05 mean_rel=8.585948e-08 norm_rel=8.585948e-08
+  batch=0 dQueryIndex=1.21e-05 dKeyIndex=2.18e-06 dWeights=0.00e+00
+  query诊断：launch_cores=24 tasks_per_core=3 first_failed=None failed=0/64
+    b= 0 q=   0 task=   0 round= 0 core= 0 kReal=  961 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=   1 task=   1 round= 0 core= 1 kReal=  962 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  23 task=  23 round= 0 core=23 kReal=  984 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  24 task=  24 round= 1 core= 0 kReal=  985 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  25 task=  25 round= 1 core= 1 kReal=  986 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  47 task=  47 round= 1 core=23 kReal= 1008 dQ_norm=4.53e-05 dW_norm=0.00e+00
+    b= 0 q=  48 task=  48 round= 2 core= 0 kReal= 1009 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  49 task=  49 round= 2 core= 1 kReal= 1010 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  62 task=  62 round= 2 core=14 kReal= 1023 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  63 task=  63 round= 2 core=15 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+  query最差：b0q6(task=6,dQ=8.3e-05,dW=0.0e+00), b0q47(task=47,dQ=4.5e-05,dW=0.0e+00), b0q16(task=16,dQ=6.6e-06,dW=0.0e+00), b0q44(task=44,dQ=6.5e-06,dW=0.0e+00), b0q42(task=42,dQ=5.9e-06,dW=0.0e+00), b0q9(task=9,dQ=4.8e-06,dW=0.0e+00), b0q58(task=58,dQ=4.7e-06,dW=0.0e+00), b0q18(task=18,dQ=1.1e-06,dW=0.0e+00), b0q12(task=12,dQ=6.5e-08,dW=0.0e+00), b0q0(task=0,dQ=0.0e+00,dW=0.0e+00)
+[00] bsnd_b1_s1_64_k_1024 PASS dQ_norm=1.21e-05 dK_norm=2.18e-06 dW_norm=0.00e+00 Loss_norm=8.59e-08
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+========== GM SENTINEL SINGLE RUN 4 ==========
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_64_k_1024: suite=core kind=coverage layout=BSND B=1 S1=64 S2=1024 N1=64 Nidx1=32 K=1024 valid_k=[961,1024] exec_k=1024 scatter_exec_k=1024 invalid=2016 path=tail-protected dtype=bfloat16
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[DEBUG_TASK] selected b=0 q=23 kReal=984 full_valid=False
+[DEBUG_TASK] GatherKey_ws: shape=(1024, 512), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyRope_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyIndex_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] bmm1Res: shape=(64, 1024), nonfinite=0, finite_abs_max=1.097905e+02
+[DEBUG_TASK] bmm2Res: shape=(32, 1024), nonfinite=0, finite_abs_max=4.818316e+01
+[DEBUG_TASK] PReduced: shape=(1024,), nonfinite=0, finite_abs_max=1.935794e-03
+[DEBUG_TASK] SoftmaxI: shape=(1024,), nonfinite=0, finite_abs_max=9.999874e-01
+[DEBUG_TASK] dWeightOut: shape=(32,), nonfinite=0, finite_abs_max=2.300000e+01
+[DEBUG_TASK] reluGradRes: shape=(32, 1024), nonfinite=0, finite_abs_max=1.914062e+00
+[DEBUG_TASK] GatherKey_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyRope_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] BMM1 vs Query @ GatherKey.T plus Rope (valid K): max_diff=4.577637e-05, mean_diff=2.336663e-06, norm_rel=1.576819e-07, nonfinite=0
+[DEBUG_TASK] BMM1 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyIndex_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKey_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyRope_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyIndex_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] Gather bad-row overlap: all=[] key_only=[] rope_only=[] key_index_only=[] union_count=0
+[DEBUG_TASK] bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T (valid K): max_diff=6.675720e-06, mean_diff=1.535195e-07, norm_rel=6.439723e-08, nonfinite=0
+[DEBUG_TASK] bmm2 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] PReduced vs BMM1 formula: max_diff=4.656613e-10, mean_diff=9.060841e-11, norm_rel=1.220256e-07, nonfinite=0
+[DEBUG_TASK] SoftmaxI vs BMM2 formula: max_diff=1.909939e-10, mean_diff=1.876424e-13, norm_rel=1.909977e-10, nonfinite=0
+[DEBUG_TASK] dWeightOut vs BMM2/P/SY formula: max_diff=6.069756e-02, mean_diff=9.570681e-03, norm_rel=1.904058e-03, nonfinite=0
+[DEBUG_TASK] reluGradRes vs BF16 formula: max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] C2 dQueryAccum vs stored reluGrad: max_diff=2.384186e-06, mean_diff=5.892688e-08, norm_rel=2.561357e-07, nonfinite=0
+[DEBUG_TASK] C2 dk_partial vs stored reluGrad: max_diff=2.384186e-07, mean_diff=1.827165e-11, norm_rel=1.019594e-08, nonfinite=0
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=3.906250e-03 mean_abs=3.118748e-08 mean_rel=1.584821e-06 norm_rel=1.214083e-05
+  dKeyIndex    max_abs=4.882812e-04 mean_abs=2.860353e-08 mean_rel=3.110441e-06 norm_rel=2.181451e-06
+  dWeights     max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  Loss         max_abs=1.220703e-04 mean_abs=1.220703e-04 mean_rel=1.717190e-07 norm_rel=1.717190e-07
+  batch=0 dQueryIndex=1.21e-05 dKeyIndex=2.18e-06 dWeights=0.00e+00
+  query诊断：launch_cores=24 tasks_per_core=3 first_failed=None failed=0/64
+    b= 0 q=   0 task=   0 round= 0 core= 0 kReal=  961 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=   1 task=   1 round= 0 core= 1 kReal=  962 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  23 task=  23 round= 0 core=23 kReal=  984 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  24 task=  24 round= 1 core= 0 kReal=  985 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  25 task=  25 round= 1 core= 1 kReal=  986 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  47 task=  47 round= 1 core=23 kReal= 1008 dQ_norm=4.53e-05 dW_norm=0.00e+00
+    b= 0 q=  48 task=  48 round= 2 core= 0 kReal= 1009 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  49 task=  49 round= 2 core= 1 kReal= 1010 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  62 task=  62 round= 2 core=14 kReal= 1023 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  63 task=  63 round= 2 core=15 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+  query最差：b0q6(task=6,dQ=8.3e-05,dW=0.0e+00), b0q47(task=47,dQ=4.5e-05,dW=0.0e+00), b0q16(task=16,dQ=6.6e-06,dW=0.0e+00), b0q44(task=44,dQ=6.5e-06,dW=0.0e+00), b0q42(task=42,dQ=5.9e-06,dW=0.0e+00), b0q9(task=9,dQ=4.8e-06,dW=0.0e+00), b0q58(task=58,dQ=4.7e-06,dW=0.0e+00), b0q18(task=18,dQ=1.1e-06,dW=0.0e+00), b0q12(task=12,dQ=6.5e-08,dW=0.0e+00), b0q0(task=0,dQ=0.0e+00,dW=0.0e+00)
+[00] bsnd_b1_s1_64_k_1024 PASS dQ_norm=1.21e-05 dK_norm=2.18e-06 dW_norm=0.00e+00 Loss_norm=1.72e-07
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+========== GM SENTINEL SINGLE RUN 5 ==========
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_64_k_1024: suite=core kind=coverage layout=BSND B=1 S1=64 S2=1024 N1=64 Nidx1=32 K=1024 valid_k=[961,1024] exec_k=1024 scatter_exec_k=1024 invalid=2016 path=tail-protected dtype=bfloat16
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[DEBUG_TASK] selected b=0 q=23 kReal=984 full_valid=False
+[DEBUG_TASK] GatherKey_ws: shape=(1024, 512), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyRope_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyIndex_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] bmm1Res: shape=(64, 1024), nonfinite=0, finite_abs_max=1.097905e+02
+[DEBUG_TASK] bmm2Res: shape=(32, 1024), nonfinite=0, finite_abs_max=4.818316e+01
+[DEBUG_TASK] PReduced: shape=(1024,), nonfinite=0, finite_abs_max=1.935794e-03
+[DEBUG_TASK] SoftmaxI: shape=(1024,), nonfinite=0, finite_abs_max=9.999874e-01
+[DEBUG_TASK] dWeightOut: shape=(32,), nonfinite=0, finite_abs_max=2.300000e+01
+[DEBUG_TASK] reluGradRes: shape=(32, 1024), nonfinite=0, finite_abs_max=1.914062e+00
+[DEBUG_TASK] GatherKey_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyRope_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] BMM1 vs Query @ GatherKey.T plus Rope (valid K): max_diff=4.577637e-05, mean_diff=2.336663e-06, norm_rel=1.576819e-07, nonfinite=0
+[DEBUG_TASK] BMM1 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyIndex_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKey_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyRope_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyIndex_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] Gather bad-row overlap: all=[] key_only=[] rope_only=[] key_index_only=[] union_count=0
+[DEBUG_TASK] bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T (valid K): max_diff=6.675720e-06, mean_diff=1.535195e-07, norm_rel=6.439723e-08, nonfinite=0
+[DEBUG_TASK] bmm2 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] PReduced vs BMM1 formula: max_diff=4.656613e-10, mean_diff=9.060841e-11, norm_rel=1.220256e-07, nonfinite=0
+[DEBUG_TASK] SoftmaxI vs BMM2 formula: max_diff=1.909939e-10, mean_diff=1.876424e-13, norm_rel=1.909977e-10, nonfinite=0
+[DEBUG_TASK] dWeightOut vs BMM2/P/SY formula: max_diff=6.069756e-02, mean_diff=9.570681e-03, norm_rel=1.904058e-03, nonfinite=0
+[DEBUG_TASK] reluGradRes vs BF16 formula: max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] C2 dQueryAccum vs stored reluGrad: max_diff=2.384186e-06, mean_diff=5.892688e-08, norm_rel=2.561357e-07, nonfinite=0
+[DEBUG_TASK] C2 dk_partial vs stored reluGrad: max_diff=2.384186e-07, mean_diff=1.827165e-11, norm_rel=1.019594e-08, nonfinite=0
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=3.906250e-03 mean_abs=3.118748e-08 mean_rel=1.584821e-06 norm_rel=1.214083e-05
+  dKeyIndex    max_abs=4.882812e-04 mean_abs=2.729803e-08 mean_rel=3.075383e-06 norm_rel=2.161671e-06
+  dWeights     max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  Loss         max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  batch=0 dQueryIndex=1.21e-05 dKeyIndex=2.16e-06 dWeights=0.00e+00
+  query诊断：launch_cores=24 tasks_per_core=3 first_failed=None failed=0/64
+    b= 0 q=   0 task=   0 round= 0 core= 0 kReal=  961 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=   1 task=   1 round= 0 core= 1 kReal=  962 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  23 task=  23 round= 0 core=23 kReal=  984 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  24 task=  24 round= 1 core= 0 kReal=  985 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  25 task=  25 round= 1 core= 1 kReal=  986 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  47 task=  47 round= 1 core=23 kReal= 1008 dQ_norm=4.53e-05 dW_norm=0.00e+00
+    b= 0 q=  48 task=  48 round= 2 core= 0 kReal= 1009 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  49 task=  49 round= 2 core= 1 kReal= 1010 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  62 task=  62 round= 2 core=14 kReal= 1023 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  63 task=  63 round= 2 core=15 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+  query最差：b0q6(task=6,dQ=8.3e-05,dW=0.0e+00), b0q47(task=47,dQ=4.5e-05,dW=0.0e+00), b0q16(task=16,dQ=6.6e-06,dW=0.0e+00), b0q44(task=44,dQ=6.5e-06,dW=0.0e+00), b0q42(task=42,dQ=5.9e-06,dW=0.0e+00), b0q9(task=9,dQ=4.8e-06,dW=0.0e+00), b0q58(task=58,dQ=4.7e-06,dW=0.0e+00), b0q18(task=18,dQ=1.1e-06,dW=0.0e+00), b0q12(task=12,dQ=6.5e-08,dW=0.0e+00), b0q0(task=0,dQ=0.0e+00,dW=0.0e+00)
+[00] bsnd_b1_s1_64_k_1024 PASS dQ_norm=1.21e-05 dK_norm=2.16e-06 dW_norm=0.00e+00 Loss_norm=0.00e+00
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
