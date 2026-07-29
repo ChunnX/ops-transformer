@@ -27,6 +27,7 @@ using namespace GroupedMatmulSwigluQuantV2Tiling;
 
 constexpr uint64_t TENSOR_API_FP8_N_ALIGN = 128UL;
 constexpr uint64_t TENSOR_API_M_MIN = 128UL;
+constexpr uint64_t TENSOR_API_B_NOTRANS_M_LOWER_LIMIT = 512UL;
 constexpr uint64_t TENSOR_API_M_SPLIT_THRESHOLD = GmmConstant::BASIC_BLOCK_SIZE_256;
 constexpr uint64_t TENSOR_API_N_SPLIT_THRESHOLD = GmmConstant::BASIC_BLOCK_SIZE_256;
 constexpr uint64_t TENSOR_API_K_SPLIT_THRESHOLD = GmmConstant::BASIC_BLOCK_SIZE_128;
@@ -274,14 +275,15 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
     const bool checkTensorApiShapes = CheckTensorApiShapes();
     const bool checkTensorApiScaleShapes = CheckTensorApiScaleShapes();
     const uint32_t mSize_groupNum_ratio = static_cast<uint32_t>(inputParams_.mSize / inputParams_.groupNum);
+    const bool checkBNoTransMLimlit = inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
     const bool capable = dtypeSupported && formatSupported && mSize_groupNum_ratio > TENSOR_API_M_MIN &&
                          inputParams_.nSize % TENSOR_API_FP8_N_ALIGN == 0 && coreSupported && checkTensorApiShapes &&
-                         checkTensorApiScaleShapes;
+                         checkTensorApiScaleShapes && checkBNoTransMLimlit;
     OP_LOGD(context_->GetNodeName(),
             "Tensor API capability: dtype=%d, format=%d, M=%lu, N=%lu, cores=%lu:%u, checkTensorApiShapes=%d, "
-            "checkTensorApiScaleShapes=%d, capable=%d.",
+            "checkTensorApiScaleShapes=%d, checkBNoTransMLimlit=%d, capable=%d.",
             dtypeSupported, formatSupported, inputParams_.mSize, inputParams_.nSize, aicoreParams_.aicNum, aivNum_,
-            checkTensorApiShapes, checkTensorApiScaleShapes, capable);
+            checkTensorApiShapes, checkTensorApiScaleShapes, checkBNoTransMLimlit, capable);
     return capable;
 }
 
@@ -303,16 +305,16 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoOpTiling()
 ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
-    auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
-    basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
+    // auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
+    // basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
-    // if (inputParams_.mSize >= TENSOR_API_M_SPLIT_THRESHOLD) {
-    //     basicTiling_.baseM = TENSOR_API_LARGE_M_BASE_M;
-    // }
-    // if (inputParams_.nSize > TENSOR_API_N_SPLIT_THRESHOLD && inputParams_.kSize >= TENSOR_API_K_SPLIT_THRESHOLD) {
-    //     basicTiling_.baseN = TENSOR_API_LARGE_N_BASE_N;
-    // }
+    if (inputParams_.mSize >= TENSOR_API_M_SPLIT_THRESHOLD) {
+        basicTiling_.baseM = TENSOR_API_LARGE_M_BASE_M;
+    }
+    if (inputParams_.nSize > TENSOR_API_N_SPLIT_THRESHOLD && inputParams_.kSize >= TENSOR_API_K_SPLIT_THRESHOLD) {
+        basicTiling_.baseN = TENSOR_API_LARGE_N_BASE_N;
+    }
 
     auto &mmTiling = tilingData_.mmTilingData;
     mmTiling.m = static_cast<uint32_t>(inputParams_.mSize);
