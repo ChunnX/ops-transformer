@@ -121,9 +121,9 @@ static bool CheckParamsShape(const gert::TilingContext *context)
                 return false);
 
     std::string numOfExpertStr = std::to_string(numOfExpert);
-    OP_CHECK_IF(numOfExpert == 0,
+    OP_CHECK_IF(numOfExpert <= 0 || numOfExpert > 2048,
                 OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "num_experts",
-                    numOfExpertStr.c_str(), "greater than 0"),
+                    numOfExpertStr.c_str(), "greater than 0 and not greater than 2048"),
                 return false);
 
     return true;
@@ -350,9 +350,9 @@ static inline ge::graphStatus InitInputTilingData(gert::TilingContext *context,
     const int64_t numOfExpert = *numOfExpertPtr;
     tilingData.set_numOfExpert(numOfExpert);
     std::string numOfExpertStr = std::to_string(tilingData.get_numOfExpert());
-    OP_CHECK_IF(tilingData.get_numOfExpert() > E_BOUND_NUM_UP_LIMIT,
+    OP_CHECK_IF(tilingData.get_numOfExpert() <= 0 || tilingData.get_numOfExpert() > E_BOUND_NUM_UP_LIMIT,
                 OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "num_experts",
-                    numOfExpertStr.c_str(), "not greater than 2048"),
+                    numOfExpertStr.c_str(), "greater than 0 and not greater than 2048"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
