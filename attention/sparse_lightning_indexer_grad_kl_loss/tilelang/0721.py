@@ -2769,6 +2769,56 @@ def sparse_lightning_indexer_grad_kl_loss(
                     f"nonfinite={nonfinite_count}"
                 )
 
+            def _debug_gather_bad_rows(name, actual, expected):
+                actual_fp32 = actual[:debug_k_real].float()
+                expected_fp32 = expected[:debug_k_real].float()
+                element_diff = (actual_fp32 - expected_fp32).abs()
+                row_bad = (~torch.isfinite(actual_fp32)).any(dim=1)
+                row_bad = row_bad | (~torch.isfinite(expected_fp32)).any(dim=1)
+                row_bad = row_bad | (element_diff.amax(dim=1) != 0)
+                bad_rows_tensor = torch.nonzero(row_bad, as_tuple=False).flatten()
+                bad_row_count = int(bad_rows_tensor.numel())
+                first_rows = [
+                    int(value)
+                    for value in bad_rows_tensor[:16].cpu().tolist()
+                ]
+                first_row_details = [
+                    (
+                        row,
+                        row // GATHER_CHUNK_SIZE,
+                        row % GATHER_CHUNK_SIZE,
+                        int(debug_sparse_indices[row].item()),
+                    )
+                    for row in first_rows
+                ]
+                print(
+                    f"[DEBUG_TASK] {name} bad rows: count={bad_row_count} "
+                    f"first(row,chunk,lane,sparse_idx)={first_row_details}"
+                )
+                if bad_row_count > 0:
+                    first_row = first_rows[0]
+                    first_row_diff = element_diff[first_row]
+                    first_col = int(
+                        torch.nonzero(
+                            first_row_diff != 0, as_tuple=False
+                        )[0, 0].item()
+                    )
+                    candidate_row_diff = (
+                        expected_fp32 - actual_fp32[first_row].unsqueeze(0)
+                    ).abs().amax(dim=1)
+                    nearest_row = int(candidate_row_diff.argmin().item())
+                    print(
+                        f"[DEBUG_TASK] {name} first error: "
+                        f"coord=({first_row},{first_col}) "
+                        f"actual={actual_fp32[first_row, first_col].item():.6e} "
+                        f"expected={expected_fp32[first_row, first_col].item():.6e} "
+                        f"actual_row_abs_max={actual_fp32[first_row].abs().max().item():.6e} "
+                        f"nearest_expected_row={nearest_row} "
+                        f"nearest_sparse_idx={int(debug_sparse_indices[nearest_row].item())} "
+                        f"nearest_row_max_diff={candidate_row_diff[nearest_row].item():.6e}"
+                    )
+                return set(int(value) for value in bad_rows_tensor.cpu().tolist())
+
             debug_sparse_indices = sparse_indices[debug_b, debug_q, 0, :K].to(torch.long)
             debug_index_valid = (
                 (debug_sparse_indices >= 0) & (debug_sparse_indices < source_s2)
@@ -2914,6 +2964,46 @@ def sparse_lightning_indexer_grad_kl_loss(
             _debug_task_compare(
                 "GatherKeyIndex_ws vs host gather (valid K)",
                 debug_gki[:debug_k_real], debug_expected_gki[:debug_k_real],
+            )
+            debug_gk_bad_rows = _debug_gather_bad_rows(
+                "GatherKey_ws",
+                debug_gk,
+                debug_expected_gk,
+            )
+            if d_rope > 0:
+                debug_grope_bad_rows = _debug_gather_bad_rows(
+                    "GatherKeyRope_ws",
+                    debug_grope,
+                    debug_expected_grope,
+                )
+            else:
+                debug_grope_bad_rows = set()
+            debug_gki_bad_rows = _debug_gather_bad_rows(
+                "GatherKeyIndex_ws",
+                debug_gki,
+                debug_expected_gki,
+            )
+            if d_rope > 0:
+                debug_all_bad_rows = (
+                    debug_gk_bad_rows
+                    & debug_grope_bad_rows
+                    & debug_gki_bad_rows
+                )
+                debug_bad_rows_union = (
+                    debug_gk_bad_rows
+                    | debug_grope_bad_rows
+                    | debug_gki_bad_rows
+                )
+            else:
+                debug_all_bad_rows = debug_gk_bad_rows & debug_gki_bad_rows
+                debug_bad_rows_union = debug_gk_bad_rows | debug_gki_bad_rows
+            print(
+                f"[DEBUG_TASK] Gather bad-row overlap: "
+                f"all={sorted(debug_all_bad_rows)[:32]} "
+                f"key_only={sorted(debug_gk_bad_rows - debug_grope_bad_rows - debug_gki_bad_rows)[:32]} "
+                f"rope_only={sorted(debug_grope_bad_rows - debug_gk_bad_rows - debug_gki_bad_rows)[:32]} "
+                f"key_index_only={sorted(debug_gki_bad_rows - debug_gk_bad_rows - debug_grope_bad_rows)[:32]} "
+                f"union_count={len(debug_bad_rows_union)}"
             )
             _debug_task_compare(
                 "bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T (valid K)",
