@@ -1162,12 +1162,16 @@ def tilelang_grad_kl_loss_single_kernel(
                 rows_per_aiv * bw_col_block // 16, calc_dtype
             )
             # T.macro 的符号收集不能安全地将分配穿过 Python 条件传播。
-            # 因此在所有 specialization 中都定义这四个对齐的 4x64 mask
+            # 因此在所有 specialization 中都定义这八个对齐的 2x64 mask
             # 槽位；只有 16 行路径会实际使用它们。
-            v1_bw_mask0 = T.alloc_ub(16, calc_dtype)
-            v1_bw_mask1 = T.alloc_ub(16, calc_dtype)
-            v1_bw_mask2 = T.alloc_ub(16, calc_dtype)
-            v1_bw_mask3 = T.alloc_ub(16, calc_dtype)
+            v1_bw_mask0 = T.alloc_ub(8, calc_dtype)
+            v1_bw_mask1 = T.alloc_ub(8, calc_dtype)
+            v1_bw_mask2 = T.alloc_ub(8, calc_dtype)
+            v1_bw_mask3 = T.alloc_ub(8, calc_dtype)
+            v1_bw_mask4 = T.alloc_ub(8, calc_dtype)
+            v1_bw_mask5 = T.alloc_ub(8, calc_dtype)
+            v1_bw_mask6 = T.alloc_ub(8, calc_dtype)
+            v1_bw_mask7 = T.alloc_ub(8, calc_dtype)
             v1_bw_rg = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
@@ -1279,33 +1283,61 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
 
                         if rows_per_aiv == 16:
-                            # 在复用 bmm2 计算 dWeight 前，对每个静态对齐的 4x64
+                            # 在复用 bmm2 计算 dWeight 前，对每个静态对齐的 2x64
                             # 分组执行 Compare。dWeight 本身仍保持已经验证过的
                             # 单次 16x64 reduction。
                             T.tile.compare(
                                 v1_bw_mask0,
-                                v1_bw_bmm2[0:4, 0:bw_col_block],
+                                v1_bw_bmm2[0:2, 0:bw_col_block],
                                 0.0,
                                 "GT",
                             )
                             T.pipe_barrier("v")
                             T.tile.compare(
                                 v1_bw_mask1,
-                                v1_bw_bmm2[4:8, 0:bw_col_block],
+                                v1_bw_bmm2[2:4, 0:bw_col_block],
                                 0.0,
                                 "GT",
                             )
                             T.pipe_barrier("v")
                             T.tile.compare(
                                 v1_bw_mask2,
-                                v1_bw_bmm2[8:12, 0:bw_col_block],
+                                v1_bw_bmm2[4:6, 0:bw_col_block],
                                 0.0,
                                 "GT",
                             )
                             T.pipe_barrier("v")
                             T.tile.compare(
                                 v1_bw_mask3,
-                                v1_bw_bmm2[12:16, 0:bw_col_block],
+                                v1_bw_bmm2[6:8, 0:bw_col_block],
+                                0.0,
+                                "GT",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.compare(
+                                v1_bw_mask4,
+                                v1_bw_bmm2[8:10, 0:bw_col_block],
+                                0.0,
+                                "GT",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.compare(
+                                v1_bw_mask5,
+                                v1_bw_bmm2[10:12, 0:bw_col_block],
+                                0.0,
+                                "GT",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.compare(
+                                v1_bw_mask6,
+                                v1_bw_bmm2[12:14, 0:bw_col_block],
+                                0.0,
+                                "GT",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.compare(
+                                v1_bw_mask7,
+                                v1_bw_bmm2[14:16, 0:bw_col_block],
                                 0.0,
                                 "GT",
                             )
@@ -1330,33 +1362,65 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                             T.pipe_barrier("v")
                             T.tile.select(
-                                v1_bw_bmm2[0:4, 0:bw_col_block],
+                                v1_bw_bmm2[0:2, 0:bw_col_block],
                                 v1_bw_mask0,
-                                v1_bw_rg[0:4, 0:bw_col_block],
+                                v1_bw_rg[0:2, 0:bw_col_block],
                                 0.0,
                                 "VSEL_TENSOR_SCALAR_MODE",
                             )
                             T.pipe_barrier("v")
                             T.tile.select(
-                                v1_bw_bmm2[4:8, 0:bw_col_block],
+                                v1_bw_bmm2[2:4, 0:bw_col_block],
                                 v1_bw_mask1,
-                                v1_bw_rg[4:8, 0:bw_col_block],
+                                v1_bw_rg[2:4, 0:bw_col_block],
                                 0.0,
                                 "VSEL_TENSOR_SCALAR_MODE",
                             )
                             T.pipe_barrier("v")
                             T.tile.select(
-                                v1_bw_bmm2[8:12, 0:bw_col_block],
+                                v1_bw_bmm2[4:6, 0:bw_col_block],
                                 v1_bw_mask2,
-                                v1_bw_rg[8:12, 0:bw_col_block],
+                                v1_bw_rg[4:6, 0:bw_col_block],
                                 0.0,
                                 "VSEL_TENSOR_SCALAR_MODE",
                             )
                             T.pipe_barrier("v")
                             T.tile.select(
-                                v1_bw_bmm2[12:16, 0:bw_col_block],
+                                v1_bw_bmm2[6:8, 0:bw_col_block],
                                 v1_bw_mask3,
-                                v1_bw_rg[12:16, 0:bw_col_block],
+                                v1_bw_rg[6:8, 0:bw_col_block],
+                                0.0,
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_bw_bmm2[8:10, 0:bw_col_block],
+                                v1_bw_mask4,
+                                v1_bw_rg[8:10, 0:bw_col_block],
+                                0.0,
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_bw_bmm2[10:12, 0:bw_col_block],
+                                v1_bw_mask5,
+                                v1_bw_rg[10:12, 0:bw_col_block],
+                                0.0,
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_bw_bmm2[12:14, 0:bw_col_block],
+                                v1_bw_mask6,
+                                v1_bw_rg[12:14, 0:bw_col_block],
+                                0.0,
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_bw_bmm2[14:16, 0:bw_col_block],
+                                v1_bw_mask7,
+                                v1_bw_rg[14:16, 0:bw_col_block],
                                 0.0,
                                 "VSEL_TENSOR_SCALAR_MODE",
                             )
