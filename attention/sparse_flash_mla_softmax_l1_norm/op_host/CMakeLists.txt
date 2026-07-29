@@ -14,11 +14,11 @@ if (BUILD_OPEN_PROJECT)
     sparse_flash_mla_softmax_l1_norm_def.cpp
     )
     add_modules_sources(OPTYPE sparse_flash_mla_softmax_l1_norm ACLNNTYPE aclnn)
+    enable_pypto_kernel(sparse_flash_mla_softmax_l1_norm)
 endif()
 
 # ascend950 条件编译——缺少此项会导致 kernel binary 未编译
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-enable_pypto_kernel(sparse_flash_mla_softmax_l1_norm)
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
     # PyPTO kernel: runs codegen at configure time and exposes PYPTO_GEN_DIR for the host tiling -I below.
     # Must be called BEFORE add_modules_sources(...) (which reads PYPTO_GEN_DIR).
