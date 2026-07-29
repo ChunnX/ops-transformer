@@ -18,10 +18,14 @@ using namespace std;
 using namespace op;
 
 namespace {
-void DestroyAclTensor(aclTensor *tensor) { Release(tensor); }
+void DestroyAclTensor(aclTensor *tensor)
+{
+    Release(tensor);
+}
 } // namespace
 
-class lightning_indexer_opapi_ut : public testing::Test {
+class lightning_indexer_opapi_ut : public testing::Test
+{
 protected:
     static void SetUpTestCase()
     {
@@ -29,7 +33,10 @@ protected:
         cout << "lightning_indexer_opapi_ut SetUp" << endl;
     }
 
-    static void TearDownTestCase() { cout << "lightning_indexer_opapi_ut TearDown" << endl; }
+    static void TearDownTestCase()
+    {
+        cout << "lightning_indexer_opapi_ut TearDown" << endl;
+    }
 };
 
 // Null query
@@ -40,9 +47,24 @@ TEST_F(lightning_indexer_opapi_ut, lightning_indexer_aclnn_0)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    aclnnStatus aclRet = aclnnLightningIndexerGetWorkspaceSize(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                                               layoutQuery, layoutKey, 4, 3, INT64_MAX, INT64_MAX, true,
-                                                               nullptr, nullptr, &workspaceSize, &executor);
+    aclnnStatus aclRet = aclnnLightningIndexerGetWorkspaceSize(
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        layoutQuery,
+        layoutKey,
+        4,
+        3,
+        INT64_MAX,
+        INT64_MAX,
+        true,
+        nullptr,
+        nullptr,
+        &workspaceSize,
+        &executor);
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
@@ -65,8 +87,23 @@ TEST_F(lightning_indexer_opapi_ut, lightning_indexer_aclnn_1)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnLightningIndexerGetWorkspaceSize(
-        query.get(), key.get(), weights.get(), nullptr, nullptr, nullptr, layoutQuery, layoutKey, 4, 3, INT64_MAX,
-        INT64_MAX, true, sparseIndicesOut.get(), nullptr, &workspaceSize, &executor);
+        query.get(),
+        key.get(),
+        weights.get(),
+        nullptr,
+        nullptr,
+        nullptr,
+        layoutQuery,
+        layoutKey,
+        4,
+        3,
+        INT64_MAX,
+        INT64_MAX,
+        true,
+        sparseIndicesOut.get(),
+        nullptr,
+        &workspaceSize,
+        &executor);
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
@@ -87,8 +124,23 @@ TEST_F(lightning_indexer_opapi_ut, lightning_indexer_aclnn_2)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnLightningIndexerGetWorkspaceSize(
-        query.get(), nullptr, weights.get(), nullptr, nullptr, nullptr, layoutQuery, layoutKey, 4, 3, INT64_MAX,
-        INT64_MAX, false, sparseIndicesOut.get(), nullptr, &workspaceSize, &executor);
+        query.get(),
+        nullptr,
+        weights.get(),
+        nullptr,
+        nullptr,
+        nullptr,
+        layoutQuery,
+        layoutKey,
+        4,
+        3,
+        INT64_MAX,
+        INT64_MAX,
+        false,
+        sparseIndicesOut.get(),
+        nullptr,
+        &workspaceSize,
+        &executor);
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
