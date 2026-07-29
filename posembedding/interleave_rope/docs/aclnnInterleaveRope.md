@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：针对单输入 x 进行旋转位置编码。
+- 接口功能：针对单输入x进行旋转位置编码。
 
 - 计算公式：
 
@@ -27,18 +27,19 @@
   q_{\text{embed}} = q \cdot \text{cos} + \text{RotateHalf}(q) \cdot \sin
   $$
 
-  其中：RotateHalf(q) 表示将 q 的 D 维后半部分元素移至前半部分并乘以 -1，后半部分用前半部分的值。
+  其中：RotateHalf(q)表示将q的D维后半部分元素移至前半部分并乘以 -1，后半部分用前半部分的值。
+
   $$
   \text{RotateHalf}(q)_{\text{i}} =
   \begin{cases}
   -q_{i+D//2} & \text{if } i < D//2 \\
-  q_{i+D//2} & \text{otherwise}
+  q_{i-D//2} & \text{otherwise}
   \end{cases}
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnInterleaveRopeGetWorkspaceSize"接口获取入参并根据流程计算所需workspace大小，再调用"aclnnInterleaveRope"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnInterleaveRopeGetWorkspaceSize"接口获取入参并根据流程计算所需workspace大小，再调用"aclnnInterleaveRope"接口执行计算。
 
 ```c++
 aclnnStatus aclnnInterleaveRopeGetWorkspaceSize(
@@ -150,7 +151,7 @@ aclnnStatus aclnnInterleaveRope(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -226,7 +227,7 @@ aclnnStatus aclnnInterleaveRope(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -239,7 +240,7 @@ aclnnStatus aclnnInterleaveRope(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
@@ -312,7 +313,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl API手册
+    // 1. 固定写法，device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -403,7 +404,7 @@ int main() {
     aclDestroyTensor(sin);
     aclDestroyTensor(out);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(xDeviceAddr);
     aclrtFree(cosDeviceAddr);
     aclrtFree(sinDeviceAddr);

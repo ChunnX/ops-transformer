@@ -78,7 +78,8 @@ static ge::graphStatus InferShapeMoeGatingTopKSoftmaxV2(gert::InferShapeContext*
 
     const int64_t gatingDimNum = gatingShape->GetDimNum();
     if (gatingDimNum != SIZE_2 && gatingDimNum != SIZE_3) {
-        OP_LOGE(context->GetNodeName(), "x dimensions not equal 2 and 3!");
+        std::string gatingDimNumStr = std::to_string(gatingDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", gatingDimNumStr.c_str(), "2 or 3");
         return ge::GRAPH_FAILED;
     }
 
@@ -89,14 +90,17 @@ static ge::graphStatus InferShapeMoeGatingTopKSoftmaxV2(gert::InferShapeContext*
     const int64_t k = *kPtr;
 
     if (k <= 0 || k > MAX_K || (!IsUnknownShape(gatingShape) && k > gatingShape->GetDim(gatingDimNum - 1))) {
-        OP_LOGE(context->GetNodeName(), "k value error!");
+        std::string kStr = std::to_string(k);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "k", kStr.c_str(),
+            "k value error");
         return ge::GRAPH_FAILED;
     }
 
     const int64_t* renormPtr = attrs->GetAttrPointer<int64_t>(INDEX_1);
     int64_t renorm = renormPtr == nullptr ? 0 : *renormPtr;
     if (renorm < 0 || renorm > 1) {
-        OP_LOGE(context->GetNodeName(), "renorm value error!");
+        std::string renormStr = std::to_string(renorm);
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "renorm", renormStr.c_str(), "0 or 1");
         return ge::GRAPH_FAILED;
     }
 

@@ -26,7 +26,7 @@
   $$
 
 ## 参数说明
- 	 
+   
 <table style="undefined;table-layout: fixed; width: 952px"><colgroup>
 <col style="width: 106px">
 <col style="width: 87px">
@@ -110,13 +110,11 @@
 </table>
 
 ## 约束说明
+
 无
 
 ## 调用说明
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_mhc_pobackward](examples/test_aclnn_mhc_post_backward.cpp) | 通过[aclnnMhcpostBackward](docs/aclnnMhcPostBackward.md)接口方式调用算子。|
-
-
-
+| aclnn调用 | [test_aclnn_mhc_post_backward](examples/test_aclnn_mhc_post_backward.cpp) | 通过[aclnnMhcpostBackward](docs/aclnnMhcPostBackward.md)接口方式调用算子。|

@@ -14,7 +14,7 @@
  */
 
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "mc2_log.h"
 
 using namespace Ops::Transformer::OpTiling;
@@ -38,9 +38,8 @@ ge::graphStatus TilingParseForMoeDistributeCombineSetup(gert::TilingParseContext
     return ge::GRAPH_SUCCESS;
 }
 
-struct MoeDistributeCombineSetupCompileInfo {
-};
+struct MoeDistributeCombineSetupCompileInfo {};
 IMPL_OP_OPTILING(MoeDistributeCombineSetup)
     .Tiling(MoeDistributeCombineSetupTilingFunc)
     .TilingParse<MoeDistributeCombineSetupCompileInfo>(TilingParseForMoeDistributeCombineSetup);
-} // namespace optiling
+} // namespace MC2Tiling

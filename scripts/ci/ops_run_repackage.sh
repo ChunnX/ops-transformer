@@ -96,12 +96,12 @@ HOST_RUN_NAME="host.run"
 HOST_EXTRACT_DIR="host"
 MAKESELF_TARGET_DIR="build/makeself"
 RUNFILE_TARGET_DIR="build/_CPack_Packages/makeself_staging"
-PACKAGE_SCRIPT="${WORKDIR}/scripts/package/package.py"
-MERGE_SCRIPT="${WORKDIR}/scripts/package/common/py/merge_binary_info_config.py"
+PACKAGE_SCRIPT="$TOP_DIR/open_source/cann-cmake/scripts/package/package.py"
+MERGE_SCRIPT="$TOP_DIR/open_source/cann-cmake/scripts/package/merge_binary_info_config.py"
 PKG_OUTPUT_DIR="build/_CPack_Packages/makeself_staging"
 RUN_PACKAGE_SAVE_AB_PATH=${TOP_DIR}/${RUN_PKG_SAVE_PATH}
 ARCHIVE_RUN_DIR="${TOP_DIR}/vendor/hisi/build/delivery/${SOC}/"
-MERGE_OPS_SCRIPT="${WORKDIR}/scripts/package/common/py/json_merger.py"
+MERGE_OPS_SCRIPT="$TOP_DIR/open_source/cann-cmake/scripts/package/json_merger.py"
 
 
 cd ${WORKDIR}/ || exit
@@ -170,7 +170,7 @@ if [[ ${#kernel_run_files[@]} -gt 0 ]]; then
     exec 8<>"$PROCESS_FIFO"
     rm -f "$PROCESS_FIFO"
     for ((i=1;i<=PARALLEL_EXTRACT_NUM;i++)); do echo >&8; done
-    
+
     for runfile in "${kernel_run_files[@]}"; do
         read -u8
         {
@@ -183,44 +183,44 @@ if [[ ${#kernel_run_files[@]} -gt 0 ]]; then
             runfile_basename=$(basename "$runfile" .run)
             base_name="kernel_${parent_dir}_${runfile_basename}"
             extract_dir="./$base_name"
-            
+
             log "Extracting and processing $runfile"
             "$runfile" --extract="$extract_dir" --noexec || {
                 echo "$runfile: extract failed" >> "$PROCESS_ERROR_FILE"
                 echo >&8
                 exit 1
             }
-            
+
             full_path=$(find "${extract_dir}/packages/vendors" -maxdepth 1 -type d -name "custom_*_transformer" 2>/dev/null | head -n 1)
-            
+
             if [[ -z "$full_path" ]]; then
                 echo "$runfile: kernel_dir not found" >> "$PROCESS_ERROR_FILE"
                 echo >&8
                 exit 1
             fi
-            
+
             kernel_dir_name=$(basename "$full_path")
             kernel_src_dir="$extract_dir/packages/vendors/$kernel_dir_name/op_impl/ai_core/tbe/kernel/${SOC}"
             config_src_dir="$extract_dir/packages/vendors/$kernel_dir_name/op_impl/ai_core/tbe/kernel/config/${SOC}"
-            
+
             [[ -d "$kernel_src_dir" && -d "$config_src_dir" ]] || { echo >&8; exit 0; }
-            
+
             for json_file in "$config_src_dir"/*.json; do
                 [[ -f "$json_file" ]] || continue
                 json_name=$(basename "$json_file" .json)
                 cp "$json_file" "$TARGET_CONFIG_DIR/${json_name}_${base_name}.json"
             done
-            
+
             rsync -au "$kernel_src_dir/" "$TARGET_KERNEL_DIR/" 2>> "$PROCESS_ERROR_FILE"
-            
+
             echo >&8
             exit 0
         }&
     done
-    
+
     wait
     exec 8>&-
-    
+
     if [[ -s "$PROCESS_ERROR_FILE" ]]; then
         log "Errors during parallel processing:"
         cat "$PROCESS_ERROR_FILE"
@@ -233,9 +233,9 @@ fi
 merge_all_jsons() {
     local binary_script="$1" ops_script="$2"
     declare -A groups
-    
+
     log "Merging JSON files..."
-    
+
     for f in "$TARGET_CONFIG_DIR"/*_*.json; do
         [[ -f "$f" ]] || continue
         name=$(basename "$f" .json)
@@ -243,15 +243,15 @@ merge_all_jsons() {
         [[ "$base" == "$name" ]] && continue
         groups[$base]+="$f "
     done
-    
+
     for base in "${!groups[@]}"; do
         read -ra files <<< "${groups[$base]}"
         n=${#files[@]}
         [[ $n -eq 1 ]] && { mv "${files[0]}" "${TARGET_CONFIG_DIR}/${base}.json"; continue; }
-        
+
         script="$ops_script"; priority="last"
         [[ "$base" =~ ^(binary_info_config|relocatable_kernel_info_config)$ ]] && { script="$binary_script"; priority="first"; }
-        
+
         log "  $base: $n files"
         python3 "$script" --input-files "${files[@]}" --output-file "${TARGET_CONFIG_DIR}/${base}.json" --priority "$priority"
         rm -f "${files[@]}"
@@ -293,7 +293,9 @@ python3 "$PACKAGE_SCRIPT" \
     --pkg-output-dir "${WORKDIR}/$PKG_OUTPUT_DIR" \
     --independent_pkg \
     --chip_name "$SOC" \
-    --os_arch linux-"$OS_ARCH"
+    --os_arch linux-"$OS_ARCH"\
+    --delivery_dir "${WORKDIR}/build" \
+    --source_dir "${WORKDIR}"
 
 log "Packaging completed successfully!"
 

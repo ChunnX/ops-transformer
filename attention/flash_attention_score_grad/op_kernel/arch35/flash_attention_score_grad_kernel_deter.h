@@ -18,6 +18,7 @@
  
 #include "flash_attention_score_grad_common.h"
 #include "flash_attention_score_grad_kernel_base.h"
+#include "cube_api/mutex_buffer.h"
 #include "flash_attention_score_grad_tiling_data_regbase.h"
 #include "deter.h"
  
@@ -39,8 +40,6 @@ public:
             GM_ADDR keyRope, GM_ADDR sink, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope,
             GM_ADDR dkRope, GM_ADDR dsink, GM_ADDR workspace,
             FagTilingType ordTilingData, TPipe *pipeIn);
-    __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
-    __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
     __aicore__ inline void SetRunInfoDeterForTND(FagRunInfo &runInfo, int64_t taskId, int64_t index, CoordinateInfo &coordinateInfo,int64_t nextIndex);
     __aicore__ inline int64_t CalDeterMaxLoopNum();
     __aicore__ inline void CalDeterIndex(uint32_t roundId, uint32_t maxLoopNum, int64_t &nextValidRoundId, int64_t &nextValidIndex, int64_t taskId,
@@ -94,19 +93,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
     dAlign16 = AlignTo16(this->constInfo.commonConstInfo.dSize);
     dvAlign16 = AlignTo16(this->constInfo.commonConstInfo.dSizeV);
  
-    deterGm.SetGlobalBuffer((__gm__ float *)workspace + this->tilingData->postTilingData.deterGmOffset / sizeof(CALC_TYPE));
+    deterGm.SetGlobalBuffer((__gm__ float *)workspace +
+        this->tilingData->baseDeterParam.deterGmOffset / sizeof(CALC_TYPE));
     deterGmOffset = this->cBlockIdx * this->CUBE_BASEN * this->HEAD_DIM_ALIGN * NUM_TWO; 
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
-{
-}
- 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
-{
 }
  
 template <typename CubeBlockType, typename VecBlockType>
@@ -295,7 +284,6 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetRunInfoDeter
     }
  
 //----------------------------------------------PART
-    this->GetDerived()->SetUniqueRunInfo(runInfo);
     // preload next query and dy offset for l1 preload
     if (unlikely(taskId == 0)) {
         runInfo.commonRunInfo.queryOffset = this->GetQueryOffset(runInfo);
@@ -372,7 +360,11 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
             n = m;
         }
         if constexpr(BaseClass::IS_N_EQUAL) {
-            CalCausalIndex(k, m, n, b, j, r, coordinateInfo);
+            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+                CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+            } else {
+                CalCausalIndex(k, m, n, b, j, r, coordinateInfo);
+            }
         } else {
             CalGQACausalIndex(k, m, n, b, j, r, this->constInfo.commonConstInfo.gSize, coordinateInfo);
         }
@@ -434,15 +426,31 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDenseDeterIn
     int64_t r = roundId + 1;
  
     if constexpr (BaseClass::IS_TND) {
-        int64_t b = this->constInfo.bSize;
-        CalTNDDenseIndex<BaseClass::CUBE_BASEM,BaseClass::CUBE_BASEN,BaseClass::DETER_SPARSE_TYPE,BaseClass::IS_N_EQUAL>(
+        if constexpr (IS_TND_SWIZZLE) {
+            CalTNDDenseSwizzleIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN>(
+                this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
+                this->tilingData->tndSwizzleParam.tndS2BlockPrefixSum, this->constInfo.bSize, this->constInfo.n2Size,
+                this->constInfo.commonConstInfo.gSize, j,
+                static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO), r, this->deltaCnt,
+                coordinateInfo);
+        } else {
+            int64_t b = this->constInfo.bSize;
+            CalTNDDenseIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN, BaseClass::DETER_SPARSE_TYPE,
+                             BaseClass::IS_N_EQUAL>(
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
-                this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound, this->constInfo.bSize, this->constInfo.n2Size, this->constInfo.commonConstInfo.gSize, j, r, 0, this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+                this->tilingData->baseDeterParam.deterMaxRound, this->constInfo.bSize,
+                this->constInfo.n2Size, this->constInfo.commonConstInfo.gSize, j, r, 0,
+                this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+        }
     } else {
         int64_t k = static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO);
         int64_t b = this->constInfo.bSize * this->constInfo.n2Size;
         if constexpr(BaseClass::IS_N_EQUAL) {
-            CalDenseIndex(k, this->constInfo.s1Outer, this->constInfo.s2Outer, b, j, r, coordinateInfo);
+            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+                CalDenseSwizzleIndex(k, this->constInfo.s1Outer, this->constInfo.s2Outer, b, j, r, coordinateInfo);
+            } else {
+                CalDenseIndex(k, this->constInfo.s1Outer, this->constInfo.s2Outer, b, j, r, coordinateInfo);
+            }
         } else {
             CalGQADenseIndex(k, this->constInfo.s1Outer, this->constInfo.s2Outer, b, j, r, this->constInfo.commonConstInfo.gSize, coordinateInfo);
         }
@@ -450,7 +458,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDenseDeterIn
  
     int64_t w = coordinateInfo.batchId;
     int64_t n1 = this->constInfo.commonConstInfo.gSize * this->constInfo.n2Size;
-    if (!BaseClass::IS_TND || this->constInfo.commonConstInfo.gSize == 1) {
+    if ((!BaseClass::IS_TND || this->constInfo.commonConstInfo.gSize == 1) && !IS_TND_SWIZZLE) {
         coordinateInfo.batchId = Ceil<int64_t>(w, n1) - 1;
         int64_t n1Idx = w - coordinateInfo.batchId * n1 - 1;
         coordinateInfo.n2Idx = n1Idx / this->constInfo.commonConstInfo.gSize;
@@ -486,7 +494,15 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
     TransDeterRound<BaseClass::DETER_TILING_SPLIT_MODE>(r, useEven, deterLoopMax / NUM_TWO);
     if constexpr (!BaseClass::IS_TND) {
         if constexpr(BaseClass::IS_N_EQUAL) {
-            CalBandIndex(this->bandInfo, j, r, coordinateInfo);
+            int64_t b = this->constInfo.bSize * this->constInfo.n2Size;
+            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+                int64_t k = static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO);
+                int64_t m = this->bandInfo.m;
+                int64_t n = this->bandInfo.n;
+                CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+            } else {
+                CalBandIndex(this->bandInfo, j, r, coordinateInfo);
+            }
         } else {
             CalGQABandIndex(this->bandInfo, j, r, this->constInfo.commonConstInfo.gSize, coordinateInfo);
         }
@@ -549,13 +565,20 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
     int64_t k = static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO);
     deterLoopMax = 0;
     if constexpr (BaseClass::IS_TND) {
-        return this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound;
+        if constexpr (IS_TND_SWIZZLE) {
+            return this->tilingData->tndSwizzleParam.tndS2BlockPrefixSum[this->constInfo.bSize];
+        } else {
+            return this->tilingData->baseDeterParam.deterMaxRound;
+        }
     }
 
     InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, 0, 0, this->coordinateInfos[0]);
     InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, 0, 0, this->coordinateInfos[1]);
     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_CAUSAL) {
-        return this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound;
+        if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+            return Max(this->constInfo.s1Outer * Ceil<int64_t>((n + 1) * (b >> 1), k), n + 1);
+        }
+        return this->tilingData->baseDeterParam.deterMaxRound;
     }
  
     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_DENSE) {
@@ -571,6 +594,28 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
     }
 
     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_BAND) {
+        if constexpr (BaseClass::IS_N_EQUAL) {
+            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+                int64_t mNew = 0;
+                int64_t nNew = 0;
+                if (m < n) {
+                    mNew = m;
+                    nNew = (n << 1) - m + NUM_THREE;
+                    this->bandInfo.m = m;
+                    this->bandInfo.n = n;
+                } else {
+                    mNew = n + 1;
+                    nNew = n + NUM_TWO;
+                    this->bandInfo.m = mNew;
+                    this->bandInfo.n = mNew;
+                    InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, m - n - 1, 0,
+                                       this->coordinateInfos[0]);
+                    InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, m - n - 1, 0,
+                                       this->coordinateInfos[1]);
+                }
+                return Max(mNew * Ceil<int64_t>(nNew * (b >> 1), k), nNew);
+            }
+        }
         int64_t s1Outer = this->constInfo.s1Outer;
         int64_t s2Outer = this->constInfo.s2Outer;
         if constexpr (BaseClass::DETER_TILING_SPLIT_MODE == 1) {
@@ -609,8 +654,8 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
         if constexpr(BaseClass::IS_N_EQUAL) {
             GenBandInfo(k, actualM, actualN, actualP, actualQ, b, this->bandInfo);
             int64_t convertedMaxRound = BaseClass::DETER_TILING_SPLIT_MODE ?
-                this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound / NUM_TWO :
-                this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound;
+                this->tilingData->baseDeterParam.deterMaxRound / NUM_TWO :
+                this->tilingData->baseDeterParam.deterMaxRound;
             deterLoopMax = Max(convertedMaxRound, this->bandInfo.rm2);
         } else {
             k = Min(Min(k, b * this->constInfo.commonConstInfo.gSize * m), b * n);
@@ -681,11 +726,11 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::DeterSync(int64
  
     // 此处复用dqIsNeedDeter和dkDvIsNeedDeter装载需要同步的轮次范围
     for (int8_t i = 0; i < MAX_CUBE_CORE_NUM; i++) {
-        if (this->tilingData->s1s2BNGS1S2SplitCoreParams.dkDvIsNeedDeter[i] == 0) {
+        if (this->tilingData->baseDeterParam.dkDvIsNeedDeter[i] == 0) {
             return;
         }
-        if (static_cast<uint64_t>(loopIdx) >= this->tilingData->s1s2BNGS1S2SplitCoreParams.dqIsNeedDeter[i] && 
-            static_cast<uint64_t>(loopIdx) <= this->tilingData->s1s2BNGS1S2SplitCoreParams.dkDvIsNeedDeter[i]) {
+        if (static_cast<uint64_t>(loopIdx) >= this->tilingData->baseDeterParam.dqIsNeedDeter[i] &&
+            static_cast<uint64_t>(loopIdx) <= this->tilingData->baseDeterParam.dkDvIsNeedDeter[i]) {
             CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
             CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
             return;
@@ -789,8 +834,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                 }
             }
             
-            Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
-            Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
+            MutexBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
+            MutexBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
             this->vecBlock.ProcessVec3(dSL1Buffer, mm1ResTensor, mm2ResTensor, this->constInfo,
                                        runInfos[(taskId + 1) & 1]); // v3: dropout + cast + nd2nz
             if (unlikely(this->constInfo.isSink && IS_DROP)) {
@@ -820,16 +865,16 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
  
             if constexpr (SPLIT_AXIS == BN2S2) {
                 this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
-                    this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo,
+                    this->dqWorkSpaceGm, dSL1Buffer, this->constInfo,
                     runInfos[(taskId + 1) & 1]); // c3
                 // compute dk
                 if (runInfos[(taskId + 1) & 1].specialS2Index != -1) {
                     this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
-                        this->deterGm, this->dSL1Buf, this->constInfo,
+                        this->deterGm, dSL1Buffer, this->constInfo,
                         runInfos[(taskId + 1) & 1]); // c4
                 } else {
                     this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
-                        this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo,
+                        this->dkWorkSpaceGm, dSL1Buffer, this->constInfo,
                         runInfos[(taskId + 1) & 1]); // c4
                 }
                 if (runInfos[(taskId + 1) & 1].specialS2Index == -1 && !runInfos[(taskId + 1) & 1].isNextS2IdxNoChange) {
@@ -856,10 +901,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                 // compute dv
                 if (runInfos[(taskId + 1) & 1].specialS2Index != -1) {
                     this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                        this->deterGm, this->pL1Buf, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
+                        this->deterGm, pL1Buffer, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
                 } else {
                     this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                        this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
+                        this->dvWorkSpaceGm, pL1Buffer, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
                 }
  
                 if (runInfos[(taskId + 1) & 1].specialS2Index == -1 && !runInfos[(taskId + 1) & 1].isNextS2IdxNoChange) {
@@ -888,24 +933,29 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                 }
                 // compute dq
                 this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
-                    this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo,
+                    this->dqWorkSpaceGm, dSL1Buffer, this->constInfo,
                     runInfos[(taskId + 1) & 1]); // c3
                 if ASCEND_IS_AIC {
                     CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
+                    CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DK_DETER_FIX_FLAG);
                 }
                 // compute dk
                 this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
-                    this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo,
+                    this->dkWorkSpaceGm, dSL1Buffer, this->constInfo,
                     runInfos[(taskId + 1) & 1]); // c4
- 
                 if ASCEND_IS_AIC {
+                    CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DK_DETER_FIX_FLAG);
+                    CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DV_DETER_FIX_FLAG);
+
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
                 }
                 // compute dv
                 this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                    this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
+                    this->dvWorkSpaceGm, pL1Buffer, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
                 if ASCEND_IS_AIC {
+                    CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DV_DETER_FIX_FLAG);
+
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C5_TO_V4_FLAG);
                 }
@@ -917,8 +967,16 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                 if ASCEND_IS_AIC {
                     if (loopIdx > 0) {
                         CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
+                        CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
+                        CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DK_DETER_FIX_FLAG);
+                        CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DK_DETER_FIX_FLAG);
+                        CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DV_DETER_FIX_FLAG);
+                        CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DV_DETER_FIX_FLAG);
+                    } else {
+                        CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
+                        CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DK_DETER_FIX_FLAG);
+                        CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DV_DETER_FIX_FLAG);
                     }
-                    CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
                 }
             }
         }
@@ -933,7 +991,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
     }
     if constexpr (SPLIT_AXIS != BN2S2) {
         if ASCEND_IS_AIC {
-            CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG); //这里为啥加
+            CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
+            CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DK_DETER_FIX_FLAG);
+            CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DV_DETER_FIX_FLAG);
         }
     }
     if constexpr (SPLIT_AXIS == BN2S2) {
@@ -1045,8 +1105,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C4_TO_V3_FLAG);
                         }
                     }
-                    Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
-                    Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
+                    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
+                    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
                     // GetIsNeedDeter, vec3需要知道是否dqneedDeter
                     GetIsNeedDeter(taskId - 1);
                     this->vecBlock.ProcessVec3(dSL1Buffer, mm1ResTensor, mm2ResTensor, this->constInfo,
@@ -1077,7 +1137,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                     if (likely(this->constInfo.deterConstInfo.noNeedDeter)) {
                         // c3-normal
                         this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
-                            this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo, prevRunInfo);
+                            this->dqWorkSpaceGm, dSL1Buffer, this->constInfo, prevRunInfo);
                     } else {
                         if (dqIsNeedDeter[deterPpFlag]) {
                             int64_t offset = this->cBlockIdx * this->BASE_DQ_SIZE +
@@ -1088,14 +1148,15 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                         } else {
                             // c3-normal
                             this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
-                                this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo, prevRunInfo);
+                                this->dqWorkSpaceGm, dSL1Buffer, this->constInfo, prevRunInfo);
                         }
                     }                    
                     // compute dk
                     if (likely(this->constInfo.deterConstInfo.noNeedDeter)) {
                         // c4-normal
                         this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
-                            this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo, prevRunInfo, dqIsNeedDeter[deterPpFlag]); // c4
+                            this->dkWorkSpaceGm, dSL1Buffer, this->constInfo, prevRunInfo,
+                            dqIsNeedDeter[deterPpFlag]); // c4
                     } else {
                         if (dkDvIsNeedDeter[deterPpFlag]) {
                             int64_t offset = this->cBlockIdx * this->BASE_DKV_SIZE + this->BASE_DQ_SIZE * this->constInfo.deterConstInfo.usedCubeCoreNum +
@@ -1106,7 +1167,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                         } else {
                             // c4-normal
                             this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
-                                this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo, prevRunInfo, dqIsNeedDeter[deterPpFlag]); // c4
+                                this->dkWorkSpaceGm, dSL1Buffer, this->constInfo, prevRunInfo,
+                                dqIsNeedDeter[deterPpFlag]); // c4
                         }
                     }
                     if ASCEND_IS_AIC {
@@ -1117,7 +1179,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                     if (likely(this->constInfo.deterConstInfo.noNeedDeter)) {
                         // c5-normal
                         this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                            this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, prevRunInfo); // c5
+                            this->dvWorkSpaceGm, pL1Buffer, this->constInfo, prevRunInfo); // c5
                     } else {
                         if (dkDvIsNeedDeter[deterPpFlag]) {
                         int64_t offset = this->cBlockIdx * this->BASE_DKV_SIZE + (this->BASE_DQ_SIZE + this->BASE_DKV_SIZE) * this->constInfo.deterConstInfo.usedCubeCoreNum +
@@ -1128,7 +1190,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                         } else {
                             // c5-normal
                             this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                                this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, prevRunInfo); // c5
+                                this->dvWorkSpaceGm, pL1Buffer, this->constInfo, prevRunInfo); // c5
                         }
                     }
                     if ASCEND_IS_AIC {
@@ -1150,10 +1212,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                         // DeterCompute
                         this->vecBlock.DeterCompute(mm1ResTensor, mm2ResTensor, this->constInfo, dqIsNeedDeter, dkDvIsNeedDeter, 
                                                     false, maxValidBBLen - remainLoopNum, remainLoopNum, &deterPpFlag);
-                        if ASCEND_IS_AIV {
-                            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_DETER_FIX_FLAG);
-                        }
                         remainLoopNum--;
+                    }
+                    if ASCEND_IS_AIV {
+                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_DETER_FIX_FLAG);
                     }
                 }
                 if (this->isLastLoop && taskId > 0) {
@@ -1215,8 +1277,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
         int64_t arrayIndex = computeLoopIdx / this->BITS_EACH_UINT64;
         int64_t bitShift = computeLoopIdx % this->BITS_EACH_UINT64;
         uint64_t mask = 1ULL << bitShift;
-        dqIsNeedDeter[computeLoopIdx & 1] = (this->tilingData->s1s2BNGS1S2SplitCoreParams.dqIsNeedDeter[arrayIndex] & mask) != 0;
-        dkDvIsNeedDeter[computeLoopIdx & 1] = (this->tilingData->s1s2BNGS1S2SplitCoreParams.dkDvIsNeedDeter[arrayIndex] & mask) != 0;
+        dqIsNeedDeter[computeLoopIdx & 1] = (this->tilingData->baseDeterParam.dqIsNeedDeter[arrayIndex] & mask) != 0;
+        dkDvIsNeedDeter[computeLoopIdx & 1] =
+            (this->tilingData->baseDeterParam.dkDvIsNeedDeter[arrayIndex] & mask) != 0;
     }
 }
  

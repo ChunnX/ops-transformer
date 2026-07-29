@@ -1,42 +1,27 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file repeat_interleave_grad_proto.h
- * \brief
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <gtest/gtest.h>
 #include <iostream>
 #include <vector>
-#include <thread>
-#include <nlohmann/json.hpp>
-#include <gtest/gtest.h>
-#include "log/log.h"
-#include "graph/graph.h"
-#include "kernel_run_context_facker.h"
-
-#include "exe_graph/runtime/storage_format.h"
-#include "exe_graph/runtime/storage_shape.h"
-#include "test_cube_util.h"
-#include "register/op_impl_registry.h"
-#include "ut_op_util.h"
-#include "ut_op_common.h"
-#include "platform/platform_infos_def.h"
+#include "tiling_context_faker.h"
+#include "tiling_case_executor.h"
 #include "../../../op_host/kv_rms_norm_rope_cache_tiling.h"
 
-using namespace ut_util;
 using namespace std;
-using namespace ge;
 
-class KvRmsNormRopeCacheTiling : public testing::Test
-{
+namespace {
+const gert::TilingContextPara::TensorDescription kOptionalInput = {{{}, {}}, ge::DT_UNDEFINED, ge::FORMAT_ND};
+}
+
+class KvRmsNormRopeCacheTiling : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -49,4506 +34,1732 @@ protected:
     }
 };
 
-static string to_string(const std::stringstream& tiling_data)
-{
-    auto data = tiling_data.str();
-    string result;
-    int32_t tmp = 0;
-    for (size_t i = 0; i < data.length(); i += sizeof(int32_t)) {
-        memcpy(&tmp, data.c_str() + i, sizeof(tmp));
-        result += std::to_string(tmp);
-        result += " ";
-    }
-
-    return result;
-}
-
-template <typename T>
-static string to_string(void *buf, size_t size)
-{
-    std::string result;
-    const T* data = reinterpret_cast<const T*>(buf);
-    size_t len = size / sizeof(T);
-    for (size_t i = 0; i < len; i++) {
-        result += std::to_string(data[i]);
-        result += " ";
-    }
-    return result;
-}
-
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_5011A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape c_kv_scale_shape = {{512}, {512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 576}, {64, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 512}, {64, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BNSD");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &c_kv_scale_shape, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 5011);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 32);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "32 0 0 0 1 0 64 0 1 0 1 0 128 0 2 0 16 0 925353388 989855744 65792 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5011, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_5011B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{32, 1, 15, 192}, {32, 1, 15, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape cos_shape = {{32, 1, 15, 64}, {32, 1, 15, 64}};
-    gert::StorageShape sin_shape = {{32, 1, 15, 64}, {32, 1, 15, 64}};
-    gert::StorageShape index_shape = {{480}, {480}};
-    gert::StorageShape k_cache_shape = {{125, 10, 1, 192}, {125, 10, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{125, 10, 1, 128}, {125, 10, 1, 128}};
-    gert::StorageShape c_kv_scale_shape = {{128}, {128}};
-    gert::StorageShape v_shape = {{32, 1, 15, 128}, {32, 1, 15, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{32, 1, 15, 192}, {32, 1, 15, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32, 1, 15, 64}, {32, 1, 15, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32, 1, 15, 64}, {32, 1, 15, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{480}, {480}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{125, 10, 1, 192}, {125, 10, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{125, 10, 1, 128}, {125, 10, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         {{{32, 1, 15, 128}, {32, 1, 15, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{125, 10, 1, 192}, {125, 10, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{125, 10, 1, 128}, {125, 10, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32, 1, 15, 192}, {32, 1, 15, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32, 1, 15, 128}, {32, 1, 15, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{125, 10, 1, 192}, {125, 10, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{125, 10, 1, 128}, {125, 10, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{32, 1, 15, 192}, {32, 1, 15, 192}};
-    gert::StorageShape c_kv_shape_out = {{32, 1, 15, 128}, {32, 1, 15, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BNSD");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, &c_kv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 5011);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 48);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "48 0 0 0 1 0 32 0 1 0 15 0 10 0 10 0 32 0 925353388 1001040555 65536 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5011, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_5010A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape c_kv_scale_shape = {{512}, {512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 576}, {64, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 512}, {64, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    map<string, string> soc_version;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics, soc_version);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("version", soc_version);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BLK_BNSD");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &c_kv_scale_shape, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 5010);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 32);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "32 0 0 0 1 0 64 0 1 0 1 0 128 0 2 0 16 0 925353388 989855744 65792 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5010, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_5010B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{9, 1, 14, 192}, {9, 1, 14, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape cos_shape = {{9, 1, 14, 64}, {9, 1, 14, 64}};
-    gert::StorageShape sin_shape = {{9, 1, 14, 64}, {9, 1, 14, 64}};
-    gert::StorageShape index_shape = {{9}, {9}};
-    gert::StorageShape k_cache_shape = {{21, 16, 1, 192}, {21, 16, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{21, 16, 1, 128}, {21, 16, 1, 128}};
-    gert::StorageShape c_kv_scale_shape = {{128}, {128}};
-    gert::StorageShape v_shape = {{9, 1, 14, 128}, {9, 1, 14, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{9, 1, 14, 192}, {9, 1, 14, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{9, 1, 14, 64}, {9, 1, 14, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{9, 1, 14, 64}, {9, 1, 14, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{9}, {9}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{21, 16, 1, 192}, {21, 16, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{21, 16, 1, 128}, {21, 16, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         {{{9, 1, 14, 128}, {9, 1, 14, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{21, 16, 1, 192}, {21, 16, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{21, 16, 1, 128}, {21, 16, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{9, 1, 14, 192}, {9, 1, 14, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{9, 1, 14, 128}, {9, 1, 14, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{21, 16, 1, 192}, {21, 16, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{21, 16, 1, 128}, {21, 16, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{9, 1, 14, 192}, {9, 1, 14, 192}};
-    gert::StorageShape c_kv_shape_out = {{9, 1, 14, 128}, {9, 1, 14, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    map<string, string> soc_version;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics, soc_version);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("version", soc_version);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    printf("ws_size = %ld\n", ws_size);
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BLK_BNSD");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, &c_kv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 5010);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 42);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "42 0 0 0 1 0 9 0 1 0 14 0 16 0 3 0 32 0 925353388 1001040555 65536 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5010, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_5001A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 576}, {64, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 512}, {64, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BNSD");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 5001);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 32);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "32 0 0 0 1 0 64 0 1 0 1 0 128 0 2 0 16 0 925353388 989855744 1 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_5001B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{30, 1, 10, 192}, {30, 1, 10, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape cos_shape = {{30, 1, 10, 64}, {30, 1, 10, 64}};
-    gert::StorageShape sin_shape = {{30, 1, 10, 64}, {30, 1, 10, 64}};
-    gert::StorageShape index_shape = {{300}, {300}};
-    gert::StorageShape k_cache_shape = {{42, 12, 1, 192}, {42, 12, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{42, 12, 1, 128}, {42, 12, 1, 128}};
-    gert::StorageShape v_shape = {{30, 1, 10, 128}, {30, 1, 10, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{30, 1, 10, 192}, {30, 1, 10, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{30, 1, 10, 64}, {30, 1, 10, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{30, 1, 10, 64}, {30, 1, 10, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{300}, {300}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{42, 12, 1, 192}, {42, 12, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{42, 12, 1, 128}, {42, 12, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         {{{30, 1, 10, 128}, {30, 1, 10, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{42, 12, 1, 192}, {42, 12, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{42, 12, 1, 128}, {42, 12, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{30, 1, 10, 192}, {30, 1, 10, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{30, 1, 10, 128}, {30, 1, 10, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{42, 12, 1, 192}, {42, 12, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{42, 12, 1, 128}, {42, 12, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{30, 1, 10, 192}, {30, 1, 10, 192}};
-    gert::StorageShape c_kv_shape_out = {{30, 1, 10, 128}, {30, 1, 10, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BNSD");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 5001);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 43);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "43 0 0 0 1 0 30 0 1 0 10 0 12 0 7 0 32 0 925353388 1001040555 1 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_5000A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{38, 1, 3809, 576}, {38, 1, 3809, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{228}, {228}};
-    gert::StorageShape cos_shape = {{38, 1, 3809, 64}, {38, 1, 3809, 64}};
-    gert::StorageShape sin_shape = {{38, 1, 3809, 64}, {38, 1, 3809, 64}};
-    gert::StorageShape k_cache_shape = {{230, 745, 1, 64}, {230, 745, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{230, 745, 1, 512}, {230, 745, 1, 512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{38, 1, 3809, 576}, {38, 1, 3809, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 64}, {38, 1, 3809, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 64}, {38, 1, 3809, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{228}, {228}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{230, 745, 1, 64}, {230, 745, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{230, 745, 1, 512}, {230, 745, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{230, 745, 1, 64}, {230, 745, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{230, 745, 1, 512}, {230, 745, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 64}, {38, 1, 3809, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 512}, {38, 1, 3809, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{230, 745, 1, 64}, {230, 745, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{230, 745, 1, 512}, {230, 745, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{38, 1, 3809, 64}, {38, 1, 3809, 64}};
-    gert::StorageShape c_kv_shape_out = {{38, 1, 3809, 512}, {38, 1, 3809, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BLK_BNSD");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 5000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 48);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "48 0 0 0 1 0 38 0 1 0 3809 0 745 0 3016 0 16 0 925353388 989855744 0 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5000, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_5000B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{9, 1, 14, 192}, {9, 1, 14, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape cos_shape = {{9, 1, 14, 64}, {9, 1, 14, 64}};
-    gert::StorageShape sin_shape = {{9, 1, 14, 64}, {9, 1, 14, 64}};
-    gert::StorageShape index_shape = {{9}, {9}};
-    gert::StorageShape k_cache_shape = {{21, 16, 1, 192}, {21, 16, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{21, 16, 1, 128}, {21, 16, 1, 128}};
-    gert::StorageShape v_shape = {{9, 1, 14, 128}, {9, 1, 14, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{9, 1, 14, 192}, {9, 1, 14, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{9, 1, 14, 64}, {9, 1, 14, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{9, 1, 14, 64}, {9, 1, 14, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{9}, {9}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{21, 16, 1, 192}, {21, 16, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{21, 16, 1, 128}, {21, 16, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         {{{9, 1, 14, 128}, {9, 1, 14, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{21, 16, 1, 192}, {21, 16, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{21, 16, 1, 128}, {21, 16, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{9, 1, 14, 192}, {9, 1, 14, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{9, 1, 14, 128}, {9, 1, 14, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{21, 16, 1, 192}, {21, 16, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{21, 16, 1, 128}, {21, 16, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{9, 1, 14, 192}, {9, 1, 14, 192}};
-    gert::StorageShape c_kv_shape_out = {{9, 1, 14, 128}, {9, 1, 14, 128}};
-
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BLK_BNSD");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 5000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 42);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "42 0 0 0 1 0 9 0 1 0 14 0 16 0 3 0 32 0 925353388 1001040555 0 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5000, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_4011A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape c_kv_scale_shape = {{512}, {512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 576}, {64, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 512}, {64, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_NZ");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &c_kv_scale_shape, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 4011);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 32);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "32 0 0 0 1 0 64 0 1 0 1 0 128 0 2 0 16 0 925353388 989855744 65792 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4011, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_4011B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_scale_shape = {{192}, {192}};
-    gert::StorageShape c_kv_scale_shape = {{128}, {128}};
-    gert::StorageShape v_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_NZ");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &c_kv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 4011);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 32);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "32 0 0 0 1 0 64 0 1 0 1 0 128 0 2 0 32 0 925353388 1001040555 65792 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4011, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_4010A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape c_kv_scale_shape = {{512}, {512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 576}, {64, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 512}, {64, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BLK_NZ");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &c_kv_scale_shape, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 4010);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 32);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "32 0 0 0 1 0 64 0 1 0 1 0 128 0 2 0 16 0 925353388 989855744 65792 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4010, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_4010B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_scale_shape = {{192}, {192}};
-    gert::StorageShape c_kv_scale_shape = {{128}, {128}};
-    gert::StorageShape v_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BLK_NZ");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &c_kv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 4010);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 32);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "32 0 0 0 1 0 64 0 1 0 1 0 128 0 2 0 32 0 925353388 1001040555 65792 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4010, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_4001A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 576}, {64, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 512}, {64, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_NZ");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 4001);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 32);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "32 0 0 0 1 0 64 0 1 0 1 0 128 0 2 0 16 0 925353388 989855744 0 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_4001B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape v_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_NZ");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 4001);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 32);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "32 0 0 0 1 0 64 0 1 0 1 0 128 0 2 0 32 0 925353388 1001040555 0 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_4000A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{38, 1, 3809, 576}, {38, 1, 3809, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{228}, {228}};
-    gert::StorageShape cos_shape = {{38, 1, 3809, 64}, {38, 1, 3809, 64}};
-    gert::StorageShape sin_shape = {{38, 1, 3809, 64}, {38, 1, 3809, 64}};
-    gert::StorageShape k_cache_shape = {{230, 745, 1, 64}, {230, 745, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{230, 745, 1, 512}, {230, 745, 1, 512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{38, 1, 3809, 576}, {38, 1, 3809, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 64}, {38, 1, 3809, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 64}, {38, 1, 3809, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{228}, {228}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{230, 745, 1, 64}, {230, 745, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{230, 745, 1, 512}, {230, 745, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{230, 745, 1, 64}, {230, 745, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{230, 745, 1, 512}, {230, 745, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 64}, {38, 1, 3809, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 512}, {38, 1, 3809, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{230, 745, 1, 64}, {230, 745, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{230, 745, 1, 512}, {230, 745, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{38, 1, 3809, 64}, {38, 1, 3809, 64}};
-    gert::StorageShape c_kv_shape_out = {{38, 1, 3809, 512}, {38, 1, 3809, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BLK_NZ");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 4000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 48);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "48 0 0 0 1 0 38 0 1 0 3809 0 745 0 3016 0 16 0 925353388 989855744 0 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4000, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_4000B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{38, 1, 3809, 192}, {38, 1, 3809, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{228}, {228}};
-    gert::StorageShape cos_shape = {{38, 1, 3809, 64}, {38, 1, 3809, 64}};
-    gert::StorageShape sin_shape = {{38, 1, 3809, 64}, {38, 1, 3809, 64}};
-    gert::StorageShape k_cache_shape = {{230, 745, 1, 192}, {230, 745, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{230, 745, 1, 128}, {230, 745, 1, 128}};
-    gert::StorageShape v_shape = {{38, 1, 3809, 128}, {38, 1, 3809, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{38, 1, 3809, 192}, {38, 1, 3809, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 64}, {38, 1, 3809, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 64}, {38, 1, 3809, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{228}, {228}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{230, 745, 1, 192}, {230, 745, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{230, 745, 1, 128}, {230, 745, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         {{{38, 1, 3809, 128}, {38, 1, 3809, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{230, 745, 1, 192}, {230, 745, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{230, 745, 1, 128}, {230, 745, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 192}, {38, 1, 3809, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{38, 1, 3809, 128}, {38, 1, 3809, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{230, 745, 1, 192}, {230, 745, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{230, 745, 1, 128}, {230, 745, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{38, 1, 3809, 192}, {38, 1, 3809, 192}};
-    gert::StorageShape c_kv_shape_out = {{38, 1, 3809, 128}, {38, 1, 3809, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA_BLK_NZ");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 4000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 48);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "48 0 0 0 1 0 38 0 1 0 3809 0 745 0 3016 0 32 0 925353388 1001040555 0 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4000, "");
 }
 
-TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_3010_SYMMETRIC_QUANT)   //对称量化
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_3010_SYMMETRIC_QUANT)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 7}, {64, 7}};
-    gert::StorageShape cos_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape c_kv_scale_shape = {{128}, {128}};
-    gert::StorageShape v_shape = {{64, 1, 7, 128}, {64, 1, 7, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 7}, {64, 7}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 7, 128}, {64, 1, 7, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, &c_kv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 3010);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 45);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "45 0 0 0 1 0 64 0 1 0 7 0 128 0 10 0 32 0 925353388 1001040555 65537 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 3010, "");
 }
 
-TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_3010_ASYMMETRIC_QUANT)   //非对称量化
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_3010_ASYMMETRIC_QUANT)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 7}, {64, 7}};
-    gert::StorageShape cos_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape c_kv_scale_shape = {{128}, {128}};
-    gert::StorageShape c_kv_offset_shape = {{128}, {128}};
-    gert::StorageShape v_shape = {{64, 1, 7, 128}, {64, 1, 7, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 7}, {64, 7}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 7, 128}, {64, 1, 7, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, &c_kv_scale_shape, nullptr, &c_kv_offset_shape, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 3010);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 45);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "45 0 0 0 1 0 64 0 1 0 7 0 128 0 10 0 32 0 925353388 1001040555 65537 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 3010, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_3001A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 7, 576}, {64, 1, 7, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64, 7}, {64, 7}};
-    gert::StorageShape cos_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 7, 576}, {64, 1, 7, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 7}, {64, 7}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 512}, {64, 1, 7, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 7, 512}, {64, 1, 7, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 3001);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 45);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "45 0 0 0 1 0 64 0 1 0 7 0 128 0 10 0 16 0 925353388 989855744 0 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 3001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_3001B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 7}, {64, 7}};
-    gert::StorageShape cos_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape v_shape = {{64, 1, 7, 128}, {64, 1, 7, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 7}, {64, 7}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 7, 128}, {64, 1, 1, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 3001);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 45);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "45 0 0 0 1 0 64 0 1 0 7 0 128 0 10 0 32 0 925353388 1001040555 0 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 3001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_3000A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 7, 576}, {64, 1, 7, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64, 7}, {64, 7}};
-    gert::StorageShape cos_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 7, 576}, {64, 1, 7, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 7}, {64, 7}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 512}, {64, 1, 7, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 7, 512}, {64, 1, 7, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 3000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 45);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "45 0 0 0 1 0 64 0 1 0 7 0 128 0 10 0 16 0 925353388 989855744 0 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_3000B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 7}, {64, 7}};
-    gert::StorageShape cos_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape v_shape = {{64, 1, 7, 128}, {64, 1, 7, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 7}, {64, 7}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 7, 128}, {64, 1, 7, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 3000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 45);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "45 0 0 0 1 0 64 0 1 0 7 0 128 0 10 0 32 0 925353388 1001040555 0 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_2001A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 7, 576}, {64, 1, 7, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64, 7}, {64, 7}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 7, 576}, {64, 1, 7, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 7}, {64, 7}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 64}, {64, 1, 7, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 512}, {64, 1, 7, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 7, 64}, {64, 1, 7, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 7, 512}, {64, 1, 7, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 2001);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 16);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "16 0 4 0 1 0 64 0 1 0 7 0 128 0 0 0 0 0 925353388 989855744 0 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 2001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_2001B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 7}, {64, 7}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape v_shape = {{64, 1, 7, 128}, {64, 1, 7, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 7}, {64, 7}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 7, 128}, {64, 1, 7, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 2001);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 16);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "16 0 4 0 1 0 64 0 1 0 7 0 128 0 0 0 0 0 925353388 1001040555 0 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 2001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_2000A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 64}, {192, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 512}, {192, 128, 1, 512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 576}, {64, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1}, {64, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 64}, {192, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 512}, {192, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{192, 128, 1, 64}, {192, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 512}, {192, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 512}, {64, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 64}, {192, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 512}, {192, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 2000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 16);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "16 0 4 0 1 0 64 0 1 0 1 0 128 0 0 0 0 0 925353388 989855744 0 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 2000, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_2000B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape v_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1}, {64, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 2000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 16);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "16 0 4 0 1 0 64 0 1 0 1 0 128 0 0 0 0 0 925353388 1001040555 0 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 2000, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_1011B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 7}, {64, 7}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape c_kv_scale_shape = {{128}, {128}};
-    gert::StorageShape v_shape = {{64, 1, 7, 128}, {64, 1, 7, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 7}, {64, 7}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 7, 128}, {64, 1, 7, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, &c_kv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 1011);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 16);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "16 0 4 0 1 0 64 0 1 0 7 0 128 0 0 0 0 0 925353388 1001040555 65537 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5011, "");
 }
 
-TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_1010B)   
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_1010B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape c_kv_scale_shape = {{128}, {128}};
-    gert::StorageShape v_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1}, {64, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, &c_kv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 1010);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 16);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "16 0 4 0 1 0 64 0 1 0 1 0 128 0 0 0 0 0 925353388 1001040555 65537 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5011, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_1000A)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 576}, {64, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1}, {64, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 512}, {64, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 1000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 16);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "16 0 4 0 1 0 64 0 1 0 1 0 128 0 0 0 0 0 925353388 989855744 1 0 0 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_1000B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape v_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1}, {64, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 1000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 16);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "16 0 4 0 1 0 64 0 1 0 1 0 128 0 0 0 0 0 925353388 1001040555 0 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5001, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_1001B)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 7, 192}, {64, 1, 7, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 7}, {64, 7}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 192}, {192, 128, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape v_shape = {{64, 1, 7, 128}, {64, 1, 7, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 7, 192}, {64, 1, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 7}, {64, 7}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 192}, {192, 128, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 7, 192}, {192, 128, 7, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 7, 128}, {64, 1, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend910B", 48, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 7, 192}, {192, 128, 7, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 7, 128}, {64, 1, 7, 128}};
-
-    string compile_info_string = R"({
-       "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                         "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false,
-                         "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                         "CORE_NUM": 48, "socVersion": "Ascend910B"}
-                         })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, nullptr, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 1001);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 16);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "16 0 4 0 1 0 64 0 1 0 7 0 128 0 0 0 0 0 925353388 1001040555 0 0 1 0 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5001, "");
 }
 
-
-TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_tilingA)
-{
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape c_kv_scale_shape = {{512}, {512}};
-
-    gert::StorageShape k_cache_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-        "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                          "Intrinsic_fix_pipe_l0c2out": false,
-                          "Intrinsic_data_move_l12ub": true,
-                          "Intrinsic_data_move_l0c2ub": true,
-                          "Intrinsic_data_move_out2l1_nd2nz": false,
-                          "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                          "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                          "CORE_NUM": 64, "socVersion": "Ascend950"}
-                          })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    map<string, string> soc_version;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics, soc_version);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("version", soc_version);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("Norm");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &c_kv_scale_shape, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 10000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 64);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "64 0 1 0 1 0 1 0 1 0 0 0 2 0 0 0 2 0 0 0 0 0 0 0 64 0 64 0 64 0 32 0 32 0 512 0 512 0 512 0 1 0 1 0 1024 0 1536 0 2048 0 925353388 989855744 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
-}
-
-TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_tilingB)
-{
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape c_kv_scale_shape = {{192}, {192}};
-    gert::StorageShape v_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-
-    gert::StorageShape k_cache_shape_out = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-
-    string compile_info_string = R"({
-        "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                          "Intrinsic_fix_pipe_l0c2out": false,
-                          "Intrinsic_data_move_l12ub": true,
-                          "Intrinsic_data_move_l0c2ub": true,
-                          "Intrinsic_data_move_out2l1_nd2nz": false,
-                          "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                          "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                          "CORE_NUM": 64, "socVersion": "Ascend950"}
-                          })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    map<string, string> soc_version;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics, soc_version);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("version", soc_version);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("Norm");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, &c_kv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 10000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 64);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "64 0 1 0 1 0 1 0 1 0 0 0 0 0 0 0 2 0 0 0 0 0 0 0 64 0 64 0 64 0 32 0 32 0 192 0 192 0 192 0 1 0 1 0 384 0 576 0 768 0 925353388 1001040555 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
-}
-
-TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_is_output_kv_tilingA)
-{
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape c_kv_scale_shape = {{512}, {512}};
-
-    gert::StorageShape k_cache_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-        "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                          "Intrinsic_fix_pipe_l0c2out": false,
-                          "Intrinsic_data_move_l12ub": true,
-                          "Intrinsic_data_move_l0c2ub": true,
-                          "Intrinsic_data_move_out2l1_nd2nz": false,
-                          "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                          "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                          "CORE_NUM": 64, "socVersion": "Ascend950"}
-                          })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    map<string, string> soc_version;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics, soc_version);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("version", soc_version);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("Norm");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &c_kv_scale_shape, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 10000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 64);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "64 0 1 0 1 0 1 0 1 0 0 0 2 0 0 0 2 0 0 0 1 0 0 0 64 0 64 0 64 0 32 0 32 0 512 0 512 0 512 0 1 0 1 0 1024 0 1536 0 2048 0 925353388 989855744 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
-}
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_is_output_kv_tilingB)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{128}, {128}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-    gert::StorageShape c_kv_scale_shape = {{128}, {128}};
-    gert::StorageShape v_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{128}, {128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1}, {64, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_INT8, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-
-    string compile_info_string = R"({
-        "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                          "Intrinsic_fix_pipe_l0c2out": false,
-                          "Intrinsic_data_move_l12ub": true,
-                          "Intrinsic_data_move_l0c2ub": true,
-                          "Intrinsic_data_move_out2l1_nd2nz": false,
-                          "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                          "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                          "CORE_NUM": 64, "socVersion": "Ascend950"}
-                          })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    map<string, string> soc_version;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics, soc_version);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("version", soc_version);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("Norm");
-
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("KvRmsNormRopeCache")
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, nullptr, &c_kv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-                      .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(5, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(6, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .TilingData(param.get())
-                      .Workspace(ws_size)
-                      .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 10000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 64);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "64 0 1 0 1 0 1 0 1 0 0 0 0 0 0 0 2 0 0 0 1 0 0 0 64 0 64 0 64 0 32 0 32 0 128 0 128 0 128 0 1 0 1 0 256 0 384 0 512 0 925353388 1006632960 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_is_output_kv_with_PA_tilingA)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape c_kv_scale_shape = {{512}, {512}};
-    gert::StorageShape k_rope_offset_shape = {{64}, {64}};
-    gert::StorageShape c_kv_offset_shape = {{512}, {512}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 576}, {64, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1}, {64, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput},
+        {{{{576, 128, 1, 64}, {576, 128, 1, 64}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{576, 128, 1, 512}, {576, 128, 1, 512}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 512}, {64, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{576, 128, 1, 64}, {576, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{576, 128, 1, 512}, {576, 128, 1, 512}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    string compile_info_string = R"({
-        "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                          "Intrinsic_fix_pipe_l0c2out": false,
-                          "Intrinsic_data_move_l12ub": true,
-                          "Intrinsic_data_move_l0c2ub": true,
-                          "Intrinsic_data_move_out2l1_nd2nz": false,
-                          "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                          "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                          "CORE_NUM": 64, "socVersion": "Ascend950"}
-                          })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    map<string, string> soc_version;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics, soc_version);
-
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
-
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
-
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("version", soc_version);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
-
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
-
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA");
-
-    auto holder =
-        gert::TilingContextFaker()
-            .SetOpType("KvRmsNormRopeCache")
-            .NodeIoNum(12, 4)
-            .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-            .InputShapes(
-                {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape, &ckv_cache_shape,
-                 &k_rope_scale_shape, &c_kv_scale_shape, &k_rope_offset_shape, &c_kv_offset_shape, nullptr})
-            .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-            .CompileInfo(&compile_info)
-            .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-            .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(5, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(6, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(0, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(1, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-
-            .NodeAttrs(
-                {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                 {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                 {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-            .TilingData(param.get())
-            .Workspace(ws_size)
-            .Build();
-
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 10000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 64);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "64 0 1 0 1 0 1 0 128 0 0 0 2 0 2 0 2 0 2 0 1 0 1 0 64 0 64 0 64 0 32 0 32 0 512 0 512 0 512 0 1 0 1 0 1024 0 1536 0 2048 0 925353388 989855744 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_is_output_kv_with_PA_tilingB)
 {
-    // dlog_setlevel(0, 0, 0);
-    gert::StorageShape kv_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{128}, {128}};
-    gert::StorageShape index_shape = {{64, 1}, {64, 1}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{192, 128, 1, 64}, {192, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape c_kv_scale_shape = {{128}, {128}};
-    gert::StorageShape c_kv_offset_shape = {{128}, {128}};
-    gert::StorageShape v_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{128}, {128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1}, {64, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{192, 128, 1, 64}, {192, 128, 1, 64}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_INT8, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{192, 128, 1, 64}, {192, 128, 1, 64}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{192, 128, 1, 128}, {192, 128, 1, 128}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
 
-    gert::StorageShape k_cache_shape_out = {{192, 128, 1, 64}, {192, 128, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{192, 128, 1, 128}, {192, 128, 1, 128}};
-    gert::StorageShape k_rope_shape_out = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape c_kv_shape_out = {{64, 1, 1, 128}, {64, 1, 1, 128}};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
+}
 
-    string compile_info_string = R"({
-        "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
-                          "Intrinsic_fix_pipe_l0c2out": false,
-                          "Intrinsic_data_move_l12ub": true,
-                          "Intrinsic_data_move_l0c2ub": true,
-                          "Intrinsic_data_move_out2l1_nd2nz": false,
-                          "UB_SIZE": 196608, "L2_SIZE": 33554432, "L1_SIZE": 524288,
-                          "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                          "CORE_NUM": 64, "socVersion": "Ascend950"}
-                          })";
-    map<string, string> soc_infos;
-    map<string, string> aicore_spec;
-    map<string, string> intrinsics;
-    map<string, string> soc_version;
-    GetPlatFormInfos(compile_info_string.c_str(), soc_infos, aicore_spec, intrinsics, soc_version);
 
-    // platform info
-    fe::PlatFormInfos platform_info;
-    platform_info.Init();
-    // compile info
-    optiling::KvRmsNormRopeCacheCompileInfo compile_info;
-    std::string op_type("KvRmsNormRopeCache");
-    ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
-    auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
-    auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_bn_match_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 192}, {4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{128}, {128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{4, 1, 128, 64}, {4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 128, 128}, {4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{4, 1, 128, 64}, {4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 128, 128}, {4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 128}, {4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
 
-    // tilingParseFunc simulate
-    auto kernel_holder =
-        gert::KernelRunContextFaker()
-            .KernelIONum(2, 1)
-            .Inputs({const_cast<char*>(compile_info_string.c_str()), reinterpret_cast<void*>(&platform_info)})
-            .Outputs({&compile_info})
-            .Build();
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
+}
 
-    ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("version", soc_version);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes(
-        "AICoreintrinsicDtypeMap", intrinsics);
+// The B and N axes of the cache may be split differently from kv, as long as their product still covers B * N of kv:
+// [1, 4, S, D] and [4, 1, S, D] are the same linear buffer to the kernel.
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_bn_merged_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 192}, {4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{128}, {128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{1, 4, 128, 64}, {1, 4, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{1, 4, 128, 128}, {1, 4, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{1, 4, 128, 64}, {1, 4, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{1, 4, 128, 128}, {1, 4, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 128}, {4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
 
-    ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
+}
 
-    // tilingFunc simulate
-    auto param = gert::TilingData::CreateCap(4096);
-    auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
-    ASSERT_NE(param, nullptr);
-    string cache_mode("PA");
+// B * N of the cache is smaller than B * N of kv: the kernel would scatter past the end of the cache, so tiling has to
+// reject the shape instead of letting the kernel write out of bounds.
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_bn_too_small_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 192}, {4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{128}, {128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{1, 1, 128, 64}, {1, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{1, 1, 128, 128}, {1, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{1, 1, 128, 64}, {1, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{1, 1, 128, 128}, {1, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 128}, {4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
 
-    auto holder =
-        gert::TilingContextFaker()
-            .SetOpType("KvRmsNormRopeCache")
-            .NodeIoNum(12, 4)
-            .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-            .InputShapes(
-                {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape, &ckv_cache_shape,
-                 nullptr, &c_kv_scale_shape, nullptr, &c_kv_offset_shape, &v_shape})
-            .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape_out, &c_kv_shape_out})
-            .CompileInfo(&compile_info)
-            .PlatformInfo(reinterpret_cast<char*>(&platform_info))
-            .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(4, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(5, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(6, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(8, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(9, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(10, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(11, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(0, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(1, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
 
-            .NodeAttrs(
-                {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                 {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(cache_mode)},
-                 {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-            .TilingData(param.get())
-            .Workspace(ws_size)
-            .Build();
+// Recompute 模板（dv 大到 D 无法全载，走 TilingKey 20000）+ PA_NZ：dk / 2 是 dk0(fp16 为 16) 的整数倍，
+// RoPE 的前后半区都落在分形块边界上 → 放行
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_dk_aligned_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32832}, {4, 1, 1, 32832}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 64}, {8, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 64}, {8, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
 
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
-    ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicore_spec);
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    holder.GetContext<gert::TilingContext>()->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000, "");
+}
 
-    // workspaces nullptr return failed
-    EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 10000);
-    auto block_dim = tiling_context->GetBlockDim();
-    ASSERT_EQ(block_dim, 64);
-    auto tilingData = tiling_context->GetRawTilingData();
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(
-        to_string<int32_t>(tilingData->GetData(), tilingData->GetDataSize()),
-        "64 0 1 0 1 0 1 0 128 0 0 0 0 0 0 0 2 0 2 0 1 0 1 0 64 0 64 0 64 0 32 0 32 0 128 0 128 0 128 0 1 0 1 0 256 0 384 0 512 0 925353388 1006632960 ");
-    // dlog_setlevel(static_cast<int>(OP), 0, 1);
+// 同上，但 dk = 16：dk1 = dk / dk0 = 1 为奇数，满足 base 的 dk % dk0 == 0，却不满足 dk % (2 * dk0) == 0。
+// recompute 模板改为逐 dk0 子块写出（后半区按错位 r = dk0 / 2 拆两半分别落 GM）之后，
+// RoPE 后半区不再需要落在 2 * dk0 边界上，CheckNzHalfDkAligned 的约束已去掉
+// → tiling 放行并走 recompute（TilingKey 20000）
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_odd_dk1_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32784}, {4, 1, 1, 32784}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 16}, {8, 128, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 16}, {8, 128, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000,
+                    "* * * * * * * * * * * * * 16 * * 3968 * * 16 1 * * * * ");
+}
+
+// dk = 5200 > ubFactor：dk 轴要切成多个 tile（ubFactorDkLoopCountCeil > 1）。
+// 原实现只在单 tile 下把后半区拼成连续 dk1 分形块整行写出，跨 tile 会静默出错，
+// 这里直接钉住 dk / ubFactorDkTail / ubFactorDkLoopCountCeil 三个字段，其余字段通配。
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_multi_tile_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 37968}, {4, 1, 1, 37968}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 5200}, {4, 1, 1, 5200}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 5200}, {4, 1, 1, 5200}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 5200}, {8, 128, 1, 5200}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 5200}, {8, 128, 1, 5200}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 5200}, {4, 1, 1, 5200}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000,
+                    "* * * * * * * * * * * * * 5200 * * 3968 * * 1232 2 * * * * ");
+}
+
+// dk = 13008：dk 轴切成 4 个 tile（3 个满 tile 3968 + 尾 1104），中间存在完整的"非首非尾" tile，
+// 是首尾特判之外唯一能暴露跨 tile 携带状态的形状
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_multi_tile_full_middle_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 45776}, {4, 1, 1, 45776}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 13008}, {4, 1, 1, 13008}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 13008}, {4, 1, 1, 13008}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 13008}, {8, 128, 1, 13008}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 13008}, {8, 128, 1, 13008}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 13008}, {4, 1, 1, 13008}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000,
+                    "* * * * * * * * * * * * * 13008 * * 3968 * * 1104 4 * * * * ");
+}
+
+// PA_BLK_NZ 是 kernel 里与 PA_NZ 并列的另一个 scatter 分支，本 PR 两个分支一起改了，
+// tiling 侧的放行口径也应一并覆盖
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_blk_nz_odd_dk1_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32784}, {4, 1, 1, 32784}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 16}, {8, 128, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 16}, {8, 128, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000, "");
+}
+
+// bf16：recompute 分支此前在 tiling UT 里只有 fp16，dk0 与 fp16 同为 16，奇 dk1 口径应一致
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_odd_dk1_bf16_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32784}, {4, 1, 1, 32784}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 16}, {8, 128, 1, 16}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_BF16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 16}, {8, 128, 1, 16}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000, "");
+}
+
+// int8 量化 cache（dk0 = 32B / 1B = 32，故取 dk = 96 使 dk1 = 3 为奇数）：kernel 里 scatter 按 dtype
+// 用 if constexpr 分派到 kQuantLocal 分支，
+// 与非量化分支是两条独立路径，tiling 放行口径同样要覆盖
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_odd_dk1_int8_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32864}, {4, 1, 1, 32864}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 96}, {4, 1, 1, 96}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 96}, {4, 1, 1, 96}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 96}, {8, 128, 1, 96}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{96}, {96}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 96}, {8, 128, 1, 96}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{4, 1, 1, 96}, {4, 1, 1, 96}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000, "");
+}
+
+// dk = 48（dk1 = 3，奇数）：dk 是 dk0(fp16 为 16)的整数倍，odd-dk1 路径成立 -> 放行。
+// 与下面 dk = 40 的用例只差 dk 一个变量，用来把"拦不拦"的原因锁死在 dk 是否整除 dk0 上
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_odd_dk1_dk48_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32816}, {4, 1, 1, 32816}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 48}, {8, 128, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 48}, {8, 128, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000, "");
+}
+
+// dk = 40：不是 dk0(fp16 为 16)的整数倍。odd-dk1 的 r = dk0 / 2、m = halfDk / dk0 依赖
+// halfDk = m * dk0 + r，只有 dk % dk0 == 0 时才成立，因此这类 shape 必须在 tiling 就拦掉。
+// 拦截点在 CheckCosSinValid：NZ 模式下要求 sin 的 D 维（== dk）整除 FP16_BLOCK_ALIGN_NUM(16)
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_dk_not_multiple_of_dk0_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32808}, {4, 1, 1, 32808}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 40}, {4, 1, 1, 40}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 40}, {4, 1, 1, 40}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 40}, {8, 128, 1, 40}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 40}, {8, 128, 1, 40}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 40}, {4, 1, 1, 40}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// int8 cache 的 dk0 是 32（32B / 1B），dk = 48 对 fp16 合法、对 int8 非法。
+// 与上面 fp16 dk = 48 放行的用例形成对照，证明这条约束是按 cache dtype 取 dk0 的，不是巧合
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_int8_dk_not_multiple_of_dk0_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32816}, {4, 1, 1, 32816}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 48}, {8, 128, 1, 48}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{48}, {48}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{32768}, {32768}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 48}, {8, 128, 1, 48}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{8, 128, 1, 32768}, {8, 128, 1, 32768}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{4, 1, 1, 48}, {4, 1, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32768}, {4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// dv = 32760 不是 C0(fp16 为 16)的整数倍。NZ 下 ckv_cache 的尾轴同样要求按 C0 分形对齐，
+// 校验点在 CheckGammaValid：gamma 的 0 轴(== dv)必须整除 FP16_BLOCK_ALIGN_NUM
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_dv_not_multiple_of_c0_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 32824}, {4, 1, 1, 32824}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{32760}, {32760}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 128, 1, 64}, {8, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32760}, {8, 128, 1, 32760}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 128, 1, 64}, {8, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 128, 1, 32760}, {8, 128, 1, 32760}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 32760}, {4, 1, 1, 32760}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// cacheRowLimit is the sole host-side source of the kernel's index upper bound
+// (`if (seqIndex >= 0 && seqIndex < cacheRowLimit)`), so its value is asserted directly here:
+// GetCacheRowLimit gives cacheLength for Norm and blockNum * blockSize for the PA family.
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_row_limit_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 192}, {4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{128}, {128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{4, 1, 128, 64}, {4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 128, 128}, {4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{4, 1, 128, 64}, {4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 128, 128}, {4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 128}, {4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    // Norm: cacheRowLimit == cacheLength (the S axis of k_cache) == 128
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000,
+                    "* * * * * * * * * * * * * * * * * * * * * * * * * 128 * ");
+}
+
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_pa_cache_row_limit_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 192}, {4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{128}, {128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{8, 16, 1, 64}, {8, 16, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 16, 1, 128}, {8, 16, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{8, 16, 1, 64}, {8, 16, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{8, 16, 1, 128}, {8, 16, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 128}, {4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    // PA: cacheRowLimit == blockNum * blockSize == 8 * 16 == 128
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000,
+                    "* * * * * * * * * * * * * * * * * * * * * * * * * 128 * ");
+}
+
+// outQueue 的 UB 记账必须按 cache 的 dtype 是否量化来判，而不是按可选输入 scale 是否存在：
+// 量化 cache 一定带 scale，但带了 scale 的 cache 未必是量化 dtype（CheckInputDtype 只约束前一个方向）。
+// 本用例即后者——ckv_cache 是 fp16 却传了 c_kv_scale，此时 kernel 走 RmsNormVF 按 T_KV(2B/元素) 写
+// outQueue，故 outUbSize 必须是 dvAlign * sizeof(T_KV) = 128 * 2 = 256，而非量化路径的 dvB8Align * 1B = 128。
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_non_quant_cache_with_scale_out_ub_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 192}, {4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{128}, {128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{4, 1, 128, 64}, {4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 128, 128}, {4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{4, 1, 128, 64}, {4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 128, 128}, {4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 128}, {4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000,
+                    "* * * * * * * * * * * * * * * * * * * * * * * 256 * * * ");
 }

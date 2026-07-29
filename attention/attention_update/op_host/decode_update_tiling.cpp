@@ -18,10 +18,10 @@
 #include "util/shape_util.h"
 #include "log/log.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_type.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_type.h"
+#include "op_host/tiling_util.h"
 #include "decode_update_tiling.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "attention_update_tiling.h"
 
 namespace {

@@ -37,6 +37,7 @@ struct MatmulAlltoAllTilingUtParam {
     bool transposeX1;
     bool transposeX2;
     int64_t groupSize;
+    std::string commMode;
     std::string soc;
     ge::graphStatus expectResult;
     uint64_t expectTilingKey;
@@ -44,7 +45,7 @@ struct MatmulAlltoAllTilingUtParam {
     std::vector<size_t> expectWorkspaces;
     uint64_t mc2TilingDataReservedLen;
 
-    explicit MatmulAlltoAllTilingUtParam(const csv_map& csvMap)
+    explicit MatmulAlltoAllTilingUtParam(const csv_map &csvMap)
     {
         this->case_name = ReadMap(csvMap, "caseName");
         GetTensorGE(csvMap, "x1Shape", "x1Dtype", "x1Format", this->x1);
@@ -67,6 +68,7 @@ struct MatmulAlltoAllTilingUtParam {
         this->transposeX1 = StrToBoolIgnoreCase(ReadMap(csvMap, "transposeX1", "false"));
         this->transposeX2 = StrToBoolIgnoreCase(ReadMap(csvMap, "transposeX2", "false"));
         this->groupSize = stoll(ReadMap(csvMap, "groupSize", "0"));
+        this->commMode = ReadMap(csvMap, "commMode", "");
         this->soc = ReadMap(csvMap, "socVersion");
         this->expectResult = Str2StatusGE(ReadMap(csvMap, "expectStatus"));
         this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey", "0"));
@@ -79,7 +81,7 @@ struct MatmulAlltoAllTilingUtParam {
     }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const MatmulAlltoAllTilingUtParam& param)
+inline std::ostream &operator<<(std::ostream &os, const MatmulAlltoAllTilingUtParam &param)
 {
     return os << param.case_name;
 }

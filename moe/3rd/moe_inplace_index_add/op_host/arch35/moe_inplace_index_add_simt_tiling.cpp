@@ -14,7 +14,7 @@
  */
 
 #include <cstdint>
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "moe_inplace_index_add_tiling.h"
 #include "moe_inplace_index_add_simt_tiling.h"
 

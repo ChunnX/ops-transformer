@@ -9,7 +9,11 @@
  */
 
 /*!
+<<<<<<< HEAD
  * \file vf_rcomm.h
+=======
+ * \file vf_comm.h
+>>>>>>> b853b05c25808ab5f52db51f34222bc5583a2f17
  * \brief VF comm
  */
 

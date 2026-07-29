@@ -20,7 +20,7 @@
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "util/math_util.h"
 #include "util/platform_util.h"
 #include "util/shape_util.h"
@@ -64,7 +64,7 @@ private:
     uint64_t S_ = 0, B_ = 0, H_ = 0;
     ge::DataType xType_;
     uint32_t xDtypeSize_ = 0;
-    uint64_t hReg_ = 64;  // 128 / xDtypeSize_: min H granularity (bf16/fp16→64, fp32→32)
+    uint64_t hReg_ = 64; // 128 / xDtypeSize_: min H granularity (bf16/fp16→64, fp32→32)
 
     // Mask None flag
     int64_t isMaskNone_ = 0;

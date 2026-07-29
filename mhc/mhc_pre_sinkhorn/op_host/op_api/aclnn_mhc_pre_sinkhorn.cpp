@@ -36,8 +36,10 @@ using namespace op;
 extern "C" {
 #endif
 
-static const std::initializer_list<op::DataType> DTYPE_X_SUPPORT_LIST = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> DTYPE_X_SUPPORT_LIST = {op::DataType::DT_BF16, op::DataType::DT_FLOAT16};
 static const std::initializer_list<op::DataType> DTYPE_OTHER_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static constexpr int64_t HCMULT_DEFAULT_VALUE = 4;
+static constexpr int64_t NUM_ITERS_DEFAULT_VALUE = 20;
 
 static bool CheckNotNull(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
                          const aclTensor *hin, const aclTensor *hPost, const aclTensor *hRes)
@@ -94,6 +96,12 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
     int64_t n = xShape.GetDim(2);
     int64_t c = xShape.GetDim(3);
     int64_t hcMix = n * n + 2 * n;
+
+    if (hcMult != HCMULT_DEFAULT_VALUE) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "hcMult must be in range [%ld], but got hcMult = %ld.", HCMULT_DEFAULT_VALUE, hcMult);
+        return false;
+    }
     
     if (n != hcMult) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -101,9 +109,9 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
         return false;
     }
     
-    if (numIters != 20) {
+    if (numIters != NUM_ITERS_DEFAULT_VALUE) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "numIters must be in range [20], but got numIters = %ld.", numIters);
+                "numIters must be in range [%ld], but got numIters = %ld.", NUM_ITERS_DEFAULT_VALUE, numIters);
         return false;
     }
     
@@ -229,6 +237,40 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
     return true;
 }
 
+static bool IsFormatSupport(const aclTensor *tensor, const std::string &tensorName)
+{
+    if (tensor != nullptr && op::IsPrivateFormat(tensor->GetStorageFormat())) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s's format should be ND, but got %s.",
+                tensorName.c_str(), op::ToString(tensor->GetStorageFormat()).GetString());
+        return false;
+    }
+    return true;
+}
+
+static bool CheckFormat(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
+                        const aclTensor *hin, const aclTensor *hPost, const aclTensor *hRes,
+                        const aclTensor *hPre, const aclTensor *hcBeforeNorm, const aclTensor *invRms,
+                        const aclTensor *sumOut, const aclTensor *normOut, bool needBackward)
+{
+    CHECK_RET(IsFormatSupport(x, "x"), false);
+    CHECK_RET(IsFormatSupport(phi, "phi"), false);
+    CHECK_RET(IsFormatSupport(alpha, "alpha"), false);
+    CHECK_RET(IsFormatSupport(bias, "bias"), false);
+    CHECK_RET(IsFormatSupport(hin, "hin"), false);
+    CHECK_RET(IsFormatSupport(hPost, "hPost"), false);
+    CHECK_RET(IsFormatSupport(hRes, "hRes"), false);
+    
+    if (needBackward) {
+        CHECK_RET(IsFormatSupport(hPre, "hPre"), false);
+        CHECK_RET(IsFormatSupport(hcBeforeNorm, "hcBeforeNorm"), false);
+        CHECK_RET(IsFormatSupport(invRms, "invRms"), false);
+        CHECK_RET(IsFormatSupport(sumOut, "sumOut"), false);
+        CHECK_RET(IsFormatSupport(normOut, "normOut"), false);
+    }
+    
+    return true;
+}
+
 static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
                                       const aclTensor *bias, const aclTensor *hin, const aclTensor *hPost,
                                       const aclTensor *hRes, const aclTensor *hPre, const aclTensor *hcBeforeNorm,
@@ -240,12 +282,15 @@ static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, 
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hcMult, numIters, needBackward),
               ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckFormat(x, phi, alpha, bias, hin, hPost, hRes, hPre,
+                          hcBeforeNorm, invRms, sumOut, normOut, needBackward),
+              ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
-    int64_t hcMult, int64_t numIters, float hcEps, float normEps, bool needBackward,
+    int64_t hcMult, int64_t numIters, double hcEps, double normEps, bool needBackward,
     aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
     aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
     aclTensor *sumOut, aclTensor *normOut,
@@ -260,9 +305,12 @@ aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
 
     auto ret = CheckParams(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hcMult, numIters, needBackward);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    if (x->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Do not support empty input tensor.");
-        return ACLNN_ERR_PARAM_INVALID;
+    // Check if input tensors are empty
+    if (x->IsEmpty() || hin->IsEmpty() || hPost->IsEmpty() || hRes->IsEmpty()) {
+        OP_LOGW("[aclnnMhcPreSinkhorn] Input tensor is empty, skip computation and return success.");
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_SUCCESS;
     }
     const aclTensor *xContiguous = l0op::Contiguous(x, uniqueExecutor.get());
     CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -277,9 +325,6 @@ aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
         xContiguous, phiContiguous, alphaContiguous, biasContiguous, hcMult, numIters, hcEps, normEps, needBackward,
         hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, uniqueExecutor.get());
     CHECK_RET(kernelOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-    auto viewCopyResult = l0op::ViewCopy(kernelOut, hin, uniqueExecutor.get());
-    CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

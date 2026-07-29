@@ -35,6 +35,7 @@ public:
     using ElementV = typename BlockMmadPV::ElementB;
     using ElementOTmp = typename BlockMmadPV::ElementC;
     using ElementO = typename BlockMmadQK::ElementA;
+    using ElementLse = typename EpilogueRescaleO::ElementLse;
     using ElementSparseMask = typename EpilogueMask2Idx::ElementSparseMask;
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
@@ -45,6 +46,7 @@ public:
     using LayoutP = layout::RowMajor;
     using LayoutV = layout::RowMajor;
     using LayoutO = layout::RowMajor;
+    using LayoutLse = layout::RowMajor;
     using LayoutOTmp = layout::RowMajor;
     using LayoutSparseIdx = layout::RowMajor;
     using LayoutSparseCount = layout::RowMajor;
@@ -81,6 +83,8 @@ public:
         gBlockSparseMask.SetGlobalBuffer((__gm__ uint8_t *)params.blockSparseMask);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
+        AscendC::GlobalTensor<ElementLse> gLse;
+        gLse.SetGlobalBuffer((__gm__ ElementLse *)params.lse);
         AscendC::GlobalTensor<ElementSparseIdx> gSparseIdx;
         gSparseIdx.SetGlobalBuffer((__gm__ ElementSparseIdx *)params.workSpace);
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
@@ -106,7 +110,7 @@ public:
 #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
-        BlockMmadPV blockMmadPV(resource, pvL1AddrStart_, mm2L1TileHelper_);
+        BlockMmadPV blockMmadPV(resource, mm2L1AddrStart_, mm2L1TileHelper_);
 #endif
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
@@ -117,38 +121,62 @@ public:
         // Calculate strides based on layout
         // For TND: [T, N, D], stride = N * D
         // For BNSD: [B, N, S, D], strideB = N * S * D, strideN = S * D, strideS = D
+        // For BSND: [B, S, N, D], strideB = S * B * D, strideS = N * D, strideN = D
         int64_t strideQO = 0;
         int64_t strideKV = 0;
-        int64_t strideQOB = 0;  // BNSD batch_ stride for Q
-        int64_t strideQON = 0;  // BNSD head stride for Q
-        int64_t strideQOS = 0;  // BNSD seq stride for Q
-        int64_t strideKVB = 0;  // BNSD batch_ stride for KV
-        int64_t strideKVN = 0;  // BNSD head stride for KV
-        int64_t strideKVS = 0;  // BNSD seq stride for KV
-        if constexpr (qFormat == Format::BNSD) {
+        int64_t strideLse = 0;
+        int64_t strideQOB = 0;  // BNSD/BSND batch_ stride for Q
+        int64_t strideQON = 0;  // BNSD/BSND head stride for Q
+        int64_t strideQOS = 0;  // BNSD/BSND seq stride for Q
+        int64_t strideKVB = 0;  // BNSD/BSND batch_ stride for KV
+        int64_t strideKVN = 0;  // BNSD/BSND head stride for KV
+        int64_t strideKVS = 0;  // BNSD/BSND seq stride for KV
+        int64_t strideLseB = 0;
+        int64_t strideLseN = 0;
+        int64_t strideLseS = 0;
+        if constexpr (qFormat == Format::TND) {
+            strideQO = qHeads_ * embed_;
+            strideLse = qHeads_;
+        } else if constexpr (qFormat == Format::BNSD) {
             strideQOB = qHeads_ * qSeqlenAligned_ * embed_;  // batch_ stride
             strideQON = qSeqlenAligned_ * embed_;  // head stride
             strideQOS = embed_;  // seq stride
-        } else if constexpr (qFormat == Format::TND) {
-            strideQO = qHeads_ * embed_;
+            strideLseB = qHeads_ * qSeqlenAligned_;
+            strideLseN = qSeqlenAligned_;
+            strideLseS = 1;
+        } else if constexpr (qFormat == Format::BSND) {
+            strideQOB = qSeqlenAligned_ * qHeads_ * embed_; // batch_ stride
+            strideQOS = qHeads_ * embed_;                   // seq stride
+            strideQON = embed_;                             // head stride
+            strideLseB = qSeqlenAligned_ * qHeads_;
+            strideLseS = qHeads_;
+            strideLseN = 1;
         }
-        if constexpr (kvFormat == Format::BNSD) {
-            strideKVB = kvHeads_ * kvSeqlenAligned_ * embed_;  // batch_ stride
-            strideKVN = kvSeqlenAligned_ * embed_;  // head stride
-            strideKVS = embed_;  // seq stride
-        } else if constexpr (kvFormat == Format::TND) {
+
+        if constexpr (kvFormat == Format::TND) {
             strideKV = kvHeads_ * embed_;
+        } else if constexpr (kvFormat == Format::BNSD) {
+            strideKVB = kvHeads_ * kvSeqlenAligned_ * embed_; // batch_ stride
+            strideKVN = kvSeqlenAligned_ * embed_;            // head stride
+            strideKVS = embed_;                               // seq stride
+        } else if constexpr (kvFormat == Format::BSND) {
+            strideKVB = kvSeqlenAligned_ * kvHeads_ * embed_; // batch_ stride
+            strideKVS = kvHeads_ * embed_;                    // seq stride
+            strideKVN = embed_;                               // head stride
         }
+
         uint32_t embedRound = RoundUp(embed_, 16);
         uint32_t groupSize = qHeads_ / kvHeads_;
         int64_t qBOffset = 0;
         int64_t kBOffset = 0;
         int64_t vBOffset = 0;
         int64_t oBOffset = 0;
+        int64_t lseBOffset = 0;
         uint32_t preTotalTaskNum = 0;
         uint32_t curBatch = 0;
         int64_t qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
         int64_t kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
+        uint32_t curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
         uint32_t curTotalTaskNum = firstBatchTaskNum_;
         // Go through each task
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum_; taskIdx += coreNum) {
@@ -158,6 +186,7 @@ public:
                 if constexpr (qFormat == Format::TND) {
                     qBOffset += qSeqlen * strideQO;
                     oBOffset += qSeqlen * strideQO;
+                    lseBOffset += qSeqlen * strideLse;
                 }
                 if constexpr (kvFormat == Format::TND) {
                     kBOffset += kvSeqlen * strideKV;
@@ -165,47 +194,67 @@ public:
                 }
                 qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
                 kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
-                curTotalTaskNum += GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_) * qHeads_;
+                curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
+                curTotalTaskNum += curQSTileNum * qHeads_;
             }
             uint32_t taskIdxCurBatch = taskIdx - preTotalTaskNum;
-            uint32_t qSTileIdx = taskIdxCurBatch / qHeads_;
+            uint32_t qHeadIdx = taskIdxCurBatch / curQSTileNum;
+            uint32_t kvHeadIdx = qHeadIdx / groupSize;
+            uint32_t qSTileIdx = taskIdxCurBatch - qHeadIdx * curQSTileNum;
             // corresponding xBlock index of cur task
             uint32_t xBlockIdx = qSTileIdx / qSTileNumPerFullXBlock;
             // the q base tile index within the corrsponding xBlock of cur task
             uint32_t qSTileIdxCurXBlock = qSTileIdx - xBlockIdx * qSTileNumPerFullXBlock;
             // corresponding head index of cur task
-            uint32_t qHeadIdx = taskIdxCurBatch - qSTileIdx * qHeads_;
-            uint32_t kvHeadIdx = qHeadIdx / groupSize;
             // corresponding blockSparseMask gm offset of cur task
             // gmBlockSparseMask has the shape [B, qN, xBlockNumAligned, yBlockNumAligned]
             int64_t sparseMaskBOffset = curBatch * qHeads_ * xBlockNumAligned_ * yBlockNumAligned_;
             int64_t sparseMaskNOffset = qHeadIdx * xBlockNumAligned_ * yBlockNumAligned_;
             int64_t sparseMaskXOffset = xBlockIdx * yBlockNumAligned_;
             int64_t gmOffsetSparseMask = sparseMaskBOffset + sparseMaskNOffset + sparseMaskXOffset;
-            // corresponding Q/K/V/O gm offset of cur task
+            // corresponding Q/K/V/O/Lse gm offset of cur task
             int64_t gmOffsetQ = 0;
             int64_t gmOffsetK = 0;
             int64_t gmOffsetV = 0;
             int64_t gmOffsetO = 0;
+            int64_t gmOffsetLse = 0;
             int64_t qSOffset = xBlockIdx * blockShapeX_ + qSTileIdxCurXBlock * qBaseTile_;
-            if constexpr (qFormat == Format::BNSD) {
-                qBOffset = curBatch * strideQOB;
-                oBOffset = curBatch * strideQOB;
-                gmOffsetQ = qBOffset + qHeadIdx * strideQON + qSOffset * strideQOS;
-                gmOffsetO = oBOffset + qHeadIdx * strideQON + qSOffset * strideQOS;
-            } else if constexpr (qFormat == Format::TND) {
+
+            if constexpr (qFormat == Format::TND) {
                 gmOffsetQ = qBOffset + qSOffset * strideQO + qHeadIdx * embed_;
                 gmOffsetO = oBOffset + qSOffset * strideQO + qHeadIdx * embed_;
+                gmOffsetLse = lseBOffset + qSOffset * strideLse + qHeadIdx;
+            } else if constexpr (qFormat == Format::BNSD) {
+                qBOffset = curBatch * strideQOB;
+                oBOffset = curBatch * strideQOB;
+                lseBOffset = curBatch * strideLseB;
+                gmOffsetQ = qBOffset + qHeadIdx * strideQON + qSOffset * strideQOS;
+                gmOffsetO = oBOffset + qHeadIdx * strideQON + qSOffset * strideQOS;
+                gmOffsetLse = lseBOffset + qHeadIdx * strideLseN + qSOffset * strideLseS;
+            } else if constexpr (qFormat == Format::BSND) {
+                qBOffset = curBatch * strideQOB;
+                oBOffset = curBatch * strideQOB;
+                lseBOffset = curBatch * strideLseB;
+                gmOffsetQ = qBOffset + qSOffset * strideQOS + qHeadIdx * strideQON;
+                gmOffsetO = oBOffset + qSOffset * strideQOS + qHeadIdx * strideQON;
+                gmOffsetLse = lseBOffset + qSOffset * strideLseS + qHeadIdx * strideLseN;
             }
-            if constexpr (kvFormat == Format::BNSD) {
+
+            if constexpr (kvFormat == Format::TND) {
+                gmOffsetK = kBOffset + kvHeadIdx * embed_;
+                gmOffsetV = vBOffset + kvHeadIdx * embed_;
+            } else if constexpr (kvFormat == Format::BNSD) {
                 kBOffset = curBatch * strideKVB;
                 vBOffset = curBatch * strideKVB;
                 gmOffsetK = kBOffset + kvHeadIdx * strideKVN;
                 gmOffsetV = vBOffset + kvHeadIdx * strideKVN;
-            } else if constexpr (kvFormat == Format::TND) {
-                gmOffsetK = kBOffset + kvHeadIdx * embed_;
-                gmOffsetV = vBOffset + kvHeadIdx * embed_;
+            } else if constexpr (kvFormat == Format::BSND) {
+                kBOffset = curBatch * strideKVB;
+                vBOffset = curBatch * strideKVB;
+                gmOffsetK = kBOffset + kvHeadIdx * strideKVN;
+                gmOffsetV = vBOffset + kvHeadIdx * strideKVN;
             }
+
             // the actual x block num of cur batch_, calc by actual qseqlen
             uint32_t xBlockNumAval = static_cast<uint32_t>(CeilDiv(qSeqlen, static_cast<int64_t>(blockShapeX_)));
             uint32_t xBlockSize = (xBlockIdx == xBlockNumAval - 1) ?
@@ -214,12 +263,13 @@ public:
             uint32_t qSTileSizeAct = (qSTileIdxCurXBlock == qSTileNumCurXBlock - 1) ?
                 (xBlockSize - qSTileIdxCurXBlock * qBaseTile_) : qBaseTile_;
             // calc the gathered kvS from sparse mask
-            uint32_t gmOffsetSparseCount =
-                curBatch * qHeads_ * xBlockNumAligned_ + qHeadIdx * xBlockNumAligned_ + xBlockIdx;
+            uint64_t gmOffsetSparseCount =
+                static_cast<uint64_t>(curBatch) * qHeads_ * xBlockNumAligned_ +
+                static_cast<uint64_t>(qHeadIdx) * xBlockNumAligned_ + xBlockIdx;
             uint32_t yBlockNumRsvd = gSparseCount.GetValue(gmOffsetSparseCount);
 
-            uint32_t gmOffsetSparseIdx = gmOffsetSparseCount * yBlockNumAligned_;
-            uint32_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
+            uint64_t gmOffsetSparseIdx = gmOffsetSparseCount * yBlockNumAligned_;
+            uint64_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
             uint32_t lastSparseIdx = gSparseIdx.GetValue(lastIdxOffset);
 
             uint32_t yBlockNumAval = static_cast<uint32_t>(CeilDiv(kvSeqlen, static_cast<int64_t>(blockShapeY_)));
@@ -235,15 +285,20 @@ public:
 #ifdef __DAV_CUBE__
             uint32_t kvShapeCol = 0;
             uint32_t qShapeCol = 0;
-            if constexpr (qFormat == Format::BNSD) {
-                qShapeCol = strideQOS;
-            } else if constexpr (qFormat == Format::TND) {
+
+            if constexpr (qFormat == Format::TND) {
                 qShapeCol = strideQO;
+            } else if constexpr (qFormat == Format::BNSD) {
+                qShapeCol = strideQOS;
+            } else if constexpr (qFormat == Format::BSND) {
+                qShapeCol = strideQOS;
             }
-            if constexpr (kvFormat == Format::BNSD) {
-                kvShapeCol = strideKVS;
-            } else if constexpr (kvFormat == Format::TND) {
+            if constexpr (kvFormat == Format::TND) {
                 kvShapeCol = strideKV;
+            } else if constexpr (kvFormat == Format::BNSD) {
+                kvShapeCol = strideKVS;
+            } else if constexpr (qFormat == Format::BSND) {
+                kvShapeCol = strideKVS;
             }
 
             auto gmQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(qBaseTile_, qShapeCol);
@@ -259,13 +314,22 @@ public:
 #endif
 #ifdef __DAV_VEC__
             uint32_t oShapeCol = 0;
-            if constexpr (qFormat == Format::BNSD) {
-                oShapeCol = strideQOS;
-            } else if constexpr (qFormat == Format::TND) {
+            uint32_t lseShapeCol = 0;
+            if constexpr (qFormat == Format::TND) {
                 oShapeCol = strideQO;
+                lseShapeCol = strideLse;
+            } else if constexpr (qFormat == Format::BNSD) {
+                oShapeCol = strideQOS;
+                lseShapeCol = strideLseS;
+            } else if constexpr (qFormat == Format::BSND) {
+                oShapeCol = strideQOS;
+                lseShapeCol = strideLseS;
             }
+
             auto gmOLayoutTla = tla::MakeLayout<ElementO, LayoutO>(qBaseTile_, oShapeCol);
             auto gmOTensorTla = tla::MakeTensor(gO[gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
+            auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(qBaseTile_, lseShapeCol);
+            auto gmLseTensorTla = tla::MakeTensor(gLse[gmOffsetLse], gmLseLayoutTla, Arch::PositionGM{});
 #endif
             for (uint32_t gatheredKvSTileIdx = 0; gatheredKvSTileIdx < kvSLoopNum + PRE_LAUNCH; gatheredKvSTileIdx++) {
                 if (gatheredKvSTileIdx < kvSLoopNum) {
@@ -283,11 +347,16 @@ public:
                     uint32_t Mm1ToSmFlagId = ubSBufId;
                     Arch::CrossCoreFlag mm1ToSmFlag(Mm1ToSmFlagId);
 #ifdef __DAV_CUBE__
+                    uint64_t prefixSumL0AStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
+                        gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
+                    uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
+                        gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
                     blockMmadQK(
                         gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx],
                         actualBlockShapeQK,
                         gatheredKvSTileIdx, kvSeqlen,
                         kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                        prefixSumL0AStages, prefixSumL0BStages,
                         mm1ToSmFlag);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1)
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
@@ -300,8 +369,6 @@ public:
                     auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId],
                     l1PLayoutTla, Arch::PositionL1{});
 #ifdef __DAV_VEC__
-                    // Stage 2: Online softmax (computed on VECTOR core)
-                    // online softmax
                     epilogueOnlineSoftmax(
                         l1PTensorTla,
                         actualBlockShapeQK,
@@ -333,11 +400,16 @@ public:
                     
                     Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
+                    uint64_t prefixSumL0AStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
+                        gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
+                    uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
+                        gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
                     blockMmadPV(
                         gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
                         actualBlockShapePV,
                         gatheredKvSTileIdxDe, kvSeqlen,
                         kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                        prefixSumL0AStages, prefixSumL0BStages,
                         smToMm2Flag, mm2ToReFlag);
 #endif
 #ifdef __DAV_VEC__
@@ -345,7 +417,7 @@ public:
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
                     uint32_t curTileMod = gatheredKvSTileIdxDe % (PRE_LAUNCH + 1);
                     epilogueRescaleO(
-                        gmOTensorTla, actualBlockShapePV,
+                        gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
                         curTileMod, gatheredKvSTileIdxDe,
                         (gatheredKvSTileIdxDe == 0),
                         (gatheredKvSTileIdxDe == kvSLoopNum - 1),
@@ -407,8 +479,31 @@ public:
         Gemm::Block::Mm2L1TileHelper mm2L1TileHelper(mm2L1TileM_, mm2L1TileN_, mm2L1TileKLeft_, mm2L1TileKRight_,
             pL1BufNum_, vL1BufNum_);
         mm2L1TileHelper_ = mm2L1TileHelper;
-        pvL1AddrStart_ = mm1L1TileM_ * mm1L1TileKLeft_ * qL1BufNum_ * sizeof(ElementQ) +
+        mm2L1AddrStart_ = mm1L1TileM_ * mm1L1TileKLeft_ * qL1BufNum_ * sizeof(ElementQ) +
             mm1L1TileKRight_ * mm1L1TileN_ * kL1BufNum_ * sizeof(ElementK);
+        mm1L0ATotalStages_ = (qBaseTile_ / BlockMmadQK::L0_TILE_M) * (embed_ / BlockMmadQK::L0_TILE_K);
+        mm1L0BTotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
+        mm2L0ATotalStages_ = (qBaseTile_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K);
+        mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
+    }
+
+    __aicore__ inline
+    uint64_t CalcCrossMm1Mm2PrefixSumL0ABStages(
+        uint32_t gatheredKvSTileIdx, uint32_t singleMm1L0Stages,
+        uint32_t singleMm2L0Stages, uint32_t kvSLoopNum,
+        bool isCurPhaseMm1)
+    {
+        uint64_t prefixSumStages;
+        if (isCurPhaseMm1) {
+            prefixSumStages = (gatheredKvSTileIdx <= PRE_LAUNCH) ?
+                gatheredKvSTileIdx * singleMm1L0Stages :
+                gatheredKvSTileIdx * singleMm1L0Stages + (gatheredKvSTileIdx - PRE_LAUNCH) * singleMm2L0Stages;
+        } else {
+            prefixSumStages = (gatheredKvSTileIdx < kvSLoopNum - PRE_LAUNCH) ?
+                (gatheredKvSTileIdx + 1 + PRE_LAUNCH) * singleMm1L0Stages + gatheredKvSTileIdx * singleMm2L0Stages:
+                kvSLoopNum * singleMm1L0Stages + gatheredKvSTileIdx * singleMm2L0Stages;
+        }
+        return prefixSumStages;
     }
 
     __aicore__ inline
@@ -419,7 +514,7 @@ public:
     {
         for (uint32_t i = 0; i < pL1BufNum_; i++) {
             l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
-                pvL1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
+                mm2L1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
         }
         uint32_t rowNumPerSubCore = EpilogueOnlineSoftmax::SM_ROW_MAX_ELEM_NUM;
         uint32_t colNumPerSubCore = EpilogueOnlineSoftmax::SM_COL_MAX_ELEM_NUM;
@@ -457,6 +552,8 @@ public:
         // L0C
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         // cross core sync
         if constexpr (SM_MM2_MODE == 4U) {
             AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(2);
@@ -510,6 +607,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         if constexpr (MM1_SM_MODE == 4U) {
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(0);
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(1);
@@ -586,7 +685,11 @@ private:
     uint32_t kL1BufNum_;
     uint32_t vL1BufNum_;
     uint32_t pL1BufNum_;
-    uint32_t pvL1AddrStart_ = 0;
+    uint32_t mm1L0ATotalStages_;
+    uint32_t mm1L0BTotalStages_;
+    uint32_t mm2L0ATotalStages_;
+    uint32_t mm2L0BTotalStages_;
+    uint32_t mm2L1AddrStart_ = 0;
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
 };

@@ -17,40 +17,53 @@
 #define ALL_GATHER_MATMUL_FP16_BF16_H
 
 #include "lib/hccl/hccl.h"
-#include "../../common/op_kernel/mc2_mat_mul_asw_kernel.h"
-#include "../../common/op_kernel/mc2_mat_mul_asw_block.h"
-#include "../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h"
-#include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
-#include "all_gather_matmul_tiling_arch35.h"
+#include "../../../common/op_kernel/mc2_mat_mul_asw_kernel.h"
+#include "../../../common/op_kernel/mc2_mat_mul_asw_block.h"
+#include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h"
+#include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
+#include "../all_gather_matmul_tiling_arch35.h"
+#include "../common.h"
 
-namespace AllGatherMatmulImpl
-{
+namespace AllGatherMatmulImpl {
 using namespace AscendC;
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-class AllGatherMatmulFP16BF16
-{
+template <uint8_t commMode>
+struct HcclTypeSelector {
+    static_assert(commMode == HCCL_COMM_MODE_CCU || commMode == HCCL_COMM_MODE_AICPU,
+                  "commMode must be 0 (CCU) or 1 (AICPU)");
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+};
+
+template <>
+struct HcclTypeSelector<HCCL_COMM_MODE_AICPU> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+};
+
+template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode = HCCL_COMM_MODE_CCU>
+
+class AllGatherMatmulFP16BF16 {
 public:
     __aicore__ inline AllGatherMatmulFP16BF16()
     {
     }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM,
-                                GM_ADDR workspaceGM, GM_ADDR gatherOut, Mc2Tiling::AllGatherMatmulTilingDataV2* tilingData,
-                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe);
+                                GM_ADDR workspaceGM, GM_ADDR gatherOut,
+                                Mc2Tiling::AllGatherMatmulTilingDataV2 *tilingData, __gm__ void *mc2InitTiling,
+                                __gm__ void *mc2CcTiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void StartNotify();           // 开始通信
-    __aicore__ inline void EndNotify();             // 结束通信
-    __aicore__ inline void InnerProcessGatherMM();  // 远端
-    __aicore__ inline void InnerProcess();          // 计算本卡、远端数据
+    __aicore__ inline void StartNotify();          // 开始通信
+    __aicore__ inline void EndNotify();            // 结束通信
+    __aicore__ inline void InnerProcessGatherMM(); // 远端
+    __aicore__ inline void InnerProcess();         // 计算本卡、远端数据
     __aicore__ inline void InnerProcessLocalMM();
-    __aicore__ inline void MatmulKernelComputeGather(GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData& tiling,
+    __aicore__ inline void MatmulKernelComputeGather(GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData &tiling,
                                                      uint32_t count, bool isLast, bool isTail);
 
 private:
-    Mc2Tiling::AllGatherMatmulTilingDataV2* tilingData_;
-    TPipe* tPipe_;
+    Mc2Tiling::AllGatherMatmulTilingDataV2 *tilingData_;
+    TPipe *tPipe_;
     GM_ADDR aGM_;
     GM_ADDR bGM_;
     GM_ADDR cGM_;
@@ -62,23 +75,24 @@ private:
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
     bool notifyFlag_{false};
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;         // CCU模式
-    AscendC::HcclHandle hHandles_[MAX_HANDLE];  // 最大支持16个handleID
+    typename HcclTypeSelector<ServerMode>::type hccl_;
+    AscendC::HcclHandle hHandles_[MAX_HANDLE]; // 最大支持63个handleID
 };
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::Init(
+template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, ServerMode>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM, GM_ADDR gatherOut,
-    Mc2Tiling::AllGatherMatmulTilingDataV2* tilingData, __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe)
+    Mc2Tiling::AllGatherMatmulTilingDataV2 *tilingData, __gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling,
+    TPipe *tPipe)
 {
     // 获取tilingdata数据
     tilingData_ = tilingData;
-    auto&& cfg = tilingData_->param;
+    auto &&cfg = tilingData_->param;
     // 获取 context
     context_ = contextGM;
     // 初始化Hccl类
-    hccl_.Init(context_, mc2InitTiling);
-    hccl_.SetCcTiling(mc2CcTiling);
+    hccl_.InitV2(context_, &(tilingData_->mc2InitTiling));
+    hccl_.SetCcTilingV2(offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, mc2CcTiling));
     // 管道初始化
     tPipe_ = tPipe;
 
@@ -89,7 +103,7 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
     bGM_ = bGM;
     cGM_ = cGM;
     biasGM_ = biasGM;
-    rankId_ = ((__gm__ HcclCombinOpParam*)context_)->rankId;
+    rankId_ = hccl_.GetRankId();
     workspaceGM_ = workspaceGM;
     gatherAddr_ = gatherOut;
 
@@ -106,13 +120,13 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
     }
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::StartNotify()
+template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, ServerMode>::StartNotify()
 {
     if (notifyFlag_) {
         GM_ADDR sendBuff;
         GM_ADDR recvBuffer;
-        auto&& cfg = tilingData_->param;
+        auto &&cfg = tilingData_->param;
         using A_T = typename AType::T;
         uint32_t tileCnt = cfg.tileCnt;
         uint32_t tailCnt = cfg.tailCnt;
@@ -125,7 +139,8 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::S
         }
         uint64_t tileSendCount = static_cast<uint64_t>(tilingM) * static_cast<uint64_t>(tilingka);
         uint64_t tailSendCount = static_cast<uint64_t>(tailM) * static_cast<uint64_t>(tilingka);
-        uint64_t stride = (tileSendCount * static_cast<uint64_t>(tileCnt) + tailSendCount * static_cast<uint64_t>(tailCnt));
+        uint64_t stride =
+            (tileSendCount * static_cast<uint64_t>(tileCnt) + tailSendCount * static_cast<uint64_t>(tailCnt));
         uint8_t repeat = 1;
 
         // 处理主块
@@ -133,7 +148,8 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::S
             // 计算sendbuff，recvbufBuff偏移
             sendBuff = aGM_ + static_cast<uint64_t>(i) * tileSendCount * sizeof(A_T);
             recvBuffer = gatherAddr_ + static_cast<uint64_t>(i) * tileSendCount * sizeof(A_T);
-            hHandles_[i] = hccl_.AllGather<true>(sendBuff, recvBuffer, tileSendCount, dataType_, stride, repeat);
+            hHandles_[i] =
+                hccl_.template AllGather<true>(sendBuff, recvBuffer, tileSendCount, dataType_, stride, repeat);
         }
         // 存在尾块
         for (uint32_t i = tileCnt; i < tileCnt + tailCnt; i++) {
@@ -142,13 +158,14 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::S
                        static_cast<uint64_t>(i - tileCnt) * tailSendCount * sizeof(A_T);
             recvBuffer = gatherAddr_ + static_cast<uint64_t>(tileCnt) * tileSendCount * sizeof(A_T) +
                          static_cast<uint64_t>(i - tileCnt) * tailSendCount * sizeof(A_T);
-            hHandles_[i] = hccl_.AllGather<true>(sendBuff, recvBuffer, tailSendCount, dataType_, stride, repeat);
+            hHandles_[i] =
+                hccl_.template AllGather<true>(sendBuff, recvBuffer, tailSendCount, dataType_, stride, repeat);
         }
     }
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::EndNotify()
+template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, ServerMode>::EndNotify()
 {
     // 在最后一次计算完成后单核清除状态位置，避免核间读写依赖
     if ASCEND_IS_AIC {
@@ -161,8 +178,8 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::E
     }
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::Process()
+template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, ServerMode>::Process()
 {
     if ASCEND_IS_AIC {
         // 先发出通信
@@ -176,8 +193,8 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::P
     }
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::InnerProcess()
+template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, ServerMode>::InnerProcess()
 {
     // 计算本卡数据
     InnerProcessLocalMM();
@@ -186,15 +203,15 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
     InnerProcessGatherMM();
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::InnerProcessLocalMM()
+template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, ServerMode>::InnerProcessLocalMM()
 {
-    auto&& tiling = tilingData_->mc2MmV3LocalTilingData;
+    auto &&tiling = tilingData_->mc2MmV3LocalTilingData;
     if (GetBlockIdx() >= tiling.tCubeTiling.usedCoreNum) {
         return;
     }
 
-    auto&& cfg = tilingData_->param;
+    auto &&cfg = tilingData_->param;
     auto aLocalGM = aGM_;
     auto cLocalGM = cGM_;
 
@@ -209,10 +226,10 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
     }
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::InnerProcessGatherMM()
+template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, ServerMode>::InnerProcessGatherMM()
 {
-    auto&& cfg = tilingData_->param;
+    auto &&cfg = tilingData_->param;
     // 处理gather主块
     if (debugMode_ == MC2_DEBUG_ONLY_CUBE) {
         MatmulKernelComputeGather(aGM_, cGM_, tilingData_->mc2MmV3TileTilingData, cfg.tileCnt, cfg.tailM ? false : true,
@@ -239,11 +256,11 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
     }
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::MatmulKernelComputeGather(
-    GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData& tiling, uint32_t count, bool isLast, bool isTail)
+template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, ServerMode>::MatmulKernelComputeGather(
+    GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData &tiling, uint32_t count, bool isLast, bool isTail)
 {
-    auto&& cfg = tilingData_->param;
+    auto &&cfg = tilingData_->param;
     cfg.rankID = rankId_;
     uint32_t shift = isTail ? cfg.tileCnt : 0;
     if ((GetBlockIdx() >= tiling.tCubeTiling.usedCoreNum) || (cfg.rankN == 0)) {
@@ -267,6 +284,6 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::M
     mmv3.End();
 }
 
-};  // namespace AllGatherMatmulImpl
+}; // namespace AllGatherMatmulImpl
 
-#endif  // ALL_GATHER_MATMUL_FP16_BF16_H
+#endif // ALL_GATHER_MATMUL_FP16_BF16_H

@@ -35,7 +35,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRecurrentGatedDeltaRuleGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnRecurrentGatedDeltaRule”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnRecurrentGatedDeltaRuleGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnRecurrentGatedDeltaRule”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(
@@ -193,7 +193,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
     <tr>
       <td>scaleValue</td>
       <td>输入</td>
-      <td>query的缩放因子，对应公式中的 1/sqrt(d_k)。</td>
+      <td>query的缩放因子，对应公式中的1/sqrt(d_k)。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -222,13 +222,13 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
     </tr>
   </tbody>
   </table>
-  
+
   其中 $B$ 表示batch size，令 $L_i$ 表示第i个序列的长度，则 $T=\sum_i^B L_i$ 表示累积序列长度。$N_k$ 表示key的头数，$N_v$ 表示value的头数，$D_k$ 表示key向量的维度，$D_v$ 表示value向量的维度。
 
 - **返回值**
 
-  aclnnStatus： 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
   <col style="width: 250px">
@@ -303,7 +303,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
 
 - **返回值**
 
-  aclnnStatus： 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -314,15 +314,15 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   - $ssmStateIndices[i] < BlockNum$
   - $0 < actualSeqLengths[i] \le 8$，且$actualSeqLengths[i]$累加和等于$T$
   - $1 \le numAcceptedTokens[i] \le actualSeqLengths[i]$
-  - $0 \le query[i][j][k] \le 1$
-  - $0 \le key[i][j][k] \le 1$
+  - $-1 \le query[i][j][k] \le 1$
+  - $-1 \le key[i][j][k] \le 1$
   - $g[i][j] < 0$
   - $gk[i][j][k] < 0$
   - $0 < beta[i][j] < 1$
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>

@@ -241,3 +241,94 @@ TEST_F(MoeTokenUnpermuteGradInferShape, MoeTokenUnpermuteGrad_inferdtype_fp16_ca
         EXPECT_EQ(context->GetOutputDataType(1), output_ref);
     }
 }
+
+TEST_F(MoeTokenUnpermuteGradInferShape, MoeTokenUnpermuteGrad_infershape_prob_none_bf16)
+{
+    gert::InfershapeContextPara infershapeContextPara("MoeTokenUnpermuteGrad",
+    {
+        {{{30, 64}, {30, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{10, 64}, {10, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{30,}, {30,}}, ge::DT_INT32, ge::FORMAT_ND}
+    },
+    {
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
+    },
+    {
+        {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+    }
+    );
+    std::vector<std::vector<int64_t>> expectOutputShape = {{30, 64}, {}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(MoeTokenUnpermuteGradInferShape, MoeTokenUnpermuteGrad_infershape_unknown_rank)
+{
+    gert::InfershapeContextPara infershapeContextPara("MoeTokenUnpermuteGrad",
+    {
+        {{{-2}, {-2}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{10, 64}, {10, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{30,}, {30,}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{10, 3}, {10, 3}}, ge::DT_BF16, ge::FORMAT_ND}
+    },
+    {
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
+    },
+    {
+        {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+    }
+    );
+    std::vector<std::vector<int64_t>> expectOutputShape = {{}, {10, 3}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(MoeTokenUnpermuteGradInferShape, MoeTokenUnpermuteGrad_infershape_invalid_dim)
+{
+    gert::InfershapeContextPara infershapeContextPara("MoeTokenUnpermuteGrad",
+    {
+        {{{30, 64}, {30, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{10, 64}, {10, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{30, 1}, {30, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{10, 3}, {10, 3}}, ge::DT_BF16, ge::FORMAT_ND}
+    },
+    {
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
+    },
+    {
+        {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+    }
+    );
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+TEST_F(MoeTokenUnpermuteGradInferShape, MoeTokenUnpermuteGrad_inferdtype_fp32_case_0)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto data_type_func = spaceRegistry->GetOpImpl("MoeTokenUnpermuteGrad")->infer_datatype;
+
+    if (data_type_func != nullptr) {
+        ge::DataType input_ref = ge::DT_FLOAT;
+        ge::DataType input_indices_ref = ge::DT_INT32;
+        ge::DataType output_ref = ge::DT_FLOAT;
+        auto context_holder = gert::InferDataTypeContextFaker()
+                                  .IrInputNum(4)
+                                  .NodeIoNum(4, 2)
+                                  .NodeInputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                                  .NodeInputTd(1, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                                  .NodeInputTd(2, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                                  .NodeInputTd(3, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                                  .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                                  .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                                  .InputDataTypes({&input_ref, &input_ref, &input_indices_ref, &input_ref})
+                                  .OutputDataTypes({&output_ref, &output_ref})
+                                  .Build();
+        auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+        EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+        ASSERT_NE(context, nullptr);
+
+        EXPECT_EQ(context->GetOutputDataType(0), output_ref);
+        EXPECT_EQ(context->GetOutputDataType(1), output_ref);
+    }
+}

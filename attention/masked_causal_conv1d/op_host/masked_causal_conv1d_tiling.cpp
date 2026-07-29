@@ -15,8 +15,8 @@
 
 #include "log/log.h"
 #include "register/op_impl_registry.h"
-#include "tiling_base/tiling_util.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_util.h"
+#include "op_host/tiling_templates_registry.h"
 #include "masked_causal_conv1d_tiling_arch35.h"
 
 namespace optiling {

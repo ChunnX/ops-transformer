@@ -9,12 +9,21 @@
 # -----------------------------------------------------------------------------------------------------------
 
 cmake_minimum_required(VERSION 3.16)
+include(cmake/fetch_cann_cmake.cmake)
+if(DEFINED RULE_LAUNCH AND RULE_LAUNCH)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${RULE_LAUNCH})
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ${RULE_LAUNCH})
+endif()
 
 project(cann_ops-transformer)
 
 set(CMAKE_C_FLAGS_RELEASE "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 
+init_cann_project()
+if(NOT ASCEND_INSTALL_PATH AND DEFINED ENV{ASCEND_HOME_PATH})
+    set(ASCEND_INSTALL_PATH $ENV{ASCEND_HOME_PATH})
+endif()
 
 option(BUILD_OPEN_PROJECT         "Build open ascend ops project."  ON)
 option(BUILD_OPS_RTY_KERNEL       "Build return yellow kernel."     OFF)
@@ -39,13 +48,15 @@ option(UT_INFERSHAPE_FLAG         "Enable infershape ut"            OFF)
 
 set(ASCEND_COMPUTE_UNIT           "ascend910b"           CACHE   STRING   "soc that need to be compiled")
 set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING   "operators that need to be compiled")
+set(ASCEND_MODULE_NAME            "ALL"                           CACHE   STRING   "modules that need to be compiled")
 set(ARCH_DIRECTORY                ""                           CACHE   STRING   "arch directory that need to be compiled")
 set(VENDOR_NAME                   "custom"                     CACHE   STRING   "vendor name")
-set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62cm12a;kirinx90;kirin9030" CACHE STRING "all soc list")
+set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62;kirinx90;kirin9030" CACHE STRING "all soc list")
+set(ASCEND_ALL_MODULE_NAME        "mc2;attention;moe;ffn;mhc;posembedding;gmm;mamba" CACHE STRING "all module list")
 
-#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch32,ascend910_93:arch32,ascend950:arch35,mc62cm12a:arch38,kirinx90:arch32,kirin9030:arch32
-set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62cm12a kirinx90 kirin9030)
-set(ARCH_DIRECTORY_LIST arch20 arch32 arch32 arch35 arch38 arch32 arch32)
+#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62:arch38,kirinx90:arch22,kirin9030:arch22
+set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62 kirinx90 kirin9030)
+set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch38 arch22 arch22)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
 
@@ -65,11 +76,24 @@ get_filename_component(OPS_ADV_DIR                  "${CMAKE_CURRENT_SOURCE_DIR}
 get_filename_component(OPS_ADV_CMAKE_DIR            "${OPS_ADV_DIR}/cmake"                  REALPATH)
 include(cmake/func.cmake)
 
+function(should_add_module MODULE_NAME RESULT)
+    if(DEFINED ASCEND_MODULE_NAME AND NOT "${ASCEND_MODULE_NAME}" STREQUAL "" AND NOT "${ASCEND_MODULE_NAME}" STREQUAL "all" AND NOT "${ASCEND_MODULE_NAME}" STREQUAL "ALL")
+        string(REPLACE "," ";" MODULE_LIST "${ASCEND_MODULE_NAME}")
+        if(${MODULE_NAME} IN_LIST MODULE_LIST)
+            set(${RESULT} TRUE PARENT_SCOPE)
+        else()
+            set(${RESULT} FALSE PARENT_SCOPE)
+        endif()
+    else()
+        set(${RESULT} TRUE PARENT_SCOPE)
+    endif()
+endfunction()
+
 include(version.cmake)
 if (BUILD_OPEN_PROJECT)
-    check_pkg_build_deps(${CANN_VERSION_PACKAGES})
+    check_cann_pkg_build_deps(${CANN_VERSION_PACKAGES})
 endif()
-add_version_info_targets()
+add_cann_version_info_targets()
 
 foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
   list(FIND SOC_VERSION_LIST ${SOC_VERSION} INDEX)
@@ -85,11 +109,6 @@ foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
     endif()
   endif()
 endforeach()
-
-list(FIND ARCH_DIRECTORY "arch32" INDEX)
-if(NOT INDEX EQUAL -1)
-    list(APPEND ARCH_DIRECTORY "arch22")
-endif()
 
 if(PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   message(STATUS "compile project with library")
@@ -126,10 +145,20 @@ set_directory_properties(PROPERTIES
 )
 
 include(cmake/third_party/opbase.cmake)
+if(DOWNLOAD_OPS_TEST_KIT)
+  include(cmake/third_party/ops_test_kit.cmake)
+endif()
 include(cmake/config.cmake)
-include(cmake/third_party/json.cmake)
+add_cann_third_party(json)
+
 if (ENABLE_TEST)
-    include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
+    set(CMAKE_CXX_COMPILE_OBJECT "<CMAKE_CXX_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
+    set(CMAKE_C_COMPILE_OBJECT "<CMAKE_C_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
+    add_cann_third_party(gtest)
+    if (TARGET GTest::gtest)
+        add_library(gtest ALIAS GTest::gtest)
+    endif()
+
 endif()
 include(${OPS_ADV_CMAKE_DIR}/ut.cmake)
 
@@ -143,13 +172,14 @@ if (BUILD_OPEN_PROJECT)
         message(STATUS "Start building custom package.")
         include(ExternalProject)
         include(cmake/dependencies.cmake)
+        include(cmake/third_party/ops-tensor.cmake)
         include(cmake/variables.cmake)
         include(cmake/obj_func.cmake)
-        include(cmake/third_party/eigen.cmake)
-        include(cmake/third_party/abseil-cpp.cmake)
-        include(cmake/third_party/ascend_protobuf.cmake)
+        add_cann_third_party(eigen)
+        add_cann_third_party(abseil-cpp)
+        add_cann_third_party(protobuf)
 
-        include(cmake/third_party/makeself-fetch.cmake)
+
         include(cmake/custom_build.cmake)
         message(STATUS "End building custom package.")
         include(cmake/opbuild.cmake)
@@ -179,6 +209,7 @@ if (BUILD_OPEN_PROJECT)
     endif()
 else()
     include(cmake/dependencies.cmake)
+    include(cmake/third_party/ops-tensor.cmake)
     include(cmake/variables.cmake)
     include(cmake/opbuild.cmake)
     include(cmake/rty_obj_func.cmake)
@@ -287,9 +318,16 @@ if (BUILD_OPS_RTY_KERNEL)
 endif ()
 
 add_subdirectory(common)
+
 if (NOT BUILD_OPS_RTY_KERNEL)
-    add_subdirectory(mc2)
-    add_subdirectory(posembedding)
+    should_add_module("mc2" ADD_MC2)
+    if(ADD_MC2)
+        add_subdirectory(mc2)
+    endif()
+    should_add_module("posembedding" ADD_POSEMBEDDING)
+    if(ADD_POSEMBEDDING)
+        add_subdirectory(posembedding)
+    endif()
 endif()
 
 if(NOT DEFINED COMPILED_OPS)
@@ -314,15 +352,32 @@ foreach (OP_DIR ${OP_DIR_LIST})
     endif()
 endforeach ()
 
-add_subdirectory(moe)
-list(APPEND OP_LIST "moe_init_routing_v2")
-list(APPEND OP_LIST "moe_token_unpermute_with_ep_grad")
-list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/moe/moe_init_routing_v2)
-list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/moe/moe_token_unpermute_with_ep_grad)
-add_subdirectory(ffn)
-list(APPEND OP_LIST "ffn")
-list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/ffn/ffn)
-add_subdirectory(attention)
+should_add_module("moe" ADD_MOE)
+if(ADD_MOE)
+    add_subdirectory(moe)
+    list(APPEND OP_LIST "moe_init_routing_v2")
+    list(APPEND OP_LIST "moe_token_unpermute_with_ep_grad")
+    list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/moe/moe_init_routing_v2)
+    list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/moe/moe_token_unpermute_with_ep_grad)
+endif()
+should_add_module("ffn" ADD_FFN)
+if(ADD_FFN)
+    add_subdirectory(ffn)
+    list(APPEND OP_LIST "ffn")
+    list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/ffn/ffn)
+endif()
+should_add_module("attention" ADD_ATTENTION)
+if(ADD_ATTENTION)
+    add_subdirectory(attention)
+endif()
+should_add_module("mhc" ADD_MHC)
+if(ADD_MHC)
+    add_subdirectory(mhc)
+endif()
+should_add_module("mamba" ADD_MAMBA)
+if(ADD_MAMBA)
+    add_subdirectory(mamba)
+endif()
 list(APPEND OP_LIST ${COMPILED_OPS})
 list(REMOVE_DUPLICATES OP_LIST)
 list(APPEND OP_DIR_LIST ${COMPILED_OP_DIRS})
@@ -538,6 +593,8 @@ if (BUILD_OPS_RTY_KERNEL)
             ${ASCEND_IMPL_OUT_DIR}
             ${ASCEND_AUTOGEN_DIR}
             --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
+            --compute-unit ${ASCEND_COMPUTE_UNIT}
+            --enable-experimental ${ENABLE_EXPERIMENTAL}
     )
 
     add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
@@ -548,12 +605,14 @@ if (BUILD_OPS_RTY_KERNEL)
                 OPTIONAL
         )
 
-        if(EXISTS ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py)
-            install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py
-                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
-                OPTIONAL
-            )
-        endif()
+        foreach (_suffix a2 a3 apt)
+            if(EXISTS ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_${_suffix}.py)
+                install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_${_suffix}.py
+                    DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                    OPTIONAL
+                )
+            endif()
+        endforeach()
     endforeach ()
 
     install(DIRECTORY ${OPS_ADV_UTILS_KERNEL_INC}/
@@ -580,7 +639,7 @@ if (BUILD_OPS_RTY_KERNEL)
                 OPTIONAL
         )
 
-        install(DIRECTORY ${op_dir}/arch32
+        install(DIRECTORY ${op_dir}/arch22
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
             OPTIONAL
         )

@@ -15,8 +15,8 @@
 
 #include "log/log.h"
 #include "util/math_util.h"
-#include "tiling_base/tiling_util.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_util.h"
+#include "op_host/tiling_templates_registry.h"
 #include "../op_kernel/dense_lightning_indexer_grad_kl_loss_tiling_data.h"
 #include "../op_kernel/dense_lightning_indexer_grad_kl_loss_tiling_key.h"
 #include "dense_lightning_indexer_grad_kl_loss_tiling.h"

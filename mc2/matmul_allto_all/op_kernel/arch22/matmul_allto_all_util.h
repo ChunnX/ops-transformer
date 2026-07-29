@@ -17,6 +17,7 @@
 
 #include "matmul_allto_all_tiling.h"
 
+namespace {
 constexpr static uint32_t BUFFER_NUM = 2U;     // 多buf
 constexpr static uint32_t STATE_OFFSET = 512U; // 状态空间偏移地址
 constexpr static uint32_t BLOCK_SIZE = 32U;
@@ -31,6 +32,7 @@ constexpr static int32_t FLAG_VALUE = 1;
 constexpr static int32_t USED_UB_SIZE = 160 * 1024;
 constexpr static int32_t FLAG_OFFSET = 180 * 1024 * 1024 / sizeof(int32_t);
 constexpr static uint32_t UB_OFFSET = 97440 / sizeof(int16_t); // 2 是 size of T
+} // namespace
 
 template <typename T, size_t SIZE>
 struct BaseBlock {
@@ -104,7 +106,7 @@ public:
         m_loop = DivCeil(m, m0);
         n_loop = DivCeil(n, n0);
         k_loop = DivCeil(k, k0);
-        gm_a_pingpong_size = m0 * n * p_value;
+        gm_a_pingpong_size = static_cast<int64_t>(m0) * n * p_value;
     }
 
     template <pipe_t pipe, uint64_t mode>
@@ -170,6 +172,8 @@ public:
 
     __aicore__ inline void SetBuffFlag(__gm__ int32_t *buff, int32_t flag)
     {
+        SetFlag<HardEvent::MTE3_S>(EVENT_ID2);
+        WaitFlag<HardEvent::MTE3_S>(EVENT_ID2);
         LocalTensor<int32_t> ubTensor = uBuf_.template Get<int32_t>();
         ubTensor(0) = flag;
         SetFlag<HardEvent::S_MTE3>(EVENT_ID2);
@@ -178,12 +182,12 @@ public:
     }
 
     template <typename T>
-    __aicore__ inline void CopyGMToGM(__gm__ T *gm_src, __gm__ T *gm_dst, int32_t copy_size)
+    __aicore__ inline void CopyGMToGM(__gm__ T *gm_src, __gm__ T *gm_dst, int64_t copy_size)
     {
         LocalTensor<T> ubTensor = uBuf_.template Get<T>();
         LocalTensor<T> copyTensor0 = ubTensor;
         LocalTensor<T> copyTensor1 = ubTensor[UB_OFFSET];
-        int32_t interm_offset = 0;
+        int64_t interm_offset = 0;
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
         for (int32_t move_idx = 0; interm_offset < copy_size; ++move_idx) {
@@ -238,7 +242,7 @@ public:
     int32_t n0;
     int32_t p_value;
     int32_t max_ub_ping_pong_size;
-    int32_t gm_a_pingpong_size;
+    int64_t gm_a_pingpong_size;
     int32_t len_per_loop;
 
     int32_t m;

@@ -22,7 +22,7 @@
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "op_host/op_tiling/hccl_formulaic_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "mc2_hcom_topo_info.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_base.h"
 #include "register/op_impl_registry.h"
@@ -32,14 +32,13 @@ using namespace ge;
 using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 namespace Mc2Tiling {
-static ge::graphStatus QuantGroupedMatMulAlltoAllvTilingFunc(gert::TilingContext* context)
+static ge::graphStatus QuantGroupedMatMulAlltoAllvTilingFunc(gert::TilingContext *context)
 {
     return TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-struct QuantGroupedMatMulAlltoAllvCompileInfo {
-};
-static ge::graphStatus TilingParseForQuantGroupedMatMulAlltoAllv(gert::TilingParseContext* context)
+struct QuantGroupedMatMulAlltoAllvCompileInfo {};
+static ge::graphStatus TilingParseForQuantGroupedMatMulAlltoAllv(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

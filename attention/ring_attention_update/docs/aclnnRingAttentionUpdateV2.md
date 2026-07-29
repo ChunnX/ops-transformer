@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：将两次FlashAttention的输出根据其不同的softmax的max和sum更新。**与[RingAttentionUpdate](./aclnnRingAttentionUpdate.md)接口的区别是：在输入排布为TND的场景下，原RingAttentionUpdate接口中的softmax相关输入的数据排布为BNS8，RingAttentionUpdateV2 接口支持传入字符串参数 inputSoftmaxLayout，用于控制 softmax 相关输入的数据排布是否与attention保持一致（即采用 TND 排布）。**
+- 接口功能：将两次FlashAttention的输出根据其不同的softmax的max和sum更新。**与[RingAttentionUpdate](./aclnnRingAttentionUpdate.md)接口的区别是：在输入排布为TND的场景下，原RingAttentionUpdate接口中的softmax相关输入的数据排布为BNS8，RingAttentionUpdateV2接口支持传入字符串参数inputSoftmaxLayout，用于控制softmax相关输入的数据排布是否与attention保持一致（即采用TND排布）。**
 - 计算公式：
 
 $$
@@ -30,31 +30,31 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRingAttentionUpdateV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnRingAttentionUpdateV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnRingAttentionUpdateV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnRingAttentionUpdateV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnRingAttentionUpdateV2GetWorkspaceSize(
-  const aclTensor *prevAttnOut, 
-  const aclTensor *prevSoftmaxMax, 
-  const aclTensor *prevSoftmaxSum, 
-  const aclTensor *curAttnOut, 
-  const aclTensor *curSoftmaxMax, 
-  const aclTensor *curSoftmaxSum, 
-  const aclTensor *actualSeqQlenOptional, 
-  char            *inputLayoutOptional, 
-  char            *inputSoftmaxLayoutOptional, 
-  const aclTensor *attnOutOut, 
-  const aclTensor *softmaxMaxOut, 
-  const aclTensor *softmaxSumOut, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *prevAttnOut,
+  const aclTensor *prevSoftmaxMax,
+  const aclTensor *prevSoftmaxSum,
+  const aclTensor *curAttnOut,
+  const aclTensor *curSoftmaxMax,
+  const aclTensor *curSoftmaxSum,
+  const aclTensor *actualSeqQlenOptional,
+  char            *inputLayoutOptional,
+  char            *inputSoftmaxLayoutOptional,
+  const aclTensor *attnOutOut,
+  const aclTensor *softmaxMaxOut,
+  const aclTensor *softmaxSumOut,
+  uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnRingAttentionUpdateV2(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -256,7 +256,7 @@ aclnnStatus aclnnRingAttentionUpdateV2(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -337,7 +337,7 @@ aclnnStatus aclnnRingAttentionUpdateV2(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -353,7 +353,7 @@ aclnnStatus aclnnRingAttentionUpdateV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -417,7 +417,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. (固定写法)device/stream初始化, 参考acl API手册
+  // 1. (固定写法)device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -516,8 +516,8 @@ int main() {
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
   // 调用aclnnRingAttentionUpdateV2第一段接口
-  ret = aclnnRingAttentionUpdateV2GetWorkspaceSize(prevAttnOut, prevSoftmaxMax, prevSoftmaxSum, 
-                                                 curAttnOut, curSoftmaxMax, curSoftmaxSum, 
+  ret = aclnnRingAttentionUpdateV2GetWorkspaceSize(prevAttnOut, prevSoftmaxMax, prevSoftmaxSum,
+                                                 curAttnOut, curSoftmaxMax, curSoftmaxSum,
                                                  actualSeqQlenOptional, inputLayoutOptional, inputSoftmaxLayoutOptional,
                                                  attnOut, softmaxMax, softmaxSum, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnRingAttentionUpdateV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);

@@ -9,4 +9,4 @@
 # -----------------------------------------------------------------------------------------------------------
 
 message(STATUS "=== Debug: start apply_rotary_pos_emb.op_graph.CMakeLists.txt ")
-# add_graph_plugin_sources()
+add_graph_plugin_sources()

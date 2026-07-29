@@ -22,7 +22,7 @@
 #include "tests/utils/io.h"
 #include "tests/utils/platform.h"
 #include "tiling/ffn/tiling_data.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 
 using Case = ops::adv::tests::utils::Case;
 using FFNCase = ops::adv::tests::ffn::FFNCase;

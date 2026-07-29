@@ -108,7 +108,9 @@ public:
         gert::StorageShape groupListShape = ops::ut::MakeGertStorageShape({groupNum}, {groupNum});
         int64_t kScaleBlocks = (k + 63) / 64;
         int64_t splitKScaleBlocks = k / 64 + groupNum;
+        bool isSplitKPertensor = groupType == 2 && scaleDtype != ge::DT_FLOAT8_E8M0;
         gert::StorageShape perTokenScaleShape =
+            isSplitKPertensor ? ops::ut::MakeGertStorageShape({groupNum}, {groupNum}) :
             groupType == 2 ? ops::ut::MakeGertStorageShape({splitKScaleBlocks, m, 2}, {splitKScaleBlocks, m, 2}) :
                              ops::ut::MakeGertStorageShape({m, kScaleBlocks, 2}, {m, kScaleBlocks, 2});
 
@@ -129,6 +131,7 @@ public:
         gert::StorageShape weightShape = ops::ut::MakeGertStorageShape(weightOriginDims, weightStorageDims);
 
         vector<int64_t> scaleDims =
+            isSplitKPertensor ? vector<int64_t>{groupNum} :
             groupType == 2 ? vector<int64_t>{splitKScaleBlocks, n, 2}
                            : (transposeWeight ? vector<int64_t>{groupNum, n, kScaleBlocks, 2}
                                               : vector<int64_t>{groupNum, kScaleBlocks, n, 2});

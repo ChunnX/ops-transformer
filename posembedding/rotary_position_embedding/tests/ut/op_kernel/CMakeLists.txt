@@ -22,4 +22,8 @@ if (UT_TEST_ALL OR OP_KERNEL_UT)
     # param3：自定义编译选项，一般填写测试的一种典型数据类型组合，不需要则传入空字符串，例如："-DDTYPE_X=float"，多个使用空格分隔，例如："-DDTYPE_X=float -DDTYPE_Y=float"
     # param4：该算子依赖的所有tiling源码文件
     AddOpTestCase(rotary_position_embedding "ascend910B1" "-DDTYPE_X=float" "${rotary_position_embedding_tiling_files}")
+    # tiling_tmp.so is dlopen'd by gen_tiling_head_file; rope tiling uses Ops::Base::ToString (opbase_util_objs).
+    target_sources(rotary_position_embedding_Ascend910B1_tiling_tmp PRIVATE
+        $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+        )
 endif()

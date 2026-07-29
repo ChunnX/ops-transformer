@@ -23,7 +23,7 @@
 #include "../quant_grouped_matmul_inplace_add_host_utils.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 namespace optiling {
 
 class QGMMInplaceAddBasicApiTiling : public GroupedQmmBasicApiTiling {
@@ -38,6 +38,10 @@ public:
     }
 
 protected:
+    const char *GetOpType() const override
+    {
+        return "QuantGroupedMatmulInplaceAdd";
+    }
     bool IsCapable() override;
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
@@ -54,7 +58,7 @@ private:
     bool AnalyzeInputs() override;
     bool SetQuantModeForQGmmInplaceAdd();
     bool CheckCoreNum() const override;
-    void PrintQuantParams() override;
+    int64_t LogQuantParams() const;
 
     QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData tilingData_;
 };

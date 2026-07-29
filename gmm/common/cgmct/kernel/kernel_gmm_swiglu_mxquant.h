@@ -76,9 +76,13 @@ class KernelGmmSwiGluMixOnlineDynamic<
     ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler>>> {
 public:
-    __aicore__ inline KernelGmmSwiGluMixOnlineDynamic() {}
+    __aicore__ inline KernelGmmSwiGluMixOnlineDynamic()
+    {
+    }
 
-    __aicore__ inline ~KernelGmmSwiGluMixOnlineDynamic() {}
+    __aicore__ inline ~KernelGmmSwiGluMixOnlineDynamic()
+    {
+    }
 
     using BlockEpilogue = BlockEpilogue_;
     using BlockMmadBuilder = BlockMmadBuilder_;
@@ -106,14 +110,16 @@ public:
     using AType = typename BlockMmadBuilder::AType;
     using BType = typename BlockMmadBuilder::BType;
     using CType = typename BlockMmadBuilder::CType;
-    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
+    static constexpr bool IS_FP4 =
+        AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>;
+    static constexpr int32_t c0Size = IS_FP4 ? MATMUL_MNK_ALIGN_INT4 : MATMUL_MNK_ALIGN_INT8;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     // a, b, x1scale, x2scale, bias, y, yscale
     using BlockOffset = AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
     // coordinate
-    using CoordClass =
-        Coordinate<transA, transB, formatA, formatB, BlockMmadBuilder::formatC>;
+    using CoordClass = Coordinate<transA, transB, formatA, formatB, BlockMmadBuilder::formatC>;
 
     // attribute
     AscendC::GlobalTensor<AType> aGlobal_;
@@ -126,11 +132,15 @@ public:
     BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0};
     BlockOffset blockOffset_{0, 0, 0, 0, 0, 0, 0};
     uint64_t preOffset_ = 0;
+    int64_t perGroupBOffset_ = 0;
+    int64_t bRightOffsetStep_ = 0;
+    int64_t x2ScaleRightOffsetStep_ = 0;
     BlockMmadOp mmadOp_;
     BlockEpilogue epilogueOp_;
     AscendC::LocalTensor<CType> l0cOutUbFirst_;
     AscendC::LocalTensor<CType> l0cOutUbSecond_;
     bool isVecSetSyncCom_ = false;
+    bool initSingleGroup_ = true;
 
     struct GMMTiling {
         uint32_t groupNum;
@@ -138,12 +148,17 @@ public:
         int32_t baseM;
         int32_t baseN;
         int32_t baseK;
-        const TCubeTiling* __restrict matmulTiling;
-        __aicore__ GMMTiling() {}
-        __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_,
-                             int32_t baseK_) :
-            groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_)
-        {}
+        uint8_t isMxWeightNzMultiTensor;
+        const TCubeTiling *__restrict matmulTiling;
+        __aicore__ GMMTiling()
+        {
+        }
+        __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_,
+                             uint8_t isMxWeightNzMultiTensor_ = 0)
+            : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
+              isMxWeightNzMultiTensor(isMxWeightNzMultiTensor_)
+        {
+        }
     };
 
     struct Arguments {
@@ -190,14 +205,34 @@ public:
         }
     }
 
-    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM)
+    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM, int64_t baseN)
     {
-        if (curBaseM >= mSize) {
-            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+        if constexpr (formatB != CubeFormat::ND) {
+            if (curBaseM >= mSize) {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            }
         } else {
-            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            if constexpr (transB) {
+                if (curBaseM >= mSize && (Get<K_VALUE>(problemShape_) & 0xff) == 0) {
+                    bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                    x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                } else {
+                    bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                    x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                }
+            } else {
+                if (curBaseM >= mSize && (Get<N_VALUE>(problemShape_) & 0xff) == 0 && (baseN & 0xff) == 0) {
+                    bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                    x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                } else {
+                    bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                    x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                }
+            }
         }
     }
 
@@ -210,17 +245,24 @@ public:
             preOffset_ = offset;
         } else {
             splitValue = static_cast<uint64_t>(groupListGm_.GetValue(groupIdx));
+            preOffset_ += splitValue;
         }
         return splitValue;
     }
 
-    __aicore__ inline void UpdateGlobalBuffer(const Params& params)
+    __aicore__ inline void UpdateGlobalBuffer(const Params &params, uint32_t groupIdx)
     {
         if ASCEND_IS_AIC {
-            aGlobal_.SetGlobalBuffer((__gm__ AType*)params.mmadParams.aGmAddr + Get<IDX_A_OFFSET>(baseOffset_));
-            bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(0, params.mmadParams.bGmAddr) + Get<IDX_B_OFFSET>(baseOffset_));
-            x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t*)params.mmadParams.x1ScaleGmAddr + Get<IDX_X1SCALE_OFFSET>(baseOffset_));
-            x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<AscendC::fp8_e8m0_t>(0, params.mmadParams.x2ScaleGmAddr) + Get<IDX_X2SCALE_OFFSET>(baseOffset_));
+            bool isMxWeightNzMultiTensor = params.gmmParams.isMxWeightNzMultiTensor != 0;
+            aGlobal_.SetGlobalBuffer((__gm__ AType *)params.mmadParams.aGmAddr + Get<IDX_A_OFFSET>(baseOffset_));
+            bGlobal_.SetGlobalBuffer(
+                GetTensorAddr<BType>(isMxWeightNzMultiTensor ? groupIdx : 0, params.mmadParams.bGmAddr) +
+                Get<IDX_B_OFFSET>(baseOffset_));
+            x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)params.mmadParams.x1ScaleGmAddr +
+                                           Get<IDX_X1SCALE_OFFSET>(baseOffset_));
+            x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<AscendC::fp8_e8m0_t>(isMxWeightNzMultiTensor ? groupIdx : 0,
+                                                                              params.mmadParams.x2ScaleGmAddr) +
+                                           Get<IDX_X2SCALE_OFFSET>(baseOffset_));
         }
         if ASCEND_IS_AIV {
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
@@ -229,7 +271,7 @@ public:
         }
     }
 
-    __aicore__ inline void UpdateOffset(uint32_t groupIdx)
+    __aicore__ inline void UpdateOffset(const Params &params, uint32_t groupIdx)
     {
         // baseOffset is 0 when groupIdx = 0
         if (groupIdx == 0) {
@@ -238,46 +280,35 @@ public:
         uint64_t m = Get<M_VALUE>(problemShape_);
         uint64_t n = Get<N_VALUE>(problemShape_);
         uint64_t k = Get<K_VALUE>(problemShape_);
-        
-        if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
-            Get<IDX_A_OFFSET>(baseOffset_) += (m * k) >> 1;
-        } else {
-            Get<IDX_A_OFFSET>(baseOffset_) += m * k;
-        }
+        bool isMxWeightNzMultiTensor = params.gmmParams.isMxWeightNzMultiTensor != 0;
 
-        if constexpr (formatB == CubeFormat::NZ) {
-            int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-            int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-            if constexpr (transB) {
-                nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-            }
-            Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
+        if constexpr (IS_FP4) {
+            Get<IDX_A_OFFSET>(baseOffset_) = ((preOffset_ - m) * k) >> 1;
+            Get<IDX_B_OFFSET>(baseOffset_) =
+                isMxWeightNzMultiTensor ? 0 : ((perGroupBOffset_ * static_cast<int64_t>(groupIdx)) >> 1);
         } else {
-            if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
-                Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
-            } else {
-                Get<IDX_B_OFFSET>(baseOffset_) += n * k;
-            }
+            Get<IDX_A_OFFSET>(baseOffset_) = (preOffset_ - m) * k;
+            Get<IDX_B_OFFSET>(baseOffset_) =
+                isMxWeightNzMultiTensor ? 0 : perGroupBOffset_ * static_cast<int64_t>(groupIdx);
         }
 
         auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         // scaleAAxisBaseOffset (m, ceil(k,64), 2)
-        Get<IDX_X1SCALE_OFFSET>(baseOffset_) += m * scaleK;
+        Get<IDX_X1SCALE_OFFSET>(baseOffset_) = (preOffset_ - m) * scaleK;
         // scaleBAxisBaseOffset (g, n, ceil(k,64), 2) or (g, ceil(k,64), n, 2)
-        Get<IDX_X2SCALE_OFFSET>(baseOffset_) += n * scaleK;
+        Get<IDX_X2SCALE_OFFSET>(baseOffset_) =
+            isMxWeightNzMultiTensor ? 0 : static_cast<int64_t>(groupIdx) * n * scaleK;
         if (AscendC::IsSameTypeV<DataTypeOut, fp4x2_e2m1_t> || AscendC::IsSameTypeV<DataTypeOut, fp4x2_e1m2_t>) {
-            Get<IDX_C_OFFSET>(baseOffset_) += (m * n / SWIGLU_N_HALF) >> 1;
+            Get<IDX_C_OFFSET>(baseOffset_) = ((preOffset_ - m) * (n / SWIGLU_N_HALF)) >> 1;
         } else {
-            Get<IDX_C_OFFSET>(baseOffset_) += m * n / SWIGLU_N_HALF;
+            Get<IDX_C_OFFSET>(baseOffset_) = (preOffset_ - m) * (n / SWIGLU_N_HALF);
         }
-        Get<IDX_C_SCALE_OFFSET>(baseOffset_) +=
-            m * CeilDiv(n / SWIGLU_N_HALF, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_C_SCALE_OFFSET>(baseOffset_) =
+            (preOffset_ - m) * CeilDiv(n / SWIGLU_N_HALF, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     }
 
-    __aicore__ inline bool UpdateGroupParams(const Params& params, uint32_t groupIdx)
+    __aicore__ inline bool UpdateGroupParams(const Params &params, uint32_t groupIdx)
     {
-        UpdateOffset(groupIdx);
         int32_t splitValue = GetSplitValueFromGroupList(groupIdx, params.gmmParams.groupListType);
         Get<M_VALUE>(problemShape_) = splitValue;
         // split_m，when m=0, skip
@@ -287,56 +318,68 @@ public:
         return true;
     }
 
-    __aicore__ inline void InitParamsAndTensor(const Params& params)
+    __aicore__ inline void InitParamsAndTensor(const Params &params)
     {
         Get<N_VALUE>(problemShape_) = params.gmmParams.matmulTiling->N;
         Get<K_VALUE>(problemShape_) = params.gmmParams.matmulTiling->Ka;
-        groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(params.mmadParams.groupListGmAddr));
-    }
-
-    __aicore__ inline void ComputeOffset(int64_t &bRightOffset, int64_t &x2ScaleRightOffset, int64_t n, int64_t k)
-    {
-        int64_t resN = n / 2; // SwiGLU: N -> N/2
+        if constexpr (formatB == CubeFormat::NZ) {
+            if constexpr (transB) {
+                perGroupBOffset_ =
+                    Align16(Get<N_VALUE>(problemShape_)) *
+                    (IS_FP4 ? Align64(Get<K_VALUE>(problemShape_)) : Align32(Get<K_VALUE>(problemShape_)));
+            } else {
+                perGroupBOffset_ =
+                    (IS_FP4 ? Align64(Get<N_VALUE>(problemShape_)) : Align32(Get<N_VALUE>(problemShape_))) *
+                    Align16(Get<K_VALUE>(problemShape_));
+            }
+        } else {
+            perGroupBOffset_ = Get<N_VALUE>(problemShape_) * Get<K_VALUE>(problemShape_);
+        }
+        groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(params.mmadParams.groupListGmAddr));
+        int64_t resN = Get<N_VALUE>(problemShape_) / SWIGLU_N_HALF; // SwiGLU: N -> N/2
 
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
-                bRightOffset += resN * MATMUL_MNK_ALIGN_INT8;
+                bRightOffsetStep_ = resN * c0Size;
             } else {
-                bRightOffset += resN * CeilDiv(k, MATMUL_MNK_ALIGN) * MATMUL_MNK_ALIGN;
+                bRightOffsetStep_ = resN * Align16(Get<K_VALUE>(problemShape_));
             }
         } else {
             if constexpr (transB) {
-                bRightOffset += resN * k;
+                bRightOffsetStep_ = resN * Get<K_VALUE>(problemShape_);
             } else {
-                bRightOffset += resN;
+                bRightOffsetStep_ = resN;
             }
         }
 
         if constexpr (transB) {
-            x2ScaleRightOffset += resN * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+            x2ScaleRightOffsetStep_ =
+                resN * CeilDiv(Get<K_VALUE>(problemShape_), MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         } else {
-            x2ScaleRightOffset += resN * MXFP_MULTI_BASE_SIZE;
+            x2ScaleRightOffsetStep_ = resN * MXFP_MULTI_BASE_SIZE;
         }
     }
 
-    __aicore__ inline void ProcessSingleGroup(const Params& params, BlockSchedulerOp& bs, uint32_t groupIdx)
+    __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)
     {
         int64_t m = Get<M_VALUE>(problemShape_);
         int64_t n = Get<N_VALUE>(problemShape_);
         int64_t k = Get<K_VALUE>(problemShape_);
-        TupleShape resProblemShape {Get<M_VALUE>(problemShape_), Get<N_VALUE>(problemShape_) >> 1,
-                                    Get<K_VALUE>(problemShape_), 0};
-        bs.UpdateNextProblem(resProblemShape);
-        epilogueOp_.UpdateNextProblem(resProblemShape);
-        UpdateGlobalBuffer(params);
         CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
         BlockCoord tileIdx;
         while (bs.GetTileIdx(tileIdx)) {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
+            if (initSingleGroup_) {
+                UpdateOffset(params, groupIdx);
+                UpdateGlobalBuffer(params, groupIdx);
+                SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM),
+                                          static_cast<int64_t>(params.gmmParams.baseN));
+                initSingleGroup_ = false;
+            }
             // isMx = true
             blockOffset_ = coord.template GetQuantIOOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE>(
                 Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
-                Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
+                Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape), c0Size);
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
@@ -349,9 +392,8 @@ public:
                         x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], l0cOutUbFirst_, mmSingleShape, transA,
                         transB);
                 // right block
-                int64_t bRightOffset = Get<IDX_B_OFFSET>(blockOffset_);
-                int64_t x2ScaleRightOffset = Get<IDX_X2SCALE_OFFSET>(blockOffset_);
-                ComputeOffset(bRightOffset, x2ScaleRightOffset, n, k);
+                int64_t bRightOffset = Get<IDX_B_OFFSET>(blockOffset_) + bRightOffsetStep_;
+                int64_t x2ScaleRightOffset = Get<IDX_X2SCALE_OFFSET>(blockOffset_) + x2ScaleRightOffsetStep_;
                 mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[bRightOffset],
                         x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)], x2ScaleGlobal_[x2ScaleRightOffset],
                         l0cOutUbSecond_, mmSingleShape, transA, transB);
@@ -362,7 +404,7 @@ public:
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(singleShape),
                                                                                       Get<N_VALUE>(singleShape), 0, 0};
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
-                    Get<IDX_C_OFFSET>(blockOffset_), Get<IDX_C_SCALE_OFFSET>(blockOffset_),
+                    Get<IDX_C_OFFSET>(blockOffset_),       Get<IDX_C_SCALE_OFFSET>(blockOffset_),
                     Get<IDX_X2SCALE_OFFSET>(blockOffset_), Get<IDX_X1SCALE_OFFSET>(blockOffset_),
                     Get<IDX_BIAS_OFFSET>(blockOffset_),
                 };
@@ -373,21 +415,32 @@ public:
         }
     }
 
-    __aicore__ inline void operator()(const Params& params)
+    __aicore__ inline void operator()(const Params &params)
     {
         // Init mmadOp epilogue
-        mmadOp_.Init(const_cast<TCubeTiling* __restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
+        mmadOp_.Init(const_cast<TCubeTiling *__restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
         InitParamsAndTensor(params);
         epilogueOp_.Init(params.epilogueParams);
         uint32_t groupNum = params.gmmParams.groupNum;
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        if constexpr (!transA) {
+            if constexpr (transB) {
+                bs.SetTailAlign(1, AscendC::BLOCK_CUBE);
+            } else {
+                bs.SetTailAlign(1, c0Size);
+            }
+        }
         l0cOutUbFirst_ = epilogueOp_.GetFirstL0c2UbTensor();
         l0cOutUbSecond_ = epilogueOp_.GetSecondL0c2UbTensor();
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
-            SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM));
+            TupleShape resProblemShape{Get<M_VALUE>(problemShape_), Get<N_VALUE>(problemShape_) >> 1,
+                                       Get<K_VALUE>(problemShape_)};
+            bs.UpdateNextProblem(resProblemShape);
+            epilogueOp_.UpdateNextProblem(resProblemShape);
+            initSingleGroup_ = true;
             ProcessSingleGroup(params, bs, groupIdx);
         }
         End();

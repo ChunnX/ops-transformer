@@ -16,6 +16,11 @@
 #ifndef __ALL_GATHER_MATMUL_AIV_MODE_TILING_H__
 #define __ALL_GATHER_MATMUL_AIV_MODE_TILING_H__
 
+#include <cstdint>
+#include "kernel_tiling/kernel_tiling.h"
+
+constexpr static int32_t MAX_BLOCK_COUNT = 2;
+
 enum DequantType : int {
     DEQUANT_TYPE_UNDEFINED = -1,
     PER_CHANNEL = 0,
@@ -41,6 +46,7 @@ struct AllGatherMatmulAIVModeInfo {
     bool quantFlag;
     bool is910C;
     bool isX2ScaleTypeInt64;
+    bool accumWorkSpacePingPong;
     DequantType dequantType;
 };
 

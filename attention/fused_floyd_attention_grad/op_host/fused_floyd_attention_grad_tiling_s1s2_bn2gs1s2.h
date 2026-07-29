@@ -16,7 +16,7 @@
 #pragma once
 
 #include "fused_floyd_attention_grad_tiling_common.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "fused_floyd_attention_grad_tiling_s1s2_bn2gs1s2_def.h"
 
 using namespace Ops::Transformer::OpTiling;

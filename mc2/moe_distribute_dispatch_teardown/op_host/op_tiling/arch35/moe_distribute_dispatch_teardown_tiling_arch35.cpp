@@ -16,7 +16,7 @@
 #include "mc2_log.h"
 #include "moe_distribute_dispatch_teardown_tiling_arch35.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 
 namespace optiling {
 

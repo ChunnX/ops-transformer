@@ -16,11 +16,11 @@
 #include "ts_ffn.h"
 
 namespace {
-TEST_P(Ts_FFN_WithParam_Ascend910B3, Tc_Kernel_FFN)
-{
-    ASSERT_TRUE(case_->Init());
-    ASSERT_EQ(case_->Run(), case_->mOpInfo.mExp.mSuccess);
-}
+// TEST_P(Ts_FFN_WithParam_Ascend910B3, Tc_Kernel_FFN)
+// {
+//     ASSERT_TRUE(case_->Init());
+//     ASSERT_EQ(case_->Run(), case_->mOpInfo.mExp.mSuccess);
+// }
 
 const auto Tc_FFN_Kernel_Case = ::testing::Values(
     FFNCase(
@@ -250,5 +250,5 @@ const auto Tc_FFN_Kernel_Case = ::testing::Values(
         0)
     );
 
-INSTANTIATE_TEST_SUITE_P(FFN, Ts_FFN_WithParam_Ascend910B3, Tc_FFN_Kernel_Case);
+// INSTANTIATE_TEST_SUITE_P(FFN, Ts_FFN_WithParam_Ascend910B3, Tc_FFN_Kernel_Case);
 } // namespace

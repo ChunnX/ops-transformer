@@ -93,123 +93,146 @@ struct TensorResources {
     void* attenDeviceAddr = nullptr;
     void* sabiDeviceAddr = nullptr;
     void* outDeviceAddr = nullptr;
+    void* lseDeviceAddr = nullptr;
     aclTensor* queryTensor = nullptr;
     aclTensor* keyTensor = nullptr;
     aclTensor* valueTensor = nullptr;
     aclTensor* attenTensor = nullptr;
     aclTensor* sabiTensor = nullptr;
     aclTensor* outTensor = nullptr;
+    aclTensor* lseTensor = nullptr;
     aclIntArray* actualSeqLengths = nullptr;
     aclIntArray* actualSeqLengthsKv = nullptr;
 };
 
 int InitializeTensors(TensorResources& resources) {
-    // Using shapes that are more consistent with attention patterns
-    std::vector<int64_t> queryShape = {1, 2, 4, 16};   // [B, N, S, D]
-    std::vector<int64_t> keyShape = {1, 2, 4, 16};     // [B, N, T, D]
-    std::vector<int64_t> valueShape = {1, 2, 4, 16};   // [B, N, T, D]
-    std::vector<int64_t> attenShape = {1, 2, 4, 4};    // [B, N, S, T]
-    std::vector<int64_t> sabiShape = {1, 2, 1, 1};     // [B, N, S/Qtile, sparsity*T/KVTile] - simplified
-    std::vector<int64_t> outShape = {1, 2, 4, 16};     // [B, N, S, D]
-    
-    int64_t queryShapeSize = GetShapeSize(queryShape);
-    int64_t keyShapeSize = GetShapeSize(keyShape);
-    int64_t valueShapeSize = GetShapeSize(valueShape);
-    int64_t attenShapeSize = GetShapeSize(attenShape);
-    int64_t sabiShapeSize = GetShapeSize(sabiShape);
-    int64_t outShapeSize = GetShapeSize(outShape);
-    
-    // Initialize with proper data
-    std::vector<float> queryHostData(queryShapeSize, 1.0f);
-    std::vector<float> keyHostData(keyShapeSize, 1.0f);
-    std::vector<float> valueHostData(valueShapeSize, 1.0f);
-    
-    // Attention mask as bool data
-    std::vector<uint8_t> attenHostData(attenShapeSize, 1);  // Using uint8_t for bool
-    
-    // Sabi as uint16 data - using valid indices (not 65535 which is padding)
-    std::vector<uint16_t> sabiHostData(sabiShapeSize, 0);   // Valid indices
-    
-    std::vector<float> outHostData(outShapeSize, 0.0f);
+    // Parameters matching the Python test suite (N=8, S=512, D=128, B=1).
+    // Constraint: N*S/128 > coreNum (~20) so the tiling keeps sOuterFactor=128
+    // (the only tile size the BSA kernel is compiled for).  With N=2 or D=16 the
+    // tiling degrades to sOuterFactor=32 which has no matching compiled template
+    // and causes ADD_TO_LAUNCHER_LIST_AICORE to fail -> 561103.
+    static constexpr int64_t B = 1, N = 8, S = 512, D = 128;
+    static constexpr int64_t Q_TILES  = S / 128;   // 4
+    static constexpr int64_t KV_TILES = S / 128;   // 4
 
-    // Query tensor (BFloat16 or Float16)
-    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr, 
-                             aclDataType::ACL_FLOAT16, &resources.queryTensor);
+    std::vector<int64_t> queryShape = {B, N, S, D};
+    std::vector<int64_t> keyShape   = {B, N, S, D};
+    std::vector<int64_t> valueShape = {B, N, S, D};
+    // sabi: [B, N, Q_tiles, KV_tiles_kept] – dense: keep all KV tiles
+    std::vector<int64_t> sabiShape  = {B, N, Q_TILES, KV_TILES};
+    std::vector<int64_t> outShape   = {B, N, S, D};
+
+    int64_t queryShapeSize = GetShapeSize(queryShape);
+    int64_t sabiShapeSize  = GetShapeSize(sabiShape);
+    int64_t outShapeSize   = GetShapeSize(outShape);
+
+    // fp16 data: 0x3C00 = 1.0 in IEEE 754 half-precision.
+    // Using uint16_t avoids the float/fp16 size mismatch in CreateAclTensor.
+    std::vector<uint16_t> queryHostData(queryShapeSize, 0x3C00u);
+    std::vector<uint16_t> keyHostData  (queryShapeSize, 0x3C00u);
+    std::vector<uint16_t> valueHostData(queryShapeSize, 0x3C00u);
+    std::vector<uint16_t> outHostData  (outShapeSize, 0u);
+
+    // sabi values: KV tile indices 0..KV_TILES-1, cycling per Q-tile
+    std::vector<uint16_t> sabiHostData(sabiShapeSize);
+    for (int64_t i = 0; i < sabiShapeSize; i++) {
+        sabiHostData[i] = static_cast<uint16_t>(i % KV_TILES);
+    }
+
+    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
+                              aclDataType::ACL_FLOAT16, &resources.queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       LOG_PRINT("Create query tensor failed. ERROR: %d\n", ret);
       return ret;
     }
 
-    // Key tensor
-    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr, 
-                         aclDataType::ACL_FLOAT16, &resources.keyTensor);
+    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr,
+                          aclDataType::ACL_FLOAT16, &resources.keyTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       LOG_PRINT("Create key tensor failed. ERROR: %d\n", ret);
       return ret;
     }
 
-    // Value tensor
-    ret = CreateAclTensor(valueHostData, valueShape, &resources.valueDeviceAddr, 
-                         aclDataType::ACL_FLOAT16, &resources.valueTensor);
+    ret = CreateAclTensor(valueHostData, valueShape, &resources.valueDeviceAddr,
+                          aclDataType::ACL_FLOAT16, &resources.valueTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       LOG_PRINT("Create value tensor failed. ERROR: %d\n", ret);
       return ret;
     }
 
-    // Attention mask tensor (bool)
-    ret = CreateAclTensor(attenHostData, attenShape, &resources.attenDeviceAddr, 
-                         aclDataType::ACL_BOOL, &resources.attenTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-      LOG_PRINT("Create attention mask tensor failed. ERROR: %d\n", ret);
-      return ret;
-    }
+    // No attention mask – sparseMode=0 doesn't require one
+    resources.attenTensor = nullptr;
 
-    // Sabi tensor (uint16)
-    ret = CreateAclTensor(sabiHostData, sabiShape, &resources.sabiDeviceAddr, 
-                         aclDataType::ACL_UINT16, &resources.sabiTensor);
+    ret = CreateAclTensor(sabiHostData, sabiShape, &resources.sabiDeviceAddr,
+                          aclDataType::ACL_UINT16, &resources.sabiTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       LOG_PRINT("Create sabi tensor failed. ERROR: %d\n", ret);
       return ret;
     }
 
-    // Output tensor
-    ret = CreateAclTensor(outHostData, outShape, &resources.outDeviceAddr, 
-                         aclDataType::ACL_FLOAT16, &resources.outTensor);
+    ret = CreateAclTensor(outHostData, outShape, &resources.outDeviceAddr,
+                          aclDataType::ACL_FLOAT16, &resources.outTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       LOG_PRINT("Create output tensor failed. ERROR: %d\n", ret);
       return ret;
     }
 
-    // Sequence lengths - using actual sequence lengths
-    std::vector<int64_t> actualSeqlenVector = {4};  // Actual sequence length for query
-    resources.actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(), 
-                                                  actualSeqlenVector.size());
+    // LSE output: [B, N, S] float32
+    std::vector<int64_t> lseShape = {B, N, S};
+    int64_t lseShapeSize = GetShapeSize(lseShape);
+    std::vector<float> lseHostData(lseShapeSize, 0.0f);
+    ret = CreateAclTensor(lseHostData, lseShape, &resources.lseDeviceAddr,
+                          aclDataType::ACL_FLOAT, &resources.lseTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("Create LSE tensor failed. ERROR: %d\n", ret);
+        return ret;
+    }
 
-    std::vector<int64_t> actualSeqlenKvVector = {4};  // Actual sequence length for key/value
-    resources.actualSeqLengthsKv = aclCreateIntArray(actualSeqlenKvVector.data(), 
-                                                    actualSeqlenKvVector.size());
+    LOG_PRINT("Tensor shapes:\n");
+    LOG_PRINT("  query:  [%ld, %ld, %ld, %ld] (B, N, S, D) fp16\n", B, N, S, D);
+    LOG_PRINT("  key:    [%ld, %ld, %ld, %ld] (B, N, S, D) fp16\n", B, N, S, D);
+    LOG_PRINT("  value:  [%ld, %ld, %ld, %ld] (B, N, S, D) fp16\n", B, N, S, D);
+    LOG_PRINT("  sabi:   [%ld, %ld, %ld, %ld] (B, N, Q_tiles, KV_tiles) uint16\n",
+              B, N, Q_TILES, KV_TILES);
+    LOG_PRINT("  out:    [%ld, %ld, %ld, %ld] (B, N, S, D) fp16\n", B, N, S, D);
+    LOG_PRINT("  lse:    [%ld, %ld, %ld]       (B, N, S)    float32\n", B, N, S);
+
+    std::vector<int64_t> actualSeqlenVector   = {S};
+    resources.actualSeqLengths  = aclCreateIntArray(actualSeqlenVector.data(),
+                                                     actualSeqlenVector.size());
+
+    std::vector<int64_t> actualSeqlenKvVector = {S};
+    resources.actualSeqLengthsKv = aclCreateIntArray(actualSeqlenKvVector.data(),
+                                                      actualSeqlenKvVector.size());
 
     return ACL_SUCCESS;
 }
 
 int ExecuteBlitzSparseAttention(TensorResources& resources, aclrtStream stream, 
                                void** workspaceAddr, uint64_t* workspaceSize) {
-    int64_t numHeads = 2;
-    int64_t numKeyValueHeads = 2;  // Same as numHeads for simplicity
-    float scaleValue = static_cast<float>(1.0 / sqrt(16.0));  // Proper scaling
+    int64_t numHeads = 8;
+    int64_t numKeyValueHeads = 8;
+    float scaleValue = static_cast<float>(1.0 / sqrt(128.0));
     int64_t preTokens = 65535;     // Large value to include all previous tokens
     int64_t nextTokens = 65535;    // Large value to include all next tokens
     int64_t sparseMode = 0;        // Basic sparse mode
     int64_t innerPrecise = 1;      // Standard precision
-    
+    bool    softmaxLseFlag = true; // Request LSE output
+
+    // block_shape attr (index 9): [BLOCK_SIZE_Q, BLOCK_SIZE_KV]. Supported pairs:
+    // (128,128) and (128,512). Default in this example matches the sabi shape
+    // computed above (Q_TILES = KV_TILES = S/128 → sabi at 128 granularity).
+    std::vector<int64_t> blockShapeVec = {128, 128};
+    aclIntArray* blockShape = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
+
     // Using BNSD layout as it's common for attention operations
     constexpr const char LAYER_OUT_STR[] = "BNSD";
-    constexpr size_t LAYER_OUT_LEN = sizeof(LAYER_OUT_STR);  
+    constexpr size_t LAYER_OUT_LEN = sizeof(LAYER_OUT_STR);
     char layerOut[LAYER_OUT_LEN];
     memcpy(layerOut, LAYER_OUT_STR, LAYER_OUT_LEN);
 
     aclOpExecutor* executor;
-    
+
     // Function call with all parameters in correct order
     int ret = aclnnBlitzSparseAttentionGetWorkspaceSize(
         resources.queryTensor,           // const aclTensor   *query,
@@ -233,10 +256,13 @@ int ExecuteBlitzSparseAttention(TensorResources& resources, aclrtStream stream,
         numKeyValueHeads,                // int64_t            numKeyValueHeads,
         sparseMode,                      // int64_t            sparseMode,
         innerPrecise,                    // int64_t            innerPrecise,
+        softmaxLseFlag,                  // bool               softmaxLseFlag,
+        blockShape,                      // const aclIntArray *blockShape,
         resources.outTensor,             // const aclTensor   *attentionOut,
+        resources.lseTensor,             // const aclTensor   *softmaxLse,
         workspaceSize,                   // uint64_t          *workspaceSize,
         &executor);                      // aclOpExecutor     **executor
-        
+
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnBlitzSparseAttentionGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -253,29 +279,53 @@ int ExecuteBlitzSparseAttention(TensorResources& resources, aclrtStream stream,
     ret = aclnnBlitzSparseAttention(*workspaceAddr, *workspaceSize, executor, stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnBlitzSparseAttention failed. ERROR: %d\n", ret);
+        aclDestroyIntArray(blockShape);
         return ret;
     }
 
+    aclDestroyIntArray(blockShape);
     return ACL_SUCCESS;
 }
 
 int ProcessResults(TensorResources& resources, const std::vector<int64_t>& outShape) {
     auto size = GetShapeSize(outShape);
-    std::vector<float> resultData(size, 0);  // Using float to match output tensor type
-    
-    int ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), 
-                         resources.outDeviceAddr, size * sizeof(resultData[0]), 
+    // Output tensor is ACL_FLOAT16 (uint16_t, 2 bytes per element)
+    std::vector<uint16_t> resultData(size, 0);
+
+    int ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
+                         resources.outDeviceAddr, size * sizeof(resultData[0]),
                          ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
-    
-    LOG_PRINT("Output results:\n");
-    for (int64_t i = 0; i < std::min(int64_t(10), size); i++) {  // Print first 10 values
-        LOG_PRINT("output[%ld] = %f\n", i, resultData[i]);
+
+    LOG_PRINT("Output results (first 10 values as raw fp16 hex):\n");
+    for (int64_t i = 0; i < std::min(int64_t(10), size); i++) {
+        LOG_PRINT("output[%ld] = 0x%04X\n", i, resultData[i]);
     }
-    
+
+    // LSE output: [B, N, S] float32
+    // outShape = {B, N, S, D}; lse shape = {B, N, S}
+    int64_t lseSize = outShape[0] * outShape[1] * outShape[2];
+    std::vector<float> lseData(lseSize, 0.0f);
+    ret = aclrtMemcpy(lseData.data(), lseData.size() * sizeof(float),
+                      resources.lseDeviceAddr, lseData.size() * sizeof(float),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("copy LSE from device to host failed. ERROR: %d\n", ret);
+        return ret;
+    }
+
+    // For all-ones input: score = D*(1/sqrt(D)) = sqrt(D), so
+    // LSE = log(S * exp(sqrt(D))) = log(S) + sqrt(D)
+    float expectedLse = std::log(static_cast<float>(outShape[2]))
+                      + std::sqrt(static_cast<float>(outShape[3]));
+    LOG_PRINT("LSE results (first 10 values, expect ~%.4f for all-ones input):\n", expectedLse);
+    for (int64_t i = 0; i < std::min(int64_t(10), lseSize); i++) {
+        LOG_PRINT("lse[%ld] = %f\n", i, lseData[i]);
+    }
+
     return ACL_SUCCESS;
 }
 
@@ -288,11 +338,12 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     if (resources.attenTensor) aclDestroyTensor(resources.attenTensor);
     if (resources.sabiTensor) aclDestroyTensor(resources.sabiTensor);
     if (resources.outTensor) aclDestroyTensor(resources.outTensor);
-    
+    if (resources.lseTensor) aclDestroyTensor(resources.lseTensor);
+
     // Cleanup arrays
     if (resources.actualSeqLengths) aclDestroyIntArray(resources.actualSeqLengths);
     if (resources.actualSeqLengthsKv) aclDestroyIntArray(resources.actualSeqLengthsKv);
-    
+
     // Cleanup device memory
     if (resources.queryDeviceAddr) aclrtFree(resources.queryDeviceAddr);
     if (resources.keyDeviceAddr) aclrtFree(resources.keyDeviceAddr);
@@ -300,6 +351,7 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     if (resources.attenDeviceAddr) aclrtFree(resources.attenDeviceAddr);
     if (resources.sabiDeviceAddr) aclrtFree(resources.sabiDeviceAddr);
     if (resources.outDeviceAddr) aclrtFree(resources.outDeviceAddr);
+    if (resources.lseDeviceAddr) aclrtFree(resources.lseDeviceAddr);
     
     // Cleanup workspace
     if (workspaceAddr) aclrtFree(workspaceAddr);
@@ -320,7 +372,7 @@ int main() {
     TensorResources resources = {};
     void* workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
-    std::vector<int64_t> outShape = {1, 2, 4, 16};
+    std::vector<int64_t> outShape = {1, 8, 512, 128};
     int ret = ACL_SUCCESS;
 
     LOG_PRINT("Initializing ACL...\n");

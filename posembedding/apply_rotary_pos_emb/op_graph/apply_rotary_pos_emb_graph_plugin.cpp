@@ -17,6 +17,11 @@
 #include "log/log.h"
 
 namespace ops {
+static constexpr size_t INPUT0 = 0;
+static constexpr size_t INPUT1 = 1;
+static constexpr size_t OUTPUT_0_IDX = 0;
+static constexpr size_t OUTPUT_1_IDX = 1;
+
 static ge::graphStatus ApplyRotaryPosEmbInferDtype(gert::InferDataTypeContext *context)
 {
     OP_LOGD(context, "ApplyRotaryPosEmbInferDtype begin.");

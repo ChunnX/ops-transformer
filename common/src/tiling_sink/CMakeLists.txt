@@ -21,21 +21,26 @@ file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES
     ${ATTENTION_SRC}/fused_infer_attention_score/op_host/checkers/*checker*.cpp)
 set(src_files
   ${ATTENTION_SRC}/common/op_host/fia_tiling_info.cpp
-  ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_nonquant_mla.cpp
-  ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_nonquant.cpp
-  ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_empty_tensor.cpp
+  ${ATTENTION_SRC}/common/op_host/arch22/fia_tiling_nonquant_mla.cpp
+  ${ATTENTION_SRC}/common/op_host/arch22/fia_tiling_nonquant.cpp
+  ${ATTENTION_SRC}/common/op_host/arch22/fia_tiling_empty_tensor.cpp
+  ${ATTENTION_SRC}/common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
+  ${ATTENTION_SRC}/common/op_host/arch35/fia_tiling_fullquant_mx.cpp
+  ${ATTENTION_SRC}/common/op_host/arch35/fia_tiling_fullquant_gqa.cpp
   ${ATTENTION_SRC}/common/op_host/fia_tiling_shape.cpp
   ${ATTENTION_SRC}/common/op_host/split_core.cpp
+  ${ATTENTION_SRC}/common/op_host/split_core_v2.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_info_parser.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_single_para.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_existence.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_feature.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_consistency.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_v3.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_check.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_check_single_para.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_check_existence.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_check_feature.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_check_consistency.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_v3.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v4.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch38/fused_infer_attention_score_tiling_arch38.cpp
   ${ARCH35_CHECKER_SRC_FILES}
   ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp
   ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
@@ -43,12 +48,13 @@ set(src_files
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_v2.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_check.cpp
+  ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_arch38.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/tiling_sink_registry.cpp
 )
 
 foreach(f ${src_files})
   if(NOT EXISTS ${f})
-    message(WARNING "File not found: ${f}")
+    message(ERROR "File not found: ${f}")
     return()
   endif()
 endforeach()
@@ -91,7 +97,8 @@ if (BUILD_OPEN_PROJECT)
     ${ASCEND_CANN_PACKAGE_PATH}/include
     ${ASCEND_CANN_PACKAGE_PATH}/include/base
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
-    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common
+    ${OPBASE_SOURCE_PATH}/include/op_common
+    ${OPBASE_SOURCE_PATH}/pkg_inc/op_common
     ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/aicpu_common/context/common
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/aicpu_common/context/utils
@@ -103,6 +110,7 @@ else ()
   target_include_directories(opmaster PRIVATE
     ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/ops-base/pkg_inc
+    ${TOP_DIR}/ops-base/include/op_common
     ${TOP_DIR}/ops-base/pkg_inc/op_common
     ${TOP_DIR}/ops-base/include/base
     ${TOP_DIR}/ops-base/pkg_inc/aicpu_common/context/common
@@ -149,7 +157,7 @@ find_library(DEVICE_REGISTER_EXIST device_register
 if (DEVICE_REGISTER_EXIST STREQUAL "DEVICE_REGISTER_EXIST-NOTFOUND")
     message(WARNING "device_register library not found!")
 else()
-    target_link_libraries(opmaster PRIVATE 
+    target_link_libraries(opmaster PRIVATE
     -Wl,--whole-archive
     device_register
     -Wl,--no-whole-archive

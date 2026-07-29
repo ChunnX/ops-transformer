@@ -11,7 +11,7 @@
 /*!
  * \file fia_tiling_nonquant.h
  * \brief
-*/
+ */
 #ifndef FIA_TILING_NONQUANT_GQA_H
 #define FIA_TILING_NONQUANT_GQA_H
 
@@ -38,8 +38,6 @@ struct FiaTilingKeyInfo {
     uint64_t kvLayoutType = 0;
     bool isFd = false;
     bool emptyTensor = false;
-    uint64_t maskMode = 0;
-    uint64_t matmulMode = 0;
     bool enableKvPrefix = false;
     bool enableS1OutSplit = false;
     bool isReconstructTemp = false;
@@ -59,9 +57,7 @@ struct FiaPlatFormInfo {
     uint64_t defaultSysWorkspaceSize = 0;
 };
 
-// TODO，删除无效变量
-
-class FiaTilingNonQuantArch35 : public FiaTilingBase { // TODO，类名与A3一致会报重复定义，是否要保持一致？
+class FiaTilingNonQuantArch35 : public FiaTilingBase {
 public:
     explicit FiaTilingNonQuantArch35(gert::TilingContext *context) : FiaTilingBase(context)
     {
@@ -71,6 +67,9 @@ public:
 protected:
     void InitTilingInfo(TilingInfo *tilingInfo) override;
     bool IsCapable() override;
+    bool IsCapableBasicCheckGqa();
+    bool IsCapableFeatureCheckGqa();
+    bool IsCapableSparseLayoutCheckGqa();
     ge::graphStatus DoOpTiling() override;
 
 private:
@@ -79,6 +78,9 @@ private:
     bool CheckS1OutSplit();
     void SplitOutSeq();
     void ComputeTilingData();
+    void SetAttenMaskTilingData();
+    void SetStartIdxTilingData();
+    void SetPageAttentionLayoutTilingData();
     void GenTilingKey();
     void CalcWorkspaceSize();
     void UpdateTilingKeyConfig();
@@ -86,21 +88,13 @@ private:
     void UpdateTilingKeyPseMode();
     void UpdateTilingKeyQuantMode();
     void UpdateTilingKeyHasRope();
-    void UpdateTilingKeyMaskMode();
-    void UpdateTilingKeyMatmulMode();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void AdjustSinnerAndSouter();
-    void GetPreNextTokensLeftUp(int64_t actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                int64_t &nextTokensLeftUp);
-    void FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                int64_t &nextTokensLeftUp);
     void InitImplParam();
     bool IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo);
     void GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
                          int64_t &safePreToken, int64_t &safeNextToken);
-    bool CheckEnableDN();
-    bool CheckQKVActualSeqLengthsRight();
     void PrintAllTilingData();
     void CalcMaxWorkspaceSize();
     void CalcScheduleMode();
@@ -116,7 +110,6 @@ private:
     uint32_t sOuterFactor_;
     uint32_t sInnerFactor_;
     bool flashDecodeFlag_ = false;
-    bool dnFlag_ = false;
     bool actualSeqLenQFlag_ = false;
     bool actualSeqLenKVFlag_ = false;
     bool actualSharedPrefixLenFlag_ = false;

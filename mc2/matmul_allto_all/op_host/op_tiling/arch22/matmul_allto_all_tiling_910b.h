@@ -66,9 +66,9 @@ protected:
 
 private:
     uint64_t tilingKey_;
-    bool isQuantBF16 = false;
     bool needTransX2 = false;
     bool hasBias = false;
+    uint32_t quantBiasType = 0;
     uint32_t quantType = 0;
     uint32_t tileM0 = 0;
     uint32_t tileN0 = 0;

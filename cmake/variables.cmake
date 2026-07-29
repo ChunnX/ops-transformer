@@ -14,7 +14,7 @@ set(OPSTATIC_NAME cann_${PKG_NAME}_static)
 set(OPAPI_NAME opapi_${PKG_NAME})
 set(OPGRAPH_NAME opgraph_${PKG_NAME})
 set(GRAPH_PLUGIN_NAME graph_plugin_${PKG_NAME})
-set(ONNX_PLUGIN_NAME op_${PKG_NAME}_onnx_plugin)
+set(ONNX_PLUGIN_NAME oponnx_plugin_${PKG_NAME})
 if(NOT CANN_3RD_LIB_PATH)
   set(CANN_3RD_LIB_PATH ${PROJECT_SOURCE_DIR}/third_party)
 endif()
@@ -44,6 +44,7 @@ get_filename_component(OPS_TRANSFORMER_COMMON_INC_EXTERNAL "${OPS_TRANSFORMER_CO
 get_filename_component(OPS_TRANSFORMER_COMMON_INC_HEADERS  "${OPS_TRANSFORMER_COMMON_INC_EXTERNAL}/aclnn_kernels"       REALPATH)
 get_filename_component(OPS_KERNEL_BINARY_SCRIPT     "${OPS_TRANSFORMER_DIR}/scripts/kernel/binary_script"       REALPATH)
 get_filename_component(OPS_KERNEL_BINARY_CONFIG     "${OPS_TRANSFORMER_DIR}/scripts/kernel/binary_config"       REALPATH)
+get_filename_component(BLAZE                        "${OPTENSOR_SOURCE_PATH}/include/blaze"                     REALPATH)
 
 # python
 if(NOT DEFINED ASCEND_PYTHON_EXECUTABLE)
@@ -69,6 +70,8 @@ if (ENABLE_BUILT_IN)
   set(VERSION_INFO_INSTALL_DIR        ${CMAKE_SYSTEM_PROCESSOR}-linux)
   set(WHL_INSTALL_DIR                 ops_transformer)
   set(IMPL_INSTALL_DIR                opp/built-in/op_impl/ai_core/tbe/impl/ops_transformer)
+  set(AICPU_HOST_KERNEL_IMPL          ops_transformer/built-in/op_impl/host_cpu)
+  set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME ops-transformer)
 else()
  	# custom pkg
  	set(ES_INC_INSTALL_DIR              packages/vendors/${VENDOR_NAME}_transformer/op_proto/es/include)
@@ -108,6 +111,7 @@ execute_process(
 set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR}/build_out)
 
 set(OPAPI_INCLUDE
+  ${OPBASE_INC_DIRS}
   ${C_SEC_INCLUDE}
   ${PLATFORM_INC_DIRS}
   ${METADEF_INCLUDE_DIRS}
@@ -140,27 +144,30 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/mc2/communication_and_computation
     ${TOP_DIR}/runtime/include/external/acl/error_codes
     ${TOP_DIR}/runtime/include/external
+    ${TOP_DIR}/runtime/include/dfx
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/runtime
     ${TOP_DIR}/asl/ops/cann/ops/built-in
+    ${TOP_DIR}/ops-base/include/op_common/op_host
+    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
     ${TOP_DIR}/ops-base/pkg_inc
-    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
     ${TOP_DIR}/hcomm/include
     ${TOP_DIR}/hccl/include
     ${TOP_DIR}/tmp/host-prefix/src/host-build/asl/ops/cann/ops/built-in/op_host/inner/
   )
 else()
-  list(APPEND OPAPI_INCLUDE ${OPBASE_INC_DIRS} ${OPS_TRANSFORMER_DIR}/build/autogen/inner/)
+  list(APPEND OPAPI_INCLUDE ${OPS_TRANSFORMER_DIR}/build/autogen/inner/)
 endif()
 
 set(OP_TILING_INCLUDE
+  ${OPBASE_INC_DIRS}
   ${C_SEC_INCLUDE}
   ${PLATFORM_INC_DIRS}
   ${METADEF_INCLUDE_DIRS}
   ${TILINGAPI_INC_DIRS}
   ${NPURUNTIME_INCLUDE_DIRS}
-  ${OPBASE_INC_DIRS}
+  ${OPBASE_SOURCE_PATH}/include/op_common
   ${NNOPBASE_INCLUDE_DIRS}
   ${AICPU_INC_DIRS}
   ${OPS_TRANSFORMER_DIR}
@@ -168,7 +175,7 @@ set(OP_TILING_INCLUDE
   ${OPS_TRANSFORMER_DIR}/common/include
   ${OPS_TRANSFORMER_DIR}/common/include/
   ${OPS_TRANSFORMER_DIR}/common/stub/op_tiling
-  
+
    ${OPS_TRANSFORMER_DIR}/mc2/common
    ${OPS_TRANSFORMER_DIR}/mc2/common/utils
    ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
@@ -204,9 +211,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/built-in
 
     ${TOP_DIR}/asl/ops/cann/ops/mc2/communication_and_computation
+    ${TOP_DIR}/ops-base/include/op_common/op_host
+    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
     ${TOP_DIR}/ops-base/pkg_inc
-    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
 
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_proto/runtime
@@ -220,10 +228,10 @@ if (NOT BUILD_OPEN_PROJECT)
 endif()
 
 set(OP_PROTO_INCLUDE
+  ${OPBASE_INC_DIRS}
   ${C_SEC_INCLUDE}
   ${PLATFORM_INC_DIRS}
   ${METADEF_INCLUDE_DIRS}
-  ${OPBASE_INC_DIRS}
   ${NPURUNTIME_INCLUDE_DIRS}
   ${OPS_TRANSFORMER_DIR}/common/include/
   ${OPS_TRANSFORMER_DIR}
@@ -255,9 +263,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/ace/npuruntime/acl/inc/external/acl/error_codes
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/runtime
     ${TOP_DIR}/asl/ops/cann/ops/built-in
+    ${TOP_DIR}/ops-base/include/op_common/op_host
+    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
     ${TOP_DIR}/ops-base/pkg_inc
-    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
     ${TOP_DIR}/hcomm/include
     ${TOP_DIR}/hccl/include

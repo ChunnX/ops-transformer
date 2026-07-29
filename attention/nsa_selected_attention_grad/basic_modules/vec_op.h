@@ -15,7 +15,7 @@
 
 #pragma once
 #include "kernel_operator.h"
-#include "common_header.h"
+#include "nsa_selected_attention_grad_common_header.h"
 
 namespace NSAG_BASIC {
 struct StaticParams {
@@ -452,7 +452,7 @@ __aicore__ inline void VecOp<NSAGT>::CalSoftmax(const int32_t loopIdx, const int
                                                 const int64_t mm345Addr, const uint64_t indicesGmOffset,
                                                 const int64_t s1Index, const int32_t blkCntOffset)
 {
-    int64_t dataSize = processM * params.sftBaseN;
+    int64_t dataSize = static_cast<int64_t>(processM) * static_cast<int64_t>(params.sftBaseN);
     int64_t maxOffset = loopIdx * params.sftBaseM * BLOCK_FP32;
     auto tmpMaxTensor = maxTensor[maxOffset];
     auto tmpSumTensor = sumTensor[maxOffset];
@@ -521,7 +521,8 @@ __aicore__ inline void VecOp<NSAGT>::Process(const int64_t dyGmOffset, const int
 
     for (int32_t i = 0; i < loop; i++) {
         if (i == 0) {
-            AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<int32_t>(vWaitMte2)); // wait softmax_max and softmax_sum MTE2
+            AscendC::WaitFlag<HardEvent::MTE2_V>(
+                static_cast<int32_t>(vWaitMte2)); // wait softmax_max and softmax_sum MTE2
         }
         if (i == loop - 1 && tailM != 0) {
             processM = tailM;

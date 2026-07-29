@@ -11,7 +11,7 @@
 #ifndef CATLASS_CONV_COORD_HPP
 #define CATLASS_CONV_COORD_HPP
 
-#include "../gmm_infra/coord.hpp"
+#include "../gmm_infra/gmm_coord.hpp"
 
 namespace Catlass {
 

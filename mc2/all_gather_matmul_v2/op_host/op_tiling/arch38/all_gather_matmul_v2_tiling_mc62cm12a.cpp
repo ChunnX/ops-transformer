@@ -14,7 +14,7 @@
  */
 
 #include "mc2_log.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
@@ -23,9 +23,9 @@ using namespace AscendC;
 using namespace ge;
 
 namespace optiling {
-ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext* context)
+ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext *context)
 {
     OP_LOGI("AllGatherMatmulTilingV2", "Start to do tiling in AllGatherMatmulTilingV2Func mc62cm12a");
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
-}  // namespace optiling
+} // namespace optiling

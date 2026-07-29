@@ -19,7 +19,7 @@
 #include "log/log.h"
 #include "err/ops_err.h"
 #include <register/op_impl_registry.h>
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 using namespace Ops::Transformer::OpTiling;
 namespace {
     constexpr uint64_t WORKSIZE = static_cast<uint64_t>(16) * 1024 * 1024;
@@ -97,8 +97,8 @@ ge::graphStatus NsaCompressGradTiling::DoOpTiling()
 
     const auto& inputKvShape = GetShapeOfInput(INDEXONE);
     tSeqLen_ = static_cast<uint32_t>(inputKvShape.GetDim(INDEXZERO));
-    auto headToProcessPerCore = tSeqLen_ * nHeads / aivNum_;
-    auto headRemainder = (tSeqLen_ * nHeads) % aivNum_;
+    auto headToProcessPerCore = static_cast<uint64_t>(tSeqLen_) * nHeads / aivNum_;
+    auto headRemainder = (static_cast<uint64_t>(tSeqLen_) * nHeads) % aivNum_;
 
     auto batchSize = 1;
     const auto& actSeqLenShape = context_->GetOptionalInputShape(INDEXTHREE);
@@ -143,8 +143,15 @@ ge::graphStatus NsaCompressGradTiling::GetWorkspaceSize() {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     size_t sysWorkspaceSize = WORKSIZE;
     /* usrWorkspaceSize = workspace for other gm */
-    size_t usrWorkspaceSize = tilingData_.get_blockSize() * tilingData_.get_numOfHead() * sizeof(uint32_t) * aivNum_ +
-    tSeqLen_ * tilingData_.get_numOfHead() * tilingData_.get_dimOfHead() * sizeof(uint32_t) + ONE_KILO * ONE_KILO;
+    int64_t usrWorkspaceSizeTmp = static_cast<int64_t>(tilingData_.get_blockSize()) *
+                                  static_cast<int64_t>(tilingData_.get_numOfHead()) *
+                                  sizeof(uint32_t) * static_cast<int64_t>(aivNum_) +
+                                  static_cast<int64_t>(tSeqLen_) *
+                                  static_cast<int64_t>(tilingData_.get_numOfHead()) *
+                                  static_cast<int64_t>(tilingData_.get_dimOfHead()) *
+                                  sizeof(uint32_t) +
+                                  static_cast<int64_t>(ONE_KILO) * ONE_KILO;
+    size_t usrWorkspaceSize = static_cast<size_t>(usrWorkspaceSizeTmp);
     workspaces[0] = sysWorkspaceSize + usrWorkspaceSize;
     return ge::GRAPH_SUCCESS;
 }

@@ -25,7 +25,7 @@ add_ops_compile_options(
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)
-    set(SUPPORTED_ARCHS arch32 arch35)
+    set(SUPPORTED_ARCHS arch22 arch35)
     add_modules_sources(OPTYPE compressor ACLNNTYPE aclnn)
     add_tiling_modules()
 

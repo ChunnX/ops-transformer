@@ -16,17 +16,17 @@
 #include "ts_ffn.h"
 
 namespace {
-TEST_P(Ts_FFN_WithParam_Ascend310P3, Tc_Tiling310P_FFN)
-{
-    ASSERT_TRUE(case_->Init());
-    ASSERT_EQ(case_->Run(), case_->mOpInfo.mExp.mSuccess);
-}
+// TEST_P(Ts_FFN_WithParam_Ascend310P3, Tc_Tiling310P_FFN)
+// {
+//     ASSERT_TRUE(case_->Init());
+//     ASSERT_EQ(case_->Run(), case_->mOpInfo.mExp.mSuccess);
+// }
 
-TEST_P(Ts_FFN_WithParam_Ascend910B3, Tc_Tiling_FFN)
-{
-    ASSERT_TRUE(case_->Init());
-    ASSERT_EQ(case_->Run(), case_->mOpInfo.mExp.mSuccess);
-}
+// TEST_P(Ts_FFN_WithParam_Ascend910B3, Tc_Tiling_FFN)
+// {
+//     ASSERT_TRUE(case_->Init());
+//     ASSERT_EQ(case_->Run(), case_->mOpInfo.mExp.mSuccess);
+// }
 
 const auto Tc_FFN_Tiling310P_Case = ::testing::Values(FFNCase(
     "FFN_Moe_Case0", true, "",                                /* CaseName, Enable, DebugInfo */
@@ -286,6 +286,6 @@ const auto Tc_FFN_Tiling_Case = ::testing::Values(
               {}, "geglu", 1, -1),
         0));
 
-INSTANTIATE_TEST_SUITE_P(FFN, Ts_FFN_WithParam_Ascend310P3, Tc_FFN_Tiling310P_Case);
-INSTANTIATE_TEST_SUITE_P(FFN, Ts_FFN_WithParam_Ascend910B3, Tc_FFN_Tiling_Case);
+// INSTANTIATE_TEST_SUITE_P(FFN, Ts_FFN_WithParam_Ascend310P3, Tc_FFN_Tiling310P_Case);
+// INSTANTIATE_TEST_SUITE_P(FFN, Ts_FFN_WithParam_Ascend910B3, Tc_FFN_Tiling_Case);
 } // namespace

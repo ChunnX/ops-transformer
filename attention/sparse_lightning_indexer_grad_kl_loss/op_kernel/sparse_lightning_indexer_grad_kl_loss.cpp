@@ -16,9 +16,9 @@
 using namespace AscendC;
 
 #if __CCE_AICORE__ != 310
-#include "arch32/sparse_lightning_indexer_grad_kl_loss_template_tiling_key.h"
-#include "arch32/sparse_lightning_indexer_grad_kl_loss_base.h"
-#include "arch32/sparse_lightning_indexer_grad_kl_loss_common.h"
+#include "arch22/sparse_lightning_indexer_grad_kl_loss_template_tiling_key.h"
+#include "arch22/sparse_lightning_indexer_grad_kl_loss_base.h"
+#include "arch22/sparse_lightning_indexer_grad_kl_loss_common.h"
 #define SLI_OP_IMPL(templateClass, tilingdataClass, ...)                                                               \
     do {                                                                                                               \
         templateClass<SLIType<__VA_ARGS__>> op;                                                                        \
@@ -76,15 +76,15 @@ sparse_lightning_indexer_grad_kl_loss(__gm__ uint8_t *query, __gm__ uint8_t *key
 
     if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16) {
         SLI_OP_IMPL(SparseLightningIndexerGradKLLossKernelBase,
-                    optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, half, half, float,
+                    optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, half, half, DTYPE_WEIGHT, float,
                     static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT), SLISparseMode::RightDown,
                     HasRope, Deterministic);
     }
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16) {
         SLI_OP_IMPL(SparseLightningIndexerGradKLLossKernelBase,
-                    optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, bfloat16_t, bfloat16_t, float,
-                    static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT), SLISparseMode::RightDown,
-                    HasRope, Deterministic);
+                    optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, bfloat16_t, bfloat16_t, DTYPE_WEIGHT,
+                    float, static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT),
+                    SLISparseMode::RightDown, HasRope, Deterministic);
     }
 #else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

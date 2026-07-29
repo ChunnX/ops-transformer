@@ -14,7 +14,7 @@
  */
 
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "mc2_log.h"
 
 using namespace Ops::Transformer::OpTiling;
@@ -22,19 +22,18 @@ using namespace ge;
 
 namespace optiling {
 
-ge::graphStatus MoeDistributeDispatchSetupTilingFunc(gert::TilingContext* context)
+ge::graphStatus MoeDistributeDispatchSetupTilingFunc(gert::TilingContext *context)
 {
     return TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-ge::graphStatus TilingParseForMoeDistributeDispatchSetup(gert::TilingParseContext* context)
+ge::graphStatus TilingParseForMoeDistributeDispatchSetup(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
-struct MoeDistributeDispatchSetupCompileInfo {
-};
+struct MoeDistributeDispatchSetupCompileInfo {};
 IMPL_OP_OPTILING(MoeDistributeDispatchSetup)
     .Tiling(MoeDistributeDispatchSetupTilingFunc)
     .TilingParse<MoeDistributeDispatchSetupCompileInfo>(TilingParseForMoeDistributeDispatchSetup);

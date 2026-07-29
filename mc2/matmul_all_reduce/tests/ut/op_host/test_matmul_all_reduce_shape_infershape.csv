@@ -5,3 +5,6 @@ invalid_zero_k,SUCCESS,32 0,FLOAT16,ND,0 128,INT32,ND,,,,,,,,,,,,,,,,,,,,,,,,,32
 3dim_quant_v4,SUCCESS,4 8 64,FLOAT16,ND,64 128,INT32,ND,,,,,,,,,,,,,,,,,,,,,,,,,4 8 128,FLOAT16,ND,group,sum,0,0,0,0,0,UNDEFINED,0,8
 add_rms_norm,SUCCESS,4 8 64,FLOAT16,ND,64 128,INT32,ND,128,INT32,ND,4 8 128,INT32,ND,,,,,,,,,,,,,,,,,,,4 8 128,FLOAT16,ND,group,sum,0,0,0,0,0,UNDEFINED,0,8
 invalid_k,FAILED,32 8,FLOAT16,ND,64 128,INT32,ND,,,,,,,,,,,,,,,,,,,,,,,,,0,FLOAT16,ND,group,sum,0,0,0,0,0,UNDEFINED,0,8
+pergroup_scale_valid,SUCCESS,32 1024,FLOAT16,ND,1024 4096,INT8,ND,,,,,,,16 4096,FLOAT16,ND,,,,,,,,,,,,,,,,32 4096,FLOAT16,ND,group,sum,0,0,0,64,0,UNDEFINED,0,8
+pergroup_scale_trans_b,SUCCESS,32 1024,FLOAT16,ND,4096 1024,INT8,ND,,,,,,,4096 16,FLOAT16,ND,,,,,,,,,,,,,,,,32 4096,FLOAT16,ND,group,sum,0,1,0,64,0,UNDEFINED,0,8
+invalid_pergroup_scale,FAILED,32 1024,FLOAT16,ND,1024 4096,INT8,ND,,,,,,,16 2048,FLOAT16,ND,,,,,,,,,,,,,,,,32 4096,FLOAT16,ND,group,sum,0,0,0,64,0,UNDEFINED,0,8

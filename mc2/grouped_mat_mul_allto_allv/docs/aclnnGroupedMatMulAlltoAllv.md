@@ -6,11 +6,11 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -35,7 +35,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnGroupedMatMulAlltoAllvGetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnGroupedMatMulAlltoAllv`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnGroupedMatMulAlltoAllvGetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnGroupedMatMulAlltoAllv`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
@@ -43,7 +43,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor*   gmmWeight,
     const aclTensor*   sendCountsTensorOptional,
     const aclTensor*   recvCountsTensorOptional,
-    const aclTensor*   mmXOptional,            
+    const aclTensor*   mmXOptional,
     const aclTensor*   mmWeightOptional,
     const char*        group,
     int64_t            epWorldSize,
@@ -165,7 +165,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     <td>epWorldSize（int64_t）</td>
     <td>输入</td>
     <td>ep通信域size。</td>
-    <td><ul><li><term>Atlas A3系列产品</term>支持8、16、32、64、128。</li><li><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</li></ul></td>
+    <td><ul><li><term>Atlas A3系列产品</term>支持8、16、32、64、128。</li><li><term>Ascend 950DT</term>支持2、4、8、16、32、64。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -255,7 +255,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一阶段接口完成入参校验，出现以下场景报错：
 
@@ -323,12 +323,15 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnGroupedMatMulAlltoAllv默认确定性实现。
+- 通信引擎约束：
+  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信。
+  - Ascend 950DT：支持AI_CPU通信。
 
 - 参数说明里shape使用的变量：
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。
@@ -340,17 +343,17 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
   - BS：batch sequence size。
   - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡发送的token数，是sendCounts参数累加之和。
-  - ep通信域内所有卡的 A 参数的累加和等于所有卡上的 BSK 参数的累加和。
+  - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>: 单卡通信量在2MB以下可能存在性能劣化。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  : 单卡通信量在2MB以下可能存在性能劣化。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950DT</term>：
 
     ```Cpp
     #include <thread>
@@ -414,7 +417,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         aclrtContext context;
     };
 
-    // shape 基本信息
+    // shape基本信息
     constexpr int64_t EP_WORLD_SIZE = 8;
     constexpr int64_t BS = 4096;
     constexpr int64_t K = 2;
@@ -533,9 +536,9 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         ret = aclnnGroupedMatMulAlltoAllv(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnGroupedMatMulAlltoAllv failed. ret = %d \n", ret);
                 return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); 
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
                 return ret);
         // 释放device资源，需要根据具体API的接口定义修改
         if (args.rankId == 0) {
@@ -588,7 +591,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         return 0;
     }
 
-    int main(int argc, char *argv[]) 
+    int main(int argc, char *argv[])
     {
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);

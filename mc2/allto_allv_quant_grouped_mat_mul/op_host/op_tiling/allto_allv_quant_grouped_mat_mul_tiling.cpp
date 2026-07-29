@@ -25,24 +25,23 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "allto_allv_quant_grouped_mat_mul_tiling_base.h"
 #include "register/op_impl_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "context_util.h"
 
 using namespace ge;
 using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {
-struct AlltoAllvGmmCompileInfo {
-};
+struct AlltoAllvGmmCompileInfo {};
 
-static ge::graphStatus TilingParseForAlltoAllvGmm(gert::TilingParseContext* context)
+static ge::graphStatus TilingParseForAlltoAllvGmm(gert::TilingParseContext *context)
 {
     auto compileInfo = context->GetCompiledInfo<AlltoAllvGmmCompileInfo>();
     OPS_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus AlltoAllvGmmTilingFunc(gert::TilingContext* context)
+static ge::graphStatus AlltoAllvGmmTilingFunc(gert::TilingContext *context)
 {
     return TilingRegistry::GetInstance().DoTilingImpl(context);
 }

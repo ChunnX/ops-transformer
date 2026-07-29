@@ -17,6 +17,8 @@
 #include "mc2_platform_info.h"
 #include "mc2_common_log.h"
 #include "ge/ge_utils.h"
+#include <dlfcn.h>      // dlopen 动态加载
+#include "acl/acl_rt.h" // 运行时判断cann ver
 
 namespace ops {
 const std::string FUSION_PASS_NAME = "MatmulAllToAllTransposeA5FusionPass";
@@ -46,6 +48,45 @@ struct ReplaceGraphInputs {
     ge::es::EsTensorHolder rX2Offset;
 };
 
+// 加载 EsTranspose 符号
+namespace {
+typedef EsCTensorHolder *(*EsTransposeFunc)(EsCTensorHolder *, EsCTensorHolder *);
+
+EsTransposeFunc GetEsTransposeFunc()
+{
+    void *handle = dlopen("libes_math.so", RTLD_LAZY | RTLD_GLOBAL);
+    if (!handle) {
+        OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlopen failed: %s", dlerror());
+        return nullptr;
+    }
+    dlerror();
+    auto func = reinterpret_cast<EsTransposeFunc>(dlsym(handle, "EsTranspose"));
+    if (dlerror() != nullptr) {
+        OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlsym EsTranspose failed");
+        return nullptr;
+    }
+    return func;
+}
+
+ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike &x, const ge::es::EsTensorLike &perm)
+{
+    static EsTransposeFunc func = GetEsTransposeFunc();
+    auto *builder = ge::es::ResolveBuilder(x, perm);
+    auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
+    return result;
+}
+
+ge::CustomPassStage GetMatmulAlltoAllTransposeA5FusionPassStage()
+{
+    int32_t version = 0;
+    aclsysGetVersionNum("ge_compiler", &version);
+    if (version >= GRAPH_FUSION_SUPPORT_VERSION) {
+        return ge::CustomPassStage::kCompatibleInherited;
+    }
+    return ge::CustomPassStage::kBeforeInferShape;
+}
+} // namespace
+
 static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
 {
     std::string patternName = FUSION_PASS_NAME + PATTERN_TRANSPOSE;
@@ -54,7 +95,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
     }
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     auto [x1, x2, bias, x1Scale, x2Scale] = graphBuilder.CreateInputs<5>();
-    auto transpose = ge::es::Transpose(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
+    auto transpose = TransposeDL(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
     // 必选attr 设置默认值
     std::string group = std::string("");
     int64_t worldSize = 0;
@@ -342,11 +383,16 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     int64_t groupSize = 0;
     OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr group_size failed.");
-    auto mc2 =
-        ge::es::MatmulAlltoAll(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
-                               inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
-                               inputTensors.rX2Offset, group.GetString(), worldSize, all2allAxes, yDType, x1QuantMode,
-                               x2QuantMode, commQuantMode, commQuantDType, transposeX1, transposeX2, groupSize);
+
+    ge::AscendString commMode = "";
+    OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr comm_mode failed.");
+
+    auto mc2 = ge::es::MatmulAlltoAll(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
+                                      inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
+                                      inputTensors.rX2Offset, group.GetString(), worldSize, all2allAxes, yDType,
+                                      x1QuantMode, x2QuantMode, commQuantMode, commQuantDType, transposeX1, transposeX2,
+                                      groupSize, commMode.GetString());
 
     return replaceGraphBuilder.BuildAndReset({mc2});
 }
@@ -366,6 +412,14 @@ std::vector<ge::fusion::PatternUniqPtr> MatmulAllToAllTransposeA5FusionPass::Pat
 bool MatmulAllToAllTransposeA5FusionPass::MeetRequirements(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter MeetRequirements for MatmulAllToAllTransposeA5FusionPass");
+
+    // 9.0.0 版本前运行降级stage 空跑
+    int32_t geCompilerVersion = 0;
+    aclsysGetVersionNum("ge_compiler", &geCompilerVersion);
+    if (geCompilerVersion < GRAPH_FUSION_SUPPORT_VERSION) {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Skip in MeetRequirements when cann version not compatible.");
+        return false;
+    }
 
     // 是否ascend950
     if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
@@ -414,7 +468,6 @@ MatmulAllToAllTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusio
     return std::move(replaceGraph);
 }
 
-REG_FUSION_PASS(MatmulAllToAllTransposeA5FusionPass)
-    .Stage(ge::CustomPassStage::kCompatibleInherited); // 兼容性场景下指定stage
+REG_FUSION_PASS(MatmulAllToAllTransposeA5FusionPass).Stage(GetMatmulAlltoAllTransposeA5FusionPassStage());
 } // namespace ops
 #endif // GRAPH_FUSION_SUPPORT_VERSION

@@ -249,4 +249,40 @@ TEST_F(MoeDistributeCombineTeardownInfershape, InferShape_expertIds_1dim)
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, xOutputShape);
 }
 
+TEST_F(MoeDistributeCombineTeardownInfershape, InferShape_debug_log)
+{
+    setenv("ASCEND_GLOBAL_LOG_LEVEL", "0", 1);
+    gert::StorageShape expandXShape = {{48, 4096}, {}};
+    gert::StorageShape quantExpandXShape = {{48, 4096}, {}};
+    gert::StorageShape expertIdsShape = {{8, 6}, {}};
+    gert::StorageShape expandIdxShape = {{48}, {}};
+    gert::StorageShape expertScalesShape = {{8, 6}, {}};
+    gert::StorageShape commCmdInfoShape = {{128}, {}};
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeDistributeCombineTeardown",
+        {{expandXShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {quantExpandXShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND},
+         {expandIdxShape, ge::DT_INT32, ge::FORMAT_ND},
+         {expertScalesShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {commCmdInfoShape, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep",
+          Ops::Transformer::AnyValue::CreateFrom<std::string>("moe_distribute_combine_teardown_test_group")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    std::vector<std::vector<int64_t>> xOutputShape = {{8, 4096}};
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, xOutputShape);
+    setenv("ASCEND_GLOBAL_LOG_LEVEL", "3", 1);
+}
+
 } // namespace MoeDistributeCombineTeardownInferShapeUT

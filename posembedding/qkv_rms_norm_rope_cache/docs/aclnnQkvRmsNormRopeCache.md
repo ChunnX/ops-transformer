@@ -18,13 +18,13 @@
 
   |场景类型|情况概要|
   |:---|:---|
-  |<ul><li>cacheMode为PA_NZ</li><li>q无量化</li><li>k和v支持无量化、对称量化和非对称量化</li><li>qBeforeQuant/kBeforeQuant/vBeforeQuant不输出</li></ul>|qkv Shape为[$B_{qkv}$ * $S_{qkv}$, $N_{qkv}$ * $D_{qkv}$]，q、k、v具有完全相同的D维度。主要计算过程与输出对应关系：<br><ul><li>qkv 经过SplitVD->q、k、v</li><li>q经过RmsNorm、RoPE->qOut</li><li>k经过RmsNorm、RoPE、Quant(可选)、Scatter->kCache</li><li>v经过Quant(可选)、Scatter->vCache</li></ul>|
+  |<ul><li>cacheMode为PA_NZ</li><li>q无量化</li><li>k和v支持无量化、对称量化和非对称量化</li><li>qBeforeQuant/kBeforeQuant/vBeforeQuant不输出</li></ul>|qkv Shape为[$B_{qkv}$ * $S_{qkv}$, $N_{qkv}$ * $D_{qkv}$]，q、k、v具有完全相同的D维度。主要计算过程与输出对应关系：<br><ul><li>qkv经过SplitVD->q、k、v</li><li>q经过RmsNorm、RoPE->qOut</li><li>k经过RmsNorm、RoPE、Quant(可选)、Scatter->kCache</li><li>v经过Quant(可选)、Scatter->vCache</li></ul>|
 
 - 计算公式：
 
   (1) SplitVD:
 
-  下式中，$N_q$、$N_k$、$N_v$分别表示 q、k、v 分量的注意力头数量，必须满足：
+  下式中，$N_q$、$N_k$、$N_v$分别表示q、k、v分量的注意力头数量，必须满足：
 
   $$
   \begin{cases}
@@ -77,7 +77,7 @@
   $$
   y\_RoPE = torch.cat((-y2, y1), dim = -1)
   $$
-  
+
   $$
   y\_embed = (y * cos) + y\_RoPE * sin
   $$
@@ -99,7 +99,7 @@
   $$
 
   非对称量化部分：
-  
+
   $$
   kQuant = kRoPE / kScale + kOffset \\
   vQuant = v / vScale + vOffset
@@ -107,7 +107,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQkvRmsNormRopeCacheGetWorkspaceSize”接口获得入参并根据流程计算所需workspace大小，再调用“aclnnQkvRmsNormRopeCache”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnQkvRmsNormRopeCacheGetWorkspaceSize”接口获得入参并根据流程计算所需workspace大小，再调用“aclnnQkvRmsNormRopeCache”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnQkvRmsNormRopeCacheGetWorkspaceSize(
@@ -394,7 +394,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
@@ -469,7 +469,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -489,7 +489,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -569,7 +569,7 @@ int CreateAclTensor(
 
 int main()
 {
-    // 1. 固定写法，device/stream初始化, 参考acl API
+    // 1. 固定写法，device/stream初始化，参考acl API
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -699,7 +699,7 @@ int main()
     aclDestroyTensor(kScale);
     aclDestroyTensor(vScale);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(qkvDeviceAddr);
     aclrtFree(qGammaDeviceAddr);
     aclrtFree(kGammaDeviceAddr);

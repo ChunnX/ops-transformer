@@ -41,6 +41,7 @@ protected:
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
     uint64_t GetTilingKey() const override;
+    CutResult GetTilingResult() override;
 
     ge::graphStatus CheckOpInputInfo();
     ge::graphStatus InitTilingContextParameters();

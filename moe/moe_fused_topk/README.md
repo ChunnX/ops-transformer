@@ -135,7 +135,7 @@
       <tr>
         <td>enableExpertMapping</td>
         <td>属性</td>
-        <td>是否使能物理专家到逻辑专家的映射。</td>
+        <td>是否开启物理专家到逻辑专家的映射。</td>
         <td>BOOL</td>
         <td>-</td>
       </tr>

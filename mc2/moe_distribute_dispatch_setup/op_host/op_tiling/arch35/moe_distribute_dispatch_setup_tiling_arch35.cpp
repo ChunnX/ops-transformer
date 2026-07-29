@@ -17,7 +17,7 @@
 #include "mc2_log.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 
 namespace {
 
@@ -48,8 +48,7 @@ void MoeDistributeDispatchSetupTilingA5::SetHcommCfg()
     OP_LOGD(nodeName_, "MoeDistributeCombineSetup groupEp = %s", groupEp_.c_str());
     uint32_t opType = OP_TYPE_ALL_TO_ALL;
     std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
-    uint8_t aivEngineValue =
-        npuArch_ == NpuArch::DAV_3510 ? mc2tiling::AIV_ENGINE : mc2tiling::AIV_ENGINE;
+    uint8_t aivEngineValue = npuArch_ == NpuArch::DAV_3510 ? mc2tiling::AIV_ENGINE : mc2tiling::AIV_ENGINE;
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp_, opType, algConfigStr);
     mc2CcTilingConfig.SetCommEngine(aivEngineValue); // AIV_UB-MEM or AIV_URMA

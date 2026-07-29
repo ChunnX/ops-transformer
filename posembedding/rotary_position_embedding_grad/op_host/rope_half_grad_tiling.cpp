@@ -156,11 +156,11 @@ static ge::graphStatus RopeHalfGradShapeDimCheck(const gert::TilingContext* cont
 
     uint64_t inputDimNum = DIM_FOUR;
 
-    if (xDimNum == DIM_THREE) {
+    isTndLayout = (xDimNum == DIM_THREE);
+    if (isTndLayout) {
         // TND
         OP_LOGD(context->GetNodeName(), "Enter TND layout.");
         inputDimNum = DIM_THREE;
-        isTndLayout = true;
     }
 
     if (xDimNum != inputDimNum) {
@@ -259,9 +259,16 @@ static uint64_t RopeHalfGradSelectLayout(
         // SBND and SB1D
         layout = LAYOUT_KEY_SBND;
     } else {
-        OP_LOGE(
-            context->GetNodeName(), "invalid shape! x shape: [%ld, %ld, %ld, %ld] and cos shape: [%ld, %ld, %ld, %ld]",
-            xDim0, xDim1, xDim2, xShapePerDim[DIM_THREE], cosDim0, cosDim1, cosDim2, xShapePerDim[DIM_THREE]);
+        const auto xStorage = context->GetInputShape(INDEX_GRAD);
+        OP_CHECK_NULL_WITH_CONTEXT(context, xStorage);
+        const auto xShape = xStorage->GetStorageShape();
+        const auto cosStorage = context->GetInputShape(INDEX_COS);
+        OP_CHECK_NULL_WITH_CONTEXT(context, cosStorage);
+        const auto cosShape = cosStorage->GetStorageShape();
+
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(xShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos and dy", shapeMsg.c_str(),
+            "Each axis of input cos except the last must be 1 or equal to the same axis of input dy");
     }
 
     return layout;

@@ -14,8 +14,8 @@
  */
 #include "platform/platform_info.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "tiling/tiling_api.h"
 #include "moe_gating_top_k_softmax_tiling_base.h"
 #include "log/log.h"
@@ -154,7 +154,8 @@ ge::graphStatus MoeGatingTopKSoftmaxKFullLoadTiling::DoOpTiling()
     tilingData.set_blockTail(row - (tilingData.get_blockNum() - 1) * tilingData.get_blockFormer());
 
     if (!CalculateParamInUb()) {
-        OP_LOGE("[MoeGatingTopKSoftmaxK]", "AutoTiling failed, the K is too large.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("[MoeGatingTopKSoftmaxK]", "k", std::to_string(k),
+                                              "AutoTiling failed, the K is too large.");
         return ge::GRAPH_FAILED;
     }
     tilingData.set_ubLoop(ubLoop);

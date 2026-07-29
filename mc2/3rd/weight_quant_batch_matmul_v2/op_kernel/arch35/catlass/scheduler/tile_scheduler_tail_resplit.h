@@ -26,17 +26,14 @@
 namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass {
 // SubBlockNum实际使用的核数
 template <int32_t SubBlockNum>
-class TileSchedulerTailResplit
-{
+class TileSchedulerTailResplit {
 public:
-    template <
-        typename ProblemShape, typename Params,
-        AscendC::Std::enable_if_t<!AscendC::Std::is_tuple_v<Params>, bool> = true>
-    DEVICE TileSchedulerTailResplit(ProblemShape const& problemShape, Params const& params)
-        : nIter(
-              params.mainBlockCount, params.firstTailBlockCount, params.secondTailBlockCount, params.mainBlockSize,
-              params.firstTailBlockSize, params.secondTailBlockSize, params.cubeBlockDimN,
-              static_cast<uint64_t>(get<1>(problemShape)))
+    template <typename ProblemShape, typename Params,
+              AscendC::Std::enable_if_t<!AscendC::Std::is_tuple_v<Params>, bool> = true>
+    DEVICE TileSchedulerTailResplit(ProblemShape const &problemShape, Params const &params)
+        : nIter(params.mainBlockCount, params.firstTailBlockCount, params.secondTailBlockCount, params.mainBlockSize,
+                params.firstTailBlockSize, params.secondTailBlockSize, params.cubeBlockDimN,
+                static_cast<uint64_t>(get<1>(problemShape)))
     {
         auto mSize = get<0>(problemShape);
         decltype(AscendC::GetBlockIdx()) blockIdx;
@@ -63,11 +60,11 @@ public:
         }
     }
 
-    template <
-        typename ProblemShape, typename TilingShape,
-        AscendC::Std::enable_if_t<AscendC::Std::is_tuple_v<TilingShape>, bool> = true>
-    DEVICE TileSchedulerTailResplit(ProblemShape const& problemShape, TilingShape const& tiling)
-    {}
+    template <typename ProblemShape, typename TilingShape,
+              AscendC::Std::enable_if_t<AscendC::Std::is_tuple_v<TilingShape>, bool> = true>
+    DEVICE TileSchedulerTailResplit(ProblemShape const &problemShape, TilingShape const &tiling)
+    {
+    }
 
     DEVICE bool IsValid()
     {
@@ -97,12 +94,12 @@ public:
         return mIter;
     }
 
-    DEVICE ContinuousIterator<uint64_t>& MIterRef()
+    DEVICE ContinuousIterator<uint64_t> &MIterRef()
     {
         return mIter;
     }
 
-    DEVICE const ContinuousIterator<uint64_t>& MIterRef() const
+    DEVICE const ContinuousIterator<uint64_t> &MIterRef() const
     {
         return mIter;
     }
@@ -117,12 +114,12 @@ public:
         return nIter;
     }
 
-    DEVICE TailResplitIterator<uint64_t>& NIterRef()
+    DEVICE TailResplitIterator<uint64_t> &NIterRef()
     {
         return nIter;
     }
 
-    DEVICE const TailResplitIterator<uint64_t>& NIterRef() const
+    DEVICE const TailResplitIterator<uint64_t> &NIterRef() const
     {
         return nIter;
     }

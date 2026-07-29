@@ -12,7 +12,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
-#include "common/op_api_def.h"
+#include "op_api/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/tensor_view_utils.h"
@@ -112,7 +112,7 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
                                            x2Contiguous, biasContiguous, scalesContiguous, expertIdxContiguous,
                                            xContiguous, a1Contiguous, a2Contiguous, vContiguous,
                                            dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange,
-                                           out, uniqueExecutor.get());
+                                           1, out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续

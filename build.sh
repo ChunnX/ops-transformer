@@ -43,7 +43,7 @@ ENABLE_STATIC=FALSE
 ENABLE_EXPERIMENTAL=FALSE
 KERNEL_TEMPLATE_INPUT=""
 ASCEND_SOC_UNITS="ascend910b"
-SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "kirinx90" "kirin9030" "mc62cm12a")
+SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "kirinx90" "kirin9030" "mc62")
 CMAKE_BUILD_MODE=""
 BUILD_TYPE=""
 VERSION=""
@@ -59,6 +59,7 @@ ONNX_PLUGIN=FALSE
 OP_KERNEL=FALSE
 SOC_ARRAY=()
 ENABLE_UT_EXEC=TRUE
+ENABLE_RULE_LAUNCH=""
 ENABLE_GENOP=FALSE
 ENABLE_GENOP_AICPU=FALSE
 GENOP_TYPE=""
@@ -68,6 +69,7 @@ UT_SOC_ARRAY=()
 UT_TEST_CNT=0
 PR_UT_FLAG=FALSE
 CI_MODE=FALSE
+SPECIFIC_EXAMPLE_NAME=""  # 指定运行特定的 example 文件名
 
 if [ "${USER_ID}" != "0" ]; then
     DEFAULT_TOOLKIT_INSTALL_DIR="${HOME}/Ascend/ascend-toolkit/latest"
@@ -99,6 +101,7 @@ function help_info() {
                 echo "    --soc=soc_version      Compile for specified Ascend SoC (comma-separated for multiple)"
                 echo "    --vendor_name=name     Specify custom operator package vendor name"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
+                echo "    --module=module1,...   Compile specified modules (comma-separated, supported: mc2,attention,moe,ffn,mhc,posembedding,gmm)"
                 echo "    -j[n]                  Compile thread nums, default is 8, eg: -j8"
                 echo "    -O[n]                  Compile optimization options, support [O0 O1 O2 O3], eg:-O3"
                 echo "    --experimental         Build experimental version"
@@ -109,6 +112,7 @@ function help_info() {
                 echo "    --kernel_template_input=args0,args1"
                 echo "                           Specify kernel template input arguments (comma-separated for multiple)"
                 echo "    --bisheng_flags        Specify bisheng compiler flags (comma-separated for multiple)"
+                echo "    --aicpu_kernel         Enable ENABLE_AICPU_KERNEL, compile kernel_aicpu"
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --pkg --soc=ascend910b --vendor_name=customize -j16 -O3"
@@ -116,6 +120,7 @@ function help_info() {
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b --ops=abs --oom"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b --ops=abs --bisheng_flags=dumc_cce"
+                echo "    bash build.sh --pkg --soc=ascend910b --ops=add_example --aicpu_kernel -j16"
                 return
                 ;;
             test)
@@ -262,12 +267,13 @@ function help_info() {
             run_example)
                 echo "Run examples Options:"
                 echo $dotted_line
-                echo "    --run_example op_type  mode[eager:graph] [pkg_mode --vendor_name=name  --soc=soc_version]     Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
+                echo "    --run_example op_type  mode[eager:graph] [pkg_mode --vendor_name=name --example_name=name --soc=soc_version]     Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --run_example abs eager"
                 echo "    bash build.sh --run_example abs eager --soc=ascend950"
                 echo "    bash build.sh --run_example abs graph"
+                echo "    bash build.sh --run_example abs eager --example_name=name"
                 echo "    bash build.sh --run_example abs eager cust"
                 echo "    bash build.sh --run_example abs eager cust --vendor_name=custom"
                 return
@@ -320,17 +326,19 @@ function help_info() {
     echo "    --asan Enable asan on the host side"
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
+    echo "    --module Compile specified module, like: --module=mc2,attention, use ',' to separate different modules (supported: mc2,attention,moe,ffn,mhc,posembedding,gmm)"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
-    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascedn910_93)"
+    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62], A3(--soc=ascend910_93)"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
-    echo "    --onnxplugin build op_transformer_onnx_plugin.so"
+    echo "    --onnxplugin build oponnx_plugin_transformer.so"
     echo "    --opapi build opapi_transformer.so"
     echo "    --ophost build ophost_transformer.so"
     echo "    --opkernel build binary kernel"
     echo "    --jit build run package without kernel bin"
     echo "    --pkg build run package with kernel bin"
     echo "    --experimental build experimental version"
+    echo "    --aicpu_kernel Enable ENABLE_AICPU_KERNEL, compile kernel_aicpu"
     echo "    --opapi_test build and run opapi unit tests"
     echo "    --ophost_test build and run ophost unit tests"
     echo "    --opgraph_test build and run opgraph unit tests"
@@ -360,7 +368,7 @@ function set_env()
     export BISHENG_REAL_PATH=$(which bisheng || true)
 
     if [ -z "${BISHENG_REAL_PATH}" ];then
-        if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]] && [[ "$ENABLE_AICPU" == "FALSE" ]] ; then 
+        if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]] && [[ "$ENABLE_AICPU" == "FALSE" ]] ; then
             log "Warning: bisheng compilation tool not found, but --jit --noaicpu is enabled, so continue."
             return
         fi
@@ -510,6 +518,11 @@ function build_example()
 {
     log "Start to run example,name:${EXAMPLE_NAME} mode:${EXAMPLE_MODE}"
 
+    local verbose_option=""
+    if [ "${VERBOSE}" == "true" ];then
+        verbose_option="-v"
+    fi
+
     if [ ! -d "${BUILD_PATH}" ]; then
     	mkdir -p ${BUILD_PATH}
     fi
@@ -548,7 +561,7 @@ function build_example()
             files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
         fi
     else
-        # Except for ascend950/ascend950, the examples of other soc units are temporarily shared. 
+        # Except for ascend950/ascend950, the examples of other soc units are temporarily shared.
         # If you need to add independent examples, you can refer to the method of adding a directory for isolation.
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
     fi
@@ -561,7 +574,21 @@ function build_example()
         ABSOLUTE_MC2_PATH=$(realpath ${BUILD_PATH}/../mc2) # mc2目录绝对路径
         ABSOLUTE_EXAMPLES_MC2_PATH=$(realpath ${BUILD_PATH}/../examples/mc2)
         ABSOLUTE_EXPERIMENTAL_MC2_PATH=$(realpath ${BUILD_PATH}/../experimental/mc2)
+        found_specific_example=false
         for file in "${files[@]}"; do
+            # 如果指定了特定的 example 文件名，只运行该文件
+            if [[ -n "${SPECIFIC_EXAMPLE_NAME}" ]]; then
+                file_basename=$(basename "$file" .cpp)
+                specific_name_without_suffix="${SPECIFIC_EXAMPLE_NAME%.cpp}"
+                # 如果不以 pattern 开头，自动加上 pattern
+                if [[ ! "${specific_name_without_suffix}" =~ ^${pattern} ]]; then
+                    specific_name_without_suffix="${pattern}${specific_name_without_suffix}"
+                fi
+                if [[ "${file_basename}" != "${specific_name_without_suffix}" ]]; then
+                    continue
+                fi
+                found_specific_example=true
+            fi
             echo "Start compile and run example file: $file"
             REAL_FILE_PATH=$(realpath "$file")
             MC2_APPEND_INCLUDE_AND_LIBRARY=""
@@ -569,7 +596,7 @@ function build_example()
                 MC2_APPEND_INCLUDE_AND_LIBRARY="-lpthread -Wl,--no-as-needed -lhccl -lhccl_fwk"
             fi
             if [[ "${PKG_MODE}" == "" ]]; then
-                g++ ${file} \
+                g++ ${verbose_option} ${file} \
                     -I ${INCLUDE_PATH} -I ${ACLNN_INCLUDE_PATH} -I ${EAGER_INCLUDE_OPP_ACLNNOP_PATH} \
                     -L ${EAGER_LIBRARY_OPP_PATH} -L ${EAGER_LIBRARY_PATH} \
                     -lopapi_math -lopapi_transformer -lascendcl -lnnopbase \
@@ -587,7 +614,7 @@ function build_example()
                     CUST_LIBRARY_PATH="${CUST_VENDORS_PATH}/${vendor_name}_transformer/op_api/lib"
                     CUST_INCLUDE_PATH="${CUST_VENDORS_PATH}/${vendor_name}_transformer/op_api/include"
                 fi
-                g++ ${file} \
+                g++ ${verbose_option} ${file} \
                     -I ${CUST_INCLUDE_PATH} -I ${INCLUDE_PATH} \
                     -L ${CUST_LIBRARY_PATH} -L ${EAGER_LIBRARY_PATH} \
                     -lopapi_math -lcust_opapi -lascendcl -lnnopbase \
@@ -600,9 +627,9 @@ function build_example()
                 help_info "run_example"
                 return 1
             fi
-            if [[ "${SIMULATOR}" == "camodel" && "${ASCEND_SOC_UNITS} == "ascend950"" ]]; then
+            if [[ "${SIMULATOR}" == "camodel" && "${ASCEND_SOC_UNITS}" == "ascend950" ]]; then
                 cannsim record -s Ascend950 ./test_aclnn_${EXAMPLE_NAME} --gen-report
-            else 
+            else
                 ./test_aclnn_${EXAMPLE_NAME}
             fi
             run_result=$?
@@ -613,14 +640,33 @@ function build_example()
                 echo "run test_aclnn_${EXAMPLE_NAME}, execute samples success"
             fi
         done
+        # 如果指定了特定的 example 文件名但没有找到，给出错误提示
+        if [[ -n "${SPECIFIC_EXAMPLE_NAME}" && "${found_specific_example}" == "false" ]]; then
+            echo "Error: Specified example '${SPECIFIC_EXAMPLE_NAME}' not found in ${EXAMPLE_NAME}/examples/"
+            return 2
+        fi
     elif [[ "${EXAMPLE_MODE}" == "graph" ]]; then
         if [ -z "$files" ]; then
             echo "${EXAMPLE_NAME} do not have graph example"
             return 2
         fi
+        found_specific_example=false
         for file in "${files[@]}"; do
+            # 如果指定了特定的 example 文件名，只运行该文件
+            if [[ -n "${SPECIFIC_EXAMPLE_NAME}" ]]; then
+                file_basename=$(basename "$file" .cpp)
+                specific_name_without_suffix="${SPECIFIC_EXAMPLE_NAME%.cpp}"
+                # 如果不以 pattern 开头，自动加上 pattern (支持 operator name 格式)
+                if [[ ! "${specific_name_without_suffix}" =~ ^${pattern} ]]; then
+                    specific_name_without_suffix="${pattern}${specific_name_without_suffix}"
+                fi
+                if [[ "${file_basename}" != "${specific_name_without_suffix}" ]]; then
+                    continue
+                fi
+                found_specific_example=true
+            fi
             echo "Start compile and run example file: $file"
-            g++ ${file} -I ${GRAPH_INCLUDE_PATH} -I ${GE_INCLUDE_PATH} -I ${LINUX_INCLUDE_PATH} -I ${INC_INCLUDE_PATH} -L ${GRAPH_LIBRARY_STUB_PATH} -L ${GRAPH_LIBRARY_PATH} -lgraph -lge_runner -lgraph_base -lge_compiler -o test_geir_${EXAMPLE_NAME}
+            g++ ${verbose_option} ${file} -I ${GRAPH_INCLUDE_PATH} -I ${GE_INCLUDE_PATH} -I ${LINUX_INCLUDE_PATH} -I ${INC_INCLUDE_PATH} -L ${GRAPH_LIBRARY_STUB_PATH} -L ${GRAPH_LIBRARY_PATH} -lgraph -lge_runner -lgraph_base -lge_compiler -o test_geir_${EXAMPLE_NAME}
             ./test_geir_${EXAMPLE_NAME}
             run_result=$?
             if [ $run_result -ne 0 ]; then
@@ -630,36 +676,16 @@ function build_example()
                 echo "run test_geir_${EXAMPLE_NAME}, execute samples success"
             fi
         done
+        # 如果指定了特定的 example 文件名但没有找到，给出错误提示
+        if [[ -n "${SPECIFIC_EXAMPLE_NAME}" && "${found_specific_example}" == "false" ]]; then
+            echo "Error: Specified example '${SPECIFIC_EXAMPLE_NAME}' not found in ${EXAMPLE_NAME}/examples/"
+            return 2
+        fi
     else
         help_info "run_example"
         return 1
     fi
     return 0
-}
-
-function gen_bisheng(){
-    local ccache_program=$1
-    local gen_bisheng_dir=${BUILD_DIR}/gen_bisheng_dir
-
-    if [ ! -d "${gen_bisheng_dir}" ];then
-        mkdir -p ${gen_bisheng_dir}
-    fi
-
-    pushd ${gen_bisheng_dir}
-    $(> bisheng)
-    echo "#!/bin/bash" >> bisheng
-    echo "ccache_args=""\"""${ccache_program} ${BISHENG_REAL_PATH}""\"" >> bisheng
-    echo "args=""$""@" >> bisheng
-
-    if [ "${VERBOSE}" == "true" ];then
-        echo "echo ""\"""$""{ccache_args} ""$""args""\"" >> bisheng
-    fi
-
-    echo "eval ""\"""$""{ccache_args} ""$""args""\"" >> bisheng
-    chmod +x bisheng
-
-    export PATH=${gen_bisheng_dir}:$PATH
-    popd
 }
 
 function build_package(){
@@ -724,25 +750,30 @@ build_static_lib() {
     echo $dotted_line
     echo "Start to build static lib."
 
+    local option=""
+    if [ "${VERBOSE}" == "true" ]; then
+        option="--verbose"
+    fi
+
     cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=${unit}
     local all_targets=$(cmake --build . --target help)
     rm -fr ${BUILD_PATH}/bin_tmp
     mkdir -p ${BUILD_PATH}/bin_tmp
     if echo "${all_targets}" | grep -wq "ophost_transformer_static"; then
-        cmake --build . --target ophost_transformer_static ${JOB_NUM}
+        cmake --build . --target ophost_transformer_static ${JOB_NUM} ${option}
     fi
-    cmake --build . --target opapi_transformer_static ${JOB_NUM}
+    cmake --build . --target opapi_transformer_static ${JOB_NUM} ${option}
     local jit_command=""
     if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]]; then
         jit_command="-j"
     fi
 
     rm -fr ${BUILD_PATH}/autogen/${unit}
-    python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" GenStaticOpResourceIni -s ${unit} -b ${BUILD_PATH} ${jit_command}   
+    python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" GenStaticOpResourceIni -s ${unit} -b ${BUILD_PATH} ${jit_command}
     python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" StaticCompile -s ${unit} -b ${BUILD_PATH} -n=0 -a=${ARCH_INFO} ${jit_command}
 
     cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=${unit}
-    cmake --build . --target cann_transformer_static ${JOB_NUM}
+    cmake --build . --target cann_transformer_static ${JOB_NUM} ${option}
     echo "Build static lib success!"
 }
 
@@ -822,12 +853,10 @@ package_static() {
         mv "$new_dir_path" "$static_files_dir"
         return 1
     fi
-    make clean
 }
 
 function process_soc_input(){
     local input_string="$1"
-    input_string=$(echo "$input_string" | sed 's/ascend950/ascend950/g')
     local value_part="${input_string#*=}"
     ASCEND_SOC_UNITS="${value_part//,/;}"
 
@@ -894,7 +923,7 @@ gen_op() {
   elif command -v python &> /dev/null; then
       python_cmd="python"
   fi
-  
+
   if [ -n "${python_cmd}" ]; then
     ${python_cmd} "${BASE_PATH}/scripts/opgen/opgen_standalone.py" -t ${GENOP_TYPE} -n ${GENOP_NAME} -p ${GENOP_BASE}
     return $?
@@ -982,7 +1011,7 @@ set_ut_mode() {
     UT_TARGETS+=("${REPOSITORY_NAME}_op_host_ut")
     UT_TARGETS+=("${REPOSITORY_NAME}_op_api_ut")
     return
-  fi 
+  fi
   UT_TEST_ALL=TRUE
   if [[ "$OP_HOST" == "TRUE" ]]; then
     OP_HOST_UT=TRUE
@@ -1012,6 +1041,17 @@ set_ut_mode() {
   if [[ "$UT_TEST_ALL" == "TRUE" ]] || [[ "$OP_KERNEL_UT" == "TRUE" ]]; then
     UT_TARGETS+=("${REPOSITORY_NAME}_op_kernel_ut")
   fi
+  if [[ "$UT_TEST_ALL" == "TRUE" ]] && [[ "$ENABLE_BUILT_CUSTOM" != "TRUE" ]]; then
+    OP_HOST_UT=TRUE
+    OP_API_UT=TRUE
+    OP_GRAPH_UT=TRUE
+    UT_TEST_ALL=FALSE
+    OP_KERNEL_UT=FALSE
+  fi
+  if [[ "$OP_KERNEL_UT" == "TRUE" ]] && [[ -z "$ascend_op_name" ]]; then
+    echo "Warning: Please use --ops when running Opkernel UT."
+    ascend_op_name="recurrent_gated_delta_rule,chunk_gated_delta_rule"
+  fi
 }
 parse_changed_files() {
     if [[ -z "$PR_CHANGED_FILES" ]]; then
@@ -1025,11 +1065,7 @@ parse_changed_files() {
     echo "changed files is" $PR_CHANGED_FILES
     echo $dotted_line
     cat $PR_CHANGED_FILES
-    ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL")
-    if [[ -z $ops_names ]]; then
-            ops_names='nsa_compress_attention_infer'
-        echo "NO ops changed found,set op $ops_names as default."
-    fi
+    ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL" "$ASCEND_SOC_UNITS")
 }
 set_example_opt() {
   if [[ -n $1 && $1 != -* ]]; then
@@ -1118,6 +1154,11 @@ while [[ $# -gt 0 ]]; do
         ENABLE_BUILT_IN=FALSE
         shift
         ;;
+    --module=*)
+        OPTARG=$1
+        ascend_module_name=${OPTARG#*=}
+        shift
+        ;;
     --aicpu=*)
         OPTARG=$1
         shift
@@ -1155,6 +1196,11 @@ while [[ $# -gt 0 ]]; do
         ENABLE_TEST=TRUE
         shift
         ;;
+    --rule_launch=*)
+        OPTARG=$1
+        ENABLE_RULE_LAUNCH=${OPTARG#*=}
+        shift
+        ;;
     --simulator=*)
         OPTARG=$1
         SIMULATOR=${OPTARG#*=}
@@ -1166,7 +1212,12 @@ while [[ $# -gt 0 ]]; do
         set_example_opt $2 $3 $4
         shift $step
         ;;
-    --experimental) 
+    --example_name=*)
+        OPTARG=$1
+        SPECIFIC_EXAMPLE_NAME=${OPTARG#*=}
+        shift
+        ;;
+    --experimental)
         ENABLE_EXPERIMENTAL=TRUE
         shift
         ;;
@@ -1219,7 +1270,7 @@ while [[ $# -gt 0 ]]; do
             log "Info: No custom packages to build for this PR."
             # ops_names="incre_flash_attention"
             exit 200
-        fi 
+        fi
         ops_names="${ops_names%;}"
         ops_names="${ops_names//;/,}"
         ascend_op_name="$ops_names"
@@ -1275,14 +1326,14 @@ while [[ $# -gt 0 ]]; do
         CLANG="true"
         shift
         ;;
-    --tiling-key|--tiling_key)	 
-        TILING_KEY="$2" 
-        shift 2 
-        ;; 
-    --tiling_key=*) 
-        OPTARG=$1	 
-        TILING_KEY=${OPTARG#*=}	 
-        shift	 
+    --tiling-key|--tiling_key)
+        TILING_KEY="$2"
+        shift 2
+        ;;
+    --tiling_key=*)
+        OPTARG=$1
+        TILING_KEY=${OPTARG#*=}
+        shift
         ;;
     --kernel_template_input=*)
         OPTARG=$1
@@ -1331,7 +1382,7 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
     --onnxplugin)
-        BUILD_LIBS+=("op_transformer_onnx_plugin")
+        BUILD_LIBS+=("oponnx_plugin_transformer")
         ENABLE_CREATE_LIB=TRUE
         ONNX_PLUGIN=TRUE
         shift
@@ -1450,10 +1501,27 @@ if [ -n "${ascend_op_name}" ];then
     if [[ "${ascend_op_name}" == *"moe_distribute_dispatch_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_dispatch_v3"* ]]; then
         ascend_op_name="${ascend_op_name};moe_distribute_dispatch_v3"
     fi
+    if [[ "${ascend_op_name}" == *"distribute_barrier"* ]] && [[ "${ascend_op_name}" != *"distribute_barrier_extend"* ]]; then
+ 	    ascend_op_name="${ascend_op_name};distribute_barrier_extend"
+    fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${ascend_op_name}"
     if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
     fi
+fi
+
+if [ -n "${ascend_module_name}" ];then
+    if [[ "$ascend_module_name" == *mc2* ]]; then
+        # 避免重复添加
+        if [[ "$ascend_module_name" != *gmm* ]]; then
+            ascend_module_name="${ascend_module_name},gmm"
+        fi
+    fi
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_MODULE_NAME=${ascend_module_name}"
+    if [[ "${ascend_module_name}" != *"attention"* ]]; then
+ 	    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
+    fi
+
 fi
 
 if [ -n "${op_build_tool}" ];then
@@ -1491,6 +1559,9 @@ fi
 if [[ "$ENABLE_UT_EXEC" == "TRUE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_UT_EXEC=TRUE"
 fi
+if [[ "x$ENABLE_RULE_LAUNCH" != "x" ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DRULE_LAUNCH=${ENABLE_RULE_LAUNCH}"
+fi
 
 if [ -n "${TEST}" ];then
     if [ -n "${PR_CHANGED_FILES}" ];then
@@ -1527,7 +1598,6 @@ if [ -n "${TEST}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DCMAKE_OBJCOPY=${CLANG_OBJCOPY}"
     fi
 
-    ASAN="true"
     if [ "${ASAN}" == "true" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_ASAN=TRUE"
     fi
@@ -1565,8 +1635,8 @@ if [ -n "${EXAMPLE}" ];then
     BUILD=ops_test_example
 fi
 
-if [ -n "${TILING_KEY}" ];then	 
-    CUSTOM_OPTION="${CUSTOM_OPTION} -DTILING_KEY=${TILING_KEY}"	 
+if [ -n "${TILING_KEY}" ];then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DTILING_KEY=${TILING_KEY}"
 fi
 
 if [ -n "${KERNEL_TEMPLATE_INPUT}" ];then
@@ -1615,7 +1685,7 @@ if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
 fi
 
 if [[ "$ENABLE_AICPU" == "FALSE" ]]; then
-    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU=OFF -DENABLE_TILING_SINK=OFF"
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU=OFF -DENABLE_TILING_SINK=OFF "
 fi
 
 if [ -n "${ascend_package_path}" ];then
@@ -1634,7 +1704,7 @@ else
 fi
 
 function get_cpu_num() {
-    CPU_NUM=$(($(cat /proc/cpuinfo | grep "^processor" | wc -l)*2)) 
+    CPU_NUM=$(($(cat /proc/cpuinfo | grep "^processor" | wc -l)*2))
     if [ -n "${OPS_CPU_NUMBER}" ]; then
         if [[ "${OPS_CPU_NUMBER}" =~ ^[0-9]+$ ]]; then
             CPU_NUM="${OPS_CPU_NUMBER}"
@@ -1671,19 +1741,19 @@ function set_compute_unit_option() {
 }
 
 # 上面的set_compute_unit_option修改成只能传入一个soc后导致ut有问题，现在复制一份旧的支持多个soc传入，用于ut
-function set_compute_unit_option_ut() {	 
-    IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组	 
-    local COMPUTE_UNIT_SHORT=""	 
-    for soc in "${SOC_ARRAY[@]}"; do	 
-    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do	 
-        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')	 
-        if [[ "$lowercase_word" == *"$support_unit"* ]]; then	 
-        COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;" 
-        break 
-        fi	 
-    done 
-    done	 
-    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"	 
+function set_compute_unit_option_ut() {
+    IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组
+    local COMPUTE_UNIT_SHORT=""
+    for soc in "${SOC_ARRAY[@]}"; do
+    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
+        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')
+        if [[ "$lowercase_word" == *"$support_unit"* ]]; then
+        COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;"
+        break
+        fi
+    done
+    done
+    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"
  }
 
 CUSTOM_OPTION="${CUSTOM_OPTION} -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH} -DCHECK_COMPATIBLE=${CHECK_COMPATIBLE}"
@@ -1701,14 +1771,14 @@ if [ -n "${CCACHE_PROGRAM}" ]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=OFF"
     elif [ -f "${CCACHE_PROGRAM}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=${CCACHE_PROGRAM}"
-        gen_bisheng ${CCACHE_PROGRAM}
+        export ASCENDC_CCACHE_EXECUTABLE=${CCACHE_PROGRAM}
     fi
 else
     # 判断有无默认的ccache 如果有则使用
     ccache_system=$(which ccache || true)
     if [ -n "${ccache_system}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=${ccache_system}"
-        gen_bisheng ${ccache_system}
+        export ASCENDC_CCACHE_EXECUTABLE=${ccache_system}
     fi
 fi
 build_ut() {
@@ -1741,7 +1811,7 @@ build_ut() {
             fi
             has_valid_target="TRUE"
         else
-            echo "Target $UT_TARGET not found, skipping build." 
+            echo "Target $UT_TARGET not found, skipping build."
         fi
     done
     if [[ "$COV" == "true" && "$ENABLE_UT_EXEC" == "TRUE" && "$has_valid_target" == "TRUE" ]]; then
@@ -1781,7 +1851,7 @@ function build_example_for_ci()
 {
     EXAMPLE_NAME="$1"
     PKG_MODE="cust"
-    
+
     EXAMPLE_MODE="eager"
     local eager_result=0
     build_example || eager_result=$? # 避免函数随build_example一起退出
@@ -1980,4 +2050,4 @@ else
         build ${BUILD}
     fi
 fi
-} | gawk '{print strftime("[%Y-%m-%d %H:%M:%S]"), $0}'
+} | while IFS= read -r line; do echo "[$(date '+%Y-%m-%d %H:%M:%S')] $line"; done

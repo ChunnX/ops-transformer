@@ -19,25 +19,25 @@
 - **计算公式**：
 
   (1) probs非None：
-  
+
   $$
   permutedTokensGrad[outIndex[i]] = unpermutedTokensGrad[permuteTokenId[i]]
   $$
-  
+
   $$
   permutedProbsGrad = permutedTokensGrad * permutedTokensOptional
   $$
-  
+
   $$
   probsGradExpertOrder = \sum_{j=0}^{hidden\_size}(permutedProbsGrad_{i,j})
   $$
 
     - dropAndPad为false时：
-  
+
   $$
   probsGradOut = masked\_scatter(routingMapOptional^T,probsGradExpertOrder)
   $$
-  
+
   $$
   permutedProbs = probsOptional^T.masked\_select(routingMapOptional^T)
   $$
@@ -47,7 +47,7 @@
   $$
 
     - dropAndPad为true时：
-  
+
   $$
   probsGradOut[permuteTokenId[i], outIndex[i]/capacity] = probsGradExpertOrder[outIndex[i]]
   $$
@@ -68,11 +68,11 @@
 
   1. hidden_size指unpermutedTokensGrad的第1维大小。
   2. dropAndPad等于true时，每个专家固定能够处理capacity个token。输入routingMapOptional的第1维是experts_num，即专家个数，输入outIndex的第0维是experts_num * capacity，根据这两个维度可以算出capacity。
-  3. dropAndPad等于false时，每个token固定被topK_num个专家处理。输入unpermutedTokensGrad的第0维是tokens_num，即token的个数，输入outIndex的第0维是tokens_num * capacity，根据这两个维度可以算出topK_num。
+  3. dropAndPad等于false时，每个token能被小于等于topK_num个专家处理。输入unpermutedTokensGrad的第0维是tokens_num，即token的个数，输入outIndex的第0维是tokens_num * topK_num，根据这两个维度可以算出topK_num。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithRoutingMapGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithRoutingMapGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize(
@@ -248,9 +248,9 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
   </table>
 
 - **返回值：**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
@@ -345,25 +345,25 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
   </table>
 
 - **返回值：**
-  
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnMoeTokenUnpermuteWithRoutingMapGrad默认确定性实现。
 - tokens_num表示输入的token数量，hidden_size表示词向量维度，experts_num表示专家个数。
-- 通过dropAndPad区分以下两种模式：dropAndPad等于true时，每个专家固定能够处理capacity个token。dropAndPad等于false时，每个token固定被topK_num个专家处理。
+- 通过dropAndPad区分以下两种模式：dropAndPad等于true时，每个专家固定能够处理capacity个token。dropAndPad等于false时，每个token能被小于等于topK_num个专家处理。
 - 当输入probsOptional非空，且dropAndPad为false时
   - 要求topK_num <= 512且topK_num <= experts_num。
-  - 要求experts_num满足(ubSize - (probTypeLen + 1) * numExpertAlign-(tokenTypeLen + 8) * 256) / (6 * tokenTypeLen + 12) >= 1，其中ubSize是芯片ub空间大小，probTypeLen是输入probsOptional的数据类型对应的字节数，tokenTypeLen是输入unpermutedTokensGrad的数据类型对应的字节数，numExpertAlign是experts_num对32做向上对齐的结果。
+  - 要求experts_num满足(ubSize - (probTypeLen + 1) *numExpertAlign-(tokenTypeLen + 8)* 256) / (6 * tokenTypeLen + 12) >= 1，其中ubSize是芯片ub空间大小，probTypeLen是输入probsOptional的数据类型对应的字节数，tokenTypeLen是输入unpermutedTokensGrad的数据类型对应的字节数，numExpertAlign是experts_num对32做向上对齐的结果。
 - 当输入probsOptional非空，且dropAndPad为true时
   - 要求capacity <= tokens_num。
   - 要求hidden_size <= 256 * (ubSize - 2080) / (8 + tokenTypeLen)，其中ubSize是芯片ub空间大小，tokenTypeLen是输入unpermutedTokensGrad的数据类型对应的字节数。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>
@@ -454,7 +454,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -547,7 +547,7 @@ int main() {
             LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapGrad failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);

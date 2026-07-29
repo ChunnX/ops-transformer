@@ -87,7 +87,7 @@
 
 template<uint8_t implMode, uint8_t layout, uint16_t s1TemplateType, uint16_t s2TemplateType,
     uint16_t dTemplateType, uint16_t dvTemplateType, uint8_t pseMode, bool hasAtten, bool hasDrop, bool hasRope,
-    uint8_t outDtype, uint8_t regbase>
+    uint8_t outDtype, uint8_t regbase, bool optionalDn>
 inline __aicore__ void flash_attention_score_regbase(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
     __gm__ uint8_t *pse, __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
     __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
@@ -101,19 +101,22 @@ inline __aicore__ void flash_attention_score_regbase(__gm__ uint8_t *query, __gm
     #if (ORIG_DTYPE_QUERY == DT_FLOAT)
         INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, float, float, float, ImplModeEnum(implMode),
             LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-            DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope);
+            DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
+            PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope, false, false, false, false, false, optionalDn);
         return;
     #endif
     #if (ORIG_DTYPE_QUERY == DT_BF16)
         INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, bfloat16_t, float, bfloat16_t, ImplModeEnum(implMode),
             LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-            DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope);
+            DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
+            PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope, false, false, false, false, false, optionalDn);
         return;
     #endif
     #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
         INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, half, float, half, ImplModeEnum(implMode),
             LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-            DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope);
+            DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
+            PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope, false, false, false, false, false, optionalDn);
         return;
     #endif
 
@@ -121,7 +124,8 @@ inline __aicore__ void flash_attention_score_regbase(__gm__ uint8_t *query, __gm
     #if (ORIG_DTYPE_QUERY == DT_HIFLOAT8)
         INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, hifloat8_t, float, bfloat16_t, ImplModeEnum(implMode),
             LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-            DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope);
+            DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
+            PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope, false, false, false, false, false, optionalDn);
         return;
     #endif
 #endif

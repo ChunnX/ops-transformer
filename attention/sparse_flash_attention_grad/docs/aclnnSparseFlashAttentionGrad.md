@@ -25,6 +25,12 @@
    selectedValue\text{ }=\text{ }Gather \left( value,topkIndices \left[ i \left]  \left) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
   $$
 
+  KV merge场景下，若value为空指针，则上述公式中的value按key处理，selectedValue等价于selectedKey。该场景的反向输出不单独返回dValue，dKeyOut表示合并后的梯度：
+
+  $$
+   dKeyOut = dK + dV
+  $$
+
 <div style="padding-left:40px;">
 
   阶段1：根据矩阵乘法导数规则，计算$dP$和$dV$:
@@ -60,16 +66,16 @@
   $$
 
   $$
-   dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right. 
+   dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right.
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttentionGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSparseFlashAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttentionGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
-    const aclTensor     *query, 
+    const aclTensor     *query,
     const aclTensor     *key,
     const aclTensor     *value,
     const aclTensor     *sparseIndices,
@@ -99,9 +105,9 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGrad(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     aclrtStream stream)
 ```
 
@@ -113,9 +119,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
-            <col style="width: 200px">  
-            <col style="width: 400px">  
-            <col style="width: 212px">  
+            <col style="width: 200px">
+            <col style="width: 400px">
+            <col style="width: 212px">
             <col style="width: 100px">
             <col style="width: 290px">
             <col style="width: 145px">
@@ -142,9 +148,10 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)<br>
-            B：支持泛化；S1：支持泛化；N1：支持128、64、32、16、8、4、2、1；D：512；T1：B × S1
+            B：支持泛化；S1：支持泛化；N1：支持128、64、32、16、8、4、2、1；D：512；T1：B × S1<br>
+            <term>Ascend 950PR/Ascend 950DT</term>的N1额外还支持48、24、12、6、3
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>key</td>
@@ -156,20 +163,20 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,S2,N2,D)、(T2,N2,D)<br>
             N2：1；T2：B × S2
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>value</td>
             <td>输入</td>
             <td>attention结构的输入v。</td>
             <td>
-            -
+            可选项。传入空指针时启用KV merge，内部按value=key处理；此时要求dValueOut也传入空指针，dKeyOut返回dK+dV的合并结果。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
             <td>(B,S2,N2,D)、(T2,N2,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>sparseIndices</td>
@@ -178,12 +185,12 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>
             -
             </td>
-            <td>INT64</td>
+            <td>INT32</td>
             <td>ND</td>
             <td>(B,S1,N2,K)、(T1,N2,K)<br>
             K：1024、2048、3072、4096、5120、6144、7168、8192
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>dOut</td>
@@ -196,7 +203,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>out</td>
@@ -209,7 +216,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>softmaxMax</td>
@@ -221,7 +228,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,N2,S1,G)、(N2,T1,G)<br>
             G：N1/N2
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>softmaxSum</td>
@@ -232,7 +239,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
   <tr>
             <td>actualSeqLengthsQueryOptional</td>
@@ -242,14 +249,14 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和与T1保持一致。</li>
+                <li>累加和与T1保持一致(EOD场景下累加和可以小于T1)。</li>
                 <li>取值须为非负数，传入负值可能触发芯片告警（alarm）。</li>
             </ul>
             </td>
             <td>INT32</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>actualSeqLengthskvOptional</td>
@@ -259,13 +266,13 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和与T2保持一致。</li>
+                <li>累加和与T2保持一致(EOD场景下累加和可以小于T2)。</li>
             </ul>
             </td>
             <td>INT32</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>queryRopeOptional</td>
@@ -279,7 +286,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,S1,N1,Dr)、(T1,N1,Dr)<br>
             Dr：64
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>keyRopeOptional</td>
@@ -292,7 +299,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S2,N2,Dr)、(T2,N2,Dr)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>scaleValue</td>
@@ -300,9 +307,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>缩放系数。</td>
             <td>建议值：公式中d开根号的倒数。</td>
             <td>FLOAT32</td>
-            <td>N/A</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>sparseBlockSize</td>
@@ -312,10 +319,10 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1、8、16、32、64<br>
             <term>Ascend 950PR/Ascend 950DT</term>支持1
             </td>
-            <td>INT32</td>
-            <td>N/A</td>
+            <td>INT64</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>layout</td>
@@ -325,9 +332,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             支持BSND、TND。
             </td>
             <td>STRING</td>
-            <td>N/A</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>sparseMode</td>
@@ -340,14 +347,14 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
               </ul>
         </td>
         <td>INT64</td>
-        <td>N/A</td>
         <td>-</td>
-        <td>x</td>
+        <td>-</td>
+        <td>-</td>
         </tr>
         <tr>
         <td>preTokens</td>
             <td>输入</td>
-            <td>Attention算子里, 对S矩阵的滑窗起始位置。</td>
+            <td>Attention算子里，对S矩阵的滑窗起始位置。</td>
             <td>
             <ul>
                 <li>sparseMode=4时，pre_tokens生效。</li>
@@ -357,12 +364,12 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>INT64</td>
             <td>-</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
         </tr>
         <tr>
         <td>nextTokens</td>
             <td>输入</td>
-            <td>Attention算子里, 对S矩阵的滑窗终止位置。</td>
+            <td>Attention算子里，对S矩阵的滑窗终止位置。</td>
             <td>
             <ul>
                 <li>sparseMode=4时，next_tokens生效。</li>
@@ -372,7 +379,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>INT64</td>
             <td>-</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
         </tr>
         <tr>
         <td>deterministic</td>
@@ -384,7 +391,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>BOOL</td>
             <td>-</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>dQuery</td>
@@ -404,7 +411,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输出</td>
             <td>表示key的梯度。</td>
             <td>
-            -
+            KV merge场景下表示key和value的合并梯度，即dK+dV。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -412,12 +419,12 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             </td>
             <td>x</td>
         </tr>
-        <tr>  
+        <tr>
             <td>dValue</td>
             <td>输出</td>
             <td>表示value的梯度。</td>
             <td>
-            与输入value的Shape维度保持一致。
+            可选项。普通场景下与输入value的Shape维度保持一致；KV merge场景下需传入空指针，dValue不单独输出，其梯度合入dKey。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -458,7 +465,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -476,7 +483,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>必选参数或者输出是空指针。</td>
+                <td>必选参数或者输出是空指针。KV merge场景下value和dValueOut允许为空指针。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
@@ -537,7 +544,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -547,6 +554,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
     - 当前只支持value和key完全一致的场景。
+    - KV merge场景下，value和dValueOut需传入空指针，dKeyOut返回dK+dV，不再单独返回dValue。
 
 - Mask
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
@@ -628,8 +636,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>deterministic</td>
             <td>bool</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持确定性计算<br>
-            <term>Ascend 950PR/Ascend 950DT</term>支持确定性计算
+            支持确定性计算
             </td>
         </tr>
         <tr>
@@ -644,7 +651,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         <tr>
             <td>N1</td>
-            <td>1、2、4、8、16、32、64、128</td>
+            <td>1、2、4、8、16、32、64、128<br>
+            <term>Ascend 950PR/Ascend 950DT</term>额外还支持48、24、12、6、3
+            </td>
             <td>SparseFA为MQA。</td>
         </tr>
         <tr>
@@ -665,7 +674,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
             <td>K</td>
             <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
-            <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
+            <td>不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
         </tr>
         <tr>
             <td>layout</td>
@@ -677,7 +686,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 
 ## 调用示例
 
-调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -756,7 +765,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;
@@ -867,47 +876,47 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(dkRopeHostData, kRopeShape, &dkRopeDeviceAddr, aclDataType::ACL_FLOAT16, &dkRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
-  double scaleValue = 0.088388;
+
+  double scaleValue = 0.044194;
   int64_t sparseBlockSize = 1;
   int64_t sparseMode = 0;
   int64_t preTokens = 2147483647;
   int64_t nextTokens = 2147483647;
   bool deterministic = false;
   char layout[5] = {'T', 'N', 'D', 0};
-  
+
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
-  
+
   // 调用aclnnSparseFlashAttentionGrad第一段接口
   ret = aclnnSparseFlashAttentionGradGetWorkspaceSize(q, k, v, sparseIndices, dOut, out, softmaxMax, softmaxSum, actSeqQLen, actSeqKvLen,
-            qRope, kRope, scaleValue, sparseBlockSize, layout, sparseMode, preTokens, nextTokens, deterministic, dq, dk, dv, dqRope, dkRope, 
+            qRope, kRope, scaleValue, sparseBlockSize, layout, sparseMode, preTokens, nextTokens, deterministic, dq, dk, dv, dqRope, dkRope,
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashAttentionGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
+
   // 调用aclnnSparseFlashAttentionGrad第二段接口
   ret = aclnnSparseFlashAttentionGrad(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashAttentionGrad failed. ERROR: %d\n", ret); return ret);
-  
-  // 4. （固定写法）同步等待任务执行结束
+
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintOutResult(qShape, &dqDeviceAddr);
   PrintOutResult(kShape, &dkDeviceAddr);
   PrintOutResult(vShape, &dvDeviceAddr);
   PrintOutResult(qRopeShape, &dqRopeDeviceAddr);
   PrintOutResult(kRopeShape, &dkRopeDeviceAddr);
-  
+
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);
   aclDestroyTensor(k);
@@ -926,7 +935,7 @@ int main() {
   aclDestroyTensor(dv);
   aclDestroyTensor(dqRope);
   aclDestroyTensor(dkRope);
-  
+
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
   aclrtFree(kDeviceAddr);
@@ -943,6 +952,8 @@ int main() {
   aclrtFree(dvDeviceAddr);
   aclrtFree(dqRopeDeviceAddr);
   aclrtFree(dkRopeDeviceAddr);
+  aclrtFree(actSeqQLenDeviceAddr);
+  aclrtFree(actSeqKvLenDeviceAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }
@@ -950,7 +961,7 @@ int main() {
   aclrtDestroyContext(context);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 ```

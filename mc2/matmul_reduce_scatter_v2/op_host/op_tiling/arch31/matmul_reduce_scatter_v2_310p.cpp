@@ -15,7 +15,7 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "platform/platform_infos_def.h"
 
 namespace optiling {
@@ -24,5 +24,4 @@ ge::graphStatus MatmulReduceScatterTilingV2Func(gert::TilingContext *context)
     OP_LOGI("MatmulReduceScatterTilingV2", "Start to do tiling in MatmulReduceScatterTilingV2Func 310p");
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
-}  // namespace optiling
-
+} // namespace optiling

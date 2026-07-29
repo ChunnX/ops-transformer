@@ -16,11 +16,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#if __has_include("../common/op_kernel/mc2_kernel_utils.h")
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#else
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 namespace AscendC {
 
 // 向上取整除法：计算a除以b的向上取整结果
@@ -32,11 +28,22 @@ __aicore__ inline uint64_t CeilDiv(uint64_t a, uint32_t b)
     return (a + b - 1) / b;
 };
 
-// 向上对齐：将a向上对齐到b的倍数
-__aicore__ inline uint64_t CeilAlign(uint64_t a, uint32_t b)
+// uint32_t版本的向上取整除法
+__aicore__ inline uint32_t CeilDivU32(uint32_t a, uint32_t b)
 {
-    uint64_t bTemp = static_cast<uint64_t>(b);
-    return (bTemp == 0) ? a : CeilDiv(a, bTemp) * bTemp;
+    if (b == 0) {
+        return 0;
+    }
+    return (a + b - 1) / b;
+};
+
+// uint32_t版本的向上对齐
+__aicore__ inline uint32_t CeilAlignU32(uint32_t a, uint32_t b)
+{
+    if (b == 0) {
+        return a;
+    }
+    return CeilDivU32(a, b) * b;
 };
 
 // 尾块模运算：计算a对b取模，模为0时返回b（用于数据块尾块的计算）
@@ -45,16 +52,32 @@ __aicore__ inline uint64_t BlockAlignMod(uint64_t a, uint32_t b)
     if (b == 0) {
         return 0;
     }
-    
+
     uint64_t c = a % b;
     return c ? c : b;
 }
 
-static constexpr AscendC::MicroAPI::CastTrait castTrait = {AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_NONE};
+// 向下取整对齐：将a向下对齐到b的倍数
+__aicore__ inline uint64_t FloorAlign(uint64_t a, uint32_t b)
+{
+    if (b == 0) {
+        return a;
+    }
+    return (a / b) * b;
+}
+
+// 分数除法：total / (base + num/den)，避免 base + num/den 整数截断为 base
+__aicore__ inline uint64_t FracDiv(uint64_t total, uint64_t base, uint32_t num, uint32_t den)
+{
+    return total * num / (base * num + den);
+}
+
+static constexpr AscendC::MicroAPI::CastTrait castTrait = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_NONE};
 
 // fp8_e8m0_t数据类型到bf16_t数据类型转换
-static __aicore__ inline void CastVf(__local_mem__ bfloat16_t* dstPtr, __local_mem__ fp8_e8m0_t* srcPtr, uint32_t count)
+static __aicore__ inline void CastVf(__local_mem__ bfloat16_t *dstPtr, __local_mem__ fp8_e8m0_t *srcPtr, uint32_t count)
 {
     AscendC::MicroAPI::RegTensor<fp8_e8m0_t> srcReg;
     AscendC::MicroAPI::RegTensor<fp8_e8m0_t> srcZeroReg;
@@ -69,6 +92,6 @@ static __aicore__ inline void CastVf(__local_mem__ bfloat16_t* dstPtr, __local_m
     AscendC::MicroAPI::DataCopy(dstPtr, bf16DstReg, maskReg);
 }
 
-}  // namespace AscendC
+} // namespace AscendC
 
 #endif

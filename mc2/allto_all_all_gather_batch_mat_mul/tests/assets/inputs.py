@@ -15,7 +15,6 @@ __input__ = {
     }
 }
 
-import numpy as np
 
 def allto_all_all_gather_batch_mat_mul_inputs(
     x,
@@ -30,11 +29,11 @@ def allto_all_all_gather_batch_mat_mul_inputs(
     transpose_weight: bool = False,
     output_y2_flag: bool = False,
     output_y3_flag: bool = False,
-    **kwargs
+    **kwargs,
 ):
     """
     AllToAllAllGatherBatchMatMul inputs validation and adjustment
-    
+
     Args:
         x: Input tensor
         weight: Weight tensor
@@ -49,12 +48,26 @@ def allto_all_all_gather_batch_mat_mul_inputs(
         output_y2_flag: Whether to output y2
         output_y3_flag: Whether to output y3
         **kwargs: Additional arguments
-    
+
     Returns:
         Processed inputs
     """
     if transpose_weight:
-        weight = weight.transpose(0, 2, 1) if len(weight.shape) == 3 else weight.transpose()
-    
-    return x, weight, bias, group_ep, group_tp, ep_world_size, tp_world_size, \
-           x_shard_type, act_type, transpose_weight, output_y2_flag, output_y3_flag
+        weight = (
+            weight.transpose(0, 2, 1) if len(weight.shape) == 3 else weight.transpose()
+        )
+
+    return (
+        x,
+        weight,
+        bias,
+        group_ep,
+        group_tp,
+        ep_world_size,
+        tp_world_size,
+        x_shard_type,
+        act_type,
+        transpose_weight,
+        output_y2_flag,
+        output_y3_flag,
+    )

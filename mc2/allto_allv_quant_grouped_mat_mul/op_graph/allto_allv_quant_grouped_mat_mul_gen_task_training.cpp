@@ -20,27 +20,65 @@
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
 #include "mc2_platform_info.h"
+#include "mc2_comm_utils.h"
 
 namespace ops {
+static const size_t ATTR_COMM_MODE_INDEX = 14;
+static const size_t RANK_DIM_BOUNDARY = 8;
+static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context, std::string &commMode)
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    if (attrs == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
+        return ge::GRAPH_FAILED;
+    }
+    const char *commModePtr = attrs->GetStr(ATTR_COMM_MODE_INDEX);
+    if (commModePtr == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "commModePtr pointer is null.");
+        return ge::GRAPH_FAILED;
+    }
+    commMode = commModePtr;
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::Status AlltoAllvQuantGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcParamFunc");
-        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+    std::string commMode;
+    ge::Status status = GetRankSizeAndSetCommmode(context, commMode);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
     }
-    OPS_LOG_D(context->GetNodeName(), "Do A3 aicpu GenTask CalcParamFunc");
-    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    const char *serverType = nullptr;
+    const char *streamType = nullptr;
+    if ((isArch35 && commMode == "ai_cpu")) {
+        serverType = "aicpu kfc server";
+        streamType = "kfc_stream";
+        OPS_LOG_D(context->GetNodeName(), "AlltoAllvQuantGroupedMatMulCalcParamFunc use AICPU GenTask");
+    } else if ((isArch35 && commMode == "ccu")) {
+        serverType = "ccu server";
+        streamType = "ccu_stream";
+        OPS_LOG_D(context->GetNodeName(), "AlltoAllvQuantGroupedMatMulCalcParamFunc use CCU GenTask");
+    }
+    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, streamType);
 }
 
 ge::Status AlltoAllvQuantGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                            std::vector<std::vector<uint8_t>> &tasks)
+                                                  std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask GenTaskFunc");
+    std::string commMode;
+    ge::Status status = GetRankSizeAndSetCommmode(context, commMode);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    if ((isArch35 && commMode == "ai_cpu")) {
+        OPS_LOG_D(context->GetNodeName(), "AlltoAllvQuantGroupedMatMulCalcParamFunc use AICPU GenTask");
+        return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
+    } else if ((isArch35 && commMode == "ccu")) {
+        OPS_LOG_D(context->GetNodeName(), "AlltoAllvQuantGroupedMatMulCalcParamFunc use CCU GenTask");
         return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
     }
-    OPS_LOG_D(context->GetNodeName(), "Do A3 aicpu GenTask GenTaskFunc");
-    return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
 }
 
 // new ver
@@ -48,4 +86,3 @@ IMPL_OP(AlltoAllvQuantGroupedMatMul)
     .CalcOpParam(AlltoAllvQuantGroupedMatMulCalcParamFunc)
     .GenerateTask(AlltoAllvQuantGroupedMatMulGenTaskFunc);
 } // namespace ops
-

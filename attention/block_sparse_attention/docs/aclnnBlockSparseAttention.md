@@ -22,6 +22,7 @@
   $$
 
   BlockSparseAttention输入query、key、value的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。
+
   - B：表示输入样本批量大小（Batch）
   - T：B和S合轴紧密排列的长度（Total tokens）
   - S：表示输入样本序列长度（Seq-Length）
@@ -30,12 +31,13 @@
   - D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
 
   当前支持的布局：
-  - qInputLayout: "TND" "BNSD"
-  - kvInputLayout: "TND" "BNSD"
+
+  - qInputLayout: "TND" "BNSD" "BSND"
+  - kvInputLayout: "TND" "BNSD" "BSND"
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用"aclnnBlockSparseAttentionGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttention"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnBlockSparseAttentionGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttention"接口执行计算。
 
 ```c++
 aclnnStatus aclnnBlockSparseAttentionGetWorkspaceSize(
@@ -69,7 +71,7 @@ aclnnStatus aclnnBlockSparseAttention(
   void             *workspace,
   uint64_t          workspaceSize,
   aclOpExecutor    *executor,
-  aclrtStream stream)
+  aclrtStream       stream)
 ```
 
 ## aclnnBlockSparseAttentionGetWorkspaceSize
@@ -106,7 +108,8 @@ aclnnStatus aclnnBlockSparseAttention(
       <td>公式中的query。</td>
       <td>支持的shape为：
         <ul><li>TND: [totalQTokens, headNum, headDim]。</li>
-        <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li></ul>
+        <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li>
+        <li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -121,6 +124,7 @@ aclnnStatus aclnnBlockSparseAttention(
         <ul>
           <li>TND: [totalKTokens, numKeyValueHeads, headDim]。</li>
           <li>BNSD: [batch, numKeyValueHeads, maxKvSeqLength, headDim]。</li>
+          <li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li>
         </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -137,6 +141,7 @@ aclnnStatus aclnnBlockSparseAttention(
         <ul>
           <li>TND: [totalVTokens, numKeyValueHeads, headDim]。</li>
           <li>BNSD: [batch, numKeyValueHeads, maxKvSeqLength, headDim]。</li>
+          <li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li>
         </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -200,7 +205,7 @@ aclnnStatus aclnnBlockSparseAttention(
         可选输入，用于变长序列场景：
         <ul>
           <li>当qInputLayout为"TND"时：该项输入必须配置。</li>
-          <li>当qInputLayout为"BNSD"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入（传入nullptr），算子内会按照query的shape中的S进行处理。</li>
+          <li>当qInputLayout为"BNSD"或"BSND"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入（传入nullptr），算子内会按照query的shape中的S进行处理。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -216,7 +221,7 @@ aclnnStatus aclnnBlockSparseAttention(
         可选输入，用于变长序列场景：
         <ul>
           <li>当kvInputLayout为"TND"时：该项输入必须配置。</li>
-          <li>当kvInputLayout为"BNSD"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入（传入nullptr），算子内会按照key/value的shape中的S进行处理。</li>
+          <li>当kvInputLayout为"BNSD"或"BSND"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入（传入nullptr），算子内会按照key/value的shape中的S进行处理。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -237,8 +242,8 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>qInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入query的数据排布格式。</td>
-      <td>当前仅支持"TND"和"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
+      <td>代表输入query的数据排布格式。</td>
+      <td>当前仅支持"TND"和"BNSD"和"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -248,7 +253,7 @@ aclnnStatus aclnnBlockSparseAttention(
       <td>kvInputLayout</td>
       <td>输入</td>
       <td>代表输入key、value的数据排布格式。</td>
-      <td>当前仅支持"TND"和"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
+      <td>当前仅支持"TND"和"BNSD"和"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -257,7 +262,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>numKeyValueHeads</td>
       <td>输入</td>
-      <td>Host侧的int64_t，代表key/value的head个数。</td>
+      <td>代表key/value的head个数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -282,7 +287,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>scaleValue</td>
       <td>输入</td>
-      <td>Host侧的double，公式中的scale，代表缩放系数。</td>
+      <td>公式中的scale，代表缩放系数。</td>
       <td>一般设置为D^-0.5。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -339,9 +344,9 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>softmaxLseFlag</td>
       <td>输入</td>
-      <td>是否使能softmaxLse输出的标志位。</td>
+      <td>是否开启softmaxLse输出的标志位。</td>
       <td>
-        当前只支持传0或1。其中，<term>Ascend 950PR/Ascend 950DT</term>仅支持配置为0，<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持配置为0或1
+        只支持传0或1。
         <ul>
           <li>0：表示不输出softmaxLse。</li>
           <li>1：表示输出softmaxLse，相比不输出softmaxLse可能存在性能损失。</li>
@@ -371,6 +376,7 @@ aclnnStatus aclnnBlockSparseAttention(
         <ul>
           <li>query为"TND": [totalQTokens, headNum, 1]。</li>
           <li>query为"BNSD": [batch, headNum, maxQSeqLength, 1]。</li>
+          <li>query为"BSND": [batch, maxQSeqLength, headNum, 1]。</li>
         </ul>
       </td>
       <td>FLOAT</td>
@@ -400,10 +406,10 @@ aclnnStatus aclnnBlockSparseAttention(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -428,7 +434,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="4">161002</td>
-      <td>query，key，value 数据类型不在支持的范围之内。</td>
+      <td>query，key，value数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
       <td>qInputLayout或kvInputLayout不合法。</td>
@@ -476,22 +482,22 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>stream</td>
       <td>输入</td>
-      <td>指定执行任务的AscendCL stream流。</td>
+      <td>指定执行任务的Stream。</td>
     </tr>
   </tbody>
   </table>
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnBlockSparseAttention默认确定性实现。
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
-- qInputLayout当前仅支持"TND"和"BNSD"。
-- kvInputLayout当前仅支持"TND"和"BNSD"。
+- qInputLayout当前仅支持"TND"和"BNSD"和"BSND"。
+- kvInputLayout当前仅支持"TND"和"BNSD"和"BSND"。
 - 当前query、key、value的InputLayout必须保持一致。
 - 输入query、key、value的数据类型必须一致，支持FLOAT16和BFLOAT16。
 - query、key、value的D轴当前仅支持配置为64或128
@@ -502,7 +508,7 @@ aclnnStatus aclnnBlockSparseAttention(
 - actualSeqLengthsOptional与actualSeqLengthsKvOptional当前必须同时配置或同时不配置，仅配置其中之一的行为将被算子拦截。
 - blockTableOptional当前只支持传入nullptr，表示不开启PagedAttention特性。
 - innerPrecise必须为0或1或4，其中，<term>Ascend 950PR/Ascend 950DT</term>仅支持配置为4，<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持配置为0或1。
-- softmaxLseFlag仅支持配置0或1，分别表示不开启/开启softmaxLse输出。当前，<term>Ascend 950PR/Ascend 950DT</term>仅支持配置为0，<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持配置为0或1
+- softmaxLseFlag仅支持配置0或1，分别表示不开启/开启softmaxLse输出。
 - qSeqlen和kvSeqlen不需要被blockShape整除，支持非对齐场景，实际分块数通过向上取整计算。
 - 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2 && N1 % N2 == 0。
 - maskType当前只支持输入0，表示不加mask。
@@ -511,7 +517,7 @@ aclnnStatus aclnnBlockSparseAttention(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -546,7 +552,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 }
 
 int Init(int32_t deviceId, aclrtStream* stream) {
-    // 固定写法，AscendCL初始化
+    // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
@@ -570,27 +576,27 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
             return -1;
         }
     }
-    
+
     auto size = GetShapeSize(shape) * sizeof(T);
 
     // 检查hostData大小是否匹配
     if (hostData.size() != static_cast<size_t>(GetShapeSize(shape))) {
-        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n", 
+        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n",
                   hostData.size(), GetShapeSize(shape));
         return -1;
     }
-    
+
     // 调用aclrtMalloc申请device侧内存
     *deviceAddr = nullptr;
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
               return ret);
-    
+
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
               return ret);
-    
+
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
     if (shape.size() > 1) {
@@ -603,7 +609,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     *tensor = nullptr;
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                               shape.data(), shape.size(), *deviceAddr);
-    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n"); 
+    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n");
             return -1);
     return 0;
 }
@@ -671,7 +677,7 @@ void FreeResource(aclTensor *query, aclTensor *key, aclTensor *value, aclTensor 
 }
 
 int main() {
-    // 1. （固定写法）device/stream初始化
+    // 1.（固定写法）device/stream初始化
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
@@ -686,7 +692,7 @@ int main() {
     int32_t headDim = 128;
     int32_t blockShapeX = 128;
     int32_t blockShapeY = 128;
-    
+
     // 计算TND格式维度
     int64_t totalQTokens = batch * qSeqlen;
     int64_t totalKvTokens = batch * kvSeqlen;
@@ -695,7 +701,7 @@ int main() {
     // totalQBlocks = qBlockNum * numHeads (每个Q块对应一个head)
     int32_t totalQBlocks = qBlockNum * numHeads;
     int32_t maxKvBlockNum = kvBlockNum;
-    
+
     aclTensor *queryTensor = nullptr;
     aclTensor *keyTensor = nullptr;
     aclTensor *valueTensor = nullptr;
@@ -781,7 +787,7 @@ int main() {
     // 8. 创建actualSeqLengths和actualSeqLengthsKv (必需参数)
     std::vector<int64_t> actualSeqLengthsHost(batch, static_cast<int64_t>(qSeqlen));
     std::vector<int64_t> actualSeqLengthsKvHost(batch, static_cast<int64_t>(kvSeqlen));
-    
+
     size_t seqLengthsSize = batch * sizeof(int64_t);
 
     ret = aclrtMalloc(&actualSeqLengthsDeviceAddr, seqLengthsSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -816,7 +822,7 @@ int main() {
                            actualSeqLengthsDeviceAddr, actualSeqLengthsKvDeviceAddr, workspaceAddr, deviceId, &stream);
               return ret);
 
-    // aclCreateIntArray 期望的是 host 侧的数据指针，而不是 device 侧的数据
+    // aclCreateIntArray期望的是host侧的数据指针，而不是device侧的数据
     actualSeqLengths = aclCreateIntArray(actualSeqLengthsHost.data(), batch);
     actualSeqLengthsKv = aclCreateIntArray(actualSeqLengthsKvHost.data(), batch);
     CHECK_RET(actualSeqLengths != nullptr && actualSeqLengthsKv != nullptr,
@@ -834,14 +840,14 @@ int main() {
     char kvLayoutBuffer[16] = {0};
     strncpy(qLayoutBuffer, qLayoutStr, sizeof(qLayoutBuffer) - 1);
     strncpy(kvLayoutBuffer, kvLayoutStr, sizeof(kvLayoutBuffer) - 1);
-    
+
     // 10. 计算scaleValue
     float scaleValue = 1.0f / std::sqrt(static_cast<float>(headDim));
-    
+
     // 11. 调用第一段接口
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
-    
+
     ret = aclnnBlockSparseAttentionGetWorkspaceSize(
         queryTensor,           // query
         keyTensor,             // key
@@ -883,7 +889,7 @@ int main() {
     // 12. 分配workspace
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); 
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret);
                       FreeResource(
                       queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor, actualSeqLengths,
                       actualSeqLengthsKv, blockShape, queryDeviceAddr, keyDeviceAddr, valueDeviceAddr,
@@ -928,7 +934,7 @@ int main() {
     for (uint64_t i = 0; i < printNum && i < resultData.size(); i++) {
         LOG_PRINT("  index %lu: %f\n", i, static_cast<float>(resultData[i]));
     }
-    
+
     // 16. 释放资源
     FreeResource(queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor, actualSeqLengths,
                  actualSeqLengthsKv, blockShape, queryDeviceAddr, keyDeviceAddr, valueDeviceAddr,

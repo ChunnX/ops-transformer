@@ -35,7 +35,7 @@
 using namespace std;
 using namespace Mc2Tiling;
 
-extern uint8_t* g_hcclContextReserved[2];
+extern uint8_t *g_hcclContextReserved[2];
 struct HcclCombinOpParams {
     uint64_t WorkSpace;
     uint64_t WorkSpaceSize;
@@ -44,29 +44,32 @@ struct HcclCombinOpParams {
 };
 
 class matmul_all_reduce_test : public testing::Test {
-    protected:
-    static void SetUpTestCase() {
+protected:
+    static void SetUpTestCase()
+    {
         size_t ctxSize = sizeof(HcclCombinOpParams);
-        g_hcclContextReserved[0] = (uint8_t*)AscendC::GmAlloc(ctxSize);
+        g_hcclContextReserved[0] = (uint8_t *)AscendC::GmAlloc(ctxSize);
         cout << "matmul_all_reduce_test SetUp\n" << endl;
     }
-    static void TearDownTestCase() {
-        AscendC::GmFree((void*)g_hcclContextReserved[0]);
+    static void TearDownTestCase()
+    {
+        AscendC::GmFree((void *)g_hcclContextReserved[0]);
         cout << "matmul_all_reduce_test TearDown\n" << endl;
     }
 };
 
-TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_no_bias) {
+TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_no_bias)
+{
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     uint32_t numBlocks = 20;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
     size_t tilingSize = sizeof(MatmulAllReduceTilingData);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    MatmulAllReduceTilingData *tilingData = reinterpret_cast<MatmulAllReduceTilingData*>(tiling);
+    MatmulAllReduceTilingData *tilingData = reinterpret_cast<MatmulAllReduceTilingData *>(tiling);
     tilingData->param.tailM = 16;
     tilingData->param.aicCoreNum = 20;
 
@@ -76,37 +79,40 @@ TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_no_bias) {
     uint8_t *output = (uint8_t *)AscendC::GmAlloc(1536 * 1024 * sizeof(uint16_t));
     uint8_t *aicpuWin = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 * sizeof(uint8_t));
 
-    auto matmul_all_reduce_wrapper = []
-    (GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM,
-    GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
-    GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+    auto matmul_all_reduce_wrapper = [](GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM,
+                                        GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM, GM_ADDR dequantGM,
+                                        GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM,
+                                        GM_ADDR cGM, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
         matmul_all_reduce<ASCEND_910B, MATMUL_ALLREDUCE_MM_TYPE_FP_MM_CUBE_ONLY, MATMUL_ALLREDUCE_EMPTY_INPUT_F,
-            MATMUL_ALLREDUCE_INT8_COMM_F, 0, 0, SET_NOT_USE_FM_MM_TPL_TILING, SET_NOT_USE_QUANT_MM_TPL_TILING,
-            SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING>(aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM,
-            dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM, workspaceGM, tilingGM);
+                          MATMUL_ALLREDUCE_INT8_COMM_F, 0, 0, SET_NOT_USE_FM_MM_TPL_TILING,
+                          SET_NOT_USE_QUANT_MM_TPL_TILING, SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING>(
+            aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM, commQuantScale1GM,
+            commQuantScale2GM, cGM, workspaceGM, tilingGM);
     };
     ICPU_SET_TILING_KEY(260);
-    ICPU_RUN_KF(matmul_all_reduce_wrapper, 20, aGM, bGM, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, output, workspace, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_wrapper, 20, aGM, bGM, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                nullptr, output, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)aGM);
-    AscendC::GmFree((void*)bGM);
-    AscendC::GmFree((void*)output);
-    AscendC::GmFree((void*)aicpuWin);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)aGM);
+    AscendC::GmFree((void *)bGM);
+    AscendC::GmFree((void *)output);
+    AscendC::GmFree((void *)aicpuWin);
 }
 
-TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_bias_cube) {
+TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_bias_cube)
+{
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     uint32_t numBlocks = 20;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
     size_t tilingSize = sizeof(MatmulAllReduceTilingData);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    MatmulAllReduceTilingData *tilingData = reinterpret_cast<MatmulAllReduceTilingData*>(tiling);
+    MatmulAllReduceTilingData *tilingData = reinterpret_cast<MatmulAllReduceTilingData *>(tiling);
     tilingData->param.tailM = 16;
     tilingData->param.aicCoreNum = 20;
     tilingData->param.biasLen = 1536 * sizeof(float);
@@ -118,38 +124,41 @@ TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_bias_cube) {
     uint8_t *output = (uint8_t *)AscendC::GmAlloc(1536 * 1024 * sizeof(uint16_t));
     uint8_t *aicpuWin = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 * sizeof(uint8_t));
 
-    auto matmul_all_reduce_wrapper = []
-    (GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM,
-    GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
-    GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+    auto matmul_all_reduce_wrapper = [](GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM,
+                                        GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM, GM_ADDR dequantGM,
+                                        GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM,
+                                        GM_ADDR cGM, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
         matmul_all_reduce<ASCEND_910B, MATMUL_ALLREDUCE_MM_TYPE_FP_MM, MATMUL_ALLREDUCE_EMPTY_INPUT_F,
-            MATMUL_ALLREDUCE_INT8_COMM_F, 0, 0, MAT_MUL_V3_MIXND2NZ_TRUE, SET_NOT_USE_QUANT_MM_TPL_TILING,
-            SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING>(aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM,
-            dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM, workspaceGM, tilingGM);
+                          MATMUL_ALLREDUCE_INT8_COMM_F, 0, 0, MAT_MUL_V3_MIXND2NZ_TRUE, SET_NOT_USE_QUANT_MM_TPL_TILING,
+                          SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING>(
+            aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM, commQuantScale1GM,
+            commQuantScale2GM, cGM, workspaceGM, tilingGM);
     };
     ICPU_SET_TILING_KEY(256);
-    ICPU_RUN_KF(matmul_all_reduce_wrapper, 20, aGM, bGM, biasGM, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, output, workspace, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_wrapper, 20, aGM, bGM, biasGM, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                nullptr, output, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)aGM);
-    AscendC::GmFree((void*)bGM);
-    AscendC::GmFree((void*)biasGM);
-    AscendC::GmFree((void*)output);
-    AscendC::GmFree((void*)aicpuWin);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)aGM);
+    AscendC::GmFree((void *)bGM);
+    AscendC::GmFree((void *)biasGM);
+    AscendC::GmFree((void *)output);
+    AscendC::GmFree((void *)aicpuWin);
 }
 
-TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_no_bias_l2cache_cube) {
+TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_no_bias_l2cache_cube)
+{
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     uint32_t numBlocks = 20;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
     size_t tilingSize = sizeof(MatmulAllReduceTilingData);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    MatmulAllReduceTilingData *tilingData = reinterpret_cast<MatmulAllReduceTilingData*>(tiling);
+    MatmulAllReduceTilingData *tilingData = reinterpret_cast<MatmulAllReduceTilingData *>(tiling);
     tilingData->param.tailM = 16;
     tilingData->param.aicCoreNum = 8;
     tilingData->param.rankDim = 1;
@@ -185,37 +194,40 @@ TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_no_bias_l2cache_cube) {
     uint8_t *output = (uint8_t *)AscendC::GmAlloc(128 * 8192 * sizeof(uint16_t));
     uint8_t *aicpuWin = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 * sizeof(uint8_t));
 
-    auto matmul_all_reduce_wrapper = []
-    (GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM,
-    GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
-    GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+    auto matmul_all_reduce_wrapper = [](GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM,
+                                        GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM, GM_ADDR dequantGM,
+                                        GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM,
+                                        GM_ADDR cGM, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
         matmul_all_reduce<ASCEND_910B, MATMUL_ALLREDUCE_MM_TYPE_FP_MM, MATMUL_ALLREDUCE_EMPTY_INPUT_F,
-            MATMUL_ALLREDUCE_INT8_COMM_F, 0, 0, MAT_MUL_V3_MIXND2NZ_FALSE, SET_NOT_USE_QUANT_MM_TPL_TILING,
-            SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING>(aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM,
-            dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM, workspaceGM, tilingGM);
+                          MATMUL_ALLREDUCE_INT8_COMM_F, 0, 0, MAT_MUL_V3_MIXND2NZ_FALSE,
+                          SET_NOT_USE_QUANT_MM_TPL_TILING, SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING>(
+            aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM, commQuantScale1GM,
+            commQuantScale2GM, cGM, workspaceGM, tilingGM);
     };
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(matmul_all_reduce_wrapper, 8, aGM, bGM, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, output, workspace, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_wrapper, 8, aGM, bGM, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                nullptr, output, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)aGM);
-    AscendC::GmFree((void*)bGM);
-    AscendC::GmFree((void*)output);
-    AscendC::GmFree((void*)aicpuWin);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)aGM);
+    AscendC::GmFree((void *)bGM);
+    AscendC::GmFree((void *)output);
+    AscendC::GmFree((void *)aicpuWin);
 }
 
-TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_empty_k) {
+TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_empty_k)
+{
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     uint32_t numBlocks = 20;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
     size_t tilingSize = sizeof(MatmulAllReduceTilingData);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    MatmulAllReduceTilingData *tilingData = reinterpret_cast<MatmulAllReduceTilingData*>(tiling);
+    MatmulAllReduceTilingData *tilingData = reinterpret_cast<MatmulAllReduceTilingData *>(tiling);
     tilingData->param.tailCnt = 0;
     tilingData->param.rankDim = 1;
     tilingData->param.tileCnt = 1;
@@ -244,22 +256,24 @@ TEST_F(matmul_all_reduce_test, matmul_all_reduce_test_empty_k) {
     uint8_t *output = (uint8_t *)AscendC::GmAlloc(128 * 1024 * sizeof(uint16_t));
     uint8_t *aicpuWin = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 * sizeof(uint8_t));
 
-    auto matmul_all_reduce_wrapper = []
-    (GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM,
-    GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
-    GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+    auto matmul_all_reduce_wrapper = [](GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM,
+                                        GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM, GM_ADDR dequantGM,
+                                        GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM,
+                                        GM_ADDR cGM, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
         matmul_all_reduce<ASCEND_910B, MATMUL_ALLREDUCE_MM_TYPE_FP_MM, MATMUL_ALLREDUCE_EMPTY_INPUT_T,
-            MATMUL_ALLREDUCE_INT8_COMM_F, 0, 0, MAT_MUL_V3_MIXND2NZ_FALSE, SET_NOT_USE_QUANT_MM_TPL_TILING,
-            SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING>(aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM,
-            dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM, workspaceGM, tilingGM);
+                          MATMUL_ALLREDUCE_INT8_COMM_F, 0, 0, MAT_MUL_V3_MIXND2NZ_FALSE,
+                          SET_NOT_USE_QUANT_MM_TPL_TILING, SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING>(
+            aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM, commQuantScale1GM,
+            commQuantScale2GM, cGM, workspaceGM, tilingGM);
     };
     ICPU_SET_TILING_KEY(16);
-    ICPU_RUN_KF(matmul_all_reduce_wrapper, 8, aGM, bGM, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, output, workspace, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_wrapper, 8, aGM, bGM, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                nullptr, output, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)aGM);
-    AscendC::GmFree((void*)bGM);
-    AscendC::GmFree((void*)output);
-    AscendC::GmFree((void*)aicpuWin);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)aGM);
+    AscendC::GmFree((void *)bGM);
+    AscendC::GmFree((void *)output);
+    AscendC::GmFree((void *)aicpuWin);
 }

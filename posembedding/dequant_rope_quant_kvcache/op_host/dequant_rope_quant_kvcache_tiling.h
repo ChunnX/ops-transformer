@@ -16,7 +16,7 @@
 #define OPS_BUILD_IN_OP_TILING_DEQUANT_ROPE_QUANT_KVCACHE_H
 
 #include "register/op_impl_registry.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "tiling/tiling_api.h"
 
 namespace optiling {

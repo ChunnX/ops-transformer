@@ -17,11 +17,11 @@
 #define MOE_INPLACE_INDEX_ADD_TILING_ARCH35_H_
 
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_util.h"
 #include "util/platform_util.h"
 #include "util/math_util.h"
 #include "log/log.h"

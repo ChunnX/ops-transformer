@@ -14,7 +14,7 @@
  */
 
 #include "mc2_log.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
@@ -24,10 +24,9 @@ using namespace AscendC;
 using namespace ge;
 
 namespace optiling {
-ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext* context);
-struct AllGatherMatmulCompileInfo {
-};
-ge::graphStatus TilingParseForAllGatherMatmulV2(gert::TilingParseContext* context)
+ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext *context);
+struct AllGatherMatmulCompileInfo {};
+ge::graphStatus TilingParseForAllGatherMatmulV2(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
@@ -36,4 +35,4 @@ ge::graphStatus TilingParseForAllGatherMatmulV2(gert::TilingParseContext* contex
 IMPL_OP_OPTILING(AllGatherMatmulV2)
     .Tiling(AllGatherMatmulTilingV2Func)
     .TilingParse<AllGatherMatmulCompileInfo>(TilingParseForAllGatherMatmulV2);
-}  // namespace optiling
+} // namespace optiling

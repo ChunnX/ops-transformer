@@ -36,7 +36,7 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnPromptFlashAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnPromptFlashAttention”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnPromptFlashAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnPromptFlashAttention”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnPromptFlashAttentionGetWorkspaceSize(
@@ -68,17 +68,17 @@ aclnnStatus aclnnPromptFlashAttention(
 ## aclnnPromptFlashAttentionGetWorkspaceSize
 
 - **参数说明**
-  
+
   <div style="overflow-x: auto;">
-   <table style="undefined;table-layout: fixed; width: 1567px"><colgroup> 
-   <col style="width: 170px"> 
-   <col style="width: 120px"> 
-   <col style="width: 300px"> 
-   <col style="width: 330px"> 
-   <col style="width: 212px"> 
-   <col style="width: 100px">  
-   <col style="width: 190px">  
-   <col style="width: 145px">  
+   <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
+   <col style="width: 170px">
+   <col style="width: 120px">
+   <col style="width: 300px">
+   <col style="width: 330px">
+   <col style="width: 212px">
+   <col style="width: 100px">
+   <col style="width: 190px">
+   <col style="width: 145px">
    </colgroup>
   <thead>
   <tr>
@@ -180,7 +180,7 @@ aclnnStatus aclnnPromptFlashAttention(
     <td>输入</td>
     <td>表示attention需要和前几个Token计算关联。</td>
     <td><ul><li>不特意指定时建议传入2147483647。</li></ul>
-      	<ul><li>支持负数。</li></ul></td>
+       <ul><li>支持负数。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -191,7 +191,7 @@ aclnnStatus aclnnPromptFlashAttention(
     <td>输入</td>
     <td>表示attention需要和后几个Token计算关联。</td>
     <td><ul><li>不特意指定时建议传入0。</li></ul>
-      	<ul><li>支持负数。</li></ul></td>
+       <ul><li>支持负数。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -254,8 +254,8 @@ aclnnStatus aclnnPromptFlashAttention(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
 
   <table style="undefined;table-layout: fixed; width: 1152px"><colgroup>
@@ -326,10 +326,10 @@ aclnnStatus aclnnPromptFlashAttention(
     </tr>
   </tbody>
   </table>
-    
+
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -456,7 +456,7 @@ aclnnStatus aclnnPromptFlashAttention(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -524,7 +524,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+  // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -589,7 +589,7 @@ int main() {
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
   // 调用第一段接口
-  ret = aclnnPromptFlashAttentionGetWorkspaceSize(queryTensor, keyTensor, valueTensor, nullptr, nullptr, nullptr, numHeads, scaleValue, 
+  ret = aclnnPromptFlashAttentionGetWorkspaceSize(queryTensor, keyTensor, valueTensor, nullptr, nullptr, nullptr, numHeads, scaleValue,
                                                   preTokens, nextTokens, layerOut, numKeyValueHeads, outTensor, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnPromptFlashAttentionGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
@@ -602,7 +602,7 @@ int main() {
   ret = aclnnPromptFlashAttention(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnPromptFlashAttention failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

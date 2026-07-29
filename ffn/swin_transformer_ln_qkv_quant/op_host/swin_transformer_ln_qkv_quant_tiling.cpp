@@ -18,8 +18,8 @@
 #include "register/op_impl_registry.h"
 #include "register/tilingdata_base.h"
 #include "log/log.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_base.h"
 #include "util/math_util.h"
 
 using namespace std;
@@ -325,6 +325,9 @@ ge::graphStatus SwinTransformerLnQkvQuantTilingCompute::IsSupport(gert::TilingCo
         return ge::GRAPH_FAILED;
     }
     if (sLength * hLength == 0) {
+        return ge::GRAPH_FAILED;
+    }
+    if ((headNum < 1) || (headNum > 32)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

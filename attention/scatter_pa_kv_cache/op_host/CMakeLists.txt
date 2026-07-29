@@ -10,7 +10,7 @@
 message(STATUS "=== Debug: start ops.attention.scatter_pa_kv_cache.op_host.CMakeLists.txt")
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnExc PRIVATE
         scatter_pa_kv_cache_def.cpp
     )
     
@@ -33,5 +33,5 @@ endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_op_to_compiled_list()
-    add_modules_sources(OPTYPE scatter_pa_kv_cache ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE scatter_pa_kv_cache ACLNNTYPE aclnn_exclude)
 endif()

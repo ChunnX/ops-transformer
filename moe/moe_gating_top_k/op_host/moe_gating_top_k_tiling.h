@@ -22,8 +22,8 @@
 #include <algorithm>
 
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "log/log.h"
 
@@ -51,6 +51,7 @@ TILING_DATA_FIELD_DEF(int64_t, vmsCount);
 TILING_DATA_FIELD_DEF(float, routedScalingFactor);
 TILING_DATA_FIELD_DEF(float, eps);
 TILING_DATA_FIELD_DEF(int64_t, calTmpBufUbSize);
+TILING_DATA_FIELD_DEF(bool, hashFlag);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeGatingTopK, MoeGatingTopKTilingData)
 
@@ -73,6 +74,7 @@ TILING_DATA_FIELD_DEF(int64_t, outFlag);
 TILING_DATA_FIELD_DEF(int64_t, vmsCount);
 TILING_DATA_FIELD_DEF(float, routedScalingFactor);
 TILING_DATA_FIELD_DEF(float, eps);
+TILING_DATA_FIELD_DEF(bool, hashFlag);
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxTilingData);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeGatingTopK_10000, MoeGatingTopKRegbaseTilingData)

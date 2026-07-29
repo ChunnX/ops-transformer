@@ -17,10 +17,10 @@
 
 - 接口功能：
   GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作。
-  
+
   相较于aclnnGroupedMatmulFinalizeRoutingV2接口，**此接口新增:**
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：新增入参tuningConfigOptional，调优参数。数组中的第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值合理进行tiling切分，性能更优。
-    - <term>Ascend 950PR/Ascend 950DT</term>：新增了MX量化场景，相关信息参考[量化介绍](../../../docs/zh/context/量化介绍.md)。
+    - <term>Ascend 950PR/Ascend 950DT</term>：新增了MX量化场景，相关信息参考[量化介绍](../../../docs/zh/context/quant_mode_introduction.md)。
 - 计算公式：
 
   - 1.分组矩阵乘法GMM：
@@ -33,11 +33,11 @@
     对于每个token j，执行路由与输出专家分配：
 
     $$
-    y[ rowIndex[i] , : ] = y[rowIndex[i], :] + 
+    y[ rowIndex[i] , : ] = y[rowIndex[i], :] +
     y_{i(j)}[ j - start_{i(j)}]
     $$
 
-    其中 $i(j)$ 是 token j被分配到的专家索引。$y_{i(j)}[ j - start_{i(j)}]$是该token在对应专家下的计算结果。
+    其中 $i(j)$ 是token j被分配到的专家索引。$y_{i(j)}[ j - start_{i(j)}]$是该token在对应专家下的计算结果。
   - 3.共享专家输出融合：
 
     $$
@@ -53,7 +53,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRoutingV3”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRoutingV3”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
@@ -309,7 +309,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>out</td>
       <td>输出</td>
       <td>输出结果。</td>
-      <td>shape与self相同。</td>
+      <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>(batch, n)</td>
@@ -360,13 +360,14 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp代表batchSize / dataParallelSize。
     - perTokenScaleOptional支持FLOAT8_E8M0。shape支持三维，维度为(m,Ceil(k/64),2)。
     - x1、x2、scaleOptional、pertokenScaleOptional、groupListOptional、logitOptional、rowIndexOptional是必选参数，biasOptional，sharedInputOptional是可选参数。目前暂不支持offsetOptional参数。所有参数均不支持空tensor。
-    - out的第一维batch、sharedInputOffset必须大于等于0。
+    - out的第一维batch、sharedInputOffset必须大于等于0，且小于等于m。
+    - 当sharedInputOptional不为空时，其第一维长度为shareInputLen。sharedInputOffset、shareInputLen以及两者之和均需小于等于out的第一维batch。
     - x1支持M为0的空Tensor。
     - x2支持N为0的空Tensor。
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -439,10 +440,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       </tr>
     </tbody>
     </table>
-    
+
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -451,7 +452,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   - <term>Ascend 950PR/Ascend 950DT</term> ：aclnnGroupedMatmulFinalizeRoutingV3默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持伪量化场景。
-  
+
   - 输入和输出支持以下数据类型组合：
 
     | x1   | x2   | scaleOptional | biasOptional | offsetOptional | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional | groupListOptional | sharedInputOptional | logitOptional | rowIndexOptional | out     |
@@ -465,9 +466,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   - 在该场景中，antiquantScaleOptional、antiquantOffsetOptional必须设置为空。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：仅支持MX全量化场景。
-  
+
   - 输入和输出支持以下数据类型组合：
-  
+
     | MX量化场景 | x1                        | x2                         | scaleOptional | biasOptional  | pertokenScaleOptional | groupListOptional | sharedInputOptional | logitOptional | rowIndexOptional | out     |
     | ---------- | ------------------------- | -------------------------- | ------------- | ------------- | --------------------- | ----------------- | ------------------- | ------------- | ---------------- | ------- |
     | MXFP8      | FLOAT8_E4M3FN / FLOAT8_E5M2 | FLOAT8_E4M3FN / FLOAT8_E5M2 | FLOAT8_E8M0   | BFLOAT16 / null | FLOAT8_E8M0           | INT64             | BFLOAT16  / null    | FLOAT32       | INT64            | FLOAT32 |
@@ -476,12 +477,12 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   - 在MXFP4/MXFP8场景中，offsetOptional、antiquantScaleOptional、antiquantOffsetOptional必须设置为空。
   - 在MXFP4场景中，必须满足k为偶数的约束。在x2非转置的情况下，n必须为偶数。
   - 在MXFP4/MXFP8场景中，支持x2转置或者非转置。x2与scale的转置属性必须保持一致。
-  - e 必须小于等于1024。
+  - e必须小于等于1024。
   - 在MXFP4场景中，k不能为2。
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
@@ -613,7 +614,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         bool transposeX = false;
         bool transposeW = false;
         int64_t groupListType = 1;
-      
+
         std::vector<int64_t> xShape = {m, k};
         std::vector<int64_t> wShape = {e, k, n / 8};
         std::vector<int64_t> scaleShape = {e, 1, n};
@@ -669,7 +670,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> xTensorPtr(x, aclDestroyTensor);
         std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        // 创建int32_t 的w aclTensor，后续转为int_4
+        // 创建int32_t的w aclTensor，后续转为int_4
         ret = CreateAclTensorWeight(wHostData, wShape, &wDeviceAddr, aclDataType::ACL_INT32, &w);
         std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> wTensorPtr(w, aclDestroyTensor);
         std::unique_ptr<void, aclError (*)(void *)> wDeviceAddrPtr(wDeviceAddr, aclrtFree);
@@ -741,7 +742,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         ret = aclnnGroupedMatmulFinalizeRoutingV3(workspaceAddr, workspaceSize, executor, stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingV3 failed. ERROR: %d\n", ret); return ret);
 
-        // 4. （固定写法）同步等待任务执行结束
+        // 4.（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -905,7 +906,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   }
 
     int main() {
-      // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+      // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
       int32_t deviceId = 0;
       aclrtStream stream;
       auto ret = Init(deviceId, &stream);
@@ -925,7 +926,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
-    
+
       std::vector<int64_t> xShape = {m, k};
       std::vector<int64_t> wShape = {e, k, n};
       std::vector<int64_t> scaleShape = {g, Ceil(k,64),n,2};
@@ -933,7 +934,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       std::vector<int64_t> offsetShape = {e, 1, n};
       std::vector<int64_t> pertokenScaleShape = {m,Ceil(k,64),2};
       std::vector<int64_t> groupListShape = {e};
-      std::vector<int64_t> sharedInputShape = {bsdp, n}; 
+      std::vector<int64_t> sharedInputShape = {bsdp, n};
       std::vector<int64_t> logitShape = {m};
       std::vector<int64_t> rowIndexShape = {m};
       std::vector<int64_t> outShape = {batch, n};
@@ -975,67 +976,67 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       std::vector<float> outHostData(GetShapeSize(outShape));
       // 对groupList赋值
       groupListHostData[0] = 8;
-    
+
       // 创建x aclTensor
       ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT8_E5M2, &x);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> xTensorPtr(x, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
       // 创建w aclTensor
       ret = CreateAclTensorWeight(wHostData, wShape, &wDeviceAddr, aclDataType::ACL_FLOAT8_E5M2, &w);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> wTensorPtr(w, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> wDeviceAddrPtr(wDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
       // 创建scale aclTensor
       ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT8_E8M0, &scale);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> scaleTensorPtr(scale, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> scaleDeviceAddrPtr(scaleDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
       // 创建bias aclTensor
       ret = CreateAclTensor(biasHostData, biasShape, &biasDeviceAddr, aclDataType::ACL_BF16, &bias);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> biasTensorPtr(bias, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> biasDeviceAddrPtr(biasDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
       // 创建offset aclTensor
       ret = CreateAclTensor(offsetHostData, offsetShape, &offsetDeviceAddr, aclDataType::ACL_FLOAT, &offset);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> offsetTensorPtr(offset, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> offsetDeviceAddrPtr(offsetDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
       // 创建pertokenScale aclTensor
       ret = CreateAclTensor(pertokenScaleHostData, pertokenScaleShape, &pertokenScaleDeviceAddr, ACL_FLOAT8_E8M0, &pertokenScale);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> pertokenScaleTensorPtr(pertokenScale, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> pertokenScaleDeviceAddrPtr(pertokenScaleDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
       // 创建groupList aclTensor
       ret = CreateAclTensor(groupListHostData, groupListShape, &groupListDeviceAddr, aclDataType::ACL_INT64, &groupList);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> groupListTensorPtr(groupList, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> groupListDeviceAddrPtr(groupListDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
       // 创建sharedInput aclTensor
       ret = CreateAclTensor(sharedInputHostData, sharedInputShape, &sharedInputDeviceAddr, aclDataType::ACL_BF16, &sharedInput);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> sharedInputTensorPtr(sharedInput, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> sharedInputDeviceAddrPtr(sharedInputDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
       // 创建logit aclTensor
       ret = CreateAclTensor(logitHostData, logitShape, &logitDeviceAddr, aclDataType::ACL_FLOAT, &logit);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> logitTensorPtr(logit, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> logitDeviceAddrPtr(logitDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
       // 创建rowIndex aclTensor
       ret = CreateAclTensor(rowIndexHostData, rowIndexShape, &rowIndexDeviceAddr, aclDataType::ACL_INT64, &rowIndex);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> rowIndexTensorPtr(rowIndex, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> rowIndexDeviceAddrPtr(rowIndexDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
       // 创建out aclTensor
       ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT, &out);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> outTensorPtr(out, aclDestroyTensor);
@@ -1060,7 +1061,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       ret = aclnnGroupedMatmulFinalizeRoutingV3(workspaceAddr, workspaceSize, executor, stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingV3 failed. ERROR: %d\n", ret); return ret);
 
-      // 4. （固定写法）同步等待任务执行结束
+      // 4.（固定写法）同步等待任务执行结束
       ret = aclrtSynchronizeStream(stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

@@ -166,13 +166,53 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
         OverLapPartProcess(batchIdx, binaryAddCache);
         FoldTailProcess(batchIdx, binaryAddCache);
         NoOverLapPartProcess(batchIdx, binaryAddCache);
-        if (this->cacheIdx_ <= CACHE_BUFF_SIZE) {
-            this->CacheReduceSum(gradScalesUb, binaryAddCache[CACHE_LEVEL0_IDX], 0);
-        } else if (this->cacheIdx_ <= CACHE_BUFF_SIZE * CACHE_BUFF_SIZE) {
-            this->CacheReduceSum(gradScalesUb, binaryAddCache[CACHE_LEVEL1_IDX], 0);
+
+        int64_t totalBlocks = this->cacheIdx_;
+        int64_t level1Count = totalBlocks / CACHE_BUFF_SIZE;
+        
+        if (level1Count == 0) {
+            CacheReduceSum(gradScalesUb, binaryAddCache[CACHE_LEVEL0_IDX], 0);
+        } else if (level1Count < CACHE_BUFF_SIZE) {
+            LocalTensor<float> level1Temp = binaryAddCache[CACHE_LEVEL2_IDX];
+            CacheReduceSum(level1Temp, binaryAddCache[CACHE_LEVEL1_IDX], 0);
+            CacheReduceSum(gradScalesUb, binaryAddCache[CACHE_LEVEL0_IDX], 0);
+            __local_mem__ float *dstAddr = (__local_mem__ float *)gradScalesUb.GetPhyAddr();
+            __local_mem__ float *srcAddr = (__local_mem__ float *)level1Temp.GetPhyAddr();
+            __VEC_SCOPE__
+            {
+                MicroAPI::RegTensor<float> vregLevel1;
+                MicroAPI::RegTensor<float> vregLevel0;
+                MicroAPI::MaskReg preg = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+                DataCopy(vregLevel1, srcAddr);
+                DataCopy(vregLevel0, dstAddr);
+                Add(vregLevel0, vregLevel0, vregLevel1, preg);
+                DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, vregLevel0, preg);
+            }
         } else {
-            this->CacheReduceSum(gradScalesUb, binaryAddCache[CACHE_LEVEL2_IDX], 0);
+            int64_t level2Count = level1Count / CACHE_BUFF_SIZE;
+            LocalTensor<float> level2Temp = binaryAddCache[CACHE_LEVEL2_IDX];
+            LocalTensor<float> level1Temp = binaryAddCache[CACHE_LEVEL2_IDX + 1];
+            CacheReduceSum(level2Temp, binaryAddCache[CACHE_LEVEL2_IDX], 0);
+            CacheReduceSum(level1Temp, binaryAddCache[CACHE_LEVEL1_IDX], 0);
+            CacheReduceSum(gradScalesUb, binaryAddCache[CACHE_LEVEL0_IDX], 0);
+            __local_mem__ float *dstAddr = (__local_mem__ float *)gradScalesUb.GetPhyAddr();
+            __local_mem__ float *level1Addr = (__local_mem__ float *)level1Temp.GetPhyAddr();
+            __local_mem__ float *level2Addr = (__local_mem__ float *)level2Temp.GetPhyAddr();
+            __VEC_SCOPE__
+            {
+                MicroAPI::RegTensor<float> vregLevel2;
+                MicroAPI::RegTensor<float> vregLevel1;
+                MicroAPI::RegTensor<float> vregLevel0;
+                MicroAPI::MaskReg preg = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+                DataCopy(vregLevel2, level2Addr);
+                DataCopy(vregLevel1, level1Addr);
+                DataCopy(vregLevel0, dstAddr);
+                Add(vregLevel0, vregLevel0, vregLevel2, preg);
+                Add(vregLevel0, vregLevel0, vregLevel1, preg);
+                DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, vregLevel0, preg);
+            }
         }
+
         this->gradScalesOutQueue_.template EnQue(gradScalesUb);
         this->ProcessGradScales(batchIdx);
     }
@@ -222,13 +262,15 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
                 biasUb = this->biasInQueue_.template DeQue<T1>();
                 Add(expandedXUb, expandedXUb, biasUb, mainFactor_);
             }
-            this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
+            this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, mainFactor_, binaryAddCache,
+                                 this->cacheIdx_ % CACHE_BUFF_SIZE);
             this->expandedXInQueue_.FreeTensor(expandedXUb);
         } else {
             if constexpr (IsBiasExist) {
                 this->biasInQueue_.template EnQue<T1>(biasUb);
                 biasUb = this->biasInQueue_.template DeQue<T1>();
-                this->VfCalGradScale(biasUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
+                this->VfCalGradScale(biasUb, gradYUb, binAddParams, mainFactor_, binaryAddCache,
+                                     this->cacheIdx_ % CACHE_BUFF_SIZE);
             }
         }
         if constexpr (IsBiasExist) {
@@ -305,14 +347,16 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
                 Add(expandedXUb, expandedXUb, biasUb, foldFactor_ + foldTailFactor);
             }
             this->VfCalGradScale(
-                expandedXUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache, this->cacheIdx_);
+                expandedXUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
+                this->cacheIdx_ % CACHE_BUFF_SIZE);
             this->expandedXInQueue_.FreeTensor(expandedXUb);
         } else {
             if constexpr (IsBiasExist) {
                 this->biasInQueue_.template EnQue<T1>(biasUb);
                 biasUb = this->biasInQueue_.template DeQue<T1>();
                 this->VfCalGradScale(
-                    biasUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache, this->cacheIdx_);
+                    biasUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
+                    this->cacheIdx_ % CACHE_BUFF_SIZE);
             }
         }
         if constexpr (IsBiasExist) {
@@ -373,14 +417,16 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
             Add(expandedXUb, expandedXUb, biasUb, foldFactor_ + foldTailFactor);
         }
         this->VfCalGradScale(
-            expandedXUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache, this->cacheIdx_);
+            expandedXUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
+            this->cacheIdx_ % CACHE_BUFF_SIZE);
         this->expandedXInQueue_.FreeTensor(expandedXUb);
     } else {
         if constexpr (IsBiasExist) {
             this->biasInQueue_.template EnQue<T1>(biasUb);
             biasUb = this->biasInQueue_.template DeQue<T1>();
             this->VfCalGradScale(
-                biasUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache, this->cacheIdx_);
+                biasUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
+                this->cacheIdx_ % CACHE_BUFF_SIZE);
         }
     }
     if constexpr (IsBiasExist) {
@@ -416,13 +462,15 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
             biasUb = this->biasInQueue_.template DeQue<T1>();
             Add(expandedXUb, expandedXUb, biasUb, foldFactor_);
         }
-        this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, foldFactor_, binaryAddCache, this->cacheIdx_);
+        this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, foldFactor_, binaryAddCache,
+                             this->cacheIdx_ % CACHE_BUFF_SIZE);
         this->expandedXInQueue_.FreeTensor(expandedXUb);
     } else {
         if constexpr (IsBiasExist) {
             this->biasInQueue_.template EnQue<T1>(biasUb);
             biasUb = this->biasInQueue_.template DeQue<T1>();
-            this->VfCalGradScale(biasUb, gradYUb, binAddParams, foldFactor_, binaryAddCache, this->cacheIdx_);
+            this->VfCalGradScale(biasUb, gradYUb, binAddParams, foldFactor_, binaryAddCache,
+                                 this->cacheIdx_ % CACHE_BUFF_SIZE);
         }
     }
     if constexpr (IsBiasExist) {
@@ -467,13 +515,15 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
                 biasUb = this->biasInQueue_.template DeQue<T1>();
                 Add(expandedXUb, expandedXUb, biasUb, mainFactor_);
             }
-            this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
+            this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, mainFactor_, binaryAddCache,
+                                 this->cacheIdx_ % CACHE_BUFF_SIZE);
             this->expandedXInQueue_.FreeTensor(expandedXUb);
         } else {
             if constexpr (IsBiasExist) {
                 this->biasInQueue_.template EnQue<T1>(biasUb);
                 biasUb = this->biasInQueue_.template DeQue<T1>();
-                this->VfCalGradScale(biasUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
+                this->VfCalGradScale(biasUb, gradYUb, binAddParams, mainFactor_, binaryAddCache,
+                                     this->cacheIdx_ % CACHE_BUFF_SIZE);
             }
         }
         if constexpr (IsBiasExist) {
@@ -527,14 +577,15 @@ template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline bool MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::IsNeedUpdateLevel1Cache(
     const int64_t cacheIdx)
 {
-    return ((cacheIdx + 1) & 0xff) == 0;
+    return (cacheIdx % CACHE_BUFF_SIZE == 0) && (cacheIdx > 0);
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline bool MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::IsNeedUpdateLevel2Cache(
     const int64_t cacheIdx)
 {
-    return ((cacheIdx + 1) & 0xffff) == 0;
+    int64_t level1Filled = cacheIdx / CACHE_BUFF_SIZE;
+    return (level1Filled % CACHE_BUFF_SIZE == 0) && (level1Filled > 0);
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
@@ -542,10 +593,15 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
     const int64_t cacheIdx, const LocalTensor<float>& binaryAddCache)
 {
     if (IsNeedUpdateLevel1Cache(cacheIdx)) {
-        CacheReduceSum(binaryAddCache[CACHE_LEVEL1_IDX], binaryAddCache[CACHE_LEVEL0_IDX], (cacheIdx & 0Xff00) >> 8);
+        int64_t level1Idx = (cacheIdx / CACHE_BUFF_SIZE) - 1;
+        CacheReduceSum(binaryAddCache[CACHE_LEVEL1_IDX], binaryAddCache[CACHE_LEVEL0_IDX], level1Idx);
+        Duplicate(binaryAddCache[CACHE_LEVEL0_IDX], 0.0f, CACHE_BUFF_SIZE);
     }
     if (IsNeedUpdateLevel2Cache(cacheIdx)) {
-        CacheReduceSum(binaryAddCache[CACHE_LEVEL2_IDX], binaryAddCache[CACHE_LEVEL1_IDX], cacheIdx >> 16);
+        int64_t level1Filled = cacheIdx / CACHE_BUFF_SIZE;
+        int64_t level2Idx = (level1Filled / CACHE_BUFF_SIZE) - 1;
+        CacheReduceSum(binaryAddCache[CACHE_LEVEL2_IDX], binaryAddCache[CACHE_LEVEL1_IDX], level2Idx);
+        Duplicate(binaryAddCache[CACHE_LEVEL0_IDX], 0.0f, CACHE_BUFF_SIZE);
     }
 }
 

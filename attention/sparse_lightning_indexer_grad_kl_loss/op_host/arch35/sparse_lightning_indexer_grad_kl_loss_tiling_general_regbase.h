@@ -18,8 +18,8 @@
 
 #include <numeric>
 #include <algorithm>
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_type.h"
 #include "../sparse_lightning_indexer_grad_kl_loss_tiling_common.h"
 #include "../../op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_template_tiling_key_regbase.h"
 #include "../../op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_tiling_regbase.h"

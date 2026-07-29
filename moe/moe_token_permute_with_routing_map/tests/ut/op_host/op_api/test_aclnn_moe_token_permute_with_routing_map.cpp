@@ -14,7 +14,10 @@
 #include <float.h>
 #include "gtest/gtest.h"
 #include "../../../../op_host/op_api/aclnn_moe_token_permute_with_routing_map.h"
+#include "../../../../op_host/op_api/moe_token_permute_with_routing_map.h"
 #include "opdev/platform.h"
+#include "opdev/make_op_executor.h"
+#include "opdev/shape_utils.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/scalar_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
@@ -266,3 +269,73 @@ TEST_F(l2_moe_token_permute_with_routing_map_test, Ascend910B2_moe_token_permute
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_PARAM_INVALID);
 }
+
+namespace {
+aclTensor* CreateL0AclTensor(const std::vector<int64_t>& shape, aclDataType dtype)
+{
+    static int64_t data[4096] = {0};
+    return aclCreateTensor(shape.data(), shape.size(), dtype, nullptr, 0, ACL_FORMAT_ND, shape.data(), shape.size(),
+                           data);
+}
+
+class l2_moe_token_permute_with_routing_map_l0_test : public testing::Test {
+protected:
+    l2_moe_token_permute_with_routing_map_l0_test() : exe(nullptr) {}
+
+    void SetUp() override
+    {
+        auto executor = &exe;
+        auto uniqueExecutor = CREATE_EXECUTOR();
+        uniqueExecutor.ReleaseTo(executor);
+    }
+
+    void TearDown() override
+    {
+        delete exe;
+        exe = nullptr;
+    }
+
+    aclOpExecutor* exe;
+};
+
+TEST_F(l2_moe_token_permute_with_routing_map_l0_test, MoeTokenPermuteWithRoutingMap_l0_success_without_prob)
+{
+    auto tokens = CreateL0AclTensor({1, 64}, ACL_FLOAT);
+    auto routingMap = CreateL0AclTensor({8, 1}, ACL_BOOL);
+    auto result = l0op::MoeTokenPermuteWithRoutingMap(tokens, routingMap, nullptr, 8, false, exe);
+    EXPECT_NE(result[0], nullptr);
+    EXPECT_NE(result[1], nullptr);
+    EXPECT_NE(result[2], nullptr);
+}
+
+TEST_F(l2_moe_token_permute_with_routing_map_l0_test, MoeTokenPermuteWithRoutingMap_l0_success_with_prob)
+{
+    auto tokens = CreateL0AclTensor({1, 64}, ACL_FLOAT);
+    auto routingMap = CreateL0AclTensor({8, 1}, ACL_BOOL);
+    auto probs = CreateL0AclTensor({8, 1}, ACL_FLOAT);
+    auto result = l0op::MoeTokenPermuteWithRoutingMap(tokens, routingMap, probs, 8, false, exe);
+    EXPECT_NE(result[0], nullptr);
+    EXPECT_NE(result[1], nullptr);
+    EXPECT_NE(result[2], nullptr);
+}
+
+TEST_F(l2_moe_token_permute_with_routing_map_l0_test, MoeTokenPermuteWithRoutingMap_l0_drop_and_pad_non_regbase)
+{
+    auto tokens = CreateL0AclTensor({1, 64}, ACL_FLOAT);
+    auto routingMap = CreateL0AclTensor({8, 1}, ACL_BOOL);
+    auto result = l0op::MoeTokenPermuteWithRoutingMap(tokens, routingMap, nullptr, 8, true, exe);
+    EXPECT_NE(result[0], nullptr);
+    EXPECT_NE(result[1], nullptr);
+    EXPECT_NE(result[2], nullptr);
+}
+
+TEST_F(l2_moe_token_permute_with_routing_map_l0_test, MoeTokenPermuteWithRoutingMap_l0_align_num_zero)
+{
+    auto tokens = CreateL0AclTensor({0, 64}, ACL_FLOAT);
+    auto routingMap = CreateL0AclTensor({8, 0}, ACL_BOOL);
+    auto result = l0op::MoeTokenPermuteWithRoutingMap(tokens, routingMap, nullptr, 0, false, exe);
+    EXPECT_NE(result[0], nullptr);
+    EXPECT_NE(result[1], nullptr);
+    EXPECT_NE(result[2], nullptr);
+}
+} // namespace

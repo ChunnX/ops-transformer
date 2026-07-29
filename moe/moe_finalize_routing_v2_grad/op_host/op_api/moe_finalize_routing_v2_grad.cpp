@@ -38,15 +38,16 @@ const std::array<const aclTensor *, 2> MoeFinalizeRoutingV2Grad(
         grad_expanded_x_out->GetDataType(), op::Format::FORMAT_ND);
     auto grad_scales = executor->AllocTensor(grad_scales_out->GetViewShape(),
         grad_scales_out->GetDataType(), op::Format::FORMAT_ND);
+    if (!(grad_expanded_x->IsEmpty() && grad_scales->IsEmpty())) {
+        auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2Grad,
+            OP_INPUT(grad_y, expanded_row_idx, expanded_x, scales, expert_idx, bias),
+            OP_OUTPUT(grad_expanded_x, grad_scales),
+            OP_ATTR(drop_pad_mode, active_num, expert_num, expert_capacity));
 
-    auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2Grad,
-        OP_INPUT(grad_y, expanded_row_idx, expanded_x, scales, expert_idx, bias),
-        OP_OUTPUT(grad_expanded_x, grad_scales),
-        OP_ATTR(drop_pad_mode, active_num, expert_num, expert_capacity));
-
-    const std::array<const aclTensor *, 2> errorReturn = {nullptr, nullptr};
-    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return errorReturn,
-                                         "MoeFinalizeRoutingV2GradAiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        const std::array<const aclTensor *, 2> errorReturn = {nullptr, nullptr};
+        OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return errorReturn,
+                                            "MoeFinalizeRoutingV2GradAiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+    }
 
     return std::array<const aclTensor*, 2>{grad_expanded_x, grad_scales};
 }

@@ -20,7 +20,7 @@
 #include "tiling/tiling_api.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_log.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "mc2_tiling_struct.h"
 #include "matmul_formulaic_tiling.h"
 #include "mc2_tiling_utils.h"
@@ -31,6 +31,7 @@ namespace optiling {
 class MoeTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MoeTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
+
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus GetPlatformInfo() override;

@@ -16,7 +16,7 @@
 #define __OP_HOST_GROUPED_MATMUL_FINALIZE_ROUTING_BASE_TILING_H__
 
 #include "grouped_matmul_finalize_routing_tiling.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "err/ops_err.h"
 
 namespace optiling {
@@ -56,7 +56,7 @@ protected:
     ge::graphStatus W4A8TilingProcess();
     ge::graphStatus W8A8TilingProcess();
     void DeterministicTilingProcess();
-    void OtherSettingTilingProcess();
+    ge::graphStatus OtherSettingTilingProcess();
     void FillTilingData();
     void FillTilingDataL1Opt();
     void PrintTilingData();

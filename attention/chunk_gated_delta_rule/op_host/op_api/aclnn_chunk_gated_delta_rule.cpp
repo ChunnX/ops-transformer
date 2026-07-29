@@ -32,6 +32,8 @@ extern "C" {
 #endif
 
 namespace {
+constexpr uint64_t INITIAL_STATE_DIMS_NUM = 4;
+
 struct ChunkGatedDeltaRuleParams {
     // 必选输入
     const aclTensor *query{nullptr};
@@ -51,7 +53,8 @@ struct ChunkGatedDeltaRuleParams {
 
 // 校验相关：支持的数据类型
 static const std::initializer_list<op::DataType> QKV_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> STATE_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> STATE_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16,
+                                                                            op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> BETA_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> SEQ_LENS_TYPE_SUPPORT_LIST = {op::DataType::DT_INT32};
 static const std::initializer_list<op::DataType> G_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
@@ -148,19 +151,46 @@ aclnnStatus aclnnChunkGatedDeltaRuleGetWorkspaceSize(const aclTensor *query, con
     }
 
     auto query_ = l0op::Contiguous(query, uniqueExecutor.get());
+    CHECK_RET(query_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto key_ = l0op::Contiguous(key, uniqueExecutor.get());
+    CHECK_RET(key_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto value_ = l0op::Contiguous(value, uniqueExecutor.get());
+    CHECK_RET(value_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto beta_ = l0op::Contiguous(beta, uniqueExecutor.get());
-    auto initialState_ = l0op::Contiguous(initialState, uniqueExecutor.get());
+    CHECK_RET(beta_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    // 仅在Ascend950支持initialState 0或1轴非连续时传入非连续tensor，使用CreateView设置stride信息
+    int64_t *stateShapeDims = nullptr;
+    uint64_t stateShapeDimsNum = 0;
+    int64_t *stateStrideDims = nullptr;
+    uint64_t stateStrideDimsNum = 0;
+    ret = aclGetViewShape(initialState, &stateShapeDims, &stateShapeDimsNum);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = aclGetViewStrides(initialState, &stateStrideDims, &stateStrideDimsNum);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    CHECK_RET(stateShapeDimsNum == INITIAL_STATE_DIMS_NUM && stateStrideDimsNum == INITIAL_STATE_DIMS_NUM,
+              ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    auto initialState_ = initialState;
+
+    const char *socName = aclrtGetSocName();
+    CHECK_RET(socName != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    bool isAscend950 = std::strstr(socName, "Ascend950") != nullptr;
+    if (isAscend950 && stateStrideDims[stateStrideDimsNum - 1] == 1 &&
+        stateStrideDims[stateStrideDimsNum - 2] == stateShapeDims[stateShapeDimsNum - 1]) {
+        initialState_ = uniqueExecutor.get()->CreateView(initialState, initialState->GetViewShape(),
+                                                         initialState->GetStorageShape(),
+                                                         initialState->GetViewStrides(), initialState->GetViewOffset());
+    } else {
+        initialState_ = l0op::Contiguous(initialState, uniqueExecutor.get());
+    }
+    CHECK_RET(initialState_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
     auto actualSeqLengths_ = l0op::Contiguous(actualSeqLengths, uniqueExecutor.get());
+    CHECK_RET(actualSeqLengths_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     // gOptional 为可选输入，非空时才做 contiguous
     if (gOptional != nullptr) {
         gOptional = l0op::Contiguous(gOptional, uniqueExecutor.get());
+        CHECK_RET(gOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-
-    // 保证输出连续性
-    auto out_ = l0op::Contiguous(out, uniqueExecutor.get());
-    auto finalState_ = l0op::Contiguous(finalState, uniqueExecutor.get());
 
     // 调用 L0 接口，得到两个输出
     auto outRet = l0op::ChunkGatedDeltaRule(query_, key_, value_, beta_, initialState_, actualSeqLengths_, gOptional,
@@ -174,9 +204,12 @@ aclnnStatus aclnnChunkGatedDeltaRuleGetWorkspaceSize(const aclTensor *query, con
 
     auto outRet0 = outRet[0];
     auto outRet1 = outRet[1];
+
     // 将 L0 输出回写到用户输出 tensor
-    auto ViewCopyOut = l0op::ViewCopy(outRet0, out_, uniqueExecutor.get());
-    auto ViewCopyFinalState = l0op::ViewCopy(outRet1, finalState_, uniqueExecutor.get());
+    // 输出 tensor 不做 Contiguous：ViewCopy 可直接写回非连续输出 tensor，
+    // 对输出在调用L0接口前调用 Contiguous 会将数据写入 workspace 而非用户 tensor， 会导致报错
+    auto ViewCopyOut = l0op::ViewCopy(outRet0, out, uniqueExecutor.get());
+    auto ViewCopyFinalState = l0op::ViewCopy(outRet1, finalState, uniqueExecutor.get());
     if (ViewCopyOut == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }

@@ -20,7 +20,7 @@
 #include <cstdint>
 #include "acl/acl.h"
 #include "aclnn/opdev/fp16_t.h"
-#include "../op_host/op_api/aclnn_block_sparse_attention_grad.h"
+#include "aclnnop/aclnn_block_sparse_attention_grad.h"
 
 using namespace std;
 

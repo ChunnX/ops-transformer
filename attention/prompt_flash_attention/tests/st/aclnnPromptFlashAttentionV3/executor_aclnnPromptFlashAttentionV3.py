@@ -185,8 +185,8 @@ def aclnn_op_func_pfa_cpu(input_data : InputDataset):
     act_q_seq = input_data.kwargs["actualSeqLengths"]
     act_kv_seq = input_data.kwargs["actualSeqLengthsKv"]
 
-    pse = input_data.kwargs["pseShift"].to(dtype=torch.float16).numpy() if input_data.kwargs["pseShift"] != None else []
-    mask = input_data.kwargs["attenMask"].to(dtype=torch.uint8).numpy() if input_data.kwargs["attenMask"] != None else []
+    pse = input_data.kwargs["pseShift"].to(dtype=torch.float16).numpy() if input_data.kwargs["pseShift"] is not None else []
+    mask = input_data.kwargs["attenMask"].to(dtype=torch.uint8).numpy() if input_data.kwargs["attenMask"] is not None else []
 
     antiquant_scale = []
     antiquant_offset = []

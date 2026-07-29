@@ -16,9 +16,7 @@
 #define MC2_MATMUL_REDUCE_SCATTER_TILING_BASE_H
 
 #include "vector"
-#include "ops_utils.h"
 #include "graph/utils/type_utils.h"
-#include "mc2_log.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_hcom_topo_info.h"
@@ -31,27 +29,26 @@
 namespace optiling {
 class MatmulReduceScatterTilingFuncBase {
 public:
-    ge::graphStatus MatmulReduceScatterTilingFunc(gert::TilingContext* context);
-    ge::graphStatus SetTilingData(const gert::TilingContext* context,
-                                  MatmulReduceScatterTilingData& tilingData);
-    ge::graphStatus MC2SetWorkspaceReduceScatter(gert::TilingContext* context,
-                                                 MatmulReduceScatterTilingData& tilingData,
-                                                 mc2tiling::TilingArgs& args);
-    ge::graphStatus MCSpliteMReduceScatter(gert::TilingContext* ctx,
-                                           MatmulReduceScatterTilingData& tilingData,
-                                           mc2tiling::TilingArgs& args);
-    ge::graphStatus SetMatmulTilingMatmulReduceScatter(gert::TilingContext* context,
-                                                       MatmulReduceScatterTilingData& tilingData,
-                                                       mc2tiling::TilingArgs& args);
-    ge::graphStatus GetReduceScatterFormulateTileCnt(const gert::TilingContext* ctx,
-        MatmulReduceScatterTilingData& tilingData, mc2tiling::TilingArgs& args);
+    ge::graphStatus MatmulReduceScatterTilingFunc(gert::TilingContext *context);
+    ge::graphStatus SetTilingData(const gert::TilingContext *context, MatmulReduceScatterTilingData &tilingData);
+    ge::graphStatus MC2SetWorkspaceReduceScatter(gert::TilingContext *context,
+                                                 MatmulReduceScatterTilingData &tilingData,
+                                                 mc2tiling::TilingArgs &args);
+    ge::graphStatus MCSpliteMReduceScatter(gert::TilingContext *ctx, MatmulReduceScatterTilingData &tilingData,
+                                           mc2tiling::TilingArgs &args);
+    ge::graphStatus SetMatmulTilingMatmulReduceScatter(gert::TilingContext *context,
+                                                       MatmulReduceScatterTilingData &tilingData,
+                                                       mc2tiling::TilingArgs &args);
+    ge::graphStatus GetReduceScatterFormulateTileCnt(const gert::TilingContext *ctx,
+                                                     MatmulReduceScatterTilingData &tilingData,
+                                                     mc2tiling::TilingArgs &args);
     bool IsDeterministic();
-    virtual CutResult GetCutResult(MatmulReduceScatterTilingData& tilingData,
-                                   mc2tiling::TilingArgs& args) = 0;
+    virtual CutResult GetCutResult(MatmulReduceScatterTilingData &tilingData, mc2tiling::TilingArgs &args) = 0;
     virtual ge::graphStatus CheckValidRank(const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK,
-        MatmulReduceScatterTilingData* tilingData, gert::TilingContext* context, uint32_t rankSize) = 0;
-    virtual std::string GetRsConfig(MatmulReduceScatterTilingData& tilingData) = 0;
+                                           MatmulReduceScatterTilingData *tilingData, gert::TilingContext *context,
+                                           uint32_t rankSize) = 0;
+    virtual std::string GetRsConfig(MatmulReduceScatterTilingData &tilingData) = 0;
 };
-}
+} // namespace optiling
 
 #endif

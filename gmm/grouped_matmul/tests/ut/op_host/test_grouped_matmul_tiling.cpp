@@ -56,7 +56,26 @@ struct TensorDescParam {
     vector<int64_t> storageDims;
     ge::DataType dtype = ge::DT_UNDEFINED;
     ge::Format format = ge::FORMAT_ND;
+    TensorDescParam() = default;
+    TensorDescParam(vector<int64_t> o, vector<int64_t> s, ge::DataType d, ge::Format f)
+        : originDims(std::move(o)), storageDims(std::move(s)), dtype(d), format(f)
+    {
+    }
 };
+
+vector<string> ParseTensorSpecs(const string &value)
+{
+    const string trimmed = Trim(value);
+    if (trimmed.empty() || trimmed == "NONE") {
+        return {};
+    }
+    vector<string> specs;
+    SplitStr2Vec(trimmed, ";", specs);
+    for (auto &spec : specs) {
+        spec = Trim(spec);
+    }
+    return specs;
+}
 
 vector<int64_t> ParseDims(const string &value, const map<string, int64_t> &symbols = {})
 {
@@ -82,12 +101,14 @@ ge::Format ParseFormat(const string &format)
     return ops::ut::ParseGeFormat(format);
 }
 
-map<string, int64_t> BuildSymbols(const RawTensorFields &xFields, const RawTensorFields &weightFields,
-                                  bool transposeX, bool transposeWeight)
+map<string, int64_t> BuildSymbols(const RawTensorFields &xFields, const RawTensorFields &weightFields, bool transposeX,
+                                  bool transposeWeight)
 {
     map<string, int64_t> symbols;
 
-    const vector<int64_t> xOriginDims = ParseDims(xFields.origin);
+    auto xSpecs = ParseTensorSpecs(xFields.origin);
+    string xOrigin = xSpecs.empty() ? Trim(xFields.origin) : xSpecs[0];
+    const vector<int64_t> xOriginDims = ParseDims(xOrigin);
     if (xOriginDims.size() >= 2U) {
         const int64_t mValue = transposeX ? xOriginDims[1] : xOriginDims[0];
         const int64_t kValue = transposeX ? xOriginDims[0] : xOriginDims[1];
@@ -97,7 +118,9 @@ map<string, int64_t> BuildSymbols(const RawTensorFields &xFields, const RawTenso
         symbols["k"] = kValue;
     }
 
-    const vector<int64_t> weightOriginDims = ParseDims(weightFields.origin);
+    auto wSpecs = ParseTensorSpecs(weightFields.origin);
+    string wOrigin = wSpecs.empty() ? Trim(weightFields.origin) : wSpecs[0];
+    const vector<int64_t> weightOriginDims = ParseDims(wOrigin);
     if (weightOriginDims.size() >= 3U) {
         const int64_t groupNum = weightOriginDims[0];
         const int64_t kValue = transposeWeight ? weightOriginDims[2] : weightOriginDims[1];
@@ -105,6 +128,16 @@ map<string, int64_t> BuildSymbols(const RawTensorFields &xFields, const RawTenso
         symbols["E"] = groupNum;
         symbols["e"] = groupNum;
         symbols["groupNum"] = groupNum;
+        symbols["K"] = kValue;
+        symbols["k"] = kValue;
+        symbols["N"] = nValue;
+        symbols["n"] = nValue;
+        if (kValue > 0) {
+            symbols["quantGroupNum"] = kValue / kDefaultQuantGroupSize;
+        }
+    } else if (weightOriginDims.size() >= 2U) {
+        const int64_t kValue = transposeWeight ? weightOriginDims[1] : weightOriginDims[0];
+        const int64_t nValue = transposeWeight ? weightOriginDims[0] : weightOriginDims[1];
         symbols["K"] = kValue;
         symbols["k"] = kValue;
         symbols["N"] = nValue;
@@ -164,7 +197,7 @@ struct GroupedMatmulTilingCase {
     int64_t groupListType = 0;
     int64_t actType = 0;
     vector<int64_t> tuningConfig;
-    array<TensorDescParam, kInputTensorCount> inputs;
+    array<vector<TensorDescParam>, kInputTensorCount> inputs;
     TensorDescParam output;
 
     void Run() const
@@ -184,23 +217,58 @@ struct GroupedMatmulTilingCase {
             ParseNpuArch(socVersion),
         };
 
-        gert::TilingContextPara tilingContextPara(
-            "GroupedMatmul", BuildInputTensorDescs(), {BuildTensorDesc(output)},
-            {
-                {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
-                {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dtypeAttr)},
-                {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
-                {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
-                {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
-                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
-                {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(actType)},
-                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(
-                                      tuningConfig.empty() ? vector<int64_t>{0} : tuningConfig)},
-            },
-            &compileInfo, socVersion, aicNum, ubSize);
+        vector<uint32_t> inputInstanceNum(kInputTensorCount);
+        bool hasMultiInstance = false;
+        for (size_t i = 0; i < kInputTensorCount; ++i) {
+            inputInstanceNum[i] = static_cast<uint32_t>(inputs[i].size());
+            if (inputInstanceNum[i] > 1U) {
+                hasMultiInstance = true;
+            }
+        }
 
-        ExecuteTestCase(tilingContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED,
-                        expectSuccess ? expectTilingKey : 0);
+        auto attrs = vector<gert::TilingContextPara::OpAttr>{
+            {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
+            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dtypeAttr)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
+            {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+            {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(actType)},
+            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(
+                                  tuningConfig.empty() ? vector<int64_t>{0} : tuningConfig)},
+        };
+
+        auto runTest = [&](gert::TilingContextPara &para) {
+            ExecuteTestCase(para, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED,
+                            expectSuccess ? expectTilingKey : 0);
+        };
+
+        if (hasMultiInstance) {
+            vector<gert::TilingContextPara::TensorDescription> flatInputDescs;
+            for (size_t i = 0; i < kInputTensorCount; ++i) {
+                for (const auto &tensor : inputs[i]) {
+                    flatInputDescs.emplace_back(BuildTensorDesc(tensor));
+                }
+            }
+            vector<uint32_t> outputInstanceNum = {1U};
+            gert::TilingContextPara tilingContextPara("GroupedMatmul", flatInputDescs, {BuildTensorDesc(output)}, attrs,
+                                                      inputInstanceNum, outputInstanceNum, &compileInfo, socVersion,
+                                                      aicNum, ubSize);
+            runTest(tilingContextPara);
+        } else {
+            vector<gert::TilingContextPara::TensorDescription> inputDescs;
+            inputDescs.reserve(kInputTensorCount);
+            for (size_t i = 0; i < kInputTensorCount; ++i) {
+                if (inputs[i].empty()) {
+                    inputDescs.emplace_back(ops::ut::MakeGertStorageShape({}, {}), ge::DT_UNDEFINED, ge::FORMAT_ND);
+                } else {
+                    inputDescs.emplace_back(BuildTensorDesc(inputs[i][0]));
+                }
+            }
+            gert::TilingContextPara tilingContextPara("GroupedMatmul", inputDescs, {BuildTensorDesc(output)}, attrs,
+                                                      &compileInfo, socVersion, aicNum, ubSize);
+            runTest(tilingContextPara);
+        }
     }
 
 private:
@@ -208,24 +276,14 @@ private:
     {
         return {ops::ut::MakeGertStorageShape(tensor.originDims, tensor.storageDims), tensor.dtype, tensor.format};
     }
-
-    vector<gert::TilingContextPara::TensorDescription> BuildInputTensorDescs() const
-    {
-        vector<gert::TilingContextPara::TensorDescription> descs;
-        descs.reserve(inputs.size());
-        for (const auto &tensor : inputs) {
-            descs.emplace_back(BuildTensorDesc(tensor));
-        }
-        return descs;
-    }
 };
 
 vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulTilingCase> cases;
 
-    const string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_tiling.csv",
-                                                   "gmm/grouped_matmul/tests/ut/op_host", __FILE__);
+    const string csvPath =
+        ops::ut::ResolveCsvPath("test_grouped_matmul_tiling.csv", "gmm/grouped_matmul/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;
@@ -298,7 +356,19 @@ vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
                 BuildSymbols(rawInputs[0], rawInputs[1], tc.transposeX, tc.transposeWeight);
             tc.tuningConfig = ParseIntList(rawTuningConfig, symbols);
             for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
-                tc.inputs[tensorIdx] = ParseTensorDesc(rawInputs[tensorIdx], symbols);
+                auto originSpecs = ParseTensorSpecs(rawInputs[tensorIdx].origin);
+                auto storageSpecs = ParseTensorSpecs(rawInputs[tensorIdx].storage);
+                if (originSpecs.empty()) {
+                    tc.inputs[tensorIdx] = {};
+                } else {
+                    for (size_t specIdx = 0; specIdx < originSpecs.size(); ++specIdx) {
+                        const string &originSpec = originSpecs[specIdx];
+                        const string &storageSpec = specIdx < storageSpecs.size() ? storageSpecs[specIdx] : originSpec;
+                        tc.inputs[tensorIdx].emplace_back(
+                            ParseDims(originSpec, symbols), ParseDims(storageSpec, symbols),
+                            ParseDtype(rawInputs[tensorIdx].dtype), ParseFormat(rawInputs[tensorIdx].format));
+                    }
+                }
             }
             tc.output = ParseTensorDesc(rawOutput, symbols);
             cases.push_back(tc);
@@ -334,26 +404,24 @@ const vector<GroupedMatmulTilingCase> &GetAscend910BCases()
     return cases;
 }
 
-class TestGroupedMatmulAscend950Tiling : public testing::TestWithParam<GroupedMatmulTilingCase> {
-};
+class TestGroupedMatmulAscend950Tiling : public testing::TestWithParam<GroupedMatmulTilingCase> {};
 
 TEST_P(TestGroupedMatmulAscend950Tiling, csvDrivenCase)
 {
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(GMM_TILING_950, TestGroupedMatmulAscend950Tiling,
-                         testing::ValuesIn(GetAscend950Cases()), MakeParamName);
+INSTANTIATE_TEST_SUITE_P(GMM_TILING_950, TestGroupedMatmulAscend950Tiling, testing::ValuesIn(GetAscend950Cases()),
+                         MakeParamName);
 
-class TestGroupedMatmulAscend910BTiling : public testing::TestWithParam<GroupedMatmulTilingCase> {
-};
+class TestGroupedMatmulAscend910BTiling : public testing::TestWithParam<GroupedMatmulTilingCase> {};
 
 TEST_P(TestGroupedMatmulAscend910BTiling, csvDrivenCase)
 {
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(GMM_TILING_910B, TestGroupedMatmulAscend910BTiling,
-                         testing::ValuesIn(GetAscend910BCases()), MakeParamName);
+INSTANTIATE_TEST_SUITE_P(GMM_TILING_910B, TestGroupedMatmulAscend910BTiling, testing::ValuesIn(GetAscend910BCases()),
+                         MakeParamName);
 
 } // namespace GroupedMatmulTilingUT

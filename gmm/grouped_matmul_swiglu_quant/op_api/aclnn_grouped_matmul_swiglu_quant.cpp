@@ -9,6 +9,7 @@
  */
 #include <dlfcn.h>
 #include <new>
+#include <string>
 #include "aclnn_kernels/contiguous.h"
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
@@ -72,9 +73,23 @@ static const std::initializer_list<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {Da
 static const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
 static const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
 static const std::initializer_list<DataType> BIAS_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
+
+static std::string GetSwigluQuantScenarioName(const DataType &xDtype, const DataType &weightDtype)
+{
+    if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
+        return "A8W8";
+    }
+    if (xDtype == DataType::DT_INT8 &&
+        (weightDtype == DataType::DT_INT4 || weightDtype == DataType::DT_INT32)) {
+        return "A8W4";
+    }
+    return "unsupported";
+}
+
 static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const aclTensor *bias, const aclTensor *offset,
                          const aclTensor *weightScale, const aclTensor *xScale, const aclTensor *groupList,
-                         const aclTensor *output, const aclTensor *outputScale, const aclTensor *outputOffset)
+                         const aclTensor *output, const aclTensor *outputScale, const aclTensor *outputOffset,
+                         const char *opName)
 {
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(weight, return false);
@@ -84,23 +99,22 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const aclT
     OP_CHECK_NULL(output, return false);
     OP_CHECK_NULL(outputScale, return false);
     if (x->GetDataType() == DataType::DT_INT8 && weight->GetDataType() == DataType::DT_INT8 && bias != nullptr) {
-        OP_LOGW("aclnnGroupedMatmulSwiGluQuant, The current version does not support the scenario that bias is not 0. "
-                "Features and accuracy are not guaranteed if inputting bias with values other than 0.");
+        OP_LOGW("In op [%s], when A8W8, nonzero bias is not supported. Features and accuracy are not guaranteed "
+                "if inputting bias with values other than 0.", opName);
     } else if (x->GetDataType() == DataType::DT_INT8 && weight->GetDataType() == DataType::DT_INT4 && bias == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant, The current version does not support the scenario that without bias. "
-                "When x is Int8 and weight is int4, bias serves as an auxiliary matrix to weight, and this parameter "
-                "cannot be nullptr.");
+                "In op [%s], when A8W4, [%s] must not be nullptr.", opName, "bias");
         return false;
     }
     if (offset != nullptr) {
-        OP_LOGW(
-            "aclnnGroupedMatmulSwiGluQuant, The current version does not support the scenario where offset is not 0. "
-            "Features and accuracy are not guaranteed if inputting bias with values other than 0s.");
+        OP_LOGW("In op [%s], when %s, nonzero offset is not supported. Features and accuracy are not guaranteed "
+                "if inputting offset with values other than 0.",
+                opName, GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType()).c_str());
     }
     if (outputOffset != nullptr) {
-        OP_LOGW("aclnnGroupedMatmulSwiGluQuant, The current version does not support the scenario where outputOffset "
-                "is not 0. Features and accuracy are not guaranteed if inputting bias with values other than 0s.");
+        OP_LOGW("In op [%s], when %s, nonzero outputOffset is not supported. Features and accuracy are not "
+                "guaranteed if inputting outputOffset with values other than 0.",
+                opName, GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType()).c_str());
     }
     return true;
 }
@@ -148,14 +162,16 @@ static bool CheckInputOutDims_A8W4(const aclTensor *x, const aclTensor *weight, 
 
 static bool CheckInputOutShape_A8W8(const aclTensor *x, const aclTensor *weight, const aclTensor *weightScale,
                                     const aclTensor *xScale, const aclTensor *groupList, const aclTensor *output,
-                                    const aclTensor *outputScale)
+                                    const aclTensor *outputScale, const char *opName)
 {
     int64_t m = x->GetViewShape().GetDim(0);
     int64_t k = x->GetViewShape().GetDim(1);
     int64_t n = weightScale->GetViewShape().GetDim(1);
     int64_t e = weight->GetViewShape().GetDim(0);
     if (n % SPLIT != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulSwiGluQuant, N is %ld , not an even number.", n);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [%s], when A8W8, the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
+                opName, "weightScale", n, "N must be even when A8W8.");
         return false;
     }
     int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
@@ -190,23 +206,21 @@ static bool CheckInputOutShape_A8W8(const aclTensor *x, const aclTensor *weight,
     int64_t groupListLen = groupList->GetViewShape().GetDim(0);
     if (groupListLen > e) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant A8W8, Length of 'groupList' out of range"
-                " (expected to be in range of [1, %ld], but got %ld)",
-                e, groupListLen);
+                "In op [%s], the shape of [%s] is not supported, got [length %ld]. Constraint:[%s length should be "
+                "in range of [1, %ld] when A8W8]",
+                opName, "groupList", groupListLen, "groupList", e);
         return false;
     }
     if (n > N_LIMIT) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant A8W8: The current version does not support the scenario that "
-                "N(%ld) is greater than %ld.",
-                n, N_LIMIT);
+                "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
+                opName, "weightScale", n, "N must be less than or equal to 10240 when A8W8.");
         return false;
     }
     if (k >= K_LIMIT_A8W8) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant A8W8, The current version does not support the scenario."
-                "The tail axis dimension of input0(x) is %ld, which need lower than %ld.",
-                k, K_LIMIT_A8W8);
+                "In op [%s], the shape of [%s] is not supported, got [tail axis dimension %ld]. Constraint:[%s]",
+                opName, "x", k, "tail axis dimension must be lower than 65536 when A8W8.");
         return false;
     }
     return true;
@@ -214,7 +228,7 @@ static bool CheckInputOutShape_A8W8(const aclTensor *x, const aclTensor *weight,
 
 static bool CheckInputOutShape_A8W4(const aclTensor *x, const aclTensor *weight, const aclTensor *bias,
                                     const aclTensor *weightScale, const aclTensor *xScale, const aclTensor *groupList,
-                                    const aclTensor *output, const aclTensor *outputScale)
+                                    const aclTensor *output, const aclTensor *outputScale, const char *opName)
 {
     int64_t e = weight->GetViewShape().GetDim(0);
     int64_t m = x->GetViewShape().GetDim(0);
@@ -237,14 +251,16 @@ static bool CheckInputOutShape_A8W4(const aclTensor *x, const aclTensor *weight,
     }
     if (KGroupCount == 0 || k % KGroupCount != 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant, "
-                "The number of groups along the k-axis is %ld, and the length of the k-axis is %ld, which is illegal. "
-                "The number of groups must be greater than 0, and k-axis length %% number of groups == 0 must be true.",
-                KGroupCount, k);
+                "In op [%s], when A8W4, the number of groups along the k-axis is %ld, and the length of the "
+                "k-axis is %ld. The number of groups must be greater than 0, and k-axis length %% number of "
+                "groups == 0 must be true.",
+                opName, KGroupCount, k);
         return false;
     }
     if (n % SPLIT != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulSwiGluQuant, N is %ld , which must even number.", n);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [%s], when A8W4, the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
+                opName, "weightScale", n, "N must be even when A8W4.");
         return false;
     }
     int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
@@ -278,23 +294,21 @@ static bool CheckInputOutShape_A8W4(const aclTensor *x, const aclTensor *weight,
     int64_t groupListLen = groupList->GetViewShape().GetDim(0);
     if (groupListLen > e) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant A8W4, Length of 'groupList' out of range"
-                " (expected to be in range of [1, %ld], but got %ld)",
-                e, groupListLen);
+                "In op [%s], the shape of [%s] is not supported, got [length %ld]. Constraint:[%s length should be "
+                "in range of [1, %ld] when A8W4]",
+                opName, "groupList", groupListLen, "groupList", e);
         return false;
     }
     if (n > N_LIMIT) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant A8W4, The current version does not support the scenario."
-                "where N after halve is %ld greater than %ld.",
-                n, N_LIMIT);
+                "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
+                opName, "weightScale", n, "N must be less than or equal to 10240 when A8W4.");
         return false;
     }
     if (k >= K_LIMIT_A8W4) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant A8W4, The current version does not support the scenario."
-                "The tail axis dimension of input0(x) is %ld, which need lower than %ld.",
-                k, K_LIMIT_A8W4);
+                "In op [%s], the shape of [%s] is not supported, got [tail axis dimension %ld]. Constraint:[%s]",
+                opName, "x", k, "tail axis dimension must be lower than 20000 when A8W4.");
         return false;
     }
     (void)KGroupSize;
@@ -323,27 +337,30 @@ static bool CheckDtypeValid(const aclTensor *x, const aclTensor *weight, const a
     return true;
 }
 
-static bool CheckFormat(const aclTensor *x, const aclTensor *weight, const aclTensor *output)
+static bool CheckFormat(const aclTensor *x, const aclTensor *weight, const aclTensor *output, const char *opName)
 {
     bool isNZ = weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+    std::string scenario = GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType());
     if ((x->GetDataType() == DataType::DT_INT8 && weight->GetDataType() == DataType::DT_INT8) && !isNZ) {
         // fp16 in fp32 out that is split k template, not precision-advanced now
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant, The current version does not support the scenario."
-                "weight Format expect is FRACTAL_NZ, but got [%s].",
+                "In op [%s], when A8W8, the format of [%s] is not supported, got [%s].",
+                opName, "weight",
                 op::ToString(weight->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(x->GetStorageFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant, The current version does not support the scenario."
-                "x Format Not support Private Format.");
+                "In op [%s], when %s, the format of [%s] is not supported, got [%s].",
+                opName, scenario.c_str(), "x",
+                op::ToString(x->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant, The current version does not support the scenario."
-                "output Format Not support Private Format.");
+                "In op [%s], when %s, the format of [%s] is not supported, got [%s].",
+                opName, scenario.c_str(), "output",
+                op::ToString(output->GetStorageFormat()).GetString());
         return false;
     }
     return true;
@@ -365,10 +382,11 @@ static void UnpackInt32ToInt4(const aclTensor *&tensorS32, const std::string &te
 static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *weight, const aclTensor *bias,
                                const aclTensor *offset, const aclTensor *weightScale, const aclTensor *xScale,
                                const aclTensor *groupList, const aclTensor *output, const aclTensor *outputScale,
-                               const aclTensor *outputOffset)
+                               const aclTensor *outputOffset, const char *opName)
 {
     // 1. 检查参数是否为空指针
-    CHECK_RET(CheckNotNull(x, weight, bias, offset, weightScale, xScale, groupList, output, outputScale, outputOffset),
+    CHECK_RET(CheckNotNull(x, weight, bias, offset, weightScale, xScale, groupList, output, outputScale, outputOffset,
+                           opName),
               ACLNN_ERR_PARAM_NULLPTR);
     // A8W8场景
     if (x->GetDataType() == DataType::DT_INT8 && weight->GetDataType() == DataType::DT_INT8) {
@@ -377,7 +395,7 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *weight, cons
                   ACLNN_ERR_PARAM_INVALID);
 
         // 3. 校验输入、输出shape参数
-        CHECK_RET(CheckInputOutShape_A8W8(x, weight, weightScale, xScale, groupList, output, outputScale),
+        CHECK_RET(CheckInputOutShape_A8W8(x, weight, weightScale, xScale, groupList, output, outputScale, opName),
                   ACLNN_ERR_PARAM_INVALID);
     }
     // A8W4场景 INT32为兼容torch_npu考虑，实际计算时，1个INT32数据会被视为8个INT4数据
@@ -396,7 +414,7 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *weight, cons
                   ACLNN_ERR_PARAM_INVALID);
 
         // 3. 校验输入、输出shape参数
-        CHECK_RET(CheckInputOutShape_A8W4(x, weight, bias, weightScale, xScale, groupList, output, outputScale),
+        CHECK_RET(CheckInputOutShape_A8W4(x, weight, bias, weightScale, xScale, groupList, output, outputScale, opName),
                   ACLNN_ERR_PARAM_INVALID);
     }
     // 4. 检查输入的数据类型是否在支持的数据类型范围之内
@@ -404,21 +422,23 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *weight, cons
               ACLNN_ERR_PARAM_INVALID);
 
     // 5. 检查数据形状是否支持
-    CHECK_RET(CheckFormat(x, weight, output), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckFormat(x, weight, output, opName), ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
 static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(
     const aclTensor *x, const aclTensor *weight, const aclTensor *bias, const aclTensor *offset,
     const aclTensor *weightScale, const aclTensor *xScale, const aclTensor *groupList, aclTensor *output,
-    aclTensor *outputScale, aclTensor *outputOffset, uint64_t *workspaceSize, aclOpExecutor **executor)
+    aclTensor *outputScale, aclTensor *outputOffset, uint64_t *workspaceSize, aclOpExecutor **executor,
+    const char *opName)
 {
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     // 固定写法，参数检查
 
-    auto ret = CheckParams(x, weight, bias, offset, weightScale, xScale, groupList, output, outputScale, outputOffset);
+    auto ret = CheckParams(x, weight, bias, offset, weightScale, xScale, groupList, output, outputScale, outputOffset,
+                           opName);
 
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     // 空Tensor场景
@@ -473,13 +493,14 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSize(const aclTensor *x, co
                                                           aclTensor *outputScale, aclTensor *outputOffset,
                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    const char *opName = "grouped_matmul_swiglu_quant";
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuant, DFX_IN(x, weight, bias, offset, weightScale, xScale, groupList),
                    DFX_OUT(output, outputScale, outputOffset));
     // 固定写法，创建OpExecutor
     return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(x, weight, bias, offset, weightScale, xScale, groupList,
                                                                output, outputScale, outputOffset, workspaceSize,
-                                                               executor);
+                                                               executor, opName);
 }
 
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(const aclTensor *x, const aclTensor *weight,
@@ -489,6 +510,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(const aclTenso
                                                                   aclTensor *outputScale, aclTensor *outputOffset,
                                                                   uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    const char *opName = "grouped_matmul_swiglu_quant";
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNZ,
                    DFX_IN(x, weight, bias, offset, weightScale, xScale, groupList),
@@ -499,9 +521,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(const aclTenso
     auto viewShape = weight->GetViewShape();
     aclTensor *weightNZ = const_cast<aclTensor *>(weight);
     CHECK_COND((storgeShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
-               "aclnnGroupedMatmulSwigluQuantWeightNZ, The dimnum of storageShape for second input (weight)"
-               "must be 5. \n But StorageShape got %s , and dimNum is %lu.",
-               op::ToString(storgeShape).GetString(), storgeShape.GetDimNum());
+               "In op [%s], the shape of [%s] is not supported, got [%s with dim num %zu]. Constraint:[storage "
+               "shape dim num must be 5 when A8W4 weight NZ swiglu quant].",
+               opName, "weight", op::ToString(storgeShape).GetString(), storgeShape.GetDimNum());
     // weight的StorageFormat无条件视为NZ
     weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
     if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
@@ -514,7 +536,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(const aclTenso
     // 调用公共接口
     return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(x, weight, bias, offset, weightScale, xScale, groupList,
                                                                output, outputScale, outputOffset, workspaceSize,
-                                                               executor);
+                                                               executor, opName);
 }
 
 aclnnStatus aclnnGroupedMatmulSwigluQuant(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

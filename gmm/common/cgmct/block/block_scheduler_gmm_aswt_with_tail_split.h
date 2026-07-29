@@ -18,6 +18,7 @@
 #include "./block_scheduler_utils.h"
 #include "./block_scheduler_policy.h"
 #include "../utils/status_utils.h"
+#include "../utils/tuple_utils.h"
 
 namespace Cgmct {
 namespace Gemm {
@@ -27,7 +28,8 @@ constexpr int64_t INNER_AXIS_MIN_SPLIT_VAL = 128; // ND2NZ cache line size is 12
 template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
 class BlockSchedulerGmmAswtWithTailSplit {
 public:
-    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;          // m, n, k
+    using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>; // m, n, mOffset, nOffset
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     using ProblemShape = ProblemShape_;
 
@@ -211,7 +213,45 @@ public:
         return true;
     }
 
-    __aicore__ inline TupleShape GetBlockShape(const BlockCoord &blockCoord)
+    // Row-major (行优先) variant: within each WINDOW_LEN M-tile window,
+    // N changes first, then M advances. Zigzag N-direction reversal between windows.
+    __aicore__ inline bool GetTileIdxRowMajor(BlockCoord &blockCoord)
+    {
+        if (round_ == 0 || roundIdx_ > round_ - 1) {
+            return false;
+        }
+        int64_t newBlockIdx = static_cast<int64_t>(blockIdx_);
+        if (roundIdx_ == round_ - 1 && tailCnt_ > 1) {
+            newBlockIdx = (tailBlockBase_ + ((newBlockIdx - tailBlockBase_) / tailCnt_) * tailCnt_) / tailCnt_;
+        }
+        int64_t index = newBlockIdx + roundIdx_ * blockNum_;
+        if (blockIdx_ < startBlockIdx_) {
+            index += blockNum_ - startBlockIdx_;
+        } else if (tailCnt_ > 1 && endBlockIdx_ + 1 >= tailCnt_ * totalCnt_) {
+            index -= (tailBlockBase_ + ((startBlockIdx_ - tailBlockBase_) / tailCnt_) * tailCnt_) / tailCnt_;
+        } else {
+            index -= startBlockIdx_;
+        }
+
+        int64_t rowIdx = index / (nCnt_ * mainMWindow_);
+        if (rowIdx < mainRow_) {
+            Get<MNK_M>(blockCoord) = rowIdx * mainMWindow_ + (index / nCnt_) % mainMWindow_;
+            Get<MNK_N>(blockCoord) = index % nCnt_;
+        } else {
+            rowIdx = mainRow_;
+            int64_t tailIndex = index - mainRow_ * mainMWindow_ * nCnt_;
+            Get<MNK_M>(blockCoord) = mainRow_ * mainMWindow_ + (tailIndex / nCnt_) % tailWindow_;
+            Get<MNK_N>(blockCoord) = tailIndex % nCnt_;
+        }
+
+        if (rowIdx & 1) {
+            Get<MNK_N>(blockCoord) = nCnt_ - 1 - Get<MNK_N>(blockCoord);
+        }
+        roundIdx_++;
+        return true;
+    }
+
+    __aicore__ inline BlockShape GetBlockShape(const BlockCoord &blockCoord)
     {
         int64_t singleCoreM = Get<MNK_M>(blockCoord) != (mCnt_ - 1) ? baseM_ : mBaseTail_;
         int64_t singleCoreN = Get<MNK_N>(blockCoord) != (nCnt_ - 1) ? baseN_ : nBaseTail_;

@@ -43,21 +43,6 @@ enum class FiaKernelType : uint8_t {
     FULL_QUANT
 };
 
-#if 0
-struct FDparams {
-    uint32_t *bN2IdxOfFdHead;
-    uint32_t *gS1IdxOfFdHead;
-    uint32_t *s2SplitNumOfFdHead;
-    uint32_t *gS1SplitNumOfFdHead;
-    uint32_t *gS1LastPartSizeOfFdHead;
-    uint32_t *gS1IdxEndOfFdHead;
-    uint32_t *gS1IdxEndOfFdHeadSplit;
-    uint32_t usedVecNumOfFd;
-    uint32_t gS1BaseSizeOfFd;
-};
-
-
-#endif
 struct FDparamsX {
     uint32_t fdCoreEnable;
     uint32_t fdBN2Idx;
@@ -82,6 +67,7 @@ struct RunInfoX {
     uint32_t gIdx = 0;
     uint32_t s1Idx = 0;
     uint32_t s2Idx = 0;
+    uint32_t realN2Idx = 0;   // GS1合轴时为n2Idx，不合轴时为n1Idx
     uint64_t actS1Size = 1;   // 当前处理head的S1轴实际大小
     uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
     uint32_t actMSize = 0;    // GS1方向上的长度
@@ -102,6 +88,11 @@ struct RunInfoX {
     uint64_t kvPaddingBeginOffset = 0;
 };
 
+struct StridesConstInfo {
+    uint64_t bnStride = 0;
+    uint64_t n2Stride = 0;
+};
+
 struct CommonConstInfo {
     /* 轴长度 */
     uint32_t bSize;
@@ -113,10 +104,19 @@ struct CommonConstInfo {
     uint32_t dSizeRope;
     uint32_t gSize; /* g轴的大小 */
     uint32_t n2Size;
+    uint32_t realGSize;
+    uint32_t realN2Size;
     uint64_t s1Size;             /* s1总大小 */
     uint64_t s2Size;             /* s2总大小 */
     uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
     uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
+
+    /* strides */
+    StridesConstInfo keyStrides;
+    StridesConstInfo valueStrides;
+    StridesConstInfo kRopeStrides;
+    StridesConstInfo kScaleStrides;
+    StridesConstInfo vScaleStrides;
 
     /* FA kernel meta */
     uint32_t bN2Start;
@@ -144,6 +144,10 @@ struct CommonConstInfo {
     uint8_t subBlockIdx;
     uint32_t coreNum;
 
+    /* S1外切 */
+    bool enableS1OutSplit;
+    uint32_t totalSize;
+
     /* FA中间结果写出workspace信息 */
     uint32_t accumOutSize;
     uint32_t logSumExpSize;
@@ -164,7 +168,7 @@ struct LseConstInfo {
 };
 
 struct SinkConstInfo {
-    bool learnableSinkFlag = false;
+    bool learnableSinkFlag;
 };
 
 struct PseConstInfo {
@@ -194,78 +198,20 @@ struct LeftPaddingConstInfo {
 };
 
 struct SysPrefixConstInfo {
-    bool isActualSharedPrefixLenNull = true;
-    int64_t actualKVPrefixSize = 0; /* 保存prefix实际长度 */
-    int64_t kvPrefixSize = 0;       /* 保存prefix shape完整长度 */
-    int64_t prefixLoopCount = 0;    /* 保存prefix参与的S2方向循环次数 */
+    bool isActualSharedPrefixLenNull;
+    int64_t actualKVPrefixSize; /* 保存prefix实际长度 */
+    int64_t kvPrefixSize;       /* 保存prefix shape完整长度 */
+    int64_t prefixLoopCount;    /* 保存prefix参与的S2方向循环次数 */
 };
 
 template <FiaKernelType>
 struct ConstInfo_t;
 
 template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
-                                              PAConstInfo,
-                                              LseConstInfo,
-                                              SinkConstInfo,
-                                              PseConstInfo,
-                                              TensorListConstInfo,
-                                              PostQuantConstInfo,
-                                              LeftPaddingConstInfo,
-                                              SysPrefixConstInfo {};
+struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo {};
 
-// struct FusedTransposeInfo {
-//     // 以下是FlashDecode分支区分的信息
-//     uint32_t n2Idx = 0;
-//     uint32_t bIdx = 0;
-
-//     // 以下是需要用公式计算的信息
-//     uint32_t s1StartIdx = 0;
-//     uint32_t s1EndIdx = 0;
-//     uint32_t s1Count = 0;
-//     uint32_t gStartIdx = 0;
-//     uint32_t gEndIdx = 0;
-//     uint32_t gCount = 0;
-// };
-
-// struct MSplitInfo {
-//     uint32_t nBufferIdx = 0U;
-//     uint32_t nBufferStartM = 0U;
-//     uint32_t nBufferDealM = 0U;
-//     uint32_t vecStartM = 0U;
-//     uint32_t vecDealM = 0U;
-// };
-
-// enum class TASK_DEAL_MODE : uint32_t
-// {
-//     DEAL_ZERO = 0,
-//     SKIP = 1,
-//     CREATE_TASK = 2
-// };
-
-// template <LayOutTypeEnum LAYOUT, typename CONST_INFO_T>
-// __aicore__ inline void GetGS1Idx(uint32_t gS1Idx, uint32_t &gIdx, uint32_t &s1Idx, const CONST_INFO_T &constInfo)
-// {
-//     // GS1
-//     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD || LAYOUT == LayOutTypeEnum::LAYOUT_NBSD ||
-//                   LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
-//         gIdx = gS1Idx / constInfo.qSeqSize;
-//         s1Idx = gS1Idx % constInfo.qSeqSize;
-//     } else {
-//         // S1G
-//         s1Idx = gS1Idx / constInfo.gSize;
-//         gIdx = gS1Idx % constInfo.gSize;
-//     }
-// }
-
-// __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
-// {
-//     sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
-//     sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
-//     return sInnerToken;
-// }
-
-
+template <>
+struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
 } // namespace AttentionCommon
 
 #endif // FIA_PUBLIC_DEFINE_H

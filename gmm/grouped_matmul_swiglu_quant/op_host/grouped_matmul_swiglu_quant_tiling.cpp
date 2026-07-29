@@ -17,7 +17,7 @@
 #include "register/op_impl_registry.h"
 #include "log/log.h"
 #include "err/ops_err.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "grouped_matmul_swiglu_quant_tiling.h"
 using namespace ge;
 using namespace AscendC;

@@ -14,8 +14,8 @@
  */
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_PROMPTFLASHATTENTION_V2_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_PROMPTFLASHATTENTION_V2_H_
-#include "tiling_base/data_copy_transpose_tiling_def.h"
-#include "tiling_base/data_copy_transpose_tiling.h"
+#include "op_host/data_copy_transpose_tiling_def.h"
+#include "op_host/data_copy_transpose_tiling.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "register/op_def_registry.h"
@@ -266,8 +266,6 @@ protected:
     void UpdateTilingKeyIsPa(ge::DataType inputDataType);
     void UpdateTilingKeyIsFd(ge::DataType inputDataType);
     void UpdateTilingKeyEmptyTensor();
-    void UpdateTilingKeyPFAMask(PromptFlashAttentionTilingDataV2& tilingData, ge::DataType inputDataType);
-    void UpdateTilingKeyPFAMatMulType(PromptFlashAttentionTilingDataV2& tilingData, ge::DataType inputDataType);
     void UpdateTilingKeyEnableKVPrefix();
     void UpdateTilingKeySplitCoreMode();
 
@@ -281,8 +279,6 @@ public:
     bool isPa = false;
     bool isFd = false;
     bool emptyTensor = false;
-    uint8_t PFAMask = 0;
-    uint8_t pFAMatMulType = 0;
     bool enableKVPrefix = false;
     bool enableS1OutSplit = false;
   

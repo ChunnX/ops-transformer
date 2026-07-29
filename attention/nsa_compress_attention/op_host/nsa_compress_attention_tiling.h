@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <register/tilingdata_base.h>
 #include <tiling/tiling_api.h>
-#include "tiling_base/data_copy_transpose_tiling_def.h"
+#include "op_host/data_copy_transpose_tiling_def.h"
 
 namespace optiling {
 
@@ -63,6 +63,7 @@ TILING_DATA_FIELD_DEF(uint64_t, innerLoop); // s2方向上一次l 切分循环�
 TILING_DATA_FIELD_DEF(uint64_t, s2ScoreLoopLen); // s2方向一次加载的长度
 TILING_DATA_FIELD_DEF(uint64_t, lastLoopLen); // s2方向加载的尾块大小
 TILING_DATA_FIELD_DEF(uint64_t, s2Loop); // s2方向上循环次数
+TILING_DATA_FIELD_DEF(uint64_t, tmpUbSize);
 TILING_DATA_FIELD_DEF_STRUCT(ConfusionTransposeTiling, confusionTransposeTilingData); // api tiling
 TILING_DATA_FIELD_DEF_STRUCT(ConfusionTransposeTiling, confusionTransposeTilingData2); // api tiling
 TILING_DATA_FIELD_DEF_STRUCT(ConfusionTransposeTiling, confusionTransposeTilingDataLast); // api tiling

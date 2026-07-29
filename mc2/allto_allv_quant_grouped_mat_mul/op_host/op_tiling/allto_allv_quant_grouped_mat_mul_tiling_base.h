@@ -16,7 +16,7 @@
 
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_struct.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
@@ -55,6 +55,7 @@ constexpr uint32_t ATTR_MM_WEIGHT_QUANT_MODE_INDEX = 10;
 constexpr uint32_t ATTR_GROUP_SIZE_INDEX = 11;
 constexpr uint32_t ATTR_Y_DTYPE = 12;
 constexpr uint32_t ATTR_MM_DTYPE = 13;
+constexpr uint32_t ATTR_COMM_MODE = 14;
 // dim index
 constexpr uint32_t DIM_ZERO = 0;
 constexpr uint32_t DIM_ONE = 1;
@@ -92,17 +93,19 @@ constexpr uint64_t L1_ALIGN_SIZE = 32;
 constexpr uint64_t NO_QUANT_MODE = 0;
 constexpr uint64_t PERTENSOR_QUANT_MODE = 1;
 constexpr uint64_t MX_QUANT_MODE = 6;
+constexpr uint32_t RANK_DIM_BOUNDARY = 8;
 
 class AlltoAllvQuantGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit AlltoAllvQuantGmmTilingBase(gert::TilingContext *context)
-        : Ops::Transformer::OpTiling::TilingBaseClass(context){};
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
 protected:
     ge::graphStatus GetCommonPlatformInfo();
     ge::graphStatus CheckCommonPlatformInfo();
     ge::graphStatus GetCommonShapeAttrsInfo();
     ge::graphStatus CheckCommonShapeAttrsInfo();
+    ge::graphStatus GetShapeInfo();
 
     // platform info
     platform_ascendc::SocVersion socVersion_;
@@ -137,13 +140,13 @@ protected:
     uint64_t n2_ = 0;
     uint64_t k_ = 0;
     // attr
-    const char* group_;
+    const char *group_;
     uint64_t epWorldSize_ = 0;
     bool transGmmWeight_ = false;
     bool transMmWeight_ = false;
     bool permuteOutFlag_ = false;
-    const int64_t* sendCounts = nullptr;
-    const int64_t* recvCounts = nullptr;
+    const int64_t *sendCounts = nullptr;
+    const int64_t *recvCounts = nullptr;
     // data type
     ge::DataType gmmXDataType_;
     ge::DataType gmmWeightDataType_;
@@ -155,7 +158,6 @@ protected:
 private:
     // get
     ge::graphStatus GetAttrsInfo();
-    ge::graphStatus GetShapeInfo();
     ge::graphStatus GetGmmXShapeInfo();
     ge::graphStatus GetGmmWeightShapeInfo();
     ge::graphStatus GetCountsTensorShapeInfo();
@@ -181,4 +183,4 @@ private:
     ge::graphStatus CheckCommCountsValue();
     ge::graphStatus CheckFormat();
 };
-}  // namespace optiling
+} // namespace optiling

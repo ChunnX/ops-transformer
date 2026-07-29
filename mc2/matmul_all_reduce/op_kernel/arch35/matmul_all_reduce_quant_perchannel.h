@@ -32,12 +32,12 @@ constexpr uint32_t BYTE32_MATMUL_ALLREDUCE_INT8 = 32;
 constexpr uint32_t BYTE512_MATMUL_ALLREDUCE_INT8 = 512;
 
 template <class T>
-class MatmulAllReduceQuantPerchannel
-{
+class MatmulAllReduceQuantPerchannel {
 public:
     __aicore__ inline MatmulAllReduceQuantPerchannel()
-    {}
-    __aicore__ inline void Init(TPipe* tPipe, uint32_t quantUbSize)
+    {
+    }
+    __aicore__ inline void Init(TPipe *tPipe, uint32_t quantUbSize)
     {
         pipe_ = tPipe;
         uint32_t scaleUbSize = quantUbSize;
@@ -47,9 +47,8 @@ public:
         if (this->splitMode_ == SPLIT_M_MATMUL_ALLREDUCE_INT8) {
             pipe_->InitBuffer(inQueueS_, 1, scaleUbSize * sizeof(T)); // quant_scale，X和S的大小相同，行向量一一对应
         } else {
-            pipe_->InitBuffer(
-                inQueueS_, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8,
-                scaleUbSize * sizeof(T)); // quant_scale，X和S的大小相同，行向量一一对应
+            pipe_->InitBuffer(inQueueS_, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8,
+                              scaleUbSize * sizeof(T)); // quant_scale，X和S的大小相同，行向量一一对应
         }
         pipe_->InitBuffer(inQueueX_, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, quantUbSize * sizeof(T)); // mmOut
         pipe_->InitBuffer(outQueueZ_, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8,
@@ -61,9 +60,9 @@ public:
         }
     }
 
-    __aicore__ inline void InitInner(
-        uint32_t loopIdx, int64_t blockAddrOffsetSplitM, uint32_t blockCntM, int64_t blockAddrOffsetSplitMN,
-        int64_t scaleAddrOffsetSplitMN, uint32_t blockCntSpiltMN)
+    __aicore__ inline void InitInner(uint32_t loopIdx, int64_t blockAddrOffsetSplitM, uint32_t blockCntM,
+                                     int64_t blockAddrOffsetSplitMN, int64_t scaleAddrOffsetSplitMN,
+                                     uint32_t blockCntSpiltMN)
     {
         uint64_t curBlockCnt = 0;
         int64_t curBlockAddrOffset = 0;
@@ -81,22 +80,20 @@ public:
             curScaleAddrOffset = scaleAddrOffsetSplitMN;
         }
 
-        mmOutGm_.SetGlobalBuffer(
-            reinterpret_cast<__gm__ T*>(this->mmOut_) + curBlockAddrOffset,
-            curBlockCnt); // 用于读入数据
-        quantedOutGm_.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int8_t*>(this->quantedOut_) + curBlockAddrOffset,
-            curBlockCnt); // 用于输出数据
+        mmOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(this->mmOut_) + curBlockAddrOffset,
+                                 curBlockCnt); // 用于读入数据
+        quantedOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(this->quantedOut_) + curBlockAddrOffset,
+                                      curBlockCnt); // 用于输出数据
         if (((loopIdx == 0) && (this->splitMode_ == SPLIT_M_MATMUL_ALLREDUCE_INT8)) ||
             (this->splitMode_ == SPLIT_MN_MATMUL_ALLREDUCE_INT8)) {
-            quantScaleGm_.SetGlobalBuffer(
-                reinterpret_cast<__gm__ T*>(this->quantScale_) + curScaleAddrOffset, curScaleCnt);
+            quantScaleGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(this->quantScale_) + curScaleAddrOffset,
+                                          curScaleCnt);
         }
     }
 
-    __aicore__ inline void MatmulAllReduceQuantPerchannelSplitM(
-        const uint32_t quantUbSize, int64_t& blockAddrOffset, uint32_t& tileCalCntM, uint32_t& tailCalCntM,
-        uint32_t& aivLoopNum)
+    __aicore__ inline void MatmulAllReduceQuantPerchannelSplitM(const uint32_t quantUbSize, int64_t &blockAddrOffset,
+                                                                uint32_t &tileCalCntM, uint32_t &tailCalCntM,
+                                                                uint32_t &aivLoopNum)
     {
         uint32_t aivAddOneIndex = quantAivCoreNum_ + 1; // 要多算一轮的核的下标，如果不均分，使用后面 [aivAddOneIndex,
                                                         // quantAivCoreNum_ - 1] 核来完成多余一轮的计算
@@ -138,9 +135,9 @@ public:
         }
     }
 
-    __aicore__ inline void MatmulAllReduceQuantPerchannelSplitMAndN(
-        int32_t& quantUbSize, uint32_t& needAivCoreNum, uint32_t& tileBlockCnt, uint32_t& tailBlockCnt,
-        uint32_t& aivLoopNum, uint32_t& blockNumPerRow)
+    __aicore__ inline void MatmulAllReduceQuantPerchannelSplitMAndN(int32_t &quantUbSize, uint32_t &needAivCoreNum,
+                                                                    uint32_t &tileBlockCnt, uint32_t &tailBlockCnt,
+                                                                    uint32_t &aivLoopNum, uint32_t &blockNumPerRow)
     {
         quantUbSize = TOTAL_UBSIZE_MATMUL_ALLREDUCE_INT8 /
                       (FP16_BUF_SPLIT_MN_CNT_MATMUL_ALLREDUCE_INT8 * static_cast<int32_t>(sizeof(T)));
@@ -167,9 +164,8 @@ public:
         }
     }
 
-    __aicore__ inline void ProcessDiv(
-        uint32_t loopIdx, uint32_t curBlockCntM, uint32_t calcCnt, uint32_t aivLoopNum, LocalTensor<T>& mmOutLocal,
-        DataCopyParams& quantedOutCopyParams)
+    __aicore__ inline void ProcessDiv(uint32_t loopIdx, uint32_t curBlockCntM, uint32_t calcCnt, uint32_t aivLoopNum,
+                                      LocalTensor<T> &mmOutLocal, DataCopyParams &quantedOutCopyParams)
     {
         LocalTensor<T> xLocal = inQueueX_.DeQue<T>();
         LocalTensor<int8_t> zLocal = outQueueZ_.AllocTensor<int8_t>();
@@ -215,8 +211,8 @@ public:
         }
     }
 
-    __aicore__ inline void Process(
-        uint32_t loopIdx, uint32_t aivLoopNum, uint32_t curBlockCntM, uint32_t blockCntSpiltMN)
+    __aicore__ inline void Process(uint32_t loopIdx, uint32_t aivLoopNum, uint32_t curBlockCntM,
+                                   uint32_t blockCntSpiltMN)
     {
         uint32_t calcCnt = blockCntSpiltMN;
         uint16_t copyInUbStride = 0;
@@ -225,17 +221,20 @@ public:
         uint32_t copyBlockLen = calcCnt;
         if (this->splitMode_ == SPLIT_M_MATMUL_ALLREDUCE_INT8) { // 搬多行
             calcCnt = quantAlginN_ * curBlockCntM;
-            copyInUbStride = (quantAlginN_ * sizeof(T) - Ceil(quantN_ * sizeof(T), 
-                BYTE32_MATMUL_ALLREDUCE_INT8) * BYTE32_MATMUL_ALLREDUCE_INT8) / BYTE32_MATMUL_ALLREDUCE_INT8;
-            copyOutUbStride = (quantAlginN_ * sizeof(int8_t) - Ceil(quantN_ * sizeof(int8_t), 
-                BYTE32_MATMUL_ALLREDUCE_INT8) * BYTE32_MATMUL_ALLREDUCE_INT8) / BYTE32_MATMUL_ALLREDUCE_INT8;
+            copyInUbStride = (quantAlginN_ * sizeof(T) -
+                              Ceil(quantN_ * sizeof(T), BYTE32_MATMUL_ALLREDUCE_INT8) * BYTE32_MATMUL_ALLREDUCE_INT8) /
+                             BYTE32_MATMUL_ALLREDUCE_INT8;
+            copyOutUbStride =
+                (quantAlginN_ * sizeof(int8_t) -
+                 Ceil(quantN_ * sizeof(int8_t), BYTE32_MATMUL_ALLREDUCE_INT8) * BYTE32_MATMUL_ALLREDUCE_INT8) /
+                BYTE32_MATMUL_ALLREDUCE_INT8;
             copyBlockCnt = curBlockCntM;
             copyBlockLen = quantN_;
         }
-        DataCopyParams mmOutCopyParams = {
-            copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(T)), 0, copyInUbStride};
-        DataCopyParams quantedOutCopyParams = {
-            copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)), copyOutUbStride, 0};
+        DataCopyParams mmOutCopyParams = {copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(T)), 0,
+                                          copyInUbStride};
+        DataCopyParams quantedOutCopyParams = {copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)),
+                                               copyOutUbStride, 0};
         DataCopyParams quantScaleCopyParams = {1, static_cast<uint16_t>(copyBlockLen * sizeof(T)), 0, 0};
         DataCopyPadParams padParams = {false, 0, 0, 0};
 
@@ -256,7 +255,7 @@ public:
         ProcessDiv(loopIdx, curBlockCntM, calcCnt, aivLoopNum, mmOutLocal, quantedOutCopyParams);
     }
 
-    TPipe* pipe_;
+    TPipe *pipe_;
     TQue<QuePosition::VECIN, 1> inQueueX_;
     TQue<QuePosition::VECIN, 1> inQueueS_;
     TQue<QuePosition::VECOUT, 1> outQueueZ_;
@@ -284,8 +283,8 @@ public:
  * 接口说明：&outerLoop: 总的外循环个数，结合outerLoopId判断是否为最后一个循环
  */
 template <class T>
-__aicore__ inline void MatmulAllReduceQuantPerchannelCommInt8(
-    GM_ADDR mmOut, GM_ADDR quantScale, GM_ADDR quantedOut, TPipe* tPipe, uint32_t N, uint32_t M)
+__aicore__ inline void MatmulAllReduceQuantPerchannelCommInt8(GM_ADDR mmOut, GM_ADDR quantScale, GM_ADDR quantedOut,
+                                                              TPipe *tPipe, uint32_t N, uint32_t M)
 {
     uint32_t nowQuantAivCoreNum = GetBlockNum() * GetTaskRation();
     if ((g_coreType == AIC) || (GetBlockIdx() >= nowQuantAivCoreNum)) {
@@ -324,12 +323,12 @@ __aicore__ inline void MatmulAllReduceQuantPerchannelCommInt8(
     op.quantedOut_ = quantedOut;
     if (nowQuantUbSize >= nowQuantAlginN) { // 分核切M， 不切N
         op.splitMode_ = SPLIT_M_MATMUL_ALLREDUCE_INT8;
-        op.MatmulAllReduceQuantPerchannelSplitM(
-            nowQuantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM, quantAivLoopNum);
+        op.MatmulAllReduceQuantPerchannelSplitM(nowQuantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM,
+                                                quantAivLoopNum);
     } else { // N超大，分核策略采取切MN
         op.splitMode_ = SPLIT_MN_MATMUL_ALLREDUCE_INT8;
-        op.MatmulAllReduceQuantPerchannelSplitMAndN(
-            nowQuantUbSize, needAivCoreNum, tileBlockCnt, tailBlockCnt, quantAivLoopNum, blockNumPerRow);
+        op.MatmulAllReduceQuantPerchannelSplitMAndN(nowQuantUbSize, needAivCoreNum, tileBlockCnt, tailBlockCnt,
+                                                    quantAivLoopNum, blockNumPerRow);
     }
 
     if (quantAivLoopNum == 0) {
@@ -364,8 +363,8 @@ __aicore__ inline void MatmulAllReduceQuantPerchannelCommInt8(
             scaleAddrOffsetSplitMN =
                 static_cast<int64_t>(quantGlobalBlockIdx % blockNumPerRow) * static_cast<int64_t>(tileBlockCnt);
         }
-        op.InitInner(
-            loopIdx, blockAddrOffsetSplitM, blockCntM, blockAddrOffsetSplitMN, scaleAddrOffsetSplitMN, blockCntSpiltMN);
+        op.InitInner(loopIdx, blockAddrOffsetSplitM, blockCntM, blockAddrOffsetSplitMN, scaleAddrOffsetSplitMN,
+                     blockCntSpiltMN);
         op.Process(loopIdx, quantAivLoopNum, blockCntM, blockCntSpiltMN);
     }
 }

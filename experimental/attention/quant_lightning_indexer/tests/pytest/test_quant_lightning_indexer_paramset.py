@@ -45,6 +45,36 @@ TEST_PARAMS = {
         "cmp_ratio":[1] #1/2/4/8/16/32/64/128
     },
 
+    "quant_li_default_hifp8_a5":{
+        "batch_size": [8],
+        "q_seq": [15],
+        "k_seq": [111],
+        "q_t_size":[8],
+        "k_t_size":[15],#压缩后的值
+        "q_head_num": [64],
+        "k_head_num": [1],
+        "head_dim": [128],
+        "block_size": [512], # 取16的整数倍，最多支持到1024
+        "block_num":[8],
+        "qk_dtype": [torch.uint8],
+        "dequant_dtype": [torch.float32],
+        "actual_seq_dtype": [torch.int32],
+        "act_seq_q": [[3,3,3,3,3,3,3,3]],
+        "act_seq_k": [[28,24,80,96,47,76,0,111]], #PA场景非前缀和，表示每个batch_size的实际token数
+        "query_quant_mode": [0],
+        "key_quant_mode": [0],
+        "layout_query": ["BSND"],
+        "layout_key":["PA_BSND"],
+        "sparse_count": [512],
+        "sparse_mode": [3],
+        "query_datarange":[[-448,448]],
+        "key_datarange":[[-20,20]],
+        "weights_datarange":[[-123,123]],
+        "q_scale_datarange":[[0,255]],
+        "k_scale_datarange":[[0,65504]],
+        "cmp_ratio":[1] #1/2/4/8/16/32/64/128
+    },
+
     "quant_li_default_a3":{
         "batch_size": [1],
         "q_seq": [1],

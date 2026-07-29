@@ -17,7 +17,7 @@
 
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "err/ops_err.h"
 #include "../op_kernel/chunk_gated_delta_rule_tiling_data.h"
 
@@ -79,6 +79,7 @@ protected:
     ge::graphStatus AnalyzeShapes();
     ge::graphStatus CheckDerivedDimConstraints();
     ge::graphStatus GetScale();
+    ge::graphStatus GetStrides();
     ge::graphStatus GetOptionalInput();
     ge::graphStatus AnalyzeFormat();
     ge::graphStatus DoMatmulTiling();
@@ -94,6 +95,7 @@ protected:
     ChunkGatedDeltaRuleCompileInfo compileInfo_;
     ChunkGatedDeltaRule::ChunkGatedDeltaRuleTilingData tilingData_;
     ChunkGatedDeltaRuleInfo inputParams_;
+    platform_ascendc::SocVersion socVersion_;
 };
 
 } // namespace optiling

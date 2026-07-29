@@ -7,34 +7,34 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 /*!
  * \file vf_quant_pertensor.h
- * \brief 
+ * \brief
  */
 
- #ifndef VF_QUANT_PERTENSOR_H
- #define VF_QUANT_PERTENSOR_H
- #include "kernel_tensor.h"
+#ifndef VF_QUANT_PERTENSOR_H
+#define VF_QUANT_PERTENSOR_H
+#include "kernel_tensor.h"
 
-namespace MlaProlog{
+namespace MlaProlog {
 template <typename T, typename U>
-__simd_vf__ void QuantPerTensorVFImpl(__ubuf__ T * inputBuf, __ubuf__ T * quantScaleBuf, __ubuf__ U * outputBuf, 
-                                        uint32_t cnt, const uint16_t floatRepSize, uint16_t repeatTimes)
+__simd_vf__ void QuantPerTensorVFImpl(__ubuf__ T *inputBuf, __ubuf__ T *quantScaleBuf, __ubuf__ U *outputBuf,
+                                      uint32_t cnt, const uint16_t floatRepSize, uint16_t repeatTimes)
 {
     MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
 
     // float -> fp8e4m3 类型转换模式结构体
-    static constexpr MicroAPI::CastTrait CAST_TRAITF322FP8E4M3 = {MicroAPI::RegLayout::ZERO,
-                MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr MicroAPI::CastTrait CAST_TRAIT = {MicroAPI::RegLayout::ZERO,
-                MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr MicroAPI::CastTrait CAST_TRAITB162F32 = {MicroAPI::RegLayout::ZERO,
-                MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    static constexpr MicroAPI::CastTrait CAST_TRAITF322HIF8 = {MicroAPI::RegLayout::ZERO,
-                MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
-    static constexpr MicroAPI::CastTrait castTraitF32ToHalf = { MicroAPI::RegLayout::ZERO,
-                MicroAPI::SatMode::NO_SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
+    static constexpr MicroAPI::CastTrait CAST_TRAITF322FP8E4M3 = {
+        MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr MicroAPI::CastTrait CAST_TRAIT = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
+                                                       MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr MicroAPI::CastTrait CAST_TRAITB162F32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+    static constexpr MicroAPI::CastTrait CAST_TRAITF322HIF8 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
+                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+    static constexpr MicroAPI::CastTrait castTraitF32ToHalf = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
     MicroAPI::RegTensor<T> vregSrc;
     MicroAPI::RegTensor<float> vregQuantScale;
     MicroAPI::RegTensor<float> vregFloat;
@@ -42,7 +42,7 @@ __simd_vf__ void QuantPerTensorVFImpl(__ubuf__ T * inputBuf, __ubuf__ T * quantS
     MicroAPI::RegTensor<half> yHalf;
     // 量化系数broadcast到寄存器所有位置
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vregQuantScale, quantScaleBuf);
-    for(uint16_t i = 0; i < uint16_t(repeatTimes); i++) {
+    for (uint16_t i = 0; i < uint16_t(repeatTimes); i++) {
         uint16_t loopOffset = i * floatRepSize;
         if constexpr (std::is_same<T, float>::value) {
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregFloat, inputBuf + loopOffset);
@@ -59,7 +59,7 @@ __simd_vf__ void QuantPerTensorVFImpl(__ubuf__ T * inputBuf, __ubuf__ T * quantS
         } else {
             MicroAPI::Cast<U, float, CAST_TRAITF322FP8E4M3>(vregRes, vregFloat, pregAll);
         }
-        MicroAPI::StoreAlign<U, MicroAPI::StoreDist::DIST_PACK4_B32>(outputBuf + loopOffset, vregRes, pregAll);   
+        MicroAPI::StoreAlign<U, MicroAPI::StoreDist::DIST_PACK4_B32>(outputBuf + loopOffset, vregRes, pregAll);
     }
 }
 
@@ -72,15 +72,16 @@ __simd_vf__ void QuantPerTensorVFImpl(__ubuf__ T * inputBuf, __ubuf__ T * quantS
  * @param col 处理数据的列数
  */
 template <typename T, typename U>
-__aicore__ inline void QuantPerTensorVF(const LocalTensor<U> &outputLocal, const LocalTensor<T> &inputLocal, const LocalTensor<T> &quantScaleLocal,
-                                  const uint32_t row, const uint32_t col) {
+__aicore__ inline void QuantPerTensorVF(const LocalTensor<U> &outputLocal, const LocalTensor<T> &inputLocal,
+                                        const LocalTensor<T> &quantScaleLocal, const uint32_t row, const uint32_t col)
+{
     uint32_t cnt = row * col;
-    const uint16_t floatRepSize = 64; // 一个寄存器能够存放64个FP32
+    const uint16_t floatRepSize = 64;                               // 一个寄存器能够存放64个FP32
     uint16_t repeatTimes = (cnt + floatRepSize - 1) / floatRepSize; // 对尾块处理的扩展，循环处理的次数
 
-    __ubuf__ T * inputBuf = (__ubuf__ T *)inputLocal.GetPhyAddr();
-    __ubuf__ T * quantScaleBuf = (__ubuf__ T *)quantScaleLocal.GetPhyAddr();
-    __ubuf__ U * outputBuf = (__ubuf__ U *)outputLocal.GetPhyAddr();
+    __ubuf__ T *inputBuf = (__ubuf__ T *)inputLocal.GetPhyAddr();
+    __ubuf__ T *quantScaleBuf = (__ubuf__ T *)quantScaleLocal.GetPhyAddr();
+    __ubuf__ U *outputBuf = (__ubuf__ U *)outputLocal.GetPhyAddr();
 
     QuantPerTensorVFImpl<T, U>(inputBuf, quantScaleBuf, outputBuf, cnt, floatRepSize, repeatTimes);
 }

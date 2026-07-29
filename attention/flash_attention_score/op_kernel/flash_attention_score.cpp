@@ -21,16 +21,16 @@
 #endif
 
 #include "kernel_operator.h"
-#include "arch32/flash_attention_score_empty_tensor.h"
-#include "arch32/flash_attention_score_drop_mask_adapter.h"
-#include "arch32/flash_attention_score_s1s2_bn2gs1.h"
-#include "arch32/flash_attention_score_s1s2_bn2gs1_sab.h"
-#include "arch32/flash_attention_score_s1_bn2gs1.h"
-#include "arch32/flash_attention_score_bn2gs1s2_b.h"
-#include "arch32/flash_attention_var_len_score.h"
-#include "arch32/flash_attention_var_len_score_sab.h"
-#include "arch32/flash_attention_score_template_tiling_key.h"
-#include "arch32/flash_attention_score_tiling.h"
+#include "arch22/flash_attention_score_empty_tensor.h"
+#include "arch22/flash_attention_score_drop_mask_adapter.h"
+#include "arch22/flash_attention_score_s1s2_bn2gs1.h"
+#include "arch22/flash_attention_score_s1s2_bn2gs1_sab.h"
+#include "arch22/flash_attention_score_s1_bn2gs1.h"
+#include "arch22/flash_attention_score_bn2gs1s2_b.h"
+#include "arch22/flash_attention_var_len_score.h"
+#include "arch22/flash_attention_var_len_score_sab.h"
+#include "arch22/flash_attention_score_template_tiling_key.h"
+#include "arch22/flash_attention_score_tiling.h"
 
 using namespace AscendC;
 

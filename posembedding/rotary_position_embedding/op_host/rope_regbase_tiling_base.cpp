@@ -13,9 +13,9 @@
  * \brief
  */
 
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "platform/platform_info.h"
 #include "rotary_position_embedding_tiling.h"
 #include "log/log.h"
@@ -26,6 +26,7 @@ constexpr int64_t COS_INDEX = 1;
 constexpr int64_t SIN_INDEX = 2;
 constexpr int64_t Y_INDEX = 0;
 constexpr int64_t DIM_NUM = 4;
+constexpr int64_t DIM_NUM_TND = 3;
 constexpr int64_t DIM_0 = 0;
 constexpr int64_t DIM_1 = 1;
 constexpr int64_t DIM_2 = 2;
@@ -126,14 +127,30 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShapeAllPositive() const
     return ge::GRAPH_SUCCESS;
 }
 
+bool RopeRegBaseTilingClass::Is3dBsdBroadcastLayout(const gert::Shape &xShape, const gert::Shape &cosShape) const
+{
+    // 识别 x（TND）cos（1ND）场景
+    return xShape.GetDimNum() == DIM_NUM_TND && cosShape.GetDimNum() == DIM_NUM_TND &&
+        xShape.GetDim(DIM_1) != 1 && cosShape.GetDim(DIM_0) == 1 &&
+        cosShape.GetDim(DIM_1) == xShape.GetDim(DIM_1) && cosShape.GetDim(DIM_2) == xShape.GetDim(DIM_2);
+}
+
 ge::graphStatus RopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xShape, const gert::Shape &cosShape)
 {
-    uint64_t xShape0 = xShape.GetDim(DIM_0);
-    uint64_t xShape1 = xShape.GetDim(DIM_1);
-    uint64_t xShape2 = xShape.GetDim(DIM_2);
-    uint64_t cosShape0 = cosShape.GetDim(DIM_0);
-    uint64_t cosShape1 = cosShape.GetDim(DIM_1);
-    uint64_t cosShape2 = cosShape.GetDim(DIM_2);
+    isTndLayout_ = (xShape.GetDimNum() == DIM_NUM_TND);
+    is3dBsdLayout_ = false;
+    // TND的广播场景需要打上标记后续做分核优化
+    if (Is3dBsdBroadcastLayout(xShape, cosShape)) {
+        layout_ = RopeLayout::BSND;
+        is3dBsdLayout_ = true;
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t xShape0 = isTndLayout_ ? 1 : xShape.GetDim(DIM_0);
+    uint64_t xShape1 = isTndLayout_ ? xShape.GetDim(DIM_0) : xShape.GetDim(DIM_1);
+    uint64_t xShape2 = isTndLayout_ ? xShape.GetDim(DIM_1) : xShape.GetDim(DIM_2);
+    uint64_t cosShape0 = isTndLayout_ ? 1 : cosShape.GetDim(DIM_0);
+    uint64_t cosShape1 = isTndLayout_ ? cosShape.GetDim(DIM_0) : cosShape.GetDim(DIM_1);
+    uint64_t cosShape2 = isTndLayout_ ? cosShape.GetDim(DIM_1) : cosShape.GetDim(DIM_2);
     if (xShape0 == cosShape0 && xShape1 == cosShape1 && xShape2 == cosShape2) { // BSND
         layout_ = RopeLayout::NO_BROADCAST;
     } else if (cosShape0 == 1 && cosShape1 == 1 && cosShape2 == 1) { // (111D)
@@ -151,7 +168,9 @@ ge::graphStatus RopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xS
         layout_ = RopeLayout::BNSD;
         is1snd_ = true;
     } else {
-        OP_LOGE(context_->GetNodeName(), "the shape of x and sin not satisfy the broadcast.");
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(xShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos and x", shapeMsg.c_str(), 
+            "Each axis of input cos except the last must be 1 or equal to the same axis of input x");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -163,24 +182,24 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShape()
     auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
     auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
     auto &yShape = context_->GetOutputShape(Y_INDEX)->GetStorageShape();
-    if (xShape.GetDimNum() != DIM_NUM) {
+    if (xShape.GetDimNum() != DIM_NUM && xShape.GetDimNum() != DIM_NUM_TND) {
         std::string dimNumStr = std::to_string(xShape.GetDimNum());
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x", dimNumStr.c_str(), "4D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x", dimNumStr.c_str(), "3D or 4D");
         return ge::GRAPH_FAILED;
     }
-    if (cosShape.GetDimNum() != DIM_NUM) {
+    if (cosShape.GetDimNum() != DIM_NUM && cosShape.GetDimNum() != DIM_NUM_TND) {
         std::string dimNumStr = std::to_string(cosShape.GetDimNum());
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "cos", dimNumStr.c_str(), "4D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "cos", dimNumStr.c_str(), "3D or 4D");
         return ge::GRAPH_FAILED;
     }
-    if (sinShape.GetDimNum() != DIM_NUM) {
+    if (sinShape.GetDimNum() != DIM_NUM && sinShape.GetDimNum() != DIM_NUM_TND) {
         std::string dimNumStr = std::to_string(sinShape.GetDimNum());
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "sin", dimNumStr.c_str(), "4D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "sin", dimNumStr.c_str(), "3D or 4D");
         return ge::GRAPH_FAILED;
     }
-    if (yShape.GetDimNum() != DIM_NUM) {
+    if (yShape.GetDimNum() != DIM_NUM && yShape.GetDimNum() != DIM_NUM_TND) {
         std::string dimNumStr = std::to_string(yShape.GetDimNum());
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "y", dimNumStr.c_str(), "4D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "y", dimNumStr.c_str(), "3D or 4D");
         return ge::GRAPH_FAILED;
     }
 
@@ -196,13 +215,16 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShape()
             "The shapes of input x and output y should be the same");
         return ge::GRAPH_FAILED;
     }
-    if (cosShape.GetDim(DIM_3) != xShape.GetDim(DIM_3)) {
+    isTndLayout_ = (xShape.GetDimNum() == DIM_NUM_TND);
+    int64_t xLastDim = isTndLayout_ ? xShape.GetDim(DIM_2) : xShape.GetDim(DIM_3);
+    int64_t cosLastDim = isTndLayout_ ? cosShape.GetDim(DIM_2) : cosShape.GetDim(DIM_3);
+    if (cosLastDim != xLastDim) {
         std::string shapeMsg = ToString(xShape) + " and " + ToString(cosShape);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and cos", shapeMsg.c_str(),
-            "The D axes of input x and cos should be the same, where D refers to the 3rd dim");
+            "The D axes of input x and cos should be the same, where D refers to the last dim");
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(CheckRotaryModeShapeRelation(xShape.GetDim(DIM_3)) != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(CheckRotaryModeShapeRelation(xLastDim) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "D is invalid for rotary mode."), return ge::GRAPH_FAILED);
     return CheckShapeAllPositive();
 }
@@ -256,7 +278,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
     auto xShape = context_->GetInputShape(X_INDEX)->GetStorageShape();
     if (d > D_LIMIT) {
         std::string reasonMsg = "The D axis of input x can not be greater than " + std::to_string(D_LIMIT) +
-            ", where D refers to the 3rd dim";
+            ", where D refers to the last dim";
         std::string xShapeStr = ToString(xShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
             xShapeStr.c_str(), reasonMsg.c_str());
@@ -268,7 +290,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
             std::string reasonMsg =
                 "The D axis of input x should be divisible by " + std::to_string(HALF_INTERLEAVE_MODE_COEF) +
                 " when the attribute mode is half, interleave or deepseek_interleave, "
-                "where D refers to the 3rd dim";
+                "where D refers to the last dim";
             std::string xShapeStr = ToString(xShape);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
                 xShapeStr.c_str(), reasonMsg.c_str());
@@ -278,7 +300,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
         if (d % QUARTER_MODE_COEF != 0) {
             std::string reasonMsg =
                 "The D axis of input x should be divisible by " + std::to_string(QUARTER_MODE_COEF) +
-                " when the attr mode is quarter, where D refers to the 3rd dim";
+                " when the attr mode is quarter, where D refers to the last dim";
             std::string xShapeStr = ToString(xShape);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
                 xShapeStr.c_str(), reasonMsg.c_str());
@@ -293,6 +315,15 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
         dSplitCoef_ = 1;
     }
     return ge::GRAPH_SUCCESS;
+}
+
+void RopeRegBaseTilingClass::Set3dBsdShapeAttrs(const gert::Shape &xShape)
+{
+    // TND的广播场景需要映射成为BS1D，用于分核优化
+    b_ = xShape.GetDim(DIM_0);
+    cosb_ = 1; // 实际就为1
+    s_ = xShape.GetDim(DIM_1);
+    n_ = 1;
 }
 
 ge::graphStatus RopeRegBaseTilingClass::GetShapeAttrsInfo()
@@ -317,8 +348,16 @@ ge::graphStatus RopeRegBaseTilingClass::GetShapeAttrsInfo()
     OP_CHECK_IF(JudgeLayoutByShape(xShape, cosShape) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "JudgeLayoutByShape fail."), return ge::GRAPH_FAILED);
 
-    d_ = xShape.GetDim(DIM_3);
-    if (layout_ == RopeLayout::BSND) {
+    d_ = isTndLayout_ ? xShape.GetDim(DIM_2) : xShape.GetDim(DIM_3);
+    if (is3dBsdLayout_) {
+        Set3dBsdShapeAttrs(xShape);
+    } else if (isTndLayout_) {
+        // TND: (T, N, D) -> b=1, s=T, n=N, d=D, cosb=1
+        b_ = 1;
+        cosb_ = 1;
+        s_ = xShape.GetDim(DIM_0);
+        n_ = xShape.GetDim(DIM_1);
+    } else if (layout_ == RopeLayout::BSND) {
         b_ = xShape.GetDim(DIM_0);
         cosb_ = cosShape.GetDim(DIM_0);
         s_ = xShape.GetDim(DIM_1);

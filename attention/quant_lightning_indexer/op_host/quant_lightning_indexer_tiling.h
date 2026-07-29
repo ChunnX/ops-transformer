@@ -24,6 +24,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
 #include "platform/soc_spec.h"
+#include "op_host/tiling_util.h"
 namespace optiling {
 // ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
@@ -78,7 +79,7 @@ constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t G_SIZE_LIMIT = 64;
 constexpr uint32_t G_SIZE_LIMIT_950 = 24;
-constexpr uint32_t G_SIZE_LIMIT_32_950 = 32; 
+constexpr uint32_t G_SIZE_LIMIT_32_950 = 32;
 constexpr uint32_t G_SIZE_LIMIT_16_950 = 16; // ascend950只支持 G = 8/16/24/32/64
 constexpr uint32_t G_SIZE_LIMIT_8_950 = 8;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
@@ -88,6 +89,7 @@ constexpr uint32_t SPARSE_MODE_LOWER = 3;
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLITilingData)
 TILING_DATA_FIELD_DEF(uint32_t, bSize)
+TILING_DATA_FIELD_DEF(uint32_t, tSize)
 TILING_DATA_FIELD_DEF(uint32_t, n2Size)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
 TILING_DATA_FIELD_DEF(uint32_t, s1Size)
@@ -139,6 +141,7 @@ public:
     // Base Param
     NpuArch npuArch = NpuArch::DAV_2201;
     uint32_t bSize = 0;
+    uint32_t tSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
@@ -173,6 +176,8 @@ public:
     ~QLIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
+    ge::graphStatus CheckTensorShapes() const;
+    ge::graphStatus CheckTensorDescriptions() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
@@ -207,6 +212,7 @@ public:
     ge::graphStatus ParseAndCheck(QLITilingInfo &QLIInfo);
     size_t GetTensorDimNum(const uint32_t tensorIdx);
     int64_t GetTensorDim(const uint32_t tensorIdx, const size_t idx);
+    ge::graphStatus CheckContiguous();
 
 public:
     gert::TilingContext *context_ = nullptr;
@@ -216,6 +222,7 @@ public:
 
     // BaseParams
     uint32_t bSize_ = 0;
+    uint32_t tSize_ = 0;
     uint32_t n1Size_ = 0;
     uint32_t n2Size_ = 0;
     uint32_t gSize_ = 0;

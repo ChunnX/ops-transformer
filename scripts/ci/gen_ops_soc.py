@@ -9,38 +9,52 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
-import sys
 import re
 import logging
 
-black_list = ['moe_gather_v2',
-              'moe_inplace_index_add',
-              'moe_inplace_index_add_with_sorted',
-              'moe_masked_scatter']
-op_level_list = ['moe_token_permute_with_routing_map',
-                 'moe_token_permute_with_routing_map_grad',
-                 'moe_token_unpermute_with_routing_map']
+black_list = [
+    "moe_gather_v2",
+    "moe_inplace_index_add",
+    "moe_inplace_index_add_with_sorted",
+    "moe_masked_scatter",
+]
+op_level_list = [
+    "moe_token_permute_with_routing_map",
+    "moe_token_permute_with_routing_map_grad",
+    "moe_token_unpermute_with_routing_map",
+]
 
-op_level_list_moe_distribute = ['moe_distribute_combine_v2',
-                         'moe_distribute_combine_v3',
-                         'moe_distribute_dispatch_v2',
-                         'moe_distribute_dispatch_v3']                  
+op_level_list_moe_distribute = [
+    "moe_distribute_combine_v2",
+    "moe_distribute_combine_v3",
+    "moe_distribute_dispatch_v2",
+    "moe_distribute_dispatch_v3",
+]
+
+op_level_list_barrier = ["distribute_barrier", "distribute_barrier_extend"]
 
 # obj分组字典,需要分组的算子在字典中对应soc xxxx: obj分组数
 group_op_dict = {
-    "ascend910b": {"fused_infer_attention_score": 10, 
-                   "incre_flash_attention": 5,
-                   "prompt_flash_attention": 5,
-                   "flash_attention_score": 3,
-                   "flash_attention_score_grad": 3},
-    "ascend910_93": {"fused_infer_attention_score": 10,
-                     "incre_flash_attention": 5,
-                     "prompt_flash_attention": 5,
-                     "flash_attention_score": 3,
-                     "flash_attention_score_grad": 3},
-    "ascend950": {"fused_infer_attention_score": 20,
-                   "flash_attention_score": 5,
-                   "flash_attention_score_grad": 5}
+    "ascend910b": {
+        "fused_infer_attention_score": 10,
+        "incre_flash_attention": 5,
+        "prompt_flash_attention": 5,
+        "flash_attention_score": 3,
+        "flash_attention_score_grad": 3,
+    },
+    "ascend910_93": {
+        "fused_infer_attention_score": 10,
+        "incre_flash_attention": 5,
+        "prompt_flash_attention": 5,
+        "flash_attention_score": 3,
+        "flash_attention_score_grad": 3,
+    },
+    "ascend950": {
+        "fused_infer_attention_score": 20,
+        "flash_attention_score": 5,
+        "flash_attention_score_grad": 5,
+        "mega_moe": 20,
+    },
 }
 
 
@@ -49,7 +63,7 @@ def get_sh_files(gen_dir):
     sh_files = []
     for item in os.listdir(gen_dir):
         item_path = os.path.join(gen_dir, item)
-        if os.path.isfile(item_path) and item.lower().endswith('.sh'):
+        if os.path.isfile(item_path) and item.lower().endswith(".sh"):
             sh_files.append(item)
     return sh_files
 
@@ -60,7 +74,7 @@ def parse_opname_from_filename(filename):
     要求格式：xxx-<opname>-<digits>.sh
     成功返回 op_name，失败返回 None
     """
-    parts = filename.split('-')
+    parts = filename.split("-")
     if len(parts) < 3:
         return None
 
@@ -89,14 +103,11 @@ def grouped(gen_path, soc, group_size):
     added_op_levels = set()
     special_task = ""
     special_task_moe_distribute = ""
+    special_task_barrier = ""
     for op_name, count in op_counts.items():
         op_name_real = op_name
-        if soc == 'ascend950' and op_name.endswith('_apt'):
-            op_name_real = op_name.replace('_apt', '')
-        if op_name == 'allto_all_matmul_apt' and op_name.endswith('_apt'):
-            op_name_real = op_name.replace('_apt', '')
-        if op_name == 'matmul_allto_all_apt' and op_name.endswith('_apt'):
-            op_name_real = op_name.replace('_apt', '')
+        if op_name.endswith(("_a2", "_a3", "_apt")):
+            op_name_real = op_name.rsplit("_", 1)[0]
         if op_name_real in black_list:
             continue
         for i in range(count):
@@ -111,17 +122,31 @@ def grouped(gen_path, soc, group_size):
                     continue
                 else:
                     added_op_levels.add(op_name_real)
-                    special_task_moe_distribute = special_task_moe_distribute + str(op_name_real) + ","
+                    special_task_moe_distribute = (
+                        special_task_moe_distribute + str(op_name_real) + ","
+                    )
+            elif op_name_real in op_level_list_barrier:
+                if op_name_real in added_op_levels:
+                    continue
+                else:
+                    added_op_levels.add(op_name_real)
+                    special_task_barrier = (
+                        special_task_barrier + str(op_name_real) + ","
+                    )
             else:
                 row_string = f"{op_name_real},{count}-{i}"
                 all_rows.append(row_string)
     if len(special_task) != 0:
         special_task = special_task[:-1]
         all_rows.append(special_task)
-    
+
     if len(special_task_moe_distribute) != 0:
         special_task_moe_distribute = special_task_moe_distribute[:-1]
         all_rows.append(special_task_moe_distribute)
+
+    if len(special_task_barrier) != 0:
+        special_task_barrier = special_task_barrier[:-1]
+        all_rows.append(special_task_barrier)
 
     for idx, row in enumerate(all_rows):
         result[idx % group_size].append(row)
@@ -139,14 +164,13 @@ def grouped_back(gen_path, soc, group_size):
     added_op_levels = set()
     special_task_parts = []
     special_task_parts_moe_distribute = []
+    special_task_parts_barrier = []
     current_group_index = 0
 
     for op_name, count in op_counts.items():
         op_name_real = op_name
-        if soc == 'ascend950' and op_name.endswith('_apt'):
-            op_name_real = op_name.replace('_apt', '')
-        elif op_name in ('allto_all_matmul_apt', 'matmul_allto_all_apt'):
-            op_name_real = op_name.replace('_apt', '')
+        if op_name.endswith(("_a2", "_a3", "_apt")):
+            op_name_real = op_name.rsplit("_", 1)[0]
 
         if op_name_real in black_list:
             continue
@@ -159,7 +183,12 @@ def grouped_back(gen_path, soc, group_size):
             if op_name_real not in added_op_levels:
                 added_op_levels.add(op_name_real)
                 special_task_parts_moe_distribute.append(str(op_name_real))
-            continue 
+            continue
+        if op_name_real in op_level_list_barrier:
+            if op_name_real not in added_op_levels:
+                added_op_levels.add(op_name_real)
+                op_level_list_barrier.append(str(op_name_real))
+            continue
         if count >= group_size:
             for i in range(group_size):
                 row_string = f"{op_name_real},{group_size}-{i}"
@@ -172,12 +201,16 @@ def grouped_back(gen_path, soc, group_size):
                 current_group_index = (current_group_index + 1) % group_size
 
     if special_task_parts:
-        special_task = ','.join(special_task_parts)
+        special_task = ",".join(special_task_parts)
         result[current_group_index].append(special_task)
-    
+
     if special_task_parts_moe_distribute:
-        special_task_moe_distribute = ','.join(special_task_parts_moe_distribute)
+        special_task_moe_distribute = ",".join(special_task_parts_moe_distribute)
         result[current_group_index].append(special_task_moe_distribute)
+
+    if special_task_parts_barrier:
+        special_task_barrier = ",".join(special_task_parts_barrier)
+        result[current_group_index].append(special_task_barrier)
 
     return result
 
@@ -185,8 +218,8 @@ def grouped_back(gen_path, soc, group_size):
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
@@ -196,9 +229,18 @@ def should_skip_directory(dir_name):
     判断是否应该跳过该目录
     """
     skip_dirs = {
-        'build', 'cmake', 'common', 'docs', 'examples',
-        'experimental', 'scripts', 'tests', 'third_party',
-        '3rdparty', 'torch_extension', '3rd'
+        "build",
+        "cmake",
+        "common",
+        "docs",
+        "examples",
+        "experimental",
+        "scripts",
+        "tests",
+        "third_party",
+        "3rdparty",
+        "torch_extension",
+        "3rd",
     }
     return dir_name in skip_dirs
 
@@ -208,30 +250,30 @@ def parse_foreach_config(config_str):
     解析 FOREACH_OPDEF 中的配置字符串
     """
     config_mapping = {
-        'A2': 'ascend910b',
-        '910_93': 'ascend910_93',
-        'A5': 'ascend950',
-        '910B': 'ascend910b',
-        '910B_93': 'ascend910_93',
-        '910B_95': 'ascend950',
-        '950': 'ascend950',
-        '910': 'ascend910',
-        '910_55': 'ascend910_55',
+        "A2": "ascend910b",
+        "910_93": "ascend910_93",
+        "A5": "ascend950",
+        "910B": "ascend910b",
+        "910B_93": "ascend910_93",
+        "910B_95": "ascend950",
+        "950": "ascend950",
+        "910": "ascend910",
+        "910_55": "ascend910_55",
     }
 
     found_configs = []
     config_str_upper = config_str.upper()
 
     priority_checks = [
-        ('A2', 'ascend910b'),
-        ('910_93', 'ascend910_93'),
-        ('A5', 'ascend950'),
-        ('910_55', 'ascend910_55'),
-        ('910B', 'ascend910b'),
-        ('910B_93', 'ascend910_93'),
-        ('910B_95', 'ascend950'),
-        ('950', 'ascend950'),
-        ('910', 'ascend910'),
+        ("A2", "ascend910b"),
+        ("910_93", "ascend910_93"),
+        ("A5", "ascend950"),
+        ("910_55", "ascend910_55"),
+        ("910B", "ascend910b"),
+        ("910B_93", "ascend910_93"),
+        ("910B_95", "ascend950"),
+        ("950", "ascend950"),
+        ("910", "ascend910"),
     ]
 
     for key, value in priority_checks:
@@ -248,7 +290,7 @@ def extract_static_map_configs(content):
     configs = []
 
     map_patterns = [
-        r'static\s+const\s+std::map<std::string[^>]*>\s+\w+\s*=\s*\{([^}]+)\}',
+        r"static\s+const\s+std::map<std::string[^>]*>\s+\w+\s*=\s*\{([^}]+)\}",
         r'\{"([a-zA-Z0-9_]+)"[^}]*\}',
     ]
 
@@ -291,13 +333,13 @@ def extract_foreach_opdef_configs(content):
     """
     configs = []
 
-    pattern1 = r'FOREACH_OPDEF\(([^,]+),'
+    pattern1 = r"FOREACH_OPDEF\(([^,]+),"
     matches1 = re.findall(pattern1, content)
     for match in matches1:
         config_str = match.strip()
         configs.extend(parse_foreach_config(config_str))
 
-    pattern2 = r'FOREACH_OPDEF_END_([^(]+)\('
+    pattern2 = r"FOREACH_OPDEF_END_([^(]+)\("
     matches2 = re.findall(pattern2, content)
     for match in matches2:
         config_str = match.strip()
@@ -333,7 +375,7 @@ def extract_ai_core_configs(file_path):
     """
     configs = []
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         # 方法1：匹配传统的 AICore 配置
@@ -372,9 +414,9 @@ def grouped_def(repository_path, soc, group_size):
         dirs[:] = [d for d in dirs if not should_skip_directory(d)]
 
         for file in files:
-            if file.endswith('_def.cpp'):
+            if file.endswith("_def.cpp"):
                 file_path = os.path.join(root, file)
-                op_name = file.replace('_def.cpp', '')
+                op_name = file.replace("_def.cpp", "")
 
                 # 提取 AICore 配置
                 ai_core_configs = extract_ai_core_configs(file_path)
@@ -384,6 +426,7 @@ def grouped_def(repository_path, soc, group_size):
     init_oplist.sort()
     special_task = ""
     special_task_moe_distribute = ""
+    special_task_barrier = ""
     for op_name in init_oplist:
         if op_name in black_list:
             continue
@@ -391,8 +434,13 @@ def grouped_def(repository_path, soc, group_size):
             special_task = special_task + str(op_name) + ","
             continue
         if op_name in op_level_list_moe_distribute:
-            special_task_moe_distribute = special_task_moe_distribute + str(op_name) + ","
-            continue        
+            special_task_moe_distribute = (
+                special_task_moe_distribute + str(op_name) + ","
+            )
+            continue
+        if op_name in op_level_list_barrier:
+            special_task_barrier = special_task_barrier + str(op_name) + ","
+            continue
         if op_name in group_op_dict[soc]:
             op_group_size = group_op_dict[soc][op_name]
             if group_size > 1 and op_group_size > group_size:
@@ -411,6 +459,10 @@ def grouped_def(repository_path, soc, group_size):
         special_task_moe_distribute = special_task_moe_distribute[:-1]
         op_list.append(special_task_moe_distribute)
 
+    if len(special_task_barrier) != 0:
+        special_task_barrier = special_task_barrier[:-1]
+        op_list.append(special_task_barrier)
+
     op_list.sort()
     for idx, row in enumerate(op_list):
         result[idx % group_size].append(row)
@@ -420,15 +472,20 @@ def grouped_def(repository_path, soc, group_size):
 
 def main(repository_path, soc, group_size=1):
     project_path = os.path.abspath(repository_path)
-    gen_path = os.path.abspath(os.path.join(project_path, "build", "binary", soc, "gen"))
+    gen_path = os.path.abspath(
+        os.path.join(project_path, "build", "binary", soc, "gen")
+    )
     if group_size > 1:
         op_data = grouped_back(gen_path, soc, group_size)
     else:
         op_data = grouped_def(project_path, soc, group_size)
     return op_data
 
+
 if __name__ == "__main__":
-    file_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    file_path = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
     temp = main(file_path, "ascend910b", 1)
     size = sum(len(sublist) for sublist in temp)
     logger.info(f"Group dicts: {temp}")

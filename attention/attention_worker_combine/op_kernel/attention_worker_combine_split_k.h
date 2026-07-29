@@ -17,7 +17,7 @@
 #define OP_KERNEL_ATTENTION_WORKER_COMBINE_SPLIT_K_H_
 
 #include "kernel_operator.h"
-#include "common_utils.h"
+#include "attention_worker_combine_common_utils.h"
 
 using namespace AscendC;
 template <typename T>

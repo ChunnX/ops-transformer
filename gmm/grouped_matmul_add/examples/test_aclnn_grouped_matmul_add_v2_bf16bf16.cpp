@@ -188,7 +188,7 @@ int aclnnGroupedMatmulAddV2Test(aclrtStream &stream, int groupListType) {
     ret = aclrtMemcpy(resultData.data(), size * sizeof(resultData[0]), yDeviceAddr,
                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t j = 0; j < size; j++) {
+    for (int64_t j = 0; j < 10; j++) {
         LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
     }
     return ACL_SUCCESS;
