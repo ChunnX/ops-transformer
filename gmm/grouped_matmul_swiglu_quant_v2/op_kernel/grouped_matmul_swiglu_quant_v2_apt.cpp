@@ -32,7 +32,7 @@
 #else
 // 全量化Mx量化
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
-    #include "arch35/grouped_matmul_swiglu_quant_v2_mxfp8.h"
+    #include "arch35/grouped_matmul_tensor_api_swiglu_quant_v2_mxfp8_kernel.h"
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxfp4_weight_nz.h"
     #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
@@ -119,7 +119,7 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             } else {
-                GmmSwigluAswtTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                GmmTensorApiSwigluQuantMxFp8Kernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             }
@@ -129,7 +129,7 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             } else {
-                GmmSwigluAswtTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(
+                GmmTensorApiSwigluQuantMxFp8Kernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             }

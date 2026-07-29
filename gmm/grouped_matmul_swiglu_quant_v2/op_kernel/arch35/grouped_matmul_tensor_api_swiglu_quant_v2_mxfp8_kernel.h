@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file grouped_matmul_swiglu_quant_v2_mxfp8.h
+ * \file grouped_matmul_tensor_api_swiglu_quant_v2_mxfp8_kernel.h
  * \brief TensorApi entry point for GroupedMatmulSwigluQuantV2 MXFP8 ND scenario.
  *        Assembles Blaze BlockMmad + Blaze Epilogue + Blaze Scheduler + MIX Kernel.
  */
@@ -33,7 +33,7 @@
 #include "grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 
 template <typename layoutA, typename layoutB>
-__aicore__ inline void GmmSwigluAswtTensorApi(
+__aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(
     GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
     GM_ADDR weightAssistanceMatrix, GM_ADDR smoothScale, GM_ADDR groupList,
     GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
@@ -55,6 +55,8 @@ __aicore__ inline void GmmSwigluAswtTensorApi(
     using LayoutA = layoutA;
     using LayoutB = layoutB;
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
+    using LayoutC1 = AscendC::Te::NDExtLayoutPtn;
+    using LayoutBias = AscendC::Te::NDExtLayoutPtn;
     using weightscaleType = AscendC::fp8_e8m0_t;
 
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
@@ -62,7 +64,7 @@ __aicore__ inline void GmmSwigluAswtTensorApi(
     using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<
         0, false, Blaze::Gemm::KernelGmmSwiGluMixMx>;
     using SwigluBlockMmad = Blaze::Gemm::Block::BlockMmad<
-        BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type, LayoutC, BiasType, LayoutC>;
+        BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type, LayoutC1, BiasType, LayoutBias>;
 
     using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueSwigluMxQuant<
         CType, C1Type, weightscaleType>;
