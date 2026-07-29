@@ -172,7 +172,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInf
     queryBufferOffset_ = constInfo_.mBaseSizeMax * D_BASIC_BLOCK;
     l0abBufferOffset_ = constInfo_.mBaseSizeMax * D_BASIC_BLOCK_L0;
     l0cBufferOffset_ = constInfo_.mBaseSizeMax * S2_BASIC_BLOCK_L0;
-    queryScaleBufferOffset  = constInfo_.mBaseSizeMax * D_BASIC_BLOCK / MX_SCALE_GROUP_SIZE;
+    queryScaleBufferOffset = constInfo_.mBaseSizeMax * D_BASIC_BLOCK / MX_SCALE_GROUP_SIZE;
 }
 
 template <typename QLIV2T>
@@ -278,7 +278,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                         uint64_t s1gL0RealSize = s1gL1Offset + constInfo_.mBaseSizeMax > s1gL1SizeAlign ?
                                                      s1gL1SizeAlign - s1gL1Offset :
                                                      constInfo_.mBaseSizeMax;
-                        LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1SizeAlign, s1gL0RealSize, runInfo);
+                        LoadQueryToL0a(s1gL1Offset, s1gL1SizeAlign, s1gL0RealSize, runInfo);
                         LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, runInfo);
 
                         SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -368,7 +368,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                         uint64_t s1gL0RealSize = s1gOffset + constInfo_.mBaseSizeMax > s1gL1SizeAlign ?
                                                      s1gL1SizeAlign - s1gOffset :
                                                      constInfo_.mBaseSizeMax;
-                        LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign, s1gL0RealSize, runInfo);
+                        LoadQueryToL0a(s1gOffset, s1gL1SizeAlign, s1gL0RealSize, runInfo);
                         LoadKeyToL0b(s2L1Offset, l1TotalSize, s2L0RealSize, runInfo);
 
                         SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -710,9 +710,15 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
                                                      cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
 
         fixpipeParams.subBlockId = 1;
+<<<<<<< HEAD
         Fixpipe<QK_T, CL0_T, QLIV2_CFG_ROW_MAJOR_UB>(
             mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
             cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_ + mSize / 2 * 16], fixpipeParams);
+=======
+        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
+                                                     cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_ + mSize / 2 * 16],
+                                                     fixpipeParams);
+>>>>>>> cceef6ec6... test
     }
 }
 
