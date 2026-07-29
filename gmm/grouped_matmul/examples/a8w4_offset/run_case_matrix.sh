@@ -10,6 +10,21 @@ case "${API}" in
   V5|WeightNz) ;;
   *) echo "A8W4_API must be V5 or WeightNz, got: ${API}" >&2; exit 2 ;;
 esac
+DEQUANT_MODE="${A8W4_DEQUANT_MODE:-perchannel}"
+case "${DEQUANT_MODE}" in
+  perchannel|pergroup) ;;
+  *) echo "A8W4_DEQUANT_MODE must be perchannel or pergroup, got: ${DEQUANT_MODE}" >&2; exit 2 ;;
+esac
+PERGROUP_K_MIN="${A8W4_PERGROUP_K_MIN:-256}"
+PERGROUP_K_MAX="${A8W4_PERGROUP_K_MAX:-18432}"
+if [[ "${DEQUANT_MODE}" == "pergroup" ]]; then
+  if ((PERGROUP_K_MIN <= 0 || PERGROUP_K_MAX > 18432 ||
+       PERGROUP_K_MIN > PERGROUP_K_MAX ||
+       PERGROUP_K_MIN % 256 != 0 || PERGROUP_K_MAX % 256 != 0)); then
+    echo "Per-group K range must satisfy 0 < MIN <= MAX <= 18432 and both bounds must be multiples of 256; got MIN=${PERGROUP_K_MIN}, MAX=${PERGROUP_K_MAX}" >&2
+    exit 2
+  fi
+fi
 case "${WEIGHT_FORMAT}" in
   ND) WEIGHT_NZ=0 ;;
   NZ) WEIGHT_NZ=1 ;;
@@ -19,7 +34,7 @@ if [[ "${API}" == "WeightNz" && "${WEIGHT_NZ}" != "1" ]]; then
   echo "A8W4_API=WeightNz requires A8W4_WEIGHT_FORMAT=NZ" >&2
   exit 2
 fi
-RESULT_ROOT="${A8W4_MATRIX_RESULT_DIR:-${REPO_ROOT}/build_out/a8w4_case_matrix_${API}_${WEIGHT_FORMAT}}"
+RESULT_ROOT="${A8W4_MATRIX_RESULT_DIR:-${REPO_ROOT}/build_out/a8w4_case_matrix_${API}_${WEIGHT_FORMAT}_${DEQUANT_MODE}}"
 CASE_TIMEOUT="${A8W4_CASE_TIMEOUT:-45}"
 MAX_ERROR="${A8W4_MAX_ERROR:-0.2}"
 SAVE_GOLDEN="${A8W4_SAVE_GOLDEN:-1}"
@@ -68,10 +83,15 @@ fi
 expert_options=(2 3 4 5 7 8 12 16)
 if [[ "${WEIGHT_FORMAT}" == "NZ" ]]; then
   n_options=(64 128 192 256 320 384 448 512)
-  k_options=(128 144 240 256 272 496 512 528 768 1008 1024 1040 2048)
 else
   n_options=(8 16 24 32 40 64 72 120 128 136 248 256)
-  k_options=(127 128 255 256 257 511 512 513 768 1001 1023 1024 2049)
+fi
+if [[ "${DEQUANT_MODE}" != "pergroup" ]]; then
+  if [[ "${WEIGHT_FORMAT}" == "NZ" ]]; then
+    k_options=(128 144 240 256 272 496 512 528 768 1008 1024 1040 2048)
+  else
+    k_options=(127 128 255 256 257 511 512 513 768 1001 1023 1024 2049)
+  fi
 fi
 random_state=$((MATRIX_SEED & 0x7fffffff))
 next_random() {
@@ -93,11 +113,29 @@ for ((round = 0; round < RANDOM_ROUNDS; ++round)); do
   next_random
   n=${n_options[random_value % ${#n_options[@]}]}
   next_random
-  k=${k_options[random_value % ${#k_options[@]}]}
+  if [[ "${DEQUANT_MODE}" == "pergroup" ]]; then
+    min_group_count=$((PERGROUP_K_MIN / 256))
+    max_group_count=$((PERGROUP_K_MAX / 256))
+    quant_group_count=$((min_group_count + random_value % (max_group_count - min_group_count + 1)))
+    k=$((quant_group_count * 256))
+  else
+    k=${k_options[random_value % ${#k_options[@]}]}
+  fi
   seed=$((MATRIX_SEED + 1000 + round))
   printf -v round_id '%03d' "${round}"
   CASES+=("random_r${round_id}_e${e}_m${m}_n${n}_k${k} ${e} ${m} ${n} ${k} varying ${seed}")
 done
+
+if [[ "${DEQUANT_MODE}" == "pergroup" ]]; then
+  valid_cases=()
+  for case_spec in "${CASES[@]}"; do
+    read -r _ _ _ _ case_k _ _ <<< "${case_spec}"
+    if ((case_k % 256 == 0 && case_k >= PERGROUP_K_MIN && case_k <= PERGROUP_K_MAX)); then
+      valid_cases+=("${case_spec}")
+    fi
+  done
+  CASES=("${valid_cases[@]}")
+fi
 
 mkdir -p "${RESULT_ROOT}/logs" "${RESULT_ROOT}/golden"
 bash "${RUNNER}" test-build
@@ -133,6 +171,7 @@ for case_spec in "${CASES[@]}"; do
   [[ "${scale_mode}" == "fixed-one" ]] && fixed_scale=1
 
   case_env=(
+    "A8W4_DEQUANT_MODE=${DEQUANT_MODE}"
     "A8W4_RANDOM_DATA=1"
     "A8W4_RANDOM_SEED=${seed}"
     "A8W4_E=${e}"
@@ -154,14 +193,14 @@ for case_spec in "${CASES[@]}"; do
   rc=1
   max_error=""
   for ((attempt = 1; attempt <= CASE_RETRIES + 1; ++attempt)); do
-    echo "[RUN] ${name}: api=${API} format=${WEIGHT_FORMAT} E=${e} M=${m} N=${n} K=${k} scale=${scale_mode} seed=${seed} attempt=${attempt}"
+    echo "[RUN] ${name}: mode=${DEQUANT_MODE} api=${API} format=${WEIGHT_FORMAT} E=${e} M=${m} N=${n} K=${k} scale=${scale_mode} seed=${seed} attempt=${attempt}"
     set +e
     timeout --signal=INT --kill-after=3 "${CASE_TIMEOUT}s" \
       env "${case_env[@]}" bash "${RUNNER}" run-only > "${log_path}" 2>&1
     rc=$?
     set -e
 
-    max_error="$(awk -F'max_abs_error=' '/ACLNN offset=non-null max_abs_error=/{print $2}' "${log_path}" | tail -n 1)"
+    max_error="$(awk -F'max_abs_error=' '/ACLNN offset=(null|non-null) max_abs_error=/{print $2}' "${log_path}" | tail -n 1)"
     if grep -qx 'PASS' "${log_path}" && [[ -n "${max_error}" ]] &&
         awk -v error="${max_error}" -v limit="${MAX_ERROR}" 'BEGIN { exit !(error < limit) }'; then
       accuracy="PASS"

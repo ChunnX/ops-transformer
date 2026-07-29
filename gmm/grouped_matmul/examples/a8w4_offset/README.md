@@ -39,10 +39,20 @@ Use the WeightNz ACLNN entry with an NZ weight:
 A8W4_API=WeightNz A8W4_WEIGHT_NZ=1 bash build_install_run_custom.sh run-only
 ```
 
-For matrix regression, select both the API and weight format:
+For matrix regression, select the dequant mode, API and weight format:
 
 ```bash
-A8W4_API=WeightNz A8W4_WEIGHT_FORMAT=NZ bash run_case_matrix.sh
+# Per-channel (default)
+A8W4_DEQUANT_MODE=perchannel A8W4_API=V5 \
+  A8W4_WEIGHT_FORMAT=ND bash run_case_matrix.sh
+
+# Per-group; K is sampled in multiples of 256 from the configured range
+A8W4_DEQUANT_MODE=pergroup A8W4_API=V5 \
+  A8W4_PERGROUP_K_MIN=256 A8W4_PERGROUP_K_MAX=18432 \
+  A8W4_WEIGHT_FORMAT=ND bash run_case_matrix.sh
+
+A8W4_DEQUANT_MODE=perchannel A8W4_API=WeightNz \
+  A8W4_WEIGHT_FORMAT=NZ bash run_case_matrix.sh
 ```
 
 Run the previous V5 ND/NZ board calls and the new WeightNz/NZ call together.
