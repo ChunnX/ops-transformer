@@ -1000,6 +1000,7 @@ def main() -> int:
                 "SLIG_DEBUG",
                 "SLIG_SERIAL_TASK_PIPELINE",
                 "SLIG_C1_SERIAL",
+                "SLIG_V0_SINGLE_SLOT",
             )
             if os.environ.get(name, "0") == "1"
         ]
@@ -1015,12 +1016,15 @@ def main() -> int:
         or select_debug_task
         or os.environ.get("SLIG_PROFILE", "0") == "1"
         or os.environ.get("SLIG_C1_SERIAL", "0") == "1"
+        or os.environ.get("SLIG_V0_SINGLE_SLOT", "0") == "1"
     ):
         print("WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。")
     if os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1":
         print("WARNING: SLIG_SERIAL_TASK_PIPELINE=1，当前使用串行 task 诊断版本，禁止用于性能测试。")
     if os.environ.get("SLIG_C1_SERIAL", "0") == "1":
         print("WARNING: SLIG_C1_SERIAL=1，当前使用 C1 内部串行诊断版本，禁止用于性能测试。")
+    if os.environ.get("SLIG_V0_SINGLE_SLOT", "0") == "1":
+        print("WARNING: SLIG_V0_SINGLE_SLOT=1，当前使用 V0 单槽诊断版本，禁止用于性能测试。")
     selected_cases = list(_select_cases(args))
     if not args.summary_only:
         print(
