@@ -173,7 +173,7 @@ __aicore__ inline void WaitForAiv1GmTileAccepted()
 }
 
 template <bool IsPingPong = false>
-__aicore__ inline void EndSync(int32_t &vecSetSyncCom, uint16_t pingpongIdx = 0)
+__aicore__ inline void EndSync(int32_t vecSetSyncCom, uint16_t pingpongIdx = 0)
 {
     if (vecSetSyncCom == 0) {
         return;

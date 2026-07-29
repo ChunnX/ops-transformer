@@ -100,6 +100,10 @@ constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
 constexpr int64_t TOPO_TYPE_MTE = 0U;  // mte
 constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
 
+// 返回从 flagSwiGluToGmm2Ptr 开始的连续 flag workspace 总字节数。基础布局按 expert 依次包含
+// SwiGLU-ready、Dispatch-ready 和 send-count flag；MTE A8W8 wave 追加 GMM2-ready flag，
+// URMA 或非 wave Combine 量化路径再追加 group-sync counter。Host tiling 用它申请/配置清零批次，
+// kernel 用同一公式划分并清零该连续区域。
 HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tilingData)
 {
     bool isA8W8 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||

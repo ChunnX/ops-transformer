@@ -658,83 +658,83 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 }
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
             } else {
-            auto &swigluOp = args.swigluQuantOp;
+                auto &swigluOp = args.swigluQuantOp;
 
-            // prefetch 软同步：轮询 tile 状态位（roundTag = expertIdx + 1）
-            // 必须在 DataCopy(weightUb_) 之前：statusAddr 由 AIC 在写完 GMM1 输出后设置，
-            // 而该 status 的前置条件是 AIV1 已完成 metaInfo GM 写入（MTE3+S 流水排空）。
-            // 轮询通过后 metaInfo GM 中的权重数据才确定可见。
-            __gm__ int32_t *statusAddr =
-                reinterpret_cast<__gm__ int32_t *>(workSet.params.workspaceInfo.gmm1TileStatusPtr) +
-                static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx;
-            int32_t roundTag = static_cast<int32_t>(args.expertIdx + 1);
-            while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
-                int64_t st = AscendC::GetSystemCycle();
-                while (AscendC::GetSystemCycle() - st < 100) {
-                }
-            }
-
-            // 轮询通过后 metaInfo GM 已就绪，搬第一个 128 子块的权重到 weightUb_
-            uint64_t metaInfoMLoc0 = args.expertBeforeCnt + mLoc;
-            AscendC::DataCopy(swigluOp.weightUb_, swigluOp.metaInfoGm_[metaInfoMLoc0 * INT32_PER_256B],
-                              static_cast<uint32_t>(mLen < SUB_TILE_M ? mLen : SUB_TILE_M) * INT32_PER_256B);
-
-            auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
-                                          reinterpret_cast<__gm__ ElementC *>(workSet.gmmAddrInfo.gmm1OutGlobal)),
-                                      workSet.layouts.c);
-
-            auto layoutL0cUB = MakeLayoutC{}(SUB_TILE_M, L1_TILE_N);
-            int64_t ubOffsetFirst = 0;
-            int64_t ubOffsetSecond = static_cast<int64_t>(MAX_SINGLE_MN_ALIGN32_NUM_128) * sizeof(ElementC);
-            auto tensorBlockUbFirst =
-                Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUB);
-            auto tensorBlockUbSecond =
-                Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUB);
-            auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
-
-            // V_MTE2 ping-pong：V 读完 UB 后通知 MTE2 可覆盖。
-            // epilogue 内部 V(782) 读 UB → V(802) Wait<MTE3_V> → MTE3 写 GM → V 继续。
-            // Set<V_MTE2> 排在 V(802) 之后，MTE2 只等 V 不等 MTE3_S/AtomicAdd，省 MTE3+S 延迟。
-            // 严格配对：prime Set(循环前) → 每轮 Wait(循环头)+Set(epilogue后) → 末轮 Set 由循环后 Wait 清理。
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
-            for (uint32_t subOff = 0; subOff < mLen; subOff += SUB_TILE_M) {
-                uint32_t subM = (mLen - subOff < SUB_TILE_M) ? (mLen - subOff) : SUB_TILE_M;
-                uint32_t subMLoc = mLoc + subOff;
-                uint64_t metaInfoMLoc = args.expertBeforeCnt + subMLoc;
-
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
-
-                // 搬入当前 128 子块的权重（首个子块已在循环前预取，跳过）
-                // WaitFlag<V_MTE2> 保证 V 已读完上一轮的 weightUb_，此处覆写安全
-                if (subOff != 0) {
-                    AscendC::DataCopy(swigluOp.weightUb_, swigluOp.metaInfoGm_[metaInfoMLoc * INT32_PER_256B],
-                                      subM * INT32_PER_256B);
+                // prefetch 软同步：轮询 tile 状态位（roundTag = expertIdx + 1）
+                // 必须在 DataCopy(weightUb_) 之前：statusAddr 由 AIC 在写完 GMM1 输出后设置，
+                // 而该 status 的前置条件是 AIV1 已完成 metaInfo GM 写入（MTE3+S 流水排空）。
+                // 轮询通过后 metaInfo GM 中的权重数据才确定可见。
+                __gm__ int32_t *statusAddr =
+                    reinterpret_cast<__gm__ int32_t *>(workSet.params.workspaceInfo.gmm1TileStatusPtr) +
+                    static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx;
+                int32_t roundTag = static_cast<int32_t>(args.expertIdx + 1);
+                while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
+                    int64_t st = AscendC::GetSystemCycle();
+                    while (AscendC::GetSystemCycle() - st < 100) {
+                    }
                 }
 
-                auto tensorBlockGmFirst =
-                    gmC.Slice(Te::MakeCoord(subMLoc, nLoc), Te::MakeShape(subM, Get<N_VALUE>(actualShape)));
-                auto tensorBlockGmSecond = gmC.Slice(Te::MakeCoord(subMLoc, nLoc + config.outputN),
-                                                     Te::MakeShape(subM, Get<N_VALUE>(actualShape)));
+                // 轮询通过后 metaInfo GM 已就绪，搬第一个 128 子块的权重到 weightUb_
+                uint64_t metaInfoMLoc0 = args.expertBeforeCnt + mLoc;
+                AscendC::DataCopy(swigluOp.weightUb_, swigluOp.metaInfoGm_[metaInfoMLoc0 * INT32_PER_256B],
+                                  static_cast<uint32_t>(mLen < SUB_TILE_M ? mLen : SUB_TILE_M) * INT32_PER_256B);
 
-                AscendC::Te::Copy(copyGM2UB, tensorBlockUbFirst, tensorBlockGmFirst);
-                AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0); // 权重+GMM1 都搬完才通知 V
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+                auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
+                                              reinterpret_cast<__gm__ ElementC *>(workSet.gmmAddrInfo.gmm1OutGlobal)),
+                                          workSet.layouts.c);
 
-                Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{subM, Get<N_VALUE>(actualShape), 0, 0};
-                Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
-                    subMLoc * config.outputN + nLoc,
-                    subMLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
-                        CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-                    0,
-                    0,
-                    static_cast<int64_t>(metaInfoMLoc),
-                    0};
-                AscendC::SetCtrlSpr<60, 60>(0);
-                args.swigluQuantOp(epilogueShape, epilogueOffset);
+                auto layoutL0cUB = MakeLayoutC{}(SUB_TILE_M, L1_TILE_N);
+                int64_t ubOffsetFirst = 0;
+                int64_t ubOffsetSecond = static_cast<int64_t>(MAX_SINGLE_MN_ALIGN32_NUM_128) * sizeof(ElementC);
+                auto tensorBlockUbFirst =
+                    Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUB);
+                auto tensorBlockUbSecond =
+                    Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUB);
+                auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+
+                // V_MTE2 ping-pong：V 读完 UB 后通知 MTE2 可覆盖。
+                // epilogue 内部 V(782) 读 UB → V(802) Wait<MTE3_V> → MTE3 写 GM → V 继续。
+                // Set<V_MTE2> 排在 V(802) 之后，MTE2 只等 V 不等 MTE3_S/AtomicAdd，省 MTE3+S 延迟。
+                // 严格配对：prime Set(循环前) → 每轮 Wait(循环头)+Set(epilogue后) → 末轮 Set 由循环后 Wait 清理。
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
-            }
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+                for (uint32_t subOff = 0; subOff < mLen; subOff += SUB_TILE_M) {
+                    uint32_t subM = (mLen - subOff < SUB_TILE_M) ? (mLen - subOff) : SUB_TILE_M;
+                    uint32_t subMLoc = mLoc + subOff;
+                    uint64_t metaInfoMLoc = args.expertBeforeCnt + subMLoc;
+
+                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+
+                    // 搬入当前 128 子块的权重（首个子块已在循环前预取，跳过）
+                    // WaitFlag<V_MTE2> 保证 V 已读完上一轮的 weightUb_，此处覆写安全
+                    if (subOff != 0) {
+                        AscendC::DataCopy(swigluOp.weightUb_, swigluOp.metaInfoGm_[metaInfoMLoc * INT32_PER_256B],
+                                          subM * INT32_PER_256B);
+                    }
+
+                    auto tensorBlockGmFirst =
+                        gmC.Slice(Te::MakeCoord(subMLoc, nLoc), Te::MakeShape(subM, Get<N_VALUE>(actualShape)));
+                    auto tensorBlockGmSecond = gmC.Slice(Te::MakeCoord(subMLoc, nLoc + config.outputN),
+                                                         Te::MakeShape(subM, Get<N_VALUE>(actualShape)));
+
+                    AscendC::Te::Copy(copyGM2UB, tensorBlockUbFirst, tensorBlockGmFirst);
+                    AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0); // 权重+GMM1 都搬完才通知 V
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+
+                    Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{subM, Get<N_VALUE>(actualShape), 0, 0};
+                    Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
+                        subMLoc * config.outputN + nLoc,
+                        subMLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
+                            CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
+                        0,
+                        0,
+                        static_cast<int64_t>(metaInfoMLoc),
+                        0};
+                    AscendC::SetCtrlSpr<60, 60>(0);
+                    args.swigluQuantOp(epilogueShape, epilogueOffset);
+                    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+                }
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
             }
             // prefetch 路径无需 NotifyCube（单向软同步，AIC 不等 AIV0）
         } else {

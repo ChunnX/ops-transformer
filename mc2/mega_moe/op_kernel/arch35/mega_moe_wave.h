@@ -1660,7 +1660,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineT
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         SetFlag<HardEvent::MTE2_MTE3>(eventId);
         WaitFlag<HardEvent::MTE2_MTE3>(eventId);
-        MegaMoeCombineImpl::CombineTokenRowTiled<bfloat16_t>(
+        MegaMoeCombineImpl::SendCombineTokenRow<bfloat16_t>(
             k_, gmRemoteBaseOffset, tokenMetaInfo, rowUb, params_);
     } else {
         LocalTensor<bfloat16_t> quantUb =
@@ -1674,7 +1674,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineT
         using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT,
                                                   fp8_e4m3fn_t, fp8_e5m2_t>::type;
         LocalTensor<Fp8Type> quantSendUb = quantUb.template ReinterpretCast<Fp8Type>();
-        MegaMoeCombineImpl::CombineTokenRowTiled<Fp8Type>(
+        MegaMoeCombineImpl::SendCombineTokenRow<Fp8Type>(
             bufferConfig.quantRowElements, gmRemoteBaseOffset, tokenMetaInfo, quantSendUb, params_);
     }
     SetFlag<HardEvent::MTE3_MTE2>(eventId);

@@ -60,9 +60,9 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
 // destination row once, then issue fixed-size remote copies for both BF16 and
 // FP8 rows.
 template <typename Element>
-__aicore__ inline void CombineTokenRowTiled(uint32_t rowElements, uint64_t gmRemoteBaseOffset,
-                                            LocalTensor<int32_t> &metaInfoTensor, LocalTensor<Element> &rowTensor,
-                                            const Params &params)
+__aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemoteBaseOffset,
+                                           LocalTensor<int32_t> &metaInfoTensor, LocalTensor<Element> &rowTensor,
+                                           const Params &params)
 {
     uint32_t toRankId = metaInfoTensor.GetValue(RANK_ID);
     uint32_t tokenIdx = metaInfoTensor.GetValue(TOKEN_ID);
@@ -76,17 +76,12 @@ __aicore__ inline void CombineTokenRowTiled(uint32_t rowElements, uint64_t gmRem
 
     constexpr uint32_t TRANSFER_BYTES = 512U;
     constexpr uint32_t TILE_ELEMENTS = TRANSFER_BYTES / sizeof(Element);
-    AscendC::DataCopyExtParams ub2GmParams{
-        1U, TRANSFER_BYTES, 0U, 0U, 0U};
-    uint32_t elementOffset = 0U;
-    for (; elementOffset + TILE_ELEMENTS <= rowElements; elementOffset += TILE_ELEMENTS) {
-        AscendC::DataCopyPad(
-            gmRemoteD[gmDstRowOffset + elementOffset], rowTensor[elementOffset], ub2GmParams);
-    }
-    if (elementOffset < rowElements) {
-        // 常规块按 512B 下发；最后不足 512B 时只发送有效尾块。
-        ub2GmParams.blockLen =
-            static_cast<uint32_t>((rowElements - elementOffset) * sizeof(Element));
+    AscendC::DataCopyExtParams ub2GmParams{1U, 0U, 0U, 0U, 0U};
+    for (uint32_t elementOffset = 0U; elementOffset < rowElements; elementOffset += TILE_ELEMENTS) {
+        // 每轮最多下发 512B；最后一轮不足 512B 时只发送有效尾块。
+        uint32_t remainingElements = rowElements - elementOffset;
+        uint32_t currentElements = remainingElements < TILE_ELEMENTS ? remainingElements : TILE_ELEMENTS;
+        ub2GmParams.blockLen = currentElements * sizeof(Element);
         AscendC::DataCopyPad(
             gmRemoteD[gmDstRowOffset + elementOffset], rowTensor[elementOffset], ub2GmParams);
     }
