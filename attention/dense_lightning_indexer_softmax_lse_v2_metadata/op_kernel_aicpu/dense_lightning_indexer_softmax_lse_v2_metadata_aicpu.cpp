@@ -52,7 +52,6 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::Prepare(CpuKernelContex
     if (!requiredAttrs) {
         return false;
     }
-
     GetAttrValueOpt(ctx, "batch_size", bSize_);
     GetAttrValueOpt(ctx, "max_seqlen_q", s1Size_);
     GetAttrValueOpt(ctx, "max_seqlen_k", s2Size_);
@@ -98,10 +97,10 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::ParamsCheck()
     KERNEL_CHECK_NULLPTR(metadata_->GetData(), false, "metadata data is null");
     KERNEL_CHECK_NULLPTR(metadata_->GetTensorShape(), false, "metadata shape is null");
 
-    if (!CheckAttrs()) {
+    if (!CheckLayoutConsistency()) {
         return false;
     }
-    if (!CheckLayoutConsistency()) {
+    if (!CheckAttrs()) {
         return false;
     }
     if (!CheckTensorShapes()) {
