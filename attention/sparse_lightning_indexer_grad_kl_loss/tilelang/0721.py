@@ -3035,20 +3035,49 @@ def sparse_lightning_indexer_grad_kl_loss(
                 & (debug_expected_relu != 0)
                 & (debug_relu != debug_expected_relu)
             )
+            debug_relu_significant = debug_relu_abs_diff > 1e-3
+            debug_significant_false_zero = (
+                debug_relu_false_zero & debug_relu_significant
+            ).sum().item()
+            debug_significant_false_nonzero = (
+                debug_relu_false_nonzero & debug_relu_significant
+            ).sum().item()
+            debug_significant_wrong_nonzero = (
+                debug_relu_wrong_nonzero & debug_relu_significant
+            ).sum().item()
             print(
                 f"[DEBUG_TASK] reluGrad mismatch summary: "
                 f"total={debug_relu_bad.shape[0]} "
                 f"false_zero={debug_relu_false_zero.sum().item()} "
                 f"false_nonzero={debug_relu_false_nonzero.sum().item()} "
                 f"wrong_nonzero={debug_relu_wrong_nonzero.sum().item()} "
-                f"diff_gt_1e-3={(debug_relu_abs_diff > 1e-3).sum().item()} "
+                f"significant_false_zero={debug_significant_false_zero} "
+                f"significant_false_nonzero={debug_significant_false_nonzero} "
+                f"significant_wrong_nonzero={debug_significant_wrong_nonzero} "
+                f"diff_gt_1e-3={debug_relu_significant.sum().item()} "
                 f"diff_gt_1e-2={(debug_relu_abs_diff > 1e-2).sum().item()}"
             )
             if debug_relu_bad.shape[0] > 0:
+                debug_relu_focus = torch.nonzero(
+                    debug_relu_significant,
+                    as_tuple=False,
+                )
+                if debug_relu_focus.shape[0] == 0:
+                    debug_relu_focus = debug_relu_bad
+                debug_relu_focus_diff = debug_relu_abs_diff[
+                    debug_relu_focus[:, 0],
+                    debug_relu_focus[:, 1],
+                ]
+                debug_relu_focus_order = torch.argsort(
+                    debug_relu_focus_diff,
+                    descending=True,
+                )
+                debug_relu_focus = debug_relu_focus[debug_relu_focus_order]
+                debug_rows_per_aiv = Nidx1 // 2
                 debug_relu_tile_ids = (
-                    (debug_relu_bad[:, 0] // rows_per_aiv)
+                    (debug_relu_focus[:, 0] // debug_rows_per_aiv)
                     * (n_num * bw_col_count)
-                    + debug_relu_bad[:, 1] // bw_col_block
+                    + debug_relu_focus[:, 1] // bw_col_block
                 )
                 debug_relu_unique_tiles, debug_relu_tile_counts = torch.unique(
                     debug_relu_tile_ids,
@@ -3077,11 +3106,11 @@ def sparse_lightning_indexer_grad_kl_loss(
                     "(aiv,n_idx,bw_col,count)="
                     f"{debug_relu_tile_summary}"
                 )
-                for debug_bad_id in range(min(16, debug_relu_bad.shape[0])):
-                    debug_head = int(debug_relu_bad[debug_bad_id, 0].item())
-                    debug_k = int(debug_relu_bad[debug_bad_id, 1].item())
-                    debug_aiv = debug_head // rows_per_aiv
-                    debug_local_head = debug_head % rows_per_aiv
+                for debug_bad_id in range(min(16, debug_relu_focus.shape[0])):
+                    debug_head = int(debug_relu_focus[debug_bad_id, 0].item())
+                    debug_k = int(debug_relu_focus[debug_bad_id, 1].item())
+                    debug_aiv = debug_head // debug_rows_per_aiv
+                    debug_local_head = debug_head % debug_rows_per_aiv
                     debug_n_idx = debug_k // n_block
                     debug_bw_col = (debug_k % n_block) // bw_col_block
                     debug_local_col = debug_k % bw_col_block
