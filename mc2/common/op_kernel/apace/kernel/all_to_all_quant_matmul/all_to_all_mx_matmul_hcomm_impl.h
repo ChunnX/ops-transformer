@@ -82,7 +82,6 @@ public:
 private:
     static constexpr AscendC::HcclServerType kServerType = AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU;
     AscendC::Hccl<kServerType> hccl_;
-    bool notifyFlag_{false};
     AscendC::HcclHandle scaleHandle_{0};
     AscendC::HcclHandle dataHeadHandle_{0};
     AscendC::HcclHandle dataTailHandle_{0};
