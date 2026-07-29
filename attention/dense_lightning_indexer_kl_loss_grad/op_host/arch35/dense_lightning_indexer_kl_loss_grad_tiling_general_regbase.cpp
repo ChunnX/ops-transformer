@@ -122,12 +122,12 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::ValidateReq
     OP_CHECK_IF(metadataDesc == nullptr, OP_LOGE(opName, "metadata desc must be provided."), return ge::GRAPH_FAILED);
 
     if (layoutQuery == "TND") {
-        auto cuSeqQInput = context->GetOptionalInputTensor(CU_SEQLENS_QUERY_INPUT_INDEX);
+        auto cuSeqQInput = context_->GetOptionalInputTensor(CU_SEQLENS_QUERY_INPUT_INDEX);
         OP_CHECK_IF(cuSeqQInput == nullptr, OP_LOGE(opName, "cuSeqlensQ must be provided when layoutQ is TND."),
                     return ge::GRAPH_FAILED);
     } 
     if (layoutKey == "TND") {
-        auto cuSeqKInput = context->GetOptionalInputTensor(CU_SEQLENS_KEY_INPUT_INDEX);
+        auto cuSeqKInput = context_->GetOptionalInputTensor(CU_SEQLENS_KEY_INPUT_INDEX);
         OP_CHECK_IF(cuSeqKInput == nullptr, OP_LOGE(opName, "cuSeqlensK must be provided when layoutK is TND."),
                     return ge::GRAPH_FAILED);
     }
