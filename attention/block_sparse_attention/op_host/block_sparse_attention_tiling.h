@@ -89,6 +89,9 @@ TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen);  // BNSD/BSND格式KV的S维度，
 TILING_DATA_FIELD_DEF(uint32_t, useUniformQSeqlen);  // 是否使用统一的qseqlen值（1=是，0=否）
 TILING_DATA_FIELD_DEF(uint32_t, useUniformKvSeqlen);  // 是否使用统一的kvseqlen值（1=是，0=否）
 
+// effRows: 每个稀疏block的有效行数, 通过attenMask传入(INT32 [batch, kvHeads, maxBlockNum, 2])
+TILING_DATA_FIELD_DEF(uint32_t, effRowsEnabled);  // 是否启用effRows（1=是，0=否）
+
 // TilingKey for kernel dispatch (生成在tiling层)
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
 TILING_DATA_FIELD_DEF(uint64_t, selectNumIdxSize);
@@ -235,6 +238,7 @@ private:
     const int64_t *blockShapeList = nullptr;
     bool useUniformQSeqlen_ = false;  // 是否使用统一的qseqlen值（使用maxQSeqlen_）
     bool useUniformKvSeqlen_ = false;  // 是否使用统一的kvseqlen值（使用maxKvSeqlen_）
+    bool effRowsEnabled_ = false;  // 是否启用effRows
 
     uint64_t mm1OutSize_ = 0;
     uint64_t smOnlineOutSize_ = 0;

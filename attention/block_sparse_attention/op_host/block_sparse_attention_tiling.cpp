@@ -687,8 +687,40 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
 {
     const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
     if (attenMaskTensor != nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "AttenMask is NOT YET supported.");
-        return ge::GRAPH_FAILED;
+        // effRows: INT32 [batch, kvHeads, maxBlockNum, 2], only for FP8 full-quant
+        if (socVer_ == SOC_VER_950_CODE && dataType_ == ge::DT_FLOAT8_E4M3FN) {
+            auto attenMaskDType = bsaContext->GetOptionalInputDesc(ATTEN_MASK_INDEX)->GetDataType();
+            if (attenMaskDType != ge::DT_INT32) {
+                OP_LOGE(bsaContext->GetNodeName(),
+                        "When dtype is float8_e4m3fn, attenMask is used as effRows and must be int32, but now it is %s.",
+                        DataTypeToString(attenMaskDType).c_str());
+                return ge::GRAPH_FAILED;
+            }
+            auto attenMaskShape = bsaContext->GetOptionalInputShape(ATTEN_MASK_INDEX);
+            int64_t attenMaskDimNum = attenMaskShape->GetStorageShape().GetDimNum();
+            if (attenMaskDimNum != DIM_NUM_4) {
+                OP_LOGE(bsaContext->GetNodeName(),
+                        "The expected shape dim of effRows (attenMask) is 4, but now it is %ld.",
+                        attenMaskDimNum);
+                return ge::GRAPH_FAILED;
+            }
+            uint32_t effRowsBatch = static_cast<uint32_t>(attenMaskShape->GetStorageShape().GetDim(DIM_0));
+            uint32_t effRowsHeads = static_cast<uint32_t>(attenMaskShape->GetStorageShape().GetDim(DIM_1));
+            uint32_t effRowsBlockNum = static_cast<uint32_t>(attenMaskShape->GetStorageShape().GetDim(DIM_2));
+            uint32_t effRowsLastDim = static_cast<uint32_t>(attenMaskShape->GetStorageShape().GetDim(DIM_3));
+            if (effRowsBatch != batch_ || effRowsHeads != kvHeads_ ||
+                effRowsBlockNum != maxKvBlockNum_ || effRowsLastDim != NUM3 - NUM_1) {
+                OP_LOGE(bsaContext->GetNodeName(),
+                        "The shape of effRows (attenMask) must be (%u, %u, %u, 2), but now it is (%u, %u, %u, %u).",
+                        batch_, kvHeads_, maxKvBlockNum_,
+                        effRowsBatch, effRowsHeads, effRowsBlockNum, effRowsLastDim);
+                return ge::GRAPH_FAILED;
+            }
+            effRowsEnabled_ = true;
+        } else {
+            OP_LOGE(bsaContext->GetNodeName(), "AttenMask is only supported for float8_e4m3fn on Ascend950.");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1126,6 +1158,7 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     // BNSD/BSND格式下当actualSeqLengths为nullptr时，使用maxQSeqlen和maxKvSeqlen作为统一值
     tilingData_->set_useUniformQSeqlen(useUniformQSeqlen_ ? 1 : 0);
     tilingData_->set_useUniformKvSeqlen(useUniformKvSeqlen_ ? 1 : 0);
+    tilingData_->set_effRowsEnabled(effRowsEnabled_ ? 1 : 0);
 
     // 生成tilingKey（按照开发规范：在tiling层生成）
     uint64_t tilingKey = GenerateTilingKey(bsaContext);

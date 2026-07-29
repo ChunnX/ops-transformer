@@ -87,6 +87,10 @@ public:
         gKDequantScale.SetGlobalBuffer((__gm__ float *)params.kDequantScale);
         AscendC::GlobalTensor<float> gVDequantScale;
         gVDequantScale.SetGlobalBuffer((__gm__ float *)params.vDequantScale);
+        AscendC::GlobalTensor<int32_t> gEffRows;
+        if (effRowsEnabled_) {
+            gEffRows.SetGlobalBuffer((__gm__ int32_t *)params.attenMask);
+        }
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.attentionOut);
         AscendC::GlobalTensor<ElementLse> gLse;
@@ -286,8 +290,14 @@ public:
             // no qS*qN combination even in GQA/MQA senario, since each qN has a different sparse pattern
             uint32_t rowNum = qSTileSizeAct;
             uint32_t rowNumRound = RoundUp(rowNum, 16);
-            uint32_t kvSLoopNum = static_cast<uint32_t>(CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
+            uint32_t kvSLoopNum;
+            if (effRowsEnabled_) {
+                kvSLoopNum = yBlockNumRsvd;
+            } else {
+                kvSLoopNum = static_cast<uint32_t>(CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
+            }
             uint32_t kvSTileSizeAct = kvBaseTile_;
+            uint32_t kvSBaseTileArg = effRowsEnabled_ ? blockShapeY_ : kvBaseTile_;
 #ifdef __DAV_CUBE__
             uint32_t kvShapeCol = 0;
             uint32_t qShapeCol = 0;
@@ -343,7 +353,12 @@ public:
 #endif
             for (uint32_t gatheredKvSTileIdx = 0; gatheredKvSTileIdx < kvSLoopNum + PRE_LAUNCH; gatheredKvSTileIdx++) {
                 if (gatheredKvSTileIdx < kvSLoopNum) {
-                    if (gatheredKvSTileIdx == kvSLoopNum - 1) {
+                    if (effRowsEnabled_) {
+                        uint32_t yBlockIndexEff = gSparseIdx[gmOffsetSparseIdx].GetValue(gatheredKvSTileIdx);
+                        uint32_t effRowsOffset = curBatch * kvHeads_ * yBlockNumAligned_ * 2 +
+                                                 kvHeadIdx * yBlockNumAligned_ * 2 + yBlockIndexEff * 2;
+                        kvSTileSizeAct = static_cast<uint32_t>(gEffRows.GetValue(effRowsOffset + 1));
+                    } else if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         kvSTileSizeAct = gatheredKvSeqlen - gatheredKvSTileIdx * kvBaseTile_;
                     } else {
                         kvSTileSizeAct = kvBaseTile_;
@@ -361,15 +376,20 @@ public:
                         gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
-                    uint32_t yBlockIndexOffset = (gatheredKvSTileIdx * kvBaseTile_) / blockShapeY_;
-                    uint32_t yBlockIndex = gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffset);
+                    uint32_t yBlockIndex;
+                    if (effRowsEnabled_) {
+                        yBlockIndex = gSparseIdx[gmOffsetSparseIdx].GetValue(gatheredKvSTileIdx);
+                    } else {
+                        uint32_t yBlockIndexOffset = (gatheredKvSTileIdx * kvBaseTile_) / blockShapeY_;
+                        yBlockIndex = gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffset);
+                    }
                     uint32_t kvDequantScaleOffset =
                         curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndex;
                     float kDequantScaleValue = gKDequantScale.GetValue(kvDequantScaleOffset);
                     float combinedDeqScalar = qDequantScaleValue * kDequantScaleValue;
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&combinedDeqScalar));
                     blockMmadQK(gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapeQK,
-                                gatheredKvSTileIdx, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                                gatheredKvSTileIdx, kvSeqlen, kvSBaseTileArg, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                                 prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag, deqScalar);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
@@ -397,7 +417,12 @@ public:
                 }
                 if (gatheredKvSTileIdx >= PRE_LAUNCH) {
                     uint32_t gatheredKvSTileIdxDe = gatheredKvSTileIdx - PRE_LAUNCH;
-                    if (gatheredKvSTileIdxDe == kvSLoopNum - 1) {
+                    if (effRowsEnabled_) {
+                        uint32_t yBlockIndexEffDe = gSparseIdx[gmOffsetSparseIdx].GetValue(gatheredKvSTileIdxDe);
+                        uint32_t effRowsOffsetDe = curBatch * kvHeads_ * yBlockNumAligned_ * 2 +
+                                                   kvHeadIdx * yBlockNumAligned_ * 2 + yBlockIndexEffDe * 2;
+                        kvSTileSizeAct = static_cast<uint32_t>(gEffRows.GetValue(effRowsOffsetDe + 1));
+                    } else if (gatheredKvSTileIdxDe == kvSLoopNum - 1) {
                         kvSTileSizeAct = gatheredKvSeqlen - gatheredKvSTileIdxDe * kvBaseTile_;
                     } else {
                         kvSTileSizeAct = kvBaseTile_;
@@ -420,14 +445,19 @@ public:
                         gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
-                    uint32_t yBlockIndexOffsetDe = (gatheredKvSTileIdxDe * kvBaseTile_) / blockShapeY_;
-                    uint32_t yBlockIndexDe = gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffsetDe);
+                    uint32_t yBlockIndexDe;
+                    if (effRowsEnabled_) {
+                        yBlockIndexDe = gSparseIdx[gmOffsetSparseIdx].GetValue(gatheredKvSTileIdxDe);
+                    } else {
+                        uint32_t yBlockIndexOffsetDe = (gatheredKvSTileIdxDe * kvBaseTile_) / blockShapeY_;
+                        yBlockIndexDe = gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffsetDe);
+                    }
                     uint32_t kvDequantScaleOffsetDe =
                     curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndexDe;
                     float vDequantScaleValue = gVDequantScale.GetValue(kvDequantScaleOffsetDe);
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&vDequantScaleValue));
                     blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
-                                gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                                gatheredKvSTileIdxDe, kvSeqlen, kvSBaseTileArg, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                                 prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, deqScalar);
 #endif
 #ifdef __DAV_VEC__
@@ -474,6 +504,7 @@ public:
         // aligned seqlen q & kv
         qSeqlenAligned_ = bsaTilingData->maxQSeqlen;
         kvSeqlenAligned_ = bsaTilingData->maxKvSeqlen;
+        effRowsEnabled_ = bsaTilingData->effRowsEnabled;
     }
 
     __aicore__ inline
@@ -690,6 +721,8 @@ private:
     // aligned seqlen q & kv
     int64_t qSeqlenAligned_;
     int64_t kvSeqlenAligned_;
+    // effRows
+    uint32_t effRowsEnabled_ = 0;
     // L1 tile info
     uint32_t mm1L1TileM_;
     uint32_t mm1L1TileN_;
