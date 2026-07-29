@@ -2199,7 +2199,7 @@ void MoeInitRoutingV3Arch35TilingClass::ComputeUseGatherCopy()
         // gather搬运收益与有效专家比例、专家数k成正比，当前阈值取3。
         tilingDataPtr_->useGatherCopy = ((expertEnd_ - expertStart_) * k_ > expertNum_ * NUM_THREE);
     } else {
-        tilingDataPtr_->useGatherCopy = (rowIdxType_ == ROW_IDX_GATHER);
+        tilingDataPtr_->useGatherCopy = 0;
     }
 }
 
