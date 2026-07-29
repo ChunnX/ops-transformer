@@ -33,7 +33,7 @@
     <td>32</td>
   </tr>
   <tr>
-    <td>频率（GHz）</td>
+    <td>频率</td>
     <td>1.8</td>
     <td>1.65</td>
   </tr>
@@ -253,10 +253,12 @@ __simd_vf__ __aicore__ void GenIndexBuf(ubuf int32_t* helpAddr, int32_t colFacto
 
 ```cpp
 // 动态掩码：处理尾部不完整数据
-__simd_vf__ __aicore__ void GatherProcess(ubuf int8_t* curYAddr, uint16_t repeatTimes, uint16_t computeSize)
+__simd_vf__ __aicore__ void GatherProcess(ubuf int8_t* curXAddr, ubuf int8_t* curYAddr, uint16_t repeatTimes, uint16_t computeSize)
 {
     MicroAPI::RegTensor<int8_t> vregTemp;
     MicroAPI::MaskReg preg;
+    // sreg为剩余待处理元素（普通unit32_t标量计数）
+    unit32_t sreg = static_cast<unit32_t>(repeatimes)*computeSize;
 
     for (uint16_t r = 0; r < repeatTimes; r++) {
         // 根据剩余元素数更新掩码

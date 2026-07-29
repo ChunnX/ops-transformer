@@ -604,7 +604,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>全量推理场景的FlashAttention算子。</td>
+    <td>面向Swin Transformer的注意力输出后处理融合算子，完成输出线性投影（MatMul+Bias）、窗口还原、反向循环移位以及残差加法。</td>
   </tr>
   <tr>
     <td>ffn</td>
@@ -1164,7 +1164,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>aclnnMoeTokenPermuteWithRoutingMap的反向传播。</td>
+    <td>MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMap将tokens和可选probsOptional广播后排序。</td>
   </tr>
   <tr>
     <td>moe</td>
@@ -1404,7 +1404,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对输入张量的尾轴进行切分。</td>
+    <td>对输入张量按照‘sizeSplits’对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut与kOut，之后对kOut与vOut进行量化并按照‘indices’更新到kCacheRef和vCacheRef上。</td>
   </tr>
   <tr>
     <td>posembedding</td>

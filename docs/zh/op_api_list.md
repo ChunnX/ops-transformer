@@ -79,7 +79,7 @@
 |[aclnnFlashAttentionUnpaddingScoreGradV2](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV2.md)|训练场景下计算注意力的反向输出，即[aclnnFlashAttentionVarLenScoreV2](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV2.md)的反向计算。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
 |[aclnnFlashAttentionUnpaddingScoreGradV3](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV3.md)|训练场景下计算注意力的反向输出，即[aclnnFlashAttentionVarLenScoreV3](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV3.md)的反向计算。该接口相较于[aclnnFlashAttentionUnpaddingScoreGradV2](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV2.md)接口，新增queryRope、keyRope、dqRope和dkRope参数。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
 |[aclnnFlashAttentionUnpaddingScoreGradV4](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV4.md)|训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
-|[aclnnFlashAttentionUnpaddingScoreGradV5](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV5.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。增加`sinkInOptional`可选输入。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
+|[aclnnFlashAttentionUnpaddingScoreGradV5](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV5.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。增加`sinkInOptional`可选输入。本接口为反向输出。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
 |[aclnnFlashAttentionVarLenScore](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScore.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现| 默认确定性实现 |
 |[aclnnFlashAttentionVarLenScoreV2](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV2.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现| 默认确定性实现 |
 |[aclnnFlashAttentionVarLenScoreV3](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV3.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现| 默认确定性实现 |
@@ -100,7 +100,7 @@
 |[aclnnGroupedMatmulFinalizeRoutingV2](../../gmm/grouped_matmul_finalize_routing/docs/aclnnGroupedMatmulFinalizeRoutingV2.md)|GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作。|默认非确定性实现，支持配置开启| - |
 |[aclnnGroupedMatmulFinalizeRoutingV3](../../gmm/grouped_matmul_finalize_routing/docs/aclnnGroupedMatmulFinalizeRoutingV3.md)|GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnGroupedMatmulFinalizeRoutingWeightNz](../../gmm/grouped_matmul_finalize_routing/docs/aclnnGroupedMatmulFinalizeRoutingWeightNz.md)|GroupedMatMul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作，支持输入Weight为AI处理器亲和数据排布格式(NZ)。|默认非确定性实现，支持配置开启| - |
-|[aclnnGroupedMatmulFinalizeRoutingWeightNzV2](../../gmm/grouped_matmul_finalize_routing/docs/aclnnGroupedMatmulFinalizeRoutingWeightNzV2.md)|GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作，支持w为AI处理器亲和数据排布格式(NZ)。|默认非确定性实现，支持配置开启| 默认确定性实现 |
+|[aclnnGroupedMatmulFinalizeRoutingWeightNzV2](../../gmm/grouped_matmul_finalize_routing/docs/aclnnGroupedMatmulFinalizeRoutingWeightNzV2.md)|GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作，支持输入Weight为AI处理器亲和数据排布格式(NZ)。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnGroupedMatmulSwigluQuant](../../gmm/grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuant.md)|融合GroupedMatMul、Dequant、Swiglu和Quant。|默认确定性实现| - |
 |[aclnnGroupedMatmulSwigluQuantV2](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantV2.md)|融合GroupedMatmul 、Dequant、Swiglu和Quant。|默认确定性实现| 默认确定性实现 |
 |[aclnnGroupedMatmulSwigluQuantWeightNZ](../../gmm/grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuantWeightNZ.md)|融合GroupedMatMul、Dequant、Swiglu和Quant，输入权重Weight会被强制视为NZ格式。|默认确定性实现| - |
@@ -115,7 +115,7 @@
 |[aclnnInterleaveRope](../../posembedding/interleave_rope/docs/aclnnInterleaveRope.md)|针对单输入x进行旋转位置编码。|- | 默认确定性实现 |
 |[aclnnKvCompressEpilog](../../attention/kv_compress_epilog/docs/aclnnKvCompressEpilog.md)|在KV Cache的Epilog阶段，对缓存进行原地逐组动态量化压缩更新，将bfloat16激活值压缩为FP8格式并按slotMapping散写。|- | 默认确定性实现 |
 |[aclnnLightningIndexer](../../attention/lightning_indexer/docs/aclnnLightningIndexer.md)|稀疏attention前处理的计算，目的是选出关键的稀疏token位置。|默认确定性实现| 默认确定性实现 |
-|[aclnnLightningIndexerGrad](../../attention/lightning_indexer_grad/docs/aclnnLightningIndexerGrad.md)|训练场景下，实现LightningIndexer反向，其中输入有Query, Key, Weights, Dy, Indices，反向主要利用正向计算的Indices从Key中提取TopK序列从而降低Matmul计算量。|默认非确定性实现，不支持配置开启|
+|[aclnnLightningIndexerGrad](../../attention/lightning_indexer_grad/docs/aclnnLightningIndexerGrad.md)|训练场景下，实现LightningIndexer反向，其中输入有Query, Key, Weights, Dy, Indices，反向主要利用正向计算的Indices从Key中提取TopK序列从而降低Matmul计算量。|默认非确定性实现，不支持配置开启| -|
 |[aclnnLightningIndexerV2](../../attention/lightning_indexer_v2/docs/aclnnLightningIndexerV2.md)|稀疏attention前处理的计算，目的是选出关键的稀疏token位置。支持KV压缩场景。|默认确定性实现| 默认确定性实现 |
 |[aclnnLightningIndexerV2Metadata](../../attention/lightning_indexer_v2_metadata/docs/aclnnLightningIndexerV2Metadata.md)| aclnnLightningIndexerV2接口的前置接口，用于计算aclnnLightningIndexerV2的负载均衡。|默认确定性实现|默认确定性实现|
 |[aclnnMaskedCausalConv1d](../../attention/masked_causal_conv1d/docs/aclnnMaskedCausalConv1d.md)|对hidden层的token之间进行带mask的因果一维分组卷积操作。| - | 默认确定性实现 |
@@ -198,8 +198,8 @@
 |[aclnnPromptFlashAttentionV3](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV3.md)|全量推理场景的FlashAttention算子。|默认确定性实现| - |
 |[aclnnQkvRmsNormRopeCache](../../posembedding/qkv_rms_norm_rope_cache/docs/aclnnQkvRmsNormRopeCache.md)|输入qkv融合张量，通过SplitVD拆分q、k、v张量，执行RmsNorm、ApplyRotaryPosEmb、Quant、Scatter融合操作，输出qOut、kCache、vCache、qBeforeQuant(可选)、kBeforeQuant(可选)、vBeforeQuant(可选)。|默认确定性实现| - |
 |[aclnnQkvRmsNormRopeCacheWithKScale](../../posembedding/qkv_rms_norm_rope_cache_with_k_scale/docs/aclnnQkvRmsNormRopeCacheWithKScale.md)|输入Q/K/V融合张量，拆分Q、K、V后对Q/K执行RMSNorm、RoPE、共享rotation矩阵乘和FP8动态量化，输出qOut和qScale；K/V分支按slotMapping更新kCacheRef、kScaleCacheRef和vCacheRef。|-|默认确定性实现|
-|[aclnnQuantAllReduce](../../mc2/quant_all_reduce/docs/aclnnQuantAllReduce.md)|实现quant + allReduce融合计算。|- | 默认非确定性说明，支持配置开启 |
-|[aclnnQuantFlashAttentionScore](../../attention/flash_attention_score/docs/aclnnQuantFlashAttentionScore.md)| 量化的训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|- | 默认确定性说明 |
+|[aclnnQuantAllReduce](../../mc2/quant_all_reduce/docs/aclnnQuantAllReduce.md)|实现quant + allReduce融合计算。|- | 默认非确定性实现，支持配置开启 |
+|[aclnnQuantFlashAttentionScore](../../attention/flash_attention_score/docs/aclnnQuantFlashAttentionScore.md)| 量化的训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|- | 默认确定性实现 |
 |[aclnnQuantGroupedMatmulDequantWeightNZ](../../gmm/quant_grouped_matmul_dequant/docs/aclnnQuantGroupedMatmulDequantWeightNZ.md)|对输入x进行量化，分组矩阵乘以及反量化，输入权重Weight会被强制视为NZ格式。| - | - |
 |[aclnnQuantLightningIndexer](../../attention/quant_lightning_indexer/docs/aclnnQuantLightningIndexer.md)|QuantLightningIndexer在LightningIndexer的基础上支持了Per-Token-Head量化输入。| - | 默认确定性实现 |
 |[aclnnQuantGroupedMatmulInplaceAdd](../../gmm/quant_grouped_matmul_inplace_add/docs/aclnnQuantGroupedMatmulInplaceAdd.md)|实现分组矩阵乘计算和加法计算，基本功能为矩阵乘和加法的组合。| - | 默认确定性实现 |
