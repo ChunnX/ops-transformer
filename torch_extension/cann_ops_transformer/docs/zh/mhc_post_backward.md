@@ -222,8 +222,8 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
 
 - 该接口支持训练场景下使用。
 - 该接口支持单算子模式与TorchAir图模式调用。
-- `h_res`为可选输入：仅<term>Ascend 950PR/Ascend 950DT</term>在eager模式下支持置为`None`或传入空Tensor（二者均按未传入处理）；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>与<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>必须传入非空`h_res`。图模式下`h_res`不可为`None`或空Tensor（底层IR将`h_res`标记为必选输入）。
-- 除`h_res`在<term>Ascend 950PR/Ascend 950DT</term> eager模式下可为空外，其余所有输入Tensor必须非空（各维度值大于0），且所有输入Tensor必须位于同一NPU设备上。
+- 图模式下`h_res`不可为`None`或空Tensor（底层IR将`h_res`标记为必选输入）。
+- `grad_output`、`x`、`h_out`和`h_post`必须为非空Tensor（各维度值大于0），且所有输入Tensor必须位于同一NPU设备上。
 - 数据类型约束：
   - `grad_output`、`x`、`h_out`的数据类型必须相同（bfloat16或float16）。
   - `grad_x`的数据类型与`x`保持一致，`grad_h_out`与`h_out`保持一致，`grad_h_post`与`h_post`保持一致（float32）。
@@ -241,8 +241,16 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
     - `h_res`的T维度需与`x`的T维度一致，后两维为(n, n)。
     - `h_out`的T维度需与`x`的T维度一致，D维度需与`x`的D维度一致。
     - `h_post`的T维度需与`x`的T维度一致，n维度需与`x`的n维度一致。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：`n`仅支持4；`D`需按128对齐，取值范围为[1, 100000]。
-- <term>Ascend 950PR/Ascend 950DT</term>：`n`支持4、6、8。
+<!-- npu="950" id7 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  - eager模式下，`h_res`支持置为`None`或传入空Tensor，二者均按未传入处理。
+  - `n`支持4、6、8。
+<!-- end id7 -->
+<!-- npu="A3,910b" id8 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - `h_res`必须为非空Tensor。
+  - `n`仅支持4；`D`需按128对齐，取值范围为[1, 100000]。
+<!-- end id8 -->
 
 ## 确定性计算
 
@@ -274,13 +282,15 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
   print(f"grad_x shape: {grad_x.shape}")
   ```
 
-  `h_res`不传入的eager模式场景（此时`grad_x`等于`grad_output`）：
+  <!-- npu="950" id9 -->
+  - **Ascend 950PR/Ascend 950DT**：`h_res`不传入的eager模式场景，此时`grad_x`等于`grad_output`。
 
-  ```python
-  grad_x, grad_h_res, grad_h_out, grad_h_post = cann_ops_transformer.mhc_post_backward(
-      grad_output, x, None, h_out, h_post
-  )
-  ```
+    ```python
+    grad_x, grad_h_res, grad_h_out, grad_h_post = cann_ops_transformer.mhc_post_backward(
+        grad_output, x, None, h_out, h_post
+    )
+    ```
+  <!-- end id9 -->
 
 - 图模式调用：
 
