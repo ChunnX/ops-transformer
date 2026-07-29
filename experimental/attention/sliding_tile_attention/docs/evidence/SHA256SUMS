@@ -1,0 +1,13 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+#
+
+8de2782c4c2676623f205d7c4d1b62c6d917f9a2ce4383ffed375cdb9a79750e  experimental/attention/sliding_tile_attention/docs/evidence/run_22cases.log
+47ed46cea6a05af498b5a917e370f87691bb1b5209da88c27eff77b835043066  experimental/attention/sliding_tile_attention/docs/evidence/self_validation.csv
+c24d475290ff944b310f2e226084377a067d9d74f80460de2e7ad630ffff12a6  experimental/attention/sliding_tile_attention/docs/evidence/operator_source.sha256
+766aeb1f278ee09469badbc9845196c9d3748a74015f038d9079c673667a3ccb  experimental/attention/sliding_tile_attention/docs/evidence/current_reproducer.sha256
