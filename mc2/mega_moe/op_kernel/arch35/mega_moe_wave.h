@@ -37,23 +37,6 @@
 
 using namespace AscendC;
 
-#define MEGA_MOE_GMM2_READY_PER_EXPERT 0
-#define MEGA_MOE_GMM2_READY_PER_BATCH 1
-#ifndef MEGA_MOE_GMM2_READY_MODE
-#define MEGA_MOE_GMM2_READY_MODE MEGA_MOE_GMM2_READY_PER_EXPERT
-#endif
-#if MEGA_MOE_GMM2_READY_MODE != MEGA_MOE_GMM2_READY_PER_EXPERT && \
-    MEGA_MOE_GMM2_READY_MODE != MEGA_MOE_GMM2_READY_PER_BATCH
-#error "MEGA_MOE_GMM2_READY_MODE must be PER_EXPERT(0) or PER_BATCH(1)"
-#endif
-
-// Optional performance experiment: retain the final wave's full combine tail,
-// but skip combine work in earlier PER_BATCH waves after preserving their GMM2
-// ready dependency.  Production/default measurements execute every wave.
-#ifndef MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY
-#define MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY 0
-#endif
-
 namespace MegaMoeImpl {
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
@@ -2107,7 +2090,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
 //   AIV0 : SwiGLU(B) -> SwiGLU(B+1), never enters combine/ready
 //   AIV1 : fully prefetch Dispatch(B+1), then optionally quantize and Combine(B)
 // No batch-wide barrier is used; per-wave progress is carried only by the
-// existing dispatch/SwiGLU dependencies and the expert/batch GMM2 ready fan-in.
+// existing dispatch/SwiGLU dependencies and the expert-grained GMM2 ready fan-in.
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedExpertWaves(
     const DispatchBufferConfig &bufferConfig, int32_t &vecSetSyncCom)
@@ -2123,7 +2106,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
     ExpertLoopState dispatchState{initShape, initOffset, 0};
     ExpertLoopState gmm1State{initShape, initOffset, 0};
     ExpertLoopState gmm2State{initShape, initOffset, 0};
-    ExpertLoopState combinePreloadState{initShape, initOffset, 0};
     ExpertLoopState combineState{initShape, initOffset, 0};
 
     const uint32_t expertsPerWave = expertsPerBatch_;
@@ -2136,13 +2118,12 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
         }
     }
 
-    uint32_t batchIdx = 0;
     // Merge a final tail containing strictly less than half of a normal wave
     // into its predecessor, for example 5+5+5+1 becomes 5+5+6.
     const uint32_t smallTailMergeBegin =
         MegaMoeImpl::GetSmallTailMergeBegin(moeExpertPerRank_, expertsPerWave);
     uint32_t batchEnd = 0U;
-    for (uint32_t batchBegin = 0; batchBegin < moeExpertPerRank_; batchBegin = batchEnd, ++batchIdx) {
+    for (uint32_t batchBegin = 0; batchBegin < moeExpertPerRank_; batchBegin = batchEnd) {
         batchEnd = MegaMoeImpl::GetWaveEnd(
             batchBegin, moeExpertPerRank_, expertsPerWave, smallTailMergeBegin);
         const uint32_t waveBeginCursor = startBlockIdx_;
@@ -2192,12 +2173,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
             }
             UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
             GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, vecSetSyncCom);
-            if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_EXPERT) {
-                PublishGmm2Ready(expertIdx);
-            }
-        }
-        if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
-            PublishGmm2Ready(batchIdx);
+            PublishGmm2Ready(expertIdx);
         }
         // All core types consume the same real/virtual GMM tile rotations.  If
         // the full wave returned to its entry cursor while GMM1 itself did
@@ -2217,120 +2193,43 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
                 if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                    if constexpr (MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY != 0 &&
-                                  MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
-                        if (batchEnd != moeExpertPerRank_) {
-                            // Preserve the original control dependency so AIV1
-                            // cannot run ahead of this wave's completed GMM2.
-                            WaitGmm2Ready(batchIdx);
-                            continue;
-                        }
-                    }
-
                     InitCombineNoQuantRowRing();
                     uint32_t rowSequence = 0U;
-                    MegaMoeImpl::TokenRange waveOwned;
-                    uint32_t waveTokenBegin = 0U;
-                    GM_ADDR waveGmm2OutGlobal = nullptr;
-                    uint32_t wavePreloadedChunkCount = 0U;
-
-                    if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
-                        // GMM2 rows and meta-info use the same expert-major prefix
-                        // sum, so the whole wave is one contiguous row stream.
-                        uint32_t waveTokenCount = 0U;
-                        for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-                            bool hasTokens = UpdateGroupParams<AddrUpdateMode::GMM2>(combinePreloadState, expertIdx);
-                            if (expertIdx == batchBegin) {
-                                waveTokenBegin = combinePreloadState.expertBeforeCnt;
-                            }
-                            if (hasTokens) {
-                                waveTokenCount +=
-                                    static_cast<uint32_t>(Get<M_VALUE>(combinePreloadState.problemShape));
-                            }
+                    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
+                        if (!UpdateGroupParams<AddrUpdateMode::GMM2>(combineState, expertIdx)) {
+                            continue;
                         }
-
-                        waveOwned = GetCombineNoQuantOwnedRange(waveTokenCount);
-                        // GMM2 ready transitively guarantees that Dispatch has
-                        // finished publishing the matching meta-info routing data.
-                        WaitGmm2Ready(batchIdx);
-                        if (waveOwned.count != 0U) {
-                            waveGmm2OutGlobal = params_.workspaceInfo.gmm2MmadResPtr +
-                                               static_cast<uint64_t>(waveTokenBegin) * k_ * sizeof(bfloat16_t);
-                            wavePreloadedChunkCount = waveOwned.count < COMBINE_META_INFO_TOKEN_CAPACITY ?
-                                                          waveOwned.count :
-                                                          COMBINE_META_INFO_TOKEN_CAPACITY;
-                            PreloadCombineNoQuantMetaInfo(
-                                static_cast<uint64_t>(waveTokenBegin) + waveOwned.start, wavePreloadedChunkCount, 0U);
-                            SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+                        UpdateGlobalBuffer<AddrUpdateMode::GMM2>(combineAddrInfo, combineState);
+                        uint32_t mExpert = static_cast<uint32_t>(Get<M_VALUE>(combineState.problemShape));
+                        MegaMoeImpl::TokenRange owned = GetCombineNoQuantOwnedRange(mExpert);
+                        if (owned.count != 0U) {
+                            WaitGmm2Ready(expertIdx);
                         }
-                        if (wavePreloadedChunkCount != 0U) {
-                            WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
-                        }
-                    }
-                    if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
-                        // The common target fits in one meta-info preload. Retain a
-                        // bounded fallback for larger waves while preserving one
-                        // balanced, contiguous ownership interval per AIV1.
                         uint32_t processed = 0U;
-                        if (wavePreloadedChunkCount != 0U) {
-                            ProcessCombineNoQuantGm(waveGmm2OutGlobal, waveOwned.start, wavePreloadedChunkCount, 0U,
-                                                   rowSequence);
-                            processed = wavePreloadedChunkCount;
-                        }
-                        while (processed < waveOwned.count) {
-                            uint32_t chunkCount = waveOwned.count - processed < COMBINE_META_INFO_TOKEN_CAPACITY ?
-                                                      waveOwned.count - processed :
+                        while (processed < owned.count) {
+                            uint32_t chunkCount = owned.count - processed < COMBINE_META_INFO_TOKEN_CAPACITY ?
+                                                      owned.count - processed :
                                                       COMBINE_META_INFO_TOKEN_CAPACITY;
                             PreloadCombineNoQuantMetaInfo(
-                                static_cast<uint64_t>(waveTokenBegin) + waveOwned.start + processed, chunkCount, 0U);
+                                static_cast<uint64_t>(combineState.expertBeforeCnt) + owned.start + processed,
+                                chunkCount, 0U);
                             SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                             WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
-                            ProcessCombineNoQuantGm(waveGmm2OutGlobal, waveOwned.start + processed, chunkCount, 0U,
-                                                   rowSequence);
+                            ProcessCombineNoQuantGm(combineAddrInfo.gmm2OutGlobal, owned.start + processed,
+                                                   chunkCount, 0U, rowSequence);
                             processed += chunkCount;
-                        }
-                    } else {
-                        for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-                            if (!UpdateGroupParams<AddrUpdateMode::GMM2>(combineState, expertIdx)) {
-                                continue;
-                            }
-                            UpdateGlobalBuffer<AddrUpdateMode::GMM2>(combineAddrInfo, combineState);
-                            uint32_t mExpert = static_cast<uint32_t>(Get<M_VALUE>(combineState.problemShape));
-                            MegaMoeImpl::TokenRange owned = GetCombineNoQuantOwnedRange(mExpert);
-                            if (owned.count != 0U) {
-                                WaitGmm2Ready(expertIdx);
-                            }
-                            uint32_t processed = 0U;
-                            while (processed < owned.count) {
-                                uint32_t chunkCount = owned.count - processed < COMBINE_META_INFO_TOKEN_CAPACITY ?
-                                                          owned.count - processed :
-                                                          COMBINE_META_INFO_TOKEN_CAPACITY;
-                                PreloadCombineNoQuantMetaInfo(
-                                    static_cast<uint64_t>(combineState.expertBeforeCnt) + owned.start + processed,
-                                    chunkCount, 0U);
-                                SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-                                WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
-                                ProcessCombineNoQuantGm(combineAddrInfo.gmm2OutGlobal, owned.start + processed,
-                                                       chunkCount, 0U, rowSequence);
-                                processed += chunkCount;
-                            }
                         }
                     }
                     // A slot can remain in flight across expert boundaries, but
                     // dispatch for the following wave may reuse the same UB/events.
                     DrainCombineNoQuantRowRing();
                 } else {
-                    if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
-                        WaitGmm2Ready(batchIdx);
-                    }
                     for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
                         if (!UpdateGroupParams<AddrUpdateMode::GMM2>(combineState, expertIdx)) {
                             continue;
                         }
                         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(combineAddrInfo, combineState);
-                        if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_EXPERT) {
-                            WaitGmm2Ready(expertIdx);
-                        }
+                        WaitGmm2Ready(expertIdx);
                         ProcessCombineQuant(combineAddrInfo, combineState, expertIdx);
                     }
                 }
