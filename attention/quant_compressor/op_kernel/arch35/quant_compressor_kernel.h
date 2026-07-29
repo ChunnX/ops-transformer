@@ -130,7 +130,8 @@ __aicore__ inline void QuantCompressorKernel<COMP>::Init(__gm__ uint8_t *x, __gm
 
     // 剔除尾部的无效batch
     for (; constInfo.batchSize > 0; --constInfo.batchSize) {
-        uint32_t bSeqUsed = tools_.GetSeqLength(constInfo.batchSize - 1);
+        uint32_t bSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(constInfo.batchSize - 1)
+                                                    : tools_.GetSeqLength(constInfo.batchSize - 1);
         if (bSeqUsed > 0) {
             break;
         }
@@ -297,7 +298,7 @@ __aicore__ inline BasicBlockInfo QuantCompressorKernel<COMP>::SkipOneLoop(BatchI
         if (quota < batchInfo.remSeqCnt) {
             // 向下对齐r，
             uint32_t alignSeq = constInfo.cmpRatio;
-            if (batchInfo.bIdx == 0) {
+            if (batchInfo.sIdx == 0) {
                 alignSeq = constInfo.cmpRatio - batchInfo.headHolderSeq;
             }
             if (quota > alignSeq) {
