@@ -284,6 +284,7 @@ def aclnn_compressor_golden(
     _GOLDEN_CONTEXT["cmp_ratio"] = cmpRatio
     _GOLDEN_CONTEXT["start_pos_list"] = start_pos_list
     _GOLDEN_CONTEXT["seqused_list"] = seqused_list
+    _GOLDEN_CONTEXT["cu_seqlens_list"] = cu_seqlens_list
     _GOLDEN_CONTEXT["is_th"] = is_th
 
     return [cmp_kv, golden_state_cache]
