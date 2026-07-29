@@ -1076,7 +1076,7 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
 // per_tensor与MX共用的weight加权归约实现，WITH_SCALE控制是否额外应用scalar scale
 // float in uint16 out
 template <bool WITH_SCALE>
-__simd_vf__ void MulWeightAndReduceSumOptionalGSizeEvenScaleVF(__ubuf__ uint16_t *out, __ubuf__ float *qk,
+__simd_vf__ void MulWeightAndReduceSumOptionalScaleGSizeEvenVF(__ubuf__ uint16_t *out, __ubuf__ float *qk,
                                                                uint32_t qkVLStride, __ubuf__ float *weight,
                                                                float kScaleValue, float qScaleValue, uint16_t gSize)
 {
@@ -1143,7 +1143,7 @@ __simd_vf__ void MulWeightAndReduceSumOptionalGSizeEvenScaleVF(__ubuf__ uint16_t
 }
 
 template <bool WITH_SCALE>
-__simd_vf__ void MulWeightAndReduceSumOptionalGSizeOddScaleVF(__ubuf__ uint16_t *out, __ubuf__ float *qk,
+__simd_vf__ void MulWeightAndReduceSumOptionalScaleGSizeOddVF(__ubuf__ uint16_t *out, __ubuf__ float *qk,
                                                               uint32_t qkVLStride, __ubuf__ float *weight,
                                                               float kScaleValue, float qScaleValue, uint16_t gSize)
 {
@@ -1227,8 +1227,13 @@ __aicore__ inline void MulWeightAndReduceSumOptionalScaleImpl(
     __ubuf__ uint16_t *out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
     __ubuf__ float *weight = (__ubuf__ float *)weight_.GetPhyAddr();
     __ubuf__ float *qk = (__ubuf__ float *)qk_.GetPhyAddr();
-    MulWeightAndReduceSumOptionalScaleVF<WITH_SCALE>(out, qk, qkVLStride, weight, kScaleValue, qScaleValue,
-                                                     (uint16_t)gSize);
+    if (gSize % 2 == 0) {
+        MulWeightAndReduceSumOptionalScaleGSizeEvenVF<WITH_SCALE>(out, qk, qkVLStride, weight, kScaleValue, qScaleValue,
+                                                                  (uint16_t)gSize);
+    } else {
+        MulWeightAndReduceSumOptionalScaleGSizeOddVF<WITH_SCALE>(out, qk, qkVLStride, weight, kScaleValue, qScaleValue,
+                                                                 (uint16_t)gSize);
+    }
 }
 
 __aicore__ inline void MulWeightAndReduceSumPerTensor(const LocalTensor<uint16_t> &out_, // out    [S2Base]     [128   ]
