@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mhc_pre_bs_common.h
+ * \file mhc_pre_kernel_bs_common.h
  * \brief Common vector and buffer helpers for MHC Pre BS-based kernels
  */
 
-#ifndef MHC_PRE_BS_COMMON_H_
-#define MHC_PRE_BS_COMMON_H_
+#ifndef MHC_PRE_KERNEL_BS_COMMON_H_
+#define MHC_PRE_KERNEL_BS_COMMON_H_
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
@@ -239,4 +239,4 @@ __aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::V0PostProcess(
 
 } // namespace MhcPre
 
-#endif // MHC_PRE_BS_COMMON_H_
+#endif // MHC_PRE_KERNEL_BS_COMMON_H_
