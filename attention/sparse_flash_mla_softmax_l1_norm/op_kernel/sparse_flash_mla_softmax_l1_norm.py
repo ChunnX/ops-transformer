@@ -532,7 +532,7 @@ def compute_softmax_l1_norm(
                 softmax_l1_norm,
                 out_vec_slot,
                 [run_info.t1_offset + run_info.s1_idx, 0, run_info.ki],
-                tile_dims=[1, 2],
+                order=[1, 2],
                 atomic=pl.AtomicType.AtomicAdd,
             )
         else:
@@ -540,7 +540,7 @@ def compute_softmax_l1_norm(
                 softmax_l1_norm,
                 out_vec_slot,
                 [run_info.batch_id, run_info.s1_idx, 0, run_info.ki],
-                tile_dims=[2, 3],
+                order=[2, 3],
                 atomic=pl.AtomicType.AtomicAdd,
             )
 
