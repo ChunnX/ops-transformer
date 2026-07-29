@@ -1,7 +1,22 @@
-#ifndef MHC_PRE_SPLIT_BS_H
-#define MHC_PRE_SPLIT_BS_H
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
-#include "mhc_pre_bs_common.h"
+/*!
+ * \file mhc_pre_kernel_split_bs.h
+ * \brief
+ */
+
+#ifndef MHC_PRE_KERNEL_SPLIT_BS_H
+#define MHC_PRE_KERNEL_SPLIT_BS_H
+
+#include "mhc_pre_kernel_bs_common.h"
 #include "mhc_pre_cube_compute_arch35.h"
 
 namespace MhcPre {
@@ -292,4 +307,4 @@ private:
 
 } // namespace MhcPre
 
-#endif // MHC_PRE_SPLIT_BS_H
+#endif // MHC_PRE_KERNEL_SPLIT_BS_H
