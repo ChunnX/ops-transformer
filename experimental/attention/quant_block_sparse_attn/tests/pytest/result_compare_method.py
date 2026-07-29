@@ -127,7 +127,34 @@ def cal_cosine_similarity(real_data, expect_data):
     return float(dot_product / (norm_real * norm_expect))
 
 
-def check_result(expect, npu_result):
+def _is_dump_error_lines_enabled():
+    return os.environ.get("BSA_DUMP_ERROR_LINES", "0") == "1"
+
+
+def dump_error_lines_to_file(case_name, output_key, real_data, expect_data,
+                             err_idx, err_diff, rtol, atol, cos_sim,
+                             fulfill_percent, result, dump_dir="error_lines"):
+    os.makedirs(dump_dir, exist_ok=True)
+    safe_name = "".join(c if c.isalnum() or c in "-_." else "_" for c in str(case_name))
+    filepath = os.path.join(dump_dir, f"{safe_name}_{output_key}_error_lines.txt")
+    with open(filepath, "w") as f:
+        f.write(f"Case: {case_name}\n")
+        f.write(f"Output: {output_key}\n")
+        f.write(f"Timestamp: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Result: {result}, fulfill_percent={fulfill_percent:.4f}%\n")
+        f.write(f"Rtol={rtol}, Atol={atol}, CosineSim={cos_sim:.8f}\n")
+        f.write(f"Total elements: {real_data.size}, Mismatched: {len(err_idx)}\n")
+        f.write("\n")
+        f.write(f"{'Index':<12} {'ExpectOut':<16} {'RealOut':<16} {'FpDiff':<16} {'RateDiff':<16}\n")
+        f.write("-" * 80 + "\n")
+        for i in range(len(err_idx)):
+            idx = int(err_idx[i])
+            diff = abs(float(expect_data[idx]) - float(real_data[idx]))
+            rate = float(err_diff[i]) if i < len(err_diff) else 0.0
+            f.write(f"{idx:<12d} {float(expect_data[idx]):<16.7f} {float(real_data[idx]):<16.7f} {diff:<16.7f} {rate:<16.7f}\n")
+
+
+def check_result(expect, npu_result, case_name=None, dump_dir=None, output_key=None):
     if isinstance(expect, dict):
         result = "Pass"
         fulfill_percent_list = []
@@ -141,7 +168,8 @@ def check_result(expect, npu_result):
                 print_log(f"Error, missing npu output for {key}.")
                 return "Failed", 0.0
             print_log(f"Compare output: {key}")
-            output_result = check_result(expect_value, npu_result[key])
+            output_result = check_result(expect_value, npu_result[key],
+                                         case_name=case_name, dump_dir=dump_dir, output_key=key)
             output_status = output_result[0]
             output_percent = output_result[1]
             fulfill_percent_list.append(output_percent)
@@ -268,4 +296,12 @@ def check_result(expect, npu_result):
     if result == "Failed":
         display_error_output(real_data, data_compe,
                                 err_idx, err_diff[0:max_error_idx])
+    if len(err_idx) > 0 and _is_dump_error_lines_enabled():
+        effective_case_name = case_name if case_name else "unknown_case"
+        effective_dump_dir = dump_dir if dump_dir else "error_lines"
+        effective_output_key = output_key if output_key else "output"
+        dump_error_lines_to_file(
+            effective_case_name, effective_output_key,
+            real_data, data_compe, err_idx, err_diff,
+            rtol, atol, cos_sim, fulfill_percent, result, effective_dump_dir)
     return result, fulfill_percent

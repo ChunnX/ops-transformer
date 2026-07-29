@@ -68,7 +68,8 @@ def bsa(param_combinations, case_id):
         npu_result, cpu_result = quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
             test_data, device_id=DEVICE_ID)
         print("PRECISION COMPARE START")
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+        result, fulfill_percent = result_compare_method.check_result(
+            cpu_result, npu_result, case_name=test_data["Testcase_Name"])
         print(f"PRECISION COMPARE RESULT: result={result}, fulfill_percent={fulfill_percent:.6f}%")
     except pytest.skip.Exception:
         raise

@@ -47,7 +47,8 @@ def bsa(testcase_file):
     try:
         npu_result, cpu_result = quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
             test_data, device_id=DEVICE_ID)
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+        result, fulfill_percent = result_compare_method.check_result(
+            cpu_result, npu_result, case_name=test_data["Testcase_Name"])
     except pytest.skip.Exception:
         raise
     except Exception as error:
