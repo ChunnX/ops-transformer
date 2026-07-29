@@ -666,6 +666,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
     constexpr uint32_t FLOAT_ELEM_SIZE = 4;   // sizeof(float)
     constexpr uint32_t FD_BLOCK_ELEM = 8;     // FD广播份数
     constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2; // max和sum两个区域
+    constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33;
     size_t workspaceSize = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
     bool isSplitG = tilingInfo->gSize > 64; // gSize超过64时采用Split-G
     if (isSplitG) {
@@ -678,7 +679,8 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
         size_t combineElemSize = static_cast<size_t>(fdStagingMSize) * D_SIZE +
             static_cast<size_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
         workspaceSize += 2ULL * fdStagingSlotNum * combineElemSize * FLOAT_ELEM_SIZE;
-        workspaceSize += 32ULL * 33ULL * combineElemSize * FLOAT_ELEM_SIZE; // 32: 跨核数, 33: 同token最大规约块数
+        workspaceSize += static_cast<size_t>(aicNum) * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
+            combineElemSize * FLOAT_ELEM_SIZE;
         printf("aicNum: %d\n", aicNum);
     } else {
         // 末尾的2对应每个split分别暂存max和sum。
