@@ -1535,6 +1535,9 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaTopkLength() const
                     return ge::GRAPH_FAILED);
     }
     if (!IsNonEmptyOptionalTensor(opParamInfo_.oriTopkLength.tensor)) {
+        OP_CHECK_IF(hasOriSparseIndices_ && smlaInfo_.perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE,
+                    OP_LOGE(opName_, "ori_topk_length is required for SWA ori sparse."),
+                    return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor == nullptr,

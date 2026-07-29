@@ -449,7 +449,7 @@ TEST_PARAMS = {
         "cmp_ratio": [1],
         "qk_equal_len": [False],
         "ori_sparse_indices_mode": ["dspark"],
-        "ori_kv_topk_mode": ["no"],
+        "ori_kv_topk_mode": ["full"],
     },
     # --- Phase 1 DSpark SWA sparse boundary cases (design §11.2) ---
     "dspark_swa_sparse_basic": {
@@ -481,7 +481,7 @@ TEST_PARAMS = {
         "cmp_ratio": [1],
         "qk_equal_len": [False],
         "ori_sparse_indices_mode": ["dspark"],
-        "ori_kv_topk_mode": ["no"],
+        "ori_kv_topk_mode": ["full"],
     },
     "dspark_swa_sparse_right_win_2": {
         "testcase_name": ["dspark_swa_sparse_right_win_2"],
@@ -512,7 +512,7 @@ TEST_PARAMS = {
         "cmp_ratio": [1],
         "qk_equal_len": [False],
         "ori_sparse_indices_mode": ["dspark"],
-        "ori_kv_topk_mode": ["no"],
+        "ori_kv_topk_mode": ["full"],
     },
     "dspark_swa_sparse_right_win_8": {
         "testcase_name": ["dspark_swa_sparse_right_win_8"],
@@ -543,7 +543,7 @@ TEST_PARAMS = {
         "cmp_ratio": [1],
         "qk_equal_len": [False],
         "ori_sparse_indices_mode": ["dspark"],
-        "ori_kv_topk_mode": ["no"],
+        "ori_kv_topk_mode": ["full"],
     },
     "dspark_swa_sparse_right_win_16": {
         "testcase_name": ["dspark_swa_sparse_right_win_16"],
@@ -574,7 +574,7 @@ TEST_PARAMS = {
         "cmp_ratio": [1],
         "qk_equal_len": [False],
         "ori_sparse_indices_mode": ["dspark"],
-        "ori_kv_topk_mode": ["no"],
+        "ori_kv_topk_mode": ["full"],
     },
     "dspark_swa_sparse_seq_start": {
         "testcase_name": ["dspark_swa_sparse_seq_start"],
@@ -605,7 +605,7 @@ TEST_PARAMS = {
         "cmp_ratio": [1],
         "qk_equal_len": [False],
         "ori_sparse_indices_mode": ["dspark"],
-        "ori_kv_topk_mode": ["no"],
+        "ori_kv_topk_mode": ["full"],
     },
     "dspark_swa_sparse_pa_boundary": {
         "testcase_name": ["dspark_swa_sparse_pa_boundary"],
@@ -636,7 +636,7 @@ TEST_PARAMS = {
         "cmp_ratio": [1],
         "qk_equal_len": [False],
         "ori_sparse_indices_mode": ["dspark"],
-        "ori_kv_topk_mode": ["no"],
+        "ori_kv_topk_mode": ["full"],
     },
     "dspark_swa_sparse_multi_batch": {
         "testcase_name": ["dspark_swa_sparse_multi_batch"],
@@ -667,7 +667,7 @@ TEST_PARAMS = {
         "cmp_ratio": [1],
         "qk_equal_len": [False],
         "ori_sparse_indices_mode": ["dspark"],
-        "ori_kv_topk_mode": ["no"],
+        "ori_kv_topk_mode": ["full"],
     },
     "dspark_swa_sparse_padding": {
         "testcase_name": ["dspark_swa_sparse_padding"],
@@ -729,7 +729,7 @@ TEST_PARAMS = {
         "cmp_ratio": [1],
         "qk_equal_len": [False],
         "ori_sparse_indices_mode": ["dspark"],
-        "ori_kv_topk_mode": ["no"],
+        "ori_kv_topk_mode": ["full"],
     },
     "dspark_swa_sparse_lse": {
         "testcase_name": ["dspark_swa_sparse_lse"],
@@ -760,7 +760,7 @@ TEST_PARAMS = {
         "cmp_ratio": [1],
         "qk_equal_len": [False],
         "ori_sparse_indices_mode": ["dspark"],
-        "ori_kv_topk_mode": ["no"],
+        "ori_kv_topk_mode": ["full"],
     },
 }
 

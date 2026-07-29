@@ -464,21 +464,14 @@ __aicore__ inline uint32_t SparseFlashMlaSwa<SMLAT>::GetOriSparseActualSeqLen()
     }
     uint64_t qTokenOffset = tempLoopInfo.actualSeqQPrefixSum + tempLoopInfo.s1StartIdx;
     uint64_t topkLenOffset = qTokenOffset * constInfo.kvHeadNum + tempLoopInfo.n2Idx;
-    if (constInfo.hasOriTopkLength) {
-        int32_t topkLen = oriTopkLengthGm.GetValue(topkLenOffset);
-        if (topkLen <= 0) {
-            return 0;
-        }
-        return Min(static_cast<uint32_t>(topkLen), constInfo.oriSparseIndexWidth);
+    if (!constInfo.hasOriTopkLength) {
+        return 0;
     }
-    uint64_t sparseIndexBaseOffset = topkLenOffset * constInfo.oriSparseIndexWidth;
-    uint32_t sparseLen = 0;
-    for (; sparseLen < constInfo.oriSparseIndexWidth; ++sparseLen) {
-        if (oriSparseIndicesGm.GetValue(sparseIndexBaseOffset + sparseLen) < 0) {
-            break;
-        }
+    int32_t topkLen = oriTopkLengthGm.GetValue(topkLenOffset);
+    if (topkLen <= 0) {
+        return 0;
     }
-    return sparseLen;
+    return Min(static_cast<uint32_t>(topkLen), constInfo.oriSparseIndexWidth);
 }
 
 template <typename SMLAT>
