@@ -530,6 +530,12 @@ ge::graphStatus GroupedA4W4QuantTiling::PostTiling()
     p.isA4W4Optimize = a4w4Tiling_.isA4W4Optimize;
     p.groupType = a4w4Tiling_.groupType;
     p.groupListType = a4w4Tiling_.groupListType;
+    // reserved 复用为 weight format 标志位, 供桥接层 qgmm_a4w4_kernel.h 动态设置
+    // weightPreprocess inputTransposedNz (避免新增字段破坏 8 字节对齐, 见上方历史 bug 注释):
+    //   bit0 = weightIsNz (bFormat == FORMAT_FRACTAL_NZ)
+    //   bit1 = transB     (weight 逻辑 [E,N,K])
+    p.reserved = ((inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) ? 1ULL : 0ULL) |
+                 (inputParams_.transB ? 2ULL : 0ULL);
     // gmmArray (mList_/kList_/nList_ inherited)
     errno_t retM = memcpy_s(tilingData_.gmmArray.mList, sizeof(tilingData_.gmmArray.mList), mList_, sizeof(mList_));
     OP_CHECK_IF(retM != EOK, OP_LOGE(context_->GetNodeName(), "memcpy_s mList failed, ret=%d", retM),
@@ -569,6 +575,7 @@ ge::graphStatus GroupedA4W4QuantTiling::PostTiling()
             "depthA1=%lu depthB1=%lu",
             p.baseM, p.baseN, p.baseK, p.ubCalSize, p.ubRestBytes, p.quantGroupNum, p.isPerTokenQuant,
             a4w4Tiling_.depthA1, a4w4Tiling_.depthB1);
+    context_->SetScheduleMode(1);
     return SaveTilingDataToContext(tilingData_);
 }
 
