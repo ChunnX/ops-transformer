@@ -153,7 +153,6 @@ class EPHandle:
     route_scaleout_slot: Optional[torch.Tensor] = None
     route_scaleup_mask: Optional[torch.Tensor] = None
     route_scaleup_slot: Optional[torch.Tensor] = None
-    topk_to_route: Optional[torch.Tensor] = None
 
     @property
     def num_recv_tokens(self) -> int:
