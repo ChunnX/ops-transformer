@@ -25,8 +25,7 @@
 
 - **接口功能**：
 
-  - Mega MoE算子将MoE层的专家FFN的完整计算流程及前后数据通信（即Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
-  - 该算子提供了mega_moe与get_symm_buffer_for_mega_moe等接口配套使用。
+  Mega MoE算子将MoE层的专家FFN的完整计算流程及前后数据通信（即Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。该算子提供了mega_moe与get_symm_buffer_for_mega_moe等接口配套使用。
   - get_symm_buffer_for_mega_moe：用于封装输入参数并创建SymmBuffer结构体，生成`context`、`ep_world_size`和`ccl_buffer_size`等mega_moe算子运行所需信息。
 
 - **计算公式**：
@@ -54,7 +53,7 @@
     - 张量切片操作采用Python风格的 `start:stop:step` 表示法，例如$[0::2, :]$ 代表取偶数行、$[1::2, :]$ 代表取奇数行。
     - $\mathrm{bitcast}_{T}(\mathbf{Z})$ 表示二进制重解释操作，将张量$\mathbf{Z}$的底层二进制数据按目标类型 $T$ 重新解释。
 
-  - 计算说明：
+- 计算说明：
 
     各产品支持的**Linear计算时**的激活矩阵A和权重矩阵W的数据类型如下：
 
