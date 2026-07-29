@@ -162,6 +162,7 @@ public:
     T negativeFloatScalar;
     float pScaleValue{1.0f};
     bool isSkipMask{false};
+    bool isFullMask{false};
     uint32_t minValue{NEGATIVE_MIN_VALUE_FP32};
 
     // ==================== Functions ======================
@@ -303,10 +304,12 @@ public:
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                          RunInfoX runInfo, uint32_t subLoop)
     {
-        LocalTensor<uint8_t> attenMaskUb;
+        nt64_t maskLine = 0;
         if constexpr (HAS_MASK) {
-            attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
-            AttenMaskCopyInDn(attenMaskUb, 0, runInfo.actVecMSize, runInfo, subLoop); // 全量拷贝
+            maskLine = ComputeMaskLineDN(runInfo, subLoop);
+        }
+        if (isFullMask) {
+            maskLine = -256;
         }
 
         uint32_t softmaxBufIdx = runInfo.mloop % (PRELOAD_N + 1);
@@ -334,36 +337,33 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    pScaleSubLoop0Tensor, ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    pScaleSubLoop0Tensor, ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
         } else {
             if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    pScaleSubLoop0Tensor, ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, false, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    pScaleSubLoop0Tensor, ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
         }
         bmm1ResBuf.SetCrossCore();
-        if constexpr (HAS_MASK) {
-            this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
-        }
 
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
@@ -380,10 +380,6 @@ public:
                 uint16_t i = 0; i < 4;
                 i++) { // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
-            }
-        } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-            for (uint16_t i = 0; i < 2; i++) {
-                DataCopy(mm2AScaleL1Tensor[vecOffset + i * 256], pScaleSubLoop0Tensor, {1, 8, 0, 0});
             }
         }
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
@@ -1069,43 +1065,28 @@ public:
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
     }
 
-    __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
-                                           RunInfoX &runInfo, uint32_t subLoop)
+    __aicore__ inline int64_t ComputeMaskLineDN(RunInfoX &runInfo, uint32_t subLoop)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             s2RealSize = subLoop == 0 ? s2SplitSize : runInfo.actSingleLoopS2Size - s2SplitSize;
         }
-
-        MaskInfo maskInfo;
-        maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
-        maskInfo.gs1dealNum = mDealSize;
-        maskInfo.s1Size = runInfo.actS1Size;
-        maskInfo.gSize = constInfo.realGSize;
-        maskInfo.s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
-        maskInfo.s2dealNum = s2RealSize;
-        maskInfo.s2Size = runInfo.actS2Size;
-        maskInfo.nBaseSize = s2BaseSizeCur;
-        maskInfo.preToken = constInfo.preTokens;
-        maskInfo.nextToken = constInfo.nextTokens;
-        maskInfo.sparseMode = static_cast<SparseMode>(constInfo.sparseMode);
-        maskInfo.batchIdx = (constInfo.attenMaskBatch == 1) ? 0 : runInfo.bIdx;
-        maskInfo.attenMaskBatchStride = constInfo.attenMaskS1Size * constInfo.attenMaskS2Size;
-        maskInfo.attenMaskS1Stride = constInfo.attenMaskS2Size;
-        maskInfo.attenMaskDstStride = (s2BaseSizeCur - AttentionCommon::Align(maskInfo.s2dealNum, 32U)) / 32;
-        maskInfo.maskValue = negativeIntScalar;
-        maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
-        maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
-        maskInfo.maskFormat = MASK_LAYOUT;
-        maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
-
-        bool IsSkipMask = IsSkipAttentionmask(maskInfo);
-        if (unlikely(!IsSkipMask)) {
-            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
+        int64_t nextToken = static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(runInfo.actS1Size);
+        uint32_t s1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+        uint32_t s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
+        if (static_cast<int64_t>(s2StartIdx + s2RealSize) <= static_cast<int64_t>(s1StartIdx) + nextToken) {
+            isSkipMask = true;
         } else {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
+            isSkipMask = false;
         }
+        int64_t maskLine = nextToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(s2StartIdx);
+        if (maskLine < 0) {
+            isFullMask = -maskLine >= (mBaseSize / 2);
+        } else {
+            isFullMask = maskLine >= s2BaseSizeCur;
+        }
+        return maskLine;
     }
 
     __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
