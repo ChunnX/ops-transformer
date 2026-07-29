@@ -213,7 +213,7 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
         auto normOutShapeSize = normOutShapePtr->GetStorageShape().GetShapeSize();
         if (normOutShapeSize != expectNormSize) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "normOut",
-                ToString(normOutShapePtr->GetStorageShape()).c_str(),
+                Ops::Base::ToString(normOutShapePtr->GetStorageShape()).c_str(),
                 "normOut shape size must be 2*numIters*T*n*8");
             return ge::GRAPH_FAILED;
         }
@@ -222,7 +222,7 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
         auto sumOutShapeSize = sumOutShapePtr->GetStorageShape().GetShapeSize();
         if (sumOutShapeSize != expectSumSize) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "sumOut",
-                ToString(sumOutShapePtr->GetStorageShape()).c_str(),
+                Ops::Base::ToString(sumOutShapePtr->GetStorageShape()).c_str(),
                 "sumOut shape size must be 2*numIters*T*8");
             return ge::GRAPH_FAILED;
         }
