@@ -30,27 +30,21 @@ struct TokenRange {
     uint32_t count = 0;
 };
 
-// Return the begin expert of a penultimate wave that should absorb a small
-// final tail. expertCount is returned when the regular partition is retained.
-MEGA_MOE_WAVE_HOST_DEVICE_INLINE uint32_t GetSmallTailMergeBegin(uint32_t expertCount, uint32_t expertsPerWave)
+// Return the number of experts in the current wave. A final tail containing
+// strictly less than half a normal wave is absorbed by its preceding wave.
+MEGA_MOE_WAVE_HOST_DEVICE_INLINE uint32_t GetWaveExpertCount(uint32_t waveBegin, uint32_t expertCount,
+                                                             uint32_t expertsPerWave)
 {
-    if (expertCount == 0U || expertsPerWave == 0U || expertsPerWave >= expertCount) {
-        return expertCount;
+    if (waveBegin >= expertCount) {
+        return 0U;
     }
-    uint32_t tailExperts = expertCount % expertsPerWave;
-    bool mergeSmallTail = tailExperts != 0U && 2U * tailExperts < expertsPerWave;
-    return mergeSmallTail ? expertCount - expertsPerWave - tailExperts : expertCount;
-}
-
-// The consumer wave and previous-wave dispatch prefetch share this boundary.
-MEGA_MOE_WAVE_HOST_DEVICE_INLINE uint32_t GetWaveEnd(uint32_t waveBegin, uint32_t expertCount,
-                                                      uint32_t expertsPerWave, uint32_t smallTailMergeBegin)
-{
-    if (waveBegin >= expertCount || expertsPerWave == 0U || waveBegin == smallTailMergeBegin) {
-        return expertCount;
+    uint32_t remainingExperts = expertCount - waveBegin;
+    if (expertsPerWave == 0U || remainingExperts <= expertsPerWave) {
+        return remainingExperts;
     }
-    uint32_t regularEnd = waveBegin + expertsPerWave;
-    return regularEnd < expertCount ? regularEnd : expertCount;
+    uint32_t tailExperts = remainingExperts - expertsPerWave;
+    bool mergeSmallTail = tailExperts < expertsPerWave && 2U * tailExperts < expertsPerWave;
+    return mergeSmallTail ? remainingExperts : expertsPerWave;
 }
 
 // Balanced contiguous ownership. Every token belongs to exactly one worker;

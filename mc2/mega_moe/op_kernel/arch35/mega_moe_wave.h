@@ -2267,15 +2267,11 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
     const uint32_t expertsPerWave = expertsPerBatch_;
 
     uint32_t nextDispatchExpert = 0U;
-
-    // Merge a final tail containing strictly less than half of a normal wave
-    // into its predecessor, for example 5+5+5+1 becomes 5+5+6.
-    const uint32_t smallTailMergeBegin =
-        MegaMoeImpl::GetSmallTailMergeBegin(moeExpertPerRank_, expertsPerWave);
-    uint32_t batchEnd = 0U;
-    for (uint32_t batchBegin = 0; batchBegin < moeExpertPerRank_; batchBegin = batchEnd) {
-        batchEnd = MegaMoeImpl::GetWaveEnd(
-            batchBegin, moeExpertPerRank_, expertsPerWave, smallTailMergeBegin);
+    uint32_t batchBegin = 0U;
+    while (batchBegin < moeExpertPerRank_) {
+        const uint32_t currentWaveExpertNum =
+            MegaMoeImpl::GetWaveExpertCount(batchBegin, moeExpertPerRank_, expertsPerWave);
+        const uint32_t batchEnd = batchBegin + currentWaveExpertNum;
         const uint32_t waveBeginCursor = startBlockIdx_;
 
         ProcessGmm1Wave(
@@ -2286,8 +2282,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
         // AIV1 must finish Dispatch(B+1) before Combine(B), because both stages
         // reuse the same UB and event IDs. The cursor also proves that current
         // and next wave dispatch are complete before combine starts.
-        const uint32_t nextBatchEnd = MegaMoeImpl::GetWaveEnd(
-            batchEnd, moeExpertPerRank_, expertsPerWave, smallTailMergeBegin);
+        const uint32_t nextWaveExpertNum =
+            MegaMoeImpl::GetWaveExpertCount(batchEnd, moeExpertPerRank_, expertsPerWave);
+        const uint32_t nextBatchEnd = batchEnd + nextWaveExpertNum;
         DispatchExpertsUntil(
             dispatchState, dispatchAddrInfo, nextDispatchExpert, nextBatchEnd, dispatchBufferConfig);
 
@@ -2307,6 +2304,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
 
         ProcessCombineExperts(
             batchBegin, batchEnd, combineState, combineAddrInfo, combineBufferConfig);
+        batchBegin += currentWaveExpertNum;
     }
 
     // The non-prefetch path still has one outstanding AIC->AIV0 UB consumer
