@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Determinism check using allclose instead of torch.equal, with max diff reporting."""
+"""Comprehensive multi-shape determinism and precision validation."""
 
 import torch
 import torch_npu
@@ -40,7 +40,7 @@ def attention_ori_GQA(q_all, k_all, v_all, scale):
     return tl, ta.to(DTYPE)
 
 def attention_gqa_tnd(q, k, v, scale, cu_q, cu_k):
-    q=q.float32(); k=k.float32(); v=v.float32(); dev=q.device
+    q=q.to(torch.float32); k=k.to(torch.float32); v=v.to(torch.float32); dev=q.device
     tq,nh,hd=q.shape; tk,nhk,_=k.shape; bs=len(cu_q)-1; nG=nh//nhk
     out=torch.zeros_like(q); lse=torch.zeros((tq,nh,1),dtype=torch.float32,device=dev)
     for i in range(nh):
@@ -85,7 +85,10 @@ def tbd(a,b):
 
 def cpu_grad_bnsd(dout,q,k,v,out,lse,mask,bs,scale,bi=-1):
     nG=q.shape[1]//k.shape[1]; B,H,_,D=q.shape
-    dq=torch.zeros_like(q);dk=torch.zeros_like(k);dv=torch.zeros_like(v)
+    # Match NPU: accumulate in FP32 without scale, apply scale at end
+    dq_unsat=torch.zeros(B,H,q.shape[2],D,dtype=torch.float32)
+    dk_unsat=torch.zeros(B,k.shape[1],k.shape[2],D,dtype=torch.float32)
+    dv_unsat=torch.zeros(B,k.shape[1],k.shape[2],D,dtype=torch.float32)
     for i in range(H):
         g=i//nG; a=out[:,i:i+1].float();ag=dout[:,i:i+1].float();li=lse[:,i:i+1,:,:].float()
         qi=q[:,i:i+1].float();ki=k[:,g:g+1].float();vi=v[:,g:g+1].float()
@@ -93,10 +96,18 @@ def cpu_grad_bnsd(dout,q,k,v,out,lse,mask,bs,scale,bi=-1):
         Dv=(a*ag).sum(-1,keepdim=True).reshape(b2,h2,ql,1)
         S=qk_masked(qi,ki,mask,bs,bi,i)*scale; dP=tbd(ag,torch.transpose(vi,2,3)).float()
         P=torch.exp(S-li); dS=(dP-Dv)*P
-        dq[:,i:i+1]=tbd(dS.to(DTYPE).float(),ki)*scale
-        dk[:,g:g+1]+=tbd(torch.transpose(dS,2,3).float(),qi)*scale
-        dv[:,g:g+1]+=tbd(torch.transpose(P.to(DTYPE),2,3).float(),ag)
-    return dq.to(DTYPE),dk.to(DTYPE),dv.to(DTYPE)
+        # NPU stores dS and P as FP16 in workspace, then reads back for Mmad
+        dS_fp16=dS.to(DTYPE).float()
+        P_fp16=P.to(DTYPE).float()
+        # Accumulate WITHOUT scale (NPU applies scale in VecPost after reduction)
+        dq_unsat[:,i:i+1]=tbd(dS_fp16,ki)
+        dk_unsat[:,g:g+1]+=tbd(torch.transpose(dS_fp16,2,3),qi)
+        dv_unsat[:,g:g+1]+=tbd(torch.transpose(P_fp16,2,3),ag)
+    # Apply scale at end (matching NPU VecPost: Muls then Cast)
+    dq=(dq_unsat*scale).to(DTYPE)
+    dk=(dk_unsat*scale).to(DTYPE)
+    dv=dv_unsat.to(DTYPE)
+    return dq,dk,dv
 
 def cpu_grad_tnd(dout,q,k,v,out,lse,mask,bs,cu_q,cu_kv,scale,sqm,skm):
     tq,H,D=q.shape;tkv,KH,_=k.shape;B=len(cu_q)-1
@@ -162,8 +173,7 @@ def run_test(desc,B,N,S1,S2,D,kvh,sp,fmt,block_shape=(128,128)):
         ok=r1[0]and r2[0]and r3[0];all_prec=all_prec and ok
         print(f"  iter {j}: [{'PASS' if ok else 'FAIL'}] dq={'OK' if r1[0] else f'F({r1[1]:.4f},{r1[2]})'} dk={'OK' if r2[0] else f'F({r2[1]:.4f},{r2[2]})'} dv={'OK' if r3[0] else f'F({r3[1]:.4f},{r3[2]})'}")
 
-    # Determinism: use allclose(rtol=0,atol=0) = exact, and also report max diff
-    max_det_diff = 0.0; det_exact = True; det_close = True
+    max_det_diff=0.0;det_exact=True;det_close=True
     if outputs[0]:
         b0=outputs[0]
         for j in range(1,5):
@@ -171,7 +181,7 @@ def run_test(desc,B,N,S1,S2,D,kvh,sp,fmt,block_shape=(128,128)):
             for i in range(3):
                 exact,diff=deter_check(b0[i],outputs[j][i])
                 if not exact: det_exact=False
-                if diff>1e-3: det_close=False  # allow FP16 tolerance
+                if diff>1e-3: det_close=False
                 max_det_diff=max(max_det_diff,diff)
     else: det_exact=False;det_close=False
     print(f"  >>> PREC={'PASS' if all_prec else 'FAIL'} DET_EXACT={'PASS' if det_exact else 'FAIL'} DET_TOL1e3={'PASS' if det_close else 'FAIL'} max_diff={max_det_diff:.6f}")
@@ -179,18 +189,41 @@ def run_test(desc,B,N,S1,S2,D,kvh,sp,fmt,block_shape=(128,128)):
 
 if __name__=="__main__":
     cases=[
-        ("GQA BNSD s1",    2,8, 128,128,128,2,0.5,"bnsd"),
-        ("GQA BNSD s2",    4,16,256,256,128,4,0.5,"bnsd"),
-        ("GQA BNSD s3",    8,12,512,512,128,4,0.3,"bnsd"),
-        ("GQA BNSD full",  2,8, 128,256,128,2,1.0,"bnsd"),
-        ("GQA BNSD sparse",1,16,256,384,128,8,0.3,"bnsd"),
-        ("MHA BNSD s1",    2,8, 128,128,128,8,0.5,"bnsd"),
-        ("MHA BNSD full",  1,4, 256,256,128,4,1.0,"bnsd"),
+        # GQA BNSD - various group sizes, batch, seq lens, sparsity
+        ("GQA BNSD g4 s128",   2,8,  128,128,128,2, 0.5,"bnsd"),
+        ("GQA BNSD g4 s256",   4,16, 256,256,128,4, 0.5,"bnsd"),
+        ("GQA BNSD g3 s512",   8,12, 512,512,128,4, 0.3,"bnsd"),
+        ("GQA BNSD g4 full",   2,8,  128,256,128,2, 1.0,"bnsd"),
+        ("GQA BNSD g2 sparse", 1,16, 256,384,128,8, 0.3,"bnsd"),
+        ("GQA BNSD g6 s128",   2,12, 128,128,128,2, 0.5,"bnsd"),
+        ("GQA BNSD g8 s256",   1,16, 256,256,128,2, 0.5,"bnsd"),
+        ("GQA BNSD g2 s384",   2,8,  384,384,128,4, 0.5,"bnsd"),
+        ("GQA BNSD g4 b4s64",  4,8,  64, 64, 128,2, 0.5,"bnsd"),
+        ("GQA BNSD g4 sp02",   2,8,  256,256,128,2, 0.2,"bnsd"),
+        ("GQA BNSD g4 sp08",   2,8,  256,256,128,2, 0.8,"bnsd"),
+        # GQA TND
+        ("GQA TND g4 s128",    2,8,  128,128,128,2, 0.5,"tnd"),
+        ("GQA TND g4 s256",    4,16, 256,256,128,4, 0.5,"tnd"),
+        ("GQA TND g3 s512",    8,24, 512,512,128,4, 0.3,"tnd"),
+        ("GQA TND g4 full",    3,12, 256,384,128,4, 1.0,"tnd"),
+        ("GQA TND g6 s128",    2,12, 128,128,128,2, 0.5,"tnd"),
+        ("GQA TND g2 sp03",    2,8,  256,384,128,4, 0.3,"tnd"),
+        ("GQA TND g8 s256",    1,16, 256,256,128,2, 0.5,"tnd"),
+        # MHA BNSD
+        ("MHA BNSD s128",      2,8,  128,128,128,8, 0.5,"bnsd"),
+        ("MHA BNSD s256",      1,4,  256,256,128,4, 1.0,"bnsd"),
+        ("MHA BNSD s64",       4,8,  64, 64, 128,8, 0.5,"bnsd"),
+        ("MHA BNSD sp03",      2,8,  256,256,128,8, 0.3,"bnsd"),
+        # MHA TND
+        ("MHA TND s128",       3,8,  128,128,128,8, 0.5,"tnd"),
+        ("MHA TND full",       2,4,  256,256,128,4, 1.0,"tnd"),
+        ("MHA TND sp03",       2,8,  256,256,128,8, 0.3,"tnd"),
     ]
     res=[run_test(*c) for c in cases]
     print(f"\n{'='*70}\nFINAL SUMMARY\n{'='*70}")
-    print(f"{'Test':<22} {'Prec':<8} {'DetExact':<10} {'DetTol':<8} {'MaxDiff':<12}")
-    print(f"{'-'*22} {'-'*8} {'-'*10} {'-'*8} {'-'*12}")
+    print(f"{'Test':<25} {'Prec':<8} {'DetExact':<10} {'DetTol':<8} {'MaxDiff':<12}")
+    print(f"{'-'*25} {'-'*8} {'-'*10} {'-'*8} {'-'*12}")
     for d,p,de,dc,md in res:
-        print(f"{d:<22} {'PASS' if p else 'FAIL':<8} {'PASS' if de else 'FAIL':<10} {'PASS' if dc else 'FAIL':<8} {md:<12.6f}")
-    print(f"\nPrecision: {sum(1 for _,p,_,_,_ in res if p)}/{len(res)}  DetExact: {sum(1 for _,_,de,_,_ in res if de)}/{len(res)}  DetTol1e-3: {sum(1 for _,_,_,dc,_ in res if dc)}/{len(res)}")
+        print(f"{d:<25} {'PASS' if p else 'FAIL':<8} {'PASS' if de else 'FAIL':<10} {'PASS' if dc else 'FAIL':<8} {md:<12.6f}")
+    total=len(res)
+    print(f"\nPrecision: {sum(1 for _,p,_,_,_ in res if p)}/{total}  DetExact: {sum(1 for _,_,de,_,_ in res if de)}/{total}  DetTol1e-3: {sum(1 for _,_,_,dc,_ in res if dc)}/{total}")
