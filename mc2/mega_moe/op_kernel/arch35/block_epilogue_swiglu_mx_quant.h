@@ -623,11 +623,49 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     const float invAlpha = (activationAlpha_ != 0.0f) ? (1.0f / activationAlpha_) : 1.0f;
     bfloat16_t numZero = 0;
 
+    // tanh三分支算法常量（多项式系数、饱和阈值、分支阈值）
+    const float TANH_C9 = 0.0157396831f;
+    const float TANH_C7 = -0.0523039624f;
+    const float TANH_C5 = 0.133152977f;
+    const float TANH_C3 = -0.333327681f;
+    const float TANH_SAT_BOUND = 9.010913848876953125f;
+    const float TANH_BRANCH_THRESHOLD = 0.60000002384185791016f;
+
     // 权重已在 AivGmm1PostGeneric 中预加载到 weightUb_，直接取地址
     __ubuf__ float *weightUbAddr = nullptr;
     if constexpr (TopkWeightsPrefetch) {
         weightUbAddr = (__ubuf__ float *)weightUb_.GetPhyAddr();
     }
+
+    // tanh三分支算法宏: 多项式(|x|<0.6) + exp公式(|x|>=0.6) + 饱和(|x|>=SAT) + 符号恢复
+    // FusedMulDstAdd(dst,src0,src1)=dst=src0*dst+src1, MicroAPI中用Mul+Adds(标量)/Add(寄存器)模拟
+#define COMPUTE_TANH_3BRANCH(tanhResult, zReg, msk) \
+do { \
+    AscendC::MicroAPI::Abs(absReg, zReg, msk); \
+    AscendC::MicroAPI::Mul(sqrReg, zReg, zReg, msk); \
+    AscendC::MicroAPI::Muls(polyReg, sqrReg, TANH_C9, msk); \
+    AscendC::MicroAPI::Adds(polyReg, polyReg, TANH_C7, msk); \
+    AscendC::MicroAPI::Mul(tanhTmpReg, sqrReg, polyReg, msk); \
+    AscendC::MicroAPI::Adds(polyReg, tanhTmpReg, TANH_C5, msk); \
+    AscendC::MicroAPI::Mul(tanhTmpReg, sqrReg, polyReg, msk); \
+    AscendC::MicroAPI::Adds(polyReg, tanhTmpReg, TANH_C3, msk); \
+    AscendC::MicroAPI::Mul(polyReg, polyReg, sqrReg, msk); \
+    AscendC::MicroAPI::Mul(tanhTmpReg, zReg, polyReg, msk); \
+    AscendC::MicroAPI::Add(polyReg, tanhTmpReg, zReg, msk); \
+    AscendC::MicroAPI::Muls(expTanhReg, absReg, scalarTwo, msk); \
+    AscendC::MicroAPI::Exp(expTanhReg, expTanhReg, msk); \
+    AscendC::MicroAPI::Adds(expTanhReg, expTanhReg, scalarOne, msk); \
+    AscendC::MicroAPI::Div(expTanhReg, oneReg, expTanhReg, msk); \
+    AscendC::MicroAPI::Muls(expTanhReg, expTanhReg, negScalarTwo, msk); \
+    AscendC::MicroAPI::Adds(expTanhReg, expTanhReg, scalarOne, msk); \
+    AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::GE>(satMaskReg, absReg, TANH_SAT_BOUND, msk); \
+    AscendC::MicroAPI::Select(expTanhReg, oneReg, expTanhReg, satMaskReg); \
+    AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::LT>(signMaskReg, zReg, scalarZero, msk); \
+    AscendC::MicroAPI::Muls(tanhTmpReg, expTanhReg, negScalarOne, msk); \
+    AscendC::MicroAPI::Select(expTanhReg, tanhTmpReg, expTanhReg, signMaskReg); \
+    AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::GE>(branchMaskReg, absReg, TANH_BRANCH_THRESHOLD, msk); \
+    AscendC::MicroAPI::Select(tanhResult, expTanhReg, polyReg, branchMaskReg); \
+} while(0)
 
     // swiglu
     __VEC_SCOPE__
@@ -649,6 +687,17 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         AscendC::MicroAPI::MaskReg mask1 = AscendC::MicroAPI::UpdateMask<float>(mask1Num);
         AscendC::MicroAPI::MaskReg mask2 = AscendC::MicroAPI::UpdateMask<float>(mask2Num);
         AscendC::MicroAPI::MaskReg mask3 = AscendC::MicroAPI::UpdateMask<bfloat16_t>(mask3Num);
+        // tanh三分支算法所需寄存器
+        AscendC::MicroAPI::RegTensor<float> absReg;
+        AscendC::MicroAPI::RegTensor<float> sqrReg;
+        AscendC::MicroAPI::RegTensor<float> tanhTmpReg;
+        AscendC::MicroAPI::RegTensor<float> polyReg;
+        AscendC::MicroAPI::RegTensor<float> expTanhReg;
+        AscendC::MicroAPI::RegTensor<float> oneReg;
+        AscendC::MicroAPI::MaskReg satMaskReg;
+        AscendC::MicroAPI::MaskReg signMaskReg;
+        AscendC::MicroAPI::MaskReg branchMaskReg;
+        AscendC::MicroAPI::Duplicate(oneReg, scalarOne);
         for (uint16_t dim0vfLoopIdx = 0; dim0vfLoopIdx < dim0VfTimes; dim0vfLoopIdx++) {
             if constexpr (TopkWeightsPrefetch) {
                 AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
@@ -681,22 +730,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                     // SiTU: beta * tanh(gate/beta) * sigmoid(gate) [* alpha*tanh(up/alpha)]
                     // gate路: tanh(gate/beta), 用 outFReg 临时存 gate/beta
                     AscendC::MicroAPI::Muls(outFReg, vregX1F, invBeta, mask);       // outFReg = gate/beta
-                    // 分支A: (e^(2z)-1)/(e^(2z)+1), z=gate/beta, 供 z<0
-                    AscendC::MicroAPI::Muls(negReg, outFReg, scalarTwo, mask);      // 2z
-                    AscendC::MicroAPI::Exp(expReg, negReg, mask);                    // e^(2z)
-                    AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask);       // denA = e^(2z)+1
-                    AscendC::MicroAPI::Adds(sigmoidReg, expReg, negScalarOne, mask); // numA = e^(2z)-1
-                    AscendC::MicroAPI::Div(expReg, sigmoidReg, addsReg, mask);       // resA -> expReg
-                    // 分支B: (1-e^(-2z))/(1+e^(-2z)), 供 z>=0
-                    AscendC::MicroAPI::Muls(negReg, outFReg, negScalarTwo, mask);    // -2z
-                    AscendC::MicroAPI::Exp(negReg, negReg, mask);                     // e^(-2z)
-                    AscendC::MicroAPI::Adds(addsReg, negReg, scalarOne, mask);       // denB = 1+e^(-2z)
-                    AscendC::MicroAPI::Adds(sigmoidReg, negReg, negScalarOne, mask); // e^(-2z)-1
-                    AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, negScalarOne, mask); // numB = 1-e^(-2z)
-                    AscendC::MicroAPI::Div(sigmoidReg, sigmoidReg, addsReg, mask);   // resB -> sigmoidReg
-                    // 选择: z<0 -> resA, z>=0 -> resB
-                    AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::LT>(cmpMaskReg, outFReg, scalarZero, mask);
-                    AscendC::MicroAPI::Select(sigmoidReg, expReg, sigmoidReg, cmpMaskReg); // sigmoidReg = tanh(gate/beta)
+                    // SiTU gate路: tanh(gate/beta)，使用三分支算法消除z≈0处相消
+                    COMPUTE_TANH_3BRANCH(sigmoidReg, outFReg, mask); // sigmoidReg = tanh(gate/beta)
                     // beta * sigmoid(gate) = beta / (exp(-gate)+1)
                     AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask);  // -gate
                     AscendC::MicroAPI::Exp(expReg, negReg, mask);                   // exp(-gate)
@@ -709,22 +744,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                         // up路: alpha * tanh(up/alpha), 用 vregX1F(已释放) 暂存 gate_result
                         AscendC::MicroAPI::Muls(vregX1F, outFReg, scalarOne, mask); // vregX1F = gate_result (保存)
                         AscendC::MicroAPI::Muls(outFReg, vregX2F, invAlpha, mask);  // outFReg = up/alpha
-                        // 分支A: (e^(2z)-1)/(e^(2z)+1), z=up/alpha
-                        AscendC::MicroAPI::Muls(negReg, outFReg, scalarTwo, mask);
-                        AscendC::MicroAPI::Exp(expReg, negReg, mask);
-                        AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask);
-                        AscendC::MicroAPI::Adds(sigmoidReg, expReg, negScalarOne, mask);
-                        AscendC::MicroAPI::Div(expReg, sigmoidReg, addsReg, mask);
-                        // 分支B: (1-e^(-2z))/(1+e^(-2z))
-                        AscendC::MicroAPI::Muls(negReg, outFReg, negScalarTwo, mask);
-                        AscendC::MicroAPI::Exp(negReg, negReg, mask);
-                        AscendC::MicroAPI::Adds(addsReg, negReg, scalarOne, mask);
-                        AscendC::MicroAPI::Adds(sigmoidReg, negReg, negScalarOne, mask);
-                        AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, negScalarOne, mask);
-                        AscendC::MicroAPI::Div(sigmoidReg, sigmoidReg, addsReg, mask);
-                        // 选择
-                        AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::LT>(cmpMaskReg, outFReg, scalarZero, mask);
-                        AscendC::MicroAPI::Select(sigmoidReg, expReg, sigmoidReg, cmpMaskReg); // sigmoidReg = tanh(up/alpha)
+                        // SiTU up路: tanh(up/alpha)，使用三分支算法
+                        COMPUTE_TANH_3BRANCH(sigmoidReg, outFReg, mask); // sigmoidReg = tanh(up/alpha)
                         // alpha * tanh(up/alpha)
                         AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, activationAlpha_, mask);
                         // out = gate_result * up_transformed
@@ -770,21 +791,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                 } else {
                     // SiTU gate路: beta * tanh(gate/beta) * sigmoid(gate)
                     AscendC::MicroAPI::Muls(outFReg, vregX1F, invBeta, mask1);
-                    AscendC::MicroAPI::Muls(negReg, outFReg, scalarTwo, mask1);
-                    AscendC::MicroAPI::Exp(expReg, negReg, mask1);
-                    AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask1);
-                    AscendC::MicroAPI::Adds(sigmoidReg, expReg, negScalarOne, mask1);
-                    AscendC::MicroAPI::Div(expReg, sigmoidReg, addsReg, mask1);
-
-                    AscendC::MicroAPI::Muls(negReg, outFReg, negScalarTwo, mask1);
-                    AscendC::MicroAPI::Exp(negReg, negReg, mask1);
-                    AscendC::MicroAPI::Adds(addsReg, negReg, scalarOne, mask1);
-                    AscendC::MicroAPI::Adds(sigmoidReg, negReg, negScalarOne, mask1);
-                    AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, negScalarOne, mask1);
-                    AscendC::MicroAPI::Div(sigmoidReg, sigmoidReg, addsReg, mask1);
-
-                    AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::LT>(cmpMaskReg, outFReg, scalarZero, mask1);
-                    AscendC::MicroAPI::Select(sigmoidReg, expReg, sigmoidReg, cmpMaskReg);
+                    // SiTU gate路: tanh(gate/beta)，使用三分支算法消除z≈0处相消
+                    COMPUTE_TANH_3BRANCH(sigmoidReg, outFReg, mask1); // sigmoidReg = tanh(gate/beta)
 
                     AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask1);
                     AscendC::MicroAPI::Exp(expReg, negReg, mask1);
@@ -796,21 +804,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                     if constexpr (ActSub == ActSubMode::LINEAR) {
                         AscendC::MicroAPI::Muls(vregX1F, outFReg, scalarOne, mask1);
                         AscendC::MicroAPI::Muls(outFReg, vregX2F, invAlpha, mask1);
-                        AscendC::MicroAPI::Muls(negReg, outFReg, scalarTwo, mask1);
-                        AscendC::MicroAPI::Exp(expReg, negReg, mask1);
-                        AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask1);
-                        AscendC::MicroAPI::Adds(sigmoidReg, expReg, negScalarOne, mask1);
-                        AscendC::MicroAPI::Div(expReg, sigmoidReg, addsReg, mask1);
-
-                        AscendC::MicroAPI::Muls(negReg, outFReg, negScalarTwo, mask1);
-                        AscendC::MicroAPI::Exp(negReg, negReg, mask1);
-                        AscendC::MicroAPI::Adds(addsReg, negReg, scalarOne, mask1);
-                        AscendC::MicroAPI::Adds(sigmoidReg, negReg, negScalarOne, mask1);
-                        AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, negScalarOne, mask1);
-                        AscendC::MicroAPI::Div(sigmoidReg, sigmoidReg, addsReg, mask1);
-
-                        AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::LT>(cmpMaskReg, outFReg, scalarZero, mask1);
-                        AscendC::MicroAPI::Select(sigmoidReg, expReg, sigmoidReg, cmpMaskReg);
+                        // SiTU up路: tanh(up/alpha)，使用三分支算法
+                        COMPUTE_TANH_3BRANCH(sigmoidReg, outFReg, mask1); // sigmoidReg = tanh(up/alpha)
                         AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, activationAlpha_, mask1);
                         AscendC::MicroAPI::Mul(outFReg, vregX1F, sigmoidReg, mask1);
                     } else {
