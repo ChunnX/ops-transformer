@@ -340,7 +340,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>layout_out</td>
       <td>输入属性</td>
       <td>输出布局。</td>
-      <td>预留参数，暂未生效。</td>
+      <td>仅支持 "TND"，预留参数。</td>
       <td>STRING</td>
       <td>-</td>
       <td>-</td>
