@@ -9,20 +9,20 @@
  */
 
 /*!
- * \file mega_moe_wave_utils.h
- * \brief Host/device helpers used only by the MegaMoe wave scheduler.
+ * \file mega_moe_utils.h
+ * \brief Common host/device helpers for MegaMoe scheduling.
  */
 
-#ifndef MEGA_MOE_WAVE_UTILS_H
-#define MEGA_MOE_WAVE_UTILS_H
+#ifndef MEGA_MOE_UTILS_H
+#define MEGA_MOE_UTILS_H
 
 #include <cstdint>
 
 namespace MegaMoeImpl {
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
-#define MEGA_MOE_WAVE_HOST_DEVICE_INLINE __aicore__ inline
+#define MEGA_MOE_HOST_DEVICE_INLINE __aicore__ inline
 #else
-#define MEGA_MOE_WAVE_HOST_DEVICE_INLINE inline
+#define MEGA_MOE_HOST_DEVICE_INLINE inline
 #endif
 
 struct TokenRange {
@@ -32,8 +32,8 @@ struct TokenRange {
 
 // Return the number of experts in the current wave. A final tail containing
 // strictly less than half a normal wave is absorbed by its preceding wave.
-MEGA_MOE_WAVE_HOST_DEVICE_INLINE uint32_t GetWaveExpertCount(uint32_t waveBegin, uint32_t expertCount,
-                                                             uint32_t expertsPerWave)
+MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetWaveExpertCount(uint32_t waveBegin, uint32_t expertCount,
+                                                        uint32_t expertsPerWave)
 {
     if (waveBegin >= expertCount) {
         return 0U;
@@ -49,8 +49,8 @@ MEGA_MOE_WAVE_HOST_DEVICE_INLINE uint32_t GetWaveExpertCount(uint32_t waveBegin,
 
 // Balanced contiguous ownership. Every token belongs to exactly one worker;
 // the first (totalTokens % workerCount) workers receive one extra token.
-MEGA_MOE_WAVE_HOST_DEVICE_INLINE TokenRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx,
-                                                                  uint32_t workerCount)
+MEGA_MOE_HOST_DEVICE_INLINE TokenRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx,
+                                                             uint32_t workerCount)
 {
     if (workerCount == 0U || workerIdx >= workerCount) {
         return {};
@@ -61,7 +61,7 @@ MEGA_MOE_WAVE_HOST_DEVICE_INLINE TokenRange GetBalancedTokenRange(uint32_t total
     return {workerIdx * base + extraBefore, base + static_cast<uint32_t>(workerIdx < remainder)};
 }
 
-#undef MEGA_MOE_WAVE_HOST_DEVICE_INLINE
+#undef MEGA_MOE_HOST_DEVICE_INLINE
 } // namespace MegaMoeImpl
 
-#endif // MEGA_MOE_WAVE_UTILS_H
+#endif // MEGA_MOE_UTILS_H
