@@ -16,7 +16,6 @@
 #include <register/op_impl_registry.h>
 #include "err/ops_err.h"
 
-
 using namespace ge;
 
 namespace ops {
@@ -32,7 +31,7 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
 {
     OP_CHECK_IF(context == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("LightningIndexer", "InferShapeContext",
-                    "InferShapeContext is nullptr"),
+                                                         "InferShapeContext is nullptr"),
                 return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
@@ -57,7 +56,7 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
     OP_CHECK_IF(
         inputLayoutQueryPtrStr != "TND" && inputLayoutQueryPtrStr != "BSND",
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("LightningIndexer", "layout_query",
-            inputLayoutQueryPtrStr.c_str(), "The attr layout_query should be TND or BSND"),
+                                              inputLayoutQueryPtrStr.c_str(), "The attr layout_query should be TND or BSND"),
         return ge::GRAPH_FAILED);
 
     sparseIndicesShape->SetDimNum(queryShape->GetDimNum());
@@ -75,10 +74,10 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
             queryShape->GetDimNum() != 3,
             OP_LOGE(context, "Layout TND, queryDims (%zu) must be 3!", queryShape->GetDimNum()),
             return ge::GRAPH_FAILED);
-        sparseIndicesShape->SetDim(0, queryShape->GetDim(0));                      // 0:Dim T
+        sparseIndicesShape->SetDim(0, queryShape->GetDim(0));            // 0:Dim T
         int32_t nDimIndex = (inputLayoutKeyPtrStr == "PA_BSND") ? 2 : 1; // 2:Key Dim N
-        sparseIndicesShape->SetDim(1, keyShape->GetDim(nDimIndex));                // 1:Dim N
-        sparseIndicesShape->SetDim(2, *seleced_count);                             // 2:Dim K
+        sparseIndicesShape->SetDim(1, keyShape->GetDim(nDimIndex));      // 1:Dim N
+        sparseIndicesShape->SetDim(2, *seleced_count);                   // 2:Dim K
     }
 
     const bool *return_value = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
@@ -99,7 +98,7 @@ static ge::graphStatus InferDataTypeLightningIndexer(gert::InferDataTypeContext 
 {
     OP_CHECK_IF(context == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("LightningIndexer", "InferDataTypeContext",
-                    "InferDataTypeContext is nullptr"),
+                                                         "InferDataTypeContext is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), "Enter LightningIndexer InferDataType impl.");
     // default set q's dtype as fia's output type
