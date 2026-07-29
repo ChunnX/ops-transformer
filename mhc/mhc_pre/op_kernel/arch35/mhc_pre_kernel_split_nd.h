@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mhc_pre_split_nd.h
+ * \file mhc_pre_kernel_split_nd.h
  * \brief MHC Pre kernel for ND split mode
  */
 
-#ifndef MHC_PRE_SPLIT_ND_H_
-#define MHC_PRE_SPLIT_ND_H_
+#ifndef MHC_PRE_KERNEL_SPLIT_ND_H_
+#define MHC_PRE_KERNEL_SPLIT_ND_H_
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
@@ -616,4 +616,4 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::HMixProcess(uint64_t
 
 } // namespace MhcPre
 
-#endif // MHC_PRE_SPLIT_ND_H_
+#endif // MHC_PRE_KERNEL_SPLIT_ND_H_

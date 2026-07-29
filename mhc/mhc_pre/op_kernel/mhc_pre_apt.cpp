@@ -14,9 +14,9 @@
  */
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 #include "arch35/mhc_pre_kernel_base.h"
-#include "arch35/mhc_pre_split_bs.h"
+#include "arch35/mhc_pre_kernel_split_bs.h"
 #include "arch35/mhc_pre_m_k_split_core_arch35.h"
-#include "arch35/mhc_pre_split_nd.h"
+#include "arch35/mhc_pre_kernel_split_nd.h"
 #include "arch35/mhc_pre_tiling_key.h"
 
 using namespace AscendC;

@@ -1,8 +1,23 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file mhc_pre_m_k_split_core_arch35.h
+ * \brief
+ */
+
 #ifndef MHC_PRE_M_K_SPLIT_CORE_ARCH35_H
 #define MHC_PRE_M_K_SPLIT_CORE_ARCH35_H
 
 #include "mhc_pre_cube_compute_arch35.h"
-#include "mhc_pre_bs_common.h"
+#include "mhc_pre_kernel_bs_common.h"
 
 namespace MhcPre {
 
