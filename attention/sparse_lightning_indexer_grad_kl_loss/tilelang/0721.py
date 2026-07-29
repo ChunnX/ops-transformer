@@ -3074,10 +3074,14 @@ def sparse_lightning_indexer_grad_kl_loss(
                 )
                 debug_relu_focus = debug_relu_focus[debug_relu_focus_order]
                 debug_rows_per_aiv = Nidx1 // 2
+                debug_n_block = N_SPLIT
+                debug_bw_col_block = min(debug_n_block, 64)
+                debug_bw_col_count = debug_n_block // debug_bw_col_block
+                debug_n_num = K // debug_n_block
                 debug_relu_tile_ids = (
                     (debug_relu_focus[:, 0] // debug_rows_per_aiv)
-                    * (n_num * bw_col_count)
-                    + debug_relu_focus[:, 1] // bw_col_block
+                    * (debug_n_num * debug_bw_col_count)
+                    + debug_relu_focus[:, 1] // debug_bw_col_block
                 )
                 debug_relu_unique_tiles, debug_relu_tile_counts = torch.unique(
                     debug_relu_tile_ids,
@@ -3092,12 +3096,16 @@ def sparse_lightning_indexer_grad_kl_loss(
                     debug_tile_id = int(
                         debug_relu_unique_tiles[debug_tile_order_id].item()
                     )
-                    debug_tile_segment = debug_tile_id % (n_num * bw_col_count)
+                    debug_tile_segment = debug_tile_id % (
+                        debug_n_num * debug_bw_col_count
+                    )
                     debug_relu_tile_summary.append(
                         (
-                            debug_tile_id // (n_num * bw_col_count),
-                            debug_tile_segment // bw_col_count,
-                            debug_tile_segment % bw_col_count,
+                            debug_tile_id // (
+                                debug_n_num * debug_bw_col_count
+                            ),
+                            debug_tile_segment // debug_bw_col_count,
+                            debug_tile_segment % debug_bw_col_count,
                             int(debug_relu_tile_counts[debug_tile_order_id].item()),
                         )
                     )
@@ -3111,9 +3119,11 @@ def sparse_lightning_indexer_grad_kl_loss(
                     debug_k = int(debug_relu_focus[debug_bad_id, 1].item())
                     debug_aiv = debug_head // debug_rows_per_aiv
                     debug_local_head = debug_head % debug_rows_per_aiv
-                    debug_n_idx = debug_k // n_block
-                    debug_bw_col = (debug_k % n_block) // bw_col_block
-                    debug_local_col = debug_k % bw_col_block
+                    debug_n_idx = debug_k // debug_n_block
+                    debug_bw_col = (
+                        debug_k % debug_n_block
+                    ) // debug_bw_col_block
+                    debug_local_col = debug_k % debug_bw_col_block
                     debug_unmasked = (
                         weights[debug_b, debug_q, debug_head].float()
                         * debug_diff[debug_k]
