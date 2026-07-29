@@ -979,7 +979,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                     v1_sy_reduce,
                                     v1_sy_valid_mask,
                                     v1_sy_reduce,
-                                    -1e30,
+                                    -T.infinity(calc_dtype),
                                     "VSEL_TENSOR_SCALAR_MODE",
                                 )
                                 T.pipe_barrier("v")
@@ -995,7 +995,10 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.tile.max(v1_sy_max, v1_sy_max, v1_sy_tmp_max)
                             T.set_flag("v", "mte2", 3)
                         else:
-                            T.tile.fill(v1_sy_storage[Nidx1 + n_idx, 0:n_block], -1e30)
+                            T.tile.fill(
+                                v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                                -T.infinity(calc_dtype),
+                            )
 
                     T.tile.fill(v1_sy_floor, -1e20)
                     T.pipe_barrier("v")
@@ -1004,21 +1007,49 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("v", "mte2", 3)
                     T.tile.fill(v1_sy_sum, 0.0)
                     for n_idx in T.serial(n_num):
-                        T.tile.broadcast(v1_sy_broadcast, v1_sy_max)
-                        T.pipe_barrier("v")
-                        # 得到全局 max 后不再需要 ReduceSumY 历史。将 exp(x-max)
-                        # 保存在同一行中，使 normalization 阶段不必重复计算。
-                        T.tile.sub(
-                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
-                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
-                            v1_sy_broadcast[0, :],
-                        )
-                        T.pipe_barrier("v")
-                        T.tile.exp(
-                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
-                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
-                        )
-                        T.pipe_barrier("v")
+                        n_start = n_idx * n_block
+                        if n_start < valid_k_size:
+                            T.tile.broadcast(v1_sy_broadcast, v1_sy_max)
+                            T.pipe_barrier("v")
+                            # 得到全局 max 后不再需要 ReduceSumY 历史。将
+                            # exp(x-max) 保存在同一行中，避免 normalization
+                            # 阶段重复计算。
+                            T.tile.sub(
+                                v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                                v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                                v1_sy_broadcast[0, :],
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.exp(
+                                v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                                v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                            )
+                            T.pipe_barrier("v")
+                            if not full_valid and n_start + n_block > valid_k_size:
+                                # 不依赖 exp(极小有限值) 近似为 0，明确将部分
+                                # 尾块中的无效列选择为 0。
+                                T.tile.compare(
+                                    v1_sy_valid_mask,
+                                    v1_sy_chunk,
+                                    0.0,
+                                    "GT",
+                                )
+                                T.pipe_barrier("v")
+                                T.tile.select(
+                                    v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                                    v1_sy_valid_mask,
+                                    v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                                    0.0,
+                                    "VSEL_TENSOR_SCALAR_MODE",
+                                )
+                                T.pipe_barrier("v")
+                        else:
+                            # 完整无效块不执行 exp，直接参与后续零和归约。
+                            T.tile.fill(
+                                v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                                0.0,
+                            )
+                            T.pipe_barrier("v")
                         T.tile.mul(
                             v1_sy_broadcast[0, :],
                             v1_sy_storage[Nidx1 + n_idx, 0:n_block],
