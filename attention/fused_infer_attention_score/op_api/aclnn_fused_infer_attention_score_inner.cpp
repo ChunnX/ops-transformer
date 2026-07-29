@@ -446,16 +446,8 @@ aclnnStatus NormalizeFAICacheTensorList(const aclTensorList *&tensorList, const 
         const aclTensor *normalizedTensor = nullptr;
         std::string itemName = std::string(name) + "[" + std::to_string(i) + "]";
         if (IsContiguous(tensor)) {
-            printf("enter NormalizeFAICacheTensorList contiguous.\n");
-            normalizedTensor = l0op::Contiguous(tensor, executor);
-            printf("finish NormalizeFAICacheTensorList contiguous.\n");
-            // if (normalizedTensor == nullptr) {
-            //     OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try normalize contiguous %s failed.", itemName.c_str());
-            //     return ACLNN_ERR_INNER_NULLPTR;
-            // }
-            // CHECK_RET(ReshapeTensorToViewShape(normalizedTensor, itemName.c_str(), executor) == ACLNN_SUCCESS,
-            //           ACLNN_ERR_INNER_NULLPTR);
-            // normalizedTensor = tensor;
+            printf("the key value is contiguous.\n");
+            normalizedTensor = tensor;
         } else {
             normalizedTensor = executor->CreateView(tensor, tensor->GetViewShape(), tensor->GetStorageShape(),
                                                     tensor->GetViewStrides(), tensor->GetViewOffset());
