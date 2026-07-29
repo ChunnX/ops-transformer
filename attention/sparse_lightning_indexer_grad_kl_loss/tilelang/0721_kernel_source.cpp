@@ -143,7 +143,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto v1_bw_mask2 = ascend_ub.GetWithOffset<uint8_t>(32, 193472);
   auto v1_bw_mask3 = ascend_ub.GetWithOffset<uint8_t>(32, 193504);
   auto v1_bw_dw = ascend_ub.GetWithOffset<float>(16, 193536);
-  auto v1_bw_rg = ascend_ub.GetWithOffset<float>(1024, 8192);
+  auto v1_bw_rg = ascend_ub.GetWithOffset<float>(1024, 0);
   auto v1_bw_rg_half = ascend_ub.GetWithOffset<bfloat16_t>(1024, 193600);
   auto v1_bw_log_p = ascend_ub.GetWithOffset<float>(64, 195648);
   auto v1_bw_log_sy = ascend_ub.GetWithOffset<float>(64, 195904);
@@ -596,15 +596,7 @@ AscendC::Select<float, uint8_t>(v1_sy_storage[((n_idx_2 * 128) + 4096)], v1_sy_v
               AscendC::Add(v1_bw_dw_accum[0], v1_bw_dw_accum[0], v1_bw_dw[0], 16);
               AscendC::Mul(v1_bw_rg[0], v1_bw_weight_2d[0], v1_bw_diff_2d[0], 1024);
               AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, uint8_t>(v1_bw_bmm2[0], v1_bw_mask0[0], v1_bw_rg[0], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
-              AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, uint8_t>(v1_bw_bmm2[256], v1_bw_mask1[0], v1_bw_rg[256], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
-              AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, uint8_t>(v1_bw_bmm2[512], v1_bw_mask2[0], v1_bw_rg[512], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
-              AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, uint8_t>(v1_bw_bmm2[768], v1_bw_mask3[0], v1_bw_rg[768], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
-              AscendC::PipeBarrier<PIPE_V>();
-              AscendC::Cast(v1_bw_rg_half[0], v1_bw_bmm2[0], AscendC::RoundMode::CAST_RINT, 1024);
+              AscendC::Cast(v1_bw_rg_half[0], v1_bw_rg[0], AscendC::RoundMode::CAST_RINT, 1024);
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(2);
               AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(2);
