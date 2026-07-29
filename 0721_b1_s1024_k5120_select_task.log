@@ -1,0 +1,16 @@
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_1024_k_5120: suite=core kind=coverage layout=BSND B=1 S1=1024 S2=5120 N1=32 Nidx1=8 K=5120 valid_k=[4097,5120] exec_k=5120 scatter_exec_k=5120 invalid=523776 path=tail-protected dtype=bfloat16
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=3.125000e-02 mean_abs=2.318522e-06 mean_rel=2.111526e-04 norm_rel=1.378079e-04
+  dKeyIndex    max_abs=1.562500e-02 mean_abs=3.267859e-06 mean_rel=1.237594e-03 norm_rel=8.078277e-05
+  dWeights     max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  Loss         max_abs=2.929688e-03 mean_abs=2.929688e-03 mean_rel=3.236781e-07 norm_rel=3.236781e-07
+[00] bsnd_b1_s1_1024_k_5120 SELECT_DEBUG_TASK: 跳过 NPU 全量诊断以限制峰值显存
+[00] bsnd_b1_s1_1024_k_5120 PASS dQ_norm=1.38e-04 dK_norm=8.08e-05 dW_norm=0.00e+00 Loss_norm=3.24e-07
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
