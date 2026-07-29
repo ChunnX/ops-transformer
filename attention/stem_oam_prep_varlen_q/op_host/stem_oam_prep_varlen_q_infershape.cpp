@@ -62,6 +62,15 @@ static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext *
         return ge::GRAPH_SUCCESS;
     }
 
+    if (qShape->GetDimNum() < 2) {
+        OP_LOGE(context, "q shape dim num must be >= 2, but got %zu.", qShape->GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    if (qSeqLensShape->GetDimNum() < 1) {
+        OP_LOGE(context, "qSeqLens shape dim num must be >= 1, but got %zu.", qSeqLensShape->GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+
     int64_t H_q = qShape->GetDim(1);
     int64_t batch = qSeqLensShape->GetDim(0);
 
