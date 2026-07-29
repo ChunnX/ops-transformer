@@ -295,13 +295,13 @@ public:
                 gatheredKvSeqlen = 0;
                 for (uint32_t i = 0; i < yBlockNumRsvd; i++) {
                     uint32_t origIdx = gSparseIdx.GetValue(gmOffsetSparseIdx + i);
-                    uint32_t effY = gBlockEffRows.GetValue(effRowsBase + origIdx * 2 + 1);
-                    if (i == yBlockNumRsvd - 1) {
-                        uint32_t tailBlockSize = (kvSeqlen > static_cast<int64_t>(origIdx) * blockShapeY_) ?
-                            static_cast<uint32_t>(kvSeqlen - static_cast<int64_t>(origIdx) * blockShapeY_) : 0;
-                        effY = (effY < tailBlockSize) ? effY : tailBlockSize;
-                    }
-                    gatheredKvSeqlen += effY;
+                    uint32_t effectiveY = gBlockEffRows.GetValue(effRowsBase + origIdx * 2 + 1);
+                    // 先 clamp 到 blockShapeY，再 clamp 到尾块剩余行数（非尾块时第二步为 no-op）
+                    effectiveY = (effectiveY < blockShapeY_) ? effectiveY : blockShapeY_;
+                    uint32_t tailBlockY = (kvSeqlen > static_cast<int64_t>(origIdx) * blockShapeY_) ?
+                        static_cast<uint32_t>(kvSeqlen - static_cast<int64_t>(origIdx) * blockShapeY_) : 0;
+                    effectiveY = (effectiveY < tailBlockY) ? effectiveY : tailBlockY;
+                    gatheredKvSeqlen += effectiveY;
                 }
             } else {
                 gatheredKvSeqlen = (yBlockNumRsvd - 1) * blockShapeY_ + lastYBlockSize;
