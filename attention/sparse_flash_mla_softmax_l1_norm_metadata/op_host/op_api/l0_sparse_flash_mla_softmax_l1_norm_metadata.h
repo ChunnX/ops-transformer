@@ -15,6 +15,8 @@
 #ifndef L0_SPARSE_FLASH_MLA_SOFTMAX_L1_NORM_METADATA_H
 #define L0_SPARSE_FLASH_MLA_SOFTMAX_L1_NORM_METADATA_H
 
+#include <cstdint>
+#include <string>
 #include "opdev/op_executor.h"
 
 namespace l0op {

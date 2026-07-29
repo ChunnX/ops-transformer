@@ -15,14 +15,14 @@
 #ifndef ACLNN_SPARSE_FLASH_MLA_SOFTMAX_L1_NORM_METADATA_H
 #define ACLNN_SPARSE_FLASH_MLA_SOFTMAX_L1_NORM_METADATA_H
 
+#include <string>
 #include "aclnn/aclnn_base.h"
-#include "opdev/op_executor.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize(
+__attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize(
     const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensKOptional, const aclTensor *seqUsedQOptional,
     const aclTensor *seqUsedKOptional, const aclTensor *cmpResidualKOptional, const aclTensor *topkLengthOptional,
     int64_t batchSize, int64_t maxSeqLenQ, int64_t maxSeqLenK, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim,
