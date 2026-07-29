@@ -21,8 +21,9 @@
 #include "platform/platform_infos_def.h"
 #include "err/ops_err.h"
 #include "platform/soc_spec.h"
+#include <vector>
 namespace optiling {
-const std::initializer_list<NpuArch> AdvancedNpuArch = {NpuArch::DAV_3510};
+const std::vector<NpuArch> AdvancedNpuArch = {NpuArch::DAV_3510};
 
 template <typename T>
 inline typename std::enable_if<
