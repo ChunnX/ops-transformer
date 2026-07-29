@@ -33,8 +33,8 @@
 #include "apace/utils/constant.h"
 #include "apace/utils/common_utils.h"
 #include "apace/tiling/quant_matmul_mx_tiling_swat.h"
-#include "apace/kernel/all_gather_quant_matmul_prefill/all_gather_matmul_tiling_data.h"
-#include "apace/kernel/all_gather_quant_matmul_prefill/all_gather_matmul_impl.h"
+#include "apace/kernel/all_gather_quant_matmul/all_gather_quant_matmul_prefill_tiling_data.h"
+#include "apace/kernel/all_gather_quant_matmul/all_gather_mx_matmul_udma_impl.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
 #include "../../utils/comm_channel_builder.h"
 #include "../../utils/root_info_exchanger.h"
@@ -110,31 +110,23 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n)
   uint32_t tileCnt = static_cast<uint32_t>(m) / tileM;
   uint32_t tailM = static_cast<uint32_t>(m) % tileM;
   uint32_t tailCnt = (tailM > 0) ? 1 : 0;
-  uint32_t commTurn = tileCnt + tailCnt;
 
   uint32_t paddedTailM = (tailM > 0) ? ((tailM + 15U) / 16U * 16U) : 0U;
   uint32_t totalLogicalM = static_cast<uint32_t>(rankNum) *
     (tileCnt * tileM + tailCnt * paddedTailM);
 
   QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+  tilingEngine.SetOptimizeEnable(false);
   tilingEngine.GetTilingData(totalLogicalM, static_cast<uint32_t>(n),
                   static_cast<uint32_t>(k), tilingData.mmTile);
-  tilingData.mmTail = {};
-  tilingData.mmLocal = {};
-
-  tilingData.m = static_cast<uint32_t>(m);
-  tilingData.k = static_cast<uint32_t>(k);
-  tilingData.n = static_cast<uint32_t>(n);
-  tilingData.rankNum = static_cast<uint32_t>(rankNum);
-  tilingData.tileCnt = tileCnt;
-  tilingData.tileM = tileM;
-  tilingData.tailCnt = tailCnt;
-  tilingData.tailM = tailM;
-  tilingData.commTurn = commTurn;
-  tilingData.paddedTailM = paddedTailM;
+  tilingData.commTile.splitAxisTileSize = tileM;
+  tilingData.commTile.splitAxisTileCnt = tileCnt;
+  tilingData.commTile.splitAxisTailSize = tailM;
+  tilingData.commTile.splitAxisTailCnt = tailCnt;
+  tilingData.commTile.nonSplitAxisSize = static_cast<uint32_t>(k);
 
   printf("[Rank %d] Tiling: tileCnt=%u, tileM=%u, tailCnt=%u, tailM=%u, paddedTailM=%u, commTurn=%u\n",
-       rankId, tileCnt, tileM, tailCnt, tailM, paddedTailM, commTurn);
+       rankId, tileCnt, tileM, tailCnt, tailM, paddedTailM, tileCnt + tailCnt);
 
   // ---- ACL Init ----
   ACL_CHECK(aclInit(nullptr));

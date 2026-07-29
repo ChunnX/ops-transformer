@@ -9,7 +9,7 @@ set(BLAZE_COMMON "${OPS_TENSOR_INCLUDE_DIR}")
 set(KERNEL_INCLUDES
     ${OP_KERNEL_ROOT}
     ${APACE_ROOT}
-    ${APACE_ROOT}/kernel/all_gather_quant_matmul_prefill
+    ${APACE_ROOT}/kernel/all_gather_quant_matmul
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/../utils
     ${BLAZE_COMMON}
