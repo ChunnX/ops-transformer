@@ -162,14 +162,6 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         op.Process();                                                                                                  \
     } while (0)
 
-__aicore__ inline void InvokeGmmA8W4V5Materialize(const GMMA8W4BasicApiTilingData &tilingData, GM_ADDR workspace)
-{
-    // Temporary non-numerical per-group invocation. Keep the key materialized
-    // without touching either the runtime-reserved workspace or y.
-    (void)tilingData;
-    (void)workspace;
-}
-
 #define GMM_QUANT_IMPL_CLASS(transposeX1, transposeX2, templateClass)                                                  \
     do {                                                                                                               \
         templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y, wFormat, transposeX1, transposeX2> op;  \
@@ -421,11 +413,9 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
         GMMA8W4BasicApiTilingData);
     if constexpr (IS_A8W4_V5_COMMON) {
         GET_TILING_DATA_WITH_STRUCT(GMMA8W4BasicApiTilingData, a8w4TilingData, tiling);
-        if constexpr (IS_A8W4_V5_PER_CHANNEL) {
-            GROUPED_MATMUL::A8W4V5::InvokeGmmA8W4PerChannelTensorApi<DTYPE_Y, wFormat>(
+        if constexpr (IS_A8W4_V5_PER_GROUP || IS_A8W4_V5_PER_CHANNEL) {
+            GROUPED_MATMUL::A8W4V5::InvokeGmmA8W4TensorApi<DTYPE_Y, wFormat>(
                 x, weight, scale, offset, groupList, perTokenScale, y, user1, &tPipe, &a8w4TilingData);
-        } else {
-            InvokeGmmA8W4V5Materialize(a8w4TilingData, workspace);
         }
     } else
 #else

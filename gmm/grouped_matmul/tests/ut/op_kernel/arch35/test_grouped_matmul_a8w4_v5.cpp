@@ -21,13 +21,14 @@ namespace {
 using TilingData = GroupedMatmulTilingData::GMMA8W4BasicApiTilingData;
 
 template <typename YType, CubeFormat WFormat>
-__global__ __aicore__ void GmmA8W4PerChannelUtKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR scale, GM_ADDR offset,
+__global__ __aicore__ void GmmA8W4TensorApiUtKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR scale, GM_ADDR offset,
                                                      GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y,
                                                      GM_ADDR workspace, GM_ADDR tiling)
 {
     auto *tilingData = reinterpret_cast<const TilingData *>(tiling);
-    GROUPED_MATMUL::A8W4V5::InvokeGmmA8W4PerChannelTensorApi<YType, WFormat>(
-        x, weight, scale, offset, groupList, perTokenScale, y, workspace, tilingData);
+    AscendC::TPipe pipe;
+    GROUPED_MATMUL::A8W4V5::InvokeGmmA8W4TensorApi<YType, WFormat>(
+        x, weight, scale, offset, groupList, perTokenScale, y, workspace, &pipe, tilingData);
 }
 
 template <CubeFormat WFormat>
@@ -332,7 +333,7 @@ TEST(GroupedMatmulA8W4V5Arch35Kernel, PerChannelNdApiNumericalReferenceWithKTail
     tiling->mmTilingData.dbL0C = 1U;
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    auto kernel = GmmA8W4PerChannelUtKernel<half, CubeFormat::ND>;
+    auto kernel = GmmA8W4TensorApiUtKernel<half, CubeFormat::ND>;
     ASSERT_TRUE(KERNEL_RUN_KF(kernel, CORE_NUM, xList.Get(), weightList.Get(), scaleList.Get(), offsetList.Get(),
                               groupListData.Get(), perTokenScaleData.Get(), yList.Get(), workspace.Get(),
                               tilingBuffer.Get()));
@@ -343,4 +344,72 @@ TEST(GroupedMatmulA8W4V5Arch35Kernel, PerChannelNdApiNumericalReferenceWithKTail
     }
 }
 
+TEST(GroupedMatmulA8W4V5Arch35Kernel, PerGroupNdApiNumericalReference)
+{
+    constexpr uint32_t M = 16U;
+    constexpr uint32_t N = 32U;
+    constexpr uint32_t K = 64U;
+    constexpr uint32_t E = 1U;
+    constexpr uint32_t QUANT_GROUP_SIZE = 32U;
+    constexpr uint32_t QUANT_GROUP_NUM = K / QUANT_GROUP_SIZE;
+    constexpr size_t WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
+
+    GmBuffer xData(static_cast<size_t>(M) * K);
+    GmBuffer weightData(static_cast<size_t>(E) * K * N / 2U);
+    GmBuffer scaleData(static_cast<size_t>(E) * QUANT_GROUP_NUM * N * sizeof(uint64_t));
+    GmBuffer offsetData(sizeof(float));
+    GmBuffer groupListData(E * sizeof(int64_t));
+    GmBuffer perTokenScaleData(M * sizeof(float));
+    GmBuffer yData(static_cast<size_t>(M) * N * sizeof(half));
+    GmBuffer workspace(WORKSPACE_SIZE);
+    GmBuffer tilingBuffer(sizeof(TilingData));
+    GmBuffer xList(2U * sizeof(uint64_t));
+    GmBuffer weightList(2U * sizeof(uint64_t));
+    GmBuffer scaleList(2U * sizeof(uint64_t));
+    GmBuffer offsetList(2U * sizeof(uint64_t));
+    GmBuffer yList(2U * sizeof(uint64_t));
+
+    std::fill_n(xData.As<int8_t>(), static_cast<size_t>(M) * K, static_cast<int8_t>(1));
+    std::fill_n(weightData.As<uint8_t>(), static_cast<size_t>(E) * K * N / 2U, 0x11U);
+    std::fill_n(scaleData.As<uint64_t>(), N, 0x3F80000000000000ULL);
+    std::fill_n(scaleData.As<uint64_t>() + N, N, 0x4000000000000000ULL);
+    std::fill_n(perTokenScaleData.As<float>(), M, 1.0F);
+    groupListData.As<int64_t>()[0] = M;
+
+    MakeTensorList(xList, xData.Get());
+    MakeTensorList(weightList, weightData.Get());
+    MakeTensorList(scaleList, scaleData.Get());
+    MakeTensorList(offsetList, offsetData.Get());
+    MakeTensorList(yList, yData.Get());
+
+    auto *tiling = tilingBuffer.As<TilingData>();
+    tiling->gmmQuantParams.groupNum = E;
+    tiling->gmmQuantParams.singleX = 1U;
+    tiling->gmmQuantParams.singleW = 1U;
+    tiling->gmmQuantParams.singleY = 1U;
+    tiling->gmmQuantParams.groupListType = 1U;
+    tiling->a8w4Params.dequantMode = 0U;
+    tiling->a8w4Params.quantGroupSize = QUANT_GROUP_SIZE;
+    tiling->a8w4Params.quantGroupNum = QUANT_GROUP_NUM;
+    tiling->mmTilingData.m = M;
+    tiling->mmTilingData.n = N;
+    tiling->mmTilingData.k = K;
+    tiling->mmTilingData.baseM = M;
+    tiling->mmTilingData.baseN = N;
+    tiling->mmTilingData.baseK = QUANT_GROUP_SIZE;
+    tiling->mmTilingData.kAL1 = QUANT_GROUP_SIZE;
+    tiling->mmTilingData.kBL1 = QUANT_GROUP_SIZE;
+    tiling->mmTilingData.dbL0C = 1U;
+
+    AscendC::SetKernelMode(KernelMode::MIX_MODE);
+    auto kernel = GmmA8W4TensorApiUtKernel<half, CubeFormat::ND>;
+    ASSERT_TRUE(KERNEL_RUN_KF(kernel, 1U, xList.Get(), weightList.Get(), scaleList.Get(), offsetList.Get(),
+                              groupListData.Get(), perTokenScaleData.Get(), yList.Get(), workspace.Get(),
+                              tilingBuffer.Get()));
+
+    constexpr float expected = QUANT_GROUP_SIZE * 1.0F + QUANT_GROUP_SIZE * 2.0F;
+    for (uint32_t i = 0U; i < M * N; ++i) {
+        EXPECT_NEAR(static_cast<float>(yData.As<half>()[i]), expected, 0.5F) << "at output index " << i;
+    }
+}
 } // namespace
