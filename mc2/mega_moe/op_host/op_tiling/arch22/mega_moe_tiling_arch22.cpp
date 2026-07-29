@@ -50,15 +50,14 @@ constexpr uint32_t ATTR_COMM_ALG_INDEX = 7;                // 通信算法配置
 constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 8; // 每个 rank 的最大 token 数(bs数量)
 constexpr uint32_t ATTR_ACTIVATION_INDEX = 9;              // 激活函数类型（如 "swiglu"）
 constexpr uint32_t ATTR_ACTIVATION_CLAMP_INDEX = 10;       // 激活函数 clamp 值
-constexpr uint32_t ATTR_ACTIVATION_OUT_DTYPE_INDEX = 11;   // 激活函数输出数据类型
-constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 12;      // weight1 是否转置
-constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 13;      // weight2 是否转置
-constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 14;     // weight1 交错模式
-constexpr uint32_t ATTR_BETA_INDEX = 17;                   // SiTU gate branch beta
-constexpr uint32_t ATTR_LINEAR_BETA_INDEX = 18;            // SiTU up branch linear beta
+constexpr uint32_t ATTR_ACTIVATION_ALPHA_INDEX = 11;       // GPT-OSS alpha / SiTU linear beta
+constexpr uint32_t ATTR_ACTIVATION_BETA_INDEX = 12;        // SiTU gate branch beta
+constexpr uint32_t ATTR_ACTIVATION_OUT_DTYPE_INDEX = 13;   // 激活函数输出数据类型
+constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 14;      // weight1 是否转置
+constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 15;      // weight2 是否转置
+constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 16;     // weight1 交错模式
 
 constexpr uint32_t ACTIVATION_CODE_SWIGLU = 0;
-constexpr uint32_t ACTIVATION_CODE_SWIGLU_GPT_OSS = 1;
 constexpr uint32_t ACTIVATION_CODE_SITU = 2;
 
 // 输入 tensor 索引
@@ -272,13 +271,10 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
     std::string activationStr(ptr);
     if (activationStr == "swiglu") {
         activationCode = ACTIVATION_CODE_SWIGLU;
-    } else if (activationStr == "swiglu_gpt_oss") {
-        activationCode = ACTIVATION_CODE_SWIGLU_GPT_OSS;
     } else if (activationStr == "situ") {
         activationCode = ACTIVATION_CODE_SITU;
     } else {
-        OP_LOGE(K_INNER_DEBUG,
-                "activation is invalid, support 'swiglu', 'swiglu_gpt_oss' and 'situ', but got '%s'.", ptr);
+        OP_LOGE(K_INNER_DEBUG, "activation is invalid, support 'swiglu' and 'situ', but got '%s'.", ptr);
         return GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -294,21 +290,22 @@ static ge::graphStatus CheckActivationClampAttr(const float *ptr)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckBetaAttr(const float *ptr)
+static ge::graphStatus CheckActivationAlphaAttr(const float *ptr)
 {
-    OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "beta is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(!std::isfinite(*ptr) || *ptr <= 0.0f,
-                    OP_LOGE(K_INNER_DEBUG, "beta is invalid, should be finite and > 0, but got %f.", *ptr),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "activationAlpha is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        *ptr != std::numeric_limits<float>::max() && (!std::isfinite(*ptr) || *ptr <= 0.0f),
+        OP_LOGE(K_INNER_DEBUG,
+                "activation_alpha is invalid, should be finite and > 0 when specified, but got %f.", *ptr),
+        return GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckLinearBetaAttr(const float *ptr)
+static ge::graphStatus CheckActivationBetaAttr(const float *ptr)
 {
-    OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "linearBeta is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "activationBeta is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(!std::isfinite(*ptr) || *ptr <= 0.0f,
-                    OP_LOGE(K_INNER_DEBUG,
-                            "linear_beta is invalid, should be finite and > 0 when specified, but got %f.", *ptr),
+                    OP_LOGE(K_INNER_DEBUG, "activation_beta is invalid, should be finite and > 0, but got %f.", *ptr),
                     return GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -377,8 +374,8 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     auto transposeWeight1Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT1_INDEX);
     auto transposeWeight2Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT2_INDEX);
     auto weight1InterleavePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT1_INTERLEAVE_INDEX);
-    auto betaPtr = attrs->GetAttrPointer<float>(ATTR_BETA_INDEX);
-    auto linearBetaPtr = attrs->GetAttrPointer<float>(ATTR_LINEAR_BETA_INDEX);
+    auto activationAlphaPtr = attrs->GetAttrPointer<float>(ATTR_ACTIVATION_ALPHA_INDEX);
+    auto activationBetaPtr = attrs->GetAttrPointer<float>(ATTR_ACTIVATION_BETA_INDEX);
 
     // 1. moe_expert_num
     OP_TILING_CHECK(CheckMoeExpertNumAttr(moeExpertNumPtr) != ge::GRAPH_SUCCESS,
@@ -433,30 +430,30 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
                     OP_LOGE(K_INNER_DEBUG, "CheckActivationClampAttr failed."), return GRAPH_FAILED);
     info.activationClamp = *activationClampPtr;
 
-    // 11. activation_out_dtype
+    // 11-12. activation_alpha/activation_beta
+    OP_TILING_CHECK(CheckActivationAlphaAttr(activationAlphaPtr) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(K_INNER_DEBUG, "CheckActivationAlphaAttr failed."), return GRAPH_FAILED);
+    info.activationAlpha = *activationAlphaPtr;
+    OP_TILING_CHECK(CheckActivationBetaAttr(activationBetaPtr) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(K_INNER_DEBUG, "CheckActivationBetaAttr failed."), return GRAPH_FAILED);
+    info.activationBeta = *activationBetaPtr;
+
+    // 13. activation_out_dtype
     OP_TILING_CHECK(CheckActivationOutDtypeAttr(activationOutDtypePtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckActivationOutDtypeAttr failed."), return GRAPH_FAILED);
     info.activationOutDtype = activationOutDtypePtr != nullptr ? static_cast<uint32_t>(*activationOutDtypePtr) :
                                                                  static_cast<uint32_t>(ge::DT_UNDEFINED);
 
-    // 12. transpose_weight1/2
+    // 14-15. transpose_weight1/2
     OP_TILING_CHECK(CheckTransposeWeightAttr(transposeWeight1Ptr, transposeWeight2Ptr) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckTransposeWeightAttr failed."), return GRAPH_FAILED);
     info.isTransposeW1 = *transposeWeight1Ptr ? 1U : 0U;
     info.isTransposeW2 = *transposeWeight2Ptr ? 1U : 0U;
 
-    // 13. weight1_interleave
+    // 16. weight1_interleave
     OP_TILING_CHECK(CheckWeight1InterleaveAttr(context, weight1InterleavePtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckWeight1InterleaveAttr failed."), return GRAPH_FAILED);
     info.weight1Interleave = static_cast<uint32_t>(*weight1InterleavePtr);
-
-    // 15. beta/linear_beta (appended after the A5 topology attributes in the common op definition)
-    OP_TILING_CHECK(CheckBetaAttr(betaPtr) != ge::GRAPH_SUCCESS, OP_LOGE(K_INNER_DEBUG, "CheckBetaAttr failed."),
-                    return GRAPH_FAILED);
-    info.beta = *betaPtr;
-    OP_TILING_CHECK(CheckLinearBetaAttr(linearBetaPtr) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(K_INNER_DEBUG, "CheckLinearBetaAttr failed."), return GRAPH_FAILED);
-    info.linearBeta = *linearBetaPtr;
 
     info.worldSize = info.epWorldSize;
 
@@ -468,14 +465,13 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_LOGD(K_INNER_DEBUG, "dispatchQuantOutDtype=%u", info.dispatchQuantOutDtype);
     OP_LOGD(K_INNER_DEBUG, "combineQuantMode=%u", info.combineQuantMode);
     OP_LOGD(K_INNER_DEBUG, "numMaxTokensPerRank=%u", info.numMaxTokensPerRank);
-    OP_LOGD(K_INNER_DEBUG, "activationCode=%u", info.activationCode);
     OP_LOGD(K_INNER_DEBUG, "activationClamp=%f", info.activationClamp);
+    OP_LOGD(K_INNER_DEBUG, "activationAlpha=%f", info.activationAlpha);
+    OP_LOGD(K_INNER_DEBUG, "activationBeta=%f", info.activationBeta);
     OP_LOGD(K_INNER_DEBUG, "activationOutDtype=%u", info.activationOutDtype);
     OP_LOGD(K_INNER_DEBUG, "transposeWeight1=%u", info.isTransposeW1);
     OP_LOGD(K_INNER_DEBUG, "transposeWeight2=%u", info.isTransposeW2);
     OP_LOGD(K_INNER_DEBUG, "weight1Interleave=%u", info.weight1Interleave);
-    OP_LOGD(K_INNER_DEBUG, "beta=%f", info.beta);
-    OP_LOGD(K_INNER_DEBUG, "linearBeta=%f", info.linearBeta);
     OP_LOGD(K_INNER_DEBUG, "worldSize=%u", info.worldSize);
 
     return ge::GRAPH_SUCCESS;

@@ -153,8 +153,8 @@ public:
         uint32_t epilogueGranularity{0};
         float swigluLimit;
         uint32_t activationCode{0};
-        float beta{1.0f};
-        float linearBeta{std::numeric_limits<float>::max()};
+        float activationAlpha{Epilogue::GptOssSwigluActivation::DEFAULT_ALPHA};
+        float activationBeta{Epilogue::SituActivation::DEFAULT_BETA};
         GM_ADDR contextGM{nullptr};
         // 算子tiling数据地址（GM），ADump启动时由0核dump到Tiling段
         GM_ADDR tilingGM{nullptr};
@@ -182,11 +182,12 @@ public:
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_, uint32_t epilogueGranularity_ = 0,
                float swigluLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
-               float beta_ = 1.0f, float linearBeta_ = std::numeric_limits<float>::max(), GM_ADDR tilingGM_ = nullptr)
+               float activationAlpha_ = Epilogue::GptOssSwigluActivation::DEFAULT_ALPHA,
+               float activationBeta_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              activationCode(activationCode_), beta(beta_), linearBeta(linearBeta_),
+              activationCode(activationCode_), activationAlpha(activationAlpha_), activationBeta(activationBeta_),
               contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
               layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
               layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
@@ -228,12 +229,13 @@ public:
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
-               uint32_t activationCode_ = 0, float beta_ = 1.0f,
-               float linearBeta_ = std::numeric_limits<float>::max(), GM_ADDR tilingGM_ = nullptr)
+               uint32_t activationCode_ = 0,
+               float activationAlpha_ = Epilogue::GptOssSwigluActivation::DEFAULT_ALPHA,
+               float activationBeta_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              activationCode(activationCode_), beta(beta_), linearBeta(linearBeta_),
+              activationCode(activationCode_), activationAlpha(activationAlpha_), activationBeta(activationBeta_),
               contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
               layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
               layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
@@ -987,24 +989,16 @@ private:
     CATLASS_DEVICE
     void ResetTokenPerExpert(int32_t num)
     {
-        if (coreIdx != coreNum - 1 || num <= 0) {
+        if (coreIdx != coreNum - 1) {
             return;
         }
-        // The full EP-by-padded-expert region can exceed UB, so reuse one UB-sized zero tile for all GM chunks.
-        int32_t resetNumPerLoop = num < UB_MOVE_NUM ? num : UB_MOVE_NUM;
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::LocalTensor<int32_t> tmp = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::Duplicate(tmp, 0, resetNumPerLoop);
+        AscendC::Duplicate(tmp, 0, num);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        for (int32_t offset = 0; offset < num; offset += resetNumPerLoop) {
-            int32_t remainingNum = num - offset;
-            int32_t currentNum = remainingNum < resetNumPerLoop ? remainingNum : resetNumPerLoop;
-            AscendC::DataCopy(tokenPerExpert[offset], tmp, currentNum);
-        }
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        AscendC::DataCopy(tokenPerExpert, tmp, num);
     }
 
     CATLASS_DEVICE
@@ -1296,7 +1290,8 @@ private:
                                    reinterpret_cast<__gm__ float *>(params.ptrBias1), gmA2I4_I8[gmOffsetD], cumsumMM,
                                    rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank,
                                    params.EP, runtimeRank, params.listLen, resource, params.epilogueCoreNum,
-                                   params.swigluLimit, params.activationCode, params.beta, params.linearBeta,
+                                   params.swigluLimit, params.activationCode, params.activationAlpha,
+                                   params.activationBeta,
                                    params.gmmOutPreRowStride);
                 }
                 AscendC::SyncAll<true>();
@@ -1316,11 +1311,12 @@ private:
                 if constexpr (std::is_same_v<ElementB, int8_t>) {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                    gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
-                                   params.epilogueCoreNum, params.swigluLimit, params.activationCode, params.beta,
-                                   params.linearBeta, params.gmmOutPreRowStride);
+                                   params.epilogueCoreNum, params.swigluLimit, params.activationCode,
+                                   params.activationAlpha, params.activationBeta, params.gmmOutPreRowStride);
                 } else {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, params.epilogueCoreNum,
-                                   params.swigluLimit, params.activationCode, params.beta, params.linearBeta,
+                                   params.swigluLimit, params.activationCode, params.activationAlpha,
+                                   params.activationBeta,
                                    params.gmmOutPreRowStride);
                 }
             }
@@ -1342,11 +1338,12 @@ private:
                     if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                        gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
-                                       coreNum, params.swigluLimit, params.activationCode, params.beta,
-                                       params.linearBeta, params.gmmOutPreRowStride);
+                                       coreNum, params.swigluLimit, params.activationCode, params.activationAlpha,
+                                       params.activationBeta, params.gmmOutPreRowStride);
                     } else {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, coreNum,
-                                       params.swigluLimit, params.activationCode, params.beta, params.linearBeta,
+                                       params.swigluLimit, params.activationCode, params.activationAlpha,
+                                       params.activationBeta,
                                        params.gmmOutPreRowStride);
                     }
                 }
@@ -1668,8 +1665,8 @@ private:
 
             // 尾部：CrossRankSync + tokenPerExpert
             int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
-            int64_t tokenPerExpertSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) *
-                static_cast<int64_t>(sizeof(int32_t));
+            int64_t tokenPerExpertSize =
+                EP * AlignUp(EP * MAX_EXPERTS_PER_RANK, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
 
             // A: dispatch 数据区（量化时含行内 scale）
             int64_t offsetASize = bs * topK * (RoutingIsQuant ? (h + ALIGN_512) : h * sizeof(int16_t));
