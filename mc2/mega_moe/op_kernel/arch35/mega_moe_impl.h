@@ -245,7 +245,6 @@ template <bool IsA8W4, typename Policy, uint8_t CombineQuantMode, typename Eleme
           bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
 struct Config {
     static constexpr bool IS_SHARED = IsShared;
-    static constexpr bool IS_WAVE_FLAG_GRAINED = IsWaveFlagGrained;
     using ElementAType = ElementA;
     using ElementBType = ElementB;
     using ElementCType = ElementC;
@@ -287,7 +286,6 @@ struct Config {
     using LayoutBiasType = decltype(Te::MakeFrameLayout<LayoutBias>(uint32_t{}, uint32_t{}));
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
-    static constexpr bool SOURCE_GMM1_INTERLEAVED = IsGmm1Interleaved;
 
     // BlockPrologue（仅 A8W4 使用；A8W8/A4W4 路径用 void 占位）
     using BlockPrologue =
