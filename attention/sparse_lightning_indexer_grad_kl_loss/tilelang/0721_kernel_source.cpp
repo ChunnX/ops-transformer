@@ -112,14 +112,14 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto v1_sy_max = ascend_ub.GetWithOffset<float>(1, 136416);
   auto v1_sy_storage = ascend_ub.GetWithOffset<float>(12288, 136448);
   auto v1_sy_chunk = ascend_ub.GetWithOffset<float>(128, 185600);
-  auto v1_sy_valid_mask = ascend_ub.GetWithOffset<float>(8, 186624);
+  auto v1_sy_valid_mask = ascend_ub.GetWithOffset<uint8_t>(16, 186624);
   auto v1_sy_broadcast = ascend_ub.GetWithOffset<float>(128, 186656);
   auto v1_sy_floor = ascend_ub.GetWithOffset<float>(1, 187200);
   auto v1_sy_sum = ascend_ub.GetWithOffset<float>(1, 187232);
   auto v1_sy_eps = ascend_ub.GetWithOffset<float>(1, 187296);
   auto v1_p_bmm1 = ascend_ub.GetWithOffset<float>(8192, 50176);
   auto v1_p_valid = ascend_ub.GetWithOffset<float>(128, 82944);
-  auto v1_p_valid_mask = ascend_ub.GetWithOffset<float>(8, 83456);
+  auto v1_p_valid_mask = ascend_ub.GetWithOffset<uint8_t>(16, 83456);
   auto v1_p_tmp = ascend_ub.GetWithOffset<float>(512, 83488);
   auto v1_p_out = ascend_ub.GetWithOffset<float>(128, 85536);
   auto v1_sy_tmp = ascend_ub.GetWithOffset<float>(256, 135392);
@@ -138,22 +138,18 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto v1_bw_valid = ascend_ub.GetWithOffset<float>(64, 192896);
   auto v1_bw_diff = ascend_ub.GetWithOffset<float>(64, 193152);
   auto v1_bw_diff_2d = ascend_ub.GetWithOffset<float>(1024, 4096);
-  auto v1_bw_mask0 = ascend_ub.GetWithOffset<float>(8, 193408);
-  auto v1_bw_mask1 = ascend_ub.GetWithOffset<float>(8, 193440);
-  auto v1_bw_mask2 = ascend_ub.GetWithOffset<float>(8, 193472);
-  auto v1_bw_mask3 = ascend_ub.GetWithOffset<float>(8, 193504);
-  auto v1_bw_mask4 = ascend_ub.GetWithOffset<float>(8, 193536);
-  auto v1_bw_mask5 = ascend_ub.GetWithOffset<float>(8, 193568);
-  auto v1_bw_mask6 = ascend_ub.GetWithOffset<float>(8, 193600);
-  auto v1_bw_mask7 = ascend_ub.GetWithOffset<float>(8, 193632);
-  auto v1_bw_dw = ascend_ub.GetWithOffset<float>(16, 193664);
+  auto v1_bw_mask0 = ascend_ub.GetWithOffset<uint8_t>(32, 193408);
+  auto v1_bw_mask1 = ascend_ub.GetWithOffset<uint8_t>(32, 193440);
+  auto v1_bw_mask2 = ascend_ub.GetWithOffset<uint8_t>(32, 193472);
+  auto v1_bw_mask3 = ascend_ub.GetWithOffset<uint8_t>(32, 193504);
+  auto v1_bw_dw = ascend_ub.GetWithOffset<float>(16, 193536);
   auto v1_bw_rg = ascend_ub.GetWithOffset<float>(1024, 8192);
-  auto v1_bw_rg_half = ascend_ub.GetWithOffset<bfloat16_t>(1024, 193728);
-  auto v1_bw_log_p = ascend_ub.GetWithOffset<float>(64, 195776);
-  auto v1_bw_log_sy = ascend_ub.GetWithOffset<float>(64, 196032);
+  auto v1_bw_rg_half = ascend_ub.GetWithOffset<bfloat16_t>(1024, 193600);
+  auto v1_bw_log_p = ascend_ub.GetWithOffset<float>(64, 195648);
+  auto v1_bw_log_sy = ascend_ub.GetWithOffset<float>(64, 195904);
   auto v1_bw_loss_2d = ascend_ub.GetWithOffset<float>(64, 0);
-  auto v1_bw_loss_sum = ascend_ub.GetWithOffset<float>(1, 196288);
-  auto v1_bw_dw_half = ascend_ub.GetWithOffset<bfloat16_t>(16, 196320);
+  auto v1_bw_loss_sum = ascend_ub.GetWithOffset<float>(1, 196160);
+  auto v1_bw_dw_half = ascend_ub.GetWithOffset<bfloat16_t>(16, 196192);
   auto c2_dq_l0c = ascend_l0c.GetWithOffset<float>(4096, 114688);
   auto c2_rg_l1 = ascend_l1.GetWithOffset<bfloat16_t>(4096, 163840);
   auto c2_gki_l1 = ascend_l1.GetWithOffset<bfloat16_t>(16384, 172032);
@@ -169,9 +165,9 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto v2_finalize_dq_half = ascend_ub.GetWithOffset<bfloat16_t>(128, 33280);
   auto v2_finalize_dk_fp32 = ascend_ub.GetWithOffset<float>(4096, 24576);
   auto v2_finalize_dk_half = ascend_ub.GetWithOffset<bfloat16_t>(4096, 40960);
-  auto v2_loss_total = ascend_ub.GetWithOffset<float>(1, 16384);
-  auto v2_loss_chunk = ascend_ub.GetWithOffset<float>(128, 16416);
-  auto v2_loss_chunk_sum = ascend_ub.GetWithOffset<float>(1, 16928);
+  auto v2_loss_total = ascend_ub.GetWithOffset<float>(1, 196224);
+  auto v2_loss_chunk = ascend_ub.GetWithOffset<float>(128, 16384);
+  auto v2_loss_chunk_sum = ascend_ub.GetWithOffset<float>(1, 196256);
   auto vid = AscendC::GetSubBlockIdx();
   for (int32_t pipe_iter = 0; pipe_iter < 4; ++pipe_iter) {
     if (pipe_iter < 3) {
@@ -400,7 +396,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
                   AscendC::CompareScalar(v1_p_valid_mask[0], v1_p_valid[0], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
                   AscendC::PipeBarrier<PIPE_V>();
                   for (int32_t p_mask_row = 0; p_mask_row < 64; ++p_mask_row) {
-AscendC::Select<float, float>(v1_p_bmm1[(p_mask_row * 128)], v1_p_valid_mask[0], v1_p_bmm1[(p_mask_row * 128)], static_cast<float>(-CUDART_INF_F), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
+AscendC::Select<float, uint8_t>(v1_p_bmm1[(p_mask_row * 128)], v1_p_valid_mask[0], v1_p_bmm1[(p_mask_row * 128)], static_cast<float>(-CUDART_INF_F), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
                   }
                   AscendC::PipeBarrier<PIPE_V>();
                 }
@@ -475,7 +471,7 @@ AscendC::Select<float, float>(v1_p_bmm1[(p_mask_row * 128)], v1_p_valid_mask[0],
                 if (valid_k_size < ((n_idx_1 * 128) + 128)) {
                   AscendC::CompareScalar(v1_sy_valid_mask[0], v1_sy_chunk[0], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
                   AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, float>(v1_sy_reduce[0], v1_sy_valid_mask[0], v1_sy_reduce[0], static_cast<float>(-CUDART_INF_F), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
+AscendC::Select<float, uint8_t>(v1_sy_reduce[0], v1_sy_valid_mask[0], v1_sy_reduce[0], static_cast<float>(-CUDART_INF_F), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
                   AscendC::PipeBarrier<PIPE_V>();
                 }
                 tl::ascend::copy_ub_to_ub<float, float, 128>(v1_sy_storage[((n_idx_1 * 128) + 4096)], v1_sy_reduce[0], 1, 128, 128, 1, 128, 128);
@@ -508,7 +504,7 @@ AscendC::Select<float, float>(v1_sy_reduce[0], v1_sy_valid_mask[0], v1_sy_reduce
                 if (valid_k_size < ((n_idx_2 * 128) + 128)) {
                   AscendC::CompareScalar(v1_sy_valid_mask[0], v1_sy_chunk[0], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
                   AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, float>(v1_sy_storage[((n_idx_2 * 128) + 4096)], v1_sy_valid_mask[0], v1_sy_storage[((n_idx_2 * 128) + 4096)], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
+AscendC::Select<float, uint8_t>(v1_sy_storage[((n_idx_2 * 128) + 4096)], v1_sy_valid_mask[0], v1_sy_storage[((n_idx_2 * 128) + 4096)], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
                   AscendC::PipeBarrier<PIPE_V>();
                 }
               } else {
@@ -585,21 +581,13 @@ AscendC::Select<float, float>(v1_sy_storage[((n_idx_2 * 128) + 4096)], v1_sy_val
               AscendC::Sub(v1_bw_diff[0], v1_bw_sy[0], v1_bw_p[0], 64);
               AscendC::PipeBarrier<PIPE_V>();
               tl::ascend::Broadcast<float, 2, 0, false>(v1_bw_diff_2d[0],v1_bw_diff[0],tmp_ub,(uint32_t[]){16, 64}, (uint32_t[]){1, 64});
-              AscendC::CompareScalar(v1_bw_mask0[0], v1_bw_bmm2[0], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
+              AscendC::CompareScalar(v1_bw_mask0[0], v1_bw_bmm2[0], 0.000000e+00f, AscendC::CMPMODE::GT, 256);
               AscendC::PipeBarrier<PIPE_V>();
-              AscendC::CompareScalar(v1_bw_mask1[0], v1_bw_bmm2[128], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
+              AscendC::CompareScalar(v1_bw_mask1[0], v1_bw_bmm2[256], 0.000000e+00f, AscendC::CMPMODE::GT, 256);
               AscendC::PipeBarrier<PIPE_V>();
-              AscendC::CompareScalar(v1_bw_mask2[0], v1_bw_bmm2[256], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
+              AscendC::CompareScalar(v1_bw_mask2[0], v1_bw_bmm2[512], 0.000000e+00f, AscendC::CMPMODE::GT, 256);
               AscendC::PipeBarrier<PIPE_V>();
-              AscendC::CompareScalar(v1_bw_mask3[0], v1_bw_bmm2[384], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
-              AscendC::PipeBarrier<PIPE_V>();
-              AscendC::CompareScalar(v1_bw_mask4[0], v1_bw_bmm2[512], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
-              AscendC::PipeBarrier<PIPE_V>();
-              AscendC::CompareScalar(v1_bw_mask5[0], v1_bw_bmm2[640], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
-              AscendC::PipeBarrier<PIPE_V>();
-              AscendC::CompareScalar(v1_bw_mask6[0], v1_bw_bmm2[768], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
-              AscendC::PipeBarrier<PIPE_V>();
-              AscendC::CompareScalar(v1_bw_mask7[0], v1_bw_bmm2[896], 0.000000e+00f, AscendC::CMPMODE::GT, 128);
+              AscendC::CompareScalar(v1_bw_mask3[0], v1_bw_bmm2[768], 0.000000e+00f, AscendC::CMPMODE::GT, 256);
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Mul(v1_bw_bmm2[0], v1_bw_bmm2[0], v1_bw_diff_2d[0], 1024);
               AscendC::PipeBarrier<PIPE_V>();
@@ -608,21 +596,13 @@ AscendC::Select<float, float>(v1_sy_storage[((n_idx_2 * 128) + 4096)], v1_sy_val
               AscendC::Add(v1_bw_dw_accum[0], v1_bw_dw_accum[0], v1_bw_dw[0], 16);
               AscendC::Mul(v1_bw_rg[0], v1_bw_weight_2d[0], v1_bw_diff_2d[0], 1024);
               AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, float>(v1_bw_bmm2[0], v1_bw_mask0[0], v1_bw_rg[0], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
+AscendC::Select<float, uint8_t>(v1_bw_bmm2[0], v1_bw_mask0[0], v1_bw_rg[0], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
               AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, float>(v1_bw_bmm2[128], v1_bw_mask1[0], v1_bw_rg[128], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
+AscendC::Select<float, uint8_t>(v1_bw_bmm2[256], v1_bw_mask1[0], v1_bw_rg[256], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
               AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, float>(v1_bw_bmm2[256], v1_bw_mask2[0], v1_bw_rg[256], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
+AscendC::Select<float, uint8_t>(v1_bw_bmm2[512], v1_bw_mask2[0], v1_bw_rg[512], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
               AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, float>(v1_bw_bmm2[384], v1_bw_mask3[0], v1_bw_rg[384], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
-              AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, float>(v1_bw_bmm2[512], v1_bw_mask4[0], v1_bw_rg[512], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
-              AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, float>(v1_bw_bmm2[640], v1_bw_mask5[0], v1_bw_rg[640], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
-              AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, float>(v1_bw_bmm2[768], v1_bw_mask6[0], v1_bw_rg[768], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
-              AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, float>(v1_bw_bmm2[896], v1_bw_mask7[0], v1_bw_rg[896], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 128);
+AscendC::Select<float, uint8_t>(v1_bw_bmm2[768], v1_bw_mask3[0], v1_bw_rg[768], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Cast(v1_bw_rg_half[0], v1_bw_bmm2[0], AscendC::RoundMode::CAST_RINT, 1024);
               AscendC::PipeBarrier<PIPE_V>();
