@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -106,27 +106,27 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
     TORCH_CHECK(expert_idx.dim() == DIM_EXPERT_IDX, "expert_idx must be 2D, but got ", expert_idx.dim(), "D.");
     TORCH_CHECK(expert_num > 0, "expert_num must be greater than 0, current is: ", expert_num);
     TORCH_CHECK((drop_pad_mode == 0 || drop_pad_mode == 1),
-        "drop_pad_mode must be 0 or 1, current is: ", drop_pad_mode);
+                "drop_pad_mode must be 0 or 1, current is: ", drop_pad_mode);
     TORCH_CHECK((expert_tokens_num_type >= 0 && expert_tokens_num_type <= EXPERT_TOKENS_KEY_VALUE),
-        "expert_tokens_num_type must be 0, 1 or 2, current is: ", expert_tokens_num_type);
+                "expert_tokens_num_type must be 0, 1 or 2, current is: ", expert_tokens_num_type);
     TORCH_CHECK((row_idx_type == 0 || row_idx_type == 1),
-        "row_idx_type must be 0 or 1, current is: ", row_idx_type);
+                "row_idx_type must be 0 or 1, current is: ", row_idx_type);
     if (drop_pad_mode == 1) {
         TORCH_CHECK(expert_capacity > 0,
-            "expert_capacity must be greater than 0 when drop_pad_mode=1, current is: ", expert_capacity);
+                    "expert_capacity must be greater than 0 when drop_pad_mode=1, current is: ", expert_capacity);
     }
     bool has_topk_weight = topk_weight.has_value() && topk_weight.value().defined();
     if (has_topk_weight) {
         TORCH_CHECK(topk_weight.value().dim() == DIM_X,
-            "topk_weight must be 2D, but got ", topk_weight.value().dim(), "D.");
+                    "topk_weight must be 2D, but got ", topk_weight.value().dim(), "D.");
         TORCH_CHECK(topk_weight.value().size(0) == x.size(0),
-            "topk_weight row count must equal x row count, got ", topk_weight.value().size(0),
-            " vs ", x.size(0));
+                    "topk_weight row count must equal x row count, got ", topk_weight.value().size(0),
+                    " vs ", x.size(0));
         TORCH_CHECK(topk_weight.value().size(1) == expert_idx.size(1),
-            "topk_weight col count must equal expert_idx col count, got ", topk_weight.value().size(1),
-            " vs ", expert_idx.size(1));
+                    "topk_weight col count must equal expert_idx col count, got ", topk_weight.value().size(1),
+                    " vs ", expert_idx.size(1));
         TORCH_CHECK(topk_weight.value().scalar_type() == at::kFloat,
-            "topk_weight dtype must be float32, got ", topk_weight.value().scalar_type());
+                    "topk_weight dtype must be float32, got ", topk_weight.value().scalar_type());
     }
 
     // ---- Dimension computation (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp) ----
@@ -141,9 +141,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
     bool has_scale = p_scale.defined();
 
     // x_dtype: determine actual ACL dtype and adjust h for float4 (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp)
-    aclDataType x_acl_type = x_dtype.has_value()
-        ? GetAclDataType(x_dtype.value())
-        : ConvertToAclDataType(x.scalar_type());
+    aclDataType x_acl_type = x_dtype.has_value() ? GetAclDataType(x_dtype.value()) : ConvertToAclDataType(x.scalar_type());
     if (x_acl_type == aclDataType::ACL_FLOAT4_E2M1) {
         h = h * INT4_NUMS_IN_INT8;
     }
@@ -272,22 +270,16 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
 
     // ---- TensorWrapper for dtype overrides (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp) ----
     bool non_quant_fp8_or_fp4_input = (quant_mode == QUANT_MODE_UNQUANT) &&
-        (x.scalar_type() == at::kFloat8_e5m2 || x.scalar_type() == at::kFloat8_e4m3fn ||
-         x_acl_type == aclDataType::ACL_FLOAT4_E2M1);
+                                      (x.scalar_type() == at::kFloat8_e5m2 || x.scalar_type() == at::kFloat8_e4m3fn ||
+                                       x_acl_type == aclDataType::ACL_FLOAT4_E2M1);
 
-    auto scale_acl_dtype = non_quant_fp8_or_fp4_input
-        ? ACL_FLOAT8_E8M0
-        : ConvertToAclDataType(p_scale.defined() ? p_scale.scalar_type() : at::kFloat);
+    auto scale_acl_dtype = non_quant_fp8_or_fp4_input ? ACL_FLOAT8_E8M0 : ConvertToAclDataType(p_scale.defined() ? p_scale.scalar_type() : at::kFloat);
     TensorWrapper scale_wrapper = {p_scale, scale_acl_dtype};
 
-    auto expanded_scale_acl_dtype = non_quant_fp8_or_fp4_input
-        ? ACL_FLOAT8_E8M0
-        : ConvertToAclDataType(expanded_scale.scalar_type());
+    auto expanded_scale_acl_dtype = non_quant_fp8_or_fp4_input ? ACL_FLOAT8_E8M0 : ConvertToAclDataType(expanded_scale.scalar_type());
     TensorWrapper expanded_scale_wrapper = {expanded_scale, expanded_scale_acl_dtype};
 
-    TensorWrapper x_wrapper = {x, (quant_mode == QUANT_MODE_UNQUANT && x_dtype.has_value())
-        ? x_acl_type
-        : ConvertToAclDataType(x.scalar_type())};
+    TensorWrapper x_wrapper = {x, (quant_mode == QUANT_MODE_UNQUANT && x_dtype.has_value()) ? x_acl_type : ConvertToAclDataType(x.scalar_type())};
     TensorWrapper expanded_x_wrapper = {expanded_x, ConvertToAclDataType(expanded_x.scalar_type())};
 
     if (quant_mode == QUANT_MODE_UNQUANT && x_dtype.has_value()) {
@@ -310,7 +302,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
     c10::optional<at::Tensor> active_num_tensor_opt;
     if (active_num > 0) {
         active_num_tensor_opt = at::full({}, active_num,
-            at::TensorOptions().dtype(at::kLong).device(x.device()));
+                                         at::TensorOptions().dtype(at::kLong).device(x.device()));
     }
 
     // ---- Call aclnnMoeInitRoutingV4 ----
