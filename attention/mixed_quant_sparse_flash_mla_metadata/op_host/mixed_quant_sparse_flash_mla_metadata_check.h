@@ -164,7 +164,7 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "ori_mask_mode",
                                                   std::to_string(oriMaskMode).c_str(),
                                                   "When has_ori_kv is true, the value of ori_mask_mode "
-                                                  "must be in ['0', '3', '4']");
+                                                  "must be in [0, 3, 4]");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // ori_win_left >= -1
@@ -195,10 +195,8 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         // cmp_mask_mode: 0 or 3
         if (cmpMaskMode != static_cast<int64_t>(SparseModeMqsmla::DEFAULT_MASK) &&
             cmpMaskMode != static_cast<int64_t>(SparseModeMqsmla::RIGHT_DOWN_CAUSAL)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cmp_mask_mode",
-                                                  std::to_string(cmpMaskMode).c_str(),
-                                                  "When has_cmp_kv is true, the value of cmp_mask_mode "
-                                                  "must be in ['0', '3']");
+            OP_LOGE_FOR_INVALID_VALUE(MQSMLA_ACLNN_OP_NAME, "cmp_mask_mode", std::to_string(cmpMaskMode).c_str(),
+                                      "0 or 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // cmp_ratio: 1~128
@@ -217,24 +215,23 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (layoutQOptional == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "layout_q", "layout_q cannot be empty.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "layout_q", "layout_q cannot be empty");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (layoutKvOptional == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "layout_kv", "layout_kv cannot be empty.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "layout_kv", "layout_kv cannot be empty");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_q: BSND or TND
     if (strcmp(layoutQOptional, "TND") != 0 && strcmp(layoutQOptional, "BSND") != 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "layout_q", layoutQOptional,
-                                              "The value of layout_q must be in ['TND', 'BSND']");
+        OP_LOGE_FOR_INVALID_VALUE(MQSMLA_ACLNN_OP_NAME, "layout_q", layoutQOptional, "TND or BSND");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_kv: BSND, TND, or PA_BBND
     if (strcmp(layoutKvOptional, "BSND") != 0 && strcmp(layoutKvOptional, "TND") != 0 &&
         strcmp(layoutKvOptional, "PA_BBND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "layout_kv", layoutKvOptional,
-                                              "The value of layout_kv must be in ['TND', 'BSND', 'PA_BBND']");
+                                              "The value of layout_kv must be in [TND, BSND, PA_BBND]");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 非PA场景下（layout_kv != PA_BBND），layout_q必须与layout_kv相同
@@ -296,7 +293,7 @@ aclnnStatus CheckExistenceMqsmla(const aclTensor *cuSeqlensQOptional, const aclT
     if (strcmp(layoutQOptional, "TND") == 0) {
         if (!IsTensorExistMqsmla(cuSeqlensQOptional)) {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_q",
-                                                     "When layout_q is TND, cu_seqlens_q cannot be empty.");
+                                                     "When layout_q is TND, cu_seqlens_q cannot be empty");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -306,7 +303,7 @@ aclnnStatus CheckExistenceMqsmla(const aclTensor *cuSeqlensQOptional, const aclT
             if (!IsTensorExistMqsmla(cuSeqlensOriKvOptional)) {
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_ori_kv",
                                                          "When has_ori_kv is true and layout_kv is TND, "
-                                                         "cu_seqlens_ori_kv cannot be empty.");
+                                                         "cu_seqlens_ori_kv cannot be empty");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -316,7 +313,7 @@ aclnnStatus CheckExistenceMqsmla(const aclTensor *cuSeqlensQOptional, const aclT
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "seqused_ori_kv",
                                                          "When has_ori_kv is true, ori_mask_mode != 0 or "
                                                          "ori_topk == 0, and layout_kv is PA_BBND, "
-                                                         "seqused_ori_kv cannot be empty.");
+                                                         "seqused_ori_kv cannot be empty");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -325,7 +322,7 @@ aclnnStatus CheckExistenceMqsmla(const aclTensor *cuSeqlensQOptional, const aclT
             if (!IsTensorExistMqsmla(oriTopkLengthOptional)) {
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "ori_topk_length",
                                                          "When has_ori_kv is true, ori_topk is not 0 and "
-                                                         "ori_mask_mode is 0, ori_topk_length cannot be empty.");
+                                                         "ori_mask_mode is 0, ori_topk_length cannot be empty");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -336,7 +333,7 @@ aclnnStatus CheckExistenceMqsmla(const aclTensor *cuSeqlensQOptional, const aclT
             if (!IsTensorExistMqsmla(cuSeqlensCmpKvOptional)) {
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_cmp_kv",
                                                          "When has_cmp_kv is true and layout_kv is TND, "
-                                                         "cu_seqlens_cmp_kv cannot be empty.");
+                                                         "cu_seqlens_cmp_kv cannot be empty");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -346,7 +343,7 @@ aclnnStatus CheckExistenceMqsmla(const aclTensor *cuSeqlensQOptional, const aclT
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "seqused_cmp_kv",
                                                          "When has_cmp_kv is true, cmp_mask_mode != 0 or "
                                                          "cmp_topk == 0, and layout_kv is PA_BBND, "
-                                                         "seqused_cmp_kv cannot be empty.");
+                                                         "seqused_cmp_kv cannot be empty");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -355,7 +352,7 @@ aclnnStatus CheckExistenceMqsmla(const aclTensor *cuSeqlensQOptional, const aclT
             if (!IsTensorExistMqsmla(cmpResidualKvOptional)) {
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cmp_residual_kv",
                                                          "When has_cmp_kv is true, cmp_ratio is not 1 and "
-                                                         "cmp_mask_mode is 3, cmp_residual_kv cannot be empty.");
+                                                         "cmp_mask_mode is 3, cmp_residual_kv cannot be empty");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -364,14 +361,14 @@ aclnnStatus CheckExistenceMqsmla(const aclTensor *cuSeqlensQOptional, const aclT
             if (!IsTensorExistMqsmla(cmpTopkLengthOptional)) {
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cmp_topk_length",
                                                          "When has_cmp_kv is true, cmp_topk is not 0 and "
-                                                         "cmp_mask_mode is 0, cmp_topk_length cannot be empty.");
+                                                         "cmp_mask_mode is 0, cmp_topk_length cannot be empty");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
     }
     // metadata 存在性校验
     if (!IsTensorExistMqsmla(metadata)) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "metadata", "metadata cannot be empty.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "metadata", "metadata cannot be empty");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -450,7 +447,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
         dataType = GetDataTypeMqsmla(cuSeqlensQOptional);
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_q", ToString(dataType).GetString(),
-                                                  "The dtype of cu_seqlens_q must be int32.");
+                                                  "The dtype of cu_seqlens_q must be int32");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -466,7 +463,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
         dataType = GetDataTypeMqsmla(sequsedQOptional);
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "seqused_q", ToString(dataType).GetString(),
-                                                  "The dtype of seqused_q must be int32.");
+                                                  "The dtype of seqused_q must be int32");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -486,7 +483,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_ori_kv",
                                                       ToString(dataType).GetString(),
-                                                      "The dtype of cu_seqlens_ori_kv must be int32.");
+                                                      "The dtype of cu_seqlens_ori_kv must be int32");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -504,7 +501,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "seqused_ori_kv",
                                                       ToString(dataType).GetString(),
-                                                      "The dtype of seqused_ori_kv must be int32.");
+                                                      "The dtype of seqused_ori_kv must be int32");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -517,7 +514,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "ori_topk_length",
                                                              std::to_string(dimNum).c_str(),
                                                              "The shape dim of ori_topk_length must be 2 "
-                                                             "when layout_q is TND.");
+                                                             "when layout_q is TND");
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             } else if (strcmp(layoutQOptional, "BSND") == 0) {
@@ -525,7 +522,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "ori_topk_length",
                                                              std::to_string(dimNum).c_str(),
                                                              "The shape dim of ori_topk_length must be 3 "
-                                                             "when layout_q is BSND.");
+                                                             "when layout_q is BSND");
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             }
@@ -534,7 +531,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "ori_topk_length",
                                                       ToString(dataType).GetString(),
-                                                      "The dtype of ori_topk_length must be int32.");
+                                                      "The dtype of ori_topk_length must be int32");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -555,7 +552,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_cmp_kv",
                                                       ToString(dataType).GetString(),
-                                                      "The dtype of cu_seqlens_cmp_kv must be int32.");
+                                                      "The dtype of cu_seqlens_cmp_kv must be int32");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -573,7 +570,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "seqused_cmp_kv",
                                                       ToString(dataType).GetString(),
-                                                      "The dtype of seqused_cmp_kv must be int32.");
+                                                      "The dtype of seqused_cmp_kv must be int32");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -591,7 +588,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cmp_residual_kv",
                                                       ToString(dataType).GetString(),
-                                                      "The dtype of cmp_residual_kv must be int32.");
+                                                      "The dtype of cmp_residual_kv must be int32");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -604,7 +601,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cmp_topk_length",
                                                              std::to_string(dimNum).c_str(),
                                                              "The shape dim of cmp_topk_length must be 2 "
-                                                             "when layout_q is TND.");
+                                                             "when layout_q is TND");
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             } else if (strcmp(layoutQOptional, "BSND") == 0) {
@@ -612,7 +609,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cmp_topk_length",
                                                              std::to_string(dimNum).c_str(),
                                                              "The shape dim of cmp_topk_length must be 3 "
-                                                             "when layout_q is BSND.");
+                                                             "when layout_q is BSND");
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             }
@@ -621,7 +618,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cmp_topk_length",
                                                       ToString(dataType).GetString(),
-                                                      "The dtype of cmp_topk_length must be int32.");
+                                                      "The dtype of cmp_topk_length must be int32");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -645,7 +642,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
         dataType = GetDataTypeMqsmla(metadata);
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "metadata", ToString(dataType).GetString(),
-                                                  "The dtype of metadata must be int32.");
+                                                  "The dtype of metadata must be int32");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -657,13 +654,13 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
     if (strcmp(layoutQOptional, "TND") == 0 && IsTensorExistMqsmla(sequsedQOptional)) {
         int64_t cuSeqlensQBatchSize = cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         if (cuSeqlensQBatchSize != queryBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_q, seqused_q",
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_q and seqused_q",
                                                        std::to_string(cuSeqlensQOptional->GetViewShape().GetDim(0)) +
-                                                           ", " +
+                                                           " and " +
                                                            std::to_string(sequsedQOptional->GetViewShape().GetDim(0)),
                                                        "When layout_q is TND and seqused_q is passed, "
                                                        "the shape size of cu_seqlens_q minus 1 must be equal to "
-                                                       "the shape size of seqused_q.");
+                                                       "the shape size of seqused_q");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -675,21 +672,21 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
         if (queryBatchSize != oriKvBatchSize) {
             if (IsTensorSourceMqsmla(querySource) && IsTensorSourceMqsmla(oriKvSource)) {
                 OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-                    MQSMLA_ACLNN_OP_NAME, querySource + ", " + oriKvSource,
-                    std::to_string(GetRawShapeSizeMqsmla(querySource, queryBatchSize)) + ", " +
+                    MQSMLA_ACLNN_OP_NAME, querySource + " and " + oriKvSource,
+                    std::to_string(GetRawShapeSizeMqsmla(querySource, queryBatchSize)) + " and " +
                         std::to_string(GetRawShapeSizeMqsmla(oriKvSource, oriKvBatchSize)),
                     "When has_ori_kv is true, " + GetSourceDescMqsmla(querySource) + " must be equal to " +
-                        GetSourceDescMqsmla(oriKvSource) + ".");
+                        GetSourceDescMqsmla(oriKvSource));
             } else if (IsTensorSourceMqsmla(querySource)) {
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                     MQSMLA_ACLNN_OP_NAME, querySource,
                     std::to_string(GetRawShapeSizeMqsmla(querySource, queryBatchSize)).c_str(),
-                    "When has_ori_kv is true, " + GetSourceDescMqsmla(querySource) + " must be equal to batch_size.");
+                    "When has_ori_kv is true, " + GetSourceDescMqsmla(querySource) + " must be equal to batch_size");
             } else {
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                     MQSMLA_ACLNN_OP_NAME, oriKvSource,
                     std::to_string(GetRawShapeSizeMqsmla(oriKvSource, oriKvBatchSize)).c_str(),
-                    "When has_ori_kv is true, " + GetSourceDescMqsmla(oriKvSource) + " must be equal to batch_size.");
+                    "When has_ori_kv is true, " + GetSourceDescMqsmla(oriKvSource) + " must be equal to batch_size");
             }
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -698,12 +695,12 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             int64_t cuSeqlensOriKvBatchSize = cuSeqlensOriKvOptional->GetViewShape().GetDim(0) - 1;
             if (cuSeqlensOriKvBatchSize != oriKvBatchSize) {
                 OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-                    MQSMLA_ACLNN_OP_NAME, "cu_seqlens_ori_kv, seqused_ori_kv",
-                    std::to_string(cuSeqlensOriKvOptional->GetViewShape().GetDim(0)) + ", " +
+                    MQSMLA_ACLNN_OP_NAME, "cu_seqlens_ori_kv and seqused_ori_kv",
+                    std::to_string(cuSeqlensOriKvOptional->GetViewShape().GetDim(0)) + " and " +
                         std::to_string(sequsedOriKvOptional->GetViewShape().GetDim(0)),
                     "When layout_kv is TND and seqused_ori_kv is passed, "
                     "the shape size of cu_seqlens_ori_kv minus 1 must be "
-                    "equal to the shape size of seqused_ori_kv.");
+                    "equal to the shape size of seqused_ori_kv");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -716,21 +713,21 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
         if (queryBatchSize != cmpKvBatchSize) {
             if (IsTensorSourceMqsmla(querySource) && IsTensorSourceMqsmla(cmpKvSource)) {
                 OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-                    MQSMLA_ACLNN_OP_NAME, querySource + ", " + cmpKvSource,
-                    std::to_string(GetRawShapeSizeMqsmla(querySource, queryBatchSize)) + ", " +
+                    MQSMLA_ACLNN_OP_NAME, querySource + " and " + cmpKvSource,
+                    std::to_string(GetRawShapeSizeMqsmla(querySource, queryBatchSize)) + " and " +
                         std::to_string(GetRawShapeSizeMqsmla(cmpKvSource, cmpKvBatchSize)),
                     "When has_cmp_kv is true, " + GetSourceDescMqsmla(querySource) + " must be equal to " +
-                        GetSourceDescMqsmla(cmpKvSource) + ".");
+                        GetSourceDescMqsmla(cmpKvSource));
             } else if (IsTensorSourceMqsmla(querySource)) {
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                     MQSMLA_ACLNN_OP_NAME, querySource,
                     std::to_string(GetRawShapeSizeMqsmla(querySource, queryBatchSize)).c_str(),
-                    "When has_cmp_kv is true, " + GetSourceDescMqsmla(querySource) + " must be equal to batch_size.");
+                    "When has_cmp_kv is true, " + GetSourceDescMqsmla(querySource) + " must be equal to batch_size");
             } else {
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                     MQSMLA_ACLNN_OP_NAME, cmpKvSource,
                     std::to_string(GetRawShapeSizeMqsmla(cmpKvSource, cmpKvBatchSize)).c_str(),
-                    "When has_cmp_kv is true, " + GetSourceDescMqsmla(cmpKvSource) + " must be equal to batch_size.");
+                    "When has_cmp_kv is true, " + GetSourceDescMqsmla(cmpKvSource) + " must be equal to batch_size");
             }
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -739,12 +736,12 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             int64_t cuSeqlensCmpKvBatchSize = cuSeqlensCmpKvOptional->GetViewShape().GetDim(0) - 1;
             if (cuSeqlensCmpKvBatchSize != cmpKvBatchSize) {
                 OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-                    MQSMLA_ACLNN_OP_NAME, "cu_seqlens_cmp_kv, seqused_cmp_kv",
-                    std::to_string(cuSeqlensCmpKvOptional->GetViewShape().GetDim(0)) + ", " +
+                    MQSMLA_ACLNN_OP_NAME, "cu_seqlens_cmp_kv and seqused_cmp_kv",
+                    std::to_string(cuSeqlensCmpKvOptional->GetViewShape().GetDim(0)) + " and " +
                         std::to_string(sequsedCmpKvOptional->GetViewShape().GetDim(0)),
                     "When layout_kv is TND and seqused_cmp_kv is passed, "
                     "the shape size of cu_seqlens_cmp_kv minus 1 must be "
-                    "equal to the shape size of seqused_cmp_kv.");
+                    "equal to the shape size of seqused_cmp_kv");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -753,16 +750,16 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             if (cmpResidualKvOptional->GetViewShape().GetDim(0) != queryBatchSize) {
                 if (IsTensorSourceMqsmla(querySource)) {
                     OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-                        MQSMLA_ACLNN_OP_NAME, "cmp_residual_kv, " + querySource,
-                        std::to_string(cmpResidualKvOptional->GetViewShape().GetDim(0)) + ", " +
+                        MQSMLA_ACLNN_OP_NAME, "cmp_residual_kv and " + querySource,
+                        std::to_string(cmpResidualKvOptional->GetViewShape().GetDim(0)) + " and " +
                             std::to_string(GetRawShapeSizeMqsmla(querySource, queryBatchSize)),
-                        "The shape size of cmp_residual_kv must be equal to " + GetSourceDescMqsmla(querySource) + ".");
+                        "The shape size of cmp_residual_kv must be equal to " + GetSourceDescMqsmla(querySource));
                 } else {
                     OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                         MQSMLA_ACLNN_OP_NAME, "cmp_residual_kv",
                         std::to_string(cmpResidualKvOptional->GetViewShape().GetDim(0)).c_str(),
                         "The shape size of cmp_residual_kv must be equal "
-                        "to batch_size.");
+                        "to batch_size");
                 }
                 return ACLNN_ERR_PARAM_INVALID;
             }

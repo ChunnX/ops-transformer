@@ -167,8 +167,7 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
     }
     // mask_mode 校验
     if (maskMode != SLI_NO_MASK_MODE && maskMode != SLI_CAUSAL_MASK_MODE) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "mask_mode", std::to_string(maskMode).c_str(),
-                                              "The value of mask_mode must be in ['0', '3']");
+        OP_LOGE_FOR_INVALID_VALUE(SLI_ACLNN_OP_NAME, "mask_mode", std::to_string(maskMode).c_str(), "0 or 3");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // cmp_ratio 校验
@@ -182,22 +181,20 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
     }
     // layout_q 校验
     if (layoutQOptional == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SLI_ACLNN_OP_NAME, "layout_q", "layout_q cannot be empty.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SLI_ACLNN_OP_NAME, "layout_q", "layout_q cannot be empty");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strcmp(layoutQOptional, "TND") != 0 && strcmp(layoutQOptional, "BSND") != 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "layout_q", layoutQOptional,
-                                              "The value of layout_q must be in ['TND', 'BSND']");
+        OP_LOGE_FOR_INVALID_VALUE(SLI_ACLNN_OP_NAME, "layout_q", layoutQOptional, "TND or BSND");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_k 校验
     if (layoutKOptional == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SLI_ACLNN_OP_NAME, "layout_k", "layout_k cannot be empty.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SLI_ACLNN_OP_NAME, "layout_k", "layout_k cannot be empty");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strcmp(layoutKOptional, "TND") != 0 && strcmp(layoutKOptional, "BSND") != 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "layout_k", layoutKOptional,
-                                              "The value of layout_k must be in ['TND', 'BSND']");
+        OP_LOGE_FOR_INVALID_VALUE(SLI_ACLNN_OP_NAME, "layout_k", layoutKOptional, "TND or BSND");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_q必须与layout_k相同
@@ -229,7 +226,7 @@ aclnnStatus CheckExistenceSli(int64_t maskMode, int64_t cmpRatio, const aclTenso
     if (strcmp(layoutQOptional, "TND") == 0) {
         if (!IsTensorExistSli(cuSeqlensQOptional)) {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SLI_ACLNN_OP_NAME, "cu_seqlens_q",
-                                                     "When layout_q is TND, cu_seqlens_q cannot be empty.");
+                                                     "When layout_q is TND, cu_seqlens_q cannot be empty");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -237,7 +234,7 @@ aclnnStatus CheckExistenceSli(int64_t maskMode, int64_t cmpRatio, const aclTenso
     if (strcmp(layoutKOptional, "TND") == 0) {
         if (!IsTensorExistSli(cuSeqlensKOptional)) {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SLI_ACLNN_OP_NAME, "cu_seqlens_k",
-                                                     "When layout_k is TND, cu_seqlens_k cannot be empty.");
+                                                     "When layout_k is TND, cu_seqlens_k cannot be empty");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -246,13 +243,13 @@ aclnnStatus CheckExistenceSli(int64_t maskMode, int64_t cmpRatio, const aclTenso
         if (!IsTensorExistSli(cmpResidualKOptional)) {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SLI_ACLNN_OP_NAME, "cmp_residual_k",
                                                      "When cmp_ratio is not 1 and mask_mode is CAUSAL, "
-                                                     "cmp_residual_k cannot be empty.");
+                                                     "cmp_residual_k cannot be empty");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     // metadata 存在性校验
     if (!IsTensorExistSli(metadata)) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SLI_ACLNN_OP_NAME, "metadata", "metadata cannot be empty.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SLI_ACLNN_OP_NAME, "metadata", "metadata cannot be empty");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -276,7 +273,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
         dataType = GetDataTypeSli(cuSeqlensQOptional);
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SLI_ACLNN_OP_NAME, "cu_seqlens_q", ToString(dataType).GetString(),
-                                                  "The dtype of cu_seqlens_q must be int32.");
+                                                  "The dtype of cu_seqlens_q must be int32");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -290,7 +287,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
         dataType = GetDataTypeSli(cuSeqlensKOptional);
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SLI_ACLNN_OP_NAME, "cu_seqlens_k", ToString(dataType).GetString(),
-                                                  "The dtype of cu_seqlens_k must be int32.");
+                                                  "The dtype of cu_seqlens_k must be int32");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -304,7 +301,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
         dataType = GetDataTypeSli(sequsedQOptional);
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SLI_ACLNN_OP_NAME, "seqused_q", ToString(dataType).GetString(),
-                                                  "The dtype of seqused_q must be int32.");
+                                                  "The dtype of seqused_q must be int32");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -318,7 +315,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
         dataType = GetDataTypeSli(sequsedKOptional);
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SLI_ACLNN_OP_NAME, "seqused_k", ToString(dataType).GetString(),
-                                                  "The dtype of seqused_k must be int32.");
+                                                  "The dtype of seqused_k must be int32");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -332,7 +329,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
         dataType = GetDataTypeSli(cmpResidualKOptional);
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SLI_ACLNN_OP_NAME, "cmp_residual_k", ToString(dataType).GetString(),
-                                                  "The dtype of cmp_residual_k must be int32.");
+                                                  "The dtype of cmp_residual_k must be int32");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -346,7 +343,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
         dataType = GetDataTypeSli(metadata);
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(SLI_ACLNN_OP_NAME, "metadata", ToString(dataType).GetString(),
-                                                  "The dtype of metadata must be int32.");
+                                                  "The dtype of metadata must be int32");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 元素数
@@ -367,18 +364,18 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (queryBatchSize != keyBatchSize) {
         if (IsTensorSourceSli(querySource) && IsTensorSourceSli(keySource)) {
             OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-                SLI_ACLNN_OP_NAME, querySource + ", " + keySource,
-                std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)) + ", " +
+                SLI_ACLNN_OP_NAME, querySource + " and " + keySource,
+                std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)) + " and " +
                     std::to_string(GetRawShapeSizeSli(keySource, keyBatchSize)),
-                GetSourceDescSli(querySource) + " must be equal to " + GetSourceDescSli(keySource) + ".");
+                GetSourceDescSli(querySource) + " must be equal to " + GetSourceDescSli(keySource));
         } else if (IsTensorSourceSli(querySource)) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                 SLI_ACLNN_OP_NAME, querySource, std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)).c_str(),
-                GetSourceDescSli(querySource) + " must be equal to batch_size.");
+                GetSourceDescSli(querySource) + " must be equal to batch_size");
         } else {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                 SLI_ACLNN_OP_NAME, keySource, std::to_string(GetRawShapeSizeSli(keySource, keyBatchSize)).c_str(),
-                GetSourceDescSli(keySource) + " must be equal to batch_size.");
+                GetSourceDescSli(keySource) + " must be equal to batch_size");
         }
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -386,13 +383,13 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (strcmp(layoutQOptional, "TND") == 0 && IsTensorExistSli(sequsedQOptional)) {
         int64_t cuSeqlensQBatchSize = cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         if (cuSeqlensQBatchSize != queryBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SLI_ACLNN_OP_NAME, "cu_seqlens_q, seqused_q",
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SLI_ACLNN_OP_NAME, "cu_seqlens_q and seqused_q",
                                                        std::to_string(cuSeqlensQOptional->GetViewShape().GetDim(0)) +
-                                                           ", " +
+                                                           " and " +
                                                            std::to_string(sequsedQOptional->GetViewShape().GetDim(0)),
                                                        "When layout_q is TND and seqused_q is passed, "
                                                        "the shape size of cu_seqlens_q minus 1 must be equal to "
-                                                       "the shape size of seqused_q.");
+                                                       "the shape size of seqused_q");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -400,13 +397,13 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (strcmp(layoutKOptional, "TND") == 0 && IsTensorExistSli(sequsedKOptional)) {
         int64_t cuSeqlensKBatchSize = cuSeqlensKOptional->GetViewShape().GetDim(0) - 1;
         if (cuSeqlensKBatchSize != keyBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SLI_ACLNN_OP_NAME, "cu_seqlens_k, seqused_k",
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SLI_ACLNN_OP_NAME, "cu_seqlens_k and seqused_k",
                                                        std::to_string(cuSeqlensKOptional->GetViewShape().GetDim(0)) +
-                                                           ", " +
+                                                           " and " +
                                                            std::to_string(sequsedKOptional->GetViewShape().GetDim(0)),
                                                        "When layout_k is TND and seqused_k is passed, "
                                                        "the shape size of cu_seqlens_k minus 1 must be equal to "
-                                                       "the shape size of seqused_k.");
+                                                       "the shape size of seqused_k");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -416,15 +413,15 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
         if (cmpResidualKBatch != queryBatchSize) {
             if (IsTensorSourceSli(querySource)) {
                 OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-                    SLI_ACLNN_OP_NAME, "cmp_residual_k, " + querySource,
-                    std::to_string(cmpResidualKBatch) + ", " +
+                    SLI_ACLNN_OP_NAME, "cmp_residual_k and " + querySource,
+                    std::to_string(cmpResidualKBatch) + " and " +
                         std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)),
-                    "The shape size of cmp_residual_k must be equal to " + GetSourceDescSli(querySource) + ".");
+                    "The shape size of cmp_residual_k must be equal to " + GetSourceDescSli(querySource));
             } else {
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SLI_ACLNN_OP_NAME, "cmp_residual_k",
                                                           std::to_string(cmpResidualKBatch).c_str(),
                                                           "The shape size of cmp_residual_k must be equal "
-                                                          "to batch_size.");
+                                                          "to batch_size");
             }
             return ACLNN_ERR_PARAM_INVALID;
         }
