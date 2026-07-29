@@ -255,7 +255,7 @@ def tilelang_grad_kl_loss_single_kernel(
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
     full_valid=False, k_scatter_exec=None,
     source_s2=None, sparse_k_stride=None, serial_task_pipeline=False,
-    c1_serial=False, v0_single_slot=False,
+    c1_serial=False, v0_single_slot=False, v0_zero_first=False,
 ):
     source_s2 = S2 if source_s2 is None else source_s2
     sparse_k_stride = K if sparse_k_stride is None else sparse_k_stride
@@ -389,19 +389,40 @@ def tilelang_grad_kl_loss_single_kernel(
                         for chunk_id in T.serial(gather_chunks):
                             chunk_start = aiv_start + chunk_id * GATHER_CHUNK_SIZE
                             T.wait_flag("mte3", "mte2", 0)
-                            for lane in T.serial(GATHER_CHUNK_SIZE):
-                                k_id = chunk_start + lane
-                                sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
-                                if sparse_idx >= 0:
-                                    T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
-                                    T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
-                                    if d_rope > 0:
-                                        T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
-                                if sparse_idx < 0:
+                            if v0_zero_first:
+                                # 诊断部分有效 chunk 内的顺序问题：先清空整个槽位，
+                                # 等待 MTE2 完成，再用有效 gather 覆盖前缀行。
+                                for lane in T.serial(GATHER_CHUNK_SIZE):
                                     T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
                                     T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
                                     if d_rope > 0:
                                         T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
+                                T.set_flag("mte2", "v", 0)
+                                T.wait_flag("mte2", "v", 0)
+                                T.set_flag("v", "mte2", 0)
+                                T.wait_flag("v", "mte2", 0)
+                                for lane in T.serial(GATHER_CHUNK_SIZE):
+                                    k_id = chunk_start + lane
+                                    sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
+                                    if sparse_idx >= 0:
+                                        T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                                        T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
+                                        if d_rope > 0:
+                                            T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
+                            else:
+                                for lane in T.serial(GATHER_CHUNK_SIZE):
+                                    k_id = chunk_start + lane
+                                    sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
+                                    if sparse_idx >= 0:
+                                        T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                                        T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
+                                        if d_rope > 0:
+                                            T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
+                                    if sparse_idx < 0:
+                                        T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
+                                        T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
+                                        if d_rope > 0:
+                                            T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
                             T.set_flag("mte2", "mte3", 0)
                             T.wait_flag("mte2", "mte3", 0)
                             T.copy(v0_key_ub[0, 0:GATHER_CHUNK_SIZE, 0:DQuery],
@@ -2574,6 +2595,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         _C1_SERIAL = os.environ.get("SLIG_C1_SERIAL", "0") == "1"
         # V0 单槽仅用于确认三路 gather 的 ping-pong ownership 问题。
         _V0_SINGLE_SLOT = os.environ.get("SLIG_V0_SINGLE_SLOT", "0") == "1"
+        # V0 先清零仅用于确认部分有效 chunk 内 gather 与补零的顺序问题。
+        _V0_ZERO_FIRST = os.environ.get("SLIG_V0_ZERO_FIRST", "0") == "1"
+        if _V0_ZERO_FIRST and not _V0_SINGLE_SLOT:
+            raise ValueError("SLIG_V0_ZERO_FIRST=1 must be used with SLIG_V0_SINGLE_SLOT=1")
         _GATHER_SENTINEL = 123.0
 
         if _PROFILE:
@@ -2627,6 +2652,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             _SERIAL_TASK_PIPELINE,
             _C1_SERIAL,
             _V0_SINGLE_SLOT,
+            _V0_ZERO_FIRST,
         )
 
         if cache_key in _kernel_cache:
@@ -2636,7 +2662,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
-                _SERIAL_TASK_PIPELINE, _C1_SERIAL, _V0_SINGLE_SLOT,
+                _SERIAL_TASK_PIPELINE, _C1_SERIAL, _V0_SINGLE_SLOT, _V0_ZERO_FIRST,
             )
 
             # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
