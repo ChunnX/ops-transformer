@@ -27,7 +27,7 @@ namespace ge {
 * @li scale: A 1D or 2D tensor. Shape is: (B*S) or (expert_end-expert_start, H) when quant_mode is 1.
              When quant_mode is 13, scale can be omitted or shape is (1, H). Type is:Float32. Format support ND.
 * @li offset: A 2D tensor. Shape is: (expert_end - expert_start, 1) or (expert_end - expert_start, H).
-*             Type is:Float32. Format support ND.
+               Type is:Float32. Format support ND.
 * @par Outputs:
 * @li expanded_x: A 2D tensor. Shape is: (B*S*K, H). When quant_mode is -1, type is:Int8, BFloat16, Float16, Float32,
                   Hif8, FLOAT8_E5M2, FLOAT8_E4M3FN or FLOAT4_E2M1.

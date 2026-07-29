@@ -2,7 +2,7 @@
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_init_routing_v4)
 
-## 产品支持情况	
+## 产品支持情况
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
@@ -18,7 +18,7 @@
 - 接口功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化、静态量化和动态量化模式。本接口针对V3接口[aclnnMoeInitRoutingV3](../../moe_init_routing_v3/docs/aclnnMoeInitRoutingV3.md)做出如下功能变更，请根据实际情况选择合适的接口：<br>
   <ol><li>active_num从属性改为可选输入，支持图模式下动态传入active_num值。</li><li>新增可选输入topkWeight和可选输出expandedTopkWeightOut，支持对topkWeight按排序后的索引进行重排，使得expandedTopkWeightOut与expandedXOut一一对应。topkWeight与expandedTopkWeightOut必须同时传入或同时不传入。</li></ol>
 
-- 计算公式：  
+- 计算公式：
 
   1.对输入expertIdx做排序，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx：
 
@@ -38,7 +38,7 @@
       $$
       expandedRowIdxOut[sortedRowIdx[i]]=i
       $$
-      
+
   3.对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensCountOrCumsumOutOptional：
 
     $$
@@ -51,7 +51,7 @@
      $$
      quantResult=round((x∗scaleOptional)+offsetOptional)
      $$
-     
+
     - 动态quant：
         - 若不输入scale：
 
@@ -74,7 +74,7 @@
             $$
 
         - 当quantMode为13时，动态量化使用对称量化范围[-8, 7]，scale计算中的分母为7，量化结果沿H维每两个INT4值打包为1个字节。
-  
+
   5.若活跃的expert范围为全专家范围时，按照Scatter索引搬运token；反之按照Gather索引搬运token。在dropPadMode为1时将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。得出expandedXOut：
     - 非量化场景
       - 按照Scatter索引搬运
@@ -131,38 +131,38 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 "aclnnMoeInitRoutingV4GetWorkspaceSize"接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMoeInitRoutingV4"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用 "aclnnMoeInitRoutingV4GetWorkspaceSize"接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMoeInitRoutingV4"接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV4GetWorkspaceSize(
-  const aclTensor   *x, 
-  const aclTensor   *expertIdx, 
-  const aclTensor   *scaleOptional, 
-  const aclTensor   *offsetOptional, 
-  const aclTensor   *activeNumOptional, 
+  const aclTensor   *x,
+  const aclTensor   *expertIdx,
+  const aclTensor   *scaleOptional,
+  const aclTensor   *offsetOptional,
+  const aclTensor   *activeNumOptional,
   const aclTensor   *topkWeightOptional,
-  int64_t            expertCapacity, 
-  int64_t            expertNum, 
-  int64_t            dropPadMode, 
-  int64_t            expertTokensNumType, 
-  bool               expertTokensNumFlag, 
-  int64_t            quantMode, 
-  const aclIntArray *activeExpertRangeOptional, 
-  int64_t            rowIdxType, 
+  int64_t            expertCapacity,
+  int64_t            expertNum,
+  int64_t            dropPadMode,
+  int64_t            expertTokensNumType,
+  bool               expertTokensNumFlag,
+  int64_t            quantMode,
+  const aclIntArray *activeExpertRangeOptional,
+  int64_t            rowIdxType,
   const aclTensor   *expandedXOut,
   const aclTensor   *expandedRowIdxOut,
   const aclTensor   *expertTokensCountOrCumsumOut,
-  const aclTensor   *expandedScaleOut, 
+  const aclTensor   *expandedScaleOut,
   const aclTensor   *expandedTopkWeightOut,
-  uint64_t          *workspaceSize, 
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV4(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -477,10 +477,10 @@ aclnnStatus aclnnMoeInitRoutingV4(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-    
+
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 319px">
   <col style="width: 144px">
@@ -531,7 +531,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
     - activeNum等于NUM_ROWS*K。
     - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32，表示对activeExpertRangeOptional范围内的expert按H维广播smooth scale；offsetOptional不输入。
     - expertTokensNumType为0或1时，expertTokensCountOrCumsumOut的shape为[expertEnd-expertStart]；expertTokensNumType为2时，expertTokensCountOrCumsumOut的shape为[expertNum, 2]。
-    
+
 ## aclnnMoeInitRoutingV4
 
 - **参数说明：**
@@ -573,7 +573,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -600,7 +600,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

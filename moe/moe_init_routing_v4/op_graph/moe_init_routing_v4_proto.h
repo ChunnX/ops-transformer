@@ -25,7 +25,7 @@ namespace ge {
          or FLOAT4_E2M1. Format support ND.
 * @li expert_idx: A 2D tensor. Shape is: (B*S, K). Type is:Int32. Expert index. Format support ND.
 * @li scale: A 1D or 2D tensor. Shape is: (B*S) or (expert_end-expert_start, H) when quant_mode is 1.
-             When quant_mode is 13, scale can be omitted or shape is (1, H). Type is:Float32 or Float8_E8M0. 
+             When quant_mode is 13, scale can be omitted or shape is (1, H). Type is:Float32 or Float8_E8M0.
              Format support ND.
 * @li offset: A 2D tensor. Shape is: (expert_end - expert_start, 1) or (expert_end - expert_start, H).
 *             Type is:Float32. Format support ND.
@@ -52,7 +52,7 @@ namespace ge {
                                        Type is:Int64. shape is (expert_end - expert_start, ). Format support ND.
 * @li expanded_scale: A 1D tensor when quant_mode in [-1, 0, 1, 13]. Shape is: (B*S*K).
                       Type is:Float32. The data type must be the same as that of scale.
-                      A 2D tensor when quant_mode in [2, 3, 16, 17]. Shape is: (B*S*K, M), 
+                      A 2D tensor when quant_mode in [2, 3, 16, 17]. Shape is: (B*S*K, M),
                       in which M is CeilAlign(CeilDiv(H, 32), 2). Type is: Float8_E8M0.
                       A 2D tensor when quant_mode in [4, 5, 14, 15]. Shape is: (B*S*K, CeilDiv(H, 128)).
                       Type is: Float32.
