@@ -66,7 +66,7 @@ def generate_and_save(param_combinations):
         sparse_flash_mla_golden.save_test_case(input_data, save_path)
     except Exception as e:
         record_failed_case(param_combinations, e)
-        print(f"[FAILED CASE RECORDED] case_id={case_id}, error={e}")
+        pytest.fail(f"[FAILED CASE RECORDED] case_id={case_id}, error={e}")
     finally:
         case_id += 1
 

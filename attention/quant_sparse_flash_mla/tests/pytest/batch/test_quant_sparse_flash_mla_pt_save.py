@@ -271,7 +271,7 @@ def qsmla(param_combinations):
         )
     except Exception as e:
         record_failed_case(param_combinations, e)
-        logging.error(f"[FAILED CASE RECORDED] case_id={case_id}, error={e}")
+        pytest.fail(f"[FAILED CASE RECORDED] case_id={case_id}, error={e}")
     finally:
         case_id += 1
 
