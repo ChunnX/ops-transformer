@@ -57,7 +57,7 @@ private:
   TPipe* pipe_{};
 
   CommTilingData commTilingData_;
-  CollectiveComm<CommCollectiveOp::AllToAll, CommMode::GET, CType, TeamBarrier, CommAddrLayout::DEFAULT> allToAll_;
+  CollectiveComm<CommCollectiveOp::AllToAll, CommMode::GET, CType, TeamBarrier> allToAll_;
 
   uint64_t ubOffset_{0};
   uint32_t rankSize_{0};
@@ -97,7 +97,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::In
   teamBarrier_.Init(barrierPtr.Get(), barrierCtx_, udmaCtx_->rankSize, static_cast<uint32_t>(GetBlockIdx()));
   ubOffset_ += UB_SIZE;
 
-  allToAll_.Init(udmaCtx_, teamBarrier_, commTilingData_, cGM, commPtr.Get(),
+  allToAll_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, commTilingData_, cGM, commPtr.Get(),
     static_cast<uint32_t>(udmaCtx_->rankSize), static_cast<uint32_t>(GetBlockIdx()));
 }
 
@@ -126,7 +126,6 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Al
   const auto& base = qbmm_.GetBase();
   for (uint32_t tid = 0; tid < base.totalTileCnt; ++tid) {
     CrossCoreWaitFlag<0x2, PIPE_S>(tid);
-    SyncAll<true>();
     if (GetBlockIdx() < rankSize_) {
       allToAll_.Commit();
       allToAll_.Wait(true);

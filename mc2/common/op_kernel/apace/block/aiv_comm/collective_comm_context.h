@@ -24,7 +24,6 @@ namespace AivComm {
 
 static constexpr uint32_t COMM_MAX_RANK_NUM = 64;
 static constexpr uint32_t COMM_WORKSPACE_SIZE = 512U;
-static constexpr uint32_t COMM_CHANNEL_NOTIFY_NUM = 3U;
 
 struct CommUdmaContext {
     uint64_t channelHandles[COMM_MAX_RANK_NUM];

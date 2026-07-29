@@ -122,10 +122,10 @@ private:
   // 通信
   using AllGatherCommData = Apace::AivComm::CollectiveComm<
     Apace::AivComm::CommCollectiveOp::AllGather,
-    Apace::AivComm::CommMode::PUT, AType, TeamBarrier, CommAddrLayout::DEFAULT>;
+    Apace::AivComm::CommMode::PUT, AType, TeamBarrier>;
   using AllGatherCommScale = Apace::AivComm::CollectiveComm<
     Apace::AivComm::CommCollectiveOp::AllGather,
-    Apace::AivComm::CommMode::PUT, AscendC::fp8_e8m0_t, TeamBarrier, CommAddrLayout::DEFAULT>;
+    Apace::AivComm::CommMode::PUT, AscendC::fp8_e8m0_t, TeamBarrier>;
   AllGatherCommData all_gather_data_;
   AllGatherCommScale all_gather_scale_;
   CommTilingData commTilingData_{};
@@ -250,7 +250,7 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::Init(
   scaleKLen_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE);
   commTilingScale_.nonSplitAxisSize = scaleKLen_;
 
-  all_gather_data_.Init(udmaCtx_, teamBarrier_, commTilingData_,
+  all_gather_data_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, commTilingData_,
                         aGM_, commUbBuf, rankSize_,
                         static_cast<uint32_t>(GetBlockIdx()));
   all_gather_scale_.Init(udmaCtx_, teamBarrier_, commTilingScale_,
@@ -312,7 +312,7 @@ __aicore__ inline void AllGatherQuantMatmulImpl<AType, BType, CType>::AllGatherP
     if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
       all_gather_scale_.Commit();
       all_gather_data_.Commit();
-      all_gather_data_.Wait();
+      all_gather_data_.template Wait<BARRIER_DEVICE>();
     }
     AscendC::SyncAll<true>();
     // round 0 对应 dependId=1，AIC 侧按 dependId 等待对应的远端 round 数据。

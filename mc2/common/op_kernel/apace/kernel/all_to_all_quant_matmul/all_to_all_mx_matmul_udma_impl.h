@@ -186,12 +186,11 @@ __aicore__ inline void AllToAllQuantMatmulUdmaImpl<AType, BType, CType, TransA, 
   auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
   teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
 
-  allToAllA_.Init(udmaCtx_, teamBarrier_, tilingData->commTilingData, baseParams_.aGm, commBuf.Get(),
+  allToAllA_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, tilingData->commTilingData, baseParams_.aGm, commBuf.Get(),
     baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
   
   allToAllScaleA_.Init(udmaCtx_, teamBarrier_, tilingData->scaleCommTilingData, baseParams_.scaleAGm, commScaleBuf.Get(),
     baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()), baseParams_.rankSize * baseParams_.rankDataBytes);
-  AscendC::SyncAll<true>(); // 确保所有核已完成初始化
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -221,7 +220,7 @@ __aicore__ inline void AllToAllQuantMatmulUdmaImpl<AType, BType, CType, TransA, 
     if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
       allToAllScaleA_.Commit();
       allToAllA_.Commit();
-      allToAllA_.Wait(); // scale的通信和a矩阵的通信使用同一channel，因此只需要wait一次
+      allToAllA_.template Wait<BARRIER_DEVICE>(); // scale的通信和a矩阵的通信使用同一channel，因此只需要wait一次
     }
 
     AscendC::SyncAll<true>();
