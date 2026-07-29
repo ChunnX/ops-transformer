@@ -1382,36 +1382,45 @@ def tilelang_grad_kl_loss_single_kernel(
                                 )
                                 T.pipe_barrier("v")
                             else:
+                                # Compare 写回诊断已确认目标 bit 正确，而
+                                # FP32 多 repeat 的 tensor-scalar Select 会漏选。
+                                # v1_bw_rg 生成后 diff_2d 不再使用，将其清零并
+                                # 作为 tensor-tensor Select 的显式零输入。
+                                T.tile.fill(
+                                    v1_bw_diff_2d[0:4, 0:bw_col_block],
+                                    0.0,
+                                )
+                                T.pipe_barrier("v")
                                 T.tile.select(
                                     v1_bw_bmm2[0:4, 0:bw_col_block],
                                     v1_bw_mask0,
                                     v1_bw_rg[0:4, 0:bw_col_block],
-                                    0.0,
-                                    "VSEL_TENSOR_SCALAR_MODE",
+                                    v1_bw_diff_2d,
+                                    "VSEL_TENSOR_TENSOR_MODE",
                                 )
                                 T.pipe_barrier("v")
                                 T.tile.select(
                                     v1_bw_bmm2[4:8, 0:bw_col_block],
                                     v1_bw_mask1,
                                     v1_bw_rg[4:8, 0:bw_col_block],
-                                    0.0,
-                                    "VSEL_TENSOR_SCALAR_MODE",
+                                    v1_bw_diff_2d,
+                                    "VSEL_TENSOR_TENSOR_MODE",
                                 )
                                 T.pipe_barrier("v")
                                 T.tile.select(
                                     v1_bw_bmm2[8:12, 0:bw_col_block],
                                     v1_bw_mask2,
                                     v1_bw_rg[8:12, 0:bw_col_block],
-                                    0.0,
-                                    "VSEL_TENSOR_SCALAR_MODE",
+                                    v1_bw_diff_2d,
+                                    "VSEL_TENSOR_TENSOR_MODE",
                                 )
                                 T.pipe_barrier("v")
                                 T.tile.select(
                                     v1_bw_bmm2[12:16, 0:bw_col_block],
                                     v1_bw_mask3,
                                     v1_bw_rg[12:16, 0:bw_col_block],
-                                    0.0,
-                                    "VSEL_TENSOR_SCALAR_MODE",
+                                    v1_bw_diff_2d,
+                                    "VSEL_TENSOR_TENSOR_MODE",
                                 )
                                 T.pipe_barrier("v")
                                 T.tile.cast(
@@ -1460,12 +1469,14 @@ def tilelang_grad_kl_loss_single_kernel(
                                 )
                                 T.pipe_barrier("v")
                             else:
+                                T.tile.fill(v1_bw_diff_2d, 0.0)
+                                T.pipe_barrier("v")
                                 T.tile.select(
                                     v1_bw_bmm2,
                                     v1_bw_mask,
                                     v1_bw_rg,
-                                    0.0,
-                                    "VSEL_TENSOR_SCALAR_MODE",
+                                    v1_bw_diff_2d,
+                                    "VSEL_TENSOR_TENSOR_MODE",
                                 )
                                 T.pipe_barrier("v")
                                 T.tile.cast(
