@@ -1421,7 +1421,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
             <td>FLOAT8_E8M0</td>
             <td>–</td>
             <td>–</td>
-            <td>bfloat16</td>
+            <td>BFLOAT16</td>
             <td>4</td>
             <td>torch.float8_e4m3fn</td>
             </tr>
@@ -1434,7 +1434,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
             <td>FLOAT8_E8M0</td>
             <td>–</td>
             <td>–</td>
-            <td>bfloat16</td>
+            <td>BFLOAT16</td>
             <td>4</td>
             <td>torch.float4_e2m1</td>
             </tr>
