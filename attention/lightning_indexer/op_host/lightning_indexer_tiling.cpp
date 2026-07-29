@@ -529,24 +529,26 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
     }
 
     bool keyNonContiguous = false;
-    // PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND: 从0轴开始检查
+    // PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND: 检查shape总size
     // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
-    // Non-PA_BBND: check starts from axis 0
-    size_t checkStartIdx = kLayout_ == DataLayout::BnBsND ? 1 : 0;
+    // Non-PA_BBND: check total shape size
     if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
         auto &shape = opParamInfo_.key.shape->GetStorageShape();
-        std::vector<uint32_t> expectedStrides;
-        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::BnBsND) {
+
+        if (kLayout_ == DataLayout::BnBsND) {
+            std::vector<uint32_t> expectedStrides;
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3),
                                shape.GetDim(2) * shape.GetDim(3), shape.GetDim(3), 1};
-        } else if (kLayout_ == DataLayout::TND) {
-            expectedStrides = {shape.GetDim(1) * shape.GetDim(2), shape.GetDim(2), 1};
-        }
-        for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
-            if (i < keyStridesVec_.size() && keyStridesVec_[i] != expectedStrides[i]) {
-                keyNonContiguous = true;
-                break;
+            for (size_t i = 1; i < expectedStrides.size(); ++i) {
+                if (i < keyStridesVec_.size() && keyStridesVec_[i] != expectedStrides[i]) {
+                    keyNonContiguous = true;
+                    break;
+                }
             }
+        } else {
+            uint64_t totalElements = keyStridesVec_[0] * static_cast<uint64_t>(shape.GetDim(0));
+            uint64_t shapeSize = context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize();
+            keyNonContiguous = (shapeSize != totalElements);
         }
     }
 
