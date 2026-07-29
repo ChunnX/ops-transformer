@@ -270,7 +270,13 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
     uint32_t rankId = mc2ContextStruct->epRankId;
     std::vector<ChannelHandle> channels;
 
-    auto ret = GetHcclCommChannel(hcclHandle, epRankSize_, rankId, protocol, engine, channels);
+    aclnnStatus ret;
+    if(CommProtocol::COMM_PROTOCOL_UBC_CTP == protocol) {
+        ret = GetHcclCommChannelUbCTP(hcclHandle, epRankSize_, rankId, protocol, engine, channels, mc2ContextStruct);
+    }
+    else {
+        ret = GetHcclCommChannel(hcclHandle, epRankSize_, rankId, protocol, engine, channels);
+    }
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -568,7 +574,7 @@ aclnnStatus Mc2Context::GetMc2RankSize(const char *groupEp, uint32_t &rankSize)
 template void *Mc2Context::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
 
 // UB_CTP协议单走一路
-aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opName,
+aclnnStatus Mc2Context::GetMc2ContextTensorUbCTP(const char *groupEp, const char *opName,
     uint64_t &hcclBuffSize, aclTensor *&mc2Context, CommProtocol protocol)
 {
     OP_LOGI("Start to get UB_CTP Mc2MoeContext Tensor");
@@ -610,7 +616,7 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetHcclCommChannel(
+aclnnStatus Mc2Context::GetHcclCommChannelUbCTP(
     const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId, const CommProtocol &protocol,
     const CommEngine &engine, std::vector<ChannelHandle> &channels, Mc2MoeContext *mc2ContextStruct)
 {
