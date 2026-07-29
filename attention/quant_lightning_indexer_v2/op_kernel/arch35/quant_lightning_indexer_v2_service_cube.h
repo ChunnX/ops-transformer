@@ -137,8 +137,8 @@ protected:
     uint64_t keyGmStart_ = 0;      // L1数据对应的GM S2偏移
     uint64_t keyLoadedSize_ = 0;   // L1中实际加载的S2元素数量
     uint64_t s2BasicBlock_ = 128;
-    uint64_t qkHeadDim_ = 128;  // Q/K单行GM搬入宽度；MXFP4为打包后的headDim/2，其他场景为headDim
-    uint64_t scaleHeadDim_ = 4; // MX scale单行元素数，即headDim/32，MXFP8/MXFP4共用
+    uint64_t qkHeadDim_ = 128;            // Q/K单行GM搬入宽度；MXFP4为打包后的headDim/2，其他场景为headDim
+    uint64_t scaleHeadDim_ = 4;           // MX scale单行元素数，即headDim/32，MXFP8/MXFP4共用
     uint64_t keyBufferOffset_ = 16384;    // Key L1乒乓缓冲区步长，s2BasicBlock_ * D_BASIC_BLOCK
     uint64_t keyScaleBufferOffset_ = 512; // Key scale L1乒乓缓冲区步长，s2BasicBlock_ * D_BASIC_BLOCK / 32
 
@@ -187,7 +187,11 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
     keyL0_ = bufKeyL0_.Get<L0_K_T>();
 
     pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(float));
-    cL0_ = bufL0C_.Get<QK_T>();
+    if constexpr (std::is_same_v<QK_T, int32_t>) {
+        cL0_ = bufL0C_.Get<int32_t>();
+    } else {
+        cL0_ = bufL0C_.Get<float>();
+    }
 }
 
 template <typename QLIV2T>
@@ -673,9 +677,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
                 constInfo_.s2BaseSize * constInfo_.mBaseSize / 2; // s2BasicBlock_ * M_BASE_SIZE / 2
         }
         Fixpipe<QK_T, QK_T, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
-        // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
-            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
-            fixpipeParams);
+                                                    // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
+                                                    cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
+                                                    fixpipeParams);
     } else {
         uint32_t nSize = CeilAlign(s2L0RealSize, static_cast<uint64_t>(UB_BLOCK / sizeof(QK_T)));
         // 有效数据不足16行，只需输出部分行即可; L0C上bmm1结果矩阵M方向size必须是偶数

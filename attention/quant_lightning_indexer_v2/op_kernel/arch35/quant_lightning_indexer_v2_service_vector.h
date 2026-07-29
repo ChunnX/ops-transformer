@@ -44,7 +44,7 @@ public:
     static constexpr bool IS_MXFP4 = QLIV2T::isMxFp4;
     using SCALE_T = typename QLIV2T::scaleType;
     static constexpr bool IS_WEIGHT_FP16 = QLIV2T::isWeightFP16;
-    __aicore__ inline QLIV2Vector() {};
+    __aicore__ inline QLIV2Vector(){};
     __aicore__ inline void ProcessVec1(const QLIV2Common::RunInfo &info);
     __aicore__ inline void ProcessTopK(const QLIV2Common::RunInfo &info);
     __aicore__ inline void ProcessLD();
@@ -162,7 +162,7 @@ private:
     float globalQScale_ = 1.0f;      // quantMode=4时全局query scale
     float globalKScale_ = 1.0f;      // quantMode=4时全局key scale
     uint32_t trunkLen_ = 0;          // ProcessTopK（非LD路径）每次处理的s2长度
-    uint32_t trunkLenLd_ = 0; // ProcessLD路径每次处理的s2长度，根据sparseCount动态计算以填满UB
+    uint32_t trunkLenLd_ = 0;        // ProcessLD路径每次处理的s2长度，根据sparseCount动态计算以填满UB
     bool returnValueFlag = false;
 
     struct QLIV2Common::ConstInfo constInfo_;
@@ -185,7 +185,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     kScaleUB_ = kScaleBuf_.Get<SCALE_T>(); // kScale
     // 大小：2(开dB) * 2 * 64 * 4 = 1KB
     pipe->InitBuffer(qScaleBuf_,
-        2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
+                     2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     qScaleUB_ = qScaleBuf_.Get<SCALE_T>(); // qScale
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
@@ -556,14 +556,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     } else if constexpr (IS_WEIGHT_FP16) {
         auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(WEIGHT_T))];
         auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ +
-            ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
+                                    ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
         vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
-            qkBase, qkVLstride,
-            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T), weightTempBase,
-            kScaleBase, (uint32_t)0,
-            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
-            gSize_, curAivS1ProcNum);
+                                            qkBase, qkVLstride,
+                                            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+                                            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), weightTempBase,
+                                            kScaleBase, (uint32_t)0,
+                                            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
+                                            gSize_, curAivS1ProcNum);
     } else if (constInfo_.quantMode == 4) { // 4: per_tensor量化
         // quantMode为4时不适用sacle的UB
         float kScaleValue = globalKScale_;
@@ -572,7 +572,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
             outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
             (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)), weightBase,
             UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), weightTempBase, kScaleValue, qScaleValue, gSize_, curAivS1ProcNum);
-    } else {
+    } else if (constInfo_.quantMode == 1) {
         auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
         auto kScaleBase =
             kScaleUB_[kScalepingpong * 16 * s2BaseSize_ + ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
