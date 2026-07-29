@@ -21,6 +21,7 @@ import numpy as np
 import datetime
 import os
 import sys
+import torch
 
 _BF16_RTOL = 0.0078125
 _BF16_ATOL = 0.0001
@@ -359,7 +360,7 @@ def _batch_consistency_check(npu_outputs, kwargs):
     if batch_consistency_id is None or not npu_outputs:
         return
 
-    npu_cmp_kv = npu_outputs[0]
+    npu_cmp_kv = npu_outputs[0].to(torch.float32)
     if npu_cmp_kv is None:
         return
 
@@ -459,7 +460,7 @@ def compare(*outputs, **kwargs):
     if len(npu_outputs) == 1:
         results = [
             _tensor_compare(
-                npu_outputs[0][cmp_kv_mask], golden_outputs[0][cmp_kv_mask], "cmp_kv"
+                npu_outputs[0][cmp_kv_mask].to(torch.float32), golden_outputs[0][cmp_kv_mask].to(torch.float32), "cmp_kv"
             )
         ]
         for i in range(1, len(golden_outputs)):
@@ -473,10 +474,10 @@ def compare(*outputs, **kwargs):
             )
         return results
 
-    npu_cmp_kv = npu_outputs[0]
-    npu_state_cache = npu_outputs[1]
-    cpu_cmp_kv = golden_outputs[0]
-    cpu_state_cache = golden_outputs[1]
+    npu_cmp_kv = npu_outputs[0].to(torch.float32)
+    npu_state_cache = npu_outputs[1].to(torch.float32)
+    cpu_cmp_kv = golden_outputs[0].to(torch.float32)
+    cpu_state_cache = golden_outputs[1].to(torch.float32)
 
     update_kv = kwargs.get("update_kv", None)
     update_score = kwargs.get("update_score", None)
