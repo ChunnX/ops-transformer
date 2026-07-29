@@ -1455,6 +1455,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::WaitGmm2Ready(u
 
         constexpr uint32_t INT32_PER_DATABLOCK = ALIGN_32 / sizeof(int32_t);
         constexpr uint32_t INT32_PER_REPEAT = 256U / sizeof(int32_t);
+        // ready workspace 按 [slot][AIC][64B cache line] 排列。每个 AIC 只写
+        // 自己 cache line 的首个 int32=1，其余位置由 ResetFlagList 保持为 0；
+        // 因此整段求和就是已经完成 GMM2 写回的 AIC 数量。
         uint32_t readyElements = blockNum_ * static_cast<uint32_t>(INT_CACHELINE);
         uint32_t copyElements =
             (readyElements + INT32_PER_DATABLOCK - 1U) / INT32_PER_DATABLOCK * INT32_PER_DATABLOCK;
@@ -1467,8 +1470,11 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::WaitGmm2Ready(u
         uint64_t readySlotOffset = static_cast<uint64_t>(slotIdx) * Gmm2ReadySlotStride();
         GlobalTensor<int32_t> readyGm;
         readyGm.SetGlobalBuffer(readyBase);
+        // scanUb：一次轮询从 GM 搬入的完整 ready 区，包含每个 AIC 的 cache-line padding。
         LocalTensor<int32_t> scanUb(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR, copyElements);
+        // partialUb：ready 区超过一个 256B vector repeat 时，保存每个 repeat 的局部和。
         LocalTensor<int32_t> partialUb(TPosition::VECCALC, GMM2_READY_PARTIAL_UB_ADDR, INT_CACHELINE);
+        // sumUb：保存最终到达数，V->S 同步后由 Scalar 读取第 0 个元素。
         LocalTensor<int32_t> sumUb(TPosition::VECCALC, GMM2_READY_SUM_UB_ADDR, INT_CACHELINE);
 
         while (true) {
@@ -1476,6 +1482,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::WaitGmm2Ready(u
             SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 
+            // 这里使用基础向量接口 WholeReduceSum，而不是高阶 Sum：
+            // 1. ready flag 是 int32；当前 Sum 面向 half/float 张量归约，还需要 SumParams/临时空间；
+            // 2. ready 区是一段已知长度的小数组，WholeReduceSum 可直接把每个 256B repeat 归约成一个标量。
+            // 超过一个 repeat 时先写 partialUb，再做第二级归约，避免引入通用 Sum 的 tiling 和额外 UB。
             if (readyElements <= INT32_PER_REPEAT) {
                 WholeReduceSum<int32_t>(sumUb, scanUb, static_cast<int32_t>(readyElements), 1, 1, 1, 8);
             } else {
