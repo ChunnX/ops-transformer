@@ -45,7 +45,7 @@ template <typename T, bool IS_NZ>
 __aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
                                              const ScatterCacheParams &scatterCacheParams)
 {
-    if (scatterCacheParams.paTokenIndex < 0 && IS_NZ) {
+    if (scatterCacheParams.paTokenIndex < 0) {
         return;
     }
     // blockCount, blockLen, srcStride, dstStride
