@@ -138,19 +138,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(*cclBufferSizePtr <= 0,
                     OP_LOGE(nodeName, "ccl_buffer_size must be positive, but got %ld.", *cclBufferSizePtr),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((topoType != 0) && (topoType != 1),
-                    OP_LOGE(nodeName, "topo_type is invalid, expected 0 or 1, got %ld.", topoType),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(rankNumPerServer <= 0,
-                    OP_LOGE(nodeName, "rank_num_per_server must be positive, got %ld.", rankNumPerServer),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSize % rankNumPerServer != 0,
-                    OP_LOGE(nodeName,
-                            "epWorldSize must be divisible by rank_num_per_server, got epWorldSize=%ld, "
-                            "rank_num_per_server=%ld.",
-                            epWorldSize, rankNumPerServer),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((topoType != 0) && (topoType != 1),
+    OP_TILING_CHECK((topoType != DIRECT_MODE) && (topoType != HYBRID_MODE),
                     OP_LOGE(nodeName, "topo_type is invalid, expected 0 or 1, got %ld.", topoType),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(rankNumPerServer <= 0,
