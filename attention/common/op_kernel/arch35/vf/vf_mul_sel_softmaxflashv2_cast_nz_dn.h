@@ -1071,9 +1071,9 @@ __aicore__ inline void
 ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                            const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                            const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-                           const uint32_t m, const uint32_t n,
-                           const uint32_t originN, const T scale, float deScaleQK, float pScale, const T minValue,
-                           float keepProb, int32_t subLoop, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, int64_t maskLine)
+                           const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+                           float deScaleQK, float pScale, const T minValue, float keepProb, int32_t subLoop,
+                           const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, int64_t maskLine)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -1394,8 +1394,8 @@ template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
 __aicore__ inline void ProcessVec1DnUpdateMxfp8(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-    float deScaleQK, float pScale, const T minValue, float keepProb, const LocalTensor<float> &preLoopMaxTensor,
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, float pScale,
+    const T minValue, float keepProb, const LocalTensor<float> &preLoopMaxTensor,
     const LocalTensor<float> &preLoopSumTensor, const LocalTensor<float> &firstLoopSumTensor, int32_t subLoop,
     const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, int64_t maskLine)
 {
@@ -1425,10 +1425,10 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
         repeatStride = 1;
     }
 
-    ProcessVec1DnUpdateMxfp8VF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum,
-                                                     new_global_max, indexesUb, pScaleSubLoop0Ub, m, n, originN,
-                                                     scale, deScaleQK, pScale, minValue, keepProb, dScale, blockStride,
-                                                     repeatStride, pre_loop_max, pre_loop_sum, first_loop_sum, subLoop, maskLine);
+    ProcessVec1DnUpdateMxfp8VF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
+                                                     indexesUb, pScaleSubLoop0Ub, m, n, originN,scale, deScaleQK, pScale,
+                                                     minValue, keepProb, dScale, blockStride, repeatStride, pre_loop_max,
+                                                     pre_loop_sum, first_loop_sum, subLoop, maskLine);
 }
 
 /*
@@ -1455,9 +1455,10 @@ ProcessVec1VfDnMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &exp
                      const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                      const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
                      const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor,
-                     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
-                     float pScale, const T minValue, float keepProb, const LocalTensor<T> &preLoopMaxTensor,
-                     const LocalTensor<T> &preLoopSumTensor, const LocalTensor<T> &firstLoopSumTensor, int32_t subLoop, int64_t maskLine)
+                     const uint32_t m, const uint32_t n, const uint32_t originN,
+                     const T scale, float deScaleQK, float pScale, const T minValue, float keepProb,
+                     const LocalTensor<T> &preLoopMaxTensor, const LocalTensor<T> &preLoopSumTensor,
+                     const LocalTensor<T> &firstLoopSumTensor, int32_t subLoop, int64_t maskLine)
 {
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
@@ -1466,8 +1467,8 @@ ProcessVec1VfDnMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &exp
             indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1DnNoUpdateMxfp8<T, T2, hasAtten, ubN>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
-                                                         indexesTensor, m, n, originN, scale, deScaleQK,
-                                                         pScale, minValue, keepProb, subLoop, pScaleSubLoop0Tensor, maskLine);
+                                                         indexesTensor, m, n, originN, scale, deScaleQK, pScale,
+                                                         minValue, keepProb, subLoop, pScaleSubLoop0Tensor, maskLine);
     } else {
         LocalTensor<uint8_t> indexesTensor;
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -1475,8 +1476,8 @@ ProcessVec1VfDnMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &exp
             indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1DnUpdateMxfp8<T, T2, hasAtten, ubN>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
-                                                       indexesTensor, m, n, originN, scale, deScaleQK,
-                                                       pScale, minValue, keepProb, preLoopMaxTensor, preLoopSumTensor,
+                                                       indexesTensor, m, n, originN, scale, deScaleQK,pScale,
+                                                       minValue, keepProb, preLoopMaxTensor, preLoopSumTensor,
                                                        firstLoopSumTensor, subLoop, pScaleSubLoop0Tensor, maskLine);
     }
 }
