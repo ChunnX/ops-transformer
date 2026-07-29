@@ -175,7 +175,13 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     weightPreprocessParams.groupNum = gmmBaseParams->groupNum;
     weightPreprocessParams.n = gmmBaseParams->n;
     weightPreprocessParams.k = gmmBaseParams->k;
-    weightPreprocessParams.inputTransposedNz = false;  // TODO: A4W4 NZ weight(transB)时需按 host bFormat 置 true
+    // inputTransposedNz: weight 为 NZ 且 transB 时, weightPreprocessOp_ 走 ConvertTransposedNzTile
+    // ([E,N,K] int4 NZ -> [E,K,N] int8 NZ); 否则走标准 NZ/ND 路径。
+    // host tiling 通过 GMMBaseParamsA4W4.reserved 下发: bit0=weightIsNz, bit1=transB。
+    const uint64_t weightFmtFlags = gmmBaseParams->reserved;
+    const bool weightIsNz = (weightFmtFlags & 1ULL) != 0;
+    const bool transB = (weightFmtFlags & 2ULL) != 0;
+    weightPreprocessParams.inputTransposedNz = weightIsNz && transB;
 
     // XPreprocess: int4 x -> int8 workspace(AIV, A4W4 独有)。
     typename QgmmKernel::XPreprocessParams xPreprocessParams{};
@@ -217,8 +223,10 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     params.gmmParams = gmmParams;
 
     // F3: perTokenScale 兜底全 1 填充已移入 kernel_gmm_a4w4.h::Run prologue (x preprocess 后,
-    //     用同一 pipe, 避免 TPipe 实例冲突)。桥接仅负责 workspace 段预留 + perTokenScaleGmAddr
-    //     切换 (isPerTokenQuant=0 时指向 fillWsAddr) + isPerTokenQuant 透传。
+    //     复用入口透传的同一 pipe, 避免 TPipe 实例冲突)。桥接仅负责 workspace 段预留 +
+    //     perTokenScaleGmAddr 切换 (isPerTokenQuant=0 时指向 fillWsAddr) + isPerTokenQuant 透传。
+    //     pipe 透传: 入口 grouped_matmul_apt.cpp 的 tPipe 经 que 传入 kernel, 与 A8W4 一致,
+    //     不在 kernel 内重复创建 TPipe (否则双 TPipe 实例导致 SyncAll 等核内资源管理异常)。
 
     QgmmKernel gmm;
     gmm(params, que);

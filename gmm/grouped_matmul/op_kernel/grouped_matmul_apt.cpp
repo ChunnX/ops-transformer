@@ -363,6 +363,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     }
 #endif
 #if defined(V310_GMM_QUANT_A4W4) && IS_BLAZE
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);   // A4W4 需 1:2 AIC:AIV
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_A4W4_MIX) {
         GET_TILING_DATA_WITH_STRUCT(GMMA4W4QuantTilingData, tilingData, tiling);
         GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
