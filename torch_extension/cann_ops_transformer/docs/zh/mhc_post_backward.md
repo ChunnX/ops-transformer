@@ -248,14 +248,14 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
 
 默认支持确定性计算。
 
-## 调用说明
+## 调用示例
 
 - 单算子模式调用：
 
   ```python
   import torch
   import torch_npu
-  from cann_ops_transformer.ops import mhc_post_backward
+  import cann_ops_transformer
 
   B = 2
   S = 8
@@ -268,7 +268,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
   h_out = torch.randn(B, S, D, dtype=torch.float16).npu()
   h_post = torch.randn(B, S, n, dtype=torch.float32).npu()
 
-  grad_x, grad_h_res, grad_h_out, grad_h_post = mhc_post_backward(
+  grad_x, grad_h_res, grad_h_out, grad_h_post = cann_ops_transformer.mhc_post_backward(
       grad_output, x, h_res, h_out, h_post
   )
   print(f"grad_x shape: {grad_x.shape}")
@@ -277,7 +277,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
   `h_res`不传入的场景（仅<term>Ascend 950PR/Ascend 950DT</term> eager模式支持，此时`grad_x`等于`grad_output`）：
 
   ```python
-  grad_x, grad_h_res, grad_h_out, grad_h_post = mhc_post_backward(
+  grad_x, grad_h_res, grad_h_out, grad_h_post = cann_ops_transformer.mhc_post_backward(
       grad_output, x, None, h_out, h_post
   )
   ```
@@ -290,7 +290,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
   import torch
   import torch_npu
   import torchair
-  from cann_ops_transformer.ops import mhc_post_backward
+  import cann_ops_transformer
 
   B = 2
   S = 8
@@ -303,6 +303,10 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
   h_out = torch.randn(B, S, D, dtype=torch.float16).npu()
   h_post = torch.randn(B, S, n, dtype=torch.float32).npu()
 
-  compiled = torch.compile(mhc_post_backward, backend=torchair.get_npu_backend(), dynamic=False)
+  compiled = torch.compile(
+      cann_ops_transformer.mhc_post_backward,
+      backend=torchair.get_npu_backend(),
+      dynamic=False,
+  )
   grad_x, grad_h_res, grad_h_out, grad_h_post = compiled(grad_output, x, h_res, h_out, h_post)
   ```
