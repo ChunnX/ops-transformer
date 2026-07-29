@@ -1,0 +1,60 @@
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[05] bsnd_b1_s1_64_k_1024 PRECISION_FAIL dQ_norm=1.57e-01 dK_norm=1.52e-01 dW_norm=1.02e-01 Loss_norm=3.28e-04
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[08] bsnd_b1_s1_64_k_5120 PRECISION_FAIL dQ_norm=2.64e-03 dK_norm=2.02e-03 dW_norm=6.34e-03 Loss_norm=3.66e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[10] bsnd_b1_s1_512_k_1024 PRECISION_FAIL dQ_norm=1.10e-01 dK_norm=1.10e-01 dW_norm=7.19e-02 Loss_norm=3.94e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[11] bsnd_b1_s1_512_k_2048 PRECISION_FAIL dQ_norm=1.34e-01 dK_norm=1.56e-01 dW_norm=6.96e-02 Loss_norm=2.21e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[12] bsnd_b1_s1_512_k_4096 PRECISION_FAIL dQ_norm=5.57e-02 dK_norm=5.80e-02 dW_norm=5.01e-02 Loss_norm=9.43e-04
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[13] bsnd_b1_s1_512_k_5120 PRECISION_FAIL dQ_norm=7.60e-03 dK_norm=7.51e-03 dW_norm=4.80e-03 Loss_norm=1.01e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[14] bsnd_b1_s1_512_k_8192 PRECISION_FAIL dQ_norm=2.07e-01 dK_norm=2.07e-01 dW_norm=1.29e-01 Loss_norm=1.14e-02
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[15] bsnd_b1_s1_1024_k_1024 PRECISION_FAIL dQ_norm=3.22e-01 dK_norm=3.13e-01 dW_norm=1.95e-01 Loss_norm=6.98e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[16] bsnd_b1_s1_1024_k_2048 PRECISION_FAIL dQ_norm=1.20e-01 dK_norm=1.19e-01 dW_norm=1.01e-01 Loss_norm=2.14e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[17] bsnd_b1_s1_1024_k_4096 PRECISION_FAIL dQ_norm=1.14e-01 dK_norm=1.12e-01 dW_norm=8.07e-02 Loss_norm=6.56e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[18] bsnd_b1_s1_1024_k_5120 PRECISION_FAIL dQ_norm=7.56e-02 dK_norm=7.86e-02 dW_norm=1.84e-02 Loss_norm=1.30e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[19] bsnd_b1_s1_2048_k_1024 PRECISION_FAIL dQ_norm=2.05e-01 dK_norm=2.02e-01 dW_norm=1.72e-01 Loss_norm=1.90e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[20] bsnd_b1_s1_2048_k_2048 PRECISION_FAIL dQ_norm=1.73e-01 dK_norm=1.64e-01 dW_norm=1.01e-01 Loss_norm=2.38e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[24] bsnd_b4_s1_64_k_4096 PRECISION_FAIL dQ_norm=4.77e-02 dK_norm=5.04e-02 dW_norm=1.06e-02 Loss_norm=1.30e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[25] bsnd_b4_s1_512_k_1024 PRECISION_FAIL dQ_norm=1.14e-01 dK_norm=1.09e-01 dW_norm=9.57e-02 Loss_norm=2.91e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[26] bsnd_b4_s1_512_k_2048 PRECISION_FAIL dQ_norm=4.62e-02 dK_norm=4.94e-02 dW_norm=2.42e-02 Loss_norm=4.51e-04
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[27] bsnd_b4_s1_1024_k_1024 PRECISION_FAIL dQ_norm=2.80e-01 dK_norm=2.74e-01 dW_norm=1.74e-01 Loss_norm=5.99e-03
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[30] bsnd_b64_s1_64_k_1024 PRECISION_FAIL dQ_norm=6.51e-02 dK_norm=6.59e-02 dW_norm=4.49e-02 Loss_norm=6.10e-04
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[39] tnd_s1_1024_k_5120 PRECISION_FAIL dQ_norm=2.32e-01 dK_norm=2.28e-01 dW_norm=1.05e-01 Loss_norm=5.17e-03
+Summary: total=40 pass=21 fail=19 precision=19 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
