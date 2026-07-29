@@ -275,7 +275,8 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
     const bool checkTensorApiShapes = CheckTensorApiShapes();
     const bool checkTensorApiScaleShapes = CheckTensorApiScaleShapes();
     const uint32_t mSize_groupNum_ratio = static_cast<uint32_t>(inputParams_.mSize / inputParams_.groupNum);
-    const bool checkBNoTransMLimlit = inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
+    const bool checkBNoTransMLimlit =
+        inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
     const bool capable = dtypeSupported && formatSupported && mSize_groupNum_ratio > TENSOR_API_M_MIN &&
                          inputParams_.nSize % TENSOR_API_FP8_N_ALIGN == 0 && coreSupported && checkTensorApiShapes &&
                          checkTensorApiScaleShapes && checkBNoTransMLimlit;
