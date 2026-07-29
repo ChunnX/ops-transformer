@@ -499,12 +499,10 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
             superNodeCount * nmt * static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
         uint64_t scaleupFinalRecvDataSize = epWorldSize * nmt * perSlotBytes;
         uint64_t scaleoutRecvStatusSize = AlignUpWin(superNodeCount * nmt * WIN_ADDR_ALIGN);
-        uint64_t scaleupRecvStatusSize = AlignUpWin(epWorldSize * nmt * WIN_ADDR_ALIGN);
         uint64_t scaleoutRecvDataOffset = totalStateWinSizeEp;
         uint64_t scaleupFinalRecvDataOffset = scaleoutRecvDataOffset + scaleoutRecvDataSize;
         uint64_t scaleoutRecvStatusOffset = scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
-        uint64_t scaleupRecvStatusOffset = scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
-        uint64_t combineDataOffset = scaleupRecvStatusOffset + scaleupRecvStatusSize;
+        uint64_t combineDataOffset = scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
         uint64_t scaleupSendWinOffset = combineDataOffset + combineWinDataSize;
         uint64_t scaleupSendWinSize =
             static_cast<uint64_t>(info.rankSizePerServer) * nmt * perSlotBytes;

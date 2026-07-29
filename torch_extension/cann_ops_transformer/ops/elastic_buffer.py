@@ -364,7 +364,6 @@ class ElasticBuffer:
         scaleup_recv_data_size = (
             world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
         )
-        scaleup_recv_status_size = world_size * num_max_tokens_per_rank * win_addr_align
 
         def get_dispatch_buffer_size(rank_num_per_server):
             scaleout_rank_count = world_size // rank_num_per_server
@@ -397,7 +396,6 @@ class ElasticBuffer:
                 scaleout_recv_data_size
                 + scaleup_recv_data_size
                 + scaleout_recv_status_size
-                + scaleup_recv_status_size
                 + scaleup_send_data_size
                 + scaleout_send_data_size
             )

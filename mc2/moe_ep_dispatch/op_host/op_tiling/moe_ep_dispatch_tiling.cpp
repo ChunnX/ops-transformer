@@ -143,7 +143,6 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &i
     OP_LOGD(nodeName, "scaleoutRecvDataOffset is %lu.", info.scaleoutRecvDataOffset);
     OP_LOGD(nodeName, "scaleupFinalRecvDataOffset is %lu.", info.scaleupFinalRecvDataOffset);
     OP_LOGD(nodeName, "scaleoutRecvStatusOffset is %lu.", info.scaleoutRecvStatusOffset);
-    OP_LOGD(nodeName, "scaleupRecvStatusOffset is %lu.", info.scaleupRecvStatusOffset);
     OP_LOGD(nodeName, "combineDataOffset is %lu.", info.combineDataOffset);
     OP_LOGD(nodeName, "scaleupSendWinOffset is %lu.", info.scaleupSendWinOffset);
     OP_LOGD(nodeName, "scaleoutSendWinOffset is %lu.", info.scaleoutSendWinOffset);
@@ -875,12 +874,10 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
         uint64_t scaleupFinalRecvDataSize =
             epWorldSize * nmt * static_cast<uint64_t>(info.scaleupSlotAlignedBytes);
         uint64_t scaleoutRecvStatusSize = AlignUpWin(superNodeCount * nmt * WIN_ADDR_ALIGN);
-        uint64_t scaleupRecvStatusSize = AlignUpWin(epWorldSize * nmt * WIN_ADDR_ALIGN);
         info.scaleoutRecvDataOffset = totalStateWinSizeEp;
         info.scaleupFinalRecvDataOffset = info.scaleoutRecvDataOffset + scaleoutRecvDataSize;
         info.scaleoutRecvStatusOffset = info.scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
-        info.scaleupRecvStatusOffset = info.scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
-        info.combineDataOffset = info.scaleupRecvStatusOffset + scaleupRecvStatusSize;
+        info.combineDataOffset = info.scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
         info.scaleupSendWinOffset = info.combineDataOffset + combineWinDataSize;
         uint64_t scaleupSendWinSize =
             static_cast<uint64_t>(info.rankSizePerServer) * nmt *
@@ -901,7 +898,6 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
         info.scaleoutRecvDataOffset = 0UL;
         info.scaleupFinalRecvDataOffset = totalStateWinSizeEp;
         info.scaleoutRecvStatusOffset = 0UL;
-        info.scaleupRecvStatusOffset = 0UL;
         info.combineDataOffset = totalStateWinSizeEp + dispatchRecvWinDataReservedSize;
         info.winDataOffset = totalStateWinSizeEp;
         info.dispatchSendWinOffset = stateAndRecvDataWinSize;

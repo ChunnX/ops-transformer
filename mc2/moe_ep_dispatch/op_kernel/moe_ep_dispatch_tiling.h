@@ -58,7 +58,6 @@ struct MoeEpDispatchInfo {
     uint64_t scaleoutRecvDataOffset;
     uint64_t scaleupFinalRecvDataOffset;
     uint64_t scaleoutRecvStatusOffset;
-    uint64_t scaleupRecvStatusOffset;
     uint64_t combineDataOffset;
     uint64_t scaleupSendWinOffset;
     uint64_t scaleoutSendWinOffset;
