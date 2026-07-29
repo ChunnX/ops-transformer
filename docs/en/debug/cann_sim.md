@@ -13,7 +13,7 @@ This tool maintains binary compatibility with on-board execution (the same kerne
 
 ## Usage Constraints
 
-* Recommended tool environment configuration: CPU 16 cores, memory 32GB or more.
+* Recommended tool environment configuration: CPU 16 cores, memory 32GB or more. 
 * All paths mentioned in this document need to ensure the running user has read or read-write permissions.
 * For security and minimum privilege considerations, it is recommended to use regular user permissions to execute this tool, avoiding root or other high-privilege accounts.
 * This tool depends on the CANN software package. Before use, install the CANN software package first. No driver or firmware installation is required. Execute the CANN set_env.sh environment variable file through the source command. For security, do not modify the environment variables involved in set_env.sh after executing the source command.
