@@ -138,7 +138,10 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
     uint64_t x1ScaleLen = Blaze::Gemm::CeilDiv(commTiling.nonSplitAxisSize, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE *
                             static_cast<uint64_t>(splitAxisSize_) * sizeof(AscendC::fp8_e8m0_t);
     x1ScaleLen = Blaze::Gemm::CeilDiv(x1ScaleLen, ALIGN_NUM) * ALIGN_NUM;
-    commOutGM_ = workspaceGM + x1ScaleLen;
+    commOutGM_ = all2all_out;
+    if (all2all_out == nullptr) {
+        commOutGM_ = workspaceGM + x1ScaleLen;
+    }
     hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
     rankId_ = hccl_.GetRankId();
