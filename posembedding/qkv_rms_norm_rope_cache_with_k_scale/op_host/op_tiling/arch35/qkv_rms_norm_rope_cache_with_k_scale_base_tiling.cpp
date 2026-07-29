@@ -14,6 +14,7 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <vector>
 
 #include "../../../op_kernel/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
 #include "log/log.h"
@@ -63,14 +64,6 @@ constexpr const char *QKV_LAYOUT_TND = "TND";
 constexpr const char *Q_QUANT_MODE_PER_TOKEN_PER_HEAD = "PerTokenPerHead";
 constexpr const char *Q_QUANT_MODE_NO_QUANT = "NoQuant";
 constexpr const char *DEFAULT_OP_NAME = "QkvRmsNormRopeCacheWithKScale";
-
-static_assert(static_cast<uint64_t>(RopeMode::ROPE) == QKV_K_SCALE_ROPE_MODE_ROPE);
-static_assert(static_cast<uint64_t>(RopeMode::MROPE) == QKV_K_SCALE_ROPE_MODE_MROPE);
-static_assert(static_cast<uint64_t>(KQuantMode::FP8) == QKV_K_SCALE_K_QUANT_MODE_FP8);
-static_assert(static_cast<uint64_t>(KQuantMode::INT8) == QKV_K_SCALE_K_QUANT_MODE_INT8);
-static_assert(static_cast<uint64_t>(QQuantMode::PER_TOKEN_PER_HEAD) ==
-              QKV_K_SCALE_Q_QUANT_MODE_PER_TOKEN_PER_HEAD);
-static_assert(static_cast<uint64_t>(QQuantMode::NO_QUANT) == QKV_K_SCALE_Q_QUANT_MODE_NO_QUANT);
 
 const char *CacheTensorName(uint64_t index)
 {
@@ -224,7 +217,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateDtypes() const
         const TensorContractInfo *tensor;
         ge::DataType expected;
     };
-    const DtypeRule rules[] = {
+    std::vector<DtypeRule> rules = {
         {"qkv", &input_.qkv, ge::DT_BF16},
         {"qGamma", &input_.qGamma, ge::DT_FLOAT},
         {"kGamma", &input_.kGamma, ge::DT_FLOAT},
@@ -235,26 +228,21 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateDtypes() const
         {"rotation", &input_.rotation, ge::DT_BF16},
         {"vScale", &input_.vScale, ge::DT_FLOAT},
     };
-    for (const auto &rule : rules) {
-        OP_CHECK_IF(rule.tensor->dtype != rule.expected,
-                    OP_LOGE_FOR_INVALID_DTYPE(opName_, rule.tensorName, DtypeName(rule.tensor->dtype),
-                                              DtypeName(rule.expected)),
-                    return ge::GRAPH_FAILED);
-    }
+
     if (ropeMode_ == RopeMode::MROPE) {
-        OP_CHECK_IF(input_.mropePosition.dtype != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE(opName_, "mropePosition", DtypeName(input_.mropePosition.dtype),
-                                              DtypeName(ge::DT_INT32)),
-                    return ge::GRAPH_FAILED);
-        return ge::GRAPH_SUCCESS;
+        rules.push_back({"kCache", &input_.kCache, ge::DT_INT8});
+        rules.push_back({"mropePosition", &input_.mropePosition, ge::DT_INT32});
+        rules.push_back({"qOut", &input_.qOut, ge::DT_BF16});
+    } else {
+        rules.push_back({"kCache", &input_.kCache, ge::DT_FLOAT8_E4M3FN});
+        rules.push_back({"queryStartLoc", &input_.queryStartLoc, ge::DT_INT32});
+        rules.push_back({"seqLens", &input_.seqLens, ge::DT_INT32});
+        rules.push_back({"qOut", &input_.qOut, ge::DT_FLOAT8_E4M3FN});
+        rules.push_back({"qScale", &input_.qScale, ge::DT_FLOAT});
     }
 
-    const DtypeRule ropeRules[] = {
-        {"queryStartLoc", &input_.queryStartLoc, ge::DT_INT32},
-        {"seqLens", &input_.seqLens, ge::DT_INT32},
-    };
-    for (const auto &rule : ropeRules) {
-        OP_CHECK_IF(rule.tensor->dtype != rule.expected,
+    for (const auto &rule : rules) {
+        OP_CHECK_IF(rule.tensor->descriptorPresent && rule.tensor->dtype != rule.expected,
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, rule.tensorName, DtypeName(rule.tensor->dtype),
                                               DtypeName(rule.expected)),
                     return ge::GRAPH_FAILED);
@@ -262,28 +250,20 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateDtypes() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMropeSection() const
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMropeSection()
 {
     if (ropeMode_ != RopeMode::MROPE) {
         return ge::GRAPH_SUCCESS;
     }
-    const auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr || static_cast<uint64_t>(attrs->GetAttrNum()) <= MROPE_SECTION_ATTR_INDEX,
+    OP_CHECK_IF(!hasMropeSection_ || !mropeSectionDataValid_,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mrope_section", "missing",
                                                       "M-RoPE requires mrope_section"),
                 return ge::GRAPH_FAILED);
-    const auto mropeSection = attrs->GetListInt(MROPE_SECTION_ATTR_INDEX);
-    OP_CHECK_IF(mropeSection == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mrope_section", "missing",
-                                                      "M-RoPE requires mrope_section"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(static_cast<uint64_t>(mropeSection->GetSize()) != MROPE_SECTION_SIZE,
+    OP_CHECK_IF(mropeSectionSize_ != MROPE_SECTION_SIZE,
                 OP_LOGE_FOR_INVALID_LISTSIZE(opName_, "mrope_section",
-                                             std::to_string(mropeSection->GetSize()).c_str(), "3"),
+                                             std::to_string(mropeSectionSize_).c_str(), "3"),
                 return ge::GRAPH_FAILED);
-    const auto *sectionData = mropeSection->GetData();
-    OP_CHECK_IF(sectionData == nullptr, OP_LOGE(context_, "mrope_section data is nullptr."),
-                return ge::GRAPH_FAILED);
+    const auto *sectionData = mropeSectionValues_.data();
 
     const int64_t halfHeadDim = static_cast<int64_t>(input_.headDim / 2);
     int64_t sectionSum = 0;
@@ -315,6 +295,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMropeSection() 
                             .c_str()),
                     return ge::GRAPH_FAILED);
     }
+    mropeSectionH_ = static_cast<uint64_t>(sectionData[1]);
+    mropeSectionW_ = static_cast<uint64_t>(sectionData[2]);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -327,10 +309,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateOutputContract(
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.qOut.shapePresent,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qOut", "shape missing", "qOut shape must exist"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(input_.qOut.dtype != expectedQOutDtype,
-                OP_LOGE_FOR_INVALID_DTYPE(opName_, "qOut", DtypeName(input_.qOut.dtype),
-                                          DtypeName(expectedQOutDtype)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(qOutDtypeAttr_ != expectedQOutDtype,
                 OP_LOGE_FOR_INVALID_DTYPE(opName_, "q_out_dtype", DtypeName(qOutDtypeAttr_),
@@ -349,9 +327,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateOutputContract(
     OP_CHECK_IF(!input_.qScale.shapePresent,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qScale", "shape missing",
                                                       "qScale shape must exist in the RoPE scene"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(input_.qScale.dtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(opName_, "qScale", DtypeName(input_.qScale.dtype), DtypeName(ge::DT_FLOAT)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -749,15 +724,9 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillTilingData(uint64_t tokenTile)
     tilingData_.tokenTile = tokenTile;
     tilingData_.epsilon = epsilon_;
     if (ropeMode_ == RopeMode::MROPE) {
-        const auto *attrs = context_->GetAttrs();
-        const auto mropeSection = attrs == nullptr ? nullptr : attrs->GetListInt(MROPE_SECTION_ATTR_INDEX);
-        // ValidateMropeSection() has already checked presence, length and
-        // value bounds.  Only H/W are consumed by the device lane selector;
-        // the T entry remains a host-side contract value.
-        if (mropeSection != nullptr && mropeSection->GetData() != nullptr && mropeSection->GetSize() == 3) {
-            tilingData_.mropeSectionH = static_cast<uint64_t>(mropeSection->GetData()[1]);
-            tilingData_.mropeSectionW = static_cast<uint64_t>(mropeSection->GetData()[2]);
-        }
+        // ValidateMropeSection() caches the checked values before tiling.
+        tilingData_.mropeSectionH = mropeSectionH_;
+        tilingData_.mropeSectionW = mropeSectionW_;
     }
 }
 
@@ -776,9 +745,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateParsedInput() c
     status = ValidateDtypes();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale dtype validation failed."), return ge::GRAPH_FAILED);
-    status = ValidateMropeSection();
+    status = ValidateQQuantMode();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale M-RoPE section validation failed."),
+                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale Q quantization mode validation failed."),
                 return ge::GRAPH_FAILED);
     status = ValidateOutputContract();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
@@ -1198,34 +1167,46 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseQOutDtypeAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ResolveKQuantMode()
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::CacheMropeSectionAttr()
 {
-    if (input_.kCache.dtype == ge::DT_FLOAT8_E4M3FN) {
-        kQuantMode_ = KQuantMode::FP8;
-        return ge::GRAPH_SUCCESS;
+    mropeSectionValues_ = {};
+    mropeSectionSize_ = 0;
+    hasMropeSection_ = false;
+    mropeSectionDataValid_ = true;
+    mropeSectionH_ = 0;
+    mropeSectionW_ = 0;
+
+    const auto attrs = context_->GetAttrs();
+    if (attrs == nullptr || static_cast<uint64_t>(attrs->GetAttrNum()) <= MROPE_SECTION_ATTR_INDEX) {
+        return;
     }
-    if (input_.kCache.dtype == ge::DT_INT8) {
-        kQuantMode_ = KQuantMode::INT8;
-        return ge::GRAPH_SUCCESS;
+    const auto mropeSection = attrs->GetListInt(MROPE_SECTION_ATTR_INDEX);
+    if (mropeSection == nullptr || mropeSection->GetSize() == 0) {
+        return;
     }
-    OP_LOGE_FOR_INVALID_DTYPE(opName_, "kCache", DtypeName(input_.kCache.dtype), "float8_e4m3fn or int8");
-    return ge::GRAPH_FAILED;
+
+    hasMropeSection_ = true;
+    mropeSectionSize_ = static_cast<uint64_t>(mropeSection->GetSize());
+    const auto *sectionData = mropeSection->GetData();
+    if (mropeSectionSize_ != MROPE_SECTION_SIZE) {
+        return;
+    }
+    if (sectionData == nullptr) {
+        mropeSectionDataValid_ = false;
+        return;
+    }
+    std::copy_n(sectionData, MROPE_SECTION_SIZE, mropeSectionValues_.begin());
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateQuantModeCombination() const
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateQQuantMode() const
 {
     const bool isRope = ropeMode_ == RopeMode::ROPE;
     const QQuantMode expectedQQuantMode =
         isRope ? QQuantMode::PER_TOKEN_PER_HEAD : QQuantMode::NO_QUANT;
-    const KQuantMode expectedKQuantMode = isRope ? KQuantMode::FP8 : KQuantMode::INT8;
     OP_CHECK_IF(qQuantMode_ != expectedQQuantMode,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     opName_, "q_quant_mode", QQuantModeName(qQuantMode_),
                     isRope ? "RoPE requires PerTokenPerHead" : "M-RoPE requires NoQuant"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(kQuantMode_ != expectedKQuantMode,
-                OP_LOGE_FOR_INVALID_DTYPE(opName_, "kCache", DtypeName(input_.kCache.dtype),
-                                          isRope ? "float8_e4m3fn" : "int8"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1313,19 +1294,15 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillOutputTensorInfos()
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractInput()
 {
+    CacheMropeSectionAttr();
+    FillOptionalTensorInputs();
     OP_CHECK_IF(ResolveRopeMode() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to resolve RoPE mode."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(FillRequiredTensorInputs() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to parse required tensor inputs."), return ge::GRAPH_FAILED);
-    FillOptionalTensorInputs();
     FillOutputTensorInfos();
 
-    OP_CHECK_IF(ResolveKQuantMode() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to resolve K quant mode."),
-                return ge::GRAPH_FAILED);
     OP_CHECK_IF(ParseQQuantModeAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse q_quant_mode attr."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateQuantModeCombination() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "unsupported RoPE and quantization mode combination."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(ParseHeadNumsAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse head_nums attr."),
                 return ge::GRAPH_FAILED);
@@ -1350,6 +1327,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractInput()
                 OP_LOGE(context_, "invalid shape inputs for derived fields."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(FillShapeDerivedFields() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to fill shape derived fields."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateMropeSection() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale M-RoPE section validation failed."),
+                return ge::GRAPH_FAILED);
     epsilon_ = ParseEpsilonAttr();
     return ge::GRAPH_SUCCESS;
 }
@@ -1416,11 +1396,16 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::Reset()
     tilingData_ = {};
     aicNum_ = 0;
     ropeMode_ = RopeMode::ROPE;
-    kQuantMode_ = KQuantMode::FP8;
     qQuantMode_ = QQuantMode::PER_TOKEN_PER_HEAD;
     qOutDtypeAttr_ = ge::DT_FLOAT8_E4M3FN;
     epsilon_ = DEFAULT_EPSILON;
     tilingDataSize_ = 0;
+    mropeSectionValues_ = {};
+    mropeSectionSize_ = 0;
+    hasMropeSection_ = false;
+    mropeSectionDataValid_ = true;
+    mropeSectionH_ = 0;
+    mropeSectionW_ = 0;
     numBlocks_ = 0;
     workspaceSize_ = 0;
     tilingKey_ = 0;
@@ -1473,38 +1458,30 @@ uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::GetTilingKey() const
     const uint64_t qRows = tokenTilePerAiv * input_.numQHeads;
     const uint64_t kRows = tokenTilePerAiv * input_.numKHeads;
     const uint64_t qkPreprocessBytes = CalcQkPreprocessNzBytes(qRows) + CalcQkPreprocessNzBytes(kRows);
+    const bool kCacheIsInt8 = input_.kCache.dtype == ge::DT_INT8;
+    // The template key uses its own 0/1 ABI values rather than ge::DataType values.
+    const uint64_t kQuantModeKey =
+        kCacheIsInt8 ? QKV_K_SCALE_K_QUANT_MODE_INT8 : QKV_K_SCALE_K_QUANT_MODE_FP8;
     const bool useMropeCompactPipeline =
         ropeMode_ == RopeMode::MROPE && input_.layoutQkv == QKV_K_SCALE_LAYOUT_TND &&
-        input_.layoutQOut == QKV_K_SCALE_LAYOUT_TND && kQuantMode_ == KQuantMode::INT8 &&
+        input_.layoutQOut == QKV_K_SCALE_LAYOUT_TND && kCacheIsInt8 &&
         qQuantMode_ == QQuantMode::NO_QUANT && kRows <= MROPE_COMPACT_MAX_K_ROWS &&
         qkPreprocessBytes <= MROPE_COMPACT_QK_PREPROCESS_BYTES &&
         tokenTilePerAiv * (input_.numQHeads + input_.numKHeads + input_.numVHeads) <=
             MROPE_COMPACT_INPUT_ROWS_PER_AIV;
     return GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128, input_.layoutQkv,
                               input_.layoutQOut, static_cast<uint64_t>(ropeMode_),
-                              static_cast<uint64_t>(kQuantMode_), static_cast<uint64_t>(qQuantMode_),
-                              useMropeCompactPipeline);
+                              kQuantModeKey, static_cast<uint64_t>(qQuantMode_), useMropeCompactPipeline);
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ResolveRopeMode()
 {
-    const auto queryStartLoc = context_->GetOptionalInputDesc(QUERY_START_LOC_INDEX);
-    const auto seqLens = context_->GetOptionalInputDesc(SEQ_LENS_INDEX);
-    const auto mropePosition = context_->GetOptionalInputDesc(MROPE_POSITION_INDEX);
-
-    bool hasMropeSection = false;
-    const auto attrs = context_->GetAttrs();
-    if (attrs != nullptr && static_cast<uint64_t>(attrs->GetAttrNum()) > MROPE_SECTION_ATTR_INDEX) {
-        const auto mropeSection = attrs->GetListInt(MROPE_SECTION_ATTR_INDEX);
-        // The framework materializes an omitted optional ListInt as an empty
-        // list.  An empty mrope_section therefore belongs to the RoPE scene.
-        hasMropeSection = mropeSection != nullptr && mropeSection->GetSize() != 0;
-    }
-
-    const bool wantsMrope = mropePosition != nullptr || hasMropeSection;
-    const bool isRope = !wantsMrope && queryStartLoc != nullptr && seqLens != nullptr;
-    const bool isMrope = wantsMrope && queryStartLoc == nullptr && seqLens == nullptr && mropePosition != nullptr &&
-                         hasMropeSection;
+    const bool hasQueryStartLoc = input_.queryStartLoc.descriptorPresent;
+    const bool hasSeqLens = input_.seqLens.descriptorPresent;
+    const bool hasMropePosition = input_.mropePosition.descriptorPresent;
+    const bool wantsMrope = hasMropePosition || hasMropeSection_;
+    const bool isRope = !wantsMrope && hasQueryStartLoc && hasSeqLens;
+    const bool isMrope = wantsMrope && !hasQueryStartLoc && !hasSeqLens && hasMropePosition && hasMropeSection_;
     OP_CHECK_IF(!isRope && !isMrope,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                     opName_, "query_start_loc/seq_lens/mrope_position/mrope_section", "inconsistent presence",

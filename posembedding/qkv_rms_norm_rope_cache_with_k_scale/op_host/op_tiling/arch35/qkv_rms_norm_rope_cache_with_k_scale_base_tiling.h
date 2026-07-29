@@ -11,6 +11,7 @@
 #ifndef QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_BASE_TILING_H_
 #define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_BASE_TILING_H_
 
+#include <array>
 #include <cstdint>
 
 #include "op_host/tiling_base.h"
@@ -20,7 +21,6 @@ namespace optiling {
 namespace QkvRmsNormRopeCacheWithKScale {
 
 enum class RopeMode : uint64_t { ROPE = 0, MROPE = 1 };
-enum class KQuantMode : uint64_t { FP8 = 0, INT8 = 1 };
 enum class QQuantMode : uint64_t { PER_TOKEN_PER_HEAD = 0, NO_QUANT = 1 };
 
 struct TensorContractInfo {
@@ -102,7 +102,7 @@ private:
     ge::graphStatus ValidateHeadNums() const;
     ge::graphStatus ValidateScalarInputs() const;
     ge::graphStatus ValidateDtypes() const;
-    ge::graphStatus ValidateMropeSection() const;
+    ge::graphStatus ValidateMropeSection();
     ge::graphStatus ValidateOutputContract() const;
     ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName,
                                       uint64_t expectedRank) const;
@@ -129,9 +129,9 @@ private:
     ge::graphStatus ParseLayoutQOutAttr();
     ge::graphStatus ParseQQuantModeAttr();
     ge::graphStatus ParseQOutDtypeAttr();
+    void CacheMropeSectionAttr();
     ge::graphStatus ResolveRopeMode();
-    ge::graphStatus ResolveKQuantMode();
-    ge::graphStatus ValidateQuantModeCombination() const;
+    ge::graphStatus ValidateQQuantMode() const;
     float ParseEpsilonAttr() const;
     ge::graphStatus FillShapeDerivedFields();
     ge::graphStatus FillRequiredTensorInputs();
@@ -146,11 +146,16 @@ private:
     QkvRmsNormRopeCacheWithKScaleTilingData tilingData_;
     uint64_t aicNum_ = 0;
     RopeMode ropeMode_ = RopeMode::ROPE;
-    KQuantMode kQuantMode_ = KQuantMode::FP8;
     QQuantMode qQuantMode_ = QQuantMode::PER_TOKEN_PER_HEAD;
     ge::DataType qOutDtypeAttr_ = ge::DT_FLOAT8_E4M3FN;
     float epsilon_ = 1e-6f;
     uint64_t tilingDataSize_ = 0;
+    std::array<int64_t, 3> mropeSectionValues_{};
+    uint64_t mropeSectionSize_ = 0;
+    bool hasMropeSection_ = false;
+    bool mropeSectionDataValid_ = true;
+    uint64_t mropeSectionH_ = 0;
+    uint64_t mropeSectionW_ = 0;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale
