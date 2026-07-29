@@ -92,8 +92,8 @@ bool FiaTilingNonQuantMlaArch35::IsCapableSparseLayoutCheckMla()
     if (fiaInfo_->n2Size != 1) {
         return false;
     }
-    // N1 为 2 的 n 次方
-    if (fiaInfo_->n1Size == 0 || (fiaInfo_->n1Size & (fiaInfo_->n1Size - 1)) != 0) {
+    // N1 范围 [1, 128]
+    if (fiaInfo_->n1Size < 1 || fiaInfo_->n1Size > NUM_128) {
         return false;
     }
     // S1 范围 1-16
