@@ -431,8 +431,9 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
         gradSize_ = batch_ * numHeads_ * maxQSeqlen_ * ONEBLOCK_FLOAT_NUM * sizeof(float);
     }
 
-    uint64_t detDkWorkspaceSize_ = aicNum_ * dkvSize_ * sizeof(float);
-    uint64_t detDvWorkspaceSize_ = aicNum_ * dkvSize_ * sizeof(float);
+    uint32_t groupSizeForDet_ = (kvHeads_ > 0) ? (numHeads_ / kvHeads_) : 1;
+    uint64_t detDkWorkspaceSize_ = aicNum_ * groupSizeForDet_ * dkvSize_ * sizeof(float);
+    uint64_t detDvWorkspaceSize_ = aicNum_ * groupSizeForDet_ * dkvSize_ * sizeof(float);
     workSpaceSize_ = libapiSize_ + sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_ + detDkWorkspaceSize_ + detDvWorkspaceSize_;
     context->GetWorkspaceSizes(1)[0] = workSpaceSize_;
     
@@ -484,9 +485,11 @@ ge::graphStatus BSAGradTiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_dkvSize(dkvSize_);
     tilingData_->set_postUbBaseSize(postUbBaseSize_);
     tilingData_->set_ubSize(ubSize_ - sizeof(BlockSparseAttentionGradTilingData) - 2 * 1024);
-    tilingData_->set_detDkWorkspaceSize(aicNum_ * dkvSize_ * sizeof(float));
-    tilingData_->set_detDvWorkspaceSize(aicNum_ * dkvSize_ * sizeof(float));
+    uint32_t gsForDet = (kvHeads_ > 0) ? (numHeads_ / kvHeads_) : 1;
+    tilingData_->set_detDkWorkspaceSize(aicNum_ * gsForDet * dkvSize_ * sizeof(float));
+    tilingData_->set_detDvWorkspaceSize(aicNum_ * gsForDet * dkvSize_ * sizeof(float));
     tilingData_->set_aicNumForDet(aicNum_);
+    tilingData_->set_groupSizeForDet(gsForDet);
     return ge::GRAPH_SUCCESS;
 }
 
