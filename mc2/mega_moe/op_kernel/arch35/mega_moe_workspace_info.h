@@ -105,8 +105,9 @@ HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tiling
     bool isA8W8 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
                   tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
     bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
-    bool useMteNoQuantGmm2Gm =
-        useMteA8W8Wave && tilingData->combineQuantMode == COMBINE_NO_QUANT;
+    bool useGroupSyncCounters =
+        tilingData->topoType == TOPO_TYPE_URMA ||
+        (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
     int64_t maxWavesPerExpert =
         Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
                            static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256));
@@ -119,10 +120,10 @@ HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tiling
         routedExpertCount *
         (swigluFlagSlotsPerExpert + waveFlagSlotsPerExpert +
          static_cast<int64_t>(INT_CACHELINE) * tilingData->aicNum);
-    if (useMteNoQuantGmm2Gm) {
+    if (useMteA8W8Wave) {
         flagElementCount += routedExpertCount * tilingData->aicNum * INT_CACHELINE;
     }
-    if (tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA) {
+    if (useGroupSyncCounters) {
         flagElementCount += static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
                             routedExpertCount * INT_CACHELINE;
     }
@@ -141,7 +142,7 @@ struct WorkspaceInfo {
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
     GM_ADDR flagSendCntCalToUpdParamsPtr;
-    GM_ADDR gmm2NoQuantReadyPtr{nullptr};
+    GM_ADDR gmm2ReadyPtr{nullptr};
     GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
     GM_ADDR cumsumInfoPtr{nullptr};
     GM_ADDR gmm1MmadResPtr{nullptr};
@@ -191,8 +192,9 @@ struct WorkspaceInfo {
         bool isGenericGmm = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
                             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
         bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm;
-        bool useMteNoQuantGmm2Gm =
-            useMteA8W8Wave && tilingData->combineQuantMode == COMBINE_NO_QUANT;
+        bool useGroupSyncCounters =
+            tilingData->topoType == TOPO_TYPE_URMA ||
+            (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
 
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
@@ -216,14 +218,14 @@ struct WorkspaceInfo {
         flagSendCntCalToUpdParamsPtr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * INT_CACHELINE * routedExpertCount * tilingData->aicNum;
 
-        if (useMteNoQuantGmm2Gm) {
-            gmm2NoQuantReadyPtr = base + workspaceSize;
+        if (useMteA8W8Wave) {
+            gmm2ReadyPtr = base + workspaceSize;
             // slotIdx is expertIdx in PER_EXPERT mode and batchIdx in
             // PER_BATCH mode. Each AIC arrival owns one 64B cache line.
             workspaceSize += SIZE_INT_32 * routedExpertCount * tilingData->aicNum * INT_CACHELINE;
         }
 
-        if (tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA) {
+        if (useGroupSyncCounters) {
             gmm2CombineSyncCounterPtr = base + workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
                              routedExpertCount * INT_CACHELINE * SIZE_INT_32;
@@ -255,18 +257,18 @@ struct WorkspaceInfo {
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ ||
             tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA ||
-            useMteNoQuantGmm2Gm) {
-            if (useMteNoQuantGmm2Gm) {
+            useMteA8W8Wave) {
+            if (useMteA8W8Wave) {
                 workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
             }
             gmm2MmadResPtr = base + workspaceSize;
-            // The MTE no-quant path gives every routed row a unique [H] BF16
+            // The MTE wave path gives every routed row a unique [H] BF16
             // region for the complete kernel lifetime.  It is not a batch or
             // ring slot, so AIC never needs a consumer ACK before advancing.
             int64_t gmm2OutputBytes = static_cast<int64_t>(SIZE_BF_16) *
                                       static_cast<int64_t>(tilingData->maxOutputSize) *
                                       static_cast<int64_t>(tilingData->h);
-            workspaceSize += useMteNoQuantGmm2Gm ?
+            workspaceSize += useMteA8W8Wave ?
                                  Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
                                  gmm2OutputBytes;
         }
