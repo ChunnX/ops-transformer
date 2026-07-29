@@ -298,9 +298,9 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                             *opParamInfo_.cmpRatio),
                     return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
+        OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT_8K)),
                     OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
-                            SPARSE_LIMIT, *opParamInfo_.sparseCount),
+                            SPARSE_LIMIT_8K, *opParamInfo_.sparseCount),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128),
                     OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128, but now cmpRatio is %ld.",
@@ -768,8 +768,9 @@ ge::graphStatus QLIV2InfoParser::GetGSize()
     gSize_ = n1Size_ / n2Size_;
 
     if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(gSize_ != G_SIZE_LIMIT && gSize_ != G_SIZE_LIMIT_32_950,
-                    OP_LOGE(opName_, "input query's head_num divided by input key's head_num must equal 64 or 32"),
+        OP_CHECK_IF(gSize_ == 0 || gSize_ > G_SIZE_LIMIT,
+                    OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must be in [1, %u].",
+                            n1Size_, n2Size_, G_SIZE_LIMIT),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(gSize_ != G_SIZE_LIMIT,

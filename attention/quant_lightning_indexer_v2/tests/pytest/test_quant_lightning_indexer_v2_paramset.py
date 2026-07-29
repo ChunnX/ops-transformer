@@ -905,6 +905,61 @@ TEST_PARAMS = {
     },
 }
 
+# Ascend 950 N1/topk泛化边界
+_N1_TOPK_BASE = {
+    "batch_size": [1],
+    "q_seq": [2],
+    "q_t_size": [None],
+    "k_t_size": [None],
+    "k_head_num": [1],
+    "head_dim": [128],
+    "block_size": [None],
+    "block_num": [None],
+    "qk_dtype": [torch.float8_e4m3fn],
+    "dequant_dtype": [torch.float32],
+    "actual_seq_dtype": [torch.int32],
+    "cu_seqlens_q": [None],
+    "cu_seqlens_k": [None],
+    "seqused_q": [[2]],
+    "cmp_residual_k": [None],
+    "max_seqlen_q": [2],
+    "quant_mode": [1],
+    "layout_query": ["BSND"],
+    "layout_key": ["BSND"],
+    "sparse_mode": [0],
+    "query_datarange": [[-1, 1]],
+    "key_datarange": [[-1, 1]],
+    "weights_datarange": [[-1, 1]],
+    "q_scale_datarange": [[0, 1]],
+    "k_scale_datarange": [[0, 1]],
+    "cmp_ratio": [1],
+    "return_value": [0],
+    "output_idx_offset": [None],
+    "run_mode": ["eager"],
+}
+
+for _name, _g_size, _k_seq, _topk in (
+    ("wb_n1_g64_topk2048", 64, 4096, 2048),
+    ("wb_n1_g3_topk2049", 3, 4096, 2049),
+    ("wb_n1_g5_topk3073", 5, 4096, 3073),
+    ("wb_n1_g7_topk4097", 7, 8192, 4097),
+    ("wb_n1_g9_topk5121", 9, 8192, 5121),
+    ("wb_n1_g11_topk6144", 11, 8192, 6144),
+    ("wb_n1_g13_topk6145", 13, 8192, 6145),
+    ("wb_n1_g1_topk8192", 1, 16384, 8192),
+):
+    _params = _N1_TOPK_BASE.copy()
+    _params.update(
+        {
+            "k_seq": [_k_seq],
+            "q_head_num": [_g_size],
+            "seqused_k": [[_k_seq]],
+            "sparse_count": [_topk],
+        }
+    )
+    TEST_PARAMS[_name] = _params
+del _N1_TOPK_BASE, _name, _g_size, _k_seq, _topk, _params
+
 # 按需选择要启用的测试参数（例如默认启用所有）
 properties = torch.npu.get_device_properties()
 if "Ascend910_93" in properties.name:
@@ -941,6 +996,14 @@ elif "Ascend950" in properties.name:
             "wb_ld_rv1_block1024",
             "wb_ld_rv1_sparse2048",
             "wb_nold_rv0_bsnd_pa",
+            "wb_n1_g64_topk2048",
+            "wb_n1_g3_topk2049",
+            "wb_n1_g5_topk3073",
+            "wb_n1_g7_topk4097",
+            "wb_n1_g9_topk5121",
+            "wb_n1_g11_topk6144",
+            "wb_n1_g13_topk6145",
+            "wb_n1_g1_topk8192",
         )
     ]
 

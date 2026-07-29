@@ -129,7 +129,7 @@ public:
 
     __aicore__ inline void TopK(LocalTensor<uint16_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,
                                 LocalTensor<uint16_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx,
-                                uint32_t s2LoopNum, bool isNeedLD, bool returnValueFlag,
+                                uint32_t s2LoopNum, uint32_t newDataOffset, bool isNeedLD, bool returnValueFlag,
                                 uint32_t outputIdxOffset)
     {
         // true: 开启返回hisValueLocal
@@ -159,7 +159,7 @@ public:
             PipeBarrier<PIPE_V>();
             topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
                                           tmpIndexLocal, hisIndexLocal[loopIdx % 2], topK,
-                                          loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256), s2SeqLen);
+                                          newDataOffset - QLIV2Common::Align(topK, (uint32_t)256), s2SeqLen);
             if (loopIdx == s2LoopNum - 1) {
                 PipeBarrier<PIPE_V>();
                 if ((loopIdx + 1) % 2 == 1) { // 2:pingpong
@@ -183,7 +183,7 @@ public:
             PipeBarrier<PIPE_V>();
             topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
                                           tmpIndexLocal, hisIndexLocal[loopIdx % 2],
-                                          topK, loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256), s2SeqLen);
+                                          topK, newDataOffset - QLIV2Common::Align(topK, (uint32_t)256), s2SeqLen);
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
                 QLIV2Common::Align(topK, (uint32_t)256));

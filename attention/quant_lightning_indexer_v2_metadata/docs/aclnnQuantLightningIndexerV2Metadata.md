@@ -138,7 +138,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的head个数。</td>
-      <td>当前仅支持32/64。</td>
+      <td>Ascend 950PR/Ascend 950DT支持[1, 64]，其他产品仅支持64。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -168,7 +168,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>topk（int64_t）</td>
       <td>输入</td>
       <td>表示从Query中筛选出的关键稀疏token的个数。</td>
-      <td>当前仅支持[1, 2048]</td>
+      <td>Ascend 950PR/Ascend 950DT支持[1, 8192]，其他产品支持[1, 2048]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

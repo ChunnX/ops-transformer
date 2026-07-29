@@ -128,7 +128,7 @@ __simd_vf__ void MulWeightAndReduceSumF32VF(__ubuf__ uint16_t *out, __ubuf__ flo
     MicroAPI::LoadAlign<float>(regKScale[1], kScale + 64);
 
     // unroll2
-    for (uint16_t i = (uint16_t)(0); i < gSize; i += 2) {
+    for (uint16_t i = (uint16_t)(0); i + 1 < gSize; i += 2) {
         MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i); // RowStride是128, 行都落在一个bank上
         MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
         liV2Vector1::BroadcastLane(regwBrc, regW, i);
@@ -138,6 +138,14 @@ __simd_vf__ void MulWeightAndReduceSumF32VF(__ubuf__ uint16_t *out, __ubuf__ flo
         MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + 128 + qkVLStride);
         liV2Vector1::BroadcastLane(regwBrc, regW, i + 1);
         liV2Vector1::WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
+    }
+
+    if ((gSize & 1U) != 0) {
+        uint16_t i = gSize - 1;
+        MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i);
+        MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
+        liV2Vector1::BroadcastLane(regwBrc, regW, i);
+        liV2Vector1::WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
     }
 
     MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
@@ -164,7 +172,7 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
                                              const LocalTensor<float> &weight_, // w      [G]          [64    ]
                                              const LocalTensor<float> &kScale_, // kScale [S2Base]     [128   ]
                                              const LocalTensor<float> &qScale_, // qScale [G]          [64    ]
-                                             const int gSize)                   // G 64
+                                             const int gSize)                   // G <= 64
 {
     __ubuf__ uint16_t *out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
     __ubuf__ float *weight = (__ubuf__ float *)weight_.GetPhyAddr();
@@ -247,7 +255,7 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
                                              const LocalTensor<float> &weight_,  // w      [G]          [64    ]
                                              const LocalTensor<float> &kScale_,  // kScale [S2Base]     [128   ]
                                              const LocalTensor<float> &qScale_,  // qScale [G]          [64    ]
-                                             const int gSize)                    // G 64
+                                             const int gSize)                    // G <= 64
 {
     __ubuf__ uint16_t *out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
     __ubuf__ float *weight = (__ubuf__ float *)weight_.GetPhyAddr();
@@ -352,7 +360,7 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
                                               uint32_t kScaleStride,
                                               const LocalTensor<float> &qScale_, // qScale [2, G]          [64    ]
                                               uint32_t qScaleStride,
-                                              const int gSize) // G 64
+                                              const int gSize) // G <= 64
 {
     __ubuf__ float *weight0 = (__ubuf__ float *)weight_.GetPhyAddr();
     __ubuf__ float *weightTemp = (__ubuf__ float *)weightTemp_.GetPhyAddr();
@@ -470,7 +478,7 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
                                               uint32_t kScaleStride,
                                               const LocalTensor<float> &qScale_, // qScale [2, G]          [64    ]
                                               uint32_t qScaleStride,
-                                              const int gSize) // G 64
+                                              const int gSize) // G <= 64
 {
     __ubuf__ float *weight0 = (__ubuf__ float *)weight_.GetPhyAddr();
     __ubuf__ float *weightTemp0 = (__ubuf__ float *)weightTemp_.GetPhyAddr();
@@ -501,7 +509,7 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
                                                   uint32_t kScaleStride,
                                                   const LocalTensor<float> &qScale_, // qScale [G]         [64    ]
                                                   uint32_t qScaleStride,
-                                                  const int gSize, // G 64
+                                                  const int gSize, // G <= 64
                                                   const int batch)
 {
     // 暂只支持这两种情况, 后续改成循环
@@ -553,7 +561,7 @@ __simd_vf__ void MulWeightAndReduceSumOptionalScaleVF(__ubuf__ uint16_t *out, __
     liV2Vector1::DuplicateZero(regSum1, maskAllB32);
 
     // unroll2
-    for (uint16_t i = (uint16_t)(0); i < gSize; i += 2) {
+    for (uint16_t i = (uint16_t)(0); i + 1 < gSize; i += 2) {
         MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i); // RowStride是128, 行都落在一个bank上
         MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
         liV2Vector1::BroadcastLane(regwBrc, regW, i);
@@ -563,6 +571,14 @@ __simd_vf__ void MulWeightAndReduceSumOptionalScaleVF(__ubuf__ uint16_t *out, __
         MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + 128 + qkVLStride);
         liV2Vector1::BroadcastLane(regwBrc, regW, i + 1);
         liV2Vector1::WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
+    }
+
+    if ((gSize & 1U) != 0) {
+        uint16_t i = gSize - 1;
+        MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i);
+        MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
+        liV2Vector1::BroadcastLane(regwBrc, regW, i);
+        liV2Vector1::WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
     }
 
     MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
@@ -593,7 +609,7 @@ __aicore__ inline void MulWeightAndReduceSumOptionalScaleImpl(
     const LocalTensor<float> &weight_, // w      [G]          [64    ]
     const float kScaleValue,           // kScale scalar
     const float qScaleValue,           // qScale scalar
-    const int gSize)                   // G 64
+    const int gSize)                   // G <= 64
 {
     __ubuf__ uint16_t *out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
     __ubuf__ float *weight = (__ubuf__ float *)weight_.GetPhyAddr();
@@ -608,7 +624,7 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor(const LocalTensor<uint16_t
                                                       const LocalTensor<float> &weight_, // w      [G]          [64    ]
                                                       const float kScaleValue,           // kScale scalar
                                                       const float qScaleValue,           // qScale scalar
-                                                      const int gSize)                   // G 64
+                                                      const int gSize)                   // G <= 64
 {
     MulWeightAndReduceSumOptionalScaleImpl<true>(out_, qk_, qkVLStride, weight_, kScaleValue, qScaleValue, gSize);
 }
@@ -617,7 +633,7 @@ __aicore__ inline void MulWeightAndReduceSumMX(const LocalTensor<uint16_t> &out_
                                                const LocalTensor<float> &qk_,     // q*k^t  [G, S2Base]  [64 128]
                                                const uint32_t qkVLStride,
                                                const LocalTensor<float> &weight_, // w      [G]          [64    ]
-                                               const int gSize)                   // G 64
+                                               const int gSize)                   // G <= 64
 {
     MulWeightAndReduceSumOptionalScaleImpl<false>(out_, qk_, qkVLStride, weight_, 1.0f, 1.0f, gSize);
 }
@@ -719,7 +735,7 @@ __aicore__ inline void MulWeightAndReduceSumOptionalScale2Impl(
     uint32_t weightStride, const LocalTensor<float> &weightTemp_,
     const float kScaleValue, // kScale scalar
     const float qScaleValue, // qScale scalar for batch 0和1
-    const int gSize)         // G 64
+    const int gSize)         // G <= 64
 {
     __ubuf__ float *weight0 = (__ubuf__ float *)weight_.GetPhyAddr();
     __ubuf__ float *weightTemp = (__ubuf__ float *)weightTemp_.GetPhyAddr();
@@ -743,7 +759,7 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor2(
     uint32_t weightStride, const LocalTensor<float> &weightTemp_,
     const float kScaleValue, // kScale scalar
     const float qScaleValue, // qScale scalar for batch 0和1
-    const int gSize)         // G 64
+    const int gSize)         // G <= 64
 {
     MulWeightAndReduceSumOptionalScale2Impl<true>(out_, outStride, qk_, qkVLStride, qkStride, weight_, weightStride,
                                                   weightTemp_, kScaleValue, qScaleValue, gSize);
@@ -755,7 +771,7 @@ __aicore__ inline void MulWeightAndReduceSumMX2(const LocalTensor<uint16_t> &out
                                                 uint32_t qkVLStride, uint32_t qkStride,
                                                 const LocalTensor<float> &weight_, // w      [2, G]          [64    ]
                                                 uint32_t weightStride, const LocalTensor<float> &weightTemp_,
-                                                const int gSize) // G 64
+                                                const int gSize) // G <= 64
 {
     MulWeightAndReduceSumOptionalScale2Impl<false>(out_, outStride, qk_, qkVLStride, qkStride, weight_, weightStride,
                                                    weightTemp_, 1.0f, 1.0f, gSize);

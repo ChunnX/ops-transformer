@@ -72,7 +72,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示Query的head个数，当前仅支持32/64。</td>
+      <td>表示Query的head个数。Ascend 950PR/Ascend 950DT支持[1, 64]，其他产品仅支持64。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -93,7 +93,7 @@
     <tr>
       <td>topk</td>
       <td>属性</td>
-      <td>表示从Query中筛选出的关键稀疏token的个数，当前仅支持[1, 2048]</td>
+      <td>表示从Query中筛选出的关键稀疏token的个数。Ascend 950PR/Ascend 950DT支持[1, 8192]，其他产品支持[1, 2048]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>

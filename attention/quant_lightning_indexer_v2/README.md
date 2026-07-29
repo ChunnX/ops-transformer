@@ -53,6 +53,8 @@
 ## 约束说明
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
+  - `key`的`N2`仅支持1，`query`的`N1`需满足`N1/N2`取值范围为[1, 64]。
+  - `topk`取值范围为[1, 8192]。
   - `query`、`key`在`quant_mode`为1/3时支持FLOAT8_e4m3fn，`quant_mode`为4时支持HIFLOAT8，`quant_mode`为5时支持FLOAT4_e2m1，不支持INT8。
   - `quant_mode`为3/5时，`query_dequant_scale`和`key_dequant_scale`仅支持FLOAT8_e8m0。
   - `quant_mode`为5时，`query`和`key`的逻辑数据类型为FLOAT4_e2m1，每个物理字节打包两个E2M1逻辑元素。
