@@ -55,7 +55,7 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
 
     int64_t expectTilingKey = 1154;
     std::string expectTilingData = "2199023255554 64 16 8589934624 4410436851802832898 8 3 1 128 656 0 "
-                                   "0 40532396646334464 262144 64 316659348865024 2199023255560 ";
+                                   "10496 40532396646334464 262144 64 316659348865024 2199023255560 ";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
