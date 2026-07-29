@@ -153,7 +153,7 @@ private:
     __aicore__ inline void WriteFinalReadyStatusToRank(uint32_t srcRankId, uint32_t dstRankId);
     __aicore__ inline uint32_t WaitScaleoutPayloadReady(GM_ADDR statusAddr);
     __aicore__ inline void PollBackoff();
-    __aicore__ inline void ClearScaleoutReceiveStatus(GM_ADDR localScaleoutStatusBase, uint32_t statusOffset);
+    __aicore__ inline void ClearScaleoutReceiveStatus(GM_ADDR localScaleoutStatusBase, uint64_t statusByteOffset);
     __aicore__ inline void WriteSlotToLocal(uint32_t dstRankId, uint32_t slot);
     __aicore__ inline void WriteToRemoteWindow();
     __aicore__ inline void InitPreparePayloadsBuffers();
@@ -866,14 +866,6 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         return;
     }
 
-    // count 接收推迟到 payload 传输后，AIV0 重新分配接收归约所需 UB。
-    PipeBarrier<PIPE_ALL>();
-    tpipe_->Reset();
-    tpipe_->InitBuffer(topkIdsBuf_, 2 * perGroupSizeAlign_);
-    tpipe_->InitBuffer(dstExpBuf_, perGroupSizeAlign_);
-    tpipe_->InitBuffer(numRecvPerRankBuf_, epWorldSizeAlign_);
-    numRecvPerRankTensor_ = numRecvPerRankBuf_.Get<int32_t>();
-
     uint32_t serverRankCount = epWorldSize_;
     uint32_t mask = 1U;
     int32_t sumOfFlag = -1;
@@ -883,7 +875,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         topkIdsBuf_.GetWithOffset<float>(serverRankCount * UB_STRIDE, serverRankCount * UB_ALIGN);
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
-    while (sumOfFlag != compareFlag) { // 状态位check
+    SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待本核上轮计数器清0(buf 复用)
+    while (sumOfFlag != compareFlag) {      // 状态位check
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, serverRankCount, 1);
@@ -896,7 +889,6 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     Duplicate<int32_t>(recvCounterTensor, 0, serverRankCount * UB_STRIDE);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
-    PipeBarrier<PIPE_ALL>(); // dispatch 返回前完成 count 输出和状态清零
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1618,11 +1610,11 @@ __aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFu
 
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::ClearScaleoutReceiveStatus(
-    GM_ADDR localScaleoutStatusBase, uint32_t statusOffset)
+    GM_ADDR localScaleoutStatusBase, uint64_t statusByteOffset)
 {
     GlobalTensor<int32_t> currentStatusTensor;
     currentStatusTensor.SetGlobalBuffer(
-        (__gm__ int32_t *)(localScaleoutStatusBase + statusOffset * sizeof(int32_t)));
+        (__gm__ int32_t *)(localScaleoutStatusBase + statusByteOffset));
     currentStatusTensor.SetValue(0, 0);
     currentStatusTensor.SetValue(1, 0);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(currentStatusTensor);
@@ -1653,9 +1645,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
             continue;
         }
 
-        uint32_t statusOffset =
-            static_cast<uint32_t>(srcScaleoutIndex * axisMaxBS_ * WIN_ADDR_ALIGN / sizeof(int32_t));
-        GM_ADDR currentStatusAddr = localScaleoutStatusBase + statusOffset * sizeof(int32_t);
+        uint64_t statusByteOffset =
+            static_cast<uint64_t>(srcScaleoutIndex) * axisMaxBS_ * WIN_ADDR_ALIGN;
+        GM_ADDR currentStatusAddr = localScaleoutStatusBase + statusByteOffset;
         if (aivId_ == 0U) {
             WaitScaleoutPayloadReady(currentStatusAddr);
         }
@@ -1675,7 +1667,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         // 所有目标 rank 的 payload 和 final ready 发布完成后才能清理接收区
         SyncAll<true>();
         if (aivId_ == 0U) {
-            ClearScaleoutReceiveStatus(localScaleoutStatusBase, statusOffset);
+            ClearScaleoutReceiveStatus(localScaleoutStatusBase, statusByteOffset);
         }
     }
 }
@@ -1841,6 +1833,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     SyncAll<true>();
 
     ExchangeCount();
+    // 先消费并清理本轮 count，再发布 payload ready，避免快 rank 的下一轮 count 覆盖慢 rank 的本轮状态。
+    GetRecvCount();
     PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
 
@@ -1870,7 +1864,6 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     if ASCEND_IS_AIV { // 全aiv处理
         PrepareDispatchPayloads();
         TransferDispatchPayloads();
-        GetRecvCount();
     }
 }
 } // namespace MoeEpDispatchHybridImpl
