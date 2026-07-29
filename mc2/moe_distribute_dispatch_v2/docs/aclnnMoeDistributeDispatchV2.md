@@ -35,6 +35,13 @@
     \end{cases}
     $$
 
+    当`x`的数据类型为`INT32`时，表示每个INT32元素承载8个INT4数据。此时`quantMode`仅支持0，
+    `scalesOptional`为逐token缩放参数，并随对应token一起通信：
+
+    $$
+    dynamicScalesOut = AllToAllV(scalesOptional)
+    $$
+
     - 情形2：如果quantMode=1（静态量化场景）：
 
     $$
@@ -192,7 +199,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>输入</td>
     <td>本卡发送的token数据。</td>
     <td>要求为2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16</td>
+    <td>FLOAT16、BFLOAT16、INT32</td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
@@ -210,7 +217,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <tr>
     <td>scalesOptional</td>
     <td>输入</td>
-    <td>每个专家的量化平滑参数。</td>
+    <td>每个专家的量化平滑参数或INT32 token的缩放参数。</td>
     <td>-</td>
     <td>FLOAT32</td>
     <td>ND</td>
@@ -382,7 +389,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>输出</td>
     <td>根据expertIds进行扩展过的token特征。</td>
     <td>要求为2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
+    <td>FLOAT16、BFLOAT16、INT32、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
     <td>ND</td>
     <td>(max(tpWorldSize, 1) * A, H)</td>
     <td>√</td>
@@ -390,7 +397,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <tr>
     <td>dynamicScalesOut</td>
     <td>输出</td>
-    <td>Device侧的aclTensor。</td>
+    <td>动态量化或INT32 token场景的缩放参数。</td>
     <td>要求为1D Tensor。</td>
     <td>FLOAT32、FLOAT8_E8M0</td>
     <td>ND</td>
@@ -472,7 +479,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - `commAlg` 支持nullptr、""、"fullmesh"、"hierarchy"；推荐配置"hierarchy"并搭配≥25.0.RC1.1版本驱动；nullptr和""依HCCL环境变量选择算法（不推荐）；"fullmesh"通过RDMA直传token；"hierarchy"经跨机、机内两次发送优化通信。
-        - `commAlg`为"hierarchy"或HCCL_INTRA_PCIE_ENABLE=1且HCCL_INTRA_ROCE_ENABLE=0时，scalesOptional 需传nullptr。
+        - `commAlg`为"hierarchy"或HCCL_INTRA_PCIE_ENABLE=1且HCCL_INTRA_ROCE_ENABLE=0时，scalesOptional 需传nullptr。`x`的数据类型为`INT32`时，仅支持`commAlg`配置为"fullmesh"，且`scalesOptional`必须传入有效数据。
         - `xActiveMaskOptional` 依commAlg取值，"fullmesh"要求为1D Tensor，shape为(BS, )；true需排在false前（例：{true, false, true}非法）；"hierarchy"当前版本不支持，传空指针即可。
         - `expertScalesOptional` 要求为2D Tensor，shape为(BS, K)。
         - `epWorldSize` 依commAlg取值，"fullmesh"支持2、3、4、5、6、7、8、16、32、64、128、192、256、384；"hierarchy"支持16、32、64。
@@ -624,7 +631,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
       - 对于共享专家，需满足 (A = BS \* epWorldSize \* sharedExpertNum / sharedExpertRankNum)。
       - 对于MoE专家，当`globalBS`为0时，需满足 (A >= BS \* epWorldSize \* min(localExpertNum, K))；当`globalBS`非0时，需满足 (A >= globalBS \* min(localExpertNum, K))。
     - **H**：表示hidden size（隐藏层大小）：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：当`x`的数据类型为`INT32`时，仅支持"fullmesh"，H取值范围为(0, 5120]且为32的整数倍；其他数据类型依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍，"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍。
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围[1024, 8192]。
       - <term>Ascend 950PR/Ascend 950DT</term>：取值范围[1024, 8192]。
     - **BS**：表示batch sequence size（本卡最终输出的token数量）：
@@ -639,7 +646,9 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 8. **quantMode相关约束**：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        - `quantMode`取值为0时，表示非量化场景，输入`scales`传空指针。
+        - `quantMode`取值为0时，表示非量化场景：
+            - 当`x`的数据类型为`FLOAT16`或`BFLOAT16`时，输入`scales`传空指针。
+            - 当`x`的数据类型为`INT32`时，输入`scales`必须为1D Tensor，数据类型为`FLOAT32`，shape为(`BS`, )；`expandXOut`的数据类型为`INT32`，`dynamicScalesOut`的数据类型为`FLOAT32`，shape为(`A`, )。
         - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
             - 输入`scales`可传入空指针。
             - 若输入`scales`传入有效数据时，其shape为 (`moeExpertNum`, `H`)。
@@ -672,7 +681,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
    调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - commAlg为""或nullptr：依HCCL环境变量选择“fullmesh”或“hierarchy”公式。
-        - commAlg为"fullmesh"：设置大小要求 (≥ 2 \* (BS \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB))。
+        - commAlg为"fullmesh"：当`x`的数据类型为`INT32`时，设置大小要求 (≥ 2 \* (BS \* epWorldSize \* min(localExpertNum, K) \* (H \* sizeof(int32) + 32B) + 2MB))；其他数据类型设置大小要求 (≥ 2 \* (BS \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB))。
         - commAlg为"hierarchy"：设置大小要求 (≥ (`moeExpertNum` + `epWorldSize` / 4) \* Align512(`maxBS` \* (`H` \* 2 + 16 \* Align8(`K`))) \* 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) \* 8，Align512(x) = ((x + 512 - 1) / 512) * 512)。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
         - ep通信域内：设置大小要求 (≥ 2) 且满足 (≥ 2 \* (localExpertNum \* maxBS \* epWorldSize \* Align512(Align32(2 \* H) + 64) + (K + sharedExpertNum) \* maxBS \* Align512(2 \* H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。

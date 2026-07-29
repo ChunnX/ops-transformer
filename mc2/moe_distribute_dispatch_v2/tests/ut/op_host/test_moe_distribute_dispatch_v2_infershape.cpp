@@ -107,4 +107,47 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferDtype0)
 
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_FLOAT16);
 }
+
+TEST_F(MoeDistributeDispatchV2Infershape, inferDtypeA2Int32WithScales)
+{
+    ge::DataType xType = ge::DT_INT32;
+    ge::DataType expertIdsType = ge::DT_INT32;
+    ge::DataType scalesType = ge::DT_FLOAT;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+        .NodeIoNum(3, 6)
+        .NodeAttrs({
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("fullmesh")},
+            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        })
+        .InputDataTypes({&xType, &expertIdsType, &scalesType})
+        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+        .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeDistributeDispatchV2")->infer_datatype;
+    ASSERT_EQ(inferDtypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_INT32);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_FLOAT);
+}
 }
