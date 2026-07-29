@@ -597,7 +597,6 @@
     <td>DenselightningIndexerKlLossGrad算子是LightningIndexer的反向算子，支持输出Loss计算所需Index部分的分数。</td>
   </tr>
   <tr>
-    <td>attention</td>
     <td><a href="../../attention/dense_lightning_indexer_kl_loss_grad_metadata/README.md">dense_lightning_indexer_kl_loss_grad_metadata</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -606,15 +605,22 @@
     <td>AI CPU</td>
     <td>dense_lightning_indexer_kl_loss_grad算子的前置算子，用于计算dense_lightning_indexer_kl_loss_grad的负载均衡。</td>
   </tr>
-  <tr>
-    <td>ffn</td>
-    <td><a href="../../ffn/ffn/README.md">ffn</a></td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
     <td>提供MoeFFN和FFN的计算功能。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/stem_oam_prep_paged_kv/README.md">stem_oam_prep_paged_kv</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>大模型推理动态稀疏注意力机制的前置评分模块，为block-sparse-attention的前置评分模块。</td>
   </tr>
   <tr>
     <td>ffn</td>
