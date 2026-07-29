@@ -112,6 +112,9 @@ private:
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t &sendCnt);
     __aicore__ inline void DispatchExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx,
                                           const DispatchBufferConfig &bufferConfig);
+    __aicore__ inline void DispatchExpertsUntil(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
+                                                uint32_t &nextDispatchExpert, uint32_t dispatchEnd,
+                                                const DispatchBufferConfig &bufferConfig);
     __aicore__ inline uint64_t ReadExpertTokenCount(uint32_t expertIdx);
     __aicore__ inline void MetaInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId,
                                                   const DispatchBufferConfig &bufferConfig);
@@ -148,6 +151,14 @@ private:
     __aicore__ inline void ProcessCombineGm(GM_ADDR gmm2OutGlobal, uint32_t tokenStart, uint32_t tokenCount,
                                             uint32_t metaInfoUbTokenOffset,
                                             const CombineBufferConfig &bufferConfig, uint32_t &rowSequence);
+    __aicore__ inline void ProcessGmm1Wave(uint32_t batchBegin, uint32_t batchEnd,
+                                          ExpertLoopState &dispatchState, GMMAddrInfo &dispatchAddrInfo,
+                                          uint32_t &nextDispatchExpert, ExpertLoopState &gmm1State,
+                                          GMMAddrInfo &gmm1AddrInfo,
+                                          const DispatchBufferConfig &bufferConfig, int32_t &vecSetSyncCom);
+    __aicore__ inline void ProcessGmm2Wave(uint32_t batchBegin, uint32_t batchEnd,
+                                          ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
+                                          int32_t &vecSetSyncCom);
     __aicore__ inline void ProcessCombineExperts(uint32_t batchBegin, uint32_t batchEnd,
                                                  ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
                                                  const CombineBufferConfig &bufferConfig);
@@ -973,6 +984,24 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpert(
         if (UpdateGroupParams<AddrUpdateMode::GMM1>(state, expertIdx, sendCnt)) {
             UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmmAddrInfo, state);
             MetaInfoCalAndDispatch(gmmAddrInfo, static_cast<int32_t>(expertIdx), bufferConfig);
+        }
+    }
+}
+
+// Advance the AIV1-owned dispatch stream exactly once for every expert in
+// [nextDispatchExpert, dispatchEnd). Other core roles keep no dispatch state.
+template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpertsUntil(
+    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &nextDispatchExpert,
+    uint32_t dispatchEnd, const DispatchBufferConfig &bufferConfig)
+{
+    if constexpr (g_coreType == AIV) {
+        if (subBlockIdx_ != 1) {
+            return;
+        }
+        while (nextDispatchExpert < dispatchEnd) {
+            DispatchExpert(state, gmmAddrInfo, nextDispatchExpert, bufferConfig);
+            ++nextDispatchExpert;
         }
     }
 }
@@ -2113,6 +2142,52 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulGmm2
     }
 }
 
+// The first wave bootstraps dispatch while AIV0 consumes GMM1/SwiGLU. Later
+// waves normally enter with their whole dispatch range already prefetched.
+template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
+    uint32_t batchBegin, uint32_t batchEnd, ExpertLoopState &dispatchState,
+    GMMAddrInfo &dispatchAddrInfo, uint32_t &nextDispatchExpert, ExpertLoopState &gmm1State,
+    GMMAddrInfo &gmm1AddrInfo, const DispatchBufferConfig &bufferConfig, int32_t &vecSetSyncCom)
+{
+    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
+        const uint32_t dispatchLookaheadEnd =
+            expertIdx + 2U < batchEnd ? expertIdx + 2U : batchEnd;
+        DispatchExpertsUntil(
+            dispatchState, dispatchAddrInfo, nextDispatchExpert, dispatchLookaheadEnd, bufferConfig);
+
+        uint64_t sendCnt = 0;
+        if constexpr (g_coreType == AIV) {
+            if (subBlockIdx_ == 1) {
+                sendCnt = ReadExpertTokenCount(expertIdx);
+            }
+        }
+        if (!UpdateGroupParams<AddrUpdateMode::GMM1>(gmm1State, expertIdx, sendCnt)) {
+            continue;
+        }
+        UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
+        GroupMatmulWithSwigluQuant(
+            epilogueOp_, gmm1AddrInfo, gmm1State, expertIdx, vecSetSyncCom);
+    }
+}
+
+// AIC computes every expert in the wave. AIV0/AIV1 consume the matching
+// virtual scheduler rotations in the direct-GM GroupMatmul2 path.
+template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave(
+    uint32_t batchBegin, uint32_t batchEnd, ExpertLoopState &gmm2State,
+    GMMAddrInfo &gmm2AddrInfo, int32_t &vecSetSyncCom)
+{
+    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
+        if (!UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
+            continue;
+        }
+        UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
+        GroupMatmulGmm2(gmm2AddrInfo, gmm2State, vecSetSyncCom);
+        PublishGmm2Ready(expertIdx);
+    }
+}
+
 // AIV1 consumes one routed-expert wave after its GMM2-ready fan-in.  Token
 // ownership, meta-info batching and the row ring are kept here so the main
 // GMM scheduler only describes stage order.
@@ -2191,13 +2266,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
 
     const uint32_t expertsPerWave = expertsPerBatch_;
 
-    uint32_t nextDispatchExpert = 0;
-    if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ == 1 && moeExpertPerRank_ > 0U) {
-            DispatchExpert(dispatchState, dispatchAddrInfo, 0U, dispatchBufferConfig);
-            nextDispatchExpert = 1U;
-        }
-    }
+    uint32_t nextDispatchExpert = 0U;
 
     // Merge a final tail containing strictly less than half of a normal wave
     // into its predecessor, for example 5+5+5+1 becomes 5+5+6.
@@ -2209,53 +2278,20 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
             batchBegin, moeExpertPerRank_, expertsPerWave, smallTailMergeBegin);
         const uint32_t waveBeginCursor = startBlockIdx_;
 
-        // First wave is one-expert-ahead; later waves were fully prefetched by
-        // AIV1 during the preceding wave.
-        for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-            if constexpr (g_coreType == AIV) {
-                if (subBlockIdx_ == 1 && nextDispatchExpert < batchEnd) {
-                    DispatchExpert(dispatchState, dispatchAddrInfo, nextDispatchExpert, dispatchBufferConfig);
-                    ++nextDispatchExpert;
-                }
-            }
-
-            uint64_t sendCnt = 0;
-            if constexpr (g_coreType == AIV) {
-                if (subBlockIdx_ == 1) {
-                    sendCnt = ReadExpertTokenCount(expertIdx);
-                }
-            }
-            if (!UpdateGroupParams<AddrUpdateMode::GMM1>(gmm1State, expertIdx, sendCnt)) {
-                continue;
-            }
-            UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
-            GroupMatmulWithSwigluQuant(epilogueOp_, gmm1AddrInfo, gmm1State, expertIdx, vecSetSyncCom);
-        }
+        ProcessGmm1Wave(
+            batchBegin, batchEnd, dispatchState, dispatchAddrInfo, nextDispatchExpert,
+            gmm1State, gmm1AddrInfo, dispatchBufferConfig, vecSetSyncCom);
         const uint32_t gmm1EndCursor = startBlockIdx_;
 
-        // Full next-wave prefetch is complete before this AIV1 can enter
-        // Combine(B).  Existing dispatch helpers drain their own six buffers.
-        uint32_t nextBatchEnd = MegaMoeImpl::GetWaveEnd(
+        // AIV1 must finish Dispatch(B+1) before Combine(B), because both stages
+        // reuse the same UB and event IDs. The cursor also proves that current
+        // and next wave dispatch are complete before combine starts.
+        const uint32_t nextBatchEnd = MegaMoeImpl::GetWaveEnd(
             batchEnd, moeExpertPerRank_, expertsPerWave, smallTailMergeBegin);
-        if constexpr (g_coreType == AIV) {
-            if (subBlockIdx_ == 1) {
-                while (nextDispatchExpert < nextBatchEnd) {
-                    DispatchExpert(dispatchState, dispatchAddrInfo, nextDispatchExpert, dispatchBufferConfig);
-                    ++nextDispatchExpert;
-                }
-            }
-        }
+        DispatchExpertsUntil(
+            dispatchState, dispatchAddrInfo, nextDispatchExpert, nextBatchEnd, dispatchBufferConfig);
 
-        // AIC computes every expert in the wave.  AIV0/AIV1 only consume the
-        // same virtual scheduler rotation in the direct-GM GroupMatmul2 path.
-        for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-            if (!UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
-                continue;
-            }
-            UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
-            GroupMatmulGmm2(gmm2AddrInfo, gmm2State, vecSetSyncCom);
-            PublishGmm2Ready(expertIdx);
-        }
+        ProcessGmm2Wave(batchBegin, batchEnd, gmm2State, gmm2AddrInfo, vecSetSyncCom);
         // All core types consume the same real/virtual GMM tile rotations.  If
         // the full wave returned to its entry cursor while GMM1 itself did
         // not, GMM2 cancelled GMM1's owner remainder and would pin both stage
