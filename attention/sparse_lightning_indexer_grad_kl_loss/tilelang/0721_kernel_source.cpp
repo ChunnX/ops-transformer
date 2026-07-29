@@ -557,7 +557,6 @@ AscendC::Select<float, uint8_t>(v1_sy_storage[((n_idx_2 * 128) + 4096)], v1_sy_v
           tl::ascend::Fill<float>(v1_bw_eps[0], 1.000000e-08f, 64);
           AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(2);
           AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(3);
-          AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(4);
           tl::ascend::Fill<float>(v1_bw_dw_accum[0], 0.000000e+00f, 16);
           tl::ascend::Fill<float>(v1_bw_loss_accum[0], 0.000000e+00f, 1);
           tl::ascend::copy_gm_to_ub<bfloat16_t, 16>(v1_bw_weight_half[0], Weights[((((pipe_iter * 768) + (cid * 32)) + (vid * 16)) - 768)], 2048, 1, 16, bfloat16_t(0.000000e+00f));
@@ -592,22 +591,6 @@ AscendC::Select<float, uint8_t>(v1_sy_storage[((n_idx_2 * 128) + 4096)], v1_sy_v
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::CompareScalar(v1_bw_mask3[0], v1_bw_bmm2[768], 0.000000e+00f, AscendC::CMPMODE::GT, 256);
               AscendC::PipeBarrier<PIPE_V>();
-              if (((pipe_iter * 24) + cid) == 43) {
-                if (vid == 0) {
-                  if (n_idx_4 == 16) {
-                    if (bw_col_id == 1) {
-                      AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(4);
-                      AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(4);
-                      AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(4);
-                      tl::ascend::copy_ub_to_gm<uint8_t, 32>(V1MaskDebug[(vid * 128)], v1_bw_mask0[0], 256, 1, 32);
-                      tl::ascend::copy_ub_to_gm<uint8_t, 32>(V1MaskDebug[((vid * 128) + 32)], v1_bw_mask1[0], 256, 1, 32);
-                      tl::ascend::copy_ub_to_gm<uint8_t, 32>(V1MaskDebug[((vid * 128) + 64)], v1_bw_mask2[0], 256, 1, 32);
-                      tl::ascend::copy_ub_to_gm<uint8_t, 32>(V1MaskDebug[((vid * 128) + 96)], v1_bw_mask3[0], 256, 1, 32);
-                      AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(4);
-                    }
-                  }
-                }
-              }
               AscendC::Mul(v1_bw_bmm2[0], v1_bw_bmm2[0], v1_bw_diff_2d[0], 1024);
               AscendC::PipeBarrier<PIPE_V>();
               tl::ascend::reduce_sum<float,  16,  64,  -1>(v1_bw_dw[0], v1_bw_bmm2[0], tmp_ub[0], true);
@@ -615,13 +598,15 @@ AscendC::Select<float, uint8_t>(v1_sy_storage[((n_idx_2 * 128) + 4096)], v1_sy_v
               AscendC::Add(v1_bw_dw_accum[0], v1_bw_dw_accum[0], v1_bw_dw[0], 16);
               AscendC::Mul(v1_bw_rg[0], v1_bw_weight_2d[0], v1_bw_diff_2d[0], 1024);
               AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, uint8_t>(v1_bw_bmm2[0], v1_bw_mask0[0], v1_bw_rg[0], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
+              tl::ascend::Fill<float>(v1_bw_diff_2d[0], 0.000000e+00f, 256);
               AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, uint8_t>(v1_bw_bmm2[256], v1_bw_mask1[0], v1_bw_rg[256], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
+AscendC::Select(v1_bw_bmm2[0], v1_bw_mask0[0], v1_bw_rg[0], v1_bw_diff_2d[0], AscendC::SELMODE::VSEL_TENSOR_TENSOR_MODE, 256);
               AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, uint8_t>(v1_bw_bmm2[512], v1_bw_mask2[0], v1_bw_rg[512], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
+AscendC::Select(v1_bw_bmm2[256], v1_bw_mask1[0], v1_bw_rg[256], v1_bw_diff_2d[0], AscendC::SELMODE::VSEL_TENSOR_TENSOR_MODE, 256);
               AscendC::PipeBarrier<PIPE_V>();
-AscendC::Select<float, uint8_t>(v1_bw_bmm2[768], v1_bw_mask3[0], v1_bw_rg[768], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 256);
+AscendC::Select(v1_bw_bmm2[512], v1_bw_mask2[0], v1_bw_rg[512], v1_bw_diff_2d[0], AscendC::SELMODE::VSEL_TENSOR_TENSOR_MODE, 256);
+              AscendC::PipeBarrier<PIPE_V>();
+AscendC::Select(v1_bw_bmm2[768], v1_bw_mask3[0], v1_bw_rg[768], v1_bw_diff_2d[0], AscendC::SELMODE::VSEL_TENSOR_TENSOR_MODE, 256);
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Cast(v1_bw_rg_half[0], v1_bw_bmm2[0], AscendC::RoundMode::CAST_RINT, 1024);
               AscendC::PipeBarrier<PIPE_V>();
@@ -661,7 +646,6 @@ AscendC::Select<float, uint8_t>(v1_bw_bmm2[768], v1_bw_mask3[0], v1_bw_rg[768], 
           AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(3);
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(2);
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(3);
-          AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(4);
           if (((pipe_iter + 1) % 2) == 0) {
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(8);
           } else {
