@@ -25,7 +25,7 @@ struct EngramFetchGradTilingData {
     int64_t hiddenBytes;       // hiddenDim * sizeof(inputDtype)（a2a 交换 stride）
     uint32_t aivNum;           // AIV 核数
     uint64_t ubSize;           // UB 空间
-    uint32_t rankSize;         // 通信域 rank 数（从 sendCounts dim0 获取）
+    uint32_t rankSize;         // 通信域 rank 数（从 recvCounts dim0 获取）
     int64_t totalRecv;         // recvLocalEntry dim0（a2a 接收上界）
     int64_t commBufferSize;    // a2a GM 收发缓冲大小（即 commBuffer 200MB）
     int32_t inputDtype;        // gradFetched 的 dtype（ge::DataType）

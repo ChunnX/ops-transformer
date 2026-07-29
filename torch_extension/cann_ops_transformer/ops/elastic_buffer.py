@@ -30,14 +30,17 @@ _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
 
 @dataclass
 class EngramFetchCtx:
-    """训练前向的 save-for-backward, 传给 engram_fetch_grad。
+    """save-for-backward context for engram_fetch_grad.
 
     Attributes:
-        perm: (T,) int32 — 桶排列序索引, pos反向步骤①按此重排 grad
-        send_counts: (W,) int32 — 每 rank 发送的 index 数，反向 a2a 的 send 量
-        recv_counts: (W,) int32 — 每 rank 接收的 index 数，反向 a2a 的 recv 量
-        recv_local_entry: (R_max,) int32 — 收到的 local entry,反向步骤③ scatter-add 按此聚合
-        num_recv: (1,) int32 — 实际接收行数 R(前 num_recv 个有效)
+        perm: (T,) int32 — bucket permutation index; backward step 1 reorders grad by this.
+        send_counts: (W*8,) int32 — number of indices sent to each rank (padded to 32b alignment);
+            only the first W elements are valid, used as a2a send counts in backward.
+        recv_counts: (W,) int32 — number of indices received from each rank;
+            used as a2a recv counts in backward.
+        recv_local_entry: (R_max,) int32 — received local entries;
+            backward step 3 scatter-add aggregates by this.
+        num_recv: (1,) int32 — actual number of received rows R (first num_recv are valid).
     """
 
     perm: torch.Tensor
@@ -238,7 +241,17 @@ class ElasticBuffer:
             ),
         )
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
-        if not with_grad:
+        if with_grad:
+            torch._check(
+                isinstance(num_max_tokens_per_rank, int)
+                and not isinstance(num_max_tokens_per_rank, bool)
+                and num_max_tokens_per_rank > 0,
+                lambda: (
+                    "num_max_tokens_per_rank must be a positive int when with_grad=True, "
+                    f"got {num_max_tokens_per_rank}."
+                ),
+            )
+        else:
             moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
             missing_args = [
                 name for name, val in zip(moe_arg_names, moe_args) if val is None
