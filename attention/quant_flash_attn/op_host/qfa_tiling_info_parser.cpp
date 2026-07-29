@@ -263,9 +263,11 @@ ge::graphStatus QfaInfoParser::GetQuantMode()
         return ge::GRAPH_FAILED;
     }
     int64_t quantModeVal = *opParamInfo_.quantMode;
-    if (quantModeVal != static_cast<int64_t>(QfaQuantMode::MXFP8_FP32)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode", std::to_string(quantModeVal).c_str(),
-                                              "quant_mode must be 1 (MXFP8_FP32)");
+    if (quantModeVal != static_cast<int64_t>(QfaQuantMode::MXFP8_FP32) &&
+        quantModeVal != static_cast<int64_t>(QfaQuantMode::HIF8_FP32)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode",
+            std::to_string(quantModeVal).c_str(),
+            "quant_mode must be 1 (MXFP8_FP32) or 3 (HIF8_FP32)");
         return ge::GRAPH_FAILED;
     }
     quantMode_ = static_cast<QfaQuantMode>(quantModeVal);
@@ -605,6 +607,11 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
 
     if (ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;
+    }
+
+    // HIF8 per-tensor: q_descale is 1D with shape (1,), skip MXFP8 dim check
+    if (quantMode_ == QfaQuantMode::HIF8_FP32) {
+        return ge::GRAPH_SUCCESS;
     }
 
     uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();

@@ -25,37 +25,37 @@ public:
     {
         this->Input("q")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("v")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("q_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("v_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
