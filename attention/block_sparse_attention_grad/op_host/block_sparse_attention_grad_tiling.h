@@ -85,6 +85,7 @@ TILING_DATA_FIELD_DEF(uint64_t, dVOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, detDkWorkspaceSize);
 TILING_DATA_FIELD_DEF(uint64_t, detDvWorkspaceSize);
 TILING_DATA_FIELD_DEF(uint32_t, aicNumForDet);
+TILING_DATA_FIELD_DEF(uint32_t, groupSizeForDet);
 
 TILING_DATA_FIELD_DEF(uint32_t, basicQBlockSize);
 TILING_DATA_FIELD_DEF(uint32_t, basicKVBlockSize);

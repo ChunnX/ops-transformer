@@ -356,15 +356,18 @@ namespace BSA {
             gDs.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + sOutSize + WORKSPACE_P16_OFFSET));
             AscendC::GlobalTensor<float> gDq;
             gDq.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize));
-            // Deterministic: each AIC core writes dk/dv to its own per-core workspace slot
+            // Deterministic: each AIC core writes dk/dv to per-core-per-Q-head slot (no atomicAdd)
             uint64_t gradSize = tilingData->gradSize;
             uint64_t detDkOffset = sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize + gradSize;
             uint64_t detDvOffset = detDkOffset + tilingData->detDkWorkspaceSize;
             uint64_t dkvElementSize = tilingData->dkvSize;
+            uint32_t groupSizeDet = tilingData->groupSizeForDet;
+            uint64_t perCoreDetSize = (uint64_t)groupSizeDet * dkvElementSize * sizeof(float);
+            // Base for this core's slots (will add qHeadInGroup offset per-task)
+            uint64_t detDkBaseCore = detDkOffset + (uint64_t)coreIdx * perCoreDetSize;
+            uint64_t detDvBaseCore = detDvOffset + (uint64_t)coreIdx * perCoreDetSize;
             AscendC::GlobalTensor<float> gDk;
-            gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkOffset + (uint64_t)coreIdx * dkvElementSize * sizeof(float)));
             AscendC::GlobalTensor<float> gDv;
-            gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvOffset + (uint64_t)coreIdx * dkvElementSize * sizeof(float)));
 
             TaskInfo taskInfo[2];
             TaskInfo preTaskInfo;
@@ -479,6 +482,7 @@ namespace BSA {
                                     actualShape2,
                                     mmadFlag);
 
+                                gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                                 blockMmad3(gP[preTaskInfo.sOffset],
                                     gDout[preTaskInfo.qOffset],
                                     gDv[preTaskInfo.kvOffset],
@@ -488,6 +492,7 @@ namespace BSA {
                                     actualShape3,
                                     mmadFlag);
 
+                                gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                                 blockMmad3(gDs[preTaskInfo.sOffset],
                                     gQ[preTaskInfo.qOffset],
                                     gDk[preTaskInfo.kvOffset],
@@ -542,6 +547,7 @@ namespace BSA {
                     layoutC2,
                     actualShape2,
                     mmadFlag);
+                gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                 blockMmad3(gP[preTaskInfo.sOffset],
                     gDout[preTaskInfo.qOffset],
                     gDv[preTaskInfo.kvOffset],
@@ -550,6 +556,7 @@ namespace BSA {
                     layoutC3,
                     actualShape3,
                     mmadFlag);
+                gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                 blockMmad3(gDs[preTaskInfo.sOffset],
                     gQ[preTaskInfo.qOffset],
                     gDk[preTaskInfo.kvOffset],
@@ -809,6 +816,7 @@ namespace BSA {
             if (vecCoreIdx >= usedCoreNum) { return; }
 
             uint32_t aicNum = tilingData->aicNumForDet;
+            uint32_t groupSizeDet = tilingData->groupSizeForDet;
             uint64_t dkvSize = tilingData->dkvSize;
             uint64_t sOutSize = tilingData->sOutSize;
             uint64_t dPOutSize = tilingData->dPOutSize;
@@ -819,7 +827,7 @@ namespace BSA {
 
             uint64_t detDkOffset = sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize + gradSize;
             uint64_t detDvOffset = detDkOffset + tilingData->detDkWorkspaceSize;
-            uint64_t detTotalElements = aicNum * dkvSize;
+            uint64_t detTotalElements = (uint64_t)aicNum * groupSizeDet * dkvSize;
 
             // Partition among AIV cores
             uint64_t blockFactor = (detTotalElements + usedCoreNum - 1) / usedCoreNum;
@@ -969,6 +977,8 @@ namespace BSA {
             if (vecCoreIdx >= usedCoreNum) { return; }
 
             uint32_t aicNum = tilingData->aicNumForDet;
+            uint32_t groupSizeDet = tilingData->groupSizeForDet;
+            uint32_t totalSlots = aicNum * groupSizeDet;
             uint64_t dkvSize = tilingData->dkvSize;
             uint64_t headDim = tilingData->headDim;
             uint64_t sOutSize = tilingData->sOutSize;
@@ -1013,9 +1023,9 @@ namespace BSA {
             LocalTensor<float> tempUb = resource.ubBuf.template GetBufferByByte<float>(maxDataCount * sizeof(float));
 
             // Reduce dk
-            VecDeterReduceKernel(detDkGm, sharedDkGm, accumUb, tempUb, aicNum, dkvSize, dkvOffset, totalElements, maxDataCount);
+            VecDeterReduceKernel(detDkGm, sharedDkGm, accumUb, tempUb, totalSlots, dkvSize, dkvOffset, totalElements, maxDataCount);
             // Reduce dv
-            VecDeterReduceKernel(detDvGm, sharedDvGm, accumUb, tempUb, aicNum, dkvSize, dkvOffset, totalElements, maxDataCount);
+            VecDeterReduceKernel(detDvGm, sharedDvGm, accumUb, tempUb, totalSlots, dkvSize, dkvOffset, totalElements, maxDataCount);
         }
 
     private:
