@@ -2237,10 +2237,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
 {
-    static_assert(!Std::IsSame<ActivationType, fp4x2_e2m1_t>::value &&
-                      !Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value,
-                  "MegaMoeWave only supports A8W8");
-
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
