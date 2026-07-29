@@ -136,8 +136,8 @@ Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Proce
                     block_.template CalcSplitKGMOffset<A_TYPE, B_TYPE>(kIndex);
                     mm_.SetTensorA(aGlobal_[block_.offset_.offsetA], A_TYPE::isTrans);
                     mm_.SetTensorB(bGlobal_[block_.offset_.offsetB], B_TYPE::isTrans);
-                    UpdateBias(kIndex);
                     mm_.Iterate();
+                    UpdateBias(kIndex);
                     mm_.GetTensorC(cGlobal_[block_.offset_.offsetC], enAtomic || kIndex != 0);
                 }
             }
