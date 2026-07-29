@@ -132,7 +132,7 @@ __aicore__ inline void InvokeGmmA8W4TensorApi(
     GM_ADDR rowSumWorkspace = workspace + a8w4.rowSumOffsetBytes;
 
     Params params{};
-    params.problemShape = typename TensorApiKernel::ProblemShape{
+    params.problemShape = ProblemShape{
         static_cast<int64_t>(mm.m), static_cast<int64_t>(mm.n), static_cast<int64_t>(mm.k), 0L};
     params.weightPreprocessParams.weightGmAddr = reinterpret_cast<GM_ADDR>(
         GROUPED_MATMUL::GetTensorAddr<AscendC::int4b_t>(0, weight));

@@ -293,8 +293,19 @@ TEST(GroupedA8W4BasicApiArch35Tiling, SymmetricPergroupUsesOneQuantGroupPerL1Win
     EXPECT_EQ(tilingData->mmTilingData.kBL1, 256U);
     EXPECT_EQ(tilingData->mmTilingData.dbL0C, 1U);
     EXPECT_EQ(tilingData->a8w4Params.coreNum, 32U);
+    const uint64_t expandedSize = AlignWorkspace(static_cast<uint64_t>(param.groupNum * param.k * param.n));
+    const uint64_t tileStride = AlignWorkspace(256UL * 256UL * sizeof(uint16_t));
+    const uint64_t tileSize = 32UL * tileStride;
+    EXPECT_EQ(tilingData->a8w4Params.enableWeightPreprocess, 1U);
+    EXPECT_EQ(tilingData->a8w4Params.expandedWeightOffsetBytes, 0U);
+    EXPECT_EQ(tilingData->a8w4Params.expandedWeightSizeBytes, expandedSize);
+    EXPECT_EQ(tilingData->a8w4Params.tileWorkspaceOffsetBytes, expandedSize);
+    EXPECT_EQ(tilingData->a8w4Params.tileWorkspaceStrideBytes, tileStride);
+    EXPECT_EQ(tilingData->a8w4Params.tileWorkspaceSizeBytes, tileSize);
+    EXPECT_EQ(tilingData->a8w4Params.rowSumSizeBytes, 0U);
+    EXPECT_EQ(tilingData->a8w4Params.userWorkspaceSizeBytes, expandedSize + tileSize);
     ASSERT_EQ(tilingInfo.workspaceSizes.size(), 1U);
-    EXPECT_EQ(tilingInfo.workspaceSizes[0], SYS_WORKSPACE_SIZE);
+    EXPECT_EQ(tilingInfo.workspaceSizes[0], SYS_WORKSPACE_SIZE + expandedSize + tileSize);
 }
 
 TEST(GroupedA8W4BasicApiArch35Tiling, AsymmetricPerchannelUsesOffsetAndTilePipelineWorkspace)
@@ -608,7 +619,7 @@ TEST(GroupedA8W4BasicApiArch35Tiling, PerchannelSpecialEnkUsesStandardW8NzWorksp
     EXPECT_EQ(tilingInfo.workspaceSizes[0], SYS_WORKSPACE_SIZE + expandedSize + tileSize + rowSumSize);
 }
 
-TEST(GroupedA8W4BasicApiArch35Tiling, ExpectedTokensDoNotEnableUnimplementedWeightPreprocess)
+TEST(GroupedA8W4BasicApiArch35Tiling, ExpectedTokensKeepRequiredWeightPreprocess)
 {
     A8W4Case param;
     param.tuningConfig = {128}; // 128 > N/4(64)
@@ -618,9 +629,9 @@ TEST(GroupedA8W4BasicApiArch35Tiling, ExpectedTokensDoNotEnableUnimplementedWeig
     const auto *tilingData = GetTilingData(tilingInfo);
     ASSERT_NE(tilingData, nullptr);
     EXPECT_EQ(tilingData->a8w4Params.expectedTokenNum, 128U);
-    EXPECT_EQ(tilingData->a8w4Params.enableWeightPreprocess, 0U);
+    EXPECT_EQ(tilingData->a8w4Params.enableWeightPreprocess, 1U);
     ASSERT_EQ(tilingInfo.workspaceSizes.size(), 1U);
-    EXPECT_EQ(tilingInfo.workspaceSizes[0], SYS_WORKSPACE_SIZE);
+    EXPECT_GT(tilingInfo.workspaceSizes[0], SYS_WORKSPACE_SIZE);
 }
 
 TEST(GroupedA8W4BasicApiArch35Tiling, RejectsWrongPergroupScaleShape)

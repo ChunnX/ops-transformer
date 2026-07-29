@@ -15,6 +15,11 @@ VENDOR_DIR="${CANN_PATH}/opp/vendors/${VENDOR_NAME}_transformer"
 PACKAGE="${REPO_ROOT}/build_out/cann-ops-transformer-${VENDOR_NAME}_linux-aarch64.run"
 TEST_BIN="${REPO_ROOT}/build_out/test_aclnn_a8w4_offset_custom"
 JOBS="${JOBS:-$(nproc)}"
+DEQUANT_MODE="${A8W4_DEQUANT_MODE:-perchannel}"
+case "${DEQUANT_MODE}" in
+  perchannel|pergroup) ;;
+  *) echo "A8W4_DEQUANT_MODE must be perchannel or pergroup, got: ${DEQUANT_MODE}" >&2; exit 2 ;;
+esac
 
 build_package() {
   local pywrap="${REPO_ROOT}/third_party/pywrap"
@@ -84,7 +89,11 @@ run_test_binary() {
   fi
   export ASCEND_CUSTOM_OPP_PATH="${VENDOR_DIR}${ASCEND_CUSTOM_OPP_PATH:+:${ASCEND_CUSTOM_OPP_PATH}}"
   export LD_LIBRARY_PATH="${VENDOR_DIR}/op_api/lib:${CANN_PATH}/lib64${driver_ld_path:+:${driver_ld_path}}:${LD_LIBRARY_PATH:-}"
-  "${TEST_BIN}" non-null
+  if [[ "${DEQUANT_MODE}" == "pergroup" ]]; then
+    "${TEST_BIN}"
+  else
+    "${TEST_BIN}" non-null
+  fi
 }
 
 run_test() {

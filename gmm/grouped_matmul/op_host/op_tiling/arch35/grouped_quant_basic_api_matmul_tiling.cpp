@@ -583,10 +583,9 @@ ge::graphStatus GroupedA8W4BasicApiTiling::DoOpTiling()
     tilingData_.a8w4Params.hasOffset = static_cast<uint8_t>(hasOffset_);
     tilingData_.a8w4Params.specialWeightFormat = static_cast<uint8_t>(specialWeightFormat_);
     tilingData_.a8w4Params.weightPackedInt32 = static_cast<uint8_t>(weightPackedInt32_);
-    // The per-channel kernel expands the complete W4 weight to W8 in user workspace
-    // before entering the Tensor API GMM.
-    tilingData_.a8w4Params.enableWeightPreprocess =
-        dequantMode_ == DequantMode::ASYMMETRIC_PER_CHANNEL ? 1U : 0U;
+    // Both modes expand the complete W4 weight to W8 in user workspace before
+    // entering the ops-tensor A8W4 kernel.
+    tilingData_.a8w4Params.enableWeightPreprocess = 1U;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -691,7 +690,7 @@ ge::graphStatus GroupedA8W4BasicApiTiling::DoLibApiTiling()
     tilingData_.mmTilingData.dbL0C =
         l0cTileBytes * 2UL <= aicoreParams_.l0cSize ? 2U : 1U;
 
-    if (dequantMode_ == DequantMode::ASYMMETRIC_PER_CHANNEL) {
+    {
         constexpr uint64_t WORKSPACE_ALIGN = 512UL;
         constexpr uint64_t NZ_K_ALIGN = 16UL;
         constexpr uint64_t NZ_N_ALIGN = 32UL;
@@ -750,7 +749,9 @@ ge::graphStatus GroupedA8W4BasicApiTiling::DoLibApiTiling()
                         !checkedMul(tileStride, aicoreParams_.aicNum, tileSize),
                     OP_LOGE(context_->GetNodeName(), "A8W4 per-core tile workspace overflow."),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(!checkedMul(inputParams_.mSize, sizeof(float), rowSumBytes) ||
+        const uint64_t rowSumElements =
+            dequantMode_ == DequantMode::ASYMMETRIC_PER_CHANNEL ? inputParams_.mSize : 0UL;
+        OP_CHECK_IF(!checkedMul(rowSumElements, sizeof(float), rowSumBytes) ||
                         !checkedAlign(rowSumBytes, rowSumSize) ||
                         !checkedAdd(expandedSize, tileSize, rowSumOffset) ||
                         !checkedAdd(rowSumOffset, rowSumSize, totalSize),
