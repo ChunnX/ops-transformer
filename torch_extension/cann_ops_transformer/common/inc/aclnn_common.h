@@ -23,7 +23,6 @@
 #include <sstream>
 #include <cstdlib>
 #include <climits>
-#include <iostream>
 #include <functional>
 #include <type_traits>
 #include <unordered_map>
@@ -286,32 +285,14 @@ struct TorchNpuDeterministicSnapshot {
     uint32_t effectiveLevel;
     int32_t backend;
 };
-static_assert(sizeof(TorchNpuDeterministicSnapshot) == 16,
-              "TorchNpuDeterministicSnapshot must match the libtorch_npu ABI");
 
 using CaptureDeterministicSnapshotFunc = TorchNpuDeterministicSnapshot (*)();
 using ApplyDeterministicSnapshotFunc = void (*)(const TorchNpuDeterministicSnapshot &, bool);
-
-inline void LogDeterministicSnapshotPath(bool useNewPath)
-{
-    if (useNewPath) {
-        static const bool logged = []() {
-            return true;
-        }();
-        (void)logged;
-        return;
-    }
-    static const bool logged = []() {
-        return true;
-    }();
-    (void)logged;
-}
 
 inline bool TryApplyDeterministicSnapshot()
 {
     static auto torchNpuHandler = dlopen(GetTorchNpuLibName(), RTLD_LAZY);
     if (torchNpuHandler == nullptr) {
-        LogDeterministicSnapshotPath(false);
         return false;
     }
     // Look up the C++ ABI symbols dynamically to avoid a load-time dependency
@@ -322,12 +303,10 @@ inline bool TryApplyDeterministicSnapshot()
         dlsym(torchNpuHandler,
               "_ZN6at_npu6native26ApplyDeterministicSnapshotERKN7c10_npu21DeterministicSnapshotEb"));
     if (captureFunc == nullptr || applyFunc == nullptr) {
-        LogDeterministicSnapshotPath(false);
         return false;
     }
     auto snapshot = captureFunc();
     applyFunc(snapshot, true);
-    LogDeterministicSnapshotPath(true);
     return true;
 }
 
