@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-**APACE**（**A**scend **P**Arallel **C**ommunication-compute **E**ngine）是昇腾 NPU 平台通信和计算融合算子的架构底座，为各类通算融合算子提供可复用的 block 层接口、kernel 层参考实现和tiling 算法，降低通算融合算子的开发成本。
+**APACE**（**A**scend **PA**rallel **C**ommunication-compute **E**ngine）是昇腾 NPU 平台通信和计算融合算子的架构底座，为各类通算融合算子提供可复用的 block 层接口、kernel 层参考实现和tiling 算法，降低通算融合算子的开发成本。
 
 **核心价值**：
 - 降低开发门槛：提供分层接口与参考实现，开发者通过接口组合即可构建融合算子，无需从零实现通信与计算的协同编排
