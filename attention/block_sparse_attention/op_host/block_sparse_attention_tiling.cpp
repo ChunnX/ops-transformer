@@ -684,7 +684,7 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BSATiling::ParseEffRows(gert::TilingContext *bsaContext)
+ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
 {
     const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
     if (attenMaskTensor == nullptr) {
@@ -868,7 +868,7 @@ ge::graphStatus BSATiling::CheckBlockShapeQuantConstraint(gert::TilingContext *b
 ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 {
     if (ParseSeqlens(bsaContext) != ge::GRAPH_SUCCESS || ParseSparsePattern(bsaContext) != ge::GRAPH_SUCCESS ||
-        ParseEffRows(bsaContext) != ge::GRAPH_SUCCESS || ParseBlockTable(bsaContext) != ge::GRAPH_SUCCESS) {
+        ParseAttenMask(bsaContext) != ge::GRAPH_SUCCESS || ParseBlockTable(bsaContext) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
