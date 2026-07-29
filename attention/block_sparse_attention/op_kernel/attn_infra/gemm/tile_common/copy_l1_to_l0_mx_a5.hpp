@@ -106,6 +106,84 @@ struct CopyL1ToL0BMxA5 {
     }
 };
 
+/// mx L1->L0A 非转置搬运（QK）：L1 K(nZ, [S,D]) + K-scale(沿 D) -> L0A。
+/// 忠实移植 block_mmad_qk_arch35_mxfp4.hpp::LoadKToL0A。
+struct CopyL1ToL0AMxQKA5 {
+    __aicore__ inline CopyL1ToL0AMxQKA5() {}
+
+    // nSubRowStart : = nSub * L0_TILE_N，本子块在整 tile L1 中的行起点
+    // nCur         : 本子块实际 K 行数（≤L0_TILE_N）
+    // alignK       : CeilAlign(D, 64)
+    // s2Align64Full: 整 tile 行对齐（L1 数据 srcStride）
+    // scaleK       : Ceil(D/64)*2，沿 D
+    template <class TensorDst, class TensorSrc, class TensorScale>
+    __aicore__ inline void operator()(
+        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+        uint32_t nSubRowStart, uint32_t nCur, uint32_t alignK,
+        uint32_t s2Align64Full, uint32_t scaleK)
+    {
+        uint32_t nCurAlign16 = (nCur + 15) / 16 * 16;
+
+        AscendC::LoadData2DParamsV2 loadDataParams;
+        loadDataParams.sid = 0;
+        loadDataParams.mStartPosition = nSubRowStart / 16;          // [移植 LoadKToL0A]
+        loadDataParams.kStartPosition = 0;
+        loadDataParams.mStep = nCurAlign16 / 16;
+        loadDataParams.kStep = (alignK + 63) / 64;
+        loadDataParams.srcStride = s2Align64Full / 16;
+        loadDataParams.dstStride = nCurAlign16 / 16;
+        loadDataParams.ifTranspose = false;
+
+        AscendC::LoadData2DMxParams loadMxDataParams;
+        loadMxDataParams.xStartPosition = nSubRowStart / 16;
+        loadMxDataParams.yStartPosition = 0;
+        loadMxDataParams.xStep = nCurAlign16 / 16;
+        loadMxDataParams.yStep = scaleK / 2;                        // = Ceil(D/64)
+        loadMxDataParams.srcStride = scaleK / 2;
+        loadMxDataParams.dstStride = scaleK / 2;
+
+        AscendC::LoadData(dst, src, scale, loadDataParams, loadMxDataParams);
+    }
+};
+
+/// mx L1->L0B 非转置搬运（QK）：L1 Q(nZ, [M,D]) + Q-scale(沿 D) -> L0B。
+/// 忠实移植 block_mmad_qk_arch35_mxfp4.hpp::LoadQToL0B。
+struct CopyL1ToL0BMxQKA5 {
+    __aicore__ inline CopyL1ToL0BMxQKA5() {}
+
+    // mAlignL1      : CeilAlign(m_Q, 16)，L1 行分形数来源
+    // alignK        : CeilAlign(D, 64)
+    // mAlignL0      : L0B dst 行对齐（通常 = mAlignL1）
+    // scaleMAlignL1 : CeilAlign(m_Q, 16)，scale xStep
+    // scaleK        : Ceil(D/64)*2，沿 D
+    template <class TensorDst, class TensorSrc, class TensorScale>
+    __aicore__ inline void operator()(
+        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+        uint32_t mAlignL1, uint32_t alignK, uint32_t mAlignL0,
+        uint32_t scaleMAlignL1, uint32_t scaleK)
+    {
+        AscendC::LoadData2DParamsV2 loadDataParams;
+        loadDataParams.sid = 0;
+        loadDataParams.mStartPosition = 0;                          // [移植 LoadQToL0B]
+        loadDataParams.kStartPosition = 0;
+        loadDataParams.mStep = (mAlignL1 + 15) / 16;
+        loadDataParams.kStep = (alignK + 63) / 64;
+        loadDataParams.srcStride = (mAlignL1 + 15) / 16;
+        loadDataParams.dstStride = (mAlignL0 + 15) / 16;
+        loadDataParams.ifTranspose = false;
+
+        AscendC::LoadData2DMxParams loadMxDataParams;
+        loadMxDataParams.xStartPosition = 0;
+        loadMxDataParams.yStartPosition = 0;
+        loadMxDataParams.xStep = (scaleMAlignL1 + 15) / 16;
+        loadMxDataParams.yStep = scaleK / 2;
+        loadMxDataParams.srcStride = scaleK / 2;
+        loadMxDataParams.dstStride = scaleK / 2;
+
+        AscendC::LoadData(dst, src, scale, loadDataParams, loadMxDataParams);
+    }
+};
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 } // namespace NpuArch::Gemm::Tile

@@ -161,7 +161,7 @@ public:
 
  #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
-        // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
+        BlockMmadQK blockMmadQK(resource);
         BlockMmadPV blockMmadPV(resource);
         BlockMmadCopyGlobalMaxL1ToUB blockGMaxL1ToUb(resource);
  #endif	 
@@ -322,6 +322,23 @@ public:
                     auto curUBSTensorTla = GetTile(ubSTensorTla, MakeCoord(0, EpMXFP4::QS_BASE_SIZE * mm1ResBufId), MakeShape(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE));
 
                     ComputeMm1(curTileInfo);
+                    // QK：UB S 传当前 ping-pong 槽 TLA；Fixpipe 按 subBlockIdx 写到对应 AIV。
+                    blockMmadQK(
+                        gQ[curTaskInfo.gmOffsetQ],
+                        gK[curTaskInfo.gmOffsetK],
+                        gQDequantScale[curTaskInfo.gmOffsetQScale],
+                        gKDequantScale[curTaskInfo.gmOffsetKScale],
+                        gSparseIdx[curTaskInfo.gmOffsetSparseIdx],
+                        curUBSTensorTla,
+                        curTaskInfo.qsActBaseTile,
+                        embed_,
+                        curTileInfo.kvsActBaseTile,
+                        curTileInfo.pvGatheredKvSTileIdx,
+                        curTaskInfo.kvSeqlen,
+                        kvBaseTile_, blockShapeY_,
+                        curTaskInfo.yBlockNumAval, curTaskInfo.yBlockNumRsvd,
+                        curTileInfo.isFirstKvsTile,
+                        subBlockIdx);
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                 } else {
 #ifdef __DAV_VEC__
@@ -331,6 +348,22 @@ public:
                         auto l1PLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutP>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE / 2);
                         auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
                         GemmCoord actualBlockShapeQK{curTileInfo.kvsActBaseTile, curTaskInfo.qsActBaseTile, embed_};
+                        AscendC::DumpTensor(ubSTensor[0], 7771, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128], 7772, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 2], 7773, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 3], 7774, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 4], 7775, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 5], 7776, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 128], 7777, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 129], 7778, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 130], 7779, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 131], 7780, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 256], 7781, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 257], 7782, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 258], 7783, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 259], 7784, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 260], 7785, 128);
+                        AscendC::DumpTensor(ubSTensor[0][128 * 261], 7786, 128);
                         epilogueOnlineSoftmax(
                             l1PTensorTla, 
                             actualBlockShapeQK, 
@@ -487,20 +520,42 @@ public:
             strideOS_ = static_cast<int64_t>(qHeads_) * embed_;
             strideON_ = embed_;
         }
-        // v stride
+        // V / V-scale / K-scale stride
+        const int64_t kScaleBytesPerToken = static_cast<int64_t>(embed_ / 64) * 2;
         if constexpr (kvFormat == Format::TND) {
             strideKVData_  = static_cast<int64_t>(kvHeads_) * embed_;
             vScaleStrideN_ = static_cast<int64_t>(embed_) * 2;
+            kScaleStrideN_ = kScaleBytesPerToken;
         } else if constexpr (kvFormat == Format::BNSD) {
             strideKVDataB_ = static_cast<int64_t>(kvHeads_) * kvSeqlenAligned_ * embed_;
             strideKVDataN_ = kvSeqlenAligned_ * embed_;
             vScaleStrideB_ = static_cast<int64_t>(kvHeads_) * CeilDiv(kvSeqlenAligned_, static_cast<int64_t>(64)) * embed_ * 2;
             vScaleStrideN_ = CeilDiv(kvSeqlenAligned_, static_cast<int64_t>(64)) * embed_ * 2;
+            kScaleStrideB_ = static_cast<int64_t>(kvHeads_) * kvSeqlenAligned_ * kScaleBytesPerToken;
+            kScaleStrideN_ = kvSeqlenAligned_ * kScaleBytesPerToken;
         } else if constexpr (kvFormat == Format::BSND) {
             strideKVDataB_ = kvSeqlenAligned_ * static_cast<int64_t>(kvHeads_) * embed_;
             strideKVDataN_ = embed_;
             vScaleStrideB_ = CeilDiv(kvSeqlenAligned_, static_cast<int64_t>(64)) * static_cast<int64_t>(kvHeads_) * embed_ * 2;
             vScaleStrideN_ = static_cast<int64_t>(embed_) * 2;
+            kScaleStrideB_ = kvSeqlenAligned_ * static_cast<int64_t>(kvHeads_) * kScaleBytesPerToken;
+            kScaleStrideN_ = kScaleBytesPerToken;
+        }
+        // Q 数据 / Q-scale stride（Host 沿 D）
+        const int64_t qScaleBytesPerToken = static_cast<int64_t>(embed_ / 64) * 2;
+        if constexpr (qFormat == Format::TND) {
+            strideQData_   = static_cast<int64_t>(qHeads_) * embed_;
+            qScaleStrideN_ = qScaleBytesPerToken;
+        } else if constexpr (qFormat == Format::BNSD) {
+            strideQDataB_ = static_cast<int64_t>(qHeads_) * qSeqlenAligned_ * embed_;
+            strideQDataN_ = qSeqlenAligned_ * embed_;
+            qScaleStrideB_ = static_cast<int64_t>(qHeads_) * qSeqlenAligned_ * qScaleBytesPerToken;
+            qScaleStrideN_ = qSeqlenAligned_ * qScaleBytesPerToken;
+        } else if constexpr (qFormat == Format::BSND) {
+            strideQDataB_ = qSeqlenAligned_ * static_cast<int64_t>(qHeads_) * embed_;
+            strideQDataN_ = embed_;
+            qScaleStrideB_ = qSeqlenAligned_ * static_cast<int64_t>(qHeads_) * qScaleBytesPerToken;
+            qScaleStrideN_ = qScaleBytesPerToken;
         }
     }
 
@@ -564,9 +619,12 @@ public:
         // 反推 taskIdx 所在的 batch
         uint32_t curBatch = 0;
         uint32_t preTotalTaskNum = 0;
-        // TND 下 V 数据 / V-scale 的 batch 累积偏移（BNSD/BSND 由 curBatch 直接算，无需累积）
+        // TND 下 V 数据 / V-scale / K-scale / Q / Q-scale 的 batch 累积偏移（BNSD/BSND 由 curBatch 直接算）
         int64_t vBOffset = 0;
         int64_t vScaleBOffset = 0;
+        int64_t kScaleBOffset = 0;
+        int64_t qBOffset = 0;
+        int64_t qScaleBOffset = 0;
         int64_t qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
         int64_t kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
         uint32_t curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
@@ -574,14 +632,17 @@ public:
         while (taskIdx >= curTotalTaskNum) {
             ++curBatch;
             preTotalTaskNum = curTotalTaskNum;
-            // TND: 跨 batch 时累加上一 batch 实际长度（此时 kvSeqlen 仍为上一 batch 值）
+            // TND: 跨 batch 时累加上一 batch 实际长度（此时 kvSeqlen/qSeqlen 仍为上一 batch 值）
             if constexpr (qFormat == Format::TND) {
                  oBOffset += qSeqlen * strideO_;
+                 qBOffset += qSeqlen * strideQData_;
+                 qScaleBOffset += qSeqlen * static_cast<int64_t>(qHeads_) * qScaleStrideN_;
               }
             if constexpr (kvFormat == Format::TND) {
                 vBOffset += kvSeqlen * strideKVData_;
                 vScaleBOffset += CeilDiv(kvSeqlen, static_cast<int64_t>(64)) *
                                  static_cast<int64_t>(kvHeads_) * embed_ * 2;
+                kScaleBOffset += kvSeqlen * static_cast<int64_t>(kvHeads_) * kScaleStrideN_;
             }
             qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
             kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
@@ -664,12 +725,36 @@ public:
             // TND V [T2,N2,D]：head 在 token 内 stride = embed_（≠ strideKVData_，后者是 batch-token 步长 kvHeads_*embed_）
             info.gmOffsetV      = vBOffset      + kvHeadIdx * embed_;
             info.gmOffsetVScale = vScaleBOffset + kvHeadIdx * vScaleStrideN_;
+            info.gmOffsetK      = info.gmOffsetV;
+            info.gmOffsetKScale = kScaleBOffset + kvHeadIdx * kScaleStrideN_;
         } else if constexpr (kvFormat == Format::BNSD) {
             info.gmOffsetV      = static_cast<int64_t>(curBatch) * strideKVDataB_ + kvHeadIdx * strideKVDataN_;
             info.gmOffsetVScale = static_cast<int64_t>(curBatch) * vScaleStrideB_ + kvHeadIdx * vScaleStrideN_;
+            info.gmOffsetK      = info.gmOffsetV;
+            info.gmOffsetKScale = static_cast<int64_t>(curBatch) * kScaleStrideB_ + kvHeadIdx * kScaleStrideN_;
         } else { // BSND
             info.gmOffsetV      = static_cast<int64_t>(curBatch) * strideKVDataB_ + kvHeadIdx * strideKVDataN_;
             info.gmOffsetVScale = static_cast<int64_t>(curBatch) * vScaleStrideB_ + kvHeadIdx * vScaleStrideN_;
+            info.gmOffsetK      = info.gmOffsetV;
+            info.gmOffsetKScale = static_cast<int64_t>(curBatch) * kScaleStrideB_ + kvHeadIdx * kScaleStrideN_;
+        }
+        // Q / Q-scale：稠密搬需要带上本 task 的 Q seq 起点（与上方 O 的 qSOffset 一致）
+        const int64_t qScaleBytesPerTok = static_cast<int64_t>(embed_ / 64) * 2;
+        if constexpr (qFormat == Format::TND) {
+            info.gmOffsetQ      = qBOffset + qSOffset * strideQData_ + qHeadIdx * embed_;
+            info.gmOffsetQScale = qScaleBOffset +
+                qSOffset * static_cast<int64_t>(qHeads_) * qScaleBytesPerTok + qHeadIdx * qScaleStrideN_;
+        } else if constexpr (qFormat == Format::BNSD) {
+            info.gmOffsetQ = static_cast<int64_t>(curBatch) * strideQDataB_ +
+                             qHeadIdx * strideQDataN_ + qSOffset * embed_;
+            info.gmOffsetQScale = static_cast<int64_t>(curBatch) * qScaleStrideB_ +
+                                  qHeadIdx * qScaleStrideN_ + qSOffset * qScaleBytesPerTok;
+        } else { // BSND
+            info.gmOffsetQ = static_cast<int64_t>(curBatch) * strideQDataB_ +
+                             qSOffset * static_cast<int64_t>(qHeads_) * embed_ + qHeadIdx * embed_;
+            info.gmOffsetQScale = static_cast<int64_t>(curBatch) * qScaleStrideB_ +
+                                  qSOffset * static_cast<int64_t>(qHeads_) * qScaleBytesPerTok +
+                                  qHeadIdx * qScaleStrideN_;
         }
         // [PV-VERIFY] 打印本 task 算出的稀疏 gather 偏移，供测试逐行核对（补丁1/2 验证用）
         AscendC::printf(
@@ -679,6 +764,13 @@ public:
             (unsigned long long)info.gmOffsetV, (unsigned long long)info.gmOffsetVScale,
             (unsigned)info.gmOffsetSparseIdx, (unsigned long long)info.kvSeqlen,
             (unsigned)info.yBlockNumAval, (unsigned)info.yBlockNumRsvd);
+        AscendC::printf(
+            "[QK-VERIFY] t=%u qsAct=%u qSOff=%lld | gmOffQ=%llu gmOffK=%llu gmOffQSc=%llu gmOffKSc=%llu "
+            "gathered=%llu taskTiles=%u\n",
+            (unsigned)coreTaskId, (unsigned)info.qsActBaseTile, (long long)qSOffset,
+            (unsigned long long)info.gmOffsetQ, (unsigned long long)info.gmOffsetK,
+            (unsigned long long)info.gmOffsetQScale, (unsigned long long)info.gmOffsetKScale,
+            (unsigned long long)info.gatheredKvSeqlen, (unsigned)info.taskTileNum);
     }
 
     // 每个 tile 调用一次，根据 coreTileLoop / curTaskTileIdx / taskInfo 填充 TileInfo
@@ -853,6 +945,14 @@ private:
     // V-scale 为 E8M0(1 字节)，GM 布局 [B,N2,S2//64,D,2]；B16 视图下每 64-S2 行 group 占 D 个 B16 = 2D 字节
     int64_t vScaleStrideB_ = 0;  // V-scale batch 步长（字节）
     int64_t vScaleStrideN_ = 0;   // V-scale head 步长（字节）
+    // ===== K-scale / Q / Q-scale stride（QK Mm1 用；K-scale Host 沿 D）=====
+    int64_t kScaleStrideB_ = 0;
+    int64_t kScaleStrideN_ = 0;
+    int64_t strideQData_ = 0;
+    int64_t strideQDataB_ = 0;
+    int64_t strideQDataN_ = 0;
+    int64_t qScaleStrideB_ = 0;
+    int64_t qScaleStrideN_ = 0;
 
     // ---- CreateTileInfo 持久状态 (跨 tileGroup 保持 ----
     uint32_t kvsFirstTileStartVecCore_ = 0; // task 首 tile 时切换 (loop % 2)
