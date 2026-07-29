@@ -172,9 +172,10 @@ constexpr uint32_t QKV_K_SCALE_OUTPUT_DB_POOL_OFFSET =
     QKV_K_SCALE_INPUT_DB_POOL_OFFSET + QKV_K_SCALE_INPUT_DB_POOL_BYTES;
 constexpr uint32_t QKV_K_SCALE_RESERVE_UB_OFFSET = QKV_K_SCALE_OUTPUT_DB_POOL_OFFSET + QKV_K_SCALE_OUTPUT_DB_POOL_BYTES;
 
-// Compact direct-M-RoPE layout.  This layout is selected only when one AIV
-// owns at most 14 K rows; the generic 248 KiB layout above remains the
-// fallback for all other shapes.
+// Compact direct-M-RoPE layout.  Valid M-RoPE selectors use this layout;
+// host tiling reduces tokenTile when its per-tile resource limits are not met.
+// The ordinary 248 KiB layout above remains the RoPE layout, not an M-RoPE
+// fallback selector.
 constexpr uint32_t QKV_K_SCALE_MROPE_COMPACT_MAX_K_ROWS = 14U;
 // Keep the existing 80 KiB input pool, but use four input and raw cos/sin
 // slots for the compact M-RoPE path. Metadata and output pools remain
