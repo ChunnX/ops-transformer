@@ -1966,7 +1966,17 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
     qsfaInfo.blockTypeSize = sizeof(float);
     qsfaInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
-    qsfaInfo.keyStride0 = !keyStrides_.empty() ? static_cast<int64_t>(keyStrides_[0]) : 0;
+    if (npuArch_ != NpuArch::DAV_3510) {
+        qsfaInfo.keyStride0 = 0;  // 910无需使用stride
+    } else {
+        if (!keyStrides_.empty()) {
+            qsfaInfo.keyStride0 = static_cast<int64_t>(keyStrides_[0]);
+        } else if (kvLayout_ == QSFALayout::PA_BSND) {
+            qsfaInfo.keyStride0 = static_cast<int64_t>(blockSize_) * dSizeKV_;
+        } else {
+            qsfaInfo.keyStride0 = 0;  // 非PA无需使用stride
+        }
+    }
 
     FillTilingInfoAttrsAndLayouts(qsfaInfo);
 }

@@ -2202,9 +2202,18 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.blockTypeSize = sizeof(float);
     sfaInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
-    sfaInfo.keyStride0 = !keyStrides_.empty() ? static_cast<int64_t>(keyStrides_[0]) /
-                                                    (static_cast<int64_t>(n2Size_) * static_cast<int64_t>(qkHeadDim_)) :
-                                                0;
+    if (npuArch_ != NpuArch::DAV_3510) {
+        sfaInfo.keyStride0 = 0;  // 910无需使用stride
+    } else {
+        if (!keyStrides_.empty()) {
+            sfaInfo.keyStride0 = static_cast<int64_t>(keyStrides_[0]) /
+                                    (static_cast<int64_t>(n2Size_) * static_cast<int64_t>(qkHeadDim_));
+        } else if (kvLayout_ == SFALayout::PA_BSND) {
+            sfaInfo.keyStride0 = static_cast<int64_t>(blockSize_);
+        } else {
+            sfaInfo.keyStride0 = 0;  // 非PA无需使用stride
+        }
+    }
 
     FillTilingInfoAttrsAndLayouts(sfaInfo);
 }
