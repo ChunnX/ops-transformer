@@ -132,11 +132,11 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     gmmParams.isPerTokenQuant = static_cast<uint8_t>(gmmBaseParams->isPerTokenQuant);  // F3: Run prologue 据此填全 1
 
     // ============================================================
-    // 2) workspace 偏移(host 布局 [SYS 16MB][int8WeightWs][int8XWs][mmOutWs])
+    // 2) 用户 workspace 偏移([int8WeightWs][int8XWs][mmOutWs])
     //   host 未把 int8WeightWs/int8XWs 偏移下发到 GMMBaseParamsA4W4, 桥接层按 host
-    //   CalWorkspaceA4W4 同款公式重算。SYS_WORKSPACE_SIZE 与 host(grouped_matmul_host_util.h)一致=16MB。
+    //   CalWorkspaceA4W4 同款公式重算。DAV3510 必须通过 GetUserWorkspace 取得跳过
+    //   16MB 系统保留区后的用户段基址，不能直接对原始 workspace 形参加偏移。
     // ============================================================
-    constexpr uint64_t A4W4_SYS_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;  // 与 host SYS_WORKSPACE_SIZE 一致
     constexpr uint64_t A4W4_MMOUT_PIPELINE = 4UL;  // 与 host A4W4_MMOUT_PIPELINE 一致
     // int4->int8 展开后体积: int4(0.5B/元素) -> int8(1B/元素)。weight[E,K,N], x[M,K]。
     const uint64_t int8WeightWs = static_cast<uint64_t>(gmmBaseParams->groupNum) *
@@ -145,7 +145,7 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
                              static_cast<uint64_t>(gmmBaseParams->k);  // int8 字节
     const uint64_t mmOutWs = A4W4_MMOUT_PIPELINE * gmmBaseParams->baseM * gmmBaseParams->baseN *
                              gmmBaseParams->coreNum * sizeof(uint16_t);
-    GM_ADDR int8WeightWsAddr = workspace + A4W4_SYS_WORKSPACE_SIZE;
+    GM_ADDR int8WeightWsAddr = AscendC::GetUserWorkspace(workspace);
     GM_ADDR int8XWsAddr = int8WeightWsAddr + int8WeightWs;
     GM_ADDR mmOutWsAddr = int8XWsAddr + int8XWs;  // cube FixPipe 输出 / AIV epilogue 读
     // F3: isPerTokenQuant=0 时 perTokenScale 兜底段 (mmOut 之后, totalM·float)。
@@ -221,7 +221,7 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     //     切换 (isPerTokenQuant=0 时指向 fillWsAddr) + isPerTokenQuant 透传。
 
     QgmmKernel gmm;
-    gmm(params);
+    gmm(params, que);
 #else
     // 安全桩: A4W4_BLAZE_ENABLED 未定义。ops-tensor 侧 tensor_api 等环境未就位时,
     // 实例化 Blaze kernel 链会触发底层头编译问题。回退桩保证 transformer 仓编译通过。
