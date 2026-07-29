@@ -188,6 +188,9 @@ struct GMMBaseParamsA4W4 {
     // GMMA4W4QuantTilingData 整体 8 字节对齐(SaveTilingDataToContext 要求)。
     // 历史 bug: uint32_t 使 GMMBaseParamsA4W4=68B(alignof=4), 导致
     // sizeof(GMMA4W4QuantTilingData)=1804 非 8 对齐, 触发 "Tiling data size[1804] is not aligned to 8"。
+    // reserved 复用为 weight format 标志位 (host PostTiling 写, 桥接 qgmm_a4w4_kernel.h 读):
+    //   bit0 = weightIsNz (bFormat == FORMAT_FRACTAL_NZ)
+    //   bit1 = transB     (weight 逻辑 [E,N,K])
     uint64_t reserved = 0;
 };
 #pragma pack(pop)
