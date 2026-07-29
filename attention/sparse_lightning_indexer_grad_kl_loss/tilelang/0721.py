@@ -258,7 +258,7 @@ def tilelang_grad_kl_loss_single_kernel(
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
     full_valid=False, k_scatter_exec=None,
     source_s2=None, sparse_k_stride=None, serial_task_pipeline=False,
-    c1_serial=False, v0_single_slot=False,
+    c1_serial=False, v0_single_slot=False, v1_select_bypass=False,
 ):
     source_s2 = S2 if source_s2 is None else source_s2
     sparse_k_stride = K if sparse_k_stride is None else sparse_k_stride
@@ -1329,45 +1329,56 @@ def tilelang_grad_kl_loss_single_kernel(
                                 v1_bw_diff_2d,
                             )
                             T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_bmm2[0:4, 0:bw_col_block],
-                                v1_bw_mask0,
-                                v1_bw_rg[0:4, 0:bw_col_block],
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_bmm2[4:8, 0:bw_col_block],
-                                v1_bw_mask1,
-                                v1_bw_rg[4:8, 0:bw_col_block],
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_bmm2[8:12, 0:bw_col_block],
-                                v1_bw_mask2,
-                                v1_bw_rg[8:12, 0:bw_col_block],
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_bmm2[12:16, 0:bw_col_block],
-                                v1_bw_mask3,
-                                v1_bw_rg[12:16, 0:bw_col_block],
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.cast(
-                                v1_bw_rg_half,
-                                v1_bw_bmm2,
-                                "CAST_RINT",
-                                rows_per_aiv * bw_col_block,
-                            )
-                            T.pipe_barrier("v")
+                            if v1_select_bypass:
+                                # 诊断路径直接写回 Select 前的 v1_bw_rg，用于区分
+                                # row-expand 计算错误与 Compare/Select 掩码错误。
+                                T.tile.cast(
+                                    v1_bw_rg_half,
+                                    v1_bw_rg,
+                                    "CAST_RINT",
+                                    rows_per_aiv * bw_col_block,
+                                )
+                                T.pipe_barrier("v")
+                            else:
+                                T.tile.select(
+                                    v1_bw_bmm2[0:4, 0:bw_col_block],
+                                    v1_bw_mask0,
+                                    v1_bw_rg[0:4, 0:bw_col_block],
+                                    0.0,
+                                    "VSEL_TENSOR_SCALAR_MODE",
+                                )
+                                T.pipe_barrier("v")
+                                T.tile.select(
+                                    v1_bw_bmm2[4:8, 0:bw_col_block],
+                                    v1_bw_mask1,
+                                    v1_bw_rg[4:8, 0:bw_col_block],
+                                    0.0,
+                                    "VSEL_TENSOR_SCALAR_MODE",
+                                )
+                                T.pipe_barrier("v")
+                                T.tile.select(
+                                    v1_bw_bmm2[8:12, 0:bw_col_block],
+                                    v1_bw_mask2,
+                                    v1_bw_rg[8:12, 0:bw_col_block],
+                                    0.0,
+                                    "VSEL_TENSOR_SCALAR_MODE",
+                                )
+                                T.pipe_barrier("v")
+                                T.tile.select(
+                                    v1_bw_bmm2[12:16, 0:bw_col_block],
+                                    v1_bw_mask3,
+                                    v1_bw_rg[12:16, 0:bw_col_block],
+                                    0.0,
+                                    "VSEL_TENSOR_SCALAR_MODE",
+                                )
+                                T.pipe_barrier("v")
+                                T.tile.cast(
+                                    v1_bw_rg_half,
+                                    v1_bw_bmm2,
+                                    "CAST_RINT",
+                                    rows_per_aiv * bw_col_block,
+                                )
+                                T.pipe_barrier("v")
                         else:
                             T.tile.compare(
                                 v1_bw_mask,
@@ -1398,21 +1409,30 @@ def tilelang_grad_kl_loss_single_kernel(
                                 v1_bw_diff_2d,
                             )
                             T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_bmm2,
-                                v1_bw_mask,
-                                v1_bw_rg,
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.cast(
-                                v1_bw_rg_half,
-                                v1_bw_bmm2,
-                                "CAST_RINT",
-                                rows_per_aiv * bw_col_block,
-                            )
-                            T.pipe_barrier("v")
+                            if v1_select_bypass:
+                                T.tile.cast(
+                                    v1_bw_rg_half,
+                                    v1_bw_rg,
+                                    "CAST_RINT",
+                                    rows_per_aiv * bw_col_block,
+                                )
+                                T.pipe_barrier("v")
+                            else:
+                                T.tile.select(
+                                    v1_bw_bmm2,
+                                    v1_bw_mask,
+                                    v1_bw_rg,
+                                    0.0,
+                                    "VSEL_TENSOR_SCALAR_MODE",
+                                )
+                                T.pipe_barrier("v")
+                                T.tile.cast(
+                                    v1_bw_rg_half,
+                                    v1_bw_bmm2,
+                                    "CAST_RINT",
+                                    rows_per_aiv * bw_col_block,
+                                )
+                                T.pipe_barrier("v")
                         T.set_flag("v", "mte3", 2)
                         T.wait_flag("v", "mte3", 2)
                         T.pipe_barrier("mte3")
@@ -2541,6 +2561,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         _DEBUG_TASK_TEXT = os.environ.get("SLIG_DEBUG_TASK", "").strip()
         _DEBUG_TASK = None
         _DEBUG_BMM1_COORD = None
+        _DEBUG_RELU_COORD_TEXT = os.environ.get(
+            "SLIG_DEBUG_RELU_COORD", ""
+        ).strip()
+        _DEBUG_RELU_COORD = None
         if _DEBUG_TASK_TEXT.lower() == "auto":
             raise ValueError(
                 "SLIG_DEBUG_TASK=auto is disabled because scanning the full BMM1 "
@@ -2566,6 +2590,30 @@ def sparse_lightning_indexer_grad_kl_loss(
                 raise ValueError(
                     f"SLIG_DEBUG_TASK={_DEBUG_TASK_TEXT!r} is outside BSND shape B={B}, S1={S1}"
                 )
+        if _DEBUG_RELU_COORD_TEXT:
+            _DEBUG_RELU_COORD_PARTS = _DEBUG_RELU_COORD_TEXT.split(",")
+            if len(_DEBUG_RELU_COORD_PARTS) != 2:
+                raise ValueError(
+                    "SLIG_DEBUG_RELU_COORD must use the format 'head,k', "
+                    "for example '2,2153'"
+                )
+            try:
+                _DEBUG_RELU_COORD = (
+                    int(_DEBUG_RELU_COORD_PARTS[0].strip()),
+                    int(_DEBUG_RELU_COORD_PARTS[1].strip()),
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "SLIG_DEBUG_RELU_COORD must contain two integer values: 'head,k'"
+                ) from exc
+            if not (
+                0 <= _DEBUG_RELU_COORD[0] < Nidx1
+                and 0 <= _DEBUG_RELU_COORD[1] < K
+            ):
+                raise ValueError(
+                    f"SLIG_DEBUG_RELU_COORD={_DEBUG_RELU_COORD_TEXT!r} is outside "
+                    f"reluGrad shape Nidx1={Nidx1}, K={K}"
+                )
         _SERIAL_TASK_PIPELINE = (
             os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1"
         )
@@ -2573,6 +2621,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         _C1_SERIAL = os.environ.get("SLIG_C1_SERIAL", "0") == "1"
         # V0 单槽仅用于确认三路 gather 的 ping-pong ownership 问题。
         _V0_SINGLE_SLOT = os.environ.get("SLIG_V0_SINGLE_SLOT", "0") == "1"
+        # 仅用于将 Select 前的 v1_bw_rg 写入 reluGradRes，禁止用于精度或性能结论。
+        _V1_SELECT_BYPASS = (
+            os.environ.get("SLIG_V1_SELECT_BYPASS", "0") == "1"
+        )
         _GATHER_SENTINEL = 123.0
 
         if _PROFILE:
@@ -2627,6 +2679,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             _SERIAL_TASK_PIPELINE,
             _C1_SERIAL,
             _V0_SINGLE_SLOT,
+            _V1_SELECT_BYPASS,
         )
 
         if cache_key in _kernel_cache:
@@ -2637,6 +2690,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
                 _SERIAL_TASK_PIPELINE, _C1_SERIAL, _V0_SINGLE_SLOT,
+                _V1_SELECT_BYPASS,
             )
 
             # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
@@ -2901,6 +2955,22 @@ def sparse_lightning_indexer_grad_kl_loss(
                 * (debug_bmm2.float() > 0).float()
             ).to(relu_grad_out.dtype).float()
             debug_relu = relu_grad_out[debug_b, debug_q].float()
+            if _DEBUG_RELU_COORD is not None:
+                debug_relu_head, debug_relu_k = _DEBUG_RELU_COORD
+                debug_relu_unmasked = (
+                    weights[debug_b, debug_q, debug_relu_head].float()
+                    * debug_diff[debug_relu_k]
+                )
+                print(
+                    f"[DEBUG_TASK] relu coord=(h={debug_relu_head},k={debug_relu_k}) "
+                    f"select_bypass={_V1_SELECT_BYPASS} "
+                    f"actual={debug_relu[debug_relu_head, debug_relu_k].item():.6e} "
+                    f"expected={debug_expected_relu[debug_relu_head, debug_relu_k].item():.6e} "
+                    f"unmasked={debug_relu_unmasked.item():.6e} "
+                    f"bmm2={debug_bmm2[debug_relu_head, debug_relu_k].item():.6e} "
+                    f"diff={debug_diff[debug_relu_k].item():.6e} "
+                    f"weight={weights[debug_b, debug_q, debug_relu_head].float().item():.6e}"
+                )
             debug_expected_dq = torch.matmul(debug_relu, debug_gki.float())
             debug_expected_dk = torch.matmul(
                 debug_relu.transpose(0, 1), debug_query_index
