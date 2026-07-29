@@ -45,15 +45,18 @@ _kernel_cache = {}
 _workspace_cache = {}
 _full_valid_aux_cache = {}
 _tail_aux_cache = {}
+_v0_zero_row_cache = {}
 _debug_dump_done = False
 
 
 def _clear_caches():
     global _kernel_cache, _workspace_cache, _full_valid_aux_cache, _tail_aux_cache
+    global _v0_zero_row_cache
     _kernel_cache.clear()
     _workspace_cache.clear()
     _full_valid_aux_cache.clear()
     _tail_aux_cache.clear()
+    _v0_zero_row_cache.clear()
 
 
 pass_configs = {
@@ -255,7 +258,7 @@ def tilelang_grad_kl_loss_single_kernel(
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
     full_valid=False, k_scatter_exec=None,
     source_s2=None, sparse_k_stride=None, serial_task_pipeline=False,
-    c1_serial=False, v0_single_slot=False, v0_zero_first=False,
+    c1_serial=False, v0_single_slot=False,
 ):
     source_s2 = S2 if source_s2 is None else source_s2
     sparse_k_stride = K if sparse_k_stride is None else sparse_k_stride
@@ -331,6 +334,7 @@ def tilelang_grad_kl_loss_single_kernel(
     @T.macro
     def vector0_gather_task(
         SparseIndices,
+        V0ZeroRow,
         Key,
         KeyRope,
         KeyIndex,
@@ -352,26 +356,6 @@ def tilelang_grad_kl_loss_single_kernel(
             v0_key_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
             v0_ki_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
             v0_rope_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
-            v0_zero_key_fp32 = T.alloc_ub(DQuery, calc_dtype)
-            v0_zero_ki_fp32 = T.alloc_ub(DQueryIndex, calc_dtype)
-            v0_zero_rope_fp32 = T.alloc_ub(max(d_rope, 1), calc_dtype)
-            v0_zero_key = T.alloc_ub(DQuery, input_dtype)
-            v0_zero_ki = T.alloc_ub(DQueryIndex, input_dtype)
-            v0_zero_rope = T.alloc_ub(max(d_rope, 1), input_dtype)
-
-            T.tile.fill(v0_zero_key_fp32, 0.0)
-            T.tile.fill(v0_zero_ki_fp32, 0.0)
-            if d_rope > 0:
-                T.tile.fill(v0_zero_rope_fp32, 0.0)
-            T.pipe_barrier("v")
-            T.tile.cast(v0_zero_key, v0_zero_key_fp32, "CAST_RINT", DQuery)
-            T.tile.cast(v0_zero_ki, v0_zero_ki_fp32, "CAST_RINT", DQueryIndex)
-            if d_rope > 0:
-                T.tile.cast(v0_zero_rope, v0_zero_rope_fp32, "CAST_RINT", d_rope)
-            T.pipe_barrier("v")
-            # 无效索引通过 UB->UB 补零，MTE2 必须等待 Vector 完成 BF16 zero cast。
-            T.set_flag("v", "mte2", 0)
-            T.wait_flag("v", "mte2", 0)
 
             T.set_flag("mte3", "mte2", 0)
             T.set_flag("mte3", "mte2", 1)
@@ -389,40 +373,19 @@ def tilelang_grad_kl_loss_single_kernel(
                         for chunk_id in T.serial(gather_chunks):
                             chunk_start = aiv_start + chunk_id * GATHER_CHUNK_SIZE
                             T.wait_flag("mte3", "mte2", 0)
-                            if v0_zero_first:
-                                # 诊断部分有效 chunk 内的顺序问题：先清空整个槽位，
-                                # 等待 MTE2 完成，再用有效 gather 覆盖前缀行。
-                                for lane in T.serial(GATHER_CHUNK_SIZE):
-                                    T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
-                                    T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
+                            for lane in T.serial(GATHER_CHUNK_SIZE):
+                                k_id = chunk_start + lane
+                                sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
+                                if sparse_idx >= 0:
+                                    T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                                    T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
                                     if d_rope > 0:
-                                        T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
-                                T.set_flag("mte2", "v", 0)
-                                T.wait_flag("mte2", "v", 0)
-                                T.set_flag("v", "mte2", 0)
-                                T.wait_flag("v", "mte2", 0)
-                                for lane in T.serial(GATHER_CHUNK_SIZE):
-                                    k_id = chunk_start + lane
-                                    sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
-                                    if sparse_idx >= 0:
-                                        T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
-                                        T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
-                                        if d_rope > 0:
-                                            T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
-                            else:
-                                for lane in T.serial(GATHER_CHUNK_SIZE):
-                                    k_id = chunk_start + lane
-                                    sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
-                                    if sparse_idx >= 0:
-                                        T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
-                                        T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
-                                        if d_rope > 0:
-                                            T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
-                                    if sparse_idx < 0:
-                                        T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
-                                        T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
-                                        if d_rope > 0:
-                                            T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
+                                        T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
+                                if sparse_idx < 0:
+                                    T.copy(V0ZeroRow[0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                                    T.copy(V0ZeroRow[0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
+                                    if d_rope > 0:
+                                        T.copy(V0ZeroRow[0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
                             T.set_flag("mte2", "mte3", 0)
                             T.wait_flag("mte2", "mte3", 0)
                             T.copy(v0_key_ub[0, 0:GATHER_CHUNK_SIZE, 0:DQuery],
@@ -448,10 +411,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                 if d_rope > 0:
                                     T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
                             if sparse_idx < 0:
-                                T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
-                                T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
+                                T.copy(V0ZeroRow[0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                                T.copy(V0ZeroRow[0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
                                 if d_rope > 0:
-                                    T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
+                                    T.copy(V0ZeroRow[0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
                         T.set_flag("mte2", "mte3", 0)
 
                         for chunk_id in T.serial(gather_chunks):
@@ -469,10 +432,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                         if d_rope > 0:
                                             T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
                                     if sparse_idx < 0:
-                                        T.copy(v0_zero_key, v0_key_ub[nxt, lane, 0:DQuery])
-                                        T.copy(v0_zero_ki, v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                                        T.copy(V0ZeroRow[0:DQuery], v0_key_ub[nxt, lane, 0:DQuery])
+                                        T.copy(V0ZeroRow[0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
                                         if d_rope > 0:
-                                            T.copy(v0_zero_rope, v0_rope_ub[nxt, lane, 0:d_rope])
+                                            T.copy(V0ZeroRow[0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
                                 T.set_flag("mte2", "mte3", nxt)
 
                             T.wait_flag("mte2", "mte3", cur)
@@ -2007,10 +1970,11 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.prim_func
     def main(
-        # 输入：0-11
+        # 输入：0-12
         SparseIndices: T.Tensor((B, S1, Nidx2, sparse_k_stride), "int32"),
         KRealSize: T.Tensor(k_real_size_shape, "int32"),
         ValidKMask: T.Tensor(valid_k_mask_shape, calc_dtype),
+        V0ZeroRow: T.Tensor((DQuery,), input_dtype),
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
         QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),
         Key: T.Tensor((B, source_s2, N2, DQuery), input_dtype),
@@ -2020,7 +1984,7 @@ def tilelang_grad_kl_loss_single_kernel(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
-        # 工作区：10-22
+        # 工作区：13-25
         dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
         dKeyIndexAccum: T.Tensor((dkey_output_rows, DQueryIndex), calc_dtype),
         GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),
@@ -2049,6 +2013,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         s1_current = task_current % S1
                         vector0_gather_task(
                             SparseIndices,
+                            V0ZeroRow,
                             Key,
                             KeyRope,
                             KeyIndex,
@@ -2415,6 +2380,19 @@ def _get_tail_aux_inputs(
     return cached
 
 
+def _get_v0_zero_row(
+    device: torch.device,
+    input_dtype: torch.dtype,
+) -> torch.Tensor:
+    """返回 V0 三路无效索引共用的 GM 零哨兵行。"""
+    cache_key = (device, input_dtype)
+    cached = _v0_zero_row_cache.get(cache_key)
+    if cached is None:
+        cached = torch.zeros(DQUERY, dtype=input_dtype, device=device)
+        _v0_zero_row_cache[cache_key] = cached
+    return cached
+
+
 # ==============================================================================
 # BSND 布局主入口
 # ==============================================================================
@@ -2595,10 +2573,6 @@ def sparse_lightning_indexer_grad_kl_loss(
         _C1_SERIAL = os.environ.get("SLIG_C1_SERIAL", "0") == "1"
         # V0 单槽仅用于确认三路 gather 的 ping-pong ownership 问题。
         _V0_SINGLE_SLOT = os.environ.get("SLIG_V0_SINGLE_SLOT", "0") == "1"
-        # V0 先清零仅用于确认部分有效 chunk 内 gather 与补零的顺序问题。
-        _V0_ZERO_FIRST = os.environ.get("SLIG_V0_ZERO_FIRST", "0") == "1"
-        if _V0_ZERO_FIRST and not _V0_SINGLE_SLOT:
-            raise ValueError("SLIG_V0_ZERO_FIRST=1 must be used with SLIG_V0_SINGLE_SLOT=1")
         _GATHER_SENTINEL = 123.0
 
         if _PROFILE:
@@ -2613,6 +2587,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_prep_start.record()
         d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
         # Gather 已移入内核的 V0 阶段，不再需要主机侧预处理。
+        v0_zero_row = _get_v0_zero_row(query.device, input_dtype)
 
 
         # 将 rope 维度补齐到 k_block 对齐，并处理 None。
@@ -2652,7 +2627,6 @@ def sparse_lightning_indexer_grad_kl_loss(
             _SERIAL_TASK_PIPELINE,
             _C1_SERIAL,
             _V0_SINGLE_SLOT,
-            _V0_ZERO_FIRST,
         )
 
         if cache_key in _kernel_cache:
@@ -2662,7 +2636,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
-                _SERIAL_TASK_PIPELINE, _C1_SERIAL, _V0_SINGLE_SLOT, _V0_ZERO_FIRST,
+                _SERIAL_TASK_PIPELINE, _C1_SERIAL, _V0_SINGLE_SLOT,
             )
 
             # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
@@ -2733,16 +2707,17 @@ def sparse_lightning_indexer_grad_kl_loss(
         results = func(
             sparse_indices,                             # 0
             k_real_size, valid_k_mask,                  # 1-2
-            query, query_rope, key, key_rope,           # 3-6
-            query_index, key_index,                     # 7-8
-            weights, softmax_max, softmax_sum,          # 9-11
-            d_query_index_accum,                        # 12，工作区
-            d_key_index_accum,                          # 13，工作区
-            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 14-16
-            bmm1_res_ws, bmm2_res_ws,                   # 17-18
-            p_reduced_ws, softmax_i_ws,                 # 19-20
-            dk_matmul_partial, relu_grad_out,           # 21-22
-            loss_partial_ws, c2_zero_pad,               # 23-24
+            v0_zero_row,                                # 3
+            query, query_rope, key, key_rope,           # 4-7
+            query_index, key_index,                     # 8-9
+            weights, softmax_max, softmax_sum,          # 10-12
+            d_query_index_accum,                        # 13，工作区
+            d_key_index_accum,                          # 14，工作区
+            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 15-17
+            bmm1_res_ws, bmm2_res_ws,                   # 18-19
+            p_reduced_ws, softmax_i_ws,                 # 20-21
+            dk_matmul_partial, relu_grad_out,           # 22-23
+            loss_partial_ws, c2_zero_pad,               # 24-25
         )
         if _PROFILE:
             _t_kernel_end.record()
