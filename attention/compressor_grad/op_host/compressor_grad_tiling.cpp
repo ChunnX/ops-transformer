@@ -22,6 +22,10 @@
 #include "register/op_def_registry.h"
 #include "compressor_grad_tiling.h"
 
+// TODO 临时规避写法，解决和compressor同时编译时报错
+#include "CompressorGradTiling_tiling.h"
+// TODO 临时规避写法，解决和compressor同时编译时报错
+
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
@@ -316,6 +320,7 @@ ge::graphStatus CheckAttrValueSupportList(const T *attrValue, const std::vector<
     return ge::GRAPH_SUCCESS;
 }
 
+namespace compressor_grad_tiling {
 std::string LayoutTypeToStr(LayoutType layout)
 {
     switch (layout) {
@@ -327,6 +332,7 @@ std::string LayoutTypeToStr(LayoutType layout)
             return "UNKNOWN_LAYOUT";
     }
 }
+} // namespace compressor_grad_tiling
 
 ge::graphStatus CheckDimNumInLayoutSupport(CompressorGradContext &compressorGradContext, const std::string &layout, const gert::StorageShape *shape,
                                                              const std::string &name)
@@ -403,7 +409,7 @@ ge::graphStatus CheckSingleParaX(CompressorGradContext &compressorGradContext)
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(compressorGradContext, compressorGradContext.x.desc, X_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(compressorGradContext.x.shape, X_NAME, compressorGradContext.opName) ||
-        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(compressorGradContext, LayoutTypeToStr(compressorGradContext.layout), compressorGradContext.x.shape, X_NAME)) {
+        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(compressorGradContext, compressor_grad_tiling::LayoutTypeToStr(compressorGradContext.layout), compressorGradContext.x.shape, X_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
