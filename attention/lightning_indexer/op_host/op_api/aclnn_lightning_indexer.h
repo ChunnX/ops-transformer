@@ -23,7 +23,8 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 __attribute__((visibility("default")))
-aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
+aclnnStatus
+aclnnLightningIndexerGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
     const aclTensor *weights,
@@ -46,7 +47,8 @@ aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
  * @brief The second interface of aclnnLightningIndexer is used to perform calculations.
  */
 __attribute__((visibility("default")))
-aclnnStatus aclnnLightningIndexer(
+aclnnStatus
+aclnnLightningIndexer(
     void *workspace,
     uint64_t workspaceSize,
     aclOpExecutor *executor,

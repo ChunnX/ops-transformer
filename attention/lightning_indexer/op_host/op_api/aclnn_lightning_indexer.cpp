@@ -41,31 +41,34 @@ extern aclnnStatus aclnnInnerLightningIndexerGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerLightningIndexer(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                         const aclrtStream stream);
+                                              const aclrtStream stream);
 
 class TensorHolder {
 public:
-    TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName) {
+    TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName)
+    {
         inner_ = nullptr;
         name_ = varName;
         if (output == nullptr) {
             std::vector<int64_t> shape = {0};
             int64_t addr = 0xff;
             inner_ = aclCreateTensor(shape.data(), shape.size(),
-                dataType, shape.data(), 0, ACL_FORMAT_ND,
-                shape.data(), shape.size(), static_cast<void *>(&addr));
+                                     dataType, shape.data(), 0, ACL_FORMAT_ND,
+                                     shape.data(), shape.size(), static_cast<void *>(&addr));
             output = inner_;
         }
     }
 
-    ~TensorHolder() {
+    ~TensorHolder()
+    {
         if (inner_) {
             aclDestroyTensor(inner_);
             inner_ = nullptr;
         }
     }
-    
-    void CheckTensorConditionalNotNull(bool conditional) const {
+
+    void CheckTensorConditionalNotNull(bool conditional) const
+    {
         if (inner_ && conditional) {
             OP_LOGW("Check %s != nullptr failed!", name_.c_str());
         } else if (!inner_ && !conditional) {
@@ -73,7 +76,8 @@ public:
         }
     }
 
-    bool IsTensorNotNull() const {
+    bool IsTensorNotNull() const
+    {
         return inner_ == nullptr;
     }
 
@@ -83,23 +87,23 @@ private:
 };
 
 aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
-        const aclTensor *query,
-        const aclTensor *key,
-        const aclTensor *weights,
-        const aclTensor *actualSeqLengthsQueryOptional,
-        const aclTensor *actualSeqLengthsKeyOptional,
-        const aclTensor *blockTableOptional,
-        char *layoutQueryOptional,
-        char *layoutKeyOptional,
-        int64_t sparseCount,
-        int64_t sparseMode,
-        int64_t preTokens,
-        int64_t nextTokens,
-        bool returnValues,
-        const aclTensor *sparseIndicesOut,
-        const aclTensor *sparseValuesOut,
-        uint64_t *workspaceSize,
-        aclOpExecutor **executor)
+    const aclTensor *query,
+    const aclTensor *key,
+    const aclTensor *weights,
+    const aclTensor *actualSeqLengthsQueryOptional,
+    const aclTensor *actualSeqLengthsKeyOptional,
+    const aclTensor *blockTableOptional,
+    char *layoutQueryOptional,
+    char *layoutKeyOptional,
+    int64_t sparseCount,
+    int64_t sparseMode,
+    int64_t preTokens,
+    int64_t nextTokens,
+    bool returnValues,
+    const aclTensor *sparseIndicesOut,
+    const aclTensor *sparseValuesOut,
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     if (query == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Query pointer is null, cannot get data type!");
@@ -126,7 +130,7 @@ aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
 }
 
 aclnnStatus aclnnLightningIndexer(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                     const aclrtStream stream)
+                                  const aclrtStream stream)
 {
     return aclnnInnerLightningIndexer(workspace, workspaceSize, executor, stream);
 }

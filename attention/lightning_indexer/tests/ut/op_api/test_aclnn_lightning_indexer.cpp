@@ -24,8 +24,7 @@ void DestroyAclTensor(aclTensor *tensor)
 }
 } // namespace
 
-class lightning_indexer_opapi_ut : public testing::Test
-{
+class lightning_indexer_opapi_ut : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
