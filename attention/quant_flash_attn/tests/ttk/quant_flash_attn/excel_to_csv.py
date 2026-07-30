@@ -395,11 +395,15 @@ def _build_attributes(row):
 
 
 def _precision_tolerances(row):
-    """默认 ((0.005, 0.000025),)；若 attn_out_dtype (L) 含 BF16 → ((0.0078125, 0.0001),)"""
+    """默认 ((0.005, 0.000025, 0.005, 0.005, 10),);
+    若 attn_out_dtype (L) 含 BF16 → ((0.0078125, 0.0001, 0.005, 0.005, 10),)
+
+    5-tuple = (rtol, atol, diff_thd, pct_thd, max_diff_hd)。后三位为 check_result的三个阈值, 默认 0.005/0.005/10
+    """
     out_dtype = _strip_or_none(row.get(COL["L_attn_out_dtype"]))
     if out_dtype and "BF16" in out_dtype.upper():
-        return ((0.0078125, 0.0001),)
-    return ((0.005, 0.000025),)
+        return ((0.0078125, 0.0001, 0.005, 0.005, 10),)
+    return ((0.005, 0.000025, 0.005, 0.005, 10),)
 
 
 def _row_to_csv(excel_row, api_name, testcase_suffix):
