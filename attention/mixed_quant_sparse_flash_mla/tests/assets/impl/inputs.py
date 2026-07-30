@@ -22,10 +22,6 @@ import torch
 class MixedQuantSparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
 
-    TEMPLATE_MODE_ALIASES = {
-        "ORI_SPARSE_MODE": "ORI_SPARSE",
-        "ORI_CMP_SPARSE_MODE": "ORI_CMP_SPARSE",
-    }
     TEMPLATE_MODES = frozenset(("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"))
 
     @staticmethod
@@ -117,19 +113,10 @@ class MixedQuantSparseFlashMlaInputAdapter:
         mode = kwargs.get("template_run_mode") or kwargs.get("template_mode")
         if mode is None:
             return None
-        mode = cls.TEMPLATE_MODE_ALIASES.get(str(mode).strip(), str(mode).strip())
+        mode = str(mode).strip()
         if mode not in cls.TEMPLATE_MODES:
             raise ValueError(f"unsupported explicit template_run_mode: {mode!r}")
         return mode
-
-    @staticmethod
-    def normalize_kv_topk_modes(params):
-        """Accept the workbook's historical fullk spelling at the assets boundary."""
-        for name in ("ori_kv_topk_mode", "cmp_kv_topk_mode"):
-            value = params.get(name)
-            if isinstance(value, str) and value.strip().lower() == "fullk":
-                params[name] = "fullK"
-        return params
 
     def build_case_params(self, q, ori_kv, cmp_kv, ori_sparse_indices,
                           cmp_sparse_indices,
@@ -148,6 +135,8 @@ class MixedQuantSparseFlashMlaInputAdapter:
             _, q_heads, head_dim = [int(x) for x in q.shape]
             batch_size = len(seq_q or self.prefix_lengths(cu_q))
             q_seq = max(self.prefix_lengths(cu_q) or seq_q or [int(q.shape[0])])
+        if kwargs.get("S1") is not None:
+            q_seq = int(kwargs["S1"])
 
         if layout_kv == "BSND":
             _, kv_seq, kv_heads, _ = [int(x) for x in ori_kv.shape]
@@ -165,6 +154,8 @@ class MixedQuantSparseFlashMlaInputAdapter:
             block_num1 = shape_block_num if block_num1 is None else int(block_num1)
             block_size1 = shape_block_size if block_size1 is None else int(block_size1)
             kv_seq = max(self.prefix_lengths(cu_ori) or seq_ori or [block_size1])
+        if kwargs.get("S2") is not None:
+            kv_seq = int(kwargs["S2"])
 
         metadata_cmp_topk = kwargs.get("metadata_cmp_topk")
         if cmp_kv is None:
@@ -226,7 +217,7 @@ class MixedQuantSparseFlashMlaInputAdapter:
         if mode is not None:
             params["template_run_mode"] = mode
         params.update({name: value for name, value in data_ranges.items() if value is not None})
-        return self.normalize_kv_topk_modes(params)
+        return params
 
     @staticmethod
     def copy_tensor(dst, src, name):
