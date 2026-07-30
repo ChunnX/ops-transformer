@@ -1130,26 +1130,26 @@ extern "C" __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t
         // FP16 FULLMASK
         #elif TILING_KEY_VAR == QF16_KVF16_OUTF16_NOLSEOUT_TND_PAGEDCACHE_BNBD_FULLMASK_SPLITFUSE_TILING
         SplitFuse::FAInfer<layout::ColumnMajor, layout::RowMajor,
-            half, half, float, true, false, FaiKernel::MaskType::MASK_FULL, FaiKernel::inputLayout::TND,
+            half, half, float, true, false, FaiKernel::MaskType::FULL_MASK, FaiKernel::inputLayout::TND,
             NpuArch::Epilogue::LseMode::NONE, NpuArch::Epilogue::SinkMode::DISABLE, true>(
             query, key, value, pse_shift, attenMask, blocktable, attentionOut, softmaxLse,
             actualSeqLengths, actualSeqLengthsKV, user, tiling, learnableSink);
         #elif TILING_KEY_VAR == QF16_KVF16_OUTF16_LSEOUT_TND_PAGEDCACHE_BNBD_FULLMASK_SPLITFUSE_TILING
         SplitFuse::FAInfer<layout::ColumnMajor, layout::RowMajor,
-            half, half, float, true, false, FaiKernel::MaskType::MASK_FULL, FaiKernel::inputLayout::TND,
+            half, half, float, true, false, FaiKernel::MaskType::FULL_MASK, FaiKernel::inputLayout::TND,
             NpuArch::Epilogue::LseMode::OUT_ONLY, NpuArch::Epilogue::SinkMode::DISABLE, true>(
             query, key, value, pse_shift, attenMask, blocktable, attentionOut, softmaxLse,
             actualSeqLengths, actualSeqLengthsKV, user, tiling, learnableSink);
         // BF16 FULLMASK
         #elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_NOLSEOUT_TND_PAGEDCACHE_BNBD_FULLMASK_SPLITFUSE_TILING
         SplitFuse::FAInfer<layout::ColumnMajor, layout::RowMajor,
-            bfloat16_t, bfloat16_t, float, true, false, FaiKernel::MaskType::MASK_FULL, FaiKernel::inputLayout::TND,
+            bfloat16_t, bfloat16_t, float, true, false, FaiKernel::MaskType::FULL_MASK, FaiKernel::inputLayout::TND,
             NpuArch::Epilogue::LseMode::NONE, NpuArch::Epilogue::SinkMode::DISABLE, true>(
             query, key, value, pse_shift, attenMask, blocktable, attentionOut, softmaxLse,
             actualSeqLengths, actualSeqLengthsKV, user, tiling, learnableSink);
         #elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_LSEOUT_TND_PAGEDCACHE_BNBD_FULLMASK_SPLITFUSE_TILING
         SplitFuse::FAInfer<layout::ColumnMajor, layout::RowMajor,
-            bfloat16_t, bfloat16_t, float, true, false, FaiKernel::MaskType::MASK_FULL, FaiKernel::inputLayout::TND,
+            bfloat16_t, bfloat16_t, float, true, false, FaiKernel::MaskType::FULL_MASK, FaiKernel::inputLayout::TND,
             NpuArch::Epilogue::LseMode::OUT_ONLY, NpuArch::Epilogue::SinkMode::DISABLE, true>(
             query, key, value, pse_shift, attenMask, blocktable, attentionOut, softmaxLse,
             actualSeqLengths, actualSeqLengthsKV, user, tiling, learnableSink);
