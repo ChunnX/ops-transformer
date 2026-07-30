@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import tilelang
 import tilelang.language as T
 
+from slig_debug import DebugContext, parse_debug_options, run_debug_diagnostics
+
 tilelang.disable_cache()
 
 BLOCK_M = 128
@@ -45,15 +47,18 @@ _kernel_cache = {}
 _workspace_cache = {}
 _full_valid_aux_cache = {}
 _tail_aux_cache = {}
+_v0_zero_row_cache = {}
 _debug_dump_done = False
 
 
 def _clear_caches():
     global _kernel_cache, _workspace_cache, _full_valid_aux_cache, _tail_aux_cache
+    global _v0_zero_row_cache
     _kernel_cache.clear()
     _workspace_cache.clear()
     _full_valid_aux_cache.clear()
     _tail_aux_cache.clear()
+    _v0_zero_row_cache.clear()
 
 
 pass_configs = {
@@ -255,7 +260,7 @@ def tilelang_grad_kl_loss_single_kernel(
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
     full_valid=False, k_scatter_exec=None,
     source_s2=None, sparse_k_stride=None, serial_task_pipeline=False,
-    c1_serial=False,
+    c1_serial=False, v0_single_slot=False,
 ):
     source_s2 = S2 if source_s2 is None else source_s2
     sparse_k_stride = K if sparse_k_stride is None else sparse_k_stride
@@ -331,6 +336,7 @@ def tilelang_grad_kl_loss_single_kernel(
     @T.macro
     def vector0_gather_task(
         SparseIndices,
+        V0ZeroRow,
         Key,
         KeyRope,
         KeyIndex,
@@ -352,26 +358,6 @@ def tilelang_grad_kl_loss_single_kernel(
             v0_key_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
             v0_ki_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
             v0_rope_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
-            v0_zero_key_fp32 = T.alloc_ub(DQuery, calc_dtype)
-            v0_zero_ki_fp32 = T.alloc_ub(DQueryIndex, calc_dtype)
-            v0_zero_rope_fp32 = T.alloc_ub(max(d_rope, 1), calc_dtype)
-            v0_zero_key = T.alloc_ub(DQuery, input_dtype)
-            v0_zero_ki = T.alloc_ub(DQueryIndex, input_dtype)
-            v0_zero_rope = T.alloc_ub(max(d_rope, 1), input_dtype)
-
-            T.tile.fill(v0_zero_key_fp32, 0.0)
-            T.tile.fill(v0_zero_ki_fp32, 0.0)
-            if d_rope > 0:
-                T.tile.fill(v0_zero_rope_fp32, 0.0)
-            T.pipe_barrier("v")
-            T.tile.cast(v0_zero_key, v0_zero_key_fp32, "CAST_RINT", DQuery)
-            T.tile.cast(v0_zero_ki, v0_zero_ki_fp32, "CAST_RINT", DQueryIndex)
-            if d_rope > 0:
-                T.tile.cast(v0_zero_rope, v0_zero_rope_fp32, "CAST_RINT", d_rope)
-            T.pipe_barrier("v")
-            # 无效索引通过 UB->UB 补零，MTE2 必须等待 Vector 完成 BF16 zero cast。
-            T.set_flag("v", "mte2", 0)
-            T.wait_flag("v", "mte2", 0)
 
             T.set_flag("mte3", "mte2", 0)
             T.set_flag("mte3", "mte2", 1)
@@ -382,53 +368,88 @@ def tilelang_grad_kl_loss_single_kernel(
                     aiv_start = outer_start + vector_id * rows_per_aiv
                     gather_chunks = rows_per_aiv // GATHER_CHUNK_SIZE
 
-                    T.wait_flag("mte3", "mte2", 0)
-                    for lane in T.serial(GATHER_CHUNK_SIZE):
-                        k_id = aiv_start + lane
-                        sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
-                        if sparse_idx >= 0:
-                            T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
-                            T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
-                            if d_rope > 0:
-                                T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
-                        if sparse_idx < 0:
-                            T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
-                            T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
-                            if d_rope > 0:
-                                T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
-                    T.set_flag("mte2", "mte3", 0)
-
-                    for chunk_id in T.serial(gather_chunks):
-                        cur = chunk_id % 2
-                        nxt = (chunk_id + 1) % 2
-                        if chunk_id + 1 < gather_chunks:
-                            next_start = aiv_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
-                            T.wait_flag("mte3", "mte2", nxt)
+                    if v0_single_slot:
+                        # 诊断路径：完全关闭 V0 chunk 间的 MTE2/MTE3 重叠。
+                        # 每个 chunk 都等待 slot 0 的三路 UB->GM 全部归还后，
+                        # 才允许下一轮 GM->UB 覆写该 slot。
+                        for chunk_id in T.serial(gather_chunks):
+                            chunk_start = aiv_start + chunk_id * GATHER_CHUNK_SIZE
+                            T.wait_flag("mte3", "mte2", 0)
                             for lane in T.serial(GATHER_CHUNK_SIZE):
-                                k_id = next_start + lane
+                                k_id = chunk_start + lane
                                 sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
                                 if sparse_idx >= 0:
-                                    T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[nxt, lane, 0:DQuery])
-                                    T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                                    T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                                    T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
                                     if d_rope > 0:
-                                        T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
+                                        T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
                                 if sparse_idx < 0:
-                                    T.copy(v0_zero_key, v0_key_ub[nxt, lane, 0:DQuery])
-                                    T.copy(v0_zero_ki, v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                                    T.copy(V0ZeroRow[0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                                    T.copy(V0ZeroRow[0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
                                     if d_rope > 0:
-                                        T.copy(v0_zero_rope, v0_rope_ub[nxt, lane, 0:d_rope])
-                            T.set_flag("mte2", "mte3", nxt)
+                                        T.copy(V0ZeroRow[0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
+                            T.set_flag("mte2", "mte3", 0)
+                            T.wait_flag("mte2", "mte3", 0)
+                            T.copy(v0_key_ub[0, 0:GATHER_CHUNK_SIZE, 0:DQuery],
+                                   GatherKey_ws[bz_task, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:DQuery])
+                            T.copy(v0_ki_ub[0, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
+                                   GatherKeyIndex_ws[bz_task, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
+                            if d_rope > 0:
+                                T.copy(v0_rope_ub[0, 0:GATHER_CHUNK_SIZE, 0:d_rope],
+                                       GatherKeyRope_ws[bz_task, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:d_rope])
+                            T.set_flag("mte3", "mte2", 0)
+                        # 发布跨核 readiness 前显式 drain 最后一个 chunk；重新
+                        # 发布 free token，交给宏末尾的统一清理逻辑消费。
+                        T.wait_flag("mte3", "mte2", 0)
+                        T.set_flag("mte3", "mte2", 0)
+                    else:
+                        T.wait_flag("mte3", "mte2", 0)
+                        for lane in T.serial(GATHER_CHUNK_SIZE):
+                            k_id = aiv_start + lane
+                            sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
+                            if sparse_idx >= 0:
+                                T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                                T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
+                                if d_rope > 0:
+                                    T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
+                            if sparse_idx < 0:
+                                T.copy(V0ZeroRow[0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                                T.copy(V0ZeroRow[0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
+                                if d_rope > 0:
+                                    T.copy(V0ZeroRow[0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
+                        T.set_flag("mte2", "mte3", 0)
 
-                        T.wait_flag("mte2", "mte3", cur)
-                        cur_start = aiv_start + chunk_id * GATHER_CHUNK_SIZE
-                        T.copy(v0_key_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
-                               GatherKey_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
-                        T.copy(v0_ki_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
-                               GatherKeyIndex_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
-                        if d_rope > 0:
-                            T.copy(v0_rope_ub[cur, 0:GATHER_CHUNK_SIZE, 0:d_rope],
-                                   GatherKeyRope_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
-                        T.set_flag("mte3", "mte2", cur)
+                        for chunk_id in T.serial(gather_chunks):
+                            cur = chunk_id % 2
+                            nxt = (chunk_id + 1) % 2
+                            if chunk_id + 1 < gather_chunks:
+                                next_start = aiv_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
+                                T.wait_flag("mte3", "mte2", nxt)
+                                for lane in T.serial(GATHER_CHUNK_SIZE):
+                                    k_id = next_start + lane
+                                    sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
+                                    if sparse_idx >= 0:
+                                        T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[nxt, lane, 0:DQuery])
+                                        T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                                        if d_rope > 0:
+                                            T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
+                                    if sparse_idx < 0:
+                                        T.copy(V0ZeroRow[0:DQuery], v0_key_ub[nxt, lane, 0:DQuery])
+                                        T.copy(V0ZeroRow[0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                                        if d_rope > 0:
+                                            T.copy(V0ZeroRow[0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
+                                T.set_flag("mte2", "mte3", nxt)
+
+                            T.wait_flag("mte2", "mte3", cur)
+                            cur_start = aiv_start + chunk_id * GATHER_CHUNK_SIZE
+                            T.copy(v0_key_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
+                                   GatherKey_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
+                            T.copy(v0_ki_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
+                                   GatherKeyIndex_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
+                            if d_rope > 0:
+                                T.copy(v0_rope_ub[cur, 0:GATHER_CHUNK_SIZE, 0:d_rope],
+                                       GatherKeyRope_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
+                            T.set_flag("mte3", "mte2", cur)
 
                     # 模式 2 的 AIC wait 会汇聚两个 AIV 的同一组 flag。
                     # 每个 AIV 完成自己的一半后再发布就绪 flag，
@@ -733,7 +754,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     v1_p_out = T.alloc_ub(n_block, calc_dtype)
                     v1_p_tmp = T.alloc_ub((N1, 8), calc_dtype)
                     v1_p_valid = T.alloc_ub(n_block, calc_dtype)
-                    v1_p_valid_mask = T.alloc_ub(n_block // 16, calc_dtype)
+                    v1_p_valid_mask = T.alloc_ub(n_block // 8, "uint8")
 
                     T.copy(SoftmaxMax[bz_task, 0, s1_id, 0:N1], v1_p_max)
                     T.copy(SoftmaxSum[bz_task, 0, s1_id, 0:N1], v1_p_sum)
@@ -895,7 +916,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     v1_sy_weight_2d = T.alloc_ub((Nidx1, n_block), calc_dtype)
                     v1_sy_reduce = T.alloc_ub(n_block, calc_dtype)
                     v1_sy_chunk = T.alloc_ub(n_block, calc_dtype)
-                    v1_sy_valid_mask = T.alloc_ub(n_block // 16, calc_dtype)
+                    v1_sy_valid_mask = T.alloc_ub(n_block // 8, "uint8")
                     v1_sy_broadcast = T.alloc_ub((1, n_block), calc_dtype)
                     v1_sy_max = T.alloc_ub((1,), calc_dtype)
                     v1_sy_sum = T.alloc_ub((1,), calc_dtype)
@@ -1120,8 +1141,8 @@ def tilelang_grad_kl_loss_single_kernel(
         """为一个完整任务翻译 VectorDwDqDk + VectorLoss。
 
         配对的 AIV 分别负责互不重叠的 Nidx1 半区。只有 Cube relay 观察到
-        两个 producer 都完成后，双方才消费 P/SY workspace。ReLU mask 使用
-        非原地 Select，避免源/目标别名，同时保持每个 tile 一次向量操作。
+        两个 producer 都完成后，双方才消费 P/SY workspace。ReLU 导数使用
+        1-exp(-10000*x) 算术门控，规避 Compare packed mask 与 Select 的布局问题。
         """
         with T.Scope("V"):
             v1_bw_weight_half = T.alloc_ub(rows_per_aiv, input_dtype)
@@ -1139,16 +1160,6 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_bmm2 = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
-            v1_bw_mask = T.alloc_ub(
-                rows_per_aiv * bw_col_block // 16, calc_dtype
-            )
-            # T.macro 的符号收集不能安全地将分配穿过 Python 条件传播。
-            # 因此在所有 specialization 中都定义这四个对齐的 4x64 mask
-            # 槽位；只有 16 行路径会实际使用它们。
-            v1_bw_mask0 = T.alloc_ub(16, calc_dtype)
-            v1_bw_mask1 = T.alloc_ub(16, calc_dtype)
-            v1_bw_mask2 = T.alloc_ub(16, calc_dtype)
-            v1_bw_mask3 = T.alloc_ub(16, calc_dtype)
             v1_bw_rg = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
@@ -1171,7 +1182,6 @@ def tilelang_grad_kl_loss_single_kernel(
             # 下一轮的覆写者是 Vector，不是 MTE2，故由 MTE3 直接归还给 V。
             T.set_flag("mte3", "v", 2)
             T.set_flag("mte3", "v", 3)
-
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 g_start = vector_id * rows_per_aiv
                 T.tile.fill(v1_bw_dw_accum, 0.0)
@@ -1259,141 +1269,47 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_bw_diff,
                         )
 
-                        if rows_per_aiv == 16:
-                            # 在复用 bmm2 计算 dWeight 前，对每个静态对齐的 4x64
-                            # 分组执行 Compare。dWeight 本身仍保持已经验证过的
-                            # 单次 16x64 reduction。
-                            T.tile.compare(
-                                v1_bw_mask0,
-                                v1_bw_bmm2[0:4, 0:bw_col_block],
-                                0.0,
-                                "GT",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.compare(
-                                v1_bw_mask1,
-                                v1_bw_bmm2[4:8, 0:bw_col_block],
-                                0.0,
-                                "GT",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.compare(
-                                v1_bw_mask2,
-                                v1_bw_bmm2[8:12, 0:bw_col_block],
-                                0.0,
-                                "GT",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.compare(
-                                v1_bw_mask3,
-                                v1_bw_bmm2[12:16, 0:bw_col_block],
-                                0.0,
-                                "GT",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.mul(
-                                v1_bw_bmm2,
-                                v1_bw_bmm2,
-                                v1_bw_diff_2d,
-                            )
-                            T.pipe_barrier("v")
-                            T.reduce_sum(
-                                v1_bw_bmm2,
-                                v1_bw_dw,
-                                1,
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
-                            T.tile.mul(
-                                v1_bw_rg,
-                                v1_bw_weight_2d,
-                                v1_bw_diff_2d,
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_bmm2[0:4, 0:bw_col_block],
-                                v1_bw_mask0,
-                                v1_bw_rg[0:4, 0:bw_col_block],
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_bmm2[4:8, 0:bw_col_block],
-                                v1_bw_mask1,
-                                v1_bw_rg[4:8, 0:bw_col_block],
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_bmm2[8:12, 0:bw_col_block],
-                                v1_bw_mask2,
-                                v1_bw_rg[8:12, 0:bw_col_block],
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_bmm2[12:16, 0:bw_col_block],
-                                v1_bw_mask3,
-                                v1_bw_rg[12:16, 0:bw_col_block],
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.cast(
-                                v1_bw_rg_half,
-                                v1_bw_bmm2,
-                                "CAST_RINT",
-                                rows_per_aiv * bw_col_block,
-                            )
-                            T.pipe_barrier("v")
-                        else:
-                            T.tile.compare(
-                                v1_bw_mask,
-                                v1_bw_bmm2,
-                                0.0,
-                                "GT",
-                            )
-                            T.pipe_barrier("v")
-                            # dWeight 消费未加权的 diff 分块，并跨两个 64 列
-                            # 子分块累加。
-                            T.tile.mul(
-                                v1_bw_bmm2,
-                                v1_bw_bmm2,
-                                v1_bw_diff_2d,
-                            )
-                            T.pipe_barrier("v")
-                            T.reduce_sum(
-                                v1_bw_bmm2,
-                                v1_bw_dw,
-                                1,
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
+                        # bmm2Res 已经过 ReLU。算术门控在 x=0 时精确为 0，
+                        # 对正值快速趋近 1，避免多 repeat packed mask 的布局歧义。
+                        T.tile.mul(v1_bw_rg, v1_bw_bmm2, -10000.0)
+                        T.pipe_barrier("v")
+                        T.tile.exp(v1_bw_rg, v1_bw_rg)
+                        T.pipe_barrier("v")
+                        T.tile.mul(v1_bw_rg, v1_bw_rg, -1.0)
+                        T.pipe_barrier("v")
+                        T.tile.add(v1_bw_rg, v1_bw_rg, 1.0)
+                        T.pipe_barrier("v")
 
-                            T.tile.mul(
-                                v1_bw_rg,
-                                v1_bw_weight_2d,
-                                v1_bw_diff_2d,
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_bmm2,
-                                v1_bw_mask,
-                                v1_bw_rg,
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.cast(
-                                v1_bw_rg_half,
-                                v1_bw_bmm2,
-                                "CAST_RINT",
-                                rows_per_aiv * bw_col_block,
-                            )
-                            T.pipe_barrier("v")
+                        # dWeight 保持原有完整物理分块 reduction 顺序。
+                        T.tile.mul(
+                            v1_bw_bmm2,
+                            v1_bw_bmm2,
+                            v1_bw_diff_2d,
+                        )
+                        T.pipe_barrier("v")
+                        T.reduce_sum(
+                            v1_bw_bmm2,
+                            v1_bw_dw,
+                            1,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
+
+                        T.tile.mul(
+                            v1_bw_bmm2,
+                            v1_bw_weight_2d,
+                            v1_bw_diff_2d,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.mul(v1_bw_bmm2, v1_bw_bmm2, v1_bw_rg)
+                        T.pipe_barrier("v")
+                        T.tile.cast(
+                            v1_bw_rg_half,
+                            v1_bw_bmm2,
+                            "CAST_RINT",
+                            rows_per_aiv * bw_col_block,
+                        )
+                        T.pipe_barrier("v")
                         T.set_flag("v", "mte3", 2)
                         T.wait_flag("v", "mte3", 2)
                         T.pipe_barrier("mte3")
@@ -1951,10 +1867,11 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.prim_func
     def main(
-        # 输入：0-11
+        # 输入：0-12
         SparseIndices: T.Tensor((B, S1, Nidx2, sparse_k_stride), "int32"),
         KRealSize: T.Tensor(k_real_size_shape, "int32"),
         ValidKMask: T.Tensor(valid_k_mask_shape, calc_dtype),
+        V0ZeroRow: T.Tensor((DQuery,), input_dtype),
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
         QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),
         Key: T.Tensor((B, source_s2, N2, DQuery), input_dtype),
@@ -1964,7 +1881,7 @@ def tilelang_grad_kl_loss_single_kernel(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
-        # 工作区：10-22
+        # 工作区：13-25
         dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
         dKeyIndexAccum: T.Tensor((dkey_output_rows, DQueryIndex), calc_dtype),
         GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),
@@ -1993,6 +1910,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         s1_current = task_current % S1
                         vector0_gather_task(
                             SparseIndices,
+                            V0ZeroRow,
                             Key,
                             KeyRope,
                             KeyIndex,
@@ -2359,6 +2277,19 @@ def _get_tail_aux_inputs(
     return cached
 
 
+def _get_v0_zero_row(
+    device: torch.device,
+    input_dtype: torch.dtype,
+) -> torch.Tensor:
+    """返回 V0 三路无效索引共用的 GM 零哨兵行。"""
+    cache_key = (device, input_dtype)
+    cached = _v0_zero_row_cache.get(cache_key)
+    if cached is None:
+        cached = torch.zeros(DQUERY, dtype=input_dtype, device=device)
+        _v0_zero_row_cache[cache_key] = cached
+    return cached
+
+
 # ==============================================================================
 # BSND 布局主入口
 # ==============================================================================
@@ -2503,40 +2434,14 @@ def sparse_lightning_indexer_grad_kl_loss(
             weights = weights.to(input_dtype)
 
         _PROFILE = os.environ.get("SLIG_PROFILE", "0") == "1"
-        _DEBUG_REQUESTED = os.environ.get("SLIG_DEBUG", "0") == "1"
-        _DEBUG_TASK_TEXT = os.environ.get("SLIG_DEBUG_TASK", "").strip()
-        _DEBUG_TASK = None
-        _DEBUG_BMM1_COORD = None
-        if _DEBUG_TASK_TEXT.lower() == "auto":
-            raise ValueError(
-                "SLIG_DEBUG_TASK=auto is disabled because scanning the full BMM1 "
-                "workspace can allocate several GiB; use SLIG_SELECT_DEBUG_TASK=1 "
-                "in test_0721_general.py, then rerun with SLIG_DEBUG_TASK=batch,query"
-            )
-        if _DEBUG_TASK_TEXT:
-            _DEBUG_TASK_PARTS = _DEBUG_TASK_TEXT.split(",")
-            if len(_DEBUG_TASK_PARTS) != 2:
-                raise ValueError(
-                    "SLIG_DEBUG_TASK must use the format 'batch,query', for example '0,25'"
-                )
-            try:
-                _DEBUG_TASK = (
-                    int(_DEBUG_TASK_PARTS[0].strip()),
-                    int(_DEBUG_TASK_PARTS[1].strip()),
-                )
-            except ValueError as exc:
-                raise ValueError(
-                    "SLIG_DEBUG_TASK must contain two integer values: 'batch,query'"
-                ) from exc
-            if not (0 <= _DEBUG_TASK[0] < B and 0 <= _DEBUG_TASK[1] < S1):
-                raise ValueError(
-                    f"SLIG_DEBUG_TASK={_DEBUG_TASK_TEXT!r} is outside BSND shape B={B}, S1={S1}"
-                )
+        debug_options = parse_debug_options(B, S1, Nidx1, K)
         _SERIAL_TASK_PIPELINE = (
             os.environ.get("SLIG_SERIAL_TASK_PIPELINE", "0") == "1"
         )
         # C1 内部串行仅用于定位 L1/L0 和 Cube 流水的同步问题。
         _C1_SERIAL = os.environ.get("SLIG_C1_SERIAL", "0") == "1"
+        # V0 单槽仅用于确认三路 gather 的 ping-pong ownership 问题。
+        _V0_SINGLE_SLOT = os.environ.get("SLIG_V0_SINGLE_SLOT", "0") == "1"
         _GATHER_SENTINEL = 123.0
 
         if _PROFILE:
@@ -2551,6 +2456,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_prep_start.record()
         d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
         # Gather 已移入内核的 V0 阶段，不再需要主机侧预处理。
+        v0_zero_row = _get_v0_zero_row(query.device, input_dtype)
 
 
         # 将 rope 维度补齐到 k_block 对齐，并处理 None。
@@ -2589,6 +2495,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             input_dtype_str, calc_dtype_str, scale_value, block_n, full_valid,
             _SERIAL_TASK_PIPELINE,
             _C1_SERIAL,
+            _V0_SINGLE_SLOT,
         )
 
         if cache_key in _kernel_cache:
@@ -2598,7 +2505,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
-                _SERIAL_TASK_PIPELINE, _C1_SERIAL,
+                _SERIAL_TASK_PIPELINE, _C1_SERIAL, _V0_SINGLE_SLOT,
             )
 
             # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
@@ -2658,7 +2565,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 c2_zero_pad,
             )
 
-        if _DEBUG_REQUESTED and not _debug_dump_done:
+        if debug_options.requested and not _debug_dump_done:
             gather_key_ws.fill_(_GATHER_SENTINEL)
             gather_key_rope_ws.fill_(_GATHER_SENTINEL)
             gather_key_index_ws.fill_(_GATHER_SENTINEL)
@@ -2669,16 +2576,17 @@ def sparse_lightning_indexer_grad_kl_loss(
         results = func(
             sparse_indices,                             # 0
             k_real_size, valid_k_mask,                  # 1-2
-            query, query_rope, key, key_rope,           # 3-6
-            query_index, key_index,                     # 7-8
-            weights, softmax_max, softmax_sum,          # 9-11
-            d_query_index_accum,                        # 12，工作区
-            d_key_index_accum,                          # 13，工作区
-            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 14-16
-            bmm1_res_ws, bmm2_res_ws,                   # 17-18
-            p_reduced_ws, softmax_i_ws,                 # 19-20
-            dk_matmul_partial, relu_grad_out,           # 21-22
-            loss_partial_ws, c2_zero_pad,               # 23-24
+            v0_zero_row,                                # 3
+            query, query_rope, key, key_rope,           # 4-7
+            query_index, key_index,                     # 8-9
+            weights, softmax_max, softmax_sum,          # 10-12
+            d_query_index_accum,                        # 13，工作区
+            d_key_index_accum,                          # 14，工作区
+            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 15-17
+            bmm1_res_ws, bmm2_res_ws,                   # 18-19
+            p_reduced_ws, softmax_i_ws,                 # 20-21
+            dk_matmul_partial, relu_grad_out,           # 22-23
+            loss_partial_ws, c2_zero_pad,               # 24-25
         )
         if _PROFILE:
             _t_kernel_end.record()
@@ -2689,442 +2597,51 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_weight = results[2]
         loss_out = results[3]
 
-        # DEBUG：定位第一个产生非有限值的阶段。
-        _DEBUG = _DEBUG_REQUESTED and not _debug_dump_done
-        _DEBUG_TASK_ACTIVE = _DEBUG_TASK is not None and not _debug_dump_done
-        if _DEBUG_TASK_ACTIVE:
-            debug_b, debug_q = _DEBUG_TASK
-
-            def _debug_task_tensor(name, tensor):
-                tensor_fp32 = tensor.float()
-                finite = torch.isfinite(tensor_fp32)
-                finite_count = int(finite.sum().item())
-                nonfinite_count = tensor_fp32.numel() - finite_count
-                finite_abs_max = (
-                    tensor_fp32[finite].abs().max().item()
-                    if finite_count > 0 else float("nan")
-                )
-                print(
-                    f"[DEBUG_TASK] {name}: shape={tuple(tensor.shape)}, "
-                    f"nonfinite={nonfinite_count}, finite_abs_max={finite_abs_max:.6e}"
-                )
-
-            def _debug_task_compare(name, actual, expected):
-                actual_fp32 = actual.float()
-                expected_fp32 = expected.float()
-                finite = torch.isfinite(actual_fp32) & torch.isfinite(expected_fp32)
-                nonfinite_count = actual_fp32.numel() - int(finite.sum().item())
-                if finite.any().item():
-                    diff = (actual_fp32[finite] - expected_fp32[finite]).abs()
-                    max_diff = diff.max().item()
-                    mean_diff = diff.mean().item()
-                    norm_rel = torch.linalg.vector_norm(diff).item() / (
-                        torch.linalg.vector_norm(expected_fp32[finite]).item() + 1e-6
-                    )
-                else:
-                    max_diff = float("nan")
-                    mean_diff = float("nan")
-                    norm_rel = float("nan")
-                print(
-                    f"[DEBUG_TASK] {name}: max_diff={max_diff:.6e}, "
-                    f"mean_diff={mean_diff:.6e}, norm_rel={norm_rel:.6e}, "
-                    f"nonfinite={nonfinite_count}"
-                )
-
-            debug_sparse_indices = sparse_indices[debug_b, debug_q, 0, :K].to(torch.long)
-            debug_index_valid = (
-                (debug_sparse_indices >= 0) & (debug_sparse_indices < source_s2)
+        debug_active = (
+            not _debug_dump_done
+            and (debug_options.requested or debug_options.task is not None)
+        )
+        if debug_active:
+            debug_context = DebugContext(
+                options=debug_options,
+                full_valid=full_valid,
+                source_s2=source_s2,
+                d_rope_orig=d_rope_orig,
+                scale_value=scale_value,
+                loss_partial_stride=loss_partial_stride,
+                gather_sentinel=_GATHER_SENTINEL,
+                gather_chunk_size=GATHER_CHUNK_SIZE,
+                k_split=K_SPLIT,
+                n_split=N_SPLIT,
+                preprocess_gather=_preprocess_gather,
+                query=query,
+                key=key,
+                query_index=query_index,
+                key_index=key_index,
+                weights=weights,
+                sparse_indices=sparse_indices,
+                softmax_max=softmax_max,
+                softmax_sum=softmax_sum,
+                query_rope=query_rope,
+                key_rope=key_rope,
+                k_real_size=k_real_size,
+                valid_k_mask=valid_k_mask,
+                gather_key_ws=gather_key_ws,
+                gather_key_rope_ws=gather_key_rope_ws,
+                gather_key_index_ws=gather_key_index_ws,
+                bmm1_res_ws=bmm1_res_ws,
+                bmm2_res_ws=bmm2_res_ws,
+                p_reduced_ws=p_reduced_ws,
+                softmax_i_ws=softmax_i_ws,
+                relu_grad_out=relu_grad_out,
+                dk_matmul_partial=dk_matmul_partial,
+                d_query_index_accum=d_query_index_accum,
+                d_key_index_accum=d_key_index_accum,
+                loss_partial_ws=loss_partial_ws,
+                d_weight=d_weight,
+                loss_out=loss_out,
             )
-            debug_safe_indices = debug_sparse_indices.clamp(0, source_s2 - 1)
-            debug_valid_mask = (
-                torch.ones(K, dtype=torch.float32, device=query.device)
-                if full_valid else valid_k_mask[debug_b, debug_q].float()
-            )
-            debug_k_real = K if full_valid else int(k_real_size[debug_b, debug_q].item())
-            debug_expected_gki = torch.index_select(
-                key_index[debug_b, :, 0, :], 0, debug_safe_indices
-            )
-            debug_expected_gki = debug_expected_gki * debug_index_valid.unsqueeze(-1).to(
-                debug_expected_gki.dtype
-            )
-            debug_expected_gk = torch.index_select(
-                key[debug_b, :, 0, :], 0, debug_safe_indices
-            )
-            debug_expected_gk = debug_expected_gk * debug_index_valid.unsqueeze(-1).to(
-                debug_expected_gk.dtype
-            )
-            if d_rope > 0:
-                debug_expected_grope = torch.index_select(
-                    key_rope[debug_b, :, 0, :], 0, debug_safe_indices
-                )
-                debug_expected_grope = debug_expected_grope * debug_index_valid.unsqueeze(-1).to(
-                    debug_expected_grope.dtype
-                )
-            else:
-                debug_expected_grope = None
-            debug_gk = gather_key_ws[debug_b, debug_q]
-            debug_grope = gather_key_rope_ws[debug_b, debug_q]
-            debug_gki = gather_key_index_ws[debug_b, debug_q]
-            debug_bmm2 = bmm2_res_ws[debug_b, debug_q]
-            debug_bmm1 = bmm1_res_ws[debug_b, debug_q]
-            debug_query = query[debug_b, debug_q].float()
-            debug_bmm1_from_gather = torch.matmul(
-                debug_query, debug_gk.float().transpose(0, 1)
-            )
-            debug_bmm1_from_host_gather = torch.matmul(
-                debug_query, debug_expected_gk.float().transpose(0, 1)
-            )
-            if d_rope > 0:
-                debug_query_rope = query_rope[debug_b, debug_q].float()
-                debug_bmm1_from_gather = debug_bmm1_from_gather + torch.matmul(
-                    debug_query_rope, debug_grope.float().transpose(0, 1)
-                )
-                debug_bmm1_from_host_gather = debug_bmm1_from_host_gather + torch.matmul(
-                    debug_query_rope, debug_expected_grope.float().transpose(0, 1)
-                )
-            debug_query_index = query_index[debug_b, debug_q].float()
-            debug_bmm2_from_gather = torch.relu(
-                torch.matmul(debug_query_index, debug_gki.float().transpose(0, 1))
-            )
-            debug_bmm2_from_host_gather = torch.relu(
-                torch.matmul(
-                    debug_query_index, debug_expected_gki.float().transpose(0, 1)
-                )
-            )
-            debug_softmax_max = softmax_max[debug_b, 0, debug_q].float()
-            debug_softmax_sum = softmax_sum[debug_b, 0, debug_q].float().abs().clamp_min(1e-8)
-            debug_expected_p = (
-                torch.exp(debug_bmm1.float() * scale_value - debug_softmax_max.unsqueeze(-1))
-                / debug_softmax_sum.unsqueeze(-1)
-            ).mean(dim=0) * debug_valid_mask
-            debug_reduce_sum_y = (
-                debug_bmm2.float() * weights[debug_b, debug_q].float().unsqueeze(-1)
-            ).sum(dim=0)
-            debug_reduce_sum_y = debug_reduce_sum_y.masked_fill(
-                debug_valid_mask == 0, -1e30
-            )
-            debug_expected_softmax_i = torch.softmax(debug_reduce_sum_y, dim=-1) * debug_valid_mask
-            debug_diff = debug_expected_softmax_i - debug_expected_p
-            debug_expected_dweight = (debug_bmm2.float() * debug_diff.unsqueeze(0)).sum(dim=-1)
-            debug_expected_relu = (
-                weights[debug_b, debug_q].float().unsqueeze(-1)
-                * debug_diff.unsqueeze(0)
-                * (debug_bmm2.float() > 0).float()
-            ).to(relu_grad_out.dtype).float()
-            debug_relu = relu_grad_out[debug_b, debug_q].float()
-            debug_expected_dq = torch.matmul(debug_relu, debug_gki.float())
-            debug_expected_dk = torch.matmul(
-                debug_relu.transpose(0, 1), debug_query_index
-            )
-
-            print(
-                f"[DEBUG_TASK] selected b={debug_b} q={debug_q} "
-                f"kReal={debug_k_real} full_valid={full_valid}"
-            )
-            _debug_task_tensor("GatherKey_ws", debug_gk)
-            if d_rope > 0:
-                _debug_task_tensor("GatherKeyRope_ws", debug_grope)
-            _debug_task_tensor("GatherKeyIndex_ws", debug_gki)
-            _debug_task_tensor("bmm1Res", debug_bmm1)
-            _debug_task_tensor("bmm2Res", debug_bmm2)
-            _debug_task_tensor("PReduced", p_reduced_ws[debug_b, debug_q])
-            _debug_task_tensor("SoftmaxI", softmax_i_ws[debug_b, debug_q])
-            _debug_task_tensor("dWeightOut", d_weight[debug_b, debug_q])
-            _debug_task_tensor("reluGradRes", relu_grad_out[debug_b, debug_q])
-            _debug_task_compare(
-                "GatherKey_ws vs host gather (valid K)",
-                debug_gk[:debug_k_real], debug_expected_gk[:debug_k_real],
-            )
-            if d_rope > 0:
-                _debug_task_compare(
-                    "GatherKeyRope_ws vs host gather (valid K)",
-                    debug_grope[:debug_k_real], debug_expected_grope[:debug_k_real],
-                )
-            _debug_task_compare(
-                "BMM1 vs Query @ GatherKey.T plus Rope (valid K)",
-                debug_bmm1[:, :debug_k_real], debug_bmm1_from_gather[:, :debug_k_real],
-            )
-            _debug_task_compare(
-                "BMM1 host-gather cross-check (valid K)",
-                debug_bmm1_from_gather[:, :debug_k_real],
-                debug_bmm1_from_host_gather[:, :debug_k_real],
-            )
-            if _DEBUG_BMM1_COORD is not None:
-                debug_head, debug_k = _DEBUG_BMM1_COORD
-                if debug_k < debug_k_real:
-                    debug_terms = []
-                    for debug_chunk in range(d_num_query):
-                        debug_terms.append(
-                            float(torch.dot(
-                                debug_query[debug_head, debug_chunk * K_SPLIT:(debug_chunk + 1) * K_SPLIT],
-                                debug_gk[debug_k, debug_chunk * K_SPLIT:(debug_chunk + 1) * K_SPLIT].float(),
-                            ).item())
-                        )
-                    debug_rope_term = 0.0
-                    if d_rope > 0:
-                        debug_rope_term = float(torch.dot(
-                            debug_query_rope[debug_head], debug_grope[debug_k].float()
-                        ).item())
-                    print(
-                        f"[DEBUG_TASK] BMM1 first-error coord=(h={debug_head}, k={debug_k}) "
-                        f"sparse_idx={int(debug_sparse_indices[debug_k].item())} "
-                        f"index_valid={bool(debug_index_valid[debug_k].item())} "
-                        f"tilelang={debug_bmm1[debug_head, debug_k].float().item():.6e} "
-                        f"host={debug_bmm1_from_host_gather[debug_head, debug_k].item():.6e} "
-                        f"q128={debug_terms} rope={debug_rope_term:.6e}"
-                    )
-            _debug_task_compare(
-                "GatherKeyIndex_ws vs host gather (valid K)",
-                debug_gki[:debug_k_real], debug_expected_gki[:debug_k_real],
-            )
-            _debug_task_compare(
-                "bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T (valid K)",
-                debug_bmm2[:, :debug_k_real], debug_bmm2_from_gather[:, :debug_k_real],
-            )
-            _debug_task_compare(
-                "bmm2 host-gather cross-check (valid K)",
-                debug_bmm2_from_gather[:, :debug_k_real],
-                debug_bmm2_from_host_gather[:, :debug_k_real],
-            )
-            _debug_task_compare("PReduced vs BMM1 formula", p_reduced_ws[debug_b, debug_q], debug_expected_p)
-            _debug_task_compare("SoftmaxI vs BMM2 formula", softmax_i_ws[debug_b, debug_q], debug_expected_softmax_i)
-            _debug_task_compare("dWeightOut vs BMM2/P/SY formula", d_weight[debug_b, debug_q], debug_expected_dweight)
-            _debug_task_compare("reluGradRes vs BF16 formula", relu_grad_out[debug_b, debug_q], debug_expected_relu)
-            _debug_task_compare("C2 dQueryAccum vs stored reluGrad", d_query_index_accum[debug_b, debug_q], debug_expected_dq)
-            _debug_task_compare("C2 dk_partial vs stored reluGrad", dk_matmul_partial[debug_b, debug_q], debug_expected_dk)
-            _debug_dump_done = True
-        elif _DEBUG:
-            def _debug_tensor(name, tensor):
-                tensor_fp32 = tensor.float()
-                nan_count = torch.isnan(tensor_fp32).sum().item()
-                inf_count = torch.isinf(tensor_fp32).sum().item()
-                finite_tensor = torch.nan_to_num(
-                    tensor_fp32, nan=0.0, posinf=0.0, neginf=0.0
-                )
-                print(
-                    f"[DEBUG] {name}: shape={tuple(tensor.shape)}, "
-                    f"nan={nan_count}, inf={inf_count}, "
-                    f"finite_abs_max={finite_tensor.abs().max().item():.6e}"
-                )
-
-            expected_gk, expected_gki, expected_gkr = _preprocess_gather(
-                key, key_index, key_rope, sparse_indices[..., :K],
-                B, S1, source_s2, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, query.dtype,
-            )
-            if d_rope_orig > 0 and d_rope > d_rope_orig:
-                expected_gkr = torch.nn.functional.pad(
-                    expected_gkr, (0, d_rope - d_rope_orig)
-                )
-            _debug_tensor("Key", key)
-            _debug_tensor("Query", query)
-            _debug_tensor("QueryIndex", query_index)
-            _debug_tensor("KeyIndex", key_index)
-            _debug_tensor("Weights", weights)
-            if full_valid:
-                print("[DEBUG] FullValidStaticPath: enabled")
-            else:
-                _debug_tensor("KRealSize", k_real_size)
-                _debug_tensor("ValidKMask", valid_k_mask)
-            _debug_tensor("SoftmaxMax", softmax_max)
-            _debug_tensor("SoftmaxSum", softmax_sum)
-            _debug_tensor("GatherKey_ws", gather_key_ws)
-            _debug_tensor("GatherKeyRope_ws", gather_key_rope_ws)
-            _debug_tensor("GatherKeyIndex_ws", gather_key_index_ws)
-            _debug_tensor("bmm1Res", bmm1_res_ws)
-            _debug_tensor("bmm2Res", bmm2_res_ws)
-            _debug_tensor("PReduced", p_reduced_ws)
-            _debug_tensor("SoftmaxI", softmax_i_ws)
-            _debug_tensor("reluGradRes", relu_grad_out)
-            _debug_tensor("dk_matmul_partial", dk_matmul_partial)
-            _debug_tensor("dQueryIndexAccum", d_query_index_accum)
-            _debug_tensor("dKeyIndexAccum", d_key_index_accum)
-            _debug_tensor("dWeightOut", d_weight)
-            _debug_tensor("LossPartial", loss_partial_ws)
-            _debug_tensor("LossOut", loss_out)
-
-            print(
-                f"[DEBUG] Gather sentinel remaining: "
-                f"Key={(gather_key_ws == _GATHER_SENTINEL).sum().item()}, "
-                f"Rope={(gather_key_rope_ws == _GATHER_SENTINEL).sum().item()}, "
-                f"KeyIndex={(gather_key_index_ws == _GATHER_SENTINEL).sum().item()}"
-            )
-
-            gk_diff = (gather_key_ws.float() - expected_gk.float()).abs()
-            gki_diff = (gather_key_index_ws.float() - expected_gki.float()).abs()
-            gkr_diff = (gather_key_rope_ws.float() - expected_gkr.float()).abs()
-            debug_softmax_max = softmax_max[:, 0, :, :].float()
-            debug_softmax_sum = softmax_sum[:, 0, :, :].float().abs().clamp_min(1e-8)
-            debug_scaled_bmm1 = bmm1_res_ws.float() * scale_value
-            debug_valid_mask = (
-                torch.ones((B, S1, K), dtype=torch.float32, device=query.device)
-                if full_valid
-                else valid_k_mask.float()
-            )
-            debug_p_reduced = (
-                torch.exp(debug_scaled_bmm1 - debug_softmax_max.unsqueeze(-1))
-                / debug_softmax_sum.unsqueeze(-1)
-            ).mean(dim=2) * debug_valid_mask
-            debug_reduce_sum_y = (
-                bmm2_res_ws.float() * weights.float().unsqueeze(-1)
-            ).sum(dim=2)
-            debug_reduce_sum_y = debug_reduce_sum_y.masked_fill(debug_valid_mask == 0, -1e30)
-            debug_softmax_i = torch.softmax(debug_reduce_sum_y, dim=-1) * debug_valid_mask
-            debug_diff = debug_softmax_i - debug_p_reduced
-            debug_relu_grad = (
-                weights.float().unsqueeze(-1)
-                * debug_diff.unsqueeze(2)
-                * (bmm2_res_ws.float() > 0).float()
-            )
-            debug_d_weight = (
-                bmm2_res_ws.float() * debug_diff.unsqueeze(2)
-            ).sum(dim=-1)
-            debug_p_safe = debug_p_reduced.clamp_min(1e-8)
-            debug_softmax_i_safe = debug_softmax_i.clamp_min(1e-8)
-            debug_loss = (
-                debug_p_reduced
-                * (torch.log(debug_p_safe) - torch.log(debug_softmax_i_safe))
-            ).sum()
-            debug_loss_partials = loss_partial_ws[
-                :B * S1 * 2 * loss_partial_stride:loss_partial_stride
-            ]
-            p_reduced_diff = (p_reduced_ws.float() - debug_p_reduced).abs()
-            softmax_i_diff = (softmax_i_ws.float() - debug_softmax_i).abs()
-            relu_grad_diff = (relu_grad_out.float() - debug_relu_grad).abs()
-            debug_relu_grad_bf16 = debug_relu_grad.to(
-                relu_grad_out.dtype
-            ).float()
-            relu_grad_bf16_diff = (
-                relu_grad_out.float() - debug_relu_grad_bf16
-            ).abs()
-            debug_unmasked_rg = (
-                weights.float().unsqueeze(-1) * debug_diff.unsqueeze(2)
-            )
-            debug_expected_mask = bmm2_res_ws.float() > 0
-            debug_actual_rg = relu_grad_out.float()
-            debug_strong_candidate = debug_unmasked_rg.abs() > 1e-3
-            debug_false_zero = (
-                debug_expected_mask
-                & debug_strong_candidate
-                & (debug_actual_rg == 0)
-            )
-            debug_false_nonzero = (
-                (~debug_expected_mask) & (debug_actual_rg.abs() > 1e-3)
-            )
-
-            # 根据保存的 BF16 reluGrad 重建 C2，用于区分 V1 和 C2 的误差来源。
-            debug_dq_from_stored_rg = torch.matmul(
-                debug_actual_rg, gather_key_index_ws.float()
-            )
-            debug_dk_from_stored_rg = torch.matmul(
-                debug_actual_rg.transpose(-2, -1), query_index.float()
-            )
-            debug_c2_dq_diff = (
-                d_query_index_accum.float() - debug_dq_from_stored_rg
-            ).abs()
-            debug_c2_dk_diff = (
-                dk_matmul_partial.float() - debug_dk_from_stored_rg
-            ).abs()
-            d_weight_diff = (d_weight.float() - debug_d_weight).abs()
-            loss_diff = (loss_out.float().reshape(-1)[0] - debug_loss).abs()
-            p_max_diff = (
-                debug_scaled_bmm1.amax(dim=-1) - debug_softmax_max
-            ).abs()
-            print(
-                f"[DEBUG] GatherKey_ws vs host_gather: "
-                f"max_diff={gk_diff.max().item():.6e}, "
-                f"mean_diff={gk_diff.mean().item():.6e}"
-            )
-            print(
-                f"[DEBUG] GatherKeyIndex_ws vs host_gather: "
-                f"max_diff={gki_diff.max().item():.6e}, "
-                f"mean_diff={gki_diff.mean().item():.6e}"
-            )
-            print(
-                f"[DEBUG] GatherKeyRope_ws vs host_gather: "
-                f"max_diff={gkr_diff.max().item():.6e}, "
-                f"mean_diff={gkr_diff.mean().item():.6e}"
-            )
-            print(
-                f"[DEBUG] scaled bmm1 row max vs SoftmaxMax: "
-                f"max_diff={p_max_diff.max().item():.6e}, "
-                f"mean_diff={p_max_diff.mean().item():.6e}"
-            )
-            print(
-                f"[DEBUG] PReduced vs host formula: "
-                f"max_diff={p_reduced_diff.max().item():.6e}, "
-                f"mean_diff={p_reduced_diff.mean().item():.6e}"
-            )
-            print(
-                f"[DEBUG] SoftmaxI vs host formula: "
-                f"max_diff={softmax_i_diff.max().item():.6e}, "
-                f"mean_diff={softmax_i_diff.mean().item():.6e}"
-            )
-            print(
-                f"[DEBUG] bmm2Res ReLU check: "
-                f"negative={(bmm2_res_ws < 0).sum().item()}, "
-                f"min={bmm2_res_ws.min().item():.6e}"
-            )
-            print(
-                f"[DEBUG] reluGradRes vs host formula: "
-                f"max_diff={relu_grad_diff.max().item():.6e}, "
-                f"mean_diff={relu_grad_diff.mean().item():.6e}"
-            )
-            relu_max_flat = int(relu_grad_bf16_diff.reshape(-1).argmax().item())
-            relu_max_coords = [0] * relu_grad_bf16_diff.ndim
-            relu_remaining = relu_max_flat
-            for dim_idx in range(relu_grad_bf16_diff.ndim - 1, -1, -1):
-                dim_size = relu_grad_bf16_diff.shape[dim_idx]
-                relu_max_coords[dim_idx] = relu_remaining % dim_size
-                relu_remaining //= dim_size
-            relu_max_coords = tuple(relu_max_coords)
-            relu_b, relu_s1, relu_g, relu_k = relu_max_coords
-            print(
-                f"[DEBUG] reluGradRes vs BF16-rounded host formula: "
-                f"max_diff={relu_grad_bf16_diff.max().item():.6e}, "
-                f"mean_diff={relu_grad_bf16_diff.mean().item():.6e}, "
-                f"diff_gt_1e-3={(relu_grad_bf16_diff > 1e-3).sum().item()}, "
-                f"diff_gt_1e-2={(relu_grad_bf16_diff > 1e-2).sum().item()}"
-            )
-            print(
-                f"[DEBUG] reluGrad max-error coord={relu_max_coords}: "
-                f"actual={debug_actual_rg[relu_max_coords].item():.6e}, "
-                f"expected_bf16={debug_relu_grad_bf16[relu_max_coords].item():.6e}, "
-                f"unmasked={debug_unmasked_rg[relu_max_coords].item():.6e}, "
-                f"bmm2={bmm2_res_ws[relu_max_coords].float().item():.6e}, "
-                f"P={debug_p_reduced[relu_b, relu_s1, relu_k].item():.6e}, "
-                f"SY={debug_softmax_i[relu_b, relu_s1, relu_k].item():.6e}, "
-                f"weight={weights[relu_b, relu_s1, relu_g].float().item():.6e}"
-            )
-            print(
-                f"[DEBUG] reluGrad inferred mask disagreement: "
-                f"false_zero={debug_false_zero.sum().item()}, "
-                f"false_nonzero={debug_false_nonzero.sum().item()}"
-            )
-            print(
-                f"[DEBUG] C2 dQueryAccum vs host(stored reluGrad): "
-                f"max_diff={debug_c2_dq_diff.max().item():.6e}, "
-                f"mean_diff={debug_c2_dq_diff.mean().item():.6e}"
-            )
-            print(
-                f"[DEBUG] C2 dk_partial vs host(stored reluGrad): "
-                f"max_diff={debug_c2_dk_diff.max().item():.6e}, "
-                f"mean_diff={debug_c2_dk_diff.mean().item():.6e}"
-            )
-            print(
-                f"[DEBUG] dWeightOut vs host formula: "
-                f"max_diff={d_weight_diff.max().item():.6e}, "
-                f"mean_diff={d_weight_diff.mean().item():.6e}"
-            )
-            print(
-                f"[DEBUG] aligned LossPartial sum vs host formula: "
-                f"partial_sum={debug_loss_partials.sum().item():.6e}, "
-                f"abs_diff={(debug_loss_partials.sum() - debug_loss).abs().item():.6e}"
-            )
-            print(
-                f"[DEBUG] LossOut vs host formula: "
-                f"abs_diff={loss_diff.item():.6e}"
-            )
-            _debug_dump_done = True
+            _debug_dump_done = run_debug_diagnostics(debug_context)
 
         if weights_orig_dtype == torch.float32:
             d_weight = d_weight.float()
