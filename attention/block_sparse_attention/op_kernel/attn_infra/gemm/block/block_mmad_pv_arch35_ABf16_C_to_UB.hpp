@@ -208,7 +208,68 @@ public:
 #ifdef BSA_PV_RESCALE_PROBE_FP8
     __aicore__ inline void RunRescaleMadProbe()
     {
-        // filled in Task 3
+        // --- L1 InitConst (MTE2) ---
+        constexpr uint32_t BLOCKS_A = PROBE_L1A_BYTES / 32; // 512
+        constexpr uint32_t BLOCKS_B = PROBE_L1B_BYTES / 32; // 1024
+        AscendC::InitConstValueParams<float> paramsA(1, BLOCKS_A, 0, 1.0f);
+        AscendC::InitConstValueParams<float> paramsB(1, BLOCKS_B, 0, 1.0f);
+        AscendC::InitConstValue(probeL1A_, paramsA);
+        AscendC::InitConstValue(probeL1B_, paramsB);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(PROBE_L0A_EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(PROBE_L0A_EVENT_ID);
+
+        // --- L0A/L0B views as float (reuse stage 0 physical buffer) ---
+        AscendC::LocalTensor<float> l0AFp32 =
+            l0ATensor[0].template ReinterpretCast<float>();
+        AscendC::LocalTensor<float> l0BFp32 =
+            l0BTensor[0].template ReinterpretCast<float>();
+
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0A_EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0B_EVENT_ID);
+
+        constexpr uint32_t ELE_PER_C0 = BYTE_PER_C0 / sizeof(float);           // 8
+        constexpr uint32_t ELE_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(float); // 128
+
+        AscendC::LoadData2DParamsV2 loadA;
+        loadA.mStartPosition = 0;
+        loadA.kStartPosition = 0;
+        loadA.mStep = PROBE_M / C0_NUM_PER_FRACTAL;              // 4
+        loadA.kStep = PROBE_K / ELE_PER_C0;                      // 8
+        loadA.srcStride = (PROBE_M * PROBE_K) / ELE_PER_FRACTAL; // 32
+        loadA.dstStride = loadA.srcStride;
+        loadA.ifTranspose = false;
+        AscendC::LoadData(l0AFp32, probeL1A_, loadA);
+
+        AscendC::LoadData2DParamsV2 loadB;
+        loadB.mStartPosition = 0;
+        loadB.kStartPosition = 0;
+        loadB.mStep = PROBE_K / C0_NUM_PER_FRACTAL;              // 4
+        loadB.kStep = PROBE_N / ELE_PER_C0;                      // 16
+        loadB.srcStride = (PROBE_K * PROBE_N) / ELE_PER_FRACTAL; // 64
+        loadB.dstStride = (PROBE_K * PROBE_N) / ELE_PER_FRACTAL;
+        loadB.ifTranspose = true;
+        AscendC::LoadData(l0BFp32, probeL1B_, loadB);
+
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0A_EVENT_ID);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0B_EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0A_EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0B_EVENT_ID);
+
+        AscendC::MmadParams mmadParams;
+        mmadParams.m = PROBE_M;
+        mmadParams.n = PROBE_N;
+        mmadParams.k = PROBE_K;
+        mmadParams.unitFlag = 0;
+        mmadParams.cmatrixInitVal = true;
+#if (__CCE_AICORE__ == 310)
+        mmadParams.disableGemv = true;
+#endif
+
+        AscendC::Mmad(l0CScratch_, l0AFp32, l0BFp32, mmadParams); // mad 1
+        AscendC::Mmad(l0CScratch_, l0AFp32, l0BFp32, mmadParams); // mad 2
+
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0A_EVENT_ID);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0B_EVENT_ID);
     }
 #endif
 
