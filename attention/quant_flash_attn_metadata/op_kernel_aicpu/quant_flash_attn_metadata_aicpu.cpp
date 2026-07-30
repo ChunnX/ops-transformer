@@ -207,11 +207,11 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.nextToken = winRight_ == -1 ? std::numeric_limits<uint32_t>::max() : winRight_;
     baseInfo.layoutQuery = ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = ConvertToLayout(layoutKv_);
-    if (quantMode_ == 1 || quantMode_ == 2) {
+    if (quantMode_ == 1) {
         baseInfo.queryType = load_balance::DataType::INT8;
         baseInfo.kvType = load_balance::DataType::INT8;
     }
-    if (quantMode_ == 1 || quantMode_ == 2) { // TODO：用adjust函数代替
+    if (quantMode_ == 1) { // TODO：用adjust函数代替
         mBaseSize_ = 64U;
         s2BaseSize_ = 512U;
     }

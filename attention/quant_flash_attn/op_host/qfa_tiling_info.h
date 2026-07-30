@@ -106,9 +106,8 @@ constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
 
 enum class MaskMode : int32_t {
     NO_MASK = 0,
-    ALL_MASK = 1,
     CAUSAL = 3,
-    BAND = 4
+    SLIDING_WINDOW = 4
 };
 
 enum class QfaLayout : uint32_t {

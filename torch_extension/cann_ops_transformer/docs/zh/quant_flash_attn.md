@@ -151,7 +151,7 @@ cann_ops_transformer.quant_flash_attn(
 
 > [!NOTE]
 >
-> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口同时兼容传入枚举名对应的字符串（不区分大小写）与 int 值。
+> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口同时兼容传入枚举名对应的字符串（不区分大小写）与 int 值。当前不支持 mask_mode 枚举。
 
 ## 基准信息说明
 
@@ -362,7 +362,7 @@ cann_ops_transformer.quant_flash_attn(
         <tr>
             <td>layout_q</td>
             <td>支持TND</td>
-            <td rowspan="4">可选属性，默认值为BSND</td>
+            <td rowspan="4">当前不支持不传入，未传入将发出拦截报警</td>
             <td rowspan="4">无</td>
             <td rowspan="4">无</td>
         </tr>
@@ -722,7 +722,6 @@ mask_mode参数解释
                 <ul>
                     <li>当mask_mode为0时，不支持传入attn_mask</li>
                     <li>当mask_mode为3时，必须传入attn_mask矩阵</li>
-                    <li>当mask_mode为4时，必须传入attn_mask矩阵</li>
                 </ul>
             </td>
             <td rowspan="3">

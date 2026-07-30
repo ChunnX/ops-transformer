@@ -253,11 +253,7 @@ def quant_flash_attn_metadata(
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
-    batch_size = (
-        _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
-        if batch_size is None
-        else batch_size
-    )
+    batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     quant_mode = _resolve_quant_mode(quant_mode)

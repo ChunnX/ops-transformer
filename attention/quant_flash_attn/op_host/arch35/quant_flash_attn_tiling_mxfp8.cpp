@@ -335,13 +335,10 @@ bool QuantFlashAttnTilingImpl::CheckNeedInitOutput() const
     if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
         return false;
     }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::ALL_MASK)) {
-        return true;
-    }
     if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
         return qfaInfo_->s1Size > qfaInfo_->s2Size;
     }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
+    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::SLIDING_WINDOW)) {
         if (qfaInfo_->winRight == -1) {
             return false;
         }
