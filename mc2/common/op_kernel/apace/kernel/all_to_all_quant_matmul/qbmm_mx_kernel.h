@@ -134,7 +134,7 @@ private:
     __aicore__ inline void ProcessSingleBatch(const Params &params, BlockScheduler& bs,
                             uint64_t restBatch, bool isTailRound);
     __aicore__ inline uint32_t CalcDependTileIdx(int64_t mPos, uint32_t headTileSize, uint32_t totalTiles) const;
-  __aicore__ inline void WaitCommTile(const Params &params, uint32_t tileIdx);
+    __aicore__ inline void WaitCommTile(const Params &params, uint32_t tileIdx);
 
     template <typename TensorB, typename TensorScaleB, typename TensorC>
     __aicore__ inline void SetL2Cache(
