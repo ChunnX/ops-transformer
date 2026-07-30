@@ -2378,7 +2378,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx, int32_t &vecSetSyncCom,
     int32_t &gmTileSequence)
 {
-    BlockEpilogue &epilogueOp = IsShared ? sharedEpilogueOp_ : epilogueOp_;
     if constexpr (g_coreType == AIV) {
         AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
             Get<IDX_C_OFFSET>(state.baseOffset),
@@ -2387,28 +2386,62 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
             0L,
             0L,
             0L};
-        epilogueOp.UpdateGlobalAddr(vecBaseOffset);
+        if constexpr (IsShared) {
+                sharedEpilogueOp_.UpdateGlobalAddr(vecBaseOffset);
+            } else {
+                epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
+            }
+        }
     }
-    if constexpr (ENABLE_A8W4) {
-        MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
-                                                QuantScaleOutType, MegaMoeImpl::L1_TILE_M_256,
-                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
-            epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, gmTileSequence, state.expertBeforeCnt,
-            expertIdx);
-    } else {
-        if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
-            params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-            MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                                                QuantScaleOutType, QuantScaleOutType, true, MegaMoeImpl::L1_TILE_M_256,
-                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
-                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                state.expertBeforeCnt, expertIdx);
+    if constexpr (IsShared) {
+        // 共享专家不参与权重前移，走原 UB ping-pong + 硬同步路径
+        if constexpr (ENABLE_A8W4) {
+            MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
+                                                    QuantScaleOutType, GMM1_TILE_M, MegaMoeImpl::L1_TILE_M_256, false,
+                                                    IsShared>(sharedEpilogueOp_, params_, state.problemShape,
+                                                            gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                                                            state.expertBeforeCnt, expertIdx);
         } else {
-            MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                                                QuantScaleOutType, QuantScaleOutType, false, MegaMoeImpl::L1_TILE_M_256,
-                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
-                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                state.expertBeforeCnt, expertIdx);
+            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
+                params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+                MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
+                                                    QuantScaleOutType, QuantScaleOutType, true, GMM1_TILE_M,
+                                                    MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
+                    sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                    state.expertBeforeCnt, expertIdx);
+            } else {
+                MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
+                                                    QuantScaleOutType, QuantScaleOutType, false, GMM1_TILE_M,
+                                                    MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
+                    sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                    state.expertBeforeCnt, expertIdx);
+            }
+        }
+    } else {
+        // MoE 专家走 prefetch 路径
+        if constexpr (ENABLE_A8W4) {
+            MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
+                                                    QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
+                                                    TopkWeightsPrefetch, IsShared>(epilogueOp_, params_,
+                                                    state.problemShape, gmmAddrInfo, startBlockIdx_,
+                                                    vecSetSyncCom, state.expertBeforeCnt, expertIdx);
+        } else {
+            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
+                params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+                // NZ format (A8W8_NZ / A4W4_NZ): isWeightNZ=true, EpilogueElementA 由 SwigluQuantOutType 自动处理类型提升
+                MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
+                                                    QuantScaleOutType, QuantScaleOutType, true, GMM1_TILE_M,
+                                                    EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared>(
+                    epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                    state.expertBeforeCnt, expertIdx);
+            } else {
+                // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
+                MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
+                                                    QuantScaleOutType, QuantScaleOutType, false, GMM1_TILE_M,
+                                                    EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared>(
+                    epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                    state.expertBeforeCnt, expertIdx);
+            }
         }
     }
 }
