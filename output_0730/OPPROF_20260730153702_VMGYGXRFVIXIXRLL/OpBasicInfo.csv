@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+SparseLightningIndexerGradKLLoss_e9d78cd46d3aa01ff778f38a319c6bac_9_mix_aic,mix,19439.750000,24,48,5,358931,1800,1800,

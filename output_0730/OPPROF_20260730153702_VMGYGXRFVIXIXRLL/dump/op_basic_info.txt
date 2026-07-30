@@ -1,0 +1,10 @@
+Op Name=SparseLightningIndexerGradKLLoss_e9d78cd46d3aa01ff778f38a319c6bac_9_mix_aic
+Block Dim=24
+Run Soc Version=Ascend910_9382
+Device Id=5
+Pid=358931
+Current Freq=1800
+Rated Freq=1800
+Is MC2=0
+Is Lccl=0
+Has Simt=0
