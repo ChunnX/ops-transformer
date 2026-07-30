@@ -356,18 +356,23 @@ namespace BSA {
             gDs.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + sOutSize + WORKSPACE_P16_OFFSET));
             AscendC::GlobalTensor<float> gDq;
             gDq.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize));
-            // Deterministic: each AIC core writes dk/dv to per-core-per-Q-head slot (no atomicAdd)
+            uint8_t deterministic = tilingData->deterministic;
             uint64_t gradSize = tilingData->gradSize;
-            uint64_t detDkOffset = sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize + gradSize;
-            uint64_t detDvOffset = detDkOffset + tilingData->detDkWorkspaceSize;
             uint64_t dkvElementSize = tilingData->dkvSize;
-            uint32_t groupSizeDet = tilingData->groupSizeForDet;
-            uint64_t perCoreDetSize = (uint64_t)groupSizeDet * dkvElementSize * sizeof(float);
-            // Base for this core's slots (will add qHeadInGroup offset per-task)
-            uint64_t detDkBaseCore = detDkOffset + (uint64_t)coreIdx * perCoreDetSize;
-            uint64_t detDvBaseCore = detDvOffset + (uint64_t)coreIdx * perCoreDetSize;
             AscendC::GlobalTensor<float> gDk;
             AscendC::GlobalTensor<float> gDv;
+            // Deterministic path: per-core-per-Q-head workspace slots
+            uint64_t detDkOffset = sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize + gradSize;
+            uint64_t detDvOffset = detDkOffset + tilingData->detDkWorkspaceSize;
+            uint32_t groupSizeDet = tilingData->groupSizeForDet;
+            uint64_t perCoreDetSize = (uint64_t)groupSizeDet * dkvElementSize * sizeof(float);
+            uint64_t detDkBaseCore = detDkOffset + (uint64_t)coreIdx * perCoreDetSize;
+            uint64_t detDvBaseCore = detDvOffset + (uint64_t)coreIdx * perCoreDetSize;
+            if (!deterministic) {
+                // Non-deterministic path: shared workspace (original behavior)
+                gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize));
+                gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
+            }
 
             TaskInfo taskInfo[2];
             TaskInfo preTaskInfo;
@@ -482,7 +487,7 @@ namespace BSA {
                                     actualShape2,
                                     mmadFlag);
 
-                                gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
+                                if (deterministic) gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                                 blockMmad3(gP[preTaskInfo.sOffset],
                                     gDout[preTaskInfo.qOffset],
                                     gDv[preTaskInfo.kvOffset],
@@ -492,7 +497,7 @@ namespace BSA {
                                     actualShape3,
                                     mmadFlag);
 
-                                gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
+                                if (deterministic) gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                                 blockMmad3(gDs[preTaskInfo.sOffset],
                                     gQ[preTaskInfo.qOffset],
                                     gDk[preTaskInfo.kvOffset],
@@ -547,7 +552,7 @@ namespace BSA {
                     layoutC2,
                     actualShape2,
                     mmadFlag);
-                gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
+                if (deterministic) gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                 blockMmad3(gP[preTaskInfo.sOffset],
                     gDout[preTaskInfo.qOffset],
                     gDv[preTaskInfo.kvOffset],
@@ -556,7 +561,7 @@ namespace BSA {
                     layoutC3,
                     actualShape3,
                     mmadFlag);
-                gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
+                if (deterministic) gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                 blockMmad3(gDs[preTaskInfo.sOffset],
                     gQ[preTaskInfo.qOffset],
                     gDk[preTaskInfo.kvOffset],
@@ -585,8 +590,9 @@ namespace BSA {
             AscendC::WaitEvent(CUBE2POST);
             AscendC::SyncAll<true>();
 
-            // Deterministic: reduce per-core dk/dv workspace to shared workspace
-            VecDeterReduce(params);
+            if (tilingData->deterministic) {
+                VecDeterReduce(params);
+            }
 
             // post
             VecPost(params);
@@ -803,8 +809,9 @@ namespace BSA {
             EpilogueFAGPre vecPre(preParms);
             vecPre();
 
-            // Zero per-core deterministic dk/dv workspace
-            ZeroDetWorkspace(params);
+            if (tilingData->deterministic) {
+                ZeroDetWorkspace(params);
+            }
         }
 
         __aicore__ inline

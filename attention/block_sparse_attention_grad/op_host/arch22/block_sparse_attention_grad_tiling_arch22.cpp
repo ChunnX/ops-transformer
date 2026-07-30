@@ -11,6 +11,8 @@
 #include "../block_sparse_attention_grad_tiling.h"
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
+#include <string>
 #include "log/log.h"
 
 #include <cstdint>
@@ -260,6 +262,8 @@ ge::graphStatus BSAGradTiling::ProcessInput(gert::TilingContext *context)
         }
     }
 
+    const char* detEnv = std::getenv("BSAG_DETERMINISTIC");
+    deterministic_ = (detEnv != nullptr && std::string(detEnv) == "1");
     return ProcessAttrs(context);
 }
 
@@ -432,8 +436,8 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
     }
 
     uint32_t groupSizeForDet_ = (kvHeads_ > 0) ? (numHeads_ / kvHeads_) : 1;
-    uint64_t detDkWorkspaceSize_ = aicNum_ * groupSizeForDet_ * dkvSize_ * sizeof(float);
-    uint64_t detDvWorkspaceSize_ = aicNum_ * groupSizeForDet_ * dkvSize_ * sizeof(float);
+    uint64_t detDkWorkspaceSize_ = deterministic_ ? (aicNum_ * groupSizeForDet_ * dkvSize_ * sizeof(float)) : 0;
+    uint64_t detDvWorkspaceSize_ = deterministic_ ? (aicNum_ * groupSizeForDet_ * dkvSize_ * sizeof(float)) : 0;
     workSpaceSize_ = libapiSize_ + sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_ + detDkWorkspaceSize_ + detDvWorkspaceSize_;
     context->GetWorkspaceSizes(1)[0] = workSpaceSize_;
     
@@ -486,10 +490,13 @@ ge::graphStatus BSAGradTiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_postUbBaseSize(postUbBaseSize_);
     tilingData_->set_ubSize(ubSize_ - sizeof(BlockSparseAttentionGradTilingData) - 2 * 1024);
     uint32_t gsForDet = (kvHeads_ > 0) ? (numHeads_ / kvHeads_) : 1;
-    tilingData_->set_detDkWorkspaceSize(aicNum_ * gsForDet * dkvSize_ * sizeof(float));
-    tilingData_->set_detDvWorkspaceSize(aicNum_ * gsForDet * dkvSize_ * sizeof(float));
+    uint64_t detDkSize = deterministic_ ? (aicNum_ * gsForDet * dkvSize_ * sizeof(float)) : 0;
+    uint64_t detDvSize = deterministic_ ? (aicNum_ * gsForDet * dkvSize_ * sizeof(float)) : 0;
+    tilingData_->set_detDkWorkspaceSize(detDkSize);
+    tilingData_->set_detDvWorkspaceSize(detDvSize);
     tilingData_->set_aicNumForDet(aicNum_);
     tilingData_->set_groupSizeForDet(gsForDet);
+    tilingData_->set_deterministic(deterministic_ ? 1 : 0);
     return ge::GRAPH_SUCCESS;
 }
 
