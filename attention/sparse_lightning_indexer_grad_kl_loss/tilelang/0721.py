@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 2
+KERNEL_CACHE_REVISION = 3
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -257,7 +257,7 @@ def check_param_valid(
     workspace_idx=[],
     pass_configs=pass_configs,
 )
-def tilelang_grad_kl_loss_single_kernel(
+def tilelang_grad_kl_loss_single_kernel_v3(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
     launch_core_num,
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
@@ -2523,7 +2523,20 @@ def sparse_lightning_indexer_grad_kl_loss(
         if cache_key in _kernel_cache:
             func = _kernel_cache[cache_key]
         else:
-            func = tilelang_grad_kl_loss_single_kernel(
+            import hashlib as _hashlib
+
+            _module_path = os.path.abspath(__file__)
+            with open(_module_path, "rb") as _source_file:
+                _python_sha256 = _hashlib.sha256(
+                    _source_file.read()
+                ).hexdigest()
+            print(
+                f"[build] module={_module_path} "
+                f"revision={KERNEL_CACHE_REVISION} "
+                f"python_sha256={_python_sha256}"
+            )
+
+            func = tilelang_grad_kl_loss_single_kernel_v3(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
@@ -2531,13 +2544,22 @@ def sparse_lightning_indexer_grad_kl_loss(
                 KERNEL_CACHE_REVISION,
             )
 
-            # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
+            # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写。
             try:
-                import os as _os
-                _dump_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "0721_kernel_source.cpp")
+                _kernel_source = func.get_kernel_source()
+                _cpp_sha256 = _hashlib.sha256(
+                    _kernel_source.encode("utf-8")
+                ).hexdigest()
+                _dump_path = os.path.join(
+                    os.path.dirname(_module_path),
+                    "0721_kernel_source.cpp",
+                )
                 with open(_dump_path, "w", encoding="utf-8") as _f:
-                    _f.write(func.get_kernel_source())
-                print(f"[dump] kernel source written to {_dump_path}")
+                    _f.write(_kernel_source)
+                print(
+                    f"[dump] kernel source written to {_dump_path} "
+                    f"cpp_sha256={_cpp_sha256}"
+                )
             except Exception as _e:
                 print(f"[dump] failed to write kernel source: {_e}")
 
