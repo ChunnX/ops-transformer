@@ -138,7 +138,7 @@ def npu_test(case, device):
     if layoutId == 0:
         seqlens_list = case.get('seqlens_list_q')
         if seqlens_list is not None:
-            cuNpu = torch.tensor(seqlens_list)
+            cuNpu = torch.tensor(seqlens_list, dtype=torch.int32)
         else:
             cuNpu = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(), 
                                 device=device, dtype=torch.int32)
