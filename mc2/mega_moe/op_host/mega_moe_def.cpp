@@ -41,39 +41,21 @@ public:
             .AutoContiguous();
         this->Input("topk_weights")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT})
+            .DataTypeList({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("weight1")
             .ParamType(DYNAMIC)
             .DataType({
-                ge::DT_FLOAT8_E5M2,                         // E5M2 (ND)
-                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, // E4M3FN (ND/NZ)
-                ge::DT_FLOAT4_E2M1,                         // E2M1 (ND)
-#ifdef ENABLE_FORMAT_NZ_C0_32
-                ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1 // E2M1 (NZ / NZ_C0_32)
-#endif
+                ge::DT_FLOAT8_E4M3FN
             })
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
-#ifdef ENABLE_FORMAT_NZ_C0_32
-                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ_C0_32
-#endif
-            });
+            .Format({ge::FORMAT_ND});
         this->Input("weight2")
             .ParamType(DYNAMIC)
             .DataType({
-                ge::DT_FLOAT8_E5M2,                         // E5M2 (ND)
-                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, // E4M3FN (ND/NZ)
-                ge::DT_FLOAT4_E2M1,                         // E2M1 (ND)
-#ifdef ENABLE_FORMAT_NZ_C0_32
-                ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1 // E2M1 (NZ_C0_32 / NZ_C0_32)
-#endif
+                ge::DT_FLOAT8_E4M3FN
             })
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
-#ifdef ENABLE_FORMAT_NZ_C0_32
-                     ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32
-#endif
-            });
+            .Format({ge::FORMAT_ND});
         this->Input("weight_scales1")
             .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_FLOAT8_E8M0})
@@ -107,33 +89,13 @@ public:
         this->Input("shared_weight1")
             .ParamType(DYNAMIC)
             .DataType({
-                ge::DT_FLOAT8_E5M2,                         // E5M2 (ND)
-                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, // E4M3FN (ND/NZ)
-                ge::DT_FLOAT4_E2M1,                         // E2M1 (ND)
-#ifdef ENABLE_FORMAT_NZ_C0_32
-                ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1 // E2M1 (NZ / NZ_C0_32)
-#endif
-            })
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
-#ifdef ENABLE_FORMAT_NZ_C0_32
-                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ_C0_32
-#endif
-            });
+                ge::DT_FLOAT8_E4M3FN})
+            .Format({ge::FORMAT_ND});
         this->Input("shared_weight2")
             .ParamType(DYNAMIC)
             .DataType({
-                ge::DT_FLOAT8_E5M2,                         // E5M2 (ND)
-                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, // E4M3FN (ND/NZ)
-                ge::DT_FLOAT4_E2M1,                         // E2M1 (ND)
-#ifdef ENABLE_FORMAT_NZ_C0_32
-                ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1 // E2M1 (NZ_C0_32 / NZ_C0_32)
-#endif
-            })
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
-#ifdef ENABLE_FORMAT_NZ_C0_32
-                     ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32
-#endif
-            });
+                ge::DT_FLOAT8_E4M3FN })
+            .Format({ge::FORMAT_ND});
         this->Input("shared_weight_scales1")
             .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_FLOAT8_E8M0})
