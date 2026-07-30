@@ -98,6 +98,41 @@ constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
 constexpr int64_t TOPO_TYPE_MTE = 0U;  // mte
 constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
 
+HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tilingData)
+{
+    bool isA8W8 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+    bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
+    bool useGroupSyncCounters =
+        tilingData->topoType == TOPO_TYPE_URMA ||
+        (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
+    int64_t maxWavesPerExpert =
+        Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
+                           static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256));
+    int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
+    int64_t swigluFlagSlotsPerExpert =
+        useMteA8W8Wave ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
+    int64_t routedExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
+
+    int64_t flagElementCount =
+        routedExpertCount *
+        (swigluFlagSlotsPerExpert + waveFlagSlotsPerExpert +
+         static_cast<int64_t>(INT_CACHELINE) * tilingData->aicNum);
+    if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+        flagElementCount += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE;
+    }
+    if (useMteA8W8Wave) {
+        flagElementCount += routedExpertCount * tilingData->aicNum * INT_CACHELINE;
+    }
+    if (useGroupSyncCounters) {
+        flagElementCount += static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
+                            routedExpertCount * INT_CACHELINE;
+    }
+    return flagElementCount * SIZE_INT_32;
+}
+
 } // namespace
 
 struct WorkspaceInfo {
@@ -111,11 +146,11 @@ struct WorkspaceInfo {
     GM_ADDR flagDispatchToGmm1Ptr;
     GM_ADDR flagSendCntCalToUpdParamsPtr;
     GM_ADDR flagGmmToEpiloguePtr{nullptr};
+    GM_ADDR gmm2ReadyPtr{nullptr};
+    GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
     GM_ADDR cumsumInfoPtr{nullptr};
     GM_ADDR gmm1MmadResPtr{nullptr};
     GM_ADDR gmm2MmadResPtr{nullptr};
-    GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
-    GM_ADDR gmm2NoQuantReadyPtr{nullptr};
     GM_ADDR sharedExpertResultPtr{nullptr};
     GM_ADDR sharedExpertGmm1OutPtr{nullptr};
     GM_ADDR sharedExpertInputDataPtr{nullptr};
@@ -165,31 +200,32 @@ struct WorkspaceInfo {
         // 以下三组 flag 仅由路由 MoE 专家使用；共享专家路径不使用这些 flag。
         bool isGenericGmm = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
                             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
-        bool useMteNoQuantGmm2Gm =
-            tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm && tilingData->combineQuantMode == COMBINE_NO_QUANT;
+        bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm;
+        bool useGroupSyncCounters =
+            tilingData->topoType == TOPO_TYPE_URMA ||
+            (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
 
-        flagSwiGluToGmm2Ptr = base + workspaceSize;
-        int64_t dispatchTileM = static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256);
-        int64_t maxWavesPerExpert = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), dispatchTileM);
-        // Every wave owns one 64B-spaced counter. The value is an int32
-        // element count, not a count of logical flags.
+        int64_t maxWavesPerExpert =
+            Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
+                               static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256));
         int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
         // Only the wave pipeline can consume SwiGLU at 256-row granularity.
         // Legacy and layered paths retain one cache-line slot per expert.
         int64_t swigluFlagSlotsPerExpert =
-            useMteNoQuantGmm2Gm ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
-        workspaceSize += SIZE_INT_32 * tilingData->moeExpertPerRank * swigluFlagSlotsPerExpert;
+            useMteA8W8Wave ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
+        int64_t routedExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
 
+        // Keep every scalar notification in one contiguous workspace region.
+        // Each logical slot owns one 64B cache line, so ResetFlagList can clear
+        // the complete region in one partitioned pass.
+        flagSwiGluToGmm2Ptr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * routedExpertCount * swigluFlagSlotsPerExpert;
         flagDispatchToGmm1Ptr = base + workspaceSize;
-        int64_t dispatchFlagSlotsPerExpert =
-            useMteNoQuantGmm2Gm ?
-                waveFlagSlotsPerExpert :
-                Ops::Base::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
-        workspaceSize += SIZE_INT_32 * tilingData->moeExpertPerRank * dispatchFlagSlotsPerExpert;
+        workspaceSize += SIZE_INT_32 * routedExpertCount * waveFlagSlotsPerExpert;
 
         // 每(expert, aiCore)单独占一个cache_line
         flagSendCntCalToUpdParamsPtr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->moeExpertPerRank * tilingData->aicNum;
+        workspaceSize += SIZE_INT_32 * INT_CACHELINE * routedExpertCount * tilingData->aicNum;
 
         // Keep the per-AIC ready sequence contiguous with the preceding flags so ResetFlagList can clear all of them
         // with the same MTE reset pass. Each sequence occupies one 64B cacheline.
@@ -198,6 +234,19 @@ struct WorkspaceInfo {
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
             flagGmmToEpiloguePtr = base + workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
+        }
+
+        if (useMteA8W8Wave) {
+            gmm2ReadyPtr = base + workspaceSize;
+            // slotIdx is expertIdx in PER_EXPERT mode and batchIdx in
+            // PER_BATCH mode. Each AIC arrival owns one 64B cache line.
+            workspaceSize += SIZE_INT_32 * routedExpertCount * tilingData->aicNum * INT_CACHELINE;
+        }
+
+        if (useGroupSyncCounters) {
+            gmm2CombineSyncCounterPtr = base + workspaceSize;
+            workspaceSize += static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
+                             routedExpertCount * INT_CACHELINE * SIZE_INT_32;
         }
 
         // Conditional allocation for A8W4 / combine-quant paths.
@@ -226,42 +275,20 @@ struct WorkspaceInfo {
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ ||
             tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA ||
-            useMteNoQuantGmm2Gm) {
-            if (useMteNoQuantGmm2Gm) {
+            useMteA8W8Wave) {
+            if (useMteA8W8Wave) {
                 workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
             }
             gmm2MmadResPtr = base + workspaceSize;
-            // The MTE no-quant path gives every routed row a unique [H] BF16
+            // The MTE wave path gives every routed row a unique [H] BF16
             // region for the complete kernel lifetime.  It is not a batch or
             // ring slot, so AIC never needs a consumer ACK before advancing.
             int64_t gmm2OutputBytes = static_cast<int64_t>(SIZE_BF_16) *
                                       static_cast<int64_t>(tilingData->maxOutputSize) *
                                       static_cast<int64_t>(tilingData->h);
-            workspaceSize += useMteNoQuantGmm2Gm ?
+            workspaceSize += useMteA8W8Wave ?
                                  Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
                                  gmm2OutputBytes;
-        }
-
-        if (useMteNoQuantGmm2Gm) {
-            gmm2NoQuantReadyPtr = base + workspaceSize;
-            // slotIdx is expertIdx in PER_EXPERT mode and batchIdx in
-            // PER_BATCH mode.  The all-AIV reduction keeps each AIC arrival
-            // on its own INT_CACHELINE-sized 64B cache line.
-            int64_t readyStrideBytes = static_cast<int64_t>(tilingData->aicNum) *
-                                       static_cast<int64_t>(INT_CACHELINE) *
-                                       static_cast<int64_t>(SIZE_INT_32);
-            int64_t readyBytes = static_cast<int64_t>(tilingData->expertPerRank) * readyStrideBytes;
-            workspaceSize += Ops::Base::CeilAlign(readyBytes, static_cast<int64_t>(ALIGN_512));
-        }
-
-        // Combine synchronization workspace buffers.
-        if (tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA) {
-            // Token group completion counters; every independently polled
-            // counter occupies one 64B cache-line slot.
-            gmm2CombineSyncCounterPtr = base + workspaceSize;
-            int64_t combineCounterBytes = static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
-                                          tilingData->moeExpertPerRank * INT_CACHELINE * SIZE_INT_32;
-            workspaceSize += Ops::Base::CeilAlign(combineCounterBytes, static_cast<int64_t>(ALIGN_128));
         }
 
         // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV0 软同步）
@@ -273,7 +300,6 @@ struct WorkspaceInfo {
             int64_t statusBytes = SIZE_INT_32 * statusSlots;
             workspaceSize += Ops::Base::CeilAlign(statusBytes, ALIGN_512);
         }
-
         if (tilingData->topoType == TOPO_TYPE_URMA) {
             maskSlotPtr = base + workspaceSize;
             int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;

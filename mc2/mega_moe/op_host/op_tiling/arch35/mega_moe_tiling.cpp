@@ -71,21 +71,21 @@ uint64_t CeilDivU64(uint64_t value, uint64_t divisor)
     return value / divisor + static_cast<uint64_t>(value % divisor != 0U);
 }
 
-uint32_t CalcExpertsPerBatch(const MegaMoeTilingData &tilingData, uint32_t aicNum)
+uint32_t CalcExpertsPerBatch(const MegaMoeTilingData *tilingData, uint32_t aicNum)
 {
-    uint32_t expertPerRank = tilingData.moeExpertPerRank;
-    if (expertPerRank == 0U || tilingData.h == 0U || aicNum == 0U) {
+    uint32_t expertPerRank = tilingData->moeExpertPerRank;
+    if (expertPerRank == 0U || tilingData->h == 0U || aicNum == 0U) {
         return 1U;
     }
 
     uint64_t expectedTokens =
-        CeilDivU64(static_cast<uint64_t>(tilingData.bs) * static_cast<uint64_t>(tilingData.topK), expertPerRank);
+        CeilDivU64(static_cast<uint64_t>(tilingData->bs) * static_cast<uint64_t>(tilingData->topK), expertPerRank);
     uint64_t expectedMWaves = std::max<uint64_t>(1U, CeilDivU64(expectedTokens, GMM1_TILE_M));
     // One GMM1 scheduler N step covers gate+up, hence 2 * GMM_TILE_N output columns.
     uint64_t gmm1TilesPerExpert =
-        expectedMWaves * CeilDivU64(tilingData.hiddenDim, static_cast<uint64_t>(GMM_TILE_N) * 2U);
+        expectedMWaves * CeilDivU64(tilingData->hiddenDim, static_cast<uint64_t>(GMM_TILE_N) * 2U);
     uint64_t gmm2TilesPerExpert =
-        CeilDivU64(expectedTokens, GMM2_GM_TILE_M) * CeilDivU64(tilingData.h, GMM_TILE_N);
+        CeilDivU64(expectedTokens, GMM2_GM_TILE_M) * CeilDivU64(tilingData->h, GMM_TILE_N);
     uint64_t limitingTilesPerExpert =
         std::max<uint64_t>(1U, std::min(gmm1TilesPerExpert, gmm2TilesPerExpert));
     uint64_t expertsToFillAic = CeilDivU64(aicNum, limitingTilesPerExpert);
@@ -93,7 +93,7 @@ uint32_t CalcExpertsPerBatch(const MegaMoeTilingData &tilingData, uint32_t aicNu
         std::max<uint64_t>(1U, std::min<uint64_t>(MEGA_MOE_MAX_EXPERTS_PER_BATCH,
                                                  std::min<uint64_t>(expertPerRank, expertsToFillAic)));
     // Deepen the wave when GMM1's gate+up width exceeds GMM2's output width.
-    expertsPerBatch *= CeilDivU64(tilingData.hiddenDim, tilingData.h);
+    expertsPerBatch *= CeilDivU64(tilingData->hiddenDim, tilingData->h);
     return static_cast<uint32_t>(
         std::max<uint64_t>(1U, std::min<uint64_t>(MEGA_MOE_MAX_EXPERTS_PER_BATCH,
                                                  std::min<uint64_t>(expertPerRank, expertsPerBatch))));
@@ -165,8 +165,9 @@ void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
     OP_LOGD(nodeName, "flagGmmToEpiloguePtr: %ld\n", info->flagGmmToEpiloguePtr);
+    OP_LOGD(nodeName, "gmm2ReadyPtr:               %ld\n", info->gmm2ReadyPtr);
+    OP_LOGD(nodeName, "gmm2CombineSyncCounterPtr:  %ld\n", info->gmm2CombineSyncCounterPtr);
     OP_LOGD(nodeName, "gmm2MmadResPtr:             %ld\n", info->gmm2MmadResPtr);
-    OP_LOGD(nodeName, "gmm2NoQuantReadyPtr:        %ld\n", info->gmm2NoQuantReadyPtr);
     OP_LOGD(nodeName, "workspaceSize:              %ld\n", info->workspaceSize);
 }
 
@@ -565,7 +566,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
             static_cast<uint32_t>(ops::CeilAlign(maxTilesM * maxTilesN, static_cast<int64_t>(16)));
     }
 
-    tilingData->expertsPerBatch = CalcExpertsPerBatch(*tilingData, aicNum);
+    tilingData->expertsPerBatch = CalcExpertsPerBatch(tilingData, aicNum);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -795,10 +796,14 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
     }
 
     uint64_t logicalCoreCount = tilingData->blockAivNum;
+    bool useAiv1OnlyWaveCombine =
+        tilingData->topoType == TOPO_TYPE_MTE &&
+        (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        // A8W4/A4W4 每两个 AIV 配对，只有 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ || useAiv1OnlyWaveCombine) {
+        // 配对路径和 A8W8 wave 均只让 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
         logicalCoreCount /= 2U;
     }
     // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。
@@ -826,34 +831,8 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
 
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
-    int64_t maxWavesPerExpert =
-        (static_cast<int64_t>(tilingData->maxOutputSize) + static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256) - 1) /
-        static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256);
-    bool useWavePipeline = tilingData->topoType == TOPO_TYPE_MTE &&
-                           (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) &&
-                           tilingData->combineQuantMode == COMBINE_NO_QUANT;
-    int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
-    int64_t dispatchFlagSlotsPerExpert =
-        useWavePipeline ?
-            waveFlagSlotsPerExpert :
-            (maxWavesPerExpert + INT_CACHELINE - 1) / INT_CACHELINE * INT_CACHELINE;
-    int64_t swigluFlagSlotsPerExpert =
-        useWavePipeline ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
     uint64_t totalFlagElementCount =
-        static_cast<uint64_t>(tilingData->moeExpertPerRank) *
-        (static_cast<uint64_t>(swigluFlagSlotsPerExpert) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert) +
-         static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
-    if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        totalFlagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
-    }
-    if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-        uint64_t combineFlagElementCount = tilingData->combineSyncSlotCountPerExpert * tilingData->moeExpertPerRank *
-                                           static_cast<uint64_t>(INT_CACHELINE);
-        totalFlagElementCount = std::max(totalFlagElementCount, combineFlagElementCount);
-    }
+        static_cast<uint64_t>(CalcMegaMoeFlagWorkspaceSize(tilingData) / sizeof(int32_t));
     uint32_t resetElementCountPerCore =
         static_cast<uint32_t>(ops::CeilDiv(totalFlagElementCount, static_cast<uint64_t>(tilingData->blockAivNum)));
     uint32_t resetBatchElementCount = std::min(resetElementCountPerCore, static_cast<uint32_t>(DISPATCH_RESET_BATCH));
