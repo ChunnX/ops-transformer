@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../../../.." && pwd)"
 RUNNER="${SCRIPT_DIR}/build_install_run_custom.sh"
+STITCHED_RUNNER="${SCRIPT_DIR}/run_npu_stitched_golden.sh"
 WEIGHT_FORMAT="${A8W4_WEIGHT_FORMAT:-ND}"
 API="${A8W4_API:-V5}"
 case "${API}" in
@@ -14,6 +15,11 @@ DEQUANT_MODE="${A8W4_DEQUANT_MODE:-perchannel}"
 case "${DEQUANT_MODE}" in
   perchannel|pergroup) ;;
   *) echo "A8W4_DEQUANT_MODE must be perchannel or pergroup, got: ${DEQUANT_MODE}" >&2; exit 2 ;;
+esac
+OUTPUT_DTYPE="${A8W4_OUTPUT_DTYPE:-fp16}"
+case "${OUTPUT_DTYPE}" in
+  fp16|bf16) ;;
+  *) echo "A8W4_OUTPUT_DTYPE must be fp16 or bf16, got: ${OUTPUT_DTYPE}" >&2; exit 2 ;;
 esac
 PERGROUP_K_MIN="${A8W4_PERGROUP_K_MIN:-256}"
 PERGROUP_K_MAX="${A8W4_PERGROUP_K_MAX:-18432}"
@@ -34,8 +40,9 @@ if [[ "${API}" == "WeightNz" && "${WEIGHT_NZ}" != "1" ]]; then
   echo "A8W4_API=WeightNz requires A8W4_WEIGHT_FORMAT=NZ" >&2
   exit 2
 fi
-RESULT_ROOT="${A8W4_MATRIX_RESULT_DIR:-${REPO_ROOT}/build_out/a8w4_case_matrix_${API}_${WEIGHT_FORMAT}_${DEQUANT_MODE}}"
+RESULT_ROOT="${A8W4_MATRIX_RESULT_DIR:-${REPO_ROOT}/build_out/a8w4_case_matrix_${API}_${WEIGHT_FORMAT}_${DEQUANT_MODE}_${OUTPUT_DTYPE}}"
 CASE_TIMEOUT="${A8W4_CASE_TIMEOUT:-45}"
+STITCHED_CASE_TIMEOUT="${A8W4_STITCHED_CASE_TIMEOUT:-300}"
 SAVE_GOLDEN="${A8W4_SAVE_GOLDEN:-1}"
 STRICT_EXIT="${A8W4_STRICT_EXIT:-0}"
 FAST_EXIT="${A8W4_MATRIX_FAST_EXIT:-1}"
@@ -45,6 +52,11 @@ RANDOM_ROUNDS="${A8W4_RANDOM_ROUNDS:-20}"
 MATRIX_SEED="${A8W4_MATRIX_SEED:-20260723}"
 INCLUDE_FIXED_CASES="${A8W4_INCLUDE_FIXED_CASES:-1}"
 DRY_RUN="${A8W4_DRY_RUN:-0}"
+NPU_STITCHED_GOLDEN="${A8W4_NPU_STITCHED_GOLDEN:-0}"
+case "${NPU_STITCHED_GOLDEN}" in
+  0|1) ;;
+  *) echo "A8W4_NPU_STITCHED_GOLDEN must be 0 or 1" >&2; exit 2 ;;
+esac
 
 # name E M N K scale-mode seed
 CASES=()
@@ -136,15 +148,16 @@ if [[ "${DEQUANT_MODE}" == "pergroup" ]]; then
   CASES=("${valid_cases[@]}")
 fi
 
-mkdir -p "${RESULT_ROOT}/logs" "${RESULT_ROOT}/golden"
+mkdir -p "${RESULT_ROOT}/logs" "${RESULT_ROOT}/golden" "${RESULT_ROOT}/stitched"
 bash "${RUNNER}" test-build
 
 CASE_MANIFEST="${RESULT_ROOT}/cases.tsv"
-printf 'case\tapi\tformat\tE\tM\tN\tK\tscale\tseed\n' > "${CASE_MANIFEST}"
+printf 'case\tapi\tformat\tdequant_mode\toutput_dtype\tE\tM\tN\tK\tscale\tseed\n' > "${CASE_MANIFEST}"
 for case_spec in "${CASES[@]}"; do
   read -r name e m n k scale_mode seed <<< "${case_spec}"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "${name}" "${API}" "${WEIGHT_FORMAT}" "${e}" "${m}" "${n}" "${k}" "${scale_mode}" "${seed}" \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "${name}" "${API}" "${WEIGHT_FORMAT}" "${DEQUANT_MODE}" "${OUTPUT_DTYPE}" \
+    "${e}" "${m}" "${n}" "${k}" "${scale_mode}" "${seed}" \
     >> "${CASE_MANIFEST}"
 done
 
@@ -154,7 +167,7 @@ if [[ "${DRY_RUN}" == "1" ]]; then
 fi
 
 SUMMARY="${RESULT_ROOT}/summary.tsv"
-printf 'case\tapi\tformat\tE\tM\tN\tK\tscale\tseed\taccuracy\tmax_abs_error\tprocess_exit\tlog\tgolden\n' > "${SUMMARY}"
+printf 'case\tapi\tformat\tdequant_mode\toutput_dtype\tE\tM\tN\tK\tscale\tseed\taccuracy\tmax_abs_error\tmare_ratio\tmere_ratio\trmse_ratio\terror_count_ratio\tprocess_exit\tlog\tgolden\n' > "${SUMMARY}"
 
 accuracy_failures=0
 teardown_failures=0
@@ -171,6 +184,7 @@ for case_spec in "${CASES[@]}"; do
 
   case_env=(
     "A8W4_DEQUANT_MODE=${DEQUANT_MODE}"
+    "A8W4_OUTPUT_DTYPE=${OUTPUT_DTYPE}"
     "A8W4_RANDOM_DATA=1"
     "A8W4_RANDOM_SEED=${seed}"
     "A8W4_E=${e}"
@@ -178,6 +192,7 @@ for case_spec in "${CASES[@]}"; do
     "A8W4_N=${n}"
     "A8W4_K=${k}"
     "A8W4_WEIGHT_NZ=${WEIGHT_NZ}"
+    "A8W4_WEIGHT_FORMAT=${WEIGHT_FORMAT}"
     "A8W4_API=${API}"
     "A8W4_FIXED_SCALE_ONE=${fixed_scale}"
     "A8W4_FAST_EXIT=${FAST_EXIT}"
@@ -191,16 +206,37 @@ for case_spec in "${CASES[@]}"; do
   accuracy="FAIL"
   rc=1
   max_error=""
+  mare_ratio="-"
+  mere_ratio="-"
+  rmse_ratio="-"
+  error_count_ratio="-"
   for ((attempt = 1; attempt <= CASE_RETRIES + 1; ++attempt)); do
-    echo "[RUN] ${name}: mode=${DEQUANT_MODE} api=${API} format=${WEIGHT_FORMAT} E=${e} M=${m} N=${n} K=${k} scale=${scale_mode} seed=${seed} attempt=${attempt}"
+    echo "[RUN] ${name}: mode=${DEQUANT_MODE} dtype=${OUTPUT_DTYPE} api=${API} format=${WEIGHT_FORMAT} E=${e} M=${m} N=${n} K=${k} scale=${scale_mode} seed=${seed} attempt=${attempt}"
     set +e
-    timeout --signal=INT --kill-after=3 "${CASE_TIMEOUT}s" \
-      env "${case_env[@]}" bash "${RUNNER}" run-only > "${log_path}" 2>&1
+    if [[ "${NPU_STITCHED_GOLDEN}" == "1" ]]; then
+      timeout --signal=INT --kill-after=3 "${STITCHED_CASE_TIMEOUT}s" \
+        env "${case_env[@]}" \
+          A8W4_STITCHED_REBUILD=0 \
+          A8W4_STITCHED_DUMP_DIR="${RESULT_ROOT}/stitched/${name}" \
+          bash "${STITCHED_RUNNER}" > "${log_path}" 2>&1
+    else
+      timeout --signal=INT --kill-after=3 "${CASE_TIMEOUT}s" \
+        env "${case_env[@]}" bash "${RUNNER}" run-only > "${log_path}" 2>&1
+    fi
     rc=$?
     set -e
 
-    max_error="$(awk -F'max_abs_error=' '/ACLNN offset=(null|non-null) max_abs_error=/{print $2}' "${log_path}" | tail -n 1)"
-    if grep -qx 'PASS' "${log_path}" && [[ -n "${max_error}" ]]; then
+    max_error="$(awk -F'max_abs_error=' '/ACLNN offset=(null|non-null).*max_abs_error=/{print $2}' "${log_path}" | tail -n 1)"
+    if [[ "${NPU_STITCHED_GOLDEN}" == "1" ]]; then
+      mare_ratio="$(awk -F'MARE_ratio=' '/MARE_ratio=/{split($2, a, " "); print a[1]}' "${log_path}" | tail -n 1)"
+      mere_ratio="$(awk -F'MERE_ratio=' '/MERE_ratio=/{split($2, a, " "); print a[1]}' "${log_path}" | tail -n 1)"
+      rmse_ratio="$(awk -F'RMSE_ratio=' '/RMSE_ratio=/{split($2, a, " "); print a[1]}' "${log_path}" | tail -n 1)"
+      error_count_ratio="$(awk -F'ErrorCount_ratio=' '/ErrorCount_ratio=/{split($2, a, " "); print a[1]}' "${log_path}" | tail -n 1)"
+      if [[ ${rc} -eq 0 ]] && grep -qx 'TRIPLE_COMPARE_PASS' "${log_path}" && [[ -n "${max_error}" ]]; then
+        accuracy="PASS"
+        break
+      fi
+    elif grep -qx 'PASS' "${log_path}" && [[ -n "${max_error}" ]]; then
       accuracy="PASS"
       break
     fi
@@ -215,10 +251,12 @@ for case_spec in "${CASES[@]}"; do
     teardown_failures=$((teardown_failures + 1))
   fi
 
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "${name}" "${API}" "${WEIGHT_FORMAT}" "${e}" "${m}" "${n}" "${k}" "${scale_mode}" "${seed}" \
-    "${accuracy}" "${max_error:--}" "${process_exit}" "${log_path}" "${golden_path}" >> "${SUMMARY}"
-  echo "[${accuracy}] ${name}: max_abs_error=${max_error:--}, process=${process_exit}"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "${name}" "${API}" "${WEIGHT_FORMAT}" "${DEQUANT_MODE}" "${OUTPUT_DTYPE}" \
+    "${e}" "${m}" "${n}" "${k}" "${scale_mode}" "${seed}" \
+    "${accuracy}" "${max_error:--}" "${mare_ratio:--}" "${mere_ratio:--}" "${rmse_ratio:--}" \
+    "${error_count_ratio:--}" "${process_exit}" "${log_path}" "${golden_path}" >> "${SUMMARY}"
+  echo "[${accuracy}] ${name}: max_abs_error=${max_error:--}, MARE_ratio=${mare_ratio:--}, MERE_ratio=${mere_ratio:--}, RMSE_ratio=${rmse_ratio:--}, ErrorCount_ratio=${error_count_ratio:--}, process=${process_exit}"
 done
 
 echo

@@ -48,6 +48,19 @@ std::string GetEnvString(const char *name, const char *defaultValue) {
   return value == nullptr ? std::string(defaultValue) : std::string(value);
 }
 
+template <typename T>
+bool WriteBinary(const std::string &path, const std::vector<T> &values) {
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  if (!file) {
+    std::cerr << "failed to open dump file: " << path << std::endl;
+    return false;
+  }
+  file.write(reinterpret_cast<const char *>(values.data()),
+             static_cast<std::streamsize>(values.size() * sizeof(T)));
+  if (!file) std::cerr << "failed to write dump file: " << path << std::endl;
+  return static_cast<bool>(file);
+}
+
 #define ACL_CHECK(expr) do { auto rc = (expr); if (rc != ACL_SUCCESS) { \
   std::cerr << #expr << " failed: " << rc << "\n" << aclGetRecentErrMsg() << std::endl; return false; } } while (0)
 
@@ -88,15 +101,6 @@ bool MakeList(TensorOwner &tensor, ListOwner &out) {
   return out.list != nullptr;
 }
 
-uint16_t FloatToHalf(float f) {
-  uint32_t x; std::memcpy(&x, &f, sizeof(x));
-  uint32_t sign = (x >> 16) & 0x8000, mant = x & 0x7fffff;
-  int exp = static_cast<int>((x >> 23) & 0xff) - 127 + 15;
-  if (exp <= 0) return static_cast<uint16_t>(sign);
-  if (exp >= 31) return static_cast<uint16_t>(sign | 0x7c00);
-  return static_cast<uint16_t>(sign | (exp << 10) | (mant >> 13));
-}
-
 float HalfToFloat(uint16_t h) {
   uint32_t sign = (h & 0x8000u) << 16;
   uint32_t exp = (h >> 10) & 0x1fu, mant = h & 0x3ffu, x;
@@ -104,6 +108,13 @@ float HalfToFloat(uint16_t h) {
   else if (exp == 31) x = sign | 0x7f800000u | (mant << 13);
   else x = sign | ((exp + 112) << 23) | (mant << 13);
   float f; std::memcpy(&f, &x, sizeof(f)); return f;
+}
+
+float BFloat16ToFloat(uint16_t value) {
+  const uint32_t bits = static_cast<uint32_t>(value) << 16;
+  float result = 0.0F;
+  std::memcpy(&result, &bits, sizeof(result));
+  return result;
 }
 
 float HalfUlp(float value) {
@@ -114,6 +125,16 @@ float HalfUlp(float value) {
   int exponent = 0;
   std::frexp(value, &exponent);
   return std::ldexp(1.0F, exponent - 11);
+}
+
+float BFloat16Ulp(float value) {
+  value = std::fabs(value);
+  if (value == 0.0F || value < std::ldexp(1.0F, -126)) {
+    return std::ldexp(1.0F, -133);
+  }
+  int exponent = 0;
+  std::frexp(value, &exponent);
+  return std::ldexp(1.0F, exponent - 8);
 }
 
 bool RunCase(bool withOffset) {
@@ -129,6 +150,12 @@ bool RunCase(bool withOffset) {
   const std::string scaleProfile =
       GetEnvString("A8W4_SCALE_PROFILE", fixedScaleOne ? "one" : "varying");
   const std::string groupMode = GetEnvString("A8W4_GROUP_MODE", "random");
+  const std::string outputDtype = GetEnvString("A8W4_OUTPUT_DTYPE", "fp16");
+  if (outputDtype != "fp16" && outputDtype != "bf16") {
+    std::cerr << "A8W4_OUTPUT_DTYPE must be fp16 or bf16, got: " << outputDtype << std::endl;
+    return false;
+  }
+  const bool outputBf16 = outputDtype == "bf16";
   const char *apiEnv = std::getenv("A8W4_API");
   const std::string api = apiEnv == nullptr ? "V5" : apiEnv;
   if (api != "V5" && api != "WeightNz") {
@@ -396,7 +423,7 @@ bool RunCase(bool withOffset) {
     }
   }
   std::vector<float> perToken(mTotal, scaleProfile == "zero" ? 0.0F : 1.0F);
-  std::vector<uint16_t> output(mTotal * N, FloatToHalf(0.0f));
+  std::vector<uint16_t> output(mTotal * N, 0U);
 
   TensorOwner tx, tw, tb, ts, toff, tpt, tgroup, ty;
   std::vector<int64_t> weightLogicalShape = specialNz ?
@@ -416,7 +443,8 @@ bool RunCase(bool withOffset) {
       !MakeTensor(quantScale.data(), quantScale.size() * 8, {E, G, N}, ACL_UINT64, ts) ||
       !MakeTensor(perToken.data(), perToken.size() * 4, {mTotal}, ACL_FLOAT, tpt) ||
       !MakeTensor(groups.data(), groups.size() * 8, {E}, ACL_INT64, tgroup) ||
-      !MakeTensor(output.data(), output.size() * 2, {mTotal, N}, ACL_FLOAT16, ty)) return false;
+      !MakeTensor(output.data(), output.size() * 2, {mTotal, N},
+                  outputBf16 ? ACL_BF16 : ACL_FLOAT16, ty)) return false;
   if (withOffset && !MakeTensor(fusedOffset.data(), fusedOffset.size() * 4, {E, 1, N}, ACL_FLOAT, toff)) return false;
 
   ListOwner lx, lw, lb, ls, loff, lpt, ly;
@@ -463,12 +491,38 @@ bool RunCase(bool withOffset) {
   ACL_CHECK(aclrtMemcpy(output.data(), output.size() * 2, ty.device, output.size() * 2, ACL_MEMCPY_DEVICE_TO_HOST));
   Stage("D2H end");
 
+  const std::string dumpDir = GetEnvString("A8W4_DUMP_DIR", "");
+  if (!dumpDir.empty()) {
+    std::ofstream meta(dumpDir + "/meta.txt", std::ios::out | std::ios::trunc);
+    if (!meta) {
+      std::cerr << "failed to open dump metadata under: " << dumpDir << std::endl;
+      return false;
+    }
+    meta << "E=" << E << '\n' << "M=" << mTotal << '\n' << "N=" << N << '\n'
+         << "K=" << K << '\n' << "G=" << G << '\n' << "group_size=" << GS << '\n'
+         << "dequant_mode=" << (withOffset ? "perchannel" : "pergroup") << '\n'
+         << "output_dtype=" << outputDtype << '\n'
+         << "weight_format=" << (weightNz ? "NZ" : "ND") << '\n'
+         << "special_nz=" << (specialNz ? 1 : 0) << '\n'
+         << "packed_int32=" << (packedInt32 ? 1 : 0) << '\n';
+    if (!WriteBinary(dumpDir + "/x.i8.bin", x) ||
+        !WriteBinary(dumpDir + "/weight.i4.bin", packedW) ||
+        !WriteBinary(dumpDir + "/scale.f32.bin", floatScale) ||
+        !WriteBinary(dumpDir + "/groups.i64.bin", groups) ||
+        !WriteBinary(dumpDir + "/bias.f32.bin", bias) ||
+        !WriteBinary(dumpDir + "/per_token.f32.bin", perToken) ||
+        !WriteBinary(dumpDir + "/offset.f32.bin", fusedOffset) ||
+        !WriteBinary(dumpDir + "/kernel.u16.bin", output)) return false;
+    std::cout << "a8w4_dump_dir=" << dumpDir << std::endl;
+  }
+
   uint64_t outputChecksum = 1469598103934665603ULL;
   uint64_t nonFiniteCount = 0;
   for (uint16_t value : output) {
     outputChecksum ^= static_cast<uint64_t>(value);
     outputChecksum *= 1099511628211ULL;
-    if (!std::isfinite(HalfToFloat(value))) ++nonFiniteCount;
+    const float decoded = outputBf16 ? BFloat16ToFloat(value) : HalfToFloat(value);
+    if (!std::isfinite(decoded)) ++nonFiniteCount;
   }
 
   const uint64_t outputElements = static_cast<uint64_t>(mTotal) * static_cast<uint64_t>(N);
@@ -557,13 +611,15 @@ bool RunCase(bool withOffset) {
       fixpipeUlpSum += HalfUlp(partial);
     }
     const float offsetCorrection = withOffset ? static_cast<float>(rowSum) * fusedOffset[e * N + n] : 0.0f;
-    const float got = HalfToFloat(output[m * N + n]);
+    const float got = outputBf16 ? BFloat16ToFloat(output[m * N + n])
+                                 : HalfToFloat(output[m * N + n]);
     const float inferredFixpipe = got - offsetCorrection;
     const float err = std::fabs(got - ref);
     // Each per-group partial is independently converted by FixPipe before the
     // FP16 partials are accumulated. Sum their ULPs so cancellation and a
     // large number of quant groups receive a scale-aware tolerance.
-    const float tolerance = 0.2F + 1.5F * (fixpipeUlpSum + HalfUlp(ref));
+    const float outputUlp = outputBf16 ? BFloat16Ulp(ref) : HalfUlp(ref);
+    const float tolerance = 0.2F + 1.5F * (fixpipeUlpSum + outputUlp);
     if (printedSamples < 8) {
       std::cout << "value[" << m << ',' << n << "] raw=" << rawMmad
                 << " scale=" << channelScale
@@ -591,7 +647,8 @@ bool RunCase(bool withOffset) {
   }
   std::cout << "max_error_at=[" << maxErrM << ',' << maxErrN << "] got=" << maxErrGot
             << " ref=" << maxErrRef << " tolerance=" << maxAllowed << std::endl;
-  std::cout << "ACLNN offset=" << (withOffset ? "non-null" : "null") << " max_abs_error=" << maxErr << std::endl;
+  std::cout << "ACLNN offset=" << (withOffset ? "non-null" : "null")
+            << " output_dtype=" << outputDtype << " max_abs_error=" << maxErr << std::endl;
   std::cout << "sample_count=" << sampleIndices.size() << " output_elements=" << outputElements
             << " non_finite=" << nonFiniteCount << " output_checksum=0x"
             << std::hex << outputChecksum << std::dec << std::endl;
