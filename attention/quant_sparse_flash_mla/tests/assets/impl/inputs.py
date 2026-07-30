@@ -13,11 +13,167 @@
 """Input customization for QuantSparseFlashMla TTK cases."""
 
 import importlib.util
+import random
 import sys
 from pathlib import Path
 
 import numpy as np
 import torch
+
+
+class QuantSparseFlashMlaBatchRandomContext:
+    """Make supported QSMLA batch input randomness deterministic per relation."""
+
+    SEED_MODULUS = (1 << 63) - 1
+
+    def __init__(self, q, kwargs):
+        self.batch_size = int(q.shape[0])
+        self.relations = self.parse_relations(q, kwargs)
+        self.base_seed = self.relations[0][1]
+        self.call_index = 0
+        self.randperm_call_index = 0
+        self.randperm_period = None
+        self.original_torch_rand = None
+        self.original_torch_randperm = None
+        self.original_python_uniform = None
+
+    @classmethod
+    def from_case(cls, q, kwargs):
+        fields = tuple(kwargs.get(name) for name in (
+            "batch_axis", "batch_slice_info", "batch_seed"
+        ))
+        if all(field is None for field in fields):
+            return None
+        if any(field is None for field in fields):
+            raise ValueError(
+                "batch_axis, batch_slice_info and batch_seed must be set together"
+            )
+        if kwargs.get("layout_q", "BSND") != "BSND" or kwargs.get(
+                "layout_kv", "BSND") != "BSND":
+            raise ValueError("QSMLA batch consistency currently supports BSND/BSND only")
+        return cls(q, kwargs)
+
+    @staticmethod
+    def parse_relations(q, kwargs):
+        batch_axis = kwargs["batch_axis"]
+        batch_slices = kwargs["batch_slice_info"]
+        batch_seed = kwargs["batch_seed"]
+        if not batch_axis or batch_axis[0] != (0,):
+            raise ValueError("QSMLA batch consistency requires q batch_axis=((0,), ...)")
+        if not batch_slices or batch_slices[0] is None or batch_seed[0] is None:
+            raise ValueError("QSMLA batch consistency requires slices and seeds on q")
+        if any(slices is not None for slices in batch_slices[1:]):
+            raise ValueError("QSMLA batch consistency relations must be declared on q only")
+
+        relations = list(zip(batch_slices[0][0], batch_seed[0][0]))
+        if not relations:
+            raise ValueError("QSMLA batch consistency requires at least one q slice")
+        if len({seed for _, seed in relations}) != 1:
+            raise ValueError("QSMLA batch consistency supports one relation seed per case")
+        for slice_value, _ in relations:
+            start, stop, step = slice_value
+            if step != 1 or start < 0 or start >= stop or stop > int(q.shape[0]):
+                raise ValueError(
+                    "QSMLA batch consistency requires in-range, contiguous q batch slices"
+                )
+        return relations
+
+    def validate_params(self, params):
+        mode = params.get("template_run_mode")
+        if mode not in ("SWA", "HCA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
+            raise ValueError("QSMLA batch consistency currently excludes CSA mode")
+        if int(params.get("quant_mode")) != 1:
+            raise ValueError("QSMLA batch consistency currently supports quant_mode=1 only")
+        for name in ("ori_sparse_indices_mode", "cmp_sparse_indices_mode"):
+            value = params.get(name)
+            if value is not None and value != "full":
+                raise ValueError(
+                    "QSMLA batch consistency currently requires full sparse indices"
+                )
+        for name in ("ori_kv_topk_mode", "cmp_kv_topk_mode"):
+            value = params.get(name)
+            if value is not None and value not in ("fullK", "no"):
+                raise ValueError(
+                    "QSMLA batch consistency currently excludes random topk lengths"
+                )
+
+        sequence_lengths = [int(value) for value in params["seqused_q"]]
+        if not sequence_lengths or len(set(sequence_lengths)) != 1:
+            raise ValueError(
+                "QSMLA batch consistency currently requires a uniform seqused_q"
+            )
+        self.randperm_period = sequence_lengths[0] * int(params["N2"])
+
+    @classmethod
+    def derive_seed(cls, seed, call_index):
+        return (int(seed) + (call_index + 1) * 1000003) % cls.SEED_MODULUS
+
+    @staticmethod
+    def create_generator(seed, device):
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
+        return generator
+
+    def torch_rand(self, *size, **kwargs):
+        call_index = self.call_index
+        self.call_index += 1
+        call_kwargs = dict(kwargs)
+        device = call_kwargs.get("device") or "cpu"
+        call_kwargs["generator"] = self.create_generator(
+            self.derive_seed(self.base_seed, call_index), device
+        )
+        value = self.original_torch_rand(*size, **call_kwargs)
+        if value.ndim < 2 or int(value.shape[0]) != self.batch_size:
+            return value
+
+        for slice_value, seed in self.relations:
+            selector = (slice(*slice_value),) + (slice(None),) * (value.ndim - 1)
+            piece = value[selector]
+            piece_generator = self.create_generator(
+                self.derive_seed(seed, call_index), value.device
+            )
+            value[selector] = self.original_torch_rand(
+                tuple(piece.shape),
+                generator=piece_generator,
+                dtype=value.dtype,
+                device=value.device,
+            )
+        return value
+
+    def torch_randperm(self, n, **kwargs):
+        if self.randperm_period is None:
+            raise RuntimeError("QSMLA batch random context was not configured")
+        call_index = self.randperm_call_index
+        self.randperm_call_index += 1
+        call_kwargs = dict(kwargs)
+        device = call_kwargs.get("device") or "cpu"
+        # The golden loops batch-major, so this maps matching positions in each batch.
+        call_kwargs["generator"] = self.create_generator(
+            self.derive_seed(self.base_seed, 1000003 + call_index % self.randperm_period),
+            device,
+        )
+        return self.original_torch_randperm(n, **call_kwargs)
+
+    def python_uniform(self, low, high):
+        call_index = self.call_index
+        self.call_index += 1
+        rng = random.Random(self.derive_seed(self.base_seed, call_index))
+        return rng.uniform(low, high)
+
+    def __enter__(self):
+        self.original_torch_rand = torch.rand
+        self.original_torch_randperm = torch.randperm
+        self.original_python_uniform = random.uniform
+        torch.rand = self.torch_rand
+        torch.randperm = self.torch_randperm
+        random.uniform = self.python_uniform
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        torch.rand = self.original_torch_rand
+        torch.randperm = self.original_torch_randperm
+        random.uniform = self.original_python_uniform
+        return False
 
 
 class QuantSparseFlashMlaInputAdapter:
@@ -269,7 +425,7 @@ class QuantSparseFlashMlaInputAdapter:
         else:
             np.copyto(dst_array, src_array.astype(dst_array.dtype, copy=False))
 
-    def generate_case(self, params):
+    def generate_case(self, params, batch_random=None):
         pytest_utils = self.load_pytest_module("utils", "utils.py")
         pytest_check = self.load_pytest_module("check", "check_valid_param.py")
         pytest_golden = self.load_pytest_module(
@@ -282,7 +438,12 @@ class QuantSparseFlashMlaInputAdapter:
         if filled.get("Testcase_Name") is None:
             filled["Testcase_Name"] = params.get("testcase_name")
         pytest_check.check_valid_param(filled)
-        data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
+        if batch_random is None:
+            data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
+        else:
+            batch_random.validate_params(filled)
+            with batch_random:
+                data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
         testcase_name = params.get("testcase_name") or filled.get("Testcase_Name")
         self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data
@@ -300,6 +461,7 @@ def generate_quant_sparse_flash_mla_inputs(
         cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
         sinks=None, **kwargs):
     """Reuse the pytest parameter validation and input processing for a TTK case."""
+    batch_random = QuantSparseFlashMlaBatchRandomContext.from_case(q, kwargs)
     params = INPUT_ADAPTER.build_case_params(
         q,
         ori_kv,
@@ -311,7 +473,7 @@ def generate_quant_sparse_flash_mla_inputs(
         kwargs.get("layout_kv"),
         kwargs,
     )
-    data = INPUT_ADAPTER.generate_case(params)
+    data = INPUT_ADAPTER.generate_case(params, batch_random)
     op_input = data["op_input"]
     for name, tensor in (
         ("q", q),
