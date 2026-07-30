@@ -1374,6 +1374,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
             hcomm_.ReadNbi<true>(channel, tokenDstAddr, remoteRecordAddr, widthA * sizeof(ActivationType));
             hcomm_.ReadNbi<true>(channel, scaleDstAddr, remoteRecordAddr + mxQuantTokenAlignBytes_,
                                  widthAScale * sizeof(QuantScaleOutType));
+            if constexpr (TopkWeightsPrefetch) {
+                GM_ADDR weightDstAddr = params_.workspaceInfo.dispatchRevWeightsPtr +
+                    static_cast<uint64_t>(rowDstOffsetInCore + copyIdx) * weightAlignBytes_;
+                hcomm_.ReadNbi<true>(channel, weightDstAddr,
+                                     remoteRecordAddr + mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_,
+                                     weightAlignBytes_);
+            }
             relayReceivedTensor_.SetValue(copyIdx, int32_t(1));
             ++receivedCount;
         }
@@ -1420,21 +1427,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyGMToG
         CopyTokensFromRemoteRelay(rowDstOffsetInCore, relayRank, srcServer, copyNum, widthA, widthAScale);
         if constexpr (TopkWeightsPrefetch) {
             for (int32_t i = 0; i < copyNum; ++i) {
-                int32_t tokenIndex = metaInfoTensor_[i * INT32_PER_256B].GetValue(TOKEN_ID);
                 int32_t topkIndex = metaInfoTensor_[i * INT32_PER_256B].GetValue(TOPK_INDEX);
-                uint32_t elemIdx = static_cast<uint32_t>(tokenIndex * static_cast<int32_t>(topK_) + topkIndex);
-                __gm__ int32_t *weightGmI32 = reinterpret_cast<__gm__ int32_t *>(params_.probsGmAddr);
-                int32_t weightBits;
-                if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-                    int32_t packed = ReadGmByPassDCache(weightGmI32 + elemIdx / 2U);
-                    uint16_t bf16Bits = (elemIdx % 2U == 0U) ?
-                        static_cast<uint16_t>(packed & 0xFFFF) :
-                        static_cast<uint16_t>((static_cast<uint32_t>(packed) >> 16) & 0xFFFF);
-                    uint32_t floatBits = static_cast<uint32_t>(bf16Bits) << 16;
-                    weightBits = static_cast<int32_t>(floatBits);
-                } else {
-                    weightBits = ReadGmByPassDCache(weightGmI32 + elemIdx);
-                }
+                __gm__ int32_t *weightGmI32 = reinterpret_cast<__gm__ int32_t *>(
+                    params_.workspaceInfo.dispatchRevWeightsPtr +
+                    static_cast<uint64_t>(rowDstOffsetInCore + i) * weightAlignBytes_);
+                int32_t weightBits = ReadGmByPassDCache(weightGmI32 + static_cast<uint32_t>(topkIndex));
                 metaInfoTensor_[i * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
             }
         }
