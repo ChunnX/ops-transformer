@@ -82,8 +82,6 @@ private:
     __aicore__ inline bool WaitDispatch(uint32_t tokenIndex, uint32_t copyCount);
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
     __aicore__ inline void SendPhaseExpertToToken();
-    __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &targetRank,
-                                              uint32_t &coreIndexInGroup, uint32_t &groupSize);
     __aicore__ inline void BuffInit();
     __aicore__ inline void MaskAlign(LocalTensor<half> maskCalcSelectedTensor);
     __aicore__ inline void MaskCheck();
@@ -361,68 +359,41 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendQueuedTok
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssignment(
-    uint32_t totalBlocks, uint32_t &targetRank, uint32_t &coreIndexInGroup, uint32_t &groupSize)
-{
-    uint32_t baseGroupSize = totalBlocks / epWorldSize_;
-    uint32_t remainder = totalBlocks % epWorldSize_;
-    uint32_t accumulated = 0;
-    for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
-        uint32_t currentGroupSize = baseGroupSize + ((rank < remainder) ? 1U : 0U);
-        if (aivId_ < accumulated + currentGroupSize) {
-            targetRank = rank;
-            groupSize = currentGroupSize;
-            coreIndexInGroup = aivId_ - accumulated;
-            return;
-        }
-        accumulated += currentGroupSize;
-    }
-    targetRank = epWorldSize_;
-    groupSize = 0;
-    coreIndexInGroup = 0;
-}
-
-template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpertToToken()
 {
     if (actualA_ == 0 || epWorldSize_ == 0 || aivNum_ == 0) {
         return;
     }
-    uint32_t activeAivNum = aivNum_;
-    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
-    if (activeAivNum > maxChannelAivNum) {
-        activeAivNum = maxChannelAivNum;
-    }
+    // Each AIV owns one channel for every remote rank. Limiting the active AIV count
+    // to channelsPerRank_ avoids sharing an HCOMM channel between AIVs.
+    uint32_t activeAivNum = aivNum_ < channelsPerRank_ ? aivNum_ : channelsPerRank_;
     if (aivId_ >= activeAivNum) {
         return;
     }
 
-    bool splitRankTokens = activeAivNum >= epWorldSize_;
-    uint32_t targetRank = epWorldSize_;
-    uint32_t coreIndexInGroup = 0;
-    uint32_t groupSize = 1;
-    if (splitRankTokens) {
-        GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
-        if (targetRank >= epWorldSize_ || groupSize == 0) {
-            return;
-        }
+    uint32_t startTokenId = 0;
+    uint32_t endTokenId = 0;
+    uint32_t tokenPerAiv = 0;
+    SplitToCore(static_cast<uint32_t>(actualA_), activeAivNum, startTokenId, endTokenId, tokenPerAiv);
+    if (startTokenId >= endTokenId || tokenPerAiv == 0) {
+        return;
     }
-    uint32_t channelIndex = splitRankTokens ? coreIndexInGroup : 0;
-    uint32_t targetRankTokenIndex = 0;
+    uint32_t channelIndex = aivId_;
     Duplicate<uint32_t>(statusTensor_, (uint32_t)1, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
     constexpr uint32_t metaChunkTokenMax = 8192U; // 分块上限，平衡UB占用与搬运次数（128KB，A5 UB 256KB余量充足）
 
-    uint32_t metaChunkTokens = (actualA_ < metaChunkTokenMax) ? actualA_ : metaChunkTokenMax;
+    uint32_t metaChunkTokens = tokenPerAiv < metaChunkTokenMax ? tokenPerAiv : metaChunkTokenMax;
     uint32_t metaChunkBytes = Ceil(metaChunkTokens * metaBytesPerToken, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(metadataBuf_, metaChunkBytes);
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
     const DataCopyPadExtParams<int32_t> metaPadParams{false, 0U, 0U, 0U};
 
-    for (uint64_t chunkStart = 0; chunkStart < actualA_; chunkStart += metaChunkTokens) {
-        uint64_t chunkEnd = (chunkStart + metaChunkTokens > actualA_) ? actualA_ : (chunkStart + metaChunkTokens);
-        uint32_t curChunkTokens = static_cast<uint32_t>(chunkEnd - chunkStart);
+    for (uint32_t chunkStart = startTokenId; chunkStart < endTokenId; chunkStart += metaChunkTokens) {
+        uint32_t chunkEnd =
+            chunkStart + metaChunkTokens > endTokenId ? endTokenId : chunkStart + metaChunkTokens;
+        uint32_t curChunkTokens = chunkEnd - chunkStart;
 
         DataCopyExtParams metaCopyParams{1U, curChunkTokens * metaBytesPerToken, 0U, 0U, 0U};
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], metaCopyParams, metaPadParams);
@@ -434,17 +405,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             int32_t src_token_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
             int32_t src_topK_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
             if (src_rank < 0 || src_rank >= static_cast<int32_t>(epWorldSize_)) {
-                continue;
-            }
-            if (splitRankTokens) {
-                if (src_rank != static_cast<int32_t>(targetRank)) {
-                    continue;
-                }
-                uint32_t currentRankTokenIndex = targetRankTokenIndex++;
-                if (currentRankTokenIndex % groupSize != coreIndexInGroup) {
-                    continue;
-                }
-            } else if (static_cast<uint32_t>(src_rank) % activeAivNum != aivId_) {
                 continue;
             }
             SendQueuedToken(tokenIndex, src_rank, src_token_idx, src_topK_idx, channelIndex);
