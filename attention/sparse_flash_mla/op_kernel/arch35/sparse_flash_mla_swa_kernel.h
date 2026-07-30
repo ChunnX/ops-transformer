@@ -186,7 +186,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     vecBlock.InitVecBlock(tPipe, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKv, seqUsedCmpKv, cmpResidualKV);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
     InitMMResBuf(workspace);
-    if constexpr (BATCH_CONSISTENCY) {
+    if constexpr (IS_BATCH_CONSISTENCY) {
         vecBlock.InitS2SplitStaging(intraCoreCombineBuffer.Get(), crossCoreCombineBuffer.Get());
     } else {
         vecBlock.InitS2SplitStaging(fdStagingBuffer.Get());
@@ -386,7 +386,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     uint32_t gSize = static_cast<uint32_t>(constInfo.gSize);
     uint32_t combineElemSize = gSize * constInfo.dSize + FD_MAX_SUM_REGION_NUM * gSize *
         static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
-    if constexpr (BATCH_CONSISTENCY) {
+    if constexpr (IS_BATCH_CONSISTENCY) {
         uint32_t intraCoreSlotNum = IS_SPLIT_G ? GetBlockNum() : (GetBlockNum() << 1U);
         uint32_t intraCoreCombineSize = intraCoreSlotNum * combineElemSize * sizeof(float);
         uint32_t crossCoreCombineSize = GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
@@ -455,8 +455,8 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
         ParseFdRunInfo(fdRunInfo);
     }
     ProcessMainLoop();
-    SyncAll<false>();
     if ASCEND_IS_AIV {
+        SyncAll();
         if (fdRunInfo.coreEnable) {
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
         }
@@ -527,7 +527,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
                 bool s2NoNeedCalc =
                     ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(bnIdx, gS1Index, this->cuSeqlensQGm, tmpTensor,
                                                           tmpTensor, runParam, this->constInfo);
-                if constexpr (BATCH_CONSISTENCY) {
+                if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t oriLoad = runParam.s2OriLineEndIdx - runParam.s2OriLineStartIdx;
                     int64_t cmpLoad = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
                     int64_t totalLoad = oriLoad + cmpLoad;
@@ -554,7 +554,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }
-                if constexpr (!BATCH_CONSISTENCY) {
+                if constexpr (!IS_BATCH_CONSISTENCY) {
                     if (runParam.isCrossCoreSplit) {
                         runParam.s2SplitIdx = s2SplitIdxCounter++;
                     }
@@ -564,7 +564,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                if constexpr (BATCH_CONSISTENCY) {
+                if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t safeBaseBlockNum = runParam.baseBlockNumPerReductionBlock > 0 ?
                         runParam.baseBlockNumPerReductionBlock : 1LL;
                     if (runParam.isCrossCoreSplit && s2LoopCount % safeBaseBlockNum == 0) {

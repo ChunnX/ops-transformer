@@ -15,7 +15,6 @@
 
 #include "sparse_flash_mla_tiling.h"
 #include "../op_kernel/sparse_flash_mla_template_tiling_key.h"
-#include "acl/acl_rt.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -50,17 +49,6 @@ constexpr uint32_t FD_MAX_S2_SPLIT_NUM = 2U;
 constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33U;
 constexpr uint32_t FD_BROADCAST_ELEMS = 8U;
 constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
-
-static bool IsBatchConsistencyEnabled(const char *opName)
-{
-    int64_t batchConsistencyLevel = 0;
-    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &batchConsistencyLevel);
-    if (aclRet != ACL_SUCCESS) {
-        OP_LOGW(opName, "Unable to get system param batch consistency level.");
-    }
-    bool isBatchConsistency = (batchConsistencyLevel == BATCH_CONSISTENCY_LEVEL);
-    return isBatchConsistency;
-}
 static bool IsNonEmptyOptionalTensor(const gert::Tensor *tensor)
 {
     return tensor != nullptr && tensor->GetShapeSize() > 0;
@@ -366,7 +354,7 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", (int32_t)npuArch_);
         return ge::GRAPH_FAILED;
     }
-    batchConsistency_ = IsBatchConsistencyEnabled(opName_);
+    batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
 
     return ge::GRAPH_SUCCESS;
 }

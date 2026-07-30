@@ -365,9 +365,8 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsInit()
     if (hasCmpKv_ && cmpTopK_ != 0) {
         isSparseCmpKv_ = true;
     }
-    if (isBatchConsistency_) {
-        supportFd_ = true;
-    }
+    // Temporary diagnostic mode: generate ordinary-FD metadata while batch consistency stays disabled.
+    supportFd_ = true;
     ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (groupSize_ > 64U) {
