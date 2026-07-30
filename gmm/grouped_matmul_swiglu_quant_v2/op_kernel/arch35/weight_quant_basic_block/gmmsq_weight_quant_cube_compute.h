@@ -54,7 +54,6 @@ public:
                                           uint64_t kbL1RealSize = 0);
     __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam,
                                          uint64_t kbL1RealSize = 0);
-    __aicore__ inline void SetMTE1ToMTE2(const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetWeightMTE1ToMTE2(const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
     __aicore__ inline void SetScaleMTE1ToMTE2(uint64_t kbGmOffset, const BasicBlockOffsetParam &offsetParam);
