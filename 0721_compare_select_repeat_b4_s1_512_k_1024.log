@@ -1,0 +1,20 @@
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=10 python_sha256=9cba5999468c8ab8b446400d3b8ac5f33b15848120d37eaeb1910abf562bc192
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=43da0fa0f88dd279753b8b0a17ff5426abd6a651dd19484bd7a4756edcd7df8e
+[00] bsnd_b4_s1_512_k_1024 PRECISION_FAIL dQ_norm=1.22e-01 dK_norm=1.19e-01 dW_norm=1.32e-01 Loss_norm=1.44e-06
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=10 python_sha256=9cba5999468c8ab8b446400d3b8ac5f33b15848120d37eaeb1910abf562bc192
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=43da0fa0f88dd279753b8b0a17ff5426abd6a651dd19484bd7a4756edcd7df8e
+[00] bsnd_b4_s1_512_k_1024 PRECISION_FAIL dQ_norm=1.22e-01 dK_norm=1.19e-01 dW_norm=1.32e-01 Loss_norm=1.44e-06
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=10 python_sha256=9cba5999468c8ab8b446400d3b8ac5f33b15848120d37eaeb1910abf562bc192
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=43da0fa0f88dd279753b8b0a17ff5426abd6a651dd19484bd7a4756edcd7df8e
+[00] bsnd_b4_s1_512_k_1024 PRECISION_FAIL dQ_norm=1.22e-01 dK_norm=1.19e-01 dW_norm=1.32e-01 Loss_norm=1.44e-06
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=10 python_sha256=9cba5999468c8ab8b446400d3b8ac5f33b15848120d37eaeb1910abf562bc192
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=43da0fa0f88dd279753b8b0a17ff5426abd6a651dd19484bd7a4756edcd7df8e
+[00] bsnd_b4_s1_512_k_1024 PRECISION_FAIL dQ_norm=1.22e-01 dK_norm=1.19e-01 dW_norm=1.32e-01 Loss_norm=1.55e-06
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=10 python_sha256=9cba5999468c8ab8b446400d3b8ac5f33b15848120d37eaeb1910abf562bc192
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=43da0fa0f88dd279753b8b0a17ff5426abd6a651dd19484bd7a4756edcd7df8e
+[00] bsnd_b4_s1_512_k_1024 PRECISION_FAIL dQ_norm=1.22e-01 dK_norm=1.19e-01 dW_norm=1.32e-01 Loss_norm=1.44e-06
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
