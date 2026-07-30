@@ -89,7 +89,7 @@ int LaunchKernel(uint32_t usedCoreNum, aclrtStream stream,
          CommContext *devContext,
          GM_ADDR deviceA, GM_ADDR deviceScaleA,
          GM_ADDR deviceB, GM_ADDR deviceScaleB,
-         GM_ADDR deviceOutput, AllGatherMatmulTilingData &tilingData)
+         GM_ADDR deviceOutput, AllGatherMxMatmulUdmaTilingData &tilingData)
 {
   AllGatherQuantMatmulKernel<<<usedCoreNum, nullptr, stream>>>(
     devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
@@ -101,7 +101,7 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n)
   const char *ipport = "tcp://127.0.0.1:8998";
   INFO_LOG("rankNum=%d, rankId=%d", rankNum, rankId);
 
-  AllGatherMatmulTilingData tilingData;
+  AllGatherMxMatmulUdmaTilingData tilingData;
 
   uint32_t tileM = TILE_M;
   if (m < static_cast<int>(tileM)) {

@@ -36,14 +36,14 @@ namespace Block {
 template <
     uint64_t A_FULL_LOAD_MODE, bool ATOMIC_ADD, class AType_, class LayoutA_, class BType_, class LayoutB_,
     class CType_, class LayoutC_, class BiasType_, class LayoutBias_>
-class BlockMmadFragCOut;
+class QmmMxBlockMmadFragment;
 
 #if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
 
 template <
     uint64_t A_FULL_LOAD_MODE, bool ATOMIC_ADD, class AType_, class LayoutA_, class BType_, class LayoutB_,
     class CType_, class LayoutC_, class BiasType_, class LayoutBias_>
-class BlockMmadFragCOut {
+class QmmMxBlockMmadFragment {
 public:
     using AType = AType_;
     using BType = BType_;
@@ -118,7 +118,7 @@ public:
         TSB scaleB;
     };
 
-    __aicore__ inline BlockMmadFragCOut()
+    __aicore__ inline QmmMxBlockMmadFragment()
     {
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_0);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_1);
@@ -133,7 +133,7 @@ public:
         AscendC::SetMMLayoutTransform(true); // true means column first when fixpipe_l0c2out
     }
 
-    __aicore__ inline ~BlockMmadFragCOut()
+    __aicore__ inline ~QmmMxBlockMmadFragment()
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_1);

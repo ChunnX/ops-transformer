@@ -37,16 +37,16 @@ using LayoutC = AscendC::Te::NDExtLayoutPtn;
 using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
 template <typename AType, typename BType, typename CType>
-class AllGatherQuantMatmulUdmaImpl {
+class AllGatherMxMatmulUdmaImpl {
 public:
-    __aicore__ inline AllGatherQuantMatmulUdmaImpl() {}
+    __aicore__ inline AllGatherMxMatmulUdmaImpl() {}
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx,
       GM_ADDR aGM, GM_ADDR aScaleGM,
       GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-      const AllGatherMatmulTilingData *tilingData);
+      const AllGatherMxMatmulUdmaTilingData *tilingData);
     __aicore__ inline void Process();
 
-    using QuantMatmulKernelImpl = QuantMatmulMxKernelAgPrefill<AType, BType, CType>;
+    using QuantMatmulKernelImpl = QmmMxKernelAgUdma<AType, BType, CType>;
     using KernelParams = typename QuantMatmulKernelImpl::Params;
     using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
     using FragmentParams = typename QuantMatmulKernelImpl::FragmentParams;
@@ -54,7 +54,7 @@ public:
     QuantMatmulKernelImpl quantMatmulKernelImpl_;
 
 private:
-    __aicore__ inline void InitBaseParams(const AllGatherMatmulTilingData *td);
+    __aicore__ inline void InitBaseParams(const AllGatherMxMatmulUdmaTilingData *td);
 
     __aicore__ inline void AllGatherProcess();
     __aicore__ inline void MatmulProcess();
@@ -107,15 +107,15 @@ private:
     uint64_t dataRegionBytes_{};
     uint64_t scaleRegionBytes_{};
 
-    const AllGatherMatmulTilingData *tilingData_{};
+    const AllGatherMxMatmulUdmaTilingData *tilingData_{};
 };
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::Init(
+__aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Init(
   __gm__ CommContext *hcommCtx,
   GM_ADDR aGM, GM_ADDR aScaleGM,
   GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-  const AllGatherMatmulTilingData *tilingData)
+  const AllGatherMxMatmulUdmaTilingData *tilingData)
 {
     tilingData_ = tilingData;
     hcommCtx_ = hcommCtx;
@@ -167,11 +167,12 @@ __aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::Init(
     all_gather_scale_.Init(udmaCtx_, teamBarrier_, commTilingScale_,
                           aScaleGM_, commBuf.Get(), rankSize_,
                           static_cast<uint32_t>(GetBlockIdx()), dataRegionBytes_);
+    AscendC::SyncAll<true>();
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::InitBaseParams(
-  const AllGatherMatmulTilingData *td)
+__aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::InitBaseParams(
+  const AllGatherMxMatmulUdmaTilingData *td)
 {
     const auto &ct = td->commTile;
     tileCnt_ = static_cast<uint32_t>(ct.splitAxisTileCnt);
@@ -194,7 +195,7 @@ __aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::InitBa
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::Process()
+__aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Process()
 {
     if ASCEND_IS_AIV {
         AllGatherProcess();
@@ -205,7 +206,7 @@ __aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::Proces
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::MatmulProcess()
+__aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::MatmulProcess()
 {
     KernelParams params;
     params.mmTile = &tilingData_->mmTile;
@@ -228,19 +229,19 @@ __aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::Matmul
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline GM_ADDR AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::GetWinDataRegionBase()
+__aicore__ inline GM_ADDR AllGatherMxMatmulUdmaImpl<AType, BType, CType>::GetWinDataRegionBase()
 {
     return reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[rankId_]);
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline GM_ADDR AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::GetWinScaleRegionBase()
+__aicore__ inline GM_ADDR AllGatherMxMatmulUdmaImpl<AType, BType, CType>::GetWinScaleRegionBase()
 {
     return GetWinDataRegionBase() + dataRegionBytes_;
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::AllGatherProcess()
+__aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::AllGatherProcess()
 {
     // 预触发 dependId=0：自身数据始终就绪，AIC 可直接消费。
     CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
@@ -265,10 +266,10 @@ __global__ __aicore__ void AllGatherQuantMatmulKernel(
   __gm__ Apace::AivComm::CommContext *hcommCtx,
   GM_ADDR aGM, GM_ADDR aScaleGM,
   GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-  AllGatherMatmulTilingData tilingData)
+  AllGatherMxMatmulUdmaTilingData tilingData)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-    AllGatherQuantMatmulImpl::AllGatherQuantMatmulUdmaImpl<
+    AllGatherQuantMatmulImpl::AllGatherMxMatmulUdmaImpl<
       fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t> impl;
     impl.Init(hcommCtx, aGM, aScaleGM, bGM, bScaleGM, cGM, &tilingData);
     impl.Process();
