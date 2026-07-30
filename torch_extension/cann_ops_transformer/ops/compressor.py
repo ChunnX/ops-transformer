@@ -174,9 +174,10 @@ def setup_context(ctx, inputs, output):
 
     cmp_kv, softmax_score, kv = output
     ctx.save_for_backward(
-        x, wkv, wgate, cu_seqlens, seqused, start_pos, cmp_ratio, 
-        coff, softmax_score, kv
+        x, wkv, wgate, cu_seqlens, seqused, start_pos, softmax_score, kv
     )
+    ctx.cmp_ratio = cmp_ratio
+    ctx.coff = coff
 
 
 def backward(ctx, dout, *grads):
@@ -184,8 +185,9 @@ def backward(ctx, dout, *grads):
     Args:
         dout: d_cmp_kv
     """
-    x, wkv, wgate, cu_seqlens, seqused, start_pos, cmp_ratio, coff, 
-    softmax_score, kv = ctx.saved_tensors
+    x, wkv, wgate, cu_seqlens, seqused, start_pos, softmax_score, kv = ctx.saved_tensors
+    cmp_ratio = ctx.cmp_ratio
+    coff = ctx.coff
 
     d_x, d_wkv, d_wgate, d_ape = _compressor_backward(
         dout, x, wkv, wgate, softmax_score, kv, 
