@@ -103,7 +103,7 @@ public:
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<NONE_FULL_LOAD_MODE, false>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
         DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC, BiasType, LayoutBias>;
-    using QuantMatmulKernelImpl = Kernel::quantMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
+    using QuantMatmulKernelImpl = Kernel::QuantMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
 
     // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
