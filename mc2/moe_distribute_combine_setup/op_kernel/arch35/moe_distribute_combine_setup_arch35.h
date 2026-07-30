@@ -76,7 +76,6 @@ private:
     // tiling侧已确保数据上限， 相乘不会越界，因此统一采用uin32_t进行处理
     const MoeDistributeCombineSetupInfo *moeDistributeCombineSetupInfo_{nullptr};
     uint32_t axisMaxBS_{0};
-    uint32_t coreIdx_{0};    // aiv id
     uint32_t moeSendNum_{0}; // moeExpertPerRankNum * epWorldSize
     uint64_t epDataOffsetOnWin_{0};
     uint64_t epStateOffsetOnWin_{0};
@@ -95,10 +94,16 @@ private:
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> expertTokenTmpQueue_;
 
     // =============================== Urma =============================== //
+    uint32_t aivId_{0};
     uint32_t epRankId_{0};
+
+    GM_ADDR statusDataSpaceGM_;
+    GM_ADDR statusFlagGM_; // 本卡状态flag源地址，用于远端WriteNbi
     constexpr static uint64_t HCOMM_INIT_SIZE = 512UL;
+    constexpr static uint32_t STATUS_FLAG_VALUE = 0x3f800000U; // float 1.0
 
     LocalTensor<uint8_t> hcommTensor_;
+
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
@@ -128,7 +133,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     const MoeDistributeCombineSetupTilingData *tilingData, __gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling)
 {
     tpipe_ = pipe;
-    coreIdx_ = GetBlockIdx();
+    aivId_ = GetBlockIdx();
     moeDistributeCombineSetupInfo_ = &(tilingData->moeDistributeCombineSetupInfo);
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
@@ -136,12 +141,22 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     // 获取win状态区地址，并保证数据一致
     // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
     GlobalTensor<int32_t> selfDataStatusTensor;
-    GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET +
-        STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_)));
+    statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + STATE_WIN_OFFSET +
+        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_)));
+
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
     dataState_ = selfDataStatusTensor(0); // win状态区的0/1标识
+
+    // 本卡准备状态flag源：每个核在dataState标识后的32B位置写入float 1.0，供远端WriteNbi使用
+    statusFlagGM_ = statusDataSpaceGM_ + STATE_WIN_OFFSET +
+        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + UB_ALIGN;
+    GlobalTensor<int32_t> statusFlagTensor;
+    statusFlagTensor.SetGlobalBuffer((__gm__ int32_t *)statusFlagGM_);
+    statusFlagTensor.SetValue(0, static_cast<int32_t>(STATUS_FLAG_VALUE));
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(statusFlagTensor);
+
     expandXGM_ = expandX;
     assistInfoForCombineGlobal_.SetGlobalBuffer((__gm__ int32_t *)assistInfoForCombine);
 
@@ -176,7 +191,7 @@ template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::SplitCoreCal()
 {
     // 对worldSize按卡分核，得到每个核上处理的卡的数量，保证一个jetty只由一个核维护
-    uint32_t coreIdxNew = (coreIdx_ + epRankId_) % moeDistributeCombineSetupInfo_->aivNum; // 按照卡去进行偏移
+    uint32_t coreIdxNew = (aivId_ + epRankId_) % moeDistributeCombineSetupInfo_->aivNum; // 按照卡去进行偏移
     sendRankNum_ = moeDistributeCombineSetupInfo_->epWorldSize / moeDistributeCombineSetupInfo_->aivNum;
     uint32_t remainderRankNum = moeDistributeCombineSetupInfo_->epWorldSize % moeDistributeCombineSetupInfo_->aivNum;
     startRankId_ = sendRankNum_ * coreIdxNew;
@@ -247,18 +262,13 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         CurRankComm(assistInfoForCombineLocal, curRankExpertNum);
     }
 
-    // 同一个卡只发一次状态，因此先对卡做循环
+    // 数据和状态分离：有token才发数据，每个dstRank始终单独发一次状态
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; ++dstRankId) {
         if (unlikely(dstRankId == epRankId_)) {
             continue;
         }
-        bool hasWrite = false;
         auto channelId = GetCommHandle(dstRankId);
-        GM_ADDR notifyAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
-        //先清理状态
-        GlobalTensor<int32_t> selfStatusTensor;
-        selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)notifyAddr);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
+        GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
         for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
             uint32_t preCount = 0U;
             uint32_t assistInfoIdx = expertIdx * moeDistributeCombineSetupInfo_->epWorldSize + dstRankId;
@@ -268,22 +278,17 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             }
             // 当前要发送的token数量
             uint32_t curTokenNum = assistInfoForCombineLocal.GetValue(assistInfoIdx) - preCount;
+            if (curTokenNum == 0U) {
+                continue;
+            }
             GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
             GM_ADDR dstAddr = GetUrmaAddrByRankId(dstRankId, expertIdx) + epDataOffsetOnWin_;
             uint32_t length = static_cast<uint32_t>(axisHExpandXTypeSize_) * curTokenNum;
-            uint64_t notifyVal = 0x3f800000;
-            if (curRankExpertNum - 1 != expertIdx) {
-                if(0 < curTokenNum) {
-                    hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, length);
-                }
-                continue;
-            }
-            hcomm_.WriteWithNotifyNbi<false>(channelId, dstAddr, srcAddr, length, notifyAddr, notifyVal);
-            hasWrite = true;
+            hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, length);
         }
-        if(hasWrite) {
-            hcomm_.Commit(channelId);
-        }
+        // 无论token是否为0，都独立下发状态，避免WriteWithNotify在length=0时丢notify
+        hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
+        hcomm_.Commit(channelId);
     }
 
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
@@ -350,7 +355,7 @@ MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
     GlobalTensor<int32_t> selfStatusTensor;
     selfStatusTensor.SetGlobalBuffer(
         (__gm__ int32_t *)(GetUrmaStateAddrByRankId(epRankId_) + epStateOffsetOnWin_));
-    selfStatusTensor.SetValue(0, 0x3f800000);
+    selfStatusTensor.SetValue(0, static_cast<int32_t>(STATUS_FLAG_VALUE));
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
 }
 
