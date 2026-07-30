@@ -231,6 +231,7 @@ def apply_batch_slice_seeded(
             lo, hi = -10, 10
 
         # 获取切片后的 shape
+        slice_idx = 0
         for axis_pos in axes:
             if slices[axis_pos] is None or seed[axis_pos] is None:
                 continue
@@ -251,12 +252,17 @@ def apply_batch_slice_seeded(
                         tensor[start:end, :] = torch.from_numpy(data).to(tensor.dtype)
                     else:
                         if axis_pos == 1:
+                            if slices[0] is None:
+                                bidx = 0
+                            else:
+                                bidx = slices[0][slice_idx][0]
+                                slice_idx += 1
                             sliced_shape[0] = 1
                             sliced_shape[axis_pos] = length
                             data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(
                                 np.float32
                             )
-                            tensor[0, start:end, :] = torch.from_numpy(data).to(
+                            tensor[bidx, start:end, :] = torch.from_numpy(data).to(
                                 tensor.dtype
                             )
                         else:

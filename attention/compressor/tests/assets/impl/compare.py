@@ -367,7 +367,7 @@ def _batch_consistency_check(npu_cmp_kv, kwargs):
     npu_np = as_numpy(npu_cmp_kv)
     cache_key = batch_consistency_id
     result = []
-
+    slice_idx = 0
     for axis_pos, slices, cache_key_idx in zip(batch_axis, batch_slice_info, cache_key):
         if axis_pos is None or slices is None or cache_key_idx is None:
             continue
@@ -404,6 +404,11 @@ def _batch_consistency_check(npu_cmp_kv, kwargs):
                     slice_output = npu_np[start_idx : (start_idx + compare_len), :]
                 else:
                     if axis_idx == 1:
+                        if slices[0] is None:
+                            bidx = 0
+                        else:
+                            bidx = slices[0][slice_idx][0]
+                            slice_idx += 1
                         headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
                         compare_len = (stop - start - headSize % cmp_ratio) // cmp_ratio
                         cache_len = cmp_ratio - start_pos_list[0] % cmp_ratio
@@ -413,7 +418,7 @@ def _batch_consistency_check(npu_cmp_kv, kwargs):
                             else (start + headSize + cmp_ratio - 1) // cmp_ratio
                         )
                         slice_output = npu_np[
-                            0, start_idx : (start_idx + compare_len), :
+                            bidx, start_idx : (start_idx + compare_len), :
                         ]
                     else:
                         slice_output = npu_np[start:stop, 1:, :]
