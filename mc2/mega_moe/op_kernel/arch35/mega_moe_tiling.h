@@ -21,10 +21,6 @@
 
 using namespace AscendC;
 
-// Bound rolling batches so AIV1 dispatch prefetch cannot run arbitrarily far
-// ahead of the GMM2 consumer.
-constexpr uint32_t MEGA_MOE_MAX_EXPERTS_PER_BATCH = 14U;
-
 // MegaMoe adaptive UB buffer policy shared by host tiling and kernel address binding.
 // 实际 UB 预算由 host tiling 从平台获取，并通过 availableUbBytes 参与以下配置计算。
 
