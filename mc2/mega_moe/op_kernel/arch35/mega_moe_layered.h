@@ -1443,6 +1443,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                 }
                 accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
             }
+            hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, dstRankIdx, rankId_));
         }
     }
 }
@@ -1890,6 +1891,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DrainComb
             continue;
         }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
+        hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, dr, rankId_));
     }
 }
 
@@ -2150,6 +2152,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CrossRank
                         static_cast<int64_t>(sizeof(int32_t)));
         auto syncCheck = syncRank + rankIndex * 16;
         GmSignalWaitBarrier(syncCheck, count);
+        hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_));
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
