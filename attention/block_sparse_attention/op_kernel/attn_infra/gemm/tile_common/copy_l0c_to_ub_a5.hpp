@@ -63,12 +63,12 @@ struct CopyL0CToUBTla<
         auto dstOffset = dstTensor.layout()(dstTensor.coord());
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
-        AscendC::printf("tkd intriParams.nSize: %u\n", intriParams.nSize);
-        AscendC::printf("tkd intriParams.mSize: %u\n", intriParams.mSize);
-        AscendC::printf("tkd intriParams.srcStride: %u\n", intriParams.srcStride);
-        AscendC::printf("tkd intriParams.dstStride: %u\n", intriParams.dstStride);
-        AscendC::printf("tkd dstOffset: %u\n", dstOffset);
-        AscendC::printf("tkd srcOffset: %u\n", srcOffset);
+        // AscendC::printf("tkd intriParams.nSize: %u\n", intriParams.nSize);
+        // AscendC::printf("tkd intriParams.mSize: %u\n", intriParams.mSize);
+        // AscendC::printf("tkd intriParams.srcStride: %u\n", intriParams.srcStride);
+        // AscendC::printf("tkd intriParams.dstStride: %u\n", intriParams.dstStride);
+        // AscendC::printf("tkd dstOffset: %u\n", dstOffset);
+        // AscendC::printf("tkd srcOffset: %u\n", srcOffset);
 
         // Call AscendC Fixpipe
         AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
