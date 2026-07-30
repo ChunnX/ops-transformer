@@ -103,7 +103,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_re_ro
         }
         permute_tokens = at::empty(permute_tokens_size, permute_tokens_options);
 
-        permute_per_token_scales = per_token_scales.defined() ? at::empty(permute_per_token_scales_size, per_token_scales.options()) : at::empty(permute_per_token_scales_size, tokens.options().dtype(at::kFloat));
+        if (per_token_scales.defined()) {
+            permute_per_token_scales = at::empty(permute_per_token_scales_size, per_token_scales.options());
+        } else {
+            permute_per_token_scales = at::empty(permute_per_token_scales_size, tokens.options().dtype(at::kFloat));
+        }
 
         permute_token_idx = at::empty(permute_token_idx_size, tokens.options().dtype(at::kInt));
         expert_token_num = at::empty(expert_token_num_size, expert_token_num_per_rank.options());
@@ -117,8 +121,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_re_ro
         }
     }
 
-    TensorWrapper tokens_wrapper = {tokens, tokens_dtype.has_value() ? GetAclDataType(tokens_dtype.value()) : ConvertToAclDataType(tokens.scalar_type())};
-    TensorWrapper permute_tokens_wrapper = {permute_tokens, tokens_dtype.has_value() ? GetAclDataType(tokens_dtype.value()) : ConvertToAclDataType(permute_tokens.scalar_type())};
+    aclDataType tokens_acl_dtype = tokens_dtype.has_value() ? GetAclDataType(tokens_dtype.value())
+                                                             : ConvertToAclDataType(tokens.scalar_type());
+    TensorWrapper tokens_wrapper = {tokens, tokens_acl_dtype};
+    aclDataType permute_tokens_acl_dtype =
+        tokens_dtype.has_value() ? GetAclDataType(tokens_dtype.value())
+                                 : ConvertToAclDataType(permute_tokens.scalar_type());
+    TensorWrapper permute_tokens_wrapper = {permute_tokens, permute_tokens_acl_dtype};
 
     if (per_token_scales_dtype == at::kByte) {
         TensorWrapper per_token_scales_wrapper = {per_token_scales, aclDataType::ACL_FLOAT8_E8M0};
