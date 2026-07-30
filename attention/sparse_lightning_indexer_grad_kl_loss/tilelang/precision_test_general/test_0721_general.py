@@ -46,7 +46,13 @@ TILELANG_DIR = os.path.dirname(SCRIPT_DIR)
 if TILELANG_DIR not in sys.path:
     sys.path.insert(0, TILELANG_DIR)
 
-MODULE = import_module("0721")
+IMPL_MODULE = os.environ.get("SLIG_IMPL_MODULE", "0721")
+if IMPL_MODULE not in {"0721", "0721_baseline"}:
+    raise ValueError(
+        "SLIG_IMPL_MODULE 仅支持 0721 或 0721_baseline，"
+        f"当前值为 {IMPL_MODULE!r}"
+    )
+MODULE = import_module(IMPL_MODULE)
 OP = MODULE.sparse_lightning_indexer_grad_kl_loss
 
 NORM_REL_TOLERANCE = 4e-3
@@ -858,7 +864,7 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
     torch.npu.synchronize()
 
     try:
-        inputs = make_inputs(case, args.seed)
+        inputs = make_inputs(case, args.seed + index)
     except Exception as exc:
         print(f"{case_prefix} INPUT FAIL: {exc}")
         return "INPUT_FAIL"
