@@ -226,8 +226,8 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
             instrParams.src1RepStride = 0;
             for (uint32_t i = 0; i < curRowNum; i++) {
                 Mul(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                    input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], 
-                    tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], numRemainPerLine, 1, 
+                    input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
+                    tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], numRemainPerLine, 1,
                     instrParams);
             }
         }
