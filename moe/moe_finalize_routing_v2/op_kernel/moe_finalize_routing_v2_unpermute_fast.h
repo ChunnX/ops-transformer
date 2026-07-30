@@ -22,191 +22,407 @@ namespace MoeFinalizeRoutingV2 {
 
 using namespace AscendC;
 
+#if __CCE_AICORE__ == 200
+namespace MoeFinalizeRoutingV2UnpermuteFastCommon {
+
+constexpr int64_t BLOCK_BYTES = 32;
+
 template <typename T>
-class MoeFinalizeRoutingV2UnpermuteFast {
+__aicore__ inline void DataCopyPadCustom(
+    LocalTensor<T> inLocal, GlobalTensor<T> srcGm, DataCopyExtParams tokenCopyParams,
+    DataCopyPadExtParams<T> padParams)
+{
+    int64_t elem = tokenCopyParams.blockLen / sizeof(T);
+    int64_t numPerBlock = BLOCK_BYTES / sizeof(T);
+    int64_t alignElem = AlignUp(elem, numPerBlock);
+
+    if (likely(alignElem == elem)) {
+        DataCopyParams copyParams = {tokenCopyParams.blockCount, static_cast<uint16_t>(alignElem / numPerBlock), 0, 0};
+        DataCopy(inLocal, srcGm, copyParams);
+    } else {
+        DataCopyParams copyParams = {1, static_cast<uint16_t>(alignElem / numPerBlock), 0, 0};
+        for (uint32_t i = 0; i < tokenCopyParams.blockCount; i++) {
+            DataCopy(inLocal[i * alignElem], srcGm[i * elem], copyParams);
+        }
+    }
+}
+
+template <typename T>
+__aicore__ inline void DataCopyCustom(
+    GlobalTensor<T> dstGm, LocalTensor<T> inLocal, int64_t blockCount, int64_t blockLen)
+{
+    int64_t elem = blockLen / sizeof(T);
+    int64_t numPerBlock = BLOCK_BYTES / sizeof(T);
+    int64_t alignElem = AlignUp(elem, numPerBlock);
+
+    if (likely(alignElem == elem)) {
+        DataCopyParams copyParams = {
+            static_cast<uint16_t>(blockCount), static_cast<uint16_t>(alignElem / numPerBlock), 0, 0};
+        DataCopy(dstGm, inLocal, copyParams);
+    } else if (blockCount == 1) {
+        DataCopyParams copyParams = {
+            static_cast<uint16_t>(blockCount), static_cast<uint16_t>(alignElem / numPerBlock), 0, 0};
+        DataCopy(dstGm, inLocal, copyParams);
+    } else {
+        DataCopyParams copyParams = {1, static_cast<uint16_t>(alignElem / numPerBlock), 0, 0};
+        for (uint32_t i = 0; i < blockCount; i++) {
+            DataCopy(dstGm[i * elem], inLocal[i * alignElem], copyParams);
+            PipeBarrier<PIPE_MTE3>();
+        }
+    }
+}
+
+} // namespace MoeFinalizeRoutingV2UnpermuteFastCommon
+#endif
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+class MoeFinalizeRoutingV2UnpermuteFast
+{
 public:
-    __aicore__ inline MoeFinalizeRoutingV2UnpermuteFast(const MoeFinalizeRoutingV2TilingData &tilingData, TPipe &pipe)
-        : tilingData_(tilingData), pipe_(pipe)
+    __aicore__ inline MoeFinalizeRoutingV2UnpermuteFast()
     {}
 
-    __aicore__ inline void Init(GM_ADDR expandedRows, GM_ADDR rowIndices, GM_ADDR out);
+    __aicore__ inline void Init(
+        GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
+        const MoeFinalizeRoutingV2TilingData* __restrict tiling_data, TPipe* pipe);
     __aicore__ inline void Process();
 
-private:
-    __aicore__ inline void ProcessRows(int64_t outputOffset, int64_t rowCount);
-    __aicore__ inline void ProcessOneRow(int64_t localIndex, int64_t outputRow);
-    __aicore__ inline void ProcessRowSlice(int32_t inputRow, int64_t outputRow, int64_t sliceIndex,
-                                           int64_t sliceLength);
-    __aicore__ inline void CopyRowIn(int32_t inputRow, int64_t sliceIndex, int64_t sliceLength);
-    __aicore__ inline void CastRow(int64_t sliceLength);
-    __aicore__ inline void CopyRowOut(int64_t outputRow, int64_t sliceIndex, int64_t sliceLength);
+protected:
+    __aicore__ inline void CalMultiOutToken(const int64_t out_offset, const int64_t out_tokens_number);
+    __aicore__ inline void CalSingleOutToken(const int64_t start_token, const int64_t out_token_idx);
+    __aicore__ inline void CalPartOutToken(
+        const int64_t start_token, const int64_t h_index, const int64_t h_length, const int64_t out_token_index);
+    __aicore__ inline void CopyTokenIn(const T2 in_token_index, const int64_t h_index, const int64_t h_length);
+    __aicore__ inline void CalFirstToken(const float prob_value, const int64_t h_length);
+    __aicore__ inline void CalToken(const float prob_value, const int64_t h_length);
+    __aicore__ inline void CopyOut(const int64_t out_token_index, const int64_t h_index, const int64_t h_length);
 
-private:
-    static constexpr int64_t BLOCK_SIZE = 32;
-    static constexpr int64_t ALIGN_512 = 512;
+    TQue<QuePosition::VECIN, 1> tokens_inque, indices_inque, probs_inque;
+    TBuf<TPosition::VECCALC> temp_buffer0, temp_buffer1, temp_buffer2;
+    TQue<QuePosition::VECOUT, 1> outque;
+    GlobalTensor<T1> tokensGM, outGM;
+    GlobalTensor<T2> indicesGM;
+    GlobalTensor<T3> probsGM;
+    LocalTensor<T2> indicesLocal;
+    LocalTensor<float> token_tensor0, token_tensor1, probs_tensor;
+    DataCopyPadExtParams<T1> extParams1{false, 0, 0, 0};
+    DataCopyPadExtParams<T2> extParams2{false, 0, 0, 0};
+    DataCopyPadExtParams<T3> extParams3{false, 0, 0, 0};
+    DataCopyExtParams copyParams{1, 0, 0, 0, 0};
 
-    const MoeFinalizeRoutingV2TilingData &tilingData_;
-    TPipe &pipe_;
-    TQue<QuePosition::VECIN, 1> rowsQueue_;
-    TQue<QuePosition::VECIN, 1> indicesQueue_;
-    TQue<QuePosition::VECOUT, 1> outQueue_;
-    TBuf<TPosition::VECCALC> castBuffer0_;
-    TBuf<TPosition::VECCALC> castBuffer1_;
+    constexpr static uint32_t BLOCK_SIZE = 32;
+    constexpr static uint32_t ALIGN_512 = 512;
 
-    GlobalTensor<T> rowsGm_;
-    GlobalTensor<int32_t> indicesGm_;
-    GlobalTensor<T> outGm_;
-    LocalTensor<int32_t> indicesLocal_;
-    LocalTensor<float> rowFloat_;
-
-    DataCopyPadExtParams<T> rowPadParams_{false, 0, 0, 0};
-    DataCopyPadExtParams<int32_t> indexPadParams_{false, 0, 0, 0};
-    DataCopyExtParams copyParams_{1, 0, 0, 0, 0};
-
-    int64_t hiddenSize_{0};
-    int64_t hiddenSliceLength_{0};
-    int64_t hiddenSliceCount_{0};
-    int64_t hiddenSliceRemain_{0};
-    int64_t rowsPerCore_{0};
-    int64_t remainderCoreCount_{0};
-    int64_t rowsPerTile_{0};
-    int64_t tileCount_{0};
-    int64_t tileRemain_{0};
+    int64_t hidden_size;
+    int64_t top_k;
+    int64_t num_out_tokens;
+    int64_t hidden_splited_length;
+    int64_t hidden_splited_num;
+    int64_t hidden_splited_remain;
+    int64_t tokens_core_length;
+    int64_t tokens_core_remain;
+    int64_t tokens_splited_length;
+    int64_t tokens_splited_num;
+    int64_t tokens_splited_remain;
 };
 
-template <typename T>
-__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T>::Init(GM_ADDR expandedRows, GM_ADDR rowIndices, GM_ADDR out)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::Init(
+    GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
+    const MoeFinalizeRoutingV2TilingData* __restrict tiling_data, TPipe* pipe)
 {
-    hiddenSize_ = tilingData_.H;
-    hiddenSliceLength_ = tilingData_.normalH;
-    hiddenSliceCount_ = tilingData_.hSliceNum;
-    hiddenSliceRemain_ = tilingData_.unnormalH;
-    rowsPerCore_ = tilingData_.normalCoreHandleNum;
-    remainderCoreCount_ = tilingData_.tailCoreHandleNum;
-    rowsPerTile_ = tilingData_.normalCoreHandleNumPerLoop;
-    tileCount_ = tilingData_.normalCoreLoopNum;
-    tileRemain_ = tilingData_.normalCoreHandleNumTailLoop;
+    ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
+    // Map MoeFinalizeRoutingV2 key 20050 fields to MoeTokenUnpermute quantities.
+    this->hidden_size = tiling_data->H;
+    this->top_k = tiling_data->K;
+    this->num_out_tokens = tiling_data->totalRowNum;
+    // hidden_tiling
+    this->hidden_splited_length = tiling_data->normalH;
+    this->hidden_splited_num = tiling_data->hSliceNum;
+    this->hidden_splited_remain = tiling_data->unnormalH;
+    // token_tiling
+    this->tokens_core_length = tiling_data->normalCoreHandleNum;
+    this->tokens_core_remain = tiling_data->tailCoreHandleNum;
+    this->tokens_splited_length = tiling_data->normalCoreHandleNumPerLoop;
+    this->tokens_splited_num = tiling_data->normalCoreLoopNum;
+    this->tokens_splited_remain = tiling_data->normalCoreHandleNumTailLoop;
 
-    if (remainderCoreCount_ > 0 && GetBlockIdx() < remainderCoreCount_) {
-        ++rowsPerCore_;
-        ++tileRemain_;
+    if (this->tokens_core_remain > 0 && GetBlockIdx() < this->tokens_core_remain) {
+        this->tokens_core_length += 1;
+        this->tokens_splited_remain += 1;
     }
 
-    int64_t coreRowOffset;
-    if (remainderCoreCount_ > 0) {
-        if (GetBlockIdx() < remainderCoreCount_) {
-            coreRowOffset = rowsPerCore_ * GetBlockIdx();
+    int64_t hidden_splited_length_align512 = (this->hidden_splited_length + ALIGN_512 - 1) & ~(ALIGN_512 - 1);
+
+    int64_t block_length = this->tokens_core_length * this->top_k;
+    int64_t block_splited_length = this->tokens_splited_length * this->top_k;
+
+    int64_t block_offset;
+    if (this->tokens_core_remain > 0) {
+        if (GetBlockIdx() < this->tokens_core_remain) {
+            block_offset = block_length * GetBlockIdx();
         } else {
-            coreRowOffset =
-                (rowsPerCore_ + 1) * remainderCoreCount_ + rowsPerCore_ * (GetBlockIdx() - remainderCoreCount_);
+            block_offset = (block_length + this->top_k) * this->tokens_core_remain +
+                           block_length * (GetBlockIdx() - this->tokens_core_remain);
         }
     } else {
-        coreRowOffset = rowsPerCore_ * GetBlockIdx();
+        block_offset = block_length * GetBlockIdx();
     }
 
-    rowsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(expandedRows), tilingData_.totalRowNum * hiddenSize_);
-    indicesGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(rowIndices) + coreRowOffset, rowsPerCore_);
-    outGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(out) + coreRowOffset * hiddenSize_, rowsPerCore_ * hiddenSize_);
+    this->tokensGM.SetGlobalBuffer((__gm__ T1*)permuted_tokens);
+    this->indicesGM.SetGlobalBuffer((__gm__ T2*)sorted_indices + block_offset, block_length);
 
-    int64_t alignedHiddenSlice = (hiddenSliceLength_ + ALIGN_512 - 1) & ~(ALIGN_512 - 1);
-    pipe_.InitBuffer(rowsQueue_, tilingData_.normalK, alignedHiddenSlice * sizeof(T));
-    pipe_.InitBuffer(indicesQueue_, 1, rowsPerTile_ * sizeof(int32_t));
-    pipe_.InitBuffer(outQueue_, 1, alignedHiddenSlice * sizeof(T));
-    pipe_.InitBuffer(castBuffer0_, alignedHiddenSlice * sizeof(float) + 256);
-    pipe_.InitBuffer(castBuffer1_, alignedHiddenSlice * sizeof(float));
-    rowFloat_ = castBuffer0_.Get<float>();
-}
-
-template <typename T>
-__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T>::Process()
-{
-    for (int64_t tile = 0; tile < tileCount_; ++tile) {
-        ProcessRows(tile * rowsPerTile_, rowsPerTile_);
-    }
-    if (tileRemain_ > 0) {
-        ProcessRows(tileCount_ * rowsPerTile_, tileRemain_);
-    }
-}
-
-template <typename T>
-__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T>::ProcessRows(int64_t outputOffset, int64_t rowCount)
-{
-    indicesLocal_ = indicesQueue_.AllocTensor<int32_t>();
-    copyParams_.blockLen = rowCount * sizeof(int32_t);
-    DataCopyPad(indicesLocal_, indicesGm_[outputOffset], copyParams_, indexPadParams_);
-    indicesQueue_.EnQue(indicesLocal_);
-    indicesLocal_ = indicesQueue_.DeQue<int32_t>();
-
-    for (int64_t row = 0; row < rowCount; ++row) {
-        ProcessOneRow(row, outputOffset + row);
-    }
-
-    indicesQueue_.FreeTensor(indicesLocal_);
-}
-
-template <typename T>
-__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T>::ProcessOneRow(int64_t localIndex, int64_t outputRow)
-{
-    int32_t inputRow = indicesLocal_.GetValue(localIndex);
-    for (int64_t slice = 0; slice < hiddenSliceCount_; ++slice) {
-        ProcessRowSlice(inputRow, outputRow, slice, hiddenSliceLength_);
-    }
-    if (hiddenSliceRemain_ > 0) {
-        ProcessRowSlice(inputRow, outputRow, hiddenSliceCount_, hiddenSliceRemain_);
-    }
-}
-
-template <typename T>
-__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T>::ProcessRowSlice(int32_t inputRow, int64_t outputRow,
-                                                                             int64_t sliceIndex, int64_t sliceLength)
-{
-    CopyRowIn(inputRow, sliceIndex, sliceLength);
-    PipeBarrier<PIPE_V>();
-    CastRow(sliceLength);
-    CopyRowOut(outputRow, sliceIndex, sliceLength);
-}
-
-template <typename T>
-__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T>::CopyRowIn(int32_t inputRow, int64_t sliceIndex,
-                                                                       int64_t sliceLength)
-{
-    LocalTensor<T> rowLocal = rowsQueue_.AllocTensor<T>();
-    int64_t inputOffset = inputRow * hiddenSize_ + sliceIndex * hiddenSliceLength_;
-    if (likely((sliceLength * sizeof(T)) % BLOCK_SIZE == 0)) {
-        DataCopy(rowLocal, rowsGm_[inputOffset], sliceLength);
+    int64_t out_block_offset;
+    if (this->tokens_core_remain > 0) {
+        if (GetBlockIdx() < this->tokens_core_remain) {
+            out_block_offset = this->tokens_core_length * GetBlockIdx() * hidden_size;
+        } else {
+            out_block_offset = (this->tokens_core_length + 1) * this->tokens_core_remain +
+                               this->tokens_core_length * (GetBlockIdx() - this->tokens_core_remain);
+            out_block_offset *= this->hidden_size;
+        }
     } else {
-        copyParams_.blockLen = sliceLength * sizeof(T);
-        DataCopyPad(rowLocal, rowsGm_[inputOffset], copyParams_, rowPadParams_);
+        out_block_offset = this->tokens_core_length * GetBlockIdx() * hidden_size;
     }
-    rowsQueue_.EnQue(rowLocal);
+
+    this->outGM.SetGlobalBuffer(
+        (__gm__ T1*)unpermuted_tokens + out_block_offset, this->tokens_core_length * this->hidden_size);
+
+    pipe->InitBuffer(tokens_inque, tiling_data->normalK, hidden_splited_length_align512 * sizeof(T1));
+    pipe->InitBuffer(indices_inque, 1, block_splited_length * (sizeof(T2)));
+    pipe->InitBuffer(outque, 1, hidden_splited_length_align512 * sizeof(T1));
+
+    if constexpr (!IsSameType<T1, float>::value) {
+        pipe->InitBuffer(temp_buffer0, hidden_splited_length_align512 * sizeof(float) + 256);
+        pipe->InitBuffer(temp_buffer1, hidden_splited_length_align512 * sizeof(float));
+        this->token_tensor0 = this->temp_buffer0.template Get<float>();
+        this->token_tensor1 = this->temp_buffer1.template Get<float>();
+    }
+
+    if constexpr (PROBS) {
+        this->probsGM.SetGlobalBuffer((__gm__ T3*)probs + block_offset, block_length);
+        pipe->InitBuffer(probs_inque, 1, block_splited_length * (sizeof(T3)));
+        if constexpr (!IsSameType<T3, float>::value) {
+            pipe->InitBuffer(temp_buffer2, block_splited_length * sizeof(float));
+            this->probs_tensor = this->temp_buffer2.template Get<float>();
+        }
+    }
+};
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::Process()
+{
+    for (int64_t i = 0; i < this->tokens_splited_num; ++i) {
+        CalMultiOutToken(i * this->tokens_splited_length, this->tokens_splited_length);
+    }
+    if (this->tokens_splited_remain > 0) {
+        CalMultiOutToken(this->tokens_splited_num * this->tokens_splited_length, this->tokens_splited_remain);
+    }
 }
 
-template <typename T>
-__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T>::CastRow(int64_t sliceLength)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::CalMultiOutToken(
+    const int64_t out_offset, const int64_t out_tokens_number)
 {
-    LocalTensor<T> rowLocal = rowsQueue_.DeQue<T>();
-    Cast(rowFloat_, rowLocal, RoundMode::CAST_NONE, sliceLength);
-    rowsQueue_.FreeTensor(rowLocal);
+    this->indicesLocal = this->indices_inque.template AllocTensor<T2>();
+    int64_t in_offset = out_offset * this->top_k;
+    this->copyParams.blockLen = out_tokens_number * this->top_k * sizeof(T2);
+#if __CCE_AICORE__ == 200
+    MoeFinalizeRoutingV2UnpermuteFastCommon::DataCopyPadCustom(
+        this->indicesLocal, this->indicesGM[in_offset], this->copyParams, this->extParams2);
+#else
+    DataCopyPad(this->indicesLocal, this->indicesGM[in_offset], this->copyParams, this->extParams2);
+#endif
+    this->indices_inque.template EnQue(this->indicesLocal);
+
+    if constexpr (PROBS) {
+        LocalTensor<T3> temp_probs_tensor = this->probs_inque.template AllocTensor<T3>();
+        this->copyParams.blockLen = out_tokens_number * this->top_k * sizeof(T3);
+#if __CCE_AICORE__ == 200
+        MoeFinalizeRoutingV2UnpermuteFastCommon::DataCopyPadCustom(
+            temp_probs_tensor, this->probsGM[in_offset], this->copyParams, this->extParams3);
+#else
+        DataCopyPad(temp_probs_tensor, this->probsGM[in_offset], this->copyParams, this->extParams3);
+#endif
+        this->probs_inque.template EnQue(temp_probs_tensor);
+        temp_probs_tensor = this->probs_inque.template DeQue<T3>();
+        if constexpr (!IsSameType<T3, float>::value) {
+            Cast(this->probs_tensor, temp_probs_tensor, RoundMode::CAST_NONE, out_tokens_number * this->top_k);
+            this->probs_inque.FreeTensor(temp_probs_tensor);
+            PipeBarrier<PIPE_V>();
+        } else {
+            this->probs_tensor = temp_probs_tensor;
+        }
+    }
+    this->indicesLocal = this->indices_inque.template DeQue<T2>();
+
+#pragma bisheng auto_sync parallel
+    for (int64_t out_token_idx = 0; out_token_idx < out_tokens_number; ++out_token_idx) {
+        CalSingleOutToken(out_token_idx * this->top_k, out_offset + out_token_idx);
+    }
+
+    this->indices_inque.FreeTensor(this->indicesLocal);
+    if constexpr (PROBS && IsSameType<T3, float>::value) {
+        this->probs_inque.FreeTensor(this->probs_tensor);
+    }
 }
 
-template <typename T>
-__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T>::CopyRowOut(int64_t outputRow, int64_t sliceIndex,
-                                                                        int64_t sliceLength)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::CalSingleOutToken(
+    const int64_t start_token, const int64_t out_token_idx)
 {
-    LocalTensor<T> outLocal = outQueue_.AllocTensor<T>();
-    PipeBarrier<PIPE_V>();
-    Cast(outLocal, rowFloat_, RoundMode::CAST_RINT, sliceLength);
-    outQueue_.EnQue(outLocal);
-    outLocal = outQueue_.DeQue<T>();
+    for (int64_t h_index = 0; h_index < this->hidden_splited_num; ++h_index) {
+        CalPartOutToken(start_token, h_index, this->hidden_splited_length, out_token_idx);
+    }
+    if (this->hidden_splited_remain > 0) {
+        CalPartOutToken(start_token, this->hidden_splited_num, this->hidden_splited_remain, out_token_idx);
+    }
+}
 
-    int64_t outputOffset = outputRow * hiddenSize_ + sliceIndex * hiddenSliceLength_;
-    if (likely((sliceLength * sizeof(T)) % BLOCK_SIZE == 0)) {
-        DataCopy(outGm_[outputOffset], outLocal, sliceLength);
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::CalPartOutToken(
+    const int64_t start_token, const int64_t h_index, const int64_t h_length, const int64_t out_token_index)
+{
+    if constexpr (IsSameType<T1, float>::value) {
+        this->token_tensor0 = this->outque.template AllocTensor<T1>();
+    }
+    int64_t end_token = start_token + this->top_k;
+    bool needCopyIn = false;
+    float prob_value = 0;
+    T2 acl_token_idx = this->indicesLocal.GetValue(start_token);
+    if constexpr (PROBS) {
+        prob_value = this->probs_tensor.GetValue(start_token);
+        needCopyIn = acl_token_idx < this->num_out_tokens && prob_value != 0;
     } else {
-        copyParams_.blockLen = sliceLength * sizeof(T);
-        DataCopyPad(outGm_[outputOffset], outLocal, copyParams_);
+        needCopyIn = acl_token_idx < this->num_out_tokens;
     }
-    outQueue_.FreeTensor(outLocal);
+    if (needCopyIn) {
+        CopyTokenIn(acl_token_idx, h_index, h_length);
+        PipeBarrier<PIPE_V>();
+        CalFirstToken(prob_value, h_length);
+    } else {
+        PipeBarrier<PIPE_V>();
+        Duplicate(this->token_tensor0, static_cast<float>(0), h_length);
+    }
+    for (int64_t token_index = start_token + 1; token_index < end_token; ++token_index) {
+        acl_token_idx = this->indicesLocal.GetValue(token_index);
+        if constexpr (PROBS) {
+            prob_value = this->probs_tensor.GetValue(token_index);
+            needCopyIn = acl_token_idx < this->num_out_tokens && prob_value != 0;
+        } else {
+            needCopyIn = acl_token_idx < this->num_out_tokens;
+        }
+        if (needCopyIn) {
+            CopyTokenIn(acl_token_idx, h_index, h_length);
+            PipeBarrier<PIPE_V>();
+            CalToken(prob_value, h_length);
+        }
+    }
+    CopyOut(out_token_index, h_index, h_length);
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::CopyTokenIn(
+    const T2 in_token_index, const int64_t h_index, const int64_t h_length)
+{
+    LocalTensor<T1> tokensLocal = this->tokens_inque.template AllocTensor<T1>();
+    int64_t offset = in_token_index * this->hidden_size + h_index * this->hidden_splited_length;
+
+    if (likely((h_length * sizeof(T1)) % BLOCK_SIZE == 0)) {
+        DataCopy(tokensLocal, this->tokensGM[offset], h_length);
+    } else {
+        this->copyParams.blockLen = h_length * sizeof(T1);
+#if __CCE_AICORE__ == 200
+        MoeFinalizeRoutingV2UnpermuteFastCommon::DataCopyPadCustom(
+            tokensLocal, this->tokensGM[offset], this->copyParams, this->extParams1);
+#else
+        DataCopyPad(tokensLocal, this->tokensGM[offset], this->copyParams, this->extParams1);
+#endif
+    }
+
+    this->tokens_inque.template EnQue(tokensLocal);
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::CalFirstToken(
+    const float prob_value, const int64_t h_length)
+{
+    LocalTensor<T1> tokensLocal = this->tokens_inque.template DeQue<T1>();
+
+    if constexpr (!IsSameType<T1, float>::value) {
+        Cast(this->token_tensor0, tokensLocal, RoundMode::CAST_NONE, h_length);
+    } else {
+        uint64_t byteAlign32 = (h_length * sizeof(float) + BLOCK_SIZE - 1) & ~(BLOCK_SIZE - 1);
+        DataCopy(this->token_tensor0, tokensLocal, byteAlign32 / sizeof(float));
+    }
+
+    this->tokens_inque.FreeTensor(tokensLocal);
+
+    if constexpr (PROBS) {
+        PipeBarrier<PIPE_V>();
+        Muls(this->token_tensor0, this->token_tensor0, prob_value, h_length);
+    }
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::CalToken(
+    const float prob_value, const int64_t h_length)
+{
+    LocalTensor<T1> tokensLocal = this->tokens_inque.template DeQue<T1>();
+
+    if constexpr (!IsSameType<T1, float>::value) {
+        Cast(this->token_tensor1, tokensLocal, RoundMode::CAST_NONE, h_length);
+        this->tokens_inque.FreeTensor(tokensLocal);
+        if constexpr (PROBS) {
+            PipeBarrier<PIPE_V>();
+            Muls(this->token_tensor1, this->token_tensor1, prob_value, h_length);
+        }
+        PipeBarrier<PIPE_V>();
+        Add(this->token_tensor0, this->token_tensor0, this->token_tensor1, h_length);
+    } else {
+        if constexpr (PROBS) {
+            Muls(tokensLocal, tokensLocal, prob_value, h_length);
+            PipeBarrier<PIPE_V>();
+        }
+        Add(this->token_tensor0, this->token_tensor0, tokensLocal, h_length);
+        this->tokens_inque.FreeTensor(tokensLocal);
+    }
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::CopyOut(
+    const int64_t out_token_index, const int64_t h_index, const int64_t h_length)
+{
+    LocalTensor<T1> temp_out_tensors;
+    if constexpr (!IsSameType<T1, float>::value) {
+        temp_out_tensors = this->outque.template AllocTensor<T1>();
+        PipeBarrier<PIPE_V>();
+#if __CCE_AICORE__ == 200
+        Cast(temp_out_tensors, this->token_tensor0, RoundMode::CAST_NONE, h_length);
+#else
+        Cast(temp_out_tensors, this->token_tensor0, RoundMode::CAST_RINT, h_length);
+#endif
+    } else {
+        temp_out_tensors = this->token_tensor0;
+    }
+
+    this->outque.template EnQue<T1>(temp_out_tensors);
+    temp_out_tensors = this->outque.template DeQue<T1>();
+
+    int64_t offset = out_token_index * this->hidden_size + h_index * this->hidden_splited_length;
+    if (likely((h_length * sizeof(T1)) % BLOCK_SIZE == 0)) {
+        DataCopy(this->outGM[offset], temp_out_tensors, h_length);
+    } else {
+        this->copyParams.blockLen = h_length * sizeof(T1);
+#if __CCE_AICORE__ == 200
+        MoeFinalizeRoutingV2UnpermuteFastCommon::DataCopyCustom(
+            this->outGM[offset], temp_out_tensors, this->copyParams.blockCount, this->copyParams.blockLen);
+#else
+        DataCopyPad(this->outGM[offset], temp_out_tensors, this->copyParams);
+#endif
+    }
+
+    this->outque.FreeTensor(temp_out_tensors);
 }
 
 } // namespace MoeFinalizeRoutingV2

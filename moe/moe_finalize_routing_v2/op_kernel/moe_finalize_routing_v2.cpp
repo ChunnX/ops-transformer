@@ -201,8 +201,8 @@ extern "C" __global__ __aicore__ void moe_finalize_routing_v2(
 
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113)) && (ORIG_DTYPE_EXPANDED_X == DT_BF16)
     if (TILING_KEY_IS(TILING_KEY_DTYPE_BF16_UNPERMUTE_FAST_V2)) {
-        MoeFinalizeRoutingV2::MoeFinalizeRoutingV2UnpermuteFast<bfloat16_t> op(tilingData, pipe);
-        op.Init(expandedPermutedRows, expandedSrcToDstRow, out);
+        MoeFinalizeRoutingV2::MoeFinalizeRoutingV2UnpermuteFast<bfloat16_t, int32_t, bfloat16_t, false> op;
+        op.Init(expandedPermutedRows, expandedSrcToDstRow, nullptr, out, &tilingData, &pipe);
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_DTYPE_BF16_BIG_K_V2)) {
         MoeFinalizeRoutingV2::MoeFinalizeRoutingV2Bf16CutK<bfloat16_t, bfloat16_t, true> op(tilingData, pipe);
