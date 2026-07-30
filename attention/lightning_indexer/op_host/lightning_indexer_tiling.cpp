@@ -260,10 +260,9 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
     opParamInfo_.returnValue = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
     
     auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
-    if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
-        for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
-            keyStridesVec_.push_back(keyStrides->GetStride(i));
-        }
+    if (keyStrides != nullptr && keyStrides->GetDimNum() > 1) {
+        keyStride0_ = keyStrides->GetStride(0);
+        keyStride1_ = keyStrides->GetStride(1);
     }
     
     if (opParamInfo_.layOut != nullptr) {
@@ -532,24 +531,20 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
     // PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND: 检查shape总size
     // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
     // Non-PA_BBND: check total shape size
-    if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
+    if (keyStride0_ != 0 && opParamInfo_.key.shape != nullptr) {
         auto &shape = opParamInfo_.key.shape->GetStorageShape();
+        uint64_t totalElements = 0;
+        uint64_t shapeSize = 0;
 
         if (kLayout_ == DataLayout::BnBsND) {
-            std::vector<uint32_t> expectedStrides;
-            expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3),
-                               shape.GetDim(2) * shape.GetDim(3), shape.GetDim(3), 1};
-            for (size_t i = 1; i < expectedStrides.size(); ++i) {
-                if (i < keyStridesVec_.size() && keyStridesVec_[i] != expectedStrides[i]) {
-                    keyNonContiguous = true;
-                    break;
-                }
-            }
+            totalElements = keyStride1_ * static_cast<uint64_t>(shape.GetDim(1));
+            shapeSize = context_->GetOptionalInputTensor(KEY_INDEX)->GetShapeSize() / static_cast<uint64_t>(shape.GetDim(0));
         } else {
-            uint64_t totalElements = keyStridesVec_[0] * static_cast<uint64_t>(shape.GetDim(0));
-            uint64_t shapeSize = context_->GetOptionalInputTensor(KEY_INDEX)->GetShapeSize();
-            keyNonContiguous = (shapeSize != totalElements);
+            totalElements = keyStride0_ * static_cast<uint64_t>(shape.GetDim(0));
+            shapeSize = context_->GetOptionalInputTensor(KEY_INDEX)->GetShapeSize();
         }
+
+        keyNonContiguous = (shapeSize != totalElements);
     }
 
     OP_CHECK_IF(keyNonContiguous,
@@ -1019,8 +1014,8 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
     if (npuArch_ != NpuArch::DAV_3510) {
         liInfo.keyStride0 = 0;  // 910无需使用stride
     } else {
-        if (!keyStridesVec_.empty()) {
-            liInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
+        if (keyStride0_ != 0) {
+            liInfo.keyStride0 = keyStride0_;
         } else if (layOutKeyStr == "PA_BSND") {
             liInfo.keyStride0 = blockSize_ * n2Size_ * headDim_;
         } else {

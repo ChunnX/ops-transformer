@@ -237,7 +237,8 @@ public:
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
     ge::DataType valuesOutType_ = ge::DT_FLOAT16;
-    std::vector<uint32_t> keyStridesVec_;
+    uint32_t keyStride0_ = 0;
+    uint32_t keyStride1_ = 0;
 };
 
 // ---------------算子Tiling类---------------
