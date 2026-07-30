@@ -15,7 +15,7 @@
 #include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-class MlaPreprocessV2Proto : public testing::Test {
+class MlaPreprocessV2Proto : public testing::TestWithParam<bool> {
 protected:
     static void SetUpTestCase()
     {
@@ -28,9 +28,9 @@ protected:
     }
 };
 
-
-TEST_F(MlaPreprocessV2Proto, mla_preprocess_v2_infershape_1)
+TEST_P(MlaPreprocessV2Proto, mla_preprocess_v2_infershape_1)
 {
+    const bool enableRope = GetParam();
     int64_t tokenNum = 8;
     int64_t hiddenNum = 7168;
     int64_t headNum = 32;
@@ -106,7 +106,17 @@ TEST_F(MlaPreprocessV2Proto, mla_preprocess_v2_infershape_1)
             {"qDownOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"wdkvSplitCount", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         });
+    if (!enableRope) {
+        infershapeContextPara.inputTensorDesc_.erase(infershapeContextPara.inputTensorDesc_.begin() + 16,
+                                                     infershapeContextPara.inputTensorDesc_.begin() + 18);
+        infershapeContextPara.inputInstanceNum_.assign(24, 1);
+        infershapeContextPara.inputInstanceNum_[16] = 0;
+        infershapeContextPara.inputInstanceNum_[17] = 0;
+        infershapeContextPara.outputInstanceNum_.assign(5, 1);
+    }
     std::vector<std::vector<int64_t>> expectOutputShape = {
         {tokenNum, 1536, 512}, {blockNum, blockSize, 1, 576}, {tokenNum, headNum, 64}, {blockNum, blockSize, 1, 64}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
+
+INSTANTIATE_TEST_SUITE_P(RopeModes, MlaPreprocessV2Proto, testing::Bool());

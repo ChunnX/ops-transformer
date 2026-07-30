@@ -17,7 +17,7 @@
 using namespace std;
 using namespace ge;
 
-class MlaPreprocessTilingV2 : public testing::Test {
+class MlaPreprocessTilingV2 : public testing::TestWithParam<int> {
 protected:
     static void SetUpTestCase()
     {
@@ -29,9 +29,11 @@ protected:
     }
 };
 
-
-TEST_F(MlaPreprocessTilingV2, mla_preprocess_v2_test_tiling_case0)
+TEST_P(MlaPreprocessTilingV2, mla_preprocess_v2_test_tiling_case0)
 {
+    constexpr int ROPE_DISABLED = 0;
+    constexpr int ONLY_COS_PROVIDED = 2;
+    const int ropeMode = GetParam();
     struct MlaPreProcessCompileInfo {
     } compileInfo; // compileInfo对应算子op_host/op_tiling/${OP_NAME}_tiling.cpp中的
                    // struct ${OP_NAME}CompileInfo
@@ -116,6 +118,23 @@ TEST_F(MlaPreprocessTilingV2, mla_preprocess_v2_test_tiling_case0)
         },
         &compileInfo);
 
+    if (ropeMode == ROPE_DISABLED) {
+        tilingContextPara.inputTensorDesc_.erase(tilingContextPara.inputTensorDesc_.begin() + 16,
+                                                 tilingContextPara.inputTensorDesc_.begin() + 18);
+        tilingContextPara.inputInstanceNum_.assign(24, 1);
+        tilingContextPara.inputInstanceNum_[16] = 0;
+        tilingContextPara.inputInstanceNum_[17] = 0;
+        tilingContextPara.outputInstanceNum_.assign(5, 1);
+    } else if (ropeMode == ONLY_COS_PROVIDED) {
+        tilingContextPara.inputTensorDesc_.erase(tilingContextPara.inputTensorDesc_.begin() + 17);
+        tilingContextPara.inputInstanceNum_.assign(24, 1);
+        tilingContextPara.inputInstanceNum_[17] = 0;
+        tilingContextPara.outputInstanceNum_.assign(5, 1);
+    }
+
     uint64_t expectTilingKey = 56UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    const auto expectStatus = ropeMode == ONLY_COS_PROVIDED ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS;
+    ExecuteTestCase(tilingContextPara, expectStatus, expectTilingKey);
 }
+
+INSTANTIATE_TEST_SUITE_P(RopeModes, MlaPreprocessTilingV2, testing::Values(0, 1, 2));
