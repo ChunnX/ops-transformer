@@ -29,6 +29,7 @@ using namespace ge;
 
 namespace ops {
 
+const constexpr int64_t PHI_INDEX = 1;
 const constexpr int64_t GRAD_H_IN_INDEX = 3;
 const constexpr int64_t GRAD_H_POST_INDEX = 4;
 const constexpr int64_t GRAD_H_RES_INDEX = 5;
@@ -110,21 +111,19 @@ ge::graphStatus InferTNDFormat(const gert::Shape *gradHInShape, const gert::Shap
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferOutputShapes(gert::Shape *gradPhiShape, gert::Shape *gradAlphaShape,
-                                  gert::Shape *gradBiasShape, gert::Shape *gradGammaShape, uint64_t numsResidual,
-                                  uint64_t dimen)
+ge::graphStatus InferOutputShapes(gert::Shape *gradPhiShape, gert::Shape *gradAlphaShape, gert::Shape *gradBiasShape,
+                                  gert::Shape *gradGammaShape, uint64_t numsResidual, uint64_t dimen,
+                                  uint64_t fusionSize)
 {
-    uint64_t n2Plus2n = (2 * numsResidual) + (numsResidual * numsResidual);
-
     gradPhiShape->SetDimNum(2);
-    gradPhiShape->SetDim(0, n2Plus2n);
+    gradPhiShape->SetDim(0, fusionSize);
     gradPhiShape->SetDim(1, numsResidual * dimen);
 
     gradAlphaShape->SetDimNum(1);
     gradAlphaShape->SetDim(0, GRAD_ALPHA_DIM_SIZE);
 
     gradBiasShape->SetDimNum(1);
-    gradBiasShape->SetDim(0, n2Plus2n);
+    gradBiasShape->SetDim(0, fusionSize);
 
     if (gradGammaShape != nullptr) {
         gradGammaShape->SetDimNum(2);
@@ -175,8 +174,14 @@ static ge::graphStatus InferShape4mHCPreGrad(InferShapeContext *context)
         return ret;
     }
 
-    ret = InferOutputShapes(gradPhiShape, gradAlphaShape, gradBiasShape, gradGammaShape,
-                            numsResidual, dimen);
+    // Derive fusionSize from phi input shape (dim 0), which is platform-dependent:
+    // A2 (ascend910b): N! + 2N, A3/A5 (ascend950): N^2 + 2N
+    auto phiShape = context->GetInputShape(PHI_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, phiShape);
+    uint64_t fusionSize = phiShape->GetDim(INDEX_0);
+
+    ret =
+        InferOutputShapes(gradPhiShape, gradAlphaShape, gradBiasShape, gradGammaShape, numsResidual, dimen, fusionSize);
     if (ret != GRAPH_SUCCESS) {
         return ret;
     }

@@ -17,15 +17,9 @@ using namespace std;
 
 class MhcPreBackwardTiling : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MhcPreBackwardTiling SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MhcPreBackwardTiling SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MhcPreBackwardTiling TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MhcPreBackwardTiling TearDown" << std::endl; }
 };
 
 template <typename T>
