@@ -45,6 +45,7 @@ struct MoeEpDispatchInfo {
     uint32_t numAivStage1;
     uint32_t numAivStage2;
     uint32_t aivNum;
+    uint32_t dispatchNotifyCount;
     uint64_t hostPinnedCounterAddr;
     uint64_t cntWinStateOffset;
     uint64_t slotWinStateOffset;
