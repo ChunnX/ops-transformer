@@ -52,11 +52,11 @@ enum class GmmExpertMode : uint8_t {
 };
 
 // 预留：XType OutputType TopkWeightsType Weight1Type
-#define TemplateMegaMoeWaveTypeClass                                                                                       \
-    typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode,            \
+#define TemplateMegaMoeWaveTypeClass \
+    typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
         int32_t CombineQuantMode, bool TopkWeightsPrefetch, bool IsGmm1Interleaved
-#define TemplateMegaMoeWaveTypeFunc                                                                                        \
-    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch,                 \
+#define TemplateMegaMoeWaveTypeFunc \
+    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch, \
         IsGmm1Interleaved
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -142,7 +142,7 @@ private:
     }
     __aicore__ inline void DrainCombineRowRing(uint32_t issuedRowCount);
     __aicore__ inline void PreloadCombineMetaInfo(uint64_t metaInfoGmTokenOffset, uint32_t tokenCount,
-                                                 uint32_t metaInfoUbTokenOffset);
+                                                  uint32_t metaInfoUbTokenOffset);
     template <bool IsBufferReuse>
     __aicore__ inline void ProcessCombineToken(const CombineBufferConfig &bufferConfig,
                                                GlobalTensor<bfloat16_t> &gmm2OutGm, uint64_t gmRemoteBaseOffset,
@@ -152,11 +152,11 @@ private:
                                             uint32_t metaInfoUbTokenOffset,
                                             const CombineBufferConfig &bufferConfig, uint32_t &rowSequence);
     __aicore__ inline void ProcessGmm1Wave(uint32_t batchBegin, uint32_t batchEnd,
-                                          ExpertLoopState &gmm1State, GMMAddrInfo &gmm1AddrInfo,
-                                          int32_t &vecSetSyncCom);
+                                           ExpertLoopState &gmm1State, GMMAddrInfo &gmm1AddrInfo,
+                                           int32_t &vecSetSyncCom);
     __aicore__ inline void ProcessGmm2Wave(uint32_t batchBegin, uint32_t batchEnd,
-                                          ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
-                                          int32_t &vecSetSyncCom);
+                                           ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
+                                           int32_t &vecSetSyncCom);
     __aicore__ inline void ProcessCombineExperts(uint32_t batchBegin, uint32_t batchEnd,
                                                  ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
                                                  const CombineBufferConfig &bufferConfig);
@@ -272,7 +272,7 @@ private:
      *   [187.5, 200 KiB)  空闲；
      *   [200, 248 KiB)    Combine 共用的 meta-info，共 1536 token * 8 int32；
      *   [248, 256 KiB)    硬件保留，不使用。
-    */
+     */
     static constexpr uint32_t COMBINE_NO_QUANT_ROW_BUFFER_NUM = 6U;
     static constexpr uint32_t COMBINE_QUANT_ROW_BUFFER_NUM = 2U;
     static constexpr uint32_t COMBINE_ROW_BUFFER_NUM =
@@ -281,7 +281,7 @@ private:
     static constexpr uint32_t GMM2_READY_SCAN_UB_ADDR = 184U * 1024U;
     static constexpr uint32_t GMM2_READY_MAX_SCAN_BYTES =
         MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
-            MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) :
+            MAX_AICORE_NUM *INT_CACHELINE * sizeof(int32_t) :
             ALIGN_512;
     static constexpr uint32_t GMM2_READY_REDUCE_TMP_UB_ADDR =
         GMM2_READY_SCAN_UB_ADDR +
@@ -849,7 +849,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SendMaskCal(con
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::LoadTopkWeightsToUb(const LocalTensor<ActivationType> &xOutTensor,
-                                                      int32_t curentOffset, int32_t index, TEventID event)
+                                                              int32_t curentOffset, int32_t index, TEventID event)
 {
     uint32_t weightOffsetInUb = mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_;
     if constexpr (TopkWeightsPrefetch) {
@@ -998,9 +998,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SendCntCal(int3
 // rolling scheduler advance the dispatch cursor exactly once per expert.
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpert(ExpertLoopState &state,
-                                                                        GMMAddrInfo &gmmAddrInfo,
-                                                                        uint32_t expertIdx,
-                                                                        const DispatchBufferConfig &bufferConfig)
+                                                                                GMMAddrInfo &gmmAddrInfo,
+                                                                                uint32_t expertIdx,
+                                                                                const DispatchBufferConfig &bufferConfig)
 {
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ != 1) {
@@ -1057,8 +1057,8 @@ template <TemplateMegaMoeWaveTypeClass>
 template <bool IsBufferReuse>
 __aicore__ inline void
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::FetchTokenNLoadMetaInfo(int32_t bufferIdx, int32_t topkIndex, int32_t remoteRankIdx,
-                                                          GlobalTensor<ActivationType> &remoteRankGlobalTensor,
-                                                          uint32_t copyInNum)
+                                                                  GlobalTensor<ActivationType> &remoteRankGlobalTensor,
+                                                                  uint32_t copyInNum)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx); // buffer 0~5 直接对应 EVENT_ID0~EVENT_ID5
     LocalTensor<ActivationType> copyTmpTensor = DispatchCopyTmpTensor(bufferIdx);
@@ -1147,9 +1147,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchCopyMte
 // ============================================================================
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffsetInCore,
-                                                                            int32_t remoteRankIdx, int32_t copyStartIdx,
-                                                                            int32_t copyNum,
-                                                                            const DispatchBufferConfig &bufferConfig)
+                                                                                    int32_t remoteRankIdx, int32_t copyStartIdx,
+                                                                                    int32_t copyNum,
+                                                                                    const DispatchBufferConfig &bufferConfig)
 {
     // revTokenElemCnt_ / revScaleElemCnt_ 仅依赖 k_，已在 DispatchBuffInit 一次性算好(见成员)，此处不再逐调用重算。
     // copyInNum(输入 token-scale 拼接,非紧密排列)与 Init 里算好的 mxQuantTokenScaleAlignBytes_ 同为
@@ -1223,7 +1223,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CopyGMToGMPerTo
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId,
-                                                         const DispatchBufferConfig &bufferConfig)
+                                                                 const DispatchBufferConfig &bufferConfig)
 {
     constexpr int32_t GMM1_WAVE_ROW_COUNT = static_cast<int32_t>(GMM1_TILE_M);
     // cumsumInfo 按 [expert][source rank] 累加；前一个 expert 的末值就是当前 expert 的全局起始行。
@@ -1268,8 +1268,8 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
         }
 
         GlobalTensor<uint8_t> remoteRankMaskGlobal; // 当前 expert/source rank 对应的 route mask GM 视图
-        int32_t matchedRouteCount = 0;  // 已扫描 batch 的累计命中数，即下一 batch 的首个 match ordinal
-        int32_t dispatchedRowCount = 0; // 当前 core 已实际 dispatch 的总行数
+        int32_t matchedRouteCount = 0;              // 已扫描 batch 的累计命中数，即下一 batch 的首个 match ordinal
+        int32_t dispatchedRowCount = 0;             // 当前 core 已实际 dispatch 的总行数
         for (int32_t batchIdx = 0; batchIdx < recvRouteBatchCount_ && matchedRouteCount < coreMatchOrdinalEnd;
              ++batchIdx) {
             int32_t batchRouteBegin = batchIdx * recvRouteItemsPerBatch_; // 当前 batch 在原始 route 数组中的起始下标
@@ -1346,7 +1346,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
 template <TemplateMegaMoeWaveTypeClass>
 template <AddrUpdateMode Mode>
 __aicore__ inline bool MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx,
-                                                                           uint64_t sendCnt)
+                                                                                   uint64_t sendCnt)
 {
     if (expertIdx != 0) {
         uint64_t m = Get<M_VALUE>(state.problemShape);
@@ -1408,7 +1408,7 @@ __aicore__ inline bool MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateGroupPara
 // =====================================================================================================
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline bool MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateSharedGroupParams(ExpertLoopState &state,
-                                                                                 uint32_t expertIdx)
+                                                                                         uint32_t expertIdx)
 {
     if (expertIdx != 0) {
         uint64_t m = Get<M_VALUE>(state.problemShape);
@@ -1443,7 +1443,7 @@ __aicore__ inline bool MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateSharedGro
 template <TemplateMegaMoeWaveTypeClass>
 template <AddrUpdateMode Mode>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo,
-                                                                            const ExpertLoopState &state)
+                                                                                    const ExpertLoopState &state)
 {
     if constexpr (Mode == AddrUpdateMode::GMM1) {
         if constexpr (TopkWeightsPrefetch) {
@@ -1493,7 +1493,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateGlobalBuf
 template <TemplateMegaMoeWaveTypeClass>
 template <AddrUpdateMode Mode>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateSharedGlobalBuffer(GMMAddrInfo &gmmAddrInfo,
-                                                                                  const ExpertLoopState &state)
+                                                                                          const ExpertLoopState &state)
 {
     if constexpr (Mode == AddrUpdateMode::GMM1) {
         gmmAddrInfo.aGlobal = params_.workspaceInfo.sharedExpertInputDataPtr;
@@ -1751,7 +1751,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineG
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset,
-                                                       int32_t batchTokenCount, LocalTensor<bfloat16_t> &tempLocal)
+                                                               int32_t batchTokenCount, LocalTensor<bfloat16_t> &tempLocal)
 {
     if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
         GlobalTensor<float> topKWeightsGlobalTensor_;
@@ -1784,8 +1784,8 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UnpermuteLoadWeights(int32_t coreOffse
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
-                                                        const GlobalTensor<bfloat16_t> &expandedX,
-                                                        const UnpermuteBufferConfig &bufferConfig)
+                                                                const GlobalTensor<bfloat16_t> &expandedX,
+                                                                const UnpermuteBufferConfig &bufferConfig)
 {
     for (int32_t expId = 0; expId < topK_; ++expId) {
         // Routed and shared expert results form one continuous accumulation-input sequence in the dynamic ring.
@@ -1919,7 +1919,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UnpermuteBuffInit()
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UnpermuteSharedExpert(int32_t tokenIdx, int32_t localIdx,
-                                                        const UnpermuteBufferConfig &bufferConfig)
+                                                                const UnpermuteBufferConfig &bufferConfig)
 {
     GlobalTensor<bfloat16_t> sharedResult;
     sharedResult.SetGlobalBuffer((__gm__ bfloat16_t *)params_.workspaceInfo.sharedExpertResultPtr);
@@ -2353,7 +2353,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
 
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedExpertGmm1(const TupleShape &initShape,
-                                                                                 const BlockOffset &initOffset)
+                                                                                         const BlockOffset &initOffset)
 {
     sharedEpilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
                             params_.workspaceInfo.sharedExpertSwigluScalePtr, nullptr, nullptr, nullptr, nullptr,
@@ -2378,7 +2378,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
 
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedExpertGmm2(const TupleShape &initShape,
-                                                                                 const BlockOffset &initOffset)
+                                                                                         const BlockOffset &initOffset)
 {
     gmm2NTilesPerGroup_ = Ops::Base::CeilDiv(k_, L1_TILE_N);
     GMMAddrInfo sharedGmm2AddrInfo;

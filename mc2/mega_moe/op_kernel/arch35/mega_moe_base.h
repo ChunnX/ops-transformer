@@ -135,7 +135,10 @@ struct Params {
     CombineCommParams combineCommParams;
 };
 
-enum class AddrUpdateMode : int32_t { GMM1, GMM2 };
+enum class AddrUpdateMode : int32_t {
+    GMM1,
+    GMM2
+};
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
