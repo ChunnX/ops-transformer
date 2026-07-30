@@ -162,6 +162,7 @@ public:
 
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
+        this->AICore().AddConfig("ascend950", aicoreConfig);
         aicoreConfig.Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16})
