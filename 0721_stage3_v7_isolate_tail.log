@@ -1,0 +1,5 @@
+error: Undefined variable: valid_k_size
+ --> /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py:2098:29
+      |  
+ 2098 |                                  s1_prev + 1,
+      |                              ^               
