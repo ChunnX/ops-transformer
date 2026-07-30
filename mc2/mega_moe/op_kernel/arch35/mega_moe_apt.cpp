@@ -63,12 +63,17 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     defined(ORIG_DTYPE_WEIGHT2) && (ORIG_DTYPE_WEIGHT2 == ORIG_DTYPE_WEIGHT1)
     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-            // Shared experts use the same A8W8 compute path and can follow the
-            // wave schedule. W4 and combine-quant remain on the two-loop path.
-            using WaveOp = MegaMoeWave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
-                                       CombineQuantOutType, TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>;
-            if constexpr (WaveOp::SUPPORTS_WAVE) {
-                WaveOp op;
+            // Dispatch dtype and weight dtype uniquely identify A8W8, so no
+            // additional tiling-key dimension is needed for wave routing.
+            constexpr bool isA8W8DtypePair =
+                (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 &&
+                 Std::IsSame<DTYPE_WEIGHT1, fp8_e5m2_t>::value) ||
+                (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
+                 Std::IsSame<DTYPE_WEIGHT1, fp8_e4m3fn_t>::value);
+            if constexpr (isA8W8DtypePair) {
+                MegaMoeWave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
+                            CombineQuantOutType, TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
+                    op;
                 op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                         scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
                         expertTokenNumsOut, workspaceGM, &tilingData);
