@@ -675,16 +675,16 @@
    <td>可选输入</td>
    <td>表示token是否参与通信。</td>
    <td>INT8</td>
-   <td>ND</td>
+    <td>ND</td>
   </tr>
-    <tr>
+  <tr>
    <td>scales</td>
    <td>可选输入</td>
    <td>量化平滑参数。</td>
    <td>FLOAT8_E8M0、FLOAT32</td>
    <td>ND</td>
   </tr>
-    <tr>
+  <tr>
    <td>sharedWeight1</td>
    <td>可选输入</td>
    <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
