@@ -54,6 +54,7 @@ using namespace Mc2Aclnn;
 constexpr CumSumConfig SET_EXPERT_TOKEN_NUMS_CUMSUM_CONFIG{true, false, false,
                                                            CumSumAlgorithm::CUMSUM_ALGORITHM_LINEBYLINE};
 #endif
+constexpr uint32_t TOKEN_PREFETCH_MAX_ACTIVE_BS = 16U; // Token 预取到 L2Cache 的 active token 上限
 template <TemplateDispatchV2TypeClass>
 class MoeDistributeDispatchV2 {
 public:
@@ -83,6 +84,7 @@ private:
     __aicore__ inline void SendToSharedExpert();
     __aicore__ inline void SendToMoeExpert();
     __aicore__ inline void AlltoAllDispatch();
+    __aicore__ inline void TokenPrefetchToL2Cache();
     __aicore__ inline void LocalWindowCopy();
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     __aicore__ inline void SetExpertTokenNumsA5();
@@ -209,6 +211,7 @@ private:
     TBuf<> performanceTmpBuf_;
     TBuf<> firstRecordBuf_;
     TBuf<> gatherMaskTBuf_;
+    TBuf<> prefetchScratch_; // token 预取的 1-token UB 落地 buffer（fire-and-forget，仅触发 L2 填充）
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 非量化使用，量化场景接收也可使用
     TQue<QuePosition::VECIN, 1> xInQueue_;                        // 量化使用，量化前的输入
     TQue<QuePosition::VECOUT, 1> xOutQueue_;                      // 量化使用，量化后的输出
@@ -944,6 +947,24 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Zero
 moe专家卡：部分核用于给共享专家发送数据，部分核用于给moe专家发送数据
 */
 template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::TokenPrefetchToL2Cache()
+{
+    // 分散读取前预取 [0, activeMaskBsCnt_) 进共享 L2，后续 token 读命中。
+    // 门控：!isExpertMaskFlag_（连续扫掠）且 activeMaskBsCnt_ <= TOKEN_PREFETCH_MAX_ACTIVE_BS。
+    if (isExpertMaskFlag_ || activeMaskBsCnt_ == 0 || activeMaskBsCnt_ > TOKEN_PREFETCH_MAX_ACTIVE_BS) {
+        return;
+    }
+    DataCopyPadParams prefetchPadParams{true, 0U, 0U, 0U}; // 与 ProcessToken 一致
+    uint32_t pfStart, pfEnd, pfPerCore;
+    SplitToCore(static_cast<uint32_t>(activeMaskBsCnt_), aivNum_, pfStart, pfEnd, pfPerCore, true);
+    tpipe_->InitBuffer(prefetchScratch_, Ceil(copyInAxisH_ * sizeof(XInType), UB_ALIGN) * UB_ALIGN);
+    LocalTensor<XInType> prefetchScratch = prefetchScratch_.Get<XInType>();
+    for (uint32_t t = pfStart; t < pfEnd; ++t) {
+        DataCopyPad(prefetchScratch, xGMTensor_[t * axisH_], xCopyParams_, prefetchPadParams);
+    }
+}
+
+template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::AlltoAllDispatch()
 {
     activeMaskBsCnt_ = axisBS_;
@@ -965,6 +986,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Allt
     // 后面的核向共享专家发数据
     bool isSendShared = (aivId_ >= moeUsedAivNum_) && (sharedExpertRankNum_ != 0);
     if (isSendShared) {
+        TokenPrefetchToL2Cache(); // token 预取到 L2Cache（SendToSharedExpert 前；isExpertMaskFlag_ 与共享核读取时刻一致）
         SendToSharedExpert();
     }
 
@@ -994,6 +1016,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Allt
     if (isSendShared) { // 用于send共享专家数据的核，也需要搬运expertIds，后续会重新分核写状态位置，该核可能用于写moe专家flag
         return;
     }
+    TokenPrefetchToL2Cache(); // token 预取到 L2Cache（SendToMoeExpert 前；isExpertMaskFlag_ 已含 zeroCompute 覆盖，与 moe 核读取一致）
     SendToMoeExpert();
 }
 
