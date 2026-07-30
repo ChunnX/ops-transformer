@@ -28,6 +28,11 @@ RESULT_PATH = Path(os.environ.get("STEM_INDEXER_RESULT_PATH", "result.csv"))
 MAX_RESULT_DETAIL_LEN = 2048
 RESULT_COLUMNS = ["case_id", "testcase_name", "expected_result", "result", "detail"]
 
+# 通过环境变量 STEM_INDEXER_MODE 切换执行模式：eager（默认）或 graph
+# 例: STEM_INDEXER_MODE=graph python -m pytest test_stem_indexer_batch.py -m graph
+EXEC_MODE = os.environ.get("STEM_INDEXER_MODE", "eager").strip().lower()
+_IS_GRAPH_MODE = EXEC_MODE == "graph"
+
 # 支持通过环境变量 STEM_INDEXER_CASE_ID 指定只跑特定 case_id（逗号分隔多个）
 # 例: STEM_INDEXER_CASE_ID=SI_WB_002 python -m pytest test_stem_indexer_batch.py
 _FILTER_IDS_RAW = os.environ.get("STEM_INDEXER_CASE_ID", "").strip()
@@ -102,6 +107,7 @@ def load_case(filepath):
 
 
 @pytest.mark.ci
+@pytest.mark.graph
 @pytest.mark.parametrize("testcase_file", TESTCASE_FILES)
 def test_stem_indexer_batch(testcase_file):
     case = load_case(testcase_file)
@@ -114,7 +120,7 @@ def test_stem_indexer_batch(testcase_file):
         try:
             with pytest.raises(Exception):
                 stem_indexer_pt_loadprocess.stem_indexer_process(
-                    testcase_file, device_id=0
+                    testcase_file, device_id=0, mode=EXEC_MODE
                 )
         except pytest.fail.Exception as err:
             append_result(case, "FAIL", format_error_detail(err))
@@ -125,7 +131,7 @@ def test_stem_indexer_batch(testcase_file):
     try:
         expected_indices, expected_seq_len, npu_result, case, test_data = (
             stem_indexer_pt_loadprocess.stem_indexer_process(
-                testcase_file, device_id=0, return_test_data=True
+                testcase_file, device_id=0, return_test_data=True, mode=EXEC_MODE
             )
         )
         result_compare_method.assert_stem_indexer_result(
