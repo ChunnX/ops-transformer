@@ -39,7 +39,6 @@ struct FiaMlaTilingKeyInfo {
     bool isFd = false;
     bool emptyTensor = false;
     bool enableKvPrefix = false;
-    bool enableS1OutSplit = false;
     bool isReconstructTemp = false;
 };
 
@@ -90,6 +89,7 @@ private:
     void SetFATilingData();
     void AdjustSinnerAndSouter();
     void InitImplParam();
+    int64_t GetActSeqLenMla(const gert::Tensor *tensor, uint32_t dims, FiaLayout layout, uint32_t bIdx);
     bool IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo);
     void GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
                          int64_t &safePreToken, int64_t &safeNextToken);

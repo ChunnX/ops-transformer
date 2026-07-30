@@ -165,6 +165,7 @@ ge::graphStatus FiaTilingNonQuantMlaArch35::DoOpTiling()
     FillTiling();
     CalcScheduleMode();
     CalcWorkspaceSize();
+    PrintAllTilingData();
     GenTilingKey();
 
     if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
@@ -201,8 +202,8 @@ ge::graphStatus FiaTilingNonQuantMlaArch35::SetPlatMemoryInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-namespace {
-int64_t GetActSeqLenMla(const gert::Tensor *tensor, uint32_t dims, FiaLayout layout, uint32_t bIdx)
+int64_t FiaTilingNonQuantMlaArch35::GetActSeqLenMla(const gert::Tensor *tensor, uint32_t dims, FiaLayout layout,
+                                                    uint32_t bIdx)
 {
     if (dims == 1) {
         return tensor->GetData<int64_t>()[0];
@@ -215,7 +216,6 @@ int64_t GetActSeqLenMla(const gert::Tensor *tensor, uint32_t dims, FiaLayout lay
     }
     return tensor->GetData<int64_t>()[bIdx] - tensor->GetData<int64_t>()[bIdx - 1];
 }
-} // namespace
 
 void FiaTilingNonQuantMlaArch35::InitImplParam()
 {
@@ -475,7 +475,6 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyInfo()
     tilingKeyInfo_.hasAttenMask = fiaInfo_->attenMaskFlag;
     UpdateTilingKeyHasRope();
 
-    tilingKeyInfo_.kvLayoutType = tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType;
 
     if (fiaInfo_->pageAttentionFlag) {
         if (tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType == 0) { // BNBD
@@ -500,18 +499,16 @@ void FiaTilingNonQuantMlaArch35::GenTilingKey()
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
                                     tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope,
                                     tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor,
-                                    tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
-                                    tilingKeyInfo_.isReconstructTemp);
+                                    tilingKeyInfo_.enableKvPrefix, false, tilingKeyInfo_.isReconstructTemp);
 
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
             "hasAttenMask: %u, hasRope: %u, kvLayoutType: %llu, isFd: %u, emptyTensor: %u, "
-            "enableKvPrefix: %u, enableS1OutSplit: %u, isReconstructTemp: %u.",
+            "enableKvPrefix: %u, isReconstructTemp: %u.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
-            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
-            tilingKeyInfo_.isReconstructTemp);
+            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.isReconstructTemp);
 }
 
 void FiaTilingNonQuantMlaArch35::CalcNumBlocks(uint32_t usedAicNum)
@@ -525,34 +522,13 @@ void FiaTilingNonQuantMlaArch35::CalcNumBlocks(uint32_t usedAicNum)
 
 void FiaTilingNonQuantMlaArch35::CalcWorkspaceSize()
 {
-    size_t sysWorkspaceSize = platformInfo_.defaultSysWorkspaceSize;
+    constexpr uint32_t dSize = DSIZE_512;
     uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
-    uint32_t dSize = fiaInfo_->vHeadDim;
-    uint32_t dVBasicBlock = 0;
-    if (dSize <= DSIZE_64) {
-        dVBasicBlock = DSIZE_64;
-    } else if (dSize <= DSIZE_128) {
-        dVBasicBlock = DSIZE_128;
-    } else if (dSize <= DSIZE_256) {
-        dVBasicBlock = DSIZE_256;
-    } else if (dSize <= DSIZE_512) {
-        dVBasicBlock = DSIZE_512;
-    }
 
-    workspaceSize_ = sysWorkspaceSize;
+    workspaceSize_ = platformInfo_.defaultSysWorkspaceSize;
 
-    int64_t bmm2Bytes = 0;
-    int64_t vec2Bytes = 0;
-    int64_t bmm2ResBlockSize = dVBasicBlock;
-    if (dVBasicBlock > DSIZE_256) {
-        bmm2ResBlockSize = DSIZE_512;
-    }
-    if (dSize > DSIZE_128) {
-        bmm2Bytes = mSize * bmm2ResBlockSize * sizeof(float);
-        if (dVBasicBlock > DSIZE_256) {
-            vec2Bytes = mSize * dVBasicBlock * sizeof(float);
-        }
-    }
+    int64_t bmm2Bytes = mSize * dSize * sizeof(float);
+    int64_t vec2Bytes = mSize * dSize * sizeof(float);
     workspaceSize_ += (bmm2Bytes + vec2Bytes) * PRE_LOAD_NUM_MLA_ARCH35 * numBlocks_;
 
     if (flashDecodeFlag_) {
@@ -570,7 +546,6 @@ void FiaTilingNonQuantMlaArch35::FillTiling()
 {
     ComputeTilingData();
     SetFATilingData();
-    PrintAllTilingData();
 }
 
 void FiaTilingNonQuantMlaArch35::ComputeTilingData()
@@ -604,25 +579,8 @@ void FiaTilingNonQuantMlaArch35::SetAttenMaskTilingData()
 
 void FiaTilingNonQuantMlaArch35::SetStartIdxTilingData()
 {
-    int64_t qStartIdx = 0;
-    int64_t kvStartIdx = 0;
-    auto qStartIdxTensor = fiaInfo_->opParamInfo.qStartIdx.tensor;
-    auto kvStartIdxTensor = fiaInfo_->opParamInfo.kvStartIdx.tensor;
-    if (qStartIdxTensor != nullptr && qStartIdxTensor->GetShapeSize() >= 1) {
-        const int64_t *value = qStartIdxTensor->GetData<int64_t>();
-        if (value != nullptr) {
-            qStartIdx = value[0];
-        }
-    }
-
-    if (kvStartIdxTensor != nullptr && kvStartIdxTensor->GetShapeSize() >= 1) {
-        const int64_t *value = kvStartIdxTensor->GetData<int64_t>();
-        if (value != nullptr) {
-            kvStartIdx = value[0];
-        }
-    }
-    tilingData_.baseTiling.fiaPseParams.qStartIdx = qStartIdx;
-    tilingData_.baseTiling.fiaPseParams.kvStartIdx = kvStartIdx;
+    tilingData_.baseTiling.fiaPseParams.qStartIdx = 0;
+    tilingData_.baseTiling.fiaPseParams.kvStartIdx = 0;
 }
 
 void FiaTilingNonQuantMlaArch35::SetPageAttentionLayoutTilingData()
@@ -726,7 +684,6 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
     FiaLeftPaddingParams &fiaLeftPaddingParams = baseTiling.fiaLeftPaddingParams;
     FiaPostQuantParams &fiaPostQuantParams = baseTiling.fiaPostQuantParams;
     FiaWorkspaceParams &fiaWorkspaceParams = baseTiling.fiaWorkspaceParams;
-    FiaS1OuterSplitCoreParams &fiaS1OuterSplitCoreParams = baseTiling.fiaS1OuterSplitCoreParams;
     FiaEmptyTensorParams &fiaEmptyTensorParams = baseTiling.fiaEmptyTensorParams;
     FiaMetaData &fiaMetaData = tilingData_.fiaMetaData;
 
@@ -763,9 +720,11 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "isActualSharedPrefixLenNull:%d", fiaSystemPrefixParams.isActualSharedPrefixLenNull);
     OP_LOGD(fiaInfo_->opName, "prefixSeqInnerSize:%d", fiaSystemPrefixParams.prefixSeqInnerSize);
 
-    OP_LOGD(fiaInfo_->opName, "paLayoutType:%d", fiaPageAttentionParams.paLayoutType);
-    OP_LOGD(fiaInfo_->opName, "blockSize:%d", fiaPageAttentionParams.blockSize);
-    OP_LOGD(fiaInfo_->opName, "maxBlockNumPerBatch:%d", fiaPageAttentionParams.maxBlockNumPerBatch);
+    if (fiaInfo_->pageAttentionFlag) {
+        OP_LOGD(fiaInfo_->opName, "paLayoutType:%d", fiaPageAttentionParams.paLayoutType);
+        OP_LOGD(fiaInfo_->opName, "blockSize:%d", fiaPageAttentionParams.blockSize);
+        OP_LOGD(fiaInfo_->opName, "maxBlockNumPerBatch:%d", fiaPageAttentionParams.maxBlockNumPerBatch);
+    }
 
     OP_LOGD(fiaInfo_->opName, "isQHasLeftPadding:%d", fiaLeftPaddingParams.isQHasLeftPadding);
     OP_LOGD(fiaInfo_->opName, "isKVHasLeftPadding:%d", fiaLeftPaddingParams.isKVHasLeftPadding);
@@ -773,18 +732,17 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "isPostQuantPerChnl:%d", fiaPostQuantParams.isPostQuantPerChnl);
     OP_LOGD(fiaInfo_->opName, "isPostQuantBF16:%d", fiaPostQuantParams.isPostQuantBF16);
 
-    OP_LOGD(fiaInfo_->opName, "accumOutSize:%d", fiaWorkspaceParams.accumOutSize);
-    OP_LOGD(fiaInfo_->opName, "logSumExpSize:%d", fiaWorkspaceParams.logSumExpSize);
-
-    OP_LOGD(fiaInfo_->opName, "enableS1OutSplit:%d", fiaS1OuterSplitCoreParams.enableS1OutSplit);
-    OP_LOGD(fiaInfo_->opName, "totalSize:%d", fiaS1OuterSplitCoreParams.totalSize);
+    if (flashDecodeFlag_) {
+        OP_LOGD(fiaInfo_->opName, "accumOutSize:%d", fiaWorkspaceParams.accumOutSize);
+        OP_LOGD(fiaInfo_->opName, "logSumExpSize:%d", fiaWorkspaceParams.logSumExpSize);
+    }
 
     OP_LOGD(fiaInfo_->opName, "singleCoreSize:%d", fiaEmptyTensorParams.singleCoreSize);
     OP_LOGD(fiaInfo_->opName, "needInit:%d", fiaEmptyTensorParams.needInit);
     OP_LOGD(fiaInfo_->opName, "totalOutputSize:%d", fiaEmptyTensorParams.totalOutputSize);
     OP_LOGD(fiaInfo_->opName, "totalSoftMaxLseOutputSize:%d", fiaEmptyTensorParams.totalSoftMaxLseOutputSize);
 
-    for (int aicIdx = 0; aicIdx < NPU_AIC_CORE_NUM; ++aicIdx) {
+    for (int aicIdx = 0; aicIdx < platformInfo_.aicNum; ++aicIdx) {
         OP_LOGD(fiaInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aicIdx, fiaMetaData.FAMetadata[aicIdx][0], fiaMetaData.FAMetadata[aicIdx][1],
                 fiaMetaData.FAMetadata[aicIdx][2], fiaMetaData.FAMetadata[aicIdx][3], fiaMetaData.FAMetadata[aicIdx][4],
@@ -792,7 +750,7 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
                 fiaMetaData.FAMetadata[aicIdx][7]);
     }
 
-    for (int aivIdx = 0; aivIdx < NPU_AIV_CORE_NUM; ++aivIdx) {
+    for (int aivIdx = 0; aivIdx < platformInfo_.aivNum; ++aivIdx) {
         OP_LOGD(fiaInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aivIdx, fiaMetaData.FDMetadata[aivIdx][0], fiaMetaData.FDMetadata[aivIdx][1],
                 fiaMetaData.FDMetadata[aivIdx][2], fiaMetaData.FDMetadata[aivIdx][3], fiaMetaData.FDMetadata[aivIdx][4],
