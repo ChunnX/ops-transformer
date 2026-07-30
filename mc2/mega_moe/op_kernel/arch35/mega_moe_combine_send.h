@@ -32,16 +32,17 @@ using namespace AscendC;
 namespace MegaMoeCombineImpl {
 
 template <typename ElementMMadOut2, typename BlockShape>
-__aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &metaInfoTensor,
+__aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &metaInfoTensor,
                                      LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape,
-                                     const Params &params)
+                                     uint32_t ubTileN, const Params &params)
 {
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
     ub2GmParams.blockCount = 1;
-    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2); // N_VALUE是当前tile块的n长度
+    // 尾块只发送 actualN 个有效元素，但 UB 中相邻两行仍按物理 tile 宽度 ubTileN 排布。
+    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
@@ -51,8 +52,7 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
         gmRemoteD.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
         uint64_t gmDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n + nLoc;
-        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)],
-                             ub2GmParams);
+        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * ubTileN], ub2GmParams);
     }
 }
 
