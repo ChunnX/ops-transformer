@@ -624,7 +624,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>训练场景下，计算sparse_flash_mla注意力的反向输出。</td>
+    <td>训练场景下，作为dense_lightning_indexer_kl_loss_grad的前置算子，输出attn_softmax_l1_norm。</td>
   </tr>
   <tr>
     <td>attention</td>
