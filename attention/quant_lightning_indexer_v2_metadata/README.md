@@ -72,7 +72,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示Query的head个数，当前支持[1, 64]。</td>
+      <td>表示Query的head个数，当前支持[1, 64]</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -156,7 +156,7 @@
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>表示负载均衡结果输出，shape固定为[1024]。</td>
+      <td>表示负载均衡结果输出，shape固定为[1024]</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>

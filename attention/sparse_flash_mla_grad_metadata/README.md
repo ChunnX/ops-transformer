@@ -100,7 +100,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示Query的head个数，当前支持[1, 128]。</td>
+      <td>表示Query的head个数，当前支持[1, 128]</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -163,7 +163,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对cmp_kv的压缩率，默认值为1，当前支持[1, 128]。</td>
+      <td>表示对cmp_kv的压缩率，默认值为1，当前支持[1, 128]</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -226,7 +226,7 @@
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>表示负载均衡结果输出，shape固定为[1024]。</td>
+      <td>表示负载均衡结果输出，shape固定为[1024]</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>

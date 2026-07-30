@@ -177,7 +177,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示query的head个数。</td>
-      <td>必须为正数，并且能被numHeadsK整除，当前支持[1, 128]。</td>
+      <td>必须为正数，并且能被numHeadsK整除，当前支持[1, 128]</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

@@ -79,7 +79,7 @@
     <tr>
       <td>num_heads_k</td>
       <td>属性</td>
-      <td>表示Key的head个数，当前仅支持1。</td>
+      <td>表示Key的head个数，当前仅支持1</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -149,7 +149,7 @@
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>表示负载均衡结果输出，shape固定为[64]。</td>
+      <td>表示负载均衡结果输出，shape固定为(64, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
