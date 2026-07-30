@@ -116,6 +116,16 @@ public:
     
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
 
+#ifdef BSA_PV_RESCALE_PROBE_FP8
+    static constexpr uint32_t PROBE_M = 64;
+    static constexpr uint32_t PROBE_N = 128;
+    static constexpr uint32_t PROBE_K = 64;
+    static constexpr uint32_t PROBE_L1A_BYTES = PROBE_M * PROBE_K * sizeof(float); // 16KB
+    static constexpr uint32_t PROBE_L1B_BYTES = PROBE_K * PROBE_N * sizeof(float); // 32KB
+    static constexpr uint32_t PROBE_L0A_EVENT_ID = 0;
+    static constexpr uint32_t PROBE_L0B_EVENT_ID = 2; // match PV: B uses +2
+#endif
+
     __aicore__ inline
     BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
     {
@@ -182,6 +192,13 @@ public:
         return outterLoopItr * curLoopNum + curLoopItr;
     }
     
+#ifdef BSA_PV_RESCALE_PROBE_FP8
+    __aicore__ inline void RunRescaleMadProbe()
+    {
+        // filled in Task 3
+    }
+#endif
+
     template <class TensorB, class TensorL1B>
     __aicore__ inline
     void SparseVBaseTileL1FullLoad(TensorB &gBTensor, TensorL1B &l1BTensorTla,
@@ -360,6 +377,13 @@ public:
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                 }
             }
+#ifdef BSA_PV_RESCALE_PROBE_FP8
+            if constexpr (FULL_QUANT_FP8) {
+                if (nL0Itr == 0) {
+                    RunRescaleMadProbe();
+                }
+            }
+#endif
             // fixpipe
             if (nL0Itr == 0) {
                 // reverse crossCoreSync, do fixPipe only after ubCTensor is fully released
