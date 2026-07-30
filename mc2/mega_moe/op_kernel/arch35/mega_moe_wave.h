@@ -2376,7 +2376,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
     gmm1PingPongIdx_ = 0;
     if constexpr (g_coreType == AIV) {
         // 持久化 count 在各物理核间相同，仅由首个物理核的 AIV1 恢复并输出。
-        if (blockIdx_ == 0U && subBlockIdx_ == 1U) {
+        if (aivCoreIdx_ == 1U) {
             ExpertTokenNumCopyOut();
         }
     }
