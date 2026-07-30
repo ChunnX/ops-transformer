@@ -22,6 +22,11 @@ import random
 import torch
 
 FP8_DTYPE = torch.float8_e4m3fn if hasattr(torch, "float8_e4m3fn") else None
+E8M0_DTYPE = torch.float8_e8m0fnu if hasattr(torch, "float8_e8m0fnu") else None
+
+_EMAX_MAP = {torch.float8_e4m3fn: 8}
+_QUANT_GROUP_SIZE = 32
+_E8M0_MIN_POSITIVE = 2 ** (-127)
 
 
 def _fp8_rand(shape, low=-1.0, high=1.0, generator=None):
@@ -210,6 +215,35 @@ def customize_inputs(
             "torch.float8_e4m3fn is required for quant_block_sparse_attn test data"
         )
 
+    if int(quant_mode) == 2:
+        return _customize_inputs_mxfp8(
+            query,
+            key,
+            value,
+            q_descale,
+            k_descale,
+            v_descale,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            atten_mask,
+            softmax_scale=softmax_scale,
+            sparse_q_block_size=sparse_q_block_size,
+            sparse_kv_block_size=sparse_kv_block_size,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_kv=max_seqlen_kv,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            mask_mode=mask_mode,
+            return_softmax_lse=return_softmax_lse,
+            sparse_count=sparse_count,
+            sparse_pattern=sparse_pattern,
+            block_table_pattern=block_table_pattern,
+            p_scale_value=p_scale_value,
+            seed=seed,
+            **kwargs,
+        )
+
     rng = random.Random(seed)
     generator = torch.Generator().manual_seed(seed)
 
@@ -294,3 +328,206 @@ def customize_inputs(
 
     atten_mask_data = torch.tril(torch.ones(atten_mask.shape, dtype=torch.uint8)).T
     atten_mask.copy_(atten_mask_data)
+
+
+def _get_mxfp8_per_token_group_quant_scale(tensor, group_size=32):
+    emax = _EMAX_MAP[FP8_DTYPE]
+    tensor = tensor.to(torch.float32)
+    d1, d2, d3, d4 = tensor.shape
+    num_groups = math.ceil(d4 / group_size)
+    pad = num_groups * group_size - d4
+    if pad > 0:
+        tensor = torch.nn.functional.pad(tensor, (0, pad))
+    grouped = tensor.reshape(d1, d2, d3, num_groups, group_size)
+    all_zero = torch.all(grouped == 0, dim=-1)
+    max_vals = torch.max(torch.abs(grouped), dim=-1)[0].clamp(min=1e-12)
+    shared_exp = torch.floor(torch.log2(max_vals)) - emax
+    return torch.where(all_zero, torch.ones_like(shared_exp), 2**shared_exp).to(
+        torch.float32
+    )
+
+
+def _get_mxfp8_per_channel_group_quant_scale(tensor, group_size=32):
+    emax = _EMAX_MAP[FP8_DTYPE]
+    tensor = tensor.to(torch.float32)
+    batch, seq_len, num_heads, head_dim = tensor.shape
+    num_groups = math.ceil(seq_len / group_size)
+    pad = num_groups * group_size - seq_len
+    if pad > 0:
+        tensor = torch.nn.functional.pad(tensor, (0, 0, 0, 0, 0, pad))
+    grouped = tensor.reshape(batch, num_groups, group_size, num_heads, head_dim)
+    all_zero = torch.all(grouped == 0, dim=2)
+    max_vals = torch.max(torch.abs(grouped), dim=2)[0].clamp(min=1e-12)
+    shared_exp = torch.floor(torch.log2(max_vals)) - emax
+    return torch.where(all_zero, torch.ones_like(shared_exp), 2**shared_exp).to(
+        torch.float32
+    )
+
+
+def _sanitize_e8m0_scale(scale):
+    result = torch.as_tensor(scale, dtype=torch.float32).clone()
+    result[~torch.isfinite(result)] = _E8M0_MIN_POSITIVE
+    result[result == 0] = _E8M0_MIN_POSITIVE
+    return result
+
+
+def _fp32_to_e8m0(tensor_fp32):
+    bits = tensor_fp32.float().view(torch.int32)
+    return ((bits >> 23) & 0xFF).to(torch.uint8).view(E8M0_DTYPE)
+
+
+def _fp32_to_e8m0_safe(scale):
+    return _fp32_to_e8m0(_sanitize_e8m0_scale(scale))
+
+
+def _pack_qk_scale(scale_flat):
+    last_dim = scale_flat.shape[-1]
+    new_shape = scale_flat.shape[:-1] + (last_dim // 2, 2)
+    return scale_flat.reshape(new_shape)
+
+
+def _customize_inputs_mxfp8(
+    query,
+    key,
+    value,
+    q_descale,
+    k_descale,
+    v_descale,
+    p_scale,
+    sparse_indices,
+    sparse_seq_len,
+    atten_mask,
+    *,
+    softmax_scale=1.0,
+    sparse_q_block_size=128,
+    sparse_kv_block_size=128,
+    max_seqlen_q=0,
+    max_seqlen_kv=0,
+    layout_q="TND",
+    layout_kv="PA_BNSD",
+    mask_mode=3,
+    return_softmax_lse=False,
+    sparse_count=0,
+    sparse_pattern="sequential",
+    block_table_pattern="sequential",
+    p_scale_value=1.0,
+    seed=0,
+    **kwargs,
+):
+    """Fill input tensors in-place with MXFP8 test data."""
+    if E8M0_DTYPE is None:
+        raise RuntimeError("torch.float8_e8m0fnu is required for MXFP8 test data")
+
+    quant_group_size = int(kwargs.get("quant_group_size", _QUANT_GROUP_SIZE))
+
+    rng = random.Random(seed)
+    generator = torch.Generator().manual_seed(seed)
+
+    B = int(sparse_indices.shape[0])
+    N1 = int(query.shape[1])
+    N2 = int(key.shape[1])
+    D = int(query.shape[-1])
+    S1 = max_seqlen_q if max_seqlen_q > 0 else int(query.shape[0])
+    S2 = max_seqlen_kv if max_seqlen_kv > 0 else int(key.shape[0]) * int(key.shape[2])
+    block_size = sparse_q_block_size
+    total_q = B * S1
+
+    q_source = _fp8_rand((1, total_q, N1, D), generator=generator).squeeze(0)
+    query.copy_(q_source)
+
+    q_scale = _get_mxfp8_per_token_group_quant_scale(
+        q_source.unsqueeze(0), quant_group_size
+    ).squeeze(0)
+    q_descale.copy_(_fp32_to_e8m0_safe(_pack_qk_scale(q_scale)))
+
+    dense_key = (
+        _fp8_rand((B, S2, N2, D), generator=generator).permute(0, 2, 1, 3).contiguous()
+    )
+    dense_value = (
+        _fp8_rand((B, S2, N2, D), generator=generator).permute(0, 2, 1, 3).contiguous()
+    )
+
+    k_scale = _get_mxfp8_per_token_group_quant_scale(dense_key, quant_group_size)
+    v_scale = _get_mxfp8_per_channel_group_quant_scale(dense_value, quant_group_size)
+
+    block_table = _make_block_table(B, S2, block_size, "sequential", rng)
+
+    key_pa = _dense_to_pa_single(dense_key, block_table, block_size)
+    value_pa = _dense_to_pa_single(dense_value, block_table, block_size)
+    key.copy_(key_pa)
+    value.copy_(value_pa)
+
+    k_scale_pa = _dense_to_pa_single(
+        k_scale.permute(0, 2, 1, 3).contiguous(), block_table, block_size
+    )
+    k_descale.copy_(_fp32_to_e8m0_safe(_pack_qk_scale(k_scale_pa)))
+
+    v_scale_bnsd = v_scale.permute(0, 2, 1, 3).contiguous()
+    num_blocks = int(block_table.max().item()) + 1
+    v_scale_bs = block_size // quant_group_size
+    v_sg = math.ceil(S2 / quant_group_size)
+    v_scale_pa = torch.zeros((num_blocks, N2, v_scale_bs, D), dtype=torch.float32)
+    for b in range(B):
+        for lb in range(block_table.shape[1]):
+            phys = int(block_table[b, lb].item())
+            start = lb * v_scale_bs
+            end = min(start + v_scale_bs, v_scale_bnsd.shape[2])
+            cnt = end - start
+            if cnt <= 0:
+                continue
+            v_scale_pa[phys, :, :cnt] = v_scale_bnsd[b, :, start:end]
+
+    if v_scale_pa.shape[2] % 2 != 0:
+        v_scale_pa = torch.cat(
+            [v_scale_pa, torch.full_like(v_scale_pa[:, :, :1, :], _E8M0_MIN_POSITIVE)],
+            dim=2,
+        )
+    v_scale_packed = torch.zeros(
+        (num_blocks, N2, v_scale_pa.shape[2] // 2, D, 2), dtype=torch.float32
+    )
+    v_scale_packed[..., 0] = v_scale_pa[..., ::2, :]
+    v_scale_packed[..., 1] = v_scale_pa[..., 1::2, :]
+    v_descale.copy_(_fp32_to_e8m0_safe(v_scale_packed))
+
+    p_scale_data = torch.tensor([float(p_scale_value)], dtype=torch.float32)
+    p_scale.copy_(_fp32_to_e8m0_safe(p_scale_data))
+
+    q_lengths = [S1] * B
+    kv_lengths = [S2] * B
+    si, ssl = _make_sparse_indices(
+        B,
+        N1,
+        N2,
+        S1,
+        S2,
+        sparse_q_block_size,
+        sparse_kv_block_size,
+        mask_mode,
+        sparse_pattern,
+        sparse_count,
+        q_lengths,
+        kv_lengths,
+        rng,
+    )
+    sparse_indices.copy_(si)
+    sparse_seq_len.copy_(ssl)
+
+    atten_mask_data = torch.tril(torch.ones(atten_mask.shape, dtype=torch.uint8)).T
+    atten_mask.copy_(atten_mask_data)
+
+
+def _dense_to_pa_single(dense_bnsd, block_table, block_size):
+    """Convert BNSD (B, N, S, D) to PA (num_blocks, N, block_size, D)."""
+    B, N, S, D = dense_bnsd.shape
+    num_blocks = int(block_table.max().item()) + 1
+    pa = torch.zeros((num_blocks, N, block_size, D), dtype=dense_bnsd.dtype)
+    for b in range(B):
+        for lb in range(block_table.shape[1]):
+            phys = int(block_table[b, lb].item())
+            start = lb * block_size
+            end = min(start + block_size, S)
+            cnt = end - start
+            if cnt <= 0:
+                continue
+            pa[phys, :, :cnt] = dense_bnsd[b, :, start:end]
+    return pa
