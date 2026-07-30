@@ -294,3 +294,93 @@ Metadata字段布局：
     assert softmax_l1_norm.dtype == torch.float32
     assert torch.isfinite(softmax_l1_norm.float()).all().item()
     ```
+
+- TorchAir图模式调用：
+
+    ```python
+    import math
+    import torch
+    import torch_npu
+    import torchair
+    import cann_ops_transformer
+
+
+    class SparseFlashMlaSoftmaxL1NormModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, q, k, softmax_lse, cu_seq_qlen_tensor, cu_seq_klen_tensor,
+                    cmp_residual_k, max_seqlen_k, cmp_ratio, mask_mode, layout_q, layout_k):
+            # 调用sparse_flash_mla_softmax_l1_norm_metadata完成负载均衡计算
+            metadata = cann_ops_transformer.sparse_flash_mla_softmax_l1_norm_metadata(
+                N1, N2, D,
+                cu_seqlens_q=cu_seq_qlen_tensor,
+                cu_seqlens_k=cu_seq_klen_tensor,
+                cmp_residual_k=cmp_residual_k,
+                max_seqlen_q=S1,
+                max_seqlen_k=max_seqlen_k,
+                topk=0,
+                cmp_ratio=cmp_ratio,
+                mask_mode=mask_mode,
+                layout_q=layout_q,
+                layout_k=layout_k,
+            )
+            # 调用sparse_flash_mla_softmax_l1_norm执行算子计算
+            return cann_ops_transformer.sparse_flash_mla_softmax_l1_norm(
+                q, k, softmax_lse,
+                cu_seqlens_q=cu_seq_qlen_tensor,
+                cu_seqlens_k=cu_seq_klen_tensor,
+                cmp_residual_k=cmp_residual_k,
+                metadata=metadata,
+                softmax_scale=scale_value,
+                max_seqlen_k=max_seqlen_k,
+                cmp_ratio=cmp_ratio,
+                mask_mode=mask_mode,
+                layout_q=layout_q,
+                layout_k=layout_k,
+            )
+
+
+    torch_npu.npu.set_device(0)
+
+    S1 = 16
+    S2 = 2048
+    cmp_ratio = 128
+    actual_seq_q = [S1]
+    actual_seq_k = [S2]
+
+    T1 = sum(actual_seq_q)
+    T2 = sum(actual_seq_k)
+
+    B = 1
+    N1 = 128
+    N2 = 1
+    D = 512
+    scale_value = 1.0 / math.sqrt(D)
+    dtype = torch.float16
+    input_layout = "TND"
+
+    q_shape = (T1, N1, D)
+    k_shape = (T2, N2, D)
+    softmax_lse_shape = (N2, T1, N1 // N2)
+
+    cu_seq_qlen = [0] + [sum(actual_seq_q[:x+1]) for x in range(len(actual_seq_q))]
+    cu_seq_klen = [0] + [sum(actual_seq_k[:x+1]) for x in range(len(actual_seq_k))]
+
+    q = (torch.rand(q_shape).to(dtype)) * 2
+    k = (torch.rand(k_shape).to(dtype)) * 2
+    softmax_lse = (torch.rand(softmax_lse_shape).to(torch.float32))
+
+    cu_seq_qlen_tensor = torch.tensor(cu_seq_qlen).to(torch.int32).npu()
+    cu_seq_klen_tensor = torch.tensor(cu_seq_klen).to(torch.int32).npu()
+
+    cmp_residual_k = torch.zeros(B, dtype=torch.int32, device="npu")
+
+    model = SparseFlashMlaSoftmaxL1NormModel()
+    config = torchair.CompilerConfig()
+    # 获取图模式后端
+    npu_backend = torchair.get_npu_backend(compiler_config=config)
+    model = torch.compile(model, backend=npu_backend, dynamic=True)
+    softmax_l1_norm = model(q, k, softmax_lse, cu_seq_qlen_tensor, cu_seq_klen_tensor,
+                            cmp_residual_k, S2, cmp_ratio, 3, input_layout, input_layout)
+    ```
