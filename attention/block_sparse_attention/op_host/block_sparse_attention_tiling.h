@@ -94,7 +94,7 @@ TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
 TILING_DATA_FIELD_DEF(uint64_t, selectNumIdxSize);
 TILING_DATA_FIELD_DEF(uint64_t, selectIdxSize);
 // effectiveRows related
-TILING_DATA_FIELD_DEF(uint32_t, useEffRows);
+TILING_DATA_FIELD_DEF(uint32_t, enableEffRows);
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumEff);
 // Workspace大小
 TILING_DATA_FIELD_DEF(uint64_t, mm1OutSize);
@@ -246,7 +246,7 @@ private:
     uint64_t selectNumIdxSize_ = 0;
     uint64_t selectIdxSize_ = 0;
     // effectiveRows related
-    bool useEffRows_ = false;
+    bool enableEffRows_ = false;
     uint32_t maxBlockNumEff_ = 0;
     
     BSAQInputLayout qInputLayout_ = BSAQInputLayout::TND_Q;

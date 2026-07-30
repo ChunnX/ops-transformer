@@ -192,13 +192,13 @@ public:
                                    uint32_t curBaseTileSize, uint32_t embed,
                                    AscendC::GlobalTensor<int32_t> gBlockEffRows = AscendC::GlobalTensor<int32_t>(),
                                    uint64_t gmOffsetEffRows = 0,
-                                   bool useEffRows = false,
+                                   bool enableEffRows = false,
                                    uint32_t *ioCurBlockIdx = nullptr,
                                    uint32_t *ioCurBlockCopied = nullptr)
     {
         using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
-        if (useEffRows && ioCurBlockIdx != nullptr && ioCurBlockCopied != nullptr) {
+        if (enableEffRows && ioCurBlockIdx != nullptr && ioCurBlockCopied != nullptr) {
             uint32_t dealtLenAccum = 0;
             while (dealtLenAccum < curBaseTileSize && (*ioCurBlockIdx) < yBlockNumRsvd) {
                 uint32_t oriYBlockIdx = gSparseBlockIdx.GetValue(*ioCurBlockIdx);
@@ -290,7 +290,7 @@ public:
                     uint64_t deqScalar = 0,
                     AscendC::GlobalTensor<int32_t> gBlockEffRows = AscendC::GlobalTensor<int32_t>(),
                     uint64_t gmOffsetEffRows = 0,
-                    bool useEffRows = false,
+                    bool enableEffRows = false,
                     uint32_t *ioCurBlockIdx = nullptr,
                     uint32_t *ioCurBlockCopied = nullptr)
     {
@@ -313,7 +313,7 @@ public:
         SparseVBaseTileL1FullLoad(
             gBTensor, l1BTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
             yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed,
-            gBlockEffRows, gmOffsetEffRows, useEffRows, ioCurBlockIdx, ioCurBlockCopied);
+            gBlockEffRows, gmOffsetEffRows, enableEffRows, ioCurBlockIdx, ioCurBlockCopied);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
         // fwd crossCoreSync from online sm to mm2

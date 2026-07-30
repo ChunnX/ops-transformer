@@ -688,7 +688,7 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
 {
     const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
     if (attenMaskTensor == nullptr) {
-        useEffRows_ = false;
+        enableEffRows_ = false;
         maxBlockNumEff_ = 0;
         return ge::GRAPH_SUCCESS;
     }
@@ -741,7 +741,7 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
                 effRowsMaxBlockNum, expectedMaxBlockNum);
         return ge::GRAPH_FAILED;
     }
-    useEffRows_ = true;
+    enableEffRows_ = true;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1193,7 +1193,7 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     tilingData_->set_scaleValue(scaleValue_);
     tilingData_->set_selectNumIdxSize(selectNumIdxSize_);
     tilingData_->set_selectIdxSize(selectIdxSize_);
-    tilingData_->set_useEffRows(useEffRows_ ? 1 : 0);
+    tilingData_->set_enableEffRows(enableEffRows_ ? 1 : 0);
     tilingData_->set_maxBlockNumEff(maxBlockNumEff_);
     // fill 950 mask2idx tile info
     tilingData_->BsaMask2IdxTileInfo.set_xBlockNumAligned(xBlockNumAligned_);

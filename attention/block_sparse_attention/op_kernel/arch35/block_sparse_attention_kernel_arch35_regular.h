@@ -90,7 +90,7 @@ public:
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
         gSparseCount.SetGlobalBuffer((__gm__ ElementSparseCount *)(params.workSpace + sparseIdxSize_));
         AscendC::GlobalTensor<int32_t> gBlockEffRows;
-        if (useEffRows_) {
+        if (enableEffRows_) {
             gBlockEffRows.SetGlobalBuffer((__gm__ int32_t *)params.mask);
         }
         // cross core data move dst buffers
@@ -264,13 +264,13 @@ public:
             uint32_t xBlockSize = (xBlockIdx == xBlockNumAval - 1) ?
                 (qSeqlen - xBlockIdx * blockShapeX_) : blockShapeX_;
             uint64_t effRowsBase = 0;
-            if (useEffRows_) {
+            if (enableEffRows_) {
                 effRowsBase = (static_cast<uint64_t>(curBatch) * qHeads_ + qHeadIdx) * maxBlockNumEff_ * 2;
                 uint32_t effectiveX = gBlockEffRows.GetValue(effRowsBase + xBlockIdx * 2);
                 xBlockSize = (xBlockSize < effectiveX) ? xBlockSize : effectiveX;
             }
             uint32_t qSTileNumCurXBlock = CeilDiv(xBlockSize, qBaseTile_);
-            if (useEffRows_ && (xBlockSize == 0 || qSTileIdxCurXBlock >= qSTileNumCurXBlock)) {
+            if (enableEffRows_ && (xBlockSize == 0 || qSTileIdxCurXBlock >= qSTileNumCurXBlock)) {
                 continue;
             }
             uint32_t qSTileSizeAct = (qSTileIdxCurXBlock == qSTileNumCurXBlock - 1) ?
@@ -291,7 +291,7 @@ public:
             int64_t gatheredKvSeqlen;
             if (yBlockNumRsvd == 0) {
                 gatheredKvSeqlen = 0;
-            } else if (useEffRows_) {
+            } else if (enableEffRows_) {
                 gatheredKvSeqlen = 0;
                 for (uint32_t i = 0; i < yBlockNumRsvd; i++) {
                     uint32_t origIdx = gSparseIdx.GetValue(gmOffsetSparseIdx + i);
@@ -311,7 +311,7 @@ public:
             uint32_t rowNum = qSTileSizeAct;
             uint32_t rowNumRound = RoundUp(rowNum, 16);
             uint32_t kvSLoopNum = static_cast<uint32_t>(CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
-            if (useEffRows_ && kvSLoopNum == 0) {
+            if (enableEffRows_ && kvSLoopNum == 0) {
                 continue;
             }
             uint32_t kvSTileSizeAct = kvBaseTile_;
@@ -395,7 +395,7 @@ public:
                         kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                         prefixSumL0AStages, prefixSumL0BStages,
                         mm1ToSmFlag,
-                        0, gBlockEffRows, effRowsBase, useEffRows_ != 0,
+                        0, gBlockEffRows, effRowsBase, enableEffRows_ != 0,
                         &kCurBlockIdx, &kCurBlockCopied);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1)
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
@@ -450,7 +450,7 @@ public:
                         kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                         prefixSumL0AStages, prefixSumL0BStages,
                         smToMm2Flag, mm2ToReFlag,
-                        0, gBlockEffRows, effRowsBase, useEffRows_ != 0,
+                        0, gBlockEffRows, effRowsBase, enableEffRows_ != 0,
                         &vCurBlockIdx, &vCurBlockCopied);
 #endif
 #ifdef __DAV_VEC__
@@ -498,7 +498,7 @@ public:
         qSeqlenAligned_ = bsaTilingData->maxQSeqlen;
         kvSeqlenAligned_ = bsaTilingData->maxKvSeqlen;
         // effectiveRows
-        useEffRows_ = (bsaTilingData->useEffRows != 0);
+        enableEffRows_ = (bsaTilingData->enableEffRows != 0);
         maxBlockNumEff_ = bsaTilingData->maxBlockNumEff;
     }
 
@@ -714,7 +714,7 @@ private:
     // workspace size
     uint64_t sparseIdxSize_;
     // effectiveRows
-    uint32_t useEffRows_;
+    uint32_t enableEffRows_;
     uint32_t maxBlockNumEff_;
     // aligned seqlen q & kv
     int64_t qSeqlenAligned_;
