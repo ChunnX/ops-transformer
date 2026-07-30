@@ -19,7 +19,7 @@ constexpr FixpipeConfig QKV_K_SCALE_FIXPIPE_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR
 constexpr FixpipeConfig QKV_K_SCALE_FIXPIPE_ROW_MAJOR_GM = {CO2Layout::ROW_MAJOR, false};
 constexpr uint8_t QKV_K_SCALE_FIXPIPE_DUAL_DST_SPLIT_M = 1;
 
-template <uint32_t ROPE_MODE, bool Q_OUT_L2_UNCACHEABLE>
+template <uint32_t ROPE_MODE>
 class QkvRmsNormRopeCacheWithKScaleCube {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t qHeadNum, uint64_t kvHeadNum)
@@ -293,9 +293,6 @@ private:
         rotationGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.rotation);
         if constexpr (IS_MROPE) {
             qOutBf16Gm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.qOut);
-            if constexpr (Q_OUT_L2_UNCACHEABLE) {
-                qOutBf16Gm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-            }
         }
     }
 

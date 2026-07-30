@@ -42,13 +42,12 @@ ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseCon
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfo->ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfo->l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfo->l0cSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfo->l2Size);
     compileInfo->opWorkspaceSize = static_cast<uint64_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
     OP_LOGD(context,
             "QkvRmsNormRopeCacheWithKScale tiling prepare resources: aicNum=%u aivNum=%u ubSize=%llu "
-            "l1Size=%llu l0cSize=%llu l2Size=%llu opWorkspaceSize=%llu.",
+            "l1Size=%llu l0cSize=%llu opWorkspaceSize=%llu.",
             compileInfo->aicNum, compileInfo->aivNum, compileInfo->ubSize, compileInfo->l1Size, compileInfo->l0cSize,
-            compileInfo->l2Size, compileInfo->opWorkspaceSize);
+            compileInfo->opWorkspaceSize);
     OP_CHECK_IF(compileInfo->aicNum == 0 || compileInfo->aivNum == 0 || compileInfo->ubSize == 0 ||
                     compileInfo->l1Size == 0 || compileInfo->l0cSize == 0,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(

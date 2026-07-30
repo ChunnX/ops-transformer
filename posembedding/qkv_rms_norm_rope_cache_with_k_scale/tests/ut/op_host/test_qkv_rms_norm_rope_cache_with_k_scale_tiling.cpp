@@ -233,7 +233,6 @@ CompileInfo BuildCompileInfo(const QkvTilingCase &testCase)
     compileInfo.ubSize = 262144U;
     compileInfo.l1Size = 524288U;
     compileInfo.l0cSize = 131072U;
-    compileInfo.l2Size = 192UL * 1024UL * 1024UL;
     compileInfo.opWorkspaceSize = TEST_OP_WORKSPACE_SIZE;
     return compileInfo;
 }

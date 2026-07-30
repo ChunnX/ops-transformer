@@ -17,7 +17,7 @@
 namespace QkvRmsNormRopeCacheWithKScale {
 
 template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32_t K_QUANT_MODE,
-          uint32_t Q_QUANT_MODE, bool Q_OUT_L2_UNCACHEABLE>
+          uint32_t Q_QUANT_MODE>
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors,
@@ -377,7 +377,7 @@ private:
     LocalTensor<float> outputDbPoolUb_;
     LocalTensor<float> qkPreprocessDbPoolUb_;
     LocalTensor<float> kRotationDbPoolUb_;
-    QkvRmsNormRopeCacheWithKScaleCube<ROPE_MODE, Q_OUT_L2_UNCACHEABLE> cube_;
+    QkvRmsNormRopeCacheWithKScaleCube<ROPE_MODE> cube_;
     QkvRmsNormRopeCacheWithKScaleVec<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE>
         vec_;
 };

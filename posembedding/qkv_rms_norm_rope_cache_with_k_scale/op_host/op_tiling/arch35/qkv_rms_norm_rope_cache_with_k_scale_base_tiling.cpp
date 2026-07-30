@@ -1304,9 +1304,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateCompileInfo(
 {
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale compile info: aicNum=%u aivNum=%u ubSize=%llu l1Size=%llu "
-            "l0cSize=%llu l2Size=%llu opWorkspaceSize=%llu.",
+            "l0cSize=%llu opWorkspaceSize=%llu.",
             compileInfo.aicNum, compileInfo.aivNum, compileInfo.ubSize, compileInfo.l1Size, compileInfo.l0cSize,
-            compileInfo.l2Size, compileInfo.opWorkspaceSize);
+            compileInfo.opWorkspaceSize);
     OP_CHECK_IF(compileInfo.aicNum == 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "aicNum", std::to_string(compileInfo.aicNum).c_str(),
                                                       "aicNum in compile info must be greater than 0"),
@@ -1421,25 +1421,9 @@ uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::GetTilingKey() const
     // The template key uses its own 0/1 ABI values rather than ge::DataType values.
     const uint64_t kQuantModeKey =
         kCacheIsInt8 ? QKV_K_SCALE_K_QUANT_MODE_INT8 : QKV_K_SCALE_K_QUANT_MODE_FP8;
-    const uint64_t qOutBytes = input_.totalTokens * input_.numQHeads * input_.headDim *
-                               static_cast<uint64_t>(ge::GetSizeByDataType(qOutDtypeAttr_));
-    const uint64_t kOutBytes = input_.totalTokens * input_.numKHeads * input_.headDim *
-                               static_cast<uint64_t>(ge::GetSizeByDataType(input_.kCache.dtype));
-    const uint64_t vOutBytes = input_.totalTokens * input_.numVHeads * input_.headDim *
-                               static_cast<uint64_t>(ge::GetSizeByDataType(input_.vCache.dtype));
-    const uint64_t kScaleOutBytes = input_.totalTokens * input_.numKHeads *
-                                    static_cast<uint64_t>(ge::GetSizeByDataType(input_.kScaleCache.dtype));
-    const uint64_t outputBytes = qOutBytes + kOutBytes + vOutBytes + kScaleOutBytes;
-    const bool qOutL2Uncacheable = ropeMode_ == RopeMode::MROPE && compileInfo_ != nullptr &&
-                                    compileInfo_->l2Size != 0 && outputBytes > compileInfo_->l2Size;
-    OP_LOGD(context_,
-            "QkvRmsNormRopeCacheWithKScale output bytes: q=%llu k=%llu v=%llu kScale=%llu total=%llu "
-            "l2Size=%llu qOutL2Uncacheable=%u.",
-            qOutBytes, kOutBytes, vOutBytes, kScaleOutBytes, outputBytes,
-            compileInfo_ == nullptr ? 0ULL : compileInfo_->l2Size, qOutL2Uncacheable ? 1U : 0U);
     return GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128, input_.layoutQkv,
                               input_.layoutQOut, static_cast<uint64_t>(ropeMode_),
-                              kQuantModeKey, static_cast<uint64_t>(qQuantMode_), qOutL2Uncacheable);
+                              kQuantModeKey, static_cast<uint64_t>(qQuantMode_));
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ResolveRopeMode()
