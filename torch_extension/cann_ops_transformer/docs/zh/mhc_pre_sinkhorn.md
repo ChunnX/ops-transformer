@@ -153,14 +153,6 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>-</td>
         <td>-</td>
     </tr>
-    <tr>
-        <td>outFlag</td>
-        <td>bool</td>
-        <td>必选</td>
-        <td>是否需要输出反向梯度相关的中间结果。为True时输出hPre、hcBeforeNorm、invRms、sumOut、normOut；为False时这5个输出无效。</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
     </tbody>
     </table>
 
@@ -208,46 +200,6 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>输出的MHC的h_res变换矩阵（Sinkhorn归一化后的双随机矩阵）。对应公式中H<sup>res</sup>。</td>
         <td>float32</td>
         <td>(B, S, N*N)</td>
-    </tr>
-    <tr>
-        <td>hPre</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>输出的H<sup>pre</sup>变换矩阵（sigmoid后的值），用于反向梯度计算。对应公式中H<sup>pre</sup>。当outFlag为False时输出无效。</td>
-        <td>float32</td>
-        <td>(B, S, N)</td>
-    </tr>
-    <tr>
-        <td>hcBeforeNorm</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>输出的归一化前的中间结果（x与phi矩阵乘结果），用于反向梯度计算。当outFlag为False时输出无效。</td>
-        <td>float32</td>
-        <td>(B, S, 2N+N²)</td>
-    </tr>
-    <tr>
-        <td>invRms</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>输出的RMSNorm的1/r结果，用于反向梯度计算。对应公式中x'<sub>l</sub>。当outFlag为False时输出无效。</td>
-        <td>float32</td>
-        <td>(B, S, 1)</td>
-    </tr>
-    <tr>
-        <td>sumOut</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>输出的Sinkhorn迭代过程中的中间求和结果，用于反向梯度计算。对应公式中sumOut。当outFlag为False时输出无效。</td>
-        <td>float32</td>
-        <td>(2*numIters, B, S, N)</td>
-    </tr>
-    <tr>
-        <td>normOut</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>输出的Sinkhorn迭代过程中的中间归一化结果，用于反向梯度计算。对应公式中normOut。当outFlag为False时输出无效。</td>
-        <td>float32</td>
-        <td>(2*numIters, B, S, N, N)</td>
     </tr>
 </tbody>
 </table>
