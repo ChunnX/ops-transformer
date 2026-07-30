@@ -299,10 +299,10 @@ private:
     uint64_t sliceShape_[Dims]{};
 };
 
-template<typename Engine, typename DestTensor,
+template<typename CopyHandle, typename DestTensor,
          uint32_t Dims, uint32_t MaxF, typename GmLayoutF, typename ElemT>
 __aicore__ inline void FragmentSliceCopy(
-    Engine engine,
+    CopyHandle copyHandle,
     DestTensor& dest,
     const FragmentTensor<Dims, MaxF, GmLayoutF, ElemT>& src)
 {
@@ -317,13 +317,13 @@ __aicore__ inline void FragmentSliceCopy(
             MakeCoordFromArray<Dims>(info.fragCoord), MakeShapeFromArray<Dims>(info.copyShape));
         auto l1Tensor = dest.Slice(
             MakeCoordFromArray<Dims>(info.localCoord), MakeShapeFromArray<Dims>(info.copyShape));
-        AscendC::Te::Copy(engine, l1Tensor, gmTensor);
+        AscendC::Te::Copy(copyHandle, l1Tensor, gmTensor);
     }
 }
 
-template<typename Engine, uint32_t Dims, uint32_t MaxF, typename LayoutF, typename ElemT, typename DestTensor>
+template<typename CopyHandle, uint32_t Dims, uint32_t MaxF, typename LayoutF, typename ElemT, typename DestTensor>
 __aicore__ inline void FragmentSliceScatter(
-    Engine engine,
+    CopyHandle copyHandle,
     const FragmentTensor<Dims, MaxF, LayoutF, ElemT>& src,
     DestTensor& dest)
 {
@@ -348,7 +348,7 @@ __aicore__ inline void FragmentSliceScatter(
             MakeCoordFromArray<Dims>(info.fragCoord), MakeShapeFromArray<Dims>(info.copyShape));
         auto l0cSlice = dest.Slice(
             MakeCoordFromArray<Dims>(info.localCoord), MakeShapeFromArray<Dims>(info.copyShape));
-        AscendC::Te::Copy(engine, cBlock, l0cSlice);
+        AscendC::Te::Copy(copyHandle, cBlock, l0cSlice);
     }
 }
 
