@@ -24,7 +24,6 @@ using namespace AscendC;
 constexpr uint32_t BARRIER_FLAG_SIZE = 32;
 constexpr uint32_t UB_SIZE = BARRIER_FLAG_SIZE;
 constexpr uint32_t BARRIER_FLAG_ELEMS = BARRIER_FLAG_SIZE / sizeof(int32_t);
-constexpr uint64_t BARRIER_TIMEOUT_CYCLES = 2000000000ULL;
 
 class TeamBarrier {
 public:
@@ -133,7 +132,6 @@ __aicore__ inline void TeamBarrier::CrossCore()
             auto gmRemote = Te::MakeTensor(
                 Te::MakeMemPtr<Te::Location::GM>(remotePtr),
                 Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, BARRIER_FLAG_ELEMS));
-            uint64_t startTime = static_cast<uint64_t>(GetSystemCycle());
             do {
                 SetFlag<HardEvent::S_MTE2>(1);
                 WaitFlag<HardEvent::S_MTE2>(1);
@@ -143,10 +141,6 @@ __aicore__ inline void TeamBarrier::CrossCore()
                 if (*reinterpret_cast<__ubuf__ int64_t*>(syncBuf_) >= count) {
                     break;
                 }
-                uint64_t elapsed = static_cast<uint64_t>(GetSystemCycle()) - startTime;
-                ascendc_assert(elapsed < BARRIER_TIMEOUT_CYCLES,
-                    "Barrier cross core timeout, myRank=%u, targetJob=%u, expectedCount=%lld",
-                    ctx_->rankId, i, count);
             } while (true);
         }
     }
@@ -182,7 +176,6 @@ __aicore__ inline void TeamBarrier::CrossDeviceExecute(int64_t count)
         auto gmRemote = Te::MakeTensor(
             Te::MakeMemPtr<Te::Location::GM>(remotePtr),
             Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, BARRIER_FLAG_ELEMS));
-        uint64_t startTime = static_cast<uint64_t>(GetSystemCycle());
         do {
             SetFlag<HardEvent::S_MTE2>(1);
             WaitFlag<HardEvent::S_MTE2>(1);
@@ -192,9 +185,6 @@ __aicore__ inline void TeamBarrier::CrossDeviceExecute(int64_t count)
             if (*reinterpret_cast<__ubuf__ int64_t*>(syncBuf_) >= count) {
                 break;
             }
-            uint64_t elapsed = static_cast<uint64_t>(GetSystemCycle()) - startTime;
-            ascendc_assert(elapsed < BARRIER_TIMEOUT_CYCLES,
-                "Barrier cross device timeout, myRank=%u, targetRank=%u, expectedCount=%lld", myRank, i, count);
         } while (true);
     }
 }
