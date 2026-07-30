@@ -1265,30 +1265,30 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchTiling
         OP_LOGI(nodeName, "Parameter 'commAlg' is nullptr/empty, defaulting to 'fullmesh_v1'.");
     }
     DispatchV2Config config;
-    config.xIndex = 0U;                      // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
-    config.expertIdsIndex = 1U;              // 1: 根据dispatchV2算子原型标志位初始化expertIds索引
-    config.scalesIndex = 2U;                 // 2: 根据dispatchV2算子原型标志位初始化scales索引
-    config.xActiveMaskIndex = 3U;            // 3: 根据dispatchV2算子原型标志位初始化xActiveMask索引
-    config.expertScalesIndex = 4U;           // 4: 根据dispatchV2算子原型标志位初始化expertScales索引
-    config.elasticInfoIndex = 5U;            // 5: 根据dispatchV2算子原型标志位初始化elasticInfo索引
-    config.performanceInfoIndex = 6U;        // 6: 根据dispatchV2算子原型标志位初始化performanceInfo索引
-    config.attrGroupEpIndex = 0;             // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
-    config.attrEpWorldSizeIndex = 1;         // 1: 根据dispatchV2算子原型标志位初始化epWorldSize索引
-    config.attrEpRankIdIndex = 2;            // 2: 根据dispatchV2算子原型标志位初始化epRankId索引
-    config.attrMoeExpertNumIndex = 3;        // 3: 根据dispatchV2算子原型标志位初始化moeExpertNum索引
-    config.attrGroupTpIndex = 4;             // 4: 根据dispatchV2算子原型标志位初始化groupTp索引
-    config.attrTpWorldSizeIndex = 5;         // 5: 根据dispatchV2算子原型标志位初始化tpWorldSize索引
-    config.attrTpRankIdIndex = 6;            // 6: 根据dispatchV2算子原型标志位初始化tpRankId索引
-    config.attrExpertSharedTypeIndex = 7;    // 7: 根据dispatchV2算子原型标志位初始化expertSharedType索引
-    config.attrSharedExpertNumIndex = 8;     // 8: 根据dispatchV2算子原型标志位初始化sharedExpertNum索引
-    config.attrSharedExpertRankNumIndex = 9; // 9: 根据dispatchV2算子原型标志位初始化sharedExpertRankNum索引
-    config.attrQuantModeIndex = 10;          // 10: 根据dispatchV2算子原型标志位初始化quantMode索引
-    config.attrGlobalBsIndex = 11;           // 11: 根据dispatchV2算子原型标志位初始化globalBs索引
+    config.xIndex = 0U;                       // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
+    config.expertIdsIndex = 1U;               // 1: 根据dispatchV2算子原型标志位初始化expertIds索引
+    config.scalesIndex = 2U;                  // 2: 根据dispatchV2算子原型标志位初始化scales索引
+    config.xActiveMaskIndex = 3U;             // 3: 根据dispatchV2算子原型标志位初始化xActiveMask索引
+    config.expertScalesIndex = 4U;            // 4: 根据dispatchV2算子原型标志位初始化expertScales索引
+    config.elasticInfoIndex = 5U;             // 5: 根据dispatchV2算子原型标志位初始化elasticInfo索引
+    config.performanceInfoIndex = 6U;         // 6: 根据dispatchV2算子原型标志位初始化performanceInfo索引
+    config.attrGroupEpIndex = 0;              // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
+    config.attrEpWorldSizeIndex = 1;          // 1: 根据dispatchV2算子原型标志位初始化epWorldSize索引
+    config.attrEpRankIdIndex = 2;             // 2: 根据dispatchV2算子原型标志位初始化epRankId索引
+    config.attrMoeExpertNumIndex = 3;         // 3: 根据dispatchV2算子原型标志位初始化moeExpertNum索引
+    config.attrGroupTpIndex = 4;              // 4: 根据dispatchV2算子原型标志位初始化groupTp索引
+    config.attrTpWorldSizeIndex = 5;          // 5: 根据dispatchV2算子原型标志位初始化tpWorldSize索引
+    config.attrTpRankIdIndex = 6;             // 6: 根据dispatchV2算子原型标志位初始化tpRankId索引
+    config.attrExpertSharedTypeIndex = 7;     // 7: 根据dispatchV2算子原型标志位初始化expertSharedType索引
+    config.attrSharedExpertNumIndex = 8;      // 8: 根据dispatchV2算子原型标志位初始化sharedExpertNum索引
+    config.attrSharedExpertRankNumIndex = 9;  // 9: 根据dispatchV2算子原型标志位初始化sharedExpertRankNum索引
+    config.attrQuantModeIndex = 10;           // 10: 根据dispatchV2算子原型标志位初始化quantMode索引
+    config.attrGlobalBsIndex = 11;            // 11: 根据dispatchV2算子原型标志位初始化globalBs索引
     config.attrExpertTokenNumsTypeIndex = 12; // 12: 根据dispatchV2算子原型标志位初始化expertTokenNumType索引
     config.attrCommAlgIndex = 13;             // 13: 根据dispatchV2算子原型标志位初始化commAlg索引
-    config.attrZeroExpertNumIndex = 14;  // 14: 根据dispatchV2算子原型标志位初始化zeroExpertNumIndex索引
-    config.attrCopyExpertNumIndex = 15;  // 15: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
-    config.attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
+    config.attrZeroExpertNumIndex = 14;       // 14: 根据dispatchV2算子原型标志位初始化zeroExpertNumIndex索引
+    config.attrCopyExpertNumIndex = 15;       // 15: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
+    config.attrConstExpertNumIndex = 16;      // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     config.isMc2Context = false;
     // MTE 调用 A3 tiling 实现
     return MoeDistributeDispatchA3TilingFuncImplPublic(context, config);
@@ -1367,6 +1367,5 @@ static ge::graphStatus MoeDistributeDispatchV2TilingFuncImpl(gert::TilingContext
 }
 
 IMPL_OP_OPTILING(MoeDistributeDispatchV2)
-    .Tiling(MoeDistributeDispatchV2TilingFuncImpl)
-    .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV2);
+    .Tiling(MoeDistributeDispatchV2TilingFuncImpl);
 } // namespace optiling

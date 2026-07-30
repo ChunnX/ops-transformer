@@ -15,7 +15,6 @@
 
 #include "moe_distribute_combine_tiling_arch35.h"
 
-
 #include <fcntl.h>
 #include <cstdio>
 #include <cstdlib>
@@ -853,7 +852,6 @@ static ge::graphStatus MoeDistributeCombineV2TilingFuncImplA5(gert::TilingContex
 }
 
 IMPL_OP_OPTILING(MoeDistributeCombineV2)
-    .Tiling(MoeDistributeCombineV2TilingFuncImplA5)
-    .TilingParse<MoeDistributeCombineCompileInfo>(TilingParseForMoeDistributeCombineV2);
+    .Tiling(MoeDistributeCombineV2TilingFuncImplA5);
 
 } // namespace optiling
