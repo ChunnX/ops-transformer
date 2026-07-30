@@ -26,7 +26,7 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "mega_moe_base.h"
 #include "mega_moe_workspace_info.h"
-#include "block_epilogue_swiglu_mx_quant.h"
+#include "blaze/epilogue/mega_moe_block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
 #if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../moe_distribute_dispatch_v2/quantize_functions.h"
@@ -2488,4 +2488,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
 }
 
 } // namespace MegaMoeImpl
+#undef TemplateMegaMoeLayeredTypeClass
+#undef TemplateMegaMoeLayeredTypeFunc
 #endif

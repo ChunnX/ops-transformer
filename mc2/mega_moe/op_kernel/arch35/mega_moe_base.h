@@ -132,6 +132,22 @@ struct Params {
 
 enum class AddrUpdateMode : int32_t { GMM1, GMM2 };
 
+// Logical block-job scheduling information supplied by the caller. jobIndex
+// is zero-based and contiguous in [0, totalJobs). All three physical cores
+// in one MIX_AIC_1_2 block must receive the same context.
+struct BlockJobContext {
+    uint32_t jobIndex;
+    uint32_t totalJobs;
+};
+
+// GM workspace indexing is independent of the number of blocks participating
+// in a reusable stage. This keeps shared data readable by later stages that may
+// use a different block count.
+struct BlockWorkspaceContext {
+    uint32_t blockIdx;
+    uint32_t blockNum;
+};
+
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
@@ -154,11 +170,10 @@ __aicore__ inline void WaitForCube(uint16_t value = 0)
 
 __aicore__ inline void EndSync(int32_t &vecSetSyncCom)
 {
-    if (vecSetSyncCom == 0) {
-        return;
-    }
     if constexpr (g_coreType == AIC) {
-        WaitForVector();
+        if (vecSetSyncCom != 0) {
+            WaitForVector();
+        }
     }
 }
 
