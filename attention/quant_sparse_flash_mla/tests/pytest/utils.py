@@ -103,6 +103,10 @@ def parse_list_param(value):
         return None
     if isinstance(value, list):
         return value
+    if isinstance(value, (int,)) and not isinstance(value, bool):
+        return [value]
+    if isinstance(value, float) and not pd.isna(value):
+        return [int(value)]
     if isinstance(value, str):
         s = value.strip()
         if s.lower() == "none" or s == "":
@@ -312,8 +316,8 @@ def fill_none_params(params_dict):
                 f"cu_seqlens_ori_kv slot ({slot_len}) at batch {i} must >= seqused_ori_kv ({seqused_ori_kv[i]})"
             )
 
-    # 3. 填充cmp参数 (SWA场景为None, 非SWA场景自动生成)
-    if template_run_mode == "SWA":
+    # 3. 填充cmp参数 (SWA/ORI_SPARSE场景为None, 非SWA场景自动生成)
+    if template_run_mode in ("SWA", "ORI_SPARSE"):
         seqused_cmp_kv = None
         cu_seqlens_cmp_kv = None
         cmp_residual_kv = None
@@ -323,7 +327,9 @@ def fill_none_params(params_dict):
         if cu_seqlens_cmp_kv is None:
             cu_seqlens_cmp_kv = [math.floor(c / cmp_ratio) for c in cu_seqlens_ori_kv]
         if cmp_residual_kv is None:
-            cmp_residual_kv = [s % cmp_ratio for s in seqused_ori_kv]
+            cmp_residual_kv = (
+                [s % cmp_ratio for s in seqused_ori_kv] if cmp_mask_mode != 0 else None
+            )
         for i in range(B):
             slot_len = cu_seqlens_cmp_kv[i + 1] - cu_seqlens_cmp_kv[i]
             if slot_len < seqused_cmp_kv[i]:
@@ -345,7 +351,7 @@ def fill_none_params(params_dict):
         )
         block_num1 = ori_block_num
     if block_num2 is None:
-        if template_run_mode == "SWA":
+        if template_run_mode in ("SWA", "ORI_SPARSE"):
             block_num2 = 0
         else:
             _, cmp_block_num = calc_block_num(
@@ -357,6 +363,17 @@ def fill_none_params(params_dict):
     T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
 
     quant_mode = params_dict.get("quant_mode")
+
+    q_datarange = params_dict.get("q_datarange")
+    ori_kv_datarange = params_dict.get("ori_kv_datarange")
+    cmp_kv_datarange = params_dict.get("cmp_kv_datarange")
+
+    if q_datarange is None:
+        q_datarange = [-5, 5]
+    if ori_kv_datarange is None:
+        ori_kv_datarange = [-5, 5]
+    if cmp_kv_datarange is None:
+        cmp_kv_datarange = [-5, 5]
 
     # 构建完整参数字典
     filled_params = {
@@ -396,6 +413,16 @@ def fill_none_params(params_dict):
         "topk_value_mode": params_dict.get("topk_value_mode", 1),
         "return_softmax_lse": params_dict.get("return_softmax_lse", False),
         "isSink": params_dict.get("isSink", True),
+        "q_datarange": q_datarange,
+        "ori_kv_datarange": ori_kv_datarange,
+        "cmp_kv_datarange": cmp_kv_datarange,
+        "K1": params_dict.get("K1"),
+        "ori_kv_topk_mode": params_dict.get("ori_kv_topk_mode", "fullK"),
+        "cmp_kv_topk_mode": params_dict.get("cmp_kv_topk_mode", "fullK"),
+        "ori_sparse_indices_mode": params_dict.get("ori_sparse_indices_mode", "full"),
+        "cmp_sparse_indices_mode": params_dict.get("cmp_sparse_indices_mode", "full"),
+        "ori_topk_length": params_dict.get("ori_topk_length", None),
+        "cmp_topk_length": params_dict.get("cmp_topk_length", None),
     }
 
     return filled_params
@@ -438,6 +465,9 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             "N2",
             "D",
             "K",
+            "K1",
+            "block_num1",
+            "block_num2",
             "block_size1",
             "block_size2",
             "softmax_scale",
@@ -452,6 +482,10 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             "S1EQS2",
             "topk_value_mode",
             "return_softmax_lse",
+            "ori_kv_topk_mode",
+            "cmp_kv_topk_mode",
+            "ori_sparse_indices_mode",
+            "cmp_sparse_indices_mode",
         ]
         optional_columns = [
             "Testcase_Name",
@@ -462,6 +496,11 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             "cu_seqlens_ori_kv",
             "cu_seqlens_cmp_kv",
             "cmp_residual_kv",
+            "q_datarange",
+            "ori_kv_datarange",
+            "cmp_kv_datarange",
+            "ori_topk_length",
+            "cmp_topk_length",
         ]
         # 检查是否缺少必要列
         missing_cols = [col for col in required_columns if col not in df.columns]
@@ -550,6 +589,12 @@ def save_result(params, result, fulfill_percent, result_path):
         "quant_mode": params.get("quant_mode"),
         "topk_value_mode": params.get("topk_value_mode"),
         "return_softmax_lse": params.get("return_softmax_lse"),
+        "ori_kv_topk_mode": params.get("ori_kv_topk_mode"),
+        "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode"),
+        "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode"),
+        "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode"),
+        "ori_topk_length": str(params.get("ori_topk_length")),
+        "cmp_topk_length": str(params.get("cmp_topk_length")),
         "result": result,
         "fulfill_percent": fulfill_percent,
     }
