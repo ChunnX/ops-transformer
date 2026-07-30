@@ -982,3 +982,384 @@ metadata校验
         </tr>
     </tbody>
 </table>
+
+## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
+
+### SWA，BSND输入
+
+```python
+import torch
+import torch_npu
+import math
+import cann_ops_transformer
+
+torch_npu.npu.set_device(0)
+
+qDtype = torch.bfloat16
+kvDtype = torch.float8_e4m3fn
+B = 1
+S1 = 16
+S2 = 64
+N1 = 64
+N2 = 1
+Dq = 512
+Dkv = 608
+quant_mode = 1
+cmp_ratio = 1  # SWA示例仅传ori_kv，cmp_ratio不参与压缩KV计算，保持默认值1。
+
+seqused_q = torch.tensor([16], dtype=torch.int32, device="npu")
+seqused_ori_kv = torch.tensor([64], dtype=torch.int32, device="npu")
+
+q = torch.randn(B, S1, N1, Dq, dtype=qDtype, device="npu")
+ori_kv = torch.randn(B, S2, N2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+cmp_kv = None
+sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
+
+layout_q = "BSND"
+layout_kv = "BSND"
+
+metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
+    num_heads_q = N1,
+    num_heads_kv = N2,
+    head_dim = Dq,
+    seqused_q=seqused_q,
+    seqused_ori_kv=seqused_ori_kv,
+    quant_mode=quant_mode,
+    batch_size = B,
+    max_seqlen_q = max(seqused_q),
+    max_seqlen_ori_kv = max(seqused_ori_kv),
+    ori_topk = 0,
+    rope_head_dim=64,
+    cmp_ratio = cmp_ratio,
+    ori_mask_mode = 4,
+    cmp_mask_mode = 0,
+    ori_win_left = 127,
+    ori_win_right = 0,
+    layout_q = layout_q,
+    layout_kv = layout_kv,
+    has_ori_kv = ori_kv is not None,
+    has_cmp_kv = cmp_kv is not None,
+    )
+
+npu_result, npu_lse = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
+    q=q,
+    ori_kv=ori_kv,
+    cmp_kv=cmp_kv,
+    seqused_q=seqused_q,
+    seqused_ori_kv=seqused_ori_kv,
+    sinks=sinks,
+    metadata=metadata,
+    quant_mode=quant_mode,
+    rope_head_dim=64,
+    softmax_scale=1.0 / math.sqrt(Dq),
+    cmp_ratio=cmp_ratio,
+    ori_mask_mode=4,
+    cmp_mask_mode=0,
+    ori_win_left=127,
+    ori_win_right=0,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+    topk_value_mode=1,
+    return_softmax_lse=False)
+
+torch.npu.synchronize()
+```
+
+### HCA，LayoutQ BSND，LayoutKv PA_BBND输入
+
+```python
+import torch
+import torch_npu
+import math
+import cann_ops_transformer
+
+torch_npu.npu.set_device(0)
+
+def scatter_to_pa(kv_bnsd, block_size, block_num, max_block_num_per_batch):
+    B, N2, S, D = kv_bnsd.shape
+    kv_expand = torch.zeros(B, N2, max_block_num_per_batch * block_size, D, dtype=kv_bnsd.dtype, device=kv_bnsd.device)
+    kv_expand[:, :, :S, :] = kv_bnsd
+    kv_pa = torch.zeros(block_num, block_size, N2, D, dtype=kv_bnsd.dtype, device=kv_bnsd.device)
+    block_table = torch.zeros(B, max_block_num_per_batch, dtype=torch.int32, device=kv_bnsd.device)
+    cur_block_id = 0
+    for i_B in range(B):
+        for i_block in range(max_block_num_per_batch):
+            block_table[i_B, i_block] = cur_block_id
+            block_start = i_block * block_size
+            for i_N2 in range(N2):
+                kv_pa[cur_block_id, :, i_N2, :] = kv_expand[i_B, i_N2, block_start:block_start + block_size, :]
+            cur_block_id += 1
+    return kv_pa, block_table
+
+qDtype = torch.bfloat16
+kvDtype = torch.float8_e4m3fn
+B = 1
+S1 = 16
+S2 = 2050
+N1 = 64
+N2 = 1
+Dq = 512
+Dkv = 608
+quant_mode = 1
+cmp_ratio = 128
+
+block_size1 = 128
+block_size2 = 128
+ori_max_block_num_per_batch = math.ceil(S2 / block_size1)
+block_num1 = ori_max_block_num_per_batch * B
+
+seqused_ori_kv = torch.tensor([S2], dtype=torch.int32, device="npu")
+cmp_max_s2 = S2 // cmp_ratio
+seqused_cmp_kv = torch.tensor([cmp_max_s2], dtype=torch.int32, device="npu")
+cmp_residual_kv = torch.tensor([S2 % cmp_ratio], dtype=torch.int32, device="npu")
+seqused_q = torch.tensor([16], dtype=torch.int32, device="npu")
+
+q = torch.randn(B, S1, N1, Dq, dtype=qDtype, device="npu")
+
+ori_kv_bnsd = torch.randn(B, N2, S2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+ori_kv, ori_block_table = scatter_to_pa(ori_kv_bnsd, block_size1, block_num1, ori_max_block_num_per_batch)
+
+if cmp_max_s2 > 0:
+    cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2)
+    block_num2 = cmp_max_block_num_per_batch * B
+    cmp_kv_bnsd = torch.randn(B, N2, cmp_max_s2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+    cmp_kv, cmp_block_table = scatter_to_pa(cmp_kv_bnsd, block_size2, block_num2, cmp_max_block_num_per_batch)
+else:
+    block_num2 = 0
+    cmp_kv = None
+    cmp_block_table = None
+
+sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
+
+layout_q = "BSND"
+layout_kv = "PA_BBND"
+
+metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
+    num_heads_q = N1,
+    num_heads_kv = N2,
+    head_dim = Dq,
+    seqused_q=seqused_q,
+    seqused_ori_kv=seqused_ori_kv,
+    seqused_cmp_kv=seqused_cmp_kv,
+    cmp_residual_kv=cmp_residual_kv,
+    quant_mode=quant_mode,
+    batch_size = B,
+    max_seqlen_q = max(seqused_q),
+    max_seqlen_ori_kv = max(seqused_ori_kv),
+    max_seqlen_cmp_kv = max(seqused_cmp_kv),
+    ori_topk = 0,
+    cmp_topk = 0,
+    rope_head_dim=64,
+    cmp_ratio = cmp_ratio,
+    ori_mask_mode = 4,
+    cmp_mask_mode = 3,
+    ori_win_left = 127,
+    ori_win_right = 0,
+    layout_q = layout_q,
+    layout_kv = layout_kv,
+    has_ori_kv = ori_kv is not None,
+    has_cmp_kv = cmp_kv is not None,
+    )
+
+npu_result, npu_lse = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
+    q=q,
+    ori_kv=ori_kv,
+    cmp_kv=cmp_kv,
+    ori_block_table=ori_block_table,
+    cmp_block_table=cmp_block_table,
+    seqused_q=seqused_q,
+    seqused_ori_kv=seqused_ori_kv,
+    seqused_cmp_kv=seqused_cmp_kv,
+    cmp_residual_kv=cmp_residual_kv,
+    sinks=sinks,
+    metadata=metadata,
+    quant_mode=quant_mode,
+    rope_head_dim=64,
+    softmax_scale=1.0 / math.sqrt(Dq),
+    cmp_ratio=cmp_ratio,
+    ori_mask_mode=4,
+    cmp_mask_mode=3,
+    ori_win_left=127,
+    ori_win_right=0,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+    topk_value_mode=1,
+    return_softmax_lse=False)
+
+torch.npu.synchronize()
+```
+
+### CSA，TND输入
+
+```python
+import torch
+import torch_npu
+import math
+import cann_ops_transformer
+import torchair
+from torchair.configs.compiler_config import CompilerConfig
+
+torch_npu.npu.set_device(0)
+
+class Network(torch.nn.Module):
+    def __init__(self):
+        super(Network, self).__init__()
+
+    def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices,
+                cu_seqlens_q, seqused_q, cu_seqlens_ori_kv, seqused_ori_kv,
+                cu_seqlens_cmp_kv, seqused_cmp_kv, cmp_residual_kv,
+                sinks, metadata, quant_mode, rope_head_dim, softmax_scale, cmp_ratio,
+                ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right,
+                layout_q, layout_kv, topk_value_mode, return_softmax_lse):
+        npu_result, npu_lse = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
+            q=q,
+            ori_kv=ori_kv,
+            cmp_kv=cmp_kv,
+            cmp_sparse_indices=cmp_sparse_indices,
+            cu_seqlens_q=cu_seqlens_q,
+            seqused_q=seqused_q,
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            seqused_ori_kv=seqused_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+            seqused_cmp_kv=seqused_cmp_kv,
+            cmp_residual_kv=cmp_residual_kv,
+            sinks=sinks,
+            metadata=metadata,
+            quant_mode=quant_mode,
+            rope_head_dim=rope_head_dim,
+            softmax_scale=softmax_scale,
+            cmp_ratio=cmp_ratio,
+            ori_mask_mode=ori_mask_mode,
+            cmp_mask_mode=cmp_mask_mode,
+            ori_win_left=ori_win_left,
+            ori_win_right=ori_win_right,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            topk_value_mode=topk_value_mode,
+            return_softmax_lse=return_softmax_lse)
+        return npu_result, npu_lse
+
+qDtype = torch.bfloat16
+kvDtype = torch.float8_e4m3fn
+B = 1
+S1 = 16
+S2 = 2050
+N1 = 64
+N2 = 1
+Dq = 512
+Dkv = 608
+K = 512
+quant_mode = 1
+cmp_ratio = 128
+
+q_seqlens = [S1] * B
+ori_kv_seqlens = [S2] * B
+
+cu_seqlens_q = torch.tensor([sum(q_seqlens[:i]) for i in range(B + 1)], dtype=torch.int32, device="npu")
+cu_seqlens_ori_kv = torch.tensor([sum(ori_kv_seqlens[:i]) for i in range(B + 1)], dtype=torch.int32, device="npu")
+cu_seqlens_cmp_kv = torch.tensor([sum(s // cmp_ratio for s in ori_kv_seqlens[:i]) for i in range(B + 1)], dtype=torch.int32, device="npu")
+
+total_q = cu_seqlens_q[-1].item()
+total_ori_kv = cu_seqlens_ori_kv[-1].item()
+total_cmp_kv = cu_seqlens_cmp_kv[-1].item()
+
+seqused_q = torch.tensor(q_seqlens, dtype=torch.int32, device="npu")
+seqused_ori_kv = torch.tensor(ori_kv_seqlens, dtype=torch.int32, device="npu")
+seqused_cmp_kv = torch.tensor([s // cmp_ratio for s in ori_kv_seqlens], dtype=torch.int32, device="npu")
+cmp_residual_kv = torch.tensor([s % cmp_ratio for s in ori_kv_seqlens], dtype=torch.int32, device="npu")
+
+q = torch.randn(total_q, N1, Dq, dtype=qDtype, device="npu")
+ori_kv = torch.randn(total_ori_kv, N2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+cmp_kv = torch.randn(total_cmp_kv, N2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+
+cmp_sparse_indices = torch.full((total_q, N2, K), fill_value=-1, dtype=torch.int32, device="npu")
+for i_B in range(B):
+    cur_act_q = seqused_q[i_B].item()
+    s1_prefix = cu_seqlens_q[i_B].item()
+    cur_ori_kv = seqused_ori_kv[i_B].item()
+    for i_N2 in range(N2):
+        for i_S1 in range(cur_act_q):
+            cur_valid_s2_max = math.floor((cur_ori_kv - cur_act_q + i_S1 + 1) / cmp_ratio)
+            valid_blocks_max = max(0, cur_valid_s2_max)
+            block_indices = torch.randperm(valid_blocks_max, device="npu").to(torch.int32)
+            valid_blocks_topk = min(valid_blocks_max, K)
+            cmp_sparse_indices[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
+
+sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
+
+layout_q = "TND"
+layout_kv = "TND"
+
+print("mixed_quant_sparse_flash_mla_metadata...")
+metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
+    num_heads_q = N1,
+    num_heads_kv = N2,
+    head_dim = Dq,
+    cu_seqlens_q=cu_seqlens_q,
+    cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+    cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+    seqused_q=seqused_q,
+    seqused_ori_kv=seqused_ori_kv,
+    seqused_cmp_kv=seqused_cmp_kv,
+    cmp_residual_kv=cmp_residual_kv,
+    quant_mode=quant_mode,
+    batch_size = B,
+    max_seqlen_q = max(q_seqlens),
+    max_seqlen_ori_kv = max(ori_kv_seqlens),
+    max_seqlen_cmp_kv = max(s // cmp_ratio for s in ori_kv_seqlens),
+    ori_topk = 0,
+    cmp_topk = K,
+    rope_head_dim=64,
+    cmp_ratio = cmp_ratio,
+    ori_mask_mode = 4,
+    cmp_mask_mode = 3,
+    ori_win_left = 127,
+    ori_win_right = 0,
+    layout_q = layout_q,
+    layout_kv = layout_kv,
+    has_ori_kv = ori_kv is not None,
+    has_cmp_kv = cmp_kv is not None,
+    )
+torch.npu.synchronize()
+metadata.npu()
+
+print("torch.compile...")
+torch._dynamo.reset()
+npu_mode = Network().npu()
+config = CompilerConfig()
+config.mode = "reduce-overhead"
+config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
+config.experimental_config.frozen_parameter = True
+npu_backend = torchair.get_npu_backend(compiler_config=config)
+npu_mode = torch.compile(npu_mode, fullgraph=True, backend=npu_backend, dynamic=False)
+
+print("mixed_quant_sparse_flash_mla ...")
+npu_result, npu_lse = npu_mode(
+    q=q,
+    ori_kv=ori_kv,
+    cmp_kv=cmp_kv,
+    cmp_sparse_indices=cmp_sparse_indices,
+    cu_seqlens_q=cu_seqlens_q,
+    seqused_q=seqused_q,
+    cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+    seqused_ori_kv=seqused_ori_kv,
+    cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+    seqused_cmp_kv=seqused_cmp_kv,
+    cmp_residual_kv=cmp_residual_kv,
+    sinks=sinks,
+    metadata=metadata,
+    quant_mode=quant_mode,
+    rope_head_dim=64,
+    softmax_scale=1.0 / math.sqrt(Dq),
+    cmp_ratio=cmp_ratio,
+    ori_mask_mode=4,
+    cmp_mask_mode=3,
+    ori_win_left=127,
+    ori_win_right=0,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+    topk_value_mode=1,
+    return_softmax_lse=False)
+
+torch.npu.synchronize()
+```
