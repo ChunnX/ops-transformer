@@ -1106,16 +1106,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::MetaInfoCalAndDispatch(
     int32_t expertGlobalRowBegin =
         (localExpertId == 0) ? 0 : cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
 
-    // A8W4 + prefetch 路径下 SwigluQuant 覆盖 V1 UB，topkIndexTensor_ 需重新初始化
-    if constexpr (ENABLE_A8W4 && TopkWeightsPrefetch) {
-        if (localExpertId != 0) {
-            uint32_t topkIndexTensorSize = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
-                                                                static_cast<int64_t>(ALIGN_32));
-            CreateVecIndex(topkIndexTensor_, 0, topkIndexTensorSize / sizeof(int32_t));
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-    }
-
     // 将 (source rank, rank 内 shard) 展平后分配给所有 block；同一 source rank 可由多个 core 并行 dispatch。
     for (uint32_t dispatchShardIdx = blockIdx_; dispatchShardIdx < worldSize_ * blockNumPerRank_;
          dispatchShardIdx += blockNum_) {
