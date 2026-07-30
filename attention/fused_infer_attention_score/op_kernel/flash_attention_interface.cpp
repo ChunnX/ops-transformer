@@ -30,7 +30,8 @@ namespace SplitFuse {
         FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
         FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
         Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
-        Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE>
+        Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE,
+        bool BnbdFlag = false>
     __global__ __aicore__ void FAInfer(
         GM_ADDR q,
         GM_ADDR k,
@@ -72,7 +73,7 @@ namespace SplitFuse {
 
         using L1TileShapeQK = GemmShape<Q_TILE_CEIL, 128, 128>;
         using L0TileShapeQK = GemmShape<128, 128, 128>;
-        using DispatchPolicyQK = Gemm::MmadAtlasA2FAIQK<PagedCacheFlag, false>;
+        using DispatchPolicyQK = Gemm::MmadAtlasA2FAIQK<PagedCacheFlag, false, BnbdFlag>;
         using QType = Gemm::GemmType<ElementQ, LayoutQ>;
         using KType = Gemm::GemmType<ElementK, LayoutK>;
         using SType = Gemm::GemmType<ElementS, LayoutS>;
@@ -89,7 +90,7 @@ namespace SplitFuse {
 
         using L1TileShapePV = GemmShape<128, 128, 256>;
         using L0TileShapePV = GemmShape<128, 128, 128>;
-        using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPV<PagedCacheFlag, false>;
+        using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPV<PagedCacheFlag, false, BnbdFlag>;
         using VType = Gemm::GemmType<ElementV, LayoutV>;
         using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
         using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
@@ -129,7 +130,8 @@ namespace SplitFuse {
         FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
         FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
         Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
-        Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE>
+        Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE,
+        bool BnbdFlag = false>
     __global__ __aicore__ void FAInferDecoding(
         GM_ADDR q,
         GM_ADDR k,
@@ -172,7 +174,7 @@ namespace SplitFuse {
         using L1TileShapeQK = GemmShape<Q_TILE_CEIL, 128, 128>;
         using L0TileShapeQK = GemmShape<128, 128, 128>;
         // Use MmadAtlasA2FAIQKDecode dispatch policy for decoding scenario
-        using DispatchPolicyQK = Gemm::MmadAtlasA2FAIQKDecode<PagedCacheFlag, false>;
+        using DispatchPolicyQK = Gemm::MmadAtlasA2FAIQKDecode<PagedCacheFlag, false, BnbdFlag>;
         using QType = Gemm::GemmType<ElementQ, LayoutQ>;
         using KType = Gemm::GemmType<ElementK, LayoutK>;
         using SType = Gemm::GemmType<ElementS, LayoutS>;
@@ -190,7 +192,7 @@ namespace SplitFuse {
         using L1TileShapePV = GemmShape<128, 128, 256>;
         using L0TileShapePV = GemmShape<128, 128, 128>;
         // Use MmadAtlasA2FAIPVDecode dispatch policy for decoding scenario
-        using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPVDecode<PagedCacheFlag, false>;
+        using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPVDecode<PagedCacheFlag, false, BnbdFlag>;
         using VType = Gemm::GemmType<ElementV, LayoutV>;
         using OType = Gemm::GemmType<ElementO, LayoutO>;
         using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
