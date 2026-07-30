@@ -575,7 +575,6 @@ ge::graphStatus GroupedA4W4IntQuantTiling::PostTiling()
             "depthA1=%lu depthB1=%lu",
             p.baseM, p.baseN, p.baseK, p.ubCalSize, p.ubRestBytes, p.quantGroupNum, p.isPerTokenQuant,
             a4w4Tiling_.depthA1, a4w4Tiling_.depthB1);
-    context_->SetScheduleMode(1);
     return SaveTilingDataToContext(tilingData_);
 }
 
