@@ -373,12 +373,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckExistence() const
     }
     if (opParamInfo.cuSeqlensQ.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "cu_seqlens_q", "nullptr",
-                                              "cu_seqlens_q is required for TND/NTD layout");
+                                              "cu_seqlens_q is required for TND/NTD query layout with PA BNBD KV-cache");
         return ge::GRAPH_FAILED;
     }
-    if (opParamInfo.cuSeqlensKV.tensor == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "cu_seqlens_kv", "nullptr",
-                                              "cu_seqlens_kv is required for TND/NTD layout");
+    if (opParamInfo.seqUsedKV.tensor == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "seqused_kv", "nullptr",
+                                              "seqused_kv is required for TND/NTD query layout with PA BNBD KV-cache");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

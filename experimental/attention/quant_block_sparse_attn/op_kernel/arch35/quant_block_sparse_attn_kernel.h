@@ -123,8 +123,6 @@ public:
     GlobalTensor<int32_t> metadataGm;
     GlobalTensor<int32_t> blockTableGm;
     __gm__ int32_t *cuSeqQlenAddr;
-    __gm__ int32_t *cuSeqKvlenAddr;
-    __gm__ int32_t *seqUsedQlenAddr;
     __gm__ int32_t *seqUsedKvlenAddr;
     int32_t aicIdx;
 
@@ -185,8 +183,8 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
-    __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *cuSeqQlen, __gm__ uint8_t *cuSeqKvlen,
-    __gm__ uint8_t *seqUsedQlen, __gm__ uint8_t *seqUsedKvlen, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *cuSeqQlen, __gm__ uint8_t *,
+    __gm__ uint8_t *, __gm__ uint8_t *seqUsedKvlen, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
     __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
     __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
     const QuantBlockSparseAttnTilingData *__restrict tiling, TPipe *tPipe)
@@ -200,8 +198,6 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     }
     if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
         cuSeqQlenAddr = (__gm__ int32_t *)cuSeqQlen;
-        cuSeqKvlenAddr = (__gm__ int32_t *)cuSeqKvlen;
-        seqUsedQlenAddr = (__gm__ int32_t *)seqUsedQlen;
         seqUsedKvlenAddr = (__gm__ int32_t *)seqUsedKvlen;
     }
 
@@ -545,7 +541,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
             runParam.n2oIdx = runParam.n1oIdx / constInfo.gSize;
             runParam.goIdx = runParam.n1oIdx % constInfo.gSize;
             ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, this->attenMaskInfo, this->keyGm,
-                                                        this->cuSeqQlenAddr, this->cuSeqKvlenAddr);
+                                                        this->cuSeqQlenAddr, this->seqUsedKvlenAddr);
             ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, s1StartIdx, s1EndIdx,
                                                         bn1Idx == bn1StartIdx, sectionLastBN);
             int64_t temps1End = coreLastBN ? (runParam.s1LoopEnd + 3) : runParam.s1LoopEnd;

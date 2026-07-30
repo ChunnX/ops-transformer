@@ -1350,7 +1350,7 @@ def _call_npu_fa_op(
 
     if CASE.get("empty_actual_seq", False):
         seqused_q = torch.empty((0,), dtype=torch.int32)
-        seqused_kv = torch.empty((0,), dtype=torch.int32)
+        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
     else:
         seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
         seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
