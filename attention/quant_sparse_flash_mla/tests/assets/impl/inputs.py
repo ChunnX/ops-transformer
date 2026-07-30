@@ -23,10 +23,6 @@ import torch
 class QuantSparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
 
-    TEMPLATE_MODE_ALIASES = {
-        "ORI_SPARSE_MODE": "ORI_SPARSE",
-        "ORI_CMP_SPARSE_MODE": "ORI_CMP_SPARSE",
-    }
     TEMPLATE_MODES = frozenset(("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"))
 
     @staticmethod
@@ -127,19 +123,9 @@ class QuantSparseFlashMlaInputAdapter:
         if mode is None:
             return None
         mode = str(mode).strip()
-        mode = cls.TEMPLATE_MODE_ALIASES.get(mode, mode)
         if mode not in cls.TEMPLATE_MODES:
             raise ValueError(f"unsupported explicit template_run_mode: {mode!r}")
         return mode
-
-    @staticmethod
-    def normalize_kv_topk_modes(params):
-        """Normalize the historical fullk spelling without changing its semantics."""
-        for name in ("ori_kv_topk_mode", "cmp_kv_topk_mode"):
-            value = params.get(name)
-            if isinstance(value, str) and value.strip().lower() == "fullk":
-                params[name] = "fullK"
-        return params
 
     def build_case_params(self, q, ori_kv, cmp_kv, ori_sparse_indices,
                           cmp_sparse_indices, sinks, layout_q, layout_kv, kwargs):
@@ -157,6 +143,8 @@ class QuantSparseFlashMlaInputAdapter:
             _, q_heads, head_dim = [int(x) for x in q.shape]
             batch_size = len(seq_q or self.prefix_lengths(cu_q))
             q_seq = max(self.prefix_lengths(cu_q) or seq_q or [int(q.shape[0])])
+        if kwargs.get("S1") is not None:
+            q_seq = int(kwargs["S1"])
 
         if layout_kv == "BSND":
             _, kv_seq, kv_heads, _ = [int(x) for x in ori_kv.shape]
@@ -178,7 +166,8 @@ class QuantSparseFlashMlaInputAdapter:
         metadata_cmp_topk = kwargs.get("metadata_cmp_topk")
         requested_mode = self.select_template_mode(kwargs)
         if cmp_kv is None:
-            block_num2, block_size2 = None, None
+            block_num2 = kwargs.get("block_num2")
+            block_size2 = kwargs.get("block_size2")
         elif layout_kv == "PA_BBND":
             block_num2 = kwargs.get("block_num2")
             block_size2 = kwargs.get("block_size2")
@@ -245,7 +234,7 @@ class QuantSparseFlashMlaInputAdapter:
         for name, value in data_ranges.items():
             if params.get(name) is None and value is not None:
                 params[name] = value
-        return self.normalize_kv_topk_modes(params)
+        return params
 
     @staticmethod
     def copy_tensor(dst, src, name):

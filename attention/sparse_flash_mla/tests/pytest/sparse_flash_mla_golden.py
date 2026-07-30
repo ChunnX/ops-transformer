@@ -1396,7 +1396,7 @@ def resolve_query_actual_lengths(layout_q, batch_size, sequence_length, seqused_
     return seqused_q
 
 
-def gen_data(params):
+def gen_data(params, prepare_device_storage=True):
     # 从字典中提取参数
     layout_q = params.get("layout_q")
     layout_kv = params.get("layout_kv")
@@ -1699,9 +1699,14 @@ def gen_data(params):
         torch.rand((N1,)) * (q_datarange[1] - q_datarange[0]) / 10 + q_datarange[0] / 10
     ).to(torch.float)
 
-    # kv_cache 0轴非连续
-    properties = torch.npu.get_device_properties()
-    if "Ascend950" in properties.name and layout_kv == "PA_BBND":
+    # Pytest materializes the A5 PA stride on device. TTK supplies the same
+    # storage/stride through its CSV allocation and only needs logical CPU data.
+    properties = torch.npu.get_device_properties() if prepare_device_storage else None
+    if (
+        properties is not None
+        and "Ascend950" in properties.name
+        and layout_kv == "PA_BBND"
+    ):
         key_stride = 10  # 0轴非连续增加stride
         blocksize_with_stride = block_size1 + key_stride  # 整个非连续的长度
         blockFusion1 = torch.zeros(

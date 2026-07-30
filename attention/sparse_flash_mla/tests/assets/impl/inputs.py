@@ -22,10 +22,6 @@ import torch
 class SparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
 
-    TEMPLATE_MODE_ALIASES = {
-        "ORI_SPARSE_MODE": "ORI_SPARSE",
-        "ORI_CMP_SPARSE_MODE": "ORI_CMP_SPARSE",
-    }
     TEMPLATE_MODES = frozenset(("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"))
 
     @staticmethod
@@ -117,19 +113,10 @@ class SparseFlashMlaInputAdapter:
         mode = kwargs.get("template_run_mode") or kwargs.get("template_mode")
         if mode is None:
             return None
-        mode = cls.TEMPLATE_MODE_ALIASES.get(str(mode).strip(), str(mode).strip())
+        mode = str(mode).strip()
         if mode not in cls.TEMPLATE_MODES:
             raise ValueError(f"unsupported explicit template_run_mode: {mode!r}")
         return mode
-
-    @staticmethod
-    def normalize_kv_topk_modes(params):
-        """Accept the workbook's historical fullk spelling at the assets boundary."""
-        for name in ("ori_kv_topk_mode", "cmp_kv_topk_mode"):
-            value = params.get(name)
-            if isinstance(value, str) and value.strip().lower() == "fullk":
-                params[name] = "fullK"
-        return params
 
     @staticmethod
     def verify_template_inputs(mode, ori_sparse_indices, cmp_sparse_indices, cmp_kv):
@@ -159,6 +146,8 @@ class SparseFlashMlaInputAdapter:
             q_total, q_heads, head_dim = [int(x) for x in q.shape]
             batch_size = len(seq_q or self.prefix_lengths(cu_q))
             q_seq = max(self.prefix_lengths(cu_q) or seq_q or [q_total])
+        if kwargs.get("S1") is not None:
+            q_seq = int(kwargs["S1"])
 
         if layout_kv == "BSND":
             _, kv_seq, kv_heads, _ = [int(x) for x in ori_kv.shape]
@@ -172,6 +161,8 @@ class SparseFlashMlaInputAdapter:
             block_num1, block_size1, kv_heads, _ = [int(x) for x in ori_kv.shape]
             kv_seq = max(seq_ori or [block_size1])
             kv_total = sum(seq_ori or [])
+        if kwargs.get("S2") is not None:
+            kv_seq = int(kwargs["S2"])
 
         if cmp_kv is None:
             cmp_total = 0
@@ -230,7 +221,7 @@ class SparseFlashMlaInputAdapter:
             "cmp_mask_mode": kwargs.get("cmp_mask_mode"),
         })
         params.update({name: value for name, value in data_ranges.items() if value is not None})
-        return self.normalize_kv_topk_modes(params)
+        return params
 
     @staticmethod
     def copy_tensor(dst, src, name):
@@ -259,7 +250,7 @@ class SparseFlashMlaInputAdapter:
                 f"expected one pytest parameter combination, got {len(param_combinations)}"
             )
         case_params = pytest_utils.generate_case_with_default_param(param_combinations[0])
-        data = pytest_golden.gen_data(case_params)
+        data = pytest_golden.gen_data(case_params, prepare_device_storage=False)
         testcase_name = params.get("testcase_name") or case_params.get("testcase_name")
         self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data
