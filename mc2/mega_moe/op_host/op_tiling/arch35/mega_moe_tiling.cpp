@@ -63,11 +63,6 @@ constexpr uint32_t GMM1_TILE_M = 256U;
 constexpr uint32_t GMM2_GM_TILE_M = 256U;
 constexpr uint32_t GMM_TILE_N = 256U;
 
-uint64_t CeilDivU64(uint64_t value, uint64_t divisor)
-{
-    return value / divisor + static_cast<uint64_t>(value % divisor != 0U);
-}
-
 uint32_t CalcExpertsPerBatch(const MegaMoeTilingData *tilingData, uint32_t aicNum)
 {
     uint32_t expertPerRank = tilingData->moeExpertPerRank;
@@ -76,20 +71,24 @@ uint32_t CalcExpertsPerBatch(const MegaMoeTilingData *tilingData, uint32_t aicNu
     }
 
     uint64_t expectedTokens =
-        CeilDivU64(static_cast<uint64_t>(tilingData->bs) * static_cast<uint64_t>(tilingData->topK), expertPerRank);
-    uint64_t expectedMWaves = std::max<uint64_t>(1U, CeilDivU64(expectedTokens, GMM1_TILE_M));
+        ops::CeilDiv<uint64_t>(
+            static_cast<uint64_t>(tilingData->bs) * static_cast<uint64_t>(tilingData->topK), expertPerRank);
+    uint64_t expectedMWaves =
+        std::max<uint64_t>(1U, ops::CeilDiv<uint64_t>(expectedTokens, GMM1_TILE_M));
     // One GMM1 scheduler N step covers gate+up, hence 2 * GMM_TILE_N output columns.
     uint64_t gmm1TilesPerExpert =
-        expectedMWaves * CeilDivU64(tilingData->hiddenDim, static_cast<uint64_t>(GMM_TILE_N) * 2U);
+        expectedMWaves *
+        ops::CeilDiv<uint64_t>(tilingData->hiddenDim, static_cast<uint64_t>(GMM_TILE_N) * 2U);
     uint64_t gmm2TilesPerExpert =
-        CeilDivU64(expectedTokens, GMM2_GM_TILE_M) * CeilDivU64(tilingData->h, GMM_TILE_N);
+        ops::CeilDiv<uint64_t>(expectedTokens, GMM2_GM_TILE_M) *
+        ops::CeilDiv<uint64_t>(tilingData->h, GMM_TILE_N);
     uint64_t limitingTilesPerExpert =
         std::max<uint64_t>(1U, std::min(gmm1TilesPerExpert, gmm2TilesPerExpert));
-    uint64_t expertsToFillAic = CeilDivU64(aicNum, limitingTilesPerExpert);
+    uint64_t expertsToFillAic = ops::CeilDiv<uint64_t>(aicNum, limitingTilesPerExpert);
     uint64_t expertsPerBatch =
         std::max<uint64_t>(1U, std::min<uint64_t>(expertPerRank, expertsToFillAic));
     // Deepen the wave when GMM1's gate+up width exceeds GMM2's output width.
-    expertsPerBatch *= CeilDivU64(tilingData->hiddenDim, tilingData->h);
+    expertsPerBatch *= ops::CeilDiv<uint64_t>(tilingData->hiddenDim, tilingData->h);
     return static_cast<uint32_t>(
         std::max<uint64_t>(1U, std::min<uint64_t>(expertPerRank, expertsPerBatch)));
 }
