@@ -159,7 +159,7 @@ TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
-TILING_DATA_FIELD_DEF(int64_t, keyStride0) // PA mode non-contiguous stride
+TILING_DATA_FIELD_DEF(uint32_t, keyStride0) // PA mode non-contiguous stride
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionBaseParamsMlaOp, SparseFlashAttentionBaseParamsMla)
 
@@ -239,7 +239,7 @@ struct SFATilingInfo {
     uint32_t blockTypeSize = 0;
     uint32_t maxBlockNumPerBatch = 0;
     uint32_t totalBlockNum = 0;
-    int64_t keyStride0 = 0; // PA mode non-contiguous stride on 0-axis
+    uint32_t keyStride0 = 0; // PA mode non-contiguous stride on 0-axis
 
     uint32_t actualLenDimsQ = 0;
     uint32_t maxActualseq = 0;
@@ -608,7 +608,8 @@ public:
     gert::Shape keyRopeShape_{};
     gert::Shape sparseIndicesShape_{};
 
-    std::vector<uint32_t> keyStrides_;
+    uint32_t keyStride0_ = 0;
+ 	uint32_t keyStride1_ = 0;
 };
 } // namespace optiling
 #endif // SPARSE_FLASH_ATTENTION_TILING_H

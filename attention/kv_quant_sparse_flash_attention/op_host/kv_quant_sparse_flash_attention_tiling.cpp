@@ -1595,10 +1595,9 @@ ge::graphStatus QSFAInfoParser::GetAttrParaInfo()
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
 
     auto keyStrides = context_->GetDynamicInputStride(KEY_INPUT_INDEX, 0);
-    if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
-        for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
-            keyStrides_.push_back(keyStrides->GetStride(i));
-        }
+    if (keyStrides != nullptr && keyStrides->GetDimNum() > 1) {
+        keyStride0_ = keyStrides->GetStride(0);
+ 	    keyStride1_ = keyStrides->GetStride(1);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -1883,36 +1882,26 @@ ge::graphStatus QSFAInfoParser::CheckContiguous() const
     }
 
     bool keyNonContiguous = false;
-    if (!keyStrides_.empty() && keyShape_.GetDimNum() > 0) {
+    if (keyStride0_ != 0 && keyShape_.GetDimNum() > 0) {
+        uint64_t totalElements = 0;
+        uint64_t shapeSize = 0;
+
         if (kvLayout_ == QSFALayout::PA_BSND) {
-            std::vector<uint64_t> keyExpectedStrides;
-            uint64_t dim1 = static_cast<uint64_t>(keyShape_.GetDim(1));
-            uint64_t dim2 = static_cast<uint64_t>(keyShape_.GetDim(2));
-            uint64_t dim3 = static_cast<uint64_t>(keyShape_.GetDim(3));
-            keyExpectedStrides = {dim1 * dim2 * dim3, dim2 * dim3, dim3, 1};
-            OP_CHECK_IF(keyStrides_.size() != keyExpectedStrides.size(),
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            opName_, "key strides size", std::to_string(keyStrides_.size()).c_str(),
-                            "not match kvLayout expect len " + std::to_string(keyExpectedStrides.size())),
-                        return ge::GRAPH_FAILED);
-            for (size_t i = 1; i < keyExpectedStrides.size(); ++i) {
-                if (i < keyStrides_.size() && keyStrides_[i] != keyExpectedStrides[i]) {
-                    keyNonContiguous = true;
-                    break;
-                }
-            }
+            totalElements = keyStride1_ * static_cast<uint64_t>(keyShape_.GetDim(1));
+            shapeSize = context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize() /
+                        static_cast<uint64_t>(keyShape_.GetDim(0));
         } else {
-            uint64_t totalElements = keyStrides_[0] * static_cast<uint64_t>(keyShape_.GetDim(0));
-            uint64_t shapeSize = context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize();
-            keyNonContiguous = (shapeSize != totalElements);
+            totalElements = keyStride0_ * static_cast<uint64_t>(keyShape_.GetDim(0));
+            shapeSize = context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize();
         }
+        keyNonContiguous = (shapeSize != totalElements);
     }
 
     OP_CHECK_IF(keyNonContiguous,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName_, "keyNonContiguous", std::string(keyNonContiguous ? "true" : "false"),
-                    "key only support non-continuous keying on the 0-axis in PA scenarios."),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "keyNonContiguous", std::string(keyNonContiguous ? "true" : "false"),
+            "key only support non-continuous keying on the 0-axis in PA scenarios."),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1969,10 +1958,10 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
     if (npuArch_ != NpuArch::DAV_3510) {
         qsfaInfo.keyStride0 = 0;  // 910无需使用stride
     } else {
-        if (!keyStrides_.empty()) {
-            qsfaInfo.keyStride0 = static_cast<int64_t>(keyStrides_[0]);
+        if (keyStride0_ != 0) {
+            qsfaInfo.keyStride0 = keyStride0_;
         } else if (kvLayout_ == QSFALayout::PA_BSND) {
-            qsfaInfo.keyStride0 = static_cast<int64_t>(blockSize_) * dSizeKV_;
+            qsfaInfo.keyStride0 = blockSize_ * dSizeKV_;
         } else {
             qsfaInfo.keyStride0 = 0;  // 非PA无需使用stride
         }

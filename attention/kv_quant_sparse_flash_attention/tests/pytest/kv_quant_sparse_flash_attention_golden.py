@@ -1206,15 +1206,11 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
         block_num = params.get("block_num", blockTableShape[0])
         kv_dim = k_cache_concat.shape[-1]
         blocksize_with_stride = blockSize + key_stride
-        blockFusion = torch.zeros(
-            (block_num, blocksize_with_stride * kv_dim), dtype=k_cache_concat.dtype
-        )
+        blockFusion = torch.zeros((block_num, blocksize_with_stride * kv_dim), dtype=k_cache_concat.dtype)
         base_flat = k_cache_concat.reshape(block_num, blockSize * kv_dim)
         blockFusion[:, : blockSize * kv_dim] = base_flat
         blockFusion = blockFusion.npu()
-        base_kv_nc = blockFusion[:, : blockSize * kv_dim].view(
-            block_num, blockSize, 1, kv_dim
-        )
+        base_kv_nc = blockFusion[:, : blockSize * kv_dim].view(block_num, blockSize, 1, kv_dim)
         input_tensor_dict["key_cache"] = base_kv_nc
         input_tensor_dict["value_cache"] = base_kv_nc
 
