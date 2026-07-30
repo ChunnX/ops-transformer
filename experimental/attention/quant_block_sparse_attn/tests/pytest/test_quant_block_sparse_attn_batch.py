@@ -19,7 +19,7 @@ import torch
 import result_compare_method
 import utils
 from batch import quant_block_sparse_attn_process
-from quant_block_sparse_attn_paramset_batch import load_cases_from_csv
+from batch.quant_block_sparse_attn_paramset_batch import load_cases_from_csv
 
 
 TESTCASE_PATH = "bsa_testcase"
