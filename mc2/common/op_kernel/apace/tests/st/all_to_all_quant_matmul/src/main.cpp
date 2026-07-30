@@ -29,7 +29,7 @@
 #include "hccl/hccl_rank_graph.h"
 #include <cstdlib>
 #include "utils.h"
-#include "../../utils/comm_channel_builder.h"
+#include "apace/utils/comm_channel_builder.h"
 #include "../../utils/root_info_exchanger.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
 #include "apace/kernel/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
