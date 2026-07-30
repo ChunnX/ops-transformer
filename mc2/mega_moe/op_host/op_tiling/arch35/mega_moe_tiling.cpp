@@ -54,6 +54,7 @@ const static int64_t MIN_H = 1024LL;
 const static int64_t MAX_H = 8LL * 1024LL; // 8K
 const static int64_t H_ALIGN = 32LL;
 const static int64_t HIDDEN_DIM_BASE = 1024LL;
+const static int64_t MAX_HIDDEN_DIM = 8LL * 1024LL; // 8K
 const static int64_t MIN_EP_WORLD_SIZE = 2LL;
 const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
@@ -1578,11 +1579,16 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
                     return ge::GRAPH_FAILED);
 
     int64_t weightOneDim1 = weightOneStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(weightOneDim1 != 1LL * HIDDEN_DIM_BASE && weightOneDim1 != 2LL * HIDDEN_DIM_BASE &&
-                        weightOneDim1 != 3LL * HIDDEN_DIM_BASE && weightOneDim1 != 4LL * HIDDEN_DIM_BASE &&
-                        weightOneDim1 != 7LL * HIDDEN_DIM_BASE,
+    OP_TILING_CHECK(weightOneDim1 < HIDDEN_DIM_BASE || weightOneDim1 > MAX_HIDDEN_DIM,
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        nodeName, "hiddenDim", std::to_string(weightOneDim1).c_str(),
+                        (std::string("should in [") + std::to_string(HIDDEN_DIM_BASE) + ", " +
+                         std::to_string(MAX_HIDDEN_DIM) + "]")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(weightOneDim1 % HIDDEN_DIM_BASE != 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "hiddenDim", std::to_string(weightOneDim1).c_str(),
-                                              "only support 1k/2k/3k/4k/7k"),
+                                              (std::string("multiple of ") + std::to_string(HIDDEN_DIM_BASE)).c_str()),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
