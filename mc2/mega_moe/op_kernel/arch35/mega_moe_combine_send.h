@@ -36,6 +36,9 @@ __aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int3
                                      LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape,
                                      uint32_t ubTileN, const Params &params)
 {
+    // The caller owns the GM-to-UB lifetime of metaInfoTensor and must make it
+    // scalar-visible once after the bulk preload.  Keeping that dependency at
+    // the preload boundary avoids one MTE2_S round trip for every token row.
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
@@ -43,8 +46,6 @@ __aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int3
     ub2GmParams.blockCount = 1;
     // 尾块只发送 actualN 个有效元素，但 UB 中相邻两行仍按物理 tile 宽度 ubTileN 排布。
     ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
         uint32_t toRankId = metaInfoTensor.GetValue(tileIdx * 8);
         uint32_t tokenIdx = metaInfoTensor.GetValue(tileIdx * 8 + 1);
@@ -53,6 +54,37 @@ __aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int3
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
         uint64_t gmDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n + nLoc;
         AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * ubTileN], ub2GmParams);
+    }
+}
+
+// Direct-GM no-quant combine has one complete row resident in UB.  Preserve
+// the fast 256-column remote transfer granularity, but resolve the route and
+// destination row only once per token instead of once per remote copy.
+template <typename Element>
+__aicore__ inline void CombineTokenRowTiled(uint32_t n, uint64_t gmRemoteBaseOffset,
+                                            LocalTensor<int32_t> &metaInfoTensor, LocalTensor<Element> &rowTensor,
+                                            const Params &params)
+{
+    uint32_t toRankId = metaInfoTensor.GetValue(RANK_ID);
+    uint32_t tokenIdx = metaInfoTensor.GetValue(TOKEN_ID);
+    uint32_t topkIdx = metaInfoTensor.GetValue(TOPK_INDEX);
+
+    AscendC::GlobalTensor<Element> gmRemoteD;
+    gmRemoteD.SetGlobalBuffer(
+        reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
+    uint64_t gmDstRowOffset =
+        (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n;
+
+    constexpr uint32_t TILE_N = MegaMoeImpl::L1_TILE_N;
+    AscendC::DataCopyExtParams ub2GmParams{
+        1U, static_cast<uint32_t>(TILE_N * sizeof(Element)), 0U, 0U, 0U};
+    uint32_t nLoc = 0U;
+    for (; nLoc + TILE_N <= n; nLoc += TILE_N) {
+        AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset + nLoc], rowTensor[nLoc], ub2GmParams);
+    }
+    if (nLoc < n) {
+        ub2GmParams.blockLen = static_cast<uint32_t>((n - nLoc) * sizeof(Element));
+        AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset + nLoc], rowTensor[nLoc], ub2GmParams);
     }
 }
 

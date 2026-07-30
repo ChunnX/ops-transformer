@@ -21,6 +21,10 @@
 
 using namespace AscendC;
 
+// Bound rolling batches so AIV1 dispatch prefetch cannot run arbitrarily far
+// ahead of the GMM2 consumer.
+constexpr uint32_t MEGA_MOE_MAX_EXPERTS_PER_BATCH = 14U;
+
 // MegaMoe adaptive UB buffer policy shared by host tiling and kernel address binding.
 // 实际 UB 预算由 host tiling 从平台获取，并通过 availableUbBytes 参与以下配置计算。
 
@@ -160,7 +164,6 @@ struct MegaMoeSendMaskBufferConfig {
     int32_t bufferCount;
     uint32_t bufferBytes;
 };
-
 struct MegaMoeTilingData {
     uint32_t expertPerRank;    // 本卡 routed weight 容量，可大于实际参与路由的专家数
     uint32_t moeExpertPerRank; // 本卡实际参与 topK 路由的 MoE 专家数
@@ -194,7 +197,9 @@ struct MegaMoeTilingData {
     MegaMoeUnpermuteBufferConfig unpermuteConfigForFullTokenChunk;
     MegaMoeUnpermuteBufferConfig unpermuteConfigForTailTokenChunk;
     uint32_t unpermuteFullTokenChunkCoreCount;
+    // Keep scheduling extensions at the tail to preserve every existing field offset.
     int32_t topkWeightsPrefetch;
     uint32_t maxTilesPerExpert; // GMM1 tile 状态位区每 expert 的 tile 上限（prefetch 软同步用）
+    uint32_t expertsPerBatch;
 };
 #endif
