@@ -34,8 +34,8 @@ constexpr uint64_t TENSOR_API_K_SPLIT_THRESHOLD = GmmConstant::BASIC_BLOCK_SIZE_
 constexpr uint64_t TENSOR_API_LARGE_M_BASE_M = GmmConstant::BASIC_BLOCK_SIZE_256;
 constexpr uint64_t TENSOR_API_LARGE_N_BASE_N = GmmConstant::BASIC_BLOCK_SIZE_128;
 constexpr uint64_t MX_SCALE_K_ALIGN = 64UL;
-constexpr int64_t MX_QUANT_MODE = 2L;
-constexpr uint64_t AIC_AIV_CORE_RATIO = 2;
+constexpr int64_t MX_QUANT_MODE = 2UL;
+constexpr uint64_t AIC_AIV_CORE_RATIO = 2UL;
 
 } // namespace
 
@@ -46,6 +46,7 @@ void GroupedMatmulSwigluQuantV2TensorApiTiling950::Reset()
     xScaleDtype_ = ge::DT_UNDEFINED;
     aivNum_ = 0U;
     platformMemoryReady_ = false;
+    return;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::GetPlatformInfo()
@@ -274,17 +275,21 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
         aicoreParams_.aicNum > 0 && aivNum_ == AIC_AIV_CORE_RATIO * aicoreParams_.aicNum;
     const bool checkTensorApiShapes = CheckTensorApiShapes();
     const bool checkTensorApiScaleShapes = CheckTensorApiScaleShapes();
-    const uint32_t mSize_groupNum_ratio = static_cast<uint32_t>(inputParams_.mSize / inputParams_.groupNum);
+    const uint32_t averageMPerGroup = static_cast<uint32_t>(inputParams_.mSize / inputParams_.groupNum);
+    const bool checkMSizeGroupNumRatio = averageMPerGroup >= TENSOR_API_M_MIN;
+    const bool checkNSizeAlign = inputParams_.nSize % TENSOR_API_FP8_N_ALIGN == 0;
     const bool checkBNoTransMLimlit =
         inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
-    const bool capable = dtypeSupported && formatSupported && mSize_groupNum_ratio > TENSOR_API_M_MIN &&
-                         inputParams_.nSize % TENSOR_API_FP8_N_ALIGN == 0 && coreSupported && checkTensorApiShapes &&
+    const bool capable = dtypeSupported && formatSupported && checkMSizeGroupNumRatio &&
+                         checkNSizeAlign && coreSupported && checkTensorApiShapes &&
                          checkTensorApiScaleShapes && checkBNoTransMLimlit;
     OP_LOGD(context_->GetNodeName(),
-            "Tensor API capability: dtype=%d, format=%d, M=%lu, N=%lu, cores=%lu:%u, checkTensorApiShapes=%d, "
+            "Tensor API capability: dtype=%d, format=%d, groupNum=%lu, M=%lu, N=%lu, cores=%lu:%u, "
+            "checkTensorApiShapes=%d, "
             "checkTensorApiScaleShapes=%d, checkBNoTransMLimlit=%d, capable=%d.",
-            dtypeSupported, formatSupported, inputParams_.mSize, inputParams_.nSize, aicoreParams_.aicNum, aivNum_,
-            checkTensorApiShapes, checkTensorApiScaleShapes, checkBNoTransMLimlit, capable);
+            dtypeSupported, formatSupported, inputParams_.groupNum, inputParams_.mSize, inputParams_.nSize,
+            aicoreParams_.aicNum, aivNum_, checkTensorApiShapes, checkTensorApiScaleShapes, checkBNoTransMLimlit,
+            capable);
     return capable;
 }
 

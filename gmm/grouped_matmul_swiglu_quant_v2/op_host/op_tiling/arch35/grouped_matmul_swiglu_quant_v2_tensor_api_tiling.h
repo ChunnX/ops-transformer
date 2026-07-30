@@ -27,8 +27,6 @@
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
 
 namespace optiling {
-// The inheritance only provides the common Basic API L1 calculation. This template owns and overrides
-// every TilingBaseClass lifecycle stage so that it does not depend on the original SwiGLU tiling template.
 class GroupedMatmulSwigluQuantV2TensorApiTiling950 : public GroupedQmmBasicApiTiling {
 public:
     explicit GroupedMatmulSwigluQuantV2TensorApiTiling950(gert::TilingContext *context)
