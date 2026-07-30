@@ -400,13 +400,15 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             SyncFunc<AscendC::HardEvent::MTE2_V>();
 
             int32_t calCnt = static_cast<int32_t>(tileCnt * paddedTopkElems_);
+            constexpr int32_t CMP_ALIGN = ALIGNED_LEN_256 / sizeof(int32_t);
+            int32_t calCntAlign = Ceil(calCnt, CMP_ALIGN) * CMP_ALIGN;
             for (uint32_t localExpertId = 0; localExpertId < numLocalExperts_; ++localExpertId) {
                 int32_t targetExpertId = static_cast<int32_t>(epRankId_ * numLocalExperts_ + localExpertId);
                 uint64_t rsvdCnt = 0;
                 SyncFunc<AscendC::HardEvent::S_V>();
-                Duplicate<uint32_t>(sharedTmpInt32, 0, calCnt);
-                CompareScalar(sharedTmpInt8, ubTopkIds_, static_cast<int32_t>(targetExpertId), AscendC::CMPMODE::EQ, calCnt);
-                GatherMask(ubTargetExpertId_, ubTopkIds_, sharedTmpInt32, true, calCnt, {1, 1, 0, 0}, rsvdCnt);
+                Duplicate<uint32_t>(sharedTmpInt32, 0, calCntAlign);
+                CompareScalar(sharedTmpInt8, ubTopkIds_, static_cast<int32_t>(targetExpertId), AscendC::CMPMODE::EQ, calCntAlign);
+                GatherMask(ubTargetExpertId_, ubTopkIds_, sharedTmpInt32, true, calCntAlign, {1, 1, 0, 0}, rsvdCnt);
                 SyncFunc<AscendC::HardEvent::V_S>();
                 int32_t curExpertCnt = rsvdCnt;
                 int32_t currentHits = ubHitCount_.GetValue(localExpertId);
