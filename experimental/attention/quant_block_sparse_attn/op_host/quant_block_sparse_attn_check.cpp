@@ -131,6 +131,32 @@ ge::graphStatus CheckKVDtypeConsistency(const QuantBlockSparseAttnParaInfo &opPa
     }
     return ge::GRAPH_SUCCESS;
 }
+
+ge::graphStatus CheckStrideDim(const gert::Stride *stride, const char *inputName, size_t dim, uint64_t expected)
+{
+    if (stride == nullptr) {
+        OP_LOGE(kOpName,
+                "In PA_BNSD segmented KV-cache scenario, %s stride is nullptr. Current data layout requires 4D "
+                "non-contiguous KV-cache views for key/value/k_descale.",
+                inputName);
+        return ge::GRAPH_FAILED;
+    }
+    if (stride->GetDimNum() <= dim) {
+        const std::string argName = std::string(inputName) + " stride";
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            kOpName, argName.c_str(), std::to_string(stride->GetDimNum()) + "D",
+            "at least " + std::to_string(dim + 1U) + "D stride for PA_BNSD segmented KV-cache");
+        return ge::GRAPH_FAILED;
+    }
+    const uint64_t actual = stride->GetStride(dim);
+    if (actual != expected) {
+        const std::string argName = std::string(inputName) + " stride[" + std::to_string(dim) + "]";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, argName.c_str(), std::to_string(actual),
+                                              "must be " + std::to_string(expected));
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 } // namespace
 
 QuantBlockSparseAttnCheck::QuantBlockSparseAttnCheck(const QuantBlockSparseAttnTilingInfo &tilingInfo)
@@ -433,6 +459,20 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckKeyValueShape() const
                                               "key dim[3] must match dSize and value dim[3] must match dSizeV");
         return ge::GRAPH_FAILED;
     }
+    if (CheckStrideDim(opParamInfo.key.stride, "key", DIM_0, tilingInfo_.paBlockStrideVal) != ge::GRAPH_SUCCESS ||
+        CheckStrideDim(opParamInfo.key.stride, "key", DIM_1, tilingInfo_.kvBlockSizeVal * tilingInfo_.dSize) !=
+            ge::GRAPH_SUCCESS ||
+        CheckStrideDim(opParamInfo.key.stride, "key", DIM_2, tilingInfo_.dSize) != ge::GRAPH_SUCCESS ||
+        CheckStrideDim(opParamInfo.key.stride, "key", DIM_3, 1U) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckStrideDim(opParamInfo.value.stride, "value", DIM_0, tilingInfo_.paBlockStrideVal) != ge::GRAPH_SUCCESS ||
+        CheckStrideDim(opParamInfo.value.stride, "value", DIM_1, tilingInfo_.kvBlockSizeVal * tilingInfo_.dSizeV) !=
+            ge::GRAPH_SUCCESS ||
+        CheckStrideDim(opParamInfo.value.stride, "value", DIM_2, tilingInfo_.dSizeV) != ge::GRAPH_SUCCESS ||
+        CheckStrideDim(opParamInfo.value.stride, "value", DIM_3, 1U) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -470,6 +510,20 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckQuantShape() const
                                                       "must be (" + std::to_string(tilingInfo_.paBlockNumSum) + ", " +
                                                           std::to_string(tilingInfo_.n2Size) + ", " +
                                                           std::to_string(tilingInfo_.kvBlockSizeVal) + ", 1)");
+                return ge::GRAPH_FAILED;
+            }
+            if (tilingInfo_.paBlockStrideVal % sizeof(float) != 0U) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    kOpName, "key stride[0]", std::to_string(tilingInfo_.paBlockStrideVal),
+                    "must be divisible by sizeof(float) to align k_descale block stride");
+                return ge::GRAPH_FAILED;
+            }
+            if (CheckStrideDim(opParamInfo.kDescale.stride, "k_descale", DIM_0,
+                               tilingInfo_.paBlockStrideVal / sizeof(float)) != ge::GRAPH_SUCCESS ||
+                CheckStrideDim(opParamInfo.kDescale.stride, "k_descale", DIM_1, tilingInfo_.kvBlockSizeVal) !=
+                    ge::GRAPH_SUCCESS ||
+                CheckStrideDim(opParamInfo.kDescale.stride, "k_descale", DIM_2, 1U) != ge::GRAPH_SUCCESS ||
+                CheckStrideDim(opParamInfo.kDescale.stride, "k_descale", DIM_3, 1U) != ge::GRAPH_SUCCESS) {
                 return ge::GRAPH_FAILED;
             }
         } else {

@@ -16,7 +16,7 @@ The CPU golden follows BSA scheme 2.4:
 - `q_descale` and `k_descale` are applied in Vec1 as row x column scale on raw `QK^T`.
 - `p_scale[0]` is a static per-tensor P quant scale; golden casts `softmax * p_scale` to FP8 and multiplies BMM2 output by `v_descale[n2] / p_scale`.
 - `key`, `value`, and `k_descale` are rebuilt as separate Tensor views over one combined `uint8` PA storage. Each physical block is packed as `K block | V block | k_descale block`. The NPU call receives 4D `key`/`value` views and a 4D `k_descale` view with shape `(block_num, N2, sparse_kv_block_size, 1)`.
-- `pa_block_padding_bytes` is fixed at `0`; the segmented cache uses a tight `paBlockStride`.
+- `pa_block_padding_bytes` is fixed at `0`; the segmented cache uses a tight physical block stride, exposed through `key.stride(0)`.
 - Empty sparse tasks produce zero `attention_out` and `EMPTY_LSE` softmax LSE.
 - `mask_mode`: `0` no mask, `3` lower-triangular causal.
 

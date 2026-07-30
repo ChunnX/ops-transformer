@@ -1410,7 +1410,6 @@ def _call_npu_fa_op(
         metadata=metadata,
         max_seqlen_q=max_sq,
         max_seqlen_kv=max_skv,
-        pa_block_stride=0,
         layout_kv=layout_kv,
         layout_q=layout_q,
         layout_sparse_indices=SPARSE_INDICES_LAYOUT,

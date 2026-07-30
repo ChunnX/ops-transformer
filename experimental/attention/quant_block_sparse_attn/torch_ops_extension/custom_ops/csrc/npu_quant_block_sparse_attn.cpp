@@ -74,12 +74,11 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata, int64_t max_seqlen_q,
-    int64_t max_seqlen_kv, int64_t pa_block_stride, c10::string_view layout_kv, c10::string_view layout_q,
+    int64_t max_seqlen_kv, c10::string_view layout_kv, c10::string_view layout_q,
     c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode,
     bool return_softmax_lse)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
-    (void)pa_block_stride;
     TORCH_CHECK(key.dim() == DIM_FOUR && value.dim() == DIM_FOUR,
                 "key/value should be 4D PA_BNSD [blockNum, Nkv, blockSize, headDim], but got dims ",
                 key.dim(), "/", value.dim());
@@ -146,6 +145,12 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
                     "k_descale should be [blockNum, Nkv, blockSize, 1] and match key PA_BNSD shape, "
                     "but got k_descale sizes ",
                     k_descale.sizes(), " and key sizes ", key.sizes());
+        const int64_t expectedPaBlockStride = key.size(1) * key.size(2) * key.size(3) +
+                                              value.size(1) * value.size(2) * value.size(3) +
+                                              k_descale.size(1) * k_descale.size(2) * k_descale.size(3) * FP32_BYTES;
+        TORCH_CHECK(paBlockStride == expectedPaBlockStride,
+                    "key.stride(0) should equal K/V/k_descale concatenated physical block size, but got ",
+                    paBlockStride, " and expected ", expectedPaBlockStride);
         TORCH_CHECK(k_descale.stride(0) * FP32_BYTES == paBlockStride, "k_descale.stride(0) * ", FP32_BYTES,
                     " should equal key.stride(0), but got k_descale.stride(0)=", k_descale.stride(0),
                     " and key.stride(0)=", paBlockStride);
@@ -176,8 +181,8 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     EXEC_NPU_CMD_V1(aclnnQuantBlockSparseAttn, query, key, value, q_descale, k_descale, v_descale, p_scale,
                     cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sparse_indices, sparse_seq_len, block_table,
                     atten_mask, metadata, max_seqlen_q, max_seqlen_kv, softmax_scale, sparse_q_block_size,
-                    sparse_kv_block_size, paBlockStride, layout_kv_ptr, layout_q_ptr, layout_sparse_indices_ptr,
-                    layout_out_ptr, quant_mode, mask_mode, return_softmax_lse, attention_out, softmax_lse);
+                    sparse_kv_block_size, layout_kv_ptr, layout_q_ptr, layout_sparse_indices_ptr, layout_out_ptr,
+                    quant_mode, mask_mode, return_softmax_lse, attention_out, softmax_lse);
 
     return std::tuple<at::Tensor, at::Tensor>(attention_out, softmax_lse);
 }
@@ -191,7 +196,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata, int64_t max_seqlen_q,
-    int64_t max_seqlen_kv, int64_t pa_block_stride, c10::string_view layout_kv, c10::string_view layout_q,
+    int64_t max_seqlen_kv, c10::string_view layout_kv, c10::string_view layout_q,
     c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode,
     bool return_softmax_lse)
 {

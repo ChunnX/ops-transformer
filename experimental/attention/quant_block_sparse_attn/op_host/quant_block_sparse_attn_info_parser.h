@@ -50,18 +50,18 @@ constexpr uint32_t BSA_MAX_SEQLEN_KV_ATTR_INDEX = 1U;
 constexpr uint32_t BSA_SOFTMAX_SCALE_ATTR_INDEX = 2U;
 constexpr uint32_t BSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX = 3U;
 constexpr uint32_t BSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX = 4U;
-constexpr uint32_t BSA_PA_BLOCK_STRIDE_ATTR_INDEX = 5U;
-constexpr uint32_t BSA_LAYOUT_KV_ATTR_INDEX = 6U;
-constexpr uint32_t BSA_LAYOUT_Q_ATTR_INDEX = 7U;
-constexpr uint32_t BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX = 8U;
-constexpr uint32_t BSA_LAYOUT_OUT_ATTR_INDEX = 9U;
-constexpr uint32_t BSA_QUANT_MODE_ATTR_INDEX = 10U;
-constexpr uint32_t BSA_MASK_MODE_ATTR_INDEX = 11U;
-constexpr uint32_t BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 12U;
+constexpr uint32_t BSA_LAYOUT_KV_ATTR_INDEX = 5U;
+constexpr uint32_t BSA_LAYOUT_Q_ATTR_INDEX = 6U;
+constexpr uint32_t BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX = 7U;
+constexpr uint32_t BSA_LAYOUT_OUT_ATTR_INDEX = 8U;
+constexpr uint32_t BSA_QUANT_MODE_ATTR_INDEX = 9U;
+constexpr uint32_t BSA_MASK_MODE_ATTR_INDEX = 10U;
+constexpr uint32_t BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 11U;
 
 struct BSARequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc = nullptr;
     const gert::StorageShape *shape = nullptr;
+    const gert::Stride *stride = nullptr;
 };
 
 struct BSAOptionalParaInfo {
@@ -96,7 +96,6 @@ struct QuantBlockSparseAttnParaInfo {
     const int64_t *maxSeqlenKV = nullptr;
     const int64_t *qBlockSize = nullptr;
     const int64_t *kvBlockSize = nullptr;
-    const int64_t *paBlockStride = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKV = nullptr;
     const char *layoutSparseIndices = nullptr;
@@ -155,7 +154,8 @@ private:
     ge::graphStatus ParseQuery(QuantBlockSparseAttnTilingInfo &tilingInfo, const gert::Shape &queryShape,
                                const gert::Shape &sparseIndicesShape, const gert::RuntimeAttrs *attrs);
     ge::graphStatus ParseKeyValue(QuantBlockSparseAttnTilingInfo &tilingInfo, const gert::Shape &keyShape,
-                                  const gert::Shape &vDescaleShape, const gert::RuntimeAttrs *attrs);
+                                  const gert::Shape &valueShape, const gert::Shape &kDescaleShape,
+                                  const gert::Stride *keyStride, const gert::RuntimeAttrs *attrs);
     ge::graphStatus ParseSparseIndices(QuantBlockSparseAttnTilingInfo &tilingInfo,
                                        const gert::Shape &sparseIndicesShape, const gert::Shape &sparseSeqLenShape);
     ge::graphStatus ParseOptionalInputs(QuantBlockSparseAttnTilingInfo &tilingInfo);
