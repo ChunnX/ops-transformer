@@ -570,6 +570,9 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                     if constexpr (IsLayered && !IsShared) {
                         NotifyCombineConsumersOfTileCompletion(
                             mLoc, groupSyncSlotLayout, workSet.gmmAddrInfo.gmm2CombineSyncCounter);
+                    } else if constexpr (IsShared && !IsLayered) {
+                        NotifySharedExpertTileCompletion(
+                            mLoc, workSet.gmmAddrInfo.sharedExpertGmm2TileCounter);
                     }
                 } else {
                     auto tensorUb = args.pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
@@ -591,7 +594,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
                     NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout,
                                                            workSet.gmmAddrInfo.gmm2CombineSyncCounter);
-                } else if constexpr (IsShared) {
+                } else if constexpr (IsShared && !IsLayered) {
                     NotifySharedExpertTileCompletion(mLoc, workSet.gmmAddrInfo.sharedExpertGmm2TileCounter);
                 }
             }
@@ -1073,7 +1076,7 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
             blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
             if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
                 NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
-            } else if constexpr (IsShared) {
+            } else if constexpr (IsShared && !IsLayered) {
                 NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
             }
         }
