@@ -17,6 +17,7 @@
 - [low_latency_dispatch](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_dispatch.md)
 - [mega_moe](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)
 - [mhc_post](../../torch_extension/cann_ops_transformer/docs/zh/mhc_post.md)
+- [mhc_post_backward](../../torch_extension/cann_ops_transformer/docs/zh/mhc_post_backward.md)
 - [mhc_pre_sinkhorn](../../torch_extension/cann_ops_transformer/docs/zh/mhc_pre_sinkhorn.md)
 - [mixed_quant_sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla.md)
 - [moe_finalize_routing](../../torch_extension/cann_ops_transformer/docs/zh/moe_finalize_routing.md)
