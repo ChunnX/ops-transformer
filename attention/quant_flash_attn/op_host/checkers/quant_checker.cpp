@@ -46,7 +46,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QfaTilingInfo &qfaI
     uint32_t quantModeVal = static_cast<uint32_t>(qfaInfo.quantMode);
     OP_CHECK_IF(
         std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) == supportedQuantModes.end(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, QUANT_MODE_NAME.c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "quant_mode",
                                               std::to_string(quantModeVal).c_str(),
                                               "The value of quant_mode must be 1"),
         return ge::GRAPH_FAILED);
@@ -183,7 +183,7 @@ ge::graphStatus QuantChecker::CheckParaExistence(const QfaTilingInfo &qfaInfo)
 {
     // quant_mode: 必选属性
     OP_CHECK_IF(qfaInfo.opParamInfo.quantMode == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, QUANT_MODE_NAME.c_str()), return ge::GRAPH_FAILED);
+                OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, "quant_mode"), return ge::GRAPH_FAILED);
 
     // q_descale / k_descale / v_descale: 必须存在
     OP_CHECK_IF(qfaInfo.opParamInfo.qDescale.desc == nullptr || qfaInfo.opParamInfo.qDescale.shape == nullptr,
