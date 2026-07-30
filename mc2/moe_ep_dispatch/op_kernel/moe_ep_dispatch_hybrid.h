@@ -236,6 +236,7 @@ private:
     GM_ADDR scaleupCounterAddr_{nullptr};
     GM_ADDR sendCntWorkspaceAddr_{nullptr};
     GM_ADDR scaleoutDescriptorAddr_{nullptr};
+    GM_ADDR scaleoutCounterAddr_{nullptr};
     GM_ADDR scaleupDescriptorAddr_{nullptr};
     GM_ADDR fanoutDescriptorAddr_{nullptr};
     GM_ADDR fanoutCountAddr_{nullptr};
@@ -458,6 +459,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     scaleupCounterAddr_ = workspaceGM_;
     sendCntWorkspaceAddr_ = scaleupCounterAddr_ + aivNum_ * epWorldSizeAlign512_;
     GM_ADDR scaleoutCounterAddr = workspaceGM_ + info.routeWorkspaceOffset;
+    scaleoutCounterAddr_ = scaleoutCounterAddr;
     scaleoutDescriptorAddr_ = workspaceGM_ + info.scaleoutDescriptorOffset;
     scaleupDescriptorAddr_ = workspaceGM_ + info.scaleupDescriptorOffset;
     fanoutDescriptorAddr_ = workspaceGM_ + info.fanoutDescriptorOffset;
