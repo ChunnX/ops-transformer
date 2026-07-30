@@ -438,6 +438,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/quant_lightning_indexer_v2/README.md">quant_lightning_indexer_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下，稀疏attention前处理的计算，选出关键的稀疏token，支持对输入query和key进行INT8/FLOAT8_e4m3fn/HIFLOAT8量化实现存8算8，获取最大收益。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/quant_lightning_indexer_v2_metadata/README.md">quant_lightning_indexer_v2_metadata</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -568,6 +578,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/stem_oam_prep_varlen_q/README.md">stem_oam_prep_varlen_q</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>Stem OAM block-sparse attention中Q侧预处理算子，将变长Q tensor从paged存储格式转化为按stem block分组的flattened qFlat输出。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/scatter_pa_kv_cache_with_k_scale/README.md">scatter_pa_kv_cache_with_k_scale</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -575,6 +595,26 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>训练场景下，更新KvCache中指定位置的key和value，同时更新key的scale值。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/dense_lightning_indexer_kl_loss_grad/README.md">dense_lightning_indexer_kl_loss_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>DenselightningIndexerKlLossGrad算子是LightningIndexer的反向算子，支持输出Loss计算所需Index部分的分数。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/dense_lightning_indexer_kl_loss_grad_metadata/README.md">dense_lightning_indexer_kl_loss_grad_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>dense_lightning_indexer_kl_loss_grad算子的前置算子，用于计算dense_lightning_indexer_kl_loss_grad的负载均衡。</td>
   </tr>
   <tr>
     <td>ffn</td>
