@@ -28,18 +28,18 @@ class AllGatherCommPutImpl : public CollectiveCommBase<AllGatherCommPutImpl<Dtyp
     friend class CollectiveCommBase<AllGatherCommPutImpl<Dtype, Barrier>, Dtype, Barrier>;
 
 private:
-    template<uint8_t barrierMode>
+    template<uint8_t BarrierMode>
     __aicore__ inline void PostInit()
     {
-        if constexpr (barrierMode & BARRIER_DEVICE) {
+        if constexpr (BarrierMode & BARRIER_DEVICE) {
             this->barrier_.CrossDevice();
         }
-        if constexpr (barrierMode & BARRIER_CORE) {
+        if constexpr (BarrierMode & BARRIER_CORE) {
             this->barrier_.CrossCore();
         }
     }
 
-    template<uint8_t barrierMode>
+    template<uint8_t BarrierMode>
     __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize)
     {
         if (targetRankId == this->udmaCtx_->rankId) {
@@ -55,22 +55,22 @@ private:
         ascendc_assert(ret == 0, "Urma writeNbi failed, ret=%d, targetRankId=%u", ret, targetRankId);
     }
 
-    template<uint8_t barrierMode>
+    template<uint8_t BarrierMode>
     __aicore__ inline void DoWait(uint32_t targetRankId)
     {
         if (targetRankId != this->udmaCtx_->rankId) {
             int32_t ret = this->comm_.Drain(static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]));
             ascendc_assert(ret == 0, "Urma drain failed, ret=%d, targetRankId=%u", ret, targetRankId);
         }
-        if constexpr (barrierMode & BARRIER_DEVICE) {
+        if constexpr (BarrierMode & BARRIER_DEVICE) {
             this->barrier_.CrossDevice();
         }
-        if constexpr (barrierMode & BARRIER_CORE) {
+        if constexpr (BarrierMode & BARRIER_CORE) {
             this->barrier_.CrossCore();
         }
     }
 
-    template<uint8_t barrierMode>
+    template<uint8_t BarrierMode>
     __aicore__ inline void DoFinalize() {}
 };
 
