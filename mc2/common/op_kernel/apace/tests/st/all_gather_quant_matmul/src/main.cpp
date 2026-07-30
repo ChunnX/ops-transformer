@@ -36,7 +36,7 @@
 #include "apace/kernel/all_gather_quant_matmul/all_gather_mx_matmul_udma_tiling_data.h"
 #include "apace/kernel/all_gather_quant_matmul/all_gather_mx_matmul_udma_impl.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
-#include "../../utils/comm_channel_builder.h"
+#include "apace/utils/comm_channel_builder.h"
 #include "../../utils/root_info_exchanger.h"
 
 using namespace AllGatherQuantMatmulImpl;
