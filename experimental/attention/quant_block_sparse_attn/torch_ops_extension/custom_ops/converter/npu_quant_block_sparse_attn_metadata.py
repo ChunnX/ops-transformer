@@ -60,8 +60,6 @@ def convert_npu_quant_block_sparse_attn_metadata(
             "sparse_block_size_k": attr.Int(sparse_block_size_k),
             "quant_mode": attr.Int(quant_mode),
             "mask_mode": attr.Int(mask_mode),
-            "max_seqlen_q": attr.Int(max_seqlen_q),
-            "max_seqlen_kv": attr.Int(max_seqlen_kv),
             "layout_q": attr.Str(layout_q),
             "layout_kv": attr.Str(layout_kv),
             "layout_sparse_indices": attr.Str(layout_sparse_indices),
