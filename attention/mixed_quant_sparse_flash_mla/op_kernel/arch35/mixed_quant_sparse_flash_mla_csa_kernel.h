@@ -383,7 +383,8 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2U;
     uint32_t gSize = static_cast<uint32_t>(constInfo.gSize);
     if constexpr (IS_BATCH_CONSISTENCY) {
-        uint32_t combineElemSize = gSize * constInfo.dSize + FD_MAX_SUM_REGION_NUM * gSize * static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
+        uint32_t combineElemSize = gSize * constInfo.dSize + FD_MAX_SUM_REGION_NUM * gSize *
+            static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
         uint32_t intraCoreSlotNum = IS_SPLIT_G ? GetBlockNum() : (GetBlockNum() << 1U);
         uint32_t intraCoreCombineSize = intraCoreSlotNum * combineElemSize * sizeof(float);
         uint32_t crossCoreCombineSize = GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *

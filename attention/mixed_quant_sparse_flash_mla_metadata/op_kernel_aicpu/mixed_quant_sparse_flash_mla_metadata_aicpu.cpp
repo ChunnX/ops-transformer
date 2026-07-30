@@ -1198,7 +1198,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::IsNeedRecordFDInfo(const AssignC
 }
 
 bool MixedQuantSparseFlashMlaMetadataCpuKernel::isFirstReductionBlock(const AssignContext &assignContext,
-                                                                     const SplitResult &splitRes)
+                                                                      const SplitResult &splitRes)
 {
     // 如果核0的s2终止点落在s2Start和s2End之间，其规约部分一定是首个规约块
     if (assignContext.curCoreIdx == 0U) {

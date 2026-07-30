@@ -1194,7 +1194,7 @@ bool SparseFlashMlaMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &as
 }
 
 bool SparseFlashMlaMetadataCpuKernel::IsFirstReductionBlock(const AssignContext &assignContext,
-                                                           const SplitResult &splitRes)
+                                                            const SplitResult &splitRes)
 {
     if (assignContext.curCoreIdx == 0U || splitRes.s2End[assignContext.curCoreIdx - 1U] == 0U) {
         return true;
