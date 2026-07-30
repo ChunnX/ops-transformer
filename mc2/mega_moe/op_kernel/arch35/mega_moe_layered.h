@@ -195,7 +195,7 @@ private:
     uint32_t mxQuantTokenAlignBytes_ = 0;
     uint32_t mxQuantScaleAlignBytes_ = 0;
     uint32_t mxQuantTokenScaleAlignBytes_ = 0;
-    int32_t resetBatchElementCount_ = 0;
+    uint32_t weightAlignBytes_ = 0;
     uint32_t ubBufferUsedAddr_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
     uint64_t sendTotalNum_ = 0;
@@ -218,7 +218,6 @@ private:
     uint64_t sendWorkspaceServerBytes_ = 0;
     uint64_t dispatchL2ScratchBytes_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
-    uint32_t resetBatchElementCount_ = 0; // resetTensor_ 单批可搬运的 int32_t 元素数
     int32_t compareCount_ = 0;
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
     uint32_t topKWeightsChunkLen_ = 0;
@@ -258,6 +257,7 @@ private:
     LocalTensor<ActivationType> xOutTensor2_;
     LocalTensor<uint16_t> mxTempTensor_;
     LocalTensor<int32_t> resetTensor_;
+    int32_t resetBatchElementCount_ = 0;
     LocalTensor<int32_t> topkIdsTensor_;
     LocalTensor<uint8_t> sendMaskTensor_[DOUBLE_BUFFER]; // SendMaskCal 源卡算 [mask|count] 的 ping-pong 缓冲
     LocalTensor<int32_t> sendGatherOutTensor_;           // SendMaskCal GatherMask 计 count 的废弃输出 scratch
@@ -273,6 +273,9 @@ private:
     // 同时当 Weight2 非 fp4 但 QuantMode==E2M1 时（generic GMM2 路径），也需 promotion，
     // 否则会出现 A=QuantOutType(fp4) vs B=Weight1Type(fp8) 的类型不匹配。
     using SwigluQuantOutType = typename std::conditional<(QuantMode == E2M1_QUANT), fp8_e4m3fn_t, QuantOutType>::type;
+
+    // SwigluQuant 输出的元素字节密度：fp4 时为 2elem/B，fp8 时为 1elem/B。
+    static constexpr uint32_t C_ELEMS_PER_BYTE = Std::IsSame<SwigluQuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
 
     // SwigluQuant 输出的元素字节密度：fp4 时为 2elem/B，fp8 时为 1elem/B。
     static constexpr uint32_t GMM1_TILE_M = MegaMoeImpl::L1_TILE_M_256;
