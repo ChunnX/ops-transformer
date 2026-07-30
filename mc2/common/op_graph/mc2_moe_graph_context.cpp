@@ -21,6 +21,7 @@
 #include "mc2_common_log.h"
 #include "mc2_moe_context.h"
 #include "graph/operator_factory.h"
+#include "mc2_platform_info.h"
 
 namespace {
 constexpr const char *CONTEXT_NAME = "Mc2MoeGraphContext";
@@ -97,6 +98,7 @@ bool Mc2MoeGraphContext::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclRankGraphGetRankSizeByLayer), "HcclRankGraphGetRankSizeByLayer"},
         {reinterpret_cast<void **>(&HcclChannelAcquire), "HcclChannelAcquire"},
         {reinterpret_cast<void **>(&HcclGetHcclBuffer), "HcclGetHcclBuffer"},
+        {reinterpret_cast<void **>(&HcclGetRemoteIpcHcclBuf), "HcclGetRemoteIpcHcclBuf"},
         {reinterpret_cast<void **>(&HcclChannelGetHcclBuffer), "HcclChannelGetHcclBuffer"},
         {reinterpret_cast<void **>(&HcclGetRankId), "HcclGetRankId"},
         {reinterpret_cast<void **>(&HcclGetRankSize), "HcclGetRankSize"},
@@ -301,57 +303,102 @@ bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, std::vecto
                                           int64_t &hcclBuffSize)
 {
     if (!LoadHcclSymbols()) {
+        OPS_LOG_E(CONTEXT_NAME, "LoadHcclSymbols failed, groupEp %s.", groupEp.c_str());
         return false;
     }
     HcclComm hcclHandle;
     if (!GetCommHandle(groupEp.c_str(), hcclHandle)) {
-        return false;
-    }
-    CommProtocol protocol;
-    if (!GetCommProtocol(hcclHandle, protocol)) {
+        OPS_LOG_E(CONTEXT_NAME, "GetCommHandle failed, groupEp %s.", groupEp.c_str());
         return false;
     }
 
     Mc2Aclnn::Mc2MoeContext context{};
     auto hcclRet = HcclGetRankId(hcclHandle, &context.epRankId);
     if (hcclRet != HCCL_SUCCESS) {
-        OPS_LOG_E(CONTEXT_NAME, "Get rank ID failed.");
+        OPS_LOG_E(CONTEXT_NAME, "Get rank ID failed, ret %d, groupEp %s.", hcclRet, groupEp.c_str());
         return false;
     }
     hcclRet = HcclGetRankSize(hcclHandle, &epRankSize_);
     if (hcclRet != HCCL_SUCCESS || epRankSize_ == 0 || epRankSize_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE) {
-        OPS_LOG_E(CONTEXT_NAME, "Get rank size failed or rank size %u is invalid.", epRankSize_);
+        OPS_LOG_E(CONTEXT_NAME, "Get rank size failed, ret %d, rankSize %u, groupEp %s.", hcclRet, epRankSize_,
+                  groupEp.c_str());
         return false;
     }
 
-    std::vector<ChannelHandle> channels;
-    if (!GetHcclCommChannel(hcclHandle, epRankSize_, context.epRankId, protocol, CommEngine::COMM_ENGINE_AIV,
-                            channels)) {
-        return false;
-    }
-    context.rankSizePerServer = rankSizePerServer_;
-
-    for (uint32_t i = 0; i < epRankSize_; ++i) {
-        void *tempBuffer = nullptr;
-        uint64_t bufSize = 0;
-        if (i == context.epRankId) {
-            hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
-        } else {
-            uint32_t idx = (i < context.epRankId) ? i : (i - 1);
-            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+    const bool isA5 = IsTargetPlatformNpuArch(CONTEXT_NAME, NPUARCH_A5);
+    const bool isA3 = IsTargetPlatformSocVersion(CONTEXT_NAME, PLATFORM_A3);
+    OPS_LOG_I(CONTEXT_NAME, "BuildContextData enter, groupEp %s, epRankId %u, epRankSize %u, isA5=%d isA3=%d.",
+              groupEp.c_str(), context.epRankId, epRankSize_, isA5, isA3);
+    if (isA3) {
+        // A3 走 KFC 路径：本卡 HcclGetHcclBuffer、对卡 HcclGetRemoteIpcHcclBuf，原始基址无偏移
+        // 与 torch_extension KfcContextBuilder 一致（A3 HCCL 链路为 HCCS，不支持 channel+UB_MEM 方式）
+        OPS_LOG_I(CONTEXT_NAME, "A3 KFC path: using HcclGetHcclBuffer + HcclGetRemoteIpcHcclBuf, no offset.");
+        for (uint32_t i = 0; i < epRankSize_; ++i) {
+            void *tempBuffer = nullptr;
+            uint64_t bufSize = 0;
+            if (i == context.epRankId) {
+                hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
+                OPS_LOG_D(CONTEXT_NAME, "KFC self buffer: rank %u, addr %p, hcclBuffSize %lu, ret %d.", i,
+                          tempBuffer, hcclBuffSize_, hcclRet);
+            } else {
+                hcclRet = HcclGetRemoteIpcHcclBuf(hcclHandle, i, &tempBuffer, &bufSize);
+                OPS_LOG_D(CONTEXT_NAME, "KFC remote buffer: rank %u, addr %p, bufSize %lu, ret %d.", i,
+                          tempBuffer, bufSize, hcclRet);
+            }
+            if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
+                OPS_LOG_E(CONTEXT_NAME, "Get HCCL buffer failed (KFC), src %u, dst %u, ret %d, addr %p.",
+                          context.epRankId, i, hcclRet, tempBuffer);
+                return false;
+            }
+            context.epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
         }
-        if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
-            OPS_LOG_E(CONTEXT_NAME, "Get HCCL buffer failed, src %u, dst %u.", context.epRankId, i);
+    } else if (isA5) {
+        // A5 走 channel 路径：HcclChannelAcquire(AIV) + HcclChannelGetHcclBuffer，+1024 偏移
+        // A5 HCCL window 状态槽按 rankId*1KB 排布（对齐 aclnn mc2_context.cpp）
+        OPS_LOG_I(CONTEXT_NAME, "A5 channel path: using HcclChannelAcquire + HcclChannelGetHcclBuffer, +1024 offset.");
+        CommProtocol protocol;
+        if (!GetCommProtocol(hcclHandle, protocol)) {
+            OPS_LOG_E(CONTEXT_NAME, "GetCommProtocol failed, groupEp %s.", groupEp.c_str());
             return false;
         }
-        context.epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
+        std::vector<ChannelHandle> channels;
+        if (!GetHcclCommChannel(hcclHandle, epRankSize_, context.epRankId, protocol, CommEngine::COMM_ENGINE_AIV,
+                                channels)) {
+            OPS_LOG_E(CONTEXT_NAME, "GetHcclCommChannel failed, groupEp %s.", groupEp.c_str());
+            return false;
+        }
+        context.rankSizePerServer = rankSizePerServer_;
+        for (uint32_t i = 0; i < epRankSize_; ++i) {
+            void *tempBuffer = nullptr;
+            uint64_t bufSize = 0;
+            if (i == context.epRankId) {
+                hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
+            } else {
+                uint32_t idx = (i < context.epRankId) ? i : (i - 1);
+                hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+            }
+            if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
+                OPS_LOG_E(CONTEXT_NAME, "Get HCCL buffer failed, src %u, dst %u, ret %d, addr %p.", context.epRankId,
+                          i, hcclRet, tempBuffer);
+                return false;
+            }
+            context.epHcclBuffer_[i] =
+                reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
+            OPS_LOG_D(CONTEXT_NAME, "A5 buffer: rank %u, baseAddr %p, finalAddr 0x%lx, bufSize %lu.", i, tempBuffer,
+                      context.epHcclBuffer_[i], bufSize);
+        }
+    } else {
+        OPS_LOG_E(CONTEXT_NAME, "Unsupported platform, not A3/A5, groupEp %s.", groupEp.c_str());
+        return false;
     }
 
     contextData.resize(sizeof(Mc2Aclnn::Mc2MoeContext) / sizeof(int32_t));
     memcpy(contextData.data(), &context, sizeof(Mc2Aclnn::Mc2MoeContext));
     hcclBuffSize = static_cast<int64_t>(hcclBuffSize_);
-    OPS_LOG_I(CONTEXT_NAME, "Build Mc2MoeContext data success, groupEp %s, hcclBuffSize %ld.", groupEp.c_str(),
-              hcclBuffSize);
+    OPS_LOG_I(CONTEXT_NAME, "Build Mc2MoeContext data success, groupEp %s, epRankId %u, epRankSize %u, "
+                            "hcclBuffSize %ld, isA5=%d isA3=%d.",
+              groupEp.c_str(), context.epRankId, epRankSize_, hcclBuffSize,
+              isA5, isA3);
     return true;
 }
 

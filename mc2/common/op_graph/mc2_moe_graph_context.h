@@ -10,7 +10,7 @@
 
 /*!
  * \file mc2_moe_graph_context.h
- * \brief MC2 MoeContext builder for graph fusion pass (A5), shares the same context
+ * \brief MC2 MoeContext builder for graph fusion pass (A3/A5), shares the same context
  *        semantics with the aclnn single-op path (mc2/common/op_api/mc2_context.cpp).
  */
 
@@ -85,6 +85,7 @@ private:
     HcclResult (*HcclRankGraphGetRankSizeByLayer)(HcclComm, uint32_t, uint32_t *) = nullptr;
     HcclResult (*HcclChannelAcquire)(HcclComm, CommEngine, HcclChannelDesc *, uint32_t, ChannelHandle *) = nullptr;
     HcclResult (*HcclGetHcclBuffer)(HcclComm, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclGetRemoteIpcHcclBuf)(HcclComm, uint64_t, void **, uint64_t *) = nullptr;
     HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, ChannelHandle, void **, uint64_t *) = nullptr;
     HcclResult (*HcclGetRankId)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclGetRankSize)(HcclComm, uint32_t *) = nullptr;
