@@ -2374,12 +2374,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
     }
     vecSetSyncCom = 0;
     gmm1PingPongIdx_ = 0;
-    if constexpr (g_coreType == AIV) {
-        // 持久化 count 在各物理核间相同，仅由首个物理核的 AIV1 恢复并输出。
-        if (aivCoreIdx_ == 1U) {
-            ExpertTokenNumCopyOut();
-        }
-    }
 }
 
 // ===============================================================
@@ -2485,6 +2479,12 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
     if constexpr (g_coreType == AIV) {
         CrossRankSyncInWorldSize();
         Unpermute();
+        // 等所有 AIV 排空最终输出后，再由首个物理核的 AIV1 从持久化 count 恢复并输出。
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+        if (aivCoreIdx_ == 1U) {
+            ExpertTokenNumCopyOut();
+        }
     }
     // 恢复入口时保存的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
