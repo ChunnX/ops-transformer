@@ -1,0 +1,184 @@
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=5 python_sha256=166262649fa39ac3b325e8726f4cd90184d09fa54ea25c1aff95037c1c121803
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=5502edf2994c11a1727ec32927a9634eab0eed7d0236f3b9ec74e26c8beb5528
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+725:      int32_t valid_k_size_1 = KRealSize.GetValue(task_id);
+726-      int32_t condval_1;
+727-      if ((cid < 8)) {
+728-        condval_1 = 1;
+729-      } else {
+730-        condval_1 = 0;
+731-      }
+732-      if ((((cid * 208) + ((cid < 8 ? cid : 8) * 16)) + ((vid * ((condval_1 / 2) + 7)) * 16)) < valid_k_size_1) {
+733-        int32_t condval_2;
+734-        if ((cid < 8)) {
+735-          condval_2 = 1;
+736-        } else {
+737-          condval_2 = 0;
+738-        }
+739-        int32_t condval_3;
+740-        if ((cid < 8)) {
+741-          condval_3 = 1;
+742-        } else {
+743-          condval_3 = 0;
+744-        }
+745-        int32_t condval_4;
+746-        if ((cid < 8)) {
+747-          condval_4 = 1;
+748-        } else {
+749-          condval_4 = 0;
+750-        }
+751-        if (((((((cid * 208) + ((condval_2 / 2) * 16)) + ((cid < 8 ? cid : 8) * 16)) + ((vid * ((condval_3 / 2) + 7)) * 16)) + 112) - ((vid * (1 - (condval_4 % 2))) * 16)) <= valid_k_size_1) {
+752-          if ASCEND_IS_AIV {
+753-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(6);
+754-            int32_t condval_5;
+755-            if ((cid < 8)) {
+756-              condval_5 = 1;
+757-            } else {
+758-              condval_5 = 0;
+759-            }
+760-            int32_t condval_6;
+761-            if ((cid < 8)) {
+762-              condval_6 = 1;
+763-            } else {
+764-              condval_6 = 0;
+765-            }
+766-            int32_t condval_7;
+767-            if ((cid < 8)) {
+768-              condval_7 = 1;
+769-            } else {
+770-              condval_7 = 0;
+771-            }
+772-            int32_t condval_8;
+773-            if ((cid < 8)) {
+774-              condval_8 = 1;
+775-            } else {
+776-              condval_8 = 0;
+777-            }
+778-            tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((task_id * 655360) + (cid * 26624)) + ((cid < 8 ? cid : 8) * 2048)) + ((vid * ((condval_5 / 2) + 7)) * 2048))], 128, ((1 <= (((320 - (cid < 8 ? cid : 8)) - (vid * ((condval_6 / 2) + 7))) - (cid * 13))) ? 16 : (((((cid * 13) + (cid < 8 ? cid : 8)) + (vid * ((condval_7 / 2) + 7))) < 320) ? (((5120 - ((cid < 8 ? cid : 8) * 16)) - ((vid * ((condval_8 / 2) + 7)) * 16)) - (cid * 208)) : 0)), 128, 0.000000e+00f);
+779-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(6);
+780-            int32_t condval_9;
+781-            if ((cid < 8)) {
+782-              condval_9 = 1;
+783-            } else {
+784-              condval_9 = 0;
+785-            }
+786-            int32_t condval_10;
+787-            if ((cid < 8)) {
+788-              condval_10 = 1;
+789-            } else {
+790-              condval_10 = 0;
+791-            }
+792-            for (int32_t batch_id = 0; batch_id < (((condval_9 / 2) + 7) - (vid * (1 - (condval_10 % 2)))); ++batch_id) {
+793-              int32_t condval_11;
+794-              if ((cid < 8)) {
+795-                condval_11 = 1;
+796-              } else {
+797-                condval_11 = 0;
+798-              }
+799-              int32_t condval_12;
+800-              if ((cid < 8)) {
+801-                condval_12 = 1;
+802-              } else {
+803-                condval_12 = 0;
+804-              }
+805-              if (batch_id < (((condval_11 / 2) + 6) - (vid * (1 - (condval_12 % 2))))) {
+806-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>((((batch_id + 1) % 2) + 6));
+807-                if (((batch_id + 1) % 2) == 0) {
+808-                  int32_t condval_13;
+809-                  if ((cid < 8)) {
+810-                    condval_13 = 1;
+811-                  } else {
+812-                    condval_13 = 0;
+813-                  }
+814-                  int32_t condval_14;
+815-                  if ((cid < 8)) {
+816-                    condval_14 = 1;
+817-                  } else {
+818-                    condval_14 = 0;
+819-                  }
+820-                  int32_t condval_15;
+821-                  if ((cid < 8)) {
+822-                    condval_15 = 1;
+823-                  } else {
+824-                    condval_15 = 0;
+825-                  }
+826-                  int32_t condval_16;
+827-                  if ((cid < 8)) {
+828-                    condval_16 = 1;
+829-                  } else {
+830-                    condval_16 = 0;
+831-                  }
+832-                  tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((((task_id * 655360) + (cid * 26624)) + (batch_id * 2048)) + ((cid < 8 ? cid : 8) * 2048)) + ((vid * ((condval_13 / 2) + 7)) * 2048)) + 2048)], 128, ((1 <= ((((319 - batch_id) - (cid < 8 ? cid : 8)) - (vid * ((condval_14 / 2) + 7))) - (cid * 13))) ? 16 : ((((((cid * 13) + (cid < 8 ? cid : 8)) + batch_id) + (vid * ((condval_15 / 2) + 7))) < 319) ? ((((5104 - (batch_id * 16)) - ((cid < 8 ? cid : 8) * 16)) - ((vid * ((condval_16 / 2) + 7)) * 16)) - (cid * 208)) : 0)), 128, 0.000000e+00f);
+833-                } else {
+834-                  int32_t condval_17;
+835-                  if ((cid < 8)) {
+836-                    condval_17 = 1;
+837-                  } else {
+838-                    condval_17 = 0;
+839-                  }
+840-                  int32_t condval_18;
+841-                  if ((cid < 8)) {
+842-                    condval_18 = 1;
+843-                  } else {
+844-                    condval_18 = 0;
+845-                  }
+846-                  int32_t condval_19;
+847-                  if ((cid < 8)) {
+848-                    condval_19 = 1;
+849-                  } else {
+850-                    condval_19 = 0;
+851-                  }
+852-                  int32_t condval_20;
+853-                  if ((cid < 8)) {
+854-                    condval_20 = 1;
+855-                  } else {
+856-                    condval_20 = 0;
+857-                  }
+858-                  tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_pong[0], dk_matmul_partial[((((((task_id * 655360) + (cid * 26624)) + (batch_id * 2048)) + ((cid < 8 ? cid : 8) * 2048)) + ((vid * ((condval_17 / 2) + 7)) * 2048)) + 2048)], 128, ((1 <= ((((319 - batch_id) - (cid < 8 ? cid : 8)) - (vid * ((condval_18 / 2) + 7))) - (cid * 13))) ? 16 : ((((((cid * 13) + (cid < 8 ? cid : 8)) + batch_id) + (vid * ((condval_19 / 2) + 7))) < 319) ? ((((5104 - (batch_id * 16)) - ((cid < 8 ? cid : 8) * 16)) - ((vid * ((condval_20 / 2) + 7)) * 16)) - (cid * 208)) : 0)), 128, 0.000000e+00f);
+859-                }
+860-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>((((batch_id + 1) % 2) + 6));
+861-              }
+862-              AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(((batch_id % 2) + 6));
+863-              for (int32_t pair_idx = 0; pair_idx < 8; ++pair_idx) {
+864-                int64_t condval_21;
+865-                if ((((int64_t)cid) < (int64_t)8)) {
+866-                  condval_21 = (int64_t)1;
+867-                } else {
+868-                  condval_21 = (int64_t)0;
+869-                }
+870-                int32_t sparse_idx0 = SparseIndices.GetValue(((((((((int64_t)task_id) * (int64_t)5120) + (((int64_t)cid) * (int64_t)208)) + (((int64_t)batch_id) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)8 ? ((int64_t)cid) : (int64_t)8) * (int64_t)16)) + ((((int64_t)vid) * ((condval_21 / (int64_t)2) + (int64_t)7)) * (int64_t)16)) + (((int64_t)pair_idx) * (int64_t)2)));
+871-                int64_t condval_22;
+872-                if ((((int64_t)cid) < (int64_t)8)) {
+873-                  condval_22 = (int64_t)1;
+874-                } else {
+875-                  condval_22 = (int64_t)0;
+876-                }
+877-                int32_t sparse_idx1 = SparseIndices.GetValue((((((((((int64_t)task_id) * (int64_t)5120) + (((int64_t)cid) * (int64_t)208)) + (((int64_t)batch_id) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)8 ? ((int64_t)cid) : (int64_t)8) * (int64_t)16)) + ((((int64_t)vid) * ((condval_22 / (int64_t)2) + (int64_t)7)) * (int64_t)16)) + (((int64_t)pair_idx) * (int64_t)2)) + (int64_t)1));
+878-                if (0 <= sparse_idx0) {
+879-                  if ((batch_id % 2) == 0) {
+880-                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0 * 128)], v2_dk_batch_ping[(pair_idx * 256)], 655360, ((sparse_idx0 <= 5119) ? 1 : 0), 128);
+881-                  } else {
+882-                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0 * 128)], v2_dk_batch_pong[(pair_idx * 256)], 655360, ((sparse_idx0 <= 5119) ? 1 : 0), 128);
+883-                  }
+884-                }
+885-                if (0 <= sparse_idx1) {
+886-                  if ((batch_id % 2) == 0) {
+887-                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1 * 128)], v2_dk_batch_ping[((pair_idx * 256) + 128)], 655360, ((sparse_idx1 <= 5119) ? 1 : 0), 128);
+888-                  } else {
+889-                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1 * 128)], v2_dk_batch_pong[((pair_idx * 256) + 128)], 655360, ((sparse_idx1 <= 5119) ? 1 : 0), 128);
+890-                  }
+891-                }
+892-              }
+893-              AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(((batch_id % 2) + 6));
+894-            }
+895-          }
+896-        } else {
+897-          if ASCEND_IS_AIV {
+898-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(6);
+899-            int32_t condval_23;
+900-            if ((cid < 8)) {
+901-              condval_23 = 1;
+902-            } else {
+903-              condval_23 = 0;
+904-            }
+905-            int32_t condval_24;
