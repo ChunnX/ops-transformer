@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file test_grouped_a4w4_quant_arch35_pergroup_tiling.cpp
+ * \file test_grouped_INT4_quant_arch35_pergroup_tiling.cpp
  * \brief Host tiling UT for GroupedA4W4Quant (INT4×INT4) pergroup groupSize 约束。
  *
  * 验证 GMM_A5_A4W4_PERGROUPSIZE_CONSTRAINT.md §3 偶数规格：
@@ -20,7 +20,7 @@
  *   - perchannel（scale 2D）对照：quantGroupNum=1。
  *
  * 路由：TilingGMM 在 npuArch==DAV_3510 && xDType==DT_INT4 && weightDtype==DT_INT4 时走
- *       GroupedA4W4QuantTiling（grouped_matmul_tiling.cpp:2256）。
+ *       GroupedA4W4IntQuantTiling（grouped_matmul_tiling.cpp:2256）。
  *
  * 输入契约（GroupedMatmul 9 输入）：x(0) weight(1) bias(2) scale(3) offset(4)
  *   antiquantScale(5) antiquantOffset(6) groupList(7) perTokenScale(8)。
@@ -36,7 +36,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "../../../op_host/op_tiling/arch35/grouped_a4w4_quant_tiling.h"
+#include "../../../op_host/op_tiling/arch35/grouped_int4_quant_tiling.h"
 #include "../../../op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.h"  // AIC_AIV_CORE_RATIO
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "tiling_case_executor.h"
@@ -139,7 +139,7 @@ bool RunA4W4Tiling(int64_t m, int64_t k, int64_t n, int64_t e, int64_t groupSize
 // 取 A4W4 tiling data 的 gmmA4W4Params 用于断言。
 const GroupedMatmulTilingData::GMMBaseParamsA4W4 *GetA4W4Params(const TilingInfo &info)
 {
-    return &reinterpret_cast<const GroupedMatmulTilingData::GMMA4W4QuantTilingData *>(info.tilingData.get())
+    return &reinterpret_cast<const GroupedMatmulTilingData::GMMA4W4IntQuantTilingData *>(info.tilingData.get())
                 ->gmmA4W4Params;
 }
 
@@ -156,7 +156,7 @@ TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, pergroupGroupSize256Accepted)
 {
     TilingInfo info;
     ASSERT_TRUE(RunA4W4Tiling(/*m=*/128, /*k=*/1024, /*n=*/256, /*e=*/2, /*groupSize=*/256, true, info));
-    ASSERT_EQ(info.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMA4W4QuantTilingData));
+    ASSERT_EQ(info.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMA4W4IntQuantTilingData));
     const auto *p = GetA4W4Params(info);
     EXPECT_EQ(p->quantGroupNum, 4U);   // G = 1024/256
     EXPECT_EQ(p->baseK, 128U);         // pergroup 固定 baseK=128
@@ -169,7 +169,7 @@ TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, pergroupGroupSize512Accepted)
 {
     TilingInfo info;
     ASSERT_TRUE(RunA4W4Tiling(128, 1024, 256, 2, /*groupSize=*/512, true, info));
-    ASSERT_EQ(info.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMA4W4QuantTilingData));
+    ASSERT_EQ(info.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMA4W4IntQuantTilingData));
     const auto *p = GetA4W4Params(info);
     EXPECT_EQ(p->quantGroupNum, 2U);   // G = 1024/512
     EXPECT_EQ(p->baseK, 128U);
@@ -237,7 +237,7 @@ TEST_F(TestGroupedA4W4QuantPergroupArch35Tiling, perchannelScale2DQuantGroupNumO
 {
     TilingInfo info;
     ASSERT_TRUE(RunA4W4Tiling(128, 1024, 256, 2, /*groupSize=*/0, /*isPergroup=*/false, info));
-    ASSERT_EQ(info.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMA4W4QuantTilingData));
+    ASSERT_EQ(info.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMA4W4IntQuantTilingData));
     const auto *p = GetA4W4Params(info);
     EXPECT_EQ(p->quantGroupNum, 1U);   // perchannel
     EXPECT_EQ(p->baseK, 128U);         // min(1024,128)
