@@ -426,8 +426,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
     // 预留 metaInfoTensor_: MegaMoeImpl::L1_TILE_M_256 * ALIGN_32
     uint32_t dispatchFixedCost = 0;
     {
-        uint32_t tokenScaleSize = Ops::Base::CeilAlign(
-            static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), static_cast<int64_t>(ALIGN_32));
+        uint32_t tokenScaleSize = mxQuantTokenScaleAlignBytes_;
         uint32_t copyTmpBytes = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * tokenScaleSize;
         uint32_t relayFlagBytes =
             Ops::Base::CeilAlign(static_cast<uint32_t>(m_ * sizeof(uint64_t)), static_cast<uint32_t>(ALIGN_32));
@@ -491,8 +490,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
         LocalTensor<uint8_t>(TPosition::VECCALC, gatherMaskTensorAddr, gatherMaskTensorSize / sizeof(uint8_t));
     gatherMaskInt32Tensor_ =
         LocalTensor<uint32_t>(TPosition::VECCALC, gatherMaskTensorAddr, gatherMaskTensorSize / sizeof(uint32_t));
-    uint32_t tokenScaleSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), static_cast<int64_t>(ALIGN_32));
+    uint32_t tokenScaleSize = mxQuantTokenScaleAlignBytes_;
     uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
     uint32_t copyTmpBaseAddr = gatherMaskTensorAddr + gatherMaskTensorSize;
     uint32_t copyTmpTotalSize = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * COPY_TMP_BUFFER_SIZE;
@@ -956,12 +954,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantToke
 
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(k_ * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
-    DataCopyExtParams xCopyOutParams = {1U, static_cast<uint32_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
-                                        0U, 0U, 0U};
-    if constexpr (TopkWeightsPrefetch) {
-        xCopyOutParams.blockLen =
-            Ops::Base::CeilAlign(xCopyOutParams.blockLen + weightAlignBytes_, static_cast<uint32_t>(ALIGN_32));
-    }
     DataCopyPad(xInTensor1_, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
     LoadTopkWeightsToUb(xOutTensor1_, 0, tokenIdx, EVENT_ID0);
@@ -1409,8 +1401,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyGMToG
     int64_t widthA = k_ / A_ELEMS_PER_BYTE;
     int64_t widthAScale = Ops::Base::CeilDiv(static_cast<int64_t>(k_), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
                           MXFP_MULTI_BASE_SIZE; // 输出 token-scale 长度,紧密排列
-    uint32_t copyInNum = Ops::Base::CeilAlign(static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
-                                              static_cast<int64_t>(ALIGN_32)); // 输入 token-scale 拼接,非紧密排列
+    uint32_t copyInNum = mxQuantTokenScaleAlignBytes_;
     uint32_t srcServer = static_cast<uint32_t>(remoteRankIdx) / rankPerServer_;
     uint32_t srcRankInServer = static_cast<uint32_t>(remoteRankIdx) % rankPerServer_;
     uint32_t relayRank = serverId_ * rankPerServer_ + srcRankInServer;
@@ -1427,6 +1418,26 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyGMToG
         CopyTokensFromLocalRelay(rowDstOffsetInCore, srcServer, copyNum, widthA, widthAScale, copyInNum);
     } else {
         CopyTokensFromRemoteRelay(rowDstOffsetInCore, relayRank, srcServer, copyNum, widthA, widthAScale);
+        if constexpr (TopkWeightsPrefetch) {
+            for (int32_t i = 0; i < copyNum; ++i) {
+                int32_t tokenIndex = metaInfoTensor_[i * INT32_PER_256B].GetValue(TOKEN_ID);
+                int32_t topkIndex = metaInfoTensor_[i * INT32_PER_256B].GetValue(TOPK_INDEX);
+                uint32_t elemIdx = static_cast<uint32_t>(tokenIndex * static_cast<int32_t>(topK_) + topkIndex);
+                __gm__ int32_t *weightGmI32 = reinterpret_cast<__gm__ int32_t *>(params_.probsGmAddr);
+                int32_t weightBits;
+                if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+                    int32_t packed = ReadGmByPassDCache(weightGmI32 + elemIdx / 2U);
+                    uint16_t bf16Bits = (elemIdx % 2U == 0U) ?
+                        static_cast<uint16_t>(packed & 0xFFFF) :
+                        static_cast<uint16_t>((static_cast<uint32_t>(packed) >> 16) & 0xFFFF);
+                    uint32_t floatBits = static_cast<uint32_t>(bf16Bits) << 16;
+                    weightBits = static_cast<int32_t>(floatBits);
+                } else {
+                    weightBits = ReadGmByPassDCache(weightGmI32 + elemIdx);
+                }
+                metaInfoTensor_[i * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
+            }
+        }
     }
 
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
