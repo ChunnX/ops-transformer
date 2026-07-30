@@ -224,7 +224,6 @@ def main():
     parser.add_argument("--device-id", type=int, default=0)
     args = parser.parse_args()
 
-    torch_npu.npu.set_device(args.device_id)
     test_cases = load_csv_test_cases(args.csv_path)
     test_cases = select_test_cases(test_cases)
     save_test_cases(test_cases, args.pt_output_dir)
