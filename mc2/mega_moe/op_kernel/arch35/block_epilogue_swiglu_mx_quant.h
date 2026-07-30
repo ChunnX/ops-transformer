@@ -157,7 +157,7 @@ public:
     __aicore__ inline auto GetSecondL0c2UbTensor();
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord,
                                       uint16_t pingpongIdx = 0);
-    __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
+    __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset, uint32_t flagElementOffset = 0);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
     // 权重预加载相关：由 AivGmm1PostGeneric 提前 DataCopy，VFDoSwigluAndQuantForMX 直接消费
@@ -280,15 +280,16 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(
-    const BlockCoord &baseOffset)
+__aicore__ inline void
+BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(
+    const BlockCoord &baseOffset, uint32_t flagElementOffset)
 {
     if constexpr (g_coreType == AscendC::AIV) {
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)yGmAddr_ + Get<Y_IDX>(baseOffset));
         quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)yScaleGmAddr_ + Get<Y_SCALE_IDX>(baseOffset));
         if (groupFlagListGmBaseAddr_ != nullptr) {
-            groupFlagListGmAddr_ =
-                (__gm__ int32_t *)groupFlagListGmBaseAddr_ + Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
+            groupFlagListGmAddr_ = (__gm__ int32_t *)groupFlagListGmBaseAddr_ +
+                Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE + flagElementOffset;
         } else {
             groupFlagListGmAddr_ = nullptr;
         }
@@ -805,7 +806,14 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
     if (groupFlagListGmAddr_ != nullptr) {
-        AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
+        if constexpr (IsInterleaved_) {
+            // The scheduler already has mLoc. Carry its wave index in the spare
+            // GROUP_FLAG coordinate rather than divide again in scalar code.
+            AscendC::AtomicAdd(
+                groupFlagListGmAddr_ + Get<GROUP_FLAG_IDX>(blockCoord) * INT_CACHELINE, 1);
+        } else {
+            AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
+        }
     }
     return;
 }
