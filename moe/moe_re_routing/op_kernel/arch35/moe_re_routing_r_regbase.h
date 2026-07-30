@@ -23,7 +23,10 @@
 namespace MoeReRouting {
 using namespace AscendC;
 
+#ifndef HAS_TOPK_WEIGHT_DEFINED
+#define HAS_TOPK_WEIGHT_DEFINED
 constexpr int32_t HAS_TOPK_WEIGHT = 1;
+#endif
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
 class MoeReRoutingRRegbase {
