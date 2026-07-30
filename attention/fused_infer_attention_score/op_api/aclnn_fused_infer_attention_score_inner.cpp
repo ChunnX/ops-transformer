@@ -446,16 +446,11 @@ aclnnStatus NormalizeFAICacheTensorList(const aclTensorList *&tensorList, const 
         const aclTensor *normalizedTensor = nullptr;
         std::string itemName = std::string(name) + "[" + std::to_string(i) + "]";
         if (IsContiguous(tensor)) {
-            printf("enter NormalizeFAICacheTensorList contiguous.\n");
             normalizedTensor = l0op::Contiguous(tensor, executor);
-            printf("finish NormalizeFAICacheTensorList contiguous.\n");
-            // if (normalizedTensor == nullptr) {
-            //     OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try normalize contiguous %s failed.", itemName.c_str());
-            //     return ACLNN_ERR_INNER_NULLPTR;
-            // }
-            // CHECK_RET(ReshapeTensorToViewShape(normalizedTensor, itemName.c_str(), executor) == ACLNN_SUCCESS,
-            //           ACLNN_ERR_INNER_NULLPTR);
-            // normalizedTensor = tensor;
+            if (normalizedTensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try normalize contiguous %s failed.", itemName.c_str());
+                return ACLNN_ERR_INNER_NULLPTR;
+            }
         } else {
             normalizedTensor = executor->CreateView(tensor, tensor->GetViewShape(), tensor->GetStorageShape(),
                                                     tensor->GetViewStrides(), tensor->GetViewOffset());
@@ -546,7 +541,6 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    printf("NnopbaseSupportTensorV2 != nullptr :%d", NnopbaseSupportTensorV2 != nullptr);
     L2_DFX_PHASE_1(InnerFusedInferAttentionScore,
                    DFX_IN(query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
                           actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional,
