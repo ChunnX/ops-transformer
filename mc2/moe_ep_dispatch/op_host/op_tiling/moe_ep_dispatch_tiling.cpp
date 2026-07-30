@@ -811,12 +811,13 @@ static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
     // scaleout counter 与 scaleup counter 一样按每 AIV 一份，SendPhase 用它做 slot prefix。
     uint64_t scaleoutCounterBytes =
         (info.networkMode == HYBRID_MODE) ? aivNum * AlignUpWin(superNodeCount * sizeof(int32_t)) : 0UL;
-    uint64_t scaleoutNotifyBytes =
+    // 保持原 8B/server 预留大小，fanout 用前 4B 记录本轮已消费的 status 数量。
+    uint64_t scaleoutRecvCountBytes =
         (info.networkMode == HYBRID_MODE) ? AlignUpWin(superNodeCount * sizeof(uint64_t)) : 0UL;
     uint64_t globalABytes = UB_ALIGN;
     if (info.networkMode == HYBRID_MODE) {
         info.routeWorkspaceOffset = sendCntBytes;
-        return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + scaleoutCounterBytes + scaleoutNotifyBytes +
+        return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + scaleoutCounterBytes + scaleoutRecvCountBytes +
                globalABytes;
     }
     return SYSTEM_NEED_WORKSPACE + sendCntBytes + globalABytes;
@@ -929,8 +930,8 @@ static uint64_t CalTilingKey(const uint32_t doCpuSync, const uint32_t isCached, 
 
 static void SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
 {
-    info.numAivStage1 = 0;
-    info.numAivStage2 = 0;
+    info.numAivStage1 = 0U;
+    info.numAivStage2 = 0U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
@@ -938,6 +939,24 @@ static void SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatc
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
+    if (info.networkMode == HYBRID_MODE) {
+        // 目标数量不超过 AIV 数时每个 proxy/本地 rank 独占一个 owner，否则按目标数量比例分组。
+        uint32_t remoteScaleoutCount = info.numScaleoutRanks - 1U;
+        uint32_t localRankCount = info.rankSizePerServer;
+        uint32_t communicationOwnerCount = remoteScaleoutCount + localRankCount;
+        if (communicationOwnerCount <= aivNum) {
+            info.numAivStage1 = remoteScaleoutCount;
+            info.numAivStage2 = localRankCount;
+        } else {
+            info.numAivStage1 = aivNum * remoteScaleoutCount / communicationOwnerCount;
+            if (info.numAivStage1 == 0U) {
+                info.numAivStage1 = 1U;
+            } else if (info.numAivStage1 >= aivNum) {
+                info.numAivStage1 = aivNum - 1U;
+            }
+            info.numAivStage2 = aivNum - info.numAivStage1;
+        }
+    }
     context->SetBlockDim(blockDim);
     context->SetScheduleMode(1U);
     OP_LOGD(nodeName, "blockDim=%u, aivNum=%u, ubSize=%lu", blockDim, aivNum, ubSize);
