@@ -47,6 +47,7 @@ namespace SplitFuse {
         using LayoutP = typename BlockMmadPV::LayoutA;
         using ElementV = typename BlockMmadPV::ElementB;
         using LayoutV = typename BlockMmadPV::LayoutB;
+        static constexpr bool BNBD_FLAG = BlockMmadQK::BNBD_FLAG;
 
         using ElementMask = typename EpilogueOnlineSoftmax::ElementMask;
         using LayoutMask = typename EpilogueOnlineSoftmax::LayoutMask;
@@ -519,8 +520,13 @@ namespace SplitFuse {
                 static_cast<uint64_t>(qNStartIdx * embedV);
             if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
                 gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
+            } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                // BNBD layout: (numBlocks, kvHeads, blockSize, D), head offset = kvNIdx * blockSize * D
+                gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
             }
             if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
+                gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
+            } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
                 gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
             }
             uint64_t gmOffsetLse = lseBOffset +
@@ -642,11 +648,20 @@ namespace SplitFuse {
                     kRow = blockStackNum * strideK;
                     kCol = pagedBlockSize;
                     layoutKTemp = LayoutK::template MakeLayout<ElementK>(kRow, kCol);
+                } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                    // BNBD: token stride within a block is embed (head selected via gmOffsetK)
+                    kRow = embed;
+                    kCol = stackSeqTile;
+                    layoutKTemp = LayoutK(kRow, kCol);
                 }
                 if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
                     vRow = pagedBlockSize;
                     vCol = blockStackNum * strideV;
                     layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
+                } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                    vRow = stackSeqTile;
+                    vCol = embedV;
+                    layoutVTemp = LayoutV(vRow, vCol);
                 }
                 blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
                 blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
