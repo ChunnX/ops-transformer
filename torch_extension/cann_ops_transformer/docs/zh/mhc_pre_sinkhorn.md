@@ -251,7 +251,7 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
   normEps = 1e-6
   outFlag = True  # 需要反向时设置为True
 
-  hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut = mhc_pre_sinkhorn(
+  hin, hPost, hRes = mhc_pre_sinkhorn(
     x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, outFlag
   )
   ```
