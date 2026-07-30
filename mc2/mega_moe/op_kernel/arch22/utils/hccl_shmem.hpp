@@ -68,6 +68,34 @@ FORCE_INLINE_AICORE void gm_dcci(__gm__ T *addr)
     __asm__ __volatile__("");
 }
 
+FORCE_INLINE_AICORE void AtomicAddRankMask(__gm__ uint8_t *rankMask, int32_t rank, int32_t rankSize)
+{
+    constexpr int32_t WORD_BYTES = sizeof(int32_t);
+    int32_t wordCount = (rankSize + WORD_BYTES - 1) / WORD_BYTES;
+    AscendC::LocalTensor<int32_t> localMaskWords;
+    localMaskWords.address_.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECOUT);
+    localMaskWords.address_.bufferAddr = 0;
+    localMaskWords.SetSize(wordCount);
+    AscendC::Duplicate<int32_t>(localMaskWords, 0, wordCount);
+    AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+
+    AscendC::LocalTensor<int8_t> localMask = localMaskWords.ReinterpretCast<int8_t>();
+    localMask.SetSize(rankSize);
+    localMask.SetValue(rank, static_cast<int8_t>(1));
+    AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+
+    AscendC::GlobalTensor<int8_t> globalMask;
+    globalMask.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(rankMask));
+    AscendC::DataCopyExtParams copyParams{1, static_cast<uint32_t>(rankSize * sizeof(int8_t)), 0, 0, 0};
+    AscendC::SetAtomicAdd<int8_t>();
+    AscendC::DataCopyPad(globalMask, localMask, copyParams);
+    AscendC::SetAtomicNone();
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+}
+
 FORCE_INLINE_AICORE int64_t gm_signal_wait_until_eq_for_barrier(__gm__ int64_t *sig_addr, int64_t cmp_val)
 {
     do {
@@ -424,8 +452,7 @@ public:
                     break;
                 }
                 if (AscendC::GetSystemCycle() - startCycle >= timeoutCycles) {
-                    gm_store(rankMask + i, static_cast<uint8_t>(1));
-                    gm_dcci(rankMask + i);
+                    AtomicAddRankMask(rankMask, i, m_rankSize);
                     break;
                 }
             }
@@ -706,8 +733,7 @@ public:
                     break;
                 }
                 if (AscendC::GetSystemCycle() - startCycle >= timeoutCycles) {
-                    gm_store(rankMask + rank, static_cast<uint8_t>(1));
-                    gm_dcci(rankMask + rank);
+                    AtomicAddRankMask(rankMask, rank, m_rankSize);
                     break;
                 }
             }

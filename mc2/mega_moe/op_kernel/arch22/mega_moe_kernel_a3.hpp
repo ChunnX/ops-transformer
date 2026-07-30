@@ -388,9 +388,7 @@ private:
                 return true;
             }
             if (AscendC::GetSystemCycle() - startCycle >= timeoutCycles) {
-                __gm__ uint8_t *mask = reinterpret_cast<__gm__ uint8_t *>(maskBufferAddr);
-                gm_store(mask + rank, static_cast<uint8_t>(1));
-                gm_dcci(mask + rank);
+                AtomicAddRankMask(reinterpret_cast<__gm__ uint8_t *>(maskBufferAddr), rank, shmem.RankSize());
                 return false;
             }
         }
