@@ -36,7 +36,6 @@ namespace MoeEpDispatchEpilogueImpl {
 using namespace AscendC;
 
 static constexpr uint32_t UB_ALIGN = 32U;
-static constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
 static constexpr uint8_t BUFFER_NUM = 2;
@@ -51,6 +50,7 @@ static constexpr uint32_t HIT_ROW_OFFSET = 0U;
 static constexpr uint32_t HIT_TOPK_OFFSET = 1U;
 static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
 static constexpr uint32_t CACHED_META_TILE = 8192U;
+static constexpr uint32_t ALIGNED_LEN_256 = 256U;
 static constexpr uint32_t SLOTS_TILE = 128U;
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -229,14 +229,14 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         hitCountStride_ = Ceil(numLocalExperts_, ELEM_ALIGN) * ELEM_ALIGN;
         paddedMetaElems_ = Ceil(META_TOPK_SECTION * axisKAlign_ + META_EXTRA_FIELDS, ELEM_ALIGN) * ELEM_ALIGN;
         paddedTopkElems_ = axisKAlign_;
-        uint32_t ubHitCountBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubRowStartBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubHitCountBytes = hitCountStride_ * sizeof(int32_t);
+        uint32_t ubRowStartBytes = hitCountStride_ * sizeof(int64_t);
         uint32_t ubMetaBytes =
             Ceil((uint32_t)(SLOTS_TILE * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubTopkIdsBytes =
             Ceil((uint32_t)(SLOTS_TILE * paddedTopkElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubHitCountRowI64Bytes = hitCountStride_ * sizeof(int64_t);
         uint32_t ubStageMetaBytes = axisK_ * UB_ALIGN;
         uint32_t ubStageWeightsBytes = axisK_ * UB_ALIGN;
         uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * HIT_ENTRY_SIZE * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
@@ -428,21 +428,17 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     DataCopyExtParams hitCountOneCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> hitCountOnePadParams{false, 0U, 0U, 0};
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-    Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
-    SyncFunc<AscendC::HardEvent::V_S>();
+    Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), hitCountStride_);
     for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
         DataCopyPad(ubHitCount_, hitCountGm_[(int64_t)aiv * hitCountStride_], hitCountOneCopyParams,
                     hitCountOnePadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        for (uint32_t i = 0; i < numLocalExperts_; ++i) {
-            int64_t v = ubRowStart_.GetValue(i) + static_cast<int64_t>(ubHitCount_.GetValue(i));
-            ubRowStart_.SetValue(i, v);
-        }
-        SyncFunc<AscendC::HardEvent::S_MTE2>();
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, hitCountStride_);
+        Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, hitCountStride_);
+        SyncFunc<AscendC::HardEvent::V_MTE2>();
     }
-    for (uint32_t i = 0; i < numLocalExperts_; ++i) {
-        ubLocalCursor_.SetValue(i, 0);
-    }
+    Duplicate(ubLocalCursor_, (int32_t)0, hitCountStride_);
+    SyncFunc<AscendC::HardEvent::V_S>();
     DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
     DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     DataCopyPadParams tokenPadParams{false, 0, 0, 0};
@@ -556,6 +552,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
     }
+    printf("cur 348 rankId %d, aivId %d, Process cached done\n", epRankId_, aivId_);
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
