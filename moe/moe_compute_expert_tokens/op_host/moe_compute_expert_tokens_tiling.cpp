@@ -305,20 +305,20 @@ static inline ge::graphStatus InitPlatformTilingData(gert::TilingContext *contex
     const int64_t totalCoreNum = ascendcPlatform.GetCoreNumAiv();
     const int64_t effectiveCoreNum = min(totalCoreNum, MAX_CORE_NUM);
     std::string totalCoreNumStr = std::to_string(totalCoreNum);
-    const char *coreNumReason = "The platform core num should be greater than 0.";
     OP_CHECK_IF((totalCoreNum <= 0),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "total_core_num",
-                                                      totalCoreNumStr.c_str(), coreNumReason),
+                                                      totalCoreNumStr.c_str(),
+                                                      "The platform core num should be greater than 0."),
                 return ge::GRAPH_FAILED);
 
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     ubSizePlatForm = static_cast<int64_t>(ubSizePlatForm);
     std::string ubSizePlatFormStr = std::to_string(ubSizePlatForm);
-    const char *ubSizeReason = "The platform UB size should be greater than 0.";
     OP_CHECK_IF((ubSizePlatForm <= 0),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "ub_size",
-                                                      ubSizePlatFormStr.c_str(), ubSizeReason),
+                                                      ubSizePlatFormStr.c_str(),
+                                                      "The platform UB size should be greater than 0."),
                 return ge::GRAPH_FAILED);
 
     tilingData.set_totalCoreNum(effectiveCoreNum);
@@ -421,10 +421,10 @@ static inline ge::graphStatus SetWorkspaceAndWorkLocal(gert::TilingContext *cont
 static inline ge::graphStatus SaveTilingDataToContext(gert::TilingContext *context,
                                                       MoeComputeExpertTokensTilingData &tilingData)
 {
-    const char *setTilingDataReason = "MoeComputeExpertTokensSetTilingData failed to set tiling data.";
     OP_CHECK_IF(MoeComputeExpertTokensSetTilingData(context, tilingData) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "tiling_data",
-                                                      "save failed", setTilingDataReason),
+                                                      "save failed",
+                                                      "MoeComputeExpertTokensSetTilingData failed to set tiling data."),
                 return ge::GRAPH_FAILED);
 
     context->SetBlockDim(tilingData.get_totalCoreNum());
@@ -437,10 +437,9 @@ static inline ge::graphStatus SaveTilingDataToContext(gert::TilingContext *conte
 ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext *context)
 {
     OP_LOGD(context->GetNodeName(), "[MoeComputeExpertTokens] Tiling4MoeComputeExpertTokens running begin");
-    const char *checkShapeReason = "Tiling4MoeComputeExpertTokens check shape failed.";
     OP_CHECK_IF(!CheckParamsShape(context),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckParamsShape",
-                                                      "GRAPH_FAILED", checkShapeReason),
+                                                      "GRAPH_FAILED", "Tiling4MoeComputeExpertTokens check shape failed."),
                 return ge::GRAPH_FAILED);
 
     MoeComputeExpertTokensTilingData tilingData;
