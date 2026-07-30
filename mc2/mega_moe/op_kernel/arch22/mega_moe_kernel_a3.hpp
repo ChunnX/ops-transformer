@@ -65,6 +65,10 @@ using namespace Mc2Tiling;
 constexpr uint16_t SYNCFLAGC2V = 9;
 constexpr uint16_t SYNCFLAGV2C = 10;
 constexpr int32_t UB_MOVE_NUM = 16 * 1024;
+// 双路径 epr 自适应阈值：非 W4A8 路径 expertPerRank <= 此值时走 Path A（瓶颈1 直连 +
+// IsSyncTask power-of-2 细粒度流水），大于此值走 Path B（原版 WaitFlag + epilogueGranularity
+// 2 段，避免 GMM2 入口 PipeBarrier 排空大 matmul 的 L1 缓存）。W4A8(int4b_t) 恒走 Path A。
+constexpr uint32_t MEGA_MOE_EPR_DIRECT_THRESHOLD = 8;
 
 // Atlas A3 (910_93) kernel.
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
@@ -275,12 +279,21 @@ public:
     template <>
     CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
-        // 瓶颈1：非 W4A8（INT8/BF16）路径回移植 W4A8 细粒度流水——
-        // 去掉 GMM1 与 GMM2 之间的全局 CrossCoreWaitFlag 空转等待，
-        // 两路径合并为统一的 GMM1→GMM2 直连；SwiGLU 等待下沉到 GMM2
-        // 内部 IsSyncTask power-of-2 边界（见 GMM2 的 flag10 wait）。
-        GMM1(params);
-        GMM2(params);
+        // 双路径 epr 自适应：W4A8(int4b_t) 恒直连；非 W4A8 小 epr(<=8) 直连(Path A)，
+        // 大 epr(>8) 恢复原版 GMM1→WaitFlag(flag10)→GMM2(Path B，避免 PipeBarrier 排空 L1)。
+        if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+            GMM1(params);
+            GMM2(params);
+        } else {
+            if (params.expertPerRank <= MEGA_MOE_EPR_DIRECT_THRESHOLD) {
+                GMM1(params);
+                GMM2(params);
+            } else {
+                GMM1(params);
+                AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C);
+                GMM2(params);
+            }
+        }
     }
 
     template <>
@@ -615,6 +628,7 @@ private:
         uint32_t syncGroupIdx = 0;
         int64_t preCurrentmSum = 0;
         int32_t syncLoopIdx = -1;
+        const bool usePower2Seg = UsePower2Seg(params);
 
         uint16_t syncgmmIdx = 0;
         AscendC::CrossCoreWaitFlag<0x2>(syncgmmIdx /
@@ -701,14 +715,24 @@ private:
                 }
             }
 
-            // 瓶颈1：两路径合并——非 W4A8 也走 W4A8 的 IsSyncTask power-of-2 边界
-            // 触发 flag9（SYNCFLAGC2V）。IsSyncTask(E-1) 末边界在循环内覆盖全部 expert。
-            if (IsSyncTask(groupIdx, params.expertPerRank)) {
-                syncLoopIdx++;
-                if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
-                    blockMmad.SynchronizeBlock();
+            // flag9（SYNCFLAGC2V）触发：Path A 走 IsSyncTask power-of-2 边界（W4A8/小 epr），
+            // Path B 走原版 epilogueGranularity 边界（大 epr）。两路径 set 次数与 SwiGLU wait 对称。
+            if (usePower2Seg) {
+                if (IsSyncTask(groupIdx, params.expertPerRank)) {
+                    syncLoopIdx++;
+                    if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
+                        blockMmad.SynchronizeBlock();
+                    }
+                    blockMmad.Finalize(syncLoopIdx, SYNCFLAGC2V);
                 }
-                blockMmad.Finalize(syncLoopIdx, SYNCFLAGC2V);
+            } else {
+                if ((groupIdx + 1) == params.epilogueGranularity && (groupIdx < params.expertPerRank - 1)) {
+                    syncLoopIdx++;
+                    if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
+                        blockMmad.SynchronizeBlock();
+                    }
+                    blockMmad.Finalize(syncLoopIdx, SYNCFLAGC2V);
+                }
             }
 
             if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
@@ -729,9 +753,15 @@ private:
             AscendC::CrossCoreWaitFlag<0x2>(syncgmmIdx / CROSS_CORE_FLAG_MAX_SET_COUNT);
             syncgmmIdx++;
         }
-        // 瓶颈1：删除非 W4A8 末尾的 Finalize(syncLoopIdx+1, SYNCFLAGC2V)。
-        // IsSyncTask(E-1) 末边界已在循环内覆盖全部 expert，末尾再 set flag9 会与
-        // SwiGLU 的 nSyncSwiglu 次 wait 不匹配而死锁。
+        // Path B 尾部补一次 flag9（SYNCFLAGC2V）：原版 GMM1 末尾固定 set 一次，与 SwiGLU 的
+        // nSyncSwiglu=2 段 wait 对称（循环内 epilogueGranularity 边界 set 1 次 + 尾部 1 次）。
+        // Path A 不加：IsSyncTask(E-1) 末边界已在循环内覆盖全部 expert，尾部再 set 会死锁。
+        if (!usePower2Seg) {
+            if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
+                blockMmad.SynchronizeBlock();
+            }
+            blockMmad.Finalize(syncLoopIdx + 1, SYNCFLAGC2V);
+        }
     }
 
     CATLASS_DEVICE
@@ -750,14 +780,21 @@ private:
 
         uint32_t startCoreIdx = 0;
 
-        // 瓶颈1：改动 A 去全局 wait 后 GMM1/GMM2 背靠背共用 resource 的 L1 buffer，
-        // 两路径都需显式排空，故 PipeBarrier 改无条件。
-        AscendC::PipeBarrier<PIPE_ALL>();
+        // PipeBarrier 排空 L1：仅 Path A（直连，GMM1/GMM2 背靠背共用 L1 buffer）需显式排空；
+        // Path B 有 GMM1→WaitFlag(flag10)→GMM2 的全局 wait 间接排空，不加 PipeBarrier
+        // （诊断证实大 epr 退化正来自此 PipeBarrier 排空大 matmul 的 L1）。
+        if (UsePower2Seg(params)) {
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
 
         int64_t preCurrentmSum = 0;
         int32_t syncLoopIdx = -1;
-        // 瓶颈1：删除非 W4A8 单点 wait 的尾部专家数派生量，
-        // flag10 wait 改为 IsSyncTask 边界（见下方循环内）。
+        const bool usePower2Seg = UsePower2Seg(params);
+        // Path B（原版）单点 wait 的尾部专家数派生量；Path A 不使用（走 IsSyncTask 边界）。
+        uint32_t lastDequantExpertNum = params.expertPerRank;
+        if (!usePower2Seg && params.epilogueGranularity < params.expertPerRank) {
+            lastDequantExpertNum = params.expertPerRank - params.epilogueGranularity;
+        }
 
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
@@ -793,9 +830,17 @@ private:
             // Determine the starting loopIdx of the current core under the current groupIdx
             uint32_t startLoopIdx = ((coreIdx < startCoreIdx) ? (coreIdx + coreNum) : coreIdx) - startCoreIdx;
 
-            // 瓶颈1：两路径合并——非 W4A8 也走 W4A8 的 IsSyncTask 边界 wait flag10。
-            if (groupIdx == 0 || IsSyncTask(groupIdx - 1, params.expertPerRank)) {
-                AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C);
+            // flag10（SYNCFLAGV2C）wait：Path A 走 IsSyncTask 边界（W4A8/小 epr），
+            // Path B 走原版 epilogueGranularity 派生的单点 wait（大 epr）。两路径与 SwiGLU set 对称。
+            if (usePower2Seg) {
+                if (groupIdx == 0 || IsSyncTask(groupIdx - 1, params.expertPerRank)) {
+                    AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C);
+                }
+            } else {
+                if (params.expertPerRank > lastDequantExpertNum &&
+                    groupIdx + 1 == params.expertPerRank - lastDequantExpertNum) {
+                    AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C);
+                }
             }
 
             for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += coreNum) {
@@ -984,6 +1029,16 @@ private:
         }
     }
 
+    // 双路径 epr 自适应路由：W4A8(int4b_t) 任意 epr 或 非 W4A8 小 epr(<=MEGA_MOE_EPR_DIRECT_THRESHOLD)
+    // 走 Path A（瓶颈1 直连 + IsSyncTask power-of-2 细粒度流水 + PipeBarrier + UF）；
+    // 非 W4A8 大 epr 走 Path B（原版 WaitFlag + epilogueGranularity 2 段，无 PipeBarrier）。
+    CATLASS_DEVICE
+    bool UsePower2Seg(Params const &params)
+    {
+        return std::is_same_v<ElementB, AscendC::int4b_t> ||
+               params.expertPerRank <= MEGA_MOE_EPR_DIRECT_THRESHOLD;
+    }
+
     CATLASS_DEVICE
     void CombineSetFlag()
     {
@@ -1142,6 +1197,8 @@ private:
         uint32_t prevGroupSum2 = 0;
         nSyncSwiglu = 0;
         dequantSum[0] = 0;
+        dequantSum1 = 0;
+        dequantSum2 = 0;
         uint32_t dequantSumTemp = 0;
         int32_t pingpongIdx = 0;
         icache_preload(8);
@@ -1150,6 +1207,7 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::DISPATCH);
+        const bool usePower2Seg = UsePower2Seg(params);
         for (int32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             // ----------------------------------------------------------
             // Each core pulls its `dstEpIdx`'s tokens out of the remote
@@ -1199,18 +1257,45 @@ private:
 
             prevGroupSum1 += currentM;
 
-            // 瓶颈1：两路径合并——非 W4A8 也走 W4A8 的 dequantSumTemp 累加 +
-            // IsSyncTask 边界写入 dequantSum[++nSyncSwiglu]（power-of-2 细粒度流水）。
-            if (dequantSumTemp + currentM <= params.maxOutputSize) {
-                dequantSumTemp += currentM;
-            } else if (dequantSumTemp < params.maxOutputSize) {
-                dequantSumTemp = params.maxOutputSize;
-            }
+            if (usePower2Seg) {
+                // Path A：dequantSumTemp 累加 + IsSyncTask power-of-2 边界写入 dequantSum[++nSyncSwiglu]。
+                if (dequantSumTemp + currentM <= params.maxOutputSize) {
+                    dequantSumTemp += currentM;
+                } else if (dequantSumTemp < params.maxOutputSize) {
+                    dequantSumTemp = params.maxOutputSize;
+                }
 
-            if (IsSyncTask(groupIdx, params.expertPerRank)) {
-                nSyncSwiglu++;
-                dequantSum[nSyncSwiglu] = dequantSumTemp;
+                if (IsSyncTask(groupIdx, params.expertPerRank)) {
+                    nSyncSwiglu++;
+                    dequantSum[nSyncSwiglu] = dequantSumTemp;
+                }
+            } else {
+                // Path B：原版 dequantSum1/dequantSum2（按 epilogueGranularity 两段累加）。
+                uint32_t tokenCount = currentM;
+                if (groupIdx + 1 <= params.epilogueGranularity) {
+                    if (dequantSum1 + tokenCount <= params.maxOutputSize) {
+                        dequantSum1 += tokenCount;
+                    } else if (dequantSum1 < params.maxOutputSize) {
+                        dequantSum1 = params.maxOutputSize;
+                    }
+                }
+                if (groupIdx + 1 > params.epilogueGranularity && dequantSum1 < params.maxOutputSize) {
+                    if (dequantSum1 + dequantSum2 + tokenCount <= params.maxOutputSize) {
+                        dequantSum2 += tokenCount;
+                    } else if (dequantSum1 + dequantSum2 < params.maxOutputSize) {
+                        dequantSum2 += params.maxOutputSize - dequantSum1 - dequantSum2;
+                    }
+                }
+                (void)dequantSumTemp;  // Path B 不用，避告警
             }
+        }
+        // Path B：把两段式 dequantSum1/dequantSum2 映射到 nSyncSwiglu/dequantSum[]，
+        // 复用 SwiGLU 的 for(syncIdx<nSyncSwiglu) 循环（不改 SwiGLU）。
+        if (!usePower2Seg) {
+            nSyncSwiglu = 2;
+            dequantSum[0] = 0;
+            dequantSum[1] = dequantSum1;
+            dequantSum[2] = dequantSum1 + dequantSum2;
         }
         if constexpr (std::is_same_v<ElementB, int8_t>) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -1269,9 +1354,13 @@ private:
         } else {
             // 瓶颈1：非 W4A8 的 2 段 SwiGLU 合并为与 W4A8 结构相同的 for 循环，
             // 按 nSyncSwiglu 个 IsSyncTask power-of-2 段做 CrossCoreWaitFlag/SetFlag 握手。
-            // blockEpilogue1 调用按 INT8/BF16 区分签名；段2 原用的 coreNum 统一为
-            // params.epilogueCoreNum（与段1/W4A8 一致）。
+            // blockEpilogue1 调用按 INT8/BF16 区分签名；core 数按 Path + 段选：
+            //   Path A（UsePower2Seg=true）/ 段0 用 epilogueCoreNum（不变）；
+            //   Path B（UsePower2Seg=false）段1 用 coreNum（=2×aivNum，恢复原版，消除大 epr 微退化）。
             for (int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++) {
+                // 段 core 数：Path A 全段用 epilogueCoreNum；Path B 段0 用 epilogueCoreNum、段1 用 coreNum。
+                const uint32_t segCoreNum =
+                    (UsePower2Seg(params) || syncIdx == 0) ? params.epilogueCoreNum : coreNum;
                 AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
                 AscendC::SyncAll<true>();
                 uint32_t curRowNum = dequantSum[syncIdx + 1] - dequantSum[syncIdx];
@@ -1285,10 +1374,10 @@ private:
                     if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                        gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
-                                       params.epilogueCoreNum, params.swigluLimit, params.gmmOutPreRowStride);
+                                       segCoreNum, params.swigluLimit, params.gmmOutPreRowStride);
                     } else {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource,
-                                       params.epilogueCoreNum, params.swigluLimit, params.gmmOutPreRowStride);
+                                       segCoreNum, params.swigluLimit, params.gmmOutPreRowStride);
                     }
                 }
                 AscendC::SyncAll<true>();
@@ -1656,6 +1745,11 @@ private:
     // (curRowNum = dequantSum[syncIdx+1] - dequantSum[syncIdx]、rowStartThisCore = dequantSum[syncIdx])。
     // 跨方法共享态，仅 W4A8 路径使用。
     uint32_t dequantSum[kMaxDequantSyncGroups] = {0};
+
+    // Path B（非 W4A8 大 epr）原版两段式 SwiGLU 的 token 行数累加量。由 dispatch loop 按
+    // epilogueGranularity 累加，循环结束后映射到 nSyncSwiglu/dequantSum[] 复用 SwiGLU 循环。
+    uint32_t dequantSum1 = 0;
+    uint32_t dequantSum2 = 0;
 
     // ========== Common tensors (all types) ==========
     AscendC::GlobalTensor<ElementC> gmC;
