@@ -31,29 +31,28 @@ __aicore__ inline void EngramFetchTrainSyncFunc()
     AscendC::WaitFlag<event>(eventID);
 }
 
-#define ENGRAM_WRITE_NBI(hcomm, handle, dst, src, len, tag)                                                            \
-    do {                                                                                                               \
-        int32_t ret = (hcomm).WriteNbi((handle), (dst), (src), (len));                                                 \
-        ascendc_assert(ret == 0, "WriteNbi failed, ret=%d, tag=%s, rankId=%u, aivId=%u", ret, tag, rankId_, aivId_);   \
+#define ENGRAM_WRITE_NBI(hcomm, handle, dst, src, len, tag) \
+    do { \
+        int32_t ret = (hcomm).WriteNbi((handle), (dst), (src), (len)); \
+        ascendc_assert(ret == 0, "WriteNbi failed, ret=%d, tag=%s, rankId=%u, aivId=%u", ret, tag, rankId_, aivId_); \
     } while (0)
 
-#define ENGRAM_DRAIN(hcomm, handle, tag)                                                                               \
-    do {                                                                                                               \
-        int32_t ret = (hcomm).Drain((handle));                                                                         \
-        ascendc_assert(ret == 0, "Drain failed, ret=%d, tag=%s, rankId=%u, aivId=%u", ret, tag, rankId_, aivId_);      \
+#define ENGRAM_DRAIN(hcomm, handle, tag) \
+    do { \
+        int32_t ret = (hcomm).Drain((handle)); \
+        ascendc_assert(ret == 0, "Drain failed, ret=%d, tag=%s, rankId=%u, aivId=%u", ret, tag, rankId_, aivId_); \
     } while (0)
 
 constexpr uint32_t ENGRAM_TIMEOUT_US = 5U * 1000U * 1000U;
 constexpr uint32_t ENGRAM_CYCLES_PER_US = 1000U;
 
-#define ENGRAM_TIMEOUT_CHECK(startTime, tag)                                                                           \
-    do {                                                                                                               \
-        uint64_t __nowUs = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_CYCLES_PER_US;                    \
-        ascendc_assert((__nowUs - (startTime)) < ENGRAM_TIMEOUT_US,                                                    \
-                       "timeout, tag=%s, rankId=%u, aivId=%u, elapsed=%llu us", tag, rankId_, aivId_,                  \
-                       __nowUs - (startTime));                                                                         \
+#define ENGRAM_TIMEOUT_CHECK(startTime, tag) \
+    do { \
+        uint64_t __nowUs = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_CYCLES_PER_US; \
+        ascendc_assert((__nowUs - (startTime)) < ENGRAM_TIMEOUT_US, \
+                       "timeout, tag=%s, rankId=%u, aivId=%u, elapsed=%llu us", tag, rankId_, aivId_, \
+                       __nowUs - (startTime)); \
     } while (0)
-
 
 class EngramFetchTrainArch35 {
 public:
@@ -121,6 +120,7 @@ private:
     uint32_t totalBlocks_{1};
     uint32_t rankId_{0};
     uint32_t numRanks_{0};
+    uint32_t channelsPerRank_{1};
     int32_t numEntriesPerRank_{0};
     uint32_t numTokens_{0};
     int64_t hiddenBytes_{0};
@@ -188,7 +188,8 @@ __aicore__ inline GM_ADDR EngramFetchTrainArch35::GetRemoteWinAddr(uint32_t dstR
 
 __aicore__ inline uint64_t EngramFetchTrainArch35::GetCommHandle(uint32_t dstRank)
 {
-    return ctxPtr_->hcommHandle[dstRank];
+    uint32_t channelIdx = aivId_ % channelsPerRank_;
+    return ctxPtr_->hcommHandle[dstRank * channelsPerRank_ + channelIdx];
 }
 
 __aicore__ inline void EngramFetchTrainArch35::Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched,
@@ -228,6 +229,10 @@ __aicore__ inline void EngramFetchTrainArch35::InitMembers(GM_ADDR commContext, 
     ctxPtr_ = (__gm__ EngramCommContext *)commContext;
     rankId_ = ctxPtr_->rankId;
     numRanks_ = ctxPtr_->rankSize;
+    channelsPerRank_ = ctxPtr_->channelsPerRank;
+    if (channelsPerRank_ == 0) {
+        channelsPerRank_ = 1;
+    }
 
     numEntriesPerRank_ = tilingData->numEntriesPerRank;
     numTokens_ = static_cast<uint32_t>(tilingData->numTokens);
