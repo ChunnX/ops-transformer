@@ -118,7 +118,7 @@
 
 调用本算子前，请确保已本地下载代码仓，并安装好如下基础依赖、NPU驱动和固件已安装。
 
-本项目源码编译用到的依赖如下，请参考[算子调用](../../../docs/zh/invocation/quick_op_invocation.md)文档中的**前提条件**和**环境准备**章节，完成环境依赖的下载和CANN包的准备，其中，**环境准备**章节中的**安装社区版CANN ops-math包**部分可以跳过。
+本项目源码编译用到的依赖如下，请参考[算子调用](../../../docs/zh/invocation/quick_op_invocation.md)文档中的**前提条件**和**环境准备**章节，完成环境依赖的下载和CANN包的准备，其中，**环境准备**章节中的**安装最新版CANN ops-math包**部分可以跳过。
 
 **编译执行**
 
@@ -207,7 +207,7 @@
         [ERROR] HcclCommInit failed. ret = 4
         ```
 
-      此时需要设置[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/maintenref/envvar/envref_07_0028.html)环境变量来指定实际执行算子的昇腾AI处理器：
+      此时需要设置[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/maintenref/envvar/envref_07_0028.html)环境变量来指定实际执行算子的昇腾AI处理器：
 
         ```bash
         # 查看各Device运行情况

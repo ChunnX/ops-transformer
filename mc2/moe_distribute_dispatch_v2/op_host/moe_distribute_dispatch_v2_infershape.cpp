@@ -225,12 +225,12 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
                                               std::to_string(moeRankNum).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-
-    int64_t bs = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(0));
-    int64_t h = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(1));
-    int64_t bsTmp = expertIdsShape->GetDimNum() == 1U ? NEG_ONE : expertIdsShape->GetDim(0);
-    int64_t k = ((expertIdsShape->GetDimNum() == 1U) ? NEG_ONE : expertIdsShape->GetDim(1));
-
+    size_t xDimNum = xShape->GetDimNum();
+    size_t expertDimNum = expertIdsShape->GetDimNum();
+    int64_t bs = ((xDimNum == 1U) ? NEG_ONE : xShape->GetDim(0));
+    int64_t h = ((xDimNum == 1U) ? NEG_ONE : xShape->GetDim(1));
+    int64_t bsTmp = ((expertDimNum == 1U) ? NEG_ONE : expertIdsShape->GetDim(0));
+    int64_t k = ((expertDimNum == 1U) ? NEG_ONE : expertIdsShape->GetDim(1));
     if ((bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0)) {
         std::string shapeStr = std::string("x[") + std::to_string(bs) + "," + std::to_string(h) + "]" +
                                ", expert_ids[" + std::to_string(bsTmp) + "," + std::to_string(k) + "]";
@@ -238,7 +238,6 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
                                               "Each dim of x and expert_ids must be positive");
         return ge::GRAPH_FAILED;
     }
-
     int64_t a;
     int64_t localExpertNum;
     int64_t localMoeExpertNum = *moeExpertNum / moeRankNum;
@@ -311,8 +310,8 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
         }
     } else {
         if (hasExpertScales && !IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum +
-                globalBsReal * SEND_COUNT_MEMORY_SIZE * k * (*epWorldSize) / RANK_NUM_PER_NODE);
+            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k *
+                                                                             (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
         }
@@ -390,7 +389,11 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV2(gert::InferDataTypeC
     bool quantFlag = (scalesType != ge::DT_UNDEFINED) ? true : false;
     OP_LOGD(context->GetNodeName(), "quantFlag id %d.", quantFlag);
     ge::DataType expandXDtype = ge::DT_INT8;
-    if (!quantFlag && (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_NO_QUANT)) {
+    const bool isNoQuant = static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_NO_QUANT;
+    // A2 packed INT4 is exposed as INT32. Its required per-token scale is
+    // transported together with x, rather than being used to quantize x.
+    // Therefore expand_x must preserve x's INT32 dtype even when scales exists.
+    if (isNoQuant && (!quantFlag || xDtype == ge::DT_INT32)) {
         expandXDtype = xDtype;
     }
     if ((yDtypePtr != nullptr) && (*yDtypePtr != ge::DT_UNDEFINED)) {
