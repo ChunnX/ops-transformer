@@ -90,13 +90,11 @@ uint32_t CalcExpertsPerBatch(const MegaMoeTilingData *tilingData, uint32_t aicNu
         std::max<uint64_t>(1U, std::min(gmm1TilesPerExpert, gmm2TilesPerExpert));
     uint64_t expertsToFillAic = CeilDivU64(aicNum, limitingTilesPerExpert);
     uint64_t expertsPerBatch =
-        std::max<uint64_t>(1U, std::min<uint64_t>(MEGA_MOE_MAX_EXPERTS_PER_BATCH,
-                                                 std::min<uint64_t>(expertPerRank, expertsToFillAic)));
+        std::max<uint64_t>(1U, std::min<uint64_t>(expertPerRank, expertsToFillAic));
     // Deepen the wave when GMM1's gate+up width exceeds GMM2's output width.
     expertsPerBatch *= CeilDivU64(tilingData->hiddenDim, tilingData->h);
     return static_cast<uint32_t>(
-        std::max<uint64_t>(1U, std::min<uint64_t>(MEGA_MOE_MAX_EXPERTS_PER_BATCH,
-                                                 std::min<uint64_t>(expertPerRank, expertsPerBatch))));
+        std::max<uint64_t>(1U, std::min<uint64_t>(expertPerRank, expertsPerBatch)));
 }
 } // namespace
 
