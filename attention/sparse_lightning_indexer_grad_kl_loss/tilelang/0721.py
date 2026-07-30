@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 10
+KERNEL_CACHE_REVISION = 9
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -295,9 +295,6 @@ def tilelang_grad_kl_loss_single_kernel(
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
     rows_per_aiv = Nidx1 // 2
-    relu_mask_rows = 4
-    relu_mask_group_count = rows_per_aiv // relu_mask_rows
-    assert rows_per_aiv % relu_mask_rows == 0
 
     v3_chunks = Nidx1 // 4
     task_count = B * S1
@@ -1147,8 +1144,8 @@ def tilelang_grad_kl_loss_single_kernel(
         """为一个完整任务翻译 VectorDwDqDk + VectorLoss。
 
         配对的 AIV 分别负责互不重叠的 Nidx1 半区。只有 Cube relay 观察到
-        两个 producer 都完成后，双方才消费 P/SY workspace。ReLU 导数按
-        4x64 分组生成 uint8 Compare mask，再通过 Select 得到精确的 0/1 门控。
+        两个 producer 都完成后，双方才消费 P/SY workspace。ReLU 导数使用
+        1-exp(-10000*x) 算术门控，规避 Compare packed mask 与 Select 的布局问题。
         """
         with T.Scope("V"):
             v1_bw_weight_half = T.alloc_ub(rows_per_aiv, input_dtype)
@@ -1165,9 +1162,6 @@ def tilelang_grad_kl_loss_single_kernel(
             )
             v1_bw_bmm2 = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
-            )
-            v1_bw_rg_mask = T.alloc_ub(
-                relu_mask_rows * bw_col_block // 8, "uint8"
             )
             v1_bw_rg = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
@@ -1278,39 +1272,16 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_bw_diff,
                         )
 
-                        # bmm2Res 已经过 ReLU。每次只处理 4x64 个 FP32，
-                        # 对应 256 bit（32 byte）的 uint8 packed mask。
-                        T.tile.fill(v1_bw_rg, 1.0)
+                        # bmm2Res 已经过 ReLU。算术门控在 x=0 时精确为 0，
+                        # 对正值快速趋近 1，避免多 repeat packed mask 的布局歧义。
+                        T.tile.mul(v1_bw_rg, v1_bw_bmm2, -10000.0)
                         T.pipe_barrier("v")
-                        for bw_mask_group in T.serial(relu_mask_group_count):
-                            bw_mask_row_start = bw_mask_group * relu_mask_rows
-                            T.tile.compare(
-                                v1_bw_rg_mask,
-                                v1_bw_bmm2[
-                                    bw_mask_row_start:
-                                    bw_mask_row_start + relu_mask_rows,
-                                    0:bw_col_block,
-                                ],
-                                0.0,
-                                "GT",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_bw_rg[
-                                    bw_mask_row_start:
-                                    bw_mask_row_start + relu_mask_rows,
-                                    0:bw_col_block,
-                                ],
-                                v1_bw_rg_mask,
-                                v1_bw_rg[
-                                    bw_mask_row_start:
-                                    bw_mask_row_start + relu_mask_rows,
-                                    0:bw_col_block,
-                                ],
-                                0.0,
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                            T.pipe_barrier("v")
+                        T.tile.exp(v1_bw_rg, v1_bw_rg)
+                        T.pipe_barrier("v")
+                        T.tile.mul(v1_bw_rg, v1_bw_rg, -1.0)
+                        T.pipe_barrier("v")
+                        T.tile.add(v1_bw_rg, v1_bw_rg, 1.0)
+                        T.pipe_barrier("v")
 
                         # dWeight 保持原有完整物理分块 reduction 顺序。
                         T.tile.mul(
