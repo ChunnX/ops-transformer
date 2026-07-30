@@ -42,9 +42,7 @@ static constexpr int64_t HCMULT_DEFAULT_VALUE = 4;
 static constexpr int64_t NUM_ITERS_DEFAULT_VALUE = 20;
 
 static bool CheckNotNull(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
-                         const aclTensor *hin, const aclTensor *hPost, const aclTensor *hRes,
-                         const aclTensor *hPre, const aclTensor *hcBeforeNorm, const aclTensor *invRms,
-                         const aclTensor *sumOut, const aclTensor *normOut, bool needBackward)
+                         const aclTensor *hin, const aclTensor *hPost, const aclTensor *hRes)
 {
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(phi, return false);
@@ -53,13 +51,6 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *phi, const aclTens
     OP_CHECK_NULL(hin, return false);
     OP_CHECK_NULL(hPost, return false);
     OP_CHECK_NULL(hRes, return false);
-    if (needBackward) {
-        OP_CHECK_NULL(hPre, return false);
-        OP_CHECK_NULL(hcBeforeNorm, return false);
-        OP_CHECK_NULL(invRms, return false);
-        OP_CHECK_NULL(sumOut, return false);
-        OP_CHECK_NULL(normOut, return false);
-    }
     return true;
 }
 
@@ -286,9 +277,7 @@ static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, 
                                       const aclTensor *invRms, const aclTensor *sumOut, const aclTensor *normOut,
                                       int64_t hcMult, int64_t numIters, bool needBackward)
 {
-    CHECK_RET(CheckNotNull(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut,
-                           needBackward),
-              ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNotNull(x, phi, alpha, bias, hin, hPost, hRes), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtypeValid(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, needBackward),
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hcMult, numIters, needBackward),
@@ -313,26 +302,6 @@ aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
                    DFX_OUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut));
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
-    if (!needBackward) {
-        op::Shape emptyShape({});
-        const op::DataType emptyDtype = op::DataType::DT_FLOAT;
-        if (hPre == nullptr) {
-            hPre = uniqueExecutor->AllocTensor(emptyShape, emptyDtype, op::Format::FORMAT_ND);
-        }
-        if (hcBeforeNorm == nullptr) {
-            hcBeforeNorm = uniqueExecutor->AllocTensor(emptyShape, emptyDtype, op::Format::FORMAT_ND);
-        }
-        if (invRms == nullptr) {
-            invRms = uniqueExecutor->AllocTensor(emptyShape, emptyDtype, op::Format::FORMAT_ND);
-        }
-        if (sumOut == nullptr) {
-            sumOut = uniqueExecutor->AllocTensor(emptyShape, emptyDtype, op::Format::FORMAT_ND);
-        }
-        if (normOut == nullptr) {
-            normOut = uniqueExecutor->AllocTensor(emptyShape, emptyDtype, op::Format::FORMAT_ND);
-        }
-    }
 
     auto ret = CheckParams(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hcMult, numIters, needBackward);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
