@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 4
+KERNEL_CACHE_REVISION = 5
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -257,7 +257,7 @@ def check_param_valid(
     workspace_idx=[],
     pass_configs=pass_configs,
 )
-def tilelang_grad_kl_loss_single_kernel_v4(
+def tilelang_grad_kl_loss_single_kernel_v5(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
     launch_core_num,
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
@@ -1559,6 +1559,142 @@ def tilelang_grad_kl_loss_single_kernel_v4(
             T.wait_flag("mte3", "v", 5)
 
     @T.macro
+    def vector2_scatter_segment(
+        SparseIndices,
+        dk_matmul_partial,
+        dKeyIndexAccum,
+        v2_dk_batch_ping,
+        v2_dk_batch_pong,
+        bz_task,
+        s1_task,
+        aiv_k_start,
+        vector_batch_count,
+        valid_k_size,
+        tail_guard,
+    ):
+        """scatter 一个 AIV 连续段；tail_guard=1 时保护边界批次。"""
+        with T.Scope("V"):
+            T.wait_flag("mte3", "mte2", 6)
+            T.copy(
+                dk_matmul_partial[
+                    bz_task,
+                    s1_task,
+                    aiv_k_start:aiv_k_start + v2_scatter_batch,
+                    0:DQueryIndex,
+                ],
+                v2_dk_batch_ping,
+            )
+            T.set_flag("mte2", "mte3", 6)
+
+            for batch_id in T.serial(vector_batch_count):
+                current_slot = batch_id % 2
+                next_slot = (batch_id + 1) % 2
+                current_k_start = (
+                    aiv_k_start + batch_id * v2_scatter_batch
+                )
+                current_batch_valid = T.if_then_else(
+                    tail_guard > 0,
+                    T.if_then_else(current_k_start < valid_k_size, 1, 0),
+                    1,
+                )
+
+                if batch_id + 1 < vector_batch_count:
+                    next_k_start = current_k_start + v2_scatter_batch
+                    next_batch_valid = T.if_then_else(
+                        tail_guard > 0,
+                        T.if_then_else(next_k_start < valid_k_size, 1, 0),
+                        1,
+                    )
+                    if next_batch_valid > 0:
+                        T.wait_flag("mte3", "mte2", next_slot + 6)
+                        if next_slot == 0:
+                            T.copy(
+                                dk_matmul_partial[
+                                    bz_task,
+                                    s1_task,
+                                    next_k_start:next_k_start + v2_scatter_batch,
+                                    0:DQueryIndex,
+                                ],
+                                v2_dk_batch_ping,
+                            )
+                        else:
+                            T.copy(
+                                dk_matmul_partial[
+                                    bz_task,
+                                    s1_task,
+                                    next_k_start:next_k_start + v2_scatter_batch,
+                                    0:DQueryIndex,
+                                ],
+                                v2_dk_batch_pong,
+                            )
+                        T.set_flag("mte2", "mte3", next_slot + 6)
+
+                if current_batch_valid > 0:
+                    T.wait_flag("mte2", "mte3", current_slot + 6)
+                    for pair_idx in T.serial(v2_scatter_batch // 2):
+                        row_idx = pair_idx * 2
+                        k_idx = current_k_start + row_idx
+                        sparse_idx0 = SparseIndices[
+                            bz_task, s1_task, 0, k_idx
+                        ]
+                        sparse_idx1 = SparseIndices[
+                            bz_task, s1_task, 0, k_idx + 1
+                        ]
+                        row0_valid = T.if_then_else(
+                            tail_guard > 0,
+                            T.if_then_else(k_idx < valid_k_size, 1, 0),
+                            1,
+                        )
+                        row1_valid = T.if_then_else(
+                            tail_guard > 0,
+                            T.if_then_else(k_idx + 1 < valid_k_size, 1, 0),
+                            1,
+                        )
+                        if row0_valid > 0:
+                            if sparse_idx0 >= 0:
+                                if current_slot == 0:
+                                    T.tile.atomic_add(
+                                        dKeyIndexAccum[
+                                            bz_task * S2 + sparse_idx0, 0
+                                        ],
+                                        v2_dk_batch_ping[
+                                            row_idx:row_idx + 1, 0:DQueryIndex
+                                        ],
+                                    )
+                                else:
+                                    T.tile.atomic_add(
+                                        dKeyIndexAccum[
+                                            bz_task * S2 + sparse_idx0, 0
+                                        ],
+                                        v2_dk_batch_pong[
+                                            row_idx:row_idx + 1, 0:DQueryIndex
+                                        ],
+                                    )
+                        if row1_valid > 0:
+                            if sparse_idx1 >= 0:
+                                if current_slot == 0:
+                                    T.tile.atomic_add(
+                                        dKeyIndexAccum[
+                                            bz_task * S2 + sparse_idx1, 0
+                                        ],
+                                        v2_dk_batch_ping[
+                                            row_idx + 1:row_idx + 2,
+                                            0:DQueryIndex,
+                                        ],
+                                    )
+                                else:
+                                    T.tile.atomic_add(
+                                        dKeyIndexAccum[
+                                            bz_task * S2 + sparse_idx1, 0
+                                        ],
+                                        v2_dk_batch_pong[
+                                            row_idx + 1:row_idx + 2,
+                                            0:DQueryIndex,
+                                        ],
+                                    )
+                    T.set_flag("mte3", "mte2", current_slot + 6)
+
+    @T.macro
     def vector2_scatter_all_tasks(
         SparseIndices,
         KRealSize,
@@ -1597,124 +1733,57 @@ def tilelang_grad_kl_loss_single_kernel_v4(
             for task_id in T.serial(task_count):
                 bz_task = task_id // S1
                 s1_task = task_id % S1
-                # 每个 task 仅读取一次真实 K 长度，同时收缩 DMA 和
-                # atomic scatter 范围。full-valid 版本中的 K 是编译期常量。
-                valid_k_size = K if full_valid else KRealSize[bz_task, s1_task]
-                remaining_valid_k = valid_k_size - aiv_k_start
-                task_vector_batch_count = T.if_then_else(
-                    remaining_valid_k > 0,
-                    T.min(
-                        vector_batch_count,
-                        (
-                            remaining_valid_k
-                            + v2_scatter_batch
-                            - 1
-                        ) // v2_scatter_batch,
-                    ),
-                    0,
-                )
-
-                if task_vector_batch_count > 0:
-                    T.wait_flag("mte3", "mte2", 6)
-                    T.copy(
-                        dk_matmul_partial[
-                            bz_task,
-                            s1_task,
-                            aiv_k_start:aiv_k_start + v2_scatter_batch,
-                            0:DQueryIndex,
-                        ],
+                if full_valid:
+                    vector2_scatter_segment(
+                        SparseIndices,
+                        dk_matmul_partial,
+                        dKeyIndexAccum,
                         v2_dk_batch_ping,
+                        v2_dk_batch_pong,
+                        bz_task,
+                        s1_task,
+                        aiv_k_start,
+                        vector_batch_count,
+                        K,
+                        0,
                     )
-                    T.set_flag("mte2", "mte3", 6)
-
-                    for batch_id in T.serial(task_vector_batch_count):
-                        current_slot = batch_id % 2
-                        next_slot = (batch_id + 1) % 2
-                        if batch_id + 1 < task_vector_batch_count:
-                            next_k_start = (
-                                aiv_k_start
-                                + (batch_id + 1) * v2_scatter_batch
+                else:
+                    # 有效 K 是前缀：绝大多数 AIV 段要么完整有效，要么
+                    # 完整无效，只有包含边界的一个 AIV 需要逐批保护。
+                    valid_k_size = KRealSize[bz_task, s1_task]
+                    aiv_k_end = (
+                        aiv_k_start
+                        + vector_batch_count * v2_scatter_batch
+                    )
+                    if aiv_k_start < valid_k_size:
+                        if aiv_k_end <= valid_k_size:
+                            vector2_scatter_segment(
+                                SparseIndices,
+                                dk_matmul_partial,
+                                dKeyIndexAccum,
+                                v2_dk_batch_ping,
+                                v2_dk_batch_pong,
+                                bz_task,
+                                s1_task,
+                                aiv_k_start,
+                                vector_batch_count,
+                                valid_k_size,
+                                0,
                             )
-                            T.wait_flag("mte3", "mte2", next_slot + 6)
-                            if next_slot == 0:
-                                T.copy(
-                                    dk_matmul_partial[
-                                        bz_task,
-                                        s1_task,
-                                        next_k_start:next_k_start + v2_scatter_batch,
-                                        0:DQueryIndex,
-                                    ],
-                                    v2_dk_batch_ping,
-                                )
-                            else:
-                                T.copy(
-                                    dk_matmul_partial[
-                                        bz_task,
-                                        s1_task,
-                                        next_k_start:next_k_start + v2_scatter_batch,
-                                        0:DQueryIndex,
-                                    ],
-                                    v2_dk_batch_pong,
-                                )
-                            T.set_flag("mte2", "mte3", next_slot + 6)
-
-                        T.wait_flag("mte2", "mte3", current_slot + 6)
-                        for pair_idx in T.serial(v2_scatter_batch // 2):
-                            row_idx = pair_idx * 2
-                            k_idx = (
-                                aiv_k_start
-                                + batch_id * v2_scatter_batch
-                                + row_idx
+                        else:
+                            vector2_scatter_segment(
+                                SparseIndices,
+                                dk_matmul_partial,
+                                dKeyIndexAccum,
+                                v2_dk_batch_ping,
+                                v2_dk_batch_pong,
+                                bz_task,
+                                s1_task,
+                                aiv_k_start,
+                                vector_batch_count,
+                                valid_k_size,
+                                1,
                             )
-                            sparse_idx0 = SparseIndices[
-                                bz_task, s1_task, 0, k_idx
-                            ]
-                            sparse_idx1 = SparseIndices[
-                                bz_task, s1_task, 0, k_idx + 1
-                            ]
-                            if k_idx < valid_k_size:
-                                if sparse_idx0 >= 0:
-                                    if current_slot == 0:
-                                        T.tile.atomic_add(
-                                            dKeyIndexAccum[
-                                                bz_task * S2 + sparse_idx0, 0
-                                            ],
-                                            v2_dk_batch_ping[
-                                                row_idx:row_idx + 1, 0:DQueryIndex
-                                            ],
-                                        )
-                                    else:
-                                        T.tile.atomic_add(
-                                            dKeyIndexAccum[
-                                                bz_task * S2 + sparse_idx0, 0
-                                            ],
-                                            v2_dk_batch_pong[
-                                                row_idx:row_idx + 1, 0:DQueryIndex
-                                            ],
-                                        )
-                            if k_idx + 1 < valid_k_size:
-                                if sparse_idx1 >= 0:
-                                    if current_slot == 0:
-                                        T.tile.atomic_add(
-                                            dKeyIndexAccum[
-                                                bz_task * S2 + sparse_idx1, 0
-                                            ],
-                                            v2_dk_batch_ping[
-                                                row_idx + 1:row_idx + 2,
-                                                0:DQueryIndex,
-                                            ],
-                                        )
-                                    else:
-                                        T.tile.atomic_add(
-                                            dKeyIndexAccum[
-                                                bz_task * S2 + sparse_idx1, 0
-                                            ],
-                                            v2_dk_batch_pong[
-                                                row_idx + 1:row_idx + 2,
-                                                0:DQueryIndex,
-                                            ],
-                                        )
-                        T.set_flag("mte3", "mte2", current_slot + 6)
 
             T.wait_flag("mte3", "mte2", 6)
             T.wait_flag("mte3", "mte2", 7)
@@ -2534,7 +2603,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 f"python_sha256={_python_sha256}"
             )
 
-            func = tilelang_grad_kl_loss_single_kernel_v4(
+            func = tilelang_grad_kl_loss_single_kernel_v5(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
