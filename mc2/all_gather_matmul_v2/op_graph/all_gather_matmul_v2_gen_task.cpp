@@ -23,6 +23,7 @@
 
 namespace ops {
 static constexpr int64_t COMM_MODE_RANKSIZE = 8;
+
 static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *context, uint8_t &commMode)
 {
     ge::AscendString commModeStr;
