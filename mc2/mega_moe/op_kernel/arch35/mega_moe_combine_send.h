@@ -83,6 +83,7 @@ __aicore__ inline void CombineTokenRowTiled(uint32_t n, uint64_t gmRemoteBaseOff
         AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset + nLoc], rowTensor[nLoc], ub2GmParams);
     }
     if (nLoc < n) {
+        // 常规块按 256 个 BF16（512B）下发；尾块只发送剩余列。
         ub2GmParams.blockLen = static_cast<uint32_t>((n - nLoc) * sizeof(Element));
         AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset + nLoc], rowTensor[nLoc], ub2GmParams);
     }
