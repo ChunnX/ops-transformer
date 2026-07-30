@@ -276,10 +276,12 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(const a
     auto weightStorageLastSecondDim = weightStorage.GetDim(weightStorageShapeDim - LAST_SECOND_DIM_INDEX);
     auto weightStorageLastDim = weightStorage.GetDim(weightStorageShapeDim - LAST_FIRST_DIM_INDEX);
 
+    bool isInt4 = (gmmParams_.xDtype == DataType::DT_INT4);
     bool isMxfp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 ||
                     gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2);
 
-    const int64_t CUBE_BLOCK_SIZE_K = isMxfp4 ? CUBE_BLOCK_SIZE_64 : CUBE_BLOCK_SIZE_32;
+    const int64_t CUBE_BLOCK_SIZE_K = isInt4 ? CUBE_BLOCK_SIZE_128
+                                             : (isMxfp4 ? CUBE_BLOCK_SIZE_64 : CUBE_BLOCK_SIZE_32);
     GMM_CHECK_REPORT(weightStorageLastDim == CUBE_BLOCK_SIZE_K,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
             StorageShapeToString(weightTensor),
@@ -331,13 +333,14 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
     bool isInputFp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 ||
                        gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2) &&
                       (wDtype == DataType::DT_FLOAT4_E2M1 || wDtype == DataType::DT_FLOAT4_E1M2);
+    bool isInputInt4 = gmmParams_.xDtype == DataType::DT_INT4 && wDtype == DataType::DT_INT4;
     std::string xWeightDtypes = std::string("x=") + op::ToString(gmmParams_.xDtype).GetString() +
         ", weight=" + op::ToString(wDtype).GetString();
     GMM_CHECK_REPORT(
-        (gmmParams_.xDtype == DataType::DT_INT8 && wDtype == DataType::DT_INT8) || isInputFp8e4m3 || isInputFp4,
+        (gmmParams_.xDtype == DataType::DT_INT8 && wDtype == DataType::DT_INT8) || isInputFp8e4m3 || isInputFp4 || isInputInt4,
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(GetAclnnOpName(), "x and weight", xWeightDtypes.c_str(),
             "when the format of weight is FRACTAL_NZ, the dtypes of x and weight must be within the range "
-            "INT8, FLOAT8_E4M3FN, FLOAT4_E2M1, FLOAT4_E1M2"));
+            "INT8, FLOAT8_E4M3FN, FLOAT4_E2M1, FLOAT4_E1M2, INT4"));
     if (isInputFp8e4m3 || isInputFp4) {
         GMM_CHECK_REPORT(gmmParams_.perTokenScaleOptional != nullptr,
             OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), perTokenScaleName_.c_str(), "nullptr", "not nullptr"));

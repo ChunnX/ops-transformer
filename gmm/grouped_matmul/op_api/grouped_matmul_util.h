@@ -54,6 +54,7 @@ constexpr size_t MX_TUPLE_GROUP_NUMBER_DIM_INDEX = 4UL;
 constexpr int64_t CUBE_BLOCK_SIZE_16 = 16L;
 constexpr int64_t CUBE_BLOCK_SIZE_32 = 32L;
 constexpr int64_t CUBE_BLOCK_SIZE_64 = 64L;
+constexpr int64_t CUBE_BLOCK_SIZE_128 = 128L;
 constexpr int64_t PERTILE_GROUP_SIZE = 128L;
 constexpr int64_t MXFP_DIVISOR_SIZE = 64L;
 constexpr int64_t MXFP_MULTI_BASE_SIZE = 2L;
