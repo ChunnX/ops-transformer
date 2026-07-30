@@ -198,7 +198,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaI
                     fiaInfo.inputKvType == ge::DT_INT8,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "leftPadding",
                     "leftPadding must be empty in keyAntiquant/valueAntiquant split mode and data type of "
-                    "key/value is int8 scenario, when keyAntiquantMode/valueAntiquantMode is 0 or 1"),
+                    "key/value is INT8 scenario, when keyAntiquantMode/valueAntiquantMode is 0 or 1"),
                 return ge::GRAPH_FAILED);
         }
     }

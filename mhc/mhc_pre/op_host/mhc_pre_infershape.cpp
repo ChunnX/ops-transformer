@@ -94,17 +94,25 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
 
     int64_t phiDim = phiShape->GetDimNum();
     int64_t xDim = xShape->GetDimNum();
-    OP_CHECK_IF(phiDim != 2, OP_LOGE(context->GetNodeName(), "phiShapeDim should be 2, but got %ld", phiDim),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(
+        phiDim != 2,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "phi", std::to_string(phiDim).c_str(), "2"),
+        return GRAPH_FAILED);
     OP_CHECK_IF(
         xDim != BSND_DIM_NUM && xDim != TND_DIM_NUM,
-        OP_LOGE(context->GetNodeName(), "xShapeDim should be %ld or %ld, but got %ld", BSND_DIM_NUM, TND_DIM_NUM, xDim),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xDim).c_str(), "3 or 4"),
+        return GRAPH_FAILED);
+
+    int64_t alphaDim = alphaShape->GetDimNum();
+    OP_CHECK_IF(
+        alphaDim != 1,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "alpha", std::to_string(alphaDim).c_str(), "1"),
         return GRAPH_FAILED);
 
     int64_t alphaDimSize = alphaShape->GetDim(0);
-    // alphaDimSize only can be 2 or 3
     OP_CHECK_IF(alphaDimSize != 2 && alphaDimSize != 3,
-                OP_LOGE(context->GetNodeName(), "Alpha dim[0] must be 2 or 3, got %ld", alphaDimSize),
+                OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "alpha",
+                                          Ops::Base::ToString(*alphaShape).c_str(), "[2] or [3]"),
                 return GRAPH_FAILED);
     // has residual
     bool hasResi = (alphaDimSize == 3);

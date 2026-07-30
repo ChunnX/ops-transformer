@@ -26,7 +26,9 @@ namespace optiling {
 
 class FiaTilingNonQuantMla : public FiaTilingBase {
 public:
-    explicit FiaTilingNonQuantMla(gert::TilingContext *context) : FiaTilingBase(context) {}
+    explicit FiaTilingNonQuantMla(gert::TilingContext *context) : FiaTilingBase(context)
+    {
+    }
     ~FiaTilingNonQuantMla() override = default;
 
 protected:
@@ -62,7 +64,7 @@ private:
 
     uint32_t CalcFlashDecodeParamNums(const uint32_t coreNum) const;
     uint64_t CalcNormalWorkspaceSize(uint32_t coreNum, int64_t mm1ResSize, int64_t mm2ResSize,
-        uint32_t mBaseSize) const;
+                                     uint32_t mBaseSize) const;
     uint64_t CalcFlashDecodeWorkspace(const uint32_t coreNum) const;
     void CalcScheduleMode();
     void CalcWorkspaceSize();

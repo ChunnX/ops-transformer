@@ -17,23 +17,28 @@
 
 - **计算公式**：
 
-$$
-\begin{aligned}
-\vec{x^{'}_{l}} &=RMSNorm(\vec{x_{l}})\\
-H^{pre}_l &= \alpha^{pre}_{l} ·(\vec{x^{'}_{l}}\varphi^{pre}_{l}) + b^{pre}_{l}\\
-H^{post}_l &= \alpha^{post}_{l} ·(\vec{x^{'}_{l}}\varphi^{post}_{l}) + b^{post}_{l}\\
-H^{res}_l &= \alpha^{res}_{l} ·(\vec{x^{'}_{l}}\varphi^{res}_{l}) + b^{res}_{l}\\
-H^{pre}_l &= \sigma (H^{pre}_{l})\\
-H^{post}_l &= 2\sigma (H^{post}_{l})\\
-h_{in} &=\vec{x^{'}_{l}}H^{pre}_l
-\end{aligned}
-$$
-
-- **注**：
+其中，xFlat表示将x的最后两维n和D视作长度为nD的向量，gammaFlat表示将gamma视作长度为nD的向量，@表示矩阵乘法，$\odot$表示逐元素乘法。
 
 $$
 \begin{aligned}
-RMSNorm(\vec{x}) = \frac{\vec{x}}{\sqrt{\frac{1}{d} \sum_{\dim=-2,\text{keepdim}=\text{True}} x_i^2 + \epsilon}}
+invRms &= \left(mean(xFlat^{2}) + normEps\right)^{-\frac{1}{2}}\\
+xGamma &= \begin{cases}
+    xFlat \odot gammaFlat, & gamma \ne null \\
+    xFlat, & gamma = null
+\end{cases}\\
+hMix &= xGamma @ phi^{T}\\
+w &= hMix \odot invRms\\
+[pPre, pPost, pRes] &= \begin{cases}
+    split(w, [n, n, n^{2}]), & alpha.shape=[3] \\
+    [split(w, [n, n]), 0], & alpha.shape=[2]
+\end{cases}\\
+hPre &= \sigma(pPre \odot alpha0 + bias0) + hcEps\\
+hPost &= 2\sigma(pPost \odot alpha1 + bias1)\\
+hRes &= \begin{cases}
+    pRes \odot alpha2 + bias2, & alpha.shape=[3] \\
+    0, & alpha.shape=[2]
+\end{cases}\\
+hIn_{d} &= \sum_{i=0}^{n-1} hPre_{i} x_{i,d}
 \end{aligned}
 $$
 
@@ -53,98 +58,98 @@ $$
       <tr>
         <td>x</td>
         <td>输入</td>
-        <td>待计算数据，表示网络中mHC层的输入数据。</td>
+        <td>待计算数据，表示网络中mHC层的输入数据，对应公式中的x。</td>
         <td>BFLOAT16, FLOAT16</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>phi</td>
         <td>输入</td>
-        <td>mHC的参数矩阵。</td>
+        <td>mHC的参数矩阵，对应公式中的phi。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>alpha</td>
         <td>输入</td>
-        <td>mHC的缩放参数。</td>
+        <td>mHC的缩放参数，对应公式中的alpha。</td>
         <td>FLOAT32</td>
         <td>-</td>
       </tr>
       <tr>
         <td>bias</td>
         <td>输入</td>
-        <td>mHC的bias参数。</td>
+        <td>mHC的bias参数，对应公式中的bias。</td>
         <td>FLOAT32</td>
         <td>-</td>
       </tr>
       <tr>
         <td>gamma</td>
         <td>可选输入</td>
-        <td>表示进行RmsNorm计算的缩放因子。</td>
+        <td>表示进行RmsNorm计算的缩放因子，对应公式中的gamma。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>out_flag</td>
         <td>可选输入</td>
-        <td>表示是否输出inv_rms/h_mix/h_pre,默认为0表示不输出，为1表示全输出。</td>
-        <td>DOUBLE</td>
+        <td>表示是否输出公式中的invRms、hMix和hPre，默认为0表示不输出，为1表示全部输出。</td>
+        <td>INT64</td>
         <td>-</td>
       </tr>
       <tr>
         <td>norm_eps</td>
         <td>可选输入</td>
-        <td>RmsNorm的防除零参数。</td>
-        <td>DOUBLE</td>
+        <td>RmsNorm的防除零参数，对应公式中的normEps。</td>
+        <td>FLOAT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>hc_eps</td>
         <td>可选输入</td>
-        <td>h_pre的sigmoid后的eps参数。</td>
-        <td>DOUBLE</td>
+        <td>h_pre的sigmoid后的eps参数，对应公式中的hcEps。</td>
+        <td>FLOAT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>h_in</td>
         <td>输出</td>
-        <td>输出的h_in作为Attention/MLP层的输入。</td>
+        <td>输出的h_in作为Attention/MLP层的输入，对应公式中的hIn。</td>
         <td>BFLOAT16, FLOAT16</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>h_post</td>
         <td>输出</td>
-        <td>输出的mHC的h_post变换矩阵。</td>
+        <td>输出的mHC的h_post变换矩阵，对应公式中的hPost。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>h_res</td>
         <td>输出</td>
-        <td>输出的mHC的h_res变换矩阵（未做sinkhorn变换）。</td>
+        <td>输出的mHC的h_res变换矩阵（未做sinkhorn变换），对应公式中的hRes。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>inv_rms</td>
         <td>可选输出</td>
-        <td>RmsNorm计算得到的1/r。</td>
+        <td>RmsNorm计算得到的1/r，对应公式中的invRms。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>h_mix</td>
         <td>可选输出</td>
-        <td>x与phi矩阵乘的结果。</td>
+        <td>xGamma与phi矩阵乘的结果，对应公式中的hMix。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>h_pre</td>
         <td>可选输出</td>
-        <td>做完sigmoid计算之后的h_pre矩阵。</td>
+        <td>做完sigmoid计算之后的h_pre矩阵，对应公式中的hPre。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>

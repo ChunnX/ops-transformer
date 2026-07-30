@@ -127,6 +127,11 @@ public:
         // for reuse workspace, gmm1 out preRow Stride use max(n,k)
         // single axis must lower than uint32, layoutC need uint32
         uint32_t gmmOutPreRowStride;
+        // GMM1 input reuses the SwiGLU output workspace. Inputs are K-dense
+        // inside each expert, while every expert reserves currentM * max(K, K2)
+        // elements. The tail gap prevents an earlier expert's K2-wide SwiGLU
+        // output from overwriting a later expert's unconsumed GMM1 input.
+        uint32_t gmm1InputExpertSlotWidth;
         //--------------
         GM_ADDR expertIdx;
         GM_ADDR moeInitRoutingQuantV2Scale;
@@ -203,6 +208,8 @@ public:
             moeInitRoutingQuantV2TilingData.gatherOutComputeParamsOp =
                 moeInitRoutingQuantV2TilingData_.gatherOutComputeParamsOp;
             gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
+            uint32_t k2 = problemShape.n() / 2;
+            gmm1InputExpertSlotWidth = problemShape.k() > k2 ? problemShape.k() : k2;
         }
 
         CATLASS_HOST_DEVICE
@@ -235,6 +242,8 @@ public:
               moeInitRoutingV2TilingData(moeInitRoutingV2TilingData_)
         {
             gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
+            uint32_t k2 = problemShape.n() / 2;
+            gmm1InputExpertSlotWidth = problemShape.k() > k2 ? problemShape.k() : k2;
         }
     };
 
@@ -712,7 +721,8 @@ private:
             } else {
                 preCurrentmSum += currentM;
             }
-            gmGroupOffsetA += inGroupProblemShape.m() * inGroupProblemShape.k();
+            // 每个专家之间在k小于k2的时候不是密排，所以这里不取k
+            gmGroupOffsetA += inGroupProblemShape.m() * params.gmm1InputExpertSlotWidth;
             if (params.listLen == 1) {
                 gmGroupOffsetB += inGroupProblemShape.k() * inGroupProblemShape.n();
             }
@@ -970,16 +980,24 @@ private:
     CATLASS_DEVICE
     void ResetTokenPerExpert(int32_t num)
     {
-        if (coreIdx != coreNum - 1) {
+        if (coreIdx != coreNum - 1 || num <= 0) {
             return;
         }
+        // The full EP-by-padded-expert region can exceed UB, so reuse one UB-sized zero tile for all GM chunks.
+        int32_t resetNumPerLoop = num < UB_MOVE_NUM ? num : UB_MOVE_NUM;
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::LocalTensor<int32_t> tmp = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::Duplicate(tmp, 0, num);
+        AscendC::Duplicate(tmp, 0, resetNumPerLoop);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::DataCopy(tokenPerExpert, tmp, num);
+        for (int32_t offset = 0; offset < num; offset += resetNumPerLoop) {
+            int32_t remainingNum = num - offset;
+            int32_t currentNum = remainingNum < resetNumPerLoop ? remainingNum : resetNumPerLoop;
+            AscendC::DataCopy(tokenPerExpert[offset], tmp, currentNum);
+        }
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
     }
 
     CATLASS_DEVICE
@@ -1153,8 +1171,9 @@ private:
             // ----------------------------------------------------------
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
             for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-                uint32_t rowStart =
-                    (dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx)) + prevGroupSum1;
+                uint32_t rowStartInGroup =
+                    dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx);
+                uint32_t rowStart = rowStartInGroup + prevGroupSum1;
                 if (rowStart < params.maxOutputSize) {
                     uint32_t rows = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, runtimeRank, groupIdx));
                     if (rowStart + rows > params.maxOutputSize) {
@@ -1166,9 +1185,12 @@ private:
                     gmRemoteA.SetGlobalBuffer(
                         reinterpret_cast<__gm__ ElementABefore *>(otherRankPtr + peermemInfo.offsetA));
 
-                    MatrixCoord offsetA{rowStart, 0};
                     MatrixCoord offsetPeer{rowSrc, 0};
-                    int64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
+                    // 在做dispatch的时候，因为复用了gmm1的A矩阵与swiglu的输出
+                    // 所以dispatch的时候每个专家之间间隔从密排改为max（k， k2）
+                    // 但是专家之内仍然是密排的
+                    int64_t gmOffsetA = static_cast<int64_t>(prevGroupSum1) * params.gmm1InputExpertSlotWidth +
+                                        static_cast<int64_t>(rowStartInGroup) * params.problemShape.k();
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         int64_t gmOffsetPeer = rowSrc * (params.problemShape.k() + ALIGN_512);
                         FetchAndPreprocessInt8ToInt4(static_cast<uint64_t>(gmOffsetA), gmPerTokenScale1[rowStart],
@@ -1502,7 +1524,7 @@ private:
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         blockEpilogue(gmC2, gmPerTokenScale2, reinterpret_cast<__gm__ float *>(params.ptrBias2),
-                                      realTileCoord, realTileShape, groupIdx, preSrcExpertSum, preSumBeforeRank,
+                                      realTileCoord, realTileShape, groupIdx, preSrcExpertSum * 2, preSumBeforeRank,
                                       params.listLen);
                     } else if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue(gmC2, gmPerTokenScale2, realTileCoord, realTileShape, groupIdx, preSrcExpertSum,
@@ -1514,7 +1536,11 @@ private:
                 }
             }
 
-            preSrcExpertSum += currentExpertM;
+            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                preSrcExpertSum += currentExpertM / 2;
+            } else {
+                preSrcExpertSum += currentExpertM;
+            }
             startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
         }
 
@@ -1551,8 +1577,6 @@ private:
         CATLASS_DEVICE
         WorkspaceInfo(const Params &params)
         {
-            uint32_t k2 = params.problemShape.n() / 2;
-            uint32_t n2 = params.problemShape.k();
             uint64_t workspaceOffset = 0;
 
             expandedRowIdx = params.ptrWorkspace;
@@ -1586,12 +1610,11 @@ private:
                 ptrA1Int4 = params.ptrWorkspace + workspaceOffset;
                 ptrA2Int4 = params.ptrWorkspace + workspaceOffset;
                 // sizeof(ElementA) is 1
-                workspaceOffset += params.maxOutputSize * (params.problemShape.k() > k2 ? params.problemShape.k() : k2);
+                workspaceOffset += params.maxOutputSize * params.gmm1InputExpertSlotWidth;
             } else {
                 ptrA = params.ptrWorkspace + workspaceOffset;
                 ptrPermutedToken = params.ptrWorkspace + workspaceOffset;
-                workspaceOffset += params.maxOutputSize *
-                                   (params.problemShape.k() > k2 ? params.problemShape.k() : k2) * sizeof(ElementA);
+                workspaceOffset += params.maxOutputSize * params.gmm1InputExpertSlotWidth * sizeof(ElementA);
             }
 
             ptrSumBeforeRank = params.ptrWorkspace + workspaceOffset;
@@ -1633,8 +1656,8 @@ private:
 
             // 尾部：CrossRankSync + tokenPerExpert
             int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
-            int64_t tokenPerExpertSize =
-                EP * AlignUp(EP * MAX_EXPERTS_PER_RANK, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+            int64_t tokenPerExpertSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) *
+                static_cast<int64_t>(sizeof(int32_t));
 
             // A: dispatch 数据区（量化时含行内 scale）
             int64_t offsetASize = bs * topK * (RoutingIsQuant ? (h + ALIGN_512) : h * sizeof(int16_t));

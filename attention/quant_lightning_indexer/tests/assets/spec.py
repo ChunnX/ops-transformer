@@ -36,8 +36,8 @@ class QuantLightningIndexerSpec:
     golden = golden_module.cpu_quant_lightning_indexer
     customize_inputs = inputs_module.generate_qli_inputs
     tolerance = {
-        "float16": {"standard": "IsClose", "rtol": 0.005, "ptol": 0.05, "atol": 0.000025},
-        "bfloat16": {"standard": "IsClose", "rtol": 0.005, "ptol": 0.05, "atol": 0.0001},
+        "float16": {"standard": "stat_rel_err"},
+        "bfloat16": {"standard": "stat_rel_err"},
     }
 
     def compare(*outputs, **kwargs):
@@ -45,5 +45,5 @@ class QuantLightningIndexerSpec:
 
 
 __spec__ = {
-    "torch_npu.npu_quant_lightning_indexer": QuantLightningIndexerSpec,
+    "torch_npu.npu_quant_lightning_indexer": "QuantLightningIndexerSpec",
 }

@@ -103,6 +103,9 @@ public:
         uint64_t maxOutputSize;
         // for reuse workspace, gmm1 out preRow Stride use max(n,k)
         uint32_t gmmOutPreRowStride;
+        // Padded token-slot stride for GMM1 input. It prevents packed SwiGLU
+        // output from overwriting unread GMM1 rows when k < n/2.
+        uint32_t gmmA1PreRowStride = 0;
         //--------------
         GM_ADDR expertIdx;
         GM_ADDR moeInitRoutingQuantV2Scale;
@@ -173,6 +176,7 @@ public:
             moeInitRoutingQuantV2TilingData.gatherOutComputeParamsOp =
                 moeInitRoutingQuantV2TilingData_.gatherOutComputeParamsOp;
             gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
+            gmmA1PreRowStride = static_cast<uint32_t>(layoutA.stride(0));
         }
     };
 
@@ -312,7 +316,7 @@ private:
 
     CATLASS_DEVICE void FetchAndPreprocessInt8ToInt4(uint64_t gmOffsetA, AscendC::GlobalTensor<float> dstScale,
                                                      AscendC::GlobalTensor<int8_t> src, int32_t rows,
-                                                     int32_t hiddenSize)
+                                                     int32_t hiddenSize, uint32_t aStride)
     {
         uint32_t tmpBufferOffset = 0;
 
@@ -382,7 +386,7 @@ private:
 
         int pingpongId = 0;
         for (uint32_t processIndex = 0; processIndex < rows; ++processIndex) {
-            uint64_t relStartAddr = processIndex * hiddenSize;
+            const uint64_t relStartAddr = processIndex * aStride;
             uint64_t absStartAddr = gmOffsetA + relStartAddr;
             AscendC::TEventID EVENT_ID = pingpongId == 0 ? EVENT_ID6 : EVENT_ID7;
             AscendC::LocalTensor<int8_t> buf = pingpongId == 0 ? tmpBuffer0 : tmpBuffer1;
@@ -434,7 +438,7 @@ private:
             Cast(xLowI4Tensor, xHighHalfTensor.ReinterpretCast<half>(), AscendC::RoundMode::CAST_NONE, hiddenSize);
             SetFlag<HardEvent::V_MTE3>(EVENT_ID7);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID7);
-            DataCopy(gmA1I4_I8[absStartAddr + hiddenSize / 2], xLowI4Tensor.ReinterpretCast<int8_t>(), hiddenSize / 2);
+            DataCopy(gmA1I4_I8[absStartAddr + aStride / 2], xLowI4Tensor.ReinterpretCast<int8_t>(), hiddenSize / 2);
             SetFlag<HardEvent::MTE3_V>(EVENT_ID6);
             // 低四位处理结束
             pingpongId = (pingpongId + 1) % BufferNum;
@@ -452,32 +456,49 @@ private:
     void GetCumsumForMMAIV(AscendC::GlobalTensor<int32_t> &tokenPerExpert, AscendC::GlobalTensor<int32_t> &result,
                            uint32_t expertPerRank, uint32_t EP)
     {
-        int32_t expertPerRankAligned = (EP * expertPerRank + 8 - 1) / 8 * 8;
+        constexpr uint32_t int32PerBlock = 8;
+        constexpr uint32_t ubReservedBytes = 32;
+        uint32_t totalExpertNum = EP * expertPerRank;
+        // Cumsum is independent for every global expert. Tile that dimension so the [EP, tileExpertNum]
+        // working set always stays in the 192-KiB A2 UB.
+        uint32_t maxExpertNumPerLoop =
+            (ArchTag::UB_SIZE - ubReservedBytes) / sizeof(int32_t) / EP / int32PerBlock * int32PerBlock;
         AscendC::LocalTensor<int32_t> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::LocalTensor<int32_t> tmpResult =
-            resource.ubBuf.template GetBufferByByte<int32_t>(EP * EP * expertPerRank * sizeof(int32_t));
 #define U16(x) static_cast<uint16_t>(x)
 
-        AscendC::DataCopyPad(tmpBuffer1, tokenPerExpert,
-                             {U16(EP), U16(EP * expertPerRank * sizeof(int32_t)),
-                              U16((paddedExpertNumAligned - EP * expertPerRank) * sizeof(int32_t)), 0},
-                             {});
+        for (uint32_t expertOffset = 0; expertOffset < totalExpertNum; expertOffset += maxExpertNumPerLoop) {
+            uint32_t remainingExpertNum = totalExpertNum - expertOffset;
+            uint32_t currentExpertNum =
+                remainingExpertNum < maxExpertNumPerLoop ? remainingExpertNum : maxExpertNumPerLoop;
+            uint32_t currentExpertNumAligned =
+                (currentExpertNum + int32PerBlock - 1) / int32PerBlock * int32PerBlock;
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::DataCopyPad(
+                tmpBuffer1, tokenPerExpert[expertOffset],
+                {U16(EP), U16(currentExpertNum * sizeof(int32_t)),
+                 U16((paddedExpertNumAligned - currentExpertNum) * sizeof(int32_t)), 0},
+                {});
 
-        for (uint32_t i = 1; i < EP; ++i) {
-            AscendC::Add(tmpBuffer1[i * expertPerRankAligned], tmpBuffer1[i * expertPerRankAligned],
-                         tmpBuffer1[(i - 1) * expertPerRankAligned], EP * expertPerRank);
-            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+
+            for (uint32_t i = 1; i < EP; ++i) {
+                AscendC::Add(tmpBuffer1[i * currentExpertNumAligned], tmpBuffer1[i * currentExpertNumAligned],
+                             tmpBuffer1[(i - 1) * currentExpertNumAligned], currentExpertNum);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+
+            AscendC::DataCopyPad(
+                result[expertOffset], tmpBuffer1,
+                {U16(EP), U16(currentExpertNum * sizeof(int32_t)), 0,
+                 U16((paddedExpertNumAligned - currentExpertNum) * sizeof(int32_t))});
+            // The next loop reuses the same UB range for MTE2. Wait until MTE3 has consumed it.
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         }
-
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-
-        AscendC::DataCopyPad(result, tmpBuffer1,
-                             {U16(EP), U16((EP * expertPerRank) * sizeof(int32_t)), 0,
-                              U16((paddedExpertNumAligned - EP * expertPerRank) * sizeof(int32_t))});
     }
 
     CATLASS_DEVICE
@@ -574,7 +595,7 @@ private:
             }
             preCurrentmSum += currentM / 2;
 
-            gmGroupOffsetA += inGroupProblemShape.m() * inGroupProblemShape.k();
+            gmGroupOffsetA += static_cast<int64_t>(inGroupProblemShape.m()) * params.gmmA1PreRowStride;
             if (params.listLen == 1) {
                 gmGroupOffsetB += inGroupProblemShape.k() * inGroupProblemShape.n();
             }
@@ -861,64 +882,64 @@ private:
     }
 
     CATLASS_DEVICE
+    void ResetGmBuffer(AscendC::GlobalTensor<int32_t> &dst, AscendC::LocalTensor<int32_t> &zeroBuffer, int32_t num)
+    {
+        for (int32_t offset = 0; offset < num; offset += UB_MOVE_NUM) {
+            int32_t remainingNum = num - offset;
+            int32_t currentNum = remainingNum < UB_MOVE_NUM ? remainingNum : UB_MOVE_NUM;
+            AscendC::DataCopy(dst[offset], zeroBuffer, currentNum);
+        }
+    }
+
+    CATLASS_DEVICE
     void ResetTokenPerExpert(const Params &params, int32_t num)
     {
-        if (coreIdx != coreNum - 1) {
+        if (coreNum == 0 || coreIdx != coreNum - 1 || num <= 0) {
             return;
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::LocalTensor<int32_t> tmp = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::Duplicate(tmp, 0, num);
+        AscendC::Duplicate(tmp, 0, UB_MOVE_NUM);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
 
         // 1) tokenPerExpert winIn
-        AscendC::DataCopy(tokenPerExpert, tmp, num);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        ResetGmBuffer(tokenPerExpert, tmp, num);
 
         // 2) tokenPerExpert winOut
         AscendC::GlobalTensor<int32_t> tokenPerExpertWinOut;
         tokenPerExpertWinOut.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
             shmem.windowsOutAddr() + peermemInfo.offsetPeerTokenPerExpert));
-        AscendC::DataCopy(tokenPerExpertWinOut, tmp, num);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        ResetGmBuffer(tokenPerExpertWinOut, tmp, num);
 
         // 3) Dispatch Flag winIn（按 64B 槽布局 = EP × expertPerRank × kFlagSlotI32 个 int32）
         int32_t dispatchFlagInts = params.EP * params.expertPerRank * PeermemInfo::kFlagSlotI32;
         AscendC::GlobalTensor<int32_t> flagWinIn;
         flagWinIn.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
             shmem() + peermemInfo.offsetFlag));
-        AscendC::DataCopy(flagWinIn, tmp, dispatchFlagInts);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        ResetGmBuffer(flagWinIn, tmp, dispatchFlagInts);
 
         // 4) Dispatch Flag winOut
         AscendC::GlobalTensor<int32_t> flagWinOut;
         flagWinOut.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
             shmem.windowsOutAddr() + peermemInfo.offsetFlag));
-        AscendC::DataCopy(flagWinOut, tmp, dispatchFlagInts);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        ResetGmBuffer(flagWinOut, tmp, dispatchFlagInts);
 
         // 5) Allgather Flag winIn（EP × kFlagSlotI32 个 int32）
         int32_t allgatherFlagInts = params.EP * PeermemInfo::kFlagSlotI32;
         AscendC::GlobalTensor<int32_t> agFlagWinIn;
         agFlagWinIn.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
             shmem() + peermemInfo.offsetAllgatherFlag));
-        AscendC::DataCopy(agFlagWinIn, tmp, allgatherFlagInts);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        ResetGmBuffer(agFlagWinIn, tmp, allgatherFlagInts);
 
         // 6) Allgather Flag winOut
         AscendC::GlobalTensor<int32_t> agFlagWinOut;
         agFlagWinOut.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
             shmem.windowsOutAddr() + peermemInfo.offsetAllgatherFlag));
-        AscendC::DataCopy(agFlagWinOut, tmp, allgatherFlagInts);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        ResetGmBuffer(agFlagWinOut, tmp, allgatherFlagInts);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
     }
 
     CATLASS_DEVICE
@@ -973,7 +994,8 @@ private:
 
         // -- Path A: self-rank --
         if (static_cast<int32_t>(RuntimeRank(params)) == dstEpIdx) {
-            FetchAndPreprocessInt8ToInt4(gmOffsetA, gmPerTokenScale1[rowStart], src, rows, hiddenSize);
+            FetchAndPreprocessInt8ToInt4(gmOffsetA, gmPerTokenScale1[rowStart], src, rows, hiddenSize,
+                                         params.gmmA1PreRowStride);
             return;
         }
 
@@ -1090,7 +1112,7 @@ private:
         gmDstA.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(shmem() + peermemInfo.offsetA));
         AscendC::PipeBarrier<PIPE_ALL>();
         FetchAndPreprocessInt8ToInt4(gmOffsetA, gmPerTokenScale1[rowStart2], gmDstA[rowStart2 * copyInNum], rows2,
-                                     hiddenSize);
+                                     hiddenSize, params.gmmA1PreRowStride);
         return;
     }
 
@@ -1229,7 +1251,7 @@ private:
                     SendTokensV3<ElementABefore>(gmRemoteDstA[gmDstOffset], gmSrcA[gmSrcOffset],
                                                  static_cast<int32_t>(rows), params.problemShape.k(), dstEpIdx,
                                                  groupIdx, static_cast<int32_t>(rowStart), params,
-                                                 static_cast<uint64_t>(rowStart) * params.problemShape.k());
+                                                 static_cast<uint64_t>(rowStart) * params.gmmA1PreRowStride);
                 }
                 prevGroupSum1Arr[arrIdx] += currentMSend;
             }
@@ -1251,7 +1273,7 @@ private:
                     }
                     RecvTokensV3<ElementABefore>(static_cast<int32_t>(rows2), static_cast<int32_t>(rowStart2),
                                                  params.problemShape.k(), srcEpIdx, groupIdx, params,
-                                                 static_cast<uint64_t>(rowStart2) * params.problemShape.k());
+                                                 static_cast<uint64_t>(rowStart2) * params.gmmA1PreRowStride);
                 }
             }
             AscendC::SyncAll<true>();

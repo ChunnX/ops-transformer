@@ -50,7 +50,7 @@ struct TileL1L0Param {
     uint64_t curKL0 = 0;
 };
 
-}  // namespace
+} // namespace
 
 template <class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class AType_, class LayoutA_, class BType_,
           class LayoutB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_, class TileCopy_,
@@ -63,8 +63,7 @@ template <class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class A
           class LayoutB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_, class TileCopy_>
 class BlockMmadFixpipeDequant<
     DispatchPolicy_, L1TileShape_, L0TileShape_, AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, BiasType_,
-    LayoutBias_, TileCopy_,
-    AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<MatmulWithScale<>, DispatchPolicy_>>> {
+    LayoutBias_, TileCopy_, AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<MatmulWithScale<>, DispatchPolicy_>>> {
 public:
     using AType = AType_;
     using BType = BType_;
@@ -107,7 +106,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_3);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_1);
-        AscendC::SetMMLayoutTransform(true);  // true means column first when fixpipe_l0c2out
+        AscendC::SetMMLayoutTransform(true); // true means column first when fixpipe_l0c2out
     }
 
     __aicore__ inline ~BlockMmadFixpipeDequant()
@@ -118,7 +117,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_3);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_1);
-        AscendC::SetMMLayoutTransform(false);  // false means row first when fixpipe_l0c2out
+        AscendC::SetMMLayoutTransform(false); // false means row first when fixpipe_l0c2out
     }
 
 public:
@@ -457,7 +456,10 @@ public:
     }
 
 private:
-    __aicore__ inline bool NeedBias(uint64_t kL0Offset) { return isBias_ && kL0Offset == 0; }
+    __aicore__ inline bool NeedBias(uint64_t kL0Offset)
+    {
+        return isBias_ && kL0Offset == 0;
+    }
 
     __aicore__ inline void Mmad(AscendC::MmadParams &mmadParams, uint64_t l0cOffset, uint64_t l0abOffset,
                                 uint64_t biasOffset, bool needBias)
@@ -476,9 +478,9 @@ private:
     uint64_t biasL1OneBuffer_ = 0UL;
     uint64_t aL1OneBuffer_ = 0UL;
     uint64_t bL1OneBuffer_ = 0UL;
-    uint64_t l1BufferAOffset_[2] = {0UL};     // default 2 buffer
-    uint64_t l1BufferBOffset_[2] = {0UL};     // default 2 buffer
-    uint64_t l1BufferBiasOffset_[2] = {0UL};  // default 2 buffer
+    uint64_t l1BufferAOffset_[2] = {0UL};    // default 2 buffer
+    uint64_t l1BufferBOffset_[2] = {0UL};    // default 2 buffer
+    uint64_t l1BufferBiasOffset_[2] = {0UL}; // default 2 buffer
     uint64_t m_;
     uint64_t n_;
     uint64_t k_;
@@ -499,12 +501,12 @@ private:
     AscendC::LocalTensor<AType> l0aLocal_{AscendC::TPosition::A2, 0, L0A_SIZE};
     AscendC::LocalTensor<BType> l0bLocal_{AscendC::TPosition::B2, 0, L0B_SIZE};
     AscendC::LocalTensor<float> c1Local_{AscendC::TPosition::CO1, 0, AscendC::TOTAL_L0C_SIZE};
-    AscendC::LocalTensor<BiasType> biasBt_{AscendC::TPosition::C2, 0, 4096};  // 4096B: BT_SIZE
+    AscendC::LocalTensor<BiasType> biasBt_{AscendC::TPosition::C2, 0, 4096}; // 4096B: BT_SIZE
     AscendC::LocalTensor<AType> aL1Local_{AscendC::TPosition::A1, 0, AscendC::TOTAL_L1_SIZE};
     AscendC::LocalTensor<BType> bL1Local_{AscendC::TPosition::A1, 0, AscendC::TOTAL_L1_SIZE};
     AscendC::LocalTensor<BiasType> biasL1Local_{AscendC::TPosition::A1, 0, AscendC::TOTAL_L1_SIZE / sizeof(BiasType)};
 };
-}  // namespace Block
-}  // namespace Gemm
-}  // namespace Cgmct
+} // namespace Block
+} // namespace Gemm
+} // namespace Cgmct
 #endif

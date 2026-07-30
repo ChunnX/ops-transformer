@@ -35,7 +35,7 @@ enum class Status {
     l1kErrorL0kNotAlign,
     l1L0ErrorNotAlignInt8
 };
-constexpr const char* GetStatusString(Status status)
+constexpr const char *GetStatusString(Status status)
 {
     switch (status) {
         case Status::success:
@@ -85,7 +85,7 @@ constexpr const char* GetStatusString(Status status)
     do {                                                                                                               \
         Status ret = status;                                                                                           \
         if (ret != Status::success) {                                                                                  \
-            std::cerr << "Got Cgmct error: " << GetStatusString(ret) << std::endl;                                       \
+            std::cerr << "Got Cgmct error: " << GetStatusString(ret) << std::endl;                                     \
             return;                                                                                                    \
         }                                                                                                              \
     } while (0)

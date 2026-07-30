@@ -23,7 +23,7 @@
 
 TEMPLATE_INTF
 __aicore__ inline void InitSparseTokensDefault(const ConstInfo<isInfer, hasRope> &constInfo,
-    const AttenMaskInfo &attenMaskInfo, RunParamStr<isInfer> &runParam)
+                                               const AttenMaskInfo &attenMaskInfo, RunParamStr<isInfer> &runParam)
 {
     if constexpr (hasRope && dTemplateType == DTemplateType::Aligned576) {
         runParam.preTokensOfMlaPerBatch = attenMaskInfo.preTokens;
@@ -43,7 +43,7 @@ __aicore__ inline void InitSparseTokensDefault(const ConstInfo<isInfer, hasRope>
 
 TEMPLATE_INTF
 __aicore__ inline void SetSparseParamRightDown(const ConstInfo<isInfer, hasRope> &constInfo,
-    RunParamStr<isInfer> &runParam)
+                                               RunParamStr<isInfer> &runParam)
 {
     runParam.preTokensPerBatch = SPARSE_MODE_INT_DEFAULT;
     if constexpr (!(hasRope && (dTemplateType == DTemplateType::Aligned576))) {
@@ -70,13 +70,13 @@ __aicore__ inline void SetSparseParamRightDown(const ConstInfo<isInfer, hasRope>
 
 TEMPLATE_INTF
 __aicore__ inline void SetSparseParamBand(const ConstInfo<isInfer, hasRope> &constInfo,
-    const AttenMaskInfo &attenMaskInfo, RunParamStr<isInfer> &runParam)
+                                          const AttenMaskInfo &attenMaskInfo, RunParamStr<isInfer> &runParam)
 {
     if constexpr (hasRope && dTemplateType == DTemplateType::Aligned576) {
-        runParam.preTokensOfMlaPerBatch = attenMaskInfo.preTokens -
-            runParam.actualS2Size + runParam.actualSeqLengthOfMlaPerBatch;
-        runParam.nextTokensOfMlaPerBatch = attenMaskInfo.nextTokens +
-            runParam.actualS2Size - runParam.actualSeqLengthOfMlaPerBatch;
+        runParam.preTokensOfMlaPerBatch =
+            attenMaskInfo.preTokens - runParam.actualS2Size + runParam.actualSeqLengthOfMlaPerBatch;
+        runParam.nextTokensOfMlaPerBatch =
+            attenMaskInfo.nextTokens + runParam.actualS2Size - runParam.actualSeqLengthOfMlaPerBatch;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
             runParam.preTokensPerBatch = SPARSE_MODE_INT_DEFAULT;
             runParam.nextTokensPerBatch = SPARSE_MODE_INT_DEFAULT;
@@ -85,10 +85,8 @@ __aicore__ inline void SetSparseParamBand(const ConstInfo<isInfer, hasRope> &con
             runParam.nextTokensPerBatch = runParam.nextTokensOfMlaPerBatch * constInfo.gSize;
         }
     } else {
-        runParam.preTokensPerBatch = attenMaskInfo.preTokens - runParam.actualS2Size +
-            runParam.actualS1Size;
-        runParam.nextTokensPerBatch = attenMaskInfo.nextTokens + runParam.actualS2Size -
-            runParam.actualS1Size;
+        runParam.preTokensPerBatch = attenMaskInfo.preTokens - runParam.actualS2Size + runParam.actualS1Size;
+        runParam.nextTokensPerBatch = attenMaskInfo.nextTokens + runParam.actualS2Size - runParam.actualS1Size;
         if constexpr (enableKVPrefix) {
             runParam.preTokensPerBatch -= constInfo.actualKVPrefixSize;
             runParam.nextTokensPerBatch += constInfo.actualKVPrefixSize;
@@ -97,8 +95,8 @@ __aicore__ inline void SetSparseParamBand(const ConstInfo<isInfer, hasRope> &con
 }
 
 TEMPLATE_INTF
-__aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constInfo,
-    const AttenMaskInfo &attenMaskInfo, RunParamStr<isInfer> &runParam)
+__aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constInfo, const AttenMaskInfo &attenMaskInfo,
+                                      RunParamStr<isInfer> &runParam)
 {
     if constexpr (hasAtten) {
         InitSparseTokensDefault<TEMPLATE_INTF_ARGS>(constInfo, attenMaskInfo, runParam);
@@ -112,30 +110,35 @@ __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constIn
 }
 
 TEMPLATE_INTF
-__aicore__ inline void CalPseShiftCoreOffset(RunParamStr<isInfer> &runParam, const ConstInfo<isInfer, hasRope> &constInfo,
-    int32_t sIdx, int64_t sOuterOffset, PseInfo& pseInfo)
+__aicore__ inline void CalPseShiftCoreOffset(RunParamStr<isInfer> &runParam,
+                                             const ConstInfo<isInfer, hasRope> &constInfo, int32_t sIdx,
+                                             int64_t sOuterOffset, PseInfo &pseInfo)
 {
     uint64_t pseShiftBatchOffset = 0;
     if (constInfo.isGqa) {
         // 是否为多batch
         if (pseInfo.pseBSize != 1) {
             pseShiftBatchOffset = (uint64_t)sIdx * (uint64_t)constInfo.n2Size * (uint64_t)constInfo.gSize *
-                (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size;
+                                  (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size;
         }
         // 多个N
-        runParam.pseShiftCoreOffset = pseShiftBatchOffset + (uint64_t)runParam.n2oIdx * (uint64_t)constInfo.gSize *
-            (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size +
+        runParam.pseShiftCoreOffset =
+            pseShiftBatchOffset +
+            (uint64_t)runParam.n2oIdx * (uint64_t)constInfo.gSize * (uint64_t)pseInfo.pseS1Size *
+                (uint64_t)pseInfo.pseS2Size +
             (uint64_t)(sOuterOffset + runParam.queryLeftPaddingSize) * (uint64_t)pseInfo.pseS2Size +
             (uint64_t)runParam.kvLeftPaddingSize;
     } else {
         // 是否为多batch
         if (pseInfo.pseBSize != 1) {
-            pseShiftBatchOffset = (uint64_t)sIdx * (uint64_t)constInfo.n2G * (uint64_t)pseInfo.pseS1Size *
-                (uint64_t)pseInfo.pseS2Size;
+            pseShiftBatchOffset =
+                (uint64_t)sIdx * (uint64_t)constInfo.n2G * (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size;
         }
         // 多个N
-        runParam.pseShiftCoreOffset = pseShiftBatchOffset + (uint64_t)runParam.n2oIdx * (uint64_t)constInfo.gSize *
-            (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size +
+        runParam.pseShiftCoreOffset =
+            pseShiftBatchOffset +
+            (uint64_t)runParam.n2oIdx * (uint64_t)constInfo.gSize * (uint64_t)pseInfo.pseS1Size *
+                (uint64_t)pseInfo.pseS2Size +
             (uint64_t)runParam.goIdx * (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size +
             (uint64_t)(sOuterOffset + runParam.queryLeftPaddingSize) * (uint64_t)pseInfo.pseS2Size +
             (uint64_t)runParam.kvLeftPaddingSize;
@@ -148,4 +151,4 @@ __aicore__ inline uint64_t ComputePseShiftOffset(const RunParamStr<isInfer> &run
     return (runParam.pseShiftCoreOffset + (uint64_t)sInnerOffsetDataSize);
 }
 
-#endif  // INFER_FLASH_ATTENTION_SPARSE_H
+#endif // INFER_FLASH_ATTENTION_SPARSE_H

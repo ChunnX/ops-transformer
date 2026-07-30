@@ -37,11 +37,11 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950DT</term>：支持空字符串`ai_cpu`和`ccu`。
+  - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnGroupedMatMulAlltoAllvV2`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnGroupedMatMulAlltoAllvV2`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
@@ -49,7 +49,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     const aclTensor*   gmmWeight,
     const aclTensor*   sendCountsTensorOptional,
     const aclTensor*   recvCountsTensorOptional,
-    const aclTensor*   mmXOptional,            
+    const aclTensor*   mmXOptional,
     const aclTensor*   mmWeightOptional,
     const char*        group,
     const char*        commMode,
@@ -272,7 +272,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一阶段接口完成入参校验，出现以下场景报错：
 
@@ -340,7 +340,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -366,7 +366,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
@@ -520,7 +520,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
 
         // 调用第一阶段接口
         ret = aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(gmmX, gmmW, sendCountsTensor, recvCountsTensor, mmX, mmW,
-                                                            hcomName, "ccu", EP_WORLD_SIZE, sendCounts, recvCounts, false, false,
+                                                            hcomName, "ai_cpu", EP_WORLD_SIZE, sendCounts, recvCounts, false, false,
                                                             gmmY, mmY, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("[ERROR] aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize failed. ret = %d \n", ret);

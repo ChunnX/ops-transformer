@@ -32,6 +32,11 @@
 #define ORIG_DTYPE_ATTENTION_OUT (DT_BF16)
 #endif
 
+#define KV_STORAGE_MODE_CONTINUE 0
+#define KV_STORAGE_MODE_PA_BSND 1
+#define KV_STORAGE_MODE_PA_BNSD 2
+#define KV_STORAGE_MODE_PA_NZ 3
+
 ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       // q_out layout (8-bit)
                       //    0: BSND

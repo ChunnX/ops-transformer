@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torchair as tng
 from torchair.configs.compiler_config import CompilerConfig
-
+import ascend_ops
 
 logging.basicConfig(
     level=logging.INFO,
