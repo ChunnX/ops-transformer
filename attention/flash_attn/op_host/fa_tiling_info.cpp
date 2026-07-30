@@ -15,7 +15,6 @@
 
 #include "fa_tiling_info.h"
 
-
 namespace optiling {
 namespace flash_attn {
 
@@ -32,15 +31,13 @@ std::string LayoutToSerialString(FaLayout layout)
     return "UNKNOWN";
 }
 
-static const std::string AXIS_SERIAL_STRINGS[] = {
-    "B", "S", "N", "D", "H", "T", "D1", "D0", "S1", "S2", "Bn", "Bs", "CONST"
-};
+static const std::string AXIS_SERIAL_STRINGS[] = {"B",  "S",  "N",  "D",  "H",  "T",    "D1",
+                                                  "D0", "S1", "S2", "Bn", "Bs", "CONST"};
 
 std::string AxisToSerialString(FaAxis axis)
 {
     uint32_t idx = static_cast<uint32_t>(axis);
-    return (idx < sizeof(AXIS_SERIAL_STRINGS) / sizeof(AXIS_SERIAL_STRINGS[0]))
-        ? AXIS_SERIAL_STRINGS[idx] : "UNKNOWN";
+    return (idx < sizeof(AXIS_SERIAL_STRINGS) / sizeof(AXIS_SERIAL_STRINGS[0])) ? AXIS_SERIAL_STRINGS[idx] : "UNKNOWN";
 }
 
 } // namespace flash_attn

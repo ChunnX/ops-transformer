@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #ifndef FLASH_ATTN_COMMON_DEF_H_
 #define FLASH_ATTN_COMMON_DEF_H_
 
@@ -42,15 +41,7 @@ static constexpr float FLOAT_INF = 3e+99;
 #define ASCENDC_TPL_10_BW 10
 #define ASCENDC_TPL_3_BW 3
 
-enum class FA_LAYOUT : uint32_t {
-    BSH = 0,
-    BSND = 0,
-    BNSD = 1,
-    NZ = 2,
-    TND = 3,
-    NBSD = 4,
-    NTD = 5
-};
+enum class FA_LAYOUT : uint32_t { BSH = 0, BSND = 0, BNSD = 1, NZ = 2, TND = 3, NBSD = 4, NTD = 5 };
 
 enum class inferFaLayOutTypeEnum {
     None = 0,
@@ -61,12 +52,7 @@ enum class inferFaLayOutTypeEnum {
     LAYOUT_NTD_TND = 5,
     LAYOUT_NTD = 6
 };
-enum class inferPFALayoutTypeEnum {
-    LAYOUT_BSH = 0,
-    LAYOUT_BNSD = 1,
-    LAYOUT_TND = 2,
-    LAYOUT_NTD = 3
-};
+enum class inferPFALayoutTypeEnum { LAYOUT_BSH = 0, LAYOUT_BNSD = 1, LAYOUT_TND = 2, LAYOUT_NTD = 3 };
 enum class inferDTemplateType {
     Aligned16 = 16,
     Aligned32 = 32,
@@ -103,11 +89,7 @@ enum class inferS2TemplateType {
     NotAligned,
 };
 
-enum class inferImplModeEnum {
-    AA_HIGH_PRECISION = 0,
-    AA_HIGH_PERFORMANCE = 1,
-    AA_INVALID_LINE_HIGH_PRECISION = 2
-};
+enum class inferImplModeEnum { AA_HIGH_PRECISION = 0, AA_HIGH_PERFORMANCE = 1, AA_INVALID_LINE_HIGH_PRECISION = 2 };
 
 #define ImplMode_AA_HIGH_PRECISION 0
 #define ImplMode_AA_HIGH_PERFORMANCE 1
@@ -192,7 +174,6 @@ static constexpr ConfigParams ConfigValue[] = {
 // Config macro definitions for D=256
 #define Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256 4
 
-
 // PseMode
 #define PSE_MODE_PSE_OUTER_MUL_ADD_TYPE 0
 #define PSE_MODE_PSE_OUTER_ADD_MUL_TYPE 1
@@ -238,8 +219,8 @@ static constexpr ConfigParams ConfigValue[] = {
 #define false 0
 #define true 1
 
-#define OFFSET_OF_MEMBER(TYPE, MEMBER)  ((uint64_t) &((TYPE *)0)->MEMBER)
-#define SIZE_OF_MEMBER(TYPE, MEMBER)  sizeof(((TYPE *)0)->MEMBER)
+#define OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE *)0)->MEMBER)
+#define SIZE_OF_MEMBER(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
 
 // kernel stream related struct
 struct FDparamsX {
@@ -252,11 +233,7 @@ struct FDparamsX {
     uint32_t fdWorkspaceIdx;
 };
 
-enum class FiaKernelType : uint8_t {
-    NO_QUANT = 0,
-    ANTI_QUANT,
-    FULL_QUANT
-};
+enum class FiaKernelType : uint8_t { NO_QUANT = 0, ANTI_QUANT, FULL_QUANT };
 
 struct RunInfoX {
     uint32_t loop = 0;
@@ -291,7 +268,6 @@ struct RunInfoX {
     uint64_t qPaddingBeginOffset = 0;
     uint64_t kvPaddingBeginOffset = 0;
 };
-
 
 struct CommonConstInfo {
     /* 轴长度 */

@@ -114,7 +114,8 @@ public:
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernelDn()
-        : cubeBlock(constInfo, qSeqLensTool, kvSeqLensTool), vecFaBlock(constInfo, qSeqLensTool, kvSeqLensTool),
+        : cubeBlock(constInfo, qSeqLensTool, kvSeqLensTool),
+          vecFaBlock(constInfo, qSeqLensTool, kvSeqLensTool),
           vecFdBlock(constInfo, qSeqLensTool, kvSeqLensTool){};
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -456,25 +457,13 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
-    {
-        cubeBlock.IterateBmm1(runInfo);
-    }
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo) { cubeBlock.IterateBmm1(runInfo); }
 
-    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
-    {
-        cubeBlock.IterateBmm2(runInfo);
-    }
+    __aicore__ inline void ComputeMm2(RunInfoX &runInfo) { cubeBlock.IterateBmm2(runInfo); }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
-    {
-        vecFaBlock.ProcessVec1(runInfo);
-    }
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo) { vecFaBlock.ProcessVec1(runInfo); }
 
-    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
-    {
-        vecFaBlock.ProcessVec2(runInfo);
-    }
+    __aicore__ inline void ComputeVec2(RunInfoX &runInfo) { vecFaBlock.ProcessVec2(runInfo); }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])

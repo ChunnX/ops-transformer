@@ -23,7 +23,6 @@ using AscendC::LocalTensor;
 using namespace AscendC;
 using namespace MicroAPI;
 
-
 namespace fa_base_vector {
 
 template <typename T1, typename T2>
@@ -38,9 +37,9 @@ __aicore__ inline T1 Min(T1 a, T2 b)
     return (a > b) ? (b) : (a);
 }
 
-}
+} // namespace fa_base_vector
 
 static constexpr uint32_t FA_BYTE_BLOCK = 32;
 static constexpr uint32_t FA_METADATA_HEADER_OFFSET = 16U * sizeof(uint32_t);
 
-#endif  // FLASH_ATTN_COMMON_DEF_H_
+#endif // FLASH_ATTN_COMMON_DEF_H_

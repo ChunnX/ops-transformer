@@ -75,36 +75,15 @@ public:
     std::string name_;
     std::string opName_;
 
-    size_t GetDimNum() const
-    {
-        return shape_.GetDimNum();
-    }
+    size_t GetDimNum() const { return shape_.GetDimNum(); }
 
-    bool HasShapeB() const
-    {
-        return HasAxis(FaAxis::B);
-    }
-    bool HasShapeS() const
-    {
-        return HasAxis(FaAxis::S);
-    }
+    bool HasShapeB() const { return HasAxis(FaAxis::B); }
+    bool HasShapeS() const { return HasAxis(FaAxis::S); }
 
-    bool HasShapeN() const
-    {
-        return HasAxis(FaAxis::N);
-    }
-    bool HasShapeT() const
-    {
-        return HasAxis(FaAxis::T);
-    }
-    bool HasShapeD1() const
-    {
-        return HasAxis(FaAxis::D1);
-    }
-    bool HasShapeD0() const
-    {
-        return HasAxis(FaAxis::D0);
-    }
+    bool HasShapeN() const { return HasAxis(FaAxis::N); }
+    bool HasShapeT() const { return HasAxis(FaAxis::T); }
+    bool HasShapeD1() const { return HasAxis(FaAxis::D1); }
+    bool HasShapeD0() const { return HasAxis(FaAxis::D0); }
     bool HasShapeD() const
     {
         if (HasAxis(FaAxis::D)) {
@@ -116,39 +95,15 @@ public:
         return false;
     }
 
-    int64_t GetShapeB() const
-    {
-        return GetAxisNum(FaAxis::B);
-    }
-    int64_t GetShapeS() const
-    {
-        return GetAxisNum(FaAxis::S);
-    }
-    int64_t GetShapeN() const
-    {
-        return GetAxisNum(FaAxis::N);
-    }
-    int64_t GetShapeBlockSize() const
-    {
-        return GetAxisNum(FaAxis::Bs);
-    }
-    int64_t GetShapeBlockNum() const
-    {
-        return GetAxisNum(FaAxis::Bn);
-    }
+    int64_t GetShapeB() const { return GetAxisNum(FaAxis::B); }
+    int64_t GetShapeS() const { return GetAxisNum(FaAxis::S); }
+    int64_t GetShapeN() const { return GetAxisNum(FaAxis::N); }
+    int64_t GetShapeBlockSize() const { return GetAxisNum(FaAxis::Bs); }
+    int64_t GetShapeBlockNum() const { return GetAxisNum(FaAxis::Bn); }
 
-    int64_t GetShapeT() const
-    {
-        return GetAxisNum(FaAxis::T);
-    }
-    int64_t GetShapeD1() const
-    {
-        return GetAxisNum(FaAxis::D1);
-    }
-    int64_t GetShapeD0() const
-    {
-        return GetAxisNum(FaAxis::D0);
-    }
+    int64_t GetShapeT() const { return GetAxisNum(FaAxis::T); }
+    int64_t GetShapeD1() const { return GetAxisNum(FaAxis::D1); }
+    int64_t GetShapeD0() const { return GetAxisNum(FaAxis::D0); }
     int64_t GetShapeD() const
     {
         if (HasAxis(FaAxis::D)) {
@@ -160,27 +115,12 @@ public:
         return invalidDimValue_;
     }
 
-    ge::graphStatus CheckHasShapeB(const std::string &funcName) const
-    {
-        return CheckHasAxis(FaAxis::B, funcName);
-    }
-    ge::graphStatus CheckHasShapeS(const std::string &funcName) const
-    {
-        return CheckHasAxis(FaAxis::S, funcName);
-    }
-    ge::graphStatus CheckHasShapeD(const std::string &funcName) const
-    {
-        return CheckHasAxis(FaAxis::D, funcName);
-    }
-    ge::graphStatus CheckHasShapeN(const std::string &funcName) const
-    {
-        return CheckHasAxis(FaAxis::N, funcName);
-    }
+    ge::graphStatus CheckHasShapeB(const std::string &funcName) const { return CheckHasAxis(FaAxis::B, funcName); }
+    ge::graphStatus CheckHasShapeS(const std::string &funcName) const { return CheckHasAxis(FaAxis::S, funcName); }
+    ge::graphStatus CheckHasShapeD(const std::string &funcName) const { return CheckHasAxis(FaAxis::D, funcName); }
+    ge::graphStatus CheckHasShapeN(const std::string &funcName) const { return CheckHasAxis(FaAxis::N, funcName); }
 
-    ge::graphStatus CheckHasShapeT(const std::string &funcName) const
-    {
-        return CheckHasAxis(FaAxis::T, funcName);
-    }
+    ge::graphStatus CheckHasShapeT(const std::string &funcName) const { return CheckHasAxis(FaAxis::T, funcName); }
 
     ge::graphStatus CheckHasShapeBlockSize(const std::string &funcName) const
     {
