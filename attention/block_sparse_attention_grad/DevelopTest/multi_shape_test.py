@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import os
+os.environ["BSAG_DETERMINISTIC"] = "1"
 """Comprehensive multi-shape determinism and precision validation."""
 
 import torch
