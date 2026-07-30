@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 3
+KERNEL_CACHE_REVISION = 4
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -257,7 +257,7 @@ def check_param_valid(
     workspace_idx=[],
     pass_configs=pass_configs,
 )
-def tilelang_grad_kl_loss_single_kernel_v3(
+def tilelang_grad_kl_loss_single_kernel_v4(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
     launch_core_num,
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
@@ -1597,24 +1597,22 @@ def tilelang_grad_kl_loss_single_kernel_v3(
             for task_id in T.serial(task_count):
                 bz_task = task_id // S1
                 s1_task = task_id % S1
-                # 每个 task 仅读取一次真实 K 长度，仅用于保护本 task 的
-                # atomic scatter。V2 DMA 范围由编译期 k_scatter_exec 决定。
+                # 每个 task 仅读取一次真实 K 长度，同时收缩 DMA 和
+                # atomic scatter 范围。full-valid 版本中的 K 是编译期常量。
                 valid_k_size = K if full_valid else KRealSize[bz_task, s1_task]
-                task_vector_batch_count = vector_batch_count
-                if not full_valid:
-                    remaining_valid_k = valid_k_size - aiv_k_start
-                    task_vector_batch_count = T.if_then_else(
-                        remaining_valid_k > 0,
-                        T.min(
-                            vector_batch_count,
-                            (
-                                remaining_valid_k
-                                + v2_scatter_batch
-                                - 1
-                            ) // v2_scatter_batch,
-                        ),
-                        0,
-                    )
+                remaining_valid_k = valid_k_size - aiv_k_start
+                task_vector_batch_count = T.if_then_else(
+                    remaining_valid_k > 0,
+                    T.min(
+                        vector_batch_count,
+                        (
+                            remaining_valid_k
+                            + v2_scatter_batch
+                            - 1
+                        ) // v2_scatter_batch,
+                    ),
+                    0,
+                )
 
                 if task_vector_batch_count > 0:
                     T.wait_flag("mte3", "mte2", 6)
@@ -2536,7 +2534,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 f"python_sha256={_python_sha256}"
             )
 
-            func = tilelang_grad_kl_loss_single_kernel_v3(
+            func = tilelang_grad_kl_loss_single_kernel_v4(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
