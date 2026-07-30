@@ -1804,7 +1804,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.metaInfoPtr +
                                                                 (gmm2State.expertBeforeCnt + currentRow) *
                                                                     META_INFO_SIZE * sizeof(int32_t)));
-    SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID5>();
+    SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID1>();
     AscendC::DataCopy(metaInfoTensor, tripleGm, batchCount * META_INFO_SIZE);
 
     // 执行 combine 并发送
