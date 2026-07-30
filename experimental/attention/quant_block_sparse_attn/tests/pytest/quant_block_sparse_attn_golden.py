@@ -798,7 +798,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         case["layout_kv"],
     )
     combined_kv_cache.assert_combined_kv_views(kv_cache_storage, kv_cache_meta)
-    case["pa_block_stride"] = kv_cache_meta["pa_block_stride"]
     atten_mask = torch.tril(torch.ones((2048, 2048), dtype=torch.uint8)).T.contiguous()
     sparse_indices, sparse_seq_len = _make_sparse_indices(
         case, q_lengths, kv_lengths, rng
@@ -857,7 +856,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "max_seqlen_kv": max_seqlen_kv,
             "layout_q": case["layout_q"],
             "layout_kv": case["layout_kv"],
-            "pa_block_stride": kv_cache_meta["pa_block_stride"],
         },
         "input": {
             "query": query,
@@ -880,7 +878,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "softmax_scale": case["softmax_scale"],
             "sparse_q_block_size": sparse_q_block_size,
             "sparse_kv_block_size": sparse_kv_block_size,
-            "pa_block_stride": kv_cache_meta["pa_block_stride"],
             "layout_kv": case["layout_kv"],
             "layout_q": case["layout_q"],
             "layout_sparse_indices": case["layout_sparse_indices"],

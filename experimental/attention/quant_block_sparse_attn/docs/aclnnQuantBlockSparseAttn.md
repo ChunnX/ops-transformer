@@ -59,7 +59,6 @@ torch.ops.custom.npu_quant_block_sparse_attn(
     metadata: Optional[Tensor] = None,
     max_seqlen_q: int = 0,
     max_seqlen_kv: int = 0,
-    pa_block_stride: int = 0,
     layout_kv: str = "PA_BNSD",
     layout_q: str = "TND",
     layout_sparse_indices: str = "B_N_Qb_Kb",
@@ -301,15 +300,6 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>-</td>
     </tr>
     <tr>
-      <td>pa_block_stride</td>
-      <td>输入属性</td>
-      <td>PA 物理 block 外步长。</td>
-      <td>取值为 PA 物理 block 间隔步长，需大于 0。</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>layout_kv</td>
       <td>输入属性</td>
       <td>KV 数据布局。</td>
@@ -524,15 +514,10 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
     <td>string</td>
   </tr>
   <tr>
-    <td rowspan="3">Paged Attention参数组</td>
+    <td rowspan="2">Paged Attention参数组</td>
     <td>block_table</td>
     <td>INPUT(OPTIONAL)</td>
     <td>Tensor</td>
-  </tr>
-  <tr>
-    <td>pa_block_stride</td>
-    <td>ATTR</td>
-    <td>int64</td>
   </tr>
   <tr>
     <td>layout_kv</td>
@@ -712,7 +697,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
   - `layout_kv` 当前仅支持 `PA_BNSD`。
   - `block_table` 数据类型仅支持 `INT32`，数据格式仅支持 ND。当前 PA 执行路径依赖 `block_table` 做逻辑 block 到物理 block 的映射，必须传入有效 `block_table`。
   - `block_table` 的 shape 必须为 `(BatchSize, MaxBlockNumPerBatch)`，第 0 维必须等于 `BatchSize`。
-  - `pa_block_stride` 为正整数属性。当前 4D PA 输入下由 PyTorch 接入层使用 `key.stride(0)` 传给底层，表示相邻物理 PA block 的外步长。
+  - PA 物理 block 外步长由 host 侧从 `key.stride(0)` 推导，不再作为输入属性传入。
 
 - 存在性约束
 
@@ -723,8 +708,8 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
   - 当前仅支持 4D PA 输入，不支持 1D 组合 KV 存储。
   - 4D PA 输入下，每个物理 PA block 内的 `Key block`、`Value block`、`k_descale block` 在底层按连续分段组织，接口分别传入 `key`、`value`、`k_descale` 对应的 4D/4D/4D 视图。
-  - `key` stride 必须满足 `[paBlockStride, sparse_kv_block_size * QueryHeadDim, QueryHeadDim, 1]`。
-  - `value` stride 必须满足 `[paBlockStride, sparse_kv_block_size * ValueHeadDim, ValueHeadDim, 1]`。
+  - `key` stride 必须满足 `[key.stride(0), sparse_kv_block_size * QueryHeadDim, QueryHeadDim, 1]`。
+  - `value` stride 必须满足 `[key.stride(0), sparse_kv_block_size * ValueHeadDim, ValueHeadDim, 1]`。
   - `value.stride(0)` 必须等于 `key.stride(0)`，表示 Value 视图与 Key 视图使用相同的物理 PA block 外步长。
   - `k_descale` shape 必须为 `[block_num, N2, sparse_kv_block_size, 1]`；`k_descale.stride(0) * 4` 必须等于 `key.stride(0)`，表示 `k_descale` 以 FLOAT32 字节数对齐同一物理 PA block 外步长；`k_descale` 后三维 stride 必须为 `[sparse_kv_block_size, 1, 1]`。
   - `MaxBlockNumPerBatch` 应大于等于 `KeyValueBlockNumMax`；`block_table` 的有效值必须在 `[0, PageBlockNum - 1]` 范围内。
