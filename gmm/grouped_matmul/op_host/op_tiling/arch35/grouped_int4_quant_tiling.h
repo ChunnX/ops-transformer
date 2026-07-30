@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file grouped_a4w4_quant_tiling.h
+ * \file grouped_int4_quant_tiling.h
  * \brief A5 A4W4 (INT4xINT4) quant tiling.
  *        Inherits GroupedQmmBasicApiTiling, reusing inputParams_/basicTiling_/mList_/kList_/nList_/aicoreParams_.
  *        Plan: baseM=128, baseN=256, ubCalSize=4096. Tiling + dispatch only (no kernel prologue/epilogue).
@@ -34,10 +34,10 @@ constexpr uint32_t A4W4_EPILOGUE_UB_COEFF = 24U;    // epilogue UB: 4(vecIn half
 constexpr uint32_t PROLOGUE_MIN_BYTES_950 = 48UL * 1024UL;
 constexpr uint32_t A4W4_MMOUT_PIPELINE = 4U;
 
-class GroupedA4W4QuantTiling : public GroupedQmmBasicApiTiling {
+class GroupedA4W4IntQuantTiling : public GroupedQmmBasicApiTiling {
 public:
-    explicit GroupedA4W4QuantTiling(gert::TilingContext *context);
-    ~GroupedA4W4QuantTiling() override = default;
+    explicit GroupedA4W4IntQuantTiling(gert::TilingContext *context);
+    ~GroupedA4W4IntQuantTiling() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -103,7 +103,7 @@ private:
     };
     A4W4BasicTiling a4w4Tiling_;
     // Shadows base's private tilingData_ (GMMQuantBasicApiTilingData); own type
-    GroupedMatmulTilingData::GMMA4W4QuantTilingData tilingData_;
+    GroupedMatmulTilingData::GMMA4W4IntQuantTilingData tilingData_;
     uint64_t int8WeightWs_ = 0;
     uint64_t int8XWs_ = 0;      // ★ x int4->int8 预转换 workspace (m·k·1B, m=totalM single x)
     uint64_t mmOutWs_ = 0;
