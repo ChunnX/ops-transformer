@@ -119,18 +119,16 @@ bool FiaTilingNonQuantMlaArch35::IsCapable()
 
 void FiaTilingNonQuantMlaArch35::CalcMaxWorkspaceSize()
 {
-    constexpr int32_t mSize = 64;
-    constexpr int32_t dVSize = 512;
+    constexpr uint64_t mSize = 64;
+    constexpr uint64_t dVSize = DSIZE_512;
+    constexpr uint64_t lseSize = 8;
 
-    size_t sysWorkspaceSize = platformInfo_.defaultSysWorkspaceSize;
-    workspaceSize_ = sysWorkspaceSize;
-    workspaceSize_ += platformInfo_.coreNum * PRE_LOAD_NUM_MLA_ARCH35 * (mSize * dVSize) * sizeof(float);
+    workspaceSize_ = platformInfo_.defaultSysWorkspaceSize;
 
-    // 2 bmm, db, ensure alignment of each structure 64B, dcci cacheline needs
-    workspaceSize_ += static_cast<uint64_t>(platformInfo_.coreNum) * 2 * 2 * 64;
-
-    uint32_t faTmpAttenGmSize = platformInfo_.coreNum * 2 * mSize * dVSize; // 每个核最多有2次写到workspace
-    uint32_t faTmpResLseGmSize = platformInfo_.coreNum * 2 * mSize * 8;
+    const uint64_t faTmpAttenGmSize =
+        static_cast<uint64_t>(platformInfo_.aicNum) * PRE_LOAD_NUM_MLA_ARCH35 * mSize * dVSize;
+    const uint64_t faTmpResLseGmSize =
+        static_cast<uint64_t>(platformInfo_.aicNum) * PRE_LOAD_NUM_MLA_ARCH35 * mSize * lseSize;
     workspaceSize_ += (faTmpAttenGmSize + 2 * faTmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
 }
 
@@ -263,7 +261,8 @@ void FiaTilingNonQuantMlaArch35::AdjustSinnerAndSouter()
     OP_LOGI(fiaInfo_->opName, "Souter:%u SInner:%u", sOuterFactor_, sInnerFactor_);
 }
 
-void FiaTilingNonQuantMlaArch35::CreateSplitInput(split_core_v2::BaseInfo &baseInfo, split_core_v2::SplitParam &splitParam)
+void FiaTilingNonQuantMlaArch35::CreateSplitInput(split_core_v2::BaseInfo &baseInfo,
+                                                  split_core_v2::SplitParam &splitParam)
 {
     baseInfo.bSize = fiaInfo_->bSize;
     baseInfo.n2Size = fiaInfo_->n2Size;
@@ -415,8 +414,8 @@ bool FiaTilingNonQuantMlaArch35::IsExistRowInvalid(const split_core_v2::BaseInfo
     return false;
 }
 
-void FiaTilingNonQuantMlaArch35::GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
-                                                 int64_t &safePreToken, int64_t &safeNextToken)
+void FiaTilingNonQuantMlaArch35::GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ,
+                                                 int64_t actSeqLensKv, int64_t &safePreToken, int64_t &safeNextToken)
 {
     if (mode == split_core_v2::SparseMode::DEFAULT_MASK) {
         safePreToken = std::max(-actSeqLensKv, safePreToken);
@@ -522,21 +521,21 @@ void FiaTilingNonQuantMlaArch35::CalcNumBlocks(uint32_t usedAicNum)
 
 void FiaTilingNonQuantMlaArch35::CalcWorkspaceSize()
 {
-    constexpr uint32_t dSize = DSIZE_512;
-    uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
+    // Keep the workspace slot stride consistent with the MLA kernel's mBaseSize.
+    constexpr uint64_t mSize = 64;
+    constexpr uint64_t dSize = DSIZE_512;
+    constexpr uint64_t lseSize = 8;
 
     workspaceSize_ = platformInfo_.defaultSysWorkspaceSize;
 
-    int64_t bmm2Bytes = mSize * dSize * sizeof(float);
-    int64_t vec2Bytes = mSize * dSize * sizeof(float);
-    workspaceSize_ += (bmm2Bytes + vec2Bytes) * PRE_LOAD_NUM_MLA_ARCH35 * numBlocks_;
-
     if (flashDecodeFlag_) {
-        uint32_t faTmpAttenGmSize = numBlocks_ * 2 * mSize * dSize; // 每个核最多有2次写到workspace
-        uint32_t faTmpResLseGmSize = numBlocks_ * 2 * mSize * 8;
+        const uint64_t faTmpAttenGmSize =
+            static_cast<uint64_t>(numBlocks_) * PRE_LOAD_NUM_MLA_ARCH35 * mSize * dSize; // 每个核最多有2次写到workspace
+        const uint64_t faTmpResLseGmSize =
+            static_cast<uint64_t>(numBlocks_) * PRE_LOAD_NUM_MLA_ARCH35 * mSize * lseSize;
         workspaceSize_ += (faTmpAttenGmSize + 2 * faTmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
-        tilingData_.baseTiling.fiaWorkspaceParams.accumOutSize = faTmpAttenGmSize;
-        tilingData_.baseTiling.fiaWorkspaceParams.logSumExpSize = faTmpResLseGmSize;
+        tilingData_.baseTiling.fiaWorkspaceParams.accumOutSize = static_cast<uint32_t>(faTmpAttenGmSize);
+        tilingData_.baseTiling.fiaWorkspaceParams.logSumExpSize = static_cast<uint32_t>(faTmpResLseGmSize);
     }
 
     OP_LOGI(fiaInfo_->opName, "Workspaces: %lu", workspaceSize_);
