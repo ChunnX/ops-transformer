@@ -29,6 +29,7 @@ namespace NpuArch::Gemm::Block {
 template <
     bool PAGED_CACHE_FLAG_,
     bool ENABLE_UNIT_FLAG_,
+    bool BNBD_FLAG_,
     class L1TileShape_,
     class L0TileShape_,
     class AType_,
@@ -38,7 +39,7 @@ template <
     class TileCopy_,
     class TileMmad_>
 struct BlockMmad<
-    MmadAtlasA2FAIPVDecode<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>,
+    MmadAtlasA2FAIPVDecode<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BNBD_FLAG_>,
     L1TileShape_,
     L0TileShape_,
     AType_,
@@ -49,7 +50,8 @@ struct BlockMmad<
     TileMmad_> {
 public:
     // Type Aliases
-    using DispatchPolicy = MmadAtlasA2FAIPVDecode<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>;
+    using DispatchPolicy = MmadAtlasA2FAIPVDecode<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BNBD_FLAG_>;
+    static constexpr bool BNBD_FLAG = DispatchPolicy::BNBD_FLAG;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using L0TileShape = L0TileShape_;
     using L1TileShape = L1TileShape_;
