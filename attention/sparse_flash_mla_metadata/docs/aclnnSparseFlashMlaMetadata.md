@@ -318,7 +318,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>支持[1, 128]；仅传入oriKv时不参与压缩KV计算，CSA场景传4，HCA场景传128，建议值为0。</td>
+      <td>支持[1, 128]，仅传入oriKv时不参与压缩KV计算，CSA场景传4，HCA场景传128，建议值为0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

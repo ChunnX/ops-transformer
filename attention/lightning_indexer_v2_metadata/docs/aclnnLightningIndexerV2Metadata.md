@@ -137,7 +137,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的head个数。</td>
-      <td>当前支持[1, 64]。</td>
+      <td>当前支持[1, 64]</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

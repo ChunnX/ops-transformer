@@ -188,7 +188,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的head个数。</td>
-      <td>当前支持[1, 128]。</td>
+      <td>当前支持[1, 128]</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -278,7 +278,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>表示对cmp_kv的压缩率。</td>
-      <td><ul><li>当前支持[1, 128]。</li><li>建议值1，表示无压缩。</li></ul></td>
+      <td><ul><li>当前支持[1, 128]</li><li>建议值1，表示无压缩。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

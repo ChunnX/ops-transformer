@@ -39,7 +39,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示`q`的头数，支持[1, 128]。</td>
+      <td>表示`q`的头数，支持[1, 128]</td>
       <td>INT</td>
       <td>-</td>
     </tr>
