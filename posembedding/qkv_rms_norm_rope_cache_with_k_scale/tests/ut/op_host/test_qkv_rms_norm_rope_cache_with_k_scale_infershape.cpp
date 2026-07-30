@@ -134,20 +134,6 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersOutputAndCacheShapes)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleInferShape, AllowsMissingQScaleOutput)
-{
-    std::vector<int64_t> headNums = {16, 2, 2};
-    auto outputs = BuildOutputs();
-    outputs.erase(outputs.begin() + 1);
-    const std::vector<uint32_t> inputInstances = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0};
-    const std::vector<uint32_t> outputInstances = {1, 0, 1, 1, 1};
-    gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), outputs, BuildAttrs(headNums),
-                                     inputInstances, outputInstances);
-
-    std::vector<std::vector<int64_t>> expected = {{16, 17, 128}};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
-}
-
 TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersTndOutputAndCacheShapes)
 {
     std::vector<int64_t> headNums = {16, 2, 2};

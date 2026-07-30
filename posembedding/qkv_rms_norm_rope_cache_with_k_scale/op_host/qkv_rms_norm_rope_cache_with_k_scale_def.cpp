@@ -64,7 +64,7 @@ public:
             .UnknownShapeFormat(ndFormats);
 
         this->Output("q_out").ParamType(REQUIRED).DataType(qOutTypes).Format(ndFormats).UnknownShapeFormat(ndFormats);
-        this->Output("q_scale").ParamType(OPTIONAL).DataType(fp32Types).Format(ndFormats).UnknownShapeFormat(ndFormats);
+        this->Output("q_scale").ParamType(REQUIRED).DataType(fp32Types).Format(ndFormats).UnknownShapeFormat(ndFormats);
         this->Output("k_cache")
             .ParamType(REQUIRED)
             .DataType(kCacheTypes)

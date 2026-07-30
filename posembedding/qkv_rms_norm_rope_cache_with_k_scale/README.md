@@ -143,7 +143,7 @@ RoPE路径提供量化Q和Q scale；M-RoPE路径提供BF16 Q，公开接口不�
 | v_scale | 可选输入 | V分支量化缩放因子，shape为`[Nv]`。 | FLOAT | ND |
 | mrope_position | 可选输入 | M-RoPE场景token-major位置索引，shape为`[T,3]`，三列依次为T/H/W；RoPE场景不传。 | INT32 | ND |
 | q_out | 输出 | Q输出，数据类型由位置编码路径和Q输出配置决定，T/N轴排列由`layout_q_out`决定。 | FLOAT8_E4M3FN / BFLOAT16 | ND |
-| q_scale | 可选输出 | Q动态量化scale输出；不执行Q动态量化的路径不产生该输出。 | FLOAT | ND |
+| q_scale | 输出 | Q动态量化scale。RoPE场景返回FP32 scale；M-RoPE场景在ACLNN/Torch接口中分别为`nullptr`/`None`。 | FLOAT | ND |
 | head_nums | 属性 | Q/K/V头数，按`[Nq, Nk, Nv]`顺序传入。 | INT64数组 | - |
 | layout_qkv | 可选属性 | 控制`qkv`的N/T轴布局，默认值为`"TND"`。 | STRING | - |
 | layout_q_out | 可选属性 | 控制`q_out`和`q_scale`的N/T轴布局，默认值为`"NTD"`。 | STRING | - |

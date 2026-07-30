@@ -43,7 +43,7 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
             "Tensor? rotation=None, Tensor? v_scale=None, "
             'str? layout_qkv="TND", str? layout_q_out="NTD", '
             "float epsilon=0.000001, Tensor? mrope_position=None, int[]? mrope_section=None, "
-            'str q_quant_mode="PerTokenPerHead", ScalarType? q_out_dtype=None) -> (Tensor, Tensor?)',
+            'str q_quant_mode="PerTokenPerHead", ScalarType? q_out_dtype=None) -> (Tensor, Tensor)',
             "qkv_rms_norm_rope_cache_with_k_scale("
             "Tensor qkv, Tensor q_gamma, Tensor k_gamma, Tensor cos_sin, Tensor slot_mapping, "
             "Tensor k_cache, Tensor v_cache, Tensor k_scale_cache, "
@@ -53,7 +53,7 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
             'str? layout_qkv="TND", str? layout_q_out="NTD", '
             "float epsilon=0.000001, Tensor? mrope_position=None, int[]? mrope_section=None, "
             'str q_quant_mode="PerTokenPerHead", ScalarType? q_out_dtype=None) -> '
-            "(Tensor, Tensor?, Tensor, Tensor, Tensor)",
+            "(Tensor, Tensor, Tensor, Tensor, Tensor)",
         ]
 
     def register_meta(self):
@@ -257,7 +257,7 @@ def qkv_rms_norm_rope_cache_with_k_scale_(
     mrope_section: Optional[List[int]] = None,
     q_quant_mode: str = Q_QUANT_PER_TOKEN_PER_HEAD,
     q_out_dtype: Optional[torch.dtype] = DEFAULT_Q_OUT_DTYPE,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Run Q/K/V RMSNorm, RoPE, scene-specific quantization, and in-place KV cache update.
 
@@ -314,7 +314,7 @@ def qkv_rms_norm_rope_cache_with_k_scale(
     mrope_section: Optional[List[int]] = None,
     q_quant_mode: str = Q_QUANT_PER_TOKEN_PER_HEAD,
     q_out_dtype: Optional[torch.dtype] = DEFAULT_Q_OUT_DTYPE,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Functional variant returning cloned cache outputs instead of mutating caller-visible caches.
 

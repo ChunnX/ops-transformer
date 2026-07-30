@@ -28,8 +28,8 @@
   本文档包含`qkv_rms_norm_rope_cache_with_k_scale_`和`qkv_rms_norm_rope_cache_with_k_scale`两个torch_extension接口，均封装`aclnnQkvRmsNormRopeCacheWithKScale`，用于大语言模型推理场景下的Q/K/V预处理与PagedAttention KV Cache更新。接口支持以下两种完整场景：
   - RoPE场景：使用`query_start_loc`和`seq_lens`生成普通RoPE位置，对Q/K执行RMSNorm、RoPE和共享`rotation`矩阵乘，并将Q/K动态量化为FP8 E4M3FN；返回FP8 `q_out`和FP32 `q_scale`，K写入FP8 Cache。
   - M-RoPE场景：使用`mrope_position`读取T/H/W三路位置，并由`mrope_section`分别交织cos和sin；Q不量化，返回BF16 `q_out`且`q_scale`为`None`，K量化为INT8并写入INT8 Cache。
-  - `qkv_rms_norm_rope_cache_with_k_scale_`：原地更新调用方传入的`k_cache`、`v_cache`和`k_scale_cache`，返回`q_out`和可选的`q_scale`。
-  - `qkv_rms_norm_rope_cache_with_k_scale`：内部先拷贝三个cache，再对副本执行更新，返回`q_out`、可选的`q_scale`和更新后的三个cache；调用方传入的cache保持不变。
+  - `qkv_rms_norm_rope_cache_with_k_scale_`：原地更新调用方传入的`k_cache`、`v_cache`和`k_scale_cache`，返回`q_out`和`q_scale`。
+  - `qkv_rms_norm_rope_cache_with_k_scale`：内部先拷贝三个cache，再对副本执行更新，返回`q_out`、`q_scale`和更新后的三个cache；调用方传入的cache保持不变。
 
 - **计算公式**：
 
@@ -181,7 +181,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_(
     mrope_section=None,
     q_quant_mode="PerTokenPerHead",
     q_out_dtype=torch.float8_e4m3fn,
-) -> (Tensor, Optional[Tensor])
+) -> (Tensor, Tensor)
 ```
 
 ```python
@@ -207,7 +207,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
     mrope_section=None,
     q_quant_mode="PerTokenPerHead",
     q_out_dtype=torch.float8_e4m3fn,
-) -> (Tensor, Optional[Tensor], Tensor, Tensor, Tensor)
+) -> (Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
 
 `query_start_loc`和`seq_lens`是torch_extension对外接口的必选Tensor位置参数，调用时不可省略且不设置Python默认值。RoPE调用表达式及既有参数顺序保持不变；M-RoPE调用需要在这两个固定位置显式传入`None`，底层按M-RoPE场景处理。这里的“必选”表示torch_extension调用位置必须提供，底层C++ bridge、ACLNN、OpDef和tiling仍按可选输入处理。新增参数位于keyword-only参数尾部。
@@ -246,14 +246,14 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |---|---|---|---|---|---|
 | q_out | Tensor | 必选 | Q分支输出。RoPE场景为FP8 E4M3FN；M-RoPE场景为BF16。`layout_q_out="TND"`时shape为`[T,Nq,D]`，`layout_q_out="NTD"`时shape为`[Nq,T,D]`。 | torch.float8_e4m3fn或torch.bfloat16 | 3维 |
-| q_scale | Optional[Tensor] | 可选（接口级） | RoPE场景为每个token/head对应的FP32动态量化scale；M-RoPE场景固定返回`None`，不创建空Tensor或占位Tensor。 | torch.float32或None | RoPE场景为2维；M-RoPE场景为None |
+| q_scale | Tensor | 必选 | RoPE场景为每个token/head对应的FP32动态量化scale；M-RoPE场景返回`None`。 | torch.float32或None | RoPE场景为2维；M-RoPE场景为None |
 
 ### qkv_rms_norm_rope_cache_with_k_scale
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |---|---|---|---|---|---|
 | q_out | Tensor | 必选 | Q分支输出，shape和dtype规则与原地接口一致。 | torch.float8_e4m3fn或torch.bfloat16 | 3维 |
-| q_scale | Optional[Tensor] | 可选（接口级） | RoPE场景返回FP32 scale；M-RoPE场景在固定的第2个返回位置返回`None`，后续cache返回位置不前移。 | torch.float32或None | RoPE场景为2维；M-RoPE场景为None |
+| q_scale | Tensor | 必选 | RoPE场景返回FP32 scale；M-RoPE场景返回`None`。 | torch.float32或None | RoPE场景为2维；M-RoPE场景为None |
 | k_cache_out | Tensor | 必选 | 更新后的K Cache，shape和dtype与输入`k_cache`一致。 | torch.float8_e4m3fn或torch.int8 | `[BlockNum,Nk,BlockSize,D]` |
 | v_cache_out | Tensor | 必选 | 更新后的V Cache，shape和dtype与输入`v_cache`一致。 | torch.float8_e4m3fn | `[BlockNum,Nv,BlockSize,D]` |
 | k_scale_cache_out | Tensor | 必选 | 更新后的K动态量化scale cache，shape和dtype与输入`k_scale_cache`一致。 | torch.float32 | `[BlockNum,Nk,BlockSize,1]` |
