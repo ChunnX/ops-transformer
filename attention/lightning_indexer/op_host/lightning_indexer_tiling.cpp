@@ -74,21 +74,21 @@ static std::string LIDataTypeToSerialString(ge::DataType type)
 ge::graphStatus LIInfoParser::CheckTensorShapes() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "Shape of tensor query is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "The shape of query is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "Shape of tensor key is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "The shape of key is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weights.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "weights", "Shape of tensor weights is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "weights", "The shape of weights is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices",
-                    "Shape of tensor sparse_indices is nullptr"),
+                    "The shape of sparse_indices is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.valuesOut.shape == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_values",
-                    "Shape of tensor sparse_values is nullptr"),
+                    "The shape of sparse_values is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -97,21 +97,21 @@ ge::graphStatus LIInfoParser::CheckTensorShapes() const
 ge::graphStatus LIInfoParser::CheckTensorDescriptions() const
 {
     OP_CHECK_IF(opParamInfo_.query.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "Desc of tensor query is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "The desc of query is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "Desc of tensor key is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "The desc of key is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weights.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "weights", "Desc of tensor weights is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "weights", "The desc of weights is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attention_out",
-                    "Desc of tensor sparse_indices is nullptr"),
+                    "The desc of sparse_indices is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.valuesOut.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_values",
-                    "Desc of tensor sparse_values is nullptr"),
+                    "The desc of sparse_values is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -136,19 +136,19 @@ ge::graphStatus LIInfoParser::CheckRequiredInOutExistence() const
 ge::graphStatus LIInfoParser::CheckRequiredAttrExistence() const
 {
     OP_CHECK_IF(opParamInfo_.layOut == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_query", "Attr layout_query is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_query", "Layout_query is nullptr"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.layOutKey == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_key", "Attr layout_key is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_key", "Layout_key is nullptr"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.sparseCount == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_count", "Attr sparse_count is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_count", "Sparse_count is nullptr"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.sparseMode == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_mode", "Attr sparse_mode is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_mode", "Sparse_mode is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -757,7 +757,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQbsnd()
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         opName_, "query and key",
                         Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-                            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()),
+                            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()),
                         "BSND case query, key dim 0 are " + std::to_string(bSize_) + ", " +
                             std::to_string(opParamInfo_.key.shape->GetStorageShape().GetDim(0)) +
                             " respectively, they must be same"),
@@ -904,7 +904,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "sparse_indices", Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
-                    "The last dim of sparse_indices and attr sparse_count are " +
+                    "The last dim of sparse_indices and sparse_count are " +
                         std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1)) + ", " +
                         std::to_string(*opParamInfo_.sparseCount) + " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
@@ -912,7 +912,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
                  (*opParamInfo_.returnValue)),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "sparse_values", Ops::Base::ToString(opParamInfo_.valuesOut.shape->GetStorageShape()),
-                    "The last dim of sparse_values and attr sparse_count are " +
+                    "The last dim of sparse_values and sparse_count are " +
                         std::to_string(opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim + 1)) + ", " +
                         std::to_string(*opParamInfo_.sparseCount) + " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
