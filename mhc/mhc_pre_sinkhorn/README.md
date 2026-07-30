@@ -161,36 +161,36 @@
       </tr>
       <tr>
         <td>hPre</td>
-        <td>可选输出</td>
-        <td>需要反向时输出，做完sigmoid计算之后的hPre矩阵。</td>
+        <td>输出</td>
+        <td>需要反向时输出，做完sigmoid计算之后的hPre矩阵。needBackward为false时，输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>hcBeforeNorm</td>
-        <td>可选输出</td>
-        <td>需要反向时输出，x与phi矩阵乘的结果。</td>
+        <td>输出</td>
+        <td>需要反向时输出，x与phi矩阵乘的结果。needBackward为false时，输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>invRms</td>
-        <td>可选输出</td>
-        <td>需要反向时输出，RmsNorm计算得到的1/r。</td>
+        <td>输出</td>
+        <td>需要反向时输出，RmsNorm计算得到的1/r。needBackward为false时，输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>sumOut</td>
-        <td>可选输出</td>
-        <td>需要反向时输出，每一次迭代的colSum/rowSum结果。</td>
+        <td>输出</td>
+        <td>需要反向时输出，每一次迭代的colSum/rowSum结果。needBackward为false时，输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>normOut</td>
-        <td>可选输出</td>
-        <td>需要反向时输出，每一次colSum/rowSum迭代后的comb结果。</td>
+        <td>输出</td>
+        <td>需要反向时输出，每一次colSum/rowSum迭代后的comb结果。needBackward为false时，输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
