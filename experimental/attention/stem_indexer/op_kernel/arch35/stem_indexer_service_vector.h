@@ -230,9 +230,9 @@ __aicore__ inline void SIVector<SIT>::InitSparseIndicesToNegOne(uint32_t gS1Idx,
     int64_t curGS1ProcNum = actMBaseSize;
     // 当前AIV核处理的GS1起始索引（双核分工）
     uint32_t aivParity = static_cast<uint32_t>(blockId_) & 1U;
-    int64_t curAivGS1Idx = curGS1Idx + aivParity * ((curGS1ProcNum + 1) >> 1U);
+    int64_t curAivGS1Idx = curGS1Idx + aivParity * ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U);
     // 当前AIV核需要处理的GS1行数量
-    int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((curGS1ProcNum + 1) >> 1U) : (curGS1ProcNum >> 1U);
+    int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U) : (static_cast<uint64_t>(curGS1ProcNum) >> 1U);
     if (curAivGS1ProcNum == 0) {
         return;
     }
@@ -474,9 +474,9 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
     int64_t curGS1ProcNum = info.actMBaseSize;
     // 当前AIV核处理的GS1起始索引（双核分工）
     uint32_t aivParity = static_cast<uint32_t>(blockId_) & 1U;
-    int64_t curAivGS1Idx = curGS1Idx + aivParity * ((curGS1ProcNum + 1) >> 1U);
+    int64_t curAivGS1Idx = curGS1Idx + aivParity * ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U);
     // 当前AIV核需要处理的GS1行数量
-    int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((curGS1ProcNum + 1) >> 1U) : (curGS1ProcNum >> 1U);
+    int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U) : (static_cast<uint64_t>(curGS1ProcNum) >> 1U);
 
     // S2 基本块信息
     uint32_t s2BlockStart = info.s2Idx * s2BaseSize_;
@@ -601,9 +601,9 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         int64_t curGS1ProcNum = actMBaseSize;
         // 当前AIV核处理的gS1起始索引（双核分工）
         uint32_t aivParity = static_cast<uint32_t>(blockId_) & 1U;
-        int64_t curAivGS1Idx = curGS1Idx + aivParity * ((curGS1ProcNum + 1) >> 1U);
+        int64_t curAivGS1Idx = curGS1Idx + aivParity * ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U);
         // 当前AIV核需要处理的gS1行数量
-        int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((curGS1ProcNum + 1) >> 1U) : (curGS1ProcNum >> 1U);
+        int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U) : (static_cast<uint64_t>(curGS1ProcNum) >> 1U);
 
         uint32_t curS1RealS2Len = actS2Size;
         uint32_t curAivGSize = CeilDiv(curAivGS1ProcNum, actS1Size);
