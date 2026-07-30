@@ -306,7 +306,6 @@ private:
     LocalTensor<uint8_t> sendMaskTensor_;      // SendMaskCal 源卡生成并推送 [mask|count] 的动态 ring buffer
     LocalTensor<int32_t> sendGatherOutTensor_; // SendMaskCal GatherMask 计 count 的废弃输出 scratch
     LocalTensor<int32_t> sendCntAccTensor_;    // SendMaskCal per-expert 跨 batch count 累加器
-    LocalTensor<int32_t> expertTokenNumsOutTensor_;
     LocalTensor<int32_t> combineMetaInfoTensor_;
     LocalTensor<bfloat16_t> combineRowBufferTensor_;
     LocalTensor<float> combineQuantTempTensor_;
@@ -436,9 +435,6 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffInit()
         static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     // sendCntTensor_: 每 src rank 一个 burst(32B), 共 worldsize*32B（stride 只读 count 跳过 mask 区）
     uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
-    uint32_t expertTokenNumsOutTensorSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-
     // Dispatch 的 UB 布局与 AIV 分核无关；对应 host CalcDispatchBufferConfig 的唯一配置。
     bufferConfig = params_.tilingData->dispatchBufferConfig;
     recvRouteItemsPerBatch_ = bufferConfig.routeItemsPerBatch;
@@ -480,7 +476,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffInit()
     uint32_t topkIndexTensorSize = validTopkIndexTensorSize;
     topkIndexTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIndexTensorSize / sizeof(int32_t));
-    // 路由批次 Tensor 后依次放置 copyTmp 环形缓冲区、专家 token count 输出和 32B metaInfo 环形缓冲区。
+    // 路由批次 Tensor 后依次放置 copyTmp 环形缓冲区和 32B metaInfo 环形缓冲区。
     // Tensor 用途：MetaInfoCalAndDispatch 中的动态 dispatch 环形缓冲区，配合
     // EVENT_ID0..EVENT_ID(bufferCount-1) 形成软流水；
     // 只记基址：槽视图在热路径由 DispatchCopyTmpTensor(base + bufferIdx*mxQuantTokenScaleAlignBytes_) 现场构造，
@@ -490,14 +486,9 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffInit()
     // 且已向上对齐到 32B，故连续 ring 中每个 copyTmp 槽位的起始地址都保持 32B 对齐。
     copyTmpBaseAddr_ = topkIndexTensorAddr + topkIndexTensorSize;
     uint32_t copyTmpTotalSize = static_cast<uint32_t>(bufferConfig.bufferCount) * mxQuantTokenScaleAlignBytes_;
-    // Tensor 用途：在 ExpertTokenNumCopyOut 中保存本卡各专家收到的 token 数；
-    // Tensor 大小：expertPerRank_ * sizeof(int32_t)，向上对齐至 32 字节；
-    uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr_ + copyTmpTotalSize;
-    expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
-                                                     expertTokenNumsOutTensorSize / sizeof(int32_t));
     // Tensor 用途：CopyGMToGMPerToken 中的 metaInfo 环形缓冲区，逐 token 即时写入 GM；
     // Tensor 大小：bufferCount * 32B，与 copyTmp 槽位和事件编号一一对应。
-    uint32_t metaInfoTensorAddr = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
+    uint32_t metaInfoTensorAddr = copyTmpBaseAddr_ + copyTmpTotalSize;
     uint32_t metaInfoReserveSize =
         static_cast<uint32_t>(bufferConfig.bufferCount) * static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
     metaInfoTensor_ =
@@ -713,15 +704,16 @@ template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertTokenNumCopyOut()
 {
     int32_t lastRankIdx = static_cast<int32_t>(worldSize_ - 1);
-    expertTokenNumsOutTensor_.SetValue(0, cumsumInfoTensor_.GetValue(lastRankIdx));
-    for (int32_t expertIdx = 1; expertIdx < static_cast<int32_t>(moeExpertPerRank_); expertIdx++) {
-        int32_t cur = cumsumInfoTensor_.GetValue(expertIdx * static_cast<int32_t>(worldSize_) + lastRankIdx);
-        int32_t prev = cumsumInfoTensor_.GetValue((expertIdx - 1) * static_cast<int32_t>(worldSize_) + lastRankIdx);
-        expertTokenNumsOutTensor_.SetValue(expertIdx, cur - prev);
+    int32_t previousCumsum = 0;
+    for (int32_t expertIdx = 0; expertIdx < static_cast<int32_t>(moeExpertPerRank_); expertIdx++) {
+        int32_t currentCumsum =
+            cumsumInfoTensor_.GetValue(expertIdx * static_cast<int32_t>(worldSize_) + lastRankIdx);
+        cumsumInfoTensor_.SetValue(expertIdx, currentCumsum - previousCumsum);
+        previousCumsum = currentCumsum;
     }
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopyExtParams copyParams{1U, static_cast<uint32_t>(moeExpertPerRank_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPad(expertTokenNumsOut_, expertTokenNumsOutTensor_, copyParams);
+    DataCopyPad(expertTokenNumsOut_, cumsumInfoTensor_, copyParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
 }
@@ -2347,7 +2339,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
     vecSetSyncCom = 0;
     gmm1PingPongIdx_ = 0;
     if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ == 1) {
+        // 所有 AIV1 都保存了相同的完整 cumsum，仅由首个物理核的 AIV1 输出，避免重复计算和并发回写。
+        if (blockIdx_ == 0U && subBlockIdx_ == 1U) {
             ExpertTokenNumCopyOut();
         }
     }
