@@ -696,10 +696,6 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is only supported on chip 950.");
         return ge::GRAPH_FAILED;
     }
-    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
-        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is not supported with float8_e4m3fn dtype.");
-        return ge::GRAPH_FAILED;
-    }
 
     auto effRowsDtype = attenMaskTensor->GetDataType();
     if (effRowsDtype != ge::DT_INT32) {
