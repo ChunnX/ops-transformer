@@ -75,7 +75,17 @@ for params in ENABLED_PARAMS:
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
         "isSink": params.get("isSink", [True]),
+        "K1": params.get("K1", [None]),
+        "ori_kv_topk_mode": params.get("ori_kv_topk_mode", ["fullK"]),
+        "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", ["fullK"]),
+        "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", ["full"]),
+        "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
+        "ori_topk_length": params.get("ori_topk_length", [None]),
+        "cmp_topk_length": params.get("cmp_topk_length", [None]),
         "return_softmax_lse": params.get("return_softmax_lse", [False]),
+        "q_datarange": params.get("q_datarange", [[-5, 5]]),
+        "ori_kv_datarange": params.get("ori_kv_datarange", [[-5, 5]]),
+        "cmp_kv_datarange": params.get("cmp_kv_datarange", [[-5, 5]]),
     }
 
     param_names = list(param_values.keys())

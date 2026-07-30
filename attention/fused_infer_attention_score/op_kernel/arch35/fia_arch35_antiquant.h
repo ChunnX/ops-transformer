@@ -13,6 +13,7 @@
  * \brief arch35 FIA 反量化路由(quantMode < 15: 0/2/6)
  */
 
+<<<<<<<< HEAD:attention/fused_infer_attention_score/op_kernel/arch35/fia_arch35_antiquant.h
 #ifndef FIA_ARCH35_ANTIQUANT_H_
 #define FIA_ARCH35_ANTIQUANT_H_
 
@@ -27,6 +28,25 @@
 #else
 #include "../../../common/arch35/flash_attention_score_antiquant_kernel.h"
 #endif
+========
+namespace optiling {};
+using namespace AscendC;
+#include "lib/matmul_intf.h"
+#include "lib/matrix/matmul/tiling.h"
+#if __has_include("../../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_pub.h")
+#include "../../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_pub.h"
+#else
+#include "../../../incre_flash_attention/arch35/incre_flash_attention_pub.h"
+#endif
+#if __has_include("../../../../common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h")
+#include "../../../../common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h"
+#include "../../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#else
+#include "../../../common/arch35/flash_attention_score_antiquant_kernel.h"
+#include "../../../prompt_flash_attention/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#endif
+#include "../prompt/prompt_flash_attention_entry_regbase.h"
+>>>>>>>> origin/master:attention/fused_infer_attention_score/op_kernel/arch35/incre/incre_flash_attention_entry_regbase.h
 
 #define REGBASE_COPY_TILING_DATA_ASCEND950_ANTIQUANT_BASEAPI(tiling)                                                         \
     GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);                                 \
@@ -50,7 +70,11 @@
     op.Process();                                                                                                                     \
   } while(0)
 
+<<<<<<<< HEAD:attention/fused_infer_attention_score/op_kernel/arch35/fia_arch35_antiquant.h
 template<uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quantMode, bool hasAttenMask, bool hasRope,
+========
+template<uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quantMode, bool hasAttenMask, bool hasRope, 
+>>>>>>>> origin/master:attention/fused_infer_attention_score/op_kernel/arch35/incre/incre_flash_attention_entry_regbase.h
   uint8_t KvLayoutType, bool isFd, bool emptyTensor, bool enableKVPrefix, bool enableS1OutSplit>
   inline __aicore__ void fia_antiquant_regbase(__gm__ uint8_t *query, __gm__ uint8_t *key,
                                                             __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
