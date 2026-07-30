@@ -268,7 +268,7 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | :---------: | :---------------------------------------------------------: | :---------------------------------------------------------: |
 |      SWA      | ori_kv | ori_kv、ori_kv_sparse_indices |
 |      HCA      | ori_kv、cmp_kv|-|
-|      CSA      | ori_kv、cmp_kv| ori_kv、ori_kv_sparse_indices、cmp_kv、cmp_kv_sparse_indices|
+|      CSA      | ori_kv、cmp_kv、cmp_kv_sparse_indices| ori_kv、ori_kv_sparse_indices、cmp_kv、cmp_kv_sparse_indices|
 
 ### 参数组约束
 
