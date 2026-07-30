@@ -19,6 +19,8 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
+constexpr uint32_t MOE_EP_SEND_DESCRIPTOR_BYTES = 2U * sizeof(uint32_t); // source slot和destination slot
+
 struct MoeEpCommonTilingData {
     uint32_t epWorldSize;
     uint32_t epRankId;
@@ -46,11 +48,16 @@ struct MoeEpDispatchInfo {
     uint32_t numAivStage1;
     uint32_t numAivStage2;
     uint32_t aivNum;
-    uint32_t scaleoutMaskWordCount;   // scaleup目标rank mask的uint32数量
-    uint32_t scaleupSlotAlignedBytes;  // scaleup最终接收slot字节数
-    uint32_t scaleoutSlotAlignedBytes; // scaleout数据和转发元信息slot字节数
+    uint32_t scaleoutSlotAlignedBytes;   // scaleout 数据和转发元信息 slot 字节数
+    uint32_t fanoutCountCoreBytes;       // 单个 fanout 生产核的计数区字节数
+    uint64_t sourceDescriptorShardBytes; // 单个 count 分片的源端描述段字节数
+    uint64_t fanoutDescriptorCoreBytes;  // 单个 fanout 生产核的描述段字节数
     uint64_t hostPinnedCounterAddr;
     uint64_t routeWorkspaceOffset;
+    uint64_t scaleoutDescriptorOffset;
+    uint64_t scaleupDescriptorOffset;
+    uint64_t fanoutDescriptorOffset;
+    uint64_t fanoutCountOffset;
     uint64_t cntWinStateOffset;
     uint64_t slotWinStateOffset;
     uint64_t winDataOffset;
@@ -59,8 +66,7 @@ struct MoeEpDispatchInfo {
     uint64_t scaleupFinalRecvDataOffset;
     uint64_t scaleoutRecvStatusOffset;
     uint64_t combineDataOffset;
-    uint64_t scaleupSendWinOffset;
-    uint64_t scaleoutSendWinOffset;
+    uint64_t payloadStashWinOffset;
     uint64_t totalWinSizeEp;
     uint64_t totalUbSize;
 };
