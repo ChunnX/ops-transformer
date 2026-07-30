@@ -31,6 +31,7 @@
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
 #include "../../../op_kernel/arch35/mega_moe_workspace_info.h"
+#include "mega_moe_batch_tiling.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -113,6 +114,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
+    OP_LOGD(nodeName, "expertsPerBatch is %u", tilingData->expertsPerBatch);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -127,6 +129,10 @@ void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
     OP_LOGD(nodeName, "flagGmmToEpiloguePtr: %ld\n", info->flagGmmToEpiloguePtr);
+    OP_LOGD(nodeName, "gmm2MmadResPtr:             %ld\n", info->gmm2MmadResPtr);
+    OP_LOGD(nodeName, "gmm2NoQuantReadyPtr:        %ld\n", info->gmm2NoQuantReadyPtr);
+    OP_LOGD(nodeName, "gmm2NoQuantReleasePtr:      %ld\n", info->gmm2NoQuantReleasePtr);
+    OP_LOGD(nodeName, "workspaceSize:              %ld\n", info->workspaceSize);
 }
 
 void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
@@ -519,6 +525,9 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->maxTilesPerExpert =
             static_cast<uint32_t>(ops::CeilAlign(maxTilesM * maxTilesN, static_cast<int64_t>(16)));
     }
+
+    tilingData->expertsPerBatch = MegaMoeBatchTiling::CalcExpertsPerBatch(
+        tilingData->bs, tilingData->topK, tilingData->moeExpertPerRank, tilingData->hiddenDim, tilingData->h, aicNum);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1569,7 +1578,6 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xDim1).c_str(),
                                   (std::string("multiple of ") + std::to_string(requiredHAlignment)).c_str()),
         return ge::GRAPH_FAILED);
-
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
     int64_t weightOneDim0 = weightOneStorageShape->GetStorageShape().GetDim(0);
