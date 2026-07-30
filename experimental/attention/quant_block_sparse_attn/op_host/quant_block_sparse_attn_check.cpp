@@ -176,6 +176,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckAttrs() const
         return ge::GRAPH_FAILED;
     }
 
+    if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_FP8 && tilingInfo_.layoutOutStr != "TND") {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "layout_out", tilingInfo_.layoutOutStr,
+                                              "must be TND in quant_mode=1 FP8 scenario");
+        return ge::GRAPH_FAILED;
+    }
+
     if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         if (tilingInfo_.layoutQStr != "TND" || tilingInfo_.layoutOutStr != "TND") {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "layout_q/layout_out",
