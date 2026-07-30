@@ -61,7 +61,7 @@ CSV_PROFILES = [
 DTYPE_MAP = {
     "FLOAT8_E4M3FN": "float8_e4m3fn",
     "BF16": "bfloat16",
-    "FLOAT8_E8M0": "float8_e8m0fnu",
+    "FLOAT8_E8M0": "float8_e8m0",
     "INT32": "int32",
     "INT8": "int8",
     "FP32": "float32",
@@ -177,7 +177,7 @@ def _str_to_int(s):
     s = s.strip()
     if not s:
         return None
-    return int(float(s))  # Excel 可能给 "8.8387999999999994E-2" 这种浮点字符串
+    return int(float(s))
 
 
 def _str_to_float(s):
@@ -245,6 +245,8 @@ def _strip_or_none(s):
 #   6 p_scale        (AM-AO)   datarange 不映射（p_scale 是标量）
 #   7 block_table    (AI-AK)   空则 None 占位
 # attn_mask (BI-BK) 不映射：wrapper 无此参数
+
+
 def _build_tensor_lists(row):
     shapes = []
     dtypes = []
@@ -255,65 +257,49 @@ def _build_tensor_lists(row):
         dtypes.append(dtype)
         data_ranges.append(drange)
 
-    # q / k / v
+    # data_range 透传 Excel
     _push(
         _str_to_shape(row.get(COL["Q_q_shape"])),
-        _map_dtype(row.get(COL["R_q_dtype"])),
+        _map_dtype(row.get(COL["R_q_dtype"])) or "float8_e4m3fn",
         _str_to_datarange(row.get(COL["S_q_datarange"])),
     )
     _push(
         _str_to_shape(row.get(COL["T_k_shape"])),
-        _map_dtype(row.get(COL["U_k_dtype"])),
+        _map_dtype(row.get(COL["U_k_dtype"])) or "float8_e4m3fn",
         _str_to_datarange(row.get(COL["V_k_datarange"])),
     )
     _push(
         _str_to_shape(row.get(COL["W_v_shape"])),
-        _map_dtype(row.get(COL["X_v_dtype"])),
+        _map_dtype(row.get(COL["X_v_dtype"])) or "float8_e4m3fn",
         _str_to_datarange(row.get(COL["Y_v_datarange"])),
     )
-    # q/k/v descale：真实值由 customize_inputs 生成（amax 计算产物），datarange 不从 Excel 映射。
-    # 但 ttk 默认 input 生成路径对所有非 None shape 的 tensor 都要 RandomData(dtype, shape, data_range)，
-    # data_range=None 会让 get(None, 0) 崩溃，所以用 (0, 1) 占位（customize_inputs 会覆盖真实值）。
-    # dtype: Excel 里是 FLOAT8_E8M0，但 ttk numpy_to_torch_tensor 不支持 float8_e8m0fnu 转换
-    # （is_torch_native_dtype 用 hasattr 判断，NPU torch 有此属性但 numpy_to_torch_tensor 白名单没加）。
-    # descale 真实 dtype 由 customize_inputs 生成 e8m0 tensor 覆盖，这里用 float8_e4m3fn 占位让 ttk 默认路径不崩。
+
     _DRANGE_PLACEHOLDER = (0, 1)
-    _DESCALE_PLACEHOLDER_DTYPE = "float8_e4m3fn"
     _push(
         _str_to_shape(row.get(COL["Z_qdescale_shape"])),
-        _DESCALE_PLACEHOLDER_DTYPE,
+        _map_dtype(row.get(COL["AA_qdescale_dtype"])) or "float8_e8m0",
         _DRANGE_PLACEHOLDER,
     )
     _push(
         _str_to_shape(row.get(COL["AC_kdescale_shape"])),
-        _DESCALE_PLACEHOLDER_DTYPE,
+        _map_dtype(row.get(COL["AD_kdescale_dtype"])) or "float8_e8m0",
         _DRANGE_PLACEHOLDER,
     )
     _push(
         _str_to_shape(row.get(COL["AF_vdescale_shape"])),
-        _DESCALE_PLACEHOLDER_DTYPE,
+        _map_dtype(row.get(COL["AG_vdescale_dtype"])) or "float8_e8m0",
         _DRANGE_PLACEHOLDER,
     )
-    # p_scale：标量，真实值由 customize_inputs 生成，datarange 用占位
     _push(
         _str_to_shape(row.get(COL["AM_p_scale_shape"])),
         _map_dtype(row.get(COL["AN_p_scale_dtype"])),
         _DRANGE_PLACEHOLDER,
     )
-    # block_table：wrapper 签名中是必选位置参数（无默认值），
-    # 即使非 PA 模式 Excel 为空，也必须给占位 shape 让 ttk 计入 input_count，
-    # 否则 match_overload 会因 input_count < required 而返回 PARAM_PLAN_FAILURE。
-    # wrapper 内部从 golden_mod._cached_mxfp8_inputs 取真实 block_table（非 PA 时为 None）覆盖占位。
-    bt_shape = _str_to_shape(row.get(COL["AI_block_table_shape"]))
-    if bt_shape is not None:
-        _push(
-            bt_shape,
-            _map_dtype(row.get(COL["AJ_block_table_dtype"])),
-            _str_to_datarange(row.get(COL["AK_block_table_datarange"]))
-            or _DRANGE_PLACEHOLDER,
-        )
-    else:
-        _push((0,), "int32", _DRANGE_PLACEHOLDER)
+
+    bt_dtype = _map_dtype(row.get(COL["AJ_block_table_dtype"])) or "int32"
+    bt_shape_excel = _str_to_shape(row.get(COL["AI_block_table_shape"]))
+    bt_shape = bt_shape_excel if bt_shape_excel is not None else (0,)
+    _push(bt_shape, bt_dtype, _DRANGE_PLACEHOLDER)
 
     return shapes, dtypes, data_ranges
 
@@ -409,11 +395,15 @@ def _build_attributes(row):
 
 
 def _precision_tolerances(row):
-    """默认 ((0.005, 0.000025),)；若 attn_out_dtype (L) 含 BF16 → ((0.0078125, 0.0001),)"""
+    """默认 ((0.005, 0.000025, 0.005, 0.005, 10),);
+    若 attn_out_dtype (L) 含 BF16 → ((0.0078125, 0.0001, 0.005, 0.005, 10),)
+
+    5-tuple = (rtol, atol, diff_thd, pct_thd, max_diff_hd)。后三位为 check_result的三个阈值, 默认 0.005/0.005/10
+    """
     out_dtype = _strip_or_none(row.get(COL["L_attn_out_dtype"]))
     if out_dtype and "BF16" in out_dtype.upper():
-        return ((0.0078125, 0.0001),)
-    return ((0.005, 0.000025),)
+        return ((0.0078125, 0.0001, 0.005, 0.005, 10),)
+    return ((0.005, 0.000025, 0.005, 0.005, 10),)
 
 
 def _row_to_csv(excel_row, api_name, testcase_suffix):
