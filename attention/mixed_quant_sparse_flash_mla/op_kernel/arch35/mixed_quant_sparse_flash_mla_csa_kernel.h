@@ -453,7 +453,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         ParseFdRunInfo(fdRunInfo);
     }
     ProcessMainLoop();
-    SyncAll<false>();
+    SyncAll();
     if ASCEND_IS_AIV {
         if (fdRunInfo.coreEnable > 0) {
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);

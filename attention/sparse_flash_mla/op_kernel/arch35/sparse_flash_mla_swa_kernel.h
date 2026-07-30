@@ -455,7 +455,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
         ParseFdRunInfo(fdRunInfo);
     }
     ProcessMainLoop();
-    SyncAll<false>();
+    SyncAll();
     if ASCEND_IS_AIV {
         if (fdRunInfo.coreEnable) {
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
