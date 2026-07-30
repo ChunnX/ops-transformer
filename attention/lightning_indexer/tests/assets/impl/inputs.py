@@ -23,16 +23,16 @@ from pathlib import Path
 import torch
 
 
-def _module_load_error(stage, path, exc):
-    return RuntimeError(
-        "Failed to load LightningIndexer module; "
-        f"stage={stage}; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
-
-
 class LightningIndexerInputAdapter:
     """Translate a TTK case and reuse the canonical pytest case generator."""
+
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load LightningIndexer module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
 
     def __init__(self):
         self.pytest_golden = None
@@ -52,7 +52,9 @@ class LightningIndexerInputAdapter:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("assets Golden store", path, exc) from exc
+            raise LightningIndexerInputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_golden(self):
@@ -78,7 +80,7 @@ class LightningIndexerInputAdapter:
             return module
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("pytest Golden", path, exc) from exc
+            raise self.module_load_error("pytest Golden", path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -174,6 +176,10 @@ class LightningIndexerInputAdapter:
     @staticmethod
     def copy_tensor(dst, src, name):
         if dst is None:
+            if src is not None:
+                raise ValueError(
+                    f"{name} is absent from CSV but pytest generator produced a tensor"
+                )
             return
         if src is None:
             raise ValueError(f"{name} is present in CSV but pytest generator returned None")
@@ -191,6 +197,8 @@ class LightningIndexerInputAdapter:
             "cpu_result": data["cpu_result"].detach().cpu(),
             "cpu_result_raw": data["cpu_result_raw"].detach().cpu(),
             "score_values": data["score_values"].detach().cpu(),
+            "params": data["params"],
+            "topk_value": data["topk_value"].detach().cpu(),
             "value_dtype": data["query"].dtype,
         }
 
@@ -254,7 +262,11 @@ class LightningIndexerInputAdapter:
             layout_query,
             model.actual_seq_lengths_query,
         )
-        return {"scores": scores}
+        return {
+            "params": params,
+            "topk_value": scores_bnsd.detach().cpu(),
+            "score_values": scores.detach().cpu(),
+        }
 
     def customize(self, query, key, weights, actual_seq_lengths_query,
                   actual_seq_lengths_key, block_table,

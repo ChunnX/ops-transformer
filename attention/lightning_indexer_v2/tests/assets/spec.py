@@ -57,26 +57,14 @@ class LightningIndexerV2Spec:
 
     def compare(*outputs, compare_context=None, **kwargs):
         del kwargs
-        score_layout, cu_seqlens_q = golden_module.get_score_context()
-        scores = golden_module.get_topk_scores()
-        index_offsets = golden_module.get_index_offsets()
-        if (
-            compare_context is not None
-            and not golden_module.has_compare_data(compare_context.testcase_name)
-        ):
+        testcase_name = None if compare_context is None else compare_context.testcase_name
+        data = golden_module.get_compare_data(testcase_name)
+        if data is None:
+            if compare_context is None:
+                raise RuntimeError("LightningIndexerV2 pytest compare requires compare_context")
             data = inputs_module.rebuild_li_v2_compare_data(compare_context)
             golden_module.set_compare_data(compare_context.testcase_name, data)
-            scores = data["scores"]
-            index_offsets = data["index_offsets"]
-            score_layout = data["score_layout"]
-            cu_seqlens_q = data["cu_seqlens_q"]
-        return compare_module.compare(
-            *outputs,
-            scores=scores,
-            index_offsets=index_offsets,
-            score_layout=score_layout,
-            cu_seqlens_q=cu_seqlens_q,
-        )
+        return compare_module.compare(*outputs, compare_data=data)
 
     torch_graph = graph_module.LightningIndexerV2AclGraph
 

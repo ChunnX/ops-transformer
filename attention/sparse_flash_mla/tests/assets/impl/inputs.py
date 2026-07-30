@@ -19,16 +19,22 @@ from pathlib import Path
 import torch
 
 
-def _module_load_error(stage, path, exc):
-    return RuntimeError(
-        "Failed to load SparseFlashMla module; "
-        f"stage={stage}; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
-
-
 class SparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
+
+    TEMPLATE_MODE_ALIASES = {
+        "ORI_SPARSE_MODE": "ORI_SPARSE",
+        "ORI_CMP_SPARSE_MODE": "ORI_CMP_SPARSE",
+    }
+    TEMPLATE_MODES = frozenset(("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"))
+
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load SparseFlashMla module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
 
     def __init__(self):
         self.pytest_modules = {}
@@ -48,7 +54,9 @@ class SparseFlashMlaInputAdapter:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("assets Golden store", path, exc) from exc
+            raise SparseFlashMlaInputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -75,7 +83,7 @@ class SparseFlashMlaInputAdapter:
             return module
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error(f"pytest {stem}", module_path, exc) from exc
+            raise self.module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -96,12 +104,46 @@ class SparseFlashMlaInputAdapter:
         return [int(value[i + 1]) - int(value[i]) for i in range(len(value) - 1)]
 
     @staticmethod
-    def data_range(input_ranges, index, default=(-10, 10)):
-        if input_ranges and index < len(input_ranges) and input_ranges[index] is not None:
-            return repr(list(input_ranges[index]))
-        return repr(list(default))
+    def data_range(input_ranges, index):
+        if not input_ranges or index >= len(input_ranges):
+            return None
+        value = input_ranges[index]
+        if value is None or any(item is None for item in value):
+            return None
+        return repr(list(value))
 
-    def build_case_params(self, q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwargs):
+    @classmethod
+    def select_template_mode(cls, kwargs):
+        mode = kwargs.get("template_run_mode") or kwargs.get("template_mode")
+        if mode is None:
+            return None
+        mode = cls.TEMPLATE_MODE_ALIASES.get(str(mode).strip(), str(mode).strip())
+        if mode not in cls.TEMPLATE_MODES:
+            raise ValueError(f"unsupported explicit template_run_mode: {mode!r}")
+        return mode
+
+    @staticmethod
+    def normalize_kv_topk_modes(params):
+        """Accept the workbook's historical fullk spelling at the assets boundary."""
+        for name in ("ori_kv_topk_mode", "cmp_kv_topk_mode"):
+            value = params.get(name)
+            if isinstance(value, str) and value.strip().lower() == "fullk":
+                params[name] = "fullK"
+        return params
+
+    @staticmethod
+    def verify_template_inputs(mode, ori_sparse_indices, cmp_sparse_indices, cmp_kv):
+        if mode in ("ORI_SPARSE", "ORI_CMP_SPARSE") and ori_sparse_indices is None:
+            raise ValueError(f"{mode} requires ori_sparse_indices in the CSV")
+        if mode in ("CSA", "ORI_CMP_SPARSE") and cmp_sparse_indices is None:
+            raise ValueError(f"{mode} requires cmp_sparse_indices in the CSV")
+        if mode in ("SWA", "ORI_SPARSE") and cmp_kv is not None:
+            raise ValueError(f"{mode} must not provide cmp_kv in the CSV")
+        if mode in ("HCA", "CSA", "ORI_CMP_SPARSE") and cmp_kv is None:
+            raise ValueError(f"{mode} requires cmp_kv in the CSV")
+
+    def build_case_params(self, q, ori_kv, cmp_kv, ori_sparse_indices,
+                          cmp_sparse_indices, layout_q, layout_kv, kwargs):
         cu_q = self.list_value(kwargs, "cu_seqlens_q")
         cu_ori = self.list_value(kwargs, "cu_seqlens_ori_kv")
         cu_cmp = self.list_value(kwargs, "cu_seqlens_cmp_kv")
@@ -121,42 +163,46 @@ class SparseFlashMlaInputAdapter:
         if layout_kv == "BSND":
             _, kv_seq, kv_heads, _ = [int(x) for x in ori_kv.shape]
             kv_total = batch_size * kv_seq
-            block_num1, block_size1 = 0, 128
+            block_num1, block_size1 = None, None
         elif layout_kv == "TND":
             kv_total, kv_heads, _ = [int(x) for x in ori_kv.shape]
             kv_seq = max(self.prefix_lengths(cu_ori) or seq_ori or [kv_total])
-            block_num1, block_size1 = 0, 128
+            block_num1, block_size1 = None, None
         else:
             block_num1, block_size1, kv_heads, _ = [int(x) for x in ori_kv.shape]
             kv_seq = max(seq_ori or [block_size1])
             kv_total = sum(seq_ori or [])
 
         if cmp_kv is None:
-            mode = "SWA"
             cmp_total = 0
-            block_num2, block_size2 = 0, block_size1
+            block_num2, block_size2 = None, None
         elif layout_kv == "BSND":
-            mode = "CSA" if cmp_sparse_indices is not None else "HCA"
             cmp_total = batch_size * int(cmp_kv.shape[1])
-            block_num2, block_size2 = 0, 128
+            block_num2, block_size2 = None, None
         elif layout_kv == "TND":
-            mode = "CSA" if cmp_sparse_indices is not None else "HCA"
             cmp_total = int(cmp_kv.shape[0])
-            block_num2, block_size2 = 0, 128
+            block_num2, block_size2 = None, None
         else:
-            mode = "CSA" if cmp_sparse_indices is not None else "HCA"
             block_num2, block_size2 = int(cmp_kv.shape[0]), int(cmp_kv.shape[1])
             cmp_total = sum(seq_cmp or [])
+        mode = self.select_template_mode(kwargs)
+        if mode is not None:
+            self.verify_template_inputs(mode, ori_sparse_indices, cmp_sparse_indices, cmp_kv)
 
         input_ranges = kwargs.get("input_ranges") or ()
         params = dict(kwargs)
+        data_ranges = {
+            "q_datarange": self.data_range(input_ranges, 0),
+            "ori_kv_datarange": self.data_range(input_ranges, 1),
+            "cmp_kv_datarange": self.data_range(input_ranges, 2),
+        }
         params.update({
             "testcase_name": kwargs.get("testcase_name"),
             "layout_q": layout_q,
             "layout_kv": layout_kv,
             "q_type": q.dtype,
             "ori_kv_type": ori_kv.dtype,
-            "cmp_kv_type": cmp_kv.dtype if cmp_kv is not None else ori_kv.dtype,
+            "cmp_kv_type": cmp_kv.dtype if cmp_kv is not None else None,
             "B": batch_size,
             "S1": q_seq,
             "S2": kv_seq,
@@ -166,6 +212,7 @@ class SparseFlashMlaInputAdapter:
             "N1": q_heads,
             "N2": kv_heads,
             "D": head_dim,
+            "K1": int(ori_sparse_indices.shape[-1]) if ori_sparse_indices is not None else None,
             "K": int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else None,
             "block_num1": block_num1,
             "block_num2": block_num2,
@@ -179,24 +226,19 @@ class SparseFlashMlaInputAdapter:
             "seqused_cmp_kv": seq_cmp,
             "cmp_residual_kv": residual,
             "template_mode": mode,
-            "cmp_ratio": None if mode == "SWA" else int(kwargs.get("cmp_ratio", 1)),
-            "cmp_mask_mode": 0 if mode == "SWA" else int(kwargs.get("cmp_mask_mode", 3)),
-            "q_datarange": self.data_range(input_ranges, 0),
-            "ori_kv_datarange": self.data_range(input_ranges, 1),
-            "cmp_kv_datarange": self.data_range(input_ranges, 2),
-            "qk_equal_len": False,
+            "cmp_ratio": kwargs.get("cmp_ratio"),
+            "cmp_mask_mode": kwargs.get("cmp_mask_mode"),
         })
-        params.setdefault("return_softmax_lse", False)
-        params.setdefault("ori_kv_topk_mode", "full")
-        params.setdefault("cmp_kv_topk_mode", "full")
-        params.setdefault("ori_sparse_indices_mode", "full")
-        params.setdefault("cmp_sparse_indices_mode", "full")
-        params.setdefault("actlen_mode", "full")
-        return params
+        params.update({name: value for name, value in data_ranges.items() if value is not None})
+        return self.normalize_kv_topk_modes(params)
 
     @staticmethod
     def copy_tensor(dst, src, name):
         if dst is None:
+            if src is not None:
+                raise ValueError(
+                    f"{name} is absent from CSV but pytest generator produced a tensor"
+                )
             return
         if src is None:
             raise ValueError(f"{name} is present in CSV but pytest generator returned None")
@@ -210,16 +252,23 @@ class SparseFlashMlaInputAdapter:
     def generate_case(self, params):
         pytest_utils = self.load_pytest_module("utils", "utils.py")
         pytest_golden = self.load_pytest_module("golden", "sparse_flash_mla_golden.py")
-        params.setdefault("random_seq", False)
-        case_params = pytest_utils.generate_case_with_default_param(params)
+        pytest_input = {name: [value] for name, value in params.items()}
+        param_combinations = pytest_utils.generate_param_combinations([pytest_input])
+        if len(param_combinations) != 1:
+            raise ValueError(
+                f"expected one pytest parameter combination, got {len(param_combinations)}"
+            )
+        case_params = pytest_utils.generate_case_with_default_param(param_combinations[0])
         data = pytest_golden.gen_data(case_params)
         testcase_name = params.get("testcase_name") or case_params.get("testcase_name")
         self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data
 
-    def customize(self, q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwargs):
+    def customize(self, q, ori_kv, cmp_kv, ori_sparse_indices,
+                  cmp_sparse_indices, layout_q, layout_kv, kwargs):
         params = self.build_case_params(
-            q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwargs
+            q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
+            layout_q, layout_kv, kwargs
         )
         return self.generate_case(params)
 
@@ -239,12 +288,14 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
         q,
         ori_kv,
         cmp_kv,
+        ori_sparse_indices,
         cmp_sparse_indices,
-        kwargs.get("layout_q", "BSND"),
-        kwargs.get("layout_kv", "BSND"),
+        kwargs.get("layout_q"),
+        kwargs.get("layout_kv"),
         kwargs,
     )
     op_input = data["input"]
+    metadata_input = data.get("metadata_input", {})
     for name, tensor in (
         ("q", q),
         ("ori_kv", ori_kv),
@@ -264,4 +315,7 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
         ("cmp_topk_length", cmp_topk_length),
         ("sinks", sinks),
     ):
-        INPUT_ADAPTER.copy_tensor(tensor, op_input.get(name), name)
+        source = op_input.get(name)
+        if name in ("ori_topk_length", "cmp_topk_length") and source is None:
+            source = metadata_input.get(name)
+        INPUT_ADAPTER.copy_tensor(tensor, source, name)

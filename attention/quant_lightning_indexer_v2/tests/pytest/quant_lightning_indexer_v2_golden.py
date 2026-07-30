@@ -24,7 +24,11 @@ import math
 import ctypes
 import copy
 import ast
+<<<<<<< HEAD
 
+=======
+from qliv2_parameter_normalization import normalize_qliv2_params
+>>>>>>> base2
 try:
     import cann_ops_transformer
 except ImportError:
@@ -1432,6 +1436,7 @@ class GeneralizedQLIV2:
         return y, y_value, sparse_value
 
 
+<<<<<<< HEAD
 def trans_prefix_actseq(self, list):
     list_len = len(list)
     if list_len == 0:
@@ -1576,6 +1581,33 @@ def qliv2_output_single(
         dequant_dtype = dtype_map.get(dequant_dtype, dequant_dtype)
         actual_seq_dtype = dtype_map.get(actual_seq_dtype, actual_seq_dtype)
 
+=======
+def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1size = DEFAULT_S1SIZE):
+    if is_batch:
+        params = normalize_qliv2_params(params)
+    batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
+    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
+    seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
+    sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
+    k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
+
+    if is_batch:
+        if qk_dtype == 'INT8':
+            qk_dtype = torch.int8
+        elif qk_dtype == 'FLOAT8_E4M3FN':
+            qk_dtype = torch.float8_e4m3fn
+        elif qk_dtype == 'HIFLOAT8':
+            qk_dtype = torch.uint8
+
+        if dequant_dtype == 'FP16':
+            dequant_dtype = torch.float16
+        elif dequant_dtype == 'FP32':
+            dequant_dtype = torch.float32
+
+        if actual_seq_dtype == 'INT32':
+            actual_seq_dtype = torch.int32
+        
+>>>>>>> base2
         if cu_seqlens_q is not None and isinstance(cu_seqlens_q, str):
             cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
         if cu_seqlens_k is not None and isinstance(cu_seqlens_k, str):

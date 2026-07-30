@@ -19,19 +19,20 @@ from pathlib import Path
 import torch
 
 
-def _module_load_error(stage, path, exc):
-    return RuntimeError(
-        "Failed to load LightningIndexerV2 module; "
-        f"stage={stage}; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
-
-
 class LightningIndexerV2InputAdapter:
     """Translate a TTK case and reuse the pytest input/golden generator."""
 
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load LightningIndexerV2 module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
+
     def __init__(self):
         self.pytest_golden = None
+        self.pytest_normalizer = None
 
     @staticmethod
     def load_golden_store():
@@ -48,7 +49,9 @@ class LightningIndexerV2InputAdapter:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("assets Golden store", path, exc) from exc
+            raise LightningIndexerV2InputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_golden(self):
@@ -74,10 +77,29 @@ class LightningIndexerV2InputAdapter:
             return module
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("pytest Golden", path, exc) from exc
+            raise self.module_load_error("pytest Golden", path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
+
+    def load_pytest_normalizer(self):
+        if self.pytest_normalizer is not None:
+            return self.pytest_normalizer
+        pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
+        path = pytest_dir / "liv2_parameter_normalization.py"
+        name = "li_v2_pytest_normalizer"
+        try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+            self.pytest_normalizer = module
+            return module
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise self.module_load_error("pytest parameter normalizer", path, exc) from exc
 
     @staticmethod
     def list_value(kwargs, name):
@@ -96,10 +118,10 @@ class LightningIndexerV2InputAdapter:
                 for index in range(len(value) - 1)]
 
     @staticmethod
-    def data_range(input_ranges, index, default=(-1, 1)):
+    def data_range(input_ranges, index):
         if input_ranges and index < len(input_ranges) and input_ranges[index] is not None:
             return repr(list(input_ranges[index]))
-        return repr(list(default))
+        return None
 
     @staticmethod
     def qk_dtype_name(tensor):
@@ -155,9 +177,9 @@ class LightningIndexerV2InputAdapter:
         input_ranges = kwargs.get("input_ranges") or ()
         output_range = kwargs.get("output_idx_offset_range")
         output_range = None if output_range is None else repr(list(output_range))
-        max_seqlen_q = kwargs.get("max_seqlen_q", -1)
-        max_seqlen_q = -1 if max_seqlen_q is None else int(max_seqlen_q)
-        return geometry + (
+        max_seqlen_q = kwargs.get("max_seqlen_q")
+        max_seqlen_q = None if max_seqlen_q is None else int(max_seqlen_q)
+        params = geometry + (
             self.qk_dtype_name(q),
             cu_q,
             cu_k,
@@ -167,19 +189,24 @@ class LightningIndexerV2InputAdapter:
             output_range,
             layout_q,
             layout_k,
-            int(kwargs.get("topk", 0)),
-            int(kwargs.get("mask_mode", 0)),
+            kwargs.get("topk"),
+            kwargs.get("mask_mode"),
             self.data_range(input_ranges, 0),
             self.data_range(input_ranges, 1),
             self.data_range(input_ranges, 2),
-            int(kwargs.get("cmp_ratio", 1)),
-            int(kwargs.get("return_value", 0)),
+            kwargs.get("cmp_ratio"),
+            kwargs.get("return_value"),
             max_seqlen_q,
         )
+        return self.load_pytest_normalizer().normalize_liv2_params(params)
 
     @staticmethod
     def copy_tensor(dst, src, name):
         if dst is None:
+            if src is not None:
+                raise ValueError(
+                    f"{name} is absent from CSV but pytest generator produced a tensor"
+                )
             return
         if src is None:
             raise ValueError(f"{name} is present in CSV but pytest generator returned None")
@@ -200,6 +227,7 @@ class LightningIndexerV2InputAdapter:
             "cpu_result": data["cpu_result"],
             "topk_value": data["topk_value"],
             "cpu_topk_value": data["cpu_topk_value"],
+            "params": data["params"],
             "output_idx_offset": data.get("output_idx_offset"),
             "score_layout": layout_q,
             "cu_seqlens_q": cu_q,
@@ -273,8 +301,12 @@ class LightningIndexerV2InputAdapter:
             if values is not None:
                 attrs[f"{name}_values"] = values
 
-        layout_q = attrs.get("layout_q", "BSND")
-        layout_k = attrs.get("layout_k", "BSND")
+        layout_q = attrs.get("layout_q")
+        layout_k = attrs.get("layout_k")
+        if layout_q is None or layout_k is None:
+            raise ValueError(
+                "LI_V2 replay compare requires layout_q and layout_k from the CSV or API attributes"
+            )
         params = self.build_case_params(q, k, layout_q, layout_k, attrs)
         (
             batch_size, q_seq, k_seq, q_t_size, k_t_size,
@@ -312,7 +344,9 @@ class LightningIndexerV2InputAdapter:
             residual_cpu, block_table, offset,
         )
         return {
+            "params": params,
             "scores": scores,
+            "topk_value": scores,
             "index_offsets": None if offset is None else offset.detach().cpu(),
             "score_layout": layout_q,
             "cu_seqlens_q": cu_q_cpu,
@@ -356,7 +390,7 @@ def rebuild_li_v2_compare_data(compare_context):
 def generate_li_v2_inputs(q, k, w, *, cu_seqlens_q=None, cu_seqlens_k=None,
                           seqused_q=None, seqused_k=None, cmp_residual_k=None,
                           block_table=None, output_idx_offset=None,
-                          layout_q="BSND", layout_k="BSND", **kwargs):
+                          layout_q=None, layout_k=None, **kwargs):
     """Generate the exact pytest inputs and CPU golden for a TTK case."""
     INPUT_ADAPTER.customize(
         q,
