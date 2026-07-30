@@ -20,16 +20,22 @@ import numpy as np
 import torch
 
 
-def _module_load_error(stage, path, exc):
-    return RuntimeError(
-        "Failed to load QuantSparseFlashMla module; "
-        f"stage={stage}; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
-
-
 class QuantSparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
+
+    TEMPLATE_MODE_ALIASES = {
+        "ORI_SPARSE_MODE": "ORI_SPARSE",
+        "ORI_CMP_SPARSE_MODE": "ORI_CMP_SPARSE",
+    }
+    TEMPLATE_MODES = frozenset(("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"))
+
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load QuantSparseFlashMla module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
 
     def __init__(self):
         self.pytest_modules = {}
@@ -49,7 +55,9 @@ class QuantSparseFlashMlaInputAdapter:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("assets Golden store", path, exc) from exc
+            raise QuantSparseFlashMlaInputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -76,7 +84,7 @@ class QuantSparseFlashMlaInputAdapter:
             return module
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error(f"pytest {stem}", module_path, exc) from exc
+            raise self.module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -104,8 +112,37 @@ class QuantSparseFlashMlaInputAdapter:
             return []
         return [int(value[i + 1]) - int(value[i]) for i in range(len(value) - 1)]
 
-    def build_case_params(self, q, ori_kv, cmp_kv, cmp_sparse_indices, sinks,
-                          layout_q, layout_kv, kwargs):
+    @staticmethod
+    def data_range(input_ranges, index):
+        if not input_ranges or index >= len(input_ranges):
+            return None
+        value = input_ranges[index]
+        if value is None or any(item is None for item in value):
+            return None
+        return list(value)
+
+    @classmethod
+    def select_template_mode(cls, kwargs):
+        mode = kwargs.get("template_run_mode") or kwargs.get("template_mode")
+        if mode is None:
+            return None
+        mode = str(mode).strip()
+        mode = cls.TEMPLATE_MODE_ALIASES.get(mode, mode)
+        if mode not in cls.TEMPLATE_MODES:
+            raise ValueError(f"unsupported explicit template_run_mode: {mode!r}")
+        return mode
+
+    @staticmethod
+    def normalize_kv_topk_modes(params):
+        """Normalize the historical fullk spelling without changing its semantics."""
+        for name in ("ori_kv_topk_mode", "cmp_kv_topk_mode"):
+            value = params.get(name)
+            if isinstance(value, str) and value.strip().lower() == "fullk":
+                params[name] = "fullK"
+        return params
+
+    def build_case_params(self, q, ori_kv, cmp_kv, ori_sparse_indices,
+                          cmp_sparse_indices, sinks, layout_q, layout_kv, kwargs):
         cu_q = self.list_value(kwargs, "cu_seqlens_q")
         cu_ori = self.list_value(kwargs, "cu_seqlens_ori_kv")
         cu_cmp = self.list_value(kwargs, "cu_seqlens_cmp_kv")
@@ -123,61 +160,67 @@ class QuantSparseFlashMlaInputAdapter:
 
         if layout_kv == "BSND":
             _, kv_seq, kv_heads, _ = [int(x) for x in ori_kv.shape]
-            block_num1 = int(kwargs.get("block_num1") or 0)
-            block_size1 = int(kwargs.get("block_size1") or 128)
+            block_num1 = kwargs.get("block_num1")
+            block_size1 = kwargs.get("block_size1")
         elif layout_kv == "TND":
             _, kv_heads, _ = [int(x) for x in ori_kv.shape]
             kv_seq = max(self.prefix_lengths(cu_ori) or seq_ori or [int(ori_kv.shape[0])])
-            block_num1 = int(kwargs.get("block_num1") or 0)
-            block_size1 = int(kwargs.get("block_size1") or 128)
+            block_num1 = kwargs.get("block_num1")
+            block_size1 = kwargs.get("block_size1")
         else:
             shape_block_num, shape_block_size, kv_heads, _ = [int(x) for x in ori_kv.shape]
-            block_num1 = int(kwargs.get("block_num1") or shape_block_num)
-            block_size1 = int(kwargs.get("block_size1") or shape_block_size)
+            block_num1 = kwargs.get("block_num1")
+            block_size1 = kwargs.get("block_size1")
+            block_num1 = shape_block_num if block_num1 is None else int(block_num1)
+            block_size1 = shape_block_size if block_size1 is None else int(block_size1)
             kv_seq = max(self.prefix_lengths(cu_ori) or seq_ori or [block_size1])
 
-        metadata_cmp_topk = int(kwargs.get("metadata_cmp_topk") or 0)
-        requested_mode = kwargs.get("template_run_mode")
-        if requested_mode == "CSA" or metadata_cmp_topk > 0:
-            mode = "CSA"
-            if layout_kv == "PA_BBND" and cmp_kv is not None:
-                block_num2 = int(kwargs.get("block_num2") or cmp_kv.shape[0])
-                block_size2 = int(kwargs.get("block_size2") or cmp_kv.shape[1])
-            else:
-                block_num2 = int(kwargs.get("block_num2") or 0)
-                block_size2 = int(kwargs.get("block_size2") or block_size1)
-        elif requested_mode == "SWA" or cmp_kv is None:
-            mode = "SWA"
-            block_num2, block_size2 = 0, block_size1
+        metadata_cmp_topk = kwargs.get("metadata_cmp_topk")
+        requested_mode = self.select_template_mode(kwargs)
+        if cmp_kv is None:
+            block_num2, block_size2 = None, None
         elif layout_kv == "PA_BBND":
-            mode = requested_mode or ("CSA" if cmp_sparse_indices is not None else "HCA")
-            block_num2 = int(kwargs.get("block_num2") or cmp_kv.shape[0])
-            block_size2 = int(kwargs.get("block_size2") or cmp_kv.shape[1])
+            block_num2 = kwargs.get("block_num2")
+            block_size2 = kwargs.get("block_size2")
+            block_num2 = int(cmp_kv.shape[0]) if block_num2 is None else int(block_num2)
+            block_size2 = int(cmp_kv.shape[1]) if block_size2 is None else int(block_size2)
         else:
-            mode = requested_mode or ("CSA" if cmp_sparse_indices is not None else "HCA")
-            block_num2 = int(kwargs.get("block_num2") or 0)
-            block_size2 = int(kwargs.get("block_size2") or block_size1)
+            block_num2 = kwargs.get("block_num2")
+            block_size2 = kwargs.get("block_size2")
 
         params = dict(kwargs)
+        input_ranges = kwargs.get("input_ranges") or ()
+        data_ranges = {
+            "q_datarange": self.data_range(input_ranges, 0),
+            "ori_kv_datarange": self.data_range(input_ranges, 1),
+            "cmp_kv_datarange": self.data_range(input_ranges, 2),
+        }
         params.update({
             "Testcase_Name": kwargs.get("testcase_name"),
             "layout_q": layout_q,
             "layout_kv": layout_kv,
             "q_type": self.tensor_dtype(q),
             "ori_kv_type": self.tensor_dtype(ori_kv),
-            "cmp_kv_type": (
-                self.tensor_dtype(cmp_kv)
-                if cmp_kv is not None
-                else self.tensor_dtype(ori_kv)
-            ),
+            "cmp_kv_type": self.tensor_dtype(cmp_kv) if cmp_kv is not None else None,
             "B": batch_size,
             "S1": q_seq,
-            "S2": int(kwargs.get("S2") or kv_seq),
+            "S2": kwargs.get("S2") if kwargs.get("S2") is not None else kv_seq,
             "N1": q_heads,
             "N2": kv_heads,
             "D": head_dim,
-            "K": metadata_cmp_topk or (
-                int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0
+            "K1": (
+                int(ori_sparse_indices.shape[-1])
+                if ori_sparse_indices is not None
+                else kwargs.get("K1")
+            ),
+            "K": (
+                metadata_cmp_topk
+                if metadata_cmp_topk is not None
+                else (
+                    int(cmp_sparse_indices.shape[-1])
+                    if cmp_sparse_indices is not None
+                    else None
+                )
             ),
             "block_num1": block_num1,
             "block_num2": block_num2,
@@ -190,23 +233,36 @@ class QuantSparseFlashMlaInputAdapter:
             "cu_seqlens_ori_kv": cu_ori,
             "cu_seqlens_cmp_kv": cu_cmp,
             "cmp_residual_kv": residual,
-            "template_run_mode": mode,
-            "cmp_ratio": 1 if mode == "SWA" else int(kwargs.get("cmp_ratio", 1)),
-            "cmp_mask_mode": 0 if mode == "SWA" else int(kwargs.get("cmp_mask_mode", 3)),
-            "actlen_mode": kwargs.get("actlen_mode", "full"),
-            "S1EQS2": bool(kwargs.get("S1EQS2", False)),
-            "topk_value_mode": int(kwargs.get("topk_value_mode", 1)),
-            "return_softmax_lse": bool(kwargs.get("return_softmax_lse", False)),
+            "cmp_ratio": kwargs.get("cmp_ratio"),
+            "cmp_mask_mode": kwargs.get("cmp_mask_mode"),
             "isSink": sinks is not None,
         })
-        return params
+        pytest_cmp_mask_mode = kwargs.get("pytest_cmp_mask_mode")
+        if pytest_cmp_mask_mode is not None:
+            params["cmp_mask_mode"] = int(pytest_cmp_mask_mode)
+        if requested_mode is not None:
+            params["template_run_mode"] = requested_mode
+        for name, value in data_ranges.items():
+            if params.get(name) is None and value is not None:
+                params[name] = value
+        return self.normalize_kv_topk_modes(params)
 
     @staticmethod
     def copy_tensor(dst, src, name):
         if dst is None:
+            if src is not None:
+                raise ValueError(
+                    f"{name} is absent from CSV but pytest generator produced a tensor"
+                )
             return
         if src is None:
-            raise ValueError(f"{name} is present in CSV but pytest generator returned None")
+            message = f"{name} is present in CSV but pytest generator returned None"
+            if name in {"cu_seqlens_q", "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv"}:
+                message += (
+                    "; check the CSV tensor slot, the corresponding *_values or "
+                    "derivable seqused_* values, and the layout/template_run_mode branch"
+                )
+            raise ValueError(message)
         src_cpu = src.detach().cpu() if torch.is_tensor(src) else src
         if tuple(dst.shape) != tuple(src_cpu.shape):
             raise ValueError(
@@ -231,6 +287,9 @@ class QuantSparseFlashMlaInputAdapter:
             "golden", "quant_sparse_flash_mla_golden.py"
         )
         filled = pytest_utils.fill_none_params(params)
+        for name in ("q_datarange", "ori_kv_datarange", "cmp_kv_datarange"):
+            if params.get(name) is not None:
+                filled[name] = params[name]
         if filled.get("Testcase_Name") is None:
             filled["Testcase_Name"] = params.get("testcase_name")
         pytest_check.check_valid_param(filled)
@@ -256,10 +315,11 @@ def generate_quant_sparse_flash_mla_inputs(
         q,
         ori_kv,
         cmp_kv,
+        ori_sparse_indices,
         cmp_sparse_indices,
         sinks,
-        kwargs.get("layout_q", "BSND"),
-        kwargs.get("layout_kv", "BSND"),
+        kwargs.get("layout_q"),
+        kwargs.get("layout_kv"),
         kwargs,
     )
     data = INPUT_ADAPTER.generate_case(params)
@@ -287,5 +347,3 @@ def generate_quant_sparse_flash_mla_inputs(
         ("sinks", sinks),
     ):
         INPUT_ADAPTER.copy_tensor(tensor, op_input.get(name), name)
-
-

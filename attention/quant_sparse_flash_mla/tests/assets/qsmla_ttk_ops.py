@@ -73,9 +73,10 @@ def build_quant_sparse_flash_mla_metadata(
     has_ori_kv: Optional[bool] = None,
     has_cmp_kv: Optional[bool] = None,
     metadata_cmp_topk: Optional[int] = None,
-    **_unused,
+    **extra_kwargs,
 ):
     """Build metadata before the main op or graph capture."""
+    del extra_kwargs
     num_heads_q = int(q.shape[1] if layout_q == "TND" else q.shape[2])
     kv_ref = ori_kv if ori_kv is not None else cmp_kv
     num_heads_kv = int(kv_ref.shape[1] if layout_kv == "TND" else kv_ref.shape[2])
@@ -185,8 +186,10 @@ def quant_sparse_flash_mla_ttk(
     has_ori_kv: Optional[bool] = None,
     has_cmp_kv: Optional[bool] = None,
     metadata_cmp_topk: Optional[int] = None,
+    pytest_cmp_mask_mode: Optional[int] = None,
 ):
     """Generate metadata in TTK, then call the quantized extension op."""
+    del pytest_cmp_mask_mode
     metadata = build_quant_sparse_flash_mla_metadata(
         q,
         ori_kv=ori_kv,

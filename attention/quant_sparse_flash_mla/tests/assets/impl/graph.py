@@ -53,8 +53,10 @@ class QuantSparseFlashMlaAclGraph(torch.nn.Module):
         has_ori_kv=None,
         has_cmp_kv=None,
         metadata_cmp_topk=None,
+        pytest_cmp_mask_mode=None,
     ):
         super().__init__()
+        del pytest_cmp_mask_mode
         from qsmla_ttk_ops import build_quant_sparse_flash_mla_metadata
 
         self.q = q
