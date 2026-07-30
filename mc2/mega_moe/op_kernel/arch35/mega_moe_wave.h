@@ -116,7 +116,6 @@ private:
     __aicore__ inline void DispatchExpertsUntil(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                 uint32_t &nextDispatchExpert, uint32_t dispatchEnd,
                                                 const DispatchBufferConfig &bufferConfig);
-    __aicore__ inline uint64_t ReadExpertTokenCount(uint32_t expertIdx);
     __aicore__ inline void MetaInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId,
                                                   const DispatchBufferConfig &bufferConfig);
     template <AddrUpdateMode Mode>
@@ -153,10 +152,8 @@ private:
                                             uint32_t metaInfoUbTokenOffset,
                                             const CombineBufferConfig &bufferConfig, uint32_t &rowSequence);
     __aicore__ inline void ProcessGmm1Wave(uint32_t batchBegin, uint32_t batchEnd,
-                                          ExpertLoopState &dispatchState, GMMAddrInfo &dispatchAddrInfo,
-                                          uint32_t &nextDispatchExpert, ExpertLoopState &gmm1State,
-                                          GMMAddrInfo &gmm1AddrInfo,
-                                          const DispatchBufferConfig &bufferConfig, int32_t &vecSetSyncCom);
+                                          ExpertLoopState &gmm1State, GMMAddrInfo &gmm1AddrInfo,
+                                          int32_t &vecSetSyncCom);
     __aicore__ inline void ProcessGmm2Wave(uint32_t batchBegin, uint32_t batchEnd,
                                           ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
                                           int32_t &vecSetSyncCom);
@@ -1033,18 +1030,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExperts
             DispatchExpert(state, gmmAddrInfo, nextDispatchExpert, bufferConfig);
         }
     }
-}
-
-// The rolling path can prefetch several experts before their GMM1 calls.  Read
-// back this AIV1's persisted count instead of carrying a single nextSendCnt.
-template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline uint64_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ReadExpertTokenCount(uint32_t expertIdx)
-{
-    uint64_t offset = static_cast<uint64_t>(expertIdx) * INT32_PER_256B * aicNum_ +
-                      static_cast<uint64_t>(INT32_PER_256B) * blockIdx_;
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
-        expertRevNumsGlobalTensor_[offset]);
-    return static_cast<uint64_t>(expertRevNumsGlobalTensor_.GetValue(offset));
 }
 
 // ============================================================================
@@ -2188,27 +2173,20 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulGmm2
     }
 }
 
-// The first wave bootstraps dispatch while AIV0 consumes GMM1/SwiGLU. Later
-// waves normally enter with their whole dispatch range already prefetched.
+// AIC/AIV0 consume the GMM1/SwiGLU scheduler. AIV1 owns dispatch/combine and
+// does not participate in the GMM scheduler or its virtual tile rotation.
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
-    uint32_t batchBegin, uint32_t batchEnd, ExpertLoopState &dispatchState,
-    GMMAddrInfo &dispatchAddrInfo, uint32_t &nextDispatchExpert, ExpertLoopState &gmm1State,
-    GMMAddrInfo &gmm1AddrInfo, const DispatchBufferConfig &bufferConfig, int32_t &vecSetSyncCom)
+    uint32_t batchBegin, uint32_t batchEnd, ExpertLoopState &gmm1State,
+    GMMAddrInfo &gmm1AddrInfo, int32_t &vecSetSyncCom)
 {
-    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-        const uint32_t dispatchLookaheadEnd =
-            expertIdx + 2U < batchEnd ? expertIdx + 2U : batchEnd;
-        DispatchExpertsUntil(
-            dispatchState, dispatchAddrInfo, nextDispatchExpert, dispatchLookaheadEnd, bufferConfig);
-
-        uint64_t sendCnt = 0;
-        if constexpr (g_coreType == AIV) {
-            if (subBlockIdx_ == 1) {
-                sendCnt = ReadExpertTokenCount(expertIdx);
-            }
+    if constexpr (g_coreType == AIV) {
+        if (subBlockIdx_ == 1) {
+            return;
         }
-        if (!UpdateGroupParams<AddrUpdateMode::GMM1>(gmm1State, expertIdx, sendCnt)) {
+    }
+    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
+        if (!UpdateGroupParams<AddrUpdateMode::GMM1>(gmm1State, expertIdx)) {
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
@@ -2217,13 +2195,19 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave
     }
 }
 
-// AIC computes every expert in the wave. AIV0/AIV1 consume the matching
-// virtual scheduler rotations in the direct-GM GroupMatmul2 path.
+// AIC computes every expert in the wave. AIV0 consumes the matching virtual
+// GMM2 scheduler rotation so its next GMM1/SwiGLU ownership stays aligned.
+// AIV1 owns dispatch/combine and does not participate in either GMM scheduler.
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave(
     uint32_t batchBegin, uint32_t batchEnd, ExpertLoopState &gmm2State,
     GMMAddrInfo &gmm2AddrInfo, int32_t &vecSetSyncCom)
 {
+    if constexpr (g_coreType == AIV) {
+        if (subBlockIdx_ == 1) {
+            return;
+        }
+    }
     for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
         if (!UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
             continue;
@@ -2320,27 +2304,28 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
         const uint32_t batchEnd = batchBegin + currentWaveExpertNum;
         const uint32_t waveBeginCursor = startBlockIdx_;
 
-        ProcessGmm1Wave(
-            batchBegin, batchEnd, dispatchState, dispatchAddrInfo, nextDispatchExpert,
-            gmm1State, gmm1AddrInfo, dispatchBufferConfig, vecSetSyncCom);
-        const uint32_t gmm1EndCursor = startBlockIdx_;
-
-        // AIV1 must finish Dispatch(B+1) before Combine(B), because both stages
-        // reuse the same UB and event IDs. The cursor also proves that current
-        // and next wave dispatch are complete before combine starts.
+        // AIV1 dispatches the current and following waves continuously before
+        // Combine(B), because dispatch and combine reuse the same UB/event
+        // resources. In steady state the cursor skips the current wave and
+        // advances only through the newly exposed following wave.
         const uint32_t nextWaveExpertNum =
             MegaMoeImpl::GetWaveExpertCount(batchEnd, moeExpertPerRank_, expertsPerWave);
         const uint32_t nextBatchEnd = batchEnd + nextWaveExpertNum;
         DispatchExpertsUntil(
             dispatchState, dispatchAddrInfo, nextDispatchExpert, nextBatchEnd, dispatchBufferConfig);
 
+        ProcessGmm1Wave(
+            batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);
+        const uint32_t gmm1EndCursor = startBlockIdx_;
+
         ProcessGmm2Wave(batchBegin, batchEnd, gmm2State, gmm2AddrInfo, vecSetSyncCom);
-        // All core types consume the same real/virtual GMM tile rotations.  If
-        // the full wave returned to its entry cursor while GMM1 itself did
-        // not, GMM2 cancelled GMM1's owner remainder and would pin both stage
-        // roles to the same physical core groups in the next wave.  Rotating
-        // to GMM1's end preserves the GMM1->GMM2 mapping inside this wave and
-        // changes only the owner phase of a following wave.
+        // AIC and AIV0 consume the same real/virtual GMM tile rotations. If the
+        // full wave returned to its entry cursor while GMM1 itself did not,
+        // GMM2 cancelled GMM1's owner remainder and would pin both stage roles
+        // to the same physical core groups in the next wave. Rotating to
+        // GMM1's end preserves the GMM1->GMM2 mapping inside this wave and
+        // changes only the owner phase of a following wave. AIV1 skips both
+        // GMM schedulers, so its local cursor keeps this condition false.
         const bool hasNextWave = batchEnd < moeExpertPerRank_;
         const bool fixedRoleResonance =
             startBlockIdx_ == waveBeginCursor && gmm1EndCursor != waveBeginCursor;
