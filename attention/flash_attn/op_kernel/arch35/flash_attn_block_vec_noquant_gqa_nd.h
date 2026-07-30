@@ -163,7 +163,9 @@ public:
     // ==================== Functions ======================
     __aicore__ inline FANoQuantGqaBlockVecNd(ConstInfoX &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
                                              SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
-        : constInfo_(constInfo), qSeqLensTool_(qSeqLensTool), kvSeqLensTool_(kvSeqLensTool){};
+        : constInfo_(constInfo),
+          qSeqLensTool_(qSeqLensTool),
+          kvSeqLensTool_(kvSeqLensTool){};
 
     __aicore__ inline void InitBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
@@ -188,7 +190,7 @@ public:
             accumOutGm_.SetGlobalBuffer((__gm__ float *)workspace);
             softmaxFDSumGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize);
             softmaxFDMaxGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize +
-                                           constInfo_.logSumExpSize);
+                                            constInfo_.logSumExpSize);
         }
     }
 
@@ -206,7 +208,7 @@ public:
             uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];         // 2 * 8K = 16K, 输入BUF: MASK拷入
             uint8_t vec2Res[32768U];                                        // 32K, 输出BUF: attn_out拷出
             uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT]
-                                  [UB_VEC1_RES_BUF_BYTES]; // 2 * 32.25K = 64.5K, 输出BUF: softmax结果拷贝至L1
+                                  [UB_VEC1_RES_BUF_BYTES];                           // 2 * 32.25K = 64.5K, 输出BUF: softmax结果拷贝至L1
             uint8_t softmaxSumBuf_[UB_SOFTMAX_SUM_BUFCNT][UB_SOFTMAX_SUM_BUF_BYTES]; // 3 * 0.25K = 0.75K, sum常驻BUF
             uint8_t softmaxMaxBuf_[UB_SOFTMAX_MAX_BUFCNT][UB_SOFTMAX_MAX_BUF_BYTES]; // 3 * 0.25K = 0.75K, max常驻BUF
             uint8_t softmaxExpBuf_[UB_SOFTMAX_EXP_BUFCNT][UB_SOFTMAX_EXP_BUF_BYTES]; // 3 * 0.25K = 0.75K, exp常驻BUF
@@ -224,19 +226,19 @@ public:
                                               SIZE_OF_MEMBER(UbLayout, maskBuffers));
         ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, vec2Res),
                                           SIZE_OF_MEMBER(UbLayout, vec2Res))
-                        .template ReinterpretCast<T>();
+                         .template ReinterpretCast<T>();
         ubVec1ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, vec1ResBuffers),
                                                  SIZE_OF_MEMBER(UbLayout, vec1ResBuffers));
         // softmaxSum×3 + softmaxMax×3 + softmaxExp×3，各 256 bytes
         softmaxSumBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, softmaxSumBuf_),
                                               SIZE_OF_MEMBER(UbLayout, softmaxSumBuf_))
-                            .template ReinterpretCast<T>();
+                             .template ReinterpretCast<T>();
         softmaxMaxBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, softmaxMaxBuf_),
                                               SIZE_OF_MEMBER(UbLayout, softmaxMaxBuf_))
-                            .template ReinterpretCast<T>();
+                             .template ReinterpretCast<T>();
         softmaxExpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, softmaxExpBuf_),
                                               SIZE_OF_MEMBER(UbLayout, softmaxExpBuf_))
-                            .template ReinterpretCast<T>();
+                             .template ReinterpretCast<T>();
         ubLseOutBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, lseOutBuffers),
                                                 SIZE_OF_MEMBER(UbLayout, lseOutBuffers));
         vec1ApiTmpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, softmaxTmpBuf),
@@ -358,7 +360,7 @@ public:
             uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
             DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
-                                                              runInfo.actVecMSize, constInfo_);
+                                                           runInfo.actVecMSize, constInfo_);
         } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
                                  runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
@@ -571,7 +573,7 @@ public:
             if (blockNeedRowInvalid) {
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf_[(runInfo.mloop % UB_SOFTMAX_MAX_BUFCNT) * (UB_SOFTMAX_MAX_BUF_BYTES / sizeof(T)) +
-                                  mStartVec];
+                                   mStartVec];
                 RowInvalidUpdateVF<float>(ubVec2Res, maxTensor, mDealSize, constInfo_.dSizeV,
                                           static_cast<uint32_t>(dSizeAligned64));
             }
