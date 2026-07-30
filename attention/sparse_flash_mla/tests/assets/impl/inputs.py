@@ -19,14 +19,6 @@ from pathlib import Path
 import torch
 
 
-def _module_load_error(stage, path, exc):
-    return RuntimeError(
-        "Failed to load SparseFlashMla module; "
-        f"stage={stage}; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
-
-
 class TorchBatchRandomContext:
     """Make declared batch slices deterministic while pytest builds the case."""
 
@@ -34,7 +26,7 @@ class TorchBatchRandomContext:
 
     def __init__(self, q, kwargs):
         self.batch_size = int(q.shape[0])
-        self.relations = self._parse_relations(q, kwargs)
+        self.relations = self.parse_relations(q, kwargs)
         self.base_seed = self.relations[0][1]
         self.call_index = 0
         self.original_rand = None
@@ -56,7 +48,7 @@ class TorchBatchRandomContext:
         return cls(q, kwargs)
 
     @staticmethod
-    def _parse_relations(q, kwargs):
+    def parse_relations(q, kwargs):
         batch_axis = kwargs["batch_axis"]
         batch_slices = kwargs["batch_slice_info"]
         batch_seed = kwargs["batch_seed"]
@@ -85,22 +77,22 @@ class TorchBatchRandomContext:
             raise ValueError("SMLA batch consistency currently excludes sparse modes")
 
     @classmethod
-    def _derive_seed(cls, seed, call_index):
+    def derive_seed(cls, seed, call_index):
         return (int(seed) + (call_index + 1) * 1000003) % cls.SEED_MODULUS
 
     @staticmethod
-    def _generator(seed, device):
+    def create_generator(seed, device):
         generator = torch.Generator(device=device)
         generator.manual_seed(seed)
         return generator
 
-    def _rand(self, *size, **kwargs):
+    def random_values(self, *size, **kwargs):
         call_index = self.call_index
         self.call_index += 1
         call_kwargs = dict(kwargs)
         device = call_kwargs.get("device") or "cpu"
-        call_kwargs["generator"] = self._generator(
-            self._derive_seed(self.base_seed, call_index), device
+        call_kwargs["generator"] = self.create_generator(
+            self.derive_seed(self.base_seed, call_index), device
         )
         value = self.original_rand(*size, **call_kwargs)
         if value.ndim < 2 or int(value.shape[0]) != self.batch_size:
@@ -109,8 +101,8 @@ class TorchBatchRandomContext:
         for slice_value, seed in self.relations:
             selector = (slice(*slice_value),) + (slice(None),) * (value.ndim - 1)
             piece = value[selector]
-            piece_generator = self._generator(
-                self._derive_seed(seed, call_index), value.device
+            piece_generator = self.create_generator(
+                self.derive_seed(seed, call_index), value.device
             )
             value[selector] = self.original_rand(
                 tuple(piece.shape),
@@ -122,7 +114,7 @@ class TorchBatchRandomContext:
 
     def __enter__(self):
         self.original_rand = torch.rand
-        torch.rand = self._rand
+        torch.rand = self.random_values
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -132,6 +124,14 @@ class TorchBatchRandomContext:
 
 class SparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
+
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load SparseFlashMla module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
 
     def __init__(self):
         self.pytest_modules = {}
@@ -151,7 +151,9 @@ class SparseFlashMlaInputAdapter:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("assets Golden store", path, exc) from exc
+            raise SparseFlashMlaInputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -178,7 +180,7 @@ class SparseFlashMlaInputAdapter:
             return module
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error(f"pytest {stem}", module_path, exc) from exc
+            raise self.module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
