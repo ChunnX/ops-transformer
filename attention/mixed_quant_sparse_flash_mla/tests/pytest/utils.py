@@ -385,6 +385,14 @@ def fill_none_params(params_dict):
     # 7. 计算T1
     T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
 
+    ori_mask_mode = params_dict.get("ori_mask_mode")
+    ori_kv_topk_mode = params_dict.get("ori_kv_topk_mode")
+    if ori_kv_topk_mode is None:
+        ori_kv_topk_mode = "fullK" if ori_mask_mode == 0 else "no"
+    cmp_kv_topk_mode = params_dict.get("cmp_kv_topk_mode")
+    if cmp_kv_topk_mode is None:
+        cmp_kv_topk_mode = "fullK" if cmp_mask_mode == 0 else "no"
+
     # 构建完整参数字典
     filled_params = {
         "Testcase_Name": params_dict.get("Testcase_Name"),
@@ -430,12 +438,8 @@ def fill_none_params(params_dict):
         "q_datarange": params_dict.get("q_datarange"),
         "ori_kv_datarange": params_dict.get("ori_kv_datarange"),
         "cmp_kv_datarange": params_dict.get("cmp_kv_datarange"),
-        "ori_kv_topk_mode": params_dict.get(
-            "ori_kv_topk_mode", "fullK" if params_dict["ori_mask_mode"] == 0 else "no"
-        ),
-        "cmp_kv_topk_mode": params_dict.get(
-            "cmp_kv_topk_mode", "fullK" if cmp_mask_mode == 0 else "no"
-        ),
+        "ori_kv_topk_mode": ori_kv_topk_mode,
+        "cmp_kv_topk_mode": cmp_kv_topk_mode,
         "ori_sparse_indices_mode": params_dict.get("ori_sparse_indices_mode", "full"),
         "cmp_sparse_indices_mode": params_dict.get("cmp_sparse_indices_mode", "full"),
         "ori_topk_length": params_dict.get("ori_topk_length", None),

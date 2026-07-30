@@ -24,6 +24,7 @@ import os
 import utils
 import argparse
 import concurrent.futures
+import traceback
 
 # 读取表格（支持通过环境变量传入）
 save_path = os.environ.get("MQSMLA_PT_DIR", "mqsmla_testcase")
@@ -46,8 +47,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         normalized_params[key] = value
     normalized_params["topk_value_mode"] = params.get("topk_value_mode", 1)
     normalized_params["return_softmax_lse"] = params.get("return_softmax_lse", False)
-    normalized_params["ori_kv_topk_mode"] = params.get("ori_kv_topk_mode", "fullK")
-    normalized_params["cmp_kv_topk_mode"] = params.get("cmp_kv_topk_mode", "fullK")
+    normalized_params["ori_kv_topk_mode"] = params.get("ori_kv_topk_mode")
+    normalized_params["cmp_kv_topk_mode"] = params.get("cmp_kv_topk_mode")
     normalized_params["ori_sparse_indices_mode"] = params.get(
         "ori_sparse_indices_mode", "full"
     )
@@ -272,12 +273,14 @@ def mqsmla(param_combinations):
             pytest.skip(f"输入参数校验失败:{e}")
 
         # 生成测试数据
-        input_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(
+        mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(
             params, save_pt=True, save_path=save_path
         )
     except Exception as e:
         record_failed_case(param_combinations, e)
-        pytest.fail(f"[FAILED CASE RECORDED] case_id={case_id}, error={e}")
+        pytest.fail(
+            f"[FAILED CASE RECORDED] case_id={case_id}\n{traceback.format_exc()}"
+        )
     finally:
         case_id += 1
 

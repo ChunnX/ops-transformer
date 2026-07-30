@@ -253,6 +253,14 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
 
     for params in ENABLED_PARAMS:
         # 确保所有参数都存在，缺失的用默认值填充
+        ori_mask_mode = params.get("ori_mask_mode")
+        cmp_mask_mode = params.get("cmp_mask_mode")
+        ori_topk_default = (
+            ["fullK"] if ori_mask_mode is not None and ori_mask_mode == 0 else ["no"]
+        )
+        cmp_topk_default = (
+            ["fullK"] if cmp_mask_mode is not None and cmp_mask_mode == 0 else ["no"]
+        )
         param_values = {
             "testcase_name": params.get("testcase_name", [None]),
             "layout_q": params.get("layout_q", [None]),
@@ -289,14 +297,8 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
             "ori_win_left": params.get("ori_win_left", [None]),
             "ori_win_right": params.get("ori_win_right", [None]),
-            "ori_kv_topk_mode": params.get(
-                "ori_kv_topk_mode",
-                ["fullK"] if params.get("ori_mask_mode") == 0 else ["no"],
-            ),
-            "cmp_kv_topk_mode": params.get(
-                "cmp_kv_topk_mode",
-                ["fullK"] if params.get("cmp_mask_mode") == 0 else ["no"],
-            ),
+            "ori_kv_topk_mode": params.get("ori_kv_topk_mode", ori_topk_default),
+            "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", cmp_topk_default),
             "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", ["full"]),
             "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
             "actlen_mode": params.get("actlen_mode", ["full"]),

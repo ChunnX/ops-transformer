@@ -11,7 +11,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import logging
-import math
 import torch
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
