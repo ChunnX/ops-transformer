@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file all_gather_quant_matmul_prefill_tiling_data.h
+ * \file all_gather_mx_matmul_udma_tiling_data.h
  * \brief Tiling data for AllGather + QuantMatmul fusion kernel (prefill variant)
  */
 
