@@ -540,15 +540,18 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                                  const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
                                  const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
                                  const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
-                                 const aclTensor *cmpTopkLengthOptional, int64_t batchSize, const char *layoutQOptional,
-                                 const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const char *socVersion,
-                                 const aclTensor *metadata)
+                                 const aclTensor *cmpTopkLengthOptional, int64_t batchSize, int64_t oriTopk,
+                                 const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv,
+                                 bool hasCmpKv, const char *socVersion, const aclTensor *metadata)
 {
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     int64_t dimNum = -1;
     if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr)) {
-        if (CheckReservedOptionalTensorSmla(oriTopkLengthOptional, "ori_topk_length") != ACLNN_SUCCESS ||
-            CheckReservedOptionalTensorSmla(cmpTopkLengthOptional, "cmp_topk_length") != ACLNN_SUCCESS) {
+        if (oriTopk == 0 &&
+            CheckReservedOptionalTensorSmla(oriTopkLengthOptional, "ori_topk_length") != ACLNN_SUCCESS) {
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (CheckReservedOptionalTensorSmla(cmpTopkLengthOptional, "cmp_topk_length") != ACLNN_SUCCESS) {
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -907,8 +910,8 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
                            layoutKvOptional, socVersion, metaData) == ACLNN_SUCCESS &&
         CheckConsistencySmla(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                              sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
-                             cmpTopkLengthOptional, batchSize, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
-                             socVersion, metaData) == ACLNN_SUCCESS) {
+                             cmpTopkLengthOptional, batchSize, oriTopk, layoutQOptional, layoutKvOptional, hasOriKv,
+                             hasCmpKv, socVersion, metaData) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;

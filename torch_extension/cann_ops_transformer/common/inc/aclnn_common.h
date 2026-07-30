@@ -173,7 +173,7 @@ typedef struct {
 
 inline bool Is4BitDtype(const aclDataType acl_data_type)
 {
-    return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
+    return acl_data_type == ACL_INT4;
 }
 
 inline int64_t ConvertToAclStorageOffset(const at::Tensor &at_tensor, const aclDataType acl_data_type)
@@ -189,7 +189,7 @@ inline int64_t ConvertToAclStorageOffset(const at::Tensor &at_tensor, const aclD
 }
 
 static std::unordered_map<aclFormat, aclFormat> FORMAT_FAKE_TO_REAL{
-    {ACL_FORMAT_FRACTAL_NZ_C0_16, ACL_FORMAT_FRACTAL_NZ_C0_32}, {ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_FRACTAL_NZ}};
+    {ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_FRACTAL_NZ}};
 
 static inline bool IsOpInputBaseFormat(const at::Tensor &at_tensor)
 {

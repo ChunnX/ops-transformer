@@ -25,8 +25,26 @@ TORCH_EXT_PATH = os.path.normpath(
 )
 if TORCH_EXT_PATH not in sys.path:
     sys.path.insert(0, TORCH_EXT_PATH)
-from cann_ops_transformer.ops import sparse_flash_mla as _smla_registration  # noqa: F401
-from cann_ops_transformer.ops import sparse_flash_mla_metadata as _metadata_registration  # noqa: F401
+
+
+def _ensure_smla_ops_registered():
+    if "cann_ops_transformer.ops.sparse_flash_mla" in sys.modules:
+        return
+    pkg = types.ModuleType("cann_ops_transformer")
+    pkg.__path__ = [os.path.join(TORCH_EXT_PATH, "cann_ops_transformer")]
+    pkg.__file__ = os.path.join(TORCH_EXT_PATH, "cann_ops_transformer", "__init__.py")
+    sys.modules.setdefault("cann_ops_transformer", pkg)
+    op_builder_pkg = types.ModuleType("cann_ops_transformer.op_builder")
+    op_builder_pkg.__path__ = [os.path.join(TORCH_EXT_PATH, "cann_ops_transformer", "op_builder")]
+    sys.modules.setdefault("cann_ops_transformer.op_builder", op_builder_pkg)
+    mod_path = os.path.join(TORCH_EXT_PATH, "cann_ops_transformer", "ops", "sparse_flash_mla.py")
+    spec = importlib.util.spec_from_file_location("cann_ops_transformer.ops.sparse_flash_mla", mod_path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+
+
+_ensure_smla_ops_registered()
 
 
 class Network(torch.nn.Module):
