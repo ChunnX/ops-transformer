@@ -10,7 +10,8 @@
 
 /*!
  * \file moe_init_routing_v4_apt.cpp
- * \brief
+ * \brief MoeInitRoutingV4 kernel entry, reuses MoeInitRoutingV3 arch35 kernel implementation.
+ *        If MoeInitRoutingV3 kernel is modified, MoeInitRoutingV4 must be adapted accordingly.
  */
 #if __has_include("../moe_init_routing_v3/arch35/moe_v3_mrgsort_out.h")
 #define MOE_V3_INC(path) <../moe_init_routing_v3/arch35/path>

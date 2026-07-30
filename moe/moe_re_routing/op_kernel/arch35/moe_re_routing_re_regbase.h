@@ -23,6 +23,8 @@
 namespace MoeReRouting {
 using namespace AscendC;
 
+constexpr int32_t HAS_TOPK_WEIGHT = 1;
+
 template <typename T, typename TIndex, typename TScale, bool hasScales>
 class MoeReRoutingReRegbase {
 public:
@@ -99,7 +101,7 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Init
         srcScaleGm_.SetGlobalBuffer((__gm__ TScale *)perTokenScales);
         dstScaleGm_.SetGlobalBuffer((__gm__ TScale *)permutePerTokenScales);
     }
-    if (tilingData_->hasTopkWeight == 1) {
+    if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
         srcTopkWeightGm_.SetGlobalBuffer((__gm__ float *)expertTopkWeight);
         dstTopkWeightGm_.SetGlobalBuffer((__gm__ float *)permuteTopkWeight);
     }
@@ -107,7 +109,7 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Init
                             Ops::Base::CeilAlign(tilingData_->ubFactor, static_cast<int64_t>(BLOCK_SIZE / sizeof(T))));
     this->pipe_->InitBuffer(idxOutQue_, DOUBLE_BUFFER,
                             Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(TIndex), BLOCK_SIZE / sizeof(TIndex)));
-    if (tilingData_->hasTopkWeight == 1) {
+    if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
         this->pipe_->InitBuffer(topkWeightQue_, DOUBLE_BUFFER,
                                 Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(float), BLOCK_SIZE / sizeof(float)));
     }
@@ -190,7 +192,7 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Proc
             if constexpr (hasScales) {
                 ProcessTokenScale(currTokenNum, scaleSize_, true);
             }
-            if (tilingData_->hasTopkWeight == 1) {
+            if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
                 CopyTopkWeight(currTokenNum, tokensSrc_, tokensDst_);
             }
             tokensSrc_ += currTokenNum;
