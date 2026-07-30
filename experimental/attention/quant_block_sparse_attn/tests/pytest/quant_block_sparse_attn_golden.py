@@ -269,7 +269,8 @@ def _make_scales(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths):
         v_scale = torch.ones((case["N2"],), dtype=torch.float32)
     else:
         v_scale = torch.linspace(0.5, 1.75, steps=case["N2"], dtype=torch.float32)
-    p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
+    p_scale_value = case.get("p_scale_value", 1.0)
+    p_scale = None if p_scale_value == "none" or p_scale_value is None else torch.tensor([float(p_scale_value)], dtype=torch.float32)
     return q_scale, k_scale, dense_k_scale, v_scale, p_scale
 
 
@@ -531,7 +532,7 @@ def _reference_attention(
     output_dtype = case["output_dtype"]
     fp8_dtype = _fp8_dtype()
     softmax_scale = float(case["softmax_scale"])
-    p_scale_value = float(p_scale[0].item())
+    p_scale_value = 1.0 if p_scale is None else float(p_scale[0].item())
     sparse_q_block_size = case["sparse_q_block_size"]
     neg_inf = float("-inf")
 
