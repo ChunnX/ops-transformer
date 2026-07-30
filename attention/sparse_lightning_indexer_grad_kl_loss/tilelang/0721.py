@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 6
+KERNEL_CACHE_REVISION = 7
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1187,8 +1187,9 @@ def tilelang_grad_kl_loss_single_kernel(
             T.set_flag("mte3", "v", 3)
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 g_start = vector_id * rows_per_aiv
-                valid_k_size = K
-                if not full_valid:
+                if full_valid:
+                    valid_k_size = K
+                else:
                     # 每个 query 只读取一次真实 K，内层 64 列块复用该标量。
                     valid_k_size = KRealSize[bz_task, s1_id]
                 T.tile.fill(v1_bw_dw_accum, 0.0)
@@ -1234,9 +1235,10 @@ def tilelang_grad_kl_loss_single_kernel(
                             n_idx * n_block + bw_col_id * bw_col_block
                         )
                         bw_col_end = bw_col_start + bw_col_block
-                        block_active = 1
-                        block_partial = 0
-                        if not full_valid:
+                        if full_valid:
+                            block_active = 1
+                            block_partial = 0
+                        else:
                             block_active = T.if_then_else(
                                 bw_col_start < valid_k_size, 1, 0
                             )
