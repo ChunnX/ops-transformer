@@ -790,7 +790,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     GM_ADDR remoteCountAddr = remoteStateAddr + epWorldSize_ * WIN_ADDR_ALIGN + epRankId_ * moeNumPerRankAlign512_;
     GM_ADDR srcWorkspaceAddr =
         sendCntWorkspaceAddr_ + cntPerRankSizeAlign512_ + dstRankId * moeExpertNumPerRank_ * sizeof(int32_t);
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, epRankId_, dstRankId);
+    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
 
     // 远端 使用URMA发送 count + state
     hcomm_.WriteNbi(commHandle, remoteCountAddr, srcWorkspaceAddr,
@@ -1273,7 +1273,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         return; //  本端slot已经写入win
     }
 
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, epRankId_, dstRankId);
+    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
     if (sendTokenNum > 0) {
         uint64_t sendDataSize = static_cast<uint64_t>(perSlotBytes_) * sendTokenNum;
         // win staging 按 server 内局部 dstRank 偏移，容量为 U*Nmax。
@@ -1355,7 +1355,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendScaleoutPayloadToProxy(
     uint32_t dstScaleoutIndex, uint32_t proxyRankId, uint32_t scaleoutSlotCount)
 {
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, epRankId_, proxyRankId);
+    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, proxyRankId);
     if (scaleoutSlotCount > 0U) {
         uint64_t sendDataSize = static_cast<uint64_t>(scaleoutSlotBytes_) * scaleoutSlotCount;
         GM_ADDR localScaleoutAddr = GetScaleoutSlotAddr(scaleoutSendWinAddr_, dstScaleoutIndex, 0U);
@@ -1537,7 +1537,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint32_t srcRankId, uint32_t dstRankId, uint32_t fanoutSlotCount)
 {
     if (dstRankId != epRankId_ && fanoutSlotCount > 0U) {
-        uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, epRankId_, dstRankId);
+        uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
         // win staging 按 server 内局部 dstRank 偏移，容量为 U*Nmax。
         uint32_t localDstRankId = dstRankId - serverStartRank_;
         GM_ADDR stagingPayloadAddr = scaleupSendWinAddr_ +
@@ -1583,7 +1583,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         return;
     }
 
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, epRankId_, dstRankId);
+    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
     GM_ADDR readySourceAddr = sendCntWorkspaceAddr_ + dstRankId * WIN_ADDR_ALIGN;
     hcomm_.WriteNbi(commHandle, notifyAddr, readySourceAddr, sizeof(uint64_t));
     hcomm_.Drain(commHandle);
