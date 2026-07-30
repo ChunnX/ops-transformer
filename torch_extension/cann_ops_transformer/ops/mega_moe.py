@@ -38,7 +38,6 @@ class _MegaMoeOpBuilder(OpBuilder):
             "int dispatch_quant_mode=0, int combine_quant_mode=0, "
             'str comm_alg="", int num_max_tokens_per_rank=0, str activation="swiglu", '
             "float? activation_clamp=None, "
-            "float? activation_alpha=None, float? activation_beta=None, "
             "int? dispatch_quant_out_dtype=None,  "
             "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, "
             "int? rank_num_per_server=None, int topk_weights_type=0) -> (Tensor, Tensor)"
@@ -74,8 +73,6 @@ class _MegaMoeOpBuilder(OpBuilder):
             num_max_tokens_per_rank=0,
             activation="swiglu",
             activation_clamp=None,
-            activation_alpha=None,
-            activation_beta=None,
             dispatch_quant_out_dtype=None,
             weight1_type=None,
             weight2_type=None,
@@ -127,8 +124,6 @@ def _npu_mega_moe(
     num_max_tokens_per_rank=0,
     activation="swiglu",
     activation_clamp=None,
-    activation_alpha=None,
-    activation_beta=None,
     dispatch_quant_out_dtype=None,
     weight1_type=None,
     weight2_type=None,
@@ -165,8 +160,6 @@ def _npu_mega_moe(
         num_max_tokens_per_rank,
         activation,
         activation_clamp,
-        activation_alpha,
-        activation_beta,
         dispatch_quant_out_dtype,
         weight1_type,
         weight2_type,
@@ -210,7 +203,6 @@ class SymmBuffer:
             dispatch_quant_out_dtype,
             combine_quant_mode,
             comm_alg,
-            topk_weights_type,
         )
         self._ctx_manager = CommContextManager(
             self.group_name,
@@ -340,8 +332,6 @@ def mega_moe(
     x_active_mask: Optional[torch.Tensor] = None,
     activation: str = "swiglu",
     activation_clamp: Optional[float] = None,
-    activation_alpha: Optional[float] = None,
-    activation_beta: Optional[float] = None,
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
     shared_l1_weights: Optional[List[torch.Tensor]] = None,
@@ -379,8 +369,6 @@ def mega_moe(
         num_max_tokens_per_rank=sym_buffer.num_max_tokens_per_rank,
         activation=activation,
         activation_clamp=activation_clamp,
-        activation_alpha=activation_alpha,
-        activation_beta=activation_beta,
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
         weight2_type=weight2_type,
