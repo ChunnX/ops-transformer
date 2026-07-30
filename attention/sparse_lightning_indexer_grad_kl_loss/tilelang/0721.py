@@ -42,6 +42,9 @@ V1_PSY_RELAY_FLAGS = (12, 13)
 
 DQUERY = 512
 DQUERY_INDEX = 128
+# 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
+# 旧的持久编译产物。该值不进入运行时 kernel ABI。
+KERNEL_CACHE_REVISION = 2
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -260,7 +263,7 @@ def tilelang_grad_kl_loss_single_kernel(
     d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N,
     full_valid=False, k_scatter_exec=None,
     source_s2=None, sparse_k_stride=None, serial_task_pipeline=False,
-    c1_serial=False, v0_single_slot=False,
+    c1_serial=False, v0_single_slot=False, kernel_cache_revision=0,
 ):
     source_s2 = S2 if source_s2 is None else source_s2
     sparse_k_stride = K if sparse_k_stride is None else sparse_k_stride
@@ -2514,6 +2517,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             _SERIAL_TASK_PIPELINE,
             _C1_SERIAL,
             _V0_SINGLE_SLOT,
+            KERNEL_CACHE_REVISION,
         )
 
         if cache_key in _kernel_cache:
@@ -2524,6 +2528,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
                 full_valid, k_scatter_exec, source_s2, sparse_k_stride,
                 _SERIAL_TASK_PIPELINE, _C1_SERIAL, _V0_SINGLE_SLOT,
+                KERNEL_CACHE_REVISION,
             )
 
             # # 将编译出的 AscendC 源码转储到文件，供离线核对手动同步转写
