@@ -13,6 +13,7 @@
 import torch
 import random
 import numpy as np
+import torch_npu
 
 
 def to_list(value):
@@ -208,7 +209,7 @@ def apply_batch_slice_seeded(
     # 输入 tensor 列表（与 tensor_view_shapes 顺序一致）
     is_th = x.dim() == 2
     input_tensors = [x, wkv, wgate, state_cache, ape]
-
+    torch_npu.npu.set_deterministic_level(3)
     for idx, tensor in enumerate(input_tensors):
         if tensor is None or not torch.is_tensor(tensor):
             continue
