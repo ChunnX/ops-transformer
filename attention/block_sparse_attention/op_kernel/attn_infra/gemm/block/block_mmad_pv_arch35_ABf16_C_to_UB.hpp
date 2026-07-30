@@ -43,23 +43,22 @@ struct Mm2L1TileHelper {
     uint32_t pL1BufNum;
     uint32_t vL1BufNum;
 
-    __aicore__ inline
-    Mm2L1TileHelper() {}
+    __aicore__ inline Mm2L1TileHelper() {}
 
-    __aicore__ inline
-    Mm2L1TileHelper(
+    __aicore__ inline Mm2L1TileHelper(
         uint32_t m,
         uint32_t n,
         uint32_t kl,
         uint32_t kr,
         uint32_t pbn,
-        uint32_t vbn) :
-        mm2L1TileM(m),
-        mm2L1TileN(n),
-        mm2L1TileKLeft(kl),
-        mm2L1TileKRight(kr),
-        pL1BufNum(pbn),
-        vL1BufNum(vbn) {}
+        uint32_t vbn)
+        : mm2L1TileM(m),
+          mm2L1TileN(n),
+          mm2L1TileKLeft(kl),
+          mm2L1TileKRight(kr),
+          pL1BufNum(pbn),
+          vL1BufNum(vbn)
+    {}
 };
 
 template <
@@ -80,8 +79,7 @@ struct BlockMmadTla<
     ElementC_,
     ElementBias_,
     TileCopy_,
-    TileMmad_>
-{
+    TileMmad_> {
 public:
     using DispatchPolicy = MmadAtlasA5BsaPV;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -111,23 +109,23 @@ public:
     static constexpr uint32_t L0C_HALF_BUF_SIZE = ArchTag::L0C_SIZE / 2;
     static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = L0C_HALF_BUF_SIZE / L0_STAGES;
 
-    static constexpr uint32_t MAX_L1_STAGES = 3; // 编译期常量，为静态L1Tensor数组开辟准备。取一个buffer份数的极大值
+    static constexpr uint32_t MAX_L1_STAGES = 3;         // 编译期常量，为静态L1Tensor数组开辟准备。取一个buffer份数的极大值
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16; // 核间同步mode4，AIC侧需要两个flagId分别对应两个AIV
-    
+
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
 
 #ifdef BSA_PV_RESCALE_PROBE
     static constexpr uint32_t PROBE_M = 64;
     static constexpr uint32_t PROBE_N = 128;
     static constexpr uint32_t PROBE_K = 64;
-    static constexpr uint32_t PROBE_L1A_BYTES = PROBE_M * PROBE_K * sizeof(float); // 16KB
-    static constexpr uint32_t PROBE_L1B_BYTES = PROBE_K * PROBE_N * sizeof(float); // 32KB
+    // Scheme A: reuse P/V bank0; size vs ElementA/B (no extra fp32 L1 tail).
+    static constexpr uint32_t PROBE_L1A_BYTES = PROBE_M * PROBE_K * sizeof(ElementA); // 8KB @fp16
+    static constexpr uint32_t PROBE_L1B_BYTES = PROBE_K * PROBE_N * sizeof(ElementB); // 16KB @fp16
     static constexpr uint32_t PROBE_L0A_EVENT_ID = 0;
     static constexpr uint32_t PROBE_L0B_EVENT_ID = 2; // match PV: B uses +2
 #endif
 
-    __aicore__ inline
-    BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
     {
         l1ATileM = mm2L1TileHelper.mm2L1TileM;
         l1BTileN = mm2L1TileHelper.mm2L1TileN;
@@ -154,25 +152,27 @@ public:
         }
 #ifdef BSA_PV_RESCALE_PROBE
         {
-            const uint32_t probeBase =
-                l1BufAddrStart +
-                l1ATileM * l1ATileK * sizeof(ElementA) * l1ABufNum +
-                l1BTileK * l1BTileN * sizeof(ElementB) * l1BBufNum;
-            probeL1A_ = resource.l1Buf.template GetBufferByByte<float>(probeBase);
-            probeL1B_ = resource.l1Buf.template GetBufferByByte<float>(
-                probeBase + PROBE_L1A_BYTES);
-            l0CScratch_ = resource.l0CBuf.template GetBufferByByte<float>(0);
+            // Scheme A: reuse P/V L1 bank0 in-place (no extra L1 allocation).
+            const uint32_t pBytes = l1ATileM * l1ATileK * sizeof(ElementA);
+            const uint32_t vBytes = l1BTileK * l1BTileN * sizeof(ElementB);
+            ASCENDC_ASSERT((pBytes >= PROBE_L1A_BYTES), {
+                KERNEL_LOG(KERNEL_ERROR, "BSA probe: P L1 bank too small for probeL1A");
+            });
+            ASCENDC_ASSERT((vBytes >= PROBE_L1B_BYTES), {
+                KERNEL_LOG(KERNEL_ERROR, "BSA probe: V L1 bank too small for probeL1B");
+            });
+            (void)pBytes;
+            (void)vBytes;
+            l0CScratch_ = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(0);
         }
 #endif
     }
 
     /// Destructor
-    __aicore__ inline
-    ~BlockMmadTla() {}
+    __aicore__ inline ~BlockMmadTla() {}
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
         // in mode 4, AIC set for 2 AIVs seperately
         if constexpr (MODE == 4U) {
@@ -185,8 +185,7 @@ public:
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
         // in mode 4, AIC wait for 2 AIVs seperately
         if constexpr (MODE == 4U) {
@@ -197,9 +196,8 @@ public:
             Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlagV1);
         }
     }
-    
-    __aicore__ inline
-    uint32_t GetCurLoopCounter(uint32_t outterLoopItr, uint32_t curLoopNum, uint32_t curLoopItr)
+
+    __aicore__ inline uint32_t GetCurLoopCounter(uint32_t outterLoopItr, uint32_t curLoopNum, uint32_t curLoopItr)
     {
         return outterLoopItr * curLoopNum + curLoopItr;
     }
@@ -207,81 +205,78 @@ public:
 #ifdef BSA_PV_RESCALE_PROBE
     __aicore__ inline void RunRescaleMadProbe()
     {
-        // --- L1 InitConst (MTE2) ---
-        constexpr uint32_t BLOCKS_A = PROBE_L1A_BYTES / 32; // 512
-        constexpr uint32_t BLOCKS_B = PROBE_L1B_BYTES / 32; // 1024
-        AscendC::InitConstValueParams<float> paramsA(1, BLOCKS_A, 0, 1.0f);
-        AscendC::InitConstValueParams<float> paramsB(1, BLOCKS_B, 0, 1.0f);
-        AscendC::InitConstValue(probeL1A_, paramsA);
-        AscendC::InitConstValue(probeL1B_, paramsB);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(PROBE_L0A_EVENT_ID);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(PROBE_L0A_EVENT_ID);
+        // FP8 ElementA/B cannot InitConst from float scalar; probe is f16/bf16 only.
+        if constexpr (FULL_QUANT_FP8) {
+            return;
+        } else {
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(PROBE_L0A_EVENT_ID);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(PROBE_L0A_EVENT_ID);
 
-        // --- L0A/L0B views as float (reuse stage 0 physical buffer) ---
-        AscendC::LocalTensor<float> l0AFp32 =
-            l0ATensor[0].template ReinterpretCast<float>();
-        AscendC::LocalTensor<float> l0BFp32 =
-            l0BTensor[0].template ReinterpretCast<float>();
+            constexpr uint32_t BLOCKS_A = PROBE_L1A_BYTES / 32;
+            constexpr uint32_t BLOCKS_B = PROBE_L1B_BYTES / 32;
+            AscendC::InitConstValueParams<ElementA> paramsA(1, BLOCKS_A, 0, static_cast<ElementA>(1.0f));
+            AscendC::InitConstValueParams<ElementB> paramsB(1, BLOCKS_B, 0, static_cast<ElementB>(1.0f));
+            AscendC::InitConstValue(l1ATensor[0], paramsA);
+            AscendC::InitConstValue(l1BTensor[0], paramsB);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(PROBE_L0A_EVENT_ID);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(PROBE_L0A_EVENT_ID);
 
-        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0A_EVENT_ID);
-        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0B_EVENT_ID);
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0A_EVENT_ID);
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0B_EVENT_ID);
 
-        // L1 zN → L0A zN (no transpose). Fractal math for fp32:
-        constexpr uint32_t ELE_PER_C0 = BYTE_PER_C0 / sizeof(float);           // 8
-        constexpr uint32_t ELE_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(float); // 128
+            constexpr uint32_t ELE_PER_C0 = BYTE_PER_C0 / sizeof(ElementA);
+            constexpr uint32_t ELE_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(ElementA);
 
-        AscendC::LoadData2DParamsV2 loadA;
-        loadA.mStartPosition = 0;
-        loadA.kStartPosition = 0;
-        loadA.mStep = PROBE_M / C0_NUM_PER_FRACTAL;                  // 4
-        loadA.kStep = PROBE_K / ELE_PER_C0;                          // 8
-        loadA.srcStride = (PROBE_M * PROBE_K) / ELE_PER_FRACTAL;     // 32
-        loadA.dstStride = loadA.srcStride;
-        loadA.ifTranspose = false;
-        AscendC::LoadData(l0AFp32, probeL1A_, loadA);
+            AscendC::LoadData2DParamsV2 loadA;
+            loadA.mStartPosition = 0;
+            loadA.kStartPosition = 0;
+            loadA.mStep = PROBE_M / C0_NUM_PER_FRACTAL;
+            loadA.kStep = PROBE_K / ELE_PER_C0;
+            loadA.srcStride = (PROBE_M * PROBE_K) / ELE_PER_FRACTAL;
+            loadA.dstStride = loadA.srcStride;
+            loadA.ifTranspose = false;
+            AscendC::LoadData(l0ATensor[0], l1ATensor[0], loadA);
 
-        AscendC::LoadData2DParamsV2 loadB;
-        loadB.mStartPosition = 0;
-        loadB.kStartPosition = 0;
-        // L0B nZ with transpose: K×N in L1 zN → L0B
-        loadB.mStep = PROBE_K / C0_NUM_PER_FRACTAL;                  // 4
-        loadB.kStep = PROBE_N / ELE_PER_C0;                          // 16
-        loadB.srcStride = (PROBE_K * PROBE_N) / ELE_PER_FRACTAL;     // 64
-        loadB.dstStride = (PROBE_K * PROBE_N) / ELE_PER_FRACTAL;
-        loadB.ifTranspose = true;
-        AscendC::LoadData(l0BFp32, probeL1B_, loadB);
+            AscendC::LoadData2DParamsV2 loadB;
+            loadB.mStartPosition = 0;
+            loadB.kStartPosition = 0;
+            loadB.mStep = PROBE_K / C0_NUM_PER_FRACTAL;
+            loadB.kStep = PROBE_N / ELE_PER_C0;
+            loadB.srcStride = (PROBE_K * PROBE_N) / ELE_PER_FRACTAL;
+            loadB.dstStride = loadB.srcStride;
+            loadB.ifTranspose = true;
+            AscendC::LoadData(l0BTensor[0], l1BTensor[0], loadB);
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0A_EVENT_ID);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0B_EVENT_ID);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0A_EVENT_ID);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0B_EVENT_ID);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0A_EVENT_ID);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0B_EVENT_ID);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0A_EVENT_ID);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0B_EVENT_ID);
 
-        AscendC::MmadParams mmadParams;
-        mmadParams.m = PROBE_M;
-        mmadParams.n = PROBE_N;
-        mmadParams.k = PROBE_K;
-        mmadParams.unitFlag = 0;
-        mmadParams.cmatrixInitVal = true;
+            AscendC::MmadParams mmadParams;
+            mmadParams.m = PROBE_M;
+            mmadParams.n = PROBE_N;
+            mmadParams.k = PROBE_K;
+            mmadParams.unitFlag = 0;
+            mmadParams.cmatrixInitVal = true;
 #if (__CCE_AICORE__ == 310)
-        mmadParams.disableGemv = true;
+            mmadParams.disableGemv = true;
 #endif
+            AscendC::Mmad(l0CScratch_, l0ATensor[0], l0BTensor[0], mmadParams);
+            AscendC::Mmad(l0CScratch_, l0ATensor[0], l0BTensor[0], mmadParams);
 
-        AscendC::Mmad(l0CScratch_, l0AFp32, l0BFp32, mmadParams); // mad 1
-        AscendC::Mmad(l0CScratch_, l0AFp32, l0BFp32, mmadParams); // mad 2
-
-        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0A_EVENT_ID);
-        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0B_EVENT_ID);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0A_EVENT_ID);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0B_EVENT_ID);
+        }
     }
 #endif
 
     template <class TensorB, class TensorL1B>
-    __aicore__ inline
-    void SparseVBaseTileL1FullLoad(TensorB &gBTensor, TensorL1B &l1BTensorTla,
-                                   AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
-                                   uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
-                                   uint32_t kvSBaseTile, uint32_t blockShapeY,
-                                   uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
-                                   uint32_t curBaseTileSize, uint32_t embed)
+    __aicore__ inline void SparseVBaseTileL1FullLoad(TensorB &gBTensor, TensorL1B &l1BTensorTla,
+                                                     AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
+                                                     uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
+                                                     uint32_t kvSBaseTile, uint32_t blockShapeY,
+                                                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+                                                     uint32_t curBaseTileSize, uint32_t embed)
     {
         using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
@@ -316,9 +311,9 @@ public:
                 break;
             }
             auto l1BTensorTlaTile = GetTile(l1BTensorTla,
-                tla::MakeCoord(dealtLenAccum, 0), tla::MakeShape(curDealtLen, embed));
+                                            tla::MakeCoord(dealtLenAccum, 0), tla::MakeShape(curDealtLen, embed));
             auto gBTensorTlaTile = GetTile(gBTensor,
-                tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(curDealtLen, embed));
+                                           tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(curDealtLen, embed));
             copyGmToL1B(l1BTensorTlaTile, gBTensorTlaTile);
             // 为下一次循环刷新循环变量
             dealtLenAccum += curDealtLen;
@@ -334,16 +329,15 @@ public:
     }
 
     template <class TensorB, class TensorC>
-    __aicore__ inline
-    void operator()(TensorB &gBTensor, TensorC &ubCTensor,
-                    AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
-                    GemmCoord actualOriShape,
-                    uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
-                    uint32_t kvSBaseTile, uint32_t blockShapeY,
-                    uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
-                    uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
-                    Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag,
-                    uint64_t deqScalar = 0)
+    __aicore__ inline void operator()(TensorB &gBTensor, TensorC &ubCTensor,
+                                      AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
+                                      GemmCoord actualOriShape,
+                                      uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
+                                      uint32_t kvSBaseTile, uint32_t blockShapeY,
+                                      uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+                                      uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
+                                      Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag,
+                                      uint64_t deqScalar = 0)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
 
@@ -392,12 +386,13 @@ public:
                 // uint32_t mLoopCounter = GetCurLoopCounter(gatheredKvSTileIdx, mL0LoopNum, mL0Itr);
                 // different m chunks will be concated in the same piece of l0C buffer
                 auto l0CTensorTlaTile = GetTile(l0CTensorTla,
-                    tla::MakeCoord(mL0Itr * L0_TILE_M, 0), tla::MakeShape(l0TileMAct, l0TileNAct));
+                                                tla::MakeCoord(mL0Itr * L0_TILE_M, 0), tla::MakeShape(l0TileMAct, l0TileNAct));
                 for (uint32_t kL0Itr = 0; kL0Itr < kL0LoopNum; kL0Itr++) {
                     uint32_t l0ALoopCounter = prefixSumL0AStages + GetCurLoopCounter(mL0Itr, kL0LoopNum, kL0Itr);
                     uint32_t l0BLoopCounter = prefixSumL0BStages + GetCurLoopCounter(nL0Itr, kL0LoopNum, kL0Itr);
                     uint32_t l0TileKAct = (kL0Itr == kL0LoopNum - 1) ?
-                        (curBaseTileSize - kL0Itr * L0_TILE_K) : L0_TILE_K;
+                                              (curBaseTileSize - kL0Itr * L0_TILE_K) :
+                                              L0_TILE_K;
                     uint32_t l0ABufId = l0ALoopCounter % L0_STAGES;
                     // l0ABufId = (mLoopCounter % 2 == 0) ? (1 - l0ABufId) : l0ABufId;
                     uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
@@ -406,10 +401,10 @@ public:
                     // when L0B buffers wouldn't be reused across the k loop
                     // redundant L0B load caused by m loop can be avoided
                     auto l1BTensorTlaTile = GetTile(l1BTensorTla,
-                        tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N), tla::MakeShape(l0TileKAct, l0TileNAct));
+                                                    tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N), tla::MakeShape(l0TileKAct, l0TileNAct));
                     auto l0BLayoutTla = tla::MakeLayout<ElementB, LayoutTagL0B>(l0TileKAct, l0TileNAct);
                     auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayoutTla, Arch::PositionL0B{});
-                    
+
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                     copyL1ToL0B(l0BTensorTla, l1BTensorTlaTile);
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
@@ -419,7 +414,7 @@ public:
                     }
 
                     auto l1ATensorTlaTile = GetTile(l1ATensorTla,
-                        tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K), tla::MakeShape(l0TileMAct, l0TileKAct));
+                                                    tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K), tla::MakeShape(l0TileMAct, l0TileKAct));
                     auto l0ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL0A>(l0TileMAct, l0TileKAct);
                     auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
 
@@ -434,7 +429,7 @@ public:
                     bool initMmad = (kL0Itr == 0);
                     uint32_t l0TileMAligned = RoundUp(l0TileMAct, 16);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-                    
+
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
 
                     if (mL0Itr == 0 && kL0Itr == 0) {
@@ -513,12 +508,10 @@ protected:
     uint32_t l1ABufNum;
     uint32_t l1BBufNum;
 #ifdef BSA_PV_RESCALE_PROBE
-    AscendC::LocalTensor<float> probeL1A_;
-    AscendC::LocalTensor<float> probeL1B_;
-    AscendC::LocalTensor<float> l0CScratch_;
+    AscendC::LocalTensor<ElementAccumulator> l0CScratch_;
 #endif
 };
 ////////////////////////////////////////////////////////////////////
 
-}  // namespace NpuArch::Gemm::Block
+} // namespace NpuArch::Gemm::Block
 #endif
