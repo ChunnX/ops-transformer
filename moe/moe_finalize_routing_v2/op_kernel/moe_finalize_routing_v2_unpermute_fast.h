@@ -76,8 +76,7 @@ __aicore__ inline void DataCopyCustom(
 #endif
 
 template <typename T1, typename T2, typename T3, bool PROBS>
-class MoeFinalizeRoutingV2UnpermuteFast
-{
+class MoeFinalizeRoutingV2UnpermuteFast {
 public:
     __aicore__ inline MoeFinalizeRoutingV2UnpermuteFast()
     {}
