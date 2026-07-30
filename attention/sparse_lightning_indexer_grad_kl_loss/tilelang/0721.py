@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 8
+KERNEL_CACHE_REVISION = 9
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1181,8 +1181,8 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_row_tmp = T.alloc_ub((rows_per_aiv, 8), calc_dtype)
 
             T.tile.fill(v1_bw_eps, 1e-8)
-            # reluGrad 使用单槽 V→MTE3 写回协议。Stage 3 只收缩无效块的
-            # MTE2/Vector 工作，不在同一轮改动中引入 BF16 ping-pong。
+            # FP16 reluGrad store 与下一轮 FP32 diff_2d 共享物理 UB。
+            # 下一轮的覆写者是 Vector，不是 MTE2，故由 MTE3 直接归还给 V。
             T.set_flag("mte3", "v", 2)
             T.set_flag("mte3", "v", 3)
             for s1_id in T.serial(s1_begin_task, s1_end_task):
@@ -1224,336 +1224,158 @@ def tilelang_grad_kl_loss_single_kernel(
                     )
                 T.pipe_barrier("v")
                 T.set_flag("v", "mte2", 3)
-                if full_valid:
-                    # 编译期完整 K 专用路径：不引用 KRealSize 或 ValidKMask。
-                    for n_idx in T.serial(n_num):
-                        for bw_col_id in T.serial(bw_col_count):
-                            bw_col_start = (
-                                n_idx * n_block + bw_col_id * bw_col_block
-                            )
-                            bw_col_end = bw_col_start + bw_col_block
+                for n_idx in T.serial(n_num):
+                    for bw_col_id in T.serial(bw_col_count):
+                        bw_col_start = (
+                            n_idx * n_block + bw_col_id * bw_col_block
+                        )
+                        bw_col_end = bw_col_start + bw_col_block
 
-                            T.wait_flag("v", "mte2", 3)
+                        T.wait_flag("v", "mte2", 3)
+                        T.copy(
+                            PReduced[bz_task, s1_id,
+                                     bw_col_start:bw_col_end],
+                            v1_bw_p,
+                        )
+                        T.copy(
+                            SoftmaxI[bz_task, s1_id,
+                                     bw_col_start:bw_col_end],
+                            v1_bw_sy,
+                        )
+                        T.copy(
+                            bmm2Res[
+                                bz_task, s1_id,
+                                g_start:g_start + rows_per_aiv,
+                                bw_col_start:bw_col_end,
+                            ],
+                            v1_bw_bmm2,
+                        )
+                        if not full_valid:
                             T.copy(
-                                PReduced[bz_task, s1_id,
-                                         bw_col_start:bw_col_end],
+                                ValidKMask[bz_task, s1_id, bw_col_start:bw_col_end],
+                                v1_bw_valid,
+                            )
+                        T.set_flag("mte2", "v", 3)
+                        T.wait_flag("mte2", "v", 3)
+                        # v1_bw_diff_2d 与上一块正在被 MTE3 读取的
+                        # v1_bw_rg_half 复用同一物理 UB，覆写前必须等待归还。
+                        T.wait_flag("mte3", "v", 2)
+
+                        T.tile.sub(
+                            v1_bw_diff,
+                            v1_bw_sy,
+                            v1_bw_p,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.broadcast(
+                            v1_bw_diff_2d,
+                            v1_bw_diff,
+                        )
+
+                        # bmm2Res 已经过 ReLU。算术门控在 x=0 时精确为 0，
+                        # 对正值快速趋近 1，避免多 repeat packed mask 的布局歧义。
+                        T.tile.mul(v1_bw_rg, v1_bw_bmm2, -10000.0)
+                        T.pipe_barrier("v")
+                        T.tile.exp(v1_bw_rg, v1_bw_rg)
+                        T.pipe_barrier("v")
+                        T.tile.mul(v1_bw_rg, v1_bw_rg, -1.0)
+                        T.pipe_barrier("v")
+                        T.tile.add(v1_bw_rg, v1_bw_rg, 1.0)
+                        T.pipe_barrier("v")
+
+                        # dWeight 保持原有完整物理分块 reduction 顺序。
+                        T.tile.mul(
+                            v1_bw_bmm2,
+                            v1_bw_bmm2,
+                            v1_bw_diff_2d,
+                        )
+                        T.pipe_barrier("v")
+                        T.reduce_sum(
+                            v1_bw_bmm2,
+                            v1_bw_dw,
+                            1,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
+
+                        T.tile.mul(
+                            v1_bw_bmm2,
+                            v1_bw_weight_2d,
+                            v1_bw_diff_2d,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.mul(v1_bw_bmm2, v1_bw_bmm2, v1_bw_rg)
+                        T.pipe_barrier("v")
+                        T.tile.cast(
+                            v1_bw_rg_half,
+                            v1_bw_bmm2,
+                            "CAST_RINT",
+                            rows_per_aiv * bw_col_block,
+                        )
+                        T.pipe_barrier("v")
+                        T.set_flag("v", "mte3", 2)
+                        T.wait_flag("v", "mte3", 2)
+                        T.pipe_barrier("mte3")
+                        T.copy(
+                            v1_bw_rg_half,
+                            reluGradRes[bz_task, s1_id,
+                                        g_start:g_start + rows_per_aiv,
+                                        bw_col_start:bw_col_end],
+                        )
+                        T.set_flag("mte3", "v", 2)
+
+                        # 对齐 VectorLoss：在 AIV 对之间拆分外层 K 分块，
+                        # 由所属 AIV 消费两个物理子 tile。
+                        if n_idx % 2 == vector_id:
+                            T.tile.max(
+                                v1_bw_p,
+                                v1_bw_p,
+                                v1_bw_eps,
+                            )
+                            T.tile.max(
+                                v1_bw_sy,
+                                v1_bw_sy,
+                                v1_bw_eps,
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.ln(
+                                v1_bw_log_p,
                                 v1_bw_p,
                             )
-                            T.copy(
-                                SoftmaxI[bz_task, s1_id,
-                                         bw_col_start:bw_col_end],
+                            T.tile.ln(
+                                v1_bw_log_sy,
                                 v1_bw_sy,
                             )
-                            T.copy(
-                                bmm2Res[
-                                    bz_task, s1_id,
-                                    g_start:g_start + rows_per_aiv,
-                                    bw_col_start:bw_col_end,
-                                ],
-                                v1_bw_bmm2,
-                            )
-                            T.set_flag("mte2", "v", 3)
-                            T.wait_flag("mte2", "v", 3)
-
-                            # 单槽 BF16 写回缓冲区在覆写前必须由 MTE3 归还。
-                            T.wait_flag("mte3", "v", 2)
+                            T.pipe_barrier("v")
                             T.tile.sub(
-                                v1_bw_diff,
-                                v1_bw_sy,
+                                v1_bw_loss_2d[0, :],
+                                v1_bw_log_p,
+                                v1_bw_log_sy,
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.mul(
+                                v1_bw_loss_2d[0, :],
+                                v1_bw_loss_2d[0, :],
                                 v1_bw_p,
                             )
                             T.pipe_barrier("v")
-                            T.tile.broadcast(
-                                v1_bw_diff_2d,
-                                v1_bw_diff,
-                            )
-
-                            # bmm2Res 已经过 ReLU。算术门控在 x=0 时精确为 0，
-                            # 对正值快速趋近 1，避免 packed mask 的布局歧义。
-                            T.tile.mul(v1_bw_rg, v1_bw_bmm2, -10000.0)
-                            T.pipe_barrier("v")
-                            T.tile.exp(v1_bw_rg, v1_bw_rg)
-                            T.pipe_barrier("v")
-                            T.tile.mul(v1_bw_rg, v1_bw_rg, -1.0)
-                            T.pipe_barrier("v")
-                            T.tile.add(v1_bw_rg, v1_bw_rg, 1.0)
-                            T.pipe_barrier("v")
-
-                            # dWeight 保持原有完整物理分块 reduction 顺序。
-                            T.tile.mul(
-                                v1_bw_bmm2,
-                                v1_bw_bmm2,
-                                v1_bw_diff_2d,
-                            )
-                            T.pipe_barrier("v")
+                            if not full_valid:
+                                T.tile.mul(
+                                    v1_bw_loss_2d[0, :],
+                                    v1_bw_loss_2d[0, :],
+                                    v1_bw_valid,
+                                )
+                                T.pipe_barrier("v")
                             T.reduce_sum(
-                                v1_bw_bmm2,
-                                v1_bw_dw,
-                                1,
+                                v1_bw_loss_2d, v1_bw_loss_sum, 1
                             )
                             T.pipe_barrier("v")
                             T.tile.add(
-                                v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw
+                                v1_bw_loss_accum,
+                                v1_bw_loss_accum,
+                                v1_bw_loss_sum,
                             )
-
-                            T.tile.mul(
-                                v1_bw_bmm2,
-                                v1_bw_weight_2d,
-                                v1_bw_diff_2d,
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.mul(v1_bw_bmm2, v1_bw_bmm2, v1_bw_rg)
-                            T.pipe_barrier("v")
-                            T.tile.cast(
-                                v1_bw_rg_half,
-                                v1_bw_bmm2,
-                                "CAST_RINT",
-                                rows_per_aiv * bw_col_block,
-                            )
-                            T.pipe_barrier("v")
-
-                            T.set_flag("v", "mte3", 2)
-                            T.wait_flag("v", "mte3", 2)
-                            T.pipe_barrier("mte3")
-                            T.copy(
-                                v1_bw_rg_half,
-                                reluGradRes[
-                                    bz_task, s1_id,
-                                    g_start:g_start + rows_per_aiv,
-                                    bw_col_start:bw_col_end,
-                                ],
-                            )
-                            T.set_flag("mte3", "v", 2)
-
-                            # 对齐 VectorLoss：在 AIV 对之间拆分外层 K 分块，
-                            # 由所属 AIV 消费两个物理子 tile。
-                            if n_idx % 2 == vector_id:
-                                T.tile.max(
-                                    v1_bw_p,
-                                    v1_bw_p,
-                                    v1_bw_eps,
-                                )
-                                T.tile.max(
-                                    v1_bw_sy,
-                                    v1_bw_sy,
-                                    v1_bw_eps,
-                                )
-                                T.pipe_barrier("v")
-                                T.tile.ln(
-                                    v1_bw_log_p,
-                                    v1_bw_p,
-                                )
-                                T.tile.ln(
-                                    v1_bw_log_sy,
-                                    v1_bw_sy,
-                                )
-                                T.pipe_barrier("v")
-                                T.tile.sub(
-                                    v1_bw_loss_2d[0, :],
-                                    v1_bw_log_p,
-                                    v1_bw_log_sy,
-                                )
-                                T.pipe_barrier("v")
-                                T.tile.mul(
-                                    v1_bw_loss_2d[0, :],
-                                    v1_bw_loss_2d[0, :],
-                                    v1_bw_p,
-                                )
-                                T.pipe_barrier("v")
-                                T.reduce_sum(
-                                    v1_bw_loss_2d, v1_bw_loss_sum, 1
-                                )
-                                T.pipe_barrier("v")
-                                T.tile.add(
-                                    v1_bw_loss_accum,
-                                    v1_bw_loss_accum,
-                                    v1_bw_loss_sum,
-                                )
-                            T.set_flag("v", "mte2", 3)
-                else:
-                    # 每个 query 只读取一次真实 K，内层 64 列块复用该标量。
-                    valid_k_size = KRealSize[bz_task, s1_id]
-                    for n_idx in T.serial(n_num):
-                        for bw_col_id in T.serial(bw_col_count):
-                            bw_col_start = (
-                                n_idx * n_block + bw_col_id * bw_col_block
-                            )
-                            bw_col_end = bw_col_start + bw_col_block
-                            block_active = T.if_then_else(
-                                bw_col_start < valid_k_size, 1, 0
-                            )
-                            block_partial = T.if_then_else(
-                                bw_col_end > valid_k_size, 1, 0
-                            )
-
-                            T.wait_flag("v", "mte2", 3)
-                            if block_active > 0:
-                                T.copy(
-                                    PReduced[
-                                        bz_task, s1_id,
-                                        bw_col_start:bw_col_end,
-                                    ],
-                                    v1_bw_p,
-                                )
-                                T.copy(
-                                    SoftmaxI[
-                                        bz_task, s1_id,
-                                        bw_col_start:bw_col_end,
-                                    ],
-                                    v1_bw_sy,
-                                )
-                                T.copy(
-                                    bmm2Res[
-                                        bz_task, s1_id,
-                                        g_start:g_start + rows_per_aiv,
-                                        bw_col_start:bw_col_end,
-                                    ],
-                                    v1_bw_bmm2,
-                                )
-                                if block_partial > 0:
-                                    T.copy(
-                                        ValidKMask[
-                                            bz_task, s1_id,
-                                            bw_col_start:bw_col_end,
-                                        ],
-                                        v1_bw_valid,
-                                    )
-                                T.set_flag("mte2", "v", 3)
-                                T.wait_flag("mte2", "v", 3)
-
-                            # 单槽 BF16 写回缓冲区在覆写前必须由 MTE3 归还。
-                            T.wait_flag("mte3", "v", 2)
-                            if block_active > 0:
-                                T.tile.sub(
-                                    v1_bw_diff,
-                                    v1_bw_sy,
-                                    v1_bw_p,
-                                )
-                                T.pipe_barrier("v")
-                                T.tile.broadcast(
-                                    v1_bw_diff_2d,
-                                    v1_bw_diff,
-                                )
-
-                                # bmm2Res 已经过 ReLU。算术门控在 x=0 时精确为 0，
-                                # 对正值快速趋近 1，避免 packed mask 的布局歧义。
-                                T.tile.mul(v1_bw_rg, v1_bw_bmm2, -10000.0)
-                                T.pipe_barrier("v")
-                                T.tile.exp(v1_bw_rg, v1_bw_rg)
-                                T.pipe_barrier("v")
-                                T.tile.mul(v1_bw_rg, v1_bw_rg, -1.0)
-                                T.pipe_barrier("v")
-                                T.tile.add(v1_bw_rg, v1_bw_rg, 1.0)
-                                T.pipe_barrier("v")
-
-                                # dWeight 保持原有完整物理分块 reduction 顺序。
-                                T.tile.mul(
-                                    v1_bw_bmm2,
-                                    v1_bw_bmm2,
-                                    v1_bw_diff_2d,
-                                )
-                                T.pipe_barrier("v")
-                                T.reduce_sum(
-                                    v1_bw_bmm2,
-                                    v1_bw_dw,
-                                    1,
-                                )
-                                T.pipe_barrier("v")
-                                T.tile.add(
-                                    v1_bw_dw_accum,
-                                    v1_bw_dw_accum,
-                                    v1_bw_dw,
-                                )
-
-                                T.tile.mul(
-                                    v1_bw_bmm2,
-                                    v1_bw_weight_2d,
-                                    v1_bw_diff_2d,
-                                )
-                                T.pipe_barrier("v")
-                                T.tile.mul(
-                                    v1_bw_bmm2, v1_bw_bmm2, v1_bw_rg
-                                )
-                                T.pipe_barrier("v")
-                                T.tile.cast(
-                                    v1_bw_rg_half,
-                                    v1_bw_bmm2,
-                                    "CAST_RINT",
-                                    rows_per_aiv * bw_col_block,
-                                )
-                                T.pipe_barrier("v")
-                            else:
-                                # C2 仍固定读取完整 K。无效整块不做 backward，
-                                # 但必须显式发布 BF16 零块，不能留下未初始化 workspace。
-                                T.tile.fill(v1_bw_rg_half, 0.0)
-                                T.pipe_barrier("v")
-
-                            T.set_flag("v", "mte3", 2)
-                            T.wait_flag("v", "mte3", 2)
-                            T.pipe_barrier("mte3")
-                            T.copy(
-                                v1_bw_rg_half,
-                                reluGradRes[
-                                    bz_task, s1_id,
-                                    g_start:g_start + rows_per_aiv,
-                                    bw_col_start:bw_col_end,
-                                ],
-                            )
-                            T.set_flag("mte3", "v", 2)
-
-                            if block_active > 0:
-                                # 对齐 VectorLoss：在 AIV 对之间拆分外层 K 分块，
-                                # 由所属 AIV 消费两个物理子 tile。
-                                if n_idx % 2 == vector_id:
-                                    T.tile.max(
-                                        v1_bw_p,
-                                        v1_bw_p,
-                                        v1_bw_eps,
-                                    )
-                                    T.tile.max(
-                                        v1_bw_sy,
-                                        v1_bw_sy,
-                                        v1_bw_eps,
-                                    )
-                                    T.pipe_barrier("v")
-                                    T.tile.ln(
-                                        v1_bw_log_p,
-                                        v1_bw_p,
-                                    )
-                                    T.tile.ln(
-                                        v1_bw_log_sy,
-                                        v1_bw_sy,
-                                    )
-                                    T.pipe_barrier("v")
-                                    T.tile.sub(
-                                        v1_bw_loss_2d[0, :],
-                                        v1_bw_log_p,
-                                        v1_bw_log_sy,
-                                    )
-                                    T.pipe_barrier("v")
-                                    T.tile.mul(
-                                        v1_bw_loss_2d[0, :],
-                                        v1_bw_loss_2d[0, :],
-                                        v1_bw_p,
-                                    )
-                                    T.pipe_barrier("v")
-                                    if block_partial > 0:
-                                        T.tile.mul(
-                                            v1_bw_loss_2d[0, :],
-                                            v1_bw_loss_2d[0, :],
-                                            v1_bw_valid,
-                                        )
-                                        T.pipe_barrier("v")
-                                    T.reduce_sum(
-                                        v1_bw_loss_2d, v1_bw_loss_sum, 1
-                                    )
-                                    T.pipe_barrier("v")
-                                    T.tile.add(
-                                        v1_bw_loss_accum,
-                                        v1_bw_loss_accum,
-                                        v1_bw_loss_sum,
-                                    )
-                            T.set_flag("v", "mte2", 3)
+                        T.set_flag("v", "mte2", 3)
 
                 T.wait_flag("v", "mte2", 3)
                 T.pipe_barrier("v")
