@@ -188,7 +188,8 @@ __aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::InitBa
 
     scaleKGroups_ = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(k_), Blaze::Gemm::MXFP_DIVISOR_SIZE);
     dataBytesPerMRow_ = static_cast<uint64_t>(k_) * sizeof(AType);
-    scaleBytesPerMRow_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
+    scaleBytesPerMRow_ = scaleKGroups_ * static_cast<uint64_t>(
+      Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
     cBytesPerM_ = static_cast<uint64_t>(n_) * sizeof(CType);
 }
 
@@ -196,10 +197,10 @@ template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::Process()
 {
     if ASCEND_IS_AIV {
-      AllGatherProcess();
+        AllGatherProcess();
     }
     if ASCEND_IS_AIC {
-      MatmulProcess();
+        MatmulProcess();
     }
 }
 
@@ -245,14 +246,14 @@ __aicore__ inline void AllGatherQuantMatmulUdmaImpl<AType, BType, CType>::AllGat
     CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
 
     for (uint32_t round = 0; round < commTurn_; ++round) {
-      if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
-        all_gather_scale_.Commit();
-        all_gather_data_.Commit();
-        all_gather_data_.template Wait<BARRIER_DEVICE>();
-      }
-      AscendC::SyncAll<true>();
-      // round 0 对应 dependId=1，AIC 侧按 dependId 等待对应的远端 round 数据。
-      CrossCoreSetFlag<0x2, PIPE_MTE3>(round + 1);
+        if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
+            all_gather_scale_.Commit();
+            all_gather_data_.Commit();
+            all_gather_data_.template Wait<BARRIER_DEVICE>();
+        }
+        AscendC::SyncAll<true>();
+        // round 0 对应 dependId=1，AIC 侧按 dependId 等待对应的远端 round 数据。
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(round + 1);
     }
     all_gather_scale_.Finalize();
     all_gather_data_.Finalize();

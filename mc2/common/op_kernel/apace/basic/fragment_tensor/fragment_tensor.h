@@ -277,10 +277,8 @@ private:
         const CoordType& inCoord, const ShapeType& inShape,
         AscendC::Std::index_sequence<Is...>) const
     {
-        uint64_t dummy[] = {
-            (coord[Is] = sliceCoord_[Is] + AscendC::Te::Get<Is>(inCoord), uint64_t{0})...,
-            (shape[Is] = AscendC::Te::Get<Is>(inShape), uint64_t{0})...};
-        (void)dummy;
+        ((coord[Is] = sliceCoord_[Is] + AscendC::Te::Get<Is>(inCoord)), ...);
+        ((shape[Is] = AscendC::Te::Get<Is>(inShape)), ...);
     }
 
     template<size_t... Is>
@@ -312,8 +310,8 @@ __aicore__ inline void FragmentSliceCopy(
     auto composition = src.ComputeFragmentComposition(
         src.GetSliceCoord(assembleAxis), src.GetSliceShape(assembleAxis));
 
-    for (uint32_t Idx = 0; Idx < composition.totalFragmentCnt; ++Idx) {
-        auto info = src.GetFragmentInfo(Idx, composition);
+    for (uint32_t idx = 0; idx < composition.totalFragmentCnt; ++idx) {
+        auto info = src.GetFragmentInfo(idx, composition);
         auto fragment = src.GetFragment(info.fragmentIdx);
         auto gmTensor = fragment.Slice(
             MakeCoordFromArray<Dims>(info.fragCoord), MakeShapeFromArray<Dims>(info.copyShape));
@@ -335,8 +333,8 @@ __aicore__ inline void FragmentSliceScatter(
     auto composition = src.ComputeFragmentComposition(
         src.GetSliceCoord(assembleAxis), src.GetSliceShape(assembleAxis));
 
-    for (uint32_t Idx = 0; Idx < composition.totalFragmentCnt; ++Idx) {
-        auto info = src.GetFragmentInfo(Idx, composition);
+    for (uint32_t idx = 0; idx < composition.totalFragmentCnt; ++idx) {
+        auto info = src.GetFragmentInfo(idx, composition);
 
         // assembleAxis 方向按 realFragmentSize 裁剪（尾块 pad 行不拷贝）
         if (info.fragCoord[assembleAxis] >= realFragmentSize) { continue; }
