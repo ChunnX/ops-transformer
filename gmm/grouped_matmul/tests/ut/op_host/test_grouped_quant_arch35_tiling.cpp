@@ -67,7 +67,8 @@ string TilingData2Str(const void *tilingData, size_t tilingSize)
     return oss.str();
 }
 
-vector<gert::TilingContextPara::OpAttr> GetGroupedQmmAttrs(bool transposeX, bool transposeWeight, int64_t groupType)
+vector<gert::TilingContextPara::OpAttr> GetGroupedQmmAttrs(bool transposeX, bool transposeWeight, int64_t groupType,
+                                                           const vector<int64_t> &tuningConfig)
 {
     return {
         {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -77,7 +78,7 @@ vector<gert::TilingContextPara::OpAttr> GetGroupedQmmAttrs(bool transposeX, bool
         {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
         {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+        {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tuningConfig)},
     };
 }
 
@@ -111,15 +112,15 @@ public:
         bool isSplitKPertensor = groupType == 2 && scaleDtype != ge::DT_FLOAT8_E8M0;
         gert::StorageShape perTokenScaleShape =
             isSplitKPertensor ? ops::ut::MakeGertStorageShape({groupNum}, {groupNum}) :
-            groupType == 2 ? ops::ut::MakeGertStorageShape({splitKScaleBlocks, m, 2}, {splitKScaleBlocks, m, 2}) :
-                             ops::ut::MakeGertStorageShape({m, kScaleBlocks, 2}, {m, kScaleBlocks, 2});
+            groupType == 2    ? ops::ut::MakeGertStorageShape({splitKScaleBlocks, m, 2}, {splitKScaleBlocks, m, 2}) :
+                                ops::ut::MakeGertStorageShape({m, kScaleBlocks, 2}, {m, kScaleBlocks, 2});
 
         vector<int64_t> weightOriginDims =
             transposeWeight ? vector<int64_t>{groupNum, n, k} : vector<int64_t>{groupNum, k, n};
         vector<int64_t> weightStorageDims;
         if (weightFormat == "NZ") {
-            const bool weight4Bit = weightDtype == ge::DT_INT4 || weightDtype == ge::DT_FLOAT4_E2M1 ||
-                                    weightDtype == ge::DT_FLOAT4_E1M2;
+            const bool weight4Bit =
+                weightDtype == ge::DT_INT4 || weightDtype == ge::DT_FLOAT4_E2M1 || weightDtype == ge::DT_FLOAT4_E1M2;
             const int64_t n0 = weight4Bit ? 64 : 32;
             const int64_t n1 = (n + n0 - 1) / n0;
             const int64_t k1 = (k + 15) / 16;
@@ -130,11 +131,10 @@ public:
         }
         gert::StorageShape weightShape = ops::ut::MakeGertStorageShape(weightOriginDims, weightStorageDims);
 
-        vector<int64_t> scaleDims =
-            isSplitKPertensor ? vector<int64_t>{groupNum} :
-            groupType == 2 ? vector<int64_t>{splitKScaleBlocks, n, 2}
-                           : (transposeWeight ? vector<int64_t>{groupNum, n, kScaleBlocks, 2}
-                                              : vector<int64_t>{groupNum, kScaleBlocks, n, 2});
+        vector<int64_t> scaleDims = isSplitKPertensor ? vector<int64_t>{groupNum} :
+                                    groupType == 2    ? vector<int64_t>{splitKScaleBlocks, n, 2} :
+                                                        (transposeWeight ? vector<int64_t>{groupNum, n, kScaleBlocks, 2} :
+                                                                           vector<int64_t>{groupNum, kScaleBlocks, n, 2});
         gert::StorageShape scaleShape = ops::ut::MakeGertStorageShape(scaleDims, scaleDims);
 
         gert::TilingContextPara tilingContextPara(
@@ -151,14 +151,30 @@ public:
                 {perTokenScaleShape, perTokenScaleDtype, ge::FORMAT_ND}, // perTokenScale
             },
             {{ops::ut::MakeGertStorageShape({m}, {n}), yDtype, ge::FORMAT_ND}},
-            GetGroupedQmmAttrs(transposeX, transposeWeight, groupType),
-            &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+            GetGroupedQmmAttrs(transposeX, transposeWeight, groupType, tuningConfig), &compileInfo, "3510",
+            compileInfo.aicNum, compileInfo.ubSize);
 
         TilingInfo tilingInfo;
         bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
         ASSERT_EQ(tilingResult, result) << "prefix=" << prefix << ", case=" << caseName;
         if (!result) {
             return;
+        }
+        if (expectedTilingM >= 0) {
+            ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMQuantBasicApiTilingData))
+                << "prefix=" << prefix;
+            const auto *tilingData = reinterpret_cast<const GroupedMatmulTilingData::GMMQuantBasicApiTilingData *>(
+                tilingInfo.tilingData.get());
+            ASSERT_EQ(tilingData->mmTilingData.m, static_cast<uint32_t>(expectedTilingM)) << "prefix=" << prefix;
+            if (expectedBaseM >= 0) {
+                ASSERT_EQ(tilingData->mmTilingData.baseM, static_cast<uint32_t>(expectedBaseM)) << "prefix=" << prefix;
+            }
+            if (expectedKAL1 >= 0) {
+                ASSERT_EQ(tilingData->mmTilingData.kAL1, static_cast<uint32_t>(expectedKAL1)) << "prefix=" << prefix;
+            }
+            if (expectedKBL1 >= 0) {
+                ASSERT_EQ(tilingData->mmTilingData.kBL1, static_cast<uint32_t>(expectedKBL1)) << "prefix=" << prefix;
+            }
         }
         if (expectTilingData.empty()) {
             // For some csv cases we only care success/failure path, not exact tiling binary details.
@@ -205,6 +221,11 @@ public:
     uint64_t expectBlockDim = 0;
     uint64_t expectTilingKey = 0;
     string expectTilingData;
+    vector<int64_t> tuningConfig = {0};
+    int64_t expectedTilingM = -1;
+    int64_t expectedBaseM = -1;
+    int64_t expectedKAL1 = -1;
+    int64_t expectedKBL1 = -1;
 };
 
 
@@ -307,6 +328,73 @@ TEST_P(TestGroupedQuantArch35Tiling, generalTest)
     GetParam().Test();
 }
 
+TEST(TestGroupedQuantArch35TuningConfig, expectedTokenCountReplacesTilingM)
+{
+    const auto &params = GetAscend950Params();
+    const auto iter = std::find_if(params.begin(), params.end(), [](const GroupedQuantArch35TilingTestParam &param) {
+        return param.caseName == "mxfp4_basic_api_nd_transw_fp32_bias_l1";
+    });
+    ASSERT_NE(iter, params.end());
+
+    auto tuningParam = *iter;
+    tuningParam.tuningConfig = {64};
+    tuningParam.expectedTilingM = 64;
+    tuningParam.expectedBaseM = 64;
+    tuningParam.expectTilingData.clear();
+    tuningParam.Test();
+}
+
+TEST(TestGroupedQuantArch35TuningConfig, mxFp8UsesCommonLimitedStepK)
+{
+    const auto &params = GetAscend950Params();
+    const auto iter = std::find_if(params.begin(), params.end(), [](const GroupedQuantArch35TilingTestParam &param) {
+        return param.caseName == "mxfp8_basic_api_nd_notrans";
+    });
+    ASSERT_NE(iter, params.end());
+
+    auto tuningParam = *iter;
+    tuningParam.m = 2048;
+    tuningParam.k = 2048;
+    tuningParam.n = 5120;
+    tuningParam.groupNum = 3;
+    tuningParam.tuningConfig = {10};
+    tuningParam.expectedTilingM = 10;
+    tuningParam.expectedBaseM = 16;
+    tuningParam.expectedKAL1 = 512;
+    tuningParam.expectedKBL1 = 512;
+    tuningParam.expectTilingData.clear();
+    tuningParam.Test();
+}
+
+TEST(TestGroupedQuantArch35TuningConfig, emptyConfigFallsBackToInputM)
+{
+    const auto &params = GetAscend950Params();
+    const auto iter = std::find_if(params.begin(), params.end(), [](const GroupedQuantArch35TilingTestParam &param) {
+        return param.caseName == "mxfp4_basic_api_nd_transw_fp32_bias_l1";
+    });
+    ASSERT_NE(iter, params.end());
+
+    auto tuningParam = *iter;
+    tuningParam.tuningConfig.clear();
+    tuningParam.expectedTilingM = tuningParam.m;
+    tuningParam.expectTilingData.clear();
+    tuningParam.Test();
+}
+
+TEST(TestGroupedQuantArch35TuningConfig, configGreaterThanInputMFails)
+{
+    const auto &params = GetAscend950Params();
+    const auto iter = std::find_if(params.begin(), params.end(), [](const GroupedQuantArch35TilingTestParam &param) {
+        return param.caseName == "mxfp4_basic_api_nd_transw_fp32_bias_l1";
+    });
+    ASSERT_NE(iter, params.end());
+
+    auto tuningParam = *iter;
+    tuningParam.tuningConfig = {tuningParam.m + 1};
+    tuningParam.result = false;
+    tuningParam.expectTilingData.clear();
+    tuningParam.Test();
+}
 
 
 INSTANTIATE_TEST_SUITE_P(GROUPED_QMM_950, TestGroupedQuantArch35Tiling, testing::ValuesIn(GetAscend950Params()),

@@ -1473,8 +1473,26 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInputParamsForV3Version() 
 }
 
 template <typename T>
+aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckTuningConfig() const
+{
+    if (gmmParams_.tuningConfigOptional == nullptr || gmmParams_.tuningConfigOptional->Size() == 0) {
+        return ACLNN_SUCCESS;
+    }
+
+    const int64_t tuningConfig = (*gmmParams_.tuningConfigOptional)[0];
+    const int64_t mSize = GetInputTensor(gmmParams_.x)->GetViewShape().GetDim(0);
+    GMM_CHECK_REPORT(tuningConfig >= 0 && tuningConfig <= mSize,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), "tuningConfig", std::to_string(tuningConfig),
+            "the first value of tuningConfig must be in the range [0, M], where M is " +
+                std::to_string(mSize)));
+
+    return ACLNN_SUCCESS;
+}
+
+template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() const
 {
+    CHECK_RET(CheckTuningConfig() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     DataType xDtype = gmmParams_.xDtype;
     DataType weightDtype = GetInputTensor(gmmParams_.weight)->GetDataType();
     DataType yDtype = GetInputTensor(gmmParams_.y)->GetDataType();
