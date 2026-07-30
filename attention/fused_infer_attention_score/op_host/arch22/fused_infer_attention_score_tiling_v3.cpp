@@ -1181,6 +1181,19 @@ bool CheckSpecCondPA3Dim(int64_t tempQD, const gert::Shape &kShape,
     return isFAIDSize && blockSizeSupported;
 }
 
+bool CheckSpecCondPA4Dim(int64_t tempQD, const gert::Shape &kShape,
+    const gert::Shape &vShape)
+{
+    int64_t tempKD = kShape.GetDim(DIM_3);
+    int64_t tempVD = vShape.GetDim(DIM_3);
+    int64_t blockSize = kShape.GetDim(DIM_2);
+    constexpr int64_t BLOCKSIZE_ALIGN_16 = 16;
+    constexpr int64_t MAX_BLOCKSIZE = 512;
+    bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) && (tempQD == tempKD && tempQD == tempVD);
+    bool blockSizeSupported = (blockSize % BLOCKSIZE_ALIGN_16 == 0) && (blockSize <= MAX_BLOCKSIZE);
+    return isFAIDSize && blockSizeSupported;
+}
+
 bool CheckSpecCondPA5Dim(int64_t tempQD, const gert::Shape &kShape,
     const gert::Shape &vShape)
 {
@@ -1245,6 +1258,8 @@ bool CheckSpecConditions(const gert::TilingContext *context)
                                  tempV->GetStorageShape().GetDim(DIM_2));
     } else if (kvDimNum == 3U) {
         return CheckSpecCondPA3Dim(tempQD, tempK->GetStorageShape(), tempV->GetStorageShape(), kvHeadNum);
+    } else if (kvDimNum == 4U) {
+        return CheckSpecCondPA4Dim(tempQD, tempK->GetStorageShape(), tempV->GetStorageShape());
     } else if (kvDimNum == 5U) {
         return CheckSpecCondPA5Dim(tempQD, tempK->GetStorageShape(), tempV->GetStorageShape());
     }
