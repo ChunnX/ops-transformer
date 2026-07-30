@@ -2485,6 +2485,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
         if (aivCoreIdx_ == 1U) {
             ExpertTokenNumCopyOut();
         }
+        AscendC::WriteGmByPassDCache(
+            reinterpret_cast<__gm__ int32_t *>(params_.expertTokenNumsOutGmAddr),
+            static_cast<int32_t>(123456789));
     }
     // 恢复入口时保存的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
