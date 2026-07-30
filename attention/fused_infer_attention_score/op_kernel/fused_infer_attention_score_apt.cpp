@@ -23,13 +23,11 @@
 #define FIA_ENABLE_MLA
 #include "fused_infer_attention_score_template_tiling_key.h"
 #ifdef NOT_DYNAMIC_COMPILE
-#if __has_include("arch35/incre/incre_flash_attention_entry_regbase.h")
-#include "arch35/incre/incre_flash_attention_entry_regbase.h"
-#include "arch35/prompt/prompt_flash_attention_entry_regbase.h"
-#else
-#include "../incre_flash_attention/arch35/incre_flash_attention_entry_regbase.h"
-#include "../prompt_flash_attention/arch35/prompt_flash_attention_entry_regbase.h"
-#endif
+#include "arch35/fia_arch35_common.h"
+#include "arch35/fia_arch35_empty.h"
+#include "arch35/fia_arch35_antiquant.h"
+#include "arch35/fia_arch35_noquant.h"
+#include "arch35/fia_arch35_fullquant.h"
 #else
 #include "../incre_flash_attention/incre_flash_attention.cpp"
 #include "../prompt_flash_attention/prompt_flash_attention.cpp"
@@ -55,20 +53,31 @@ __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __
                                                     __gm__ uint8_t* learnableSink, __gm__ uint8_t* qStartIdx, __gm__ uint8_t* kvStartIdx,
                                                     __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
-    if (quantMode >= FullQuantTiling) {
-        //pfa 模板
-        prompt_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit,isReconstructTemp>(
-                                    query, key, value, pse_shift, attenMask, actualSeqLengths, actualSeqLengthsKV, deq_scale1, quant_scale1,                                    
-                                    deq_scale2, quant_scale2, quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize,
-                                    kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,                                    
-                                    keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope,
-                                    dequantScaleQuery, learnableSink, attentionOut, softmaxLse, workspace, tiling);
-    } else {
-        //ifa 模板
-        incre_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
+    if constexpr (emptyTensor) {
+        // empty 模板 (kv为空,直接输出零,优先于量化模式)
+        fia_empty_regbase(attentionOut, softmaxLse, workspace, tiling);
+    } else if (quantMode < FullQuantTiling) {
+        // antiquant 模板 (quantMode < 15: 0/2/6)
+        fia_antiquant_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
                                     query, key, value, pse_shift, attenMask, actualSeqLengths, actualSeqLengthsKV, deq_scale1, quant_scale1,
                                     deq_scale2, quant_scale2, quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize,
                                     kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, keySharedPrefix,
                                     valueSharedPrefix, actualSharedPrefixLen, attentionOut, softmaxLse, workspace, tiling);
+    } else if (quantMode == NoQuantMode) {
+        // noquant 模板 (quantMode == 31)
+        fia_noquant_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit, isReconstructTemp>(
+                                    query, key, value, pse_shift, attenMask, actualSeqLengths, actualSeqLengthsKV, deq_scale1, quant_scale1,
+                                    deq_scale2, quant_scale2, quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize,
+                                    kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,
+                                    keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope,
+                                    dequantScaleQuery, learnableSink, attentionOut, softmaxLse, workspace, tiling);
+    } else {
+        // fullquant 模板 (quantMode >= 15 且 != 31: 17-21/30)
+        fia_fullquant_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit, isReconstructTemp>(
+                                    query, key, value, pse_shift, attenMask, actualSeqLengths, actualSeqLengthsKV, deq_scale1, quant_scale1,
+                                    deq_scale2, quant_scale2, quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize,
+                                    kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,
+                                    keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope,
+                                    dequantScaleQuery, learnableSink, attentionOut, softmaxLse, workspace, tiling);
     }
 }
