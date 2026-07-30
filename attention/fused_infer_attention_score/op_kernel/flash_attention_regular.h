@@ -652,7 +652,7 @@ namespace SplitFuse {
                     // BNBD: token stride within a block is embed (head selected via gmOffsetK)
                     kRow = embed;
                     kCol = stackSeqTile;
-                    layoutKTemp = LayoutK::template MakeLayout<ElementK>(kRow, kCol);
+                    layoutKTemp = LayoutK(kRow, kCol);
                 }
                 if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
                     vRow = pagedBlockSize;
@@ -661,7 +661,7 @@ namespace SplitFuse {
                 } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
                     vRow = stackSeqTile;
                     vCol = embedV;
-                    layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
+                    layoutVTemp = LayoutV(vRow, vCol);
                 }
                 blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
                 blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
