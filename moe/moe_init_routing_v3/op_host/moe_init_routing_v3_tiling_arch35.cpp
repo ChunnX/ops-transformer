@@ -1605,8 +1605,8 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutMxFP8NoQuantCompute()
         int64_t rowIdxSize = NUM_TWO * static_cast<int64_t>(sizeof(int32_t)) *
                              std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
         int64_t oneRowSize = Align(perLoopParams.perLoopCols, inputXDtypeSize_) * inputXDtypeSize_ * NUM_TWO +
-                             Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
-                                 NUM_TWO;
+                             Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) *
+                             inputScaleDTypeSize_ * NUM_TWO;
         perLoopParams.xCopyInQueueBufferNum = std::min(MAX_QUEUE_BUFFER_NUM,
                                                        (availUbSize_ - rowIdxSize) / oneRowSize * NUM_TWO);
     }
