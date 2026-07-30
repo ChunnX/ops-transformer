@@ -10,7 +10,7 @@
 
 /*!
  * \file mc2_moe_graph_context.h
- * \brief MC2 MoeContext builder for graph fusion pass (A5), shares the same context
+ * \brief MC2 MoeContext builder for graph fusion pass (A3/A5), shares the same context
  *        semantics with the aclnn single-op path (mc2/common/op_api/mc2_context.cpp).
  */
 
@@ -56,6 +56,7 @@ private:
 
     bool BuildContextData(const std::string &groupEp, std::vector<int32_t> &contextData, int64_t &hcclBuffSize);
     bool LoadHcclSymbols();
+    bool LoadKfcSymbols();
     bool GetCommHandle(const char *groupEp, HcclComm &hcclHandle);
     bool GetHcclCommLink(const HcclComm &hcclHandle, uint32_t netLayerId, uint32_t srcRankId, uint32_t dstRankId,
                          const CommProtocol &protocol, CommLink *&links);
@@ -70,10 +71,12 @@ private:
     bool CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum);
     bool GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol);
     const std::string GetLibPath();
+    const std::string GetHcclLibPath();
     template <typename T>
     T GetHcclLibFunc(void *handle, const std::string &funcName);
 
     void *hcclLibHandle_ = nullptr;
+    void *hcclKfcLibHandle_ = nullptr;
     uint64_t hcclBuffSize_ = 0;
     uint32_t epRankSize_ = 0;
     uint32_t rankSizePerServer_ = 0;
@@ -85,10 +88,18 @@ private:
     HcclResult (*HcclRankGraphGetRankSizeByLayer)(HcclComm, uint32_t, uint32_t *) = nullptr;
     HcclResult (*HcclChannelAcquire)(HcclComm, CommEngine, HcclChannelDesc *, uint32_t, ChannelHandle *) = nullptr;
     HcclResult (*HcclGetHcclBuffer)(HcclComm, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclGetRemoteIpcHcclBuf)(HcclComm, uint64_t, void **, uint64_t *) = nullptr;
     HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, ChannelHandle, void **, uint64_t *) = nullptr;
     HcclResult (*HcclGetRankId)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclGetRankSize)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclRankGraphGetRanksByLayer)(HcclComm, uint32_t, uint32_t **, uint32_t *) = nullptr;
+    // KFC 路径（A3）：HcclCreateOpResCtx 建立远端 buffer 映射后才能查 HcclGetRemoteIpcHcclBuf
+    HcclResult (*HcclKfcAllocOpArgs)(void **) = nullptr;
+    HcclResult (*HcclKfcOpArgsSetCommEngine)(void *, uint8_t) = nullptr;
+    HcclResult (*HcclKfcOpArgsSetAlgConfig)(void *, char *) = nullptr;
+    HcclResult (*HcclCreateOpResCtx)(HcclComm, uint8_t, void *, void **) = nullptr;
+    HcclResult (*HcclKfcFreeOpArgs)(void *) = nullptr;
+    HcclResult (*HcclCommGetHandleWithName)(const char *, HcclComm *) = nullptr;
 
     std::unordered_map<std::string, std::pair<std::vector<int32_t>, int64_t>> contextCache_;
 };
