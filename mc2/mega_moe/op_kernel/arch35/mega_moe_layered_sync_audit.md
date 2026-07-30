@@ -244,3 +244,533 @@ CrossCore 检查：
 
 建议先修复 4 组确认缺失同步，再按过度同步表逐项收窄同步粒度；除明确的通信发布协议外，
 不要在修复阶段用新增 `PIPE_ALL` 统一兜底。
+
+## 8. TopK weight 前移精度问题修复方案
+
+### 8.1 基线、现象与适用范围
+
+本节处理的是**非同步类精度问题**，不改变第 5 节的流水同步结论。
+
+- 分析基线：PR `#9373` 当前 head `ea5f704e97a96ead9c5a7b80605fcacd9cbe2fe6`
+- 目标路径：`TopkWeightsPrefetch == true` 的 URMA layered dispatch
+- 触发条件：目标专家收到的 token 需要经过 `relayRank != rankId_` 的远端 relay 分支
+- 典型现象：`bs=1` 即稳定出现精度错误；self-route 或 `epWorldSize=1` 不触发该地址错误
+
+本报告前 7 节使用的源码基线为 `da04265b0`，因此本节中的行号统一以 PR head
+`ea5f704e` 为准。代码修改后行号会移动，实施时应同时使用“文件 + 函数名 + 原始行号”定位。
+
+### 8.2 根因
+
+`MegaMoeLayered::Init()` 将当前 rank 的输入 `topkWeights` 保存为：
+
+```cpp
+params_.probsGmAddr = topkWeights;
+```
+
+`QuantTokenToLocalRelay()` 会把源 token 的量化数据、scale 和该 token 的全部 TopK weight 写入
+源 token 对应的 relay record：
+
+```text
+relay record
+┌───────────────────────────┬────────────────────┬──────────────────────┬─────────┐
+│ quant token               │ quant scale        │ TopK weight (FP32)   │ padding │
+│ mxQuantTokenAlignBytes_   │ mxQuantScale...    │ weightAlignBytes_    │ to 512B │
+└───────────────────────────┴────────────────────┴──────────────────────┴─────────┘
+```
+
+接收端 `CopyGMToGMPerToken()` 中：
+
+- `relayRank == rankId_` 时，`CopyTokensFromLocalRelay()` 从 relay record 中提取 weight，数据来源正确。
+- `relayRank != rankId_` 时，`CopyTokensFromRemoteRelay()` 只从 `remoteRecordAddr` 读取 token 和 scale；
+  随后 `layered.h:1421-1440` 却从 `params_.probsGmAddr` 读取 weight。
+
+错误分支的实际数据来源为：
+
+```text
+token / scale <- 源 rank 的 remoteRecordAddr
+weight        <- 当前目标 rank 的 params_.probsGmAddr
+```
+
+`remoteRankIdx` 表示 token 的源 rank，而 `params_.probsGmAddr` 只指向当前目标 rank 的输入。
+因此远端 token 会携带目标 rank 的 weight。`bs=1` 时两侧 `tokenIndex` 都为 0，这个错误通常表现为
+稳定的错误数值而不是随机越界。
+
+该错误在 `ee9fa9726` 中引入。该提交之前远端 relay 分支没有填写 `WEIGHT_INDEX`；该提交虽然增加了
+填写逻辑，但选错了 GM 地址。
+
+### 8.3 方案比较
+
+| 方案 | 方法 | 优点 | 缺点 | 结论 |
+|---|---|---|---|---|
+| A | 继续从 `params_.probsGmAddr` 读取 | 无额外通信 | weight 属于目标 rank，语义错误 | 禁止 |
+| B | 从远端 record 只读取选中的 4B weight，直接写 metadata | 额外流量最小 | URMA 4B 非 32B 对齐读写的约束不明确；目标地址位于 metadata 行内偏移 12B | 不推荐 |
+| C | 从远端 record 搬运 32B 对齐的完整 weight block 到每核 GM scratch，再由 Scalar 提取选中 weight | 地址、长度均可对齐；不增加 UB；与本地 relay 提取逻辑一致 | 每个远端 token 增加 `weightAlignBytes_` 通信量；每核增加少量 workspace | **推荐** |
+
+以下逐行修改使用方案 C。
+
+### 8.4 修改后的地址布局
+
+先将 weight 的 record 起始地址显式定义为 32B 对齐位置：
+
+```cpp
+weightOffsetBytes_ =
+    CeilAlign(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_, ALIGN_32);
+```
+
+每核 `dispatchL2CommPtr` scratch 从原来的单一 flag snapshot 扩展为：
+
+```text
+per-AIC dispatchL2 scratch
+┌──────────────────────────────────────┬─────────────────────────────────────────────┐
+│ relay flag snapshot                 │ remote weight scratch                       │
+│ CeilAlign(bs * sizeof(uint64_t),512)│ L1_TILE_M_256 * weightAlignBytes_, align512 │
+└──────────────────────────────────────┴─────────────────────────────────────────────┘
+```
+
+`MetaInfoCalAndDispatch()` 每次传给 `CopyGMToGMPerToken()` 的 `copyNum` 不超过
+`L1_TILE_M_256`，所以每核只需为 256 行 weight block 预留空间。该空间只由
+`subBlockIdx_ == 1` 的 dispatch AIV 使用；不同 `blockIdx_` 使用不同 per-AIC slice，不会互相覆盖。
+
+### 8.5 逐文件修改方法
+
+#### 修改 1：保留/补齐 peermem relay record 的 weight 空间
+
+文件：`mc2/mega_moe/op_kernel/arch35/mega_moe_base.h`
+
+位置：PR head `ea5f704e` 的 `PeermemInfo` 构造函数，约 `94-98` 行。
+
+PR head 已包含下列代码，修复时必须保留。如果从本地旧分支 `0da2bc075` 开始修改，则需要补入：
+
+```cpp
+uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+if (tilingData->topkWeightsPrefetch == 1) {
+    uint32_t weightBytes = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    tokenScaleBytes =
+        Ops::Base::CeilAlign(tokenScaleBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+}
+uint32_t relayRecordBytes = Ops::Base::CeilAlign(tokenScaleBytes, static_cast<uint32_t>(ALIGN_512));
+```
+
+目的：保证 `dispatchRecivePtr` 为每个 `(sourceServer, tokenId)` record 预留包含 weight 的完整空间，
+避免后续 `dispatchFlagPtr` 或 `combineSendPtr` 与 relay record 尾部重叠。
+
+#### 修改 2：扩大每核 dispatch L2 scratch
+
+文件：`mc2/mega_moe/op_kernel/arch35/mega_moe_workspace_info.h`
+
+位置：`WorkspaceInfo` 构造函数的 URMA 分支，PR head `ea5f704e` 的 `261-264` 行。
+
+将：
+
+```cpp
+dispatchL2CommPtr = base + workspaceSize;
+int64_t flagSnapshotBytes = static_cast<int64_t>(tilingData->bs) * static_cast<int64_t>(sizeof(uint64_t));
+int64_t dispatchL2ScratchBytes = Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<int64_t>(ALIGN_512));
+workspaceSize += static_cast<int64_t>(tilingData->aicNum) * dispatchL2ScratchBytes;
+```
+
+替换为：
+
+```cpp
+dispatchL2CommPtr = base + workspaceSize;
+int64_t flagSnapshotBytes =
+    static_cast<int64_t>(tilingData->bs) * static_cast<int64_t>(sizeof(uint64_t));
+int64_t dispatchL2FlagSnapshotBytes =
+    Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<int64_t>(ALIGN_512));
+
+int64_t remoteWeightScratchBytes = 0;
+if (tilingData->topkWeightsPrefetch == 1) {
+    int64_t weightAlignBytes = Ops::Base::CeilAlign(
+        static_cast<int64_t>(tilingData->topK) * static_cast<int64_t>(sizeof(float)),
+        static_cast<int64_t>(ALIGN_32));
+    remoteWeightScratchBytes = Ops::Base::CeilAlign(
+        static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256) * weightAlignBytes,
+        static_cast<int64_t>(ALIGN_512));
+}
+
+int64_t dispatchL2ScratchBytes = dispatchL2FlagSnapshotBytes + remoteWeightScratchBytes;
+workspaceSize += static_cast<int64_t>(tilingData->aicNum) * dispatchL2ScratchBytes;
+```
+
+无需修改 `mega_moe_tiling.cpp::SetWorkspace()`。该函数使用
+`WorkspaceInfo::workspaceSize` 设置 workspace，总大小会随上述构造逻辑自动增加。
+
+#### 修改 3：增加显式 weight offset 和 flag snapshot 大小成员
+
+文件：`mc2/mega_moe/op_kernel/arch35/mega_moe_layered.h`
+
+位置 1：类成员区，PR head `ea5f704e` 的 `194-199` 行。
+
+将：
+
+```cpp
+uint32_t mxQuantScaleAlignBytes_ = 0;
+uint32_t mxQuantTokenScaleAlignBytes_ = 0;
+uint32_t weightAlignBytes_ = 0;
+```
+
+改为：
+
+```cpp
+uint32_t mxQuantScaleAlignBytes_ = 0;
+uint32_t mxQuantTokenScaleAlignBytes_ = 0;
+uint32_t weightOffsetBytes_ = 0;
+uint32_t weightAlignBytes_ = 0;
+```
+
+位置 2：同一成员区，PR head `ea5f704e` 的 `216-220` 行。
+
+将：
+
+```cpp
+uint32_t relayRecordBytes_ = 0;
+uint64_t sendWorkspaceMetaBytes_ = ALIGN_32;
+uint64_t sendWorkspaceServerBytes_ = 0;
+uint64_t dispatchL2ScratchBytes_ = 0;
+```
+
+改为：
+
+```cpp
+uint32_t relayRecordBytes_ = 0;
+uint64_t sendWorkspaceMetaBytes_ = ALIGN_32;
+uint64_t sendWorkspaceServerBytes_ = 0;
+uint64_t dispatchL2FlagSnapshotBytes_ = 0;
+uint64_t dispatchL2ScratchBytes_ = 0;
+```
+
+#### 修改 4：统一 kernel 侧 relay record 和 scratch 大小计算
+
+文件：`mc2/mega_moe/op_kernel/arch35/mega_moe_layered.h`
+
+位置：`MegaMoeLayered::Init()`，PR head `ea5f704e` 的 `383-399` 行。
+
+将原有 token/scale/weight 和 `dispatchL2ScratchBytes_` 计算替换为：
+
+```cpp
+mxQuantScaleNumAlignPerToken_ = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
+mxQuantTokenAlignBytes_ =
+    Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE), static_cast<uint32_t>(ALIGN_256)) *
+    sizeof(ActivationType);
+mxQuantScaleAlignBytes_ = mxQuantScaleNumAlignPerToken_ * sizeof(uint8_t);
+
+weightOffsetBytes_ = Ops::Base::CeilAlign(
+    mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_, static_cast<uint32_t>(ALIGN_32));
+mxQuantTokenScaleAlignBytes_ = weightOffsetBytes_;
+if constexpr (TopkWeightsPrefetch) {
+    weightAlignBytes_ = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    mxQuantTokenScaleAlignBytes_ = weightOffsetBytes_ + weightAlignBytes_;
+}
+
+relayRecordBytes_ =
+    Ops::Base::CeilAlign(static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_),
+                        static_cast<uint64_t>(ALIGN_512));
+sendWorkspaceServerBytes_ =
+    static_cast<uint64_t>(ALIGN_32) + static_cast<uint64_t>(m_) * sendWorkspaceMetaBytes_;
+
+uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
+dispatchL2FlagSnapshotBytes_ =
+    Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<uint64_t>(ALIGN_512));
+dispatchL2ScratchBytes_ = dispatchL2FlagSnapshotBytes_;
+if constexpr (TopkWeightsPrefetch) {
+    uint64_t remoteWeightScratchBytes = Ops::Base::CeilAlign(
+        static_cast<uint64_t>(MegaMoeImpl::L1_TILE_M_256) *
+            static_cast<uint64_t>(weightAlignBytes_),
+        static_cast<uint64_t>(ALIGN_512));
+    dispatchL2ScratchBytes_ += remoteWeightScratchBytes;
+}
+```
+
+必须保证这里和 `WorkspaceInfo` 使用相同公式。两侧不一致会导致不同 `blockIdx_` 的 scratch slice
+互相重叠，或者最后一个 slice 越过 workspace 尾部。
+
+#### 修改 5：所有 layered weight 访问统一使用 `weightOffsetBytes_`
+
+文件：`mc2/mega_moe/op_kernel/arch35/mega_moe_layered.h`
+
+位置 1：`LoadTopkWeightsToUb()`，PR head `ea5f704e` 的 `845` 行。
+
+删除：
+
+```cpp
+uint32_t weightOffsetInUb = mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_;
+```
+
+并将函数内两个 `xOutTensor[weightOffsetInUb]` 改为：
+
+```cpp
+xOutTensor[weightOffsetBytes_]
+```
+
+例如 BF16 转 FP32 分支应为：
+
+```cpp
+LocalTensor<float> weightFp32Ub =
+    xOutTensor[weightOffsetBytes_].template ReinterpretCast<float>();
+```
+
+float 分支应为：
+
+```cpp
+LocalTensor<TopkWeightsType> weightUb =
+    xOutTensor[weightOffsetBytes_].template ReinterpretCast<TopkWeightsType>();
+```
+
+位置 2：`CopyTokensFromLocalRelay()`，PR head `ea5f704e` 的 `1285-1290` 行。
+
+将：
+
+```cpp
+LocalTensor<ActivationType> weightBuf = copyTmpTensors_[outIdx];
+uint32_t weightOffsetInUb = mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_;
+LocalTensor<int32_t> bufWeightsInt32 =
+    weightBuf[weightOffsetInUb].template ReinterpretCast<int32_t>();
+```
+
+改为：
+
+```cpp
+LocalTensor<ActivationType> weightBuf = copyTmpTensors_[outIdx];
+LocalTensor<int32_t> bufWeightsInt32 =
+    weightBuf[weightOffsetBytes_].template ReinterpretCast<int32_t>();
+```
+
+目的：本地 relay、远端 relay、host peermem 统一使用 32B 对齐的 weight 起始地址。
+
+#### 修改 6：远端 relay 同步搬运 weight block
+
+文件：`mc2/mega_moe/op_kernel/arch35/mega_moe_layered.h`
+
+位置：`CopyTokensFromRemoteRelay()`，PR head `ea5f704e` 的 `1325-1383` 行。
+
+第一步，在原 `scratchAddr` 计算之后增加 weight scratch 基址：
+
+```cpp
+GM_ADDR scratchAddr =
+    params_.workspaceInfo.dispatchL2CommPtr +
+    static_cast<uint64_t>(blockIdx_) * dispatchL2ScratchBytes_;
+GM_ADDR remoteWeightScratchAddr = scratchAddr + dispatchL2FlagSnapshotBytes_;
+```
+
+第二步，在 `1366-1376` 行 token/scale 的两次 `ReadNbi` 后增加 weight block 搬运：
+
+```cpp
+uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
+GM_ADDR remoteRecordAddr =
+    GetRankWinAddrWithOffset(relayRank, dispatchWinOffset_) + remoteCopyOffset;
+GM_ADDR tokenDstAddr =
+    params_.workspaceInfo.dispatchRevDataPtr +
+    static_cast<uint64_t>(rowDstOffsetInCore + copyIdx) * widthA * sizeof(ActivationType);
+GM_ADDR scaleDstAddr =
+    params_.workspaceInfo.dispatchRevScalePtr +
+    static_cast<uint64_t>(rowDstOffsetInCore + copyIdx) * widthAScale * sizeof(QuantScaleOutType);
+
+hcomm_.ReadNbi<true>(channel, tokenDstAddr, remoteRecordAddr,
+                     widthA * sizeof(ActivationType));
+hcomm_.ReadNbi<true>(channel, scaleDstAddr,
+                     remoteRecordAddr + mxQuantTokenAlignBytes_,
+                     widthAScale * sizeof(QuantScaleOutType));
+
+if constexpr (TopkWeightsPrefetch) {
+    GM_ADDR weightDstAddr =
+        remoteWeightScratchAddr +
+        static_cast<uint64_t>(copyIdx) * static_cast<uint64_t>(weightAlignBytes_);
+    GM_ADDR weightSrcAddr = remoteRecordAddr + weightOffsetBytes_;
+    hcomm_.ReadNbi<true>(channel, weightDstAddr, weightSrcAddr, weightAlignBytes_);
+}
+
+relayReceivedTensor_.SetValue(copyIdx, int32_t(1));
+++receivedCount;
+```
+
+第三步，在函数末尾现有的：
+
+```cpp
+hcomm_.Drain(channel);
+```
+
+之后增加 weight 提取。relay record 中的 weight 已在源 rank 统一存成 FP32，因此这里不需要再区分
+原始输入是 `float` 还是 `bfloat16_t`：
+
+```cpp
+hcomm_.Drain(channel);
+
+if constexpr (TopkWeightsPrefetch) {
+    for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
+        int32_t topkIndex =
+            metaInfoTensor_[copyIdx * INT32_PER_256B].GetValue(TOPK_INDEX);
+        __gm__ int32_t *weightGmI32 = reinterpret_cast<__gm__ int32_t *>(
+            remoteWeightScratchAddr +
+            static_cast<uint64_t>(copyIdx) * static_cast<uint64_t>(weightAlignBytes_));
+        int32_t weightBits =
+            ReadGmByPassDCache(weightGmI32 + static_cast<uint32_t>(topkIndex));
+        metaInfoTensor_[copyIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
+    }
+}
+```
+
+`hcomm_.Drain(channel)` 必须位于 Scalar 读取 weight scratch 之前。不能把提取循环放到 while 内部，
+否则某些 token 的 weight `ReadNbi` 尚未完成时就可能被 Scalar 消费。
+
+#### 修改 7：删除错误的本地 `params_.probsGmAddr` 读取
+
+文件：`mc2/mega_moe/op_kernel/arch35/mega_moe_layered.h`
+
+位置：`CopyGMToGMPerToken()`，PR head `ea5f704e` 的 `1421-1440` 行。
+
+删除整个：
+
+```cpp
+if constexpr (TopkWeightsPrefetch) {
+    for (int32_t i = 0; i < copyNum; ++i) {
+        // 从 params_.probsGmAddr 读取 weight 的全部代码
+    }
+}
+```
+
+远端分支最终应只保留：
+
+```cpp
+if (relayRank == rankId_) {
+    CopyTokensFromLocalRelay(
+        rowDstOffsetInCore, srcServer, copyNum, widthA, widthAScale, copyInNum);
+} else {
+    CopyTokensFromRemoteRelay(
+        rowDstOffsetInCore, relayRank, srcServer, copyNum, widthA, widthAScale);
+}
+```
+
+此时两个分支都必须在返回前填好 `metaInfoTensor_[row].WEIGHT_INDEX`：
+
+- local 分支从 `copyTmpTensors_` 中的本地 relay record 提取；
+- remote 分支从 `remoteWeightScratchAddr` 中的远端 relay record 提取。
+
+随后原有：
+
+```cpp
+SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
+DataCopy(metaInfoGlobalTensor_[rowDstOffsetInCore * INT32_PER_256B],
+         metaInfoTensor_, copyNum * INT32_PER_256B);
+```
+
+会将正确的 FP32 weight bits 搬到 `metaInfoPtr`，供激活 epilogue 使用。
+
+### 8.6 修改后的数据流
+
+```mermaid
+flowchart LR
+    SW["源 rank topkWeights"]
+    QR["QuantTokenToLocalRelay"]
+    RR["relay record<br/>token + scale + FP32 weights"]
+    LR["local relay"]
+    XR["remote relay"]
+    WS["per-AIC weight scratch"]
+    MI["metaInfo.WEIGHT_INDEX"]
+    EP["SwiGLU activation × weight"]
+
+    SW --> QR --> RR
+    RR --> LR --> MI
+    RR --> XR --> WS --> MI
+    MI --> EP
+
+    BAD["目标 rank params_.probsGmAddr"] -. "删除错误读取" .-> MI
+
+    classDef bad fill:#ffe5e5,stroke:#d33,stroke-width:2px;
+    class BAD bad;
+```
+
+### 8.7 编译与验证步骤
+
+#### 8.7.1 静态检查
+
+在仓库根目录执行：
+
+```bash
+git diff --check
+rg -n "params_\\.probsGmAddr" mc2/mega_moe/op_kernel/arch35/mega_moe_layered.h
+rg -n "weightOffsetBytes_|dispatchL2FlagSnapshotBytes_|remoteWeightScratchAddr" \
+    mc2/mega_moe/op_kernel/arch35/mega_moe_layered.h \
+    mc2/mega_moe/op_kernel/arch35/mega_moe_workspace_info.h
+```
+
+期望结果：
+
+1. `git diff --check` 不新增空白符错误。
+2. `params_.probsGmAddr` 只保留在源 rank 的 `LoadTopkWeightsToUb()`/初始化路径，不再出现在
+   `CopyGMToGMPerToken()` 的 remote 分支。
+3. host `WorkspaceInfo` 和 kernel `Init()` 同时出现新的 scratch 计算。
+
+#### 8.7.2 Kernel 编译
+
+A5/arch35 环境下执行：
+
+```bash
+bash build.sh --opkernel --soc=ascend950 --ops=mega_moe -j16
+```
+
+期望：`mega_moe` kernel 编译成功，无模板实例化、GM 地址类型或 workspace 计算错误。
+
+如交付流程使用 JIT 包，再执行：
+
+```bash
+bash build.sh --pkg --jit --soc=ascend950 --ops=mega_moe -j16
+```
+
+#### 8.7.3 最小精度复现
+
+使用 2 rank、`bs=1`、`topK=2`，人为设置不同 rank 的 weight：
+
+```text
+rank0 topkWeights = [0.25, 0.75]
+rank1 topkWeights = [0.60, 0.40]
+```
+
+让 rank0 的 token 路由到 rank1 持有的专家，并保证目标侧进入 `relayRank != rankId_` 分支。
+检查目标侧 `metaInfo.WEIGHT_INDEX`：
+
+```text
+期望：等于 rank0 对应 topkIndex 的 weight
+修复前：等于 rank1 token0 对应 topkIndex 的 weight
+修复后：等于 rank0 token0 对应 topkIndex 的 weight
+```
+
+建议临时将 `metaInfoPtr` 中每行第 4 个 `int32` 按 FP32 bits 导出，不要只比较最终输出；这样可以先确认
+weight 地址链已经修复，再判断剩余误差是否来自“前移到量化前”本身的数值变化。
+
+#### 8.7.4 回归矩阵
+
+| 维度 | 必测值 | 验证目的 |
+|---|---|---|
+| `bs` | 1、2、较大 batch | 覆盖最小 record、普通路径和多 chunk |
+| route | self-route、同 server 跨 rank、跨 server | 覆盖 local/remote relay 两分支 |
+| TopK weight dtype | FP32、BF16 | 验证源侧 BF16→FP32 record 转换 |
+| `topK` | 1、2、实际模型值 | 验证 weight block 和索引 |
+| quant mode | A8W8、A8W4、A4W4（交付范围内） | 验证不同 `ActivationType` |
+| shared expert | 0、非 0 | 确认共享专家不错误使用路由 weight |
+| prefetch | 0、1 | `0` 路径结果和 workspace 不应变化 |
+
+通过标准：
+
+1. `TopkWeightsPrefetch=0` 的结果保持基线。
+2. self-route 与 remote-route 对同一个源 token 使用相同的 weight bits。
+3. FP32/BF16 两种输入在进入 epilogue 前都表现为正确的 FP32 `WEIGHT_INDEX`。
+4. bs=1 精度恢复后，再比较权重前移前后的量化误差；如果仍有小幅误差，应单独评估
+   “乘 weight 后再 MX 量化”与“GMM2 后乘 weight”的数值非等价性，不能继续归因于地址或同步。
+
+### 8.8 风险与回滚
+
+- Workspace 增量为每个 AIC：
+
+  ```text
+  CeilAlign(L1_TILE_M_256 * CeilAlign(topK * sizeof(float), 32), 512)
+  ```
+
+  例如 `topK <= 8` 时 `weightAlignBytes_ = 32B`，每个 AIC 增加 8KB。
+
+- 每个远端 token 增加一次 `weightAlignBytes_` 的 URMA read。先以正确性为目标；精度通过后再考虑
+  将 token、scale、weight 合并为一次完整 record read，避免在根因未验证前同时改通信流水结构。
+- 如果新增方案未通过验证，回滚修改 2～7 即可；修改 1 是正确的 peermem 容量修复，应保留。
+- 禁止用恢复 Unpermute 阶段的二次 weight 乘法作为长期修复。那会掩盖错误的 `WEIGHT_INDEX`，
+  并可能造成 local 分支重复加权。
