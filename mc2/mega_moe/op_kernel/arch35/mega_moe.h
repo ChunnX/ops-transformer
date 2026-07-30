@@ -479,9 +479,14 @@ MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         sizeof(int32_t);
 
     uint32_t mxTempTensorSize = 2 * 1024;
+    // xOutTensor_ is a quantization scratch buffer. Keep its UB allocation independent from the
+    // communication-record stride, even though both layouts currently contain the same data and scale segments.
     uint32_t xOutTokenBytes =
-        Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE), static_cast<uint32_t>(ALIGN_256));
-    uint32_t xOutTensorSize = xOutTokenBytes + Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
+        Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE), static_cast<uint32_t>(ALIGN_256)) *
+        sizeof(ActivationType);
+    uint32_t xOutScaleBytes =
+        Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32)) * static_cast<uint32_t>(sizeof(uint8_t));
+    uint32_t xOutTensorSize = Ops::Base::CeilAlign(xOutTokenBytes + xOutScaleBytes, static_cast<uint32_t>(ALIGN_32));
     if constexpr (TopkWeightsPrefetch) {
         xOutTensorSize = Ops::Base::CeilAlign(xOutTensorSize + weightAlignBytes_, static_cast<uint32_t>(ALIGN_32));
     }
