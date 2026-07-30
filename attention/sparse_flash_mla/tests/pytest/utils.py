@@ -100,7 +100,10 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             },
         )
         df = df.replace({np.nan: None, pd.NA: None})
-        df = df.applymap(parse_to_list)
+        if hasattr(df, "map"):
+            df = df.map(parse_to_list)
+        else:
+            df = df.applymap(parse_to_list)
         df = df.astype(
             {
                 "T1": "Int64",
@@ -313,7 +316,13 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
         }
         param_names = list(param_values.keys())
         for key, value in param_values.items():
-            if isinstance(value, str) and value in str_map_dict:
+            if (
+                key in ("ori_kv_topk_mode", "cmp_kv_topk_mode")
+                and isinstance(value, str)
+                and value.lower() == "fullk"
+            ):
+                param_values[key] = "fullK"
+            elif isinstance(value, str) and value in str_map_dict:
                 param_values[key] = str_map_dict[value]
         if is_save_pt:
             values_lists = [[param_values[name]] for name in param_names]
