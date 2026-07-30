@@ -23,15 +23,6 @@ using namespace std;
 class l2_moe_init_routing_v4_test : public testing::Test
 {
 protected:
-    static void SetUpTestCase()
-    {
-        cout << "l2_moe_init_routing_v4_test SetUp" << endl;
-    }
-
-    static void TearDownTestCase()
-    {
-        cout << "l2_moe_init_routing_v4_test TearDown" << endl;
-    }
 };
 
 // basic: no scale, no offset, no active_num, no topk_weight
