@@ -45,7 +45,11 @@
 namespace Mc2Kernel {
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL;  // 384 * 2，0/1标识区偏移
 constexpr uint64_t CUMSUM_CAL_OFFSET = 868UL * 1024UL;  // 768 + 100
-constexpr uint64_t CUMSUM_FLAG_OFFSET = 876UL * 1024UL; // 868 + 8
+constexpr uint64_t CUMSUM_FLAG_OFFSET = 900UL * 1024UL;
+constexpr uint64_t TRANSIT_STATE_OFFSET = 32UL * 1024UL;
+constexpr uint64_t TRANSIT_BUFFER_SIZE = 32UL * 1024UL;
+constexpr uint32_t HIERARCHICAL_MIN_EP_WORLD_SIZE = 64U;
+constexpr uint32_t HIERARCHICAL_GROUP_SIZE = 8U;
 constexpr uint64_t SPLIT_BLOCK_SIZE = 512UL;
 constexpr uint64_t SPLIT_BLOCK_COUNT = 128UL; // 128 = SPLIT_BLOCK_SIZE / sizeof(float)
 constexpr uint32_t SYNC_OFFSET = 3U * 1024U;  // 核间软同步偏移地址
@@ -57,7 +61,7 @@ constexpr uint32_t AIV_STATE_SIZE = 64U;
 constexpr uint32_t SFFVALUE_SIZE = 64U;
 constexpr uint32_t SIZE_ALIGN_256 = 256U;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-constexpr uint32_t CUMSUM_MAX_CORE_NUM = 8U;
+constexpr uint32_t CUMSUM_MAX_CORE_NUM = 32U;
 #else
 constexpr uint32_t CUMSUM_MAX_CORE_NUM = 16U;
 #endif
@@ -128,6 +132,7 @@ private:
     __aicore__ inline void WaitCumSumFlag();
     __aicore__ inline void CalAndSendCntByExp();
     __aicore__ inline void CalAndSendCntByRank();
+    __aicore__ inline void HierarchicalCntAllToAll();
     __aicore__ inline void BufferInit();
     __aicore__ inline void WaitDispatchClearStatus();
     __aicore__ inline void GatherSumRecvCnt(LocalTensor<float> &gatherMaskOutTensor,
@@ -163,6 +168,17 @@ private:
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
         return ctx_.GetWindStateAddrByRankId(rankId, epRankIdOriginal_) + dataState_ * WIN_STATE_OFFSET;
+    }
+
+    __aicore__ inline GM_ADDR GetTransitAddrByRankId(const int32_t rankId)
+    {
+        return GetWindStateAddrByRankId(rankId) + TRANSIT_STATE_OFFSET;
+    }
+
+    __aicore__ inline uint32_t GetHierarchicalPhase2StatusRecordNum()
+    {
+        uint32_t groupCount = epWorldSize_ / HIERARCHICAL_GROUP_SIZE;
+        return HIERARCHICAL_GROUP_SIZE * Ceil(groupCount, aivUsedCumSum_);
     }
 
     TPipe *tpipe_{nullptr};
@@ -299,6 +315,7 @@ private:
     bool isPerformanceFlag_ = false;
     bool isShareExpertRankFlag_ = false;
     bool isScalingDownFlag_ = false;
+    bool useHierarchicalCnt_ = false;
     uint64_t totalWinSize_{0};
     uint32_t expertTokenNumsType_{1};
     int32_t expertIdsCnt_{0};
@@ -448,6 +465,21 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         }
     }
     moeUsedAivNum_ = aivUsedAllToAll_ - sharedUsedAivNum_;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    //分层Cnt开启条件判断，要求满足规模大于64卡，cumsum核数大于8等条件
+    bool hierarchyWorldValid = epWorldSize_ >= HIERARCHICAL_MIN_EP_WORLD_SIZE &&
+        epWorldSize_ % HIERARCHICAL_GROUP_SIZE == 0U;
+    bool hierarchyShapeValid = sharedExpertRankNum_ == 0U && moeExpertNumPerRank_ == 1U;
+    bool hierarchyModeValid = !hasElasticInfoFlag_ && !isPerformanceFlag_;
+    bool hierarchyCoreValid = aivUsedCumSum_ >= HIERARCHICAL_GROUP_SIZE &&
+        aivUsedCumSum_ % HIERARCHICAL_GROUP_SIZE == 0U;
+    uint64_t hierarchyTransitBytes = static_cast<uint64_t>(HIERARCHICAL_GROUP_SIZE) *
+        Ceil(epWorldSize_ / HIERARCHICAL_GROUP_SIZE, aivUsedCumSum_) * aivUsedCumSum_ * STATE_OFFSET;
+    bool hierarchyCapacityValid = static_cast<uint64_t>(epWorldSize_) * STATE_OFFSET <= TRANSIT_STATE_OFFSET &&
+        hierarchyTransitBytes <= TRANSIT_BUFFER_SIZE;
+    useHierarchicalCnt_ = hierarchyWorldValid && hierarchyShapeValid && hierarchyModeValid &&
+        hierarchyCoreValid && hierarchyCapacityValid;
+#endif
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -1364,9 +1396,115 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::HierarchicalCntAllToAll()
+{
+    uint32_t cntCoreId = aivId_ - aivUsedAllToAll_;
+    uint32_t workerNumPerLocalId = aivUsedCumSum_ / HIERARCHICAL_GROUP_SIZE;
+    uint32_t groupCount = epWorldSize_ / HIERARCHICAL_GROUP_SIZE;
+    uint32_t maxGroupNumPerWorker = Ceil(groupCount, workerNumPerLocalId);
+    uint32_t minGroupNumPerWorker = groupCount / workerNumPerLocalId;
+    uint32_t largerWorkerNum = groupCount % workerNumPerLocalId;
+    uint32_t alignedGroupCount = Ceil(groupCount, aivUsedCumSum_) * aivUsedCumSum_;
+    uint32_t maxDstNumPerCore = alignedGroupCount / aivUsedCumSum_;
+    uint32_t phase2TaskNum =
+        (cntCoreId < groupCount) ? Ceil(groupCount - cntCoreId, aivUsedCumSum_) : 0U;
+    uint32_t packetBytes = maxGroupNumPerWorker * STATE_OFFSET;
+    uint32_t packetElems = packetBytes / sizeof(int32_t);
+    uint32_t phase2StatusRecordNum = GetHierarchicalPhase2StatusRecordNum();
+    uint32_t phase2StatusBytes = phase2StatusRecordNum * STATE_OFFSET;
+    uint32_t phase2StatusElems = phase2StatusBytes / sizeof(int32_t);
+    uint32_t reduceWorkBytes = Ceil(phase2StatusRecordNum * sizeof(float), UB_ALIGN) * UB_ALIGN;
+
+    TBuf<> phase1PacketBuf, phase2StatusBuf, transitReduceBuf, transitScalarBuf;
+    tpipe_->InitBuffer(phase1PacketBuf, packetBytes);
+    tpipe_->InitBuffer(phase2StatusBuf, phase2StatusBytes);
+    tpipe_->InitBuffer(transitReduceBuf, reduceWorkBytes);
+    tpipe_->InitBuffer(transitScalarBuf, UB_ALIGN);
+    LocalTensor<int32_t> phase1PacketTensor = phase1PacketBuf.Get<int32_t>();
+    LocalTensor<int32_t> phase2StatusTensor = phase2StatusBuf.Get<int32_t>();
+    LocalTensor<float> transitReduceTensor = transitReduceBuf.Get<float>();
+    LocalTensor<float> transitSumTensor = transitScalarBuf.Get<float>();
+    Duplicate<int32_t>(phase1PacketTensor, 0, packetElems);
+    Duplicate<int32_t>(phase2StatusTensor, 0, phase2StatusElems);
+    SyncFunc<AscendC::HardEvent::V_S>();
+
+    //阶段一，8P内：每个Core发起一次8P内的MemCopy，做同平面Cnt信息汇聚
+    uint32_t sourceGroupId = epRankId_ / HIERARCHICAL_GROUP_SIZE;
+    uint32_t sourceLocalId = epRankId_ % HIERARCHICAL_GROUP_SIZE;
+    uint32_t dstLocalId = cntCoreId / workerNumPerLocalId;
+    uint32_t producerWorkerId = cntCoreId % workerNumPerLocalId;
+    uint32_t maskCnt = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
+    uint32_t producerGroupNum = minGroupNumPerWorker + ((producerWorkerId < largerWorkerNum) ? 1U : 0U);
+    uint32_t producerGroupStart = producerWorkerId * minGroupNumPerWorker +
+        ((producerWorkerId < largerWorkerNum) ? producerWorkerId : largerWorkerNum);
+    for (uint32_t groupOrdinal = 0; groupOrdinal < producerGroupNum; ++groupOrdinal) {
+        uint32_t dstGroupId = producerGroupStart + groupOrdinal;
+        uint32_t dstRankId = dstGroupId * HIERARCHICAL_GROUP_SIZE + dstLocalId;
+        int32_t curExpertCnt = 0;
+        if (sendToMoeExpTokenCnt_ > 0) {
+            CalTokenSendExpertCnt(dstRankId, maskCnt, curExpertCnt);
+        }
+        uint32_t recordIndex = groupOrdinal * UB_ALIGN_DATA_COUNT;
+        phase1PacketTensor.SetValue(recordIndex, 0x3F800000);
+        phase1PacketTensor.SetValue(recordIndex + 1U, curExpertCnt);
+    }
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+
+    uint32_t proxyRankId = sourceGroupId * HIERARCHICAL_GROUP_SIZE + dstLocalId;
+    uint32_t transitRecordOffset = sourceLocalId * alignedGroupCount + producerGroupStart;
+    GlobalTensor<int32_t> transitDstGlobal;
+    transitDstGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(GetTransitAddrByRankId(proxyRankId)) +
+        transitRecordOffset * UB_ALIGN_DATA_COUNT);
+    DataCopy<int32_t>(transitDstGlobal, phase1PacketTensor, producerGroupNum * UB_ALIGN_DATA_COUNT);
+
+    GlobalTensor<int32_t> transitLocalGlobal;
+    transitLocalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(GetTransitAddrByRankId(epRankId_)));
+
+    //阶段二，8P间：监听8P内其他卡的汇聚数据，每个Core负责若干个同平面卡的数据汇聚和转发
+    DataCopyParams transitCopyParams{static_cast<uint16_t>(phase2StatusRecordNum), 1U,
+        static_cast<uint16_t>(aivUsedCumSum_ - 1U), 0U};
+    float flagSum = -1.0F;
+    float expectedFlagSum = static_cast<float>(HIERARCHICAL_GROUP_SIZE * phase2TaskNum);
+    while (flagSum != expectedFlagSum) {
+        DataCopy<int32_t>(phase2StatusTensor, transitLocalGlobal[cntCoreId * UB_ALIGN_DATA_COUNT],
+            transitCopyParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        ReduceSum(transitSumTensor, phase2StatusTensor.ReinterpretCast<float>(), transitReduceTensor, 1U,
+            phase2StatusRecordNum, 1U);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        flagSum = transitSumTensor.GetValue(0);
+    }
+    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+
+    DataCopyParams finalStatusCopyParams{static_cast<uint16_t>(HIERARCHICAL_GROUP_SIZE), 1U,
+        static_cast<uint16_t>(maxDstNumPerCore - 1U), 0U};
+    for (uint32_t phase2TaskId = 0; phase2TaskId < phase2TaskNum; ++phase2TaskId) {
+        uint32_t dstGroupId = cntCoreId + phase2TaskId * aivUsedCumSum_;
+        uint32_t dstRankId =
+            dstGroupId * HIERARCHICAL_GROUP_SIZE + epRankId_ % HIERARCHICAL_GROUP_SIZE;
+        uint32_t statusOffsetBytes = sourceGroupId * HIERARCHICAL_GROUP_SIZE * UB_ALIGN;
+        GlobalTensor<int32_t> finalStatusGlobal;
+        finalStatusGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            GetWindStateAddrByRankId(dstRankId) + statusOffsetBytes));
+        DataCopy<int32_t>(finalStatusGlobal, phase2StatusTensor[phase2TaskId * UB_ALIGN_DATA_COUNT],
+            finalStatusCopyParams);
+    }
+
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+}
+
+template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::BufferInit()
 {
-    uint32_t waitStatusBufSize = Ceil((recStatusNumPerCore_ * UB_ALIGN), SIZE_ALIGN_256) * SIZE_ALIGN_256;
+    uint32_t cleanStatusRecordNum = recStatusNumPerCore_;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    if (useHierarchicalCnt_) {
+        uint32_t phase2StatusRecordNum = GetHierarchicalPhase2StatusRecordNum();
+        cleanStatusRecordNum =
+            (cleanStatusRecordNum > phase2StatusRecordNum) ? cleanStatusRecordNum : phase2StatusRecordNum;
+    }
+#endif
+    uint32_t waitStatusBufSize = Ceil((cleanStatusRecordNum * UB_ALIGN), SIZE_ALIGN_256) * SIZE_ALIGN_256;
     tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize);
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     uint64_t recvWinBlockNumSpace = epWorldSize_ * moeExpertNumPerRank_ * sizeof(float);
@@ -1418,11 +1556,31 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     uint64_t duplicateMask[2] = {0x101010101010101, 0}; // 一次操作256字节，每8个数将首个设置为0
     LocalTensor<int32_t> cleanStateTensor = waitStatusBuf_.Get<int32_t>();
+    uint32_t cleanStatusRecordNum = recStatusNumPerCore_;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    uint32_t phase2StatusRecordNum = 0U;
+    if (useHierarchicalCnt_) {
+        phase2StatusRecordNum = GetHierarchicalPhase2StatusRecordNum();
+        cleanStatusRecordNum =
+            (cleanStatusRecordNum > phase2StatusRecordNum) ? cleanStatusRecordNum : phase2StatusRecordNum;
+    }
+#endif
     SyncFunc<AscendC::HardEvent::S_V>();
-    Duplicate<int32_t>(cleanStateTensor, 0, duplicateMask, Ceil(recStatusNumPerCore_, 8), 1, 8); // 8 = 256 / 32
+    Duplicate<int32_t>(cleanStateTensor, 0, duplicateMask, Ceil(cleanStatusRecordNum, 8), 1, 8); // 8 = 256 / 32
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)],
              cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    if (useHierarchicalCnt_) {
+        uint32_t cntCoreId = aivId_ - aivUsedAllToAll_;
+        GlobalTensor<int32_t> transitLocalGlobal;
+        transitLocalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(GetTransitAddrByRankId(epRankId_)));
+        DataCopyParams cleanTransitParams{static_cast<uint16_t>(phase2StatusRecordNum), 1U, 0U,
+            static_cast<uint16_t>(aivUsedCumSum_ - 1U)};
+        DataCopy<int32_t>(transitLocalGlobal[cntCoreId * UB_ALIGN_DATA_COUNT], cleanStateTensor,
+            cleanTransitParams);
+    }
+#endif
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
@@ -1682,20 +1840,28 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     tpipe_->InitBuffer(subExpBuf_, maxSize_);                                                   // BS * K * 4
     tpipe_->InitBuffer(gatherMaskTBuf_, expertIdsBufSize_);                                     // BS * K * 4
     tpipe_->InitBuffer(expertIdsBuf_, expertIdsBufSize_);
-    tpipe_->InitBuffer(statusBuf_, statusCntAlign_ * UB_ALIGN);
+    if (!useHierarchicalCnt_) {
+        tpipe_->InitBuffer(statusBuf_, statusCntAlign_ * UB_ALIGN);
+        statusTensor_ = statusBuf_.Get<int32_t>();
+    }
     if (hasExpertScalesFlag_) {
         tpipe_->InitBuffer(expertScalesBuf_, expertIdsBufSize_);
     }
     workLocalTensor_ = gatherMaskTBuf_.Get<float>();
-    statusTensor_ = statusBuf_.Get<int32_t>();
     ExpIdsCopyAndMaskCal();
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    if (hasElasticInfoFlag_) {
+    if (useHierarchicalCnt_) {
+        HierarchicalCntAllToAll();
+    } else if (hasElasticInfoFlag_) {
         CalAndSendCntByExp();
     } else {
         CalAndSendCntByRank();
     }
     SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
+    if (useHierarchicalCnt_) {
+        PipeBarrier<PIPE_ALL>();
+        tpipe_->Reset();
+    }
 #else
     CalAndSendCntByExp();
     SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
