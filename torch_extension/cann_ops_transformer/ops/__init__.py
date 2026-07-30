@@ -55,3 +55,7 @@ from .qkv_rms_norm_rope_cache_with_k_scale import (
 )
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
+from .sparse_flash_mla_softmax_l1_norm import (
+    sparse_flash_mla_softmax_l1_norm,
+    sparse_flash_mla_softmax_l1_norm_metadata,
+)

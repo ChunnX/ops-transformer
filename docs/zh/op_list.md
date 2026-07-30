@@ -617,6 +617,26 @@
     <td>dense_lightning_indexer_kl_loss_grad算子的前置算子，用于计算dense_lightning_indexer_kl_loss_grad的负载均衡。</td>
   </tr>
   <tr>
+    <td>attention</td>
+    <td><a href="../../attention/sparse_flash_mla_softmax_l1_norm/README.md">sparse_flash_mla_softmax_l1_norm</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>训练场景下，计算sparse_flash_mla注意力的反向输出。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/sparse_flash_mla_softmax_l1_norm_metadata/README.md">sparse_flash_mla_softmax_l1_norm_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>sparse_flash_mla_softmax_l1_norm算子的前置算子，用于计算sparse_flash_mla_softmax_l1_norm的负载均衡。</td>
+  </tr>
+  <tr>
     <td>ffn</td>
     <td><a href="../../ffn/ffn/README.md">ffn</a></td>
     <td>✓</td>
