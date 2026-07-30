@@ -44,10 +44,10 @@ using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 enum RegionTag { HEAD, MAIN, TAIL };
 
 template <typename AType, typename BType, typename CType>
-class QuantMatmulMxKernelAgPrefill {
+class QmmMxKernelAgUdma {
 public:
-    __aicore__ inline QuantMatmulMxKernelAgPrefill() {}
-    __aicore__ inline ~QuantMatmulMxKernelAgPrefill() {}
+    __aicore__ inline QmmMxKernelAgUdma() {}
+    __aicore__ inline ~QmmMxKernelAgUdma() {}
 
     // ---- Component types ----
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, 0>;
@@ -75,7 +75,7 @@ public:
     using MakeLayoutC = AscendC::Te::FrameLayoutFormat<LayoutC, AscendC::Std::Int<AscendC::Te::C0_ELEMENT<CType>>>;
 
     // ---- Fragment MMAD types ----
-    using BlockMmadFragC = Blaze::Gemm::Block::BlockMmadFragCOut<
+    using BlockMmadFragC = Blaze::Gemm::Block::QmmMxBlockMmadFragment<
       0, false, AType, LayoutA, BType, LayoutB, CType, LayoutC, float, LayoutC>;
     static constexpr bool weightNz = BlockMmadFragC::weightNz;
     using FragL1Params = typename BlockMmadFragC::L1Params;
@@ -217,7 +217,7 @@ private:
 };
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Init(const Params& params)
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Init(const Params& params)
 {
     if ASCEND_IS_AIV {
         return;
@@ -231,7 +231,7 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Init(c
 
 template <typename AType, typename BType, typename CType>
 template <typename TensorB, typename TensorScaleB>
-__aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::SetL2Cache(
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::SetL2Cache(
     const ProblemShape& problemShape, int64_t baseM, int64_t baseN,
     TensorB& gmB, TensorScaleB& gmScaleB)
 {
@@ -261,7 +261,7 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::SetL2C
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Run(const Params& params)
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Run(const Params& params)
 {
     Init(params);
 
@@ -306,7 +306,7 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Run(co
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Process(
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
     const Params& params, const ProblemShape& problemShape, BlockScheduler& sch, BlockMmadFragC& mmadFrag)
 {
     const auto& mmT = *params.mmTile;
@@ -327,13 +327,6 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Proces
     __gm__ float *biasNull = nullptr;
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasNull),
                     Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
-
-    // 尾块更新（参考 kernel_qbmm_mx_without_batch.h / qbmm_mx_kernel.h）
-    const auto& mTailTile = mmT.mTailTile;
-    const auto& nTailTile = mmT.nTailTile;
-    if ((sch.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
-        sch.UpdateTailTile(mTailTile, nTailTile);
-    }
 
     uint32_t waitedMask = 0U;
     // dependId=0 由 AIV 预触发，无需等待。
@@ -405,7 +398,7 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Proces
 
 template <typename AType, typename BType, typename CType>
 __aicore__ inline Apace::Basic::FragmentParam<2>
-QuantMatmulMxKernelAgPrefill<AType, BType, CType>::MakeFragParam(
+QmmMxKernelAgUdma<AType, BType, CType>::MakeFragParam(
     uint64_t fragSize, uint64_t realFragSize, uint32_t fragCnt, uint64_t shape1) const
 {
     Apace::Basic::FragmentParam<2> param{};
@@ -419,7 +412,7 @@ QuantMatmulMxKernelAgPrefill<AType, BType, CType>::MakeFragParam(
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::BuildFragmentTensors(const Params& params)
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildFragmentTensors(const Params& params)
 {
     const auto& fp = params.fragParams;
     constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
@@ -446,7 +439,7 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::BuildF
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::EnsureWinRankBasesReady(const Params& params)
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::EnsureWinRankBasesReady(const Params& params)
 {
     if (winBasesReady_) {
         return;
@@ -460,7 +453,7 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Ensure
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::BuildMainFragment(
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildMainFragment(
     const Params& params, uint32_t roundIdx)
 {
     EnsureWinRankBasesReady(params);
@@ -494,7 +487,7 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::BuildM
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::BuildTailFragment(const Params& params)
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildTailFragment(const Params& params)
 {
     EnsureWinRankBasesReady(params);
     const auto& fp = params.fragParams;
@@ -527,7 +520,7 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::BuildT
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::UpdateMainRoundAddrs(
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::UpdateMainRoundAddrs(
     const Params& params, uint32_t roundIdx)
 {
     const auto& fp = params.fragParams;
@@ -557,8 +550,8 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Update
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline typename QuantMatmulMxKernelAgPrefill<AType, BType, CType>::TileCtx
-QuantMatmulMxKernelAgPrefill<AType, BType, CType>::ResolveTileCtx(
+__aicore__ inline typename QmmMxKernelAgUdma<AType, BType, CType>::TileCtx
+QmmMxKernelAgUdma<AType, BType, CType>::ResolveTileCtx(
     int64_t mPos, int64_t headMainRows, int64_t mainRoundRows, int64_t mainSectionRows,
     uint32_t rankSize, uint32_t commTurn) const
 {

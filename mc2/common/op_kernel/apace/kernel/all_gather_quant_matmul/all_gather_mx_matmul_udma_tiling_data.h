@@ -33,7 +33,7 @@ struct CommContext {
 using Apace::AivComm::CommContext;
 
 #pragma pack(push, 8)
-struct alignas(8) AllGatherMatmulTilingData {
+struct alignas(8) AllGatherMxMatmulUdmaTilingData {
     QuantMatmulTilingData mmTile;
     CommTilingData commTile;
 };
