@@ -12,6 +12,7 @@
 
 """CPU golden adapter for QuantSparseFlashMla TTK cases."""
 
+
 class CaseDataStore:
     """Share pytest-generated case data between input and golden callbacks."""
 
@@ -40,7 +41,5 @@ def cpu_quant_sparse_flash_mla(q, *, return_softmax_lse=False,
             "QuantSparseFlashMla TTK golden requires customize_inputs "
             "to generate pytest data first"
         )
-    if bool(return_softmax_lse):
-        raise RuntimeError("QSMLA pytest golden does not provide softmax_lse")
-    return data["cpu_output"], None
-
+    softmax_lse = data.get("cpu_lse") if bool(return_softmax_lse) else None
+    return data["cpu_output"], softmax_lse

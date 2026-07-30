@@ -44,6 +44,7 @@ def load_impl_module(stem):
 
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
+compare_module = load_impl_module("compare")
 
 
 class KvQuantSparseFlashAttentionSpec:
@@ -53,6 +54,8 @@ class KvQuantSparseFlashAttentionSpec:
         "float16": {"standard": "stat_rel_err"},
         "bfloat16": {"standard": "stat_rel_err"},
     }
+
+    compare = staticmethod(compare_module.compare)
 
 
 __spec__ = {
