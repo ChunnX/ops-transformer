@@ -217,9 +217,9 @@ public:
             CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
         } else {
             CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+            SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
+            WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         }
-        SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-        WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
     }
 
