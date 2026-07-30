@@ -24,8 +24,8 @@
 #include "../../common/op_kernel/aicpu_common.h"
 #include "../../flash_attn/op_host/fa_adjust_sinner_souter.h"
 
-#define FA_KERNEL_STATUS_OK             0
-#define FA_KERNEL_STATUS_PARAM_INVALID  1
+constexpr uint32_t FA_KERNEL_STATUS_OK = 0;
+constexpr uint32_t FA_KERNEL_STATUS_PARAM_INVALID = 1;
 
 using namespace optiling;
 
@@ -102,12 +102,8 @@ bool FlashAttnMetadataCpuKernel::CheckActualQuerySeq()
     std::vector<int64_t> cuSeqlensQ {};
     std::vector<int64_t> sequsedQ {};
 
-    if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-        cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, cuSeqlensQ_->GetTensorShape()->GetDimSize(0));
-    }
-    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        sequsedQ = GetTensorDataAsInt64(sequsedQ_, sequsedQ_->GetTensorShape()->GetDimSize(0));
-    }
+    cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_);
+    sequsedQ = GetTensorDataAsInt64(sequsedQ_);
 
     for (size_t i = 0; i < sequsedQ.size(); ++i) {
         if (sequsedQ[i] < 0) {
@@ -127,7 +123,7 @@ bool FlashAttnMetadataCpuKernel::CheckActualQuerySeq()
         if (cuSeqlensQ[i] < cuSeqlensQ[i - 1]) {
             KERNEL_LOG_ERROR(
                 "The %zuth element of cuSeqlensQ must be greather than the %zuth element, but got %ld and %ld",
-                cuSeqlensQ[i], cuSeqlensQ[i-1]);
+                cuSeqlensQ[i], cuSeqlensQ[i - 1]);
             return false;
         }
     }
@@ -137,7 +133,7 @@ bool FlashAttnMetadataCpuKernel::CheckActualQuerySeq()
         actualSeqlenQ_ = sequsedQ;
     } else if (!cuSeqlensQ.empty()) {
         isActualSeqlenQAccum_ = true;
-        actualSeqlenQ_ = cuSeqlensQ;
+        actualSeqlenQ_.assign(cuSeqlensQ.begin() + 1, cuSeqlensQ.end());
     }
 
     return true;
@@ -150,12 +146,8 @@ bool FlashAttnMetadataCpuKernel::CheckActualKvSeq()
     std::vector<int64_t> cuSeqlensKv {};
     std::vector<int64_t> sequsedKv {};
 
-    if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
-        cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_, cuSeqlensKv_->GetTensorShape()->GetDimSize(0));
-    }
-    if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
-        sequsedKv = GetTensorDataAsInt64(sequsedKv_, sequsedKv_->GetTensorShape()->GetDimSize(0));
-    }
+    cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_);
+    sequsedKv = GetTensorDataAsInt64(sequsedKv_);
 
     for (size_t i = 0; i < sequsedKv.size(); ++i) {
         if (sequsedKv[i] < 0) {
@@ -176,7 +168,7 @@ bool FlashAttnMetadataCpuKernel::CheckActualKvSeq()
         if (cuSeqlensKv[i] < cuSeqlensKv[i - 1]) {
             KERNEL_LOG_ERROR(
                 "The %zuth element of cuSeqlensKv must be greather than the %zuth element, but got %ld and %ld",
-                cuSeqlensKv[i], cuSeqlensKv[i-1]);
+                cuSeqlensKv[i], cuSeqlensKv[i - 1]);
             return false;
         }
     }
@@ -186,7 +178,7 @@ bool FlashAttnMetadataCpuKernel::CheckActualKvSeq()
         actualSeqlenKv_ = sequsedKv;
     } else if (!cuSeqlensKv.empty()) {
         isActualSeqlenKvAccum_ = true;
-        actualSeqlenKv_ = cuSeqlensKv;
+        actualSeqlenKv_.assign(cuSeqlensKv.begin() + 1, cuSeqlensKv.end());
     }
 
     return true;
