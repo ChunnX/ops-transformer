@@ -675,16 +675,16 @@
    <td>可选输入</td>
    <td>表示token是否参与通信。</td>
    <td>INT8</td>
-   <td>ND</td>
+    <td>ND</td>
   </tr>
-    <tr>
+  <tr>
    <td>scales</td>
    <td>可选输入</td>
    <td>量化平滑参数。</td>
    <td>FLOAT8_E8M0、FLOAT32</td>
    <td>ND</td>
   </tr>
-    <tr>
+  <tr>
    <td>sharedWeight1</td>
    <td>可选输入</td>
    <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
@@ -894,7 +894,7 @@
       | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
 
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
-    - `BS`（`x`.dim0）支持[1, +∞)，实际上限受`cclBufferSize`约束。算子采用route-batch流式分片机制，BS不再受UB容量硬限制，dispatch阶段按固定粒度分批处理，`cclBufferSize`需满足：`cclBufferSize` >= peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineSendSize，其中各分量与`BS`、`topK`、`H`、`expertPerRank`、`epWorldSize`成正比。
+    - `BS`（`x`.dim0）支持[1, +∞)，实际上限受`cclBufferSize`约束。算子采用分批处理机制，BS不再受UB容量硬限制，dispatch阶段按固定粒度分批处理。
     - `H`（`x`.dim1）支持1024、2048、3072、4096、5120、6144、7168、8192。
     - `topK`（`topkIds`.dim1）支持[1, 32]。
     - `expertPerRank` 范围 [1, 1024]。
@@ -910,24 +910,24 @@
     - `weight1`的dim1（`hiddenDim`）必须等于`weight2`的dim2的二倍，这是因为SwiGLU激活需要将中间维度从`hiddenDim`减半为`hiddenDim`/2。
     - `localMoeExpertNum` = `moeExpertNum` / `epWorldSize`；`sharedExpertNumPerRank` = `sharedWeight1`.dim0（未启用共享专家时为0）；`expertPerRank` = `sharedExpertNumPerRank` + `localMoeExpertNum`。
     - `sharedExpertNumPerRank`范围 [0, 4]。
-    - `topoType`仅支持0（MTE拓扑）；启用共享专家时`topoType`必须为0。
-    - `topkWeightsType`取值为0或1，0表示关闭topkWeights前移，1表示开启。开启时`topoType`不能为1（URMA拓扑）。
+    - `topoType`由通信域上下文自动推导，用户无需设置。当前版本仅支持MTE拓扑，不支持URMA拓扑；启用共享专家时不支持URMA拓扑。
+    - `topkWeightsType`取值为0或1，0表示关闭topkWeights前移，1表示开启。当前版本topkWeights前移仅在MTE拓扑下可用。
     - `numMaxTokensPerRank`为0时自动计算；非0时必须等于`BS`。
-    - `cclBufferSize`需 >= peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineSendSize。
+    - `cclBufferSize`需 >= 全卡软同步预留空间（固定60KB） + mask接收空间 + 量化token缩放因子空间 + combine发送空间。
     - `weightScales1`和`weightScales2`为必选输入，数据类型必须为FLOAT8_E8M0。
     - `weight1`和`weight2`的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
     - `topkWeights`数据类型仅支持BF16或FP32。
     - `xActiveMask`和`scales`当前版本不支持非空输入，需传入空指针。
 
   - **MXFP量化场景约束**：
-    - `weight1` shape为(`localMoeExpertNum`, `hiddenDim`, `H`)，`weight2` shape为(`localMoeExpertNum`, `H`, `hiddenDim`/2)。
-    - `weightScales1` shape为(`localMoeExpertNum`, `hiddenDim`, CeilDiv(`H`, 64), 2)。
-    - `weightScales2` shape为(`localMoeExpertNum`, `H`, CeilDiv(`hiddenDim`/2, 64), 2)。
-    - `sharedWeight1` shape为(`sharedExpertNumPerRank`, `hiddenDim`, `H`)，`sharedWeight2` shape为(`sharedExpertNumPerRank`, `H`, `hiddenDim`/2)。
-    - `sharedWeightScales1` shape为(`sharedExpertNumPerRank`, `hiddenDim`, CeilDiv(`H`, 64), 2)，`sharedWeightScales2` shape为(`sharedExpertNumPerRank`, `H`, CeilDiv(`hiddenDim`/2, 64), 2)。
-    - `weightScales1`的dim3和`weightScales2`的dim3必须等于2。
-    - A8W4-FP场景下，FLOAT4_E2M1类型的`weight1`必须使用FORMAT_FRACTAL_NZ_C0_32格式。
-    - MXFP场景下，`dispatchQuantOutDtype`=23时`weight1`和`weight2`必须为FLOAT8_E5M2，`dispatchQuantOutDtype`=24时必须为FLOAT8_E4M3FN，`dispatchQuantOutDtype`=296时必须为FLOAT4_E2M1。
+      - `weight1` shape为(`localMoeExpertNum`, `hiddenDim`, `H`)，`weight2` shape为(`localMoeExpertNum`, `H`, `hiddenDim`/2)。
+      - `weightScales1` shape为(`localMoeExpertNum`, `hiddenDim`, CeilDiv(`H`, 64), 2)。
+      - `weightScales2` shape为(`localMoeExpertNum`, `H`, CeilDiv(`hiddenDim`/2, 64), 2)。
+      - `sharedWeight1` shape为(`sharedExpertNumPerRank`, `hiddenDim`, `H`)，`sharedWeight2` shape为(`sharedExpertNumPerRank`, `H`, `hiddenDim`/2)。
+      - `sharedWeightScales1` shape为(`sharedExpertNumPerRank`, `hiddenDim`, CeilDiv(`H`, 64), 2)，`sharedWeightScales2` shape为(`sharedExpertNumPerRank`, `H`, CeilDiv(`hiddenDim`/2, 64), 2)。
+      - `weightScales1`的dim3和`weightScales2`的dim3必须等于2。
+      - A8W4-FP场景下，FLOAT4_E2M1类型的`weight1`必须使用FORMAT_FRACTAL_NZ_C0_32格式。
+      - MXFP场景下，`dispatchQuantOutDtype`=23时`weight1`和`weight2`必须为FLOAT8_E5M2，`dispatchQuantOutDtype`=24时必须为FLOAT8_E4M3FN，`dispatchQuantOutDtype`=296时必须为FLOAT4_E2M1。
 
 ## 调用说明
 
