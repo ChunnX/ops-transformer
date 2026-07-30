@@ -3,11 +3,11 @@ Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on 
 
 ========================================================================================
 [00] bsnd_b1_s1_1_k_2048: suite=core kind=coverage layout=BSND B=1 S1=1 S2=2048 N1=64 Nidx1=32 K=2048 valid_k=[2048,2048] exec_k=2048 scatter_exec_k=2048 invalid=0 path=full-valid dtype=bfloat16
-[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=10 python_sha256=9cba5999468c8ab8b446400d3b8ac5f33b15848120d37eaeb1910abf562bc192
-[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=caeefa57f1136513f382b276504097a841edc911f4c97f9a4e0b02dc841de139
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=37ce414c2c95d44c933e9ffcaefd650f5af8ec01de3ebcc30de83ab965845d56
   TileLang: completed
   Official: completed
-[00] bsnd_b1_s1_1_k_2048 PRECISION FAIL: dQueryIndex: non-finite value detected (TileLang=906, Official=0)
-  TileLang kinds: nan=768 +inf=71 -inf=67
+[00] bsnd_b1_s1_1_k_2048 PRECISION FAIL: dQueryIndex: non-finite value detected (TileLang=977, Official=0)
+  TileLang kinds: nan=896 +inf=40 -inf=41
   TileLang first coordinates: (0, 0, 0, 0), (0, 0, 0, 1), (0, 0, 0, 2), (0, 0, 0, 3), (0, 0, 0, 4), (0, 0, 0, 5), (0, 0, 0, 6), (0, 0, 0, 7), (0, 0, 0, 8), (0, 0, 0, 9), (0, 0, 0, 10), (0, 0, 0, 11), (0, 0, 0, 12), (0, 0, 0, 13), (0, 0, 0, 14), (0, 0, 0, 15)
 Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
