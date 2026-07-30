@@ -19,7 +19,8 @@ using namespace optiling::GmmConstant;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
 namespace {
 constexpr size_t TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX = 0;
-}
+constexpr uint64_t TUNING_CONFIG_MAX_STEP_K = 4UL;
+} // namespace
 namespace optiling {
 GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
 {
@@ -52,15 +53,14 @@ ge::graphStatus GroupedQmmBasicApiTiling::GetShapeAttrsInfo()
     const auto tuningConfigPtr =
         attrs != nullptr ? attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG) : nullptr;
     tuningConfig_ =
-        (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX)
-            ? (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX]
-            : 0L;
+        (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX) ?
+            (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX] :
+            0L;
     OP_CHECK_IF(tuningConfig_ < 0 || static_cast<uint64_t>(tuningConfig_) > inputParams_.mSize,
                 OP_LOGE(context_->GetNodeName(), "Invalid tuningConfig_: %ld. Valid range: [0, mSize(%lu)]",
                         tuningConfig_, inputParams_.mSize),
                 return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "GMM A5 basic api tiling: tuning_config[0] is %ld.", tuningConfig_);
-    std::cout << "tuningConfig_: " << tuningConfig_ << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -92,15 +92,11 @@ void GroupedQmmBasicApiTiling::CalBasicBlockWithTuningConfig()
     basicTiling_.baseM = !inputParams_.transA ?
                              CeilAlign(basicTiling_.baseM, CUBE_BLOCK) :
                              CeilAlign(basicTiling_.baseM, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.aDtype));
-    std::cout << "basicTiling_.baseM: " << basicTiling_.baseM << std::endl;
-    std::cout << "basicTiling_.baseN: " << basicTiling_.baseN << std::endl;
-    std::cout << "basicTiling_.baseK: " << basicTiling_.baseK << std::endl;
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
 {
-    const uint64_t effectiveTilingM =
-        tuningConfig_ > 0L ? static_cast<uint64_t>(tuningConfig_) : inputParams_.mSize;
+    const uint64_t effectiveTilingM = tuningConfig_ > 0L ? static_cast<uint64_t>(tuningConfig_) : inputParams_.mSize;
     CalBasicBlockWithTuningConfig();
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);
@@ -121,45 +117,7 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
             inputParams_.kSize);
         tilingData_.mmTilingData.scaleKBL1 = tilingData_.mmTilingData.scaleKAL1;
     }
-    tilingData_.mmTilingData.l1BufferStage = CanEnableThreeL1Buffer() ? TB_SIZE : DB_SIZE;
-    if (CanEnableThreeL1Buffer()) {
-        std::cout << "Enabla three buffer" << std::endl;
-    } else {
-        std::cout << "使能 2 buffer" << std::endl;
-    }
     return ge::GRAPH_SUCCESS;
-}
-
-bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
-{
-    const bool isMxFp8 =
-        inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
-    if (inputParams_.bQuantMode != optiling::QuantMode::MX_PERGROUP_MODE || inputParams_.transA || !isMxFp8) {
-        return false;
-    }
-
-    const uint64_t kAL1 = tilingData_.mmTilingData.kAL1;
-    const uint64_t kBL1 = tilingData_.mmTilingData.kBL1;
-    const uint64_t scaleKL1 = tilingData_.mmTilingData.scaleKAL1;
-    if (kAL1 == 0UL || kBL1 == 0UL || scaleKL1 == 0UL) {
-        return false;
-    }
-
-    const uint64_t aL1Size = GetSizeWithDataType(
-        basicTiling_.baseM * CeilAlign(kAL1, MX_GROUP_SIZE), inputParams_.aDtype);
-    const uint64_t bL1Size = GetSizeWithDataType(
-        basicTiling_.baseN * CeilAlign(kBL1, MX_GROUP_SIZE), inputParams_.bDtype);
-    const uint64_t scaleKSize = CeilDiv(scaleKL1, MX_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
-    const uint64_t scaleAL1Size = GetSizeWithDataType(
-        basicTiling_.baseM * scaleKSize, inputParams_.perTokenScaleDtype);
-    const uint64_t scaleBL1Size = GetSizeWithDataType(
-        basicTiling_.baseN * scaleKSize, inputParams_.scaleDtype);
-    const uint64_t biasL1Size =
-        inputParams_.hasBias ? basicTiling_.baseN * ge::GetSizeByDataType(inputParams_.biasDtype) : 0UL;
-
-    const uint64_t commonL1Size = aL1Size + bL1Size + scaleAL1Size + scaleBL1Size + biasL1Size;
-    const uint64_t halfL1Size = aicoreParams_.l1Size / NUM_HALF;
-    return commonL1Size + aL1Size <= halfL1Size && commonL1Size + bL1Size <= halfL1Size;
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::PostTiling()
@@ -192,19 +150,42 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Depth(uint64_t leftL1Size)
                         baseL1Size),
                 return ge::GRAPH_FAILED);
     uint64_t depthInit = GetDepthA1B1(leftL1Size, baseL1Size, 1UL); // 求A+B和的平均depth
-    // 根据一条指令带宽要求的数据量求取A,B各自的depth
-    basicTiling_.depthA1 = GetDepthWithHighBW(std::min(inputParams_.mSize, basicTiling_.baseM));
-    basicTiling_.depthB1 = GetDepthWithHighBW(std::min(inputParams_.nSize, basicTiling_.baseN));
-    // 如果按照满足带宽的L1数据量超过了L1Size，进行下调整到平均depth;适配mx低阶api scaleKAL1=scaleKBL1的约束
-    if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
-            std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize) >
-        leftL1Size) {
-        basicTiling_.depthA1 = depthInit;
-        basicTiling_.depthB1 = depthInit;
+    if (tuningConfig_ > 0L) {
+        // Match QBMM MX tiling for tuning-config cases: distribute the remaining L1 space
+        // independently to A and B before applying the common stepK constraint.
+        uint64_t leftL1SizeByDepthInit = leftL1Size - depthInit * baseL1Size;
+        uint64_t depthASec = GetDepthA1B1(leftL1SizeByDepthInit, (baseASize + baseScaleASize) * depthInit, depthInit);
+        uint64_t depthBSec = GetDepthA1B1(leftL1SizeByDepthInit, (baseBSize + baseScaleBSize) * depthInit, depthInit);
+        basicTiling_.depthA1 = std::max(depthASec, depthBSec);
+        basicTiling_.depthB1 = basicTiling_.depthA1;
+        if (basicTiling_.depthA1 * baseL1Size > leftL1Size) {
+            basicTiling_.depthA1 = depthASec >= depthBSec ? depthASec : depthInit;
+            basicTiling_.depthB1 = depthASec < depthBSec ? depthBSec : depthInit;
+        }
+    } else {
+        // 根据一条指令带宽要求的数据量求取A,B各自的depth
+        basicTiling_.depthA1 = GetDepthWithHighBW(std::min(inputParams_.mSize, basicTiling_.baseM));
+        basicTiling_.depthB1 = GetDepthWithHighBW(std::min(inputParams_.nSize, basicTiling_.baseN));
+        // 如果按照满足带宽的L1数据量超过了L1Size，进行下调整到平均depth;适配mx低阶api scaleKAL1=scaleKBL1的约束
+        if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
+                std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize) >
+            leftL1Size) {
+            basicTiling_.depthA1 = depthInit;
+            basicTiling_.depthB1 = depthInit;
+        }
+        // 用剩余L1空间对内轴ND非对齐场景进行调整depth
+        ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
     }
-    // 用剩余L1空间对内轴ND非对齐场景进行调整depth
-    ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
     CalStepKs();
+    if (tuningConfig_ > 0L) {
+        basicTiling_.stepKa = std::min(basicTiling_.stepKa, TUNING_CONFIG_MAX_STEP_K);
+        basicTiling_.stepKb = std::min(basicTiling_.stepKb, TUNING_CONFIG_MAX_STEP_K);
+        const uint64_t commonStepK = std::min(basicTiling_.stepKa, basicTiling_.stepKb);
+        basicTiling_.stepKa = commonStepK;
+        basicTiling_.stepKb = commonStepK;
+        basicTiling_.depthA1 = commonStepK * DB_SIZE;
+        basicTiling_.depthB1 = commonStepK * DB_SIZE;
+    }
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         return CalScaleFactors();
     }
