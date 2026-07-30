@@ -15,15 +15,17 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
-if (BUILD_OPS_RTY_KERNEL)
-    add_ops_compile_options(
-            OP_NAME BlockSparseAttention
-            OPTIONS --cce-auto-sync=off
-                    -Wno-deprecated-declarations
-                    -Werror
-                    -fpermissive
-    )
-else()
+# NOTE: BUILD_OPS_RTY_KERNEL=OFF for open-project --pkg builds; options must be
+# registered unconditionally or they never reach opc / custom_compile_options.ini.
+add_ops_compile_options(
+        OP_NAME BlockSparseAttention
+        OPTIONS --cce-auto-sync=off
+                -Wno-deprecated-declarations
+                -Werror
+                -fpermissive
+                -DBSA_PV_RESCALE_PROBE
+)
+
+if (NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE block_sparse_attention ACLNNTYPE aclnn_exclude)
 endif()
-
