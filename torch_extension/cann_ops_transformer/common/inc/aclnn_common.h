@@ -926,6 +926,26 @@ auto DecodeDevice(Ts &...args) -> at::Device
     return ft.device();
 }
 
+inline void ApplyDeterministicConfig()
+{
+    static auto s_apply_level_sym = dlsym(RTLD_DEFAULT,
+        "_ZN6at_npu6native23ApplyDeterministicLevelElbb");
+    static auto s_get_level_sym = dlsym(RTLD_DEFAULT,
+        "_ZN7c10_npu21GetDeterministicLevelEv");
+    if (s_apply_level_sym != nullptr && s_get_level_sym != nullptr) {
+        using ApplyLevelFn = void (*)(int64_t, bool, bool);
+        using GetLevelFn = uint32_t (*)();
+        auto applyLevelFn = reinterpret_cast<ApplyLevelFn>(s_apply_level_sym);
+        auto getLevelFn = reinterpret_cast<GetLevelFn>(s_get_level_sym);
+        int64_t level = static_cast<int64_t>(getLevelFn());
+        bool deterministicAlgorithmsStatus = at::globalContext().deterministicAlgorithms();
+        applyLevelFn(level, deterministicAlgorithmsStatus, true);
+        return;
+    }
+    auto deterministic = at::globalContext().deterministicAlgorithms();
+    aclrtCtxSetSysParamOpt(aclSysParamOpt::ACL_OPT_DETERMINISTIC, deterministic ? 1 : 0);
+}
+
 #define ACLNN_CMD(aclnn_api, ...) \
     do { \
         auto device = DecodeDevice(__VA_ARGS__); \
@@ -948,8 +968,7 @@ auto DecodeDevice(Ts &...args) -> at::Device
         if (initMemFunc) { \
             initMemFunc(nullptr, false); \
         } \
-        auto deterministic = at::globalContext().deterministicAlgorithms(); \
-        aclrtCtxSetSysParamOpt(aclSysParamOpt::ACL_OPT_DETERMINISTIC, deterministic ? 1 : 0); \
+        ApplyDeterministicConfig(); \
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr); \
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr); \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params); \
