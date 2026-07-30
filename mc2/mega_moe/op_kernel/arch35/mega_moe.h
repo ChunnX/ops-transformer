@@ -800,12 +800,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(H * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
-    DataCopyExtParams xCopyOutParams = {1U, static_cast<uint32_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
-                                        0U, 0U, 0U};
-    if constexpr (TopkWeightsPrefetch) {
-        // 完整 stride 已包含 token+scale 的内部对齐 padding 以及 weight。
-        xCopyOutParams.blockLen = mxQuantTokenScaleAlignBytes_;
-    }
+    DataCopyExtParams xCopyOutParams = {1U, mxQuantTokenScaleAlignBytes_, 0U, 0U, 0U};
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < currentNum; index++) {

@@ -53,6 +53,7 @@ const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
 const static int64_t MIN_H = 1024LL;
 const static int64_t MAX_H = 8LL * 1024LL; // 8K
 const static int64_t H_ALIGN = 32LL;
+const static int64_t W4_K_ALIGN = 64LL;
 const static int64_t HIDDEN_DIM_BASE = 1024LL;
 const static int64_t MAX_HIDDEN_DIM = 8LL * 1024LL; // 8K
 const static int64_t MIN_EP_WORLD_SIZE = 2LL;
@@ -1560,8 +1561,13 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();
     auto topoTypePtr = attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
-    // This change only opens H=32 alignment for MTE. Keep the existing 1K contract for URMA/Layered.
-    int64_t requiredHAlignment = *topoTypePtr == TOPO_TYPE_URMA ? HIDDEN_DIM_BASE : H_ALIGN;
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, weightOneDesc);
+    bool isW4NzC0_32 = weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
+                       weightOneDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ_C0_32;
+    // URMA/Layered 保持 1K 对齐；W4 的 NZ_C0_32 分形要求 GMM K 按 64 对齐；其余 MTE 路径按 32 对齐。
+    int64_t requiredHAlignment =
+        *topoTypePtr == TOPO_TYPE_URMA ? HIDDEN_DIM_BASE : (isW4NzC0_32 ? W4_K_ALIGN : H_ALIGN);
     OP_TILING_CHECK(
         xDim1 % requiredHAlignment != 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xDim1).c_str(),
