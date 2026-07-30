@@ -43,23 +43,22 @@ struct Mm2L1TileHelper {
     uint32_t pL1BufNum;
     uint32_t vL1BufNum;
 
-    __aicore__ inline
-    Mm2L1TileHelper() {}
+    __aicore__ inline Mm2L1TileHelper() {}
 
-    __aicore__ inline
-    Mm2L1TileHelper(
+    __aicore__ inline Mm2L1TileHelper(
         uint32_t m,
         uint32_t n,
         uint32_t kl,
         uint32_t kr,
         uint32_t pbn,
-        uint32_t vbn) :
-        mm2L1TileM(m),
-        mm2L1TileN(n),
-        mm2L1TileKLeft(kl),
-        mm2L1TileKRight(kr),
-        pL1BufNum(pbn),
-        vL1BufNum(vbn) {}
+        uint32_t vbn)
+        : mm2L1TileM(m),
+          mm2L1TileN(n),
+          mm2L1TileKLeft(kl),
+          mm2L1TileKRight(kr),
+          pL1BufNum(pbn),
+          vL1BufNum(vbn)
+    {}
 };
 
 template <
@@ -80,8 +79,7 @@ struct BlockMmadTla<
     ElementC_,
     ElementBias_,
     TileCopy_,
-    TileMmad_>
-{
+    TileMmad_> {
 public:
     using DispatchPolicy = MmadAtlasA5BsaPV;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -111,9 +109,9 @@ public:
     static constexpr uint32_t L0C_HALF_BUF_SIZE = ArchTag::L0C_SIZE / 2;
     static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = L0C_HALF_BUF_SIZE / L0_STAGES;
 
-    static constexpr uint32_t MAX_L1_STAGES = 3; // 编译期常量，为静态L1Tensor数组开辟准备。取一个buffer份数的极大值
+    static constexpr uint32_t MAX_L1_STAGES = 3;         // 编译期常量，为静态L1Tensor数组开辟准备。取一个buffer份数的极大值
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16; // 核间同步mode4，AIC侧需要两个flagId分别对应两个AIV
-    
+
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
 
 #ifdef BSA_PV_RESCALE_PROBE_FP8
@@ -126,8 +124,7 @@ public:
     static constexpr uint32_t PROBE_L0B_EVENT_ID = 2; // match PV: B uses +2
 #endif
 
-    __aicore__ inline
-    BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
     {
         l1ATileM = mm2L1TileHelper.mm2L1TileM;
         l1BTileN = mm2L1TileHelper.mm2L1TileN;
@@ -168,12 +165,10 @@ public:
     }
 
     /// Destructor
-    __aicore__ inline
-    ~BlockMmadTla() {}
+    __aicore__ inline ~BlockMmadTla() {}
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
         // in mode 4, AIC set for 2 AIVs seperately
         if constexpr (MODE == 4U) {
@@ -186,8 +181,7 @@ public:
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
         // in mode 4, AIC wait for 2 AIVs seperately
         if constexpr (MODE == 4U) {
@@ -198,13 +192,12 @@ public:
             Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlagV1);
         }
     }
-    
-    __aicore__ inline
-    uint32_t GetCurLoopCounter(uint32_t outterLoopItr, uint32_t curLoopNum, uint32_t curLoopItr)
+
+    __aicore__ inline uint32_t GetCurLoopCounter(uint32_t outterLoopItr, uint32_t curLoopNum, uint32_t curLoopItr)
     {
         return outterLoopItr * curLoopNum + curLoopItr;
     }
-    
+
 #ifdef BSA_PV_RESCALE_PROBE_FP8
     __aicore__ inline void RunRescaleMadProbe()
     {
@@ -227,26 +220,27 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0A_EVENT_ID);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0B_EVENT_ID);
 
-        constexpr uint32_t ELE_PER_C0 = BYTE_PER_C0 / sizeof(float);           // 8
-        constexpr uint32_t ELE_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(float); // 128
+        // FA matmul.h float LoadDataToL0*: srcStride/dstStride = mStep (not M*K/fractal).
+        // Wrong stride caused LOAD2D WRITE_OVERFLOW on L0 (aicore 131).
+        constexpr uint32_t ELE_PER_C0 = BYTE_PER_C0 / sizeof(float); // 8
 
         AscendC::LoadData2DParamsV2 loadA;
         loadA.mStartPosition = 0;
         loadA.kStartPosition = 0;
-        loadA.mStep = PROBE_M / C0_NUM_PER_FRACTAL;              // 4
-        loadA.kStep = PROBE_K / ELE_PER_C0;                      // 8
-        loadA.srcStride = (PROBE_M * PROBE_K) / ELE_PER_FRACTAL; // 32
-        loadA.dstStride = loadA.srcStride;
+        loadA.mStep = PROBE_M / C0_NUM_PER_FRACTAL; // 4
+        loadA.kStep = PROBE_K / ELE_PER_C0;         // 8
+        loadA.srcStride = loadA.mStep;
+        loadA.dstStride = loadA.mStep;
         loadA.ifTranspose = false;
         AscendC::LoadData(l0AFp32, probeL1A_, loadA);
 
         AscendC::LoadData2DParamsV2 loadB;
         loadB.mStartPosition = 0;
         loadB.kStartPosition = 0;
-        loadB.mStep = PROBE_K / C0_NUM_PER_FRACTAL;              // 4
-        loadB.kStep = PROBE_N / ELE_PER_C0;                      // 16
-        loadB.srcStride = (PROBE_K * PROBE_N) / ELE_PER_FRACTAL; // 64
-        loadB.dstStride = (PROBE_K * PROBE_N) / ELE_PER_FRACTAL;
+        loadB.mStep = PROBE_K / C0_NUM_PER_FRACTAL; // 4
+        loadB.kStep = PROBE_N / ELE_PER_C0;         // 16
+        loadB.srcStride = loadB.mStep;
+        loadB.dstStride = (PROBE_N + 15) >> 4; // N/16 = 8
         loadB.ifTranspose = true;
         AscendC::LoadData(l0BFp32, probeL1B_, loadB);
 
@@ -274,13 +268,12 @@ public:
 #endif
 
     template <class TensorB, class TensorL1B>
-    __aicore__ inline
-    void SparseVBaseTileL1FullLoad(TensorB &gBTensor, TensorL1B &l1BTensorTla,
-                                   AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
-                                   uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
-                                   uint32_t kvSBaseTile, uint32_t blockShapeY,
-                                   uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
-                                   uint32_t curBaseTileSize, uint32_t embed)
+    __aicore__ inline void SparseVBaseTileL1FullLoad(TensorB &gBTensor, TensorL1B &l1BTensorTla,
+                                                     AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
+                                                     uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
+                                                     uint32_t kvSBaseTile, uint32_t blockShapeY,
+                                                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+                                                     uint32_t curBaseTileSize, uint32_t embed)
     {
         using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
@@ -315,9 +308,9 @@ public:
                 break;
             }
             auto l1BTensorTlaTile = GetTile(l1BTensorTla,
-                tla::MakeCoord(dealtLenAccum, 0), tla::MakeShape(curDealtLen, embed));
+                                            tla::MakeCoord(dealtLenAccum, 0), tla::MakeShape(curDealtLen, embed));
             auto gBTensorTlaTile = GetTile(gBTensor,
-                tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(curDealtLen, embed));
+                                           tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(curDealtLen, embed));
             copyGmToL1B(l1BTensorTlaTile, gBTensorTlaTile);
             // 为下一次循环刷新循环变量
             dealtLenAccum += curDealtLen;
@@ -333,16 +326,15 @@ public:
     }
 
     template <class TensorB, class TensorC>
-    __aicore__ inline
-    void operator()(TensorB &gBTensor, TensorC &ubCTensor,
-                    AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
-                    GemmCoord actualOriShape,
-                    uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
-                    uint32_t kvSBaseTile, uint32_t blockShapeY,
-                    uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
-                    uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
-                    Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag,
-                    uint64_t deqScalar = 0)
+    __aicore__ inline void operator()(TensorB &gBTensor, TensorC &ubCTensor,
+                                      AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
+                                      GemmCoord actualOriShape,
+                                      uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
+                                      uint32_t kvSBaseTile, uint32_t blockShapeY,
+                                      uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+                                      uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
+                                      Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag,
+                                      uint64_t deqScalar = 0)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
 
@@ -391,12 +383,13 @@ public:
                 // uint32_t mLoopCounter = GetCurLoopCounter(gatheredKvSTileIdx, mL0LoopNum, mL0Itr);
                 // different m chunks will be concated in the same piece of l0C buffer
                 auto l0CTensorTlaTile = GetTile(l0CTensorTla,
-                    tla::MakeCoord(mL0Itr * L0_TILE_M, 0), tla::MakeShape(l0TileMAct, l0TileNAct));
+                                                tla::MakeCoord(mL0Itr * L0_TILE_M, 0), tla::MakeShape(l0TileMAct, l0TileNAct));
                 for (uint32_t kL0Itr = 0; kL0Itr < kL0LoopNum; kL0Itr++) {
                     uint32_t l0ALoopCounter = prefixSumL0AStages + GetCurLoopCounter(mL0Itr, kL0LoopNum, kL0Itr);
                     uint32_t l0BLoopCounter = prefixSumL0BStages + GetCurLoopCounter(nL0Itr, kL0LoopNum, kL0Itr);
                     uint32_t l0TileKAct = (kL0Itr == kL0LoopNum - 1) ?
-                        (curBaseTileSize - kL0Itr * L0_TILE_K) : L0_TILE_K;
+                                              (curBaseTileSize - kL0Itr * L0_TILE_K) :
+                                              L0_TILE_K;
                     uint32_t l0ABufId = l0ALoopCounter % L0_STAGES;
                     // l0ABufId = (mLoopCounter % 2 == 0) ? (1 - l0ABufId) : l0ABufId;
                     uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
@@ -405,10 +398,10 @@ public:
                     // when L0B buffers wouldn't be reused across the k loop
                     // redundant L0B load caused by m loop can be avoided
                     auto l1BTensorTlaTile = GetTile(l1BTensorTla,
-                        tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N), tla::MakeShape(l0TileKAct, l0TileNAct));
+                                                    tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N), tla::MakeShape(l0TileKAct, l0TileNAct));
                     auto l0BLayoutTla = tla::MakeLayout<ElementB, LayoutTagL0B>(l0TileKAct, l0TileNAct);
                     auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayoutTla, Arch::PositionL0B{});
-                    
+
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                     copyL1ToL0B(l0BTensorTla, l1BTensorTlaTile);
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
@@ -418,7 +411,7 @@ public:
                     }
 
                     auto l1ATensorTlaTile = GetTile(l1ATensorTla,
-                        tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K), tla::MakeShape(l0TileMAct, l0TileKAct));
+                                                    tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K), tla::MakeShape(l0TileMAct, l0TileKAct));
                     auto l0ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL0A>(l0TileMAct, l0TileKAct);
                     auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
 
@@ -433,7 +426,7 @@ public:
                     bool initMmad = (kL0Itr == 0);
                     uint32_t l0TileMAligned = RoundUp(l0TileMAct, 16);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-                    
+
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
 
                     if (mL0Itr == 0 && kL0Itr == 0) {
@@ -521,5 +514,5 @@ protected:
 };
 ////////////////////////////////////////////////////////////////////
 
-}  // namespace NpuArch::Gemm::Block
+} // namespace NpuArch::Gemm::Block
 #endif
