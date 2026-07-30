@@ -197,7 +197,7 @@ private:
     // 6-buffer 软流水(占满 EVENT_ID0..EVENT_ID5)的 UB 基址；槽视图由 base + bufferIdx*mxQuantTokenScaleAlignBytes_
     uint32_t copyTmpBaseAddr_ = 0;
     // ProcessCombine wave 流水参数：只依赖 k_(常量), InitCombineBuffers 算一次, 免每 expert 重算
-    uint32_t gmm2NTilesPerGroup_ = 0;          // CeilDiv(k_, L1_TILE_N)
+    uint32_t gmm2NTilesPerGroup_ = 0;         // CeilDiv(k_, L1_TILE_N)
     uint32_t combineQuantTokenSizeBytes_ = 0; // CeilAlign(k_ + CeilDiv(k_,MXFP_SCALE_GROUP_NUM), ALIGN_32)
 
     // 大 BS route batch、ring buffer 和 reset batch 成员
@@ -1138,8 +1138,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::MetaInfoCalAndDispatch(
         }
 
         GlobalTensor<uint8_t> remoteRankMaskGlobal; // 当前 expert/source rank 对应的 route mask GM 视图
-        int32_t matchedRouteCount = 0;  // 已扫描 batch 的累计命中数，即下一 batch 的首个 match ordinal
-        int32_t dispatchedRowCount = 0; // 当前 core 已实际 dispatch 的总行数
+        int32_t matchedRouteCount = 0;              // 已扫描 batch 的累计命中数，即下一 batch 的首个 match ordinal
+        int32_t dispatchedRowCount = 0;             // 当前 core 已实际 dispatch 的总行数
         for (int32_t batchIdx = 0; batchIdx < recvRouteBatchCount_ && matchedRouteCount < coreMatchOrdinalEnd;
              ++batchIdx) {
             int32_t batchRouteBegin = batchIdx * recvRouteItemsPerBatch_; // 当前 batch 在原始 route 数组中的起始下标
@@ -1717,7 +1717,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteSharedExpert(
             tokenGroupIndex);
         while (AscendC::ReadGmByPassDCache(counterAddr) != static_cast<int32_t>(gmm2NTilesPerGroup_)) {
             int64_t waitStartCycle = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - waitStartCycle < 100) {}
+            while (AscendC::GetSystemCycle() - waitStartCycle < 100) {
+            }
         }
 
         int32_t accumulationItemIdxInBatch =
