@@ -83,8 +83,8 @@ enum class S2TemplateType {
     uint32_t firstHalfS1RealSize; \
     int64_t tensorQOffset;      /* query的offset souter层确定 */ \
     int64_t attentionOutOffset; /* attentionOut的offset souter层确定 */ \
-    int64_t actualS1Size;       /* Q的seqUsedQlen */ \
-    int64_t actualS2Size;       /* KV的seqUsedKvlen */ \
+    int64_t actualS1Size;       /* Q的实际长度，由cuSeqQlen相邻前缀差计算 */ \
+    int64_t actualS2Size;       /* KV的实际长度，由seqUsedKvlen读取 */ \
     uint64_t b1SSOffsetAlign16; \
     int64_t qRopeNBGOffset; /* QueryRope 的 offset */ \
     int64_t kRopeNBGOffset; /* G方向上,不同g的KeyRope的offset */
@@ -242,7 +242,7 @@ struct RunInfo {
     bool isRowInvalid;       /* 是否使能行无效 */ \
     bool isGqa; \
 \
-    uint32_t seqUsedQlenSize;  /* seqUsedQlen 的长度 */ \
+    uint32_t seqUsedQlenSize;  /* 去掉前导0后的cuSeqQlen长度 */ \
     uint32_t seqUsedKvlenSize; /* seqUsedKvlen 的长度 */ \
     uint32_t isKvContinuous;   /* 是否为tensorlist */ \
     /* service mm1 mm2 pageAttention */ \

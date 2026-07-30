@@ -203,7 +203,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>cu_seqlens_q</td>
       <td>输入</td>
       <td>Query 累积序列长度。</td>
-      <td>TND/NTD 变长场景时传入。</td>
+      <td>TND/NTD + PA_BNSD 场景必传，实际 Q 长度由相邻前缀差计算。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B+1)</td>
@@ -211,8 +211,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
     <tr>
       <td>cu_seqlens_kv</td>
       <td>输入</td>
-      <td>KV 累积序列长度。</td>
-      <td>TND/NTD 变长场景时传入。</td>
+      <td>预留参数。</td>
+      <td>当前主算子不使用；如传入则需满足 dtype/format/shape 约束。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B+1)</td>
@@ -220,8 +220,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
     <tr>
       <td>seqused_q</td>
       <td>输入</td>
-      <td>每个 batch 的 Query 实际使用长度。</td>
-      <td>TND/NTD 变长场景时传入。</td>
+      <td>预留参数。</td>
+      <td>当前主算子不使用；如传入则需满足 dtype/format/shape 约束。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B)</td>
@@ -230,7 +230,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>seqused_kv</td>
       <td>输入</td>
       <td>每个 batch 的 KV 实际使用长度。</td>
-      <td>TND/NTD 变长场景时传入。</td>
+      <td>TND/NTD + PA_BNSD 场景必传，实际 KV 长度由该 Tensor 按 batch 读取。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B)</td>
@@ -557,8 +557,8 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 | 4D PA Block内连续存储 | 当前支持的 KV Cache 存储形态；接口传入 4D `key`、4D `value` 和 4D `k_descale` BNB1 视图，每个物理 PA block 内 Key、Value、`k_descale` 按连续分段组织，不支持 1D 组合 KV 存储。 |
 | BatchSize | Batch 数，对应 `sparse_indices`、`sparse_seq_len`、`block_table` 的第 0 维。 |
 | QueryTokenNum | 所有 batch 的 Query 有效 token 数之和，对应 `query` 的 T 轴。 |
-| QueryMaxSeqLen | 单个 batch 的 Query 实际最大序列长度，由 `seqused_q`/`cu_seqlens_q` 的数值语义决定，主算子 tiling 不读取该数值。 |
-| KeyValueMaxSeqLen | 单个 batch 的 KV 实际最大序列长度，由 `seqused_kv`/`cu_seqlens_kv` 的数值语义决定，主算子 tiling 不读取该数值。 |
+| QueryMaxSeqLen | 单个 batch 的 Query 实际最大序列长度，由 `cu_seqlens_q` 的相邻前缀差语义决定，主算子 tiling 不读取该数值。 |
+| KeyValueMaxSeqLen | 单个 batch 的 KV 实际最大序列长度，由 `seqused_kv` 的数值语义决定，主算子 tiling 不读取该数值。 |
 | QueryNumHead | Query head 数，对应 `query` 的 N 轴和 `sparse_indices` 的第 1 维。 |
 | KeyValueNumHead | KV head 数，对应 `key`、`value` 的 N 轴。 |
 | GroupNum | GQA 分组数，`GroupNum = QueryNumHead / KeyValueNumHead`。 |
@@ -695,24 +695,25 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 单参数约束
 
-  - `cu_seqlens_q`、`cu_seqlens_kv`、`seqused_q`、`seqused_kv` 数据类型仅支持 `INT32`，数据格式仅支持 ND。
-  - `cu_seqlens_q`、`cu_seqlens_kv` 通常为一维 Tensor，shape 为 `(BatchSize + 1)`。
-  - `seqused_q`、`seqused_kv` 通常为一维 Tensor，shape 为 `(BatchSize)`。
+  - `cu_seqlens_q`、`cu_seqlens_kv`、`seqused_q`、`seqused_kv` 如传入，数据类型仅支持 `INT32`，数据格式仅支持 ND。
+  - `cu_seqlens_q`、`cu_seqlens_kv` 如传入，shape 为 `(BatchSize + 1)`。
+  - `seqused_q`、`seqused_kv` 如传入，shape 为 `(BatchSize)`。
 
 - 存在性约束
 
-  - 变长 TND/NTD 场景必须传入 `cu_seqlens_q`、`cu_seqlens_kv`、`seqused_q`、`seqused_kv`。
+  - TND/NTD + PA_BNSD 场景必须传入 `cu_seqlens_q` 和 `seqused_kv`。
+  - `cu_seqlens_kv` 和 `seqused_q` 为预留参数，可传空；当前主算子 host 侧和 kernel 侧不使用其数值。
 
 - 一致性约束
 
-  - `cu_seqlens_q` 和 `cu_seqlens_kv` 应从 0 开始单调非降，末尾值分别等于 QueryTokenNum 和实际 KV token 总数。
-  - `seqused_q` 每个元素应在 `[0, QueryMaxSeqLen]` 范围内，`seqused_kv` 每个元素应在 `[0, KeyValueMaxSeqLen]` 范围内。
+  - `cu_seqlens_q` 应从 0 开始单调非降，末尾值等于 QueryTokenNum。
+  - `seqused_kv` 每个元素应在 `[0, KeyValueMaxSeqLen]` 范围内。
   - `seqused_*`、`cu_seqlens_*` 的 Batch 语义必须与 `sparse_indices`、`sparse_seq_len`、`block_table` 保持一致。
 
 - 特性交叉约束
 
-  - Tiling 阶段无法读取 Tensor 数值，`cu_seqlens_*` 和 `seqused_*` 的数值合法性由调用者保证。
-  - `seqused_q`、`seqused_kv` 的最大有效长度应分别不超过 `sparse_indices.shape[2] * sparse_q_block_size` 和 `block_table.shape[1] * sparse_kv_block_size`。
+  - Tiling 阶段无法读取 Tensor 数值，`cu_seqlens_q` 和 `seqused_kv` 的数值合法性由调用者保证。
+  - `cu_seqlens_q` 的相邻前缀差应不超过 `sparse_indices.shape[2] * sparse_q_block_size`，`seqused_kv` 的最大有效长度应不超过 `block_table.shape[1] * sparse_kv_block_size`。
 
 #### Attention Mask参数组（MaskChecker）
 

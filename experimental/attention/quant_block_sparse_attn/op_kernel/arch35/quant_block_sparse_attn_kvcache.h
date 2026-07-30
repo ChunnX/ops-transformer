@@ -39,11 +39,11 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr &, const ConstInfo &
 
 TEMPLATE_INTF
 __aicore__ inline int64_t CalculateActualS2Size(RunParamStr &, const ConstInfo &, int32_t bIdx,
-                                                __gm__ int32_t *cuSeqKvlenAddr)
+                                                __gm__ int32_t *seqUsedKvlenAddr)
 {
     int64_t actualS2Size = 0;
     if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
-        actualS2Size = cuSeqKvlenAddr[bIdx + 1] - cuSeqKvlenAddr[bIdx];
+        actualS2Size = seqUsedKvlenAddr[bIdx];
     }
     return actualS2Size;
 }
@@ -51,13 +51,13 @@ __aicore__ inline int64_t CalculateActualS2Size(RunParamStr &, const ConstInfo &
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo &constInfo,
                                          const AttenMaskInfo &attenMaskInfo, GlobalTensor<INPUT_T> &keyGm,
-                                         __gm__ int32_t *cuSeqQlenAddr, __gm__ int32_t *cuSeqKvlenAddr)
+                                         __gm__ int32_t *cuSeqQlenAddr, __gm__ int32_t *seqUsedKvlenAddr)
 {
     // 计算实际序列长度
     runParam.actualS1Size =
         CalculateActualS1Size<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqQlenAddr);
     runParam.actualS2Size =
-        CalculateActualS2Size<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqKvlenAddr);
+        CalculateActualS2Size<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, seqUsedKvlenAddr);
 
     if constexpr (hasAtten) {
         runParam.preTokensPerBatch = attenMaskInfo.preTokens;

@@ -169,7 +169,7 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     // 每个 PA block 的 VScale 为 [N,ceil(blockSize/64),DV,2]。
     const uint32_t valueScaleBlockSize = BSACeilDiv(info.kvBlockSizeVal, BSA_MXFP8_SCALE_GROUP_SIZE);
     const uint32_t valueScaleDSize = dSizeV * BSA_MXFP8_VALUE_SCALE_LAST_DIM;
-    const bool actualSeqQNull = info.opParamInfo.seqUsedQ.tensor == nullptr;
+    const bool actualSeqQNull = info.opParamInfo.cuSeqlensQ.tensor == nullptr;
     const bool actualSeqKVNull = info.opParamInfo.seqUsedKV.tensor == nullptr;
 
     auto &attrParams = mxTilingData_.attrParams;
