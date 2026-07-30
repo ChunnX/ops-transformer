@@ -343,8 +343,6 @@ def quant_block_sparse_attn(
         softmax_scale=float(softmax_scale),
         sparse_q_block_size=int(sparse_q_block_size),
         sparse_kv_block_size=int(sparse_kv_block_size),
-        max_seqlen_q=int(max_seqlen_q),
-        max_seqlen_kv=int(max_seqlen_kv),
         layout_kv=layout_kv,
         layout_q=layout_q,
         layout_sparse_indices=layout_sparse_indices,

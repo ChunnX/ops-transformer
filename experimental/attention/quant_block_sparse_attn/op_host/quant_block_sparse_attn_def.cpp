@@ -103,8 +103,6 @@ public:
         this->Output("attention_out").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
         this->Output("softmax_lse").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
 
-        this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(0);
-        this->Attr("max_seqlen_kv").AttrType(OPTIONAL).Int(0);
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
         this->Attr("sparse_q_block_size").AttrType(REQUIRED).Int(128);
         this->Attr("sparse_kv_block_size").AttrType(REQUIRED).Int(128);

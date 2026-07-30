@@ -386,6 +386,18 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckExistence() const
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
 {
+    const auto &opParamInfo = tilingInfo_.opParamInfo;
+    const gert::Shape &sparseIndicesShape = opParamInfo.sparseIndices.shape->GetStorageShape();
+    const gert::Shape &sparseSeqLenShape = opParamInfo.sparseSeqLen.shape->GetStorageShape();
+    if (sparseIndicesShape.GetDimNum() != DIM_NUM_4 || sparseSeqLenShape.GetDimNum() != DIM_NUM_3) {
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            kOpName, "sparse_indices, sparse_seq_len",
+            std::to_string(sparseIndicesShape.GetDimNum()) + "D, " + std::to_string(sparseSeqLenShape.GetDimNum()) +
+                "D",
+            "sparse_indices must be 4D and sparse_seq_len must be 3D");
+        return ge::GRAPH_FAILED;
+    }
+
     if (tilingInfo_.bSize == 0U || tilingInfo_.n1Size == 0U || tilingInfo_.n2Size == 0U || tilingInfo_.gSize == 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "bSize/n1Size/n2Size/gSize",
@@ -400,16 +412,19 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
             "must be divisible by n2Size (kv head num) " + std::to_string(tilingInfo_.n2Size));
         return ge::GRAPH_FAILED;
     }
-    if (tilingInfo_.s1Size == 0U || tilingInfo_.s2Size == 0U) {
+    if (tilingInfo_.qBlockSizeVal == 0U || tilingInfo_.kvBlockSizeVal == 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            kOpName, "s1Size/s2Size", std::to_string(tilingInfo_.s1Size) + "/" + std::to_string(tilingInfo_.s2Size),
-            "sequence lengths must be greater than 0");
+            kOpName, "q_block_size/kv_block_size",
+            std::to_string(tilingInfo_.qBlockSizeVal) + "/" + std::to_string(tilingInfo_.kvBlockSizeVal),
+            "block sizes must be greater than 0");
         return ge::GRAPH_FAILED;
     }
-    if (tilingInfo_.qbMax == 0U || tilingInfo_.kbMax == 0U) {
+    if (tilingInfo_.qbMax == 0U || tilingInfo_.sparseCount == 0U || tilingInfo_.maxBlockNumPerBatch == 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            kOpName, "qbMax/kbMax", std::to_string(tilingInfo_.qbMax) + "/" + std::to_string(tilingInfo_.kbMax),
-            "block counts must be greater than 0");
+            kOpName, "qbMax/sparseCount/maxBlockNumPerBatch",
+            std::to_string(tilingInfo_.qbMax) + "/" + std::to_string(tilingInfo_.sparseCount) + "/" +
+                std::to_string(tilingInfo_.maxBlockNumPerBatch),
+            "block counts and sparse count must be greater than 0");
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.dSize != BSA_D_SIZE || tilingInfo_.dSizeV != BSA_D_SIZE) {
