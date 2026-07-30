@@ -423,7 +423,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v4(GM_ADDR x, GM_ADDR exp
         // GATHER索引
         TPipe rowIdxPipe;
         RowIdxGather rowIdxGatherOp;
-        rowIdxGatherOp.Init(expandedRowIdx, userWS, t, &rowIdxPipe);
+        rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
         rowIdxGatherOp.Process();
         rowIdxPipe.Destroy();
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
