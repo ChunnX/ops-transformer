@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <iostream>
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -351,15 +350,6 @@ void RunV4Testcase(int64_t N, int64_t H, int64_t K, int64_t expertCapacity, int6
 
 class MoeInitRoutingV4Tiling : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeInitRoutingV4Tiling SetUp" << std::endl;
-    }
-
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeInitRoutingV4Tiling TearDown" << std::endl;
-    }
 };
 
 // fullload + not quant, no topk_weight

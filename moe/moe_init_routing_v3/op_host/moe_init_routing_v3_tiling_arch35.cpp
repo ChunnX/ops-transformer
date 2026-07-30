@@ -99,6 +99,7 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::DoOpTiling()
 
     isFullload_ = IsFullLoad();
     ComputeUseGatherCopy();
+    Tiling4TopkWeightOut();
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 || quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP4_E2M1) {
@@ -1167,6 +1168,7 @@ void MoeInitRoutingV3TilingArch35::LogBaseTilingData()
     ss << "dropPadMode = " << tilingDataPtr_->dropPadMode << "\n";
     ss << "smoothType = " << tilingDataPtr_->smoothType << "\n";
     ss << "isInputTopkWeight = " << tilingDataPtr_->isInputTopkWeight << "\n";
+    ss << "topkWeightOutPerCorePerLoopElements = " << tilingDataPtr_->topkWeightOutPerCorePerLoopElements << "\n";
     OP_LOGI(context_, "%s", ss.str().c_str());
 }
 
@@ -1843,11 +1845,6 @@ bool MoeInitRoutingV3TilingArch35::IsFullLoad()
     int64_t gatherSpace = Ops::Base::CeilDiv(cols_ * inputXDtypeSize_, UB_BLOCK_SIZE) * UB_BLOCK_SIZE * perCoreTokens;
     int64_t remainUb = availUbSize_ - sortSpace - rowIdxSpace - expertSpace - LENGTH_1024;
 
-    // topk_weight buffer: 仅当isInputTopkWeight_时占用32 bytes
-    if (isInputTopkWeight_ == 1) {
-        remainUb -= AlignBytes(1, static_cast<int64_t>(sizeof(float))); // topkWeightBuf_: 32 bytes
-    }
-
     if (quantMode_ == QUANT_MODE_UNQUANT) {
         remainUb -= (gatherSpace + UB_BLOCK_SIZE);
     } else if (quantMode_ == QUANT_MODE_STATIC) {
@@ -1902,6 +1899,24 @@ void MoeInitRoutingV3TilingArch35::ComputeUseGatherCopy()
     } else {
         tilingDataPtr_->useGatherCopy = 0;
     }
+}
+
+void MoeInitRoutingV3TilingArch35::Tiling4TopkWeightOut()
+{
+    if (isInputTopkWeight_ == 0) {
+        tilingDataPtr_->topkWeightOutPerCorePerLoopElements = 0;
+        return;
+    }
+
+    int64_t splitBase = totalLength_;
+    int64_t perCoreElements = Ops::Base::CeilDiv(splitBase, aivCoreNum_);
+
+    // TopkWeightOut使用独立TPipe，UB全部可用，每次搬1个float weight + 1个int32索引
+    int64_t perLoopMaxElements = availUbSize_ / NUM_TWO /
+        (AlignBytes(1, static_cast<int64_t>(sizeof(float))) + static_cast<int64_t>(sizeof(int32_t)));
+    int64_t perCorePerLoopElements = std::min(perLoopMaxElements, perCoreElements);
+
+    tilingDataPtr_->topkWeightOutPerCorePerLoopElements = perCorePerLoopElements;
 }
 
 void MoeInitRoutingV3TilingArch35::SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows)
