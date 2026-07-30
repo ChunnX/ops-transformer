@@ -50,6 +50,8 @@ const int32_t NUM4 = 4;
 constexpr uint64_t INDEX_INPUT = 0;
 constexpr uint64_t INDEX_WDQKV = 5;
 constexpr uint64_t INDEX_WUQ = 12;
+constexpr uint64_t INDEX_COS = 16;
+constexpr uint64_t INDEX_SIN = 17;
 constexpr uint64_t INDEX_WUK = 18;
 constexpr uint64_t INDEX_KV_CACHE = 19;
 constexpr uint64_t INDEX_KV_CACHE_ROPE = 20;
@@ -104,9 +106,6 @@ inline uint64_t GetInputStride0(gert::TilingContext *context, const uint64_t inp
     // 不再用 InputIsView 校验，直接按「连续判据」处理：拿到首轴 stride 后与连续布局应有的
     // stride（GetDefaultStride0）比较——一致即视为连续，否则按真实 stride 跳。
     auto *stride = context->GetRequiredInputStride(inputIndex);
-    if (stride == nullptr) {
-        stride = context->GetInputStride(inputIndex);
-    }
 
     if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
         OP_LOGD(context->GetNodeName(),
@@ -133,9 +132,6 @@ inline bool ValidateCacheNonFirstAxisContiguous(gert::TilingContext *context,
                                                 const char *tensorName)
 {
     auto *stride = context->GetRequiredInputStride(inputIndex);
-    if (stride == nullptr) {
-        stride = context->GetInputStride(inputIndex);
-    }
     if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
         // 没有 stride 描述，按连续处理，通过校验
         return true;
@@ -528,9 +524,12 @@ void MlaPreprocessTiling::EinSumQuantTiling(const OpParam::MlaPreprocessParam &p
 void MlaPreprocessTiling::SetTilingKey(const ge::DataType inDtype, const OpParam::MlaPreprocessParam &param,
                                        const bool doRmsQuant, gert::TilingContext *context)
 {
-    auto formatWeight1 = static_cast<ge::Format>(ge::GetPrimaryFormat(context->GetInputDesc(INDEX_WDQKV)->GetStorageFormat()));
-    auto formatWeight2 = static_cast<ge::Format>(ge::GetPrimaryFormat(context->GetInputDesc(INDEX_WUQ)->GetStorageFormat()));
-    auto formatWeight3 = static_cast<ge::Format>(ge::GetPrimaryFormat(context->GetInputDesc(INDEX_WUK)->GetStorageFormat()));
+    auto formatWeight1 =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(context->GetRequiredInputDesc(INDEX_WDQKV)->GetStorageFormat()));
+    auto formatWeight2 =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(context->GetRequiredInputDesc(INDEX_WUQ)->GetStorageFormat()));
+    auto formatWeight3 =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(context->GetRequiredInputDesc(INDEX_WUK)->GetStorageFormat()));
 
     uint64_t tilingKey = static_cast<uint64_t>(inDtype == ge::DT_BF16);
     tilingKey = (tilingKey << 2) + static_cast<uint64_t>(param.cacheMode); // 2bit for cacheMode.
@@ -689,10 +688,15 @@ void MlaPreprocessTiling::PrintLastTilingData(gert::TilingContext *context)
 ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
 {
     OpParam::MlaPreprocessParam param = MlaPreprocessTiling::GetParam(context);
+    const bool hasCos = context->GetOptionalInputDesc(INDEX_COS) != nullptr;
+    const bool hasSin = context->GetOptionalInputDesc(INDEX_SIN) != nullptr;
+    OP_CHECK_IF(hasCos != hasSin, OP_LOGE(context, "cos and sin must either both be provided or both be nullptr."),
+                return ge::GRAPH_FAILED);
+    param.enableRope = hasCos;
 
     // 校验 cache tensor 的非首轴 stride 必须连续，仅首轴允许非连续
-    auto kvCacheShape = context->GetInputShape(INDEX_KV_CACHE)->GetStorageShape();
-    auto kvCacheRopeShape = context->GetInputShape(INDEX_KV_CACHE_ROPE)->GetStorageShape();
+    auto kvCacheShape = context->GetRequiredInputShape(INDEX_KV_CACHE)->GetStorageShape();
+    auto kvCacheRopeShape = context->GetRequiredInputShape(INDEX_KV_CACHE_ROPE)->GetStorageShape();
     OP_CHECK_IF(!ValidateCacheNonFirstAxisContiguous(context, INDEX_KV_CACHE, kvCacheShape, "kvCache"),
                 OP_LOGE(context, "kvCache has non-contiguous axis beyond dim0, which is not supported."),
                 return ge::GRAPH_FAILED);
@@ -718,18 +722,20 @@ ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
     bool doRmsNorm = *(context->GetAttrs()->GetAttrPointer<bool>(ATTR_DO_RMS_NORM_IDX));
     mlaTilingData.set_doRmsNorm(doRmsNorm);
     mlaTilingData.set_qDownOutFlag(false);
-    uint64_t hiddtenState = static_cast<uint64_t>(context->GetInputShape(INDEX_INPUT)->GetStorageShape().GetDim(DIM_1)); //hiddtenState
+    uint64_t hiddtenState = static_cast<uint64_t>(
+        context->GetRequiredInputShape(INDEX_INPUT)->GetStorageShape().GetDim(DIM_1)); // hiddtenState
     mlaTilingData.set_hiddtenState(hiddtenState);
     
     bool doRmsNormQuant = true;
-    if (context->GetInputDesc(INDEX_WDQKV)->GetDataType() == ge::DT_BF16 && context->GetInputDesc(INDEX_WUQ)->GetDataType() == ge::DT_BF16){
+    if (context->GetRequiredInputDesc(INDEX_WDQKV)->GetDataType() == ge::DT_BF16 &&
+        context->GetRequiredInputDesc(INDEX_WUQ)->GetDataType() == ge::DT_BF16) {
         doRmsNormQuant = false;
     }
 
     auto epsilon = context->GetAttrs()->GetAttrPointer<float>(ATTR_EPSILON_IDX);
     mlaTilingData.set_epsilon(*epsilon);
 
-    auto inDtype = context->GetInputDesc(0)->GetDataType();
+    auto inDtype = context->GetRequiredInputDesc(INDEX_INPUT)->GetDataType();
 
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context,"platformInfo is null"), return ge::GRAPH_FAILED);
@@ -749,6 +755,7 @@ ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
     mlaTilingData.set_kvCacheBlockSize(param.kvCacheBlockSize);
     mlaTilingData.set_kvCacheStride0(param.kvCacheStride0);
     mlaTilingData.set_kvCacheRopeStride0(param.kvCacheRopeStride0);
+    mlaTilingData.set_enableRope(param.enableRope);
     bool deqOnTheFly = false;
     if (doRmsNormQuant && (inDtype == ge::DT_BF16 || param.quantMode == QuantMode::PER_TOKEN_SYMM_QUANT)) {
         deqOnTheFly = true;
@@ -784,9 +791,10 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
 {
     OpParam::MlaPreprocessParam param;
 
-    param.N = static_cast<uint64_t>(context->GetInputShape(INDEX_INPUT)->GetStorageShape().GetDim(DIM_0)); // token_num
+    param.N = static_cast<uint64_t>(
+        context->GetRequiredInputShape(INDEX_INPUT)->GetStorageShape().GetDim(DIM_0)); // token_num
     param.headNum =
-        static_cast<uint64_t>(context->GetInputShape(INDEX_WUK)->GetStorageShape().GetDim(DIM_0)); // head_num
+        static_cast<uint64_t>(context->GetRequiredInputShape(INDEX_WUK)->GetStorageShape().GetDim(DIM_0)); // head_num
 
     auto attrPtr = context->GetAttrs();
     auto cacheModePtr = attrPtr->GetAttrPointer<uint64_t>(ATTR_CACHE_MODE_IDX);
@@ -795,20 +803,20 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
     auto quantModePtr = attrPtr->GetAttrPointer<QuantMode>(ATTR_QUANT_MODE_IDX);
     param.quantMode = *quantModePtr;
 
-    auto deqScaleShape = context->GetInputShape(INDEX_DEQSCALE)->GetStorageShape();
+    auto deqScaleShape = context->GetRequiredInputShape(INDEX_DEQSCALE)->GetStorageShape();
     param.hiddenStateMm = static_cast<uint64_t>(deqScaleShape.GetDim(DIM_0));
 
     constexpr uint64_t CONCAT_SIZE_PLUS_HEAD_DIM = 576;  // concatSize(512) + headDim(64)
     param.qLoraRank = param.hiddenStateMm - CONCAT_SIZE_PLUS_HEAD_DIM;
 
-    auto wukShape = context->GetInputShape(INDEX_WUK)->GetStorageShape();
+    auto wukShape = context->GetRequiredInputShape(INDEX_WUK)->GetStorageShape();
     param.nopeDim = static_cast<uint64_t>(wukShape.GetDim(DIM_1));
 
     param.headDimMm2 = param.nopeDim + HEADDIM;
 
-    auto kvCacheShape = context->GetInputShape(INDEX_KV_CACHE)->GetStorageShape();
-    auto kvCacheRopeShape = context->GetInputShape(INDEX_KV_CACHE_ROPE)->GetStorageShape();
-    auto kvCacheOriginShape = context->GetInputShape(INDEX_KV_CACHE)->GetOriginShape();
+    auto kvCacheShape = context->GetRequiredInputShape(INDEX_KV_CACHE)->GetStorageShape();
+    auto kvCacheRopeShape = context->GetRequiredInputShape(INDEX_KV_CACHE_ROPE)->GetStorageShape();
+    auto kvCacheOriginShape = context->GetRequiredInputShape(INDEX_KV_CACHE)->GetOriginShape();
 
     // blockSize（每个 block 的逻辑行数，固定 128）的取数位置随 cache 传入的 shape 约定不同：
     //   - ND（cacheMode 0/1）：shape 为 [blockNum, blockSize, 1, dim]，blockSize 在 dim1；
@@ -827,7 +835,7 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
     param.kvCacheStride0 = GetInputStride0(context, INDEX_KV_CACHE, kvCacheShape);
     param.kvCacheRopeStride0 = GetInputStride0(context, INDEX_KV_CACHE_ROPE, kvCacheRopeShape);
 
-    auto kvCacheRopeOriginShape = context->GetInputShape(INDEX_KV_CACHE_ROPE)->GetOriginShape();
+    auto kvCacheRopeOriginShape = context->GetRequiredInputShape(INDEX_KV_CACHE_ROPE)->GetOriginShape();
     auto shapeToStr = [](const gert::Shape &s, char *buf, size_t cap) {
         size_t off = 0;
         off += snprintf(buf + off, cap - off, "[");
@@ -860,7 +868,10 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
 ASCENDC_EXTERN_C ge::graphStatus TilingMLAPreprocess(gert::TilingContext *context)
 {
     MlaPreprocessTiling mlaTiling;
-    mlaTiling.Init(context);
+    auto status = mlaTiling.Init(context);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
     mlaTiling.mlaTilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(mlaTiling.mlaTilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;

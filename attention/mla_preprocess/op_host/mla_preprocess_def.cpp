@@ -86,8 +86,8 @@ public:
         this->Input("descale_1").ParamType(REQUIRED).DataType(int64_fp32_Dtype).Format(qFormat).AutoContiguous();
         this->Input("bias_1").ParamType(REQUIRED).DataType(int32_Dtype).Format(qFormat).AutoContiguous();
         this->Input("gamma_2").ParamType(REQUIRED).DataType(qDtype).Format(qFormat).AutoContiguous();
-        this->Input("cos").ParamType(REQUIRED).DataType(qDtype).Format(qFormat).AutoContiguous();
-        this->Input("sin").ParamType(REQUIRED).DataType(qDtype).Format(qFormat).AutoContiguous();
+        this->Input("cos").ParamType(OPTIONAL).DataType(qDtype).Format(qFormat).AutoContiguous();
+        this->Input("sin").ParamType(OPTIONAL).DataType(qDtype).Format(qFormat).AutoContiguous();
         this->Input("wuk").ParamType(REQUIRED).DataType(qDtype).Format(nd_nd_nz_Format).AutoContiguous();
         this->Input("kv_cache").ParamType(REQUIRED).DataType(fp16_int8_Dtype).Format(nd_nz_Format).IgnoreContiguous();
         this->Input("kv_cache_rope").ParamType(REQUIRED).DataType(qDtype).Format(nd_nz_Format).IgnoreContiguous();

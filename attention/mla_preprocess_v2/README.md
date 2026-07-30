@@ -57,6 +57,8 @@
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
 
+    当`cos`和`sin`同时为空指针时，跳过Q-RoPE和K-RoPE数学运算，$q^R$和$k^R$分别保存未经旋转的原始Q-rope和K-rope分量；其他计算、输出形状、`qDownOut`语义和Cache布局不变。`cos`和`sin`必须同时传入或同时为空。
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1427px"><colgroup>
@@ -190,14 +192,14 @@
   <tr>
     <td>cos</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，表示用于计算旋转位置编码的正弦参数矩阵，shape为[tokenNum,64]</td>
+    <td>可选的Device侧aclTensor，表示用于计算旋转位置编码的余弦参数矩阵，shape为[tokenNum,64]。与sin同时为空时跳过Q/K RoPE，不支持仅一个为空。</td>
     <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>sin</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，表示用于计算旋转位置编码的余弦参数矩阵，shape为[tokenNum,64]</td>
+    <td>可选的Device侧aclTensor，表示用于计算旋转位置编码的正弦参数矩阵，shape为[tokenNum,64]。与cos同时为空时跳过Q/K RoPE，不支持仅一个为空。</td>
     <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>

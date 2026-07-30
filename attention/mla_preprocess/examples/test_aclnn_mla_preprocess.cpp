@@ -231,6 +231,7 @@ int main() {
   int64_t quantMode =  0;
   bool doRmsNorm = true;
   int64_t wdkvSplitCount = 1;
+  bool enableRope = true;
 
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> inputShape = {tokenNum, hiddenNum};
@@ -423,9 +424,11 @@ int main() {
 
   // 调用acaclnnMlaPreprocess第一段接口
   ret = aclnnMlaPreprocessGetWorkspaceSize(
-    input, gamma0, beta0, quantScale0, quantOffset0,
-    wdqkv, deScale0, bias0, gamma1, beta1, quantScale1, quantOffset1, wuq, deScale1, bias1, gamma2, cos, sin, wuk, kvCache, kvCacheRope, slotmapping, ctkvScale, qNopeScale,
-    wdqDim, qRopeDim, kRopeDim, epsilon, qRotaryCoeff, kRotaryCoeff, transposeWdq, transposeWuq, transposeWuk, cacheMode, quantMode, doRmsNorm, wdkvSplitCount, qOut, kvCacheOut, qRopeOut, krCacheOut, &workspaceSize, &executor);
+      input, gamma0, beta0, quantScale0, quantOffset0, wdqkv, deScale0, bias0, gamma1, beta1, quantScale1, quantOffset1,
+      wuq, deScale1, bias1, gamma2, enableRope ? cos : nullptr, enableRope ? sin : nullptr, wuk, kvCache, kvCacheRope,
+      slotmapping, ctkvScale, qNopeScale, wdqDim, qRopeDim, kRopeDim, epsilon, qRotaryCoeff, kRotaryCoeff, transposeWdq,
+      transposeWuq, transposeWuk, cacheMode, quantMode, doRmsNorm, wdkvSplitCount, qOut, kvCacheOut, qRopeOut,
+      krCacheOut, &workspaceSize, &executor);
   CHECK_RET(
       ret == ACL_SUCCESS,
       LOG_PRINT("acaclnnMlaPreprocessGetWorkspaceSize failed. ERROR: %d\n", ret);

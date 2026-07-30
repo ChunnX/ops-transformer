@@ -48,11 +48,11 @@ static ge::graphStatus InferShapeMlaPreprocessV2(gert::InferShapeContext* contex
     return ge::GRAPH_FAILED;
   }
   const int64_t cacheMode = *cacheModePtr;
-  
-  const gert::Shape* kvCacheShape = context->GetInputShape(INPUT_KV_CACHE);
-  const gert::Shape* kvCacheRopeShape = context->GetInputShape(INPUT_KV_CACHE_ROPE);
-  const gert::Shape* inputShape = context->GetInputShape(INPUT_INPUT);
-  const gert::Shape* wukShape = context->GetInputShape(INPUT_WUK);
+
+  const gert::Shape *kvCacheShape = context->GetRequiredInputShape(INPUT_KV_CACHE);
+  const gert::Shape *kvCacheRopeShape = context->GetRequiredInputShape(INPUT_KV_CACHE_ROPE);
+  const gert::Shape *inputShape = context->GetRequiredInputShape(INPUT_INPUT);
+  const gert::Shape *wukShape = context->GetRequiredInputShape(INPUT_WUK);
 
   const int64_t tokenNum = inputShape->GetDim(0);
   const int64_t headNum = wukShape->GetDim(0);
@@ -101,8 +101,8 @@ static ge::graphStatus InferDataTypeMlaPreprocessV2(gert::InferDataTypeContext* 
   }
   const int64_t cacheMode = *cacheModePtr;
 
-  auto inputDtype = context->GetInputDataType(INPUT_INPUT);
-  auto kvCacheDtype = context->GetInputDataType(INPUT_KV_CACHE);
+  auto inputDtype = context->GetRequiredInputDataType(INPUT_INPUT);
+  auto kvCacheDtype = context->GetRequiredInputDataType(INPUT_KV_CACHE);
   context->SetOutputDataType(OUTPUT_Q_OUT, kvCacheDtype);
   context->SetOutputDataType(OUTPUT_KV_CACHE_OUT, kvCacheDtype);
   context->SetOutputDataType(OUTPUT_Q_DOWN_OUT, inputDtype);

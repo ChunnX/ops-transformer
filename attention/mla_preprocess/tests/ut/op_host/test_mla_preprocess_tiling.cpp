@@ -17,7 +17,7 @@
 using namespace std;
 using namespace ge;
 
-class MlaPreprocessTiling : public testing::Test {
+class MlaPreprocessTiling : public testing::TestWithParam<int> {
 protected:
     static void SetUpTestCase()
     {
@@ -29,8 +29,11 @@ protected:
     }
 };
 
-TEST_F(MlaPreprocessTiling, mla_preprocess_test_tiling_case0)
+TEST_P(MlaPreprocessTiling, mla_preprocess_test_tiling_case0)
 {
+    constexpr int ROPE_DISABLED = 0;
+    constexpr int ONLY_COS_PROVIDED = 2;
+    const int ropeMode = GetParam();
     struct MlaPreProcessCompileInfo {
     } compileInfo; // compileInfo对应算子op_host/op_tiling/${OP_NAME}_tiling.cpp中的
                    // struct ${OP_NAME}CompileInfo
@@ -54,39 +57,47 @@ TEST_F(MlaPreprocessTiling, mla_preprocess_test_tiling_case0)
     int64_t quantMode = 0;
     bool doRmsNorm = true;
     int64_t wdkvSplitCount = 1;
+    std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc = {
+        // input info
+        {{{tokenNum, hiddenNum}, {tokenNum, hiddenNum}},
+         ge::DT_FLOAT16,
+         ge::FORMAT_ND}, // input 对应 {{{原始shape}, {运行时shape}}, 数据类型, 数据格式}
+        {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                     // gamma0
+        {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                     // beta0
+        {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                                     // quantScale0
+        {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                                        // quantOffset0
+        {{{2112, hiddenNum}, {2112, hiddenNum}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},                    // wdqkv
+        {{{2112}, {2112}}, ge::DT_INT64, ge::FORMAT_ND},                                                 // deScale0
+        {{{2112}, {2112}}, ge::DT_INT32, ge::FORMAT_ND},                                                 // bias0
+        {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                               // gamma1
+        {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                               // beta1
+        {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                                     // quantScale1
+        {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                                        // quantOffset1
+        {{{headNum * 192, 1536}, {headNum * 192, 1536}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},            // wuq
+        {{{headNum * 192}, {headNum * 192}}, ge::DT_INT64, ge::FORMAT_ND},                               // deScale1
+        {{{headNum * 192}, {headNum * 192}}, ge::DT_INT32, ge::FORMAT_ND},                               // bias1
+        {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                                 // gamma2
+        {{{tokenNum, 64}, {tokenNum, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                               // cos
+        {{{tokenNum, 64}, {tokenNum, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                               // sin
+        {{{headNum, 128, 512}, {headNum, 128, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},                     // wuk
+        {{{blockNum, blockSize, 1, 576}, {blockNum, blockSize, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // kvCache
+        {{{blockNum, blockSize, 1, 64}, {blockNum, blockSize, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // kvCacheRope
+        {{{tokenNum}, {tokenNum}}, ge::DT_INT32, ge::FORMAT_ND},                                         // slotmapping
+        {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                                     // ctkvScale
+        {{{headNum}, {headNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                         // qNopeScale
+    };
+    std::vector<uint32_t> inputInstanceNum(24, 1);
+    if (ropeMode == ROPE_DISABLED) {
+        inputTensorDesc.erase(inputTensorDesc.begin() + 16, inputTensorDesc.begin() + 18);
+        inputInstanceNum[16] = 0;
+        inputInstanceNum[17] = 0;
+    } else if (ropeMode == ONLY_COS_PROVIDED) {
+        inputTensorDesc.erase(inputTensorDesc.begin() + 17);
+        inputInstanceNum[17] = 0;
+    }
+
     gert::TilingContextPara tilingContextPara(
-        "MlaPreprocess",
-        {
-            // input info
-            {{{tokenNum, hiddenNum}, {tokenNum, hiddenNum}},
-             ge::DT_FLOAT16,
-             ge::FORMAT_ND}, // input 对应 {{{原始shape}, {运行时shape}}, 数据类型, 数据格式}
-            {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                          // gamma0
-            {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                          // beta0
-            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                          // quantScale0
-            {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                             // quantOffset0
-            {{{2112, hiddenNum}, {2112, hiddenNum}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},         // wdqkv
-            {{{2112}, {2112}}, ge::DT_INT64, ge::FORMAT_ND},                                      // deScale0
-            {{{2112}, {2112}}, ge::DT_INT32, ge::FORMAT_ND},                                      // bias0
-            {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                    // gamma1
-            {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                    // beta1
-            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                          // quantScale1
-            {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                             // quantOffset1
-            {{{headNum * 192, 1536}, {headNum * 192, 1536}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ}, // wuq
-            {{{headNum * 192}, {headNum * 192}}, ge::DT_INT64, ge::FORMAT_ND},                    // deScale1
-            {{{headNum * 192}, {headNum * 192}}, ge::DT_INT32, ge::FORMAT_ND},                    // bias1
-            {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                      // gamma2
-            {{{tokenNum, 64}, {tokenNum, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                    // cos
-            {{{tokenNum, 64}, {tokenNum, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                    // sin
-            {{{headNum, 128, 512}, {headNum, 128, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},          // wuk
-            {{{blockNum, blockSize, 1, 576}, {blockNum, blockSize, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // kvCache
-            {{{blockNum, blockSize, 1, 64}, {blockNum, blockSize, 1, 64}},
-             ge::DT_FLOAT16,
-             ge::FORMAT_ND},                                         // kvCacheRope
-            {{{tokenNum}, {tokenNum}}, ge::DT_INT32, ge::FORMAT_ND}, // slotmapping
-            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},             // ctkvScale
-            {{{headNum}, {headNum}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // qNopeScale
-        },
+        "MlaPreprocess", inputTensorDesc,
         {
             // output info
             {{{tokenNum, headNum, 576}, {tokenNum, headNum, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -110,7 +121,10 @@ TEST_F(MlaPreprocessTiling, mla_preprocess_test_tiling_case0)
             {"doRmsNorm", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"wdkvSplitCount", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
-        &compileInfo);
+        inputInstanceNum, {1, 1, 1, 1}, &compileInfo);
     uint64_t expectTilingKey = 56UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    const auto expectStatus = ropeMode == ONLY_COS_PROVIDED ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS;
+    ExecuteTestCase(tilingContextPara, expectStatus, expectTilingKey);
 }
+
+INSTANTIATE_TEST_SUITE_P(RopeModes, MlaPreprocessTiling, testing::Values(0, 1, 2));

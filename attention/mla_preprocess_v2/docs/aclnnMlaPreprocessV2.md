@@ -72,6 +72,8 @@
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
 
+    当`cos`和`sin`同时为空指针时，跳过Q-RoPE和K-RoPE数学运算，$q^R$和$k^R$分别保存未经旋转的原始Q-rope和K-rope分量；其他计算、输出形状、`q_down_out`语义和Cache布局不变。`cos`和`sin`必须同时传入或同时为空。
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMlaPreprocessV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPreprocessV2”接口执行计算。
@@ -322,8 +324,8 @@ aclnnStatus aclnnMlaPreprocessV2(
     <tr>
       <td>cos</td>
       <td>输入</td>
-      <td>用于计算旋转位置编码的正弦参数矩阵。</td>
-      <td>-</td>
+      <td>用于计算旋转位置编码的余弦参数矩阵。</td>
+      <td>可选参数。与sin同时传入时执行Q/K RoPE；与sin同时传入空指针时跳过RoPE数学运算。不得仅传入cos或sin中的一个。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[tokenNum,64]</td>
@@ -332,8 +334,8 @@ aclnnStatus aclnnMlaPreprocessV2(
     <tr>
       <td>sin</td>
       <td>输入</td>
-      <td>用于计算旋转位置编码的余弦参数矩阵。</td>
-      <td>-</td>
+      <td>用于计算旋转位置编码的正弦参数矩阵。</td>
+      <td>可选参数。与cos同时传入时执行Q/K RoPE；与cos同时传入空指针时跳过RoPE数学运算。不得仅传入cos或sin中的一个。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[tokenNum,64]</td>
@@ -987,6 +989,7 @@ int main() {
   int64_t quantMode =  0;
   bool doRmsNorm = true;
   int64_t wdkvSplitCount = 1;
+  bool enableRope = true;
 
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> inputShape = {tokenNum, hiddenNum};
@@ -1180,7 +1183,8 @@ int main() {
   // 调用acaclnnMlaPreprocess第一段接口
   ret = aclnnMlaPreprocessGetWorkspaceSize(
     input, gamma0, beta0, quantScale0, quantOffset0,
-    wdqkv, deScale0, bias0, gamma1, beta1, quantScale1, quantOffset1, wuq, deScale1, bias1, gamma2, cos, sin, wuk, kvCache, kvCacheRope, slotMapping, ctkvScale, qNopeScale,
+    wdqkv, deScale0, bias0, gamma1, beta1, quantScale1, quantOffset1, wuq, deScale1, bias1, gamma2,
+    enableRope ? cos : nullptr, enableRope ? sin : nullptr, wuk, kvCache, kvCacheRope, slotMapping, ctkvScale, qNopeScale,
     wdqDim, qRopeDim, kRopeDim, epsilon, qRotaryCoeff, kRotaryCoeff, transposeWdq, transposeWuq, transposeWuk, cacheMode, quantMode, doRmsNorm, wdkvSplitCount, qOut, kvCacheOut, qRopeOut, krCacheOut, &workspaceSize, &executor);
   CHECK_RET(
       ret == ACL_SUCCESS,
