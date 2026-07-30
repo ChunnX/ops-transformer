@@ -749,7 +749,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                     copyInParams, padParams);
                 SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                 WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, validS2LenAlign, 0, 1, 0,
+                topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, validS2LenAlign, validS2Len, 0, 1, 0,
                              info.isNeedLD, returnValueFlag, outputIdxOffset,
                              TOPK_V_MTE2_EVENT, TOPK_MTE2_V_EVENT);
             } else {
@@ -772,8 +772,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                                              copyInParams, padParams);
                         SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                         WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                        topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, validTrunkLen, loopIdx,
-                                     s2LoopNum, 0, info.isNeedLD, returnValueFlag, outputIdxOffsetTmp,
+                        topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, validTrunkLen, validTrunkLen,
+                                     loopIdx, s2LoopNum, 0, info.isNeedLD, returnValueFlag, outputIdxOffsetTmp,
                                      TOPK_V_MTE2_EVENT, TOPK_MTE2_V_EVENT);
                         continue;
                     }
@@ -813,9 +813,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                     SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                     WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                     topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_,
-                                 QLIV2Common::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256), loopIdx,
-                                 s2LoopNum, inputStartOffset, info.isNeedLD, returnValueFlag, outputIdxOffsetTmp,
-                                 TOPK_V_MTE2_EVENT, TOPK_MTE2_V_EVENT);
+                                 QLIV2Common::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256),
+                                 topkCountAlign256_ + validTrunkLen, loopIdx, s2LoopNum, inputStartOffset,
+                                 info.isNeedLD, returnValueFlag, outputIdxOffsetTmp, TOPK_V_MTE2_EVENT,
+                                 TOPK_MTE2_V_EVENT);
                     SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
                 }
             }
