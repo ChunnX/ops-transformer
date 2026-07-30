@@ -36,8 +36,8 @@ PRECISION = {
 #   然后在此处分配输出 tensor 并开启对应 flag
 ENABLE_DKV_CHECK  = False
 ENABLE_DSB_CHECK  = False
-ENABLE_APE_CHECK  = False
-ENABLE_DX_CHECK   = True    # Phase 3 已实现
+ENABLE_APE_CHECK  = True
+ENABLE_DX_CHECK   = False    # Phase 3 已实现
 
 
 # ================================================================
@@ -111,7 +111,6 @@ def npu_test(case, device):
     """Run one test case and return result dict."""
     name = case["testcase_name"]
     batchSize = case["B"]
-    # tokenSize = case["tokenSize"]  ## 需计算
     seqSize = case["S1"]
     headDim = case["D"]
     hiddenSize = case["hidden_size"]
@@ -189,8 +188,8 @@ def npu_test(case, device):
 
     # ── Generate random inputs ──
     torch.manual_seed(seed)
-    dcNpu  = torch.randn(outputRows, headDim, device="npu:0", dtype=ioDtype)
-    kvNpu  = torch.randn(outputRows, scKvRowCount, headDim, device="npu:0",
+    dcNpu  = torch.randn(outputRows, headDim, device=device, dtype=ioDtype)
+    kvNpu  = torch.randn(outputRows, scKvRowCount, headDim, device=device,
                          dtype=torch.float32)
     smNpu  = torch.softmax(
         torch.randn(outputRows, scKvRowCount, headDim, device="npu:0"), dim=1)
@@ -201,21 +200,21 @@ def npu_test(case, device):
         totalTokens = tokenSize
     else:
         totalTokens = batchSize * seqSize
-    d_xNpu     = torch.zeros(totalTokens, hiddenSize, device="npu:0",
+    d_xNpu     = torch.zeros(totalTokens, hiddenSize, device=device,
                              dtype=ioDtype)
-    d_wkvNpu   = torch.zeros(coff * headDim, hiddenSize, device="npu:0",
+    d_wkvNpu   = torch.zeros(coff * headDim, hiddenSize, device=device,
                               dtype=torch.float32)
-    d_wgateNpu = torch.zeros(coff * headDim, hiddenSize, device="npu:0",
+    d_wgateNpu = torch.zeros(coff * headDim, hiddenSize, device=device,
                               dtype=torch.float32)
-    dapeWsNpu  = torch.zeros(wsSize, device="npu:0", dtype=torch.float32)
+    dapeWsNpu  = torch.zeros(wsSize, device=device, dtype=torch.float32)
     # d_ape final output (dummy — Phase 3 写入)
-    dapeOutNpu = torch.zeros(coff * cmpRatio * headDim, device="npu:0", dtype=torch.float32)
+    dapeOutNpu = torch.zeros(coff * cmpRatio * headDim, device=device, dtype=torch.float32)
 
     # TODO: 如需要 dkv/dsb GM 输出，需在 kernel 添加 pl.store 并在下方分配:
     #   dkvNpu = torch.zeros(outputRows, scKvRowCount, headDim,
-    #                        device="npu:0", dtype=ioDtype)
+    #                        device=device, dtype=ioDtype)
     #   dsbNpu = torch.zeros(outputRows, scKvRowCount, headDim,
-    #                        device="npu:0", dtype=ioDtype)
+    #                        device=device, dtype=ioDtype)
     #   然后将 dkvNpu/dsbNpu 加入 kernel 参数列表
 
     
@@ -227,9 +226,9 @@ def npu_test(case, device):
         cuArg = cuNpu
 
     # x / wkv / wgate input tensors
-    xNpu    = torch.randn(totalTokens, hiddenSize, device="npu:0", dtype=ioDtype)
-    wkvInp  = torch.randn(coff * headDim, hiddenSize, device="npu:0", dtype=ioDtype)  # 单位阵
-    wgateInp= torch.randn(coff * headDim, hiddenSize, device="npu:0", dtype=ioDtype)
+    xNpu    = torch.randn(totalTokens, hiddenSize, device=device, dtype=ioDtype)
+    wkvInp  = torch.randn(coff * headDim, hiddenSize, device=device, dtype=ioDtype)  # 单位阵
+    wgateInp= torch.randn(coff * headDim, hiddenSize, device=device, dtype=ioDtype)
 
     # ── NPU: 通过 autograd 自动调用 compressor_grad ──
     backend = NPUBackend(device_id=DEVICE_ID)
@@ -247,16 +246,16 @@ def npu_test(case, device):
         token_cache_size_ex = 2 * cmpRatio + seqSize - 1 if coff == 2 else cmpRatio + seqSize - 1
         state_shape = (batchSize, token_cache_size_ex, 2 * coff * headDim)
 
-    state_cache_npu = torch.zeros(state_shape, device="npu:{}".format(DEVICE_ID), dtype=torch.float32)
-    ape_npu = torch.randn(torch.Size([cmpRatio, coff * headDim]), device="npu:{}".format(DEVICE_ID), dtype=torch.float32)
+    state_cache_npu = torch.zeros(state_shape, device=device, dtype=torch.float32)
+    ape_npu = torch.randn(torch.Size([cmpRatio, coff * headDim]), device=device, dtype=torch.float32)
 
     block_table_npu = None
     if cache_mode == 1:
         block_table_npu = torch.zeros(batchSize, max_block_num_per_batch,
-                                      device="npu:{}".format(DEVICE_ID), dtype=torch.int32)
+                                      device=device, dtype=torch.int32)
     else:
         block_table_npu = torch.zeros(batchSize,
-                                      device="npu:{}".format(DEVICE_ID), dtype=torch.int32)
+                                      device=device, dtype=torch.int32)
 
     if layoutId == 1:  # BSH
         x_npu_input = xNpu.view(batchSize, seqSize, hiddenSize)
@@ -335,33 +334,20 @@ def npu_test(case, device):
         dxWsElems_dbg = 2 * dxPerRoundAll
         dx_ws = ws_cpu[apeWsSize_dbg:apeWsSize_dbg + dxWsElems_dbg].view(-1, hiddenSize)
         ds_ws = ws_cpu[apeWsSize_dbg + dxWsElems_dbg:apeWsSize_dbg + 2*dxWsElems_dbg].view(-1, hiddenSize)
-        print(f"\n[DBG] {name}: d_x_ws shape={dx_ws.shape}, d_s_ws shape={ds_ws.shape}")
-        print(f"[DBG] d_x_ws[0, 0:8] = {dx_ws[0, 0:8].tolist()}")
-        print(f"[DBG] d_x_ws[128, 0:8] = {dx_ws[128, 0:8].tolist()}")
-        print(f"[DBG] d_s_ws[0, 0:8] = {ds_ws[0, 0:8].tolist()}")
-        print(f"[DBG] d_s_ws[128, 0:8] = {ds_ws[128, 0:8].tolist()}")
         d_x_out_dbg = d_xNpu.cpu().float()
-        print(f"[DBG] d_x_out[0, 0:8] = {d_x_out_dbg[0, 0:8].tolist()}")
-        print(f"[DBG] d_x_out[1, 0:8] = {d_x_out_dbg[1, 0:8].tolist()}")
         try:
             dc_block0 = dcCpu[0]
             kv_block0 = kvCpu[0]
             sm_block0 = smCpu[0]
             dkv_block0 = dc_block0.unsqueeze(0) * sm_block0
-            print(f"[DBG] golden dkv_block0[0, 0:8] = {dkv_block0[0, 0:8].tolist()}")
             wkvCpu_f32 = wkvCpu.float()
             dkv_wkv_0 = dkv_block0 @ wkvCpu_f32
-            print(f"[DBG] golden dkv@wkv[0, 0:8] = {dkv_wkv_0[0, 0:8].tolist()}")
             dsw_block0 = dc_block0.unsqueeze(0) * kv_block0
             col_sum0 = (sm_block0 * dsw_block0).sum(dim=0, keepdim=True)
             dsb_block0 = sm_block0 * (dsw_block0 - col_sum0)
             wgateCpu_f32 = wgateCpu.float()
             dsb_wgate_0 = dsb_block0 @ wgateCpu_f32
-            print(f"[DBG] golden dsb@wgate[0, 0:8] = {dsb_wgate_0[0, 0:8].tolist()}")
-            print(f"[DBG] golden d_x[0, 0:8] = {(dkv_wkv_0[0] + dsb_wgate_0[0])[0:8].tolist()}")
-            print(f"[DBG] golden dXGold[0, 0:8] = {dXGold[0, 0:8].tolist()}")
         except Exception as e:
-            print(f"[DBG] golden computation error: {e}")
             import traceback; traceback.print_exc()
 
     result = dict(name=name, totalValid=totalValid,
