@@ -144,10 +144,8 @@ TILING_DATA_FIELD_DEF(int64_t, hcMult);
 TILING_DATA_FIELD_DEF(int64_t, d);
 TILING_DATA_FIELD_DEF(int64_t, hcMultAlign);
 TILING_DATA_FIELD_DEF(int64_t, rowOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, rowOfTailBlock);
 TILING_DATA_FIELD_DEF(int64_t, rowLoopOfFormerBlock);
 TILING_DATA_FIELD_DEF(int64_t, rowLoopOfTailBlock);
-TILING_DATA_FIELD_DEF(int64_t, rowFactor);
 TILING_DATA_FIELD_DEF(int64_t, tailRowFactorOfFormerBlock);
 TILING_DATA_FIELD_DEF(int64_t, tailRowFactorOfTailBlock);
 TILING_DATA_FIELD_DEF(int64_t, dLoop);
@@ -164,9 +162,7 @@ TILING_DATA_FIELD_DEF(int64_t, mL1Size);
 TILING_DATA_FIELD_DEF(int64_t, cubeBlockDimM);
 TILING_DATA_FIELD_DEF(int64_t, cubeBlockDimK);
 TILING_DATA_FIELD_DEF(int64_t, kUbSize);
-TILING_DATA_FIELD_DEF(int64_t, cvLoopKSize);
 TILING_DATA_FIELD_DEF(int64_t, multCoreSplitKSize);
-TILING_DATA_FIELD_DEF(int64_t, multCoreSplitMSize);
 TILING_DATA_FIELD_DEF(int64_t, secondUsedCoreNum);
 TILING_DATA_FIELD_DEF(int64_t, rowInnerFactor);
 TILING_DATA_FIELD_DEF(int64_t, bufferPool0Size);
@@ -267,6 +263,8 @@ public:
     ge::graphStatus CalcMKSplitCorePart2GradoutTiling();
 
 private:
+    ge::graphStatus CalcRegbaseCommonTiling(bool withGradOut, bool isKSplit);
+
     gert::TilingContext *context_ = nullptr;
     uint64_t tilingKey_ = 0;
     MhcPreSinkhornRegbaseTilingData tilingData_;

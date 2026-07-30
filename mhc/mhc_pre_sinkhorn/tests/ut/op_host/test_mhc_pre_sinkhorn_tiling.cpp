@@ -8,13 +8,97 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <array>
+#include <cstring>
 #include <iostream>
+#include <memory>
 #include <gtest/gtest.h>
 #include "../../../op_host/op_tiling/mhc_pre_sinkhorn_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
 using namespace std;
+
+namespace {
+constexpr char ASCEND950_SOC_VERSION[] = "Ascend950";
+constexpr int64_t HC_MULT = 4;
+constexpr int64_t HC_MIX = 24;
+constexpr int64_t NUM_ITERS = 20;
+
+struct RegbaseTilingBaseline {
+    const char *name;
+    int64_t sequenceLength;
+    int64_t d;
+    bool needBackward;
+    uint64_t ubSize;
+    uint64_t tilingKey;
+    size_t workspaceSize;
+    std::array<int64_t, 29> tilingData;
+    uint64_t coreNum = 64;
+};
+
+std::unique_ptr<gert::TilingContextPara> BuildRegbaseTilingContext(const RegbaseTilingBaseline &baseline,
+                                                                     void *compileInfo)
+{
+    const int64_t b = 1;
+    const int64_t s = baseline.sequenceLength;
+    const int64_t phiDim1 = HC_MULT * baseline.d;
+    std::unique_ptr<gert::TilingContextPara> context(new gert::TilingContextPara(
+        "MhcPreSinkhorn",
+        {
+            {{{b, s, HC_MULT, baseline.d}, {b, s, HC_MULT, baseline.d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{HC_MIX, phiDim1}, {HC_MIX, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{HC_MIX}, {HC_MIX}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{b, s, baseline.d}, {b, s, baseline.d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{b, s, HC_MULT}, {b, s, HC_MULT}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{b, s, HC_MULT, HC_MULT}, {b, s, HC_MULT, HC_MULT}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{b, s, HC_MULT}, {b, s, HC_MULT}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{b, s, HC_MIX}, {b, s, HC_MIX}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{b, s, 1}, {b, s, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{NUM_ITERS * 2, b, s, HC_MULT}, {NUM_ITERS * 2, b, s, HC_MULT}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{NUM_ITERS * 2, b, s, HC_MULT, HC_MULT}, {NUM_ITERS * 2, b, s, HC_MULT, HC_MULT}},
+             ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"hc_mult", Ops::Transformer::AnyValue::CreateFrom<int64_t>(HC_MULT)},
+            {"num_iters", Ops::Transformer::AnyValue::CreateFrom<int64_t>(NUM_ITERS)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+            {"need_backward", Ops::Transformer::AnyValue::CreateFrom<bool>(baseline.needBackward)},
+        },
+        compileInfo, ASCEND950_SOC_VERSION, baseline.coreNum, baseline.ubSize));
+    return context;
+}
+
+void ExpectRegbaseTilingData(const RegbaseTilingBaseline &baseline)
+{
+    TilingInfo tilingInfo;
+    optiling::MhcPreSinkhornCompileInfo compileInfo = {baseline.coreNum, baseline.ubSize};
+    auto tilingContext = BuildRegbaseTilingContext(baseline, &compileInfo);
+    ASSERT_TRUE(ExecuteTiling(*tilingContext, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingKey, baseline.tilingKey);
+    ASSERT_EQ(tilingInfo.workspaceSizes.size(), 1U);
+    EXPECT_EQ(tilingInfo.workspaceSizes[0], static_cast<int64_t>(baseline.workspaceSize));
+    ASSERT_EQ(tilingInfo.tilingDataSize, baseline.tilingData.size() * sizeof(int64_t));
+
+    for (size_t index = 0; index < baseline.tilingData.size(); ++index) {
+        int64_t actual = 0;
+        std::memcpy(&actual, tilingInfo.tilingData.get() + index * sizeof(actual), sizeof(actual));
+        EXPECT_EQ(actual, baseline.tilingData[index]) << baseline.name << ", tiling data index=" << index;
+    }
+}
+
+void ExpectRegbaseTilingFailure(const RegbaseTilingBaseline &baseline)
+{
+    TilingInfo tilingInfo;
+    optiling::MhcPreSinkhornCompileInfo compileInfo = {baseline.coreNum, baseline.ubSize};
+    auto tilingContext = BuildRegbaseTilingContext(baseline, &compileInfo);
+    EXPECT_FALSE(ExecuteTiling(*tilingContext, tilingInfo));
+}
+} // namespace
 
 class MhcPreSinkhornTiling : public testing::Test {
 protected:
@@ -28,6 +112,60 @@ protected:
         std::cout << "MhcPreSinkhornTiling TearDown" << std::endl;
     }
 };
+
+TEST_F(MhcPreSinkhornTiling, ascend950_regbase_tilingdata_matches_pre_refactor)
+{
+    // The first four cases cover the original functions: K/M split x no-grad/grad-out; the last covers D splitting.
+    // hcEps and normEps are serialized together in one int64_t slot, so 30 fields occupy 29 slots.
+    const std::array<RegbaseTilingBaseline, 5> baselines = {{
+        {"k_split_no_grad", 256, 4096, false, 262144, 1000, 18415616,
+         {{256, 24, 4, 4096, 8, 4, 2, 2, 2, 2, 1, 4096, 4096, 20, 3856831416675743677, 64, 2, 16384,
+           128, 256, 1, 64, 64, 256, 64, 0, 0, 0, 128}}},
+        {"m_split_no_grad", 16384, 4096, false, 262144, 1001, 32,
+         {{16384, 24, 4, 4096, 8, 256, 86, 86, 1, 1, 1, 4096, 4096, 20, 3856831416675743677, 1, 0, 16384,
+           128, 256, 64, 1, 64, 16384, 0, 3, 262144, 249152, 128}}},
+        {"k_split_grad_out", 256, 7168, true, 262144, 2000, 18210816,
+         {{256, 24, 4, 7168, 8, 4, 4, 4, 1, 1, 1, 7168, 7168, 20, 3856831416675743677, 56, 1, 28672,
+           128, 256, 1, 56, 64, 512, 64, 0, 0, 0, 128}}},
+        {"m_split_grad_out", 16384, 7168, true, 262144, 2001, 32,
+         {{16384, 24, 4, 7168, 8, 256, 256, 256, 1, 1, 1, 7168, 7168, 20, 3856831416675743677, 1, 0, 28672,
+           128, 256, 64, 1, 64, 28672, 0, 1, 262144, 249152, 128}}},
+        {"k_split_no_grad_d_split", 256, 4096, false, 49152, 1000, 18415616,
+         {{256, 24, 4, 4096, 8, 4, 4, 4, 1, 1, 4, 1344, 64, 20, 3856831416675743677, 64, 1, 16384,
+           128, 256, 1, 64, 64, 256, 64, 0, 0, 0, 128}}},
+    }};
+
+    for (const auto &baseline : baselines) {
+        SCOPED_TRACE(baseline.name);
+        ExpectRegbaseTilingData(baseline);
+    }
+}
+
+TEST_F(MhcPreSinkhornTiling, ascend950_regbase_core_tiling_boundary_branches)
+{
+    // These cases cover Ascend950-only common tiling boundaries: partial core rows, the dFactor path without
+    // DownAlign, and M-split grad-out UB accounting. The preceding regression case covers dFactor DownAlign.
+    const std::array<RegbaseTilingBaseline, 3> baselines = {{
+        {"k_split_partial_core_rows", 65, 4096, false, 262144, 1000, 17193216,
+         {{65, 24, 4, 4096, 8, 2, 1, 1, 2, 1, 1, 4096, 4096, 20, 3856831416675743677, 64, 2, 16384,
+           384, 80, 1, 64, 192, 256, 33, 0, 0, 0, 40}}},
+        {"k_split_d_factor_at_ub_limit", 256, 4096, false, 17312, 1000, 18415616,
+         {{256, 24, 4, 4096, 8, 4, 4, 4, 1, 1, 256, 16, 16, 20, 3856831416675743677, 64, 1, 16384,
+           128, 256, 1, 64, 64, 256, 64, 0, 0, 0, 128}}},
+        {"m_split_grad_out_d_factor_at_ub_limit", 16384, 4096, true, 51232, 2001, 32,
+         {{16384, 24, 4, 4096, 8, 256, 256, 256, 1, 1, 256, 16, 16, 20, 3856831416675743677, 1, 0,
+           16384, 128, 256, 64, 1, 64, 16384, 0, 1, 51232, 38240, 128}}},
+    }};
+
+    for (const auto &baseline : baselines) {
+        SCOPED_TRACE(baseline.name);
+        ExpectRegbaseTilingData(baseline);
+    }
+
+    const RegbaseTilingBaseline insufficientUb = {
+        "k_split_insufficient_minimum_tile", 256, 4096, false, 17311, 0, 0, {}};
+    ExpectRegbaseTilingFailure(insufficientUb);
+}
 
 TEST_F(MhcPreSinkhornTiling, test_tiling_B1_S1024_N4_C512)
 {
