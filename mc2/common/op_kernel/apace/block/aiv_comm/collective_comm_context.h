@@ -26,16 +26,16 @@ static constexpr uint32_t COMM_MAX_RANK_NUM = 64;
 static constexpr uint32_t COMM_WORKSPACE_SIZE = 512U;
 
 struct CommUdmaContext {
-    uint64_t channelHandles[COMM_MAX_RANK_NUM];
-    uint64_t commBufferAddrs[COMM_MAX_RANK_NUM];
     uint32_t rankId;
     uint32_t rankSize;
+    uint64_t channelHandles[COMM_MAX_RANK_NUM];
+    uint64_t commBufferAddrs[COMM_MAX_RANK_NUM];
 };
 
 struct CommUbmemContext {
-    uint64_t commBufferAddrs[COMM_MAX_RANK_NUM];
     uint32_t rankId;
     uint32_t rankSize;
+    uint64_t commBufferAddrs[COMM_MAX_RANK_NUM];
 };
 
 } // namespace AivComm
