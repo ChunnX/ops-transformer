@@ -590,10 +590,12 @@ __aicore__ inline void MoeV3FullLoadBase<T>::TopkWeightScatterOut()
             break;
         }
         int64_t srcIdx = sortedRowIdx.GetValue(i);
-        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-        DataCopyPad(topkWeightLocal, topkWeightGm_[srcIdx], copyParams, padParams);
-        SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
-        DataCopyPad(expandedTopkWeightGm_[i], topkWeightLocal, copyParams);
+        if (srcIdx >= 0 && srcIdx < totalLength_) {
+            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+            DataCopyPad(topkWeightLocal, topkWeightGm_[srcIdx], copyParams, padParams);
+            SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+            DataCopyPad(expandedTopkWeightGm_[i], topkWeightLocal, copyParams);
+        }
     }
 
     sortedRowIdxQueue_.EnQue<int32_t>(sortedRowIdx);

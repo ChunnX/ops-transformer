@@ -30,6 +30,7 @@ public:
 private:
     TPipe *pipe_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> topkWeightCopyInQueue_;
+    TQue<QuePosition::VECIN, 1> rowIdxCopyInQueue_;
 
     GlobalTensor<float> topkWeightGm_;
     GlobalTensor<float> expandedTopkWeightGm_;
@@ -54,6 +55,12 @@ private:
     int64_t perCoreElements_;
     int64_t coreElements_;
     int64_t coreNum_;
+    int64_t perCorePerLoopElements_;
+    int64_t indicesLoops_;
+
+    __aicore__ inline void CopyRowIdxIn(int64_t offset, int64_t curLoopElements);
+    __aicore__ inline void ProcessDropPadScatter(int64_t startIdx);
+    __aicore__ inline void ProcessNonDropPadScatter(int64_t startIdx);
 };
 
 __aicore__ inline void MoeV3TopkWeightOut::Init(GM_ADDR topkWeight, GM_ADDR expandedRowIdx,
@@ -113,13 +120,91 @@ __aicore__ inline void MoeV3TopkWeightOut::Init(GM_ADDR topkWeight, GM_ADDR expa
         coreElements_ = perCoreElements_;
     }
 
+    perCorePerLoopElements_ = tilingData->topkWeightOutPerCorePerLoopElements;
+    indicesLoops_ = Ceil(coreElements_, perCorePerLoopElements_);
+
     pipe_->InitBuffer(topkWeightCopyInQueue_, 1, AlignBytes(1, sizeof(float)));
+    pipe_->InitBuffer(rowIdxCopyInQueue_, 1, AlignBytes(perCorePerLoopElements_, sizeof(int32_t)));
+}
+
+__aicore__ inline void MoeV3TopkWeightOut::CopyRowIdxIn(int64_t offset, int64_t curLoopElements)
+{
+    LocalTensor<int32_t> rowIdxLocal = rowIdxCopyInQueue_.AllocTensor<int32_t>();
+    DataCopyExtParams idxCopyParams{1, static_cast<uint32_t>(curLoopElements * sizeof(int32_t)), 0, 0, 0};
+    DataCopyPadExtParams<int32_t> idxPadParams{false, 0, 0, 0};
+    if (dropPadMode_ == DROP_PAD_MODE) {
+        DataCopyPad(rowIdxLocal, expandedRowIdxGm_[offset], idxCopyParams, idxPadParams);
+    } else {
+        DataCopyPad(rowIdxLocal, expandDstToSrcRowGm_[offset], idxCopyParams, idxPadParams);
+    }
+    rowIdxCopyInQueue_.EnQue(rowIdxLocal);
+}
+
+__aicore__ inline void MoeV3TopkWeightOut::ProcessDropPadScatter(int64_t startIdx)
+{
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+    DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+
+    for (int64_t loop = 0; loop < indicesLoops_; loop++) {
+        int64_t curLoopElements = (loop == indicesLoops_ - 1)
+                                      ? coreElements_ - loop * perCorePerLoopElements_
+                                      : perCorePerLoopElements_;
+        int64_t offset = startIdx + loop * perCorePerLoopElements_;
+
+        CopyRowIdxIn(offset, curLoopElements);
+        LocalTensor<int32_t> rowIdxLocal = rowIdxCopyInQueue_.DeQue<int32_t>();
+        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+
+        for (int64_t i = 0; i < curLoopElements; i++) {
+            int64_t dstIdx = rowIdxLocal.GetValue(i);
+            if (dstIdx >= 0 && dstIdx < outputRows_) {
+                int64_t globalSortIdx = offset + i;
+                LocalTensor<float> topkWeightLocal = topkWeightCopyInQueue_.AllocTensor<float>();
+                DataCopyPad(topkWeightLocal, topkWeightGm_[globalSortIdx], copyParams, padParams);
+                topkWeightCopyInQueue_.EnQue(topkWeightLocal);
+                topkWeightLocal = topkWeightCopyInQueue_.DeQue<float>();
+                DataCopyPad(expandedTopkWeightGm_[dstIdx], topkWeightLocal, copyParams);
+                topkWeightCopyInQueue_.FreeTensor(topkWeightLocal);
+            }
+        }
+        rowIdxCopyInQueue_.FreeTensor(rowIdxLocal);
+    }
+}
+
+__aicore__ inline void MoeV3TopkWeightOut::ProcessNonDropPadScatter(int64_t startIdx)
+{
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+    DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+
+    for (int64_t loop = 0; loop < indicesLoops_; loop++) {
+        int64_t curLoopElements = (loop == indicesLoops_ - 1)
+                                    ? coreElements_ - loop * perCorePerLoopElements_
+                                    : perCorePerLoopElements_;
+        int64_t offset = startIdx + loop * perCorePerLoopElements_;
+
+        CopyRowIdxIn(offset, curLoopElements);
+        LocalTensor<int32_t> rowIdxLocal = rowIdxCopyInQueue_.DeQue<int32_t>();
+        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+
+        for (int64_t i = 0; i < curLoopElements; i++) {
+            int64_t originalPos = rowIdxLocal.GetValue(i);
+            if (originalPos >= 0 && originalPos < totalLength_) {
+                int64_t curIndex = offset + i;
+                LocalTensor<float> topkWeightLocal = topkWeightCopyInQueue_.AllocTensor<float>();
+                DataCopyPad(topkWeightLocal, topkWeightGm_[originalPos], copyParams, padParams);
+                topkWeightCopyInQueue_.EnQue(topkWeightLocal);
+                topkWeightLocal = topkWeightCopyInQueue_.DeQue<float>();
+                DataCopyPad(expandedTopkWeightGm_[curIndex], topkWeightLocal, copyParams);
+                topkWeightCopyInQueue_.FreeTensor(topkWeightLocal);
+            }
+        }
+        rowIdxCopyInQueue_.FreeTensor(rowIdxLocal);
+    }
 }
 
 __aicore__ inline void MoeV3TopkWeightOut::Process()
 {
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-    DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
     int64_t startIdx = blockIdx_ * perCoreElements_;
 
     if (dropPadMode_ == DROP_PAD_MODE) {
@@ -129,6 +214,8 @@ __aicore__ inline void MoeV3TopkWeightOut::Process()
         if (startRow < endRow) {
             LocalTensor<float> zeroLocal = topkWeightCopyInQueue_.AllocTensor<float>();
             Duplicate<float>(zeroLocal, 0.0f, static_cast<int32_t>(1));
+            topkWeightCopyInQueue_.EnQue(zeroLocal);
+            zeroLocal = topkWeightCopyInQueue_.DeQue<float>();
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
             for (int64_t row = startRow; row < endRow; row++) {
                 DataCopyPad(expandedTopkWeightGm_[row], zeroLocal, copyParams);
@@ -140,34 +227,14 @@ __aicore__ inline void MoeV3TopkWeightOut::Process()
 #endif
 
         if (blockIdx_ < needCoreNum_) {
-            int64_t endIdx = startIdx + coreElements_;
-            for (int64_t globalSortIdx = startIdx; globalSortIdx < endIdx; globalSortIdx++) {
-                int64_t dstIdx = expandedRowIdxGm_.GetValue(globalSortIdx);
-                if (dstIdx != -1) {
-                    LocalTensor<float> topkWeightLocal = topkWeightCopyInQueue_.AllocTensor<float>();
-                    DataCopyPad(topkWeightLocal, topkWeightGm_[globalSortIdx], copyParams, padParams);
-                    topkWeightCopyInQueue_.EnQue(topkWeightLocal);
-                    topkWeightLocal = topkWeightCopyInQueue_.DeQue<float>();
-                    DataCopyPad(expandedTopkWeightGm_[dstIdx], topkWeightLocal, copyParams);
-                    topkWeightCopyInQueue_.FreeTensor(topkWeightLocal);
-                }
-            }
+            ProcessDropPadScatter(startIdx);
         }
         return;
     }
 
     if (blockIdx_ >= needCoreNum_) return;
 
-    int64_t endIdx = startIdx + coreElements_;
-    for (int64_t curIndex = startIdx; curIndex < endIdx; curIndex++) {
-        int64_t originalPos = expandDstToSrcRowGm_.GetValue(curIndex);
-        LocalTensor<float> topkWeightLocal = topkWeightCopyInQueue_.AllocTensor<float>();
-        DataCopyPad(topkWeightLocal, topkWeightGm_[originalPos], copyParams, padParams);
-        topkWeightCopyInQueue_.EnQue(topkWeightLocal);
-        topkWeightLocal = topkWeightCopyInQueue_.DeQue<float>();
-        DataCopyPad(expandedTopkWeightGm_[curIndex], topkWeightLocal, copyParams);
-        topkWeightCopyInQueue_.FreeTensor(topkWeightLocal);
-    }
+    ProcessNonDropPadScatter(startIdx);
 }
 
 } // namespace MoeInitRoutingV3

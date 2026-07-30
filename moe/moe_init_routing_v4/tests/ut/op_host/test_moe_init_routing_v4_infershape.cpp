@@ -9,7 +9,6 @@
  */
 
 #include <gtest/gtest.h>
-#include <iostream>
 #include <vector>
 #include <initializer_list>
 #include "infer_shape_context_faker.h"
@@ -21,15 +20,6 @@
 
 class MoeInitRoutingV4 : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeInitRoutingV4 SetUp" << std::endl;
-    }
-
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeInitRoutingV4 TearDown" << std::endl;
-    }
 };
 
 // V4: 6 inputs (x, expert_idx, scale, offset, active_num, topk_weight), 5 outputs (+expanded_topk_weight)
