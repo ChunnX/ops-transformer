@@ -858,7 +858,7 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
     torch.npu.synchronize()
 
     try:
-        inputs = make_inputs(case, args.seed + index)
+        inputs = make_inputs(case, args.seed)
     except Exception as exc:
         print(f"{case_prefix} INPUT FAIL: {exc}")
         return "INPUT_FAIL"
