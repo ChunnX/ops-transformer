@@ -111,8 +111,8 @@ private:
     LocalTensor<int32_t> ubStageMeta_;
     LocalTensor<int32_t> ubLocalCursor_;
     LocalTensor<int64_t> ubHitList_;
-    LocalTensor<int32_t> ubWaitStatus_;
-    LocalTensor<int32_t> ubWaitSum_;
+    LocalTensor<uint64_t> ubWaitStatus_;
+    LocalTensor<uint64_t> ubWaitSum_;
 
     TBuf<QuePosition::VECIN> ubHitCountBuf_;
     TBuf<QuePosition::VECIN> ubRowStartBuf_;
@@ -130,6 +130,7 @@ private:
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tokenQueue_;
     TBuf<> waitStatusBuf_;
     TBuf<> waitSumBuf_;
+    TBuf<> sharedBuf_;
 
     uint32_t expertSum_{0};
     GM_ADDR workspaceGM_{nullptr};
@@ -153,6 +154,8 @@ private:
     uint32_t epWorldSize_{0};
     uint32_t numMaxTokensPerRank_{0};
     uint32_t perSlotBytes_{0};
+    uint32_t dispatchNotifyCount_{1};
+    uint32_t totalNotifyCnt_{0};
     uint64_t winDataOffset_{0};
     uint64_t slotWinStateOffset_{0};
 };
@@ -190,6 +193,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     epWorldSize_ = tilingData->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData->cfg.numMaxTokensPerRank;
     perSlotBytes_ = tilingData->cfg.perSlotBytes;
+    dispatchNotifyCount_ = tilingData->dispatchNotifyCount;
     winDataOffset_ = tilingData->winDataOffset;
     slotWinStateOffset_ = tilingData->slotWinStateOffset;
 
@@ -212,15 +216,20 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     axisKAlign_ = Ceil(axisK_, ELEM_ALIGN) * ELEM_ALIGN;
     metaBytes_ = (META_TOPK_SECTION * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
+    totalNotifyCnt_ = epWorldSize_ * dispatchNotifyCount_;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t expertReduceTmpBytes =
         ReduceSumWorkNeedSize(static_cast<int32_t>(numLocalExperts_), sizeof(int64_t)) * sizeof(int64_t);
-    tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes + expertReduceTmpBytes + UB_ALIGN);
-    tpipe_->InitBuffer(waitStatusBuf_, epWorldSize_ * UB_ALIGN);
+    uint32_t statusReduceTmpBytes =
+        ReduceSumWorkNeedSize(static_cast<int32_t>(totalNotifyCnt_), sizeof(uint64_t)) * sizeof(uint64_t);
+    uint32_t sharedBytes = expertReduceTmpBytes > statusReduceTmpBytes ? expertReduceTmpBytes : statusReduceTmpBytes;
+    tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
+    tpipe_->InitBuffer(waitStatusBuf_, epWorldSize_ * dispatchNotifyCount_ * UB_ALIGN);
     tpipe_->InitBuffer(waitSumBuf_, UB_ALIGN);
+    tpipe_->InitBuffer(sharedBuf_, sharedBytes);
     ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
-    ubWaitStatus_ = waitStatusBuf_.Get<int32_t>();
-    ubWaitSum_ = waitSumBuf_.Get<int32_t>();
+    ubWaitStatus_ = waitStatusBuf_.Get<uint64_t>();
+    ubWaitSum_ = waitSumBuf_.Get<uint64_t>();
 
     if constexpr (!IsCached) {
         hitCountStride_ = Ceil(numLocalExperts_, ELEM_ALIGN) * ELEM_ALIGN;
@@ -284,8 +293,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     DataCopyPad(ubExpertPfx_, numRecvPerExpertGm_, expertPfxCopyParams, expertPfxPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
-    LocalTensor<int64_t> expertReduceTmp = ubExpertPfx_[ubExpertPfxBytes / sizeof(int64_t)];
-    LocalTensor<int64_t> expertSumOut = expertReduceTmp[expertReduceTmpBytes / sizeof(int64_t)];
+    LocalTensor<int64_t> expertReduceTmp = sharedBuf_.Get<int64_t>();
+    LocalTensor<int64_t> expertSumOut = waitSumBuf_.Get<int64_t>();
     ReduceSum<int64_t>(expertSumOut, ubExpertPfx_, expertReduceTmp, static_cast<int32_t>(numLocalExperts_));
     SyncFunc<AscendC::HardEvent::V_S>();
     expertSum_ = static_cast<uint32_t>(expertSumOut.GetValue(0));
@@ -298,24 +307,26 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         return;
     }
 
-    int32_t sumOfFlag = 0;
-    int32_t commpareFlag = static_cast<int32_t>(epWorldSize_);
-    const uint32_t shape[] = {epWorldSize_, UB_ALIGN / sizeof(int32_t)};
-    GlobalTensor<int32_t> statusGMTensor;
-    statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)localSlotStateWinAddr_);
-    DataCopyParams statusCopyParams = {static_cast<uint16_t>(epWorldSize_), 1U,
+    uint32_t mask = 1;
+    uint64_t sumOfFlag = 0;
+    uint64_t commpareFlag = static_cast<uint64_t>(totalNotifyCnt_);
+    LocalTensor<uint64_t> sharedTmp = sharedBuf_.Get<uint64_t>();
+    GlobalTensor<uint64_t> statusGMTensor;
+    statusGMTensor.SetGlobalBuffer((__gm__ uint64_t *)localSlotStateWinAddr_);
+    DataCopyParams statusCopyParams = {static_cast<uint16_t>(totalNotifyCnt_), 1U,
                                        static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN), 0U};
-    DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(epWorldSize_), 1U, 0U,
+    DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(totalNotifyCnt_), 1U, 0U,
                                             static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN)};
 
+    SyncFunc<AscendC::HardEvent::S_V>();    // 确保expertSum_计算完成
     while (sumOfFlag != commpareFlag) {
         DataCopy(ubWaitStatus_, statusGMTensor, statusCopyParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(ubWaitSum_, ubWaitStatus_, shape, true);
+        ReduceSum<uint64_t>(ubWaitSum_, ubWaitStatus_, sharedTmp, mask, totalNotifyCnt_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = ubWaitSum_.GetValue(0);
     }
-    Duplicate<int32_t>(ubWaitStatus_, 0, epWorldSize_ * UB_ALIGN / sizeof(int32_t));
+    Duplicate<uint64_t>(ubWaitStatus_, 0, totalNotifyCnt_ * UB_ALIGN / sizeof(uint64_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(statusGMTensor, ubWaitStatus_, clearStatusCopyParams);
 }

@@ -74,6 +74,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t UB_ALIGN = 32UL;
+constexpr uint64_t NOTIFY_CNT_ALIGN = 15000UL;
 
 constexpr uint32_t DIRECT_MODE = 0;
 constexpr uint32_t HYBRID_MODE = 1;
@@ -589,7 +590,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
 
     uint64_t cntWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t dispatchWinStateSize = cntWinStateSize + epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t dispatchNotifyCount = (nmt + NOTIFY_CNT_ALIGN - 1) / NOTIFY_CNT_ALIGN;
+    uint64_t dispatchWinStateSize = cntWinStateSize + dispatchNotifyCount * epWorldSize * WIN_ADDR_ALIGN;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint64_t topKAlign = (topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
@@ -610,6 +612,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     info.slotWinStateOffset = cntWinStateSize;
     info.winDataOffset = totalStateWinSizeEp;
     info.dispatchSendWinOffset = stateAndRecvDataWinSize;
+    info.dispatchNotifyCount = static_cast<uint32_t>(dispatchNotifyCount);
     OP_LOGD(nodeName,
             "windowSize=%lu, perSlotBytes=%u, dispatchReservedPerSlotBytes=%lu, stateAndRecvDataWinSize=%lu, "
             "dispatchSendWinOffset=%lu, dispatchSendWinDataReservedSize=%lu",
