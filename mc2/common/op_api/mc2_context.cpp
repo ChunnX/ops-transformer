@@ -293,7 +293,11 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
             hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
         } else {
             uint32_t idx = (i < rankId) ? i : (i - 1);
-            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+            auto channelHandle = channels[idx];
+            if(CommProtocol::COMM_PROTOCOL_UBC_CTP == protocol) {
+                channelHandle = mc2ContextStruct->hcommHandle_[idx];
+            }
+            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channelHandle, &tempBuffer, &bufSize);
         }
 
         if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
