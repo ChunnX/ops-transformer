@@ -301,7 +301,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     uint32_t mask = 1;
     int32_t sumOfFlag = 0;
     int32_t commpareFlag = static_cast<int32_t>(epWorldSize_);
-    const uint32_t shape[] = {epWorldSize_, UB_ALIGN / sizeof(int32_t)};
     GlobalTensor<int32_t> statusGMTensor;
     statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)localSlotStateWinAddr_);
     DataCopyParams statusCopyParams = {static_cast<uint16_t>(epWorldSize_), 1U,
