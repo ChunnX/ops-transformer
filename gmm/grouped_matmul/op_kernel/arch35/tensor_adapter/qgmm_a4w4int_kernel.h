@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file qgmm_a4w4_kernel.h
+ * \file qgmm_a4w4int_kernel.h
  * \brief GroupMatmulA4W4 桥接(transformer 仓 host tiling -> ops-tensor Blaze A4W4 kernel)。
  *
  * 对接 ops-tensor 的 A8W4 风格 A4W4 kernel (kernel_gmm_a4w4.h::GemmUniversal):
@@ -25,7 +25,7 @@
  *     kAL1 = stepKa * baseK (= depthA1*baseK/2), kBL1 = stepKb * baseK。
  *   - quantMode/quantGroupSize: host 只有 quantGroupNum, 桥接推断 quantMode 并算 quantGroupSize。
  *   - nBufferNum/withOffset: host 无, 桥接补全(双缓冲=2, A4W4 对称=0)。
- *   - workspace 偏移: host 布局 [SYS 16MB][int8WeightWs][int8XWs][mmOutWs], 桥接重算各段地址。
+ *   - workspace 偏移: host 布局 [SYS 16MB][int8WeightWs][int8XWs][mmOutWs], 必须通过GetUserWorkspace获取用户基地址。
  *
  * 硬约束: 完整 Blaze 桥接需 ops-tensor 侧 tensor_api 等环境就位。用 A4W4_BLAZE_ENABLED 宏守护:
  *   - 未定义(默认): 安全桩, 保证 transformer 仓编译通过。
@@ -145,7 +145,7 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
                              static_cast<uint64_t>(gmmBaseParams->k);  // int8 字节
     const uint64_t mmOutWs = A4W4_MMOUT_PIPELINE * gmmBaseParams->baseM * gmmBaseParams->baseN *
                              gmmBaseParams->coreNum * sizeof(uint16_t);
-    GM_ADDR int8WeightWsAddr = AscendC::GetUserWorkspace(workspace);
+    GM_ADDR int8WeightWsAddr = user1;
     GM_ADDR int8XWsAddr = int8WeightWsAddr + int8WeightWs;
     GM_ADDR mmOutWsAddr = int8XWsAddr + int8XWs;  // cube FixPipe 输出 / AIV epilogue 读
     // F3: isPerTokenQuant=0 时 perTokenScale 兜底段 (mmOut 之后, totalM·float)。

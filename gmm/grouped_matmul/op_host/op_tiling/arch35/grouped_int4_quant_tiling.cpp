@@ -17,7 +17,7 @@
  * TODO (post kernel impl): PROLOGUE_MIN_BYTES_950/A4W4_VEC_BASE_M_950 measured values; sync ID.
  */
 
-#include "grouped_a4w4_quant_tiling.h"
+#include "grouped_int4_quant_tiling.h"
 #include <algorithm>
 #include "err/ops_err.h"
 #include "../../grouped_matmul_host_util.h"
@@ -52,10 +52,10 @@ static inline auto AlignUp(T num1, T num2) -> T
 }
 }  // namespace
 
-GroupedA4W4QuantTiling::GroupedA4W4QuantTiling(gert::TilingContext *context)
+GroupedA4W4IntQuantTiling::GroupedA4W4IntQuantTiling(gert::TilingContext *context)
     : GroupedQmmBasicApiTiling(context) {}
 
-void GroupedA4W4QuantTiling::Reset()
+void GroupedA4W4IntQuantTiling::Reset()
 {
     a4w4Tiling_ = A4W4BasicTiling{};
     int8WeightWs_ = 0;
@@ -64,12 +64,12 @@ void GroupedA4W4QuantTiling::Reset()
     perTokenScaleFillWs_ = 0;
 }
 
-bool GroupedA4W4QuantTiling::IsCapable()
+bool GroupedA4W4IntQuantTiling::IsCapable()
 {
     return inputParams_.aDtype == ge::DT_INT4 && inputParams_.bDtype == ge::DT_INT4;
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::GetPlatformInfo()
+ge::graphStatus GroupedA4W4IntQuantTiling::GetPlatformInfo()
 {
     OP_CHECK_IF(GroupedQmmBasicApiTiling::GetPlatformInfo() != ge::GRAPH_SUCCESS,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "A4W4 base GetPlatformInfo failed."),
@@ -87,7 +87,7 @@ ge::graphStatus GroupedA4W4QuantTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::GetShapeAttrsInfo()
+ge::graphStatus GroupedA4W4IntQuantTiling::GetShapeAttrsInfo()
 {
     // 1) dtype
     auto xDesc = context_->GetDynamicInputDesc(X_INDEX, 0);
@@ -161,7 +161,7 @@ ge::graphStatus GroupedA4W4QuantTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-bool GroupedA4W4QuantTiling::SetMKN(const gert::Shape &xShape, const gert::Shape &wShape)
+bool GroupedA4W4IntQuantTiling::SetMKN(const gert::Shape &xShape, const gert::Shape &wShape)
 {
     uint32_t xDimNum = static_cast<uint32_t>(xShape.GetDimNum());
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
@@ -178,7 +178,7 @@ bool GroupedA4W4QuantTiling::SetMKN(const gert::Shape &xShape, const gert::Shape
     return true;
 }
 
-bool GroupedA4W4QuantTiling::SetGroupNum(uint32_t groupListIndex)
+bool GroupedA4W4IntQuantTiling::SetGroupNum(uint32_t groupListIndex)
 {
     OP_CHECK_IF(!GroupedQmmBasicApiTiling::SetGroupNum(groupListIndex),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "A4W4 base SetGroupNum failed."),
@@ -187,7 +187,7 @@ bool GroupedA4W4QuantTiling::SetGroupNum(uint32_t groupListIndex)
     return true;
 }
 
-bool GroupedA4W4QuantTiling::SetMKNList()
+bool GroupedA4W4IntQuantTiling::SetMKNList()
 {
     // Base's mList_/kList_/nList_ is private (inaccessible to derived).
     // Write to our own shadow arrays (mimic base GroupedQmmTiling::SetMKNList).
@@ -203,7 +203,7 @@ bool GroupedA4W4QuantTiling::SetMKNList()
     return true;
 }
 
-bool GroupedA4W4QuantTiling::AnalyzeA4W4()
+bool GroupedA4W4IntQuantTiling::AnalyzeA4W4()
 {
     auto scaleShapePtr = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, scaleShapePtr);
@@ -234,7 +234,7 @@ bool GroupedA4W4QuantTiling::AnalyzeA4W4()
     return true;
 }
 
-bool GroupedA4W4QuantTiling::CheckA4W4Params()
+bool GroupedA4W4IntQuantTiling::CheckA4W4Params()
 {
     OP_CHECK_IF(inputParams_.aDtype != ge::DT_INT4 || inputParams_.bDtype != ge::DT_INT4,
                 OP_LOGE(context_->GetNodeName(), "A4W4: x/weight must be INT4."), return false);
@@ -284,7 +284,7 @@ bool GroupedA4W4QuantTiling::CheckA4W4Params()
     return true;
 }
 
-uint32_t GroupedA4W4QuantTiling::FindBestSingleN() const
+uint32_t GroupedA4W4IntQuantTiling::FindBestSingleN() const
 {
     if (a4w4Tiling_.quantGroupNum != 1U || inputParams_.groupType != GroupedMatmul::SPLIT_M) {
         return a4w4Tiling_.baseN;
@@ -319,7 +319,7 @@ uint32_t GroupedA4W4QuantTiling::FindBestSingleN() const
     return a4w4Tiling_.baseN;
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::DoOpTiling()
+ge::graphStatus GroupedA4W4IntQuantTiling::DoOpTiling()
 {
     CalBasicBlockA4W4();
     OP_CHECK_IF(CalUbDivideA4W4() != ge::GRAPH_SUCCESS,
@@ -331,7 +331,7 @@ ge::graphStatus GroupedA4W4QuantTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void GroupedA4W4QuantTiling::CalBasicBlockA4W4()
+void GroupedA4W4IntQuantTiling::CalBasicBlockA4W4()
 {
     a4w4Tiling_.baseM = A4W4_BASE_M_950;  // 128
     a4w4Tiling_.baseN = A4W4_BASE_N_950;  // 256
@@ -345,7 +345,7 @@ void GroupedA4W4QuantTiling::CalBasicBlockA4W4()
     a4w4Tiling_.usedCoreNum = static_cast<uint32_t>(aicoreParams_.aicNum);
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::CalUbDivideA4W4()
+ge::graphStatus GroupedA4W4IntQuantTiling::CalUbDivideA4W4()
 {
     uint32_t ubSize = static_cast<uint32_t>(aicoreParams_.ubSize);  // 950: 248KB
     OP_CHECK_IF(ubSize == 0, OP_LOGE(context_->GetNodeName(), "ubSize is 0."), return ge::GRAPH_FAILED);
@@ -375,7 +375,7 @@ ge::graphStatus GroupedA4W4QuantTiling::CalUbDivideA4W4()
     return ge::GRAPH_SUCCESS;
 }
 
-void GroupedA4W4QuantTiling::InitCommonL1TilingFields()
+void GroupedA4W4IntQuantTiling::InitCommonL1TilingFields()
 {
     a4w4Tiling_.stepM = 1UL;
     a4w4Tiling_.stepN = 1UL;
@@ -387,13 +387,13 @@ void GroupedA4W4QuantTiling::InitCommonL1TilingFields()
                          DATA_SIZE_L0C * DB_SIZE <= aicoreParams_.l0cSize) ? DB_SIZE : 1U;
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::CalcLeftL1Size(uint64_t &leftL1Size) const
+ge::graphStatus GroupedA4W4IntQuantTiling::CalcLeftL1Size(uint64_t &leftL1Size) const
 {
     leftL1Size = aicoreParams_.l1Size;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::CalL1Tiling()
+ge::graphStatus GroupedA4W4IntQuantTiling::CalL1Tiling()
 {
     InitCommonL1TilingFields();
     if (inputParams_.kSize == 0UL) { return ge::GRAPH_SUCCESS; }
@@ -403,7 +403,7 @@ ge::graphStatus GroupedA4W4QuantTiling::CalL1Tiling()
     return CalL1Depth(leftL1Size);
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::CalL1Depth(uint64_t leftL1Size)
+ge::graphStatus GroupedA4W4IntQuantTiling::CalL1Depth(uint64_t leftL1Size)
 {
     // L0A/L0B 容量校验（双缓冲 dbL0A=dbL0B=2）：baseM·baseK·1·2 ≤ L0A, baseN·baseK·1·2 ≤ L0B
     OP_CHECK_IF(static_cast<uint64_t>(a4w4Tiling_.baseM) * a4w4Tiling_.baseK * DB_SIZE > aicoreParams_.l0aSize,
@@ -469,14 +469,14 @@ ge::graphStatus GroupedA4W4QuantTiling::CalL1Depth(uint64_t leftL1Size)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::DoLibApiTiling()
+ge::graphStatus GroupedA4W4IntQuantTiling::DoLibApiTiling()
 {
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::CalWorkspaceA4W4()
+ge::graphStatus GroupedA4W4IntQuantTiling::CalWorkspaceA4W4()
 {
     // int4->int8 预转换：weight 与 x 均落 workspace（体积翻倍 int4 0.5B -> int8 1B）
     int8WeightWs_ = static_cast<uint64_t>(a4w4Tiling_.groupNum) * a4w4Tiling_.k * a4w4Tiling_.n * sizeof(int8_t);
@@ -490,7 +490,7 @@ ge::graphStatus GroupedA4W4QuantTiling::CalWorkspaceA4W4()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::GetWorkspaceSize()
+ge::graphStatus GroupedA4W4IntQuantTiling::GetWorkspaceSize()
 {
     OP_CHECK_IF(CalWorkspaceA4W4() != ge::GRAPH_SUCCESS,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "CalWorkspaceA4W4 failed."),
@@ -504,13 +504,13 @@ ge::graphStatus GroupedA4W4QuantTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t GroupedA4W4QuantTiling::GetTilingKey() const
+uint64_t GroupedA4W4IntQuantTiling::GetTilingKey() const
 {
     constexpr uint64_t KERNEL_A4W4_MIX = 3UL;
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB ? 1 : 0), 0UL, KERNEL_A4W4_MIX);
 }
 
-ge::graphStatus GroupedA4W4QuantTiling::PostTiling()
+ge::graphStatus GroupedA4W4IntQuantTiling::PostTiling()
 {
     using namespace GroupedMatmulTilingData;
     auto &p = tilingData_.gmmA4W4Params;
@@ -530,7 +530,7 @@ ge::graphStatus GroupedA4W4QuantTiling::PostTiling()
     p.isA4W4Optimize = a4w4Tiling_.isA4W4Optimize;
     p.groupType = a4w4Tiling_.groupType;
     p.groupListType = a4w4Tiling_.groupListType;
-    // reserved 复用为 weight format 标志位, 供桥接层 qgmm_a4w4_kernel.h 动态设置
+    // reserved 复用为 weight format 标志位, 供桥接层 qgmm_a4w4int_kernel.h 动态设置
     // weightPreprocess inputTransposedNz (避免新增字段破坏 8 字节对齐, 见上方历史 bug 注释):
     //   bit0 = weightIsNz (bFormat == FORMAT_FRACTAL_NZ)
     //   bit1 = transB     (weight 逻辑 [E,N,K])
