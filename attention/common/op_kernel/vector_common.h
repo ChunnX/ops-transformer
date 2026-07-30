@@ -29,6 +29,8 @@ using AscendC::LocalTensor;
 
 namespace fa_base_vector {
 
+constexpr float FLOAT_ZERO = 0;
+
 // BLOCK和REPEAT的字节数
 constexpr uint32_t REPEAT_BLOCK_BYTE = 256U;
 // BLOCK和REPEAT的FP32元素数
