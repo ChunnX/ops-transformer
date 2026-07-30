@@ -22,6 +22,7 @@ if (BUILD_OPS_RTY_KERNEL)
                     -Wno-deprecated-declarations
                     -Werror
                     -fpermissive
+                    -DBSA_PV_RESCALE_PROBE
     )
 else()
     add_modules_sources(OPTYPE block_sparse_attention ACLNNTYPE aclnn_exclude)

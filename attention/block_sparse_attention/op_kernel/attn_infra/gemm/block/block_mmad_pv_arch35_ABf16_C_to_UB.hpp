@@ -116,6 +116,16 @@ public:
     
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
 
+#ifdef BSA_PV_RESCALE_PROBE
+    static constexpr uint32_t PROBE_M = 64;
+    static constexpr uint32_t PROBE_N = 128;
+    static constexpr uint32_t PROBE_K = 64;
+    static constexpr uint32_t PROBE_L1A_BYTES = PROBE_M * PROBE_K * sizeof(float); // 16KB
+    static constexpr uint32_t PROBE_L1B_BYTES = PROBE_K * PROBE_N * sizeof(float); // 32KB
+    static constexpr uint32_t PROBE_L0A_EVENT_ID = 0;
+    static constexpr uint32_t PROBE_L0B_EVENT_ID = 2; // match PV: B uses +2
+#endif
+
     __aicore__ inline
     BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
     {
@@ -142,6 +152,18 @@ public:
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(
                 L0C_HALF_BUF_SIZE + L0C_PINGPONG_BUF_SIZE * i);
         }
+#ifdef BSA_PV_RESCALE_PROBE
+        {
+            const uint32_t probeBase =
+                l1BufAddrStart +
+                l1ATileM * l1ATileK * sizeof(ElementA) * l1ABufNum +
+                l1BTileK * l1BTileN * sizeof(ElementB) * l1BBufNum;
+            probeL1A_ = resource.l1Buf.template GetBufferByByte<float>(probeBase);
+            probeL1B_ = resource.l1Buf.template GetBufferByByte<float>(
+                probeBase + PROBE_L1A_BYTES);
+            l0CScratch_ = resource.l0CBuf.template GetBufferByByte<float>(0);
+        }
+#endif
     }
 
     /// Destructor
@@ -181,7 +203,77 @@ public:
     {
         return outterLoopItr * curLoopNum + curLoopItr;
     }
-    
+
+#ifdef BSA_PV_RESCALE_PROBE
+    __aicore__ inline void RunRescaleMadProbe()
+    {
+        // --- L1 InitConst (MTE2) ---
+        constexpr uint32_t BLOCKS_A = PROBE_L1A_BYTES / 32; // 512
+        constexpr uint32_t BLOCKS_B = PROBE_L1B_BYTES / 32; // 1024
+        AscendC::InitConstValueParams<float> paramsA(1, BLOCKS_A, 0, 1.0f);
+        AscendC::InitConstValueParams<float> paramsB(1, BLOCKS_B, 0, 1.0f);
+        AscendC::InitConstValue(probeL1A_, paramsA);
+        AscendC::InitConstValue(probeL1B_, paramsB);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(PROBE_L0A_EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(PROBE_L0A_EVENT_ID);
+
+        // --- L0A/L0B views as float (reuse stage 0 physical buffer) ---
+        AscendC::LocalTensor<float> l0AFp32 =
+            l0ATensor[0].template ReinterpretCast<float>();
+        AscendC::LocalTensor<float> l0BFp32 =
+            l0BTensor[0].template ReinterpretCast<float>();
+
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0A_EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0B_EVENT_ID);
+
+        // L1 zN → L0A zN (no transpose). Fractal math for fp32:
+        constexpr uint32_t ELE_PER_C0 = BYTE_PER_C0 / sizeof(float);           // 8
+        constexpr uint32_t ELE_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(float); // 128
+
+        AscendC::LoadData2DParamsV2 loadA;
+        loadA.mStartPosition = 0;
+        loadA.kStartPosition = 0;
+        loadA.mStep = PROBE_M / C0_NUM_PER_FRACTAL;                  // 4
+        loadA.kStep = PROBE_K / ELE_PER_C0;                          // 8
+        loadA.srcStride = (PROBE_M * PROBE_K) / ELE_PER_FRACTAL;     // 32
+        loadA.dstStride = loadA.srcStride;
+        loadA.ifTranspose = false;
+        AscendC::LoadData(l0AFp32, probeL1A_, loadA);
+
+        AscendC::LoadData2DParamsV2 loadB;
+        loadB.mStartPosition = 0;
+        loadB.kStartPosition = 0;
+        // L0B nZ with transpose: K×N in L1 zN → L0B
+        loadB.mStep = PROBE_K / C0_NUM_PER_FRACTAL;                  // 4
+        loadB.kStep = PROBE_N / ELE_PER_C0;                          // 16
+        loadB.srcStride = (PROBE_K * PROBE_N) / ELE_PER_FRACTAL;     // 64
+        loadB.dstStride = (PROBE_K * PROBE_N) / ELE_PER_FRACTAL;
+        loadB.ifTranspose = true;
+        AscendC::LoadData(l0BFp32, probeL1B_, loadB);
+
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0A_EVENT_ID);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0B_EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0A_EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(PROBE_L0B_EVENT_ID);
+
+        AscendC::MmadParams mmadParams;
+        mmadParams.m = PROBE_M;
+        mmadParams.n = PROBE_N;
+        mmadParams.k = PROBE_K;
+        mmadParams.unitFlag = 0;
+        mmadParams.cmatrixInitVal = true;
+#if (__CCE_AICORE__ == 310)
+        mmadParams.disableGemv = true;
+#endif
+
+        AscendC::Mmad(l0CScratch_, l0AFp32, l0BFp32, mmadParams); // mad 1
+        AscendC::Mmad(l0CScratch_, l0AFp32, l0BFp32, mmadParams); // mad 2
+
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0A_EVENT_ID);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PROBE_L0B_EVENT_ID);
+    }
+#endif
+
     template <class TensorB, class TensorL1B>
     __aicore__ inline
     void SparseVBaseTileL1FullLoad(TensorB &gBTensor, TensorL1B &l1BTensorTla,
@@ -360,6 +452,11 @@ public:
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                 }
             }
+#ifdef BSA_PV_RESCALE_PROBE
+            if (nL0Itr == 0) {
+                RunRescaleMadProbe();
+            }
+#endif
             // fixpipe
             if (nL0Itr == 0) {
                 // reverse crossCoreSync, do fixPipe only after ubCTensor is fully released
@@ -415,6 +512,11 @@ protected:
     uint32_t l1BTileK;
     uint32_t l1ABufNum;
     uint32_t l1BBufNum;
+#ifdef BSA_PV_RESCALE_PROBE
+    AscendC::LocalTensor<float> probeL1A_;
+    AscendC::LocalTensor<float> probeL1B_;
+    AscendC::LocalTensor<float> l0CScratch_;
+#endif
 };
 ////////////////////////////////////////////////////////////////////
 
