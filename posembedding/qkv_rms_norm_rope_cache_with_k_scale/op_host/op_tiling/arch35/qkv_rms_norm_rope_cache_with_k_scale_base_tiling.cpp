@@ -159,6 +159,17 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateHeadNums() cons
                                                            .c_str(),
                                                        "head nums must be greater than 0"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(input_.numQHeads > MAX_Q_HEAD_NUM,
+                OP_LOGE_FOR_INVALID_VALUE(opName_, "Nq", std::to_string(input_.numQHeads).c_str(),
+                                          "less than or equal to 64"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(input_.numQHeads % Q_TO_K_HEAD_RATIO != 0 ||
+                    input_.numKHeads != input_.numQHeads / Q_TO_K_HEAD_RATIO,
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    opName_, "Nq, Nk",
+                    (std::to_string(input_.numQHeads) + ", " + std::to_string(input_.numKHeads)).c_str(),
+                    "nq must be equal to 8 * nk"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(input_.numVHeads != input_.numKHeads,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                     opName_, "Nv, Nk",

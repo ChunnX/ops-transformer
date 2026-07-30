@@ -24,20 +24,9 @@ public:
                                 const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
         if ASCEND_IS_AIC {
-            InitAic(tensors, tilingData->qHeadNum, tilingData->kvHeadNum);
-        } else if constexpr (IS_MROPE) {
-            InitAiv(tensors, tilingData->totalTokens, 0U, tilingData->qHeadNum, tilingData->kvHeadNum,
-                    tilingData->headDim, tilingData->blockSize, tilingData->tokenTile,
-                    tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead, tilingData->kvCacheStrideToken,
-                    tilingData->kScaleCacheStrideBlock, tilingData->kScaleCacheStrideHead,
-                    tilingData->kScaleCacheStrideToken, tilingData->epsilon, tilingData->mropeSectionH,
-                    tilingData->mropeSectionW);
+            InitAic(tensors, tilingData);
         } else {
-            InitAiv(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum, tilingData->kvHeadNum,
-                    tilingData->headDim, tilingData->blockSize, tilingData->tokenTile,
-                    tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead, tilingData->kvCacheStrideToken,
-                    tilingData->kScaleCacheStrideBlock, tilingData->kScaleCacheStrideHead,
-                    tilingData->kScaleCacheStrideToken, tilingData->epsilon, 0U, 0U);
+            InitAiv(tensors, tilingData);
         }
     }
 
@@ -45,17 +34,17 @@ public:
     {
         if ASCEND_IS_AIC {
             cube_.PrepareRotationBeforeLoop();
-            for (uint32_t i = 0U; i < QKV_K_SCALE_DOUBLE_BUFFER_NUM; ++i) {
+            for (uint32_t i = 0U; i < A_ROT_L1_BUFFER_NUM; ++i) {
                 SetAicMte1ToAivMte3AConsumed();
             }
         } else {
             vec_.PrepareBeforeLoop(coreTokenBegin, coreTokenEnd);
             if constexpr (IS_MROPE) {
-                for (uint32_t i = 0U; i < QKV_K_SCALE_DOUBLE_BUFFER_NUM; ++i) {
+                for (uint32_t i = 0U; i < MROPE_K_ROTATION_BUFFER_NUM; ++i) {
                     SetAivVToAicFixMropeKConsumed();
                 }
             } else {
-                SetAivMte3ToAicFixCConsumed();
+                SetAivMte3ToAicFixOutputConsumed();
             }
         }
     }
@@ -79,12 +68,18 @@ public:
     }
 
 private:
-    __aicore__ inline void InitAic(const GlobalTensors &tensors, uint64_t qHeadNum, uint64_t kvHeadNum)
+    __aicore__ inline void ResetBufferState()
     {
-        tileCount_ = 0U;
+        hasPreviousTile_ = false;
+        aRotL1BufferUseId_ = 0U;
         outputBufferUseId_ = 0U;
-        hasPendingKTile_ = false;
-        pendingKQuantBufferId_ = 0U;
+        kRotationBufferUseId_ = 0U;
+    }
+
+    __aicore__ inline void InitAic(const GlobalTensors &tensors,
+                                   const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
+    {
+        ResetBufferState();
         aRotL1Pool_ = LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_K_SCALE_A_ROT_L1_POOL_OFFSET,
                                               QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS);
         if constexpr (IS_MROPE) {
@@ -95,27 +90,19 @@ private:
             outputDbPoolUb_ = LocalTensor<float>(TPosition::LCM, QKV_K_SCALE_OUTPUT_DB_POOL_OFFSET,
                                                  QKV_K_SCALE_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
         }
-        cube_.Init(tensors, qHeadNum, kvHeadNum);
+        cube_.Init(tensors, tilingData);
         cube_.InitIntraCoreEvents();
     }
 
-    __aicore__ inline void InitAiv(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch,
-                                   uint64_t qHeadNum, uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize,
-                                   uint64_t tokenTile, uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead,
-                                   uint64_t kvCacheStrideToken, uint64_t kScaleCacheStrideBlock,
-                                   uint64_t kScaleCacheStrideHead, uint64_t kScaleCacheStrideToken, float epsilon,
-                                   uint64_t mropeSectionH, uint64_t mropeSectionW)
+    __aicore__ inline void InitAiv(const GlobalTensors &tensors,
+                                   const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
-        tileCount_ = 0U;
-        outputBufferUseId_ = 0U;
-        hasPendingKTile_ = false;
-        pendingKQuantBufferId_ = 0U;
+        ResetBufferState();
         aRotL1Pool_ = LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_K_SCALE_A_ROT_L1_POOL_OFFSET,
                                               QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS);
         if constexpr (IS_MROPE) {
-            qkPreprocessDbPoolUb_ = LocalTensor<float>(
-                TPosition::LCM, QKV_K_SCALE_MROPE_COMPACT_QK_PREPROCESS_DB_POOL_OFFSET,
-                QKV_K_SCALE_MROPE_COMPACT_QK_PREPROCESS_DB_POOL_FLOAT_ELEMENTS);
+            outputDbPoolUb_ = LocalTensor<float>(TPosition::LCM, QKV_K_SCALE_MROPE_COMPACT_OUTPUT_DB_POOL_OFFSET,
+                                                 QKV_K_SCALE_MROPE_COMPACT_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
             kRotationDbPoolUb_ = LocalTensor<float>(
                 TPosition::LCM, QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_DB_POOL_OFFSET,
                 QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_DB_POOL_FLOAT_ELEMENTS);
@@ -123,26 +110,29 @@ private:
             outputDbPoolUb_ = LocalTensor<float>(TPosition::LCM, QKV_K_SCALE_OUTPUT_DB_POOL_OFFSET,
                                                  QKV_K_SCALE_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
         }
-        vec_.Init(tensors, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize, tokenTile, kvCacheStrideBlock,
-                  kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock, kScaleCacheStrideHead,
-                  kScaleCacheStrideToken, epsilon, mropeSectionH, mropeSectionW);
+        vec_.Init(tensors, tilingData);
         vec_.InitIntraCoreEvents();
     }
 
     __aicore__ inline void ComputeTileAic(const TileParam &tile, bool isLastTile)
     {
-        const uint32_t aRotL1BufferId = static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+        const uint32_t aRotL1BufferId =
+            static_cast<uint32_t>(aRotL1BufferUseId_ % A_ROT_L1_BUFFER_NUM);
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
-        uint32_t outputBufferId = 0U;
+        uint32_t outputBufferId;
         if constexpr (IS_MROPE) {
-            outputBufferId = static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+            outputBufferId = static_cast<uint32_t>(
+                kRotationBufferUseId_ % MROPE_K_ROTATION_BUFFER_NUM);
             WaitAivVToAicFixMropeKConsumed();
         } else {
-            outputBufferUseId_ += isLastTile ? 1U : QKV_K_SCALE_AIV_OUTPUT_BUFFER_USES_PER_TILE;
-            outputBufferId = static_cast<uint32_t>(outputBufferUseId_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-            WaitAivMte3ToAicFixCConsumed();
+            // AIV uses the output pool once for the current preprocess and once
+            // for the previous tile's postprocess; count logical uses, not tiles.
+            outputBufferUseId_ += isLastTile ? 1U : ROPE_OUTPUT_BUFFER_USES_PER_TILE;
+            outputBufferId = static_cast<uint32_t>(outputBufferUseId_ % ROPE_OUTPUT_BUFFER_NUM);
+            WaitAivMte3ToAicFixOutputConsumed();
         }
+
         WaitAivMte3ToAicMte1AReady();
         if constexpr (IS_MROPE) {
             cube_.ComputeTile(tile, aRotL1Nz,
@@ -153,143 +143,123 @@ private:
                               outputDbPoolUb_[outputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS]);
         }
         SetAicMte1ToAivMte3AConsumed();
+        SetAicFixToAivOutputReady();
         if constexpr (IS_MROPE) {
-            // K is already in the shared UB. Let VEC consume it before the
-            // independent Q L0C->GM Fixpipe is submitted.
-            SetAicFixToAivMropeKReady();
+            // The output-ready flag is ordered after the K Fixpipe and before
+            // the independent Q L0C-to-GM Fixpipe.
             cube_.FixpipeQToGm(tile);
-        } else {
-            SetAicFixToAivVCReady();
+            ++kRotationBufferUseId_;
         }
-        ++tileCount_;
+        ++aRotL1BufferUseId_;
+        hasPreviousTile_ = true;
     }
 
     __aicore__ inline void ComputeTileAiv(TileParam &tile, const TileParam &lastTile, bool isLastTile)
     {
-        const uint32_t aRotL1BufferId = static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+        const uint32_t aRotL1BufferId =
+            static_cast<uint32_t>(aRotL1BufferUseId_ % A_ROT_L1_BUFFER_NUM);
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         if constexpr (IS_MROPE) {
-            const uint32_t preprocessBufferId =
-                static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+            const uint32_t outputBufferId = static_cast<uint32_t>(
+                outputBufferUseId_ % MROPE_OUTPUT_BUFFER_NUM);
 
             // Keep the current A path ahead of K postprocessing. Otherwise
-            // StageMropeK(i - 1) delays A_READY(i) and stalls both AIC and AIV.
+            // staging K(i - 1) delays A_READY(i) and stalls both AIC and AIV.
             vec_.ComputeTile(
                 tile, aRotL1Nz,
-                qkPreprocessDbPoolUb_[preprocessBufferId *
-                                      QKV_K_SCALE_MROPE_COMPACT_QK_PREPROCESS_ONE_BUFFER_FLOAT_ELEMENTS],
-                preprocessBufferId);
+                outputDbPoolUb_[outputBufferId * QKV_K_SCALE_MROPE_COMPACT_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
+                outputBufferId);
             SetAivMte3ToAicMte1AReady();
 
-            // Retire K(i - 2) before saving K(i - 1) because pending metadata
-            // has a single slot. K scatter follows A_READY and cannot delay
-            // the current AIC tile.
-            if (hasPendingKTile_) {
-                vec_.ScatterMropeK(pendingKTile_, pendingKQuantBufferId_);
-                hasPendingKTile_ = false;
-            }
-            if (tileCount_ > 0U) {
-                const uint32_t kBufferId =
-                    static_cast<uint32_t>((tileCount_ - 1U) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-                WaitAicFixToAivMropeKReady();
-                vec_.StageMropeK(
+            if (hasPreviousTile_) {
+                const uint32_t kRotationBufferId = static_cast<uint32_t>(
+                    kRotationBufferUseId_ % MROPE_K_ROTATION_BUFFER_NUM);
+                WaitAicFixToAivOutputReady();
+                const uint32_t kQuantBufferId = vec_.StageMropeK(
                     lastTile,
-                    kRotationDbPoolUb_[kBufferId * QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_ONE_BUFFER_FLOAT_ELEMENTS],
-                    kBufferId);
+                    kRotationDbPoolUb_[kRotationBufferId *
+                                       QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_ONE_BUFFER_FLOAT_ELEMENTS]);
                 SetAivVToAicFixMropeKConsumed();
+                ++kRotationBufferUseId_;
                 if (lastTile.aivTokenSize != 0U) {
-                    SavePendingKTile(lastTile, kBufferId);
+                    vec_.ScatterMropeK(lastTile, kQuantBufferId);
                 }
             }
+            ++outputBufferUseId_;
         } else {
-            const uint32_t outputBufferId = static_cast<uint32_t>(outputBufferUseId_ &
-                                                                  (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+            const uint32_t outputBufferId =
+                static_cast<uint32_t>(outputBufferUseId_ % ROPE_OUTPUT_BUFFER_NUM);
             WaitAicMte1ToAivMte3AConsumed();
             vec_.ComputeTile(
                 tile, aRotL1Nz,
                 outputDbPoolUb_[outputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS], outputBufferId);
             ++outputBufferUseId_;
-            if (isLastTile && tileCount_ > 0U) {
-                SetAivMte3ToAicFixCConsumed();
+            if (isLastTile && hasPreviousTile_) {
+                SetAivMte3ToAicFixOutputConsumed();
             }
             SetAivMte3ToAicMte1AReady();
-            if (tileCount_ > 0U) {
-                const uint32_t lastOutputBufferId = static_cast<uint32_t>(outputBufferUseId_ &
-                                                                          (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-                WaitAicFixToAivVCReady();
+            if (hasPreviousTile_) {
+                const uint32_t lastOutputBufferId = static_cast<uint32_t>(
+                    outputBufferUseId_ % ROPE_OUTPUT_BUFFER_NUM);
+                WaitAicFixToAivOutputReady();
                 vec_.PostprocessQk(
                     lastTile,
                     outputDbPoolUb_[lastOutputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
                     lastOutputBufferId);
                 if (!isLastTile) {
-                    SetAivMte3ToAicFixCConsumed();
+                    SetAivMte3ToAicFixOutputConsumed();
                 }
                 ++outputBufferUseId_;
             }
         }
-        ++tileCount_;
-    }
-
-    __aicore__ inline void SavePendingKTile(const TileParam &tile, uint32_t bufferId)
-    {
-        pendingKTile_.aivTokenSize = tile.aivTokenSize;
-        for (uint64_t tokenIdx = 0U; tokenIdx < tile.aivTokenSize; ++tokenIdx) {
-            pendingKTile_.cacheBaseOffset[tokenIdx] = tile.cacheBaseOffset[tokenIdx];
-            pendingKTile_.scaleCacheBaseOffset[tokenIdx] = tile.scaleCacheBaseOffset[tokenIdx];
-        }
-        pendingKQuantBufferId_ = bufferId;
-        hasPendingKTile_ = true;
+        ++aRotL1BufferUseId_;
+        hasPreviousTile_ = true;
     }
 
     __aicore__ inline void EndAic()
     {
         if constexpr (IS_MROPE) {
-            for (uint32_t i = 0U; i < QKV_K_SCALE_DOUBLE_BUFFER_NUM; ++i) {
+            for (uint32_t i = 0U; i < MROPE_K_ROTATION_BUFFER_NUM; ++i) {
                 WaitAivVToAicFixMropeKConsumed();
             }
         } else {
-            WaitAivMte3ToAicFixCConsumed();
+            WaitAivMte3ToAicFixOutputConsumed();
         }
-        tileCount_ = 0U;
         cube_.EndIntraCoreEvents();
     }
 
     __aicore__ inline void EndAiv(const TileParam &lastTile)
     {
         if constexpr (IS_MROPE) {
-            if (hasPendingKTile_) {
-                vec_.ScatterMropeK(pendingKTile_, pendingKQuantBufferId_);
-                hasPendingKTile_ = false;
-            }
-            if (tileCount_ > 0U) {
-                const uint32_t kBufferId =
-                    static_cast<uint32_t>((tileCount_ - 1U) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-                WaitAicFixToAivMropeKReady();
-                vec_.StageMropeK(
+            if (hasPreviousTile_) {
+                const uint32_t kRotationBufferId = static_cast<uint32_t>(
+                    kRotationBufferUseId_ % MROPE_K_ROTATION_BUFFER_NUM);
+                WaitAicFixToAivOutputReady();
+                const uint32_t kQuantBufferId = vec_.StageMropeK(
                     lastTile,
-                    kRotationDbPoolUb_[kBufferId * QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_ONE_BUFFER_FLOAT_ELEMENTS],
-                    kBufferId);
+                    kRotationDbPoolUb_[kRotationBufferId *
+                                       QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_ONE_BUFFER_FLOAT_ELEMENTS]);
                 SetAivVToAicFixMropeKConsumed();
+                ++kRotationBufferUseId_;
                 if (lastTile.aivTokenSize != 0U) {
-                    vec_.ScatterMropeK(lastTile, kBufferId);
+                    vec_.ScatterMropeK(lastTile, kQuantBufferId);
                 }
-                tileCount_ = 0U;
             }
-        } else if (tileCount_ > 0U) {
-            const uint32_t lastOutputBufferId = static_cast<uint32_t>(outputBufferUseId_ &
-                                                                      (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-            WaitAicFixToAivVCReady();
+        } else if (hasPreviousTile_) {
+            const uint32_t lastOutputBufferId = static_cast<uint32_t>(
+                outputBufferUseId_ % ROPE_OUTPUT_BUFFER_NUM);
+            WaitAicFixToAivOutputReady();
             vec_.PostprocessQk(lastTile,
                                outputDbPoolUb_[lastOutputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
                                lastOutputBufferId);
-            SetAivMte3ToAicFixCConsumed();
+            SetAivMte3ToAicFixOutputConsumed();
             ++outputBufferUseId_;
-            tileCount_ = 0U;
         }
-        for (uint32_t i = 0U; i < QKV_K_SCALE_DOUBLE_BUFFER_NUM; ++i) {
+        for (uint32_t i = 0U; i < A_ROT_L1_BUFFER_NUM; ++i) {
             WaitAicMte1ToAivMte3AConsumed();
         }
+        hasPreviousTile_ = false;
         vec_.EndIntraCoreEvents();
     }
 
@@ -317,40 +287,28 @@ private:
         AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(SYNC_A_CONSUMED);
     }
 
-    __aicore__ inline void SetAicFixToAivVCReady()
+    __aicore__ inline void SetAicFixToAivOutputReady()
     {
-        AscendC::CrossCoreSetFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_C_READY +
+        AscendC::CrossCoreSetFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_FIX_OUTPUT_READY +
                                                                               QKV_K_SCALE_AIV1_FLAG_OFFSET);
-        AscendC::CrossCoreSetFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_C_READY);
+        AscendC::CrossCoreSetFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_FIX_OUTPUT_READY);
     }
 
-    __aicore__ inline void SetAicFixToAivMropeKReady()
+    __aicore__ inline void WaitAicFixToAivOutputReady()
     {
-        AscendC::CrossCoreSetFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_MROPE_K_READY +
-                                                                                QKV_K_SCALE_AIV1_FLAG_OFFSET);
-        AscendC::CrossCoreSetFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_MROPE_K_READY);
+        AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_V>(SYNC_FIX_OUTPUT_READY);
     }
 
-    __aicore__ inline void WaitAicFixToAivVCReady()
+    __aicore__ inline void SetAivMte3ToAicFixOutputConsumed()
     {
-        AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_V>(SYNC_C_READY);
+        AscendC::CrossCoreSetFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(SYNC_FIX_OUTPUT_CONSUMED);
     }
 
-    __aicore__ inline void WaitAicFixToAivMropeKReady()
+    __aicore__ inline void WaitAivMte3ToAicFixOutputConsumed()
     {
-        AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_V>(SYNC_MROPE_K_READY);
-    }
-
-    __aicore__ inline void SetAivMte3ToAicFixCConsumed()
-    {
-        AscendC::CrossCoreSetFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(SYNC_C_CONSUMED);
-    }
-
-    __aicore__ inline void WaitAivMte3ToAicFixCConsumed()
-    {
-        AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_C_CONSUMED +
+        AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_FIX_OUTPUT_CONSUMED +
                                                                                QKV_K_SCALE_AIV1_FLAG_OFFSET);
-        AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_C_CONSUMED);
+        AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_FIX_OUTPUT_CONSUMED);
     }
 
     __aicore__ inline void SetAivVToAicFixMropeKConsumed()
@@ -366,16 +324,24 @@ private:
     }
 
     static constexpr bool IS_MROPE = ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE;
-    static constexpr uint32_t QKV_K_SCALE_AIV_OUTPUT_BUFFER_USES_PER_TILE = 2U;
+    static constexpr uint32_t A_ROT_L1_BUFFER_NUM =
+        QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS / QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS;
+    static constexpr uint32_t ROPE_OUTPUT_BUFFER_NUM =
+        QKV_K_SCALE_OUTPUT_DB_POOL_FLOAT_ELEMENTS / QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS;
+    static constexpr uint32_t ROPE_OUTPUT_BUFFER_USES_PER_TILE = 2U;
+    static constexpr uint32_t MROPE_OUTPUT_BUFFER_NUM =
+        QKV_K_SCALE_MROPE_COMPACT_OUTPUT_DB_POOL_FLOAT_ELEMENTS /
+        QKV_K_SCALE_MROPE_COMPACT_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS;
+    static constexpr uint32_t MROPE_K_ROTATION_BUFFER_NUM =
+        QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_DB_POOL_FLOAT_ELEMENTS /
+        QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_ONE_BUFFER_FLOAT_ELEMENTS;
 
-    uint64_t tileCount_;
+    bool hasPreviousTile_;
+    uint64_t aRotL1BufferUseId_;
     uint64_t outputBufferUseId_;
-    bool hasPendingKTile_;
-    uint32_t pendingKQuantBufferId_;
-    TileParam pendingKTile_;
+    uint64_t kRotationBufferUseId_;
     LocalTensor<bfloat16_t> aRotL1Pool_;
     LocalTensor<float> outputDbPoolUb_;
-    LocalTensor<float> qkPreprocessDbPoolUb_;
     LocalTensor<float> kRotationDbPoolUb_;
     QkvRmsNormRopeCacheWithKScaleCube<ROPE_MODE> cube_;
     QkvRmsNormRopeCacheWithKScaleVec<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE>

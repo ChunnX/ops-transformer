@@ -14,7 +14,9 @@
 ## 功能说明
 
 - 算子功能：输入Q/K/V融合张量`qkv`，按`head_nums=[Nq, Nk, Nv]`拆分出Q、K、V。RoPE场景对Q/K执行RMSNorm、RoPE和共享`rotation`矩阵乘，再按token/head动态量化为FP8 E4M3FN；M-RoPE场景使用`mrope_position[T,3]`提供T/H/W位置，Q保持BF16、K量化为INT8。两种场景都按`slot_mapping`更新K/V Cache和K scale cache，V分支按`v_scale`缩放后量化为FP8 E4M3FN。
-- 使用场景：推理场景下PagedAttention KV Cache更新，当前仅支持<term>Ascend 950PR/Ascend 950DT</term>上`D=128`、`Nv=Nk`的实现。RoPE支持三种布局实例；M-RoPE仅支持`TND->TND`。
+- 使用场景：推理场景下PagedAttention KV Cache更新，当前仅支持<term>Ascend 950PR/Ascend 950DT</term>上
+  `D=128`、`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`的实现。RoPE支持三种布局实例；M-RoPE仅支持
+  `TND->TND`。
 - 计算公式：
 
   按`head_nums=[Nq, Nk, Nv]`从融合输入中拆分Q、K、V：
@@ -94,7 +96,7 @@
 | mrope_position | 可选输入 | M-RoPE场景token-major位置索引，shape为`[T,3]`，三列依次为T/H/W；RoPE场景不传。 | INT32 | ND |
 | q_out | 输出 | Q输出。RoPE为FP8 E4M3FN，M-RoPE为BF16；RoPE按`layout_q_out`为`[T,Nq,D]`或`[Nq,T,D]`，M-RoPE固定`[T,Nq,D]`。 | FLOAT8_E4M3FN / BFLOAT16 | ND |
 | q_scale | 可选输出 | 仅RoPE场景输出Q动态量化scale；M-RoPE公开返回`None/nullptr`。 | FLOAT | ND |
-| head_nums | 属性 | Q/K/V头数，按`[Nq, Nk, Nv]`传入。 | INT64数组 | - |
+| head_nums | 属性 | Q/K/V头数，按`[Nq, Nk, Nv]`传入；两个场景均要求`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`。 | INT64数组 | - |
 | layout_qkv | 可选属性 | `qkv`的N/T轴布局，默认值为`"TND"`。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
 | layout_q_out | 可选属性 | `q_out`和`q_scale`的N/T轴布局，默认值为`"NTD"`。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
 | epsilon | 可选属性 | RMSNorm防除零参数，默认值为`1e-6`。 | FLOAT | - |
@@ -105,7 +107,7 @@
 ## 约束说明
 
 - 输入shape限制：
-  - 当前实现仅支持`D=128`，且`Nv=Nk`。
+  - 当前实现仅支持`D=128`，RoPE和M-RoPE均要求`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`。
   - RoPE场景必须同时传`query_start_loc/seq_lens`，不传`mrope_position`且`mrope_section`为空或未传；
     `q_quant_mode=PerTokenPerHead`、`q_out_dtype=FP8 E4M3FN`、`q_scale`非空，K Cache为FP8。
   - M-RoPE场景必须同时传`mrope_position[T,3]`和非空`mrope_section=[t,h,w]`，不传`query_start_loc/seq_lens`；
@@ -129,7 +131,8 @@
   - `slot_mapping`取值范围应为`[0, BlockNum * BlockSize - 1]`。同一次调用内多个token写入同一slot会对同一cache地址产生重复写，最终写入顺序和结果未定义。
   - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 - 输入属性限制：
-  - `head_nums`必须包含3个正整数，顺序为`[Nq, Nk, Nv]`。
+  - `head_nums`必须包含3个正整数，顺序为`[Nq, Nk, Nv]`，并满足`Nq<=64`、`Nq=8*Nk`、
+    `Nk=Nv`。
   - `layout_qkv`和`layout_q_out`大小写敏感，仅支持`"TND"`和`"NTD"`，且当前不支持`layout_qkv="NTD"`、`layout_q_out="TND"`。
 - 输入数据类型限制：
   - 各输入的数据类型和数据格式需符合参数说明，不支持隐式类型转换。

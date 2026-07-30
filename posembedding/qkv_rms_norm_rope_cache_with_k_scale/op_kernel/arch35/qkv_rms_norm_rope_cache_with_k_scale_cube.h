@@ -22,10 +22,11 @@ constexpr uint8_t QKV_K_SCALE_FIXPIPE_DUAL_DST_SPLIT_M = 1;
 template <uint32_t ROPE_MODE>
 class QkvRmsNormRopeCacheWithKScaleCube {
 public:
-    __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t qHeadNum, uint64_t kvHeadNum)
+    __aicore__ inline void Init(const GlobalTensors &tensors,
+                                const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
-        qHeadNum_ = qHeadNum;
-        kvHeadNum_ = kvHeadNum;
+        qHeadNum_ = tilingData->qHeadNum;
+        kvHeadNum_ = tilingData->kvHeadNum;
         l0cBufferUseId_ = 0U;
         BindLocalTensors();
         BindGlobalTensors(tensors);
@@ -33,9 +34,11 @@ public:
 
     __aicore__ inline void InitIntraCoreEvents()
     {
-        for (uint32_t bufferId = 0U; bufferId < AIC_L0_BUFFER_NUM; ++bufferId) {
+        for (uint32_t bufferId = 0U; bufferId < AIC_L0A_BUFFER_NUM; ++bufferId) {
             SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
-            if constexpr (IS_MROPE) {
+        }
+        if constexpr (IS_MROPE) {
+            for (uint32_t bufferId = 0U; bufferId < AIC_L0C_BUFFER_NUM; ++bufferId) {
                 SetFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIX_TO_MMAD_L0_BASE + bufferId));
             }
         }
@@ -43,9 +46,11 @@ public:
 
     __aicore__ inline void EndIntraCoreEvents()
     {
-        for (uint32_t bufferId = 0U; bufferId < AIC_L0_BUFFER_NUM; ++bufferId) {
+        for (uint32_t bufferId = 0U; bufferId < AIC_L0A_BUFFER_NUM; ++bufferId) {
             WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
-            if constexpr (IS_MROPE) {
+        }
+        if constexpr (IS_MROPE) {
+            for (uint32_t bufferId = 0U; bufferId < AIC_L0C_BUFFER_NUM; ++bufferId) {
                 WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIX_TO_MMAD_L0_BASE + bufferId));
             }
         }
@@ -64,8 +69,7 @@ public:
     __aicore__ inline void ComputeTile(const TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
                                        LocalTensor<float> qkAfterCubeUb)
     {
-        const uint32_t l0cBufferId = static_cast<uint32_t>(l0cBufferUseId_ &
-                                                           (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+        const uint32_t l0cBufferId = static_cast<uint32_t>(l0cBufferUseId_ % AIC_L0C_BUFFER_NUM);
         if constexpr (IS_MROPE) {
             WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIX_TO_MMAD_L0_BASE + l0cBufferId));
         }
@@ -95,7 +99,7 @@ public:
         }
 
         const uint32_t l0cBufferId = static_cast<uint32_t>(
-            (l0cBufferUseId_ + QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+            (l0cBufferUseId_ + AIC_L0C_BUFFER_NUM - 1U) % AIC_L0C_BUFFER_NUM);
         const uint64_t qRows = tile.cubeTokenSize * qHeadNum_;
         const uint64_t validQRows = tile.tokenSize * qHeadNum_;
         const uint64_t qOutBaseRow = tile.tokenOffset * qHeadNum_;
@@ -105,13 +109,14 @@ public:
 
 private:
     static constexpr bool IS_MROPE = ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE;
-    static constexpr uint32_t AIC_L0_BUFFER_NUM = QKV_K_SCALE_DOUBLE_BUFFER_NUM;
+    static constexpr uint32_t AIC_L0A_BUFFER_NUM = 2U;
+    static constexpr uint32_t AIC_L0C_BUFFER_NUM = 2U;
     static constexpr uint32_t AIC_M_L0_TILE = 128U;
     static constexpr uint32_t AIC_L0A_BUFFER_ELEMENTS = 64U * QKV_K_SCALE_KIB / sizeof(bfloat16_t);
     static constexpr uint32_t AIC_L0B_BUFFER_ELEMENTS = 64U * QKV_K_SCALE_KIB / sizeof(bfloat16_t);
     static constexpr uint32_t AIC_L0C_BUFFER_ELEMENTS = 256U * QKV_K_SCALE_KIB / sizeof(float);
-    static constexpr uint32_t AIC_L0A_ONE_BUFFER_ELEMENTS = AIC_L0A_BUFFER_ELEMENTS / AIC_L0_BUFFER_NUM;
-    static constexpr uint32_t AIC_L0C_ONE_BUFFER_ELEMENTS = AIC_L0C_BUFFER_ELEMENTS / QKV_K_SCALE_DOUBLE_BUFFER_NUM;
+    static constexpr uint32_t AIC_L0A_ONE_BUFFER_ELEMENTS = AIC_L0A_BUFFER_ELEMENTS / AIC_L0A_BUFFER_NUM;
+    static constexpr uint32_t AIC_L0C_ONE_BUFFER_ELEMENTS = AIC_L0C_BUFFER_ELEMENTS / AIC_L0C_BUFFER_NUM;
     static constexpr uint8_t AIC_UNIT_FLAG_CHECK_ONLY = 0b10;
     static constexpr uint8_t AIC_UNIT_FLAG_UPDATE = 0b11;
     static constexpr uint32_t EVT_MTE2_TO_MTE1_ROTATION_READY = 5U;
@@ -157,13 +162,14 @@ private:
         }
 
         const LocalTensor<bfloat16_t> kSegmentL1Nz = aRotL1Nz[NzMatrixElements(qRows)];
-        uint32_t l0aDbIter = 0U;
-        ComputeSegmentToL0C(qRows, aRotL1Nz, bufferId, 0U, l0aDbIter);
-        ComputeSegmentToL0C(kRows, kSegmentL1Nz, bufferId, kL0cOffset, l0aDbIter);
+        uint32_t l0aBufferUseId = 0U;
+        ComputeSegmentToL0C(qRows, aRotL1Nz, bufferId, 0U, l0aBufferUseId);
+        ComputeSegmentToL0C(kRows, kSegmentL1Nz, bufferId, kL0cOffset, l0aBufferUseId);
     }
 
     __aicore__ inline void ComputeSegmentToL0C(uint64_t segmentRows, const LocalTensor<bfloat16_t> &segmentL1Nz,
-                                               uint32_t l0cBufferId, uint64_t l0cOffset, uint32_t &l0aDbIter)
+                                               uint32_t l0cBufferId, uint64_t l0cOffset,
+                                               uint32_t &l0aBufferUseId)
     {
         if (segmentRows == 0U) {
             return;
@@ -178,7 +184,7 @@ private:
             const uint64_t dSize = MinU64(dTile, QKV_K_SCALE_HEAD_DIM_D128 - dStart);
             const bool isFirstD = (dStart == 0U);
             const bool isLastD = (dStart + dSize >= QKV_K_SCALE_HEAD_DIM_D128);
-            const uint32_t l0aBufferId = l0aDbIter & (AIC_L0_BUFFER_NUM - 1U);
+            const uint32_t l0aBufferId = l0aBufferUseId % AIC_L0A_BUFFER_NUM;
 
             WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + l0aBufferId));
             LoadAToL0(segmentRows, segmentRows, dStart, dSize, l0aBufferId, segmentL1Nz);
@@ -187,7 +193,7 @@ private:
             ComputeMmad(segmentRows, dSize, isFirstD, isLastD, l0aBufferId, l0cBufferId,
                         l0b_[dStart * QKV_K_SCALE_HEAD_DIM_D128], l0cOffset);
             SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + l0aBufferId));
-            ++l0aDbIter;
+            ++l0aBufferUseId;
         }
     }
 

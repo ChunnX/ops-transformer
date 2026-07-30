@@ -62,6 +62,8 @@ struct ContractInput {
 class QkvRmsNormRopeCacheWithKScaleBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     static constexpr uint64_t SUPPORTED_HEAD_DIM = 128;
+    static constexpr uint64_t MAX_Q_HEAD_NUM = 64;
+    static constexpr uint64_t Q_TO_K_HEAD_RATIO = 8;
     static constexpr uint64_t MAX_TOKEN_TILE = 16;
     static constexpr uint64_t L0A_FULL_DIM_SEGMENT_ROWS = 128;
     static constexpr uint64_t L0C_MAX_ROWS = 256;

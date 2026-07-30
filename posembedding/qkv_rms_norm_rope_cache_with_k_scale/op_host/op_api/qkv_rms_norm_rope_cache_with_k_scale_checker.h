@@ -83,6 +83,8 @@ public:
     // Constants
     static constexpr uint64_t HEAD_NUMS_SIZE = 3;
     static constexpr int64_t SUPPORTED_HEAD_DIM = 128;
+    static constexpr int64_t MAX_Q_HEAD_NUM = 64;
+    static constexpr int64_t Q_TO_K_HEAD_RATIO = 8;
     static constexpr uint64_t RANK_1D = 1;
     static constexpr uint64_t RANK_2D = 2;
     static constexpr uint64_t RANK_3D = 3;
@@ -448,6 +450,17 @@ private:
                 std::to_string(nq) + ", " + std::to_string(nk) + ", " + std::to_string(nv);
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "headNums", incorrectValue.c_str(),
                                                   "headNums values must be positive");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (nq > MAX_Q_HEAD_NUM) {
+            const std::string incorrectValue = std::to_string(nq);
+            OP_LOGE_FOR_INVALID_VALUE(ACLNN_NAME, "Nq", incorrectValue.c_str(), "less than or equal to 64");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (nq % Q_TO_K_HEAD_RATIO != 0 || nk != nq / Q_TO_K_HEAD_RATIO) {
+            const std::string incorrectValue = std::to_string(nq) + ", " + std::to_string(nk);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "Nq, Nk", incorrectValue.c_str(),
+                                                  "nq must be equal to 8 * nk");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (nv != nk) {
