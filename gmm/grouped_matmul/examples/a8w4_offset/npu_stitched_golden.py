@@ -3,7 +3,7 @@
 
 The formal ACLNN test exports one case with A8W4_DUMP_DIR. This program reads
 that dump, reconstructs ND/NZ INT4 weight, computes a CPU reference, and builds
-an NPU reference from FP32 matmul, scale, add and cast operations.
+an NPU reference from INT8 quant-matmul/FixPipe, add and cast operations.
 """
 import argparse
 from pathlib import Path
@@ -169,6 +169,12 @@ def main():
     except ImportError as error:
         raise RuntimeError("torch and torch_npu are required for NPU stitched golden") from error
 
+    if not hasattr(torch_npu, "npu_quant_matmul") or not hasattr(torch_npu, "npu_trans_quant_param"):
+        raise RuntimeError(
+            "installed torch_npu must provide npu_quant_matmul and npu_trans_quant_param"
+        )
+    output_torch_dtype = torch.bfloat16 if meta["output_dtype"] == "bf16" else torch.float16
+    fixpipe_dtype = torch.float16
     npu_parts, row_start = [], 0
     with torch.no_grad():
         for expert, rows in enumerate(groups.tolist()):
@@ -176,20 +182,36 @@ def main():
             if rows == 0:
                 npu_parts.append(np.empty((0, n_size), dtype=np.float32))
                 continue
-            x_npu = torch.from_numpy(x[row_start:row_end]).to(args.device, dtype=torch.float32)
-            result = torch.zeros((rows, n_size), device=args.device, dtype=torch.float32)
+            # Keep Cube inputs as INT8. Each group goes through QuantMatmul and
+            # FixPipe scale conversion to FP16. The formal BlockMmad workspace
+            # CType is half and SetAtomicAdd<half> rounds every group addition.
+            x_npu = torch.from_numpy(x[row_start:row_end]).to(args.device, dtype=torch.int8)
+            weight_npu = torch.from_numpy(np.ascontiguousarray(weight[expert])).to(
+                args.device, dtype=torch.int8
+            )
+            scale_npu = torch.from_numpy(np.ascontiguousarray(scale[expert])).to(
+                args.device, dtype=torch.float32
+            )
+            quant_scale_npu = torch_npu.npu_trans_quant_param(scale_npu, None)
+            result = torch.zeros((rows, n_size), device=args.device, dtype=fixpipe_dtype)
             for group, (k_start, k_end) in enumerate(k_ranges):
-                w_npu = torch.from_numpy(weight[expert, k_start:k_end, :]).to(
-                    args.device, dtype=torch.float32
+                partial = torch_npu.npu_quant_matmul(
+                    x_npu[:, k_start:k_end].contiguous(),
+                    weight_npu[k_start:k_end, :].contiguous(),
+                    quant_scale_npu[group].contiguous(),
+                    output_dtype=fixpipe_dtype,
                 )
-                scale_npu = torch.from_numpy(scale[expert, group]).to(args.device)
-                result.add_(torch.matmul(x_npu[:, k_start:k_end], w_npu) * scale_npu)
+                result.add_(partial)
+            # Epilogue widens the FP16 workspace to FP32, applies offset and
+            # per-token scale, then casts to the requested output dtype.
+            result = result.to(torch.float32)
             if mode == "perchannel":
                 offset_npu = torch.from_numpy(offset[expert]).to(args.device)
-                result.add_(x_npu.sum(dim=1, keepdim=True) * offset_npu)
+                row_sum = x_npu.to(torch.int32).sum(dim=1, keepdim=True).to(torch.float32)
+                result.add_(row_sum * offset_npu)
             result.add_(torch.from_numpy(bias[expert]).to(args.device))
             result.mul_(torch.from_numpy(per_token[row_start:row_end, None]).to(args.device))
-            result = result.to(torch.bfloat16 if meta["output_dtype"] == "bf16" else torch.float16)
+            result = result.to(output_torch_dtype)
             npu_parts.append(result.to(torch.float32).cpu().numpy())
             row_start = row_end
     npu = np.concatenate(npu_parts, axis=0)
