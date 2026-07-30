@@ -121,7 +121,7 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
 {
     // num_heads_q 校验
     if (numHeadsQ < SLI_NUM_HEADS_Q_LOWER_BOUND_A5 || numHeadsQ > SLI_NUM_HEADS_Q_UPPER_BOUND_A5) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "num_heads_q", std::to_string(numHeadsQ).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "num_heads_q", std::to_string(numHeadsQ),
                                               "The current value is not within the valid range. "
                                               "The valid range is [" +
                                                   std::to_string(SLI_NUM_HEADS_Q_LOWER_BOUND_A5) + ", " +
@@ -130,17 +130,17 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
     }
     // num_heads_k 校验
     if (numHeadsK != 1) {
-        OP_LOGE_FOR_INVALID_VALUE(SLI_ACLNN_OP_NAME, "num_heads_kv", std::to_string(numHeadsK).c_str(), "1");
+        OP_LOGE_FOR_INVALID_VALUE(SLI_ACLNN_OP_NAME, "num_heads_kv", std::to_string(numHeadsK), "1");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // head_dim 校验
     if (headDim != 128) {
-        OP_LOGE_FOR_INVALID_VALUE(SLI_ACLNN_OP_NAME, "head_dim", std::to_string(headDim).c_str(), "128");
+        OP_LOGE_FOR_INVALID_VALUE(SLI_ACLNN_OP_NAME, "head_dim", std::to_string(headDim), "128");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // topk 校验
     if (topk < SLI_TOPK_LOWER_BOUND_A5 || topk > SLI_TOPK_UPPER_BOUND_A5) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "topk", std::to_string(topk).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "topk", std::to_string(topk),
                                               "The current value is not within the valid range. "
                                               "The valid range is [" +
                                                   std::to_string(SLI_TOPK_LOWER_BOUND_A5) + ", " +
@@ -149,30 +149,30 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
     }
     // batch_size 非负校验
     if (batchSize < 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "batch_size", std::to_string(batchSize).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "batch_size", std::to_string(batchSize),
                                               "The value of batch_size must be greater than or equal to 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // max_seqlen_q 校验
     if (maxSeqlenQ < 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ),
                                               "The value of max_seqlen_q must be greater than or equal to 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // max_seqlen_k 校验
     if (maxSeqlenK < 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "max_seqlen_k", std::to_string(maxSeqlenK).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "max_seqlen_k", std::to_string(maxSeqlenK),
                                               "The value of max_seqlen_k must be greater than or equal to 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // mask_mode 校验
     if (maskMode != SLI_NO_MASK_MODE && maskMode != SLI_CAUSAL_MASK_MODE) {
-        OP_LOGE_FOR_INVALID_VALUE(SLI_ACLNN_OP_NAME, "mask_mode", std::to_string(maskMode).c_str(), "0 or 3");
+        OP_LOGE_FOR_INVALID_VALUE(SLI_ACLNN_OP_NAME, "mask_mode", std::to_string(maskMode), "0 or 3");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // cmp_ratio 校验
     if (cmpRatio < SLI_CMP_RATIO_LOWER_BOUND || cmpRatio > SLI_CMP_RATIO_UPPER_BOUND) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio),
                                               "The current value is not within the valid range. "
                                               "The valid range is [" +
                                                   std::to_string(SLI_CMP_RATIO_LOWER_BOUND) + ", " +
@@ -206,12 +206,12 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
     }
     // 核心数校验
     if (aicCoreNum == 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "aic_core_num", std::to_string(aicCoreNum).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "aic_core_num", std::to_string(aicCoreNum),
                                               "The value of aic_core_num must be greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (aivCoreNum == 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "aiv_core_num", std::to_string(aivCoreNum).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "aiv_core_num", std::to_string(aivCoreNum),
                                               "The value of aiv_core_num must be greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -267,7 +267,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (IsTensorExistSli(cuSeqlensQOptional)) {
         dimNum = GetDimNumSli(cuSeqlensQOptional);
         if (dimNum != 1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "cu_seqlens_q", std::to_string(dimNum).c_str(), "1");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "cu_seqlens_q", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         dataType = GetDataTypeSli(cuSeqlensQOptional);
@@ -281,7 +281,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (IsTensorExistSli(cuSeqlensKOptional)) {
         dimNum = GetDimNumSli(cuSeqlensKOptional);
         if (dimNum != 1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "cu_seqlens_k", std::to_string(dimNum).c_str(), "1");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "cu_seqlens_k", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         dataType = GetDataTypeSli(cuSeqlensKOptional);
@@ -295,7 +295,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (IsTensorExistSli(sequsedQOptional)) {
         dimNum = GetDimNumSli(sequsedQOptional);
         if (dimNum != 1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "seqused_q", std::to_string(dimNum).c_str(), "1");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "seqused_q", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         dataType = GetDataTypeSli(sequsedQOptional);
@@ -309,7 +309,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (IsTensorExistSli(sequsedKOptional)) {
         dimNum = GetDimNumSli(sequsedKOptional);
         if (dimNum != 1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "seqused_k", std::to_string(dimNum).c_str(), "1");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "seqused_k", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         dataType = GetDataTypeSli(sequsedKOptional);
@@ -323,7 +323,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (IsTensorExistSli(cmpResidualKOptional)) {
         dimNum = GetDimNumSli(cmpResidualKOptional);
         if (dimNum != 1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "cmp_residual_k", std::to_string(dimNum).c_str(), "1");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "cmp_residual_k", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         dataType = GetDataTypeSli(cmpResidualKOptional);
@@ -337,7 +337,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (IsTensorExistSli(metadata)) {
         dimNum = GetDimNumSli(metadata);
         if (dimNum != 1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "metadata", std::to_string(dimNum).c_str(), "1");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(SLI_ACLNN_OP_NAME, "metadata", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         dataType = GetDataTypeSli(metadata);
@@ -349,8 +349,8 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
         // 校验 metadata 元素数
         if (metadata->GetViewShape().GetDim(0) != SLIKG_METADATA_SIZE) {
             OP_LOGE_FOR_INVALID_SHAPESIZE(SLI_ACLNN_OP_NAME, "metadata",
-                                          std::to_string(metadata->GetViewShape().GetDim(0)).c_str(),
-                                          std::to_string(SLIKG_METADATA_SIZE).c_str());
+                                          std::to_string(metadata->GetViewShape().GetDim(0)),
+                                          std::to_string(SLIKG_METADATA_SIZE));
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -370,11 +370,11 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
                 GetSourceDescSli(querySource) + " must be equal to " + GetSourceDescSli(keySource));
         } else if (IsTensorSourceSli(querySource)) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-                SLI_ACLNN_OP_NAME, querySource, std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)).c_str(),
+                SLI_ACLNN_OP_NAME, querySource, std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)),
                 GetSourceDescSli(querySource) + " must be equal to batch_size");
         } else {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-                SLI_ACLNN_OP_NAME, keySource, std::to_string(GetRawShapeSizeSli(keySource, keyBatchSize)).c_str(),
+                SLI_ACLNN_OP_NAME, keySource, std::to_string(GetRawShapeSizeSli(keySource, keyBatchSize)),
                 GetSourceDescSli(keySource) + " must be equal to batch_size");
         }
         return ACLNN_ERR_PARAM_INVALID;
@@ -419,7 +419,7 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
                     "The shape size of cmp_residual_k must be equal to " + GetSourceDescSli(querySource));
             } else {
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SLI_ACLNN_OP_NAME, "cmp_residual_k",
-                                                          std::to_string(cmpResidualKBatch).c_str(),
+                                                          std::to_string(cmpResidualKBatch),
                                                           "The shape size of cmp_residual_k must be equal "
                                                           "to batch_size");
             }

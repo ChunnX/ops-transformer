@@ -123,33 +123,33 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
 {
     // batch_size >= 0
     if (batchSize < 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "batch_size", std::to_string(batchSize).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "batch_size", std::to_string(batchSize),
                                               "The value of batch_size must be greater than or equal to 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // max_seqlen_q >= 0
     if (maxSeqlenQ < 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ),
                                               "The value of max_seqlen_q must be greater than or equal to 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // max_seqlen_ori_kv >= 0
     if (maxSeqlenOriKv < 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "max_seqlen_ori_kv",
-                                              std::to_string(maxSeqlenOriKv).c_str(),
+                                              std::to_string(maxSeqlenOriKv),
                                               "The value of max_seqlen_ori_kv must be greater than or equal to 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // max_seqlen_cmp_kv >= 0
     if (maxSeqlenCmpKv < 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "max_seqlen_cmp_kv",
-                                              std::to_string(maxSeqlenCmpKv).c_str(),
+                                              std::to_string(maxSeqlenCmpKv),
                                               "The value of max_seqlen_cmp_kv must be greater than or equal to 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // num_heads_q [1, 128]
     if (numHeadsQ < SMLA_NUM_HEADS_Q_LOWER_BOUND || numHeadsQ > SMLA_NUM_HEADS_Q_UPPER_BOUND) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "num_heads_q", std::to_string(numHeadsQ).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "num_heads_q", std::to_string(numHeadsQ),
                                               "The current value is not within the valid range. "
                                               "The valid range is [" +
                                                   std::to_string(SMLA_NUM_HEADS_Q_LOWER_BOUND) + ", " +
@@ -158,7 +158,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
     }
     // num_heads_kv: 1
     if (numHeadsKv != 1) {
-        OP_LOGE_FOR_INVALID_VALUE(SMLA_ACLNN_OP_NAME, "num_heads_kv", std::to_string(numHeadsKv).c_str(), "1");
+        OP_LOGE_FOR_INVALID_VALUE(SMLA_ACLNN_OP_NAME, "num_heads_kv", std::to_string(numHeadsKv), "1");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (numHeadsQ % numHeadsKv != 0) {
@@ -172,7 +172,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
     if (socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) {
         if (headRatio < SMLA_NUM_HEADS_Q_LOWER_BOUND || headRatio > SMLA_NUM_HEADS_Q_UPPER_BOUND) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "num_heads_q / num_heads_kv",
-                                                  std::to_string(headRatio).c_str(),
+                                                  std::to_string(headRatio),
                                                   "The current value is not within the valid range. "
                                                   "The valid range is [" +
                                                       std::to_string(SMLA_NUM_HEADS_Q_LOWER_BOUND) + ", " +
@@ -181,7 +181,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
         }
     } else if (!IsPowerOfTwoInRangeSmla(headRatio, SMLA_NUM_HEADS_Q_LOWER_BOUND, SMLA_NUM_HEADS_Q_UPPER_BOUND)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "num_heads_q / num_heads_kv",
-                                              std::to_string(headRatio).c_str(),
+                                              std::to_string(headRatio),
                                               "The current value is not within the valid range. "
                                               "The valid range is power of two in [" +
                                                   std::to_string(SMLA_NUM_HEADS_Q_LOWER_BOUND) + ", " +
@@ -190,19 +190,19 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
     }
     // head_dim: 512
     if (headDim != 512) {
-        OP_LOGE_FOR_INVALID_VALUE(SMLA_ACLNN_OP_NAME, "head_dim", std::to_string(headDim).c_str(), "512");
+        OP_LOGE_FOR_INVALID_VALUE(SMLA_ACLNN_OP_NAME, "head_dim", std::to_string(headDim), "512");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (hasOriKv) {
         // ori_topk >= 0
         if (oriTopk < 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_topk", std::to_string(oriTopk).c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_topk", std::to_string(oriTopk),
                                                   "When has_ori_kv is true, the value of ori_topk must be "
                                                   "greater than or equal to 0");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) && oriTopk != 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_topk", std::to_string(oriTopk).c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_topk", std::to_string(oriTopk),
                                                   "ori_topk is reserved and "
                                                   "the value of ori_topk must be 0");
             return ACLNN_ERR_PARAM_INVALID;
@@ -213,7 +213,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                 oriMaskMode != static_cast<int64_t>(SparseModeSmla::RIGHT_DOWN_CAUSAL) &&
                 oriMaskMode != static_cast<int64_t>(SparseModeSmla::BAND)) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_mask_mode",
-                                                      std::to_string(oriMaskMode).c_str(),
+                                                      std::to_string(oriMaskMode),
                                                       "When has_ori_kv is true, the value of ori_mask_mode "
                                                       "must be in [0, 3, 4]");
                 return ACLNN_ERR_PARAM_INVALID;
@@ -228,7 +228,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             }
         } else {
             if (oriMaskMode != static_cast<int64_t>(SparseModeSmla::BAND)) {
-                OP_LOGE_FOR_INVALID_VALUE(SMLA_ACLNN_OP_NAME, "ori_mask_mode", std::to_string(oriMaskMode).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE(SMLA_ACLNN_OP_NAME, "ori_mask_mode", std::to_string(oriMaskMode),
                                           "4");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -244,14 +244,14 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
     if (hasCmpKv) {
         // cmp_topk >= 0
         if (cmpTopk < 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_topk", std::to_string(cmpTopk).c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_topk", std::to_string(cmpTopk),
                                                   "When has_cmp_kv is true, the value of cmp_topk must be "
                                                   "greater than or equal to 0");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) && cmpTopk != 0 && cmpTopk != 512 &&
             cmpTopk != 1024) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_topk", std::to_string(cmpTopk).c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_topk", std::to_string(cmpTopk),
                                                   "When has_cmp_kv is true, the value of cmp_topk must be "
                                                   "in [0, 512, 1024]");
             return ACLNN_ERR_PARAM_INVALID;
@@ -260,20 +260,20 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             // cmp_mask_mode: 0 or 3
             if (cmpMaskMode != static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
                 cmpMaskMode != static_cast<int64_t>(SparseModeSmla::RIGHT_DOWN_CAUSAL)) {
-                OP_LOGE_FOR_INVALID_VALUE(SMLA_ACLNN_OP_NAME, "cmp_mask_mode", std::to_string(cmpMaskMode).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE(SMLA_ACLNN_OP_NAME, "cmp_mask_mode", std::to_string(cmpMaskMode),
                                           "0 or 3");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         } else {
             if (cmpMaskMode != static_cast<int64_t>(SparseModeSmla::RIGHT_DOWN_CAUSAL)) {
-                OP_LOGE_FOR_INVALID_VALUE(SMLA_ACLNN_OP_NAME, "cmp_mask_mode", std::to_string(cmpMaskMode).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE(SMLA_ACLNN_OP_NAME, "cmp_mask_mode", std::to_string(cmpMaskMode),
                                           "3");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         if (!IsCmpRatioSupportSmla(socVersion, hasCmpKv, cmpTopk, cmpRatio)) {
             if (socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio),
                                                       "When has_cmp_kv is true, the current value is not "
                                                       "within the valid range. The valid range is [" +
                                                           std::to_string(SMLA_CMP_RATIO_LOWER_BOUND) + ", " +
@@ -282,14 +282,14 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                 int64_t expectedCmpRatio = (cmpTopk > 0) ? 4 : 128;
                 if (cmpTopk > 0) {
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio",
-                                                          std::to_string(cmpRatio).c_str(),
+                                                          std::to_string(cmpRatio),
                                                           "When has_cmp_kv is true and cmp_topk is non-zero"
                                                           "(CSA with cmp_sparse_indices), "
                                                           "the value of cmp_ratio must be " +
                                                               std::to_string(expectedCmpRatio));
                 } else {
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio",
-                                                          std::to_string(cmpRatio).c_str(),
+                                                          std::to_string(cmpRatio),
                                                           "When has_cmp_kv is true and cmp_topk is 0"
                                                           "(HCA without cmp_sparse_indices), "
                                                           "the value of cmp_ratio must be " +
@@ -300,7 +300,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
         }
     } else if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) &&
                !IsCmpRatioSupportSmla(socVersion, hasCmpKv, cmpTopk, cmpRatio)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio),
                                               "When has_cmp_kv is false, the value of cmp_ratio must be 1");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -333,24 +333,24 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
     }
     // 核数校验
     if (aicCoreNum == 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "aic_core_num", std::to_string(aicCoreNum).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "aic_core_num", std::to_string(aicCoreNum),
                                               "The value of aic_core_num must be greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (aicCoreNum > optiling::AIC_CORE_MAX_NUM) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "aic_core_num", std::to_string(aicCoreNum).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "aic_core_num", std::to_string(aicCoreNum),
                                               "The current value is not within the valid range. "
                                               "The valid range is [1, " +
                                                   std::to_string(optiling::AIC_CORE_MAX_NUM) + "]");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (aivCoreNum == 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "aiv_core_num", std::to_string(aivCoreNum).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "aiv_core_num", std::to_string(aivCoreNum),
                                               "The value of aiv_core_num must be greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (aivCoreNum > optiling::AIV_CORE_MAX_NUM) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "aiv_core_num", std::to_string(aivCoreNum).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "aiv_core_num", std::to_string(aivCoreNum),
                                               "The current value is not within the valid range. "
                                               "The valid range is [1, " +
                                                   std::to_string(optiling::AIV_CORE_MAX_NUM) + "]");
@@ -360,8 +360,8 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
     if (numHeadsQ == 128) {
         if (aicCoreNum == 1 || aivCoreNum == 1) {
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                SMLA_ACLNN_OP_NAME, "num_heads_q, aic_core_num, aiv_core_num",
-                std::to_string(numHeadsQ) + ", " + std::to_string(aicCoreNum) + ", " + std::to_string(aivCoreNum),
+                SMLA_ACLNN_OP_NAME, "num_heads_q and aic_core_num and aiv_core_num",
+                std::to_string(numHeadsQ) + " and " + std::to_string(aicCoreNum) + " and " + std::to_string(aivCoreNum),
                 "When num_heads_q is 128, the value of aic_core_num, "
                 "aiv_core_num cannot be 1");
             return ACLNN_ERR_PARAM_INVALID;
@@ -557,7 +557,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
         // 校验 cu_seqlens_q 维度
         dimNum = GetDimNumSmla(cuSeqlensQOptional);
         if (dimNum != 1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "cu_seqlens_q", std::to_string(dimNum).c_str(), "1");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "cu_seqlens_q", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 cu_seqlens_q 数据类型
@@ -573,7 +573,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
         // 校验 seqused_q 维度
         dimNum = GetDimNumSmla(sequsedQOptional);
         if (dimNum != 1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "seqused_q", std::to_string(dimNum).c_str(), "1");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "seqused_q", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 seqused_q 数据类型
@@ -591,7 +591,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             // 校验 cu_seqlens_ori_kv 维度
             dimNum = GetDimNumSmla(cuSeqlensOriKvOptional);
             if (dimNum != 1) {
-                OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "cu_seqlens_ori_kv", std::to_string(dimNum).c_str(),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "cu_seqlens_ori_kv", std::to_string(dimNum),
                                              "1");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -609,7 +609,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             // 校验 seqused_ori_kv 维度
             dimNum = GetDimNumSmla(sequsedOriKvOptional);
             if (dimNum != 1) {
-                OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "seqused_ori_kv", std::to_string(dimNum).c_str(), "1");
+                OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "seqused_ori_kv", std::to_string(dimNum), "1");
                 return ACLNN_ERR_PARAM_INVALID;
             }
             // 校验 seqused_ori_kv 数据类型
@@ -629,7 +629,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             if (strcmp(layoutQOptional, "TND") == 0) {
                 if (dimNum != 2) {
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_topk_length",
-                                                             std::to_string(dimNum).c_str(),
+                                                             std::to_string(dimNum),
                                                              "The shape dim of ori_topk_length must be 2 "
                                                              "when layout_q is TND");
                     return ACLNN_ERR_PARAM_INVALID;
@@ -637,7 +637,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             } else if (strcmp(layoutQOptional, "BSND") == 0) {
                 if (dimNum != 3) {
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_topk_length",
-                                                             std::to_string(dimNum).c_str(),
+                                                             std::to_string(dimNum),
                                                              "The shape dim of ori_topk_length must be 3 "
                                                              "when layout_q is BSND");
                     return ACLNN_ERR_PARAM_INVALID;
@@ -660,7 +660,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             // 校验 cu_seqlens_cmp_kv 维度
             dimNum = GetDimNumSmla(cuSeqlensCmpKvOptional);
             if (dimNum != 1) {
-                OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "cu_seqlens_cmp_kv", std::to_string(dimNum).c_str(),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "cu_seqlens_cmp_kv", std::to_string(dimNum),
                                              "1");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -678,7 +678,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             // 校验 seqused_cmp_kv 维度
             dimNum = GetDimNumSmla(sequsedCmpKvOptional);
             if (dimNum != 1) {
-                OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "seqused_cmp_kv", std::to_string(dimNum).c_str(), "1");
+                OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "seqused_cmp_kv", std::to_string(dimNum), "1");
                 return ACLNN_ERR_PARAM_INVALID;
             }
             // 校验 seqused_cmp_kv 数据类型
@@ -695,7 +695,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             // 校验 cmp_residual_kv 维度
             dimNum = GetDimNumSmla(cmpResidualKvOptional);
             if (dimNum != 1) {
-                OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "cmp_residual_kv", std::to_string(dimNum).c_str(),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "cmp_residual_kv", std::to_string(dimNum),
                                              "1");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -716,7 +716,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             if (strcmp(layoutQOptional, "TND") == 0) {
                 if (dimNum != 2) {
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_topk_length",
-                                                             std::to_string(dimNum).c_str(),
+                                                             std::to_string(dimNum),
                                                              "The shape dim of cmp_topk_length must be 2 "
                                                              "when layout_q is TND");
                     return ACLNN_ERR_PARAM_INVALID;
@@ -724,7 +724,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             } else if (strcmp(layoutQOptional, "BSND") == 0) {
                 if (dimNum != 3) {
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_topk_length",
-                                                             std::to_string(dimNum).c_str(),
+                                                             std::to_string(dimNum),
                                                              "The shape dim of cmp_topk_length must be 3 "
                                                              "when layout_q is BSND");
                     return ACLNN_ERR_PARAM_INVALID;
@@ -745,14 +745,14 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
         // 校验 metadata 维度
         dimNum = GetDimNumSmla(metadata);
         if (dimNum != 1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "metadata", std::to_string(dimNum).c_str(), "1");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(SMLA_ACLNN_OP_NAME, "metadata", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 元素数
         if (metadata->GetViewShape().GetDim(0) != optiling::SMLA_METADATA_TOTAL_SIZE) {
             OP_LOGE_FOR_INVALID_SHAPESIZE(SMLA_ACLNN_OP_NAME, "metadata",
-                                          std::to_string(metadata->GetViewShape().GetDim(0)).c_str(),
-                                          std::to_string(optiling::SMLA_METADATA_TOTAL_SIZE).c_str());
+                                          std::to_string(metadata->GetViewShape().GetDim(0)),
+                                          std::to_string(optiling::SMLA_METADATA_TOTAL_SIZE));
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 数据类型
@@ -797,12 +797,12 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             } else if (IsTensorSourceSmla(querySource)) {
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                     SMLA_ACLNN_OP_NAME, querySource,
-                    std::to_string(GetRawShapeSizeSmla(querySource, queryBatchSize)).c_str(),
+                    std::to_string(GetRawShapeSizeSmla(querySource, queryBatchSize)),
                     "When has_ori_kv is true, " + GetSourceDescSmla(querySource) + " must be equal to batch_size");
             } else {
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                     SMLA_ACLNN_OP_NAME, oriKvSource,
-                    std::to_string(GetRawShapeSizeSmla(oriKvSource, oriKvBatchSize)).c_str(),
+                    std::to_string(GetRawShapeSizeSmla(oriKvSource, oriKvBatchSize)),
                     "When has_ori_kv is true, " + GetSourceDescSmla(oriKvSource) + " must be equal to batch_size");
             }
             return ACLNN_ERR_PARAM_INVALID;
@@ -838,12 +838,12 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             } else if (IsTensorSourceSmla(querySource)) {
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                     SMLA_ACLNN_OP_NAME, querySource,
-                    std::to_string(GetRawShapeSizeSmla(querySource, queryBatchSize)).c_str(),
+                    std::to_string(GetRawShapeSizeSmla(querySource, queryBatchSize)),
                     "When has_cmp_kv is true, " + GetSourceDescSmla(querySource) + " must be equal to batch_size");
             } else {
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                     SMLA_ACLNN_OP_NAME, cmpKvSource,
-                    std::to_string(GetRawShapeSizeSmla(cmpKvSource, cmpKvBatchSize)).c_str(),
+                    std::to_string(GetRawShapeSizeSmla(cmpKvSource, cmpKvBatchSize)),
                     "When has_cmp_kv is true, " + GetSourceDescSmla(cmpKvSource) + " must be equal to batch_size");
             }
             return ACLNN_ERR_PARAM_INVALID;
@@ -874,7 +874,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                 } else {
                     OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                         SMLA_ACLNN_OP_NAME, "cmp_residual_kv",
-                        std::to_string(cmpResidualKvOptional->GetViewShape().GetDim(0)).c_str(),
+                        std::to_string(cmpResidualKvOptional->GetViewShape().GetDim(0)),
                         "The shape size of cmp_residual_kv must be equal "
                         "to batch_size");
                 }
