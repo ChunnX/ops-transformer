@@ -421,6 +421,12 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::DeterProcess(
     } else {
         matmulService.AllocEventID();
     }
+    for (int32_t i = 0; i < 3; ++i) {
+        runInfos[i].isValid = false;
+        runInfos[i].taskId = 0;
+        runInfos[i].taskIdMod2 = 0;
+        runInfos[i].kRealSize = 0;
+    }
     int64_t coreNum = GetBlockNum();
     int64_t bS1TotalSize = tilingData->multiCoreParams.totalSize;
     int64_t extraLoopTimes = 2;
@@ -477,14 +483,15 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::DeterProcess(
                 vectorService.ProcessVector1(runInfoNeg1); // V1
             }
             if ASCEND_IS_AIC {
-                // matmulService.ComputeMm34(runInfos[(taskId + 2) % 3]); // C2
                 matmulService.ComputeMm5(runInfoNeg1); // C2
                 matmulService.ComputeMm6(runInfoNeg1); // C2
             }
         }
 
-        if (runInfoNeg2.isValid) {
-            if ASCEND_IS_AIV {
+        // valid 与 kRealSize==0 的 invalid task 都必须进 ProcessDeterVector2，
+        // 否则其它核会在 SYNC_C2_TO_V2_DETER_SA_FLAG_MOD0 上死等。
+        if ASCEND_IS_AIV {
+            if (runInfoNeg2.isValid || (taskId >= 2 && runInfoNeg2.taskId == taskId - 2)) {
                 vectorService.ProcessDeterVector2(runInfoNeg2);
                 runInfoNeg2.isValid = false;
             }
@@ -500,6 +507,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::DeterProcess(
             SLIGradKLLossRunInfo runInfo;
             runInfo.taskId = taskId - extraLoopTimes;
             runInfo.taskIdMod2 = runInfo.taskId & 1;
+            runInfo.kRealSize = 0;
+            runInfo.isValid = false;
             vectorService.ProcessDeterVector2(runInfo);
         }
     }
@@ -660,6 +669,9 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::GetRunInfo(in
     int64_t s1IdxEnd, int64_t accumS1Len, int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK, SLIGradKLLossRunInfo &runInfo)
 {
     if (s1Idx >= s1IdxEnd) {        // extra循环阶段，不生产任务
+        runInfo.taskId = taskId;
+        runInfo.taskIdMod2 = taskId & 1;
+        runInfo.kRealSize = 0;
         runInfo.isValid = false;
         return;
     }
@@ -701,6 +713,11 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::GetRunInfo(in
         constInfo.s2BaseSize : (runInfo.s2RealSize % constInfo.s2BaseSize);
 
     runInfo.kLoopTimes = CeilDiv(runInfo.kRealSize, runInfo.kBaseSize);
+    // kRealSize==0：跳过 V0/C1/V1/C2，但仍保留 taskId，供后续 ProcessDeterVector2 参与全局 barrier。
+    if (runInfo.kRealSize == 0) {
+        runInfo.isValid = false;
+        return;
+    }
     runInfo.kTailSize = (runInfo.kRealSize % runInfo.kBaseSize == 0) ?
         runInfo.kBaseSize : (runInfo.kRealSize % runInfo.kBaseSize);
 
