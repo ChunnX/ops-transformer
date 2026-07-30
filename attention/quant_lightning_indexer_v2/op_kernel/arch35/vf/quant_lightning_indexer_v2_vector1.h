@@ -1292,13 +1292,13 @@ __aicore__ inline void BatchMulWeightAndReduceSumMX(const LocalTensor<SCORE_T> &
     }
 }
 
-template <typename QK_T, typename SCORE_T>
+template <typename QK_T, typename SCORE_T, typename WEIGHT_T>
 __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(
     const LocalTensor<SCORE_T> &out_,
     uint32_t outStride,           // out    [S2Base]     [128   ]
     const LocalTensor<QK_T> &qk_, // q*k^t  [G, S2Base]  [64 128]
     uint32_t qkVLStride, uint32_t qkStride,
-    const LocalTensor<float> &weight_, // w  [G]          [64    ]
+    const LocalTensor<WEIGHT_T> &weight_, // w  [G]          [64    ]
     uint32_t weightStride, const LocalTensor<float> &weightTemp_, const float kScaleValue, const float qScaleValue,
     const int gSize, const int batch)
 {
