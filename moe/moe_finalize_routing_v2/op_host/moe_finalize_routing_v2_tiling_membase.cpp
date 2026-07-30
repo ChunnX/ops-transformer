@@ -659,7 +659,8 @@ bool MoeFinalizeRoutingV2Membase::IsUnpermuteFastPath() const
     };
     bool isA2OrA3 = socVersion_ == platform_ascendc::SocVersion::ASCEND910B ||
                     socVersion_ == platform_ascendc::SocVersion::ASCEND910_93;
-    return isA2OrA3 && dataType_ == ge::DT_BF16 && k_ == 1 && dropPadMode_ == DROP_MODE_VALUE_2 &&
+    bool isRowMajor = dropPadMode_ == DROP_MODE_VALUE_2 || dropPadMode_ == DROP_MODE_VALUE_3;
+    return isA2OrA3 && dataType_ == ge::DT_BF16 && k_ == 1 && isRowMajor &&
            isEmptyOptional(params.x1Shape) && isEmptyOptional(params.x2Shape) && isEmptyOptional(params.biasShape) &&
            isEmptyOptional(params.scalesShape) && isEmptyOptional(params.expertForSourceRowShape);
 }
@@ -679,6 +680,15 @@ int64_t MoeFinalizeRoutingV2Membase::GetFastPathMaxHiddenSize(int64_t bufferNum)
 
 ge::graphStatus MoeFinalizeRoutingV2Membase::CalcUnpermuteFastTiling()
 {
+    if (h_ <= 0) {
+        return ge::GRAPH_FAILED;
+    }
+    const auto& expandedXShape = params.expandedXShape->GetStorageShape();
+    int64_t expandedXRowNum = expandedXShape.GetShapeSize() / h_;
+    if (expandedXRowNum <= 0) {
+        return ge::GRAPH_FAILED;
+    }
+
     int64_t maxHiddenSize = GetFastPathMaxHiddenSize(FAST_PATH_MIN_BUFFER_NUM);
     if (maxHiddenSize <= 0) {
         return ge::GRAPH_FAILED;
@@ -736,7 +746,9 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::CalcUnpermuteFastTiling()
     }
 
     // Under key 20050 these fields carry the same quantities as MoeTokenUnpermute tiling.
+    // The fast path has no bias, so biasRowNum carries the number of addressable rows in expanded_x.
     usedCoreNum_ = fastUsedCoreNum;
+    biasRowNum_ = expandedXRowNum;
     normalH_ = fastHiddenSliceLength;
     hSliceNum_ = fastHiddenSliceCount;
     unnormalH_ = fastHiddenSliceRemain;
