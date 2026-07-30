@@ -41,16 +41,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QuantFlashAttnTilin
         return ge::GRAPH_SUCCESS; // 存在性校验负责
     }
     const std::vector<int64_t> supportedQuantModes = {
-        QUANT_MODE_A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-        QUANT_MODE_A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP32,
-        QUANT_MODE_A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16,
-        QUANT_MODE_A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP16,
         QUANT_MODE_A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16,
-        QUANT_MODE_A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-        QUANT_MODE_A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-        QUANT_MODE_A4C4_QKV_HIF4_P_HIF4_LEVEL1_SOFTMAX_FP16,
-        QUANT_MODE_A4C4_QKV_HIF4_P_HIF4_LEVEL2_SOFTMAX_FP16,
-        QUANT_MODE_A4C4_QKV_HIF4_P_HIF4_LEVEL3_SOFTMAX_FP16,
     };
     int64_t quantModeVal = *qfaInfo.opParamInfo.quantMode;
     OP_CHECK_IF(std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) ==
