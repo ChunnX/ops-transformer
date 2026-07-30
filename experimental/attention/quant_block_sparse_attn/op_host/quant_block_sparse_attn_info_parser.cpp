@@ -43,7 +43,6 @@ constexpr size_t DIM_SPARSE_N1 = 1U;
 constexpr size_t DIM_SPARSE_QB = 2U;
 constexpr size_t DIM_SPARSE_COUNT = 3U;
 constexpr size_t DIM_KV_HEAD_DIM = 3U;
-constexpr size_t DIM_V_DESCALE_N2 = 0U;
 constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 2U;
 constexpr uint32_t BSA_LAYOUT_Q_NTD_VALUE = 5U;
 } // namespace
@@ -100,41 +99,11 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
                                                               const gert::Shape &vDescaleShape,
                                                               const gert::RuntimeAttrs *attrs)
 {
-    if (keyShape.GetDimNum() == 1U) {
-        if (tilingInfo.paBlockStrideVal == 0U) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "pa_block_stride", "0",
-                                                  "must be greater than 0 for 1D combined KV storage");
-            return ge::GRAPH_FAILED;
-        }
-        if (!BSAGetDimAsU32(vDescaleShape, DIM_V_DESCALE_N2, tilingInfo.n2Size) || tilingInfo.n2Size == 0U) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "v_descale", Ops::Base::ToString(vDescaleShape),
-                                                  "v_descale must provide kvHeadNum in dim 0");
-            return ge::GRAPH_FAILED;
-        }
-        const int64_t keyStorageSize = keyShape.GetShapeSize();
-        if (keyStorageSize <= 0 || static_cast<uint64_t>(keyStorageSize) % tilingInfo.paBlockStrideVal != 0U) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                kOpName, "key", Ops::Base::ToString(keyShape),
-                "1D combined KV storage size must be a positive multiple of pa_block_stride=" +
-                    std::to_string(tilingInfo.paBlockStrideVal));
-            return ge::GRAPH_FAILED;
-        }
-
-        if (tilingInfo.n1Size % tilingInfo.n2Size != 0U) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                kOpName, "n1Size (query head num)", std::to_string(tilingInfo.n1Size),
-                "must be divisible by n2Size (kv head num) " + std::to_string(tilingInfo.n2Size));
-            return ge::GRAPH_FAILED;
-        }
-
-        tilingInfo.gSize = tilingInfo.n1Size / tilingInfo.n2Size;
-        tilingInfo.isGqa = (tilingInfo.gSize > 1U);
-        tilingInfo.s2Size = BSAGetPositiveAttr(attrs, BSA_MAX_SEQLEN_KV_ATTR_INDEX, tilingInfo.kvBlockSizeVal);
-        tilingInfo.kbMax = BSACeilDiv(tilingInfo.s2Size, tilingInfo.kvBlockSizeVal);
-        tilingInfo.qbMax = BSACeilDiv(tilingInfo.s1Size, tilingInfo.qBlockSizeVal);
-        tilingInfo.dSizeV = BSA_D_SIZE;
-        tilingInfo.paBlockNumSum = static_cast<uint32_t>(keyStorageSize / tilingInfo.paBlockStrideVal);
-        return ge::GRAPH_SUCCESS;
+    (void)vDescaleShape;
+    if (keyShape.GetDimNum() != DIM_NUM_4) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "key", std::to_string(keyShape.GetDimNum()) + "D",
+                                                 "4D PA BNBD [blockNum, kvHeadNum, blockSize, headDim]");
+        return ge::GRAPH_FAILED;
     }
 
     if (!BSAGetDimAsU32(keyShape, DIM_PA_N, tilingInfo.n2Size) ||
