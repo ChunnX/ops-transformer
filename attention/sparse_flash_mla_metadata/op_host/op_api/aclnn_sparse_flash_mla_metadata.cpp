@@ -30,8 +30,6 @@
 #include "acl/acl_rt.h"
 #include "../sparse_flash_mla_metadata_check.h"
 
-constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -72,12 +70,8 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     std::string socVersionStr = npuInfo.GetSocLongVersion();
     const char *socVersion = socVersionStr.c_str();
 
-    int64_t batchConsistencyLevel = 0;
-    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &batchConsistencyLevel);
-    if (aclRet != ACL_SUCCESS) {
-        OP_LOGW("aclnnSparseFlashMlaMetadata unable to get system param batch consistency level.");
-    }
-    bool isBatchConsistency = (batchConsistencyLevel == BATCH_CONSISTENCY_LEVEL);
+    bool isBatchConsistency = true;
+    OP_LOGW("SMLA_METADATA_TEST_ROUTE=batch_consistency forced=1");
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                            cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenOriKv,

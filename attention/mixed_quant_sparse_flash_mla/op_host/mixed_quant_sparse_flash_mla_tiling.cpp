@@ -16,7 +16,6 @@
 #include "mixed_quant_sparse_flash_mla_check.h"
 #include "../op_kernel/mixed_quant_sparse_flash_mla_template_tiling_key.h"
 #include "mixed_quant_sparse_flash_mla_tiling.h"
-#include "acl/acl_rt.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -30,17 +29,6 @@ constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
 struct QSMLACompileInfo {
     int64_t core_num;
 };
-
-static bool IsBatchConsistencyEnabled(const char *opName)
-{
-    int64_t batchConsistencyLevel = 0;
-    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &batchConsistencyLevel);
-    if (aclRet != ACL_SUCCESS) {
-        OP_LOGW(opName, "Unable to get system param batch consistency level.");
-    }
-    bool isBatchConsistency = (batchConsistencyLevel == BATCH_CONSISTENCY_LEVEL);
-    return isBatchConsistency;
-}
 
 // --------------------------QSMLAInfoParser类成员函数定义-------------------------------------
 ge::graphStatus MQSMLAInfoParser::CheckRequiredInOutExistence() const
@@ -93,7 +81,7 @@ ge::graphStatus MQSMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    batchConsistency_ = IsBatchConsistencyEnabled(opName_);
+    batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
 
     return ge::GRAPH_SUCCESS;
 }
