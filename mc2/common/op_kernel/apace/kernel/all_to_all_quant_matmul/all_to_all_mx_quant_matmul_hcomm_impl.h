@@ -151,7 +151,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
     rankDim_ = hccl_.GetRankDim();
 
     uint64_t rankForComm = commTiling.nonSplitAxisSize / rankDim_;
-    uint32_t scaleKPerRank = 
+    uint32_t scaleKPerRank =
         static_cast<uint32_t>(Blaze::Gemm::CeilDiv(rankForComm, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE);
 
     uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * rankForComm;

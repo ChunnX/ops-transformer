@@ -67,9 +67,11 @@ public:
 
     // ---- Layout factories ----
     using MakeLayoutA = AscendC::Te::FrameLayoutFormat<LayoutA, AscendC::Std::Int<kC0Size>>;
-    using MakeLayoutScaleA = AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleANDLayoutPtn, AscendC::Std::Int<kScaleC0>>;
+    using MakeLayoutScaleA = AscendC::Te::FrameLayoutFormat<
+      AscendC::Te::ScaleANDLayoutPtn, AscendC::Std::Int<kScaleC0>>;
     using MakeLayoutB = AscendC::Te::FrameLayoutFormat<LayoutB, AscendC::Std::Int<kC0Size>>;
-    using MakeLayoutScaleB = AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<kScaleC0>>;
+    using MakeLayoutScaleB = AscendC::Te::FrameLayoutFormat<
+      AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<kScaleC0>>;
     using MakeLayoutC = AscendC::Te::FrameLayoutFormat<LayoutC, AscendC::Std::Int<AscendC::Te::C0_ELEMENT<CType>>>;
 
     // ---- Fragment MMAD types ----
@@ -91,54 +93,54 @@ public:
     * @brief Tiling 配置（对标 blaze QBMMTiling）
     */
     struct QBMMTiling {
-      uint32_t baseM{0};
-      uint32_t baseN{0};
-      uint32_t baseK{0};
-      uint32_t dbL0C{0};
+        uint32_t baseM{0};
+        uint32_t baseN{0};
+        uint32_t baseK{0};
+        uint32_t dbL0C{0};
     };
 
     /**
     * @brief Fragment 相关参数
     */
     struct FragmentParams {
-      uint32_t tileCnt{0};
-      uint32_t tileM{0};
-      uint32_t tailCnt{0};
-      uint32_t tailM{0};
-      uint32_t paddedTailM{0};
-      uint32_t commTurn{0};
-      uint64_t headRows{0};
-      uint32_t rankId{0};
-      uint32_t rankSize{0};
-      uint32_t mPerRank{0};        // M per rank
-      uint64_t k{0};
-      uint64_t n{0};
-      uint64_t scaleKLen{0};
+        uint32_t tileCnt{0};
+        uint32_t tileM{0};
+        uint32_t tailCnt{0};
+        uint32_t tailM{0};
+        uint32_t paddedTailM{0};
+        uint32_t commTurn{0};
+        uint64_t headRows{0};
+        uint32_t rankId{0};
+        uint32_t rankSize{0};
+        uint32_t mPerRank{0};        // M per rank
+        uint64_t k{0};
+        uint64_t n{0};
+        uint64_t scaleKLen{0};
     };
 
     /**
     * @brief 顶层参数结构
     */
     struct Params {
-      const QuantMatmulTilingData* mmTile{nullptr};
-      QBMMTiling qbmmParams;
-      FragmentParams fragParams;
+        const QuantMatmulTilingData* mmTile{nullptr};
+        QBMMTiling qbmmParams;
+        FragmentParams fragParams;
 
-      // GM pointers
-      GM_ADDR aGM{nullptr};
-      GM_ADDR aScaleGM{nullptr};
-      GM_ADDR bGM{nullptr};
-      GM_ADDR bScaleGM{nullptr};
-      GM_ADDR cGM{nullptr};
+        // GM pointers
+        GM_ADDR aGM{nullptr};
+        GM_ADDR aScaleGM{nullptr};
+        GM_ADDR bGM{nullptr};
+        GM_ADDR bScaleGM{nullptr};
+        GM_ADDR cGM{nullptr};
 
-      // Win buffer base addresses (computed by communication layer)
-      GM_ADDR winDataBase{nullptr};
-      GM_ADDR winScaleBase{nullptr};
+        // Win buffer base addresses (computed by communication layer)
+        GM_ADDR winDataBase{nullptr};
+        GM_ADDR winScaleBase{nullptr};
 
-      // Computed dimensions
-      uint64_t dataBytesPerMRow{0};
-      uint64_t scaleBytesPerMRow{0};
-      uint64_t cBytesPerM{0};
+        // Computed dimensions
+        uint64_t dataBytesPerMRow{0};
+        uint64_t scaleBytesPerMRow{0};
+        uint64_t cBytesPerM{0};
     };
 
     __aicore__ inline void Run(const Params& params);
@@ -166,14 +168,14 @@ private:
 
     // ---- Tile context resolution ----
     struct TileCtx {
-      uint32_t dependId;
-      uint32_t roundIdx;
-      RegionTag region;
-      int64_t regionMPos;
-      const FragTensorA* fragA;
-      const FragScaleA* fragScaleA;
-      const FragTensorC* fragC;
-      uint64_t rankCnt;
+        uint32_t dependId;
+        uint32_t roundIdx;
+        RegionTag region;
+        int64_t regionMPos;
+        const FragTensorA* fragA;
+        const FragScaleA* fragScaleA;
+        const FragTensorC* fragC;
+        uint64_t rankCnt;
   };
     __aicore__ inline TileCtx ResolveTileCtx(int64_t mPos,
         int64_t headMainRows, int64_t mainRoundRows, int64_t mainSectionRows,
@@ -218,7 +220,7 @@ template <typename AType, typename BType, typename CType>
 __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Init(const Params& params)
 {
     if ASCEND_IS_AIV {
-      return;
+        return;
     }
     aGmAddr_ = reinterpret_cast<__gm__ AType*>(params.aGM);
     bGmAddr_ = reinterpret_cast<__gm__ BType*>(params.bGM);
@@ -237,15 +239,15 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::SetL2C
 
     // B (DN layout): K 轴为 leading dim，对齐 128B 时关闭 L2 cache 以 streaming
     if constexpr (weightNz) {
-      gmB.SetL2CacheHint(
-          fullMBlock ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+        gmB.SetL2CacheHint(
+            fullMBlock ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
     } else {
-      // DN: transB → fast dim = K
-      const bool bAlignForL2Stream =
-          (AscendC::Te::Get<Blaze::Gemm::MNK_K>(problemShape) & kCacheLineAlignMask) == 0;
-      gmB.SetL2CacheHint(
-          (fullMBlock && bAlignForL2Stream) ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE
-                                            : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+        // DN: transB → fast dim = K
+        const bool bAlignForL2Stream =
+            (AscendC::Te::Get<Blaze::Gemm::MNK_K>(problemShape) & kCacheLineAlignMask) == 0;
+        gmB.SetL2CacheHint(
+            (fullMBlock && bAlignForL2Stream) ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE
+                                              : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
     }
 
     // ScaleB (DN layout): N * scaleC0 bytes 对齐
@@ -330,7 +332,7 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Proces
     const auto& mTailTile = mmT.mTailTile;
     const auto& nTailTile = mmT.nTailTile;
     if ((sch.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
-      sch.UpdateTailTile(mTailTile, nTailTile);
+        sch.UpdateTailTile(mTailTile, nTailTile);
     }
 
     uint32_t waitedMask = 0U;
@@ -340,64 +342,64 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Proces
     int64_t mPos = 0L, nPos = 0L;
 
     while (sch.GetTileIdx(blockIdx)) {
-      auto singleShape = sch.template GetBlockShape<
-        Blaze::Gemm::QuantMode::MX_PERGROUP_MODE, Blaze::Gemm::QuantMode::MX_PERGROUP_MODE,
-        BlockMmadFragC::weightNz>(blockIdx);
-      int64_t curMtile = Te::Get<0>(singleShape);
-      int64_t curNtile = Te::Get<1>(singleShape);
-      if (curMtile <= 0 || curNtile <= 0) {
-        break;
-      }
-      sch.GetTileCoord(blockIdx, mPos, nPos);
-
-      auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows,
-                                fp.rankSize, fp.commTurn);
-
-      // 按位记录已等待过的 dependId，避免重复 wait。
-      if ((waitedMask & (1U << ctx.dependId)) == 0U) {
-        CrossCoreWaitFlag<0x2, PIPE_MTE2>(ctx.dependId);
-        waitedMask |= (1U << ctx.dependId);
-      }
-
-      // Per-tile L2 cache hint
-      SetL2Cache(problemShape, curMtile, curNtile, gmB, gmScaleB);
-
-      auto gmBlockB = gmB.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(Ki, curNtile));
-      auto gmBlockScaleB = gmScaleB.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(scaleKLen, curNtile));
-      auto gmBlockBias = gmBias.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(1L, curNtile));
-
-      auto coordA = Te::MakeCoord(ctx.regionMPos, 0L);
-      auto coordC = Te::MakeCoord(ctx.regionMPos, nPos);
-      auto shapeA = Te::MakeShape(curMtile, Ki);
-      auto shapeScaleA = Te::MakeShape(curMtile, scaleKLen);
-      auto shapeC = Te::MakeShape(curMtile, curNtile);
-
-      // MAIN/TAIL 的 fragment tensor 延迟到首次命中时构建/更新地址。
-      if (ctx.region == MAIN) {
-        if (curMainRoundIdx_ == 0xFFFFFFFF) {
-          BuildMainFragment(params, ctx.roundIdx);
-        } else if (curMainRoundIdx_ != ctx.roundIdx) {
-          UpdateMainRoundAddrs(params, ctx.roundIdx);
+        auto singleShape = sch.template GetBlockShape<
+          Blaze::Gemm::QuantMode::MX_PERGROUP_MODE, Blaze::Gemm::QuantMode::MX_PERGROUP_MODE,
+          BlockMmadFragC::weightNz>(blockIdx);
+        int64_t curMtile = Te::Get<0>(singleShape);
+        int64_t curNtile = Te::Get<1>(singleShape);
+        if (curMtile <= 0 || curNtile <= 0) {
+            break;
         }
-      } else if (ctx.region == TAIL && !tailBuilt_) {
-        BuildTailFragment(params);
-        tailBuilt_ = true;
+        sch.GetTileCoord(blockIdx, mPos, nPos);
+
+        auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows,
+                                  fp.rankSize, fp.commTurn);
+
+        // 按位记录已等待过的 dependId，避免重复 wait。
+        if ((waitedMask & (1U << ctx.dependId)) == 0U) {
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(ctx.dependId);
+            waitedMask |= (1U << ctx.dependId);
+        }
+
+        // Per-tile L2 cache hint
+        SetL2Cache(problemShape, curMtile, curNtile, gmB, gmScaleB);
+
+        auto gmBlockB = gmB.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(Ki, curNtile));
+        auto gmBlockScaleB = gmScaleB.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(scaleKLen, curNtile));
+        auto gmBlockBias = gmBias.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(1L, curNtile));
+
+        auto coordA = Te::MakeCoord(ctx.regionMPos, 0L);
+        auto coordC = Te::MakeCoord(ctx.regionMPos, nPos);
+        auto shapeA = Te::MakeShape(curMtile, Ki);
+        auto shapeScaleA = Te::MakeShape(curMtile, scaleKLen);
+        auto shapeC = Te::MakeShape(curMtile, curNtile);
+
+        // MAIN/TAIL 的 fragment tensor 延迟到首次命中时构建/更新地址。
+        if (ctx.region == MAIN) {
+            if (curMainRoundIdx_ == 0xFFFFFFFF) {
+                BuildMainFragment(params, ctx.roundIdx);
+            } else if (curMainRoundIdx_ != ctx.roundIdx) {
+                UpdateMainRoundAddrs(params, ctx.roundIdx);
+            }
+        } else if (ctx.region == TAIL && !tailBuilt_) {
+            BuildTailFragment(params);
+            tailBuilt_ = true;
+        }
+
+        auto blockA = ctx.fragA->Slice(coordA, shapeA);
+        auto blockScaleA = ctx.fragScaleA->Slice(coordA, shapeScaleA);
+        auto blockC = ctx.fragC->Slice(coordC, shapeC);
+        mmadFrag(blockA, gmBlockB, blockScaleA, gmBlockScaleB, gmBlockBias,
+                cFragAddrs_, static_cast<uint64_t>(fp.mPerRank), static_cast<uint64_t>(fp.tileM),
+                static_cast<uint64_t>(fp.tileCnt), static_cast<uint64_t>(fp.tailM),
+                ctx.rankCnt, Ni, singleShape, ctx.regionMPos, nPos, 0, blockC);
       }
 
-      auto blockA = ctx.fragA->Slice(coordA, shapeA);
-      auto blockScaleA = ctx.fragScaleA->Slice(coordA, shapeScaleA);
-      auto blockC = ctx.fragC->Slice(coordC, shapeC);
-      mmadFrag(blockA, gmBlockB, blockScaleA, gmBlockScaleB, gmBlockBias,
-              cFragAddrs_, static_cast<uint64_t>(fp.mPerRank), static_cast<uint64_t>(fp.tileM),
-              static_cast<uint64_t>(fp.tileCnt), static_cast<uint64_t>(fp.tailM),
-              ctx.rankCnt, Ni, singleShape, ctx.regionMPos, nPos, 0, blockC);
-    }
-
-    // 确保所有 dependId 均已 wait（收尾清理）。
-    for (uint32_t t = 0; t <= fp.commTurn; ++t) {
-      if ((waitedMask & (1U << t)) == 0U) {
-        CrossCoreWaitFlag<0x2, PIPE_MTE2>(t);
-      }
+      // 确保所有 dependId 均已 wait（收尾清理）。
+      for (uint32_t t = 0; t <= fp.commTurn; ++t) {
+          if ((waitedMask & (1U << t)) == 0U) {
+              CrossCoreWaitFlag<0x2, PIPE_MTE2>(t);
+          }
     }
 }
 
@@ -423,7 +425,7 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::BuildF
     constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
 
     for (uint32_t r = 0; r < fp.rankSize; ++r) {
-      cFragAddrs_[r] = params.cGM + static_cast<uint64_t>(r) * fp.mPerRank * params.cBytesPerM;
+        cFragAddrs_[r] = params.cGM + static_cast<uint64_t>(r) * fp.mPerRank * params.cBytesPerM;
     }
 
     tileMDataStride_ = static_cast<uint64_t>(fp.tileM) * params.dataBytesPerMRow;
@@ -431,17 +433,15 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::BuildF
     tileMCStride_ = static_cast<uint64_t>(fp.tileM) * params.cBytesPerM;
 
     // HEAD：自身数据，单 fragment tensor。
-    {
-      GM_ADDR addrListA[MAX_FRAG] = {params.aGM};
-      GM_ADDR addrListScale[MAX_FRAG] = {params.aScaleGM};
-      GM_ADDR addrListC[MAX_FRAG] = {cFragAddrs_[fp.rankId]};
-      headFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
-          MakeFragParam(fp.headRows, fp.headRows, 1, fp.k), addrListA);
-      headFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
-          MakeFragParam(fp.headRows, fp.headRows, 1, fp.scaleKLen), addrListScale);
-      headFragC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutC, CType>(
-          MakeFragParam(fp.headRows, fp.headRows, 1, fp.n), addrListC);
-    }
+    GM_ADDR addrListA[MAX_FRAG] = {params.aGM};
+    GM_ADDR addrListScale[MAX_FRAG] = {params.aScaleGM};
+    GM_ADDR addrListC[MAX_FRAG] = {cFragAddrs_[fp.rankId]};
+    headFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
+        MakeFragParam(fp.headRows, fp.headRows, 1, fp.k), addrListA);
+    headFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
+        MakeFragParam(fp.headRows, fp.headRows, 1, fp.scaleKLen), addrListScale);
+    headFragC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutC, CType>(
+        MakeFragParam(fp.headRows, fp.headRows, 1, fp.n), addrListC);
     // main / tail 的 fragment tensor 延迟到首次使用时构建，构建开销被 comm wait 掩盖。
 }
 
@@ -449,12 +449,12 @@ template <typename AType, typename BType, typename CType>
 __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::EnsureWinRankBasesReady(const Params& params)
 {
     if (winBasesReady_) {
-      return;
+        return;
     }
     const auto& fp = params.fragParams;
     for (uint32_t r = 0; r < fp.rankSize; ++r) {
-      winDataRankBase_[r] = params.winDataBase + static_cast<uint64_t>(r) * fp.mPerRank * params.dataBytesPerMRow;
-      winScaleRankBase_[r] = params.winScaleBase + static_cast<uint64_t>(r) * fp.mPerRank * params.scaleBytesPerMRow;
+        winDataRankBase_[r] = params.winDataBase + static_cast<uint64_t>(r) * fp.mPerRank * params.dataBytesPerMRow;
+        winScaleRankBase_[r] = params.winScaleBase + static_cast<uint64_t>(r) * fp.mPerRank * params.scaleBytesPerMRow;
     }
     winBasesReady_ = true;
 }
@@ -476,13 +476,13 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::BuildM
     GM_ADDR addrListC[MAX_FRAG];
     uint32_t fragIdx = 0;
     for (uint32_t r = 0; r < fp.rankSize; ++r) {
-      if (r == fp.rankId) {
-        continue;
-      }
-      addrListA[fragIdx] = winDataRankBase_[r] + curRoundDataOff_;
-      addrListScale[fragIdx] = winScaleRankBase_[r] + curRoundScaleOff_;
-      addrListC[fragIdx] = cFragAddrs_[r] + curRoundCOff_;
-      fragIdx++;
+        if (r == fp.rankId) {
+            continue;
+        }
+        addrListA[fragIdx] = winDataRankBase_[r] + curRoundDataOff_;
+        addrListScale[fragIdx] = winScaleRankBase_[r] + curRoundScaleOff_;
+        addrListC[fragIdx] = cFragAddrs_[r] + curRoundCOff_;
+        fragIdx++;
     }
     curMainA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
         MakeFragParam(fp.tileM, fp.tileM, fp.rankSize - 1, fp.k), addrListA);
@@ -564,31 +564,31 @@ QuantMatmulMxKernelAgPrefill<AType, BType, CType>::ResolveTileCtx(
 {
     TileCtx ctx{};
     if (mPos < headMainRows) {
-      ctx.dependId = 0;
-      ctx.region = HEAD;
-      ctx.regionMPos = mPos;
-      ctx.fragA = &headFragA_;
-      ctx.fragScaleA = &headFragScaleA_;
-      ctx.fragC = &headFragC_;
-      ctx.rankCnt = static_cast<uint64_t>(rankSize - 1);
+        ctx.dependId = 0;
+        ctx.region = HEAD;
+        ctx.regionMPos = mPos;
+        ctx.fragA = &headFragA_;
+        ctx.fragScaleA = &headFragScaleA_;
+        ctx.fragC = &headFragC_;
+        ctx.rankCnt = static_cast<uint64_t>(rankSize - 1);
     } else if (mPos < headMainRows + mainSectionRows) {
-      int64_t relPos = mPos - headMainRows;
-      ctx.roundIdx = static_cast<uint32_t>(relPos / mainRoundRows);
-      ctx.dependId = ctx.roundIdx + 1;
-      ctx.region = MAIN;
-      ctx.regionMPos = relPos % mainRoundRows;
-      ctx.fragA = &curMainA_;
-      ctx.fragScaleA = &curMainScaleA_;
-      ctx.fragC = &curMainC_;
-      ctx.rankCnt = static_cast<uint64_t>(rankSize - 1);
+        int64_t relPos = mPos - headMainRows;
+        ctx.roundIdx = static_cast<uint32_t>(relPos / mainRoundRows);
+        ctx.dependId = ctx.roundIdx + 1;
+        ctx.region = MAIN;
+        ctx.regionMPos = relPos % mainRoundRows;
+        ctx.fragA = &curMainA_;
+        ctx.fragScaleA = &curMainScaleA_;
+        ctx.fragC = &curMainC_;
+        ctx.rankCnt = static_cast<uint64_t>(rankSize - 1);
     } else {
-      ctx.dependId = commTurn;
-      ctx.region = TAIL;
-      ctx.regionMPos = mPos - headMainRows - mainSectionRows;
-      ctx.fragA = &tailFragA_;
-      ctx.fragScaleA = &tailFragScaleA_;
-      ctx.fragC = &tailFragC_;
-      ctx.rankCnt = static_cast<uint64_t>(rankSize);
+        ctx.dependId = commTurn;
+        ctx.region = TAIL;
+        ctx.regionMPos = mPos - headMainRows - mainSectionRows;
+        ctx.fragA = &tailFragA_;
+        ctx.fragScaleA = &tailFragScaleA_;
+        ctx.fragC = &tailFragC_;
+        ctx.rankCnt = static_cast<uint64_t>(rankSize);
     }
     return ctx;
 }

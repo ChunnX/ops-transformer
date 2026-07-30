@@ -504,9 +504,9 @@ private:
         params.k = static_cast<uint16_t>(Blaze::Gemm::CeilAlign(curKL0, MXFP_DIVISOR_SIZE));
         params.n = static_cast<uint16_t>(tileL1L0Param.curN);
         params.unitFlag = (iter0 + 1 == kL1Iter_ && iter1 + 1 == kL0Iter && (splitKIdx == splitKNum_ - 1)) ?
- 	                      FINAL_ACCUMULATION : NON_FINAL_ACCUMULATION;
- 	    params.cmatrixInitVal = (iter0 == 0 && iter1 == 0 && splitKIdx == 0 && !isBias_);
- 	    if (NeedBias(iter0, iter1, splitKIdx)) {
+                          FINAL_ACCUMULATION : NON_FINAL_ACCUMULATION;
+        params.cmatrixInitVal = (iter0 == 0 && iter1 == 0 && splitKIdx == 0 && !isBias_);
+        if (NeedBias(iter0, iter1, splitKIdx)) {
             AscendC::Te::Mmad(
                 AscendC::Te::MmadAtom<
                     AscendC::Te::MmadTraits<AscendC::Te::MmadOperation, Blaze::Gemm::Tile::MmadTraitMX>>{}

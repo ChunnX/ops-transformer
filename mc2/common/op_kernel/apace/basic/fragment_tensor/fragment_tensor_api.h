@@ -23,7 +23,7 @@ namespace Basic {
 /*!
  * \brief 创建FragmentTensor
  */
-template<uint32_t Dims, uint32_t MaxFragments = MAX_FRAGMENT_COUNT, 
+template<uint32_t Dims, uint32_t MaxFragments = MAX_FRAGMENT_COUNT,
     typename LayoutFactory = void, typename ElementType = uint8_t>
 __aicore__ inline auto MakeFragmentTensor(
     const FragmentParam<Dims>& fragParam,
