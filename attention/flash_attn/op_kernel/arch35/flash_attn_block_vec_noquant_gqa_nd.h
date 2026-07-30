@@ -163,7 +163,9 @@ public:
     // ==================== Functions ======================
     __aicore__ inline FANoQuantGqaBlockVecNd(ConstInfoX &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
                                              SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
-        : constInfo(constInfo), qSeqLensTool(qSeqLensTool), kvSeqLensTool(kvSeqLensTool){};
+        : constInfo(constInfo),
+          qSeqLensTool(qSeqLensTool),
+          kvSeqLensTool(kvSeqLensTool){};
 
     __aicore__ inline void InitBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
@@ -206,7 +208,7 @@ public:
             uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];         // 2 * 8K = 16K, 输入BUF: MASK拷入
             uint8_t vec2Res[32768U];                                        // 32K, 输出BUF: attn_out拷出
             uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT]
-                                  [UB_VEC1_RES_BUF_BYTES]; // 2 * 32.25K = 64.5K, 输出BUF: softmax结果拷贝至L1
+                                  [UB_VEC1_RES_BUF_BYTES];                          // 2 * 32.25K = 64.5K, 输出BUF: softmax结果拷贝至L1
             uint8_t softmaxSumBuf[UB_SOFTMAX_SUM_BUFCNT][UB_SOFTMAX_SUM_BUF_BYTES]; // 3 * 0.25K = 0.75K, sum常驻BUF
             uint8_t softmaxMaxBuf[UB_SOFTMAX_MAX_BUFCNT][UB_SOFTMAX_MAX_BUF_BYTES]; // 3 * 0.25K = 0.75K, max常驻BUF
             uint8_t softmaxExpBuf[UB_SOFTMAX_EXP_BUFCNT][UB_SOFTMAX_EXP_BUF_BYTES]; // 3 * 0.25K = 0.75K, exp常驻BUF
@@ -536,12 +538,15 @@ public:
             int32_t gStartIdx = vecMStartIdx / runInfo.actS1Size;
             int32_t gEndIdx = vecMEndIdx / runInfo.actS1Size;
             if (gStartIdx == gEndIdx) {
-                // 只跨1个G
+                // 只跨1个G: 检查s1范围是否与无效区间重叠
                 ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
             } else {
-                // 跨多个G
-                ret = (s1StartTdx < s1FirstValidToken);
-                ret = ret || (s1EndTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+                // 跨多个G: 第一个G尾部[s1StartTdx, actS1Size-1]、中间完整G[0, actS1Size-1]、
+                // 最后一个G头部[0, s1EndTdx]三段都可能含无效行。
+                // 后续G的s1均从0开始, 存在左无效行(s1FirstValidToken>0)必命中;
+                // 中间G的s1均到actS1Size-1结束, 存在右无效行(s1LastValidToken<actS1Size-1)必命中
+                ret = (s1FirstValidToken > 0) ||
+                      (s1LastValidToken < static_cast<int64_t>(runInfo.actS1Size) - 1);
             }
         }
         return ret;
