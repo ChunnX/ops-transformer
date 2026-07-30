@@ -152,6 +152,19 @@ public:
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(
                 L0C_HALF_BUF_SIZE + L0C_PINGPONG_BUF_SIZE * i);
         }
+#ifdef BSA_PV_RESCALE_PROBE_FP8
+        {
+            const uint32_t probeBase =
+                l1BufAddrStart +
+                l1ATileM * l1ATileK * sizeof(ElementA) * l1ABufNum +
+                l1BTileK * l1BTileN * sizeof(ElementB) * l1BBufNum;
+            // L1 tail must fit 48KB probe buffers
+            probeL1A_ = resource.l1Buf.template GetBufferByByte<float>(probeBase);
+            probeL1B_ = resource.l1Buf.template GetBufferByByte<float>(
+                probeBase + PROBE_L1A_BYTES);
+            l0CScratch_ = resource.l0CBuf.template GetBufferByByte<float>(0); // front half
+        }
+#endif
     }
 
     /// Destructor
@@ -428,6 +441,11 @@ protected:
     AscendC::LocalTensor<ElementA> l0ATensor[L0_STAGES];
     AscendC::LocalTensor<ElementB> l0BTensor[L0_STAGES];
     AscendC::LocalTensor<ElementAccumulator> l0CTensor[L0_STAGES];
+#ifdef BSA_PV_RESCALE_PROBE_FP8
+    AscendC::LocalTensor<float> probeL1A_;
+    AscendC::LocalTensor<float> probeL1B_;
+    AscendC::LocalTensor<float> l0CScratch_;
+#endif
 
     TileMmad tileMmad;
     CopyL1ToL0A copyL1ToL0A;
