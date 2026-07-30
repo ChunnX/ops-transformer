@@ -20,19 +20,24 @@ template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32
           uint32_t Q_QUANT_MODE, bool Q_OUT_L2_UNCACHEABLE>
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
-    __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch, uint64_t qHeadNum,
-                                uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize, uint64_t tokenTile,
-                                uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead, uint64_t kvCacheStrideToken,
-                                uint64_t kScaleCacheStrideBlock, uint64_t kScaleCacheStrideHead,
-                                uint64_t kScaleCacheStrideToken, float epsilon, uint64_t mropeSectionH,
-                                uint64_t mropeSectionW)
+    __aicore__ inline void Init(const GlobalTensors &tensors,
+                                const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
         if ASCEND_IS_AIC {
-            InitAic(tensors, qHeadNum, kvHeadNum);
+            InitAic(tensors, tilingData->qHeadNum, tilingData->kvHeadNum);
+        } else if constexpr (IS_MROPE) {
+            InitAiv(tensors, tilingData->totalTokens, 0U, tilingData->qHeadNum, tilingData->kvHeadNum,
+                    tilingData->headDim, tilingData->blockSize, tilingData->tokenTile,
+                    tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead, tilingData->kvCacheStrideToken,
+                    tilingData->kScaleCacheStrideBlock, tilingData->kScaleCacheStrideHead,
+                    tilingData->kScaleCacheStrideToken, tilingData->epsilon, tilingData->mropeSectionH,
+                    tilingData->mropeSectionW);
         } else {
-            InitAiv(tensors, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize, tokenTile, kvCacheStrideBlock,
-                    kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock, kScaleCacheStrideHead,
-                    kScaleCacheStrideToken, epsilon, mropeSectionH, mropeSectionW);
+            InitAiv(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum, tilingData->kvHeadNum,
+                    tilingData->headDim, tilingData->blockSize, tilingData->tokenTile,
+                    tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead, tilingData->kvCacheStrideToken,
+                    tilingData->kScaleCacheStrideBlock, tilingData->kScaleCacheStrideHead,
+                    tilingData->kScaleCacheStrideToken, tilingData->epsilon, 0U, 0U);
         }
     }
 
@@ -45,12 +50,12 @@ public:
             }
         } else {
             vec_.PrepareBeforeLoop(coreTokenBegin, coreTokenEnd);
-            for (uint32_t i = 0U; i < MROPE_K_CONSUMED_CREDITS; ++i) {
-                if constexpr (DIRECT_MROPE_Q_OUT) {
+            if constexpr (IS_MROPE) {
+                for (uint32_t i = 0U; i < QKV_K_SCALE_DOUBLE_BUFFER_NUM; ++i) {
                     SetAivVToAicFixMropeKConsumed();
-                } else {
-                    SetAivMte3ToAicFixCConsumed();
                 }
+            } else {
+                SetAivMte3ToAicFixCConsumed();
             }
         }
     }
@@ -82,7 +87,7 @@ private:
         pendingKQuantBufferId_ = 0U;
         aRotL1Pool_ = LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_K_SCALE_A_ROT_L1_POOL_OFFSET,
                                               QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS);
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             kRotationDbPoolUb_ = LocalTensor<float>(
                 TPosition::LCM, QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_DB_POOL_OFFSET,
                 QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_DB_POOL_FLOAT_ELEMENTS);
@@ -107,7 +112,7 @@ private:
         pendingKQuantBufferId_ = 0U;
         aRotL1Pool_ = LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_K_SCALE_A_ROT_L1_POOL_OFFSET,
                                               QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS);
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             qkPreprocessDbPoolUb_ = LocalTensor<float>(
                 TPosition::LCM, QKV_K_SCALE_MROPE_COMPACT_QK_PREPROCESS_DB_POOL_OFFSET,
                 QKV_K_SCALE_MROPE_COMPACT_QK_PREPROCESS_DB_POOL_FLOAT_ELEMENTS);
@@ -130,20 +135,16 @@ private:
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         uint32_t outputBufferId = 0U;
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             outputBufferId = static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
             WaitAivVToAicFixMropeKConsumed();
         } else {
             outputBufferUseId_ += isLastTile ? 1U : QKV_K_SCALE_AIV_OUTPUT_BUFFER_USES_PER_TILE;
             outputBufferId = static_cast<uint32_t>(outputBufferUseId_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-            if constexpr (DIRECT_MROPE_Q_OUT) {
-                WaitAivMte3ToAicFixMropeKConsumed();
-            } else {
-                WaitAivMte3ToAicFixCConsumed();
-            }
+            WaitAivMte3ToAicFixCConsumed();
         }
         WaitAivMte3ToAicMte1AReady();
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             cube_.ComputeTile(tile, aRotL1Nz,
                               kRotationDbPoolUb_[outputBufferId *
                                                   QKV_K_SCALE_MROPE_COMPACT_K_ROTATION_ONE_BUFFER_FLOAT_ELEMENTS]);
@@ -152,7 +153,7 @@ private:
                               outputDbPoolUb_[outputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS]);
         }
         SetAicMte1ToAivMte3AConsumed();
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             // K is already in the shared UB. Let VEC consume it before the
             // independent Q L0C->GM Fixpipe is submitted.
             SetAicFixToAivMropeKReady();
@@ -168,7 +169,7 @@ private:
         const uint32_t aRotL1BufferId = static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             const uint32_t preprocessBufferId =
                 static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
 
@@ -210,31 +211,19 @@ private:
                 outputDbPoolUb_[outputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS], outputBufferId);
             ++outputBufferUseId_;
             if (isLastTile && tileCount_ > 0U) {
-                if constexpr (DIRECT_MROPE_Q_OUT) {
-                    SetAivMte3ToAicFixMropeKConsumed();
-                } else {
-                    SetAivMte3ToAicFixCConsumed();
-                }
+                SetAivMte3ToAicFixCConsumed();
             }
             SetAivMte3ToAicMte1AReady();
             if (tileCount_ > 0U) {
                 const uint32_t lastOutputBufferId = static_cast<uint32_t>(outputBufferUseId_ &
                                                                           (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-                if constexpr (DIRECT_MROPE_Q_OUT) {
-                    WaitAicFixToAivMropeKReady();
-                } else {
-                    WaitAicFixToAivVCReady();
-                }
+                WaitAicFixToAivVCReady();
                 vec_.PostprocessQk(
                     lastTile,
                     outputDbPoolUb_[lastOutputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
                     lastOutputBufferId);
                 if (!isLastTile) {
-                    if constexpr (DIRECT_MROPE_Q_OUT) {
-                        SetAivMte3ToAicFixMropeKConsumed();
-                    } else {
-                        SetAivMte3ToAicFixCConsumed();
-                    }
+                    SetAivMte3ToAicFixCConsumed();
                 }
                 ++outputBufferUseId_;
             }
@@ -255,12 +244,12 @@ private:
 
     __aicore__ inline void EndAic()
     {
-        for (uint32_t i = 0U; i < MROPE_K_CONSUMED_CREDITS; ++i) {
-            if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
+            for (uint32_t i = 0U; i < QKV_K_SCALE_DOUBLE_BUFFER_NUM; ++i) {
                 WaitAivVToAicFixMropeKConsumed();
-            } else {
-                WaitAivMte3ToAicFixCConsumed();
             }
+        } else {
+            WaitAivMte3ToAicFixCConsumed();
         }
         tileCount_ = 0U;
         cube_.EndIntraCoreEvents();
@@ -268,7 +257,7 @@ private:
 
     __aicore__ inline void EndAiv(const TileParam &lastTile)
     {
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             if (hasPendingKTile_) {
                 vec_.ScatterMropeK(pendingKTile_, pendingKQuantBufferId_);
                 hasPendingKTile_ = false;
@@ -290,19 +279,11 @@ private:
         } else if (tileCount_ > 0U) {
             const uint32_t lastOutputBufferId = static_cast<uint32_t>(outputBufferUseId_ &
                                                                       (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-            if constexpr (DIRECT_MROPE_Q_OUT) {
-                WaitAicFixToAivMropeKReady();
-            } else {
-                WaitAicFixToAivVCReady();
-            }
+            WaitAicFixToAivVCReady();
             vec_.PostprocessQk(lastTile,
                                outputDbPoolUb_[lastOutputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
                                lastOutputBufferId);
-            if constexpr (DIRECT_MROPE_Q_OUT) {
-                SetAivMte3ToAicFixMropeKConsumed();
-            } else {
-                SetAivMte3ToAicFixCConsumed();
-            }
+            SetAivMte3ToAicFixCConsumed();
             ++outputBufferUseId_;
             tileCount_ = 0U;
         }
@@ -372,21 +353,9 @@ private:
         AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_C_CONSUMED);
     }
 
-    __aicore__ inline void SetAivMte3ToAicFixMropeKConsumed()
-    {
-        AscendC::CrossCoreSetFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(SYNC_MROPE_K_CONSUMED);
-    }
-
     __aicore__ inline void SetAivVToAicFixMropeKConsumed()
     {
         AscendC::CrossCoreSetFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_V>(SYNC_MROPE_K_CONSUMED);
-    }
-
-    __aicore__ inline void WaitAivMte3ToAicFixMropeKConsumed()
-    {
-        AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_MROPE_K_CONSUMED +
-                                                                                 QKV_K_SCALE_AIV1_FLAG_OFFSET);
-        AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_MROPE_K_CONSUMED);
     }
 
     __aicore__ inline void WaitAivVToAicFixMropeKConsumed()
@@ -396,15 +365,8 @@ private:
         AscendC::CrossCoreWaitFlag<QKV_K_SCALE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_MROPE_K_CONSUMED);
     }
 
-    static constexpr bool DIRECT_MROPE_Q_OUT =
-        (QKV_LAYOUT == QKV_K_SCALE_LAYOUT_TND && ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE &&
-         Q_OUT_LAYOUT == QKV_K_SCALE_LAYOUT_TND &&
-         K_QUANT_MODE == QKV_K_SCALE_K_QUANT_MODE_INT8 &&
-         Q_QUANT_MODE == QKV_K_SCALE_Q_QUANT_MODE_NO_QUANT);
+    static constexpr bool IS_MROPE = ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE;
     static constexpr uint32_t QKV_K_SCALE_AIV_OUTPUT_BUFFER_USES_PER_TILE = 2U;
-    static constexpr uint32_t QKV_K_SCALE_C_OUTPUT_BUFFER_CREDITS = 1U;
-    static constexpr uint32_t MROPE_K_CONSUMED_CREDITS =
-        DIRECT_MROPE_Q_OUT ? QKV_K_SCALE_DOUBLE_BUFFER_NUM : QKV_K_SCALE_C_OUTPUT_BUFFER_CREDITS;
 
     uint64_t tileCount_;
     uint64_t outputBufferUseId_;
@@ -415,7 +377,7 @@ private:
     LocalTensor<float> outputDbPoolUb_;
     LocalTensor<float> qkPreprocessDbPoolUb_;
     LocalTensor<float> kRotationDbPoolUb_;
-    QkvRmsNormRopeCacheWithKScaleCube<DIRECT_MROPE_Q_OUT, Q_OUT_L2_UNCACHEABLE> cube_;
+    QkvRmsNormRopeCacheWithKScaleCube<ROPE_MODE, Q_OUT_L2_UNCACHEABLE> cube_;
     QkvRmsNormRopeCacheWithKScaleVec<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE>
         vec_;
 };

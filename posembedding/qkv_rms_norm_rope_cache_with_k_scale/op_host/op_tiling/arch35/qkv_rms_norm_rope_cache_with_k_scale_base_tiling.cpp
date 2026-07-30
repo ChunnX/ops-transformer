@@ -232,13 +232,10 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateDtypes() const
     if (ropeMode_ == RopeMode::MROPE) {
         rules.push_back({"kCache", &input_.kCache, ge::DT_INT8});
         rules.push_back({"mropePosition", &input_.mropePosition, ge::DT_INT32});
-        rules.push_back({"qOut", &input_.qOut, ge::DT_BF16});
     } else {
         rules.push_back({"kCache", &input_.kCache, ge::DT_FLOAT8_E4M3FN});
         rules.push_back({"queryStartLoc", &input_.queryStartLoc, ge::DT_INT32});
         rules.push_back({"seqLens", &input_.seqLens, ge::DT_INT32});
-        rules.push_back({"qOut", &input_.qOut, ge::DT_FLOAT8_E4M3FN});
-        rules.push_back({"qScale", &input_.qScale, ge::DT_FLOAT});
     }
 
     for (const auto &rule : rules) {
@@ -311,33 +308,13 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMropeSection()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateOutputContract() const
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateQOutDtypeAttr() const
 {
     const ge::DataType expectedQOutDtype =
         ropeMode_ == RopeMode::MROPE ? ge::DT_BF16 : ge::DT_FLOAT8_E4M3FN;
-    OP_CHECK_IF(!input_.qOut.descriptorPresent,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qOut", "missing", "qOut must exist"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!input_.qOut.shapePresent,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qOut", "shape missing", "qOut shape must exist"),
-                return ge::GRAPH_FAILED);
     OP_CHECK_IF(qOutDtypeAttr_ != expectedQOutDtype,
                 OP_LOGE_FOR_INVALID_DTYPE(opName_, "q_out_dtype", DtypeName(qOutDtypeAttr_),
                                           DtypeName(expectedQOutDtype)),
-                return ge::GRAPH_FAILED);
-
-    if (ropeMode_ == RopeMode::MROPE) {
-        // ACLNN rejects a caller-provided qScale. The L0 wrapper materializes
-        // this optional middle output internally to preserve the kernel ABI.
-        return ge::GRAPH_SUCCESS;
-    }
-    OP_CHECK_IF(!input_.qScale.descriptorPresent,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qScale", "missing",
-                                                      "qScale must exist in the RoPE scene"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!input_.qScale.shapePresent,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qScale", "shape missing",
-                                                      "qScale shape must exist in the RoPE scene"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -781,9 +758,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateParsedInput() c
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale Q quantization mode validation failed."),
                 return ge::GRAPH_FAILED);
-    status = ValidateOutputContract();
+    status = ValidateQOutDtypeAttr();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale output contract validation failed."),
+                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale q_out_dtype validation failed."),
                 return ge::GRAPH_FAILED);
     status = ValidateShapes();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
@@ -976,30 +953,6 @@ TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, uint64_t i
     return info;
 }
 
-TensorContractInfo ToIrOutputTensorInfo(gert::TilingContext *context, uint64_t irIndex)
-{
-    TensorContractInfo info;
-    const auto instanceInfo = context->GetIrOutputInstanceInfo(irIndex);
-    if (instanceInfo != nullptr && instanceInfo->GetInstanceNum() == 0) {
-        return info;
-    }
-    const uint64_t outputIndex =
-        instanceInfo == nullptr ? irIndex : static_cast<uint64_t>(instanceInfo->GetInstanceStart());
-    const auto desc = context->GetOutputDesc(outputIndex);
-    if (desc == nullptr) {
-        return info;
-    }
-    info.descriptorPresent = true;
-    info.dtype = desc->GetDataType();
-    const auto shape = context->GetOutputShape(outputIndex);
-    if (shape == nullptr) {
-        return info;
-    }
-    info.shape = shape->GetStorageShape();
-    info.shapePresent = true;
-    return info;
-}
-
 void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogTensorInfo(const char *tensorName,
                                                             const TensorContractInfo &info) const
 {
@@ -1035,8 +988,6 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogContractInput() const
     LogTensorInfo("rotation", input_.rotation);
     LogTensorInfo("vScale", input_.vScale);
     LogTensorInfo("mropePosition", input_.mropePosition);
-    LogTensorInfo("qOut", input_.qOut);
-    LogTensorInfo("qScale", input_.qScale);
 }
 
 ge::graphStatus SetWorkspace(gert::TilingContext *context, const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
@@ -1307,12 +1258,6 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillOptionalTensorInputs()
     input_.mropePosition = ToOptionalTensorInfo(context_, MROPE_POSITION_INDEX);
 }
 
-void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillOutputTensorInfos()
-{
-    input_.qOut = ToIrOutputTensorInfo(context_, Q_OUT_INDEX);
-    input_.qScale = ToIrOutputTensorInfo(context_, Q_SCALE_INDEX);
-}
-
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractInput()
 {
     CacheMropeSectionAttr();
@@ -1321,7 +1266,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractInput()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(FillRequiredTensorInputs() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to parse required tensor inputs."), return ge::GRAPH_FAILED);
-    FillOutputTensorInfos();
 
     OP_CHECK_IF(ParseQQuantModeAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse q_quant_mode attr."),
                 return ge::GRAPH_FAILED);
@@ -1478,7 +1422,7 @@ uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::GetTilingKey() const
     const uint64_t kQuantModeKey =
         kCacheIsInt8 ? QKV_K_SCALE_K_QUANT_MODE_INT8 : QKV_K_SCALE_K_QUANT_MODE_FP8;
     const uint64_t qOutBytes = input_.totalTokens * input_.numQHeads * input_.headDim *
-                               static_cast<uint64_t>(ge::GetSizeByDataType(input_.qOut.dtype));
+                               static_cast<uint64_t>(ge::GetSizeByDataType(qOutDtypeAttr_));
     const uint64_t kOutBytes = input_.totalTokens * input_.numKHeads * input_.headDim *
                                static_cast<uint64_t>(ge::GetSizeByDataType(input_.kCache.dtype));
     const uint64_t vOutBytes = input_.totalTokens * input_.numVHeads * input_.headDim *

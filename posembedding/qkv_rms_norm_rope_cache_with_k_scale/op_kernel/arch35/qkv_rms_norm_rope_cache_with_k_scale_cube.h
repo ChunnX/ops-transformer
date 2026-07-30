@@ -19,7 +19,7 @@ constexpr FixpipeConfig QKV_K_SCALE_FIXPIPE_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR
 constexpr FixpipeConfig QKV_K_SCALE_FIXPIPE_ROW_MAJOR_GM = {CO2Layout::ROW_MAJOR, false};
 constexpr uint8_t QKV_K_SCALE_FIXPIPE_DUAL_DST_SPLIT_M = 1;
 
-template <bool DIRECT_MROPE_Q_OUT = false, bool Q_OUT_L2_UNCACHEABLE = false>
+template <uint32_t ROPE_MODE, bool Q_OUT_L2_UNCACHEABLE>
 class QkvRmsNormRopeCacheWithKScaleCube {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t qHeadNum, uint64_t kvHeadNum)
@@ -35,7 +35,7 @@ public:
     {
         for (uint32_t bufferId = 0U; bufferId < AIC_L0_BUFFER_NUM; ++bufferId) {
             SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
-            if constexpr (DIRECT_MROPE_Q_OUT) {
+            if constexpr (IS_MROPE) {
                 SetFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIX_TO_MMAD_L0_BASE + bufferId));
             }
         }
@@ -45,7 +45,7 @@ public:
     {
         for (uint32_t bufferId = 0U; bufferId < AIC_L0_BUFFER_NUM; ++bufferId) {
             WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
-            if constexpr (DIRECT_MROPE_Q_OUT) {
+            if constexpr (IS_MROPE) {
                 WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIX_TO_MMAD_L0_BASE + bufferId));
             }
         }
@@ -66,7 +66,7 @@ public:
     {
         const uint32_t l0cBufferId = static_cast<uint32_t>(l0cBufferUseId_ &
                                                            (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIX_TO_MMAD_L0_BASE + l0cBufferId));
         }
         const uint64_t qRows = tile.cubeTokenSize * qHeadNum_;
@@ -74,13 +74,13 @@ public:
         const uint64_t qRowsPerAiv = tile.cubeHalfTokenSize * qHeadNum_;
         const uint64_t kL0cOffset = AlignUp(qRows, QKV_K_SCALE_NZ_C0) * QKV_K_SCALE_HEAD_DIM_D128;
         ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, l0cBufferId, kL0cOffset);
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             SetFlag<HardEvent::M_FIX>(static_cast<event_t>(EVT_MMAD_TO_FIX_L0_BASE + l0cBufferId));
             WaitFlag<HardEvent::M_FIX>(static_cast<event_t>(EVT_MMAD_TO_FIX_L0_BASE + l0cBufferId));
         } else {
             FixpipeSegmentToAivUb(qRows, 0U, l0cBufferId, 0U, qkAfterCubeUb);
         }
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             FixpipeSegmentToAivUb(kRows, 0U, l0cBufferId, kL0cOffset, qkAfterCubeUb);
         } else {
             FixpipeSegmentToAivUb(kRows, qRowsPerAiv, l0cBufferId, kL0cOffset, qkAfterCubeUb);
@@ -90,7 +90,7 @@ public:
 
     __aicore__ inline void FixpipeQToGm(const TileParam &tile)
     {
-        if constexpr (!DIRECT_MROPE_Q_OUT) {
+        if constexpr (!IS_MROPE) {
             return;
         }
 
@@ -104,6 +104,7 @@ public:
     }
 
 private:
+    static constexpr bool IS_MROPE = ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE;
     static constexpr uint32_t AIC_L0_BUFFER_NUM = QKV_K_SCALE_DOUBLE_BUFFER_NUM;
     static constexpr uint32_t AIC_M_L0_TILE = 128U;
     static constexpr uint32_t AIC_L0A_BUFFER_ELEMENTS = 64U * QKV_K_SCALE_KIB / sizeof(bfloat16_t);
@@ -290,7 +291,7 @@ private:
     __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
     {
         rotationGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.rotation);
-        if constexpr (DIRECT_MROPE_Q_OUT) {
+        if constexpr (IS_MROPE) {
             qOutBf16Gm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.qOut);
             if constexpr (Q_OUT_L2_UNCACHEABLE) {
                 qOutBf16Gm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);

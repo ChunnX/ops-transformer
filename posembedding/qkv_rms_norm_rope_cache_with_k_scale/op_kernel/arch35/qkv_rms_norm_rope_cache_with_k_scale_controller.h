@@ -29,32 +29,18 @@ public:
         TokenRange tokenRange = {0U, 0U};
         MakeCoreTokenRange(tokenRange, tilingData, cubeIndex);
 
-        QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE,
-                                                Q_OUT_L2_UNCACHEABLE>
-            basicBlock;
         TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM];
         InitTileParamBuffer(tileParam);
-        if constexpr (ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE) {
-            basicBlock.Init(tensors, tilingData->totalTokens, 0U, tilingData->qHeadNum, tilingData->kvHeadNum,
-                            tilingData->headDim, tilingData->blockSize, tilingData->tokenTile,
-                            tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead,
-                            tilingData->kvCacheStrideToken, tilingData->kScaleCacheStrideBlock,
-                            tilingData->kScaleCacheStrideHead, tilingData->kScaleCacheStrideToken, tilingData->epsilon,
-                            tilingData->mropeSectionH, tilingData->mropeSectionW);
-        } else {
-            basicBlock.Init(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum,
-                            tilingData->kvHeadNum, tilingData->headDim, tilingData->blockSize, tilingData->tokenTile,
-                            tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead,
-                            tilingData->kvCacheStrideToken, tilingData->kScaleCacheStrideBlock,
-                            tilingData->kScaleCacheStrideHead, tilingData->kScaleCacheStrideToken, tilingData->epsilon,
-                            0U, 0U);
-        }
-        basicBlock.PrepareBeforeLoop(tokenRange.begin, tokenRange.end);
-        const uint64_t localTileId = ForEachTile(basicBlock, tilingData, tokenRange, tileParam);
-        basicBlock.End(tileParam[GetLastProcessId(localTileId)]);
+        basicBlock_.Init(tensors, tilingData);
+        basicBlock_.PrepareBeforeLoop(tokenRange.begin, tokenRange.end);
+        const uint64_t localTileId = ForEachTile(tilingData, tokenRange, tileParam);
+        basicBlock_.End(tileParam[GetLastProcessId(localTileId)]);
     }
 
 private:
+    using BasicBlock = QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE,
+                                                               Q_QUANT_MODE, Q_OUT_L2_UNCACHEABLE>;
+
     struct TokenRange {
         uint64_t begin;
         uint64_t end;
@@ -114,13 +100,9 @@ private:
         tile.aivTokenSize = aivLocalId == 0U ? tile.cubeHalfTokenSize : tile.tokenSize - tile.cubeHalfTokenSize;
     }
 
-    __aicore__ inline uint64_t
-    ForEachTile(
-        QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE,
-                                                Q_OUT_L2_UNCACHEABLE>
-            &basicBlock,
-                const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, const TokenRange &range,
-                TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM]) const
+    __aicore__ inline uint64_t ForEachTile(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
+                                           const TokenRange &range,
+                                           TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM])
     {
         uint64_t localTileId = 0U;
         for (uint64_t tokenOffset = range.begin; tokenOffset < range.end;) {
@@ -132,8 +114,8 @@ private:
             const uint32_t processId = GetProcessId(localTileId);
             const uint32_t lastProcessId = GetLastProcessId(localTileId);
             FillTileParam(tileParam[processId], tilingData, tokenOffset, tokenSize);
-            basicBlock.ComputeTile(tileParam[processId], tileParam[lastProcessId],
-                                   tokenOffset + tokenSize >= range.end);
+            basicBlock_.ComputeTile(tileParam[processId], tileParam[lastProcessId],
+                                    tokenOffset + tokenSize >= range.end);
             tokenOffset += tokenSize;
             ++localTileId;
         }
@@ -157,6 +139,8 @@ private:
         return static_cast<uint32_t>((tileId + QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U) &
                                      (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
     }
+
+    BasicBlock basicBlock_;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale

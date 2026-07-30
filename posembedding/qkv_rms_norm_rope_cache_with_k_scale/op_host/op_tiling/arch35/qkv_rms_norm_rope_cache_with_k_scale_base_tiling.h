@@ -57,8 +57,6 @@ struct ContractInput {
     TensorContractInfo rotation;
     TensorContractInfo vScale;
     TensorContractInfo mropePosition;
-    TensorContractInfo qOut;
-    TensorContractInfo qScale;
 };
 
 class QkvRmsNormRopeCacheWithKScaleBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -102,7 +100,7 @@ private:
     ge::graphStatus ValidateScalarInputs() const;
     ge::graphStatus ValidateDtypes() const;
     ge::graphStatus ValidateMropeSection();
-    ge::graphStatus ValidateOutputContract() const;
+    ge::graphStatus ValidateQOutDtypeAttr() const;
     ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName,
                                       uint64_t expectedRank) const;
     ge::graphStatus ValidateShapeInputsForDerivedFields() const;
@@ -135,7 +133,6 @@ private:
     ge::graphStatus FillShapeDerivedFields();
     ge::graphStatus FillRequiredTensorInputs();
     void FillOptionalTensorInputs();
-    void FillOutputTensorInfos();
     ge::graphStatus BuildContractInput();
     ge::graphStatus ValidateCompileInfo(const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo) const;
     bool IsMropeCompactTile(uint64_t tokenTile) const;
