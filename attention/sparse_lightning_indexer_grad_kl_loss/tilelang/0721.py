@@ -1597,8 +1597,23 @@ def tilelang_grad_kl_loss_single_kernel(
                 # 每个 task 仅读取一次真实 K 长度，仅用于保护本 task 的
                 # atomic scatter。V2 DMA 范围由编译期 k_scatter_exec 决定。
                 valid_k_size = K if full_valid else KRealSize[bz_task, s1_task]
+                task_vector_batch_count = vector_batch_count
+                if not full_valid:
+                    remaining_valid_k = valid_k_size - aiv_k_start
+                    task_vector_batch_count = T.if_then_else(
+                        remaining_valid_k > 0,
+                        T.min(
+                            vector_batch_count,
+                            (
+                                remaining_valid_k
+                                + v2_scatter_batch
+                                - 1
+                            ) // v2_scatter_batch,
+                        ),
+                        0,
+                    )
 
-                if vector_batch_count > 0:
+                if task_vector_batch_count > 0:
                     T.wait_flag("mte3", "mte2", 6)
                     T.copy(
                         dk_matmul_partial[
@@ -1611,10 +1626,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     )
                     T.set_flag("mte2", "mte3", 6)
 
-                    for batch_id in T.serial(vector_batch_count):
+                    for batch_id in T.serial(task_vector_batch_count):
                         current_slot = batch_id % 2
                         next_slot = (batch_id + 1) % 2
-                        if batch_id + 1 < vector_batch_count:
+                        if batch_id + 1 < task_vector_batch_count:
                             next_k_start = (
                                 aiv_k_start
                                 + (batch_id + 1) * v2_scatter_batch
