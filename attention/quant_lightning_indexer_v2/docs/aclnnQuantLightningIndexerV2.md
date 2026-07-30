@@ -4,30 +4,30 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
 <!-- npu="950" id1 -->
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-|<term>Atlas 推理系列产品</term>|      ×     |
+- <term>Atlas 推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-|<term>Atlas 训练系列产品</term>|      ×     |
+- <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：`QuantLightningIndexerV2`是推理场景下，稀疏attention前处理的计算，选出关键的稀疏token，并对输入query和key进行量化实现存8算8，获取最大收益。
+
+- 版本演进：在QuantLightningIndexer的基础上，新增压缩key场景、分核计算metadata、稀疏value输出等能力。
 
 - 计算公式：
 
@@ -116,7 +116,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>公式中的$Q_{index}^{Quant}$。</td>
+      <td>公式中量化后的 Query。</td>
       <td>不支持空tensor。</td>
       <td>INT8、FLOAT8_e4m3fn、HIFLOAT8</td>
       <td>ND</td>
@@ -131,7 +131,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>公式中的$K_{index}^{Quant}$。</td>
+      <td>公式中量化后的 Key。</td>
       <td>
           <ul>
                 <li>不支持空tensor。</li>
@@ -152,7 +152,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
     <tr>
       <td>weights</td>
       <td>输入</td>
-      <td>公式中的$W$。</td>
+      <td>公式中的权重系数 W。</td>
       <td>不支持空tensor。</td>
       <td>FLOAT16、FLOAT32</td>
       <td>ND</td>
@@ -167,7 +167,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
     <tr>
       <td>queryDequantScale</td>
       <td>输入</td>
-      <td>公式中的$Scale_Q$，Index Query的反量化系数。</td>
+      <td>公式中 Query 的反量化系数。</td>
       <td>不支持空tensor。</td>
       <td>FLOAT16、FLOAT32</td>
       <td>ND</td>
@@ -177,7 +177,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
     <tr>
       <td>keyDequantScale</td>
       <td>输入</td>
-      <td>公式中的$Scale_K$，Index Key的反量化系数。</td>
+      <td>公式中 Key 的反量化系数。</td>
       <td>不支持空tensor。</td>
       <td>FLOAT16、FLOAT32</td>
       <td>ND</td>
@@ -190,7 +190,6 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>每个Batch中，Query的有效token数（TND场景使用cu_seqlens格式）。</td>
       <td>
           <ul>
-                <li>如果不指定可传入None。</li>
                 <li>当layout_query为TND时，该入参必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和。</li>
           </ul>
       </td>
@@ -205,7 +204,6 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>每个Batch中，Key的有效token数（TND场景使用cu_seqlens格式）。</td>
       <td>
           <ul>
-                <li>如果不指定可传入None。</li>
                 <li>当layout_key为TND时，该入参必须传入。</li>
           </ul>
       </td>
@@ -220,7 +218,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>每个Batch中，Query的有效token数（BSND场景使用seqused格式）。</td>
       <td>
           <ul>
-                <li>如果不指定可传入None，表示和query的shape的S长度相同。</li>
+                <li>表示和query的shape的S长度相同。</li>
                 <li>该入参中每个Batch的有效token数不超过query中的维度S大小且不小于0。</li>
           </ul>
       </td>
@@ -235,7 +233,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>每个Batch中，Key的有效token数（BSND场景使用seqused格式）。</td>
       <td>
           <ul>
-                <li>如果不指定可传入None，表示和key的shape的S长度相同。</li>
+                <li>表示和key的shape的S长度相同。</li>
                 <li>该入参中每个Batch的有效token数不超过key中的维度S大小且不小于0。</li>
                 <li>当layout_key为PA_BSND时，该入参必须传入。</li>
           </ul>
@@ -249,7 +247,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>cmpResidualKOptional</td>
       <td>输入</td>
       <td>压缩场景下Key的残余长度。</td>
-      <td>如果不指定可传入None。</td>
+      <td>-</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -274,7 +272,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>outputIdxOffsetOptional</td>
       <td>输入</td>
       <td>输出索引的偏移量。</td>
-      <td>如果不指定可传入None。</td>
+      <td>-</td>
       <td>INT32</td>
       <td>ND</td>
       <td>-</td>
@@ -299,7 +297,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>topk</td>
       <td>输入</td>
       <td>topK阶段需要保留的block数量。</td>
-      <td>支持[1, 2048]，默认值2048。</td>
+      <td>支持[1, 2048]。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -323,7 +321,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>maxSeqlenQOptional</td>
       <td>输入</td>
       <td>Query的最大序列长度。</td>
-      <td>默认值-1，表示任意可能长度。</td>
+      <td>-</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -335,8 +333,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>用于标识输入Query的数据排布格式。</td>
       <td>
           <ul>
-                <li>用户不特意指定时可传入默认值"BSND"。</li>
-                <li>当前支持BSND、TND。</li>
+                <li>支持BSND、TND。</li>
           </ul>
       </td>
       <td>STRING</td>
@@ -350,7 +347,6 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>用于标识输入Key的数据排布格式。</td>
       <td>
           <ul>
-                <li>用户不特意指定时可传入默认值"PA_BSND"。</li>
                 <li>支持 PA_BSND、BSND、TND。</li>
           </ul>
       </td>
@@ -367,7 +363,6 @@ aclnnStatus aclnnQuantLightningIndexerV2(
           <ul>
                 <li>0代表defaultMask模式。</li>
                 <li>3代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li>
-                <li>默认值0。</li>
           </ul>
       </td>
       <td>INT64</td>
@@ -382,7 +377,6 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>
           <ul>
                 <li>支持 (0, 128] 内的正整数。</li>
-                <li>默认值1。</li>
           </ul>
       </td>
       <td>INT64</td>
@@ -396,7 +390,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>表示是否输出sparseValuesOut。</td>
       <td>
           <ul>
-                <li>1表示输出，0表示不输出；默认值为0。</li>
+                <li>1表示输出，0表示不输出。</li>
           </ul>
       </td>
       <td>INT64</td>
@@ -558,6 +552,8 @@ aclnnStatus aclnnQuantLightningIndexerV2(
 - block_size 取值为 16 的倍数，最大支持 1024。
 - 当 `layout_key` 不为 PA_BSND 时，`layout_query` 和 `layout_key` 必须一致。
 - 当 `quant_mode` 为 4 时，`queryDequantScale` 和 `keyDequantScale` 的 shape 维度必须为 1 且 shape[0]=1（即 Per-Tensor 量化）。
+
+- **确定性说明：** aclnnQuantLightningIndexerV2 默认确定性实现。
 
 ## 调用示例
 
