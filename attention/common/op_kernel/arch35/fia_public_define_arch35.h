@@ -23,19 +23,18 @@
 #endif
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "../fia_public_define.h"
-
-using namespace AscendC;
-using AscendC::AIC;
-using AscendC::AIV;
-using AscendC::GlobalTensor;
-using AscendC::LocalTensor;
-using AscendC::SetFlag;
-using AscendC::ShapeInfo;
-using AscendC::SoftmaxConfig;
-using AscendC::WaitFlag;
 
 namespace AttentionCommon {
+
+enum class FIA_LAYOUT : uint32_t {
+    BSH = 0,
+    BSND = 0,
+    BNSD = 1,
+    NZ = 2,
+    TND = 3,
+    NBSD = 4,
+    NTD = 5
+};
 
 enum class FiaKernelType : uint8_t {
     NO_QUANT = 0,
@@ -212,6 +211,13 @@ struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo, PAConstInfo, LseC
 
 template <>
 struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
+
+__aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
+{
+    sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
+    sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
+    return sInnerToken;
+}
 } // namespace AttentionCommon
 
-#endif // FIA_PUBLIC_DEFINE_H
+#endif // FIA_PUBLIC_DEFINE_ARCH35_H
