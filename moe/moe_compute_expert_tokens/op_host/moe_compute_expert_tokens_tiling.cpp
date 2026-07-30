@@ -439,7 +439,7 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext *context)
     OP_LOGD(context->GetNodeName(), "[MoeComputeExpertTokens] Tiling4MoeComputeExpertTokens running begin");
     OP_CHECK_IF(!CheckParamsShape(context),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckParamsShape",
-                                                      "GRAPH_FAILED", 
+                                                      "GRAPH_FAILED",
                                                       "Tiling4MoeComputeExpertTokens check shape failed."),
                 return ge::GRAPH_FAILED);
 
