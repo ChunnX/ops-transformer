@@ -21,14 +21,6 @@ import numpy as np
 import torch
 
 
-def _module_load_error(stage, path, exc):
-    return RuntimeError(
-        "Failed to load MixedQuantSparseFlashMla module; "
-        f"stage={stage}; module={path.resolve()}; "
-        f"original error: {type(exc).__name__}: {exc}"
-    )
-
-
 class NumpyBatchRandomContext:
     """Make declared batch slices deterministic before quantized KV packing."""
 
@@ -36,7 +28,7 @@ class NumpyBatchRandomContext:
 
     def __init__(self, q, kwargs):
         self.batch_size = int(q.shape[0])
-        self.relations = self._parse_relations(q, kwargs)
+        self.relations = self.parse_relations(q, kwargs)
         self.base_seed = self.relations[0][1]
         self.call_index = 0
         self.original_numpy_uniform = None
@@ -59,7 +51,7 @@ class NumpyBatchRandomContext:
         return cls(q, kwargs)
 
     @staticmethod
-    def _parse_relations(q, kwargs):
+    def parse_relations(q, kwargs):
         batch_axis = kwargs["batch_axis"]
         batch_slices = kwargs["batch_slice_info"]
         batch_seed = kwargs["batch_seed"]
@@ -74,7 +66,7 @@ class NumpyBatchRandomContext:
         if not relations:
             raise ValueError("MQSMLA batch consistency requires at least one q slice")
         if len({seed for _, seed in relations}) != 1:
-            raise ValueError("MQSMLA batch consistency currently supports one relation seed per case")
+            raise ValueError("MQSMLA batch consistency supports one relation seed per case")
         for slice_value, _ in relations:
             start, stop, step = slice_value
             if step != 1 or start < 0 or start >= stop or stop > int(q.shape[0]):
@@ -90,13 +82,13 @@ class NumpyBatchRandomContext:
             raise ValueError("MQSMLA batch consistency currently supports quant_mode=1 only")
 
     @classmethod
-    def _derive_seed(cls, seed, call_index):
+    def derive_seed(cls, seed, call_index):
         return (int(seed) + (call_index + 1) * 1000003) % cls.SEED_MODULUS
 
-    def _numpy_uniform(self, low=0.0, high=1.0, size=None):
+    def numpy_uniform(self, low=0.0, high=1.0, size=None):
         call_index = self.call_index
         self.call_index += 1
-        rng = np.random.default_rng(self._derive_seed(self.base_seed, call_index))
+        rng = np.random.default_rng(self.derive_seed(self.base_seed, call_index))
         value = rng.uniform(low, high, size)
         if size is None:
             return value
@@ -107,21 +99,21 @@ class NumpyBatchRandomContext:
         for slice_value, seed in self.relations:
             selector = (slice(*slice_value),) + (slice(None),) * (value.ndim - 1)
             piece = value[selector]
-            piece_rng = np.random.default_rng(self._derive_seed(seed, call_index))
+            piece_rng = np.random.default_rng(self.derive_seed(seed, call_index))
             value[selector] = piece_rng.uniform(low, high, piece.shape)
         return value
 
-    def _python_uniform(self, low, high):
+    def python_uniform(self, low, high):
         call_index = self.call_index
         self.call_index += 1
-        rng = random.Random(self._derive_seed(self.base_seed, call_index))
+        rng = random.Random(self.derive_seed(self.base_seed, call_index))
         return rng.uniform(low, high)
 
     def __enter__(self):
         self.original_numpy_uniform = np.random.uniform
         self.original_python_uniform = random.uniform
-        np.random.uniform = self._numpy_uniform
-        random.uniform = self._python_uniform
+        np.random.uniform = self.numpy_uniform
+        random.uniform = self.python_uniform
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -132,6 +124,18 @@ class NumpyBatchRandomContext:
 
 class MixedQuantSparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
+
+    PYTEST_BLOCK_SIZE = 64
+    PYTEST_TILE_SIZE = 64
+    TEMPLATE_MODES = frozenset(("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"))
+
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load MixedQuantSparseFlashMla module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
 
     def __init__(self):
         self.pytest_modules = {}
@@ -151,7 +155,9 @@ class MixedQuantSparseFlashMlaInputAdapter:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error("assets Golden store", path, exc) from exc
+            raise MixedQuantSparseFlashMlaInputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -178,7 +184,7 @@ class MixedQuantSparseFlashMlaInputAdapter:
             return module
         except Exception as exc:
             sys.modules.pop(name, None)
-            raise _module_load_error(f"pytest {stem}", module_path, exc) from exc
+            raise self.module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -198,7 +204,27 @@ class MixedQuantSparseFlashMlaInputAdapter:
             return []
         return [int(value[i + 1]) - int(value[i]) for i in range(len(value) - 1)]
 
-    def build_case_params(self, q, ori_kv, cmp_kv, cmp_sparse_indices,
+    @staticmethod
+    def data_range(input_ranges, index):
+        if not input_ranges or index >= len(input_ranges):
+            return None
+        value = input_ranges[index]
+        if value is None or any(item is None for item in value):
+            return None
+        return list(value)
+
+    @classmethod
+    def select_template_mode(cls, kwargs):
+        mode = kwargs.get("template_run_mode") or kwargs.get("template_mode")
+        if mode is None:
+            return None
+        mode = str(mode).strip()
+        if mode not in cls.TEMPLATE_MODES:
+            raise ValueError(f"unsupported explicit template_run_mode: {mode!r}")
+        return mode
+
+    def build_case_params(self, q, ori_kv, cmp_kv, ori_sparse_indices,
+                          cmp_sparse_indices,
                           layout_q, layout_kv, kwargs):
         cu_q = self.list_value(kwargs, "cu_seqlens_q")
         cu_ori = self.list_value(kwargs, "cu_seqlens_ori_kv")
@@ -214,51 +240,80 @@ class MixedQuantSparseFlashMlaInputAdapter:
             _, q_heads, head_dim = [int(x) for x in q.shape]
             batch_size = len(seq_q or self.prefix_lengths(cu_q))
             q_seq = max(self.prefix_lengths(cu_q) or seq_q or [int(q.shape[0])])
+        if kwargs.get("S1") is not None:
+            q_seq = int(kwargs["S1"])
 
         if layout_kv == "BSND":
             _, kv_seq, kv_heads, _ = [int(x) for x in ori_kv.shape]
-            block_num1, block_size1 = None, 64
+            block_num1 = kwargs.get("block_num1")
+            block_size1 = kwargs.get("block_size1")
+            if block_size1 is None:
+                block_size1 = self.PYTEST_BLOCK_SIZE
         elif layout_kv == "TND":
             _, kv_heads, _ = [int(x) for x in ori_kv.shape]
             kv_seq = max(self.prefix_lengths(cu_ori) or seq_ori or [int(ori_kv.shape[0])])
-            block_num1, block_size1 = None, 64
+            block_num1 = kwargs.get("block_num1")
+            block_size1 = kwargs.get("block_size1")
+            if block_size1 is None:
+                block_size1 = self.PYTEST_BLOCK_SIZE
         else:
-            block_num1, block_size1, kv_heads, _ = [int(x) for x in ori_kv.shape]
+            shape_block_num, shape_block_size, kv_heads, _ = [int(x) for x in ori_kv.shape]
+            block_num1 = kwargs.get("block_num1")
+            block_size1 = kwargs.get("block_size1")
+            block_num1 = shape_block_num if block_num1 is None else int(block_num1)
+            block_size1 = shape_block_size if block_size1 is None else int(block_size1)
             kv_seq = max(self.prefix_lengths(cu_ori) or seq_ori or [block_size1])
+        if kwargs.get("S2") is not None:
+            kv_seq = int(kwargs["S2"])
 
-        metadata_cmp_topk = int(kwargs.get("metadata_cmp_topk") or 0)
-        if metadata_cmp_topk > 0:
-            mode = "CSA"
-            if layout_kv == "PA_BBND" and cmp_kv is not None:
-                block_num2, block_size2 = int(cmp_kv.shape[0]), int(cmp_kv.shape[1])
-            else:
-                block_num2, block_size2 = None, block_size1
-        elif cmp_kv is None:
-            mode = "SWA"
-            block_num2, block_size2 = 0, block_size1
+        metadata_cmp_topk = kwargs.get("metadata_cmp_topk")
+        if cmp_kv is None:
+            block_num2 = kwargs.get("block_num2")
+            block_size2 = kwargs.get("block_size2")
+            if block_size2 is None:
+                block_size2 = block_size1
         elif layout_kv == "PA_BBND":
-            mode = "CSA" if cmp_sparse_indices is not None else "HCA"
-            block_num2, block_size2 = int(cmp_kv.shape[0]), int(cmp_kv.shape[1])
+            block_num2 = kwargs.get("block_num2")
+            block_size2 = kwargs.get("block_size2")
+            block_num2 = int(cmp_kv.shape[0]) if block_num2 is None else int(block_num2)
+            block_size2 = int(cmp_kv.shape[1]) if block_size2 is None else int(block_size2)
         else:
-            mode = "CSA" if cmp_sparse_indices is not None else "HCA"
-            block_num2, block_size2 = None, block_size1
+            block_num2 = kwargs.get("block_num2")
+            block_size2 = kwargs.get("block_size2")
+            if block_size2 is None:
+                block_size2 = block_size1
+
+        mode = self.select_template_mode(kwargs)
 
         params = dict(kwargs)
+        input_ranges = kwargs.get("input_ranges") or ()
+        data_ranges = {
+            "q_datarange": self.data_range(input_ranges, 0),
+            "ori_kv_datarange": self.data_range(input_ranges, 1),
+            "cmp_kv_datarange": self.data_range(input_ranges, 2),
+        }
         params.update({
             "Testcase_Name": kwargs.get("testcase_name"),
             "layout_q": layout_q,
             "layout_kv": layout_kv,
             "q_type": q.dtype,
             "ori_kv_type": ori_kv.dtype,
-            "cmp_kv_type": cmp_kv.dtype if cmp_kv is not None else ori_kv.dtype,
+            "cmp_kv_type": cmp_kv.dtype if cmp_kv is not None else None,
             "B": batch_size,
             "S1": q_seq,
             "S2": kv_seq,
             "N1": q_heads,
             "N2": kv_heads,
             "D": head_dim,
-            "K": metadata_cmp_topk or (
-                int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0
+            "K1": int(ori_sparse_indices.shape[-1]) if ori_sparse_indices is not None else None,
+            "K": (
+                metadata_cmp_topk
+                if metadata_cmp_topk is not None
+                else (
+                    int(cmp_sparse_indices.shape[-1])
+                    if cmp_sparse_indices is not None
+                    else None
+                )
             ),
             "block_num1": block_num1,
             "block_num2": block_num2,
@@ -271,20 +326,25 @@ class MixedQuantSparseFlashMlaInputAdapter:
             "cu_seqlens_ori_kv": cu_ori,
             "cu_seqlens_cmp_kv": cu_cmp,
             "cmp_residual_kv": residual,
-            "template_run_mode": mode,
-            "cmp_ratio": 1 if mode == "SWA" else int(kwargs.get("cmp_ratio", 1)),
-            "cmp_mask_mode": 0 if mode == "SWA" else int(kwargs.get("cmp_mask_mode", 3)),
-            "tile_size": 64,
-            "actlen_mode": kwargs.get("actlen_mode", "full"),
-            "S1EQS2": bool(kwargs.get("S1EQS2", False)),
-            "topk_value_mode": int(kwargs.get("topk_value_mode", 1)),
-            "return_softmax_lse": bool(kwargs.get("return_softmax_lse", False)),
+            # Pytest requires packing geometry that has no target API/CSV field.
+            "tile_size": (
+                kwargs["tile_size"]
+                if kwargs.get("tile_size") is not None
+                else self.PYTEST_TILE_SIZE
+            ),
         })
+        if mode is not None:
+            params["template_run_mode"] = mode
+        params.update({name: value for name, value in data_ranges.items() if value is not None})
         return params
 
     @staticmethod
     def copy_tensor(dst, src, name):
         if dst is None:
+            if src is not None:
+                raise ValueError(
+                    f"{name} is absent from CSV but pytest generator produced a tensor"
+                )
             return
         if src is None:
             raise ValueError(f"{name} is present in CSV but pytest generator returned None")
@@ -302,6 +362,9 @@ class MixedQuantSparseFlashMlaInputAdapter:
             "golden", "mixed_quant_sparse_flash_mla_golden.py"
         )
         filled = pytest_utils.fill_none_params(params)
+        for name in ("q_datarange", "ori_kv_datarange", "cmp_kv_datarange"):
+            if params.get(name) is not None:
+                filled[name] = params[name]
         if filled.get("Testcase_Name") is None:
             filled["Testcase_Name"] = params.get("testcase_name")
         pytest_check.check_valid_param(filled)
@@ -333,9 +396,10 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
         q,
         ori_kv,
         cmp_kv,
+        ori_sparse_indices,
         cmp_sparse_indices,
-        kwargs.get("layout_q", "BSND"),
-        kwargs.get("layout_kv", "BSND"),
+        kwargs.get("layout_q"),
+        kwargs.get("layout_kv"),
         kwargs,
     )
     data = INPUT_ADAPTER.generate_case(params, batch_random)
