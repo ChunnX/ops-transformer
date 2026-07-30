@@ -67,8 +67,6 @@ struct QuantBlockSparseAttnApiUtParam {
     TensorDesc metadata;
     TensorDesc attentionOut;
     TensorDesc softmaxLse;
-    int64_t maxSeqlenQ;
-    int64_t maxSeqlenKv;
     double softmaxScale;
     int64_t sparseQBlockSize;
     int64_t sparseKvBlockSize;
@@ -105,8 +103,6 @@ struct QuantBlockSparseAttnApiUtParam {
         this->metadata = GetTensorACL(csvMap, "metadata_shape", "metadata_dtype", "metadata_format");
         this->attentionOut = GetTensorACL(csvMap, "attention_out_shape", "attention_out_dtype", "attention_out_format");
         this->softmaxLse = GetTensorACL(csvMap, "softmax_lse_shape", "softmax_lse_dtype", "softmax_lse_format");
-        this->maxSeqlenQ = stoll(ReadMap(csvMap, "max_seqlen_q", "0"));
-        this->maxSeqlenKv = stoll(ReadMap(csvMap, "max_seqlen_kv", "0"));
         this->softmaxScale = stod(ReadMap(csvMap, "softmax_scale", "1.0"));
         this->sparseQBlockSize = stoll(ReadMap(csvMap, "sparse_q_block_size", "128"));
         this->sparseKvBlockSize = stoll(ReadMap(csvMap, "sparse_kv_block_size", "128"));

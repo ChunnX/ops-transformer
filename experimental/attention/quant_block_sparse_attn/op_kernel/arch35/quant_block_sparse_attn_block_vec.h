@@ -189,8 +189,6 @@ private:
     __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
     __aicore__ inline void MlaTransposeDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
                                                    LocalTensor<OUTPUT_T> &attenOut);
-    __aicore__ inline void MlaTranspose2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                    LocalTensor<OUTPUT_T> &attenOut);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void InitLseOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
@@ -525,51 +523,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::MlaTransposeDataCopyOut(RunIn
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::MlaTranspose2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                            LocalTensor<OUTPUT_T> &attenOut)
-{
-    int64_t s1DealSize = runInfo.vec2S1RealSize;
-    int64_t curGIdx = runInfo.sOuterOffset / constInfo.s1Size;
-    int64_t curS1Idx = runInfo.sOuterOffset % constInfo.s1Size;
-    bool hasHeadBlock = curS1Idx != 0;
-    int headBlock = hasHeadBlock ? constInfo.s1Size - curS1Idx : 0;
-    int gCount = hasHeadBlock ? (runInfo.vec2S1BaseSize - headBlock) / constInfo.s1Size :
-                                runInfo.vec2S1BaseSize / constInfo.s1Size;
-    bool hasTailBlock = (runInfo.vec2S1BaseSize - headBlock) % constInfo.s1Size;
-    int tailBlock = hasTailBlock ? runInfo.vec2S1BaseSize - gCount * constInfo.s1Size - headBlock : 0;
-    uint32_t attenOutUbOffset = 0;
-
-    if (curS1Idx != 0) {
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
-        dataCopyParams.blockLen = (constInfo.s1Size - curS1Idx) * constInfo.dSizeV * sizeof(OUTPUT_T);
-        dataCopyParams.blockCount = 1;
-        DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset], attenOut, dataCopyParams);
-        attenOutUbOffset += (constInfo.s1Size - curS1Idx) * constInfo.dSizeV;
-    }
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = gCount;
-    dataCopyParams.blockLen = constInfo.s1Size * constInfo.dSizeV * sizeof(OUTPUT_T);
-    dataCopyParams.srcStride = 0;
-    dataCopyParams.dstStride = (constInfo.bSize - 1) * constInfo.s1Size * constInfo.dSizeV * sizeof(OUTPUT_T);
-    runInfo.attentionOutOffset +=
-        int(hasHeadBlock) * constInfo.bSize * constInfo.s1Size * constInfo.dSizeV - curS1Idx * constInfo.dSizeV;
-    DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset], attenOut[attenOutUbOffset], dataCopyParams);
-    attenOutUbOffset += dataCopyParams.blockCount * (constInfo.s1Size * constInfo.dSizeV);
-
-    if (hasTailBlock) {
-        DataCopyExtParams dataCopyParamsTail;
-        dataCopyParamsTail.blockCount = 1;
-        dataCopyParamsTail.blockLen = tailBlock * constInfo.dSizeV * sizeof(OUTPUT_T);
-        dataCopyParamsTail.srcStride = 0;
-        dataCopyParamsTail.dstStride = 0;
-        runInfo.attentionOutOffset += gCount * constInfo.bSize * constInfo.s1Size * constInfo.dSizeV;
-        DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset], attenOut[attenOutUbOffset], dataCopyParamsTail);
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
                                                                    LocalTensor<VEC2_RES_T> &vec2ResUb,
@@ -607,21 +560,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runI
         }
     }
 
-    if (constInfo.isPfaGS1Merge && dSizeAligned64 - constInfo.dSizeV != 0 &&
-        constInfo.layoutType == static_cast<uint8_t>(BSALayout::TND)) {
-        for (int64_t i = 0; i < runInfo.vec2S1BaseSize / constInfo.gSize; i++) {
-            attenOutOffset = i * constInfo.dSizeV * constInfo.gSize * constInfo.n2Size;
-            dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
-            dataCopyParams.blockCount = constInfo.gSize;
-            dataCopyParams.dstStride = 0;
-            DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + attenOutOffset],
-                        attenOut[i * constInfo.gSize * dSizeAligned64], dataCopyParams);
-        }
-    } else {
-        DataCopyPad(
-            this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
-            attenOut, dataCopyParams);
-    }
+    DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
+                attenOut, dataCopyParams);
 }
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
@@ -749,11 +689,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSha
     auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
     sharedParams.bSize = inputParamsRegbase.bSize;
     sharedParams.t1Size = inputParamsRegbase.t1Size;
-    sharedParams.t2Size = inputParamsRegbase.t2Size;
     sharedParams.n2Size = inputParamsRegbase.n2Size;
     sharedParams.gSize = inputParamsRegbase.gSize;
-    sharedParams.s1Size = inputParamsRegbase.s1Size;
-    sharedParams.s2Size = inputParamsRegbase.s2Size;
     sharedParams.dSize = inputParamsRegbase.dSize;
     sharedParams.dSizeV = inputParamsRegbase.dSizeV;
     sharedParams.preTokens = inputParamsRegbase.preTokens;
@@ -765,15 +702,11 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSha
 
     sharedParams.fromFused = inputParamsRegbase.fromFused;
     sharedParams.isGqa = inputParamsRegbase.isGqa;
-    sharedParams.isPfaGS1Merge = (inputParamsRegbase.isGqa && sharedParams.s1Size > 1);
     sharedParams.isKvContinuous = inputParamsRegbase.isKvContinuous;
     sharedParams.seqUsedQlenSize = inputParamsRegbase.seqUsedQlenSize;
     sharedParams.seqUsedKvlenSize = inputParamsRegbase.seqUsedKvlenSize;
-    sharedParams.isSeqUsedQlenNull = inputParamsRegbase.isSeqUsedQlenNull;
-    sharedParams.isSeqUsedKvlenNull = inputParamsRegbase.isSeqUsedKvlenNull;
     if constexpr (isPa) {
         auto &paParams = this->tilingData->paParams;
-        sharedParams.attenMaskS1Size = paParams.attenMaskS1Size;
         sharedParams.blockTableDim2 = paParams.blockTableDim2;
         sharedParams.kvSparseBlockSize = paParams.kvBlockSize;
         sharedParams.qSparseBlockSize = paParams.qBlockSize;

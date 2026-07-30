@@ -6,7 +6,7 @@ The pytest framework follows the current `QuantBlockSparseAttn` op definition:
 
 - Inputs: `query`, `key`, `value`, `q_descale`, `k_descale`, `v_descale`, `p_scale`, `cu_seqlens_q`, `cu_seqlens_kv`, `seqused_q`, `seqused_kv`, `sparse_indices`, `sparse_seq_len`, `block_table`, `atten_mask`, `metadata` (`atten_mask` is optional when `mask_mode=0`)
 - Outputs: `attention_out`, optional `softmax_lse`
-- Attrs: `max_seqlen_q`, `max_seqlen_kv`, `softmax_scale`, `sparse_q_block_size`, `sparse_kv_block_size`, `layout_kv`, `layout_sparse_indices`, `quant_mode`, `mask_mode`, `return_softmax_lse`
+- Attrs: `softmax_scale`, `sparse_q_block_size`, `sparse_kv_block_size`, `layout_kv`, `layout_sparse_indices`, `quant_mode`, `mask_mode`, `return_softmax_lse`
 
 ## Golden Semantics
 

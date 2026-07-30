@@ -22,10 +22,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttnGetW
     const aclTensor *kDescale, const aclTensor *vDescale, const aclTensor *pScale, const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
     const aclTensor *sparseIndices, const aclTensor *sparseSeqLen, const aclTensor *blockTableOptional,
-    const aclTensor *attenMaskOptional, const aclTensor *metadataOptional, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-    double softmaxScale, int64_t sparseQBlockSize, int64_t sparseKvBlockSize, char *layoutKv, char *layoutQ,
-    char *layoutSparseIndices, char *layoutOut, int64_t quantMode, int64_t maskMode, bool returnSoftmaxLse,
-    const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *attenMaskOptional, const aclTensor *metadataOptional, double softmaxScale,
+    int64_t sparseQBlockSize, int64_t sparseKvBlockSize, char *layoutKv, char *layoutQ, char *layoutSparseIndices,
+    char *layoutOut, int64_t quantMode, int64_t maskMode, bool returnSoftmaxLse, const aclTensor *attentionOut,
+    const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 __attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttn(void *workspace, uint64_t workspaceSize,
                                                                              aclOpExecutor *executor,

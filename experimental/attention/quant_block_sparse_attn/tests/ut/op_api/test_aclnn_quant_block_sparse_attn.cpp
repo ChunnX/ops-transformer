@@ -59,8 +59,8 @@ TEST_P(AclnnQuantBlockSparseAttnTest, param)
         aclnnQuantBlockSparseAttn,
         INPUT(queryPtr, keyPtr, valuePtr, qDescalePtr, kDescalePtr, vDescalePtr, pScalePtr, cuSeqlensQPtr,
               cuSeqlensKvPtr, sequsedQPtr, sequsedKvPtr, sparseIndicesPtr, sparseSeqLenPtr, blockTablePtr, attenMaskPtr,
-              metadataPtr, param.maxSeqlenQ, param.maxSeqlenKv, param.softmaxScale, param.sparseQBlockSize,
-              param.sparseKvBlockSize, (char *)param.layoutKv.c_str(), (char *)param.layoutQ.c_str(),
+              metadataPtr, param.softmaxScale, param.sparseQBlockSize, param.sparseKvBlockSize,
+              (char *)param.layoutKv.c_str(), (char *)param.layoutQ.c_str(),
               (char *)param.layoutSparseIndices.c_str(), (char *)param.layoutOut.c_str(), param.quantMode,
               param.maskMode, param.returnSoftmaxLse),
         OUTPUT(attentionOutPtr, softmaxLsePtr));
