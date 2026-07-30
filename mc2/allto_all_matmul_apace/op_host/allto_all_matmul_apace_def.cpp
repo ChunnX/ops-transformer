@@ -23,7 +23,7 @@ public:
         // ---- context (apace-specific, REQUIRED) ----
         this->Input("context")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
+            .DataTypeList({ge::DT_INT32, ge::DT_UINT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         // ---- x1: 4 dtype combos ----
@@ -87,20 +87,19 @@ public:
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("world_size").AttrType(REQUIRED).Int();
         this->Attr("hccl_buffer_size").AttrType(REQUIRED).Int();
-        this->Attr("transpose_x1").AttrType(OPTIONAL).Bool(false);
-        this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(true);
-        // compat attrs from old AlltoAllMatmul
         this->Attr("all2all_axes").AttrType(OPTIONAL).ListInt({-2, -1});
-        this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("x1_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("x2_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_quant_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("x1_quant_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("comm_quant_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
+        this->Attr("x1_quant_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
+        this->Attr("transpose_x1").AttrType(OPTIONAL).Bool(false);
+        this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(true);
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_mode").AttrType(OPTIONAL).String("ai_cpu");
         this->Attr("precision_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("alltoall_out_flag").AttrType(OPTIONAL).Bool(false);
+
+        this->MC2().HcclGroup("group");
 
         // ascend950 AICoreConfig
         OpAICoreConfig aicoreConfig_950;

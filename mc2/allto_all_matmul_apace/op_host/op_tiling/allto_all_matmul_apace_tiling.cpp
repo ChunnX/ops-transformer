@@ -28,10 +28,7 @@
 using namespace ge;
 using namespace Mc2Log;
 
-uint64_t GetMatmulTilingKey()
-{
-    return 16;
-}
+uint64_t GetMatmulTilingKey() { return 16; }
 
 void BuildCommTilingData(uint64_t m, uint64_t ka, uint64_t headMSize, CommTilingData &commData)
 {
@@ -50,11 +47,15 @@ void BuildMatmulTilingData(uint64_t m, uint64_t n, uint64_t ka, uint32_t aDtype,
                            QuantMatmulTilingData &matmulData)
 {
     if (ka == 0) {
-        OP_LOGE("AlltoAllMatmulApace", "BuildMatmulTilingData: ka=0, invalid K axis after world_size split");
+        OP_LOGE("AlltoAllMatmulApace", "BuildMatmulTilingData: ka=0");
         return;
     }
-    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
-    tilingEngine.GetTilingData(m, n, ka, false, true, matmulData);
+    // apace tiling library only exposes DT_FLOAT8_E4M3FN; FP8 variants share the same
+    // bit width and tiling parameters, so a single template instantiation suffices.
+    (void)aDtype;
+    (void)bDtype;
+    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> eng;
+    eng.GetTilingData(m, n, ka, false, true, matmulData);
 }
 
 AlltoAllDtypeCombo GetDtypeCombo(uint32_t x1Dtype, uint32_t x2Dtype)

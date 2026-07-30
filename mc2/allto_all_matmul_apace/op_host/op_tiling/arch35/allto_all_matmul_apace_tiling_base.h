@@ -16,12 +16,12 @@
 #include <cstdio>
 #include <ascendc/host_api/tiling/template_argument.h>
 #include "securec.h"
+#include "apace/kernel/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 #include "apace/tiling/quant_matmul_mx_tiling_swat.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/arch35/allto_all_matmul_apace_tiling_key.h"
-#include "../../../op_kernel/arch35/allto_all_matmul_apace_tiling_data.h"
 
 namespace MC2Tiling {
 
@@ -31,16 +31,12 @@ constexpr uint64_t WS_BYTES = 4096;
 
 class AlltoAllMatmulApaceTilingClass : public TilingBaseClass {
 public:
-    explicit AlltoAllMatmulApaceTilingClass(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+    explicit AlltoAllMatmulApaceTilingClass(gert::TilingContext *context) : TilingBaseClass(context) {}
     ~AlltoAllMatmulApaceTilingClass() override = default;
 
 protected:
-    bool IsCapable() override
-    {
-        return true;
-    }
+    uint32_t usedCoreNum_ = 0; // 保存 tiling 实际使用的核数
+    bool IsCapable() override { return true; }
 
     ge::graphStatus GetPlatformInfo() override
     {
@@ -53,23 +49,31 @@ protected:
         return ge::GRAPH_SUCCESS;
     }
 
+    static constexpr size_t IDX_INPUT_X1 = 1;
+    static constexpr size_t IDX_INPUT_X2 = 2;
+    static constexpr size_t IDX_ATTR_WORLD_SIZE = 1;
+    static constexpr size_t IDX_ATTR_PRECISION_MODE = 13;
+
     ge::graphStatus GetShapeAttrsInfo() override
     {
-        auto *x1t = context_->GetInputTensor(1);
-        auto *x2t = context_->GetInputTensor(2);
-        if (!x1t || !x2t)
+        auto *x1sh = context_->GetInputShape(IDX_INPUT_X1);
+        auto *x2sh = context_->GetInputShape(IDX_INPUT_X2);
+        if (!x1sh || !x2sh)
             return ge::GRAPH_FAILED;
-        auto x1sh = x1t->GetOriginShape();
-        auto x2sh = x2t->GetOriginShape();
-        if (x1sh.GetDimNum() < 2 || x2sh.GetDimNum() < 2)
+        auto &x1ss = x1sh->GetStorageShape();
+        auto &x2ss = x2sh->GetStorageShape();
+        if (x1ss.GetDimNum() < 2 || x2ss.GetDimNum() < 2)
             return ge::GRAPH_FAILED;
-        m_ = x1sh.GetDim(0U);
-        k_ = x1sh.GetDim(1U);
-        n_ = x2sh.GetDim(0U);
+        // x1 shape: [M_total, Ka]; kernel expects M_per_rank = M_total / world_size
+        auto *wsPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_WORLD_SIZE);
+        if (!wsPtr || *wsPtr <= 0)
+            return ge::GRAPH_FAILED;
+        worldSize_ = static_cast<uint64_t>(*wsPtr);
+        m_ = x1ss.GetDim(0U) / worldSize_;
+        k_ = x1ss.GetDim(1U); // Ka (per-rank K)
+        n_ = x2ss.GetDim(0U); // N (always dim0, x2 shape = [N, K_total])
 
-        auto *wsPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(1); // world_size is attr index 1
-        worldSize_ = wsPtr ? static_cast<uint64_t>(*wsPtr) : 4;
-        auto *pm = context_->GetAttrs()->GetAttrPointer<int64_t>(14); // precision_mode is attr index 14
+        auto *pm = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_PRECISION_MODE);
         precisionMode_ = pm ? static_cast<uint32_t>(*pm) : 0;
         return ge::GRAPH_SUCCESS;
     }
@@ -78,60 +82,49 @@ protected:
     {
         if (m_ == 0 || k_ == 0)
             return ge::GRAPH_FAILED;
-        uint64_t ka = k_ / worldSize_;
-        if (ka == 0)
-            return ge::GRAPH_FAILED;
-        uint64_t headMSize = 512;
-        uint64_t tileCnt = m_ / headMSize;
+        uint64_t ka = k_; // Ka = per-rank K
 
         auto *rt = context_->GetRawTilingData();
         auto cap = rt->GetCapacity();
-        if (!rt || cap < sizeof(AlltoAllMatmulApaceTilingData))
+        if (!rt || cap < sizeof(allToAllMatmulTilingData))
             return ge::GRAPH_FAILED;
         memset_s(rt->GetData(), cap, 0, cap);
 
-        auto *td = reinterpret_cast<AlltoAllMatmulApaceTilingData *>(rt->GetData());
-        td->tilingData.commTilingData.splitAxisTileSize = headMSize;
-        td->tilingData.commTilingData.splitAxisTileCnt = tileCnt;
-        td->tilingData.commTilingData.splitAxisTailSize = 0;
-        td->tilingData.commTilingData.splitAxisTailCnt = 0;
-        td->tilingData.commTilingData.nonSplitAxisSize = ka;
-        td->tilingData.scaleCommTilingData.splitAxisTileSize = headMSize;
-        td->tilingData.scaleCommTilingData.splitAxisTileCnt = tileCnt;
-        td->tilingData.scaleCommTilingData.splitAxisTailSize = 0;
-        td->tilingData.scaleCommTilingData.splitAxisTailCnt = 0;
-        td->tilingData.scaleCommTilingData.nonSplitAxisSize =
-            ((ka + 64 - 1) / 64) * 2;  // CeilDiv(ka,64) * MXFP_MULTI_BASE_SIZE
+        auto *td = reinterpret_cast<allToAllMatmulTilingData *>(rt->GetData());
 
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
-        tilingEngine.GetTilingData(m_, n_, ka, false, true, td->tilingData.tileQbmmTilingData);
+        tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
 
-        td->tilingData.localMatmul = precisionMode_;
+        auto &mm = td->tileQbmmTilingData;
+        usedCoreNum_ = mm.usedCoreNum;
+        auto nTile = (n_ + mm.baseN - 1) / mm.baseN;
+        uint64_t headMSize = ((mm.usedCoreNum + nTile - 1) / nTile) * mm.baseM;
+        uint64_t headTileCnt = m_ / headMSize;
+        uint64_t tailMSize = m_ % headMSize;
+        uint64_t tailTileCnt = (tailMSize > 0) ? 1 : 0;
 
-        auto &mm = td->tilingData.tileQbmmTilingData;
-        auto &cm = td->tilingData.commTilingData;
+        td->commTilingData.splitAxisTileSize = headMSize;
+        td->commTilingData.splitAxisTileCnt = headTileCnt;
+        td->commTilingData.splitAxisTailSize = tailMSize;
+        td->commTilingData.splitAxisTailCnt = tailTileCnt;
+        td->commTilingData.nonSplitAxisSize = ka;
+        td->scaleCommTilingData.splitAxisTileSize = headMSize;
+        td->scaleCommTilingData.splitAxisTileCnt = headTileCnt;
+        td->scaleCommTilingData.splitAxisTailSize = tailMSize;
+        td->scaleCommTilingData.splitAxisTailCnt = tailTileCnt;
+        td->scaleCommTilingData.nonSplitAxisSize = ka / 32;
 
-        fprintf(stderr, "[HOST_TILING] m=%lu k=%lu n=%lu ka=%lu coreNum=%u baseM=%u baseK=%u stepK=%u size=%u\n",
-                (unsigned long)m_, (unsigned long)k_, (unsigned long)n_, (unsigned long)ka, mm.usedCoreNum,
-                (unsigned)mm.baseM, (unsigned)mm.baseK, (unsigned)mm.stepK,
-                (unsigned)sizeof(AlltoAllMatmulApaceTilingData));
-        fprintf(stderr, "[HOST_PM] precisionMode=%u\n", precisionMode_);
-        fprintf(stderr, "[HOST_COMM] tileSz=%lu tileCnt=%lu tailSz=%lu tailCnt=%lu nonSplitSz=%lu\n",
-                (unsigned long)cm.splitAxisTileSize, (unsigned long)cm.splitAxisTileCnt,
-                (unsigned long)cm.splitAxisTailSize, (unsigned long)cm.splitAxisTailCnt,
-                (unsigned long)cm.nonSplitAxisSize);
+        td->localMatmul = precisionMode_;
+
         return ge::GRAPH_SUCCESS;
     }
 
-    ge::graphStatus DoLibApiTiling() override
-    {
-        return ge::GRAPH_SUCCESS;
-    }
+    ge::graphStatus DoLibApiTiling() override { return ge::GRAPH_SUCCESS; }
 
     uint64_t GetTilingKey() const override
     {
         return GET_TPL_TILING_KEY(MX_QUANT_MODE, 1 /*x2Transpose*/, DTYPE_BIAS_FP32, 0 /*isSmallK*/,
-                                  ALL2ALL_COMM_TYPE_AICPU);
+                                  ALL2ALL_COMM_TYPE_UDMA);
     }
 
     ge::graphStatus GetWorkspaceSize() override
@@ -148,12 +141,13 @@ protected:
     ge::graphStatus PostTiling() override
     {
         context_->GetRawTilingData()->SetDataSize(context_->GetRawTilingData()->GetCapacity());
-        context_->SetBlockDim(aicoreParams_.aicNum);
+        context_->SetBlockDim(usedCoreNum_);
         return ge::GRAPH_SUCCESS;
     }
 
 private:
-    uint64_t m_{0}, k_{0}, n_{0}, worldSize_{4};
+    uint64_t m_{0}, k_{0}, n_{0};
+    uint64_t worldSize_{1};
     uint32_t precisionMode_{0};
 };
 
