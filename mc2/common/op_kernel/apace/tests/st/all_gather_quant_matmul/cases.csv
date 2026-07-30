@@ -1,0 +1,5 @@
+# AllGatherQuantMatmul Prefill ST cases
+# M,K,N,rankNum
+1010,4096,6656,4
+2304,4096,6656,4
+4040,4096,6656,4
