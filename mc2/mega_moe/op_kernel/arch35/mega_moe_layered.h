@@ -2387,10 +2387,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
             0L,
             0L};
         if constexpr (IsShared) {
-                sharedEpilogueOp_.UpdateGlobalAddr(vecBaseOffset);
-            } else {
-                epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
-            }
+            sharedEpilogueOp_.UpdateGlobalAddr(vecBaseOffset);
+        } else {
+            epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         }
     }
     if constexpr (IsShared) {
