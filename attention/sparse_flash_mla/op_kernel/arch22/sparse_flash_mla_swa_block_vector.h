@@ -52,7 +52,8 @@ public:
                                                 GlobalTensor<int32_t> actualSeqLengthsQGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsKVGm,
                                                 GlobalTensor<T> sinksGm, GlobalTensor<T> softmaxLseGm,
-                                                GlobalTensor<int32_t> oriSparseIndicesGm);
+                                                GlobalTensor<int32_t> oriSparseIndicesGm,
+                                                GlobalTensor<int32_t> oriTopkLengthGm);
     __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm,
                                                 GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
     __aicore__ inline void AllocEventID();
@@ -151,6 +152,7 @@ private:
     GlobalTensor<int32_t> actualSeqLengthsQGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
     GlobalTensor<int32_t> oriSparseIndicesGm;
+    GlobalTensor<int32_t> oriTopkLengthGm;
     GlobalTensor<UPDATE_T> vec2ResGm;
     GlobalTensor<MM2_OUT_T> mm2ResGm;
     GlobalTensor<T> accumOutGm;
@@ -391,7 +393,8 @@ SWAVectorBlock<SMLAT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, Gl
                                            GlobalTensor<int32_t> actualSeqLengthsQGm,
                                            GlobalTensor<int32_t> actualSeqLengthsKVGm,
                                            GlobalTensor<T> sinksGm, GlobalTensor<T> softmaxLseGm,
-                                           GlobalTensor<int32_t> oriSparseIndicesGm)
+                                           GlobalTensor<int32_t> oriSparseIndicesGm,
+                                           GlobalTensor<int32_t> oriTopkLengthGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -400,6 +403,7 @@ SWAVectorBlock<SMLAT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, Gl
     this->sinksGm = sinksGm;
     this->softmaxLseGm = softmaxLseGm;
     this->oriSparseIndicesGm = oriSparseIndicesGm;
+    this->oriTopkLengthGm = oriTopkLengthGm;
 }
 
 template <typename SMLAT>
@@ -525,15 +529,36 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
                     qTokenOffsetForS1 = static_cast<uint64_t>(info.bIdx) * constInfo.qSeqSize +
                         static_cast<uint64_t>(i);
                 }
-                LocalTensor<int32_t> rowIndexUb = tmpBuff1.Get<int32_t>();
-                LoadOriSparseIndicesGmToUb(qTokenOffsetForS1, info.n2IdxReal, sparseColStart,
-                                           static_cast<int32_t>(validCols), rowIndexUb);
-                for (uint32_t k = 0; k < validCols; ++k) {
-                    int32_t logicalIdx = rowIndexUb.GetValue(k);
-                    if (logicalIdx < 0 || logicalIdx >= oriLenLimit) {
-                        SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, static_cast<int64_t>(k),
-                                    static_cast<int64_t>(k));
+                uint64_t topkLenOffset = qTokenOffsetForS1 * constInfo.kvHeadNum + info.n2IdxReal;
+                int32_t rowLen = oriTopkLengthGm.GetValue(topkLenOffset);
+                if (rowLen <= 0) {
+                    SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, 0,
+                                static_cast<int64_t>(columnCount - 1));
+                    ubOffset += dealTempSize * columnCount;
+                    gStartIdx = 0;
+                    continue;
+                }
+                uint32_t colEnd = 0;
+                uint32_t tailStart = 0;
+                if (static_cast<uint32_t>(rowLen) > sparseColStart) {
+                    colEnd = Min(validCols, static_cast<uint32_t>(rowLen) - sparseColStart);
+                    tailStart = static_cast<uint32_t>(rowLen) - sparseColStart;
+                }
+                if (colEnd > 0) {
+                    LocalTensor<int32_t> rowIndexUb = tmpBuff1.Get<int32_t>();
+                    LoadOriSparseIndicesGmToUb(qTokenOffsetForS1, info.n2IdxReal, sparseColStart,
+                                               static_cast<int32_t>(colEnd), rowIndexUb);
+                    for (uint32_t k = 0; k < colEnd; ++k) {
+                        int32_t logicalIdx = rowIndexUb.GetValue(k);
+                        if (logicalIdx < 0 || logicalIdx >= oriLenLimit) {
+                            SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, static_cast<int64_t>(k),
+                                        static_cast<int64_t>(k));
+                        }
                     }
+                }
+                if (tailStart < validCols) {
+                    SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, static_cast<int64_t>(tailStart),
+                                static_cast<int64_t>(validCols - 1));
                 }
                 if (info.actualSingleProcessSInnerSize < columnCount) {
                     SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount,

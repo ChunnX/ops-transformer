@@ -618,7 +618,7 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
             vectorBlock.InitVec0GlobalTensor(kvMergeGm_, oriKvGm, oriBlockTableGm, oriSparseIndicesGm);
         }
         vectorBlock.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm, actualSeqLengthsKVGm, sinksGm,
-                                         softmaxLseGm, oriSparseIndicesGm);
+                                         softmaxLseGm, oriSparseIndicesGm, oriTopkLengthGm);
         vectorBlock.InitVec2GlobalTensor(accumOutGm, vec2ResGm, mm2ResGm, attentionOutGm);
     }
 
