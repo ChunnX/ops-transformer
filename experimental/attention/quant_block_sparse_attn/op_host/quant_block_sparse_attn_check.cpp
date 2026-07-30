@@ -405,33 +405,6 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckKeyValueShape() const
     const gert::Shape &keyShape = opParamInfo.key.shape->GetStorageShape();
     const gert::Shape &valueShape = opParamInfo.value.shape->GetStorageShape();
 
-    if (keyShape.GetDimNum() == DIM_NUM_1) {
-        if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "key", "1D",
-                                                     "4D PA BNBD is required for quant_mode=2 MXFP8");
-            return ge::GRAPH_FAILED;
-        }
-        if (tilingInfo_.paBlockStrideVal == 0U) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "pa_block_stride", "0",
-                                                  "must be greater than 0 for 1D combined KV storage");
-            return ge::GRAPH_FAILED;
-        }
-        const int64_t keyStorageSize = keyShape.GetShapeSize();
-        if (keyStorageSize <= 0 || static_cast<uint64_t>(keyStorageSize) % tilingInfo_.paBlockStrideVal != 0U) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                kOpName, "key", Ops::Base::ToString(keyShape),
-                "1D combined KV storage size must be a positive multiple of pa_block_stride=" +
-                    std::to_string(tilingInfo_.paBlockStrideVal));
-            return ge::GRAPH_FAILED;
-        }
-        if (valueShape.GetDimNum() != DIM_NUM_1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "value", std::to_string(valueShape.GetDimNum()) + "D",
-                                                     "1D (must match key when using 1D combined KV storage)");
-            return ge::GRAPH_FAILED;
-        }
-        return ge::GRAPH_SUCCESS;
-    }
-
     if (keyShape.GetDimNum() != DIM_NUM_4 || valueShape.GetDimNum() != DIM_NUM_4) {
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
             kOpName, "key/value",
@@ -488,27 +461,21 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckQuantShape() const
 
     if (opParamInfo.kDescale.shape != nullptr) {
         const gert::Shape &kDescaleShape = opParamInfo.kDescale.shape->GetStorageShape();
-        const gert::Shape &keyShape = opParamInfo.key.shape->GetStorageShape();
-        if (kDescaleShape.GetDimNum() == DIM_NUM_1) {
-            if (keyShape.GetDimNum() != DIM_NUM_1) {
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "k_descale",
-                                                         std::to_string(kDescaleShape.GetDimNum()) + "D",
-                                                         "3D (when key is 4D) or 1D (when key is 1D combined KV)");
-                return ge::GRAPH_FAILED;
-            }
-        } else if (kDescaleShape.GetDimNum() == DIM_NUM_3) {
+        if (kDescaleShape.GetDimNum() == DIM_NUM_4) {
             if (kDescaleShape.GetDim(DIM_0) != static_cast<int64_t>(tilingInfo_.paBlockNumSum) ||
                 kDescaleShape.GetDim(DIM_1) != static_cast<int64_t>(tilingInfo_.n2Size) ||
-                kDescaleShape.GetDim(DIM_2) != static_cast<int64_t>(tilingInfo_.kvBlockSizeVal)) {
+                kDescaleShape.GetDim(DIM_2) != static_cast<int64_t>(tilingInfo_.kvBlockSizeVal) ||
+                kDescaleShape.GetDim(DIM_3) != 1) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "k_descale", Ops::Base::ToString(kDescaleShape),
                                                       "must be (" + std::to_string(tilingInfo_.paBlockNumSum) + ", " +
                                                           std::to_string(tilingInfo_.n2Size) + ", " +
-                                                          std::to_string(tilingInfo_.kvBlockSizeVal) + ")");
+                                                          std::to_string(tilingInfo_.kvBlockSizeVal) + ", 1)");
                 return ge::GRAPH_FAILED;
             }
         } else {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                kOpName, "k_descale", std::to_string(kDescaleShape.GetDimNum()) + "D", "3D or 1D combined KV");
+                kOpName, "k_descale", std::to_string(kDescaleShape.GetDimNum()) + "D",
+                "4D [blockNum, kvHeadNum, blockSize, 1]");
             return ge::GRAPH_FAILED;
         }
     }

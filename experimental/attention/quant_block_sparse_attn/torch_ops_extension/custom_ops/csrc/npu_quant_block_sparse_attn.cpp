@@ -18,6 +18,7 @@ using namespace at_npu::native;
 // npu tensor max size
 const int SIZE = 8;
 const int64_t DIM_THREE = 3;
+const int64_t DIM_FOUR = 4;
 const int64_t DIM_FIVE = 5;
 const int64_t FP32_BYTES = 4;
 const int64_t BSA_MXFP8_FULL_QUANT_MODE = 2;
@@ -78,76 +79,81 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     bool return_softmax_lse)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
-    int64_t paBlockStride = pa_block_stride;
-    if (key.dim() == 1) {
-        TORCH_CHECK(paBlockStride > 0,
-                    "pa_block_stride should be explicitly set when key is the combined KV storage tail, but got ",
-                    paBlockStride);
-        TORCH_CHECK(value.dim() == 1 && k_descale.dim() == 1,
-                    "segmented combined KV kernel inputs should be 1D key/value/k_descale tails, but got dims ",
-                    key.dim(), "/", value.dim(), "/", k_descale.dim());
+    (void)pa_block_stride;
+    TORCH_CHECK(key.dim() == DIM_FOUR && value.dim() == DIM_FOUR,
+                "key/value should be 4D PA_BNSD [blockNum, Nkv, blockSize, headDim], but got dims ",
+                key.dim(), "/", value.dim());
+    int64_t paBlockStride = key.stride(0);
+    TORCH_CHECK(paBlockStride > 0, "key.stride(0) (paBlockStride) should be greater than 0, but got ",
+                paBlockStride);
+    TORCH_CHECK(value.stride(0) == paBlockStride,
+                "value.stride(0) should equal key.stride(0), but got value.stride(0)=", value.stride(0),
+                " and key.stride(0)=", paBlockStride);
+    TORCH_CHECK(
+        key.stride(1) == key.size(2) * key.size(3) && key.stride(2) == key.size(3) && key.stride(3) == 1,
+        "key should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
+        key.strides());
+    TORCH_CHECK(
+        value.stride(1) == value.size(2) * value.size(3) && value.stride(2) == value.size(3) &&
+            value.stride(3) == 1,
+        "value should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
+        value.strides());
+    if (quant_mode == BSA_MXFP8_FULL_QUANT_MODE) {
+        const int64_t keyScaleDSize = (key.size(3) + BSA_MXFP8_SCALE_GROUP_SIZE - 1) / BSA_MXFP8_SCALE_GROUP_SIZE;
+        const int64_t valueScaleBlockSize =
+            (value.size(2) + BSA_MXFP8_SCALE_GROUP_SIZE - 1) / BSA_MXFP8_SCALE_GROUP_SIZE;
+        TORCH_CHECK(k_descale.dim() == DIM_FIVE,
+                    "k_descale should be 5D [blockNum, Nkv, blockSize, D / 64, 2] in quant_mode=2 MXFP8 "
+                    "full-quant scenario, but got dim=",
+                    k_descale.dim());
+        TORCH_CHECK(k_descale.size(0) == key.size(0) && k_descale.size(1) == key.size(1) &&
+                        k_descale.size(2) == key.size(2) && k_descale.size(3) == keyScaleDSize &&
+                        k_descale.size(4) == BSA_MXFP8_SCALE_LAST_DIM,
+                    "k_descale should be [blockNum, Nkv, blockSize, D / 64, 2] and match key PA_BNSD "
+                    "shape, but got k_descale sizes ",
+                    k_descale.sizes(), " and key sizes ", key.sizes());
+        TORCH_CHECK(k_descale.stride(4) == 1 && k_descale.stride(3) == k_descale.size(4) &&
+                        k_descale.stride(2) == k_descale.size(3) * k_descale.size(4) &&
+                        k_descale.stride(1) == k_descale.size(2) * k_descale.size(3) * k_descale.size(4) &&
+                        k_descale.stride(0) == k_descale.size(1) * k_descale.stride(1),
+                    "k_descale should use contiguous [blockNum, Nkv, blockSize, D / 64, 2] stride in "
+                    "quant_mode=2 MXFP8 full-quant scenario, but got ",
+                    k_descale.strides());
+        TORCH_CHECK(v_descale.dim() == DIM_FIVE,
+                    "v_descale should be 5D [blockNum, Nkv, blockSize / 64, DV, 2] in quant_mode=2 MXFP8 "
+                    "scenario, but got dim=",
+                    v_descale.dim());
+        TORCH_CHECK(v_descale.size(0) == value.size(0) && v_descale.size(1) == value.size(1) &&
+                        v_descale.size(2) == valueScaleBlockSize && v_descale.size(3) == value.size(3) &&
+                        v_descale.size(4) == BSA_MXFP8_SCALE_LAST_DIM,
+                    "v_descale should be [blockNum, Nkv, blockSize / 64, DV, 2] and match value PA_BNSD "
+                    "shape, but got v_descale sizes ",
+                    v_descale.sizes(), " and value sizes ", value.sizes());
+        TORCH_CHECK(v_descale.stride(4) == 1 && v_descale.stride(3) == v_descale.size(4) &&
+                        v_descale.stride(2) == v_descale.size(3) * v_descale.size(4) &&
+                        v_descale.stride(1) == v_descale.size(2) * v_descale.size(3) * v_descale.size(4) &&
+                        v_descale.stride(0) == v_descale.size(1) * v_descale.stride(1),
+                    "v_descale should use contiguous [blockNum, Nkv, blockSize / 64, DV, 2] stride in "
+                    "quant_mode=2 MXFP8 full-quant scenario, but got ",
+                    v_descale.strides());
     } else {
-        paBlockStride = key.stride(0);
-        TORCH_CHECK(paBlockStride > 0, "key.stride(0) (paBlockStride) should be greater than 0, but got ",
-                    paBlockStride);
-        TORCH_CHECK(value.stride(0) == paBlockStride,
-                    "value.stride(0) should equal key.stride(0), but got value.stride(0)=", value.stride(0),
+        TORCH_CHECK(k_descale.dim() == DIM_FOUR,
+                    "k_descale should be 4D [blockNum, Nkv, blockSize, 1] in quant_mode=1 FP8 "
+                    "full-quant scenario, but got dim=",
+                    k_descale.dim());
+        TORCH_CHECK(k_descale.size(0) == key.size(0) && k_descale.size(1) == key.size(1) &&
+                        k_descale.size(2) == key.size(2) && k_descale.size(3) == 1,
+                    "k_descale should be [blockNum, Nkv, blockSize, 1] and match key PA_BNSD shape, "
+                    "but got k_descale sizes ",
+                    k_descale.sizes(), " and key sizes ", key.sizes());
+        TORCH_CHECK(k_descale.stride(0) * FP32_BYTES == paBlockStride, "k_descale.stride(0) * ", FP32_BYTES,
+                    " should equal key.stride(0), but got k_descale.stride(0)=", k_descale.stride(0),
                     " and key.stride(0)=", paBlockStride);
-        TORCH_CHECK(
-            key.stride(1) == key.size(2) * key.size(3) && key.stride(2) == key.size(3) && key.stride(3) == 1,
-            "key should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
-            key.strides());
-        TORCH_CHECK(
-            value.stride(1) == value.size(2) * value.size(3) && value.stride(2) == value.size(3) &&
-                value.stride(3) == 1,
-            "value should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
-            value.strides());
-        if (quant_mode == BSA_MXFP8_FULL_QUANT_MODE) {
-            const int64_t keyScaleDSize = (key.size(3) + BSA_MXFP8_SCALE_GROUP_SIZE - 1) / BSA_MXFP8_SCALE_GROUP_SIZE;
-            const int64_t valueScaleBlockSize =
-                (value.size(2) + BSA_MXFP8_SCALE_GROUP_SIZE - 1) / BSA_MXFP8_SCALE_GROUP_SIZE;
-            TORCH_CHECK(k_descale.dim() == DIM_FIVE,
-                        "k_descale should be 5D [blockNum, Nkv, blockSize, D / 64, 2] in quant_mode=2 MXFP8 "
-                        "full-quant scenario, but got dim=",
-                        k_descale.dim());
-            TORCH_CHECK(k_descale.size(0) == key.size(0) && k_descale.size(1) == key.size(1) &&
-                            k_descale.size(2) == key.size(2) && k_descale.size(3) == keyScaleDSize &&
-                            k_descale.size(4) == BSA_MXFP8_SCALE_LAST_DIM,
-                        "k_descale should be [blockNum, Nkv, blockSize, D / 64, 2] and match key PA_BNSD "
-                        "shape, but got k_descale sizes ",
-                        k_descale.sizes(), " and key sizes ", key.sizes());
-            TORCH_CHECK(k_descale.stride(4) == 1 && k_descale.stride(3) == k_descale.size(4) &&
-                            k_descale.stride(2) == k_descale.size(3) * k_descale.size(4) &&
-                            k_descale.stride(1) == k_descale.size(2) * k_descale.size(3) * k_descale.size(4) &&
-                            k_descale.stride(0) == k_descale.size(1) * k_descale.stride(1),
-                        "k_descale should use contiguous [blockNum, Nkv, blockSize, D / 64, 2] stride in "
-                        "quant_mode=2 MXFP8 full-quant scenario, but got ",
-                        k_descale.strides());
-            TORCH_CHECK(v_descale.dim() == DIM_FIVE,
-                        "v_descale should be 5D [blockNum, Nkv, blockSize / 64, DV, 2] in quant_mode=2 MXFP8 "
-                        "scenario, but got dim=",
-                        v_descale.dim());
-            TORCH_CHECK(v_descale.size(0) == value.size(0) && v_descale.size(1) == value.size(1) &&
-                            v_descale.size(2) == valueScaleBlockSize && v_descale.size(3) == value.size(3) &&
-                            v_descale.size(4) == BSA_MXFP8_SCALE_LAST_DIM,
-                        "v_descale should be [blockNum, Nkv, blockSize / 64, DV, 2] and match value PA_BNSD "
-                        "shape, but got v_descale sizes ",
-                        v_descale.sizes(), " and value sizes ", value.sizes());
-            TORCH_CHECK(v_descale.stride(4) == 1 && v_descale.stride(3) == v_descale.size(4) &&
-                            v_descale.stride(2) == v_descale.size(3) * v_descale.size(4) &&
-                            v_descale.stride(1) == v_descale.size(2) * v_descale.size(3) * v_descale.size(4) &&
-                            v_descale.stride(0) == v_descale.size(1) * v_descale.stride(1),
-                        "v_descale should use contiguous [blockNum, Nkv, blockSize / 64, DV, 2] stride in "
-                        "quant_mode=2 MXFP8 full-quant scenario, but got ",
-                        v_descale.strides());
-        } else {
-            TORCH_CHECK(k_descale.stride(0) * FP32_BYTES == paBlockStride, "k_descale.stride(0) * ", FP32_BYTES,
-                        " should equal key.stride(0), but got k_descale.stride(0)=", k_descale.stride(0),
-                        " and key.stride(0)=", paBlockStride);
-            TORCH_CHECK(k_descale.stride(1) == k_descale.size(2) && k_descale.stride(2) == 1,
-                        "k_descale should use segmented PA_BNSD stride [paBlockStride / 4, blockSize, 1], but got ",
-                        k_descale.strides());
-        }
+        TORCH_CHECK(k_descale.stride(1) == k_descale.size(2) && k_descale.stride(2) == 1 &&
+                        k_descale.stride(3) == 1,
+                    "k_descale should use segmented PA_BNSD stride [paBlockStride / 4, blockSize, 1, 1], "
+                    "but got ",
+                    k_descale.strides());
     }
 
     // construct the output tensors

@@ -61,7 +61,7 @@ def _prepare_kv_inputs(inputs):
 
     kv_cache_storage = _to_npu(inputs["kv_cache_storage"])
     combined_kv_cache.assert_combined_kv_views(kv_cache_storage, inputs["kv_cache_meta"])
-    key, value, k_descale = combined_kv_cache.make_combined_kv_kernel_inputs(
+    key, value, k_descale = combined_kv_cache.make_combined_kv_views(
         kv_cache_storage, inputs["kv_cache_meta"])
     return kv_cache_storage, key, value, k_descale
 
