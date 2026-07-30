@@ -127,6 +127,16 @@ const static int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
 const static uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
 const static int64_t KEY_VALUE_MODE_DIM0_NUM = 2LL;
 
+// Counting sort constants
+const static uint64_t COUNTING_SORT_TILINGKEY = 4000000ULL;
+const static int64_t COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM = 128LL;
+const static int64_t COUNTING_SORT_FILTER_CHUNK_SIZE = 4096LL;
+const static int64_t COUNTING_SORT_MIN_N = 256LL;
+const static int64_t COUNTING_SORT_MAX_N = 1024LL * 1024LL;
+const static int64_t COUNTING_SORT_THRESHOLD = 1536LL;
+const static int64_t COUNTING_SORT_MAX_PER_LOOP_COLS_BYTES = 64 * 1024LL;
+const static int64_t ONE_BLOCK_ELEMENT = 8LL;
+
 inline static int64_t CeilLog4(int64_t x) { return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR))); }
 
 inline static int64_t Align(int64_t elementNum, int64_t bytes)
@@ -155,7 +165,11 @@ struct PerLoopParams {
 
 class MoeInitRoutingV3Arch35TilingClass : public TilingBaseClass {
 public:
-    explicit MoeInitRoutingV3Arch35TilingClass(gert::TilingContext *context) : TilingBaseClass(context) { Reset(); }
+    explicit MoeInitRoutingV3Arch35TilingClass(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {
+        Reset();
+    }
     ~MoeInitRoutingV3Arch35TilingClass() override = default;
 
     void Reset(gert::TilingContext *context) override
@@ -273,6 +287,8 @@ private:
     int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8GroupQuant(int64_t perLoopCols);
     bool IsFullLoad();
+    bool ShouldEnableCountingSortByShape() const;
+    void ComputeCountingSortTiling();
     bool IsSupportGatherCopyKernels() const;
     void ComputeUseGatherCopy();
     void SetIndicesLoopParams4GatherOut(int64_t perLoopMaxIndicesElements, int64_t perCoreIndicesElements,
@@ -407,6 +423,10 @@ private:
     bool isEmptyTensor_ = false;
     int64_t ep_ = 0LL;
 
+    // counting sort flag
+    bool useCountingSort_ = false;
+    size_t countingSortWorkspaceSize_ = 0;
+
     // input attrs
     int64_t activeNum_ = -1LL;
     int64_t expertCapacity_ = -1LL;
@@ -540,6 +560,10 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     } else {
         Tiling4GatherOutCompute();
     }
+
+    if (!isFullload_ && !isEmptyTensor_) {
+        ComputeCountingSortTiling();
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -549,6 +573,11 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
 
     if (isEmptyTensor_) {
         return EMPTY_TENSOR_TILINGKEY;
+    }
+
+    // counting sort: 独立 tiling key，编码 rowIdxType (GATHER=4000000, SCATTER=4001000)
+    if (useCountingSort_) {
+        return COUNTING_SORT_TILINGKEY + rowIdxType_ * ROWIDX_TYPE_TILINGKEY_BASE;
     }
 
     int64_t quantModeFactor = quantMode_ + 1;
@@ -585,6 +614,16 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
     // 空tensor场景：分配少量workspace即可
     if (isEmptyTensor_) {
         return GetEmptyTensorWorkspaceSize();
+    }
+    // Counting sort场景：pairs workspace + expertCount workspace + 框架开销
+    if (useCountingSort_) {
+        int64_t frameworkOverhead = SIZE_16 * LENGTH_1024 * LENGTH_1024;
+        workspaceSize_ = countingSortWorkspaceSize_ + static_cast<size_t>(frameworkOverhead);
+        OP_LOGD(context_, "CountingSort workspace size is %u bytes", workspaceSize_);
+        auto *workspacePtr = context_->GetWorkspaceSizes(1);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, workspacePtr);
+        workspacePtr[0] = workspaceSize_;
+        return ge::GRAPH_SUCCESS;
     }
     // 计算workspace大小
     workspaceSize_ = 0;
@@ -642,6 +681,93 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetEmptyTensorWorkspaceSize()
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspacePtr);
     workspacePtr[0] = workspaceSize_;
     return ge::GRAPH_SUCCESS;
+}
+
+bool MoeInitRoutingV3Arch35TilingClass::ShouldEnableCountingSortByShape() const
+{
+    int64_t actualExpertNum = expertEnd_ - expertStart_;
+    bool expertNumValid = expertNum_ <= 1024;
+    bool dropPadValid = (dropPadMode_ == DROP_PAD_MODE_DROPLESS && actualExpertNum * NUM_TWO <= expertNum_);
+    bool quantValid = (quantMode_ == QUANT_MODE_UNQUANT);
+    bool excludeMxQuant = !IsMXFPXNoQuantCase(quantMode_, xDtype_);
+    return expertNumValid && dropPadValid && quantValid && excludeMxQuant;
+}
+
+void MoeInitRoutingV3Arch35TilingClass::ComputeCountingSortTiling()
+{
+    int64_t actualExpertNum = expertEnd_ - expertStart_;
+    if (n_ < COUNTING_SORT_MIN_N || n_ > COUNTING_SORT_MAX_N) {
+        return;
+    }
+
+    if (!ShouldEnableCountingSortByShape()) {
+        return;
+    }
+
+    if (actualExpertNum <= 0 || actualExpertNum > COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM) {
+        return;
+    }
+
+    int64_t filterPerCoreTokens = Ops::Base::CeilDiv(n_, aivCoreNum_);
+    int64_t filterNeedCoreNum = Ops::Base::CeilDiv(n_, filterPerCoreTokens);
+    int64_t expertCountStride = Ops::Base::CeilAlign(actualExpertNum, ONE_BLOCK_ELEMENT);
+
+    // Phase A: chunked filtering
+    int64_t chunkAligned = Ops::Base::CeilAlign(COUNTING_SORT_FILTER_CHUNK_SIZE, ONE_BLOCK_ELEMENT);
+    int64_t persistentSize =
+        Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    int64_t phaseASize =
+        Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    phaseASize += Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
+    int64_t maskBytesA = Ops::Base::CeilAlign(
+        Ops::Base::CeilDiv(chunkAligned, ONE_BLOCK_ELEMENT), static_cast<int64_t>(sizeof(int8_t)));
+    phaseASize += maskBytesA * NUM_THREE +
+                  Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) * NUM_THREE;
+    phaseASize += Ops::Base::CeilAlign(chunkAligned * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+
+    // Phase B
+    int64_t phaseBSize = Ops::Base::CeilAlign(
+        filterNeedCoreNum * expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    phaseBSize += Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+
+    // Phase C: pairsBuf + idxBuf only (no x/scale/quant buffers — gather is handled by downstream)
+    int64_t phaseCSize =
+        Ops::Base::CeilAlign(2048 * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE); // pairsBuf
+    phaseCSize += UB_BLOCK_SIZE;                                                                     // idxBuf
+
+    int64_t totalUB = persistentSize + std::max({phaseASize, phaseBSize, phaseCSize});
+    OP_LOGI(context_, "CountingSort totalUB is: %ld, availUbSize=%ld", totalUB, availUbSize_);
+
+    if (totalUB > availUbSize_) {
+        return; // UB not enough, fallback to merge sort
+    }
+
+    // Set tiling params: only needCoreNum and perCoreIndicesElements for filter distribution.
+    // colsLoops/perLoopCols/lastLoopCols are NOT overwritten — they remain set by Tiling4GatherOutCompute()
+    // for the downstream MoeGatherOut stage.
+    tilingDataPtr_->gatherOutComputeParamsOp.needCoreNum = filterNeedCoreNum;
+    tilingDataPtr_->gatherOutComputeParamsOp.perCoreIndicesElements = filterPerCoreTokens;
+
+    // Workspace layout: standard layout (sortedExpertIdx + rowIdxWorkspace) + pairs + expertCount
+    // Standard layout: Align(n*k)*2 * sizeof(int32_t) — same as MoeSortOneCore
+    int64_t totalLengthAligned = Ops::Base::CeilAlign(n_ * k_, ONE_BLOCK_ELEMENT);
+    size_t standardWorkspaceSize = static_cast<size_t>(totalLengthAligned) * NUM_TWO * sizeof(int32_t);
+
+    int64_t lastCoreTokens = n_ - (filterNeedCoreNum - 1) * filterPerCoreTokens;
+    int64_t maxCoreEntries = std::max(filterPerCoreTokens, lastCoreTokens) * k_;
+    int64_t pairsPerCore = Ops::Base::CeilAlign(maxCoreEntries, ONE_BLOCK_ELEMENT) * NUM_TWO;
+    size_t pairsWorkspaceSize =
+        static_cast<size_t>(filterNeedCoreNum) * static_cast<size_t>(pairsPerCore) * sizeof(int32_t);
+    size_t expertCountWorkspaceSize =
+        static_cast<size_t>(filterNeedCoreNum) * static_cast<size_t>(expertCountStride) * sizeof(int32_t);
+    countingSortWorkspaceSize_ = standardWorkspaceSize + pairsWorkspaceSize + expertCountWorkspaceSize;
+
+    useCountingSort_ = true;
+    OP_LOGI(context_,
+            "CountingSort enabled (separated): filterNeedCoreNum=%ld, filterPerCoreTokens=%ld, "
+            "standardWS=%zu, pairsWS=%zu, expertCountWS=%zu, totalWS=%zu",
+            filterNeedCoreNum, filterPerCoreTokens, standardWorkspaceSize, pairsWorkspaceSize,
+            expertCountWorkspaceSize, countingSortWorkspaceSize_);
 }
 
 ge::graphStatus MoeInitRoutingV3Arch35TilingClass::PostTiling()
@@ -919,7 +1045,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
     static const unordered_set<DataType> STATIC_QUANT_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
                                                                           DataType::DT_BF16};
     static const unordered_set<DataType> UNQUANT_SUPPORTED_DTYPES = {
-        DataType::DT_FLOAT,    DataType::DT_FLOAT16,     DataType::DT_BF16,          DataType::DT_INT8,
+        DataType::DT_FLOAT, DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_INT8,
         DataType::DT_HIFLOAT8, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT4_E2M1};
     static const unordered_set<DataType> MXFP4QUANT_SUPPORTED_DTYPES = {DataType::DT_FLOAT16, DataType::DT_BF16};
     static const unordered_set<DataType> DYNAMIC_QUANT_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
@@ -1448,7 +1574,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputs()
 void MoeInitRoutingV3Arch35TilingClass::LogBaseTilingData()
 {
     std::stringstream ss;
-    ss << "\n[TilingKey]\n" << tilingKey_ << "\n[WorkspaceSize]\n" << workspaceSize_ << "\n";
+    ss << "\n[TilingKey]\n"
+       << tilingKey_ << "\n[WorkspaceSize]\n"
+       << workspaceSize_ << "\n";
     ss << "[MoeInitRoutingV3Arch35TilingData]\n";
     ss << "coreNum = " << tilingDataPtr_->coreNum << "\n";
     ss << "n = " << tilingDataPtr_->n << "\n";
