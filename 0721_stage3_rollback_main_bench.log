@@ -1,4 +1,4 @@
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=5502edf2994c11a1727ec32927a9634eab0eed7d0236f3b9ec74e26c8beb5528
-[00] bsnd_b1_s1_1024_k_5120 bench tl_med=67.560ms off_med=19.494ms ratio=0.29x
+[00] bsnd_b1_s1_1024_k_5120 bench tl_med=67.356ms off_med=19.546ms ratio=0.29x
 Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9

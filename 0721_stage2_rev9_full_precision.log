@@ -2,8 +2,8 @@
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=4790c9822ca836e44f58c94362e1f8b5e1bb78bd9a89c3017636a54ef7352b7c
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=37ce414c2c95d44c933e9ffcaefd650f5af8ec01de3ebcc30de83ab965845d56
-[01] bsnd_b1_s1_1_k_2048 PRECISION FAIL: dQueryIndex: non-finite value detected (TileLang=981, Official=0)
-  TileLang kinds: nan=896 +inf=45 -inf=40
+[01] bsnd_b1_s1_1_k_2048 PRECISION FAIL: dQueryIndex: non-finite value detected (TileLang=977, Official=0)
+  TileLang kinds: nan=896 +inf=40 -inf=41
   TileLang first coordinates: (0, 0, 0, 0), (0, 0, 0, 1), (0, 0, 0, 2), (0, 0, 0, 3), (0, 0, 0, 4), (0, 0, 0, 5), (0, 0, 0, 6), (0, 0, 0, 7), (0, 0, 0, 8), (0, 0, 0, 9), (0, 0, 0, 10), (0, 0, 0, 11), (0, 0, 0, 12), (0, 0, 0, 13), (0, 0, 0, 14), (0, 0, 0, 15)
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=c4b575ec2b412bd921e5f625d21d67627f4071665a0a5e3dd9cdacae3ed85a79
@@ -29,9 +29,10 @@
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=0ac06c2835cb0320676d7fab819ec22c622f36b2b3011b54a8363d9bb1c5370d
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=5ac33249bdd086349c5621f8db6657d5f07146599b3fdcd978c5b3385fdf9c17
-[13] bsnd_b1_s1_512_k_5120 PRECISION_FAIL dQ_norm=1.14e-01 dK_norm=1.10e-01 dW_norm=7.05e-02 Loss_norm=5.08e-06
+[13] bsnd_b1_s1_512_k_5120 PRECISION_FAIL dQ_norm=8.21e-02 dK_norm=8.45e-02 dW_norm=6.97e-02 Loss_norm=2.23e-06
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=2855743a82374a084fc9078b890aafa414bb8c56cde43b99f06783eb5ecaca68
+[14] bsnd_b1_s1_512_k_8192 PRECISION_FAIL dQ_norm=3.83e-02 dK_norm=3.25e-02 dW_norm=2.06e-05 Loss_norm=0.00e+00
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=cc90159960346f54ba790c827923371ad464367d5d59e3325698faac7bb70812
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
@@ -54,10 +55,12 @@
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=0d34e10257c29f89b57487a9191b08543e295698ebe41bbe073d6ac1da2cda1d
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=d872fa51b29063fbf0538c2d3ec460a01ea5625b9b8e949070f261dd29bfc0de
+[25] bsnd_b4_s1_512_k_1024 PRECISION_FAIL dQ_norm=6.91e-03 dK_norm=6.88e-03 dW_norm=3.80e-05 Loss_norm=1.33e-06
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=c188346aa81c066f78e2f8872ca47e9a3418b59445fa76e653a1cc8d9e1e9b89
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=df12e85d7705629e776377b20ee32b9382786fa12bbf4d2f6e48c2e6b7a6c80d
+[27] bsnd_b4_s1_1024_k_1024 PRECISION_FAIL dQ_norm=6.64e-03 dK_norm=5.73e-03 dW_norm=3.68e-09 Loss_norm=1.62e-06
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=87aadbd30ab87aae184b8cfdc92e144f859864a699f2d707cf60e7a875bf53d8
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
@@ -78,11 +81,11 @@
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=b0cff40f0ad03c3ecd27610b476ec065260220141f4c59a0d4a93f9511961605
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=ef7338a092c5d02757d36b62c55a0011ee70e6c040952680d11ac33f141e2421
-[37] tnd_s1_64_k_2048 PRECISION FAIL: dQueryIndex: non-finite value detected (TileLang=61568, Official=0)
-  TileLang kinds: nan=57344 +inf=2076 -inf=2148
+[37] tnd_s1_64_k_2048 PRECISION FAIL: dQueryIndex: non-finite value detected (TileLang=60642, Official=0)
+  TileLang kinds: nan=56192 +inf=2163 -inf=2287
   TileLang first coordinates: (0, 0, 0), (0, 0, 1), (0, 0, 2), (0, 0, 3), (0, 0, 4), (0, 0, 5), (0, 0, 6), (0, 0, 7), (0, 0, 8), (0, 0, 9), (0, 0, 10), (0, 0, 11), (0, 0, 12), (0, 0, 13), (0, 0, 14), (0, 0, 15)
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=2d64badb4c9b8da860a55946a69cd802f8ad662a588319eace88869e82585234
 [build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=9 python_sha256=8ecfb99931acdde7e61b3db54ecfb786d6be5c5ac4e0288f573d5f2528b3d9c4
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=af788b908e2015d766c18595e8433553060fd8522027d6f70cae536768c08474
-Summary: total=40 pass=37 fail=3 precision=3 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+Summary: total=40 pass=34 fail=6 precision=6 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
