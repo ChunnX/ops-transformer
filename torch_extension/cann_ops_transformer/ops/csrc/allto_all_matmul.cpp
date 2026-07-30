@@ -50,18 +50,17 @@ int64_t CheckAndGetGroupSize(at::IntArrayRef groupSizeList)
     return groups;
 }
 
-std::tuple<at::Tensor, at::Tensor>
-NpuAlltoAllMatmul(const at::Tensor &context, const at::Tensor &x1, const at::Tensor &x2, int64_t hcclBufferSize,
-                  int64_t worldSize, bool alltoallOutFlag, const c10::optional<at::Tensor> &biasOptional,
-                  const c10::optional<at::Tensor> &x1ScaleOptional, const c10::optional<at::Tensor> &x2ScaleOptional,
-                  const c10::optional<at::Tensor> &commScaleOptional, const c10::optional<at::Tensor> &x1OffsetOptional,
-                  const c10::optional<at::Tensor> &x2OffsetOptional, c10::optional<int64_t> x1QuantMode,
-                  c10::optional<int64_t> x2QuantMode, c10::optional<int64_t> commQuantMode, c10::IntArrayRef groupSizes,
-                  c10::IntArrayRef alltoAllAxesOptional, c10::optional<int64_t> commQuantDtype,
-                  c10::optional<int64_t> x1QuantDtype, c10::optional<int64_t> x1Dtype, c10::optional<int64_t> x2Dtype,
-                  c10::optional<int64_t> x1ScaleDtype, c10::optional<int64_t> x2ScaleDtype,
-                  c10::optional<int64_t> outputScaleDtype, c10::optional<int64_t> commScaleDtype,
-                  c10::optional<int64_t> yDtype, std::string commMode, int64_t precisionMode)
+std::tuple<at::Tensor, at::Tensor> NpuAlltoAllMatmul(
+    const at::Tensor &context, const at::Tensor &x1, const at::Tensor &x2, int64_t hcclBufferSize, std::string group,
+    int64_t worldSize, bool alltoallOutFlag, const c10::optional<at::Tensor> &biasOptional,
+    const c10::optional<at::Tensor> &x1ScaleOptional, const c10::optional<at::Tensor> &x2ScaleOptional,
+    const c10::optional<at::Tensor> &commScaleOptional, const c10::optional<at::Tensor> &x1OffsetOptional,
+    const c10::optional<at::Tensor> &x2OffsetOptional, c10::optional<int64_t> x1QuantMode,
+    c10::optional<int64_t> x2QuantMode, c10::optional<int64_t> commQuantMode, c10::IntArrayRef groupSizes,
+    c10::IntArrayRef alltoAllAxesOptional, c10::optional<int64_t> commQuantDtype, c10::optional<int64_t> x1QuantDtype,
+    c10::optional<int64_t> x1Dtype, c10::optional<int64_t> x2Dtype, c10::optional<int64_t> x1ScaleDtype,
+    c10::optional<int64_t> x2ScaleDtype, c10::optional<int64_t> outputScaleDtype, c10::optional<int64_t> commScaleDtype,
+    c10::optional<int64_t> yDtype, std::string commMode, int64_t precisionMode)
 {
     TORCH_CHECK(x1.dim() == DIM_TWO,
                 "The x1 input of alltoallquantmatmul is required to be 2D, but the actual x1 input is ", x1.dim(),
@@ -104,6 +103,9 @@ NpuAlltoAllMatmul(const at::Tensor &context, const at::Tensor &x1, const at::Ten
     std::string commModeStr = std::string(commMode);
     char *commModePtr = const_cast<char *>(commModeStr.c_str());
 
+    std::string groupStr = std::string(group);
+    char *groupPtr = const_cast<char *>(groupStr.c_str());
+
     bool transposeX1 = false;
     bool transposeX2 = false;
 
@@ -140,16 +142,13 @@ NpuAlltoAllMatmul(const at::Tensor &context, const at::Tensor &x1, const at::Ten
 
     // 暂时没处理alltoallout flag，强制带出该可选出参
     ACLNN_CMD(aclnnAlltoAllMatmulApace, context, x1Wrapper, x2Wrapper, biasOptional, x1ScaleWrapper, x2ScaleWrapper,
-              commScaleOptional, x1OffsetOptional, x2OffsetOptional, hcclBufferSize, alltoAllAxesOptional,
-              x1QuantModeVal, x2QuantModeVal, commQuantModeVal, commQuantDtypeVal, x1QuantDtypeVal, transposeX1,
-              transposeX2, groupSize, commModePtr, precisionMode, y, alltoallOutWrapper);
+              commScaleOptional, x1OffsetOptional, x2OffsetOptional, groupPtr, worldSize, hcclBufferSize,
+              alltoAllAxesOptional, x1QuantModeVal, x2QuantModeVal, commQuantModeVal, commQuantDtypeVal,
+              x1QuantDtypeVal, transposeX1, transposeX2, groupSize, commModePtr, precisionMode, y, alltoallOutWrapper);
 
     return std::make_tuple(y, alltoallOut);
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
-{
-    m.def("npu_allto_all_matmul", &NpuAlltoAllMatmul, "npu_allto_all_matmul");
-}
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("npu_allto_all_matmul", &NpuAlltoAllMatmul, "npu_allto_all_matmul"); }
 
 } // namespace op_api
