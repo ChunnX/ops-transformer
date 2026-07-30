@@ -67,6 +67,8 @@ constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
 constexpr uint8_t VALID_EVENT_FLAG_NUM = 8U;
 constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
 constexpr uint32_t MIN_ACTIVE_BS_FOR_BS_MODE = 16U;
+// Token 预取到 L2Cache 的 active token 上限（A5 AllToAllDispatch 入口预取；超出则不预取）
+constexpr uint32_t TOKEN_PREFETCH_MAX_ACTIVE_BS = 256U;
 constexpr uint32_t DURATION_OFFSET = sizeof(int64_t) / sizeof(int32_t);
 constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 
@@ -124,6 +126,7 @@ private:
     __aicore__ inline void AllToAllDispatchA5(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> expertMaskBuf, TBuf<> outBuf);
     __aicore__ inline void AllToAllDispatchA3(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> outBuf);
     __aicore__ inline void AllToAllDispatch();
+    __aicore__ inline void TokenPrefetchToL2Cache(TQue<QuePosition::VECIN, 1> inQueue);
     __aicore__ inline void CalCumSum();
     __aicore__ inline void WaitCumSumFlag();
     __aicore__ inline void CalAndSendCntByExp();
@@ -1094,6 +1097,24 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SendToMoeExpertByB
 }
 
 template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::TokenPrefetchToL2Cache(
+    TQue<QuePosition::VECIN, 1> inQueue)
+{
+    // 分散读取前，用多个 AllToAll 核把 [0, activeMaskBsCnt_) 顺序预取进共享 L2，后续 token MTE2 读即命中。
+    if (isExpertMaskFlag_ || activeMaskBsCnt_ == 0 || activeMaskBsCnt_ > TOKEN_PREFETCH_MAX_ACTIVE_BS) {
+        return;
+    }
+    DataCopyPadParams prefetchPadParams{true, 0U, 0U, 0U};
+    uint32_t pfStart, pfEnd, pfPerCore;
+    SplitToCore(static_cast<uint32_t>(activeMaskBsCnt_), aivUsedAllToAll_, pfStart, pfEnd, pfPerCore, true);
+    LocalTensor<XInType> prefetchScratch = inQueue.AllocTensor<XInType>();
+    for (uint32_t t = pfStart; t < pfEnd; ++t) {
+        DataCopyPad(prefetchScratch, xGMTensor_[t * axisH_], hCopyParams_, prefetchPadParams);
+    }
+    inQueue.FreeTensor(prefetchScratch);
+}
+
+template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::AllToAllDispatch()
 {
     // 使用的全局参数
@@ -1157,6 +1178,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         return;
     }
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    TokenPrefetchToL2Cache(inQueue); // token 预取到 L2Cache（在分散读取前）
     AllToAllDispatchA5(inQueue, expertMaskBuf, outBuf);
 #else
     AllToAllDispatchA3(inQueue, outBuf);
