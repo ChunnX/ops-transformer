@@ -38,7 +38,7 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
             "qkv_rms_norm_rope_cache_with_k_scale_("
             "Tensor qkv, Tensor q_gamma, Tensor k_gamma, Tensor cos_sin, Tensor slot_mapping, "
             "Tensor(a!) k_cache, Tensor(b!) v_cache, Tensor(c!) k_scale_cache, "
-            "Tensor? query_start_loc, Tensor? seq_lens, int[] head_nums, "
+            "Tensor query_start_loc, Tensor seq_lens, int[] head_nums, "
             "*, "
             "Tensor? rotation=None, Tensor? v_scale=None, "
             'str? layout_qkv="TND", str? layout_q_out="NTD", '
@@ -47,7 +47,7 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
             "qkv_rms_norm_rope_cache_with_k_scale("
             "Tensor qkv, Tensor q_gamma, Tensor k_gamma, Tensor cos_sin, Tensor slot_mapping, "
             "Tensor k_cache, Tensor v_cache, Tensor k_scale_cache, "
-            "Tensor? query_start_loc, Tensor? seq_lens, int[] head_nums, "
+            "Tensor query_start_loc, Tensor seq_lens, int[] head_nums, "
             "*, "
             "Tensor? rotation=None, Tensor? v_scale=None, "
             'str? layout_qkv="TND", str? layout_q_out="NTD", '
@@ -244,8 +244,8 @@ def qkv_rms_norm_rope_cache_with_k_scale_(
     k_cache: torch.Tensor,
     v_cache: torch.Tensor,
     k_scale_cache: torch.Tensor,
-    query_start_loc: Optional[torch.Tensor],
-    seq_lens: Optional[torch.Tensor],
+    query_start_loc: torch.Tensor,
+    seq_lens: torch.Tensor,
     head_nums: List[int],
     *,
     rotation: Optional[torch.Tensor] = None,
@@ -301,8 +301,8 @@ def qkv_rms_norm_rope_cache_with_k_scale(
     k_cache: torch.Tensor,
     v_cache: torch.Tensor,
     k_scale_cache: torch.Tensor,
-    query_start_loc: Optional[torch.Tensor],
-    seq_lens: Optional[torch.Tensor],
+    query_start_loc: torch.Tensor,
+    seq_lens: torch.Tensor,
     head_nums: List[int],
     *,
     rotation: Optional[torch.Tensor] = None,

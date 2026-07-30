@@ -210,7 +210,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
 ) -> (Tensor, Optional[Tensor], Tensor, Tensor, Tensor)
 ```
 
-`query_start_loc`和`seq_lens`在算子接口上是可选Tensor，但由于它们后面仍有必选参数`head_nums`，两个位置不设置Python默认值。RoPE调用表达式及既有参数顺序保持不变；M-RoPE调用需要在这两个固定位置显式传入`None`。新增参数位于keyword-only参数尾部。
+`query_start_loc`和`seq_lens`是torch_extension对外接口的必选Tensor位置参数，调用时不可省略且不设置Python默认值。RoPE调用表达式及既有参数顺序保持不变；M-RoPE调用需要在这两个固定位置显式传入`None`，底层按M-RoPE场景处理。这里的“必选”表示torch_extension调用位置必须提供，底层C++ bridge、ACLNN、OpDef和tiling仍按可选输入处理。新增参数位于keyword-only参数尾部。
 
 ## 参数说明
 
@@ -226,8 +226,8 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
 | k_cache | Tensor | 必选 | K Cache。原地接口直接更新该Tensor；functional接口更新其副本并返回。RoPE场景为FP8 E4M3FN，M-RoPE场景为INT8。 | torch.float8_e4m3fn或torch.int8 | `[BlockNum,Nk,BlockSize,D]` |
 | v_cache | Tensor | 必选 | V Cache。原地接口直接更新该Tensor；functional接口更新其副本并返回。 | torch.float8_e4m3fn | `[BlockNum,Nv,BlockSize,D]` |
 | k_scale_cache | Tensor | 必选 | K动态量化scale cache。原地接口直接更新该Tensor；functional接口更新其副本并返回。 | torch.float32 | `[BlockNum,Nk,BlockSize,1]` |
-| query_start_loc | Optional[Tensor] | 可选（接口级） | RoPE场景位置源之一，表示当前调用内各batch token数的前缀和；RoPE场景必须与`seq_lens`同时传入，M-RoPE场景必须显式传`None`。 | torch.int32 | `[Batch+1]` |
-| seq_lens | Optional[Tensor] | 可选（接口级） | RoPE场景位置源之一，表示每个batch追加本次token后的实际序列长度；RoPE场景必须与`query_start_loc`同时传入，M-RoPE场景必须显式传`None`。 | torch.int32 | `[Batch]` |
+| query_start_loc | Tensor | 必选（位置参数） | RoPE场景位置源之一，表示当前调用内各batch token数的前缀和；RoPE场景必须与`seq_lens`同时传入有效Tensor，M-RoPE场景不可省略该位置且必须显式传`None`。 | torch.int32 | `[Batch+1]` |
+| seq_lens | Tensor | 必选（位置参数） | RoPE场景位置源之一，表示每个batch追加本次token后的实际序列长度；RoPE场景必须与`query_start_loc`同时传入有效Tensor，M-RoPE场景不可省略该位置且必须显式传`None`。 | torch.int32 | `[Batch]` |
 | head_nums | List[int] | 必选 | Q/K/V头数数组，必须按`[Nq,Nk,Nv]`传入。 | int | 长度为3 |
 | rotation | Optional[Tensor] | 可选 | Q/K共享矩阵乘权重。默认值为`None`，但完整场景合同要求传入有效Tensor。 | torch.bfloat16 | `[D,D]` |
 | v_scale | Optional[Tensor] | 可选 | V分支量化缩放因子。默认值为`None`，但完整场景合同要求传入有效Tensor。 | torch.float32 | `[Nv]` |
@@ -275,7 +275,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
   | v_cache dtype | FP8 E4M3FN | FP8 E4M3FN |
   | layout_qkv -> layout_q_out | NTD->NTD、TND->TND、TND->NTD | 仅TND->TND |
 
-- Torch extension不执行上表的完整合同校验。为安全构造和传递输出Tensor，Torch层只要求`head_nums[0]`和`qkv`前三维可读、layout能够解释输出轴、`q_out_dtype`为`torch.dtype`，并检查有值的Optional Tensor不是undefined；`mrope_position`存在或`mrope_section`非空时构造M-RoPE候选返回结构。其他Tensor shape/dtype、属性值域和场景相关性均交由ACLNN校验。
+- Torch extension不执行上表的完整合同校验。`query_start_loc`和`seq_lens`在对外签名中是必选位置参数，其取值会原样传递给底层C++ bridge；M-RoPE显式传入的`None`由底层optional语义承接。为安全构造和传递输出Tensor，Torch层只要求`head_nums[0]`和`qkv`前三维可读、layout能够解释输出轴、`q_out_dtype`为`torch.dtype`，并检查有值的Optional Tensor不是undefined；`mrope_position`存在或`mrope_section`非空时构造M-RoPE候选返回结构。其他Tensor shape/dtype、属性值域和场景相关性均交由ACLNN校验。
 - 算子不提供独立`scene`参数。ACLNN根据四个可选参数的有效presence识别场景：空`mrope_section=[]`与`None`等价，均属于RoPE侧的未提供状态；非空`mrope_section`才表示M-RoPE属性存在。`query_start_loc`与`seq_lens`只存在一个、`mrope_position`与非空`mrope_section`只存在一个、两组位置源同时存在或同时缺失均非法。零元素Tensor仍视为已提供，并由ACLNN按shape非法处理。
 - 仅支持`D=128`，且`Nv`必须等于`Nk`。
 - M-RoPE下令`HALF_D=D/2=64`，`mrope_section=[t,h,w]`三项分别满足`0 <= value <= [22,21,21]`，并且`t+h+w <= HALF_D`。容量上限的一般形式为`(T,H,W)=[ceil(HALF_D/3),floor((HALF_D+1)/3),floor(HALF_D/3)]`。第0项`t`虽需满足`[0,22]`且参与总和校验，但其数值不参与交织公式、场景判断或T轴采集范围；T/H/W三路始终全部采集。D128下总和上限为64。
