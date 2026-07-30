@@ -843,10 +843,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t totalStateWinSizeEp = dispatchWinStateSize + combineWinStateSize;
     uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    uint64_t topKAlign = (topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    uint64_t dispatchReservedPerSlotBytes = AlignUpWin(hiddenAlign + topKAlign * 2 + UB_ALIGN);
-    uint64_t scaleoutReservedPerSlotBytes =
-        AlignUpWin(dispatchReservedPerSlotBytes + topK * sizeof(int32_t));
+    uint64_t dispatchReservedPerSlotBytes = static_cast<uint64_t>(info.cfg.perSlotBytes);
+    uint64_t scaleoutReservedPerSlotBytes = static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
     uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
     uint64_t winNeed;
     if (info.networkMode == HYBRID_MODE) {
