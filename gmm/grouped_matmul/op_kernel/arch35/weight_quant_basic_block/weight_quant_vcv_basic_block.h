@@ -35,13 +35,13 @@ using AscendC::TPipe;
 using AscendC::TPosition;
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
-#define GMM_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM                                                              \
-    template <typename xType, typename wType, typename antiQuantScaleType, typename scaleType,             \
-              typename perTokenScaleType, typename biasType, typename yType, const WqmmConfig &wqmmConfig, \
+#define GMM_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM                                                                          \
+    template <typename xType, typename wType, typename antiQuantScaleType, typename scaleType,                         \
+              typename perTokenScaleType, typename biasType, typename yType, const WqmmConfig &wqmmConfig,             \
               const VecAntiQuantConfig &vecConfig>
 
-#define GMM_WQ_VCV_BASIC_BLOCK_CLASS                                                                                \
-    WeightQuantVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, \
+#define GMM_WQ_VCV_BASIC_BLOCK_CLASS                                                                                   \
+    WeightQuantVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType,    \
                                    wqmmConfig, vecConfig>
 
 GMM_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
@@ -124,7 +124,7 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t
                                                           uint64_t aPrefetchSize,
                                                           const TCubeTiling *__restrict matmulTiling, TPipe *tPipe)
 {
-    uint64_t weightL1Space = matmulTiling->baseN * matmulTiling->stepKb * matmulTiling->baseK;  // weight单块大小
+    uint64_t weightL1Space = matmulTiling->baseN * matmulTiling->stepKb * matmulTiling->baseK; // weight单块大小
 
     weightS8L1DbOffset_ = 512 * GetKBUnit<int8_t>() - weightL1Space;
     weightS8L1_ = LocalTensor<xType>(TPosition::TSCM, 0, 512 * 1024 / sizeof(xType));
@@ -164,22 +164,23 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::ComputeBasicBlock(const Bas
             WaitAivToAic<PIPE_FIX>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
             cubeCompute_.GetTensorC(ubOutputS32Buffer_);
             SetAicToAiv<PIPE_FIX>(SYNC_AIC_FIX_AIV_VF_FLAG);
-            cubeCompute_.ClearAFullLoadFlag();  // 清除A全载时之前循环的set同步标记
+            cubeCompute_.ClearAFullLoadFlag(); // 清除A全载时之前循环的set同步标记
         }
         IterateNzKnWithKAic(curOffsetParam);
     }
 }
 
 GMM_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNzKn(
-    const BasicBlockOffsetParam &curOffsetParam, const BasicBlockOffsetParam &lastOffsetParam)
+__aicore__ inline void
+GMM_WQ_VCV_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNzKn(const BasicBlockOffsetParam &curOffsetParam,
+                                                       const BasicBlockOffsetParam &lastOffsetParam)
 {
     uint64_t kMte2Offset = 0;
     uint64_t curCvLoopIdx = cvLoopIdx_;
     // vec上两core切n
-    uint64_t mte2RealN = curOffsetParam.nL1Size > C0_SIZE_B8
-                             ? CeilAlign(curOffsetParam.nL1Size >> 1, static_cast<uint64_t>(C0_SIZE_B8))
-                             : curOffsetParam.nL1Size;
+    uint64_t mte2RealN = curOffsetParam.nL1Size > C0_SIZE_B8 ?
+                             CeilAlign(curOffsetParam.nL1Size >> 1, static_cast<uint64_t>(C0_SIZE_B8)) :
+                             curOffsetParam.nL1Size;
     uint64_t nL1Offset = GetSubBlockIdx() * mte2RealN;
     mte2RealN = GetSubBlockIdx() == 0 ? mte2RealN : curOffsetParam.nL1Size - mte2RealN;
 
@@ -220,16 +221,16 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzKnWithKAiv(uint64_
     l1ConsumeConfig.l1RealExternalLen = curOffsetParam.nL1Size;
 
     for (; kMte2Offset < kMte2Limit; kMte2Offset += vecConfig.ubMte2InnerSize) {
-        uint64_t mte2RealK = (kMte2Offset + vecConfig.ubMte2InnerSize) > kMte2Limit
-                                 ? kMte2Limit - kMte2Offset
-                                 : vecConfig.ubMte2InnerSize;  // vec总共需要搬运的K方向的实际量（考虑尾块）
+        uint64_t mte2RealK = (kMte2Offset + vecConfig.ubMte2InnerSize) > kMte2Limit ?
+                                 kMte2Limit - kMte2Offset :
+                                 vecConfig.ubMte2InnerSize; // vec总共需要搬运的K方向的实际量（考虑尾块）
         vecCompute_.WaitVToMTE2();
         vecCompute_.CopyGmToUb(mte2RealN, mte2RealK, curOffsetParam.nOffset + nL1Offset, kMte2Offset, curOffsetParam);
         for (uint64_t antiquantKOffset = 0; antiquantKOffset < mte2RealK;
              antiquantKOffset += curOffsetParam.kbL1Size, cvLoopIdx_++) {
-            uint64_t antiquantRealK = (antiquantKOffset + curOffsetParam.kbL1Size) >= mte2RealK
-                                          ? mte2RealK - antiquantKOffset
-                                          : curOffsetParam.kbL1Size;
+            uint64_t antiquantRealK = (antiquantKOffset + curOffsetParam.kbL1Size) >= mte2RealK ?
+                                          mte2RealK - antiquantKOffset :
+                                          curOffsetParam.kbL1Size;
             if (cvLoopIdx_ > 1) {
                 WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
             }
@@ -250,9 +251,9 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzKnWithKAic(const B
 {
     for (uint64_t kbL1Offset = 0; kbL1Offset < curOffsetParam.kSize;
          kbL1Offset += curOffsetParam.kbL1Size, cvLoopIdx_++) {
-        uint64_t kbL1RealSize = (kbL1Offset + curOffsetParam.kbL1Size) >= curOffsetParam.kSize
-                                    ? curOffsetParam.kSize - kbL1Offset
-                                    : curOffsetParam.kbL1Size;
+        uint64_t kbL1RealSize = (kbL1Offset + curOffsetParam.kbL1Size) >= curOffsetParam.kSize ?
+                                    curOffsetParam.kSize - kbL1Offset :
+                                    curOffsetParam.kbL1Size;
         cubeCompute_.WaitMTE1ToMTE2(kbL1Offset, curOffsetParam);
         cubeCompute_.CopyAAndBiasGmToL1(curOffsetParam, kbL1Offset, cvLoopIdx_);
         WaitAivToAic<PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
@@ -301,6 +302,6 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffsetP
         vecCompute_.End();
     }
 }
-}  // namespace WeightQuantBatchMatmulV2::Arch35
+} // namespace WeightQuantBatchMatmulV2::Arch35
 
-#endif  // GROUPED_MATMUL_WEIGHT_QUANT_VCV_BASIC_BLOCK_H
+#endif // GROUPED_MATMUL_WEIGHT_QUANT_VCV_BASIC_BLOCK_H

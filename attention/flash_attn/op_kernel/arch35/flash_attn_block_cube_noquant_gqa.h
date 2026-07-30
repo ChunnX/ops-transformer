@@ -15,6 +15,8 @@
 #ifndef FLASH_ATTEN_BLOCK_CUBE_NOQUANT_GQA_H_
 #define FLASH_ATTEN_BLOCK_CUBE_NOQUANT_GQA_H_
 
+// 同一源文件在两种目录树编译：开发仓 common 多嵌套一层 op_kernel/（需 ../../../common/op_kernel/），
+// CANN部署仓扁平化（需 ../../common/）；__has_include 编译期探测自适应，免维护两份源文件。
 #if __has_include("../../../common/op_kernel/offset_calculator.h")
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"

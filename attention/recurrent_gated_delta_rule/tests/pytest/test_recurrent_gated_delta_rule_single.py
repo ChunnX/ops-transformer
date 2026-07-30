@@ -8,25 +8,24 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import itertools
-import torch
 import torch_npu
 import os
 import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import pytest
 
 from test_recurrent_gated_delta_rule_paramset import ENABLED_PARAMS
 from test_recurrent_gated_delta_rule_paramset_rdv import ENABLED_PARAMS_RDV
 import recurrent_gated_delta_rule_operator_single
-import pytest
 
-TEST_MODE = os.environ.get('TEST_MODE', 'single')
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-if TEST_MODE not in ['single', 'rdv']:
+TEST_MODE = os.environ.get("TEST_MODE", "single")
+
+if TEST_MODE not in ["single", "rdv"]:
     raise ValueError(f"Invalid TEST_MODE: {TEST_MODE}, must be 'single' or 'rdv'")
 
-if TEST_MODE == 'rdv':
+if TEST_MODE == "rdv":
     PARAM_SET = ENABLED_PARAMS_RDV
 else:
     PARAM_SET = ENABLED_PARAMS
@@ -34,10 +33,28 @@ else:
 logger.info(f"TEST_MODE: {TEST_MODE}")
 
 param_names = [
-    "batch_size", "mtp", "nk", "nv", "dk", "dv", "actual_seq_lengths", "ssm_state_indices", "has_gamma",
-    "has_gamma_k", "has_num_accepted_tokens", "scale_value", "num_accepted_tokens", "block_num", "data_type",
-    "query_datarange", "key_datarange", "value_datarange", "gamma_datarange", "gamma_k_datarange",
-    "beta_datarange", "state_datarange"
+    "batch_size",
+    "mtp",
+    "nk",
+    "nv",
+    "dk",
+    "dv",
+    "actual_seq_lengths",
+    "ssm_state_indices",
+    "has_gamma",
+    "has_gamma_k",
+    "has_num_accepted_tokens",
+    "scale_value",
+    "num_accepted_tokens",
+    "block_num",
+    "data_type",
+    "query_datarange",
+    "key_datarange",
+    "value_datarange",
+    "gamma_datarange",
+    "gamma_k_datarange",
+    "beta_datarange",
+    "state_datarange",
 ]
 
 param_combinations = []
@@ -74,36 +91,57 @@ for _, params in enumerate(PARAM_SET):
 
 logger.info(f"Total test cases: {len(param_combinations)}")
 
+
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_recurrent_gated_delta_rule(param_combinations):
-    batch_size = param_combinations['batch_size']
-    mtp = param_combinations['mtp']
-    nk = param_combinations['nk']
-    nv = param_combinations['nv']
-    dk = param_combinations['dk']
-    dv = param_combinations['dv']
-    actual_seq_lengths = param_combinations['actual_seq_lengths']
-    ssm_state_indices = param_combinations['ssm_state_indices']
-    has_gamma = param_combinations['has_gamma']
-    has_gamma_k = param_combinations['has_gamma_k']
-    has_num_accepted_tokens = param_combinations['has_num_accepted_tokens']
-    scale_value = param_combinations['scale_value']
-    num_accepted_tokens = param_combinations['num_accepted_tokens']
-    block_num = param_combinations['block_num']
-    data_type = param_combinations['data_type']
-    query_datarange = param_combinations['query_datarange']
-    key_datarange = param_combinations['key_datarange']
-    value_datarange = param_combinations['value_datarange']
-    gamma_datarange = param_combinations['gamma_datarange']
-    gamma_k_datarange = param_combinations['gamma_k_datarange']
-    beta_datarange = param_combinations['beta_datarange']
-    state_datarange = param_combinations['state_datarange']
+    batch_size = param_combinations["batch_size"]
+    mtp = param_combinations["mtp"]
+    nk = param_combinations["nk"]
+    nv = param_combinations["nv"]
+    dk = param_combinations["dk"]
+    dv = param_combinations["dv"]
+    actual_seq_lengths = param_combinations["actual_seq_lengths"]
+    ssm_state_indices = param_combinations["ssm_state_indices"]
+    has_gamma = param_combinations["has_gamma"]
+    has_gamma_k = param_combinations["has_gamma_k"]
+    has_num_accepted_tokens = param_combinations["has_num_accepted_tokens"]
+    scale_value = param_combinations["scale_value"]
+    num_accepted_tokens = param_combinations["num_accepted_tokens"]
+    block_num = param_combinations["block_num"]
+    data_type = param_combinations["data_type"]
+    query_datarange = param_combinations["query_datarange"]
+    key_datarange = param_combinations["key_datarange"]
+    value_datarange = param_combinations["value_datarange"]
+    gamma_datarange = param_combinations["gamma_datarange"]
+    gamma_k_datarange = param_combinations["gamma_k_datarange"]
+    beta_datarange = param_combinations["beta_datarange"]
+    state_datarange = param_combinations["state_datarange"]
 
-    test_data = batch_size, mtp, nk, nv, dk, dv, actual_seq_lengths, ssm_state_indices, has_gamma, \
-                has_gamma_k, has_num_accepted_tokens, scale_value, num_accepted_tokens, block_num, data_type, \
-                query_datarange, key_datarange, value_datarange, gamma_datarange, gamma_k_datarange, \
-                beta_datarange, state_datarange
+    test_data = (
+        batch_size,
+        mtp,
+        nk,
+        nv,
+        dk,
+        dv,
+        actual_seq_lengths,
+        ssm_state_indices,
+        has_gamma,
+        has_gamma_k,
+        has_num_accepted_tokens,
+        scale_value,
+        num_accepted_tokens,
+        block_num,
+        data_type,
+        query_datarange,
+        key_datarange,
+        value_datarange,
+        gamma_datarange,
+        gamma_k_datarange,
+        beta_datarange,
+        state_datarange,
+    )
 
     torch_npu.npu.set_device(0)
     recurrent_gated_delta_rule_operator_single.output_operator(test_data)

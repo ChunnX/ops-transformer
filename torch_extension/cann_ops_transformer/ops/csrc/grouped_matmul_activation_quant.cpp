@@ -58,6 +58,26 @@ int64_t NormalizeGeDtype(int64_t dtype)
     return dtype;
 }
 
+const char *GetDtypeName(int64_t dtype)
+{
+    switch (NormalizeGeDtype(dtype)) {
+        case GE_DTYPE_FLOAT:
+            return "FLOAT";
+        case GE_DTYPE_FLOAT8_E5M2:
+            return "FLOAT8_E5M2";
+        case GE_DTYPE_FLOAT8_E4M3FN:
+            return "FLOAT8_E4M3FN";
+        case GE_DTYPE_FLOAT8_E8M0:
+            return "FLOAT8_E8M0";
+        case ACL_FLOAT4_E2M1:
+            return "FLOAT4_E2M1";
+        case ACL_FLOAT4_E1M2:
+            return "FLOAT4_E1M2";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 aclDataType GetAclDataTypeFromValue(int64_t dtype)
 {
     int64_t geDtype = NormalizeGeDtype(dtype);
@@ -84,7 +104,8 @@ at::ScalarType GetYScalarType(int64_t yDtype)
     if (geDtype == GE_DTYPE_FLOAT8_E5M2) {
         return at::ScalarType::Float8_e5m2;
     }
-    TORCH_CHECK(false, "y_dtype only supports FLOAT8_E4M3FN or FLOAT8_E5M2, but got ", yDtype, ".");
+    TORCH_CHECK(false, "y_dtype only supports FLOAT8_E4M3FN or FLOAT8_E5M2, but got ",
+                GetDtypeName(yDtype), ".");
 }
 
 int64_t ResolveYGeDtype(const c10::optional<int64_t> &yDtype, aclDataType xAclDtype)

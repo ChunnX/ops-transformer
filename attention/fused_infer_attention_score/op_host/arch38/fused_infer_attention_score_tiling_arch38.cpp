@@ -492,7 +492,7 @@ static ge::graphStatus ConvertContextToParamsPFA(gert::TilingContext *context,
         (context->GetOptionalInputDesc(ATTEN_MASK_INDEX)->GetDataType() != ge::DT_INT8) &&
         (context->GetOptionalInputDesc(ATTEN_MASK_INDEX)->GetDataType() != ge::DT_UINT8),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-        "Invalid attention mask datatype(%s)! Only support BOOL, INT8 and UINT8",
+        "Invalid attention mask dtype(%s)! Only support BOOL, INT8 and UINT8",
         arch38::GetPfaDataTypeStr(context->GetOptionalInputDesc(ATTEN_MASK_INDEX)->GetDataType()).c_str()),
         return ge::GRAPH_FAILED);
     contextKeyParams.actualSequenceLengthQ = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
@@ -1279,7 +1279,7 @@ ge::graphStatus FusedInferAttentionScoreTilingArch38::DoOpTiling()
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF((queryD % D_ALIGN_16 != 0),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
-                "D(%u) should be 16 elements aligned when FP16/BF16 dtype!", queryD),
+                "D(%u) should be 16 elements aligned when FLOAT16/BFLOAT16 dtype!", queryD),
                 return ge::GRAPH_FAILED);
         }
         ret = pfa_tiling.DoSubOpTiling(pfaTilingData, contextParamsForPFATiling);

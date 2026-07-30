@@ -290,7 +290,7 @@ protected:
         return false;
     }
 
-    void CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList,
+    bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList,
                                                    std::vector<aclTensor *> &newTensorList,
                                                    aclOpExecutor *executor) const
     {
@@ -310,12 +310,17 @@ protected:
             shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - 1));
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
+            if (tensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous MX scale failed.");
+                return false;
+            }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
             newTensorList.emplace_back(tensor);
         }
+        return true;
     }
 
-    void CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+    bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                     aclOpExecutor *executor) const
     {
         op::Shape shape;
@@ -336,10 +341,15 @@ protected:
             shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - LAST_SECOND_DIM_INDEX));
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
+            if (tensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous tensor failed.");
+                return false;
+            }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
             tensor->SetStorageShape(storageShape);
             newTensorList.emplace_back(tensor);
         }
+        return true;
     }
 
     static void CheckOptionalTensorListEmpty(const aclTensorList *&tensorList)
@@ -475,18 +485,31 @@ protected:
 
         if (transposeWeightScale && transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
-            if (!IsMultiTensorWeight()) {
+            if (!IsMxWeightNzMultiTensorSupported()) {
                 auto uniqueExecutor = CREATE_EXECUTOR();
                 CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
                 aclOpExecutor *executorPtr = uniqueExecutor.get();
                 CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
                 std::vector<aclTensor *> scaleTensorList;
                 std::vector<aclTensor *> weightTensorList;
-                CreateContiguousTensorListForMXTypeMScale(gmmDsqParams_.weightScale, scaleTensorList, executorPtr);
+                if (!CreateContiguousTensorListForMXTypeMScale(
+                    gmmDsqParams_.weightScale, scaleTensorList, executorPtr)) {
+                    return false;
+                }
                 gmmDsqParams_.weightScale =
                     executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
-                CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr);
+                if (gmmDsqParams_.weightScale == nullptr) {
+                    OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weightScale failed.");
+                    return false;
+                }
+                if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
+                    return false;
+                }
                 gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+                if (gmmDsqParams_.weight == nullptr) {
+                    OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
+                    return false;
+                }
                 uniqueExecutor.ReleaseTo(executor_);
             }
         }
@@ -592,8 +615,14 @@ protected:
             aclOpExecutor *executorPtr = uniqueExecutor.get();
             CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
             std::vector<aclTensor *> weightTensorList;
-            CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr);
+            if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
+                return false;
+            }
             gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+            if (gmmDsqParams_.weight == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
+                return false;
+            }
             uniqueExecutor.ReleaseTo(executor_);
         }
         if ((gmmDsqParams_.x->GetViewShape().GetDim(0) == 1 && gmmDsqParams_.x->GetViewShape().GetDim(1) == 1) ||
@@ -713,11 +742,7 @@ protected:
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
             if (gmmDsqParams_.transposeWeight) {
                 GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
-                if (gmmDsqParams_.isMxA8W4) {
-                    GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
-                } else {
-                    GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
-                }
+                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
             } else {
                 GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightExpectShape, return false);
                 GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);

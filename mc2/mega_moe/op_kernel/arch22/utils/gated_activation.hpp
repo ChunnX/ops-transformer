@@ -19,6 +19,8 @@ enum class GatedActivationMode : uint32_t {
     SWIGLU = 0,
     SWIGLU_GPT_OSS = 1,
     SITU = 2,
+    SWIGLU_STEP = 3,
+    SWIGLU_OAI = 4,
 };
 
 // All gated activations used by MegaMoe follow this interface. A new
@@ -60,9 +62,41 @@ struct SwigluActivation {
     }
 };
 
+// STEP 3.5 SwiGLU keeps the up-branch clamp used by MegaMoe, but applies
+// the gate upper bound to SiLU(gate), rather than to the raw gate input:
+//     min(SiLU(gate), clampLimit) * clip(up, -clampLimit, clampLimit).
+struct SwigluStepActivation {
+    CATLASS_DEVICE
+    static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
+                        AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
+                        uint32_t dataLength, float clampLimit)
+    {
+        if (clampLimit > 0.0f) {
+            AscendC::ClampMax(up, up, sharedTmpBuffer, clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::ClampMin(up, up, sharedTmpBuffer, -clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+
+        AscendC::Muls(output, gate, -1.0f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Exp(output, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(output, output, 1.0f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Div(output, gate, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        if (clampLimit > 0.0f) {
+            AscendC::ClampMax(output, output, sharedTmpBuffer, clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+        AscendC::Mul(output, output, up, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+};
+
 // GPT-OSS uses an interleaved gate/up projection and a modified SwiGLU:
-// gate * sigmoid(alpha * gate) * (up + 1). Alpha is intentionally a
-// kernel-side default so the public MegaMoe interface remains unchanged.
+// gate * sigmoid(alpha * gate) * (up + 1).
 struct GptOssSwigluActivation {
     static constexpr float DEFAULT_ALPHA = 1.702f;
 
@@ -95,12 +129,49 @@ struct GptOssSwigluActivation {
     }
 };
 
+// MiniMax M3 SwiGLU-OAI uses the same activation math as GPT-OSS, but its
+// gate/up projection is stored as two contiguous halves rather than
+// interleaved columns:
+//     (up + beta) * gate * sigmoid(alpha * gate).
+struct SwigluOaiActivation {
+    static constexpr float DEFAULT_ALPHA = 1.702f;
+    static constexpr float DEFAULT_BETA = 1.0f;
+
+    CATLASS_DEVICE
+    static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
+                        AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
+                        uint32_t dataLength, float clampLimit, float alpha = DEFAULT_ALPHA, float beta = DEFAULT_BETA)
+    {
+        if (clampLimit > 0.0f) {
+            AscendC::ClampMax(gate, gate, sharedTmpBuffer, clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::ClampMax(up, up, sharedTmpBuffer, clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::ClampMin(up, up, sharedTmpBuffer, -clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+
+        AscendC::Adds(up, up, beta, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Muls(output, gate, -alpha, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Exp(output, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(output, output, 1.0f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Div(output, gate, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Mul(output, output, up, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+};
+
 // Kimi K3 SiTU:
 //     beta * tanh(gate / beta) * sigmoid(gate) * up
 // When linearBeta is enabled, up becomes:
 //     linearBeta * tanh(up / linearBeta)
-// gate/up use the regular contiguous half split. beta and linearBeta are
-// independent operator attributes; activation_clamp is not used by SiTU.
+// gate/up use the regular contiguous half split. The generic activationAlpha
+// operator attribute carries linearBeta for SiTU; activation_clamp is unused.
 struct SituActivation {
     static constexpr float DEFAULT_BETA = 1.0f;
     static constexpr float LINEAR_BETA_DISABLED = 3.402823466e+38F;
@@ -108,8 +179,7 @@ struct SituActivation {
     CATLASS_DEVICE
     static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
                         AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
-                        uint32_t dataLength, float linearBeta = LINEAR_BETA_DISABLED,
-                        float beta = DEFAULT_BETA)
+                        uint32_t dataLength, float linearBeta = LINEAR_BETA_DISABLED, float beta = DEFAULT_BETA)
     {
         bool enableLinearBeta = linearBeta > 0.0f && linearBeta < LINEAR_BETA_DISABLED;
         if (enableLinearBeta) {
@@ -183,11 +253,10 @@ struct GatedActivation {
         auto split = sharedTmpBuffer.template ReinterpretCast<uint16_t>();
         uint64_t evenCount = 0;
         uint64_t oddCount = 0;
-        AscendC::GatherMask(split, src, static_cast<uint8_t>(1), true, dataLength * 2,
-                            {1, 1, 8, 0}, evenCount);
+        AscendC::GatherMask(split, src, static_cast<uint8_t>(1), true, dataLength * 2, {1, 1, 8, 0}, evenCount);
         AscendC::PipeBarrier<PIPE_V>();
-        AscendC::GatherMask(split[branchStride], src, static_cast<uint8_t>(2), true, dataLength * 2,
-                            {1, 1, 8, 0}, oddCount);
+        AscendC::GatherMask(split[branchStride], src, static_cast<uint8_t>(2), true, dataLength * 2, {1, 1, 8, 0},
+                            oddCount);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
@@ -196,8 +265,7 @@ struct GatedActivation {
                                                AscendC::LocalTensor<float> const &up,
                                                AscendC::LocalTensor<Element> const &packedInput,
                                                AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
-                                               uint32_t branchStride, uint32_t dataLength,
-                                               uint32_t activationCode)
+                                               uint32_t branchStride, uint32_t dataLength, uint32_t activationCode)
     {
         if (IsInterleaved(activationCode)) {
             SplitInterleaved(packedInput, sharedTmpBuffer, branchStride, dataLength);
@@ -219,8 +287,7 @@ struct GatedActivation {
         auto split = sharedTmpBuffer.template ReinterpretCast<float>();
         uint64_t evenCount = 0;
         uint64_t oddCount = 0;
-        AscendC::GatherMask(split, packedInput, static_cast<uint8_t>(1), true, dataLength * 2,
-                            {1, 1, 8, 0}, evenCount);
+        AscendC::GatherMask(split, packedInput, static_cast<uint8_t>(1), true, dataLength * 2, {1, 1, 8, 0}, evenCount);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::GatherMask(split[branchStride], packedInput, static_cast<uint8_t>(2), true, dataLength * 2,
                             {1, 1, 8, 0}, oddCount);
@@ -231,15 +298,24 @@ struct GatedActivation {
     static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
                         AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
                         uint32_t dataLength, float clampLimit, uint32_t activationCode,
-                        float beta = SituActivation::DEFAULT_BETA,
-                        float linearBeta = SituActivation::LINEAR_BETA_DISABLED)
+                        float activationAlpha = GptOssSwigluActivation::DEFAULT_ALPHA,
+                        float activationBeta = SituActivation::DEFAULT_BETA)
     {
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_GPT_OSS)) {
-            GptOssSwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
+            GptOssSwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit, activationAlpha);
+            return;
+        }
+        if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_OAI)) {
+            SwigluOaiActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit, activationAlpha,
+                                         activationBeta);
             return;
         }
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SITU)) {
-            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, linearBeta, beta);
+            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, activationAlpha, activationBeta);
+            return;
+        }
+        if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_STEP)) {
+            SwigluStepActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
             return;
         }
         SwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);

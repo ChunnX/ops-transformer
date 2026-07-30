@@ -89,8 +89,7 @@ public:
     using DataTypeRowIndex = DataTypeRowIndex_;
     // shape
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockCoord =
-        AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
+    using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
     using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t>;
 
 public:
@@ -158,8 +157,8 @@ private:
 };
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline
-BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::BlockEpilogueDequantFinalizeRouting()
+__aicore__ inline BlockEpilogueDequantFinalizeRouting<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::BlockEpilogueDequantFinalizeRouting()
 {
     if ASCEND_IS_AIV {
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
@@ -168,8 +167,8 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline
-BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::~BlockEpilogueDequantFinalizeRouting()
+__aicore__ inline BlockEpilogueDequantFinalizeRouting<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::~BlockEpilogueDequantFinalizeRouting()
 {
     if ASCEND_IS_AIV {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
@@ -543,7 +542,7 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
         repeatTimesLine_ = (i == loopNumY - 1) ? remainRepeatTimesLogit : MAX_OUTPUT_M_UBS;
         __ubuf__ DataTypeOut *outUbAddr = yPingPongID_ == 0 ? (__ubuf__ DataTypeOut *)outUbPing_.GetPhyAddr() :
-                                                                   (__ubuf__ DataTypeOut *)outUbPong_.GetPhyAddr();
+                                                              (__ubuf__ DataTypeOut *)outUbPong_.GetPhyAddr();
         VFDoLogitMuls(i * MAX_OUTPUT_M_UBS * alignN_, i * MAX_OUTPUT_M_UBS, repeatTimesLine_, repeatTimesRe, outUbAddr,
                       logitUb);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);

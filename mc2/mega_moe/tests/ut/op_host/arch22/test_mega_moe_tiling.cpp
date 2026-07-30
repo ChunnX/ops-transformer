@@ -89,6 +89,8 @@ TEST_F(MegaMoeArch22TilingTest, Test0)
          {"num_max_token_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
          {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+         {"activation_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(1.702f)},
+         {"activation_beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
          {"activation_out_dtype",
           Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
          {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -127,7 +129,8 @@ TEST_F(MegaMoeArch22TilingTest, LargeIntermediateHiddenIsNotLimitedByUb)
     }
 
     for (const std::string &activation :
-         {std::string("swiglu"), std::string("swiglu_gpt_oss"), std::string("situ")}) {
+         {std::string("swiglu"), std::string("swiglustep"), std::string("swiglu_gpt_oss"), std::string("swigluoai"),
+          std::string("situ")}) {
         gert::TilingContextPara tilingContextPara(
             "MegaMoe", inputs,
             {
@@ -145,17 +148,16 @@ TEST_F(MegaMoeArch22TilingTest, LargeIntermediateHiddenIsNotLimitedByUb)
              {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
              {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
              {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>(activation)},
-             {"activation_clamp",
-              Ops::Transformer::AnyValue::CreateFrom<float>(activation == "situ"
-                                                                 ? 2.0f
-                                                                 : std::numeric_limits<float>::max())},
+             {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+             {"activation_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(activation == "situ" ? 2.0f : 1.702f)},
+             {"activation_beta", Ops::Transformer::AnyValue::CreateFrom<float>(activation == "situ" ? 2.0f : 1.0f)},
              {"activation_out_dtype",
               Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
              {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
              {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
              {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-            {1, 1, 1, 1, kExpertPerRank, kExpertPerRank, 0, 0, 0, 0, 0, 0}, {1, 1}, &compileInfo, "Ascend910B",
-            coreNum, ubSize);
+            {1, 1, 1, 1, kExpertPerRank, kExpertPerRank, 0, 0, 0, 0, 0, 0}, {1, 1}, &compileInfo, "Ascend910B", coreNum,
+            ubSize);
 
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, UINT64_MAX);

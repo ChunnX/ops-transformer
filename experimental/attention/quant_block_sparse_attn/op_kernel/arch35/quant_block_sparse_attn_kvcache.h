@@ -155,12 +155,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstIn
                                           runParam.n2oIdx * constInfo.gDv + runParam.goIdx * constInfo.dSizeV;
         }
         if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
-            if (constInfo.isGqa) {
-                runParam.softmaxLseOffset = runParam.n1oIdx * constInfo.t1Size + seqOffset + runParam.sOuterOffset;
-            } else {
-                runParam.softmaxLseOffset = seqOffset * constInfo.n2G + runParam.sOuterOffset * constInfo.n2G +
-                                            runParam.n2oIdx * constInfo.gSize + runParam.goIdx;
-            }
+            runParam.softmaxLseOffset = runParam.n1oIdx * constInfo.t1Size + seqOffset + runParam.sOuterOffset;
         }
     }
 }

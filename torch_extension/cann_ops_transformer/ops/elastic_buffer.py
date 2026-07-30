@@ -125,12 +125,14 @@ class ElasticBuffer:
             ),
         )
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
+        moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
+        missing_args = [name for name, val in zip(moe_arg_names, moe_args) if val is None]
         torch._check(
-            all(arg is None for arg in moe_args)
-            or all(arg is not None for arg in moe_args),
+            len(missing_args) == 0 or len(missing_args) == len(moe_args),
             lambda: (
                 "num_max_tokens_per_rank, hidden and num_topk "
-                "must be specified together for MoE dispatch/combine."
+                "must be specified together for MoE dispatch/combine, "
+                f"missing: {', '.join(missing_args)}."
             ),
         )
 
@@ -157,7 +159,8 @@ class ElasticBuffer:
 
     @staticmethod
     def get_engram_storage_size_hint(
-        num_entries: int, hidden_size: int, dtype: torch.dtype = torch.bfloat16
+        num_entries: int, hidden: int,
+        dtype: torch.dtype = torch.bfloat16
     ) -> int:
         """
         Get the minimum CPU buffer size required for Engram storage.
@@ -165,7 +168,7 @@ class ElasticBuffer:
 
         Arguments:
             num_entries: the number of entries in the Engram storage (must be non-negative).
-            hidden_size: the hidden dimension of each entry (must be 128-aligned and non-negative).
+            hidden: the hidden dimension of each entry (must be 128-aligned and positive).
             dtype: the data type, defaults to `torch.bfloat16`.
 
         Returns:
@@ -176,12 +179,12 @@ class ElasticBuffer:
             lambda: f"num_entries must be non-negative, got {num_entries}",
         )
         torch._check(
-            hidden_size >= 0,
-            lambda: f"hidden_size must be non-negative, got {hidden_size}",
+            hidden > 0,
+            lambda: f"hidden must be positive, got {hidden}",
         )
         torch._check(
-            hidden_size % 128 == 0,
-            lambda: f"hidden_size must be 128-aligned, got {hidden_size}",
+            hidden % 128 == 0,
+            lambda: f"hidden must be 128-aligned, got {hidden}",
         )
         torch._check(
             dtype in (torch.bfloat16, torch.float16, torch.float32),
@@ -189,8 +192,7 @@ class ElasticBuffer:
         )
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(
-            num_entries, hidden_size, dtype
-        )
+            num_entries, hidden, dtype)
 
     @staticmethod
     def get_moe_ep_ccl_buffer_size(
@@ -204,8 +206,8 @@ class ElasticBuffer:
             return (value + base - 1) // base * base
 
         torch._check(
-            ((num_experts >= 1) and (num_experts <= 2048)),
-            lambda: (f"num_experts only support in [1, 2048], but got {num_experts=}."),
+            ((num_experts >= 2) and (num_experts <= 2048)),
+            lambda: (f"num_experts only support in [2, 2048], but got {num_experts=}."),
         )
         torch._check(
             ((topk >= 1) and (topk <= 32)),
@@ -281,6 +283,9 @@ class ElasticBuffer:
             lambda: f"storage dtype must be bfloat16/float16/float32, got: {storage.dtype}",
         )
         torch._check(
+            storage.size(1) > 0,
+            lambda: f"storage second dimension must be positive, got: {storage.size(1)}")
+        torch._check(
             storage.size(1) % 128 == 0,
             lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}",
         )
@@ -310,6 +315,18 @@ class ElasticBuffer:
         )
         return self._runtime.engram_fetch(indices)
 
+    def barrier(self, use_comm_stream: bool = True, with_cpu_sync: bool = False) -> None:
+        """
+        Perform an NPU-level barrier across all ranks, optionally with CPU synchronization.
+
+        Args:
+            use_comm_stream: whether to dispatch the barrier on the dedicated comm stream
+                (otherwise on the current compute stream).
+            with_cpu_sync: whether to call `aclrtSynchronizeDevice` before and after the barrier
+                to fully drain the device.
+        """
+        self._runtime.engram_barrier(use_comm_stream, with_cpu_sync)
+
     def dispatch(
         self,
         x: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
@@ -328,9 +345,41 @@ class ElasticBuffer:
         EPHandle,
     ]:
         self._ensure_moe_config()
+        torch._check(
+            isinstance(x, torch.Tensor) or (isinstance(x, tuple) and len(x) == 2
+                and all(isinstance(t, torch.Tensor) for t in x)),
+            lambda: f"x must be a tensor or a tuple of two tensors, but got {type(x).__name__}.",
+        )
+        torch._check(
+            topk_idx is None or isinstance(topk_idx, torch.Tensor),
+            lambda: f"topk_idx must be a tensor or None, but got {type(topk_idx).__name__}.",
+        )
+        torch._check(
+            topk_weights is None or isinstance(topk_weights, torch.Tensor),
+            lambda: f"topk_weights must be a tensor or None, but got {type(topk_weights).__name__}.",
+        )
+        torch._check(
+            handle is None or isinstance(handle, EPHandle),
+            lambda: f"handle must be an EPHandle or None, but got {type(handle).__name__}.",
+        )
+        if expert_alignment is not None:
+            torch._check(
+                isinstance(expert_alignment, int) and not isinstance(expert_alignment, bool),
+                lambda: (f"expert_alignment must be an integer, but got {type(expert_alignment).__name__}."),
+            )
+            torch._check(
+                expert_alignment == 1,
+                lambda: (f"expert_alignment only supports 1, but got {expert_alignment}."),
+            )
+        if do_cpu_sync is not None:
+            torch._check(
+                isinstance(do_cpu_sync, bool),
+                lambda: (f"do_cpu_sync must be a boolean, but got {type(do_cpu_sync).__name__}."),
+            )
         args = self._prepare_dispatch_args(
             x,
             topk_idx,
+            topk_weights,
             handle,
             num_experts,
             num_max_tokens_per_rank,
@@ -394,9 +443,25 @@ class ElasticBuffer:
         bias: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor], None] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         self._ensure_moe_config()
+        torch._check(
+            isinstance(x, torch.Tensor),
+            lambda: f"x must be a tensor, but got {type(x).__name__}.",
+        )
+        torch._check(
+            isinstance(handle, EPHandle),
+            lambda: f"handle must be an EPHandle, but got {type(handle).__name__}.",
+        )
+        torch._check(
+            topk_weights is None or isinstance(topk_weights, torch.Tensor),
+            lambda: f"topk_weights must be a tensor or None, but got {type(topk_weights).__name__}.",
+        )
+        torch._check(
+            bias is None or isinstance(bias, (torch.Tensor, tuple)),
+            lambda: f"bias must be a tensor, a tuple, or None, but got {type(bias).__name__}.",
+        )
         bias_0, bias_1 = self._unpack_bias(bias)
         torch._check(
-            ((bias_0 is None) and (bias_1 is None)), lambda: ("bias are not supported.")
+            ((bias_0 is None) and (bias_1 is None)), lambda: ("bias is not supported, please set bias to None.")
         )
 
         combined_x, combined_topk_weights = (
@@ -430,13 +495,15 @@ class ElasticBuffer:
             self._host_pinned_counter = None
 
     def _ensure_moe_config(self):
+        moe_args = (self._num_max_tokens_per_rank, self._hidden, self._num_topk)
+        moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
+        missing_args = [name for name, val in zip(moe_arg_names, moe_args) if val is None]
         torch._check(
-            (self._num_max_tokens_per_rank is not None)
-            and (self._hidden is not None)
-            and (self._num_topk is not None),
+            len(missing_args) == 0,
             lambda: (
                 "num_max_tokens_per_rank, hidden and num_topk "
-                "must be specified to use MoE dispatch/combine."
+                "must be specified to use MoE dispatch/combine, "
+                f"missing: {', '.join(missing_args)}."
             ),
         )
 
@@ -444,6 +511,7 @@ class ElasticBuffer:
         self,
         x: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         topk_idx: Optional[torch.Tensor],
+        topk_weights: Optional[torch.Tensor],
         handle: Optional[EPHandle],
         num_experts: Optional[int],
         num_max_tokens_per_rank: Optional[int],
@@ -454,6 +522,9 @@ class ElasticBuffer:
         if handle is not None:
             torch._check(
                 (topk_idx is None), lambda: ("topk_idx is not supported when cached.")
+            )
+            torch._check(
+                (topk_weights is None), lambda: ("topk_weights is not supported when cached.")
             )
             torch._check(
                 ((do_cpu_sync is None) or (do_cpu_sync is False)),

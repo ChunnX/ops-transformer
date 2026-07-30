@@ -176,6 +176,8 @@ public:
     ~QLIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
+    ge::graphStatus CheckTensorShapes() const;
+    ge::graphStatus CheckTensorDescriptions() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,

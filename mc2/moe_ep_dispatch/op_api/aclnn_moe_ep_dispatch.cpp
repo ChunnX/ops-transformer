@@ -39,7 +39,6 @@ static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId, int64_t nu
     CHECK_RET(numExperts % epWorldSize == 0, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(numMaxTokensPerRank > 0, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(cclBufferSize > 0, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(expertAlignment == 1, ACLNN_ERR_PARAM_INVALID);
 
     bool cachedMode = (cachedHandleDstBufferSlotIdx != nullptr);
     CHECK_RET(!(cachedMode && doCpuSync), ACLNN_ERR_PARAM_INVALID);

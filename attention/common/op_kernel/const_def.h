@@ -19,15 +19,14 @@ namespace AttentionCommon {
 constexpr uint64_t BYTE_BLOCK = 32UL;
 constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);
 
-enum class TASK_DEAL_MODE : uint32_t
-{
-    DEAL_ZERO = 0,      // actualSeqLen为0，需清零输出
-    SKIP = 1,           // 整行S2无需处理
-    CREATE_TASK = 2,    // 正常创建任务
-    SKIP_S1OUT = 3,     // 跳过不属于当前核的任务，仅S1外切分场景
-    SKIP_ZERO = 4,      // 跳过非首个actualSeqLen为0的块
-    S2_END = 5,         // 有效行且S2已全部计算完
-    NOT_START = 6,      // 有效行且S2还未开始计算
+enum class TASK_DEAL_MODE : uint32_t {
+    DEAL_ZERO = 0,         // actualSeqLen为0，需清零输出
+    SKIP = 1,              // 整行S2无需处理
+    CREATE_TASK = 2,       // 正常创建任务
+    SKIP_S1OUT = 3,        // 跳过不属于当前核的任务，仅S1外切分场景
+    SKIP_ZERO = 4,         // 跳过非首个actualSeqLen为0的块
+    S2_END = 5,            // 有效行且S2已全部计算完
+    NOT_START = 6,         // 有效行且S2还未开始计算
     SKIP_REMAINING_S2 = 7, // 跳过S2上尚未遍历的任务
 };
 
@@ -55,5 +54,5 @@ __aicore__ inline T CeilDiv(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
 
-} // namespace const_def
+} // namespace AttentionCommon
 #endif

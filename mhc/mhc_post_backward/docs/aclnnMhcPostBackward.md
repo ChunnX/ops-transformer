@@ -14,7 +14,7 @@
 ## 功能说明
 
 - 接口功能：mhc_post基于一系列计算对MHC（Manifold-Constrained Hyper-Connection）架构中上一层输出$h_{t}^{out}$进行Post Mapping，对上一层的输入$x_j$进行ResMapping，然后对二者进行残差连接，得到下一层的输入$x_{l+1}$。该算子实现前述过程的反向功能。
-  
+
 - 计算公式：
   $$
   grad\_x = H_{l}^{res} \times grad\_output\\
@@ -27,28 +27,28 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMhcPostBackwardGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnMhcPostBackward”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMhcPostBackwardGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnMhcPostBackward”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(
     const aclTensor     *gradOutput,
-    const aclTensor     *x, 
-    const aclTensor     *hRes, 
-    const aclTensor     *hOut, 
-    const aclTensor     *hPost, 
-    aclTensor           *gradX, 
-    aclTensor           *gradHRes, 
-    aclTensor           *gradHOut, 
+    const aclTensor     *x,
+    const aclTensor     *hRes,
+    const aclTensor     *hOut,
+    const aclTensor     *hPost,
+    aclTensor           *gradX,
+    aclTensor           *gradHRes,
+    aclTensor           *gradHOut,
     aclTensor           *gradHPost,
-    uint64_t            *workspaceSize, 
+    uint64_t            *workspaceSize,
     aclOpExecutor       **executor)
 ```
 
 ```c++
 aclnnStatus aclnnMhcPostBackward(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     const aclrtStream stream)
 ```
 
@@ -83,7 +83,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>输入</td>
       <td>待计算的数据，表示网络中MHC层的输入数据</td>
       <td>
-        <ul>      
+        <ul>
           <li>不支持空Tensor</li>
         </ul>
       </td>
@@ -97,7 +97,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>输入</td>
       <td>待计算的数据，表示网络中MHC层的输入数据</td>
       <td>
-        <ul>      
+        <ul>
           <li>不支持空Tensor</li>
         </ul>
       </td>
@@ -111,7 +111,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>输入</td>
       <td>MHC的hRes变换矩阵</td>
       <td>
-        <ul>      
+        <ul>
           <li>不支持空Tensor</li>
         </ul>
       </td>
@@ -125,7 +125,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>输入</td>
       <td>Atten/MLP层的输出</td>
       <td>
-        <ul>      
+        <ul>
           <li>不支持空Tensor</li>
         </ul>
       </td>
@@ -139,7 +139,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>输入</td>
       <td>MHC的hPost变换矩阵</td>
       <td>
-        <ul>      
+        <ul>
           <li>不支持空Tensor</li>
         </ul>
       </td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnMhcPostBackward(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -248,7 +248,7 @@ aclnnStatus aclnnMhcPostBackward(
 ## aclnnMhcPostBackward
 
 - **参数说明：**
-   
+
   <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
     <col style="width: 144px">
     <col style="width: 125px">
@@ -286,7 +286,7 @@ aclnnStatus aclnnMhcPostBackward(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -295,7 +295,7 @@ aclnnStatus aclnnMhcPostBackward(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -401,7 +401,7 @@ int main() {
     std::vector<int64_t> gradHResShape = {1, 1024, 4, 4};   // BSND
     std::vector<int64_t> gradHOutShape = {1, 1024, 5120};   // BSD
     std::vector<int64_t> gradHPostShape = {1, 1024, 4};     // BSn
-    
+
     void *gradYDeviceAddr = nullptr;
     void *xDeviceAddr = nullptr;
     void *hResDeviceAddr = nullptr;
@@ -421,7 +421,7 @@ int main() {
     aclTensor *gradHResTensor = nullptr;
     aclTensor *gradHOutTensor = nullptr;
     aclTensor *gradHPostTensor = nullptr;
-    
+
     int64_t gradYShapeSize = GetShapeSize(gradYShape);
     int64_t xShapeSize = GetShapeSize(xShape);
     int64_t hResShapeSize = GetShapeSize(hResShape);
@@ -440,7 +440,7 @@ int main() {
     std::vector<float> gradHResHostData(gradHResShapeSize, 1.0f);
     std::vector<aclFloat16> gradHOutHostData(gradHOutShapeSize, aclFloatToFloat16(1.0f));
     std::vector<float> gradHPostHostData(gradHPostShapeSize, 1.0f);
-    
+
     ret = CreateAclTensor(gradYHostData, gradYShape, &gradYDeviceAddr, aclDataType::ACL_FLOAT16, &gradYTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
@@ -466,7 +466,7 @@ int main() {
         return ret;
     }
 
-    // Create gradX aclTensor.   
+    // Create gradX aclTensor.
     ret = CreateAclTensor(gradXHostData, gradXShape, &gradXDeviceAddr, aclDataType::ACL_FLOAT16, &gradXTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
@@ -490,9 +490,9 @@ int main() {
     // 3. Call CANN operator library API.
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
-    // Call the first interface.      
+    // Call the first interface.
     ret = aclnnMhcPostBackwardGetWorkspaceSize(
-        gradYTensor, xTensor, hResTensor, hOutTensor, hPostTensor, gradXTensor, gradHResTensor, gradHOutTensor, 
+        gradYTensor, xTensor, hResTensor, hOutTensor, hPostTensor, gradXTensor, gradHResTensor, gradHOutTensor,
         gradHPostTensor, &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnMhcPostBackwardGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -581,5 +581,5 @@ int main() {
     aclrtResetDevice(deviceId);
     aclFinalize();
     return 0;
-} 
+}
 ```

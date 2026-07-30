@@ -995,7 +995,7 @@ def gen_data(params, template_mode=None):
         ori_k_in_pa_shape = blockFusion1[:, :block_size1 * N2 * D].view(block_num1, block_size1, N2, D)
 
         if template_idx != 0:
-            blocksize_with_stride = block_size1 + key_stride
+            blocksize_with_stride = block_size2 + key_stride
             blockFusion2 = torch.zeros((block_num2, blocksize_with_stride * N2 * D), dtype=cmp_kv_type)
             cmp_key_flat = cmp_k_in_pa_shape.view(block_num2, block_size2 * N2 * D)
             blockFusion2[:, :block_size2 * N2 * D] = cmp_key_flat

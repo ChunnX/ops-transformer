@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ */
 
 /*!
  * \file chunk_gated_delta_rule_stage2.h
@@ -32,14 +32,14 @@ using StageTwoMTFp32C = StageTwoMTT<float>;
 
 template <typename stateType>
 struct StageTwoParams {
-    GlobalTensor<bfloat16_t> qPrime;        // (Nv, Sp, Dk)
-    GlobalTensor<stateType> vInner;         // (Nv, Sp, Dv)
-    GlobalTensor<bfloat16_t> vInnerBf16;    // (Nv, Sp, Dv) BF16 vInner for stage3/CalStateNew (FP32 path)
-    GlobalTensor<float> gCum;               // (Nv, Sp)
-    GlobalTensor<bfloat16_t> kCumdecay;     // (Nv, Sp, Dk)
-    GlobalTensor<bfloat16_t> curStateBf16;  // (Nv, Dv, Dk) BF16 state for AIC
-    GlobalTensor<stateType> stateIn;        // (Nv, Dv, Dk) state input
-    GlobalTensor<stateType> stateOut;       // (Nv, Dv, Dk) state output
+    GlobalTensor<bfloat16_t> qPrime;       // (Nv, Sp, Dk)
+    GlobalTensor<stateType> vInner;        // (Nv, Sp, Dv)
+    GlobalTensor<bfloat16_t> vInnerBf16;   // (Nv, Sp, Dv) BF16 vInner for stage3/CalStateNew (FP32 path)
+    GlobalTensor<float> gCum;              // (Nv, Sp)
+    GlobalTensor<bfloat16_t> kCumdecay;    // (Nv, Sp, Dk)
+    GlobalTensor<bfloat16_t> curStateBf16; // (Nv, Dv, Dk) BF16 state for AIC
+    GlobalTensor<stateType> stateIn;       // (Nv, Dv, Dk) state input
+    GlobalTensor<stateType> stateOut;      // (Nv, Dv, Dk) state output
     GlobalTensor<bfloat16_t> kg;
     GlobalTensor<bfloat16_t> out;
     GM_ADDR ws;
@@ -68,7 +68,7 @@ public:
         pipe_ = sTP_->pipe;
         chunkSize_ = sTP_->cg->chunkSize;
         seqLength_ = sTP_->cg->length;
-        Sp_ = (seqLength_ + chunkSize_ - 1) / chunkSize_  * chunkSize_;
+        Sp_ = (seqLength_ + chunkSize_ - 1) / chunkSize_ * chunkSize_;
         chunkNum_ = Sp_ / chunkSize_;
         coreNum_ = coreNum;
         Nv_ = sTP_->Nv;
@@ -102,13 +102,13 @@ public:
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
             lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
         } else {
-            pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max((uint64_t)chunkSize_,
-                                                                 (uint64_t)Dv_) * curDk_ * sizeof(bfloat16_t));
+            pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE,
+                              Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ * sizeof(bfloat16_t));
             uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
                                              (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
-            pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ +
-                                         BLOCK_FLOAT_NUM) *sizeof(float));
+            pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ + BLOCK_FLOAT_NUM) *
+                                            sizeof(float));
             uint32_t buffOffset = 0;
             tmpBuffer1_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
@@ -179,9 +179,7 @@ public:
         if (GetSubBlockIdx() == 0) {
             PipeBarrier<PIPE_MTE3>();
             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-            CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1],
-                                          sTP_->vInnerBf16[mm_offset1],
-                                          curChunkSize_ * Dv_);
+            CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1], curChunkSize_ * Dv_);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
         CrossCoreWaitFlag(0x4);
@@ -189,8 +187,7 @@ public:
 
     __aicore__ inline void ProcessAivBf16(int64_t nvId, int64_t cId, int64_t length)
     {
-        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_]
-                                   : sTP_->stateOut[nvId * Dv_ * Dk_];
+        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
         auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
         if (GetSubBlockIdx() == 0) {
             CopyIn(curState, Dv_, Dk_);
@@ -214,17 +211,14 @@ public:
             CrossCoreWaitFlag(0x3);
             stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
         } else {
-            stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_]
-                                     : sTP_->stateOut[nvId * Dv_ * Dk_];
+            stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
         }
         CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
-        CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic,
-                     sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
+        CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
         CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
         CrossCoreWaitFlag(0x5);
         if constexpr (kIsFp32) {
-            CalStateNew(sTP_->vInnerBf16[mm_offset1],
-                        sTP_->kg[mm_offset0], stateOut);
+            CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
         } else {
             CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
         }
@@ -238,9 +232,7 @@ public:
         if (!gOptional_) {
             return;
         }
-        DataCacheCleanAndInvalid<float,
-                                 CacheLine::SINGLE_CACHE_LINE,
-                                 DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
+        DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
         float gVal = gCum.GetValue(curChunkSize_ - 1);
         lastGCum_.SetValue(0, gVal);
         SetFlag<HardEvent::S_V>(S_V_EVENT);
@@ -256,9 +248,8 @@ public:
     __aicore__ inline void CalGCumExpBf16(GlobalTensor<float> gCum)
     {
         if (gOptional_) {
-            DataCacheCleanAndInvalid<float,
-                                     CacheLine::SINGLE_CACHE_LINE,
-                                     DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
+            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                gCum[curChunkSize_ - 1]);
             float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
             lastGCum_.SetValue(0, tmpFloat);
             SetFlag<HardEvent::S_V>(S_V_EVENT);
@@ -284,8 +275,7 @@ public:
     }
 
     template <typename MMType, typename AT, typename BT, typename CT>
-    __aicore__ inline void RunMatmul(MMType *mm, GlobalTensor<AT> a, bool transA,
-                                     GlobalTensor<BT> b, bool transB,
+    __aicore__ inline void RunMatmul(MMType *mm, GlobalTensor<AT> a, bool transA, GlobalTensor<BT> b, bool transB,
                                      GlobalTensor<CT> c, int64_t M, int64_t N, int64_t K, int32_t accum)
     {
         mm->SetOrgShape(M, N, K);
@@ -297,10 +287,9 @@ public:
     }
 
     template <typename MMType, typename AT, typename BT, typename CT>
-    __aicore__ inline void RunMatmul(MMType *mm, GlobalTensor<AT> a, bool transA,
-                                     GlobalTensor<BT> b, bool transB,
-                                     GlobalTensor<CT> c, int64_t M, int64_t N, int64_t K,
-                                     int64_t Ka, int64_t Kb, int32_t accum = 0)
+    __aicore__ inline void RunMatmul(MMType *mm, GlobalTensor<AT> a, bool transA, GlobalTensor<BT> b, bool transB,
+                                     GlobalTensor<CT> c, int64_t M, int64_t N, int64_t K, int64_t Ka, int64_t Kb,
+                                     int32_t accum = 0)
     {
         mm->SetOrgShape(M, N, K, Ka, Kb);
         mm->SetSingleShape(M, N, K);
@@ -310,45 +299,36 @@ public:
         mm->End();
     }
 
-    __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime,
-                                        GlobalTensor<bfloat16_t> state,
+    __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime, GlobalTensor<bfloat16_t> state,
                                         GlobalTensor<bfloat16_t> out)
     {
-        RunMatmul(sTP_->mm1Bf16, qPrime, false, state, true, out,
-                  curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);
+        RunMatmul(sTP_->mm1Bf16, qPrime, false, state, true, out, curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);
     }
 
     template <typename vInnerType>
-    __aicore__ inline void CalVPrime(GlobalTensor<bfloat16_t> kCumdecay,
-                                     GlobalTensor<bfloat16_t> state,
+    __aicore__ inline void CalVPrime(GlobalTensor<bfloat16_t> kCumdecay, GlobalTensor<bfloat16_t> state,
                                      GlobalTensor<vInnerType> vPrime)
     {
         if constexpr (kIsFp32) {
-            RunMatmul(sTP_->mm1Fp32, kCumdecay, false, state, true, vPrime,
-                      curChunkSize_, Dv_, Dk_, 1);
+            RunMatmul(sTP_->mm1Fp32, kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 1);
         } else {
-            RunMatmul(sTP_->mm1Bf16, kCumdecay, false, state, true, vPrime,
-                      curChunkSize_, Dv_, Dk_, 1);
+            RunMatmul(sTP_->mm1Bf16, kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 1);
         }
     }
 
     template <typename stateOutType>
-    __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner,
-                                       GlobalTensor<bfloat16_t> kg,
+    __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner, GlobalTensor<bfloat16_t> kg,
                                        GlobalTensor<stateOutType> state)
     {
         if constexpr (kIsFp32) {
-            RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state,
-                      Dv_, Dk_, curChunkSize_, 1);
+            RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
         } else {
-            RunMatmul(sTP_->mm1Bf16, vInner, true, kg, false, state,
-                      Dv_, Dk_, curChunkSize_, 1);
+            RunMatmul(sTP_->mm1Bf16, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
         }
     }
 
     template <typename srcType, typename dstType>
-    __aicore__ inline void CastGmToGm(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstGm,
-                                       int32_t count)
+    __aicore__ inline void CastGmToGm(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstGm, int32_t count)
     {
         int32_t paddedCount = Ceil(count, BLOCK_SIZE / sizeof(dstType)) * (BLOCK_SIZE / sizeof(dstType));
         int32_t srcAlign = BLOCK_SIZE / sizeof(srcType);
@@ -399,10 +379,8 @@ public:
         } else {
             padding = Ceil(col, BLOCK_SIZE / sizeof(inType)) * (BLOCK_SIZE / sizeof(inType)) - col;
         }
-        DataCopyExtParams inParams{static_cast<uint16_t>(row),
-                                   static_cast<uint32_t>(col * sizeof(inType)),
-                                   static_cast<uint32_t>(0),
-                                   dstStride, 0};
+        DataCopyExtParams inParams{static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(inType)),
+                                   static_cast<uint32_t>(0), dstStride, 0};
         DataCopyPadExtParams<inType> copyPadParams{true, 0, static_cast<uint8_t>(padding), 0};
         DataCopyPad(inLocal, tmpGM, inParams, copyPadParams);
         inQueue_.EnQue(inLocal);
@@ -414,8 +392,8 @@ public:
     }
 
     template <typename outType>
-    __aicore__ inline void CopyOut(GlobalTensor<outType> tmpGM, int32_t row, int32_t col,
-                                   bool setAtomic = false, int32_t srcCol = 0)
+    __aicore__ inline void CopyOut(GlobalTensor<outType> tmpGM, int32_t row, int32_t col, bool setAtomic = false,
+                                   int32_t srcCol = 0)
     {
         auto outLocal = outQueue_.DeQue<outType>();
         DataCopyExtParams copyParams;

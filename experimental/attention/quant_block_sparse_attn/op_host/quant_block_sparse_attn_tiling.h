@@ -26,7 +26,7 @@
 #include "quant_block_sparse_attn_info_parser.h"
 
 namespace optiling {
-constexpr uint32_t BSA_MAX_CORE_NUM = 48U;
+constexpr uint32_t BSA_MAX_CORE_NUM = 36U;
 constexpr uint32_t BSA_CORE_SPLIT_NUM = BSA_MAX_CORE_NUM + 1U;
 constexpr uint32_t BSA_BLOCK_SIZE = 128U;
 constexpr uint32_t BSA_D_SIZE = 128U;

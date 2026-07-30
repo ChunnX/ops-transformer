@@ -115,8 +115,8 @@ public:
         uint32_t epilogueGranularity{0};
         float swigluLimit;
         uint32_t activationCode{0};
-        float beta{1.0f};
-        float linearBeta{std::numeric_limits<float>::max()};
+        float activationAlpha{Epilogue::GptOssSwigluActivation::DEFAULT_ALPHA};
+        float activationBeta{Epilogue::SituActivation::DEFAULT_BETA};
         GM_ADDR contextGM{nullptr};
         GM_ADDR tilingGM{nullptr};
         MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
@@ -136,12 +136,13 @@ public:
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
-               uint32_t activationCode_ = 0, float beta_ = 1.0f,
-               float linearBeta_ = std::numeric_limits<float>::max(), GM_ADDR tilingGM_ = nullptr)
+               uint32_t activationCode_ = 0,
+               float activationAlpha_ = Epilogue::GptOssSwigluActivation::DEFAULT_ALPHA,
+               float activationBeta_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              activationCode(activationCode_), beta(beta_), linearBeta(linearBeta_),
+              activationCode(activationCode_), activationAlpha(activationAlpha_), activationBeta(activationBeta_),
               contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
               layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
               layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
@@ -1197,7 +1198,7 @@ private:
             int64_t gmOffsetC = layoutC.GetOffset(offsetC);
             int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
             blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], params.epilogueCoreNum,
-                           params.swigluLimit, params.activationCode, params.beta, params.linearBeta,
+                           params.swigluLimit, params.activationCode, params.activationAlpha, params.activationBeta,
                            params.gmmOutPreRowStride);
         }
         AscendC::SyncAll<true>();
@@ -1218,7 +1219,8 @@ private:
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                 blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], coreNum, params.swigluLimit,
-                               params.activationCode, params.beta, params.linearBeta, params.gmmOutPreRowStride);
+                               params.activationCode, params.activationAlpha, params.activationBeta,
+                               params.gmmOutPreRowStride);
             }
             AscendC::SyncAll<true>();
             // Synchronization signal: SwiGLU notifies GMM2 [2]

@@ -68,9 +68,12 @@ def mqsmla(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     npu_error_msg = None
     try:
-        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
+        npu_result, cpu_quant_result, cpu_lse, npu_lse = mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
             test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
+        if test_data['params'].get('return_softmax_lse'):
+            print("return_softmax_lse is true!!!")
+            result, fulfill_percent = result_compare_method.check_result(cpu_lse, npu_lse)
     except Exception as e:
         npu_error_msg = str(e)
         print("NPU ERROR：", npu_error_msg)
