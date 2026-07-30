@@ -62,7 +62,6 @@ __simd_vf__ void SigmoidGradHalfVF(__ubuf__ float *xNormAddr, __ubuf__ float *gr
     MicroAPI::RegTensor<float> xReg, gNormReg, tmpReg, dstReg;
     MicroAPI::RegTensor<T> outReg;
     MicroAPI::MaskReg pregFp = MicroAPI::CreateMask<float>();
-    MicroAPI::MaskReg maskFull = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
     for (uint16_t i = 0; i < repeatTimes; i++) {
         uint32_t remaining = totalElements - i * oneRepeatSize;
@@ -74,8 +73,19 @@ __simd_vf__ void SigmoidGradHalfVF(__ubuf__ float *xNormAddr, __ubuf__ float *gr
         MicroAPI::Adds(tmpReg, tmpReg, static_cast<float>(1), pregFp);
         MicroAPI::Mul(tmpReg, tmpReg, xReg, pregFp);
         MicroAPI::Mul(dstReg, tmpReg, gNormReg, pregFp);
-        MicroAPI::Cast<T, float, castTraitB322B16>(outReg, dstReg, maskFull);
-        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(gradXAddr + i * oneRepeatSize, outReg, maskFull);
+        // The StoreAlign below MUST use the tail-aware mask (pregFp), never a full
+        // mask: the mask is forwarded straight to the vsts write-predicate, and under
+        // DIST_PACK_B32 it is counted in b32 lanes. A full mask would therefore write
+        // 64 b16 elements (128B) on every repeat, overrunning the end of gradX's UB
+        // buffer whenever totalElements is not a multiple of 64.
+        // The Cast is masked with the same pregFp for defence in depth: castTraitB322B16
+        // is ZEROING, so the tail lanes become 0 instead of stale converted data. That
+        // is not strictly required while the store is correctly masked, but it keeps
+        // the two consistent and matches the canonical CANN helper
+        // StoreOneTensorForDtypeT (op_kernel/load_store_utils.h), which passes the tail
+        // preg to both the Cast and the packed store.
+        MicroAPI::Cast<T, float, castTraitB322B16>(outReg, dstReg, pregFp);
+        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(gradXAddr + i * oneRepeatSize, outReg, pregFp);
     }
 }
 
