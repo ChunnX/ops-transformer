@@ -9100,6 +9100,7 @@ class TestFIAV4SplitFuse():
         inner_prec: int
         scale: float
         sparseMode: int
+        kv_storage_mode: str
 
     
     @dataclass
@@ -9533,11 +9534,17 @@ class TestFIAV4SplitFuse():
                         block_number = int(block_table[j // block_size])
                         block_offset = j % block_size
 
-                    k = attention_inputs.key_cache[block_number, block_offset, :, :]
+                    if attention_inputs.auxAttrs.kv_storage_mode == "bnbd":
+                        # BNBD layout: (numBlocks, kvHeads, blockSize, headSize)
+                        k = attention_inputs.key_cache[block_number, :, block_offset, :]
+                        v = attention_inputs.value_cache[block_number, :, block_offset, :]
+                    else:
+                        # BBH layout: (numBlocks, blockSize, kvHeads, headSize)
+                        k = attention_inputs.key_cache[block_number, block_offset, :, :]
+                        v = attention_inputs.value_cache[block_number, block_offset, :, :]
                     k = k.reshape(kv_heads, head_size_qk)
                     keys.append(k)
 
-                    v = attention_inputs.value_cache[block_number, block_offset, :, :]
                     v = v.reshape(kv_heads, head_size_vo)
                     values.append(v)
                 keys = np.stack(keys, axis=0)
@@ -9831,12 +9838,16 @@ def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_
     softmaxLseFlag = input_data.kwargs["softmaxLseFlag"]
     scale = float(input_data.kwargs["scaleValue"])
 
+    kvStorageMode = "bbh"
     if pagedAttentionFlag == True:
-        key = key.reshape(key.shape[:-1] + (kvHeads, headSize))
-        value = value.reshape(value.shape[:-1] + (kvHeads, headSize))
+        if len(key.shape) == 3:  # BBH: (numBlocks, blockSize, H)
+            key = key.reshape(key.shape[:-1] + (kvHeads, headSize))
+            value = value.reshape(value.shape[:-1] + (kvHeads, headSize))
+        else:  # BNBD: already (numBlocks, kvHeads, blockSize, headSize)
+            kvStorageMode = "bnbd"
     # print(key.shape)
     testObj = TestFIAV4SplitFuse()
-    auxAttrs = testObj.AuxAttrs(preTokens, nextTokens, numHeads, kvHeads, headSize, numBlocks, blockSize, maskType, dtype, kvOrgMode, layoutMode, maxQSeqlen, maxKvSeqlen, goldenGpuPrecision, scale, sparseMode)
+    auxAttrs = testObj.AuxAttrs(preTokens, nextTokens, numHeads, kvHeads, headSize, numBlocks, blockSize, maskType, dtype, kvOrgMode, layoutMode, maxQSeqlen, maxKvSeqlen, goldenGpuPrecision, scale, sparseMode, kvStorageMode)
     attentionInputs = testObj.AttentionInputs(query, key, value, blockTable, qSeqlenList, kvSeqlenList, fullMask, learnable_sink, auxAttrs)
     golden_output, golden_gpu_output, golden_lse_output, golden_gpu_lse_output = testObj.calc_data(attentionInputs, is_benchmark_task)
     if inputLayout == 'TND' and totalQTokens < query.shape[0]:
@@ -9924,10 +9935,14 @@ def overwrite_structured_mask(input_data):
         next_t = input_data.kwargs.get('nextTokens', 2147483647)
         
         # 如果是 Tensor/List 取第一个值简化处理 (因为 Mode 4 Mask 是固定的 2048x2048)
-        if hasattr(pre_t, 'item'): pre_t = pre_t.item()
-        if isinstance(pre_t, (list, tuple)): pre_t = pre_t[0]
-        if hasattr(next_t, 'item'): next_t = next_t.item()
-        if isinstance(next_t, (list, tuple)): next_t = next_t[0]
+        if hasattr(pre_t, 'item'):
+            pre_t = pre_t.item()
+        if isinstance(pre_t, (list, tuple)):
+            pre_t = pre_t[0]
+        if hasattr(next_t, 'item'):
+            next_t = next_t.item()
+        if isinstance(next_t, (list, tuple)):
+            next_t = next_t[0]
         
         # 利用广播机制生成 Band
         rows = np.arange(S)[:, None]

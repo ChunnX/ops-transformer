@@ -160,6 +160,7 @@ struct FAInferContext {
     bool flashDecodeFlag = false;
     bool decodingFlag = false;
     bool kvcacheNzFlag = false;
+    bool kvcacheBnbdFlag = false;
     string layout;
     uint64_t keyBnStride = 0;
     uint64_t valueBnStride = 0;
@@ -299,6 +300,7 @@ uint64_t FAInferTiling::GetTilingKey()
     constexpr uint64_t LEARNABLE_SINK_KEY = 100000000;
     constexpr uint64_t FLASH_DECODE_KEY = 100000000000000000;
     constexpr uint64_t DECODING_KEY = 200000000000000000;
+        constexpr uint64_t KVCACHE_BNBD_KEY = 20;
     uint64_t tilingKey = SPLIT_FUSE_BASE_KEY;
     if (faInfo_.pagedCacheFlag) {
         tilingKey += static_cast<uint64_t>(PAGED_CACHE_KEY);
@@ -315,6 +317,9 @@ uint64_t FAInferTiling::GetTilingKey()
     }
     if (faInfo_.kvcacheNzFlag) {
         tilingKey += static_cast<uint64_t>(KVCACHE_NZ_KEY);
+    }
+    if (faInfo_.kvcacheBnbdFlag) {
+        tilingKey += static_cast<uint64_t>(KVCACHE_BNBD_KEY);
     }
     if (faInfo_.dataType == DataType::FP16) {
         tilingKey += static_cast<uint64_t>(DTYPE_FP16_KEY);
