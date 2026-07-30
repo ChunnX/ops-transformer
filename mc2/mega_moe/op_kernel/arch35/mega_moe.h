@@ -1240,7 +1240,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(const GM
         coreIdForGrouping = aivCoreIdx_ / 2;
         totalCoresForGrouping = blockAivNum_ / 2;
     }
-
+    // 把参与 Combine 的 AIV，分配到当前专家的若干个 token group 上。返回：
+    // myGroup：当前 AIV 负责哪个 256-token 组
+    // myIdxInGrp：当前 AIV 在该组中的编号
+    // myGrpSize：该组总共有多少个 AIV
     uint32_t myGroup, myIdxInGrp, myGrpSize;
     MegaMoeImpl::ComputeCoreGrouping(coreIdForGrouping, tokenGroupsThisExpert, totalCoresForGrouping, myGroup,
                                      myIdxInGrp, myGrpSize);
@@ -1248,7 +1251,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(const GM
     if (myGroup >= tokenGroupsThisExpert) {
         return;
     }
-
+    // [expertIdx][aivCoreIdx][INT_CACHELINE 个 int32]
     __gm__ int32_t *myCounterAddr = (__gm__ int32_t *)gmm2CombineSyncCounter.GetPhyAddr() +
                                     expertIdx * blockAivNum_ * INT_CACHELINE + aivCoreIdx_ * INT_CACHELINE;
     // 每个 (expert, AIV) 独占 16 个 int32=64B 的槽，避免多个 AtomicAdd 热点共享 cache line。
