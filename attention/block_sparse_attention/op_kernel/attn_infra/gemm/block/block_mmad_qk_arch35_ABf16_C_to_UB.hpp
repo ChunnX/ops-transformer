@@ -29,6 +29,7 @@
 #include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
 #include "../../../tla/layout.hpp"
 #include "../../../tla/tensor.hpp"
+#include "bsa_block_eff_rows_gather.hpp"
 
 ////////////////////////////////////////////////////////////////////
 
@@ -213,43 +214,15 @@ public:
                             uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                             uint32_t l1BTileNAct, uint32_t embed,
                             uint32_t kvSBaseTileInnerOffset,
-                            AscendC::GlobalTensor<int32_t> gBlockEffRows = AscendC::GlobalTensor<int32_t>(),
-                            uint64_t gmOffsetEffRows = 0,
-                            bool enableEffRows = false,
-                            uint32_t *ioCurBlockIdx = nullptr,
-                            uint32_t *ioCurBlockCopied = nullptr)
+                            EffRowsCtx *effRowsCtx = nullptr)
     {
         using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
-        if (enableEffRows && ioCurBlockIdx != nullptr && ioCurBlockCopied != nullptr) {
-            uint32_t dealtLenAccum = 0;
-            while (dealtLenAccum < l1BTileNAct && (*ioCurBlockIdx) < yBlockNumRsvd) {
-                uint32_t oriYBlockIdx = gSparseBlockIdx.GetValue(*ioCurBlockIdx);
-                uint32_t effectiveY = gBlockEffRows.GetValue(gmOffsetEffRows + oriYBlockIdx * 2 + 1);
-                // 先 clamp 到 blockShapeY，再 clamp 到尾块剩余行数（非尾块时第二步为 no-op）
-                effectiveY = (effectiveY < blockShapeY) ? effectiveY : blockShapeY;
-                uint32_t tailBlockY = (kvSeqlen > static_cast<int64_t>(oriYBlockIdx) * blockShapeY) ?
-                    static_cast<uint32_t>(kvSeqlen - static_cast<int64_t>(oriYBlockIdx) * blockShapeY) : 0;
-                effectiveY = (effectiveY < tailBlockY) ? effectiveY : tailBlockY;
-                uint32_t remaining = (effectiveY > (*ioCurBlockCopied)) ?
-                    (effectiveY - (*ioCurBlockCopied)) : 0;
-                uint32_t toCopy = (remaining < (l1BTileNAct - dealtLenAccum)) ?
-                    remaining : (l1BTileNAct - dealtLenAccum);
-                if (toCopy > 0) {
-                    uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + (*ioCurBlockCopied);
-                    auto l1BTensorTlaTile = GetTile(l1BTensorTla,
-                        tla::MakeCoord(0, dealtLenAccum), tla::MakeShape(embed, toCopy));
-                    auto gBTensorTlaTile = GetTile(gBTensor,
-                        tla::MakeCoord(0, oriStartOffset), tla::MakeShape(embed, toCopy));
-                    copyGmToL1B(l1BTensorTlaTile, gBTensorTlaTile);
-                    dealtLenAccum += toCopy;
-                    (*ioCurBlockCopied) += toCopy;
-                }
-                if ((*ioCurBlockCopied) >= effectiveY) {
-                    (*ioCurBlockIdx)++;
-                    (*ioCurBlockCopied) = 0;
-                }
-            }
+        if (effRowsCtx != nullptr && effRowsCtx->enabled) {
+            // K 为转置布局 [embed, N]，Transposed=true
+            EffRowsGatherCopy<true>(gBTensor, l1BTensorTla, gSparseBlockIdx, *effRowsCtx,
+                                    yBlockNumRsvd, kvSeqlen, blockShapeY, embed,
+                                    l1BTileNAct, copyGmToL1B);
             return;
         }
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile + kvSBaseTileInnerOffset;
@@ -311,11 +284,7 @@ public:
                     uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                     Arch::CrossCoreFlag mm1ToSmFlag,
                     uint64_t deqScalar = 0,
-                    AscendC::GlobalTensor<int32_t> gBlockEffRows = AscendC::GlobalTensor<int32_t>(),
-                    uint64_t gmOffsetEffRows = 0,
-                    bool enableEffRows = false,
-                    uint32_t *ioCurBlockIdx = nullptr,
-                    uint32_t *ioCurBlockCopied = nullptr)
+                    EffRowsCtx *effRowsCtx = nullptr)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
         CopyL0CToDst copyL0CToDstSub0;
@@ -349,7 +318,7 @@ public:
             SparseKL1TileNLoad(
                 gBTensor, l1BTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
                 yBlockNumAval, yBlockNumRsvd, l1TileNAct, embed, nL1Itr * l1BTileN,
-                gBlockEffRows, gmOffsetEffRows, enableEffRows, ioCurBlockIdx, ioCurBlockCopied);
+                effRowsCtx);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
             uint32_t nL0LoopNum = CeilDiv(l1TileNAct, L0_TILE_N);

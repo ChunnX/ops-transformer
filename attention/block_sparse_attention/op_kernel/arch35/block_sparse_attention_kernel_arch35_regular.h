@@ -388,6 +388,8 @@ public:
                         gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
+                    Gemm::Block::EffRowsCtx kEffRowsCtx{gBlockEffRows, effRowsBase, enableEffRows_ != 0,
+                                                        &kCurBlockIdx, &kCurBlockCopied};
                     blockMmadQK(
                         gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx],
                         actualBlockShapeQK,
@@ -395,8 +397,7 @@ public:
                         kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                         prefixSumL0AStages, prefixSumL0BStages,
                         mm1ToSmFlag,
-                        0, gBlockEffRows, effRowsBase, enableEffRows_ != 0,
-                        &kCurBlockIdx, &kCurBlockCopied);
+                        0, &kEffRowsCtx);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1)
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
 #endif
@@ -443,6 +444,8 @@ public:
                         gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
+                    Gemm::Block::EffRowsCtx vEffRowsCtx{gBlockEffRows, effRowsBase, enableEffRows_ != 0,
+                                                        &vCurBlockIdx, &vCurBlockCopied};
                     blockMmadPV(
                         gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
                         actualBlockShapePV,
@@ -450,8 +453,7 @@ public:
                         kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                         prefixSumL0AStages, prefixSumL0BStages,
                         smToMm2Flag, mm2ToReFlag,
-                        0, gBlockEffRows, effRowsBase, enableEffRows_ != 0,
-                        &vCurBlockIdx, &vCurBlockCopied);
+                        0, &vEffRowsCtx);
 #endif
 #ifdef __DAV_VEC__
                     // rescale O
