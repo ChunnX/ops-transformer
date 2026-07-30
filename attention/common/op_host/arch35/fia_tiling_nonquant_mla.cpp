@@ -76,11 +76,8 @@ bool FiaTilingNonQuantMlaArch35::IsCapableFeatureCheckMla()
 
 bool FiaTilingNonQuantMlaArch35::IsCapableSparseLayoutCheckMla()
 {
-    // 不支持mask
-    if (fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK || fiaInfo_->attenMaskFlag) {
-        return false;
-    }
-    if (fiaInfo_->qLayout != FiaLayout::BNSD) { // 仅支持BNSD
+    if (fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK && fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN &&
+        fiaInfo_->sparseMode != SPARSE_MODE_BAND) {
         return false;
     }
     // MLA D512 维度约束
@@ -94,10 +91,6 @@ bool FiaTilingNonQuantMlaArch35::IsCapableSparseLayoutCheckMla()
     }
     // N1 范围 [1, 128]
     if (fiaInfo_->n1Size < 1 || fiaInfo_->n1Size > NUM_128) {
-        return false;
-    }
-    // S1 范围 1-16
-    if (fiaInfo_->s1Size < 1 || fiaInfo_->s1Size > NUM_16) {
         return false;
     }
     return true;
