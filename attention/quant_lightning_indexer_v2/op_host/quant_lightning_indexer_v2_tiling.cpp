@@ -1356,13 +1356,28 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
             keyStride0 /= MXFP4_PACK_NUM;
         }
         QLIV2Info.keyStride0 = keyStride0;
+    } else if (kLayout_ == DataLayout::PA_BBND) {
+        // The eager runtime does not always provide dynamic strides. Preserve PA physical block addressing
+        // by falling back to the contiguous stride instead of leaving stride0 at zero.
+        uint32_t physicalHeadDim = static_cast<uint32_t>(headDim_);
+        if (*opParamInfo_.quantMode == QUANT_MODE_MXFP4) {
+            physicalHeadDim /= MXFP4_PACK_NUM;
+        }
+        QLIV2Info.keyStride0 =
+            static_cast<uint32_t>(blockSize_) * static_cast<uint32_t>(n2Size_) * physicalHeadDim;
     } else {
         QLIV2Info.keyStride0 = 0; // 非PA无需使用stride
     }
     if (!keyDequantScaleStridesVec_.empty()) {
         QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(keyDequantScaleStridesVec_[0]);
     } else if ((*opParamInfo_.quantMode == QUANT_MODE_MXFP8) || (*opParamInfo_.quantMode == QUANT_MODE_MXFP4)) {
-        QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(blockSize_) * (headDim_ / MX_SCALE_GROUP_SIZE);
+        QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(blockSize_) *
+                                                static_cast<uint32_t>(n2Size_) * (headDim_ / MX_SCALE_GROUP_SIZE);
+    } else if (kLayout_ == DataLayout::PA_BBND &&
+               *opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) {
+        // Per-token scale shape is [blockNum, blockSize, N2] for non-MX PA.
+        QLIV2Info.keyDequantScaleStride0 =
+            static_cast<uint32_t>(blockSize_) * static_cast<uint32_t>(n2Size_);
     } else {
         QLIV2Info.keyDequantScaleStride0 = 0;
     }

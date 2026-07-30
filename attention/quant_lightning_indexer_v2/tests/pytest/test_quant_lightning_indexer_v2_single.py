@@ -9,6 +9,8 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import random
+import numpy as np
 
 import itertools
 import os
@@ -82,10 +84,16 @@ for paramset_name, params in ENABLED_PARAMSETS:
         )
         param_combinations.append(param_dict)
 
+TEST_SEEDS = list(range(3))
 
 @pytest.mark.ci
+@pytest.mark.parametrize(
+    "seed",
+    TEST_SEEDS,
+    ids=[f"seed_{seed}" for seed in TEST_SEEDS]
+)
 @pytest.mark.parametrize("param_combinations", param_combinations)
-def test_qliv2(param_combinations):  # Init params and tensors
+def test_qliv2(param_combinations, seed):  # Init params and tensors
     batch_size = param_combinations["batch_size"]
     q_seq = param_combinations["q_seq"]
     k_seq = param_combinations["k_seq"]
@@ -123,6 +131,10 @@ def test_qliv2(param_combinations):  # Init params and tensors
         os.environ.get("QLIV2_RUN_MODE", param_combinations["run_mode"]).strip().lower()
     )
     torch_npu.npu.set_device(0)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    print(f"[QLIV2 test seed] {seed}", flush=True)
     test_data = (
         batch_size,
         q_seq,
