@@ -43,7 +43,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
         this->Attr("renorm").AttrType(OPTIONAL).Int(0);
-        this->Attr("norm_type").AttrType(OPTIONAL).Int(1);
+        this->Attr("norm_type").AttrType(OPTIONAL).Int(0);
         this->Attr("routed_scaling_factor").AttrType(OPTIONAL).Float(1.0);
         this->Attr("eps").AttrType(OPTIONAL).Float(1e-20f);
 
