@@ -898,7 +898,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(
         WaitFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
         LocalTensor<Q_T> kvDequantOutUb = stage0OutBuf[pingPongV0].Get<Q_T>();
         DequantKv(kvDequantOutUb, kvInUb, dealRow, s2ProcessBaseSize, constInfo);
-        PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
 
         // 3、copy kv out, ub -> l1
@@ -1151,7 +1150,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
         WaitFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
         LocalTensor<Q_T> kvDequantOutUb = stage0OutBuf[pingPongV0].Get<Q_T>();
         DequantKv(kvDequantOutUb, kvInUb, dealRow, s2ProcessBaseSize, constInfo);
-        PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
         // 3、copy kv out, ub -> l1
         SetFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
