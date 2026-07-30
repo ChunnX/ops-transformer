@@ -749,10 +749,3 @@ int main() {
     return 0;
 }
 ```
-
-## 调用说明
-
-| 调用方式  | 样例代码 | 说明 |
-| ----------- | -------- | ---- |
-| aclnn接口 | [调用示例](#调用示例) | 通过`aclnnSparseFlashMlaSoftmaxL1NormMetadata`接口方式调用，输出metadata供`aclnnSparseFlashMlaSoftmaxL1Norm`使用。 |
-| PyTorch API | - | 通过[sparse_flash_mla_softmax_l1_norm_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_softmax_l1_norm.md)接口调用算子。 |
