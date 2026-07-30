@@ -30,6 +30,8 @@
 #include "acl/acl_rt.h"
 #include "../mixed_quant_sparse_flash_mla_metadata_check.h"
 
+constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
