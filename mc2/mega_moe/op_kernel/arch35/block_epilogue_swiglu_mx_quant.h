@@ -119,10 +119,11 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_83 = {
     AscendC::RoundMode::CAST_RINT};
 #define BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS \
     template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_, \
-              bool IsTensorList_, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch, bool IsInterleaved_>
+              bool IsTensorList_, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch, bool IsInterleaved_, \
+              bool UseWaveFlagLayout_>
 #define BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS \
     DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_, TileM, TileN, TopkWeightsPrefetch, \
-        IsInterleaved_
+        IsInterleaved_, UseWaveFlagLayout_
 
 // 前向声明：激活分块上下文结构体（仅含标量与 UB 指针，可跨函数传递）
 // 完整定义见 BlockEpilogueSwigluMxQuant 类定义之后
@@ -131,7 +132,7 @@ struct ActivationContext;
 
 template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_,
           bool IsTensorList_, uint32_t TileM = 256, uint32_t TileN = 256, bool TopkWeightsPrefetch = false,
-          bool IsInterleaved_ = false>
+          bool IsInterleaved_ = false, bool UseWaveFlagLayout_ = false>
 class BlockEpilogueSwigluMxQuant {
 public:
     __aicore__ inline BlockEpilogueSwigluMxQuant() {}
@@ -1165,9 +1166,9 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
     if (groupFlagListGmAddr_ != nullptr) {
-        if constexpr (IsInterleaved_) {
-            // The scheduler already has mLoc. Carry its wave index in the spare
-            // GROUP_FLAG coordinate rather than divide again in scalar code.
+        if constexpr (UseWaveFlagLayout_) {
+            // The scheduler carries mLoc's wave index in the spare GROUP_FLAG
+            // coordinate.  Each wave owns an independent cache-line slot.
             AscendC::AtomicAdd(
                 groupFlagListGmAddr_ + Get<GROUP_FLAG_IDX>(blockCoord) * INT_CACHELINE, 1);
         } else {
