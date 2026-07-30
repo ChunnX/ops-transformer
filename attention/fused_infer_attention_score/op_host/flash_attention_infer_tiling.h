@@ -160,6 +160,7 @@ struct FAInferContext {
     bool flashDecodeFlag = false;
     bool decodingFlag = false;
     bool kvcacheNzFlag = false;
+    bool kvcacheBnbdFlag = false;
     string layout;
     uint64_t keyBnStride = 0;
     uint64_t valueBnStride = 0;
@@ -291,6 +292,7 @@ uint64_t FAInferTiling::GetTilingKey()
     constexpr uint64_t COMP_SWA_MASK_KEY = 5;
     constexpr uint64_t FULL_MASK_KEY = 6;
     constexpr uint64_t KVCACHE_NZ_KEY = 10;
+    constexpr uint64_t KVCACHE_BNBD_KEY = 20;
     constexpr uint64_t LAYOUTQ_TND_KEY = 200000;
     constexpr uint64_t DTYPE_FP16_KEY = 100;
     constexpr uint64_t DTYPE_BF16_KEY = 200;
@@ -315,6 +317,9 @@ uint64_t FAInferTiling::GetTilingKey()
     }
     if (faInfo_.kvcacheNzFlag) {
         tilingKey += static_cast<uint64_t>(KVCACHE_NZ_KEY);
+    }
+    if (faInfo_.kvcacheBnbdFlag) {
+        tilingKey += static_cast<uint64_t>(KVCACHE_BNBD_KEY);
     }
     if (faInfo_.dataType == DataType::FP16) {
         tilingKey += static_cast<uint64_t>(DTYPE_FP16_KEY);
