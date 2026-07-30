@@ -1037,6 +1037,11 @@ ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention
  	             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
  	                 "When input layout is TND and paged cache and kvnd is used, the K and V must have three dims"),
  	                 return ge::GRAPH_FAILED);
+    } else if (kDimNum == 4U || vDimNum == 4U) {
+        OP_CHECK_IF(kDimNum != vDimNum,
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                "When input layout is TND and paged cache and bnbd is used, the K and V must have four dims"),
+                return ge::GRAPH_FAILED);
     } else if (kDimNum == 5U || vDimNum == 5U) {
         OP_CHECK_IF(kDimNum != vDimNum,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
@@ -1182,6 +1187,11 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
             tempKD = (tempK->GetStorageShape().GetDim(DIM_2)) / kvHeadNum;
             tempVD = (tempV->GetStorageShape().GetDim(DIM_2)) / kvHeadNum;
             cacheBlockSize = tempK->GetStorageShape().GetDim(DIM_1);
+        } else if (tempK->GetStorageShape().GetDimNum() == 4U) {
+            // BNBD layout: (numBlocks, kvHeads, blockSize, D)
+            tempKD = tempK->GetStorageShape().GetDim(DIM_3);
+            tempVD = tempV->GetStorageShape().GetDim(DIM_3);
+            cacheBlockSize = tempK->GetStorageShape().GetDim(DIM_2);
         } else if (tempK->GetStorageShape().GetDimNum() == 5U) {
             tempKD = (tempK->GetStorageShape().GetDim(DIM_2)) * 16;
             tempVD = (tempV->GetStorageShape().GetDim(DIM_2)) * 16;
@@ -1393,6 +1403,9 @@ static void SetPagedCacheParamsForFAI(gert::TilingContext *context, FAInferConte
         isHeadSizeAligned) {
         faInfo.kvcacheNzFlag = true;
     }
+    if (tempK->GetStorageShape().GetDimNum() == 4U && tempV->GetStorageShape().GetDimNum() == 4U) {
+        faInfo.kvcacheBnbdFlag = true;
+    }
     faInfo.maxNumBlocksPerBatch = blockTable->GetStorageShape().GetDim(DIM_1);
 }
 
@@ -1550,6 +1563,21 @@ static bool CheckFAIDSizePA3Dim(int64_t tempD, const gert::Shape *tempKShape,
     return isFAIDSize && blockSizeSupported;
 }
 
+static bool CheckFAIDSizePA4Dim(int64_t tempD, const gert::Shape *tempKShape,
+    const gert::Shape *tempVShape)
+{
+    // BNBD layout: (numBlocks, kvHeads, blockSize, D), where H = N * D
+    int64_t tempKD = tempKShape->GetDim(DIM_3);
+    int64_t tempVD = tempVShape->GetDim(DIM_3);
+    int64_t blockSize = tempKShape->GetDim(DIM_2);
+    constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
+    bool isFAIDSize = (tempD <= 256 && tempKD <= 256 && tempVD <= 256) &&
+            (tempD == tempKD && tempD == tempVD);
+    bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) &&
+            (blockSize <= MAX_BLOCK_SIZE);
+    return isFAIDSize && blockSizeSupported;
+}
+
 static bool CheckFAIDSizePA5Dim(int64_t tempD, const gert::Shape *tempKShape,
     const gert::Shape *tempVShape)
 {
@@ -1610,6 +1638,8 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
                                  tempV->GetStorageShape().GetDim(DIM_2));
     } else if (kvDimNum == 3U) {
         return CheckFAIDSizePA3Dim(tempD, &tempK->GetStorageShape(), &tempV->GetStorageShape(), kvHeadNum);
+    } else if (kvDimNum == 4U) {
+        return CheckFAIDSizePA4Dim(tempD, &tempK->GetStorageShape(), &tempV->GetStorageShape());
     } else if (kvDimNum == 5U) {
         return CheckFAIDSizePA5Dim(tempD, &tempK->GetStorageShape(), &tempV->GetStorageShape());
     }
@@ -2195,11 +2225,9 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         OP_LOGE("FusedInferAttentionScore", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
-
     if (RouteToFia(context)) {
         return TilingFusedInferAttentionScoreV3(context);
     }
-    
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"), return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();

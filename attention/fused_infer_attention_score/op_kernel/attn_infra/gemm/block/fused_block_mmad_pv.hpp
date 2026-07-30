@@ -28,6 +28,7 @@ namespace NpuArch::Gemm::Block {
 template <
     bool PAGED_CACHE_FLAG_,
     bool ENABLE_UNIT_FLAG_,
+    bool BNBD_FLAG_,
     class L1TileShape_,
     class L0TileShape_,
     class AType_,
@@ -37,7 +38,7 @@ template <
     class TileCopy_,
     class TileMmad_>
 struct BlockMmad<
-    MmadAtlasA2FAIPV<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>,
+    MmadAtlasA2FAIPV<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BNBD_FLAG_>,
     L1TileShape_,
     L0TileShape_,
     AType_,
@@ -48,7 +49,8 @@ struct BlockMmad<
     TileMmad_> {
 public:
     // Type Aliases
-    using DispatchPolicy = MmadAtlasA2FAIPV<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>;
+    using DispatchPolicy = MmadAtlasA2FAIPV<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BNBD_FLAG_>;
+    static constexpr bool BNBD_FLAG = DispatchPolicy::BNBD_FLAG;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementA = typename AType_::Element;
     using LayoutA = typename AType_::Layout;
@@ -144,13 +146,16 @@ public:
     }
 
     __aicore__ inline
-    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t blockStartOffset, 
-        uint32_t nowNIdx, uint32_t &strideKV, uint32_t &blockSize)
+    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t blockStartOffset,
+        uint32_t nowNIdx, uint32_t &strideKV, uint32_t &blockSize, uint32_t embed)
     {
         uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
         if constexpr (std::is_same_v<LayoutB, layout::zN>) {
             constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
             kOffset = blockTableId * blockSize * strideKV + blockStartOffset * ELE_NUM_PER_C0;
+        } else if constexpr (BNBD_FLAG) {
+            // BNBD layout: (numBlocks, kvHeads, blockSize, D)
+            kOffset = blockTableId * blockSize * strideKV + blockStartOffset * embed;
         } else {
             kOffset = blockTableId * blockSize * strideKV + blockStartOffset * strideKV;
         }
@@ -206,7 +211,7 @@ public:
                 uint32_t nowLen = (curBlockIdx < (curBlockTotalNum-1)) ? (blockSize - blockStartOffset) : (blockEnd - blockStartOffset);
                 uint32_t nowNIdx = nIdx * maxKVStackLen / blockSize + curBlockIdx;
                 getBlockShape(actualShape, nowLen);
-                getKVOffset(gBlockTable, gBOffset, blockStartOffset, nowNIdx, strideKV, blockSize);
+                getKVOffset(gBlockTable, gBOffset, blockStartOffset, nowNIdx, strideKV, blockSize, embed);
                 auto layoutBTile = layoutB.GetTileLayout(MakeCoord(actualShape.k(), actualShape.n()));
                 uint32_t curBlockSize = (curBlockIdx > 0) ? ((curBlockIdx - 1) * blockSize + blockStart) : 0;
                 MatrixCoord l1BTileCoord{curBlockSize, 0};

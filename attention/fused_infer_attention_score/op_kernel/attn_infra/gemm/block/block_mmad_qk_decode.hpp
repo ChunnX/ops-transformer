@@ -28,6 +28,7 @@ namespace NpuArch::Gemm::Block {
 template <
     bool PAGED_CACHE_FLAG_,
     bool ENABLE_UNIT_FLAG_,
+    bool BNBD_FLAG_,
     class L1TileShape_,
     class L0TileShape_,
     class AType_,
@@ -37,7 +38,7 @@ template <
     class TileCopy_,
     class TileMmad_>
 struct BlockMmad<
-    MmadAtlasA2FAIQKDecode<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>,
+    MmadAtlasA2FAIQKDecode<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BNBD_FLAG_>,
     L1TileShape_,
     L0TileShape_,
     AType_,
@@ -48,7 +49,8 @@ struct BlockMmad<
     TileMmad_> {
 public:
     // Type Aliases
-    using DispatchPolicy = MmadAtlasA2FAIQKDecode<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>;
+    using DispatchPolicy = MmadAtlasA2FAIQKDecode<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BNBD_FLAG_>;
+    static constexpr bool BNBD_FLAG = DispatchPolicy::BNBD_FLAG;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using L1TileShape = L1TileShape_;
     using L0TileShape = L0TileShape_;
@@ -154,11 +156,16 @@ public:
 
     __aicore__ inline
     void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
-        uint32_t strideKV, uint32_t blockSize)
+        uint32_t strideKV, uint32_t blockSize, uint32_t embed)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-            kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
+            if constexpr (BNBD_FLAG) {
+                // BNBD: token stride within block is embed
+                kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * embed;
+            } else {
+                kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
+            }
         } else {
             kOffset = nowNIdx * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
         }
@@ -189,7 +196,7 @@ public:
         for (uint32_t nL1Idx = 0; nL1Idx < nL1Loop; ++nL1Idx) {
             uint32_t nowNIdx = nIdx + nL1Idx / tileNNumPerBaseBlock;
             getBlockShape(actualShape, nL1Idx, nL1Loop, stackSeqTile);
-            getKVOffset(gBlockTable, gBOffset, nowNIdx, nL1Idx % tileNNumPerBaseBlock, strideKV, blockSize);
+            getKVOffset(gBlockTable, gBOffset, nowNIdx, nL1Idx % tileNNumPerBaseBlock, strideKV, blockSize, embed);
             uint32_t mActual = actualShape.m();
             uint32_t kActual = actualShape.k();
             uint32_t nActual = actualShape.n();

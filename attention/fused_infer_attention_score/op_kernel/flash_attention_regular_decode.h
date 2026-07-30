@@ -44,6 +44,7 @@ namespace SplitFuse {
         using LayoutP = typename BlockMmadPV::LayoutA;
         using ElementV = typename BlockMmadPV::ElementB;
         using LayoutV = typename BlockMmadPV::LayoutB;
+        static constexpr bool BNBD_FLAG = BlockMmadQK::BNBD_FLAG;
         using L1TileShape = typename BlockMmadQK::L1TileShape;
 
         using ElementMask = typename EpilogueOnlineSoftmax::ElementMask;
@@ -250,6 +251,11 @@ namespace SplitFuse {
                 uint64_t qNStartOffset = static_cast<uint64_t>(qNStartIdx) * embed;
                 uint64_t kNStartOffset = static_cast<uint64_t>(kvNStartIdx) * embed;
                 uint64_t vNStartOffset = static_cast<uint64_t>(kvNStartIdx) * embedV;
+                if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                    // BNBD: head stride within a block is pagedBlockSize * embed
+                    kNStartOffset = static_cast<uint64_t>(kvNStartIdx) * pagedBlockSize * embed;
+                    vNStartOffset = static_cast<uint64_t>(kvNStartIdx) * pagedBlockSize * embedV;
+                }
                 uint64_t oSOffset = 0;
                 uint64_t oNStartOffset = static_cast<uint64_t>(qNStartIdx) * embedV;
                 uint64_t lseTokenOffset = 0;
@@ -266,6 +272,11 @@ namespace SplitFuse {
                 LayoutQ layoutQTemp(rowNum, embed);
                 LayoutK layoutKTemp(strideK, blockStackNum * pagedBlockSize);
                 LayoutV layoutVTemp(blockStackNum * pagedBlockSize, strideV);
+                if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                    // BNBD: token stride within a block is embed (head selected via gmOffsetK)
+                    layoutKTemp = LayoutK(embed, blockStackNum * pagedBlockSize);
+                    layoutVTemp = LayoutV(blockStackNum * pagedBlockSize, embedV);
+                }
 #endif
                 for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx += blockStackNum) {
                     if (kvSIdx < kvSLoopNumTotal) {
@@ -292,6 +303,11 @@ namespace SplitFuse {
                                 static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                             uint64_t gmOffsetK = kBOffset + kNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * embed);
+                            if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                                // BNBD: head offset = kvNIdx * blockSize * D
+                                gmOffsetK = kBOffset + kNStartOffset +
+                                    static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embed);
+                            }
                             uint64_t sWorkspaceIncreOffset =
                                 static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                             uint64_t gmOffsetS =
@@ -362,6 +378,10 @@ namespace SplitFuse {
                         for (uint32_t kvNIncreIdx = 0; kvNIncreIdx < kvNBlockSize; kvNIncreIdx++) {
                             uint64_t gmOffsetV = vBOffset + vNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * embedV);
+                            if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                                gmOffsetV = vBOffset + vNStartOffset +
+                                    static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embedV);
+                            }
                             uint64_t gmOffsetO = oBOffset + oSOffset + oNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                             uint64_t gmOffsetLse = lseBOffset + lseTokenOffset + qNStartIdx +
@@ -502,6 +522,11 @@ namespace SplitFuse {
                     uint64_t qNStartOffset = static_cast<uint64_t>(tailQNStartIdx) * embed;
                     uint64_t kNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * embed;
                     uint64_t vNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * embedV;
+                    if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                        // BNBD: head stride within a block is pagedBlockSize * embed
+                        kNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * pagedBlockSize * embed;
+                        vNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * pagedBlockSize * embedV;
+                    }
                     uint64_t oSOffset = 0;
                     uint64_t oNStartOffset = static_cast<uint64_t>(tailQNStartIdx) * embedV;
                     uint64_t lseTokenOffset = 0;
@@ -519,6 +544,11 @@ namespace SplitFuse {
                     LayoutQ layoutQTemp(rowNum, embed);
                     LayoutK layoutKTemp(strideK, blockStackNum * pagedBlockSize);
                     LayoutV layoutVTemp(blockStackNum * pagedBlockSize, strideV);
+                    if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                        // BNBD: token stride within a block is embed (head selected via gmOffsetK)
+                        layoutKTemp = LayoutK(embed, blockStackNum * pagedBlockSize);
+                        layoutVTemp = LayoutV(blockStackNum * pagedBlockSize, embedV);
+                    }
 #endif
                     for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx += blockStackNum) {
                         if (kvSIdx < kvSLoopNumTotal) {
@@ -544,6 +574,11 @@ namespace SplitFuse {
                                     static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                                 uint64_t gmOffsetK = tailKBOffset + kNStartOffset +
                                     static_cast<uint64_t>(kvNIncreIdx * embed);
+                                if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                                    // BNBD: head offset = kvNIdx * blockSize * D
+                                    gmOffsetK = tailKBOffset + kNStartOffset +
+                                        static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embed);
+                                }
                                 uint64_t sWorkspaceIncreOffset =
                                     static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                                 uint64_t gmOffsetS =
@@ -615,6 +650,10 @@ namespace SplitFuse {
                             for (uint32_t kvNIncreIdx = 0; kvNIncreIdx < tailKvNBlockSize; kvNIncreIdx++) {
                                 uint64_t gmOffsetV = tailVBOffset + vNStartOffset +
                                     static_cast<uint64_t>(kvNIncreIdx * embedV);
+                                if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                                    gmOffsetV = tailVBOffset + vNStartOffset +
+                                        static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embedV);
+                                }
                                 uint64_t gmOffsetO = tailOBOffset + oSOffset + oNStartOffset +
                                     static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                                 uint64_t gmOffsetLse = tailLseBOffset + lseTokenOffset + tailQNStartIdx +
