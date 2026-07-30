@@ -37,6 +37,12 @@
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 #include "torch_npu/csrc/core/npu/NPUFormat.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
+#if __has_include("torch_npu/csrc/framework/OpParamMaker.h")
+#include "torch_npu/csrc/framework/OpParamMaker.h"
+#endif
+#if __has_include("torch_npu/csrc/core/npu/NPUFunctions.h")
+#include "torch_npu/csrc/core/npu/NPUFunctions.h"
+#endif
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
 #include "torch_npu/csrc/flopcount/FlopCount.h"
 #endif
@@ -945,11 +951,13 @@ auto DecodeDevice(Ts &...args) -> at::Device
         aclOpExecutor **executor_addr = &executor; \
         InitHugeMemThreadLocal initMemFunc = reinterpret_cast<InitHugeMemThreadLocal>(initMemAddr); \
         UnInitHugeMemThreadLocal unInitMemFunc = reinterpret_cast<UnInitHugeMemThreadLocal>(unInitMemAddr); \
+        auto snapshot = c10_npu::CaptureDeterministicSnapshot(); \
         if (initMemFunc) { \
             initMemFunc(nullptr, false); \
         } \
-        auto deterministic = at::globalContext().deterministicAlgorithms(); \
-        aclrtCtxSetSysParamOpt(aclSysParamOpt::ACL_OPT_DETERMINISTIC, deterministic ? 1 : 0); \
+        std::cout << "11111111ttttt" << std::endl; \
+        at_npu::native::ApplyDeterministicSnapshot(snapshot, true); \
+        std::cout << "22222222ttttt" << std::endl; \
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr); \
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr); \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params); \
