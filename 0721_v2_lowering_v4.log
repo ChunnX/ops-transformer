@@ -1,0 +1,124 @@
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=4 python_sha256=5a57efc2cbe67fb526bcab6522b115aabcbc6ddf911724fc20e4bc9ad99e232d
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=c21fe14bc80e1754d4d4eb6ebcb0ed31819758da63ec24de33b28036928510e9
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+725:      int32_t valid_k_size_1 = KRealSize.GetValue(task_id);
+726-      int32_t condval_2;
+727-      if ((cid < 8)) {
+728-        condval_2 = 1;
+729-      } else {
+730-        condval_2 = 0;
+731-      }
+732-      int32_t condval_1;
+733-      if ((0 < (((valid_k_size_1 - ((cid < 8 ? cid : 8) * 16)) - ((vid * ((condval_2 / 2) + 7)) * 16)) - (cid * 208)))) {
+734-        int32_t condval_3;
+735-        if ((cid < 8)) {
+736-          condval_3 = 1;
+737-        } else {
+738-          condval_3 = 0;
+739-        }
+740-        int32_t condval_4;
+741-        if ((cid < 8)) {
+742-          condval_4 = 1;
+743-        } else {
+744-          condval_4 = 0;
+745-        }
+746-        int32_t condval_5;
+747-        if ((cid < 8)) {
+748-          condval_5 = 1;
+749-        } else {
+750-          condval_5 = 0;
+751-        }
+752-        int32_t condval_6;
+753-        if ((cid < 8)) {
+754-          condval_6 = 1;
+755-        } else {
+756-          condval_6 = 0;
+757-        }
+758-        int32_t condval_7;
+759-        if ((cid < 8)) {
+760-          condval_7 = 1;
+761-        } else {
+762-          condval_7 = 0;
+763-        }
+764-        int32_t condval_8;
+765-        if ((cid < 8)) {
+766-          condval_8 = 1;
+767-        } else {
+768-          condval_8 = 0;
+769-        }
+770-        condval_1 = ((((condval_3 / 2) + 7) - (vid * (1 - (condval_4 % 2)))) < (((((valid_k_size_1 + 15) / 16) - (vid * ((condval_5 / 2) + 7))) - (cid < 8 ? cid : 8)) - (cid * 13)) ? (((condval_6 / 2) + 7) - (vid * (1 - (condval_7 % 2)))) : (((((valid_k_size_1 + 15) / 16) - (vid * ((condval_8 / 2) + 7))) - (cid < 8 ? cid : 8)) - (cid * 13)));
+771-      } else {
+772-        condval_1 = 0;
+773-      }
+774-      if (0 < condval_1) {
+775-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(6);
+776-        int32_t condval_9;
+777-        if ((cid < 8)) {
+778-          condval_9 = 1;
+779-        } else {
+780-          condval_9 = 0;
+781-        }
+782-        int32_t condval_10;
+783-        if ((cid < 8)) {
+784-          condval_10 = 1;
+785-        } else {
+786-          condval_10 = 0;
+787-        }
+788-        int32_t condval_11;
+789-        if ((cid < 8)) {
+790-          condval_11 = 1;
+791-        } else {
+792-          condval_11 = 0;
+793-        }
+794-        int32_t condval_12;
+795-        if ((cid < 8)) {
+796-          condval_12 = 1;
+797-        } else {
+798-          condval_12 = 0;
+799-        }
+800-        tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((task_id * 655360) + (cid * 26624)) + ((cid < 8 ? cid : 8) * 2048)) + ((vid * ((condval_9 / 2) + 7)) * 2048))], 128, ((1 <= (((320 - (cid < 8 ? cid : 8)) - (vid * ((condval_10 / 2) + 7))) - (cid * 13))) ? 16 : (((((cid * 13) + (cid < 8 ? cid : 8)) + (vid * ((condval_11 / 2) + 7))) < 320) ? (((5120 - ((cid < 8 ? cid : 8) * 16)) - ((vid * ((condval_12 / 2) + 7)) * 16)) - (cid * 208)) : 0)), 128, 0.000000e+00f);
+801-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(6);
+802-        int32_t condval_14;
+803-        if ((cid < 8)) {
+804-          condval_14 = 1;
+805-        } else {
+806-          condval_14 = 0;
+807-        }
+808-        int32_t condval_13;
+809-        if ((0 < (((valid_k_size_1 - ((cid < 8 ? cid : 8) * 16)) - ((vid * ((condval_14 / 2) + 7)) * 16)) - (cid * 208)))) {
+810-          int32_t condval_15;
+811-          if ((cid < 8)) {
+812-            condval_15 = 1;
+813-          } else {
+814-            condval_15 = 0;
+815-          }
+816-          int32_t condval_16;
+817-          if ((cid < 8)) {
+818-            condval_16 = 1;
+819-          } else {
+820-            condval_16 = 0;
+821-          }
+822-          int32_t condval_17;
+823-          if ((cid < 8)) {
+824-            condval_17 = 1;
+825-          } else {
+826-            condval_17 = 0;
+827-          }
+828-          int32_t condval_18;
+829-          if ((cid < 8)) {
+830-            condval_18 = 1;
+831-          } else {
+832-            condval_18 = 0;
+833-          }
+834-          int32_t condval_19;
+835-          if ((cid < 8)) {
+836-            condval_19 = 1;
+837-          } else {
+838-            condval_19 = 0;
+839-          }
+840-          int32_t condval_20;
+841-          if ((cid < 8)) {
+842-            condval_20 = 1;
+843-          } else {
+844-            condval_20 = 0;
+845-          }
