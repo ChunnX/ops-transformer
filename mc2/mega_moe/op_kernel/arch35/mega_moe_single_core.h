@@ -13,13 +13,13 @@
 
 // Compatibility aggregation header. Implementations are grouped by execution
 // role in the directories and composite scheduling headers below.
-#include "single_core_context.h"
-#include "aiv_compute/quant_process.h"
-#include "aiv_compute/shared_expert_prepare.h"
-#include "aiv_comm/send_mask.h"
-#include "aiv_comm/token_dispatch.h"
-#include "workspace_reset.h"
-#include "dispatch_gmm1_swiglu.h"
-#include "shared_expert_gmm1_swiglu.h"
+#include "mega_moe_single_core_context.h"
+#include "aiv_compute/mega_moe_quant_process.h"
+#include "aiv_compute/mega_moe_shared_expert_prepare.h"
+#include "aiv_comm/mega_moe_send_mask.h"
+#include "aiv_comm/mega_moe_token_dispatch.h"
+#include "mega_moe_workspace_reset.h"
+#include "mega_moe_dispatch_gmm1_swiglu.h"
+#include "mega_moe_shared_expert_gmm1_swiglu.h"
 
 #endif // MEGA_MOE_SINGLE_CORE_H

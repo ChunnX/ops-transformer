@@ -11,7 +11,7 @@
 #ifndef MEGA_MOE_SEND_MASK_H
 #define MEGA_MOE_SEND_MASK_H
 
-#include "../single_core_context.h"
+#include "../mega_moe_single_core_context.h"
 
 namespace MegaMoeImpl {
 

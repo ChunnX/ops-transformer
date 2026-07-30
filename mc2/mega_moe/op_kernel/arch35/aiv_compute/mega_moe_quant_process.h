@@ -11,7 +11,7 @@
 #ifndef MEGA_MOE_QUANT_PROCESS_H
 #define MEGA_MOE_QUANT_PROCESS_H
 
-#include "../single_core_context.h"
+#include "../mega_moe_single_core_context.h"
 #if __has_include("../../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
 #else

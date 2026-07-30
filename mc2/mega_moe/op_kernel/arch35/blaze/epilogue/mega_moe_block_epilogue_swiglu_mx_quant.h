@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file block_epilogue_swiglu_mx_quant.h
+ * \file mega_moe_block_epilogue_swiglu_mx_quant.h
  * \brief
  */
 
-#ifndef BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
-#define BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
+#ifndef MEGA_MOE_BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
+#define MEGA_MOE_BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
 
 #if defined(__DAV_C310__)
 #if ASC_DEVKIT_MAJOR >= 9
@@ -22,7 +22,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../mega_moe_base.h"
+#include "../../mega_moe_base.h"
 
 namespace SwigluQuantMsg {
 enum class QuantMode : uint32_t {
@@ -155,11 +155,11 @@ public:
     __aicore__ inline void Init(Params const &params);
     __aicore__ inline auto GetFirstL0c2UbTensor();
     __aicore__ inline auto GetSecondL0c2UbTensor();
-    // Computes and writes one SwiGLU tile without publishing readiness to GMM2.
+    // Computes and writes one SwiGLU tile without notifying GMM2.
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord,
                                       uint16_t pingpongIdx = 0);
     // Pipeline controllers call this after dependency-free SwiGLU compute.
-    __aicore__ inline void PublishCompletedTiles(uint32_t completedTileCount);
+    __aicore__ inline void NotifyCompletedTiles(uint32_t completedTileCount);
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
@@ -810,7 +810,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::PublishCompletedTiles(
+__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::NotifyCompletedTiles(
     uint32_t completedTileCount)
 {
     if (groupFlagListGmAddr_ != nullptr && completedTileCount != 0U) {
@@ -818,5 +818,5 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     }
 }
 
-#endif // BLOCK_EPILOGUE_SWIGLU_QUANT_H
-#endif
+#endif // defined(__DAV_C310__)
+#endif // MEGA_MOE_BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H

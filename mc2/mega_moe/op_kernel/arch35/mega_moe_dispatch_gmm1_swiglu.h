@@ -11,7 +11,7 @@
 #ifndef MEGA_MOE_DISPATCH_GMM1_SWIGLU_H
 #define MEGA_MOE_DISPATCH_GMM1_SWIGLU_H
 
-#include "aiv_comm/token_dispatch.h"
+#include "aiv_comm/mega_moe_token_dispatch.h"
 
 namespace MegaMoeImpl {
 

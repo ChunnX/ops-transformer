@@ -16,7 +16,7 @@
 
 // Prototype: the per-tile compute body in AivGmm1PostGeneric. Runs SwiGLU/quant for one
 // generic GMM1 tile without waiting for or notifying other stages, and returns the number
-// of epilogue tiles written so the template controller can publish downstream readiness.
+// of epilogue tiles written so the template controller can notify downstream readiness.
 template <typename MakeLayoutC, typename ElementC, bool TopkWeightsPrefetch, typename Config, typename LayoutC,
           typename SwigluQuantOp, typename ActualShape>
 __aicore__ inline uint32_t SwigluComputeTileGenericOneCore(
@@ -101,7 +101,7 @@ __aicore__ inline uint32_t SwigluComputeTileGenericOneCore(
 
 // Prototype: the per-tile compute body in AivGmm1PostA8W4. Runs SwiGLU/quant for one
 // A8W4 GMM1 tile without owning cross-stage handshakes, and returns the number of
-// epilogue tiles written so the template controller can publish downstream readiness.
+// epilogue tiles written so the template controller can notify downstream readiness.
 template <typename ElementC, typename MakeLayoutC, typename TensorC, typename SwigluQuantOp, typename Config,
           bool TopkWeightsPrefetch, typename ActualShape>
 __aicore__ inline uint32_t SwigluComputeTileA8W4OneCore(

@@ -341,19 +341,19 @@ GMM 输出处理。
 
 | 目录/文件 | 主要职责 | 为什么放在这里 |
 | --- | --- | --- |
-| `single_core_context.h` | AIV 逻辑 job、拓扑、Token shape 和通用切分函数 | 属于所有单核模块共享的调用契约，不绑定某一种计算或通信实现 |
+| `mega_moe_single_core_context.h` | AIV 逻辑 job、拓扑、Token shape 和通用切分函数 | 属于所有单核模块共享的调用契约，不绑定某一种计算或通信实现 |
 | `mega_moe_single_core.h` | 单核模块兼容聚合头文件 | 作为统一 include 入口放在根目录，向调用方汇总各子目录接口 |
-| `aiv_compute/quant_process.h` | 本卡 Token 量化 | 核心工作是 AIV Vector 量化计算和双 buffer 流水 |
-| `aiv_compute/shared_expert_prepare.h` | 将共享专家输入的交错 data/scale 拆分为连续布局 | 仅由一个逻辑 AIV job 完成本地数据重排，不涉及 MIX block 协作 |
-| `aiv_compute/group_matmul_compute.h` | GMM 的 AIV prologue、SwiGLU/量化和 Combine 后处理 | 内容均为 GMM 流水中由 AIV 执行的计算角色 |
-| `aiv_comm/send_mask.h` | 按专家生成 bitmap/count 并写入目标 Rank window | 结果用于跨 Rank Dispatch，主要职责是通信数据准备和 window 写入 |
-| `aiv_comm/workspace_reset.h` | Dispatch flag 和 GMM2 Combine counter 清零 | 维护跨阶段同步状态，属于通信/同步基础逻辑 |
-| `aiv_comm/token_dispatch.h` | SendCnt、Mask 扫描、Token/Scale/Triple 搬运和 Dispatch 通知 | 负责从远端 window 收集数据、写入 Dispatch workspace 并通知 GMM1 |
-| `block/dispatch_gmm1_swiglu.h` | 单 MIX block 的 Dispatch/GMM1/SwiGLU 总流水 | 需要同时调度同一 block 内 AIC、AIV0 和 AIV1，不能归入纯 AIV 目录 |
-| `block/shared_expert_gmm1_swiglu.h` | 单 MIX block 的共享专家 GMM1/SwiGLU 流水 | 共享专家不需要 Dispatch，但 GMM1/SwiGLU 仍要求同 block 的 AIC 和 AIV 协作 |
-| `block/group_matmul_compute.h` | Generic 和 A8W4 路径的 AIC MMAD | 内容是 MIX block 中 AIC/Cube 侧的核心矩阵计算 |
-| `epilogue/group_matmul_epilogue.h` | 按核类型和 GMM policy 分发 AIC/AIV 实现 | 位于公共 GMM 骨架与具体核实现之间，是计算出口处的分派层 |
-| `epilogue/block_epilogue_swiglu_mx_quant.h` | SwiGLU + MX 量化 epilogue | 定义 GMM 输出后的融合后处理算子，职责属于 epilogue |
+| `aiv_compute/mega_moe_quant_process.h` | 本卡 Token 量化 | 核心工作是 AIV Vector 量化计算和双 buffer 流水 |
+| `aiv_compute/mega_moe_shared_expert_prepare.h` | 将共享专家输入的交错 data/scale 拆分为连续布局 | 仅由一个逻辑 AIV job 完成本地数据重排，不涉及 MIX block 协作 |
+| `aiv_comm/mega_moe_send_mask.h` | 按专家生成 bitmap/count 并写入目标 Rank window | 结果用于跨 Rank Dispatch，主要职责是通信数据准备和 window 写入 |
+| `mega_moe_workspace_reset.h` | Dispatch flag 和 GMM2 Combine counter 清零 | 维护跨阶段同步状态，属于通信/同步基础逻辑 |
+| `aiv_comm/mega_moe_token_dispatch.h` | SendCnt、Mask 扫描、Token/Scale/Triple 搬运和 Dispatch 通知 | 负责从远端 window 收集数据、写入 Dispatch workspace 并通知 GMM1 |
+| `mega_moe_dispatch_gmm1_swiglu.h` | 单 MIX block 的 Dispatch/GMM1/SwiGLU 总流水 | 需要同时调度同一 block 内 AIC、AIV0 和 AIV1，不能归入纯 AIV 目录 |
+| `mega_moe_shared_expert_gmm1_swiglu.h` | 单 MIX block 的共享专家 GMM1/SwiGLU 流水 | 共享专家不需要 Dispatch，但 GMM1/SwiGLU 仍要求同 block 的 AIC 和 AIV 协作 |
+| `blaze/gemm/block/mega_moe_group_matmul_compute.h` | Generic 和 A8W4 路径的 AIC MMAD | 内容是 MIX block 中 AIC/Cube 侧的核心矩阵计算 |
+| `blaze/prologue/mega_moe_group_matmul_prologue.h` | 按 tile 调度 A8W4 权重展开 | 接收并调用同目录下定义的 Blaze `BlockPrologue`，是底层 prologue 算子与 MegaMoe GMM 调度之间的适配层 |
+| `blaze/epilogue/mega_moe_group_matmul_epilogue.h` | 按核类型和 GMM policy 分发 AIC/AIV 实现 | 位于公共 GMM 骨架与具体核实现之间，是计算出口处的分派层 |
+| `blaze/epilogue/mega_moe_block_epilogue_swiglu_mx_quant.h` | SwiGLU + MX 量化 epilogue | 定义 GMM 输出后的融合后处理算子，职责属于 epilogue |
 
 ## Dispatch 前处理模块
 

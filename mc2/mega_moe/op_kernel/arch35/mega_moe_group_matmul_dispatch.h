@@ -26,7 +26,7 @@ __aicore__ inline void WaitGmm1TileStatus(const Params &params, uint32_t expertI
     }
 }
 
-__aicore__ inline void PublishGmm1TileStatus(const Params &params, uint32_t expertIdx, uint32_t loopIdx)
+__aicore__ inline void NotifyGmm1TileStatus(const Params &params, uint32_t expertIdx, uint32_t loopIdx)
 {
     __gm__ int32_t *statusAddr = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
                                  static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx;
@@ -34,7 +34,7 @@ __aicore__ inline void PublishGmm1TileStatus(const Params &params, uint32_t expe
 }
 
 // Controls the current generic GMM1/SwiGLU tile pipeline. The compute leaves called here
-// contain no cross-stage waits, notifications, or downstream completion publication.
+// contain no cross-stage waits or notifications.
 template <typename Policy, typename BlockMmad, typename ElementC, typename MakeLayoutC, bool TopkWeightsPrefetch,
           bool IsShared, typename WorkSet, typename ExtraArgs>
 __aicore__ inline void ControlGmm1SwigluPipelineGenericOneCore(WorkSet &workSet, uint32_t startLoopIdx,
@@ -89,7 +89,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineGenericOneCore(WorkSet &workSet,
             if constexpr (TopkWeightsPrefetch) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-                PublishGmm1TileStatus(workSet.params, args.expertIdx, loopIdx);
+                NotifyGmm1TileStatus(workSet.params, args.expertIdx, loopIdx);
             } else {
                 NotifyVector();
                 args.vecSetSyncCom = 1;
@@ -110,7 +110,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineGenericOneCore(WorkSet &workSet,
             uint32_t completedTileCount = SwigluComputeTileGenericOneCore<MakeLayoutC, ElementC, TopkWeightsPrefetch>(
                 config, workSet.gmmAddrInfo.gmm1OutGlobal, workSet.layouts.c, args.swigluQuantOp,
                 args.expertBeforeCnt, actualShape, mLoc, nLoc);
-            args.swigluQuantOp.PublishCompletedTiles(completedTileCount);
+            args.swigluQuantOp.NotifyCompletedTiles(completedTileCount);
 
             if constexpr (!TopkWeightsPrefetch) {
                 NotifyCube();
@@ -178,7 +178,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineA8W4OneCore(WorkSet &workSet, co
             if constexpr (TopkWeightsPrefetch) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-                PublishGmm1TileStatus(params, args.expertIdx, loopIdx);
+                NotifyGmm1TileStatus(params, args.expertIdx, loopIdx);
             } else {
                 NotifyAiv1GmTileReady();
                 WaitForAiv1GmTileAccepted();
@@ -204,7 +204,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineA8W4OneCore(WorkSet &workSet, co
                 SwigluComputeTileA8W4OneCore<ElementC, MakeLayoutC, decltype(workSet.l0cOutGm),
                                              decltype(args.swigluQuantOp), Config, TopkWeightsPrefetch>(
                     args.swigluQuantOp, workSet.l0cOutGm, config, actualShape, mLoc, nLoc, args.expertBeforeCnt);
-            args.swigluQuantOp.PublishCompletedTiles(completedTileCount);
+            args.swigluQuantOp.NotifyCompletedTiles(completedTileCount);
         }
     }
 }

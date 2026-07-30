@@ -11,7 +11,7 @@
 #ifndef MEGA_MOE_TOKEN_DISPATCH_H
 #define MEGA_MOE_TOKEN_DISPATCH_H
 
-#include "../single_core_context.h"
+#include "../mega_moe_single_core_context.h"
 #include "../mega_moe_impl.h"
 
 namespace MegaMoeImpl {
