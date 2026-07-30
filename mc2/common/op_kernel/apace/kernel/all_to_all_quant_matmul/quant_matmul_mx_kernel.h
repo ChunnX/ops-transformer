@@ -1,3 +1,18 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file quant_matmul_mx_kernel.h
+ * \brief mxfp8 场景 quantMatmul 实现。
+ */
+
 #pragma once
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -29,11 +44,11 @@ using AscendC::Te::Get;
  */
 
 template <class ProblemShape, class BlockMmad, class BlockScheduler, bool HcommPureCMode = false>
-class QuantMatmulMxKernelSwat {
+class quantMatmulMxKernel {
 public:
-    __aicore__ inline QuantMatmulMxKernelSwat()
+    __aicore__ inline quantMatmulMxKernel()
     {}
-    __aicore__ inline ~QuantMatmulMxKernelSwat()
+    __aicore__ inline ~quantMatmulMxKernel()
     {}
 
     static constexpr bool weightNz = BlockMmad::WEIGHT_NZ;
@@ -163,7 +178,7 @@ private:
 };
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run(const Params &params)
+__aicore__ inline void quantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run(const Params &params)
 {
     Init(params);
 
@@ -185,7 +200,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
 template <typename TensorScaleB>
-__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetScaleL2Cache(
+__aicore__ inline void quantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetScaleL2Cache(
     const ProblemShape &problemShape, uint64_t baseN, uint64_t scaleKL1, TensorScaleB &gmScaleB)
 {
     if (Te::Get<MNK_B>(problemShape) != 1) {
@@ -214,7 +229,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
 template <typename TensorB, typename TensorScaleB, typename TensorC>
-__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetL2Cache(
+__aicore__ inline void quantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetL2Cache(
     const ProblemShape &problemShape, uint64_t curBaseM, uint64_t baseN, uint64_t scaleKL1, TensorB& gmB,
     TensorScaleB &gmScaleB, TensorC& gmC)
 {
@@ -246,7 +261,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Init(const Params &params)
+__aicore__ inline void quantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Init(const Params &params)
 {
     if ASCEND_IS_AIV {
         return;
@@ -263,7 +278,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ResetGmAddr(const Params &params)
+__aicore__ inline void quantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ResetGmAddr(const Params &params)
 {
     if ASCEND_IS_AIV {
         return;
@@ -281,7 +296,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline uint32_t QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::CalcDependTileIdx(
+__aicore__ inline uint32_t quantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::CalcDependTileIdx(
     int64_t mPos, uint32_t headTileSize, uint32_t totalTiles) const
 {
     uint32_t tileIdx = static_cast<uint32_t>(mPos / headTileSize);
@@ -292,7 +307,7 @@ __aicore__ inline uint32_t QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAM
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::WaitCommTile(
+__aicore__ inline void quantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::WaitCommTile(
     const Params &params, uint32_t tileIdx)
 {
     if constexpr (HcommPureCMode) {
@@ -309,7 +324,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ProcessSingleBatch(
+__aicore__ inline void quantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ProcessSingleBatch(
     const Params &params, BlockScheduler& bs, uint64_t restBatch, bool isTailRound)
 {
     auto rankId = params.localParams.rankId;

@@ -34,7 +34,7 @@
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
-#include "qbmm_mx_kernel.h"
+#include "quant_matmul_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
 
 namespace Apace {
@@ -50,8 +50,16 @@ constexpr uint64_t GetX1HcclDataType()
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
-class AllToAllMxQuantMatmulImpl {
-private:
+class AllToAllMxQuantMatmulHcommImpl {
+public:
+    __aicore__ inline AllToAllMxQuantMatmulHcommImpl(AlltoAllMatmulTilingDataType *tilingData,
+                                                AscendC::TPipe *tPipe)
+        : tilingData_(tilingData), tPipe_(tPipe) {}
+
+    __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
+                                GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR workspaceGM);
+    __aicore__ inline void Run();
+
     using LayoutA = AscendC::Te::NDExtLayoutPtn;
     using LayoutB = AscendC::Te::DNExtLayoutPtn;
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
@@ -64,7 +72,7 @@ private:
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
         DispatchPolicy, X1Type, LayoutA, X2Type, LayoutB, YType, LayoutC, BiasType, LayoutBias>;
-    using QuantMatmulKernelImpl = Blaze::Gemm::Kernel::QuantMatmulMxKernelSwat<
+    using QuantMatmulKernelImpl = Blaze::Gemm::Kernel::QuantMatmulMxKernel<
         ProblemShape, BlockMmad, BlockScheduler, true>; // HcommPureCMode = true，hcomm纯C通信
 
     using Params = typename QuantMatmulKernelImpl::Params;
@@ -74,15 +82,6 @@ private:
     using BlockSchedulerParams = typename QuantMatmulKernelImpl::BlockSchedulerParams;
     using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
     using MatmulMode = typename QuantMatmulKernelImpl::MatmulMode;
-
-public:
-    __aicore__ inline AllToAllMxQuantMatmulImpl(AlltoAllMatmulTilingDataType *tilingData,
-                                                AscendC::TPipe *tPipe)
-        : tilingData_(tilingData), tPipe_(tPipe) {}
-
-    __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
-                                GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR workspaceGM);
-    __aicore__ inline void Run();
 
     QuantMatmulKernelImpl quantMatmulKernelImpl_;
 
@@ -123,7 +122,7 @@ private:
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
-AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, IsMxFp4>::Init(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
     GM_ADDR workspaceGM)
@@ -152,7 +151,8 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
     rankDim_ = hccl_.GetRankDim();
 
     uint64_t rankForComm = commTiling.nonSplitAxisSize / rankDim_;
-    uint32_t scaleKPerRank = static_cast<uint32_t>(Blaze::Gemm::CeilDiv(rankForComm, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE);
+    uint32_t scaleKPerRank = 
+        static_cast<uint32_t>(Blaze::Gemm::CeilDiv(rankForComm, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE);
 
     uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * rankForComm;
     uint64_t scaleSendCount = static_cast<uint64_t>(splitAxisSize_) * scaleKPerRank;
@@ -170,8 +170,8 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
     }
 
     if (commTiling.splitAxisTailCnt > 0) {
-        uint64_t headOffset = static_cast<uint64_t>(commTiling.splitAxisTileCnt) * 
-                                commTiling.splitAxisTileSize * rankForComm * sizeof(X1Type);
+        uint64_t headOffset = static_cast<uint64_t>(commTiling.splitAxisTileCnt) *
+            commTiling.splitAxisTileSize * rankForComm * sizeof(X1Type);
         uint64_t tailSendCount = static_cast<uint64_t>(commTiling.splitAxisTailSize) * rankForComm;
         dataTailHandle_ = hccl_.template AlltoAll<true>(
             x1_ + headOffset, commOutGM_ + headOffset,
@@ -183,7 +183,7 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
-AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, IsMxFp4>::Run()
 {
     hccl_.Wait(scaleHandle_);
@@ -195,7 +195,7 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
-AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, IsMxFp4>::SetupParams(Params &out)
 {
     auto &&commTiling = tilingData_->commTilingData;
@@ -232,7 +232,7 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
-AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, IsMxFp4>::MatmulProcess()
 {
     Params params;

@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "apace/kernel/all_to_all_quant_matmul/all_to_all_mx_matmul_udma_impl.h"
+#include "apace/kernel/all_to_all_quant_matmul/all_to_all_mx_quant_matmul_udma_impl.h"
 
 __global__ __aicore__ void  AllToAllQuantMatmulKernelE4M3E4M3_Udma(
                           __gm__ CommContext *hcommCtx,
@@ -25,7 +25,7 @@ __global__ __aicore__ void  AllToAllQuantMatmulKernelE4M3E4M3_Udma(
                            allToAllMatmulTilingData tilingData)
 {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-  Apace::AllToAllQuantMatmulUdmaImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;
+  Apace::AllToAllMxQuantMatmulUdmaImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;
   impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
   impl.Run();
 }
@@ -38,7 +38,7 @@ __global__ __aicore__ void  AllToAllQuantMatmulKernelE5M2E5M2_Udma(
                            allToAllMatmulTilingData tilingData)
 {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-  Apace::AllToAllQuantMatmulUdmaImpl<fp8_e5m2_t, fp8_e5m2_t, bfloat16_t, false, true> impl;
+  Apace::AllToAllMxQuantMatmulUdmaImpl<fp8_e5m2_t, fp8_e5m2_t, bfloat16_t, false, true> impl;
   impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
   impl.Run();
 }
@@ -51,7 +51,7 @@ __global__ __aicore__ void  AllToAllQuantMatmulKernelE4M3E5M2_Udma(
                            allToAllMatmulTilingData tilingData)
 {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-  Apace::AllToAllQuantMatmulUdmaImpl<fp8_e4m3fn_t, fp8_e5m2_t, bfloat16_t, false, true> impl;
+  Apace::AllToAllMxQuantMatmulUdmaImpl<fp8_e4m3fn_t, fp8_e5m2_t, bfloat16_t, false, true> impl;
   impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
   impl.Run();
 }
@@ -64,7 +64,7 @@ __global__ __aicore__ void  AllToAllQuantMatmulKernelE5M2E4M3_Udma(
                            allToAllMatmulTilingData tilingData)
 {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-  Apace::AllToAllQuantMatmulUdmaImpl<fp8_e5m2_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;
+  Apace::AllToAllMxQuantMatmulUdmaImpl<fp8_e5m2_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;
   impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
   impl.Run();
 }
