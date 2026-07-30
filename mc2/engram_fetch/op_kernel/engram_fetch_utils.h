@@ -38,6 +38,8 @@ constexpr uint32_t WIN_REGION_COUNT = 8U;
 constexpr uint32_t NUM_SLOTS = 4U;
 constexpr uint32_t INDICES_RATIO = 50U;
 constexpr uint32_t UB_RESERVED_SIZE = 8U * 1024U;
+constexpr uint32_t SENDER_CHANNEL_IDX = 0U;
+constexpr uint32_t RECEIVER_CHANNEL_IDX = 1U;
 
 struct EngramCommContext {
     uint32_t rankId;

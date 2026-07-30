@@ -27,6 +27,8 @@ constexpr uint32_t ALIGNED_LEN_256 = 256U;
 
 constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t NUM_SLOTS = 4U;
+constexpr uint32_t SENDER_CHANNEL_IDX = 0U;
+constexpr uint32_t RECEIVER_CHANNEL_IDX = 1U;
 
 constexpr int32_t ENGRAM_DT_BFLOAT16 = 27;
 constexpr int32_t ENGRAM_DT_FLOAT16 = 1;
@@ -40,6 +42,7 @@ struct EngramCommContext {
     uint32_t rankSize;
     uint64_t commBuffer[MAX_QP_SIZE];
     uint64_t hcommHandle[MAX_QP_SIZE];
+    uint32_t channelsPerRank;
 };
 
 } // namespace Mc2Kernel
