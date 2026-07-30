@@ -27,7 +27,11 @@
 constexpr uint8_t BUILDER_COMM_ENGINE_AIV = 4;
 constexpr uint32_t BUILDER_CHANNEL_NOTIFY_NUM = 3U;
 
-#define ASC_CHECK(call) do { if (!(call)) { return false; } } while(0)
+#define ASC_CHECK(call) do { \
+    if (!(call)) { \
+        return false; \
+    } \
+} while(0)
 
 enum class ChannelMode {
     URMA,
