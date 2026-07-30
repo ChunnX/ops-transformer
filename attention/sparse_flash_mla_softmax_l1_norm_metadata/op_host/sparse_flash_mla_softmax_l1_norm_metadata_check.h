@@ -135,14 +135,16 @@ aclnnStatus CheckConsistencySmla(int64_t batchSize, const aclTensor *cuSeqLensQO
 
     if (IsTensorExistSmla(cuSeqLensQOptional)) {
         dimNum = GetDimNumSmla(cuSeqLensQOptional);
-        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seq_lens_q must be 1, but got %lld", dimNum);
+        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID,
+                   "The dim num of cu_seq_lens_q must be 1, but got %lld", dimNum);
         dataType = GetDataTypeSmla(cuSeqLensQOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
                    "The data type of cu_seq_lens_q must be int32, but got %d", static_cast<int32_t>(dataType));
     }
     if (IsTensorExistSmla(cuSeqLensKOptional)) {
         dimNum = GetDimNumSmla(cuSeqLensKOptional);
-        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seq_lens_k must be 1, but got %lld", dimNum);
+        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID,
+                   "The dim num of cu_seq_lens_k must be 1, but got %lld", dimNum);
         dataType = GetDataTypeSmla(cuSeqLensKOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
                    "The data type of cu_seq_lens_k must be int32, but got %d", static_cast<int32_t>(dataType));
