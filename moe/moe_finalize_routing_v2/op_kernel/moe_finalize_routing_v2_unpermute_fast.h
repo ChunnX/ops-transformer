@@ -135,7 +135,8 @@ __aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::Ini
     // Map MoeFinalizeRoutingV2 key 20050 fields to MoeTokenUnpermute quantities.
     this->hidden_size = tiling_data->H;
     this->top_k = tiling_data->K;
-    this->num_out_tokens = tiling_data->totalRowNum;
+    // Under key 20050 biasRowNum carries the number of addressable rows in expanded_x.
+    this->num_out_tokens = tiling_data->biasRowNum;
     // hidden_tiling
     this->hidden_splited_length = tiling_data->normalH;
     this->hidden_splited_num = tiling_data->hSliceNum;
@@ -298,9 +299,9 @@ __aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::Cal
     T2 acl_token_idx = this->indicesLocal.GetValue(start_token);
     if constexpr (PROBS) {
         prob_value = this->probs_tensor.GetValue(start_token);
-        needCopyIn = acl_token_idx < this->num_out_tokens && prob_value != 0;
+        needCopyIn = acl_token_idx >= 0 && acl_token_idx < this->num_out_tokens && prob_value != 0;
     } else {
-        needCopyIn = acl_token_idx < this->num_out_tokens;
+        needCopyIn = acl_token_idx >= 0 && acl_token_idx < this->num_out_tokens;
     }
     if (needCopyIn) {
         CopyTokenIn(acl_token_idx, h_index, h_length);
@@ -314,9 +315,9 @@ __aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::Cal
         acl_token_idx = this->indicesLocal.GetValue(token_index);
         if constexpr (PROBS) {
             prob_value = this->probs_tensor.GetValue(token_index);
-            needCopyIn = acl_token_idx < this->num_out_tokens && prob_value != 0;
+            needCopyIn = acl_token_idx >= 0 && acl_token_idx < this->num_out_tokens && prob_value != 0;
         } else {
-            needCopyIn = acl_token_idx < this->num_out_tokens;
+            needCopyIn = acl_token_idx >= 0 && acl_token_idx < this->num_out_tokens;
         }
         if (needCopyIn) {
             CopyTokenIn(acl_token_idx, h_index, h_length);
