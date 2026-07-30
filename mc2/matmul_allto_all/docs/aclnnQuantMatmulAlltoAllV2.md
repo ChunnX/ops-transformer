@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：完成量化的Matmul计算、Permute（保证通信后地址连续）和AlltoAll通信的融合，**先计算后通信**，支持K-C量化、mx[量化模式](../../../docs/zh/context/量化介绍.md)。
+- 接口功能：完成量化的Matmul计算、Permute（保证通信后地址连续）和AlltoAll通信的融合，**先计算后通信**，支持K-C量化、mx[量化模式](../../../docs/zh/context/quant_mode_introduction.md)。
 
 - 计算公式：假设x1的shape为(BS, H1)，x2的shape为(H1, H2)，rankSize为NPU卡数。
 
@@ -56,7 +56,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantMatmulAlltoAllV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAlltoAllV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnQuantMatmulAlltoAllV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAlltoAllV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(
@@ -329,7 +329,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
     </tr>
     </tbody></table>
 
-  x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../../docs/zh/context/量化介绍.md)关系如下:
+  x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../../docs/zh/context/quant_mode_introduction.md)关系如下:
   * 0: 不量化
   * 1: pertensor
   * 2: perchannel
@@ -341,7 +341,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -430,7 +430,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
 
 * **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 

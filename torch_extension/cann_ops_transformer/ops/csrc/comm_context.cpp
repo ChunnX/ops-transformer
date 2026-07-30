@@ -240,9 +240,9 @@ public:
                       const CommProtocol &protocol, CommContext &commContextStruct, int64_t &cclBufferSize)
     {
         std::string mc2ContextTag = std::string(group) + opName;
-        TORCH_CHECK(memBufferTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN,
-                    "MemBufferTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
-                    ", got ", memBufferTag.size());
+        TORCH_CHECK(mc2ContextTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN,
+                    "Mc2ContextTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
+                    ", got ", mc2ContextTag.size());
 
         CommEngine engine = CommEngine::COMM_ENGINE_AIV;
         void *ctx = nullptr;

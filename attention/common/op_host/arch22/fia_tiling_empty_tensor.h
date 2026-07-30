@@ -25,7 +25,9 @@ namespace optiling {
 
 class FiaTilingEmptyTensor : public FiaTilingBase {
 public:
-    explicit FiaTilingEmptyTensor(gert::TilingContext *context) : FiaTilingBase(context) {}
+    explicit FiaTilingEmptyTensor(gert::TilingContext *context) : FiaTilingBase(context)
+    {
+    }
     ~FiaTilingEmptyTensor() override = default;
 
 protected:

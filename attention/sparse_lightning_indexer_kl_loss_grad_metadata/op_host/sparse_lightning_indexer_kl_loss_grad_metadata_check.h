@@ -134,6 +134,10 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
     CHECK_COND((layoutKOptional != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_k is null!");
     CHECK_COND((strcmp(layoutKOptional, "TND") == 0) || (strcmp(layoutKOptional, "BSND") == 0),
         ACLNN_ERR_PARAM_INVALID, "layout_k must be TND/BSND, but got %s", layoutKOptional);
+    // layout_q必须与layout_k相同
+    CHECK_COND(strcmp(layoutQOptional, layoutKOptional) == 0, ACLNN_ERR_PARAM_INVALID,
+        "layout_q should be the same as layout_k, but got %s and %s",
+        layoutQOptional, layoutKOptional);
     // 核心数校验
     CHECK_COND(aicCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIC num should be larger than 0, but got %u", aicCoreNum);
     CHECK_COND(aivCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIV num should be larger than 0, but got %u", aivCoreNum);

@@ -83,15 +83,28 @@ CutResult AllToAllFpMatmulTilingBase::GetCutResOfCommAndCompute()
 {
     constexpr uint32_t COMM_RANKDIM_FOUR = 4;
     constexpr uint32_t COMM_RANKDIM_EIGHT = 8;
+    uint8_t commMode = mc2tiling::A5_AICPU_TS_ENGINE;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
+        OP_LOGD(opName_, "GetAndConvertCommMode failed, use default commMode AICPU for tiling.");
+    }
     if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR || contextInfo_.args_.rankDim == COMM_RANKDIM_EIGHT) {
         TopoType topoType =
             contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR ? TopoType::STANDARD_CARD : TopoType::EIGHT_P;
         // 950的4卡和8卡形态使用基于拟合数据的公式化tiling
-        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950);
+        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950,
+                                              commMode);
         return tiling.GetTiling();
     } else {
-        // 调用父类的通用实现
-        return AllToAllMatmulTilingBase::GetCutResOfCommAndCompute();
+        OP_LOGD(opName_, "Falling back to formulaic tiling for arch35 tiling");
+        AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
+                                               SocVersion::SOC950, true);
+        if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
+            constexpr uint64_t FP_AICPU_TILING_MAX_NUM = 5;
+            alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(FP_AICPU_TILING_MAX_NUM);
+        }
+        alltoallMatmulTileFormulate.GetTiling();
+        return alltoallMatmulTileFormulate.tilingM_.cutRes;
     }
 }
 

@@ -482,14 +482,19 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::CheckCoreNum() const
 {
-    auto aicNum = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>()->aicNum;
-    auto aivNum = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>()->aivNum;
-    OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+    auto compileInfo = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>();
+    OP_CHECK_IF(compileInfo == nullptr,
+                OP_LOGE(inputParams_.opName, "GroupedMatmulFinalizeRouting compileInfo is nullptr."),
                 return false);
-    OP_CHECK_IF(
-        aivNum != GmmConstant::CORE_RATIO * aicNum,
-        OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
-        return false);
+    auto aicNum = compileInfo->aicNum;
+    auto aivNum = compileInfo->aivNum;
+    OP_CHECK_IF(aicNum == 0,
+               OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+               return false);
+    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
+                OP_LOGE(inputParams_.opName,
+                        "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+                return false);
     return true;
 }
 

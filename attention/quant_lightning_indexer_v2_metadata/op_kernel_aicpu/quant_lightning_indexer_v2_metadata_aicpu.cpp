@@ -140,9 +140,9 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
     if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
         const int32_t *cmpResidualKPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
         for (int i = 0; i < batchSize; i++) {
-            if (cmpResidualKPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be >= 0, but got cmp_residual_k[%d] = %d",
-                    i, cmpResidualKPtr[i]);
+            if (cmpResidualKPtr[i] < 0 || cmpResidualKPtr[i] >= cmpRatio_) {
+                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be in [0, cmpRatio_), but got "
+                    "cmp_residual_k[%d] = %d", i, cmpResidualKPtr[i]);
                 return false;
             }
         }
@@ -264,6 +264,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
         uint32_t s2Size = GetS2SeqSize(bIdx);
+        maxS2Size_ = std::max(maxS2Size_, s2Size);
         splitInfo.s1GBaseNum[bIdx] = (static_cast<uint64_t>(s1Size) * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (static_cast<uint64_t>(s1Size) * groupSize_) % mBaseSize_;
         splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
@@ -272,7 +273,17 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
             splitInfo.isKvSeqAllZero = false;
         }
     }
-    return;
+    ValidSocVersion validSocVersion = ProcessSocVersion();
+    if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (maxS2Size_ < topk_) {
+            supportFd_ = false;
+            return;
+        }
+        if (maxS2Size_ > fdToleranceRatio * s2BaseSize_) {
+            supportFd_ = true;
+            return;
+        }
+    }
 }
 
 int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcPreTokenLeftUp(

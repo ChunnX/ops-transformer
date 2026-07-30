@@ -16,7 +16,7 @@
 ## 功能说明
 
 - 接口功能：
-    - 完成量化的路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，先计算后通信，支持Pertensor-Pertensor、Mx[量化模式](../../../docs/zh/context/量化介绍.md)。
+    - 完成量化的路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，先计算后通信，支持Pertensor-Pertensor、Mx[量化模式](../../../docs/zh/context/quant_mode_introduction.md)。
 
 - 计算公式：
     - 路由专家：
@@ -433,7 +433,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
         </tbody>
     </table>
 
-  gmmXQuantMode、gmmWeightQuantMode、mmXQuantMode、mmWeightQuantMode、commQuantMode的枚举值跟[量化模式](../../../docs/zh/context/量化介绍.md)关系如下:
+  gmmXQuantMode、gmmWeightQuantMode、mmXQuantMode、mmWeightQuantMode、commQuantMode的枚举值跟[量化模式](../../../docs/zh/context/quant_mode_introduction.md)关系如下:
   * 0: 非量化
   * 1: pertensor
   * 2: perchannel
@@ -445,7 +445,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一阶段接口完成入参校验，出现以下场景报错：
 
@@ -513,7 +513,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 

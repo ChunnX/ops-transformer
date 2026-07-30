@@ -36,7 +36,7 @@ def convert_npu_quant_block_sparse_attn(
     p_scale: Tensor,
     sparse_indices: Tensor,
     sparse_seq_len: Tensor,
-    atten_mask: Tensor,
+    atten_mask: Optional[Tensor],
     softmax_scale: float,
     sparse_q_block_size: int,
     sparse_kv_block_size: int,

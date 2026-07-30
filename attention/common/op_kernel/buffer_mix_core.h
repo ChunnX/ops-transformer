@@ -116,7 +116,8 @@ struct BufferInfo {
 // L0A buffer的生产者为MTE1，消费者为M
 // L0B buffer的生产者为MTE1，消费者为M
 // L0C buffer的生产者为M，消费者为FIX
-template <BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG>
+template <BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC,
+          SyncMode syncMode = SyncMode::SET_WAIT_FLAG>
 class Buffer {
     using TensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<uint8_t>, LocalTensor<uint8_t>>;
 
@@ -143,7 +144,7 @@ public:
         }
     }
 
-    template<IdSource idSource = IdSource::INTERNAL>
+    template <IdSource idSource = IdSource::INTERNAL>
     __aicore__ inline void Init()
     {
         static_assert(idSource == IdSource::INTERNAL, "idSource should IdSource::INTERNAL.");
@@ -154,7 +155,7 @@ public:
         }
     }
 
-    template<IdSource idSource = IdSource::INTERNAL>
+    template <IdSource idSource = IdSource::INTERNAL>
     __aicore__ inline void UnInit()
     {
         static_assert(idSource == IdSource::INTERNAL, "idSource should IdSource::INTERNAL.");
@@ -189,7 +190,7 @@ public:
         }
     }
 
-    template<IdSource idSource = IdSource::INTERNAL>
+    template <IdSource idSource = IdSource::INTERNAL>
     __aicore__ inline void SetEventID()
     {
         static_assert(idSource == IdSource::INTERNAL, "idSource should IdSource::INTERNAL.");

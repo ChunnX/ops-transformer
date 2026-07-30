@@ -37,13 +37,13 @@ ge::graphStatus PostQuantChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo)
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.quantScale2.desc, QUANT_SCALE2_NAME)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "quant_scale2",
             ToString(fiaInfo.opParamInfo.quantScale2.desc->GetDataType()).c_str(),
-            "The datatype of quant_scale2 must be bf16 or fp32");
+            "The dtype of quant_scale2 must be BFLOAT16 or FLOAT32");
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.quantOffset2.desc, QUANT_OFFSET2_NAME)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "quant_offset2",
             ToString(fiaInfo.opParamInfo.quantOffset2.desc->GetDataType()).c_str(),
-            "The datatype of quant_offset2 must be bf16 or fp32");
+            "The dtype of quant_offset2 must be BFLOAT16 or FLOAT32");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -80,8 +80,8 @@ ge::graphStatus PostQuantChecker::CheckFeatureAttenOut(const FiaTilingInfo &fiaI
     if (fiaInfo.isOutQuantEnable) {
         ge::DataType outputType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
         if (outputType != ge::DT_INT8 && outputType != ge::DT_FLOAT8_E4M3FN && outputType != ge::DT_HIFLOAT8) {
-            std::string reasonMsg = "The datatype of attention_out must be within the range "
-                "{int8, fp8_e4m3fn, hifloat8} when quantScale2 is not empty";
+            std::string reasonMsg = "The dtype of attention_out must be within the range "
+                "{INT8, FLOAT8_E4M3FN, HIFLOAT8} when quantScale2 is not empty";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
                 ToString(outputType).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -98,7 +98,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureQueryDType(const FiaTilingInfo &fi
         OP_CHECK_IF(fiaInfo.inputQType != ge::DT_BF16 && quantScale2Type != ge::DT_FLOAT,
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "quant_scale2",
                 ToString(quantScale2Type).c_str(),
-                "When the datatype of query is not bf16, the dtype of quant_scale2 must be float32"),
+                "When the dtype of query is not BFLOAT16, the dtype of quant_scale2 must be FLOAT32"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -122,7 +122,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
             if (static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel || !isSupportedLayout) {
                 if ((static_cast<uint64_t>(quantScale2ShapeSize) != 1U)) {
                     std::string reasonMsg =
-                        "For post quant per-tensor, the shape size of quant scale/offset should be equal to [1]";
+                        "For post quant per-tensor, the shape size of quantScale2 should be equal to [1]";
                     OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(fiaInfo.opName, "quant_scale2",
                         std::to_string(quantScale2ShapeSize).c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
@@ -133,7 +133,8 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
                 if ((static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel)) {
                     std::string quantScale2SizeStr = std::to_string(quantScale2ShapeSize);
                     std::string reasonMsg = "In post quant per-channel scenario, when layout is " + layoutString + ", "
-                        "the total element count of quantScale2/quantOffset2 should be numHeads * vHeadDim";
+                        "the total element count of quantScale2 should be numHeads(" +
+                        std::to_string(numHeads) + ") * vHeadDim(" + std::to_string(fiaInfo.vHeadDim) + ")";
                     OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(fiaInfo.opName, "quant_scale2",
                         quantScale2SizeStr.c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
@@ -144,7 +145,8 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
                     std::string quantScale2ShapeStr =
                         ToStringRaw(fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape());
                     std::string reasonMsg = "In post quant per-channel scenario, when layout is " + layoutString + ", "
-                        "the shape of quantScale2/quantOffset2 should be [numHeads, vHeadDim]";
+                        "the shape of quantScale2 should be [numHeads(" + std::to_string(numHeads) +
+                        "), vHeadDim(" + std::to_string(fiaInfo.vHeadDim) + ")]";
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "quant_scale2",
                         quantScale2ShapeStr.c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
@@ -163,7 +165,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureOutputEqual(const FiaTilingInfo &f
         ge::DataType outputType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
         if (outputType != fiaInfo.inputKvType) {
             std::string reasonMsg = "When quantScale2 is not empty, "
-                "the datatype of attenOut must be the same as the datatype of key and value";
+                "the dtype of attenOut must be the same as the dtype of key and value";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
                 ToString(outputType).c_str(), reasonMsg);
             return ge::GRAPH_FAILED;
@@ -180,7 +182,7 @@ ge::graphStatus PostQuantChecker::CheckFeaturePrefix(const FiaTilingInfo &fiaInf
         OP_CHECK_IF(fiaInfo.sysPrefixFlag && outputType != ge::DT_INT8,
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
             ToString(outputType).c_str(),
-            "When keySharedPrefix and valueSharedPrefix are both not empty, the datatype of attentionOut must be int8"),
+            "When keySharedPrefix and valueSharedPrefix are both not empty, the dtype of attentionOut must be INT8"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -249,7 +251,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureRowValid(const FiaTilingInfo &fiaI
                               (nextTokensPerbatch < 0))),
                             OPS_REPORT_VECTOR_INNER_ERR(
                                 fiaInfo.opName,
-                                "When sparse mode = %d, output dtype is int8, the output's dequant offset "
+                                "When sparse mode = %d, output dtype is INT8, the output's dequant offset "
                                 "is not null or empty tensor, "
                                 "preTokens = %ld and nextTokens = %ld, some rows of the matrix do not "
                                 "participate in the calculation, "
@@ -277,7 +279,7 @@ ge::graphStatus PostQuantChecker::CheckAntiquantNotSupport(const FiaTilingInfo &
         if (fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN &&
             (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)) {
             std::string reasonMsg = "When keyAntiquantMode=1 and valueAntiquantMode=1, "
-                "and the datatype of key is FLOAT8_E4M3FN, the datatype of attentionOut must be BF16 or FLOAT16";
+                "and the dtype of key is FLOAT8_E4M3FN, the dtype of attentionOut must be BFLOAT16 or FLOAT16";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
                 ToString(fiaInfo.outputType).c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
@@ -288,7 +290,7 @@ ge::graphStatus PostQuantChecker::CheckAntiquantNotSupport(const FiaTilingInfo &
         if (fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN &&
             (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)) {
             std::string reasonMsg = "When keyAntiquantMode=4 and valueAntiquantMode=4, "
-                "and the datatype of key is FLOAT8_E4M3FN, the datatype of attentionOut must be BF16 or FLOAT16";
+                "and the dtype of key is FLOAT8_E4M3FN, the dtype of attentionOut must be BFLOAT16 or FLOAT16";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
                 ToString(fiaInfo.outputType).c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
@@ -314,7 +316,7 @@ ge::graphStatus PostQuantChecker::CheckMultiParaQuantOffset2(const FiaTilingInfo
         OP_CHECK_IF(quantOffset2Datatype != quantScale2Type,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "quant_offset2",
                         ToString(quantOffset2Datatype).c_str(),
-                        "The datatype of QuantScale2 and quantOffset2 must be the same"),
+                        "The dtype of QuantScale2 and quantOffset2 must be the same"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(quantOffset2Dim != quantScale2Dim,
             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "quant_scale2 and quant_offset2",
