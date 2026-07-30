@@ -72,7 +72,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示Query的head个数，当前仅支持32/64。</td>
+      <td>表示Query的head个数，当前支持[1, 64]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -93,7 +93,7 @@
     <tr>
       <td>topk</td>
       <td>属性</td>
-      <td>表示从Query中筛选出的关键稀疏token的个数，当前仅支持[1, 2048]</td>
+      <td>表示从Query中筛选出的关键稀疏token的个数，当前仅支持[1, 8192]</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -160,11 +160,30 @@
 
 - LightningIndexerV2Metadata算子需要与LightningIndexerV2算子配套使用。
 - B（Batch）表示输入样本批量大小。
-- 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
+- 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
 - 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
 - 参数cmp_residual_k需满足cmp_residual_k[i] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
-- 参数layout_k为PA_BBND时，参数seqused_k必须传入。
+- 非PA场景layout_q、layout_kv须相同。
+- layout_q=BSND场景
+  - seqused_q和max_seqlen_q至少需要传入1个，seqused_q未传入时，max_seqlen_q不能为-1。
+- layout_k=BSND场景
+  - seqused_k和max_seqlen_k至少需要传入1个，seqused_k未传入时，max_seqlen_k不能为-1。
+- layout_q=TND场景
+  - cu_seqlens_q必需传入。
+- layout_k=TND场景
+  - cu_seqlens_k必需传入。
+- layout_k=PA_BBND场景
+  - seqused_k必需传入。
+- Batch取值规则
+  - layout_q为BSND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过batch_size获取batch数。
+  - layout_q为TND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过cu_seqlens_q的shape推导batch。
+- Query Seqlen取值规则
+  - layout_q为BSND时，优先通过seqused_q中的元素获取seqlen，seqused_q未传入则通过max_seqlen_q获取seqlen。
+  - layout_q为TND时，优先通过seqused_q中的元素获取seqlen，seqused_q未传入则通过cu_seqlens_q中的元素获取seqlen。
+- Key Seqlen取值规则
+  - layout_k为BSND时，优先通过seqused_k中的元素获取seqlen，seqused_k未传入则通过max_seqlen_k获取seqlen。
+  - layout_kv为TND时，优先通过seqused_k中的元素获取seqlen，seqused_k未传入则通过cu_seqlens_k中的元素获取seqlen。
 
 ## 调用说明
 
