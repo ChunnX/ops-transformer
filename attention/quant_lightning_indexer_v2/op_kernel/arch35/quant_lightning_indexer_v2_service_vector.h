@@ -413,7 +413,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::DoTndPadding(const QLIV2Common::RunI
 }
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunInfo &runInfo,
-                                                        LocalTensor<SCALE_T> &kScaleUB, int64_t batchId, int64_t startS2,
+                                                        LocalTensor<SCALE_T> &kScaleUB,
+                                                        int64_t batchId, int64_t startS2,
                                                         int64_t getLen)
 {
     // startS2一定能整除kCacheBlockSize_

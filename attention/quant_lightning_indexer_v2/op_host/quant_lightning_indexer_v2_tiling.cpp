@@ -308,7 +308,8 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                     return ge::GRAPH_FAILED);
     }
 
-    OP_CHECK_IF(((std::string(opParamInfo_.layOutQuery) != "BSND") && (std::string(opParamInfo_.layOutQuery) != "TND")),
+    OP_CHECK_IF(((std::string(opParamInfo_.layOutQuery) != "BSND") &&
+                (std::string(opParamInfo_.layOutQuery) != "TND")),
                 OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
                  (std::string(opParamInfo_.layOutQuery)) != (std::string(opParamInfo_.layOutKey))),
@@ -325,10 +326,12 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
         OP_CHECK_IF(*opParamInfo_.quantMode != 2, OP_LOGE(opName_, "input attr quant_mode only supported 2."),
                     return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF((*opParamInfo_.quantMode != QUANT_MODE_FP8) && (*opParamInfo_.quantMode != QUANT_MODE_INT8) && (*opParamInfo_.quantMode != QUANT_MODE_MXFP8) &&
-                        (*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) &&
-                        (*opParamInfo_.quantMode != QUANT_MODE_MXFP4),
-                    OP_LOGE(opName_, "input attr quant_mode only supported 1, 2, 3, 4 and 5."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF((*opParamInfo_.quantMode != QUANT_MODE_FP8) && (*opParamInfo_.quantMode != QUANT_MODE_INT8) &&
+                    (*opParamInfo_.quantMode != QUANT_MODE_MXFP8) &&
+                    (*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) &&
+                    (*opParamInfo_.quantMode != QUANT_MODE_MXFP4),
+                    OP_LOGE(opName_, "input attr quant_mode only supported 1, 2, 3, 4 and 5."),
+                    return ge::GRAPH_FAILED);
     }
 
     if (npuArch_ == NpuArch::DAV_2201) {
