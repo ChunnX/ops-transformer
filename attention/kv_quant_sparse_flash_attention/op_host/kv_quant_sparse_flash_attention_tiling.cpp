@@ -787,7 +787,7 @@ ge::graphStatus QSFATilingCheck::CheckAttrValueByMap(std::map<std::string, std::
         const std::pair<const T *, T> &qsfaPointerValuePair = kv.second;
         if (qsfaPointerValuePair.first == nullptr) {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, qsfaAttrName.c_str(),
-                "Attr " + qsfaAttrName + " should not be nullptr");
+                                                     qsfaAttrName + " should not be nullptr");
             return ge::GRAPH_FAILED;
         }
 
@@ -1460,24 +1460,22 @@ static uint32_t GetAxisNum(const gert::Shape &shape, const QSFAAxis &axis, const
 ge::graphStatus QSFAInfoParser::CheckTensorShapes() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query",
-            "Shape of tensor query is nullptr"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "The shape of query is nullptr"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.shape == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key",
-            "Shape of tensor key is nullptr"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "The shape of key is nullptr"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.value.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "value", "Shape of tensor value is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "value", "The shape of value is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         opParamInfo_.sparseIndices.shape == nullptr,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices",
-            "Shape of tensor sparse_indices is nullptr"),
+            "The shape of sparse_indices is nullptr"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attention_out",
-                    "Shape of tensor attention_out is nullptr"),
+                    "The shape of attention_out is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1486,23 +1484,21 @@ ge::graphStatus QSFAInfoParser::CheckTensorShapes() const
 ge::graphStatus QSFAInfoParser::CheckTensorDescriptions() const
 {
     OP_CHECK_IF(opParamInfo_.query.desc == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query",
-            "Desc of tensor query is nullptr"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "The desc of query is nullptr"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.desc == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key",
-            "Desc of tensor key is nullptr"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "The desc of key is nullptr"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.value.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "value", "Desc of tensor value is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "value", "The desc of value is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         opParamInfo_.sparseIndices.desc == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices", "Desc of tensor sparse_indices is nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices", "The desc of sparse_indices is nullptr"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attention_out",
-                    "Desc of tensor attention_out is nullptr"),
+                    "The desc of attention_out is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1526,20 +1522,20 @@ ge::graphStatus QSFAInfoParser::CheckRequiredInOutExistence() const
 ge::graphStatus QSFAInfoParser::CheckRequiredAttrExistence() const
 {
     OP_CHECK_IF(opParamInfo_.layoutQuery == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_query", "Attr layout_query is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_query", "Layout_query is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.layoutKV == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_kv", "Attr layout_kv is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_kv", "Layout_kv is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         opParamInfo_.sparseBlockSize == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_block_size", "Attr sparse_block_size is nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_block_size", "Sparse_block_size is nullptr"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.scaleValue == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "scale_value", "Attr scale_value is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "scale_value", "Scale_value is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseMode == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_mode", "Attr sparse_mode is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_mode", "Sparse_mode is nullptr"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
