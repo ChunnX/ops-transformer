@@ -17,12 +17,6 @@
 #define MEGA_MOE_IMP_BASE_H
 
 namespace MegaMoeImpl {
-#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
-#define MEGA_MOE_HOST_DEVICE_INLINE __aicore__ inline
-#else
-#define MEGA_MOE_HOST_DEVICE_INLINE inline
-#endif
-
 constexpr uint32_t ALIGN32 = 32U;
 constexpr uint32_t L1_TILE_M_256 = 256;
 constexpr uint32_t L1_TILE_M_128 = 128;
@@ -37,54 +31,5 @@ constexpr uint32_t MAX_SINGLE_MN_128_256 = 128 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U) / ALIGN32 * ALIGN32;
 constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U; // metaInfo tensor 在 UB 中的起始地址
 
-struct TokenRange {
-    uint32_t start = 0;
-    uint32_t count = 0;
-};
-
-// Return the begin expert of a penultimate wave that should absorb a small
-// final tail.  expertCount is returned as a sentinel when the regular fixed
-// wave partition should be retained.  The strict half-wave threshold keeps a
-// useful near-full tail as a separate overlap opportunity.
-MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetSmallTailMergeBegin(uint32_t expertCount, uint32_t expertsPerWave,
-                                                            uint32_t maxExpertsPerWave)
-{
-    if (expertCount == 0U || expertsPerWave == 0U || expertsPerWave >= expertCount) {
-        return expertCount;
-    }
-    uint32_t tailExperts = expertCount % expertsPerWave;
-    bool mergeSmallTail = tailExperts != 0U && 2U * tailExperts < expertsPerWave &&
-                          expertsPerWave + tailExperts <= maxExpertsPerWave;
-    return mergeSmallTail ? expertCount - expertsPerWave - tailExperts : expertCount;
-}
-
-// Compute one wave boundary using the precomputed merge-begin sentinel.  The
-// same helper must be used by the consumer wave and previous-wave dispatch
-// prefetch so every merged expert is ready before GMM1 reaches it.
-MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetWaveEnd(uint32_t waveBegin, uint32_t expertCount, uint32_t expertsPerWave,
-                                                uint32_t smallTailMergeBegin)
-{
-    if (waveBegin >= expertCount || expertsPerWave == 0U || waveBegin == smallTailMergeBegin) {
-        return expertCount;
-    }
-    uint32_t regularEnd = waveBegin + expertsPerWave;
-    return regularEnd < expertCount ? regularEnd : expertCount;
-}
-
-// Balanced contiguous ownership.  Every token belongs to exactly one worker;
-// the first (totalTokens % workerCount) workers receive one extra token.
-MEGA_MOE_HOST_DEVICE_INLINE TokenRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx,
-                                                              uint32_t workerCount)
-{
-    if (workerCount == 0U || workerIdx >= workerCount) {
-        return {};
-    }
-    uint32_t base = totalTokens / workerCount;
-    uint32_t remainder = totalTokens % workerCount;
-    uint32_t extraBefore = workerIdx < remainder ? workerIdx : remainder;
-    return {workerIdx * base + extraBefore, base + static_cast<uint32_t>(workerIdx < remainder)};
-}
-
-#undef MEGA_MOE_HOST_DEVICE_INLINE
 } // namespace MegaMoeImpl
 #endif // MEGA_MOE_IMP_BASE_H
