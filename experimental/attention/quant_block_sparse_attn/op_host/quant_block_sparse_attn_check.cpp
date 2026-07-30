@@ -274,12 +274,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckFormat() const
     }
 
     const gert::CompileTimeTensorDesc *optionalDescs[] = {
-        opParamInfo.pScale.desc,    opParamInfo.attenMask.desc,  opParamInfo.blockTable.desc,
+        opParamInfo.attenMask.desc,  opParamInfo.blockTable.desc,
         opParamInfo.metadata.desc,
         opParamInfo.cuSeqlensQ.desc, opParamInfo.cuSeqlensKV.desc, opParamInfo.seqUsedQ.desc,
         opParamInfo.seqUsedKV.desc,
     };
-    const char *optionalNames[] = {"p_scale",       "atten_mask",    "block_table", "metadata",
+    const char *optionalNames[] = {"atten_mask",    "block_table", "metadata",
                                     "cu_seqlens_q",
                                    "cu_seqlens_kv", "seqused_q",   "seqused_kv"};
     for (size_t i = 0; i < sizeof(optionalDescs) / sizeof(optionalDescs[0]); ++i) {
@@ -288,6 +288,13 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckFormat() const
                                        Ops::Base::ToString(optionalDescs[i]->GetOriginFormat()).c_str(), "ND");
             return ge::GRAPH_FAILED;
         }
+    }
+
+    if (opParamInfo.pScale.shape != nullptr && opParamInfo.pScale.desc != nullptr &&
+        opParamInfo.pScale.desc->GetOriginFormat() != ge::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMAT(kOpName, "p_scale",
+                                   Ops::Base::ToString(opParamInfo.pScale.desc->GetOriginFormat()).c_str(), "ND");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -299,7 +306,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckScaleDtype() const
         if (CheckInputDtype(opParamInfo.qDescale, "dequantScaleQuery", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS ||
             CheckInputDtype(opParamInfo.kDescale, "keyAntiquantScale", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS ||
             CheckInputDtype(opParamInfo.vDescale, "valueAntiquantScale", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS ||
-            (opParamInfo.pScale.desc != nullptr && CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS)) {
+            (opParamInfo.pScale.shape != nullptr && CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS)) {
             return ge::GRAPH_FAILED;
         }
     } else if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
@@ -309,7 +316,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckScaleDtype() const
                 ge::GRAPH_SUCCESS ||
             CheckInputDtype(opParamInfo.vDescale, "valueAntiquantScale", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
                 ge::GRAPH_SUCCESS ||
-            (opParamInfo.pScale.desc != nullptr && CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
+            (opParamInfo.pScale.shape != nullptr && CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
                 ge::GRAPH_SUCCESS)) {
             return ge::GRAPH_FAILED;
         }
