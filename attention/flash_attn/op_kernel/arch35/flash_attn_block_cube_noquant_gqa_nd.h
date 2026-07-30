@@ -133,10 +133,10 @@ public:
             blockTableGm_.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
-        InitQBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, constInfo_.dSize, queryGm_,
-                    query);
-        InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSize, keyGm_,
-                     key, constInfo_.keyBnStride, constInfo_.keyN2Stride);
+        InitQBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, constInfo_.dSize,
+                    queryGm_, query);
+        InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSize,
+                     keyGm_, key, constInfo_.keyBnStride, constInfo_.keyN2Stride);
         InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSizeV,
                      valueGm_, value, constInfo_.valueBnStride, constInfo_.valueN2Stride);
     }
@@ -157,11 +157,11 @@ public:
         };
         static_assert(sizeof(L1Layout) <= 512 * 1024, "L1 buffer too large");
         l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, OFFSET_OF_MEMBER(L1Layout, pBuffers),
-                                          SIZE_OF_MEMBER(L1Layout, pBuffers));
+                                           SIZE_OF_MEMBER(L1Layout, pBuffers));
         l1QBuffers_ = LocalTensor<uint8_t>(TPosition::A1, OFFSET_OF_MEMBER(L1Layout, qBuffers),
-                                          SIZE_OF_MEMBER(L1Layout, qBuffers));
+                                           SIZE_OF_MEMBER(L1Layout, qBuffers));
         l1KvBuffers_ = LocalTensor<uint8_t>(TPosition::A1, OFFSET_OF_MEMBER(L1Layout, kvBuffers),
-                                           SIZE_OF_MEMBER(L1Layout, kvBuffers));
+                                            SIZE_OF_MEMBER(L1Layout, kvBuffers));
         // uint32_t addrL1 = 0;
         // l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_P_BUFCNT * L1_P_BUF_BYTES);
         // addrL1 = L1_P_BUFCNT * L1_P_BUF_BYTES;

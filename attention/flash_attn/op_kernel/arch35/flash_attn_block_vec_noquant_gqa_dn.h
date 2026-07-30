@@ -198,13 +198,16 @@ public:
         addrUb += UB_VEC1_RES_BUFCNT * UB_VEC1_RES_BUF_BYTES;
 
         // softmaxSum×3 + softmaxMax×3 + softmaxExp×3，各 256 bytes
-        softmaxSumBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_SOFTMAX_SUM_BUFCNT * UB_SOFTMAX_SUM_BUF_BYTES)
+        softmaxSumBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
+                                                 UB_SOFTMAX_SUM_BUFCNT * UB_SOFTMAX_SUM_BUF_BYTES)
                             .template ReinterpretCast<T>(); // 3 * 0.25K = 0.75K, 常驻BUF
         addrUb += UB_SOFTMAX_SUM_BUFCNT * UB_SOFTMAX_SUM_BUF_BYTES;
-        softmaxMaxBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_SOFTMAX_MAX_BUFCNT * UB_SOFTMAX_MAX_BUF_BYTES)
+        softmaxMaxBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
+                                                 UB_SOFTMAX_MAX_BUFCNT * UB_SOFTMAX_MAX_BUF_BYTES)
                             .template ReinterpretCast<T>(); // 3 * 0.25K = 0.75K, 常驻BUF
         addrUb += UB_SOFTMAX_MAX_BUFCNT * UB_SOFTMAX_MAX_BUF_BYTES;
-        softmaxExpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES)
+        softmaxExpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
+                                                 UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES)
                             .template ReinterpretCast<T>(); // 3 * 0.25K = 0.75K, 常驻BUF
         addrUb += UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES;
 
@@ -329,8 +332,8 @@ public:
         if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
             uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-            DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                                                           constInfo_);
+            DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
+                                                              runInfo.actVecMSize, constInfo_);
         } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
                                  runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
@@ -478,7 +481,8 @@ public:
     {
         int64_t dSizeAligned64 = (int64_t)dVBaseSize;
         uint64_t gmOffset =
-            runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV + (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
+            runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV +
+            (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
 
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = mDealSize;
@@ -519,7 +523,8 @@ public:
                         1.0, 1.0);
                 } else {
                     LocalTensor<float> sumUb =
-                        softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
+                        softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) *
+                                       (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, sumUb, runInfo.actVecMSize,
                         dTemplateAlign64, 1.0, 1.0);

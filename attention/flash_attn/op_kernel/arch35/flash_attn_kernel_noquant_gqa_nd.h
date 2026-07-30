@@ -388,7 +388,8 @@ public:
             s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo_.gSize);
             s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo_.gSize);
         } else {
-            if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ_) == s1GLastToken / static_cast<int64_t>(actSeqLensQ_)) {
+            if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ_) ==
+                s1GLastToken / static_cast<int64_t>(actSeqLensQ_)) {
                 // start and end locate in one G
                 s1FirstToken = s1GFirstToken % static_cast<int64_t>(actSeqLensQ_);
                 s1LastToken = s1GLastToken % static_cast<int64_t>(actSeqLensQ_);
@@ -601,9 +602,12 @@ public:
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
-        bN2Start_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
-        gS1OStart_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
-        s2OStart_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
+        bN2Start_ = faMetaDataGm_.GetValue(
+            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        gS1OStart_ = faMetaDataGm_.GetValue(
+            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        s2OStart_ = faMetaDataGm_.GetValue(
+            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
         bN2End_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
         gS1OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
@@ -625,7 +629,8 @@ public:
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
         fdParams_.fdS2SplitNum =
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart = fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+        fdParams_.mStart = fdMetaDataGm_.GetValue(
+            GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 
     __aicore__ inline void Process()

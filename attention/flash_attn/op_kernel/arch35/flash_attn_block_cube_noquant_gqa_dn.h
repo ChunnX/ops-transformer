@@ -129,10 +129,10 @@ public:
             blockTableGm_.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
-        InitQBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, constInfo_.dSize, queryGm_,
-                    query);
-        InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSize, keyGm_,
-                     key, constInfo_.keyBnStride, constInfo_.keyN2Stride);
+        InitQBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, constInfo_.dSize,
+                    queryGm_, query);
+        InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSize,
+                     keyGm_, key, constInfo_.keyBnStride, constInfo_.keyN2Stride);
         InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSizeV,
                      valueGm_, value, constInfo_.valueBnStride, constInfo_.valueN2Stride);
     }

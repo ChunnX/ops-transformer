@@ -210,13 +210,15 @@ public:
             // sharedBuf1b 内：fdReduceBuf_（前16K）、fdOutputBuf_（后16K）
             fdReduceBuf_ =
                 LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B, BUFFER_SIZE_BYTE_16K).template ReinterpretCast<T>();
-            fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + BUFFER_SIZE_BYTE_16K, BUFFER_SIZE_BYTE_16K)
+            fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + BUFFER_SIZE_BYTE_16K,
+                                                   BUFFER_SIZE_BYTE_16K)
                               .template ReinterpretCast<OUTPUT_T>();
 
             // sharedBuf3 内：5 个 6144-byte 槽（fdSum1/2, fdMax1/2, fdLseExp）
             constexpr uint32_t STRIDE = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144 bytes
             fdSumBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3, STRIDE).template ReinterpretCast<T>();
-            fdSumBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + STRIDE, STRIDE).template ReinterpretCast<T>();
+            fdSumBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + STRIDE,
+                                                STRIDE).template ReinterpretCast<T>();
             fdMaxBuf1_ =
                 LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + 2U * STRIDE, STRIDE).template ReinterpretCast<T>();
             fdMaxBuf2_ =
@@ -331,7 +333,8 @@ protected:
         uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo_.dSizeV};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
         if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
-            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT, dealRowCount * this->dSizeV_Align_);
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT,
+                 dealRowCount * this->dSizeV_Align_);
         } else {
             Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
                  dealRowCount * this->dSizeV_Align_);
@@ -349,7 +352,8 @@ protected:
         int64_t safePreToken = constInfo_.preTokens;
         int64_t safeNextToken = constInfo_.nextTokens;
 
-        fa_base_vector::GetSafeActToken(actSeqLensQ_, actSeqLensKv_, safePreToken, safeNextToken, constInfo_.sparseMode);
+        fa_base_vector::GetSafeActToken(actSeqLensQ_, actSeqLensKv_, safePreToken, safeNextToken,
+                                          constInfo_.sparseMode);
 
         if (constInfo_.sparseMode == BAND) {
             preTokensPerBatch_ = safePreToken;
