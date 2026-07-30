@@ -18,9 +18,15 @@ namespace MegaMoeUT {
 
 class MegaMoeInferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "MegaMoeInferShapeTest SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "MegaMoeInferShapeTest SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "MegaMoeInferShapeTest TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "MegaMoeInferShapeTest TearDown" << std::endl;
+    }
 };
 
 TEST_F(MegaMoeInferShapeTest, InferShape_H4096_BS128)
@@ -60,8 +66,6 @@ TEST_F(MegaMoeInferShapeTest, InferShape_H4096_BS128)
          {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
          {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-         {"activation_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-         {"activation_beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
          {"activation_out_dtype",
           Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
          {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -109,8 +113,6 @@ TEST_F(MegaMoeInferShapeTest, InferShape_H5120_BS256)
          {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
          {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-         {"activation_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-         {"activation_beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
          {"activation_out_dtype",
           Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
          {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -158,8 +160,6 @@ TEST_F(MegaMoeInferShapeTest, InferShape_H7168_BS512)
          {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
          {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-         {"activation_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-         {"activation_beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
          {"activation_out_dtype",
           Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
          {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -207,8 +207,6 @@ TEST_F(MegaMoeInferShapeTest, InferShape_InvalidEpWorldSize)
          {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
          {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-         {"activation_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-         {"activation_beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
          {"activation_out_dtype",
           Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
          {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -248,8 +246,6 @@ TEST_F(MegaMoeInferShapeTest, InferDatatype_BF16_FP8E4M3FN)
                  {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                  {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
                  {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-                 {"activation_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-                 {"activation_beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                  {"activation_out_dtype",
                   Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
                  {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -309,8 +305,6 @@ TEST_F(MegaMoeInferShapeTest, InferDatatype_BF16_FP8E5M2)
                  {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                  {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
                  {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-                 {"activation_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-                 {"activation_beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                  {"activation_out_dtype",
                   Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
                  {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
