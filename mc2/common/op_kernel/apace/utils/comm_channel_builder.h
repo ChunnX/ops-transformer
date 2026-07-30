@@ -31,7 +31,7 @@ constexpr uint32_t BUILDER_CHANNEL_NOTIFY_NUM = 3U;
     if (!(call)) { \
         return false; \
     } \
-} while(0)
+} while (0)
 
 enum class ChannelMode {
     URMA,
