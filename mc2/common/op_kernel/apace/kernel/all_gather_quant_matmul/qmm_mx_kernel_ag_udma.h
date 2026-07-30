@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file qmm_mx_kernel_ag_prefill.h
+ * \file qmm_mx_kernel_ag_udma.h
  * \brief AllGather Prefill 专用 QMM 内核 — 基于 FragmentTensor。
  */
 

@@ -17,8 +17,8 @@
 
 #include "kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "apace/kernel/all_gather_quant_matmul/all_gather_quant_matmul_prefill_tiling_data.h"
-#include "apace/kernel/all_gather_quant_matmul/qmm_mx_kernel_ag_prefill.h"
+#include "apace/kernel/all_gather_quant_matmul/all_gather_mx_matmul_udma_tiling_data.h"
+#include "apace/kernel/all_gather_quant_matmul/qmm_mx_kernel_ag_udma.h"
 #include "adv_api/hcomm/hcomm.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
 #include "apace/block/aiv_comm/collective_comm_api.h"
