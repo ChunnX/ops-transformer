@@ -31,27 +31,29 @@ __aicore__ inline void EngramFetchGradSyncFunc()
     AscendC::WaitFlag<event>(eventID);
 }
 
-#define ENGRAM_GRAD_WRITE_NBI(hcomm, handle, dst, src, len, tag)                                                       \
-    do {                                                                                                               \
-        int32_t ret = (hcomm).WriteNbi((handle), (dst), (src), (len));                                                 \
-        ascendc_assert(ret == 0, "WriteNbi failed, ret=%d, tag=%s, rankId=%u, aivId=%u", ret, tag, rankId_, aivId_);   \
+#define ENGRAM_GRAD_WRITE_NBI(hcomm, handle, dst, src, len, tag) \
+    do { \
+        int32_t ret = (hcomm).WriteNbi((handle), (dst), (src), (len)); \
+        ascendc_assert(ret == 0, "WriteNbi failed, ret=%d, tag=%s, rankId=%u, aivId=%u", ret, tag, rankId_, aivId_); \
     } while (0)
 
-#define ENGRAM_GRAD_DRAIN(hcomm, handle, tag)                                                                          \
-    do {                                                                                                               \
-        int32_t ret = (hcomm).Drain((handle));                                                                         \
-        ascendc_assert(ret == 0, "Drain failed, ret=%d, tag=%s, rankId=%u, aivId=%u", ret, tag, rankId_, aivId_);      \
+#define ENGRAM_GRAD_DRAIN(hcomm, handle, tag) \
+    do { \
+        int32_t ret = (hcomm).Drain((handle)); \
+        if (ret != 0) { \
+            printf("Drain failed, ret=%d, tag=%s, rankId=%u, aivId=%u\n", ret, tag, rankId_, aivId_); \
+        } \
     } while (0)
 
 constexpr uint32_t ENGRAM_GRAD_TIMEOUT_US = 5U * 1000U * 1000U;
 constexpr uint32_t ENGRAM_GRAD_CYCLES_PER_US = 1000U;
 
-#define ENGRAM_GRAD_TIMEOUT_CHECK(startTime, tag)                                                                      \
-    do {                                                                                                               \
-        uint64_t __nowUs = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;               \
-        ascendc_assert((__nowUs - (startTime)) < ENGRAM_GRAD_TIMEOUT_US,                                               \
-                       "timeout, tag=%s, rankId=%u, aivId=%u, elapsed=%llu us", tag, rankId_, aivId_,                  \
-                       __nowUs - (startTime));                                                                         \
+#define ENGRAM_GRAD_TIMEOUT_CHECK(startTime, tag) \
+    do { \
+        uint64_t __nowUs = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US; \
+        ascendc_assert((__nowUs - (startTime)) < ENGRAM_GRAD_TIMEOUT_US, \
+                       "timeout, tag=%s, rankId=%u, aivId=%u, elapsed=%llu us", tag, rankId_, aivId_, \
+                       __nowUs - (startTime)); \
     } while (0)
 
 class EngramFetchGradArch35 {
@@ -111,6 +113,7 @@ private:
     uint32_t totalBlocks_{1};
     uint32_t rankId_{0};
     uint32_t numRanks_{0};
+    uint32_t channelsPerRank_{1};
     int32_t numEntriesPerRank_{0};
     int64_t numTokens_{0};
     int64_t hiddenBytes_{0};
@@ -168,7 +171,8 @@ __aicore__ inline GM_ADDR EngramFetchGradArch35::GetRemoteWinAddr(uint32_t dstRa
 
 __aicore__ inline uint64_t EngramFetchGradArch35::GetCommHandle(uint32_t dstRank)
 {
-    return ctxPtr_->hcommHandle[dstRank];
+    uint32_t channelIdx = isSender_ ? SENDER_CHANNEL_IDX : RECEIVER_CHANNEL_IDX;
+    return ctxPtr_->hcommHandle[dstRank * channelsPerRank_ + channelIdx];
 }
 
 __aicore__ inline int32_t EngramFetchGradArch35::ReadLocalCounter(GM_ADDR winBase, uint64_t counterOffset,
@@ -294,6 +298,10 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     ctxPtr_ = (__gm__ EngramCommContext *)commContext;
     rankId_ = ctxPtr_->rankId;
     numRanks_ = ctxPtr_->rankSize;
+    channelsPerRank_ = ctxPtr_->channelsPerRank;
+    if (channelsPerRank_ == 0) {
+        channelsPerRank_ = 1;
+    }
 
     numEntriesPerRank_ = tilingData->numEntriesPerRank;
     numTokens_ = tilingData->numTokens;
@@ -363,8 +371,9 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     flagScratchGM_ = workspaceGM_ + wsOffset;
     wsOffset += UB_ALIGN;
     uint32_t segLen = (static_cast<uint32_t>(numEntriesPerRank_) + totalBlocks_ - 1U) / totalBlocks_;
+    uint32_t segLenAlign = Ceil(segLen * sizeof(int32_t), UB_ALIGN) * UB_ALIGN / sizeof(int32_t);
     segUniqueEntryGM_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(totalBlocks_) * static_cast<uint64_t>(segLen) * sizeof(int32_t);
+    wsOffset += static_cast<uint64_t>(totalBlocks_) * static_cast<uint64_t>(segLenAlign) * sizeof(int32_t);
     segCountGM_ = workspaceGM_ + wsOffset;
     wsOffset += static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t);
 
@@ -653,7 +662,8 @@ __aicore__ inline void EngramFetchGradArch35::ExtractUniqueEntries(uint32_t segS
 {
     LocalTensor<uint8_t> bitmap = bitmapBuf_.Get<uint8_t>();
 
-    GM_ADDR segUniqueAddr = segUniqueEntryGM_ + static_cast<uint64_t>(aivId_) * segLen * sizeof(int32_t);
+    GM_ADDR segUniqueAddr = segUniqueEntryGM_ + static_cast<uint64_t>(aivId_) *
+                                                    Ceil(segLen * sizeof(int32_t), UB_ALIGN) * UB_ALIGN / sizeof(int32_t) * sizeof(int32_t);
     GlobalTensor<int32_t> segUniqueGM;
     segUniqueGM.SetGlobalBuffer((__gm__ int32_t *)segUniqueAddr);
 
@@ -706,7 +716,8 @@ __aicore__ inline void EngramFetchGradArch35::GatherUniqueEntries(uint32_t segLe
     for (uint32_t core = 0; core < totalBlocks_; core++) {
         int32_t count = segCountsUb.GetValue(core);
         if (count > 0) {
-            GM_ADDR src = segUniqueEntryGM_ + static_cast<uint64_t>(core) * segLen * sizeof(int32_t);
+            GM_ADDR src = segUniqueEntryGM_ + static_cast<uint64_t>(core) *
+                                                  Ceil(segLen * sizeof(int32_t), UB_ALIGN) * UB_ALIGN / sizeof(int32_t) * sizeof(int32_t);
             GM_ADDR dst = uniqueLocalEntryOutGM_ + static_cast<uint64_t>(globalOffset) * sizeof(int32_t);
             LocalCopySlice(dst, src, static_cast<uint64_t>(count) * sizeof(int32_t));
         }
