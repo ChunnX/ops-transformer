@@ -9,7 +9,7 @@
  */
 
 /*
- * 将图中的 MoeDistributeCombineV2 节点 1:1 替换为 MoeDistributeCombineV3（仅 A5，comm_alg != "ccu"）。
+ * 将图中的 MoeDistributeCombineV2 节点 1:1 替换为 MoeDistributeCombineV3（A3/A5，comm_alg 不为 "ccu"/"hierarchy"）。
  * V3 相比 V2：头部新增 context 输入（Mc2MoeContext 序列化数据，Const 节点承载），
  * 属性删除 group_ep/group_tp，新增 ccl_buffer_size。通信域 window buffer 地址在编译期通过
  * Mc2MoeGraphContext 查询 HCCL 获得，与单算子路径（mc2_context.cpp）语义一致。
@@ -280,9 +280,10 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "skip when cann version not compatible.");
         return ge::GRAPH_SUCCESS;
     }
-    // 仅 A5 支持 MoeDistributeCombineV3
-    if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "target platform is not A5, skip.");
+    // 仅 A3（soc version Ascend910_93）/ A5（NpuArch DAV_3510）支持 MoeDistributeCombineV3
+    if (!IsTargetPlatformSocVersion(FUSION_PASS_NAME.c_str(), PLATFORM_A3) &&
+        !IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "target platform is not A3/A5, skip.");
         return ge::GRAPH_SUCCESS;
     }
     // 按 groupEp 缓存 context Const 节点与 buffer 大小，同图同通信域的多个 V2 节点复用
@@ -292,15 +293,21 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
         if ((gNode.GetType(nodeType) != ge::GRAPH_SUCCESS) || (nodeType != FUSED_OP_TYPE2.c_str())) {
             continue;
         }
-        // ccu 通信算法不支持 mc2Context，保持 V2 不变
+        // ccu（A5）与 hierarchy（A3）通信算法在 context 模式下不支持（V3 tiling 拒绝），保持 V2 不变
         ge::AscendString commAlg;
         if (gNode.GetAttr(ge::AscendString("comm_alg"), commAlg) == ge::GRAPH_SUCCESS &&
-            commAlg.GetString() != nullptr && std::string(commAlg.GetString()) == "ccu") {
+            commAlg.GetString() != nullptr &&
+            (std::string(commAlg.GetString()) == "ccu" || std::string(commAlg.GetString()) == "hierarchy")) {
+            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "comm_alg is ccu/hierarchy, skip V2 to V3 fusion.");
             continue;
         }
         ge::AscendString groupEp;
         if (gNode.GetAttr(ge::AscendString("group_ep"), groupEp) != ge::GRAPH_SUCCESS ||
             groupEp.GetString() == nullptr) {
+            ge::AscendString nodeName;
+            gNode.GetName(nodeName);
+            OPS_LOG_I(FUSION_PASS_NAME.c_str(), "node %s: attr group_ep missing or empty, skip fusion.",
+                      nodeName.GetString());
             continue;
         }
         // 槽位映射预检：全槽位走索引、compact 按名解析，失败（必选输入缺失）安全回退

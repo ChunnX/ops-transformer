@@ -21,6 +21,7 @@
 #include "mc2_common_log.h"
 #include "mc2_moe_context.h"
 #include "graph/operator_factory.h"
+#include "mc2_platform_info.h"
 
 namespace {
 constexpr const char *CONTEXT_NAME = "Mc2MoeGraphContext";
@@ -331,6 +332,9 @@ bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, std::vecto
     }
     context.rankSizePerServer = rankSizePerServer_;
 
+    // 偏移约定按平台区分：A5 的 HCCL window 状态槽按 rankId*1KB 排布，需折进 +1024（与 aclnn
+    // mc2_context.cpp 一致）；A3 为单状态区布局，rank i 的状态区在各 buffer 起始，填原始基址无偏移
+    const bool isA5 = IsTargetPlatformNpuArch(CONTEXT_NAME, NPUARCH_A5);
     for (uint32_t i = 0; i < epRankSize_; ++i) {
         void *tempBuffer = nullptr;
         uint64_t bufSize = 0;
@@ -344,7 +348,8 @@ bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, std::vecto
             OPS_LOG_E(CONTEXT_NAME, "Get HCCL buffer failed, src %u, dst %u.", context.epRankId, i);
             return false;
         }
-        context.epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
+        context.epHcclBuffer_[i] =
+            reinterpret_cast<uint64_t>(tempBuffer) + (isA5 ? i * EP_RANK_OFFSET_STEP : 0);
     }
 
     contextData.resize(sizeof(Mc2Aclnn::Mc2MoeContext) / sizeof(int32_t));

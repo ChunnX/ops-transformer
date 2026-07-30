@@ -10,7 +10,7 @@
 
 /*!
  * \file mc2_moe_graph_context.h
- * \brief MC2 MoeContext builder for graph fusion pass (A5), shares the same context
+ * \brief MC2 MoeContext builder for graph fusion pass (A3/A5), shares the same context
  *        semantics with the aclnn single-op path (mc2/common/op_api/mc2_context.cpp).
  */
 
