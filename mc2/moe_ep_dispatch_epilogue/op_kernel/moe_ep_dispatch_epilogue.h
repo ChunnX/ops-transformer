@@ -552,7 +552,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
     }
-    printf("cur 348 rankId %d, aivId %d, Process cached done\n", epRankId_, aivId_);
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
