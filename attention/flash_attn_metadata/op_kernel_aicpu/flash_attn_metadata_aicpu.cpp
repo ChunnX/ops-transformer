@@ -24,8 +24,8 @@
 #include "../../common/op_kernel/aicpu_common.h"
 #include "../../flash_attn/op_host/fa_adjust_sinner_souter.h"
 
-#define FA_KERNEL_STATUS_OK 0
-#define FA_KERNEL_STATUS_PARAM_INVALID 1
+constexpr uint32_t FA_KERNEL_STATUS_OK 0;
+constexpr uint32_t FA_KERNEL_STATUS_PARAM_INVALID 1;
 
 using namespace optiling;
 
