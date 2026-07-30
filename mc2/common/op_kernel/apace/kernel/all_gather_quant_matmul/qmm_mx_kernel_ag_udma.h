@@ -176,7 +176,7 @@ private:
         const FragScaleA* fragScaleA;
         const FragTensorC* fragC;
         uint64_t rankCnt;
-  };
+    };
     __aicore__ inline TileCtx ResolveTileCtx(int64_t mPos,
         int64_t headMainRows, int64_t mainRoundRows, int64_t mainSectionRows,
         uint32_t rankSize, uint32_t commTurn) const;
@@ -393,13 +393,13 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Proces
                 cFragAddrs_, static_cast<uint64_t>(fp.mPerRank), static_cast<uint64_t>(fp.tileM),
                 static_cast<uint64_t>(fp.tileCnt), static_cast<uint64_t>(fp.tailM),
                 ctx.rankCnt, Ni, singleShape, ctx.regionMPos, nPos, 0, blockC);
-      }
+    }
 
-      // 确保所有 dependId 均已 wait（收尾清理）。
-      for (uint32_t t = 0; t <= fp.commTurn; ++t) {
-          if ((waitedMask & (1U << t)) == 0U) {
-              CrossCoreWaitFlag<0x2, PIPE_MTE2>(t);
-          }
+    // 确保所有 dependId 均已 wait（收尾清理）。
+    for (uint32_t t = 0; t <= fp.commTurn; ++t) {
+        if ((waitedMask & (1U << t)) == 0U) {
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(t);
+        }
     }
 }
 
@@ -509,14 +509,14 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::BuildT
     GM_ADDR addrListScale[MAX_FRAG];
     GM_ADDR addrListC[MAX_FRAG];
     for (uint32_t r = 0; r < fp.rankSize; ++r) {
-      if (r == fp.rankId) {
-        addrListA[r] = params.aGM + tailDataOff;
-        addrListScale[r] = params.aScaleGM + tailScaleOff;
-      } else {
-        addrListA[r] = winDataRankBase_[r] + tailDataOff;
-        addrListScale[r] = winScaleRankBase_[r] + tailScaleOff;
-      }
-      addrListC[r] = cFragAddrs_[r] + tailCOff;
+        if (r == fp.rankId) {
+            addrListA[r] = params.aGM + tailDataOff;
+            addrListScale[r] = params.aScaleGM + tailScaleOff;
+        } else {
+            addrListA[r] = winDataRankBase_[r] + tailDataOff;
+            addrListScale[r] = winScaleRankBase_[r] + tailScaleOff;
+        }
+        addrListC[r] = cFragAddrs_[r] + tailCOff;
     }
     tailFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
         MakeFragParam(fp.paddedTailM, fp.tailM, fp.rankSize, fp.k), addrListA);
@@ -542,13 +542,13 @@ __aicore__ inline void QuantMatmulMxKernelAgPrefill<AType, BType, CType>::Update
     GM_ADDR addrListC[MAX_FRAG];
     uint32_t fragIdx = 0;
     for (uint32_t r = 0; r < fp.rankSize; ++r) {
-      if (r == fp.rankId) {
-        continue;
-      }
-      addrListA[fragIdx] = winDataRankBase_[r] + curRoundDataOff_;
-      addrListScale[fragIdx] = winScaleRankBase_[r] + curRoundScaleOff_;
-      addrListC[fragIdx] = cFragAddrs_[r] + curRoundCOff_;
-      fragIdx++;
+        if (r == fp.rankId) {
+            continue;
+        }
+        addrListA[fragIdx] = winDataRankBase_[r] + curRoundDataOff_;
+        addrListScale[fragIdx] = winScaleRankBase_[r] + curRoundScaleOff_;
+        addrListC[fragIdx] = cFragAddrs_[r] + curRoundCOff_;
+        fragIdx++;
     }
     curMainA_.UpdateAddrList(addrListA);
     curMainScaleA_.UpdateAddrList(addrListScale);
