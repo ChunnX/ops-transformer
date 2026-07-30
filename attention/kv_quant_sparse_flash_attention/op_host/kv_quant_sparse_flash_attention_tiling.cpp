@@ -1597,7 +1597,7 @@ ge::graphStatus QSFAInfoParser::GetAttrParaInfo()
     auto keyStrides = context_->GetDynamicInputStride(KEY_INPUT_INDEX, 0);
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 1) {
         keyStride0_ = keyStrides->GetStride(0);
- 	    keyStride1_ = keyStrides->GetStride(1);
+        keyStride1_ = keyStrides->GetStride(1);
     }
 
     return ge::GRAPH_SUCCESS;

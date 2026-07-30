@@ -609,7 +609,7 @@ public:
     gert::Shape sparseIndicesShape_{};
 
     uint32_t keyStride0_ = 0;
- 	uint32_t keyStride1_ = 0;
+    uint32_t keyStride1_ = 0;
 };
 } // namespace optiling
 #endif // SPARSE_FLASH_ATTENTION_TILING_H
