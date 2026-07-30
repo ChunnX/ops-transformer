@@ -369,13 +369,13 @@ __aicore__ inline void CopyDispatchTokensOneCore(const DispatchGmm1SwigluContext
 }
 
 // Prototype: MegaMoe::MetaInfoCalAndDispatch. Scans route batches and dispatches one block's token shards.
-template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, uint32_t Gmm1TileM,
+template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, uint32_t PipelineTileM,
           bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchTokensOneCore(const DispatchGmm1SwigluContext &context,
                                              const DispatchGmm1SwigluArgs &args,
                                              DispatchGmm1SwigluScratch<ActivationType> &scratch, uint32_t localExpertId)
 {
-    constexpr int32_t gmm1WaveRowCount = static_cast<int32_t>(Gmm1TileM);
+    constexpr int32_t dispatchWaveRowCount = static_cast<int32_t>(PipelineTileM);
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
     if constexpr (EnableA8W4 && TopkWeightsPrefetch) {
         if (localExpertId != 0) {
@@ -385,8 +385,9 @@ __aicore__ inline void DispatchTokensOneCore(const DispatchGmm1SwigluContext &co
     }
     int32_t expertGlobalRowBegin =
         localExpertId == 0 ? 0 : scratch.cumsumInfoTensor.GetValue(localExpertId * context.worldSize - 1);
-    __gm__ int32_t *dispatchToGmm1Flag = reinterpret_cast<__gm__ int32_t *>(args.dispatchToGmm1FlagPtr) +
-                                         static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
+    __gm__ int32_t *dispatchWaveReadyCount = reinterpret_cast<__gm__ int32_t *>(args.dispatchToGmm1FlagPtr) +
+                                             static_cast<uint64_t>(localExpertId) *
+                                                 context.dispatchFlagSlotsPerExpert;
 
     for (uint32_t dispatchShardIdx = context.blockJob.jobIndex;
          dispatchShardIdx < context.worldSize * context.blockNumPerRank;
@@ -471,15 +472,15 @@ __aicore__ inline void DispatchTokensOneCore(const DispatchGmm1SwigluContext &co
             SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
             int32_t coreExpertRowBegin = coreDstRowBegin - expertGlobalRowBegin;
             int32_t coreExpertRowEnd = coreExpertRowBegin + dispatchedRowCount;
-            int32_t firstWaveIdx = coreExpertRowBegin / gmm1WaveRowCount;
-            int32_t lastWaveIdx = (coreExpertRowEnd - 1) / gmm1WaveRowCount;
+            int32_t firstWaveIdx = coreExpertRowBegin / dispatchWaveRowCount;
+            int32_t lastWaveIdx = (coreExpertRowEnd - 1) / dispatchWaveRowCount;
             for (int32_t waveIdx = firstWaveIdx; waveIdx <= lastWaveIdx; ++waveIdx) {
-                int32_t waveExpertRowBegin = waveIdx * gmm1WaveRowCount;
-                int32_t waveExpertRowEnd = waveExpertRowBegin + gmm1WaveRowCount;
+                int32_t waveExpertRowBegin = waveIdx * dispatchWaveRowCount;
+                int32_t waveExpertRowEnd = waveExpertRowBegin + dispatchWaveRowCount;
                 int32_t overlapRowBegin =
                     coreExpertRowBegin > waveExpertRowBegin ? coreExpertRowBegin : waveExpertRowBegin;
                 int32_t overlapRowEnd = coreExpertRowEnd < waveExpertRowEnd ? coreExpertRowEnd : waveExpertRowEnd;
-                AtomicAdd(dispatchToGmm1Flag + waveIdx, overlapRowEnd - overlapRowBegin);
+                AtomicAdd(dispatchWaveReadyCount + waveIdx, overlapRowEnd - overlapRowBegin);
             }
         }
     }

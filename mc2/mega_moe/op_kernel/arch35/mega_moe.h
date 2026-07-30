@@ -1140,8 +1140,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchGmm1SwigluState gmm1PipelineState{0U, 0};
-    DispatchGmm1SwigluOneCore<QuantOutType, ActivationType, Weight1Type, SwigluQuantOutType, QuantScaleOutType,
-                              ENABLE_A8W4, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch>(
+    ControlDispatchGmm1SwigluPipelineOneCore<QuantOutType, ActivationType, Weight1Type, SwigluQuantOutType,
+                                             QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M, EPILOGUE_TILE_M,
+                                             TopkWeightsPrefetch>(
         gmm1PipelineContext_, gmm1PipelineArgs_, params_, epilogueOp_, gmm1PipelineScratch_, gmm1PipelineState);
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {

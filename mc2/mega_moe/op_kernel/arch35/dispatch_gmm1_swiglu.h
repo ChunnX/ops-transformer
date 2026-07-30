@@ -23,11 +23,13 @@ __aicore__ inline Gmm1ExpertLoopState CreateGmm1ExpertLoopState(const DispatchGm
     return Gmm1ExpertLoopState{shape, 0};
 }
 
+// Pipeline-control helper: waits for SendCount on consumer roles, then updates this expert's GMM1 shape.
 template <typename ActivationType, bool EnableA8W4>
-__aicore__ inline bool UpdateGmm1GroupParams(const DispatchGmm1SwigluContext &context,
-                                             const DispatchGmm1SwigluArgs &args,
-                                             DispatchGmm1SwigluScratch<ActivationType> &scratch,
-                                             Gmm1ExpertLoopState &state, uint32_t expertIdx, uint64_t sendCnt)
+__aicore__ inline bool WaitAndUpdateGmm1GroupParams(const DispatchGmm1SwigluContext &context,
+                                                    const DispatchGmm1SwigluArgs &args,
+                                                    DispatchGmm1SwigluScratch<ActivationType> &scratch,
+                                                    Gmm1ExpertLoopState &state, uint32_t expertIdx,
+                                                    uint64_t sendCnt)
 {
     // Generic AIV1 only dispatches and advances startBlockIdx. Keep M for the
     // tile count, but avoid maintaining address offsets that this role never consumes.
@@ -117,11 +119,10 @@ __aicore__ inline void UpdateGmm1GlobalBuffer(const DispatchGmm1SwigluContext &c
 
 template <typename QuantOutType, typename WeightType, typename SwigluOutType, typename QuantScaleType, bool EnableA8W4,
           uint32_t Gmm1TileM, uint32_t EpilogueTileM, bool TopkWeightsPrefetch, typename BlockEpilogue>
-__aicore__ inline void RunGmm1SwigluStageOneCore(const DispatchGmm1SwigluContext &context,
-                                                 const DispatchGmm1SwigluArgs &args, const Params &gmmParams,
-                                                 BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo,
-                                                 const Gmm1ExpertLoopState &state,
-                                                 DispatchGmm1SwigluState &runtimeState, uint32_t expertIdx)
+__aicore__ inline void ControlGmm1SwigluPipelineByModeOneCore(
+    const DispatchGmm1SwigluContext &context, const Params &gmmParams, BlockEpilogue &epilogueOp,
+    const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, DispatchGmm1SwigluState &runtimeState,
+    uint32_t expertIdx)
 {
     if constexpr (EnableA8W4) {
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType,
@@ -143,17 +144,16 @@ __aicore__ inline void RunGmm1SwigluStageOneCore(const DispatchGmm1SwigluContext
     }
 }
 
-// Every physical core in one MIX_AIC_1_2 block calls this function with the
-// same logical blockJob and physical countWorkspace contexts. The function preserves
-// dispatch(e + 1) prefetch and GMM1/Swiglu(e) consumption order.
+// Controls the current template's SendCount -> Dispatch -> GMM1 -> SwiGLU pipeline.
+// Every physical core in one MIX_AIC_1_2 block calls it with the same logical blockJob
+// and physical countWorkspace contexts; the compute leaves do not own stage dependencies.
 template <typename QuantOutType, typename ActivationType, typename WeightType, typename SwigluOutType,
-          typename QuantScaleType, bool EnableA8W4, uint32_t Gmm1TileM, uint32_t EpilogueTileM,
+          typename QuantScaleType, bool EnableA8W4, uint32_t PipelineTileM, uint32_t EpilogueTileM,
           bool TopkWeightsPrefetch, typename BlockEpilogue>
-__aicore__ inline void DispatchGmm1SwigluOneCore(const DispatchGmm1SwigluContext &context,
-                                                 const DispatchGmm1SwigluArgs &args, const Params &gmmParams,
-                                                 BlockEpilogue &epilogueOp,
-                                                 DispatchGmm1SwigluScratch<ActivationType> &scratch,
-                                                 DispatchGmm1SwigluState &runtimeState)
+__aicore__ inline void ControlDispatchGmm1SwigluPipelineOneCore(
+    const DispatchGmm1SwigluContext &context, const DispatchGmm1SwigluArgs &args, const Params &gmmParams,
+    BlockEpilogue &epilogueOp, DispatchGmm1SwigluScratch<ActivationType> &scratch,
+    DispatchGmm1SwigluState &runtimeState)
 {
     if (context.blockJob.totalJobs == 0U || context.blockJob.jobIndex >= context.blockJob.totalJobs ||
         context.countWorkspace.blockNum == 0U || context.countWorkspace.blockIdx >= context.countWorkspace.blockNum ||
@@ -171,7 +171,7 @@ __aicore__ inline void DispatchGmm1SwigluOneCore(const DispatchGmm1SwigluContext
         if (GetSubBlockIdx() == 1) {
             SendCntCalOneCore<ActivationType, EnableA8W4, TopkWeightsPrefetch>(context, args, scratch, 0, nextSendCnt);
             if (nextSendCnt != 0) {
-                DispatchTokensOneCore<ActivationType, QuantScaleType, EnableA8W4, Gmm1TileM, TopkWeightsPrefetch>(
+                DispatchTokensOneCore<ActivationType, QuantScaleType, EnableA8W4, PipelineTileM, TopkWeightsPrefetch>(
                     context, args, scratch, 0);
             }
         }
@@ -182,25 +182,25 @@ __aicore__ inline void DispatchGmm1SwigluOneCore(const DispatchGmm1SwigluContext
             if (GetSubBlockIdx() == 1) {
                 currentSendCnt = nextSendCnt;
                 if (expertIdx + 1 < context.expertPerRank) {
-                    SendCntCalOneCore<ActivationType, EnableA8W4, TopkWeightsPrefetch>(context, args, scratch,
-                                                                                       expertIdx + 1, nextSendCnt);
+                    SendCntCalOneCore<ActivationType, EnableA8W4, TopkWeightsPrefetch>(
+                        context, args, scratch, expertIdx + 1, nextSendCnt);
                     if (nextSendCnt != 0) {
-                        DispatchTokensOneCore<ActivationType, QuantScaleType, EnableA8W4, Gmm1TileM,
+                        DispatchTokensOneCore<ActivationType, QuantScaleType, EnableA8W4, PipelineTileM,
                                               TopkWeightsPrefetch>(context, args, scratch, expertIdx + 1);
                     }
                 }
             }
         }
 
-        if (!UpdateGmm1GroupParams<ActivationType, EnableA8W4>(context, args, scratch, gmm1State, expertIdx,
-                                                               currentSendCnt)) {
+        if (!WaitAndUpdateGmm1GroupParams<ActivationType, EnableA8W4>(
+                context, args, scratch, gmm1State, expertIdx, currentSendCnt)) {
             continue;
         }
         UpdateGmm1GlobalBuffer<ActivationType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
                                TopkWeightsPrefetch>(context, args, epilogueOp, gmm1AddrInfo, gmm1State, expertIdx);
-        RunGmm1SwigluStageOneCore<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4, Gmm1TileM,
-                                  EpilogueTileM, TopkWeightsPrefetch>(context, args, gmmParams, epilogueOp,
-                                                                      gmm1AddrInfo, gmm1State, runtimeState, expertIdx);
+        ControlGmm1SwigluPipelineByModeOneCore<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
+                                               PipelineTileM, EpilogueTileM, TopkWeightsPrefetch>(
+            context, gmmParams, epilogueOp, gmm1AddrInfo, gmm1State, runtimeState, expertIdx);
     }
     if constexpr (TopkWeightsPrefetch) {
         int32_t allDoneTag = static_cast<int32_t>(context.expertCapacityPerRank + 1U);

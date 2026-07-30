@@ -155,12 +155,15 @@ public:
     __aicore__ inline void Init(Params const &params);
     __aicore__ inline auto GetFirstL0c2UbTensor();
     __aicore__ inline auto GetSecondL0c2UbTensor();
+    // Computes and writes one SwiGLU tile without publishing readiness to GMM2.
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord,
                                       uint16_t pingpongIdx = 0);
+    // Pipeline controllers call this after dependency-free SwiGLU compute.
+    __aicore__ inline void PublishCompletedTiles(uint32_t completedTileCount);
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
-    // 权重预加载相关：由 AivGmm1PostGeneric 提前 DataCopy，VFDoSwigluAndQuantForMX 直接消费
+    // 权重预加载相关：由 SwigluComputeTileGenericOneCore 提前 DataCopy，VFDoSwigluAndQuantForMX 直接消费
     AscendC::LocalTensor<float> weightUb_;
     AscendC::GlobalTensor<float> metaInfoGm_;
 
@@ -595,7 +598,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     const float negScalarOne = -1.0f;
     bfloat16_t numZero = 0;
 
-    // 权重已在 AivGmm1PostGeneric 中预加载到 weightUb_，直接取地址
+    // 权重已在 SwigluComputeTileGenericOneCore 中预加载到 weightUb_，直接取地址
     __ubuf__ float *weightUbAddr = nullptr;
     if constexpr (TopkWeightsPrefetch) {
         weightUbAddr = (__ubuf__ float *)weightUb_.GetPhyAddr();
@@ -804,10 +807,15 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
-    if (groupFlagListGmAddr_ != nullptr) {
-        AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
+}
+
+BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::PublishCompletedTiles(
+    uint32_t completedTileCount)
+{
+    if (groupFlagListGmAddr_ != nullptr && completedTileCount != 0U) {
+        AscendC::AtomicAdd(groupFlagListGmAddr_, static_cast<int32_t>(completedTileCount));
     }
-    return;
 }
 
 #endif // BLOCK_EPILOGUE_SWIGLU_QUANT_H
