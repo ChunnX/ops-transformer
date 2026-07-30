@@ -2129,7 +2129,9 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
     }
 
     bool keyNonContiguous = false;
-    if (keyStride0_ != 0 && keyShape_.GetDimNum() > 0) {
+    if (keyStride0_ != 0 && keyShape_.GetDimNum() > 0 &&
+        context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize() > 0) {
+
         uint64_t totalElements = 0;
         uint64_t shapeSize = 0;
 
@@ -2145,9 +2147,7 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
     }
 
     OP_CHECK_IF(keyNonContiguous,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            opName_, "keyNonContiguous", std::string(keyNonContiguous ? "true" : "false"),
-            "key only support non-continuous keying on the 0-axis in PA scenarios."),
+        OP_LOGE(opName_, "key only supports non-contiguous tensor on the 0-axis in PA scenarios."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
