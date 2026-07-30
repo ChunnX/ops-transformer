@@ -28,13 +28,10 @@ using namespace GroupedMatmulSwigluQuantV2Tiling;
 constexpr uint64_t TENSOR_API_FP8_N_ALIGN = 128UL;
 constexpr uint64_t TENSOR_API_M_MIN = 128UL;
 constexpr uint64_t TENSOR_API_B_NOTRANS_M_LOWER_LIMIT = 512UL;
-constexpr uint64_t TENSOR_API_M_SPLIT_THRESHOLD = GmmConstant::BASIC_BLOCK_SIZE_256;
-constexpr uint64_t TENSOR_API_N_SPLIT_THRESHOLD = GmmConstant::BASIC_BLOCK_SIZE_256;
-constexpr uint64_t TENSOR_API_K_SPLIT_THRESHOLD = GmmConstant::BASIC_BLOCK_SIZE_128;
 constexpr uint64_t TENSOR_API_LARGE_M_BASE_M = GmmConstant::BASIC_BLOCK_SIZE_256;
 constexpr uint64_t TENSOR_API_LARGE_N_BASE_N = GmmConstant::BASIC_BLOCK_SIZE_128;
 constexpr uint64_t MX_SCALE_K_ALIGN = 64UL;
-constexpr int64_t MX_QUANT_MODE = 2UL;
+constexpr int64_t MX_QUANT_MODE = 2L;
 constexpr uint64_t AIC_AIV_CORE_RATIO = 2UL;
 
 } // namespace
@@ -44,6 +41,9 @@ void GroupedMatmulSwigluQuantV2TensorApiTiling950::Reset()
     tilingData_ = {};
     basicTiling_ = GQmmBasicTiling();
     xScaleDtype_ = ge::DT_UNDEFINED;
+    xScaleFormat_ = static_cast<ge::Format>(-1);
+    weightScaleFormat_ = static_cast<ge::Format>(-1);
+    yScaleFormat_ = static_cast<ge::Format>(-1);
     aivNum_ = 0U;
     platformMemoryReady_ = false;
     return;
@@ -115,6 +115,14 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::AnalyzeDtype()
         static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetFormat().GetStorageFormat()));
     inputParams_.bFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(weightDesc->GetFormat().GetStorageFormat()));
+    xScaleFormat_ =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(xScaleDesc->GetFormat().GetStorageFormat()));
+    weightScaleFormat_ =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(weightScaleDesc->GetFormat().GetStorageFormat()));
+    inputParams_.cFormat =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(yDesc->GetFormat().GetStorageFormat()));
+    yScaleFormat_ =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(yScaleDesc->GetFormat().GetStorageFormat()));
 
     auto biasShape = context_->GetOptionalInputShape(BIAS_INDEX);
     inputParams_.hasBias = biasShape != nullptr && biasShape->GetStorageShape().GetShapeSize() != 0;
@@ -143,6 +151,16 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::AnalyzeAttrs()
                 return false);
     OP_CHECK_IF(static_cast<ge::DataType>(*dequantDtype) != ge::DT_FLOAT,
                 OP_LOGE(context_->GetNodeName(), "dequant_dtype must be DT_FLOAT for MX quant."), return false);
+    const ge::DataType quantDataType = static_cast<ge::DataType>(*quantDtype);
+    OP_CHECK_IF(!IsFp8(quantDataType),
+                OP_LOGE(context_->GetNodeName(), "quant_dtype %s must be DT_FLOAT8_E4M3FN or DT_FLOAT8_E5M2.",
+                        ge::TypeUtils::DataTypeToSerialString(quantDataType).c_str()),
+                return false);
+    OP_CHECK_IF(quantDataType != inputParams_.outDataDtype,
+                OP_LOGE(context_->GetNodeName(), "quant_dtype %s must be the same as y dtype %s.",
+                        ge::TypeUtils::DataTypeToSerialString(quantDataType).c_str(),
+                        ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype).c_str()),
+                return false);
 
     const bool *transposeWeight = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_WEIGHT);
     const int64_t *groupListType = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE);
@@ -269,8 +287,12 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
         xScaleDtype_ == ge::DT_FLOAT8_E8M0 &&
         inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0 && IsFp8(inputParams_.outDataDtype) &&
         inputParams_.outScaleDtype == ge::DT_FLOAT8_E8M0;
-    const bool formatSupported =
-        inputParams_.aFormat == ge::FORMAT_ND && inputParams_.bFormat == ge::FORMAT_ND;
+    const bool formatSupported = inputParams_.aFormat == ge::FORMAT_ND &&
+                                 inputParams_.bFormat == ge::FORMAT_ND &&
+                                 xScaleFormat_ == ge::FORMAT_ND &&
+                                 weightScaleFormat_ == ge::FORMAT_ND &&
+                                 inputParams_.cFormat == ge::FORMAT_ND &&
+                                 yScaleFormat_ == ge::FORMAT_ND;
     const bool coreSupported =
         aicoreParams_.aicNum > 0 && aivNum_ == AIC_AIV_CORE_RATIO * aicoreParams_.aicNum;
     const bool checkTensorApiShapes = CheckTensorApiShapes();
@@ -281,8 +303,7 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
     const bool checkBNoTransMLimlit =
         inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
     const bool capable = dtypeSupported && formatSupported && checkMSizeGroupNumRatio &&
-                         checkNSizeAlign && coreSupported && checkTensorApiShapes &&
-                         checkTensorApiScaleShapes && checkBNoTransMLimlit;
+                         checkNSizeAlign && coreSupported && checkTensorApiShapes && !inputParams_.hasBias checkTensorApiScaleShapes && checkBNoTransMLimlit;
     OP_LOGD(context_->GetNodeName(),
             "Tensor API capability: dtype=%d, format=%d, groupNum=%lu, M=%lu, N=%lu, cores=%lu:%u, "
             "checkTensorApiShapes=%d, "
@@ -311,14 +332,14 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoOpTiling()
 ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
-    auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
+    auto baseM_modified = std::min(basicTiling_.baseM, GmmConstant::BASIC_BLOCK_SIZE_128);
     basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
-    // if (inputParams_.mSize >= TENSOR_API_M_SPLIT_THRESHOLD) {
+    // if (inputParams_.mSize >= GmmConstant::BASIC_BLOCK_SIZE_256) {
     //     basicTiling_.baseM = TENSOR_API_LARGE_M_BASE_M;
     // }
-    // if (inputParams_.nSize > TENSOR_API_N_SPLIT_THRESHOLD && inputParams_.kSize >= TENSOR_API_K_SPLIT_THRESHOLD) {
+    // if (inputParams_.nSize > GmmConstant::BASIC_BLOCK_SIZE_256 && inputParams_.kSize >= GmmConstant::BASIC_BLOCK_SIZE_128) {
     //     basicTiling_.baseN = TENSOR_API_LARGE_N_BASE_N;
     // }
 
@@ -354,7 +375,7 @@ uint64_t GroupedMatmulSwigluQuantV2TensorApiTiling950::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB),
                               static_cast<uint64_t>(inputParams_.transA),
-                              static_cast<uint64_t>(GMM_SWIGLU_QUANT_KERNEL_TYPE));
+                              static_cast<uint64_t>(GMM_SWIGLU_QUANT_TENSOR_LEVEL_KERNEL_TYPE));
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::PostTiling()

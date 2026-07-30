@@ -69,6 +69,9 @@ private:
 
     GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData tilingData_;
     ge::DataType xScaleDtype_ = ge::DT_UNDEFINED;
+    ge::Format xScaleFormat_ = static_cast<ge::Format>(-1);
+    ge::Format weightScaleFormat_ = static_cast<ge::Format>(-1);
+    ge::Format yScaleFormat_ = static_cast<ge::Format>(-1);
     uint32_t aivNum_ = 0U;
     bool platformMemoryReady_ = false;
 };

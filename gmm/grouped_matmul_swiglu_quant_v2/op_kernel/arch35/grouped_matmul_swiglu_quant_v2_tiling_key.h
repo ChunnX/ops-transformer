@@ -31,7 +31,7 @@ ASCENDC_TPL_ARGS_DECL(GroupedMatmulSwigluQuantV2, // 算子OpType
                       ASCENDC_TPL_UINT_DECL(QUANT_A_TRANS, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
                                             GMM_SWIGLU_QUANT_NO_TRANS, GMM_SWIGLU_QUANT_TRANS),
                       ASCENDC_TPL_UINT_DECL(KERNEL_TYPE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
-                                            GMM_SWIGLU_QUANT_ORIGINAL_KERNEL_TYPE, GMM_SWIGLU_QUANT_KERNEL_TYPE));
+                                            GMM_SWIGLU_QUANT_ORIGINAL_KERNEL_TYPE, GMM_SWIGLU_QUANT_TENSOR_LEVEL_KERNEL_TYPE));
 
 // 模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
