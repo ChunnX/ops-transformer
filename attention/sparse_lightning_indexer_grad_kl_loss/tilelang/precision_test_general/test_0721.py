@@ -22,9 +22,9 @@ WARMUP_ITERS = 5
 BENCH_ITERS = 10
 
 CASE_CONFIG = {
-    "B": 1, "S1": 1, "S2": 2048, "N1": 128, "N2": 1,
-    "Nidx1": 64, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
-    "d_rope": 64, "K": 2048, "layout": "BSND",
+    "B": 1, "S1": 1024, "S2": 5120, "N1": 32, "N2": 1,
+    "Nidx1": 8, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
+    "d_rope": 64, "K": 5120, "layout": "BSND",
 }
 
 
@@ -45,7 +45,7 @@ def gen_inputs(seed=42):
     scale_value = 1.0 / math.sqrt(DQuery)
 
     torch.manual_seed(seed)
-    dtype = torch.float16
+    dtype = torch.bfloat16
 
     query = torch.randn(B, S1, N1, DQuery, dtype=dtype).npu()
     key = torch.randn(B, S2, N2, DQuery, dtype=dtype).npu()
@@ -54,14 +54,16 @@ def gen_inputs(seed=42):
     query_rope = torch.randn(B, S1, N1, d_rope, dtype=dtype).npu()
     key_rope = torch.randn(B, S2, N2, d_rope, dtype=dtype).npu()
     weights = torch.randn(B, S1, Nidx1, dtype=dtype).npu()
-    sparse_indices = torch.zeros(B, S1, Nidx2, K, dtype=torch.int32).npu()
-
-    s2_real_len = min(S2, K)
-    indices = torch.randperm(S2)[:s2_real_len]
-    for s1_idx in range(S1):
-        sparse_indices[0, s1_idx, 0, :s2_real_len] = indices.to(torch.int32).npu()
-        if s2_real_len < K:
-            sparse_indices[0, s1_idx, 0, s2_real_len:] = -1
+    sparse_indices_cpu = torch.full((B, S1, Nidx2, K), -1, dtype=torch.int32)
+    sparse_generator = torch.Generator(device="cpu")
+    sparse_generator.manual_seed(seed + 1009)
+    for batch_id in range(B):
+        for s1_idx in range(S1):
+            visible_keys = S2 - S1 + s1_idx + 1
+            s2_real_len = min(visible_keys, K)
+            indices = torch.randperm(visible_keys, generator=sparse_generator)[:s2_real_len]
+            sparse_indices_cpu[batch_id, s1_idx, 0, :s2_real_len] = indices.to(torch.int32)
+    sparse_indices = sparse_indices_cpu.npu()
     torch.npu.synchronize()
 
     with torch.no_grad():
