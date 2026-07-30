@@ -35,7 +35,7 @@
 #ifndef QGMM_A4W4_KERNEL_H
 #define QGMM_A4W4_KERNEL_H
 
-#include "grouped_matmul_tiling_data_apt.h"
+#include "../grouped_matmul_tiling_data_apt.h"
 #include "tensor_api/tensor.h"
 
 // 使能 Blaze 桥接: 走 ops-tensor kernel_gmm_a4w4.h 真分支(非安全桩)。
@@ -49,14 +49,14 @@
 
 #ifdef A4W4_BLAZE_ENABLED
 #include "blaze/gemm/kernel/kernel_gmm_a4w4.h"  // A8W4 风格 A4W4 kernel (ops-tensor)
-#include "../grouped_matmul_utils.h"           // GROUPED_MATMUL::GetTensorAddr
+#include "../../grouped_matmul_utils.h"           // GROUPED_MATMUL::GetTensorAddr
 #endif
 
 template <class xType, class wType, class biasType, class scaleType, class ptScaleType, class yType,
           class xLayout, class wLayout, class yLayout, class l0cType>
 __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale,
                                       GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y,
-                                      GM_ADDR workspace,
+                                      GM_ADDR user1,
                                       const GroupedMatmulTilingData::GMMBaseParamsA4W4* gmmBaseParams,
                                       const TCubeTiling* mmTilingData,
                                       AscendC::TPipe* que)
@@ -235,7 +235,7 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     // 实例化 Blaze kernel 链会触发底层头编译问题。回退桩保证 transformer 仓编译通过。
     // 启用方式: ops-tensor 环境就位后, 在编译选项定义 A4W4_BLAZE_ENABLED。
     (void)x; (void)weight; (void)bias; (void)scale;
-    (void)groupList; (void)perTokenScale; (void)y; (void)workspace;
+    (void)groupList; (void)perTokenScale; (void)y; (void)user1;
     (void)gmmBaseParams; (void)mmTilingData; (void)que;
 #endif
 }
