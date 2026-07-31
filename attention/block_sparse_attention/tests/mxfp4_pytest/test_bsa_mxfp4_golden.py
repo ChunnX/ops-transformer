@@ -47,21 +47,54 @@ mxfp4 工具与 blockwise_snap_local 移植自 qfa 树, 0703 树无该工具, �
 
 import math
 import os
+import unittest
 import numpy as np
 import torch
+
+# =====================================================================
+# torch_npu 导入与 CPU-only 模式说明
+# =====================================================================
+# 为什么要这层 guard? 不是 `import torch_npu` 本身会崩, 而是继承的基类会自启动 NPU:
+#
+#   torch_npu 框架(pip 包)自带一个测试基类 torch_npu.testing.testcase.TestCase, 它的
+#   setUpClass 写死了 set_npu_device():
+#       @classmethod
+#       def setUpClass(cls):           # testcase.py:70-72 (框架自带, 非本文件)
+#           cls.npu_device = set_npu_device()   # -> torch.npu.set_device -> aclInit
+#
+#   框架设计意图(见 testcase.py L1-3 注释): import 阶段不初始化 NPU(惰性), 但把初始化推迟到
+#   setUpClass —— 即 pytest/unittest 跑测试前的那一刻。所以一旦 `class TestX(TestCase)` 继承
+#   它, 就等于声明"我在 NPU 环境跑", 框架会在每个测试类启动时帮你选卡 + aclInit。
+#   在 NPU 机器上这是便利; 在纯 CPU 开发机(无 /dev/davinci 或 aclInit 507008)上就崩。
+#
+#   触发链: pytest 收集测试类 -> 自动调 setUpClass -> 调基类 setUpClass
+#           -> set_npu_device -> torch.npu.set_device(0) -> _lazy_init -> aclInit -> 失败
+#
+#   解法: CPU-only 时不继承框架那个 TestCase, 改继承纯 unittest.TestCase(空 setUpClass)。
+#   用环境变量 BSA_CPU_ONLY=1 切换继承源, 从根上切断 setUpClass -> set_npu_device 链。
+#
+# 另一个坑: 较新 torch 在 `import torch` 时会自动加载已装后端扩展(含 torch_npu), 若
+#   torch_npu 缺 libhccl.so(没 source CANN)会在 import torch 阶段崩。需同时设
+#   TORCH_DEVICE_BACKEND_AUTOLOAD=0 禁用自动加载(见 run_cpu.sh)。
+# =====================================================================
+# CPU-only 模式: BSA_CPU_ONLY=1 强制走 dummy 路径(不继承框架 TestCase)。
+_FORCE_CPU = os.environ.get("BSA_CPU_ONLY", "0") == "1" #0 npu 1 cpu
+
 # torch_npu 仅 NPU 环境有; guard 使本模块纯 CPU 也能 import(golden 纯 CPU 可跑, 交叉验证靠这个)。
 try:
+    if _FORCE_CPU:
+        raise ImportError("BSA_CPU_ONLY=1: 强制 CPU-only, 跳过真实 torch_npu")
     import torch_npu  # noqa: F401  (NPU 环境)
     from torch_npu.testing.testcase import TestCase, run_tests
     from torch_npu.testing.common_utils import SkipIfNotGteCANNVersion
 except Exception:  # CPU-only: 提供 dummy, 使模块可导入
     torch_npu = None
 
-    class TestCase:  # 最小替身
+    class TestCase(unittest.TestCase):  # 继承 unittest: 提供 skipTest; 无 setUpClass 不触发 NPU init
         pass
 
     def run_tests():
-        pass
+        unittest.main()
 
     class _NoopDecorator:
         def __init__(self, *a, **k):
@@ -82,10 +115,19 @@ except Exception as _e:  # 非 NPU 环境或包未装
     _HAS_BSA_V3 = False
     _BSA_V3_IMPORT_ERROR = _e
 
+# 详细打印对比结果的工具(从 compare_utils.py 导入)。
+# PRINTF_CHECK_RES=False(默认): 走本文件原 check_result(静默, 只返回满足率);
+# PRINTF_CHECK_RES=True:        走 compare_utils.check_result_printf_res(打印逐元素明细)。
+from compare_utils import check_result_printf_res
+
 # 固定随机种子: 让 randn 造的 Q/K/V 可复现。
 RAND_SEED = 21
 torch.manual_seed(RAND_SEED)
 np.random.seed(RAND_SEED)
+
+# conftest.py 的 pytest_configure 注入 CLI 覆盖参数(供 _run 读取)。
+# 注: pytest_generate_tests 对非参数化测试不触发, 故用 pytest_configure + 模块级全局。
+_CLI_OVERRIDES = {}
 
 
 # =====================================================================
@@ -93,8 +135,9 @@ np.random.seed(RAND_SEED)
 # golden dump=True 时, 把每个 chunk(kernel tile)的中间结果以 raw bytes 追加到 dump_data/*.bin,
 # 便于与 NPU kernel 的 GM tile dump 逐 tile 对照。dump=False(默认)时全部 no-op, 零开销。
 # =====================================================================
-_DUMP_DIR = "dump_data"
-_DUMP_ENABLED = True  # 全局开关, 由 golden 的 dump= 参数设置
+_DUMP_DIR = "/srv/workspace/mnt1/work_code/lwg/0707/ops-transformer_0703/attention/block_sparse_attention/tests/mxfp4_pytest/dump_data"
+_DUMP_ENABLED = False  # 全局开关, 默认关; golden 的 dump=True 时由 _enable_dump(True) 开启(并建 dump_data/ 目录)
+PRINTF_CHECK_RES = True
 
 
 def _enable_dump(on):
@@ -413,8 +456,14 @@ def _logsumexp_np(scores):
 # qfa 风格造 Q/K/V 数据
 def randn_x(shape, x=1.0, dtype=torch.float32, device=None):
     """x * 标准正态, qfa 风格造 Q/K/V 数据(固定种子保证可复现)。"""
-    return x * torch.ones(shape, dtype=dtype, device=device)
+    # 全1case
+    # return x * torch.ones(shape, dtype=dtype, device=device)
+    # 任意case
+    data_range=[-x, x]
+    return rand_range(shape, data_range, dtype=dtype, device=device)
 
+def rand_range(shape, data_range=[-10, 10], dtype=torch.bfloat16, device=None):
+    return data_range[0] + (data_range[1] - data_range[0]) * torch.rand(shape, dtype=dtype, device=device)
 
 # =====================================================================
 # 第四部分: CPU golden — BNSD block-sparse MXFP4 分块 flash attention (kernel 模拟 + dump)
@@ -490,7 +539,8 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
                         V_blk = v_q[b, n2][pos]            # [npos, D] fp32
                         # S: fp32 matmul -> 降到 s_dtype -> s_dtype 上乘 scale
                         S_fp32 = (K_blk @ Q_blk.t()).to(torch.float32)   # [npos, nq] (DN: S=K@Q^T, 对齐 qfa s_layout="DN" + kernel)
-                        _dump_tensor(S_fp32.to(s_torch_dtype), "mm1Res.bin")   # dump: QK result(对应 kernel desc=5/6)
+                        if _DUMP_ENABLED: 
+                            _dump_tensor(S_fp32.to(s_torch_dtype), "mm1Res.bin")   # dump: QK result(对应 kernel desc=5/6)
                         S_s = S_fp32.to(s_torch_dtype) * scale_s
                         if p_quant == 'snap_local':
                             # P 量化在 s_dtype; snap_local 内部已 dump p_packed_x4/p_scale_e8m0/
@@ -512,9 +562,11 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
                                      else torch.exp(m_run - m_new))
                         # sum(P) / PV 均在 fp32
                         reduce_sum = P_fp32.sum(dim=0)                # [nq] (DN: 沿 seqk=dim0)
-                        _dump_tensor(reduce_sum, "mm2ReduceSum.bin")  # dump: rowsum(对应 desc=21/8/...)
+                        if _DUMP_ENABLED: 
+                            _dump_tensor(reduce_sum, "mm2ReduceSum.bin")  # dump: rowsum(对应 desc=21/8/...)
                         pv = V_blk.t() @ P_fp32                      # [D, nq] (DN: V.t()@P, 对应 kernel PV_i dump)
-                        _dump_tensor(pv, "mm2Res_1.bin")              # dump: PV(对应 desc=36/18/19)
+                        if _DUMP_ENABLED: 
+                            _dump_tensor(pv, "mm2Res_1.bin")              # dump: PV(对应 desc=36/18/19)
                         l_run = alpha * l_run + reduce_sum
                         acc = alpha.unsqueeze(-1) * acc + (P_fp32.t() @ V_blk)  # [nq, D] (DN: P.t()@V)
                         m_run = m_new
@@ -571,10 +623,16 @@ def check_result(expect, result, data_type, pct_thd=0.005):
 
 
 def compare(golden, real, src_dtype):
-    """两边转 fp32 后调 check_result。"""
-    if golden is not None and real is not None:
-        return check_result(golden.to(torch.float32), real.cpu().to(torch.float32), src_dtype)
-    return 0.0, "Failed"
+    """两边转 fp32 后调 check_result。
+    PRINTF_CHECK_RES=False(默认): 走本文件原 check_result(静默, 只返回满足率/结果)。
+    PRINTF_CHECK_RES=True:        走 compare_utils.check_result_printf_res(逐元素打印对比明细)。"""
+    if golden is None or real is None:
+        return 0.0, "Failed"
+    golden_fp32 = golden.to(torch.float32)
+    real_fp32 = real.cpu().to(torch.float32)
+    if PRINTF_CHECK_RES:
+        return check_result_printf_res(golden_fp32, real_fp32, src_dtype)
+    return check_result(golden_fp32, real_fp32, src_dtype)
 
 
 # =====================================================================
@@ -625,6 +683,12 @@ def run_bsa_mxfp4_eager(b, n1, n2, g, s1, s2, qk_d, v_d=None,
     assert qk_d in (64, 128), f"MXFP4 D 仅支持 64/128, 当前 {qk_d}"
     if v_d is None:
         v_d = qk_d
+    if False :
+        print(f"[run_bsa_mxfp4_eager] shapes: b={b} n1={n1} n2={n2} g={g} "
+          f"s1={s1} s2={s2} qk_d={qk_d} v_d={v_d} block_shape={block_shape} "
+          f"layout={input_layout} out_dtype={out_dtype} mask={mask_kind} "
+          f"inner_precise={inner_precise} quant_mode={quant_mode} "
+          f"p_quant={p_quant} s_dtype={s_dtype} dump={dump} device_id={device_id}")
     scale = 1.0 / math.sqrt(qk_d)
     src_dtype = out_dtype
 
@@ -644,6 +708,12 @@ def run_bsa_mxfp4_eager(b, n1, n2, g, s1, s2, qk_d, v_d=None,
         query, key, value, mask, block_shape, scale, n2,
         p_quant=p_quant, s_dtype=s_dtype, dump=dump)
 
+    
+    # CPU-only 模式(_FORCE_CPU 或无 NPU 算子): 无 NPU 可比对, 直接 SKIP, 不做任何 golden 自检。
+    if _FORCE_CPU or not _HAS_BSA_V3:
+        print(f"cpu_out: {cpu_out}")
+        return -1.0, "SKIP"
+
     # 4. mxfp4 打包喂 NPU: Q/K axis=-1, V axis=-2
     q_packed, q_e8m0 = mxfp4_quantize_pack_last(query, quant_axis=-1)
     k_packed, k_e8m0 = mxfp4_quantize_pack_last(key, quant_axis=-1)
@@ -655,8 +725,6 @@ def run_bsa_mxfp4_eager(b, n1, n2, g, s1, s2, qk_d, v_d=None,
     v_scale = _e8m0_v_to_v3(v_e8m0)
 
     # 5. NPU 调用(照搬 test_pv_systematic.py)
-    if not _HAS_BSA_V3:
-        return -1.0, "SKIP"
     torch_npu.npu.set_device(device_id)
     npu_out, _ = block_sparse_attention_v3(
         q_packed.contiguous().npu(), k_packed.contiguous().npu(),
@@ -688,45 +756,46 @@ class TestBSAMxfp4Golden(TestCase):
     _cfg_overrides = {}  # conftest.py 注入 CLI 覆盖参数
 
     def _run(self, **cfg):
-        """共用: 跳过无 NPU, 跑 run_bsa_mxfp4_eager, 断言 result=='Pass'。
-        CLI 参数(conftest.py --b/--n1/--n2/--s1/--s2/--qk_d)覆盖 cfg。"""
-        if not _HAS_BSA_V3:
-            self.skipTest(f"cann_ops_transformer.ops.block_sparse_attention_v3 不可用: "
-                          f"{_BSA_V3_IMPORT_ERROR}")
-        # conftest 覆盖的参数字典(只覆盖 cfg 中已有的 key)
-        ov = getattr(self, '_cfg_overrides', {})
-        cfg_merged = {**cfg, **{k: v for k, v in ov.items() if k in cfg}}
+        """共用: 跑 run_bsa_mxfp4_eager, 断言 result=='Pass'。
+        CLI 参数(conftest.py --b/--n1/--n2/--s1/--s2/--qk_d/--dump)覆盖 cfg 或新增 key。
+        CPU-only 模式(BSA_CPU_ONLY=1 或无 NPU 算子): 无 NPU 可比对, 直接 SKIP。"""
+        # CLI 覆盖参数(conftest.py pytest_configure 注入到模块级 _CLI_OVERRIDES)。
+        # 覆盖 cfg 已有 key + 注入新 key 如 dump。
+        cfg_merged = {**cfg, **_CLI_OVERRIDES}
         pct, res = run_bsa_mxfp4_eager(**cfg_merged)
+        cpu_mode = _FORCE_CPU or not _HAS_BSA_V3
+        if res == "SKIP":
+            if cpu_mode:
+                self.skipTest("CPU-only 模式: 无 NPU 算子可比对, SKIP")
+            else:
+                self.skipTest(f"cann_ops_transformer.ops.block_sparse_attention_v3 不可用: "
+                              f"{_BSA_V3_IMPORT_ERROR}")
         assert res == "Pass", (f"BSA mxfp4 case 失败: {cfg}\n  fulfill={pct}% result={res}\n"
-                               f"  (若 fulfill<99.5% 或 maxRE>=10, 先核验 spec 假设 A/B/C/D; "
+                               f"  (NPU: 若 fulfill<99.5% 或 maxRE>=10, 先核验 spec 假设 A/B/C/D; "
                                f"4 用例同挂优先怀疑 C(p_quant) 或 D(s_dtype), 改 p_quant='none' / s_dtype='bf16'|'fp32' 再试)")
-        print(f"[PASS] {cfg_merged.get('mask_kind','dense')} b={cfg_merged['b']} n1={cfg_merged['n1']} n2={cfg_merged['n2']} "
+        mode_tag = "NPU vs golden"
+        print(f"[PASS][{mode_tag}] {cfg_merged.get('mask_kind','dense')} b={cfg_merged['b']} n1={cfg_merged['n1']} n2={cfg_merged['n2']} "
               f"s1={cfg_merged['s1']} s2={cfg_merged['s2']} block={cfg_merged['block_shape']} s_dtype={cfg_merged.get('s_dtype','fp16')} "
               f"fulfill={pct:.4f}%")
 
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_dense(self, device="npu"):
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs128_d128(self, device="npu"):
         """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
-        self._run(b=2, n1=8, n2=8, g=1, s1=128, s2=128, qk_d=128,
+        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=128, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+    
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs256_d128(self, device="npu"):
+        """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+    
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs512_d128(self, device="npu"):
+        """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=512, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense')
 
-    # @SkipIfNotGteCANNVersion("9.0.0")
-    # def test_bsa_mxfp4_bnsd_multi_block(self, device="npu"):
-    #     """② BNSD 多块 dense: block_shape=[64,128], S=256 -> ceil_q=4, ceil_kv=2 (4x2)。"""
-    #     self._run(b=2, n1=8, n2=8, g=1, s1=256, s2=256, qk_d=128,
-    #               block_shape=[64, 128], mask_kind='dense')
-
-    # @SkipIfNotGteCANNVersion("9.0.0")
-    # def test_bsa_mxfp4_bnsd_sparse_mask(self, device="npu"):
-    #     """③ BNSD 稀疏 mask: 每 q_block i attend kv_block i%ceil_kv(S=256, [64,128] -> 4x2)。"""
-    #     self._run(b=2, n1=8, n2=8, g=1, s1=256, s2=256, qk_d=128,
-    #               block_shape=[64, 128], mask_kind='sparse')
-
-    # @SkipIfNotGteCANNVersion("9.0.0")
-    # def test_bsa_mxfp4_bnsd_gqa(self, device="npu"):
-    #     """④ BNSD GQA: g=2, N1=8/N2=4(block_shape=[128,128] -> 1x1)。"""
-    #     self._run(b=2, n1=8, n2=4, g=2, s1=128, s2=128, qk_d=128,
-    #               block_shape=[128, 128], mask_kind='dense')
 
 
 if __name__ == "__main__":
