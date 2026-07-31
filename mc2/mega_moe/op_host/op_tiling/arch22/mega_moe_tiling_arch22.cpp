@@ -63,6 +63,7 @@ constexpr uint32_t ACTIVATION_CODE_SWIGLU_OAI = 4;
 constexpr float DEFAULT_ACTIVATION_CLAMP = std::numeric_limits<float>::max();
 constexpr float DEFAULT_ACTIVATION_ALPHA = 1.702f;
 constexpr float DEFAULT_ACTIVATION_BETA = 1.0f;
+constexpr float SITU_LINEAR_BETA_DISABLED = 0.0f;
 
 // 输入 tensor 索引
 constexpr uint32_t CONTEXT_INDEX = 0;        // context，shape = [?]
@@ -298,9 +299,14 @@ static bool IsValidActivationClamp(float value)
     return value >= 0.0f && !std::isnan(value);
 }
 
-static bool IsValidPositiveParam(float value)
+static bool IsFiniteActivationParam(float value)
 {
-    return std::isfinite(value) && value > 0.0f;
+    return std::isfinite(value);
+}
+
+static bool IsValidSituScale(float value)
+{
+    return std::isfinite(value) && value != 0.0f;
 }
 
 static ge::graphStatus CheckActivationParamCount(uint32_t activationCode, size_t actualCount, size_t minCount,
@@ -345,20 +351,37 @@ static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVect
         OP_TILING_CHECK(CheckActivationParamCount(info.activationCode, paramCount, 1U, 2U) != ge::GRAPH_SUCCESS,
                         OP_LOGE(K_INNER_DEBUG, "CheckActivationParamCount failed."), return GRAPH_FAILED);
         info.activationBeta = data[0];
-        info.activationAlpha = paramCount == 2U ? data[1] : std::numeric_limits<float>::max();
+        info.activationAlpha = paramCount == 2U ? data[1] : SITU_LINEAR_BETA_DISABLED;
     }
 
-    OP_TILING_CHECK(
-        !IsValidActivationClamp(info.activationClamp),
-        OP_LOGE(K_INNER_DEBUG, "activation clamp must be >= 0 and not NAN, but got %f.", info.activationClamp),
-        return GRAPH_FAILED);
-    OP_TILING_CHECK(!IsValidPositiveParam(info.activationAlpha),
-                    OP_LOGE(K_INNER_DEBUG, "activation alpha/linear_beta must be finite and > 0, but got %f.",
-                            info.activationAlpha),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(!IsValidPositiveParam(info.activationBeta),
-                    OP_LOGE(K_INNER_DEBUG, "activation beta must be finite and > 0, but got %f.", info.activationBeta),
-                    return GRAPH_FAILED);
+    if (info.activationCode != ACTIVATION_CODE_SITU) {
+        OP_TILING_CHECK(
+            !IsValidActivationClamp(info.activationClamp),
+            OP_LOGE(K_INNER_DEBUG, "activation clamp must be >= 0 and not NAN, but got %f.", info.activationClamp),
+            return GRAPH_FAILED);
+    }
+    if (info.activationCode == ACTIVATION_CODE_SWIGLU_GPT_OSS || info.activationCode == ACTIVATION_CODE_SWIGLU_OAI) {
+        OP_TILING_CHECK(!IsFiniteActivationParam(info.activationAlpha),
+                        OP_LOGE(K_INNER_DEBUG, "activation alpha must be finite, but got %f.", info.activationAlpha),
+                        return GRAPH_FAILED);
+    }
+    if (info.activationCode == ACTIVATION_CODE_SWIGLU_OAI) {
+        OP_TILING_CHECK(!IsFiniteActivationParam(info.activationBeta),
+                        OP_LOGE(K_INNER_DEBUG, "swigluoai beta must be finite, but got %f.", info.activationBeta),
+                        return GRAPH_FAILED);
+    }
+    if (info.activationCode == ACTIVATION_CODE_SITU) {
+        OP_TILING_CHECK(
+            !IsValidSituScale(info.activationBeta),
+            OP_LOGE(K_INNER_DEBUG, "situglu beta must be finite and non-zero, but got %f.", info.activationBeta),
+            return GRAPH_FAILED);
+        if (paramCount == 2U) {
+            OP_TILING_CHECK(!IsValidSituScale(info.activationAlpha),
+                            OP_LOGE(K_INNER_DEBUG, "situglu linear_beta must be finite and non-zero, but got %f.",
+                                    info.activationAlpha),
+                            return GRAPH_FAILED);
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 

@@ -100,9 +100,14 @@ static bool IsValidActivationClamp(float value)
     return value >= 0.0f && !std::isnan(value);
 }
 
-static bool IsValidPositiveActivationParam(float value)
+static bool IsFiniteActivationParam(float value)
 {
-    return std::isfinite(value) && value > 0.0f;
+    return std::isfinite(value);
+}
+
+static bool IsValidSituScale(float value)
+{
+    return std::isfinite(value) && value != 0.0f;
 }
 
 static bool CheckActivationParams(const char *activation, const aclFloatArray *activationParams)
@@ -149,20 +154,20 @@ static bool CheckActivationParams(const char *activation, const aclFloatArray *a
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activation clamp must be >= 0 and not NAN, but got %f.", params[0]);
         return false;
     }
-    if ((isGptOss || isSwigluOai) && !IsValidPositiveActivationParam(params[1])) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activation alpha must be finite and > 0, but got %f.", params[1]);
+    if ((isGptOss || isSwigluOai) && !IsFiniteActivationParam(params[1])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activation alpha must be finite, but got %f.", params[1]);
         return false;
     }
-    if (isSwigluOai && !IsValidPositiveActivationParam(params[2])) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activation beta must be finite and > 0, but got %f.", params[2]);
+    if (isSwigluOai && !IsFiniteActivationParam(params[2])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "swigluoai beta must be finite, but got %f.", params[2]);
         return false;
     }
-    if (isSituGlu && !IsValidPositiveActivationParam(params[0])) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "situglu beta must be finite and > 0, but got %f.", params[0]);
+    if (isSituGlu && !IsValidSituScale(params[0])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "situglu beta must be finite and non-zero, but got %f.", params[0]);
         return false;
     }
-    if (isSituGlu && paramCount == 2U && !IsValidPositiveActivationParam(params[1])) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "situglu linear_beta must be finite and > 0, but got %f.", params[1]);
+    if (isSituGlu && paramCount == 2U && !IsValidSituScale(params[1])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "situglu linear_beta must be finite and non-zero, but got %f.", params[1]);
         return false;
     }
     return true;
