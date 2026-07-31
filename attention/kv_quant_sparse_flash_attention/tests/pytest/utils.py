@@ -234,6 +234,7 @@ def combin_params(enabled_params, pytest_paramset=True):
     param_combination_set = []
     base_param_names = [
         "Testcase_Prefix",
+<<<<<<< HEAD
         "layout_query",
         "layout_kv",
         "q_type",
@@ -267,6 +268,18 @@ def combin_params(enabled_params, pytest_paramset=True):
         "range_query_rope",
         "range_key_rope",
         "range_dequant_scale",
+=======
+        "layout_query", "layout_kv", "q_type", "kv_type",
+        "B", "T1", "T2", "S1", "S2", "N1", "N2", "D", "K",
+        "scale_value", "key_quant_mode", "value_quant_mode",
+        "sparse_block_size", "tile_size", "rope_head_dim",
+        "sparse_mode", "attention_mode", "quant_scale_repo_mode",
+        "block_size", "block_num", "actual_seq_q", "actual_seq_kv",
+        "enable_sinks",
+    ]
+    range_param_names = [
+        "range_query", "range_key", "range_query_rope", "range_key_rope", "range_dequant_scale", "range_sinks",
+>>>>>>> 5a0495155 (qsfa add sinks)
     ]
 
     for params in enabled_params:
@@ -311,7 +324,12 @@ def convert_param_combination_to_cs_format(param_combination):
     quant_scale_repo_mode = param_combination["quant_scale_repo_mode"]
     block_size = param_combination.get("block_size") or 256
     block_num = param_combination.get("block_num")
+<<<<<<< HEAD
 
+=======
+    enable_sinks = param_combination.get("enable_sinks", False)
+    
+>>>>>>> 5a0495155 (qsfa add sinks)
     # 参数校验：TND layout 下 T 不能超过 B*S
     if layout_query == "TND" and T1 is not None:
         if T1 > B * S1:
@@ -464,6 +482,13 @@ def convert_param_combination_to_cs_format(param_combination):
         "v_dequant_scale": "fp32",
     }
 
+<<<<<<< HEAD
+=======
+    if enable_sinks == True:
+        shape_input["sinks"] = [N1]
+        dtype_input["sinks"] = "fp32"
+    
+>>>>>>> 5a0495155 (qsfa add sinks)
     default_range_input = {
         "query": [2, 10],
         "key": [-100, 100.0],
@@ -473,9 +498,10 @@ def convert_param_combination_to_cs_format(param_combination):
         "key_rope": [-10.0, -2],
         "dequant_scale": [0, 1],
         "v_dequant_scale": [0, 1],
+        "sinks": [-0.2, 0.2],
     }
     range_input = {}
-    for key in ["query", "key", "query_rope", "key_rope", "dequant_scale"]:
+    for key in ["query", "key", "query_rope", "key_rope", "dequant_scale", "sinks"]:
         range_key = f"range_{key}"
         if range_key in param_combination and param_combination[range_key] is not None:
             range_input[key] = param_combination[range_key]
@@ -526,12 +552,14 @@ def convert_param_combination_to_cs_format(param_combination):
         "block_num": block_num,
         "actual_seq_q": actual_seq_q,
         "actual_seq_kv": actual_seq_kv,
+        "enable_sinks": enable_sinks,
         # range 参数，保存实际使用的值
         "range_query": range_input["query"],
         "range_key": range_input["key"],
         "range_query_rope": range_input["query_rope"],
         "range_key_rope": range_input["key_rope"],
         "range_dequant_scale": range_input["dequant_scale"],
+        "range_sinks": range_input["sinks"],
     }
 
     return params

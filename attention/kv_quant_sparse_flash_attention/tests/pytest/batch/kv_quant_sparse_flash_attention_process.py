@@ -70,6 +70,10 @@ def call_npu_eager(torch_tensor_dict, params):
         next_tokens=params.get("next_tokens", (1 << 63) - 1),
         key_dtype=_get_kv_torch_dtype(params["dtype_input"]["key"]),
         value_dtype=_get_kv_torch_dtype(params["dtype_input"]["value"]),
+<<<<<<< HEAD
+=======
+        sinks=torch_tensor_dict.get("sinks", None),
+>>>>>>> 5a0495155 (qsfa add sinks)
     )
 
 
@@ -84,6 +88,7 @@ def call_npu(input_tensor_dict, params):
 
 
 class Network(torch.nn.Module):
+<<<<<<< HEAD
     def forward(
         self,
         query,
@@ -111,6 +116,16 @@ class Network(torch.nn.Module):
         pre_tokens,
         next_tokens,
     ):
+=======
+    def forward(self, query, key, value, sparse_indices,
+                scale_value, key_quant_mode, value_quant_mode,
+                key_dequant_scale, value_dequant_scale, block_table,
+                actual_seq_lengths_query, actual_seq_lengths_kv,
+                sparse_block_size, layout_query, layout_kv,
+                sparse_mode, attention_mode, quant_scale_repo_mode,
+                tile_size, rope_head_dim, key_dtype, value_dtype,
+                pre_tokens, next_tokens,sinks):
+>>>>>>> 5a0495155 (qsfa add sinks)
         return torch_npu.npu_kv_quant_sparse_flash_attention(
             query=query,
             key=key,
@@ -136,6 +151,7 @@ class Network(torch.nn.Module):
             value_dtype=value_dtype,
             pre_tokens=pre_tokens,
             next_tokens=next_tokens,
+            sinks=sinks,
         )
 
 
@@ -186,4 +202,9 @@ def call_npu_graph(torch_tensor_dict, params):
         next_tokens=params.get("next_tokens", (1 << 63) - 1),
         key_dtype=_get_kv_torch_dtype(params["dtype_input"]["key"]),
         value_dtype=_get_kv_torch_dtype(params["dtype_input"]["value"]),
+<<<<<<< HEAD
     )
+=======
+        sinks=torch_tensor_dict.get("sinks", None),
+    )
+>>>>>>> 5a0495155 (qsfa add sinks)
