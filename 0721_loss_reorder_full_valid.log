@@ -1,0 +1,28 @@
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] isolate_valid_b1_s1_64_k_1024: suite=isolate kind=valid-k layout=BSND B=1 S1=64 S2=1087 N1=32 Nidx1=16 K=1024 valid_k=[1024,1024] exec_k=1024 scatter_exec_k=1024 invalid=0 path=full-valid dtype=bfloat16
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=11 python_sha256=5e22c02fa18083671cce113460832e0c9d82cacee60c076341dfc256c222174d
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=c0f2eb4dfff147f36f4ed54374767fbb6fd8d07d630d43d59cffb74ac1059007
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=1.562500e-02 mean_abs=2.306274e-06 mean_rel=6.421442e-05 norm_rel=1.491993e-04
+  dKeyIndex    max_abs=1.562500e-02 mean_abs=2.260542e-06 mean_rel=3.054666e-04 norm_rel=1.465648e-04
+  dWeights     max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  Loss         max_abs=1.831055e-04 mean_abs=1.831055e-04 mean_rel=2.665993e-07 norm_rel=2.665993e-07
+  batch=0 dQueryIndex=1.49e-04 dKeyIndex=1.47e-04 dWeights=0.00e+00
+  query诊断：launch_cores=24 tasks_per_core=3 first_failed=None failed=0/64
+    b= 0 q=   0 task=   0 round= 0 core= 0 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=   1 task=   1 round= 0 core= 1 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  23 task=  23 round= 0 core=23 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  24 task=  24 round= 1 core= 0 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  25 task=  25 round= 1 core= 1 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  47 task=  47 round= 1 core=23 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  48 task=  48 round= 2 core= 0 kReal= 1024 dQ_norm=5.88e-04 dW_norm=0.00e+00
+    b= 0 q=  49 task=  49 round= 2 core= 1 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  62 task=  62 round= 2 core=14 kReal= 1024 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  63 task=  63 round= 2 core=15 kReal= 1024 dQ_norm=4.86e-07 dW_norm=0.00e+00
+  query最差：b0q57(task=57,dQ=8.0e-04,dW=0.0e+00), b0q48(task=48,dQ=5.9e-04,dW=0.0e+00), b0q26(task=26,dQ=5.1e-04,dW=0.0e+00), b0q16(task=16,dQ=3.1e-04,dW=0.0e+00), b0q7(task=7,dQ=7.1e-05,dW=0.0e+00), b0q46(task=46,dQ=7.0e-05,dW=0.0e+00), b0q56(task=56,dQ=3.2e-05,dW=0.0e+00), b0q43(task=43,dQ=1.9e-05,dW=0.0e+00), b0q17(task=17,dQ=1.8e-05,dW=0.0e+00), b0q11(task=11,dQ=1.4e-05,dW=0.0e+00)
+[00] isolate_valid_b1_s1_64_k_1024 PASS dQ_norm=1.49e-04 dK_norm=1.47e-04 dW_norm=0.00e+00 Loss_norm=2.67e-07
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
