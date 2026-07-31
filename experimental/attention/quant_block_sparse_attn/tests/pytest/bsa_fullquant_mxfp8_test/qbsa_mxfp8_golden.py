@@ -1647,8 +1647,8 @@ def npu_mxfp8_fa(
             "[NPU] P scale dtype=%s, shape=%s", p_scale_e8m0.dtype, p_scale_e8m0.shape
         )
     else:
-        p_scale_npu = None
-        logger.info("[NPU] P scale=None (optional input not provided)")
+        p_scale_npu = torch.tensor([], dtype=torch.float8_e8m0fnu).npu()
+        logger.info("[NPU] P scale=empty tensor (shape size 0, default 1.0)")
     mask_arg = _build_causal_mask()
 
     if block_table_torch is None:
