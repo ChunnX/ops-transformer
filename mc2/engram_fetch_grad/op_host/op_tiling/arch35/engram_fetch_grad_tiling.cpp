@@ -571,6 +571,10 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     OP_TILING_CHECK(totalRecv > 0 && hiddenBytes > INT64_MAX / totalRecv,
                     OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenBytes=%ld", totalRecv, hiddenBytes),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(totalRecv > 0 && tilingData.hiddenDim > INT64_MAX / totalRecv,
+                    OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld",
+                            totalRecv, tilingData.hiddenDim),
+                    return ge::GRAPH_FAILED);
 
     int64_t wsGradSorted = numTokens * hiddenBytes;
     int64_t wsRecvGrad = totalRecv * hiddenBytes;
