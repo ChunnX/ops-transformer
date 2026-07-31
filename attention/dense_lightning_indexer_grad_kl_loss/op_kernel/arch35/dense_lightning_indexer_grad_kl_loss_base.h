@@ -128,8 +128,8 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitConstInfo(
 {
     if ASCEND_IS_AIV {
         constInfo.aivIdx = GetBlockIdx(); // vec:0-47
-        constInfo.aicIdx = constInfo.aivIdx / 2;
-        constInfo.subBlockIdx = constInfo.aivIdx % 2;
+        constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
+        constInfo.subBlockIdx = GetSubBlockIdx();
     } else {
         constInfo.aicIdx = GetBlockIdx(); // cube:0-23
         constInfo.aivIdx = constInfo.aicIdx * AIC_AIV_RATIO;
@@ -632,29 +632,64 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
                 if ASCEND_IS_AIC {
                     if (runInfo0.isValid) {
                         matmulService.ComputeMm1(runInfo0);   // C1
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_P_FLAG[runInfo0.taskIdMod2]);
+                        if constexpr (deterministic) {
+                            CrossCoreSetFlag<DETER_SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_P_FLAG[runInfo0.taskIdMod2]);
+                            CrossCoreSetFlag<DETER_SYNC_MODE, PIPE_FIX>(
+                                16 + SYNC_C1_TO_V1_P_FLAG[runInfo0.taskIdMod2]);
+                        } else {
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_P_FLAG[runInfo0.taskIdMod2]);
+                        }
 
                         matmulService.ComputeMm2(runInfo0);   // C1
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_SY_FLAG[runInfo0.taskIdMod2]);
+                        if constexpr (deterministic) {
+                            CrossCoreSetFlag<DETER_SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_SY_FLAG[runInfo0.taskIdMod2]);
+                            CrossCoreSetFlag<DETER_SYNC_MODE, PIPE_FIX>(
+                                16 + SYNC_C1_TO_V1_SY_FLAG[runInfo0.taskIdMod2]);
+                        } else {
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_SY_FLAG[runInfo0.taskIdMod2]);
+                        }
                     }
                 }
 
                 if ASCEND_IS_AIV {
                     if (runInfoNeg1.isValid) {
-                        CrossCoreWaitFlag(SYNC_C1_TO_V1_P_FLAG[runInfoNeg1.taskIdMod2]);
-                        CrossCoreWaitFlag(SYNC_C1_TO_V1_SY_FLAG[runInfoNeg1.taskIdMod2]);
+                        if constexpr (deterministic) {
+                            CrossCoreWaitFlag<DETER_SYNC_MODE, PIPE_MTE2>(
+                                SYNC_C1_TO_V1_P_FLAG[runInfoNeg1.taskIdMod2]);
+                            CrossCoreWaitFlag<DETER_SYNC_MODE, PIPE_MTE2>(
+                                SYNC_C1_TO_V1_SY_FLAG[runInfoNeg1.taskIdMod2]);
+                        } else {
+                            CrossCoreWaitFlag(SYNC_C1_TO_V1_P_FLAG[runInfoNeg1.taskIdMod2]);
+                            CrossCoreWaitFlag(SYNC_C1_TO_V1_SY_FLAG[runInfoNeg1.taskIdMod2]);
+                        }
                         vectorService.ProcessVector1(runInfoNeg1); // V1
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                        if constexpr (deterministic) {
+                            CrossCoreSetFlag<DETER_SYNC_MODE, PIPE_MTE3>(
+                                SYNC_V1_TO_C2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                        } else {
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(
+                                SYNC_V1_TO_C2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                        }
                     }
                 }
                 if ASCEND_IS_AIC {
                     if (runInfoNeg1.isValid) {
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V1_TO_C2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                        if constexpr (deterministic) {
+                            CrossCoreWaitFlag<DETER_SYNC_MODE, PIPE_MTE2>(
+                                SYNC_V1_TO_C2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                            CrossCoreWaitFlag<DETER_SYNC_MODE, PIPE_MTE2>(
+                                16 + SYNC_V1_TO_C2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                        } else {
+                            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(
+                                SYNC_V1_TO_C2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                        }
                         if constexpr(deterministic) {
                             matmulService.ComputeMm34Deter(runInfoNeg1); // C2
                             if (runInfoNeg1.lastS2) {
-                                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(
+                                CrossCoreSetFlag<DETER_SYNC_MODE, PIPE_FIX>(
                                     SYNC_C2_TO_V2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                                CrossCoreSetFlag<DETER_SYNC_MODE, PIPE_FIX>(
+                                    16 + SYNC_C2_TO_V2_DW_FLAG[runInfoNeg1.taskIdMod2]);
                             }
                         } else {
                             matmulService.ComputeMm34(runInfoNeg1); // C2
@@ -687,8 +722,13 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
                 }
                 if ASCEND_IS_AIV {
                     if (runInfoNeg1.isValid && runInfoNeg1.lastS2) {
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(
-                            SYNC_C2_TO_V2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                        if constexpr (deterministic) {
+                            CrossCoreWaitFlag<DETER_SYNC_MODE, PIPE_MTE2>(
+                                SYNC_C2_TO_V2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                        } else {
+                            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(
+                                SYNC_C2_TO_V2_DW_FLAG[runInfoNeg1.taskIdMod2]);
+                        }
                         vectorService.CastOutWeightGrad(runInfoNeg1);
                         vectorService.CastOutQIndexGrad(runInfoNeg1);
                     }

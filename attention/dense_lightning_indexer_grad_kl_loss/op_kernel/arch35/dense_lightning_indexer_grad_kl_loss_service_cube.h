@@ -295,6 +295,18 @@ __aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::CopyGmT
     LocalTensor<KV_T> &l1Tensor, GlobalTensor<KV_T> &gmSrcTensor,
     uint32_t srcN, uint32_t srcD, uint32_t srcDstride)
 {
+    if constexpr (DLIT::deterministic) {
+        uint32_t srcNAlign = AlignTo(srcN, static_cast<uint32_t>(C0_SIZE));
+        if (srcNAlign != srcN) {
+            InitConstValueParams<KV_T> initParams;
+            initParams.repeatTimes = AlignTo(srcD, static_cast<uint32_t>(C0_SIZE)) / C0_SIZE;
+            initParams.blockNum = srcNAlign - srcN;
+            initParams.dstGap = srcN;
+            initParams.initValue = 0;
+            InitConstValue(l1Tensor[srcN * C0_SIZE], initParams);
+        }
+    }
+
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
     nd2nzPara.nValue = srcN; // 行数
@@ -551,15 +563,16 @@ __aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::FixOutA
 
     FixCopyOut(mmParams, resGm, l0cTensor, l0cPingPongFlag);
 
-    if (mmParams.atomicFlag) {
-        if constexpr (DLIT::deterministic) {
-            // Fixpipe is asynchronous. Keep atomic mode enabled until the
-            // atomic Fixpipe write has completed.
-            AscendC::PipeBarrier<PIPE_FIX>();
+    if constexpr (DLIT::deterministic) {
+        // The first contribution is a normal Fixpipe write and later
+        // contributions use atomic add. Wait for every deterministic write so
+        // an atomic update cannot overtake the initial overwrite.
+        AscendC::PipeBarrier<PIPE_FIX>();
+        if (mmParams.atomicFlag) {
             AscendC::DisableDmaAtomic();
-        } else {
-            SetAtomicNone();
         }
+    } else if (mmParams.atomicFlag) {
+        SetAtomicNone();
     }
 }
 
