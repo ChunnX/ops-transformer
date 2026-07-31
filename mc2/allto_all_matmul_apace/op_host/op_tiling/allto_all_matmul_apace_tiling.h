@@ -23,7 +23,7 @@
 #include "apace/tiling/quant_matmul_tiling_data.h"
 
 // Tiling key field constants
-#define MX_QUANT_MODE 3
+#define MX_QUANT_MODE 6
 #define DTYPE_BIAS_FP32 1
 #define ALL2ALL_COMM_TYPE_UDMA 2
 

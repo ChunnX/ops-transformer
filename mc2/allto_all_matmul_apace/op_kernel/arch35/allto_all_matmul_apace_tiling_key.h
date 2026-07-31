@@ -14,7 +14,7 @@
 #include <ascendc/host_api/tiling/template_argument.h>
 
 #define NON_QUANT_MODE 0
-#define MX_QUANT_MODE 3
+#define MX_QUANT_MODE 6
 #define DTYPE_BIAS_SAME_WITH_X 0
 #define DTYPE_BIAS_FP32 1
 #define ALL2ALL_COMM_TYPE_CCU 0
