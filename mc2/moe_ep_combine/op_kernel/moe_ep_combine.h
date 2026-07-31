@@ -59,6 +59,13 @@ constexpr uint32_t DCCI_OFFSET = 64U;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 constexpr uint32_t SEND_DOUBLE_BUFFER_NUM = 2U;
+constexpr struct UrmaWqeEntry URMA_CFG = {
+    .odr      = 5,
+    .fence    = 1,
+    .se       = 0,
+    .cqe      = 0,
+    .inlineEn = 0
+};
 
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
@@ -333,9 +340,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendQueuedTok
             GM_ADDR localSendDataWorkspaceAddr = GetLocalSendDataWorkspaceAddr(srcRank) + slotOffset;
             CopyTokenFromQueue(localSendDataWorkspaceAddr);
             uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
-            hcomm_.WriteWithNotifyNbi(commHandle, remoteRankWinAddr, localSendDataWorkspaceAddr,
-                                      XTypeAlign32Size_, remoteRankStateAddr, 1);
-            hcomm_.Drain(commHandle);
+            hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, URMA_CFG>(commHandle, remoteRankWinAddr,
+                                     localSendDataWorkspaceAddr, XTypeAlign32Size_, remoteRankStateAddr, 1);
         } else {
             CopyTokenFromQueue(remoteRankWinAddr);
             GlobalTensor<uint32_t> state;
@@ -354,9 +360,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendQueuedTok
 
         GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
         uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
-        hcomm_.WriteWithNotifyNbi(commHandle, remoteRankWinAddr, tokenAddr, axisH_ * sizeof(XType),
-                                  remoteRankStateAddr, 1);
-        hcomm_.Drain(commHandle);
+        hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, URMA_CFG>(commHandle, remoteRankWinAddr, tokenAddr,
+                                 axisH_ * sizeof(XType), remoteRankStateAddr, 1);
     }
 }
 
@@ -453,7 +458,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                                                 // metadataLocal
     }
 
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
+    if (splitRankTokens) {
+        if (targetRank != rankId_) {
+            uint64_t commHandle = GetCommHandle(targetRank, channelIndex);
+            hcomm_.FlushChannel(commHandle);
+        }
+    } else {
+        for (uint32_t rank = aivId_; rank < epWorldSize_; rank += activeAivNum) {
+            if (rank != rankId_) {
+                uint64_t commHandle = GetCommHandle(rank, 0);
+                hcomm_.FlushChannel(commHandle);
+            }
+        }
+    }
 }
 
 template <TemplateMoeEpCombineTypeClass>
