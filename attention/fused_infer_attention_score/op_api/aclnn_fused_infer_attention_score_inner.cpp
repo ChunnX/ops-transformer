@@ -541,20 +541,6 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(InnerFusedInferAttentionScore,
-                   DFX_IN(query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
-                          actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional,
-                          quantScale2Optional, quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional,
-                          blockTableOptional, queryPaddingSizeOptional, kvPaddingSizeOptional,
-                          keyAntiquantScaleOptional, keyAntiquantOffsetOptional,
-                          valueAntiquantScaleOptional, valueAntiquantOffsetOptional,
-                          keySharedPrefixOptional, valueSharedPrefixOptional, actualSharedPrefixLenOptional,
-                          queryRopeOptional, keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional,
-                          learnableSinkOptional, qStartIdxOptional, kvStartIdxOptional, numHeads, scaleValue, preTokens,
-                          nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode,
-                          softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, outDtype),
-                   DFX_OUT(attentionOut, softmaxLse));
-
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
