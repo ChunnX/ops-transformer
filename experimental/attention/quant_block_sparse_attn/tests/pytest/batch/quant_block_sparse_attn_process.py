@@ -128,8 +128,6 @@ def _call_npu_quant_block_sparse_attn_metadata(test_data):
         sparse_block_size_k=inputs["sparse_kv_block_size"],
         quant_mode=inputs["quant_mode"],
         mask_mode=inputs["mask_mode"],
-        max_seqlen_q=metadata_input.get("max_seqlen_q", inputs["max_seqlen_q"]),
-        max_seqlen_kv=metadata_input.get("max_seqlen_kv", inputs["max_seqlen_kv"]),
         layout_q=metadata_input.get("layout_q", inputs["layout_q"]),
         layout_kv=metadata_input.get("layout_kv", inputs["layout_kv"]),
         layout_sparse_indices=metadata_input.get("layout_sparse_indices", inputs["layout_sparse_indices"]),
