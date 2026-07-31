@@ -94,14 +94,14 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetCrossCo
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::WaitCrossCoreFlag()
 {
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[0]);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[0] + 16);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[1]);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[1] + 16);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[0]);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[0] + 16);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[1]);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[1] + 16);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[0]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[0] + 16);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[1]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[1] + 16);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[0]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[0] + 16);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[1]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[1] + 16);
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
