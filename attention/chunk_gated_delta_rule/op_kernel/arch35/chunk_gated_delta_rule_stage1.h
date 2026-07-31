@@ -28,6 +28,57 @@ using bT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 template <typename cType>
 using StageOneMTT = matmul::MatmulImpl<aT1, bT1, MatmulType<TPosition::GM, CubeFormat::ND, cType>>;
 
+// S2-spike: 求逆 matmul 形状编译期恒定 (org 64x64x64, single 32x32x32),
+// 用 MatmulApiStaticTiling 让框架常量折叠调度逻辑, 削减 per-call 固定开销
+using cInvT = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
+__aicore__ constexpr MatmulConfig GetInverseMmConfig()
+{
+    MatmulConfig cfg = CFG_NORM;
+    cfg.basicM = 32;
+    cfg.basicN = 32;
+    cfg.basicK = 32;
+    cfg.singleCoreM = 32;
+    cfg.singleCoreN = 32;
+    cfg.singleCoreK = 32;
+    cfg.enableSetBias = false;
+    cfg.enableQuantVector = false;
+    cfg.enableSetDefineData = false;
+    cfg.enableGetTensorC = false;
+    cfg.enableSetTail = false;
+    return cfg;
+}
+constexpr MatmulConfig INV_MM_CFG = GetInverseMmConfig();
+constexpr MatmulApiStaticTiling INV_MM_TILING =
+    matmul::GetMatmulApiTiling<aT1, bT1, cInvT, cInvT>(INV_MM_CFG);
+using StageOneInvMT = matmul::MatmulImpl<aT1, bT1, cInvT, cInvT, INV_MM_TILING>;
+
+// S2: K@Kt 与 attn@k_cumdecay 在 dk==128 且 chunkSize==64 时形状编译期恒定
+__aicore__ constexpr MatmulConfig GetStcMmConfig(uint32_t m, uint32_t n, uint32_t k)
+{
+    MatmulConfig cfg = CFG_NORM;
+    cfg.basicM = m;
+    cfg.basicN = n;
+    cfg.basicK = k;
+    cfg.singleCoreM = m;
+    cfg.singleCoreN = n;
+    cfg.singleCoreK = k;
+    cfg.enableSetBias = false;
+    cfg.enableQuantVector = false;
+    cfg.enableSetDefineData = false;
+    cfg.enableGetTensorC = false;
+    cfg.enableSetTail = false;
+    return cfg;
+}
+constexpr MatmulConfig KK_MM_CFG = GetStcMmConfig(64, 64, 128);
+constexpr MatmulApiStaticTiling KK_MM_TILING =
+    matmul::GetMatmulApiTiling<aT1, bT1, cInvT, cInvT>(KK_MM_CFG);
+using StageOneKKMT = matmul::MatmulImpl<aT1, bT1, cInvT, cInvT, KK_MM_TILING>;
+
+constexpr MatmulConfig KCD_MM_CFG = GetStcMmConfig(64, 128, 64);
+constexpr MatmulApiStaticTiling KCD_MM_TILING =
+    matmul::GetMatmulApiTiling<aT1, bT1, cInvT, cInvT>(KCD_MM_CFG);
+using StageOneKcdMT = matmul::MatmulImpl<aT1, bT1, cInvT, cInvT, KCD_MM_TILING>;
+
 constexpr uint64_t UB_REST_BYTES = 140 * 1024; // 140KB
 constexpr uint64_t INVERSE_SHAPE = 32;         // 对角块边长
 constexpr uint64_t INVERSE_COUNT = 5;          // 求逆所需空间
@@ -75,6 +126,15 @@ public:
     using MMVInner = StageOneMTT<vInnerType>;
     __aicore__ inline Stage1(MMBf16 &mmBf16, MMVInner &mmVInner) : mmBf16_(mmBf16), mmVInner_(mmVInner)
     {
+    }
+    __aicore__ inline void SetInvMatmul(StageOneInvMT *mmInv)
+    {
+        mmInv_ = mmInv;
+    }
+    __aicore__ inline void SetStcMatmul(StageOneKKMT *mmKK, StageOneKcdMT *mmKcd)
+    {
+        mmKK_ = mmKK;
+        mmKcd_ = mmKcd;
     }
     __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams<vInnerType> &initParams)
     {
@@ -185,6 +245,11 @@ public:
         buffOffset += INVERSE_SHAPE * sizeof(uint32_t);
 
         inverseRes_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * halfChunkSize_), buffOffset);
+        buffOffset += chunkSize_ * halfChunkSize_ * sizeof(float);
+
+        // B1: 32x32 单位矩阵 (4KB)
+        identitySlab_ =
+            tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(INVERSE_SHAPE * INVERSE_SHAPE), buffOffset);
     }
 
     __aicore__ inline void InitGatherBuffer()
@@ -194,6 +259,13 @@ public:
         }
         for (uint32_t i = 0; i < INVERSE_SHAPE; ++i) {
             inverseGatherBuffer_.SetValue<uint32_t>(i, (i * chunkSize_) * sizeof(float));
+        }
+        // B1: 一次性构造单位矩阵, 之后 InverseAIV 每次迭代直接读第 i 行,
+        // 省掉每迭代 2 次 SetValue + 2 对 V_S/S_V 同步
+        Duplicate(identitySlab_, static_cast<float>(0.0), INVERSE_SHAPE * INVERSE_SHAPE);
+        PipeBarrier<PIPE_V>();
+        for (uint32_t i = 0; i < INVERSE_SHAPE; ++i) {
+            identitySlab_.SetValue(i * INVERSE_SHAPE + i, static_cast<float>(1.0));
         }
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
         SetFlag<HardEvent::S_V>(eventID);
@@ -223,6 +295,7 @@ public:
         halfChunkSize_ = chunkSize_ / TASK_RATIO;
         subOffset_ = subBlockIdx_ * halfChunkSize_;
         coreIdx_ = GetBlockIdx();
+        stcShapeOk_ = (dk_ == 128 && chunkSize_ == 64);
         ccOffset_ = chunkSize_ * chunkSize_;
         ckOffset_ = chunkSize_ * dk_;
         cvOffset_ = chunkSize_ * dv_;
@@ -304,17 +377,31 @@ private:
     {
         AscendC::CrossCoreWaitFlag(0x9); // 同步0
         // key @ key.transpose(-1,-2)
-        for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(mmBf16_, keyConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
-                       {chunkSize_, chunkSize_, dk_, chunkSize_, chunkSize_, dk_}, true);
+        if (stcShapeOk_) {
+            for (uint32_t i = 0; i < curParaNum; ++i) {
+                AICProcess(*mmKK_, keyConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
+                           {chunkSize_, chunkSize_, dk_, chunkSize_, chunkSize_, dk_}, true);
+            }
+        } else {
+            for (uint32_t i = 0; i < curParaNum; ++i) {
+                AICProcess(mmBf16_, keyConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
+                           {chunkSize_, chunkSize_, dk_, chunkSize_, chunkSize_, dk_}, true);
+            }
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0x8); // 同步1
 
         // query @ key.transpose(-1,-2)   stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(mmBf16_, queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_],
-                       outQkGm_[chunkRowBase_[i] * chunkSize_],
-                       {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_}, true);
+            if (stcShapeOk_ && validLenBatch_[i] == chunkSize_) {
+                AICProcess(*mmKK_, queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_],
+                           outQkGm_[chunkRowBase_[i] * chunkSize_],
+                           {chunkSize_, chunkSize_, dk_, chunkSize_, chunkSize_, dk_}, true);
+            } else {
+                AICProcess(mmBf16_, queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_],
+                           outQkGm_[chunkRowBase_[i] * chunkSize_],
+                           {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_},
+                           true);
+            }
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xA); // 同步5
         AscendC::CrossCoreWaitFlag(0x7);               // 同步2
@@ -326,10 +413,18 @@ private:
         AscendC::CrossCoreWaitFlag(0x6); // 同步3
 
         // attn @ k_cumdecay
-        for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(mmBf16_, attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_],
-                       outKCumdecayGm_[chunkRowBase_[i] * dk_],
-                       {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_});
+        if (stcShapeOk_) {
+            for (uint32_t i = 0; i < curParaNum; ++i) {
+                AICProcess(*mmKcd_, attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_],
+                           outKCumdecayGm_[chunkRowBase_[i] * dk_],
+                           {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_});
+            }
+        } else {
+            for (uint32_t i = 0; i < curParaNum; ++i) {
+                AICProcess(mmBf16_, attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_],
+                           outKCumdecayGm_[chunkRowBase_[i] * dk_],
+                           {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_});
+            }
         }
         AscendC::CrossCoreWaitFlag(0x5); // 同步4
 
@@ -551,9 +646,7 @@ private:
         inverseBufferOffset += inverseVecLen * inverseVecLen + inverseVecLen;
         auto yLocal = inverseBuffer_[inverseBufferOffset];
         inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto ei = inverseBuffer_[inverseBufferOffset];
 
-        Duplicate(ei, static_cast<float>(0.0), inverseVecLen);
         Duplicate(yLocal, static_cast<float>(0.0), inverseVecLen * inverseVecLen); // yLocal清零
         inverseRes_.SetValue(offset, static_cast<float>(1.0));
 
@@ -573,16 +666,10 @@ private:
             PipeBarrier<PIPE_V>();
             MulAddDst(yLocal[i * inverseVecLen], col[inverseVecLen], row, inverseVecLen * validRows);
             PipeBarrier<PIPE_V>();
-            int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
-            SetFlag<HardEvent::V_S>(eventID);
-            WaitFlag<HardEvent::V_S>(eventID);
-            ei.SetValue(i - 1, static_cast<float>(0.0));
-            ei.SetValue(i, static_cast<float>(1.0));
-            eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
-            SetFlag<HardEvent::S_V>(eventID);
-            WaitFlag<HardEvent::S_V>(eventID);
+            // B1: ei 即单位矩阵第 i 行, 直接读预置 slab, 纯向量, 无标量往返
             // xi = (I - SUM) / Lii = I - SUM
-            Sub(inverseRes_[offset + i * chunkSize_], ei, yLocal[i * inverseVecLen], inverseVecLen);
+            Sub(inverseRes_[offset + i * chunkSize_], identitySlab_[i * INVERSE_SHAPE],
+                yLocal[i * inverseVecLen], inverseVecLen);
             PipeBarrier<PIPE_V>();
         }
     }
@@ -799,13 +886,13 @@ private:
         uint64_t leftDown = offset + chunkSize_ * INVERSE_SHAPE;
         uint64_t rightDown = leftDown + INVERSE_SHAPE;
         // 右矩阵左下角 @ 右矩阵左上角 -> 右矩阵左下角
-        AICProcess(mmBf16_, attnWsGm_[leftDown], attnWsGm_[offset], attnWsGm_[leftDown],
+        AICProcess(*mmInv_, attnWsGm_[leftDown], attnWsGm_[offset], attnWsGm_[leftDown],
                    {chunkSize_, chunkSize_, chunkSize_, INVERSE_SHAPE, INVERSE_SHAPE, INVERSE_SHAPE});
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::FIX_MTE2));
         SetFlag<HardEvent::FIX_MTE2>(eventID);
         WaitFlag<HardEvent::FIX_MTE2>(eventID);
         // 右矩阵右下角 @ 右矩阵左下角 -> 右矩阵左下角
-        AICProcess(mmBf16_, attnWsGm_[rightDown], attnWsGm_[leftDown], attnWsGm_[leftDown],
+        AICProcess(*mmInv_, attnWsGm_[rightDown], attnWsGm_[leftDown], attnWsGm_[leftDown],
                    {chunkSize_, chunkSize_, chunkSize_, INVERSE_SHAPE, INVERSE_SHAPE, INVERSE_SHAPE});
         eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::FIX_MTE2));
         SetFlag<HardEvent::FIX_MTE2>(eventID);
@@ -827,6 +914,10 @@ private:
     TPipe *pipe_;
     MMBf16 &mmBf16_;
     MMVInner &mmVInner_;
+    StageOneInvMT *mmInv_ = nullptr;
+    StageOneKKMT *mmKK_ = nullptr;
+    StageOneKcdMT *mmKcd_ = nullptr;
+    bool stcShapeOk_ = false;
     const ChunkGatedDeltaRuleTilingData *tiling_;
     ChunkGroup cg_;
     uint32_t nk_;
@@ -903,6 +994,7 @@ private:
     LocalTensor<float> gEndBroadUbFloat_;
     LocalTensor<float> gammaUbFloat_;
     LocalTensor<uint32_t> inverseGatherBuffer_;
+    LocalTensor<float> identitySlab_; // B1: 预置 32x32 单位矩阵, 消除 InverseAIV 内标量往返
     LocalTensor<float> qUbFloatCon_;
     LocalTensor<float> kUbFloatCon_;
     LocalTensor<float> gBKUbFloat_;
