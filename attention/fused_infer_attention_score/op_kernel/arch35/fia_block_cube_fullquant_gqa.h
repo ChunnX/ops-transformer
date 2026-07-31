@@ -14,13 +14,13 @@
  */
 #ifndef FIA_BLOCK_CUBE_FULLQUANT_GQA_H_
 #define FIA_BLOCK_CUBE_FULLQUANT_GQA_H_
-#include "../offset_calculator.h"
-#include "../matmul.h"
-#include "../FixpipeOut.h"
-#include "../memory_copy_arch35.h"
+#include "../../../common/op_kernel/offset_calculator.h"
+#include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/FixpipeOut.h"
+#include "../../../common/op_kernel/memory_copy_arch35.h"
 
-#include "infer_flash_attention_comm.h"
-#include "flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
