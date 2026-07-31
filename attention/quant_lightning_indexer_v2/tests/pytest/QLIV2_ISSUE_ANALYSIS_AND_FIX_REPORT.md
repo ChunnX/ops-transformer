@@ -83,8 +83,9 @@ attention/quant_lightning_indexer_v2/op_kernel/arch35/quant_lightning_indexer_v2
 
 修改：
 
-- 非 LD 路径处理同一个 AIV 的后续行前，设置并等待 MTE3_MTE2_EVENT；
-- 确保上一行返回值完成 GM 搬出后，下一行 MTE2 才能复用 mrgValueBuf_。
+- 仅在非 LD、return_value 开启且同一个 AIV 处理后续行时，设置并等待 MTE3_MTE2_EVENT；
+- 确保上一行返回值完成 GM 搬出后，下一行 MTE2 才能复用 mrgValueBuf_；
+- return_value 关闭时没有 value MTE3 写回，跳过该事件等待，避免不必要的流水串行化。
 
 ### 4.3 加固多轮 TopK 索引映射与缓冲区复用
 
@@ -142,7 +143,7 @@ source /home/s00892993/custom_path/vendors/custom_transformer/bin/set_env.bash
 
 最终无 dump 算子包 SHA256：
 
-3086da34fa0bcf52e21fffbab2664574d9b75b46aef7274f1937e56f908dc05a
+1e3b965d330a12f21d69463bc002479472f3175e4594d4214fbd5a2e12a75ad5
 
 ## 6. 回归结果
 
@@ -159,9 +160,9 @@ bash test_run.sh single | tee redline_debug.log
 - 0 failed；
 - 33 warnings；
 - pytest 退出码 0；
-- 总耗时 588.53 秒；
+- 总耗时 586.82 秒；
 - DumpTensor 输出 0 行；
-- 日志大小 100609 字节（约 98.3 KiB）。
+- 日志大小 100607 字节（约 98.2 KiB）。
 
 33 条 warning 来自包含 -inf 数据时的 NumPy subtract RuntimeWarning，以及 pandas DataFrame 拼接 FutureWarning，不影响精度判定与测试结果。
 
@@ -171,6 +172,8 @@ bash test_run.sh single | tee redline_debug.log
 
 1. PA_BBND 在缺少动态 stride 时错误使用 0 stride，导致物理块寻址错误；
 2. 非 LD 返回值缓冲区与 TopK 输入缓冲区复用时缺少 MTE3→MTE2 同步，导致上一行返回值被下一行覆盖。
+
+同步条件已限定为非 LD 且 return_value 开启，既保留共享 UB 场景所需的正确性依赖，也避免 return_value 关闭时不必要的 MTE3→MTE2 串行化。
 
 同时加固多轮 TopK 的有效区间映射、无效索引处理和 MTE2/V 缓冲区同步。完成上述修复后，索引与返回值比较均通过；5 组 redline 参数在 3 个固定随机种子下共 15 个实例全部通过。
 

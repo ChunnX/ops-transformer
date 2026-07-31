@@ -669,9 +669,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
 
     int32_t validAllS2Len = cuRealAcSeq;
     for (uint32_t i = 0; i < curAivS1ProcNum; i++) {
-        // The non-LD value output aliases mrgValueLocal_. Before MTE2 reuses that UB for the next row,
+        // The non-LD return-value output aliases mrgValueLocal_. Before MTE2 reuses that UB for the next row,
         // wait until MTE3 has finished copying the previous row's values to GM.
-        if (i > 0 && !info.isNeedLD) {
+        if (i > 0 && !info.isNeedLD && returnValueFlag) {
             SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
             WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
         }
