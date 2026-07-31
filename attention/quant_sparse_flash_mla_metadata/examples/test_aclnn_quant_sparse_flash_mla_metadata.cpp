@@ -21,12 +21,12 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_quant_sparse_flash_mla_metadata.h"
 
-#define CHECK_LOG_RET(cond, ret_val, fmt, ...)                                                                         \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            printf(fmt "\n", ##__VA_ARGS__);                                                                           \
-            return (ret_val);                                                                                          \
-        }                                                                                                              \
+#define CHECK_LOG_RET(cond, ret_val, fmt, ...) \
+    do { \
+        if (!(cond)) { \
+            printf(fmt "\n", ##__VA_ARGS__); \
+            return (ret_val); \
+        } \
     } while (0)
 
 // 参考 quant_sparse_flash_mla_metadata.h
