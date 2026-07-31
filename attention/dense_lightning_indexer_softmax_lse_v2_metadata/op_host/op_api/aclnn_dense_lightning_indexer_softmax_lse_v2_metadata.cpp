@@ -57,7 +57,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize(
     std::string socVersionStr = npuInfo.GetSocLongVersion();
     const char *socVersion = socVersionStr.c_str();
 
-    auto ret = ParamsCheckDli(cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional,
+    auto ret = ParamsCheckDliSLse(cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional,
                               cmpResidualKOptional, batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim,
                               layoutQ, layoutK, maskMode, cmpRatio, metadata, aicCoreNum, socVersionStr);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
