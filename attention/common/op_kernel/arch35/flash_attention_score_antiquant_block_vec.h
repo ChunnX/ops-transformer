@@ -343,10 +343,10 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetCrossCor
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::WaitCrossCoreFlag()
 {
-    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[0]);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[1]);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[0]);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[1]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[0]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[1]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[0]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[1]);
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT

@@ -112,7 +112,7 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLocalB
     mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES); // 双缓冲 l0c内存大小128K
 }
 
- ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
+ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::UninitLocalBuffer()
 {
     mm1AL1Buffers.Uninit(*l1BufferManagerPtr);

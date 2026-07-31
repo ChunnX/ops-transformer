@@ -468,18 +468,18 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     this->vecBlock.InitLocalBuffer(this->constInfo);
 }
 
- template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
- 	 __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::UninitBuffer()
- 	 {
- 	     // Uninit, remove unnecessary setflag
- 	     mm2AL1Buffers.Uninit(l1BufferManager);
- 	     kvAntiquantRes.Uninit(l1BufferManager);
- 	     this->cubeBlock.UninitLocalBuffer();
+template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
+__aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::UninitBuffer()
+{
+    // Uninit, remove unnecessary setflag
+    mm2AL1Buffers.Uninit(l1BufferManager);
+    kvAntiquantRes.Uninit(l1BufferManager);
+    this->cubeBlock.UninitLocalBuffer();
 
-         this->cubeBlock.WaitCrossCoreFlag();
-         this->vecBlock.WaitCrossCoreFlag();
+    this->cubeBlock.WaitCrossCoreFlag();
+    this->vecBlock.WaitCrossCoreFlag();
 
- 	 }
+}
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
 __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::Process()
