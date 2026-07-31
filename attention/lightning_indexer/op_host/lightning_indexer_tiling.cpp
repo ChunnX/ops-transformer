@@ -550,7 +550,7 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
 
     OP_CHECK_IF(keyNonContiguous,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key",
-                    "key only support non-contiguous tensor on the 0-axis with PA_BSND layout."),
+                    "key only support non-contiguous tensor on the 0-axis with PA_BSND layout"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
