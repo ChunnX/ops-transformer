@@ -300,6 +300,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     int32_t sumOfFlag = 0;
     int32_t commpareFlag = static_cast<int32_t>(epWorldSize_);
+    uint32_t waitPollCount = 0U;
     const uint32_t shape[] = {epWorldSize_, UB_ALIGN / sizeof(int32_t)};
     GlobalTensor<int32_t> statusGMTensor;
     statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)localSlotStateWinAddr_);
@@ -314,6 +315,13 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(ubWaitSum_, ubWaitStatus_, shape, true);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = ubWaitSum_.GetValue(0);
+        if (waitPollCount < 3U || waitPollCount % 1000U == 0U) {
+            int32_t r0 = ubWaitStatus_.GetValue(0);
+            int32_t r1 = (epWorldSize_ > 1U) ? ubWaitStatus_.GetValue(UB_ALIGN / sizeof(int32_t)) : 0;
+            AscendC::PRINTF("epilogue wait: rank=%u aiv=%u sum=%d cmp=%d poll=%u r0=%d r1=%d\n",
+                            epRankId_, aivId_, sumOfFlag, commpareFlag, waitPollCount, r0, r1);
+        }
+        waitPollCount++;
     }
     Duplicate<int32_t>(ubWaitStatus_, 0, epWorldSize_ * UB_ALIGN / sizeof(int32_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
