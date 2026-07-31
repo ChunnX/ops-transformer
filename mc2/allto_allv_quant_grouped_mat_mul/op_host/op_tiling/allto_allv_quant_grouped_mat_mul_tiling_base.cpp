@@ -120,14 +120,42 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetAttrsInfo()
     epWorldSize_ = *epWorldSizePtr_;
     // sendCounts
     sendCountsPtr_ = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(sendCountsPtr_ == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts"),
-                    return ge::GRAPH_FAILED);
-    sendCounts = static_cast<const int64_t *>(sendCountsPtr_->GetData());
+    if (sendCountsPtr_ != nullptr) {
+        sendCounts = static_cast<const int64_t *>(sendCountsPtr_->GetData());
+    }
     // recvCounts
     recvCountsPtr_ = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(recvCountsPtr_ == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts"),
+    if (recvCountsPtr_ != nullptr) {
+        recvCounts = static_cast<const int64_t *>(recvCountsPtr_->GetData());
+    }
+    // detect counts source: tensor vs attr
+    bool hasSendTensor = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX) != nullptr;
+    bool hasRecvTensor = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX) != nullptr;
+    bool hasSendAttr = !hasSendTensor && (sendCountsPtr_ != nullptr);
+    bool hasRecvAttr = !hasRecvTensor && (recvCountsPtr_ != nullptr);
+    OP_TILING_CHECK(hasSendTensor != hasRecvTensor,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCountsTensor/recvCountsTensor",
+                        (std::to_string(hasSendTensor) + "/" + std::to_string(hasRecvTensor)).c_str(),
+                        "sendCountsTensor and recvCountsTensor must use the same source (both tensor or both attr)."),
                     return ge::GRAPH_FAILED);
-    recvCounts = static_cast<const int64_t *>(recvCountsPtr_->GetData());
+    OP_TILING_CHECK(hasSendAttr != hasRecvAttr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCounts/recvCounts",
+                        (std::to_string(hasSendAttr) + "/" + std::to_string(hasRecvAttr)).c_str(),
+                        "sendCounts and recvCounts attrs must use the same source (both present or both absent)."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(hasSendTensor && hasSendAttr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCounts/sendCountsTensor", "both set",
+                        "sendCounts attr and sendCountsTensor are mutually exclusive."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!hasSendTensor && !hasSendAttr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCounts/sendCountsTensor", "both null",
+                        "at least one of sendCounts attr or sendCountsTensor must be provided."),
+                    return ge::GRAPH_FAILED);
+    countsFromTensor_ = hasSendTensor;
     // transGmmWeight
     transGmmWeightPtr_ = attrs->GetAttrPointer<bool>(ATTR_TRANS_GMM_WEIGHT_INDEX);
     if (transGmmWeightPtr_ != nullptr) {
@@ -175,7 +203,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckEpWorldSizeValue()
     auto platformInfo = context_->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        epWorldSizeValueList = {2,  4,  8,   16,
+        epWorldSizeValueList = {2, 4, 8, 16,
                                 32, 64, 128, 256}; // epWorldSize value only support 2, 4, 8, 16, 32, 64, 128, 256
     } else {
         epWorldSizeValueList = {8, 16, 32, 64, 128}; // epWorldSize value only support 8, 16, 32, 64, 128
@@ -196,6 +224,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckEpWorldSizeValue()
 
 ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsRange()
 {
+    if (countsFromTensor_) {
+        return ge::GRAPH_SUCCESS;
+    }
     // check sendCounts/recvCounts size
     uint64_t sendCountsSize = sendCountsPtr_->GetSize();
     uint64_t recvCountsSize = recvCountsPtr_->GetSize();
@@ -223,6 +254,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsRange()
 
 ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsValue()
 {
+    if (countsFromTensor_) {
+        return ge::GRAPH_SUCCESS;
+    }
     // check sendCounts range
     for (uint64_t idx = 0U; idx < e_ * epWorldSize_; idx++) {
         OP_TILING_CHECK((sendCounts[idx] < SEND_COUNTS_MIN_VALUE) || (sendCounts[idx] > bsk_),
@@ -431,16 +465,42 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCountsTensorShapeInfo()
 ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCountsTensorShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckCountsTensorShapeInfo.");
-    // sendCountsTensor only support nullptr
-    OP_TILING_CHECK(
-        context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX) != nullptr,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "sendCountsTensor", "non-null", "should be null"),
-        return ge::GRAPH_FAILED);
-    // recvCountsTensor only support nullptr
-    OP_TILING_CHECK(
-        context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX) != nullptr,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "recvCountsTensor", "non-null", "should be null"),
-        return ge::GRAPH_FAILED);
+    constexpr uint64_t MAX_TOTAL_EXPERTS_FOR_TENSOR = 2048U;
+    auto sendShape = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX);
+    auto recvShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX);
+    if (sendShape == nullptr && recvShape == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_TILING_CHECK(sendShape->GetStorageShape().GetDimNum() != DIM_ONE,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "sendCountsTensor",
+                                                 std::to_string(sendShape->GetStorageShape().GetDimNum()).c_str(), "1"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvShape->GetStorageShape().GetDimNum() != DIM_ONE,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "recvCountsTensor",
+                                                 std::to_string(recvShape->GetStorageShape().GetDimNum()).c_str(), "1"),
+                    return ge::GRAPH_FAILED);
+    int64_t sendLen = sendShape->GetStorageShape().GetDim(DIM_ZERO);
+    int64_t recvLen = recvShape->GetStorageShape().GetDim(DIM_ZERO);
+    OP_TILING_CHECK(sendLen != recvLen,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCountsTensor/recvCountsTensor",
+                        (std::to_string(sendLen) + "/" + std::to_string(recvLen)).c_str(),
+                        "sendCountsTensor and recvCountsTensor must have the same length."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(static_cast<uint64_t>(sendLen) != e_ * epWorldSize_,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCountsTensor", std::to_string(sendLen).c_str(),
+                        (std::string("should equal e * ep_world_size(") + std::to_string(e_) + " * " +
+                         std::to_string(epWorldSize_) + ")")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(static_cast<uint64_t>(sendLen) > MAX_TOTAL_EXPERTS_FOR_TENSOR,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCountsTensor", std::to_string(sendLen).c_str(),
+                        (std::string("length of sendCountsTensor must be <= ") +
+                         std::to_string(MAX_TOTAL_EXPERTS_FOR_TENSOR))
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "end CheckCountsTensorShapeInfo.");
     return ge::GRAPH_SUCCESS;
 }

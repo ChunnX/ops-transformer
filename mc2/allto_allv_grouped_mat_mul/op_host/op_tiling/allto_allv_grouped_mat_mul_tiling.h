@@ -27,17 +27,18 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling.h"
+#include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
 #include "allto_allv_grouped_mat_mul_tiling_base.h"
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_templates_registry.h"
 #include "context_util.h"
-#include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
 #include "../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
 
 namespace optiling {
 class AlltoAllvGmmTilingStruct : public AlltoAllvGmmTilingBase {
 public:
-    explicit AlltoAllvGmmTilingStruct(gert::TilingContext *context) : AlltoAllvGmmTilingBase(context) {};
+    explicit AlltoAllvGmmTilingStruct(gert::TilingContext *context)
+        : AlltoAllvGmmTilingBase(context) {};
 
 protected:
     uint64_t GetTilingKey() const override;
@@ -48,7 +49,8 @@ class AlltoAllvGmmTiling : public AlltoAllvGmmTilingBase {
     friend class AlltoAllvGmmTilingHelper;
 
 public:
-    explicit AlltoAllvGmmTiling(gert::TilingContext *context) : AlltoAllvGmmTilingBase(context)
+    explicit AlltoAllvGmmTiling(gert::TilingContext *context)
+        : AlltoAllvGmmTilingBase(context)
     {
     }
 
@@ -105,7 +107,9 @@ private:
 
 class AlltoAllvGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {
 public:
-    AlltoAllvGmmTilingHelper(AlltoAllvGmmTiling &parent) : Mc2GroupedQbmmTiling(parent.context_), parent_(parent)
+    AlltoAllvGmmTilingHelper(AlltoAllvGmmTiling &parent)
+        : Mc2GroupedQbmmTiling(parent.context_),
+          parent_(parent)
     {
     }
     const Mc2GroupedMatmulTilingData::GMMQuantTilingData &GetAlltoAllvQuantHelperData() const

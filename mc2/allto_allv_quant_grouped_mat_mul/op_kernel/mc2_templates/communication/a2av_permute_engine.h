@@ -23,10 +23,10 @@ using namespace AscendC;
 
 namespace MC2KernelTemplate {
 
-template <bool IsExpertFirst>
+template <bool IsExpertFirst, typename GetCountFn>
 __aicore__ inline void ComputePrefixSum(
-    uint64_t *sumCnt, uint32_t totalPos,
-    const uint64_t *offsetCounts, uint32_t e,
+    LocalTensor<uint32_t> &sumCnt, uint32_t baseOffset, uint32_t totalPos,
+    GetCountFn getCount, uint32_t e,
     uint32_t startExpertIdx, uint32_t expertNum, uint32_t rankDim)
 {
     for (uint32_t pos = 0; pos < totalPos; pos++) {
@@ -39,10 +39,11 @@ __aicore__ inline void ComputePrefixSum(
             rankIndex = pos % rankDim;
         }
         uint32_t globalExpertIdx = startExpertIdx + localExpertIdx;
-        sumCnt[pos] = static_cast<uint64_t>(offsetCounts[rankIndex * e + globalExpertIdx]);
+        uint32_t val = static_cast<uint32_t>(getCount(rankIndex * e + globalExpertIdx));
         if (pos != 0U) {
-            sumCnt[pos] += sumCnt[pos - 1U];
+            val += sumCnt.GetValue(baseOffset + pos - 1U);
         }
+        sumCnt.SetValue(baseOffset + pos, val);
     }
 }
 
@@ -99,11 +100,11 @@ __aicore__ inline void TileDataCopyLoopDoubleBuf(
     }
 }
 
-template <typename ElemType, bool SrcIsExpertFirst, bool DstIsExpertFirst>
+template <typename ElemType, bool SrcIsExpertFirst, bool DstIsExpertFirst, typename GetCountFn>
 __aicore__ inline void PermuteImplParallel(
     GlobalTensor<ElemType> &srcBuffer,
     GlobalTensor<ElemType> &dstBuffer,
-    const uint64_t *offsetCounts, uint32_t e, uint32_t rankDim,
+    GetCountFn getCount, uint32_t e, uint32_t rankDim,
     uint32_t startExpertIdx, uint32_t expertNum,
     uint64_t axis, uint64_t &permuteBaseOffset,
     TBuf<QuePosition::VECIN> &permuteTBuf, TBuf<QuePosition::VECIN> &permuteTBuf2,
@@ -115,11 +116,16 @@ __aicore__ inline void PermuteImplParallel(
     TPipe *pipe = GetTPipePtr();
 
     uint32_t totalPos = rankDim * expertNum;
-    uint64_t sumCntSrc[MAX_EXPERT_SIZE] = {0UL};
-    uint64_t sumCntDst[MAX_EXPERT_SIZE] = {0UL};
+    TBuf<QuePosition::VECCALC> sumCntBuf;
+    pipe->InitBuffer(sumCntBuf, totalPos * sizeof(uint32_t) * 2U);
+    LocalTensor<uint32_t> sumCntLt = sumCntBuf.Get<uint32_t>();
+    for (uint32_t i = 0U; i < totalPos; i++) {
+        sumCntLt.SetValue(i, 0U);
+        sumCntLt.SetValue(totalPos + i, 0U);
+    }
 
-    ComputePrefixSum<SrcIsExpertFirst>(sumCntSrc, totalPos, offsetCounts, e, startExpertIdx, expertNum, rankDim);
-    ComputePrefixSum<DstIsExpertFirst>(sumCntDst, totalPos, offsetCounts, e, startExpertIdx, expertNum, rankDim);
+    ComputePrefixSum<SrcIsExpertFirst>(sumCntLt, 0U, totalPos, getCount, e, startExpertIdx, expertNum, rankDim);
+    ComputePrefixSum<DstIsExpertFirst>(sumCntLt, totalPos, totalPos, getCount, e, startExpertIdx, expertNum, rankDim);
 
     uint32_t myBlockIdx = GetBlockIdx();
     uint32_t totalPairs = rankDim * expertNum;
@@ -155,15 +161,14 @@ __aicore__ inline void PermuteImplParallel(
 
         uint64_t srcOffset = permuteBaseOffset;
         if (srcPos != 0U) {
-            srcOffset += sumCntSrc[srcPos - 1U] * axis;
+            srcOffset += static_cast<uint64_t>(sumCntLt.GetValue(srcPos - 1U)) * axis;
         }
         uint64_t dstOffset = permuteBaseOffset;
         if (dstPos != 0U) {
-            dstOffset += sumCntDst[dstPos - 1U] * axis;
+            dstOffset += static_cast<uint64_t>(sumCntLt.GetValue(totalPos + dstPos - 1U)) * axis;
         }
 
-        uint64_t totalCnt = static_cast<uint64_t>(offsetCounts[rankIndex * e + expertIdx]) *
-            axis * sizeof(ElemType);
+        uint64_t totalCnt = getCount(rankIndex * e + expertIdx) * axis * sizeof(ElemType);
 
         if (totalCnt == 0UL) {
             continue;
@@ -178,7 +183,7 @@ __aicore__ inline void PermuteImplParallel(
     uint64_t currentDataCount = 0UL;
     for (uint32_t expertIdxIter = startExpertIdx; expertIdxIter < endExpertIdx; expertIdxIter++) {
         for (uint32_t rankIndexIter = 0U; rankIndexIter < rankDim; rankIndexIter++) {
-            currentDataCount += offsetCounts[rankIndexIter * e + expertIdxIter];
+            currentDataCount += getCount(rankIndexIter * e + expertIdxIter);
         }
     }
     permuteBaseOffset += currentDataCount * axis;
