@@ -89,7 +89,8 @@ public:
                                         __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *workspace,
                                         const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *pipe,
                                         AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo);
-    __aicore__ inline void SendCrossCoreFlag();
+    __aicore__ inline void SetCrossCoreFlag();
+    __aicore__ inline void WaitCrossCoreFlag();
     __aicore__ inline void InitLocalBuffer(ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitAntiquantBuffer();
     __aicore__ inline void SoftmaxInitBuffer();
@@ -331,7 +332,16 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::GetExtremeV
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SendCrossCoreFlag()
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetCrossCoreFlag()
+{
+    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[0]);
+    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[1]);
+    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[0]);
+    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[1]);
+}
+
+ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::WaitCrossCoreFlag()
 {
     CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[0]);
     CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[1]);
@@ -1720,7 +1730,10 @@ public:
                                         AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo)
     {
     }
-    __aicore__ inline void SendCrossCoreFlag()
+    __aicore__ inline void SetCrossCoreFlag()
+    {
+    }
+    __aicore__ inline void WaitCrossCoreFlag()
     {
     }
     __aicore__ inline void setConstAntiTaskParam(ConstInfo<isInfer, hasRope> &constInfo)
