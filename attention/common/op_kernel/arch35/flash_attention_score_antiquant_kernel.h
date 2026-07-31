@@ -458,8 +458,8 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         this->cubeBlock.SetCrossCoreFlag();
         /*Init Cube Local Buffer*/
         this->cubeBlock.InitLocalBuffer();
-    }else {
-            /*Init Cube and Vec Common UB Buffer*/
+    } else {
+        /*Init Cube and Vec Common UB Buffer*/
         this->pipe->InitBuffer(this->bmm1ResBuf[0], mm1ResultSize);
         this->pipe->InitBuffer(this->bmm1ResBuf[1], mm1ResultSize);
         this->pipe->InitBuffer(this->bmm2ResBuf[0], mm2ResultSize);
@@ -478,7 +478,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         kvAntiquantRes.Uninit(l1BufferManager);
         this->cubeBlock.UninitLocalBuffer();
         this->cubeBlock.WaitCrossCoreFlag();
-    }else {
+    } else {
         this->vecBlock.WaitCrossCoreFlag();
     }
 }
