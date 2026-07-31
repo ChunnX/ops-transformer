@@ -514,7 +514,8 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(workSet.params.workspaceInfo.gmm1TileStatusPtr) +
-                    static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx;
+                    (static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx) *
+                        INT_CACHELINE;
                 AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(args.expertIdx + 1));
             } else {
                 if constexpr (IsGmm1Interleaved) {
@@ -620,7 +621,8 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 auto &swigluOp = args.swigluQuantOp;
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(workSet.params.workspaceInfo.gmm1TileStatusPtr) +
-                    static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx;
+                    (static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx) *
+                        INT_CACHELINE;
                 int32_t roundTag = static_cast<int32_t>(args.expertIdx + 1);
                 while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
                     int64_t st = AscendC::GetSystemCycle();
@@ -680,7 +682,8 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 // 轮询通过后 metaInfo GM 中的权重数据才确定可见。
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(workSet.params.workspaceInfo.gmm1TileStatusPtr) +
-                    static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx;
+                    (static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx) *
+                        INT_CACHELINE;
                 int32_t roundTag = static_cast<int32_t>(args.expertIdx + 1);
                 while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
                     int64_t st = AscendC::GetSystemCycle();
@@ -1091,7 +1094,7 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
-                    static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx;
+                    (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx) * INT_CACHELINE;
                 AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
             } else {
                 // Publish only after Fixpipe commits the tile to GM. AIC does not wait for AIV1 and may run ahead.
@@ -1145,9 +1148,9 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
             // 必须在 DataCopy(weightUb_) 之前：statusAddr 由 AIC 在写完 GMM1 输出后设置，
             // 而该 status 的前置条件是 AIV1 已完成 metaInfo GM 写入（MTE3+S 流水排空）。
             // 轮询通过后 metaInfo GM 中的权重数据才确定可见。
-            __gm__ int32_t *statusAddr = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
-                                         static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert +
-                                         loopIdx;
+            __gm__ int32_t *statusAddr =
+                reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
+                (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx) * INT_CACHELINE;
             int32_t roundTag = static_cast<int32_t>(expertIdx + 1);
             while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
                 int64_t st = AscendC::GetSystemCycle();
