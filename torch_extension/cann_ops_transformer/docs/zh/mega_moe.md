@@ -764,7 +764,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_alpha</td>
         <td>float</td>
         <td>可选</td>
-        <td>"swiglu_gpt_oss"和"swigluoai"的sigmoid增益。默认值为1.702，值需为有限正数。</td>
+        <td>"swiglu_gpt_oss"和"swigluoai"的sigmoid增益。默认值为1.702，值需为有限值。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -773,7 +773,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_beta</td>
         <td>float</td>
         <td>可选</td>
-        <td>"swigluoai"的up分支偏置；"situglu"的gate分支beta。默认值为1.0，值需为有限正数。</td>
+        <td>"swigluoai"的up分支偏置，值需为有限值；"situglu"的gate分支beta，作为除数需为有限非零值。默认值为1.0。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -782,7 +782,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_linear_beta</td>
         <td>float</td>
         <td>可选</td>
-        <td>"situglu"的up分支linear_beta；None表示不传递linear_beta并保持up不变。其他激活忽略此参数。</td>
+        <td>"situglu"的up分支linear_beta；None表示不传递linear_beta并保持up不变，否则需为有限非零值。其他激活忽略此参数。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
