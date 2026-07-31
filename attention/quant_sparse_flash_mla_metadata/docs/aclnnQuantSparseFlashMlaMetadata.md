@@ -22,7 +22,9 @@
 <!-- npu="910" id6 -->
 - <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
+
 ## 功能说明
+
 - 接口功能：`aclnnQuantSparseFlashMlaMetadata`是`aclnnQuantSparseFlashMla`算子的前置算子，用于后续Attention计算生成负载均衡的任务划分方案。本算子不执行实际的Attention计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的Attention计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
 
 - 负载均衡原理：本算子将Attention计算的工作建模为三维（BN2、S1G、S2）的块级划分问题。通过代价函数估算各工作块的开销，随后采用贪心策略，将工作块按顺序分配到各AI Core，使每个Core承担的计算量尽量接近平均值；对于跨Core拆分的S1G行，会记录FlashDecode规约任务，后续由AIV Core完成部分结果的合并。
@@ -120,7 +122,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>cuSeqlensOriKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中ori_kv的有效Sequence Length。</td>
+      <td>表示不同Batch中oriKvOptional的有效Sequence Length。</td>
       <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -130,7 +132,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中cmp_kv的有效Sequence Length。</td>
+      <td>表示不同Batch中cmpKvOptional的有效Sequence Length。</td>
       <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -150,7 +152,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>sequsedOriKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中ori_kv实际参与运算的Sequence Length。</td>
+      <td>表示不同Batch中oriKvOptional实际参与运算的Sequence Length。</td>
       <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -160,7 +162,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>sequsedCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length。</td>
+      <td>表示不同Batch中cmpKvOptional实际参与运算的Sequence Length。</td>
       <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -170,7 +172,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</td>
+      <td>表示不同Batch中cmpKvOptional压缩后Sequence Length的余数，配合cmpRatio实现cmpKvOptional部分的mask和负载计算。</td>
       <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1场景下必传。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -215,7 +217,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的head个数。</td>
-      <td>当前仅支持2/4/8/16/32/64/128。</td>
+      <td>范围支持1到128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -274,7 +276,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>maxSeqlenOriKv（int64_t）</td>
       <td>输入</td>
-      <td>表示ori_kv的最长Sequence Length。</td>
+      <td>表示oriKvOptional的最长Sequence Length。</td>
       <td><ul><li>支持非负数。</li><li>建议值为0。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -284,7 +286,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>maxSeqlenCmpKv（int64_t）</td>
       <td>输入</td>
-      <td>表示cmp_kv的最长Sequence Length。</td>
+      <td>表示cmpKvOptional的最长Sequence Length。</td>
       <td><ul><li>支持非负数。</li><li>建议值为0。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -294,7 +296,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>oriTopk（int64_t）</td>
       <td>输入</td>
-      <td>表示ori_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景。</td>
+      <td>表示oriKvOptional中筛选出的关键稀疏token的个数。0表示非稀疏场景。</td>
       <td><ul><li>当前仅支持0。</li><li>建议值为0。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -304,7 +306,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>cmpTopk（int64_t）</td>
       <td>输入</td>
-      <td>表示cmp_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景。</td>
+      <td>表示cmpKvOptional中筛选出的关键稀疏token的个数。0表示非稀疏场景。</td>
       <td><ul><li>支持非负数。</li><li>建议值为0。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -314,7 +316,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
-      <td>表示对cmp_kv的压缩率。</td>
+      <td>表示对cmpKvOptional的压缩率。</td>
       <td><ul><li>当前支持1到128。</li><li>建议值1，表示无压缩。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -324,7 +326,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>oriMaskMode（int64_t）</td>
       <td>输入</td>
-      <td>表示q和ori_kv计算的mask模式。</td>
+      <td>表示q和oriKvOptional计算的mask模式。</td>
       <td><ul><li>当前支持：<br/>0: No Mask。<br/>3: RightDownCausal模式。<br/>4: Band模式。</li><li>建议值为0。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -334,7 +336,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
-      <td>表示q和cmp_kv计算的mask模式。</td>
+      <td>表示q和cmpKvOptional计算的mask模式。</td>
       <td><ul><li>当前支持：<br/>0: No Mask。<br/>3: RightDownCausal模式。</li><li>建议值为0。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -344,7 +346,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>oriWinLeft（int64_t）</td>
       <td>输入</td>
-      <td>表示q和ori_kv计算中q对过去token计算的数量。</td>
+      <td>表示q和oriKvOptional计算中q对过去token计算的数量。</td>
       <td><ul><li>取值范围≥-1，-1表示无穷大。</li><li>建议值为-1。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -354,7 +356,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>oriWinRight（int64_t）</td>
       <td>输入</td>
-      <td>表示q和ori_kv计算中q对未来token计算的数量。</td>
+      <td>表示q和oriKvOptional计算中q对未来token计算的数量。</td>
       <td><ul><li>取值范围≥-1，-1表示无穷大。</li><li>建议值为-1。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -384,8 +386,8 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>hasOriKv（bool）</td>
       <td>输入</td>
-      <td>用于标识是否含有ori_kv。</td>
-      <td><ul><li>true: 含有ori_kv。</li><li>false: 不含有ori_kv。</li><li>建议值为true。</li></ul></td>
+      <td>用于标识是否含有oriKvOptional。</td>
+      <td><ul><li>true: 含有oriKvOptional。</li><li>false: 不含有oriKvOptional。</li><li>建议值为true。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -394,8 +396,8 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     <tr>
       <td>hasCmpKv（bool）</td>
       <td>输入</td>
-      <td>用于标识是否含有cmp_kv。</td>
-      <td><ul><li>true: 含有cmp_kv。</li><li>false: 不含有cmp_kv。</li><li>建议值为true。</li></ul></td>
+      <td>用于标识是否含有cmpKvOptional。</td>
+      <td><ul><li>true: 含有cmpKvOptional。</li><li>false: 不含有cmpKvOptional。</li><li>建议值为true。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -526,13 +528,17 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
     - 优先获取sequsedQOptional中的Sequence Length信息。
     - 如果未传入sequsedQOptional，且layoutQOptional为TND和传入了cuSeqlensQOptional，则获取cuSeqlensQOptional中的Sequence Length信息。
     - 除上所述，使用maxSeqlenQ。
-    - ori_kv、cmp_kv Sequence Length与Query的获取规则一致。
+    - oriKvOptional、cmpKvOptional Sequence Length与Query的获取规则一致。
   - BSND场景
     - 当传入的layoutQOptional为"BSND"时，在未传入sequsedQOptional的情况下，必传maxSeqlenQ参数。
     - 当传入的layoutKvOptional为"BSND"时，若hasOriKv为true，在未传入sequsedOriKvOptional的情况下，必传maxSeqlenOriKv参数；若hasCmpKv为true，在未传入sequsedCmpKvOptional的情况下，必传maxSeqlenCmpKv参数。
   - TND场景
     - 当传入的layoutQOptional为"TND"时，必传cuSeqlensQOptional参数。
     - 当传入的layoutKvOptional为"TND"时，若hasOriKv为true，必传cuSeqlensOriKvOptional；若hasCmpKv为true，必传cuSeqlensCmpKvOptional参数。
+  - TopkLength参数
+    - oriTopkLengthOptional、cmpTopkLengthOptional表示ori/cmp sparseIndices实际参与计算的长度。其值不能大于sparseIndices的最后一维大小，且当sequsedQOptional传入时，topkLength对应有效部分的值需要大于等于0。
+    - 当oriMaskMode=0且oriSparseIndicesOptional不为空时，oriTopkLengthOptional必须传入。
+    - 当cmpMaskMode=0且cmpSparseIndicesOptional不为空时，cmpTopkLengthOptional必须传入。
 
 ## 调用示例
 
