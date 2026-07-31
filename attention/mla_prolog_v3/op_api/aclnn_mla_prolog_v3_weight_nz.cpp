@@ -244,6 +244,20 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
                                                                queryNormFlag)) {
         return ge::GRAPH_FAILED;
     }
+    // RoPE 开关仅 DAV_3510：二者同空=关，同非空=开。
+    // DAV_2201：保持原逻辑，ropeSin/ropeCos 均为必选。
+    const bool isDav3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
+    if (isDav3510) {
+        if ((ropeSin == nullptr) != (ropeCos == nullptr)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                "MlaPrologV3", "ropeSin / ropeCos", "(one null, one non-null)",
+                "On Dav3510, ropeSin and ropeCos must both be non-null (RoPE on) or both be null (RoPE off)");
+            return ge::GRAPH_FAILED;
+        }
+    } else if (ropeSin == nullptr || ropeCos == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", ropeSin == nullptr ? "ropeSin" : "ropeCos");
+        return ge::GRAPH_FAILED;
+    }
     return aclnnInnerMlaPrologV3GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
         kvCacheRef, krCacheRef, cacheIndexOptional, dequantScaleXOptional, dequantScaleWDqOptional,

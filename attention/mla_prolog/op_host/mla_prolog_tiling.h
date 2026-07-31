@@ -373,6 +373,9 @@ struct MlaPrologContext {
 
     const float *qcQrScale;
     const float *kcScale;
+    // V3: inferred from ropeSin/ropeCos nullity (both null → off).
+    bool doRopeValue = true;
+    const bool *doRope = nullptr;
 
     size_t *workSpaces;
     uint64_t tilingKey;
@@ -448,6 +451,7 @@ private:
     ge::DataType mmDateType_ = ge::DT_BF16;
     bool enableDequantOpt_ = false;
     bool enableGroupComputeOpt_ = false; // 低延时场景算例分组标记
+    bool enableRope_ = true;             // rope开关，仅 MlaPrologV3 +DAV_3510 可关；DAV_2201 恒为 true
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;
