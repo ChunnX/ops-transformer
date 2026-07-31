@@ -31,8 +31,6 @@ def convert_npu_quant_block_sparse_attn_metadata(
     sparse_block_size_k: int = 128,
     quant_mode: int = 1,
     mask_mode: int = 3,
-    max_seqlen_q: int = 0,
-    max_seqlen_kv: int = 0,
     layout_q: str = "TND",
     layout_kv: str = "PA_BNSD",
     layout_sparse_indices: str = "B_N_Qb_Kb",
