@@ -585,11 +585,11 @@ public:
         // UB 侧 buffer 初始化
         for (uint32_t i = 0; i < EpMXFP4::UB_S_BUF_CNT; i++) {
             ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
-                EpMXFP4::UB_S_BUF_OFFSET + EpMXFP4::UB_S_INNER_BUF_ELEMENT_OFFSET * i);
+                EpMXFP4::UB_S_BUF_OFFSET + EpMXFP4::UB_S_INNER_BUF_OFFSET * i);
         }
         for (uint32_t i = 0; i < EpMXFP4::UB_PEER_GLOBAL_MAX_CNT; i++) {
             ubPeerGlobalMax[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
-                EpMXFP4::UB_PEER_GLOBAL_MAX_OFFSET + EpMXFP4::UB_PEER_GLOBAL_MAX_SIZE * i);
+                EpMXFP4::UB_PEER_GLOBAL_MAX_BUF_OFFSET + EpMXFP4::UB_PEER_GLOBAL_MAX_BUF_SIZE * i);
         }
         // OTmp 单 buffer
         ubOTmpTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(EpMXFP4::UB_OTMP_BUF_OFFSET);
