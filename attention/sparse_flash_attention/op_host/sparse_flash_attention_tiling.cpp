@@ -2129,16 +2129,15 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
     }
 
     bool keyNonContiguous = false;
-    if (keyStride0_ != 0 && keyShape_.GetDimNum() > 0 &&
-        context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize() > 0) {
-
+    if (keyStride0_ != 0 && keyShape_.GetDimNum() > 0) {
         uint64_t totalElements = 0;
         uint64_t shapeSize = 0;
 
         if (kvLayout_ == SFALayout::PA_BSND) {
             totalElements = keyStride1_ * static_cast<uint64_t>(keyShape_.GetDim(1));
-            shapeSize = context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize() /
-                        static_cast<uint64_t>(keyShape_.GetDim(0));
+            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(1)) *
+                        static_cast<uint64_t>(keyShape_.GetDim(2)) *
+                        static_cast<uint64_t>(keyShape_.GetDim(3));
         } else {
             totalElements = keyStride0_ * static_cast<uint64_t>(keyShape_.GetDim(0));
             shapeSize = context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize();
