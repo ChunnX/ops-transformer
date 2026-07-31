@@ -49,19 +49,20 @@ constexpr uint32_t ATTR_COMBINE_QUANT_MODE_INDEX = 6;      // 合并阶段量化
 constexpr uint32_t ATTR_COMM_ALG_INDEX = 7;                // 通信算法配置
 constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 8; // 每个 rank 的最大 token 数(bs数量)
 constexpr uint32_t ATTR_ACTIVATION_INDEX = 9;              // 激活函数类型（如 "swiglu"）
-constexpr uint32_t ATTR_ACTIVATION_CLAMP_INDEX = 10;       // 激活函数 clamp 值
-constexpr uint32_t ATTR_ACTIVATION_ALPHA_INDEX = 11;       // GPT-OSS/MiniMax alpha / SiTU linear beta
-constexpr uint32_t ATTR_ACTIVATION_BETA_INDEX = 12;        // MiniMax up bias / SiTU gate branch beta
-constexpr uint32_t ATTR_ACTIVATION_OUT_DTYPE_INDEX = 13;   // 激活函数输出数据类型
-constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 14;      // weight1 是否转置
-constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 15;      // weight2 是否转置
-constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 16;     // weight1 交错模式
+constexpr uint32_t ATTR_ACTIVATION_PARAMS_INDEX = 10;      // 激活函数参数列表
+constexpr uint32_t ATTR_ACTIVATION_OUT_DTYPE_INDEX = 11;   // 激活函数输出数据类型
+constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 12;      // weight1 是否转置
+constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 13;      // weight2 是否转置
+constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 14;     // weight1 交错模式
 
 constexpr uint32_t ACTIVATION_CODE_SWIGLU = 0;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_GPT_OSS = 1;
 constexpr uint32_t ACTIVATION_CODE_SITU = 2;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_STEP = 3;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_OAI = 4;
+constexpr float DEFAULT_ACTIVATION_CLAMP = std::numeric_limits<float>::max();
+constexpr float DEFAULT_ACTIVATION_ALPHA = 1.702f;
+constexpr float DEFAULT_ACTIVATION_BETA = 1.0f;
 
 // 输入 tensor 索引
 constexpr uint32_t CONTEXT_INDEX = 0;        // context，shape = [?]
@@ -276,7 +277,7 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
         activationCode = ACTIVATION_CODE_SWIGLU;
     } else if (activationStr == "swiglu_gpt_oss") {
         activationCode = ACTIVATION_CODE_SWIGLU_GPT_OSS;
-    } else if (activationStr == "situ") {
+    } else if (activationStr == "situglu") {
         activationCode = ACTIVATION_CODE_SITU;
     } else if (activationStr == "swiglustep") {
         activationCode = ACTIVATION_CODE_SWIGLU_STEP;
@@ -285,38 +286,78 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
     } else {
         OP_LOGE(K_INNER_DEBUG,
                 "activation is invalid, support 'swiglu', 'swiglustep', 'swiglu_gpt_oss', "
-                "'swigluoai' and 'situ', but got '%s'.",
+                "'swigluoai' and 'situglu', but got '%s'.",
                 ptr);
         return GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckActivationClampAttr(const float *ptr)
+static bool IsValidActivationClamp(float value)
 {
-    OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "activationClamp is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(
-        *ptr < 0 || std::isnan(*ptr),
-        OP_LOGE(K_INNER_DEBUG, "activation_clamp is invalid, should be >= 0 and not NAN, but got %f.", *ptr),
-        return GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
+    return value >= 0.0f && !std::isnan(value);
 }
 
-static ge::graphStatus CheckActivationAlphaAttr(const float *ptr)
+static bool IsValidPositiveParam(float value)
 {
-    OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "activationAlpha is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(*ptr != std::numeric_limits<float>::max() && (!std::isfinite(*ptr) || *ptr <= 0.0f),
+    return std::isfinite(value) && value > 0.0f;
+}
+
+static ge::graphStatus CheckActivationParamCount(uint32_t activationCode, size_t actualCount, size_t minCount,
+                                                 size_t maxCount)
+{
+    OP_TILING_CHECK(actualCount < minCount || actualCount > maxCount,
                     OP_LOGE(K_INNER_DEBUG,
-                            "activation_alpha is invalid, should be finite and > 0 when specified, but got %f.", *ptr),
+                            "activation_params has invalid size %zu for activation code %u, expected [%zu, %zu].",
+                            actualCount, activationCode, minCount, maxCount),
                     return GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckActivationBetaAttr(const float *ptr)
+static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVector<float> *params,
+                                                 MegaMoeA2A3TilingData &info)
 {
-    OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "activationBeta is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(!std::isfinite(*ptr) || *ptr <= 0.0f,
-                    OP_LOGE(K_INNER_DEBUG, "activation_beta is invalid, should be finite and > 0, but got %f.", *ptr),
+    OP_TILING_CHECK(params == nullptr, OP_LOGE(K_INNER_DEBUG, "activation_params is null."), return GRAPH_FAILED);
+    size_t paramCount = params->GetSize();
+    const float *data = params->GetData();
+    OP_TILING_CHECK(data == nullptr, OP_LOGE(K_INNER_DEBUG, "activation_params data is null."), return GRAPH_FAILED);
+
+    info.activationClamp = DEFAULT_ACTIVATION_CLAMP;
+    info.activationAlpha = DEFAULT_ACTIVATION_ALPHA;
+    info.activationBeta = DEFAULT_ACTIVATION_BETA;
+
+    if (info.activationCode == ACTIVATION_CODE_SWIGLU || info.activationCode == ACTIVATION_CODE_SWIGLU_STEP) {
+        OP_TILING_CHECK(CheckActivationParamCount(info.activationCode, paramCount, 1U, 1U) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(K_INNER_DEBUG, "CheckActivationParamCount failed."), return GRAPH_FAILED);
+        info.activationClamp = data[0];
+    } else if (info.activationCode == ACTIVATION_CODE_SWIGLU_GPT_OSS) {
+        OP_TILING_CHECK(CheckActivationParamCount(info.activationCode, paramCount, 2U, 2U) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(K_INNER_DEBUG, "CheckActivationParamCount failed."), return GRAPH_FAILED);
+        info.activationClamp = data[0];
+        info.activationAlpha = data[1];
+    } else if (info.activationCode == ACTIVATION_CODE_SWIGLU_OAI) {
+        OP_TILING_CHECK(CheckActivationParamCount(info.activationCode, paramCount, 3U, 3U) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(K_INNER_DEBUG, "CheckActivationParamCount failed."), return GRAPH_FAILED);
+        info.activationClamp = data[0];
+        info.activationAlpha = data[1];
+        info.activationBeta = data[2];
+    } else {
+        OP_TILING_CHECK(CheckActivationParamCount(info.activationCode, paramCount, 1U, 2U) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(K_INNER_DEBUG, "CheckActivationParamCount failed."), return GRAPH_FAILED);
+        info.activationBeta = data[0];
+        info.activationAlpha = paramCount == 2U ? data[1] : std::numeric_limits<float>::max();
+    }
+
+    OP_TILING_CHECK(
+        !IsValidActivationClamp(info.activationClamp),
+        OP_LOGE(K_INNER_DEBUG, "activation clamp must be >= 0 and not NAN, but got %f.", info.activationClamp),
+        return GRAPH_FAILED);
+    OP_TILING_CHECK(!IsValidPositiveParam(info.activationAlpha),
+                    OP_LOGE(K_INNER_DEBUG, "activation alpha/linear_beta must be finite and > 0, but got %f.",
+                            info.activationAlpha),
+                    return GRAPH_FAILED);
+    OP_TILING_CHECK(!IsValidPositiveParam(info.activationBeta),
+                    OP_LOGE(K_INNER_DEBUG, "activation beta must be finite and > 0, but got %f.", info.activationBeta),
                     return GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -380,13 +421,11 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMM_ALG_INDEX));
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX);
     auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_ACTIVATION_INDEX));
-    auto activationClampPtr = attrs->GetAttrPointer<float>(ATTR_ACTIVATION_CLAMP_INDEX);
+    auto activationParamsPtr = attrs->GetListFloat(ATTR_ACTIVATION_PARAMS_INDEX);
     auto activationOutDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_ACTIVATION_OUT_DTYPE_INDEX);
     auto transposeWeight1Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT1_INDEX);
     auto transposeWeight2Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT2_INDEX);
     auto weight1InterleavePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT1_INTERLEAVE_INDEX);
-    auto activationAlphaPtr = attrs->GetAttrPointer<float>(ATTR_ACTIVATION_ALPHA_INDEX);
-    auto activationBetaPtr = attrs->GetAttrPointer<float>(ATTR_ACTIVATION_BETA_INDEX);
 
     // 1. moe_expert_num
     OP_TILING_CHECK(CheckMoeExpertNumAttr(moeExpertNumPtr) != ge::GRAPH_SUCCESS,
@@ -436,32 +475,23 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_TILING_CHECK(CheckActivationAttr(activationPtr, info.activationCode) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckActivationAttr failed."), return GRAPH_FAILED);
 
-    // 10. activation_clamp
-    OP_TILING_CHECK(CheckActivationClampAttr(activationClampPtr) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(K_INNER_DEBUG, "CheckActivationClampAttr failed."), return GRAPH_FAILED);
-    info.activationClamp = *activationClampPtr;
+    // 10. activation_params
+    OP_TILING_CHECK(CheckActivationParamsAttr(activationParamsPtr, info) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(K_INNER_DEBUG, "CheckActivationParamsAttr failed."), return GRAPH_FAILED);
 
-    // 11-12. activation_alpha/activation_beta
-    OP_TILING_CHECK(CheckActivationAlphaAttr(activationAlphaPtr) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(K_INNER_DEBUG, "CheckActivationAlphaAttr failed."), return GRAPH_FAILED);
-    info.activationAlpha = *activationAlphaPtr;
-    OP_TILING_CHECK(CheckActivationBetaAttr(activationBetaPtr) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(K_INNER_DEBUG, "CheckActivationBetaAttr failed."), return GRAPH_FAILED);
-    info.activationBeta = *activationBetaPtr;
-
-    // 13. activation_out_dtype
+    // 11. activation_out_dtype
     OP_TILING_CHECK(CheckActivationOutDtypeAttr(activationOutDtypePtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckActivationOutDtypeAttr failed."), return GRAPH_FAILED);
     info.activationOutDtype = activationOutDtypePtr != nullptr ? static_cast<uint32_t>(*activationOutDtypePtr) :
                                                                  static_cast<uint32_t>(ge::DT_UNDEFINED);
 
-    // 14-15. transpose_weight1/2
+    // 12-13. transpose_weight1/2
     OP_TILING_CHECK(CheckTransposeWeightAttr(transposeWeight1Ptr, transposeWeight2Ptr) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckTransposeWeightAttr failed."), return GRAPH_FAILED);
     info.isTransposeW1 = *transposeWeight1Ptr ? 1U : 0U;
     info.isTransposeW2 = *transposeWeight2Ptr ? 1U : 0U;
 
-    // 16. weight1_interleave
+    // 14. weight1_interleave
     OP_TILING_CHECK(CheckWeight1InterleaveAttr(context, weight1InterleavePtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckWeight1InterleaveAttr failed."), return GRAPH_FAILED);
     info.weight1Interleave = static_cast<uint32_t>(*weight1InterleavePtr);

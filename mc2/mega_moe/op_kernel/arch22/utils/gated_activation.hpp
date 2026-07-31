@@ -166,12 +166,12 @@ struct SwigluOaiActivation {
     }
 };
 
-// Kimi K3 SiTU:
+// Kimi K3 SiTUGLU:
 //     beta * tanh(gate / beta) * sigmoid(gate) * up
 // When linearBeta is enabled, up becomes:
 //     linearBeta * tanh(up / linearBeta)
-// gate/up use the regular contiguous half split. The generic activationAlpha
-// operator attribute carries linearBeta for SiTU; activation_clamp is unused.
+// gate/up use the regular contiguous half split. The internal activationAlpha
+// tiling field carries linearBeta for SiTUGLU.
 struct SituActivation {
     static constexpr float DEFAULT_BETA = 1.0f;
     static constexpr float LINEAR_BETA_DISABLED = 3.402823466e+38F;

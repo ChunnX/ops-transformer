@@ -13,6 +13,7 @@
 #include <vector>
 #include <string>
 #include <limits>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -88,9 +89,8 @@ TEST_F(MegaMoeArch22TilingTest, Test0)
          {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
          {"num_max_token_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-         {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-         {"activation_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(1.702f)},
-         {"activation_beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+         {"activation_params",
+          Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({std::numeric_limits<float>::max()})},
          {"activation_out_dtype",
           Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
          {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -128,9 +128,17 @@ TEST_F(MegaMoeArch22TilingTest, LargeIntermediateHiddenIsNotLimitedByUb)
             {{{kIntermediateHidden, kHiddenSize}, {kIntermediateHidden, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
     }
 
-    for (const std::string &activation :
-         {std::string("swiglu"), std::string("swiglustep"), std::string("swiglu_gpt_oss"), std::string("swigluoai"),
-          std::string("situ")}) {
+    const std::vector<std::pair<std::string, std::vector<float>>> activationCases = {
+        {"swiglu", {std::numeric_limits<float>::max()}},
+        {"swiglustep", {std::numeric_limits<float>::max()}},
+        {"swiglu_gpt_oss", {std::numeric_limits<float>::max(), 1.702f}},
+        {"swigluoai", {std::numeric_limits<float>::max(), 1.702f, 1.0f}},
+        {"situglu", {2.0f}},
+        {"situglu", {2.0f, 2.0f}},
+    };
+    for (const auto &activationCase : activationCases) {
+        const std::string &activation = activationCase.first;
+        const std::vector<float> &activationParams = activationCase.second;
         gert::TilingContextPara tilingContextPara(
             "MegaMoe", inputs,
             {
@@ -148,9 +156,7 @@ TEST_F(MegaMoeArch22TilingTest, LargeIntermediateHiddenIsNotLimitedByUb)
              {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
              {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
              {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>(activation)},
-             {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-             {"activation_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(activation == "situ" ? 2.0f : 1.702f)},
-             {"activation_beta", Ops::Transformer::AnyValue::CreateFrom<float>(activation == "situ" ? 2.0f : 1.0f)},
+             {"activation_params", Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>(activationParams)},
              {"activation_out_dtype",
               Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
              {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
