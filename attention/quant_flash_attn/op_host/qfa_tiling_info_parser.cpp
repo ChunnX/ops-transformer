@@ -565,6 +565,7 @@ void QfaInfoParser::GenerateInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.opName = opName_;
     qfaInfo.platformInfo = platformInfo_;
     qfaInfo.opParamInfo = opParamInfo_;
+    qfaInfo.hasStride = hasStride_;
     qfaInfo.keyStrides = keyStrides_;
     qfaInfo.valueStrides = valueStrides_;
     qfaInfo.kDescaleStrides = kDescaleStrides_;
