@@ -340,8 +340,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendQueuedTok
             GM_ADDR localSendDataWorkspaceAddr = GetLocalSendDataWorkspaceAddr(srcRank) + slotOffset;
             CopyTokenFromQueue(localSendDataWorkspaceAddr);
             uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
-            hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(commHandle, remoteRankWinAddr, localSendDataWorkspaceAddr,
-                                      XTypeAlign32Size_, remoteRankStateAddr, 1);
+            hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(commHandle, remoteRankWinAddr,
+                                     localSendDataWorkspaceAddr, XTypeAlign32Size_, remoteRankStateAddr, 1);
         } else {
             CopyTokenFromQueue(remoteRankWinAddr);
             GlobalTensor<uint32_t> state;
@@ -360,8 +360,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendQueuedTok
 
         GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
         uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
-        hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(commHandle, remoteRankWinAddr, tokenAddr, axisH_ * sizeof(XType),
-                                  remoteRankStateAddr, 1);
+        hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(commHandle, remoteRankWinAddr,
+                                 tokenAddr, axisH_ * sizeof(XType), remoteRankStateAddr, 1);
     }
 }
 
@@ -481,6 +481,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         if (targetRank != rankId_) {
             uint64_t commHandle = GetCommHandle(targetRank, channelIndex);
             hcomm_.FlushChannel(commHandle);
+        }
+    } else {
+        for (uint32_t rank = aivId_; rank < epWorldSize_; rank += activeAivNum) {
+            if (rank != rankId_) {
+                uint64_t commHandle = GetCommHandle(rank, 0);
+                hcomm_.FlushChannel(commHandle);
+            }
         }
     }
 
