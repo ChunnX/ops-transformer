@@ -33,8 +33,9 @@ class QuantGroupedMatmul {
 public:
     __aicore__ inline QuantGroupedMatmul() {}
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM, GM_ADDR yGM,
-        GM_ADDR workspaceGM, const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
-        TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag = false);
+                                GM_ADDR workspaceGM, const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
+                                TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag = false,
+                                GM_ADDR sendCountsTensorGM = nullptr, GM_ADDR recvCountsTensorGM = nullptr);
     __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void Process(uint32_t expertIdx);
     __aicore__ inline void End();
@@ -77,17 +78,23 @@ private:
     TILING_TYPE *gmmArrayAddrIn_;
     GM_ADDR ttXScaleRepeatGm_ = nullptr;
     GM_ADDR ttWeightScaleRepeatGm_ = nullptr;
+    GM_ADDR sendCountsTensorGM_ = nullptr;
+    GM_ADDR recvCountsTensorGM_ = nullptr;
+    GlobalTensor<int64_t> sendCountsGlobal_;
+    GlobalTensor<int64_t> recvCountsGlobal_;
+    bool countsFromTensor_ = false;
 };
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
+          CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType,
-    wFormat, aTrans, bTrans, isLocal, isA2avGmm>::Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM,
-    GM_ADDR weightScaleGM, GM_ADDR yGM, GM_ADDR workspaceGM, const TilingDataType *tilingData,
-    const GmmTilingDataType *gmmTilingData, TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
+                                          wFormat, aTrans, bTrans, isLocal, isA2avGmm>::Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM,
+                                                                                             GM_ADDR weightScaleGM, GM_ADDR yGM, GM_ADDR workspaceGM, const TilingDataType *tilingData,
+                                                                                             const GmmTilingDataType *gmmTilingData, TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag,
+                                                                                             GM_ADDR sendCountsTensorGM, GM_ADDR recvCountsTensorGM)
 {
     if ASCEND_IS_AIV {
-        return ;
+        return;
     }
     xGM_ = xGM;
     wGM_ = weightGM;
@@ -99,6 +106,17 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     workspaceGM_ = workspaceGM;
     gmmTilingData_ = gmmTilingData;
     gmmArrayAddrIn_ = gmmArrayAddrIn;
+    sendCountsTensorGM_ = sendCountsTensorGM;
+    recvCountsTensorGM_ = recvCountsTensorGM;
+    countsFromTensor_ = (tilingData->taskTilingInfo.countsFromTensor != 0U);
+    if (countsFromTensor_) {
+        if (sendCountsTensorGM_ != nullptr) {
+            sendCountsGlobal_.SetGlobalBuffer((__gm__ int64_t *)sendCountsTensorGM_);
+        }
+        if (recvCountsTensorGM_ != nullptr) {
+            recvCountsGlobal_.SetGlobalBuffer((__gm__ int64_t *)recvCountsTensorGM_);
+        }
+    }
 
     expertNumInOneRank_ = tilingData_->taskTilingInfo.e;
     epWorldSize_ = tilingData_->taskTilingInfo.epWorldSize;
@@ -140,48 +158,70 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
         ttXScaleRepeatGm_ = ttWeightScaleRepeatGm_ + sizeof(float) * expertNumMax;
     }
 
-    const auto *opCnt = isA2avGmmFlag ? &tilingData_->taskTilingInfo.recvCnt[0] :
-        &tilingData_->taskTilingInfo.sendCnt[0];
-    for (uint32_t e = 0U; e < expertNumInOneRank_; e++) {
-        for (uint32_t i = 0U; i < epWorldSize_; i++) {
-            expertTokenNum_[e] += static_cast<uint64_t>(opCnt[e + i * expertNumInOneRank_]);
+    if (countsFromTensor_) {
+        const GlobalTensor<int64_t> &cntGlobal = isA2avGmmFlag ? recvCountsGlobal_ : sendCountsGlobal_;
+        for (uint32_t e = 0U; e < expertNumInOneRank_; e++) {
+            for (uint32_t i = 0U; i < epWorldSize_; i++) {
+                expertTokenNum_[e] += static_cast<uint64_t>(cntGlobal.GetValue(e + i * expertNumInOneRank_));
+            }
+        }
+    } else {
+        const auto *opCnt = isA2avGmmFlag ? &tilingData_->taskTilingInfo.recvCnt[0] :
+                                            &tilingData_->taskTilingInfo.sendCnt[0];
+        for (uint32_t e = 0U; e < expertNumInOneRank_; e++) {
+            for (uint32_t i = 0U; i < epWorldSize_; i++) {
+                expertTokenNum_[e] += static_cast<uint64_t>(opCnt[e + i * expertNumInOneRank_]);
+            }
         }
     }
 }
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
+          CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType,
-    wFormat, aTrans, bTrans, isLocal, isA2avGmm>::Process(uint32_t expertIdx)
+                                          wFormat, aTrans, bTrans, isLocal, isA2avGmm>::Process(uint32_t expertIdx)
 {
     Process(expertIdx, 1);
 }
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
+          CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType,
-    wFormat, aTrans, bTrans, isLocal, isA2avGmm>::Process(uint32_t startExpertIdx, uint32_t expertNum)
+                                          wFormat, aTrans, bTrans, isLocal, isA2avGmm>::Process(uint32_t startExpertIdx, uint32_t expertNum)
 {
     if ASCEND_IS_AIV {
-        return ;
+        return;
     }
     uint64_t expertTokenNum = expertTokenNum_[startExpertIdx];
-    for (int expertIdx = startExpertIdx+1; expertIdx < startExpertIdx+expertNum; expertIdx++) {
+    for (int expertIdx = startExpertIdx + 1; expertIdx < startExpertIdx + expertNum; expertIdx++) {
         expertTokenNum += expertTokenNum_[expertIdx];
     }
     if (!isLocal && expertTokenNum == 0) {
-        return ;
+        return;
     }
 
     __gm__ int64_t *groupListPtr = reinterpret_cast<__gm__ int64_t *>(groupListGm_);
+    struct __aicore__ GetCntFn {
+        QuantGroupedMatmul *self;
+        bool isA2avGmmLocal;
+        __aicore__ inline uint64_t operator()(uint32_t absExpertIdx, uint32_t r) const
+        {
+            if (self->countsFromTensor_) {
+                const GlobalTensor<int64_t> &cntGlobal = isA2avGmmLocal ? self->recvCountsGlobal_ : self->sendCountsGlobal_;
+                return static_cast<uint64_t>(cntGlobal.GetValue(absExpertIdx + r * self->expertNumInOneRank_));
+            }
+            const auto *opCnt = isA2avGmmLocal ? &self->tilingData_->taskTilingInfo.recvCnt[0] :
+                                                 &self->tilingData_->taskTilingInfo.sendCnt[0];
+            return static_cast<uint64_t>(opCnt[absExpertIdx + r * self->expertNumInOneRank_]);
+        }
+    } getCnt{this, isA2avGmm};
     if constexpr (!isLocal && !isA2avGmm) {
-        const auto *opCnt = &tilingData_->taskTilingInfo.sendCnt[0];
         __gm__ uint64_t *cGroupOffsetTable = reinterpret_cast<__gm__ uint64_t *>(cGroupOffsetTableGm_);
         uint64_t rankTotalInBatch[MAX_EP_RANK_SIZE] = {0};
         for (uint32_t r = 0; r < epWorldSize_; r++) {
             for (uint32_t e = 0; e < expertNum; e++) {
                 uint32_t absExpertIdx = startExpertIdx + e;
-                uint64_t cnt = static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]);
+                uint64_t cnt = getCnt(absExpertIdx, r);
                 groupListPtr[GROUP_LIST_INDEX + e * epWorldSize_ + r] = static_cast<int64_t>(cnt);
                 rankTotalInBatch[r] += cnt;
             }
@@ -199,17 +239,15 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
                 uint32_t groupIdx = e * epWorldSize_ + r;
                 cGroupOffsetTable[groupIdx] = expertRunningElemOffset[r];
                 uint32_t absExpertIdx = startExpertIdx + e;
-                expertRunningElemOffset[r] +=
-                    static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * n1_;
+                expertRunningElemOffset[r] += getCnt(absExpertIdx, r) * n1_;
             }
         }
     } else if constexpr (!isLocal && isA2avGmm) {
-        const auto *opCnt = &tilingData_->taskTilingInfo.recvCnt[0];
         __gm__ uint64_t *aGroupOffsetTable = reinterpret_cast<__gm__ uint64_t *>(aGroupOffsetTableGm_);
         for (uint32_t e = 0; e < expertNum; e++) {
             for (uint32_t r = 0; r < epWorldSize_; r++) {
                 uint32_t absExpertIdx = startExpertIdx + e;
-                uint64_t cnt = static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]);
+                uint64_t cnt = getCnt(absExpertIdx, r);
                 groupListPtr[GROUP_LIST_INDEX + e * epWorldSize_ + r] = static_cast<int64_t>(cnt);
             }
         }
@@ -218,8 +256,7 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
         for (uint32_t r = 0; r < epWorldSize_; r++) {
             for (uint32_t e = 0; e < expertNum; e++) {
                 uint32_t absExpertIdx = startExpertIdx + e;
-                currentBatchRankSize[r] +=
-                    static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * h1_ / PACK_FACTOR;
+                currentBatchRankSize[r] += getCnt(absExpertIdx, r) * h1_ / PACK_FACTOR;
             }
         }
         uint64_t rankStartBase[MAX_EP_RANK_SIZE] = {0};
@@ -233,21 +270,19 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
                 uint32_t absExpertIdx = startExpertIdx + e;
                 uint32_t groupIdx = e * epWorldSize_ + r;
                 aGroupOffsetTable[groupIdx] = aRunningElemOffset;
-                aRunningElemOffset +=
-                    static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * h1_ / PACK_FACTOR;
+                aRunningElemOffset += getCnt(absExpertIdx, r) * h1_ / PACK_FACTOR;
             }
         }
         if constexpr (MX_QUANT_MODE) {
             __gm__ uint64_t *xScaleOffsetTable = reinterpret_cast<__gm__ uint64_t *>(xScaleGroupOffsetTableGm_);
             uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
-                Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
+                              Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
             uint64_t batchScaleBaseOffset = expertTokenOffset_ * scaleK;
             uint64_t currentBatchRankScaleSize[MAX_EP_RANK_SIZE] = {0};
             for (uint32_t r = 0; r < epWorldSize_; r++) {
                 for (uint32_t e = 0; e < expertNum; e++) {
                     uint32_t absExpertIdx = startExpertIdx + e;
-                    currentBatchRankScaleSize[r] +=
-                        static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * scaleK;
+                    currentBatchRankScaleSize[r] += getCnt(absExpertIdx, r) * scaleK;
                 }
             }
             uint64_t rankScaleStartBase[MAX_EP_RANK_SIZE] = {0};
@@ -261,8 +296,7 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
                     uint32_t absExpertIdx = startExpertIdx + e;
                     uint32_t groupIdx = e * epWorldSize_ + r;
                     xScaleOffsetTable[groupIdx] = scaleRunningOffset;
-                    scaleRunningOffset +=
-                        static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * scaleK;
+                    scaleRunningOffset += getCnt(absExpertIdx, r) * scaleK;
                 }
             }
         }
@@ -318,8 +352,8 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     if constexpr (!isLocal && !isA2avGmm) {
         const __gm__ uint64_t *cGroupOffsetTablePtr = reinterpret_cast<const __gm__ uint64_t *>(cGroupOffsetTableGm_);
         gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScalePtr, yPtr, workspaceGM_,
-            &localQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_,
-            static_cast<uint32_t>(epWorldSize_), cGroupOffsetTablePtr);
+                          &localQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_,
+                          static_cast<uint32_t>(epWorldSize_), cGroupOffsetTablePtr);
     } else if constexpr (!isLocal && isA2avGmm) {
         const __gm__ uint64_t *aGroupOffsetTablePtr = reinterpret_cast<const __gm__ uint64_t *>(aGroupOffsetTableGm_);
         const __gm__ uint64_t *xScaleOffsetTablePtr = nullptr;
@@ -327,29 +361,29 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
             xScaleOffsetTablePtr = reinterpret_cast<const __gm__ uint64_t *>(xScaleGroupOffsetTableGm_);
         }
         gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScalePtr, yPtr, workspaceGM_,
-            &localQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_,
-            static_cast<uint32_t>(epWorldSize_), nullptr, aGroupOffsetTablePtr, xScaleOffsetTablePtr);
+                          &localQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_,
+                          static_cast<uint32_t>(epWorldSize_), nullptr, aGroupOffsetTablePtr, xScaleOffsetTablePtr);
     } else {
         gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScalePtr, yPtr, workspaceGM_,
-            &localQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
+                          &localQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
     }
     gmmASWKernel.Process();
 }
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
+          CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType,
-    wFormat, aTrans, bTrans, isLocal, isA2avGmm>::End()
+                                          wFormat, aTrans, bTrans, isLocal, isA2avGmm>::End()
 {
     if ASCEND_IS_AIV {
-        return ;
+        return;
     }
 }
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
+          CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType,
-    wFormat, aTrans, bTrans, isLocal, isA2avGmm>::UpdateAddr(uint32_t startExpertIdx, uint32_t expertTokenNum)
+                                          wFormat, aTrans, bTrans, isLocal, isA2avGmm>::UpdateAddr(uint32_t startExpertIdx, uint32_t expertTokenNum)
 {
     if constexpr (!isLocal && isA2avGmm) {
         xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr();
@@ -363,7 +397,7 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
 
     if constexpr (MX_QUANT_MODE) {
         uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
-            Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
+                          Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
         if constexpr (!isLocal && isA2avGmm) {
             xScaleGM_ = (GM_ADDR)xScaleGlobalBuffer_.GetPhyAddr();
         } else {
@@ -376,9 +410,9 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
 }
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
+          CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 __aicore__ inline GM_ADDR QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType,
-    wFormat, aTrans, bTrans, isLocal, isA2avGmm>::BuildPtrTable(GM_ADDR dataAddr, uint32_t slotIdx)
+                                             wFormat, aTrans, bTrans, isLocal, isA2avGmm>::BuildPtrTable(GM_ADDR dataAddr, uint32_t slotIdx)
 {
     __gm__ uint64_t *slot = reinterpret_cast<__gm__ uint64_t *>(
         reinterpret_cast<__gm__ uint8_t *>(ptrTableBase_) + slotIdx * 16);

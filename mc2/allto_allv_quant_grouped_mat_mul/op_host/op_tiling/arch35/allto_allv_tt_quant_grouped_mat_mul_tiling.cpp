@@ -41,7 +41,7 @@ uint64_t AlltoAllvTTQuantGmmTiling::GetTilingKey() const
     if (AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode, countsFromTensor_);
     return tilingKey;
 }
 
@@ -91,10 +91,10 @@ void AlltoAllvTTQuantGmmTiling::SetTilingArray(
 {
     constexpr uint32_t MAX_TENSOR_CONT = 128U;
     OP_TILING_CHECK(groupNum > MAX_TENSOR_CONT,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "groupNum",
-            std::to_string(groupNum).c_str(),
-            (std::string("<=") + std::to_string(MAX_TENSOR_CONT)).c_str()),
-        return);
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "groupNum",
+                                              std::to_string(groupNum).c_str(),
+                                              (std::string("<=") + std::to_string(MAX_TENSOR_CONT)).c_str()),
+                    return);
     for (uint32_t i = 0; i < groupNum; i++) {
         gmmQuantTilingData.gmmArray.mList[i] = static_cast<int32_t>(M);
     }

@@ -37,7 +37,8 @@ public:
                                 GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
                                 GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM,
                                 GmmArrayAddrType *gmmArrayAddrIn, GmmArrayAddrType *mmArrayAddrIn, TPipe *tPipe,
-                                bool isA2avGmmFlag)
+                                bool isA2avGmmFlag, GM_ADDR sendCountsTensorGM = nullptr,
+                                GM_ADDR recvCountsTensorGM = nullptr)
     {
         // init member variables
         GET_TILING_DATA(tilingData, tilingGM);
@@ -50,7 +51,8 @@ public:
         // x通信输出区域：isPermuteOut=true时通信结果写到workspace，AIV重排到permuteOut
         uint64_t commOutLen =
             Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
-                          PACK_FACTOR) * X_TYPE_SIZE,
+                          PACK_FACTOR) *
+                      X_TYPE_SIZE,
                   TENSOR_LIST_SIZE);
         commOutGm_ = workspaceGM + workspaceOffset;
         workspaceOffset += commOutLen;
@@ -61,7 +63,8 @@ public:
         uint64_t hcclCcTilingOffset = offsetof(TilingDataType, hcclA2avTilingInfo) +
                                       offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
         commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_, commOutGm_,
-            static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
+                    static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum), tPipe, sendCountsTensorGM,
+                    recvCountsTensorGM);
         // scale commOut区域：MX场景scale通信输出
         if constexpr (MX_QUANT_MODE) {
             uint64_t scaleAxis = CeilDiv(tilingData_->taskTilingInfo.H1, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
@@ -77,10 +80,11 @@ public:
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                 computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
-                                isA2avGmmFlag);
+                                isA2avGmmFlag, sendCountsTensorGM, recvCountsTensorGM);
         }
         computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, computeWorkspaceGm_,
-                       tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
+                       tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag,
+                       sendCountsTensorGM, recvCountsTensorGM);
     }
 
     __aicore__ inline void Process()

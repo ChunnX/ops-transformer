@@ -147,6 +147,7 @@ protected:
     bool permuteOutFlag_ = false;
     const int64_t *sendCounts = nullptr;
     const int64_t *recvCounts = nullptr;
+    bool countsFromTensor_ = false;
     // data type
     ge::DataType gmmXDataType_;
     ge::DataType gmmWeightDataType_;
