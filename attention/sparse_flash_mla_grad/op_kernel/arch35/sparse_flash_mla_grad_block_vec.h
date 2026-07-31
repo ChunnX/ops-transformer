@@ -818,7 +818,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec2(LocalTensor<CALC_
     // VF2: pse + attenMask + muls + simpleSoftmax copyIn+calculate
     ///////////////////////////////////////////////////////////////
     LocalTensor<CALC_TYPE> softmaxL1ResTensor = softmaxL1OutQue.AllocTensor<CALC_TYPE>();
-    float pScalar = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.commonConstInfo.gSize));
+    float pScalar = static_cast<float>(constInfo.commonConstInfo.gSize);
     if (runInfo.isSparse) {
         CalculatePseMulsSelSimpleSoftMax<OUTDTYPE, CALC_TYPE, false, false, false, VECTOR_BASEM, VECTOR_BASEN, true>(
             constInfo, runInfo, *pseInfoPtr, *attenMaskInfoPtr, LseQue[runInfo.sTaskIdMod2], attenMaskOrYInQue,
