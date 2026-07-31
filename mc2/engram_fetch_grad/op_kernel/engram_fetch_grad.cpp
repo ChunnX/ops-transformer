@@ -11,16 +11,6 @@
 /*!
  * \file engram_fetch_grad.cpp
  * \brief EngramFetchGrad 算子 kernel 入口
- *
- * 单融合 kernel，3 步:
- * ① grad_sorted = gradFetched[perm]
- * ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad (用 commBuffer[peer] = a2a GM)
- * ③ owner unique + fp32 scatter-add (recvLocalEntry, recvGrad)
- *    → gradUniqueOut (fp32) + uniqueLocalEntryOut (int32) + numUniqueOut (int32)
- *
- * kernel 签名按 op 定义顺序: input0~5, output0~2, workspace, tiling
- * input:  commContext(0), gradFetched(1), perm(2), sendCounts(3), recvCounts(4), recvLocalEntry(5), numRecv(6)
- * output: gradUniqueOut(0), uniqueLocalEntryOut(1), numUniqueOut(2)
  */
 
 #if ASC_DEVKIT_MAJOR >= 9
