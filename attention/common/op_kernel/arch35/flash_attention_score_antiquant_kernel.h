@@ -148,7 +148,6 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     this->InitInput(query, key, value, pse, attenMask, actualSeqLengths, actualSeqLengthsKv, blockTable,
                     queryPaddingSize, kvPaddingSize, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen,
                     softmaxLse, attentionOut, workspace, tiling, tPipe);
-    this->InitBuffer();
     this->vecBlock.ClearOutput(this->constInfo);
     this->vecBlock.InitQuant(antiquantScale, antiquantOffset, keyAntiquantScale, keyAntiquantOffset,
                              valueAntiquantScale, valueAntiquantOffset, postQuantScale, postQuantOffset,
@@ -451,34 +450,37 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
 __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::InitBuffer()
 {
-    /*Init Cube and Vec Common L1 Buffer*/
-    l1BufferManager.Init(pipe, 524288); // 524288 is 512 * 1024
-    mm2AL1Buffers.Init(l1BufferManager, mm2LeftSize);
-    kvAntiquantRes.Init(l1BufferManager, kvAntiquantResSize);
-    this->cubeBlock.SetCrossCoreFlag();
-    /*Init Cube and Vec Common UB Buffer*/
-    this->pipe->InitBuffer(this->bmm1ResBuf[0], mm1ResultSize);
-    this->pipe->InitBuffer(this->bmm1ResBuf[1], mm1ResultSize);
-    this->pipe->InitBuffer(this->bmm2ResBuf[0], mm2ResultSize);
-    this->pipe->InitBuffer(this->bmm2ResBuf[1], mm2ResultSize);
-    this->vecBlock.SetCrossCoreFlag();
-    /*Init Cube Local Buffer*/
-    this->cubeBlock.InitLocalBuffer();
-    /*Init Vec Local Buffer*/
-    this->vecBlock.InitLocalBuffer(this->constInfo);
+    if ASCEND_IS_AIC {
+        /*Init Cube and Vec Common L1 Buffer*/
+        l1BufferManager.Init(pipe, 524288); // 524288 is 512 * 1024
+        mm2AL1Buffers.Init(l1BufferManager, mm2LeftSize);
+        kvAntiquantRes.Init(l1BufferManager, kvAntiquantResSize);
+        this->cubeBlock.SetCrossCoreFlag();
+        /*Init Cube Local Buffer*/
+        this->cubeBlock.InitLocalBuffer();
+    }else {
+            /*Init Cube and Vec Common UB Buffer*/
+        this->pipe->InitBuffer(this->bmm1ResBuf[0], mm1ResultSize);
+        this->pipe->InitBuffer(this->bmm1ResBuf[1], mm1ResultSize);
+        this->pipe->InitBuffer(this->bmm2ResBuf[0], mm2ResultSize);
+        this->pipe->InitBuffer(this->bmm2ResBuf[1], mm2ResultSize);
+        this->vecBlock.SetCrossCoreFlag();
+        /*Init Vec Local Buffer*/
+        this->vecBlock.InitLocalBuffer(this->constInfo);
+    }
 }
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
 __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::UninitBuffer()
 {
-    // Uninit, remove unnecessary setflag
-    mm2AL1Buffers.Uninit(l1BufferManager);
-    kvAntiquantRes.Uninit(l1BufferManager);
-    this->cubeBlock.UninitLocalBuffer();
-
-    this->cubeBlock.WaitCrossCoreFlag();
-    this->vecBlock.WaitCrossCoreFlag();
-
+    if ASCEND_IS_AIC {
+        mm2AL1Buffers.Uninit(l1BufferManager);
+        kvAntiquantRes.Uninit(l1BufferManager);
+        this->cubeBlock.UninitLocalBuffer();
+        this->cubeBlock.WaitCrossCoreFlag();
+    }else {
+        this->vecBlock.WaitCrossCoreFlag();
+    }
 }
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
@@ -499,6 +501,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         }
         return;
     }
+    this->InitBuffer();
     this->vecBlock.setConstAntiTaskParam(this->constInfo);
     // 确定核内切分起点
     int64_t gS1StartIdx;
@@ -670,7 +673,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         }
         gS1StartIdx = 0;
     }
-    UninitBuffer();
+    this->UninitBuffer();
     if constexpr (isFd) {
         int64_t s2InCurrentBatch = GetS2CurrentBatch();
         this->vecBlock.FlashDecode(this->constInfo, this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
