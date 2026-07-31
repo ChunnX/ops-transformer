@@ -349,6 +349,8 @@ SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_
     } else {
         queryGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
         keyGm.SetGlobalBuffer((__gm__ K_T *)kflat);
+        queryGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        keyGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
         matmulService.InitParams(constInfo);
         matmulService.InitMm1GlobalTensor(queryGm, keyGm);
     }
