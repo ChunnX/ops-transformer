@@ -417,7 +417,6 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           tl::ascend::ArithProgression<float>(v1_om_offsets[0], 0.000000e+00f, 1.000000e+00f, 128);
           tl::ascend::copy_gm_to_ub<bfloat16_t, 16>(v1_om_weight_half[0], Weights[(((pipe_iter * 64) + (cid * 16)) - 64)], 16, 1, 16, bfloat16_t(0.000000e+00f));
           AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(2);
-          AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
           AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(2);
           AscendC::Cast(v1_om_weight[0], v1_om_weight_half[0], AscendC::RoundMode::CAST_NONE, 16);
           tl::ascend::Fill<float>(v1_om_weight_2d[0], 1.000000e+00f, 2048);
@@ -481,7 +480,6 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           tl::ascend::Broadcast<float, 2, 1, false>(v1_os_global_max_2d[0],v1_os_global_max[0],tmp_ub,(uint32_t[]){1, 128}, (uint32_t[]){1, 1});
           tl::ascend::Fill<float>(v1_os_local_sum[0], 0.000000e+00f, 1);
           AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(3);
-          AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
           for (int32_t local_n_2 = 0; local_n_2 < 8; ++local_n_2) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
             tl::ascend::copy_gm_to_ub<float, 128, 16>(v1_os_bmm2[0], bmm2Res[(((((pipe_iter * 131072) + (cid * 32768)) + (vid * 1024)) + (local_n_2 * 128)) - 131072)], 2048, 16, 128, 0.000000e+00f);
@@ -626,7 +624,6 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           tl::ascend::copy_gm_to_ub<float, 8>(v1_fdw_left[0], DWeightPartial[((((pipe_iter * 128) + (cid * 32)) + (vid * 8)) - 128)], 32, 1, 8, 0.000000e+00f);
           tl::ascend::copy_gm_to_ub<float, 8>(v1_fdw_right[0], DWeightPartial[((((pipe_iter * 128) + (cid * 32)) + (vid * 8)) - 112)], 32, 1, 8, 0.000000e+00f);
           AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(2);
-          AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(3);
           AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(2);
           AscendC::Add(v1_fdw_left[0], v1_fdw_left[0], v1_fdw_right[0], 8);
           AscendC::PipeBarrier<PIPE_V>();
