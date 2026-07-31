@@ -28,9 +28,11 @@ const std::string FUSION_PASS_NAME = "AllToAllMatmulTransposeA5FusionPass";
 const std::string PATTERN_TRANSPOSE = "Transpose";
 const std::string PATTERN_TRANSPOSE_D = "TransposeD";
 const std::string PATTERN_BIAS = "HasBias";
-const std::string PATTERN_SCALE = "HasScale";
+const std::string PATTERN_X1_SCALE = "HasX1Scale";
+const std::string PATTERN_X2_SCALE = "HasX2Scale";
 const std::string PATTERN_COMM_SCALE = "HasCommScale";
-const std::string PATTERN_OFFSET = "HasOffset";
+const std::string PATTERN_X1_OFFSET = "HasX1Offset";
+const std::string PATTERN_X2_OFFSET = "HasX2Offset";
 
 const int64_t MX_QUANT_MODE = 6;
 const int64_t ALL2ALLMM_CAPTURE_IDX = 0l;
@@ -48,15 +50,18 @@ enum class TransposeNode {
 
 struct OriginalGraphInfo {
     bool hasBias = false;
-    bool hasScale = false;
+    bool hasX1Scale = false;
+    bool hasX2Scale = false;
     bool hasCommScale = false;
-    bool hasOffset = false;
+    bool hasX1Offset = false;
+    bool hasX2Offset = false;
     TransposeNode node = TransposeNode::Transpose;
 
     bool operator<(const OriginalGraphInfo &rhs) const
     {
-        return std::tie(hasBias, hasScale, hasCommScale, hasOffset, node) <
-               std::tie(rhs.hasBias, rhs.hasScale, rhs.hasCommScale, rhs.hasOffset, rhs.node);
+        return std::tie(hasBias, hasX1Scale, hasX2Scale, hasCommScale, hasX1Offset, hasX2Offset, node) <
+               std::tie(rhs.hasBias, rhs.hasX1Scale, rhs.hasX2Scale, rhs.hasCommScale, rhs.hasX1Offset, rhs.hasX2Offset,
+                        rhs.node);
     }
 };
 
@@ -140,14 +145,20 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
     if (info.hasBias) {
         patternName += PATTERN_BIAS;
     }
-    if (info.hasScale) {
-        patternName += PATTERN_SCALE;
+    if (info.hasX1Scale) {
+        patternName += PATTERN_X1_SCALE;
+    }
+    if (info.hasX2Scale) {
+        patternName += PATTERN_X2_SCALE;
     }
     if (info.hasCommScale) {
         patternName += PATTERN_COMM_SCALE;
     }
-    if (info.hasOffset) {
-        patternName += PATTERN_OFFSET;
+    if (info.hasX1Offset) {
+        patternName += PATTERN_X1_OFFSET;
+    }
+    if (info.hasX2Offset) {
+        patternName += PATTERN_X2_OFFSET;
     }
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     auto [x1, x2, bias, x1Scale, x2Scale, commScale, x1Offset, x2Offset] = graphBuilder.CreateInputs<8>();
@@ -162,9 +173,10 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
     const char *group = "";
     int64_t worldSize = 0;
 
-    auto mc2 = ge::es::AlltoAllMatmul(x1, transpose, info.hasBias ? bias : nullptr, info.hasScale ? x1Scale : nullptr, info.hasScale ? x2Scale : nullptr,
-                                      info.hasCommScale ? commScale : nullptr, info.hasOffset ? x1Offset : nullptr, info.hasOffset ? x2Offset : nullptr,
-                                      group, worldSize);
+    auto mc2 = ge::es::AlltoAllMatmul(x1, transpose, info.hasBias ? bias : nullptr, info.hasX1Scale ? x1Scale : nullptr,
+                                      info.hasX2Scale ? x2Scale : nullptr, info.hasCommScale ? commScale : nullptr,
+                                      info.hasX1Offset ? x1Offset : nullptr, info.hasX2Offset ? x2Offset : nullptr, group,
+                                      worldSize);
     auto graph = graphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
@@ -301,26 +313,34 @@ static bool CollectSubgraphInputsInfo(const std::vector<ge::fusion::SubgraphInpu
 static size_t GetMinRequiredSubgraphInputNum(const std::string &patternNameStr)
 {
     bool hasBias = patternNameStr.find(PATTERN_BIAS) != std::string::npos;
-    bool hasScale = patternNameStr.find(PATTERN_SCALE) != std::string::npos;
+    bool hasX1Scale = patternNameStr.find(PATTERN_X1_SCALE) != std::string::npos;
+    bool hasX2Scale = patternNameStr.find(PATTERN_X2_SCALE) != std::string::npos;
     bool hasCommScale = patternNameStr.find(PATTERN_COMM_SCALE) != std::string::npos;
-    bool hasOffset = patternNameStr.find(PATTERN_OFFSET) != std::string::npos;
+    bool hasX1Offset = patternNameStr.find(PATTERN_X1_OFFSET) != std::string::npos;
+    bool hasX2Offset = patternNameStr.find(PATTERN_X2_OFFSET) != std::string::npos;
 
     // required input x1,x2
-    size_t input_num = 2;
+    size_t inputNum = 2;
     if (hasBias) {
-        input_num++;
+        inputNum++;
     }
-    if (hasScale) {
-        input_num += 2; // x1scale  x2scale
+    if (hasX1Scale) {
+        inputNum++;
+    }
+    if (hasX2Scale) {
+        inputNum++;
     }
     if (hasCommScale) {
-        input_num++;
+        inputNum++;
     }
-    if (hasOffset) {
-        input_num += 2; // x2offset  x2offset
+    if (hasX1Offset) {
+        inputNum++;
+    }
+    if (hasX2Offset) {
+        inputNum++;
     }
 
-    return input_num;
+    return inputNum;
 }
 
 static bool ValidateSubgraphInputNum(const std::string &patternNameStr, size_t inputNum)
@@ -368,11 +388,13 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
         ++inputIdx;
     }
     inputs.rX1Scale = nullptr;
-    inputs.rX2Scale = nullptr;
-    if (patternNameStr.find(PATTERN_SCALE) != std::string::npos) {
+    if (patternNameStr.find(PATTERN_X1_SCALE) != std::string::npos) {
         inputs.rX1Scale = replaceGraphBuilder.CreateInput(inputIdx, "x1_scale", inputDTypes[inputIdx],
                                                           inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
         ++inputIdx;
+    }
+    inputs.rX2Scale = nullptr;
+    if (patternNameStr.find(PATTERN_X2_SCALE) != std::string::npos) {
         inputs.rX2Scale = replaceGraphBuilder.CreateInput(inputIdx, "x2_scale", inputDTypes[inputIdx],
                                                           inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
         ++inputIdx;
@@ -384,11 +406,13 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
         ++inputIdx;
     }
     inputs.rX1Offset = nullptr;
-    inputs.rX2Offset = nullptr;
-    if (patternNameStr.find(PATTERN_OFFSET) != std::string::npos) {
+    if (patternNameStr.find(PATTERN_X1_OFFSET) != std::string::npos) {
         inputs.rX1Offset = replaceGraphBuilder.CreateInput(inputIdx, "x1_offset", inputDTypes[inputIdx],
                                                            inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
         ++inputIdx;
+    }
+    inputs.rX2Offset = nullptr;
+    if (patternNameStr.find(PATTERN_X2_OFFSET) != std::string::npos) {
         inputs.rX2Offset = replaceGraphBuilder.CreateInput(inputIdx, "x2_offset", inputDTypes[inputIdx],
                                                            inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
     }
@@ -496,44 +520,27 @@ static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
 std::vector<ge::fusion::PatternUniqPtr> AllToAllMatmulTransposeA5FusionPass::Patterns()
 {
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter Patterns for AllToAllMatmulTransposeA5FusionPass");
-    std::set<OriginalGraphInfo> set{
-        // hasBias, hasScale, hasCommScale, hasOffset, TransposeNode
-        {false, false, false, false, TransposeNode::Transpose},
-        {false, false, false, true, TransposeNode::Transpose},
-        {false, false, true, false, TransposeNode::Transpose},
-        {false, false, true, true, TransposeNode::Transpose},
-        {false, true, false, false, TransposeNode::Transpose},
-        {false, true, false, true, TransposeNode::Transpose},
-        {false, true, true, false, TransposeNode::Transpose},
-        {false, true, true, true, TransposeNode::Transpose},
-        {true, false, false, false, TransposeNode::Transpose},
-        {true, false, false, true, TransposeNode::Transpose},
-        {true, false, true, false, TransposeNode::Transpose},
-        {true, false, true, true, TransposeNode::Transpose},
-        {true, true, false, false, TransposeNode::Transpose},
-        {true, true, false, true, TransposeNode::Transpose},
-        {true, true, true, false, TransposeNode::Transpose},
-        {true, true, true, true, TransposeNode::Transpose},
-        {false, false, false, false, TransposeNode::TransposeD},
-        {false, false, false, true, TransposeNode::TransposeD},
-        {false, false, true, false, TransposeNode::TransposeD},
-        {false, false, true, true, TransposeNode::TransposeD},
-        {false, true, false, false, TransposeNode::TransposeD},
-        {false, true, false, true, TransposeNode::TransposeD},
-        {false, true, true, false, TransposeNode::TransposeD},
-        {false, true, true, true, TransposeNode::TransposeD},
-        {true, false, false, false, TransposeNode::TransposeD},
-        {true, false, false, true, TransposeNode::TransposeD},
-        {true, false, true, false, TransposeNode::TransposeD},
-        {true, false, true, true, TransposeNode::TransposeD},
-        {true, true, false, false, TransposeNode::TransposeD},
-        {true, true, false, true, TransposeNode::TransposeD},
-        {true, true, true, false, TransposeNode::TransposeD},
-        {true, true, true, true, TransposeNode::TransposeD},
-    };
+    // hasBias, hasX1Scale, hasX2Scale, hasCommScale, hasX1Offset, hasX2Offset, TransposeNode
+    std::set<OriginalGraphInfo> infos;
+    for (bool hasBias : {false, true}) {
+        for (bool hasX1Scale : {false, true}) {
+            for (bool hasX2Scale : {false, true}) {
+                for (bool hasCommScale : {false, true}) {
+                    for (bool hasX1Offset : {false, true}) {
+                        for (bool hasX2Offset : {false, true}) {
+                            for (auto node : {TransposeNode::Transpose, TransposeNode::TransposeD}) {
+                                infos.insert({hasBias, hasX1Scale, hasX2Scale, hasCommScale, hasX1Offset, hasX2Offset,
+                                              node});
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
-    for (const auto &it : set) {
-        patternGraphs.emplace_back(MakePattern(it));
+    for (const auto &info : infos) {
+        patternGraphs.emplace_back(MakePattern(info));
     }
     return patternGraphs;
 }
