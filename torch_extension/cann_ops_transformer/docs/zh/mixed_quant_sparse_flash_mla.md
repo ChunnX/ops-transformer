@@ -139,8 +139,8 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 ### mixed_quant_sparse_flash_mla_metadata
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度
-| :--- | :--- | :--- | :--- | :--- | :--- | :---
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度|
+| :--- | :--- | :--- | :--- | :--- | :--- | :---|
 | num_heads_q | int | 必选 | 表示q头数 | int32 | - | -
 | num_heads_kv | int | 必选 | 表示ori_kv/cmp_kv头数 | int32 | - | -
 | head_dim | int | 必选 | 表示每个注意力头的维度 | int32 | - | -
@@ -173,8 +173,8 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 ### mixed_quant_sparse_flash_mla
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度
-| :--- | :--- | :--- | :--- | :--- | :--- | :---
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度|
+| :--- | :--- | :--- | :--- | :--- | :--- | :---|
 | q | tensor | 必选 | 表示公式中的q | bfloat16 | ND |  <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
 | quant_mode | int | 必选 | 表示量化模式。当前仅支持1和2。quant_mode为1时，依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。 | int32 | - | -
 | ori_kv | tensor | 可选 | 表示原始量化KV输入，Key和Value共享同一份数据 | fp8_e4m3 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
@@ -210,13 +210,13 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 ### mixed_quant_sparse_flash_mla_metadata
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度
-| :--- | :--- | :--- | :--- | :--- | :--- | :---
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度|
+| :--- | :--- | :--- | :--- | :--- | :--- | :---|
 | metadata | tensor | 必选 | mixed_quant_sparse_flash_mla的分核信息 | int32 | ND |<ul><li>(1024,)</li></ul>
 ### mixed_quant_sparse_flash_mla
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度
-| :--- | :--- | :--- | :--- | :--- | :--- | :---
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度|
+| :--- | :--- | :--- | :--- | :--- | :--- | :---|
 | attention_out | tensor | 必选 | mixed_quant_sparse_flash_mla的计算输出 | bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
 | softmax_lse | tensor | 可选 | 对query乘key的结果先取max得到softmax_max，query乘key的结果减去softmax_max后取exp再取sum得到softmax_sum，最后对softmax_sum取log再加上softmax_max得到的结果。 | float32 | ND | <ul><li>(b, kv_n, q_s, q_n/kv_n)</li><li>(kv_n, q_t, q_n/kv_n)</li></ul>
 
@@ -367,6 +367,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
     </tr>
 </tbody>
 </table>
+
 layout匹配关系表：
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 400px">
@@ -382,15 +383,19 @@ layout匹配关系表：
     <tr>
         <td>BSND</td>
         <td>
-          <li>BSND</li>
-          <li>PA_BBND</li>
+              <ul>
+                        <li>BSND</li>
+                        <li>PA_BBND</li>
+               </ul>
         </td>
     </tr>
     <tr>
         <td>TND</td>
         <td>
-          <li>TND</li>
-          <li>PA_BBND</li>
+              <ul>
+                        <li>TND</li>
+                        <li>PA_BBND</li>
+               </ul>
         </td>
     </tr>
 </tbody>
@@ -521,7 +526,7 @@ metadata校验
             </td>
             <td>
               		<ul>
-                    		<li>只有ori_mask_mode为4时，ori_win_left/ori_win_right可以>=0</li>、
+                    		<li>只有ori_mask_mode为4时，ori_win_left/ori_win_right可以>=0</li>
                     </ul>
             </td>
         </tr>
@@ -721,7 +726,7 @@ metadata校验
                 </ul>
             </td>
             <td>
-                <ul>无</ul>
+                <td>无</td>
             </td>
             <td>无</td>
         </tr>
