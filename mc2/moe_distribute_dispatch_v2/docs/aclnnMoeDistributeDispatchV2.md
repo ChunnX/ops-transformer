@@ -85,6 +85,21 @@
 
     其中，$emax$表示该类型最大正规数对应的指数部分的值。
 
+    - 情形6：如果quantMode=5（mx量化clip实现场景）：
+
+    $$
+    maxAbs=max(abs(x)) \\
+    maxAbsClamp=max(maxAbs,10^{-4}) \\
+    sharedExp = Ceil(log_2(maxAbsClamp/fp8max)) \\
+    dynamicScales = 2^{sharedExp} \\
+    quantOut = CastToFp8(X / dynamicScales) \\
+    allToAllXOut = AllToAllV(quantOut) \\
+    allToAllDynamicScalesOut = AllToAllV(1.0 / dynamicScales) \\
+    expandXOut = AllToAllV(quantOut) \\
+    dynamicScalesOut = allToAllDynamicScalesOut
+    $$
+
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该接口必须与`aclnnMoeDistributeCombineV2`配套使用。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、Ascend 950DT：该接口必须与`aclnnMoeDistributeCombineV2`或`aclnnMoeDistributeCombineAddRmsNorm`配套使用。
 
@@ -493,7 +508,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `epRecvCountsOut`的shape为(epWorldSize \* localExpertNum,)。
         - `tpRecvCountsOut`当前版本不支持该输出。
         - 支持`expandScalesOut`输出，`expertScalesOptional`传空指针时该输出无效。
-        - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mx动态量化）。
+        - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mx动态量化）、5（mx动态量化clip实现）。
 
 - **返回值**
 
@@ -648,6 +663,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
           - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为(`moeExpertNum`, `H`)。
           - 输出`dynamicScalesOut`shape为`(A, Ceil(H, 128))`，其中`Ceil(H, 128) = (H + 128 - 1) / 128`
       - `quantMode`取值为4时，表示mx量化场景，`expandX`的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`FLOAT4_E2M1`、`FLOAT4_E1M2`，输入`scalesOptional`必须传入空指针。输出`dynamicScalesOut`shape为`(A, Ceil(H, 64))`，其中`Ceil(H, 64) = (H + 64 - 1) / 64`。当`expandX`的数据类型为`FLOAT4_E2M1`或`FLOAT4_E1M2`时，H必须为偶数。
+      - `quantMode`取值为5时，表示mx量化clip实现场景，`expandX`的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`，输入`scalesOptional`必须传入空指针。输出`dynamicScalesOut`shape为`(A, Ceil(H, 64))`，其中`Ceil(H, 64) = (H + 64 - 1) / 64`。
 
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：
