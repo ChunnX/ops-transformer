@@ -36,15 +36,21 @@ static const std::string CMP_BLOCK_TABLE_NAME = "cmp_block_table";
 static const std::string SINKS_NAME = "sinks";
 static const std::string METADATA_NAME = "metadata";
 static const std::string ATTEN_OUT_NAME = "attn_out";
+static const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
+static const std::string SEQUSED_Q_NAME = "seqused_q";
+static const std::string SEQUSED_ORI_KV_NAME = "seqused_ori_kv";
+static const std::string SEQUSED_CMP_KV_NAME = "seqused_cmp_kv";
+static const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
+static const std::string ORI_TOPK_LENGTH_NAME = "ori_topk_length";
+static const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
 static const std::string A2_A3_PLATFORM_LOG = "A2/A3";
 static const std::string A5_PLATFORM_LOG = "A5";
+constexpr uint32_t FD_MAX_S2_SPLIT_NUM = 2U;
+constexpr uint32_t FD_BROADCAST_ELEMS = 8U;
 static bool IsNonEmptyOptionalTensor(const gert::Tensor *tensor)
 {
     return tensor != nullptr && tensor->GetShapeSize() > 0;
 }
-
-constexpr uint32_t FD_MAX_S2_SPLIT_NUM = 2U;
-constexpr uint32_t FD_BROADCAST_ELEMS = 8U;
 
 static bool IsPowerOfTwoInRange(uint32_t value, uint32_t minValue, uint32_t maxValue)
 {
@@ -84,8 +90,6 @@ static const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP 
     {CMP_RESIDUAL_KV_NAME, {ge::DT_INT32}},
     {ORI_TOPK_LENGTH_NAME, {ge::DT_INT32}},
     {CMP_TOPK_LENGTH_NAME, {ge::DT_INT32}}};
-
-    {ORI_SPARSE_INDICES,             {ge::DT_INT32}},
 
 static const std::map<std::string, std::vector<SMLALayout>> LAYOUT_SUPPORT_MAP = {
     {QUERY_NAME, {SMLALayout::BSND, SMLALayout::TND}},
@@ -1620,16 +1624,25 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaTopkLength() const
         }
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(IsNonEmptyOptionalTensor(opParamInfo_.oriTopkLength.tensor),
-                OP_LOGE(opName_, "ori_topk_length is reserved and must be empty on %s.", A2_A3_PLATFORM_LOG.c_str()),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(IsNonEmptyOptionalTensor(opParamInfo_.cmpTopkLength.tensor),
-                OP_LOGE(opName_, "cmp_topk_length is reserved and must be empty on %s.", A2_A3_PLATFORM_LOG.c_str()),
-
+    if (IsNonEmptyOptionalTensor(opParamInfo_.cmpTopkLength.tensor)) {
+        OP_CHECK_IF(smlaInfo_.perfMode != SMLATemplateMode::CSA_TEMPLATE_MODE,
+                    OP_LOGE(opName_, "cmp_topk_length is only supported in CSA mode."),
+                    return ge::GRAPH_FAILED);
+    }
+    if (!IsNonEmptyOptionalTensor(opParamInfo_.oriTopkLength.tensor)) {
         OP_CHECK_IF(hasOriSparseIndices_ && smlaInfo_.perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE,
                     OP_LOGE(opName_, "ori_topk_length is required for SWA ori sparse."),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor == nullptr,
                 OP_LOGE(opName_, "ori_topk_length requires ori_sparse_indices."),
-                OP_LOGE(opName_, "ori_topk_length dtype must be int32."),
+                return ge::GRAPH_FAILED);
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.oriTopkLength.desc, ORI_TOPK_LENGTH_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    OP_CHECK_IF(opParamInfo_.oriTopkLength.desc->GetDataType() != ge::DT_INT32,
+                OP_LOGE(opName_, "%s's dtype must be DT_INT32.", ORI_TOPK_LENGTH_NAME.c_str()),
                 return ge::GRAPH_FAILED);
     const gert::Shape &topkLenShape = opParamInfo_.oriTopkLength.tensor->GetStorageShape();
     const gert::Shape &sparseShape = opParamInfo_.oriSparseIndices.tensor->GetStorageShape();
