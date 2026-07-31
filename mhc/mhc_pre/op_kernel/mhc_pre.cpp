@@ -29,7 +29,6 @@ extern "C" __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR al
                                              GM_ADDR invRms, GM_ADDR hMix, GM_ADDR hPre,
                                              GM_ADDR workspace, GM_ADDR tiling)
 {
-    (void)gamma;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if (workspace == nullptr) {
         return;
@@ -49,7 +48,7 @@ extern "C" __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR al
         MhcPre::MhcPreStage1<DTYPE_X, false> op1;
         op1.cubeCompute_.mm1_.Init(&tilingData->mm1TilingData, &pipe);
         op1.cubeCompute_.mm1_.SetSubBlockIdx(0);
-        op1.Init(x, phi, invRms, hMix, userWs, tilingData, &pipe);
+        op1.Init(x, phi, gamma, invRms, hMix, userWs, tilingData, &pipe);
         op1.Process();
         pipe.Destroy();
 
@@ -66,7 +65,7 @@ extern "C" __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR al
         MhcPre::MhcPreStage1<DTYPE_X, true> opStage1;
         opStage1.cubeCompute_.mm1_.Init(&tilingData->mm1TilingData, &pipe);
         opStage1.cubeCompute_.mm1_.SetSubBlockIdx(0);
-        opStage1.Init(x, phi, invRms, hMix, userWs, tilingData, &pipe);
+        opStage1.Init(x, phi, gamma, invRms, hMix, userWs, tilingData, &pipe);
         opStage1.Process();
         pipe.Destroy();
 

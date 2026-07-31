@@ -27,11 +27,12 @@ class MhcPreStage1 {
 public:
     __aicore__ inline MhcPreStage1() {}
 
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR phi, GM_ADDR invRms, GM_ADDR hcBeforeNorm,
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR phi, GM_ADDR gamma, GM_ADDR invRms, GM_ADDR hcBeforeNorm,
                                 GM_ADDR workspace, const MhcPreMembaseTilingData *tilingDataPtr, TPipe *pipePtr)
     {
         pipe = pipePtr;
         InitTilingParams(tilingDataPtr);
+        hasGamma_ = (tilingData->hasGamma != 0);
 
         // 获取当前核心 ID
         uint64_t blockIdx = GetBlockIdx();
@@ -52,11 +53,17 @@ public:
             pipe->InitBuffer(sumQue, maxBsPerLoop * sizeof(float));
             LocalTensor<float> sumLocal = sumQue.Get<float>();
             pipe->InitBuffer(invRmsQue, NUM_TWO, maxBsPerLoop * sizeof(float));
+            if (hasGamma_) {
+                pipe->InitBuffer(gammaBuf, tilingData->stage1NcFactor * sizeof(float));
+            }
         }
 
         // 设置 GM 地址
         xGm.SetGlobalBuffer((__gm__ T *)x);
         phiGm.SetGlobalBuffer((__gm__ float *)phi);
+        if (hasGamma_) {
+            gammaGm.SetGlobalBuffer((__gm__ float *)gamma);
+        }
         xCastWsGm.SetGlobalBuffer((__gm__ float *)workspace);
 
         // 设置额外的 workspace 地址（needGrad=false 时使用）
@@ -151,14 +158,9 @@ public:
                         xQue.FreeTensor(xLocal);
                         xCastQue.EnQue(xCastLocal);
 
-                        // 3. CopyOut X_cast to workspace
+                        // 3. 计算 inv_rms (BEFORE gamma, uses original x²)
                         xCastLocal = xCastQue.DeQue<float>();
-                        int64_t xCastoffset = blockIdx * tilingData->stage1BsFactor * ncSize + ping4vec * tilingData->stage1VecCoreNum * tilingData->stage1BsFactor *  ncSize;
-                        CopyOut(xCastLocal, xCastWsGm[xCastoffset + ncOffset], curBs, curNcSize, ncSize - curNcSize);
-                        xCastQue.FreeTensor(xCastLocal);
-
-                        // 4. 计算 inv_rms
-                        // 4.1 Square
+                        // 3.1 Square
                         PipeBarrier<PIPE_V>();
                         Mul(squareLocal, xCastLocal, xCastLocal, curBs * curNcSizeAlign);
                         PipeBarrier<PIPE_V>();
@@ -171,6 +173,22 @@ public:
                         // 累加到总和
                         Add(sumLocal, sumLocal, squareLocal, curBs);
                         PipeBarrier<PIPE_V>();
+
+                        // 4. gamma (AFTER square, BEFORE CopyOut)
+                        if (hasGamma_) {
+                            LocalTensor<float> gammaLocal = gammaBuf.Get<float>();
+                            CopyIn(gammaGm[ncOffset], gammaLocal, 1, curNcSize);
+                            for (int64_t bsIdx = 0; bsIdx < curBs; bsIdx++) {
+                                Mul(xCastLocal[bsIdx * curNcSizeAlign], xCastLocal[bsIdx * curNcSizeAlign],
+                                    gammaLocal, curNcSizeAlign);
+                            }
+                            PipeBarrier<PIPE_V>();
+                        }
+
+                        // 5. CopyOut X_cast to workspace (gamma*x if hasGamma, else original x)
+                        int64_t xCastoffset = blockIdx * tilingData->stage1BsFactor * ncSize + ping4vec * tilingData->stage1VecCoreNum * tilingData->stage1BsFactor *  ncSize;
+                        CopyOut(xCastLocal, xCastWsGm[xCastoffset + ncOffset], curBs, curNcSize, ncSize - curNcSize);
+                        xCastQue.FreeTensor(xCastLocal);
                     }
                     // 4.3 Compute inv_rms
                     // inv_rms = 1 / sqrt(sum / (n*c) + eps)
@@ -215,6 +233,7 @@ public:
     GlobalTensor<float> xCastWsGm;          // X_cast workspace
     GlobalTensor<float> invRmsWsGm;         // invRms workspace (needGrad=false)
     GlobalTensor<float> hcBeforeNormWsGm;   // hcBeforeNorm workspace (needGrad=false)
+    GlobalTensor<float> gammaGm;            // gamma (FP32, 可选)
 
     // Queue
     TQue<QuePosition::VECIN, NUM_TWO> xQue;         // X 输入队列
@@ -223,12 +242,14 @@ public:
     TBuf<QuePosition::VECCALC> sumAddQue;      // sum 队列
     TBuf<QuePosition::VECCALC> sumQue;         // sum 队列
     TQue<QuePosition::VECOUT, NUM_TWO> invRmsQue;   // inv_rms 队列
+    TBuf<QuePosition::VECCALC> gammaBuf;     // gamma UB buffer (per nc segment)
 
     // Cube Compute
     HcCubeCompute<float, isFac> cubeCompute_;
     
     // 标志
     bool needGrad_ = true;
+    bool hasGamma_ = false;
     uint64_t ping4vec = 1;
 
     // 同步标志

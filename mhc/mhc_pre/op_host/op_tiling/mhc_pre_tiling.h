@@ -70,6 +70,7 @@ TILING_DATA_FIELD_DEF(int64_t, cubeCoreNum);                 // Cube核心数
 
 
 TILING_DATA_FIELD_DEF(int64_t, needGrad);                    // 是否需要梯度
+TILING_DATA_FIELD_DEF(int64_t, hasGamma);                   // 是否有gamma输入
 
 // 预留参数，切K优化情况 尾批次专用参数 (tailBs != BS_SPLIT_THRESHOLD 时使用)
 TILING_DATA_FIELD_DEF(int64_t, tailBsRowOfFormerBlock);         // 尾批次前核处理BS总数

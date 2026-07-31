@@ -385,6 +385,7 @@ ge::graphStatus MhcPreMembaseTiling::DoOpTiling()
     if (GetShapeAttrsInfoInner(gammaExist) == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
+    tilingData_.set_hasGamma(gammaExist);
     // 预留参数计算（切K）与stage2计算
     if (CalcOpTiling() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
