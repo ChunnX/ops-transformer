@@ -25,8 +25,8 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
-DATA_RANGE_LEFT = -448.0
-DATA_RANGE_RIGHT = 448.0
+DATA_RANGE_LEFT = -1000
+DATA_RANGE_RIGHT = 1000
 FP8_E4M3_MAX = 448.0
 SCALE_EPSILON = 1e-8
 EMPTY_LSE = -3.4028234663852886e38
