@@ -4,11 +4,15 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
 
 ## 功能说明
 
@@ -736,7 +740,6 @@ aclnnStatus aclnnMlaProlog(
   </table>
   </details>
 
-  <details>
   <summary><a id="SupportScenes"></a>不同量化场景参数的dtype与shape约束</summary>
 
 - 在不同量化场景下，参数的dtype和shape组合需要满足如下条件：
@@ -959,7 +962,6 @@ aclnnStatus aclnnMlaProlog(
     </tr>
   </table>
   </div>
-  </details>
 
   <!-- 参数解释请参见**算子执行接口**。-->
 
