@@ -1,0 +1,53 @@
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] isolate_tail_b1_s1_1_k_4096: suite=isolate kind=tail-k layout=BSND B=1 S1=1 S2=1025 N1=32 Nidx1=16 K=4096 valid_k=[1025,1025] exec_k=2048 scatter_exec_k=1040 invalid=3071 path=tail-protected dtype=bfloat16
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=14 python_sha256=554aeaba8e9be73dd7c91651ce14b12fb478b8f7e95745f4ab7637361a08dfc2
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=adc7f7c1fd8ba612c77ffd52d6d38deb20616f8394b198675e9b1548d9273e8e
+[DEBUG] Key: shape=(1, 1025, 1, 512), nan=0, inf=0, finite_abs_max=3.328125e+00
+[DEBUG] Query: shape=(1, 1, 32, 512), nan=0, inf=0, finite_abs_max=3.328125e+00
+[DEBUG] QueryIndex: shape=(1, 1, 16, 128), nan=0, inf=0, finite_abs_max=3.156250e+00
+[DEBUG] KeyIndex: shape=(1, 1025, 1, 128), nan=0, inf=0, finite_abs_max=3.328125e+00
+[DEBUG] Weights: shape=(1, 1, 16), nan=0, inf=0, finite_abs_max=1.929688e+00
+[DEBUG] KRealSize: shape=(1, 1), nan=0, inf=0, finite_abs_max=1.025000e+03
+[DEBUG] SoftmaxMax: shape=(1, 1, 1, 32), nan=0, inf=0, finite_abs_max=4.419417e+00
+[DEBUG] SoftmaxSum: shape=(1, 1, 1, 32), nan=0, inf=0, finite_abs_max=1.027646e+02
+[DEBUG] GatherKey_ws: shape=(1, 1, 2048, 512), nan=0, inf=0, finite_abs_max=3.328125e+00
+[DEBUG] GatherKeyRope_ws: shape=(1, 1, 2048, 128), nan=0, inf=0, finite_abs_max=3.328125e+00
+[DEBUG] GatherKeyIndex_ws: shape=(1, 1, 2048, 128), nan=0, inf=0, finite_abs_max=3.328125e+00
+[DEBUG] bmm1Res: shape=(1, 1, 32, 2048), nan=0, inf=0, finite_abs_max=1.001946e+02
+[DEBUG] bmm2Res: shape=(1, 1, 16, 2048), nan=0, inf=0, finite_abs_max=4.802789e+01
+[DEBUG] PReduced: shape=(1, 1, 2048), nan=0, inf=0, finite_abs_max=2.494702e-03
+[DEBUG] V1Stats: shape=(1, 1, 4, 8), nan=0, inf=0, finite_abs_max=9.541998e+01
+[DEBUG] DWeightPartial: shape=(1, 1, 2, 16), nan=0, inf=0, finite_abs_max=1.695142e+01
+[DEBUG] reluGradRes: shape=(1, 1, 16, 2048), nan=0, inf=0, finite_abs_max=1.906250e+00
+[DEBUG] dk_matmul_partial: shape=(1, 1, 2048, 128), nan=0, inf=0, finite_abs_max=9.756500e+00
+[DEBUG] dQueryIndexAccum: shape=(1, 1, 16, 128), nan=0, inf=0, finite_abs_max=4.695942e+00
+[DEBUG] dKeyIndexAccum: shape=(1280, 128), nan=0, inf=0, finite_abs_max=9.756500e+00
+[DEBUG] dWeightOut: shape=(1, 1, 16), nan=0, inf=0, finite_abs_max=1.700000e+01
+[DEBUG] LossPartial: shape=(128,), nan=0, inf=1, finite_abs_max=3.656743e+01
+[DEBUG] LossOut: shape=(1,), nan=0, inf=1, finite_abs_max=0.000000e+00
+[DEBUG] Gather sentinel remaining: Key=0, Rope=0, KeyIndex=0
+[DEBUG] GatherKey_ws vs host_gather: max_diff=0.000000e+00, mean_diff=0.000000e+00
+[DEBUG] GatherKeyIndex_ws vs host_gather: max_diff=0.000000e+00, mean_diff=0.000000e+00
+[DEBUG] GatherKeyRope_ws vs host_gather: max_diff=0.000000e+00, mean_diff=0.000000e+00
+[DEBUG] scaled bmm1 row max vs SoftmaxMax: max_diff=1.020360e-02, mean_diff=5.526252e-03
+[DEBUG] PReduced vs host formula: max_diff=5.643094e-04, mean_diff=2.818792e-04
+[DEBUG] bmm2Res ReLU check: negative=0, min=0.000000e+00
+[DEBUG] reluGradRes vs host formula: max_diff=3.265738e-03, mean_diff=6.146088e-07
+[DEBUG] reluGradRes vs BF16-rounded host formula: max_diff=0.000000e+00, mean_diff=0.000000e+00, diff_gt_1e-3=0, diff_gt_1e-2=0
+[DEBUG] reluGrad max-error coord=(0, 0, 0, 0): actual=-0.000000e+00, expected_bf16=-0.000000e+00, unmasked=-1.657148e-03, bmm2=0.000000e+00, P=1.071288e-03, SY=5.184804e-44, weight=1.546875e+00
+[DEBUG] reluGrad inferred mask disagreement: false_zero=0, false_nonzero=0
+[DEBUG] C2 dQueryAccum vs host(stored reluGrad): max_diff=2.861023e-06, mean_diff=9.784077e-08
+[DEBUG] C2 dk_partial vs host(stored reluGrad): max_diff=1.490116e-08, mean_diff=6.328826e-13
+[DEBUG] dWeightOut vs host formula: max_diff=5.371094e-02, mean_diff=8.856274e-03
+[DEBUG] aligned LossPartial sum vs host formula: partial_sum=inf, abs_diff=inf
+[DEBUG] LossOut vs host formula: abs_diff=inf
+  TileLang: completed
+  Official: completed
+[00] isolate_tail_b1_s1_1_k_4096 PRECISION FAIL: Loss: non-finite value detected
+  TileLang kinds: nan=0 +inf=1 -inf=0
+  TileLang first coordinates: (0,)
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
