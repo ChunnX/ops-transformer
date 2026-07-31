@@ -195,7 +195,7 @@ struct MegaMoeTilingData {
     uint32_t unpermuteFullTokenChunkCoreCount;
     // Keep scheduling extensions at the tail to preserve every existing field offset.
     int32_t topkWeightsPrefetch;
-    uint32_t maxTilesPerExpert; // GMM1 tile 状态位区每 expert 的 tile 上限（prefetch 软同步用）
+    uint32_t maxTilesPerExpert; // GMM1 tile 状态位区每 expert 的容量，按交织调度的完整 N 上界预留
     uint32_t expertsPerBatch;
 };
 #endif
