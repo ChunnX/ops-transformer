@@ -272,7 +272,7 @@ public:
                 } else {
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
-                        AscendC::DumpTensor(ubOTmpTensor, 130, 128);
+                        // AscendC::DumpTensor(ubOTmpTensor, 130, 128);
                         ComputeVec2(delay20TileInfo);
                         auto gmOLayoutTla = tla::MakeLayout<ElementO, LayoutO>(qBaseTile_, delay20TaskInfo.oShapeCol);
                         auto gmOTensorTla = tla::MakeTensor(gO[delay20TaskInfo.gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
@@ -304,7 +304,7 @@ public:
                         epilogueComputePScale(
                             l1PScaleTensorTla, 
                             delay3TileInfo);
-                        AscendC::DumpTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], 168, 128);
+                        // AscendC::DumpTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], 168, 128);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2);
                     }
                 }
@@ -348,22 +348,22 @@ public:
                         auto l1PLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutP>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE / 2);
                         auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
                         GemmCoord actualBlockShapeQK{curTileInfo.kvsActBaseTile, curTaskInfo.qsActBaseTile, embed_};
-                        AscendC::DumpTensor(ubSTensor[0], 7771, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128], 7772, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 2], 7773, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 3], 7774, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 4], 7775, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 5], 7776, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 128], 7777, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 129], 7778, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 130], 7779, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 131], 7780, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 256], 7781, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 257], 7782, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 258], 7783, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 259], 7784, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 260], 7785, 128);
-                        AscendC::DumpTensor(ubSTensor[0][128 * 261], 7786, 128);
+                        // AscendC::DumpTensor(ubSTensor[0], 7771, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128], 7772, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 2], 7773, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 3], 7774, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 4], 7775, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 5], 7776, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 128], 7777, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 129], 7778, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 130], 7779, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 131], 7780, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 256], 7781, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 257], 7782, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 258], 7783, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 259], 7784, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 260], 7785, 128);
+                        // AscendC::DumpTensor(ubSTensor[0][128 * 261], 7786, 128);
                         epilogueOnlineSoftmax(
                             l1PTensorTla, 
                             actualBlockShapeQK, 
@@ -406,43 +406,43 @@ public:
 
     __aicore__ inline void ComputeMm1(TileInfo &runInfo)
     {
-        AscendC::PRINTF("C1 \n");
+        // AscendC::PRINTF("C1 \n");
         // cubeBlock.ComputeMm1(runInfo);
     }
 
     __aicore__ inline void ComputeMm2(TileInfo &runInfo)
     {
-        AscendC::PRINTF("C2 \n");
+        // AscendC::PRINTF("C2 \n");
         // cubeBlock.ComputeMm2(runInfo);
     }
 
     __aicore__ inline void ComputeVec1(TileInfo &runInfo)
     {
-        AscendC::PRINTF("V1 \n");
+        // AscendC::PRINTF("V1 \n");
         // vectorBlock.ComputeVec1(runInfo);
     }
 
     __aicore__ inline void CopyGMaxUbToL1(TileInfo &runInfo)
     {
-        AscendC::PRINTF("CopyGMaxUbToL1 \n");
+        // AscendC::PRINTF("CopyGMaxUbToL1 \n");
         // vectorBlock.CopyGMaxUbToL1(runInfo);
     }
 
     __aicore__ inline void CopyGMaxL1ToUb(TileInfo &runInfo)
     {
-        AscendC::PRINTF("CopyGMaxL1ToUb \n");
+        // AscendC::PRINTF("CopyGMaxL1ToUb \n");
         // cubeBlock.CopyGMaxL1ToUb(runInfo);
     }
 
     __aicore__ inline void UpdatePScale(TileInfo &runInfo)
     {
-        AscendC::PRINTF("UpdatePScale \n");
+        // AscendC::PRINTF("UpdatePScale \n");
         // vectorBlock.UpdatePScale(runInfo);
     }
 
     __aicore__ inline void ComputeVec2(TileInfo &runInfo)
     {
-        AscendC::PRINTF("V2  \n");
+        // AscendC::PRINTF("V2  \n");
         // vectorBlock.ComputeVec2(runInfo);
     }
 
@@ -757,20 +757,20 @@ public:
                                   qHeadIdx * qScaleStrideN_;
         }
         // [PV-VERIFY] 打印本 task 算出的稀疏 gather 偏移，供测试逐行核对（补丁1/2 验证用）
-        AscendC::printf(
-            "[PV-VERIFY] t=%u b=%u qh=%u kvh=%u xb=%u | gmOffV=%llu gmOffVSc=%llu spIdx=%u kvSeq=%llu yAval=%u yRsvd=%u\n",
-            (unsigned)coreTaskId, (unsigned)info.batchIdx, (unsigned)info.qHeadIdx, (unsigned)info.kvHeadIdx,
-            (unsigned)info.xBlockIdx,
-            (unsigned long long)info.gmOffsetV, (unsigned long long)info.gmOffsetVScale,
-            (unsigned)info.gmOffsetSparseIdx, (unsigned long long)info.kvSeqlen,
-            (unsigned)info.yBlockNumAval, (unsigned)info.yBlockNumRsvd);
-        AscendC::printf(
-            "[QK-VERIFY] t=%u qsAct=%u qSOff=%lld | gmOffQ=%llu gmOffK=%llu gmOffQSc=%llu gmOffKSc=%llu "
-            "gathered=%llu taskTiles=%u\n",
-            (unsigned)coreTaskId, (unsigned)info.qsActBaseTile, (long long)qSOffset,
-            (unsigned long long)info.gmOffsetQ, (unsigned long long)info.gmOffsetK,
-            (unsigned long long)info.gmOffsetQScale, (unsigned long long)info.gmOffsetKScale,
-            (unsigned long long)info.gatheredKvSeqlen, (unsigned)info.taskTileNum);
+        // AscendC::printf(
+        //     "[PV-VERIFY] t=%u b=%u qh=%u kvh=%u xb=%u | gmOffV=%llu gmOffVSc=%llu spIdx=%u kvSeq=%llu yAval=%u yRsvd=%u\n",
+        //     (unsigned)coreTaskId, (unsigned)info.batchIdx, (unsigned)info.qHeadIdx, (unsigned)info.kvHeadIdx,
+        //     (unsigned)info.xBlockIdx,
+        //     (unsigned long long)info.gmOffsetV, (unsigned long long)info.gmOffsetVScale,
+        //     (unsigned)info.gmOffsetSparseIdx, (unsigned long long)info.kvSeqlen,
+        //     (unsigned)info.yBlockNumAval, (unsigned)info.yBlockNumRsvd);
+        // AscendC::printf(
+        //     "[QK-VERIFY] t=%u qsAct=%u qSOff=%lld | gmOffQ=%llu gmOffK=%llu gmOffQSc=%llu gmOffKSc=%llu "
+        //     "gathered=%llu taskTiles=%u\n",
+        //     (unsigned)coreTaskId, (unsigned)info.qsActBaseTile, (long long)qSOffset,
+        //     (unsigned long long)info.gmOffsetQ, (unsigned long long)info.gmOffsetK,
+        //     (unsigned long long)info.gmOffsetQScale, (unsigned long long)info.gmOffsetKScale,
+        //     (unsigned long long)info.gatheredKvSeqlen, (unsigned)info.taskTileNum);
     }
 
     // 每个 tile 调用一次，根据 coreTileLoop / curTaskTileIdx / taskInfo 填充 TileInfo

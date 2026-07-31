@@ -59,7 +59,7 @@ public:
         // FIXPIPE<->V 区
         for (uint32_t i = 0; i < MXFP4::UB_S_BUF_CNT; i++) {
             sUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementInput>(
-                MXFP4::UB_S_BUF_OFFSET + MXFP4::UB_S_BUF_SIZE * i);
+                MXFP4::UB_S_BUF_OFFSET + MXFP4::UB_S_INNER_BUF_OFFSET * i);
         }
         oTmpUBTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(MXFP4::UB_OTMP_BUF_OFFSET);
         localRowSumUBTensor = resource.ubBuf.template GetBufferByByte<float>(MXFP4::UB_LOCAL_ROW_SUM_OFFSET);
@@ -68,7 +68,7 @@ public:
         // 输出缓冲区
         for (uint32_t i = 0; i < MXFP4::UB_P_BUF_CNT; i++) {
             pUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDisguiseP>(
-                MXFP4::UB_P_BUF_OFFSET + MXFP4::UB_P_BUF_SIZE * i);
+                MXFP4::UB_P_BUF_OFFSET + MXFP4::UB_P_INNER_BUF_OFFSET * i);
         }
         oTransUBTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(MXFP4::UB_O_TRANS_OFFSET);
         for (uint32_t i = 0; i < MXFP4::UB_P_SCALE_CNT; i++) {
@@ -196,8 +196,8 @@ public:
         // DataCopy UB -> L1 搬运
         auto ubPLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutPUB>(MXFP4::KVS_BASE_SIZE / 4, MXFP4::QS_BASE_SIZE * 4);
         auto ubPTensorTla = tla::MakeTensor(pUBTensor[0], ubPLayoutTla, Arch::PositionUB{});
-        CopyPUBToPL1(l1PTensorTla, ubPTensorTla, tileInfo, actQsTile, spBuffIdx);
 
+        CopyPUBToPL1(l1PTensorTla, ubPTensorTla, tileInfo, actQsTile, spBuffIdx);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG + spBuffIdx);
     }
 
@@ -223,36 +223,48 @@ public:
         } else {
             // 消去高位 低位中间的间隙搬运
             // 低位搬运
-            AscendC::DataCopyParams repeatParams1;
-            repeatParams1.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (MXFP4::UB_P_QS_MAJOR_BYTE / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图低位(高位)地址8行
-            repeatParams1.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
-            repeatParams1.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
-            repeatParams1.dstStride = 0;
+            auto pUBTensorTlaTile = GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize, pUBTlaNSize / 2));
+            auto srcOffset = pUBTensorTlaTile.layout()(pUBTensorTlaTile.coord());
 
-            auto pUBTensorTlaTile1 = tla::GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2));
-            auto srcOffset1 = pUBTensorTlaTile1.layout()(pUBTensorTlaTile1.coord());
-            AscendC::DataCopy(l1PTensorTla.data(), ubPTensorTla.data()[srcOffset1], repeatParams1);
+            DataCopy(l1PTensorTla.data(), pUBTensorTlaTile.data()[srcOffset], {static_cast<uint16_t>(128/ 32 * 8 / 2), 8, 8, 0});
+            DataCopy(l1PTensorTla.data()[128 / 32* 8 / 2 * 256], pUBTensorTlaTile.data()[srcOffset + 16384],
+                {static_cast<uint16_t>(128 / 32 * 8 / 2), 8, 8, 0});
 
-            // 高位搬运
-            AscendC::DataCopyParams repeatParams2;
-            repeatParams2.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (MXFP4::UB_P_QS_MAJOR_BYTE / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图高位(低位)地址8行
-            repeatParams2.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
-            repeatParams2.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
-            repeatParams2.dstStride = 0;
 
-            uint32_t pL1NHalfSize = tla::get<1, 0>(ubPTensorTla.shape());
-            uint32_t xL1P = tileInfo.kvsActBaseTileAlign64;
-            uint32_t yL1P = 0;
-            if (tileInfo.kvsActBaseTileAlign64 != MXFP4::KVS_BASE_SIZE) {
-                xL1P = 0;
-                yL1P = pL1NHalfSize;
-            }
-            auto pUBTensorTlaTile2 = tla::GetTile(pUBTensorTlaTile1, tla::MakeCoord(pUBTlaMSize / 2, 0u), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2)); // 遗留
-            auto pl1TensorTlaTile = tla::GetTile(l1PTensorTla, tla::MakeCoord(xL1P, yL1P), tla::MakeShape(MXFP4::KVS_BASE_SIZE, pL1NHalfSize));
+            // AscendC::DataCopyParams repeatParams1;
+            // repeatParams1.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (MXFP4::UB_P_QS_MAJOR_BYTE / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图低位(高位)地址8行
+            // repeatParams1.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            // repeatParams1.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            // repeatParams1.dstStride = 0;
 
-            auto srcOffset2 = pUBTensorTlaTile2.layout()(pUBTensorTlaTile2.coord());
-            auto dstOffset2 = pl1TensorTlaTile.layout()(pl1TensorTlaTile.coord());
-            AscendC::DataCopy(pl1TensorTlaTile.data()[dstOffset2], pUBTensorTlaTile2.data()[srcOffset2], repeatParams2);
+            // auto pUBTensorTlaTile1 = tla::GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2));
+            // auto srcOffset1 = pUBTensorTlaTile1.layout()(pUBTensorTlaTile1.coord());
+            // AscendC::DataCopy(l1PTensorTla.data(), ubPTensorTla.data()[srcOffset1], repeatParams1);
+
+            // // 高位搬运
+            // AscendC::DataCopyParams repeatParams2;
+            // repeatParams2.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (MXFP4::UB_P_QS_MAJOR_BYTE / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图高位(低位)地址8行
+            // repeatParams2.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            // repeatParams2.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            // repeatParams2.dstStride = 0;
+
+            // uint32_t pL1NHalfSize = tla::get<1, 0>(ubPTensorTla.shape());
+            // uint32_t xL1P = tileInfo.kvsActBaseTileAlign64;
+            // uint32_t yL1P = 0;
+            // if (tileInfo.kvsActBaseTileAlign64 != MXFP4::KVS_BASE_SIZE) {
+            //     xL1P = 0;
+            //     yL1P = pL1NHalfSize;
+            // }
+            // auto pUBTensorTlaTile2 = tla::GetTile(pUBTensorTlaTile1, tla::MakeCoord(pUBTlaMSize / 2, 0u), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2)); // 遗留
+            // auto pl1TensorTlaTile = tla::GetTile(l1PTensorTla, tla::MakeCoord(xL1P, yL1P), tla::MakeShape(MXFP4::KVS_BASE_SIZE, pL1NHalfSize));
+
+            // auto srcOffset2 = pUBTensorTlaTile2.layout()(pUBTensorTlaTile2.coord());
+            // auto dstOffset2 = pl1TensorTlaTile.layout()(pl1TensorTlaTile.coord());
+
+            // AscendC::printf("srcOffset2:%d , dstOffset2:%d \n",srcOffset2,dstOffset2);
+
+
+            // AscendC::DataCopy(pl1TensorTlaTile.data()[dstOffset2], pUBTensorTlaTile2.data()[srcOffset2], repeatParams2);
         }
     }
 
