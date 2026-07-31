@@ -110,8 +110,8 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeRopeTile(TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
-                                           const LocalTensor<float> &outputUb, uint32_t outputBufferId)
+    __aicore__ inline void ComputeTile(TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
+                                      const LocalTensor<float> &outputUb, uint32_t outputBufferId)
     {
         if (tile.aivTokenSize == 0U) {
             return;
@@ -121,9 +121,16 @@ public:
         const uint32_t slotMappingBufferId =
             static_cast<uint32_t>(slotMappingBufferUseId_ % SLOT_MAPPING_BUFFER_NUM);
 
+        if constexpr (IS_MROPE) {
+            EnsureMropePositionWindow(tile);
+        }
         WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + inputBufferId));
         CopyPreprocessInputs(tile, inputBufferId, slotMappingBufferId);
-        CopyCosSinTile(tile, cosSinBufferId);
+        if constexpr (IS_MROPE) {
+            CopyMropeCosSinTile(tile, cosSinBufferId);
+        } else {
+            CopyCosSinTile(tile, cosSinBufferId);
+        }
         SetAndWaitMte2ToSMetadataReady();
         BuildCacheOffsetsFromSlotMapping(tile, slotMappingBufferId);
         SetAndWaitMte2ToVInputReady();
@@ -134,7 +141,11 @@ public:
         SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_V_CACHE_READY));
 
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_OUTPUT_UB_BASE + outputBufferId));
-        BuildRopeBf16NzUb(tile, inputBufferId, cosSinBufferId, outputUb);
+        if constexpr (IS_MROPE) {
+            BuildMropeBf16NzUb(tile, inputBufferId, cosSinBufferId, outputUb);
+        } else {
+            BuildRopeBf16NzUb(tile, inputBufferId, cosSinBufferId, outputUb);
+        }
 
         WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_V_CACHE_READY));
         ScatterVCache(tile, vOutBufferId);
@@ -146,49 +157,6 @@ public:
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_OUTPUT_UB_BASE + outputBufferId));
 
         SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + inputBufferId));
-        ++inputBufferUseId_;
-        ++cosSinBufferUseId_;
-        ++slotMappingBufferUseId_;
-    }
-
-    __aicore__ inline void ComputeMropeTile(TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
-                                            const LocalTensor<float> &outputUb, uint32_t outputBufferId)
-    {
-        if (tile.aivTokenSize == 0U) {
-            return;
-        }
-        const uint32_t inputBufferId = static_cast<uint32_t>(inputBufferUseId_ % INPUT_BUFFER_NUM);
-        const uint32_t cosSinBufferId = static_cast<uint32_t>(cosSinBufferUseId_ % COS_SIN_BUFFER_NUM);
-        const uint32_t slotMappingBufferId =
-            static_cast<uint32_t>(slotMappingBufferUseId_ % SLOT_MAPPING_BUFFER_NUM);
-
-        EnsureMropePositionWindow(tile);
-        WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + inputBufferId));
-        CopyPreprocessInputs(tile, inputBufferId, slotMappingBufferId);
-        CopyMropeCosSinTile(tile, cosSinBufferId);
-        SetAndWaitMte2ToSMetadataReady();
-        BuildCacheOffsetsFromSlotMapping(tile, slotMappingBufferId);
-        SetAndWaitMte2ToVInputReady();
-
-        const uint32_t vOutBufferId = static_cast<uint32_t>(vOutBufferUseId_ % V_OUT_BUFFER_NUM);
-        WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
-        QuantVToFp8(tile, inputBufferId, vOutBufferId);
-        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_V_CACHE_READY));
-
-        WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_OUTPUT_UB_BASE + outputBufferId));
-        BuildMropeBf16NzUb(tile, inputBufferId, cosSinBufferId, outputUb);
-
-        // QKV and raw cos/sin are no longer read by VF after preprocessing.
-        SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + inputBufferId));
-        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_V_CACHE_READY));
-        ScatterVCache(tile, vOutBufferId);
-        SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
-        ++vOutBufferUseId_;
-
-        SetAndWaitQkToMte3Ready();
-        CopyRopeBf16NzUbToL1Nz(tile, aRotL1Nz, outputUb);
-        SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_OUTPUT_UB_BASE + outputBufferId));
-
         ++inputBufferUseId_;
         ++cosSinBufferUseId_;
         ++slotMappingBufferUseId_;

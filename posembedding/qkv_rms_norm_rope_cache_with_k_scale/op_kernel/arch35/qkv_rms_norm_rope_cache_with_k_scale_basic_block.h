@@ -158,7 +158,7 @@ private:
             const LocalTensor<float> outputUb =
                 outputDbPoolUb_[outputBufferId * QKV_K_SCALE_MROPE_COMPACT_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
             WaitAicMte1ToAivMte3AConsumed();
-            vec_.ComputeMropeTile(tile, aRotL1Nz, outputUb, outputBufferId);
+            vec_.ComputeTile(tile, aRotL1Nz, outputUb, outputBufferId);
             SetAivMte3ToAicMte1AReady();
 
             if (tileCount > 0U) {
@@ -175,9 +175,9 @@ private:
         } else {
             const uint32_t outputBufferId = static_cast<uint32_t>(outputBufferUseId_ % ROPE_OUTPUT_BUFFER_NUM);
             WaitAicMte1ToAivMte3AConsumed();
-            vec_.ComputeRopeTile(tile, aRotL1Nz,
-                                 outputDbPoolUb_[outputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
-                                 outputBufferId);
+            vec_.ComputeTile(tile, aRotL1Nz,
+                             outputDbPoolUb_[outputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
+                             outputBufferId);
             ++outputBufferUseId_;
             if (isLastTile && tileCount > 0U) {
                 SetAivMte3ToAicFixOutputConsumed();
