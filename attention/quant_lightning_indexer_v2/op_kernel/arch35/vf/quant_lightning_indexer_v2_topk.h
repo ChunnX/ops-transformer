@@ -128,9 +128,9 @@ public:
     }
 
     __aicore__ inline void TopK(LocalTensor<uint16_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,
-                                LocalTensor<uint16_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx,
-                                uint32_t s2LoopNum, bool isNeedLD, bool returnValueFlag,
-                                uint32_t outputIdxOffset)
+                                LocalTensor<uint16_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t validDataLen,
+                                uint32_t loopIdx, uint32_t s2LoopNum, bool isNeedLD, bool returnValueFlag,
+                                uint32_t outputIdxOffset, uint32_t vMte2Event, uint32_t mte2VEvent)
     {
         // true: 开启返回hisValueLocal
         if (s2LoopNum == 1) {
@@ -161,12 +161,12 @@ public:
                                   (loopIdx - 1) * trunkLen;
             topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
                                           tmpIndexLocal, hisIndexLocal[loopIdx % 2], topK,
-                                          curProcess, s2SeqLen);
+                                          curProcess, validDataLen);
             if (loopIdx == s2LoopNum - 1) {
                 PipeBarrier<PIPE_V>();
                 if ((loopIdx + 1) % 2 == 1) { // 2:pingpong
-                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], QLIV2Common::Align(topK,
-                    (uint32_t)256));
+                    CopyIndicesToOutput(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
+                                        vMte2Event, mte2VEvent);
                 }
             }
         }
@@ -177,18 +177,18 @@ public:
             PipeBarrier<PIPE_V>();
             Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                              QLIV2Common::Align(topK, (uint32_t)256));
+            CopyIndicesToOutput(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], vMte2Event, mte2VEvent);
         } else if (loopIdx != 0 && isNeedLD) {
             topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
                                           idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
+            uint32_t curProcess = topK < trunkLen ? loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256) :
+                                  (loopIdx - 1) * trunkLen;
             topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
                                           tmpIndexLocal, hisIndexLocal[loopIdx % 2],
-                                          topK, loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256), s2SeqLen);
+                                          topK, curProcess, validDataLen);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                QLIV2Common::Align(topK, (uint32_t)256));
+            CopyIndicesToOutput(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], vMte2Event, mte2VEvent);
         }
         if (outputIdxOffset != 0) {
             topkb16gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
@@ -206,6 +206,16 @@ public:
     }
 
 private:
+    __aicore__ inline void CopyIndicesToOutput(LocalTensor<uint32_t>& dst, LocalTensor<uint32_t>& src,
+                                                uint32_t vMte2Event, uint32_t mte2VEvent)
+    {
+        SetFlag<HardEvent::V_MTE2>(vMte2Event);
+        WaitFlag<HardEvent::V_MTE2>(vMte2Event);
+        AscendC::DataCopy(dst, src, QLIV2Common::Align(topK, (uint32_t)256));
+        SetFlag<HardEvent::MTE2_V>(mte2VEvent);
+        WaitFlag<HardEvent::MTE2_V>(mte2VEvent);
+    }
+
     LocalTensor<uint32_t> hisIndexLocal[2];      // 每trunkLen长度的s2选出的topK个索引
     LocalTensor<uint32_t> histogramsLocal;       // 直方图的临时Buf 256 * 4B
     LocalTensor<uint32_t> idxHighLocal;          // 输入数据高8位Buf 256 * 4B

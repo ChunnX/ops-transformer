@@ -15,6 +15,8 @@
 
 #include "quant_lightning_indexer_v2_tiling.h"
 
+#include <limits>
+
 #include "../op_kernel/quant_lightning_indexer_v2_template_tiling_key.h"
 
 using namespace ge;
@@ -224,19 +226,35 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
-    auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
-    auto keyDequantScaleStrides = context_->GetDynamicInputStride(KEY_DEQUANT_SCALE_INDEX, 0);
+    opParamInfo_.keyStride0 = attrs->GetAttrPointer<int64_t>(ATTR_KEY_STRIDE0_INDEX);
+    opParamInfo_.keyDequantScaleStride0 = attrs->GetAttrPointer<int64_t>(ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX);
+    // key and key_dequant_scale are REQUIRED_INPUT tensors. Graph mode can expose their view strides here;
+    // eager mode forwards the aclTensor view strides through the internal attrs above.
+    auto keyStrides = context_->GetInputStride(KEY_INDEX);
+    auto keyDequantScaleStrides = context_->GetInputStride(KEY_DEQUANT_SCALE_INDEX);
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
         for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
-            keyStridesVec_.push_back(keyStrides->GetStride(i));
+            int64_t stride = keyStrides->GetStride(i);
+            OP_CHECK_IF(stride < 0 || stride > std::numeric_limits<uint32_t>::max(),
+                        OP_LOGE(opName_,
+                                "key stride at axis %zu must be non-negative and fit in uint32_t, but got %ld.",
+                                i, stride),
+                        return ge::GRAPH_FAILED);
+            keyStridesVec_.push_back(static_cast<uint32_t>(stride));
         }
     }
     if (keyDequantScaleStrides != nullptr && keyDequantScaleStrides->GetDimNum() > 0) {
         for (size_t i = 0; i < keyDequantScaleStrides->GetDimNum(); i++) {
-            keyDequantScaleStridesVec_.push_back(keyDequantScaleStrides->GetStride(i));
+            int64_t stride = keyDequantScaleStrides->GetStride(i);
+            OP_CHECK_IF(stride < 0 || stride > std::numeric_limits<uint32_t>::max(),
+                        OP_LOGE(opName_,
+                                "key_dequant_scale stride at axis %zu must be non-negative and fit in uint32_t, "
+                                "but got %ld.",
+                                i, stride),
+                        return ge::GRAPH_FAILED);
+            keyDequantScaleStridesVec_.push_back(static_cast<uint32_t>(stride));
         }
     }
-
     if (opParamInfo_.layOutQuery != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOutQuery);
     }
@@ -350,6 +368,14 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                         "input attr max_seqlens_q must >= -1, "
                         "but now max_seqlen_q is %d.",
                         *opParamInfo_.maxSeqlenQ),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.keyStride0 == nullptr || *opParamInfo_.keyStride0 < -1 ||
+                    *opParamInfo_.keyStride0 > std::numeric_limits<uint32_t>::max(),
+                OP_LOGE(opName_, "input attr key_stride0 must be -1 or fit in uint32_t."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.keyDequantScaleStride0 == nullptr || *opParamInfo_.keyDequantScaleStride0 < -1 ||
+                    *opParamInfo_.keyDequantScaleStride0 > std::numeric_limits<uint32_t>::max(),
+                OP_LOGE(opName_, "input attr key_dequant_scale_stride0 must be -1 or fit in uint32_t."),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1295,29 +1321,38 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
         }
     }
     if (kLayout_ == DataLayout::PA_BBND) {
-        if (!keyStridesVec_.empty()) {
+        int64_t keyStride0 = *opParamInfo_.keyStride0 >= 0
+                                 ? *opParamInfo_.keyStride0
+                                 : (keyStridesVec_.empty() ? int64_t{-1}
+                                                          : static_cast<int64_t>(keyStridesVec_[0]));
+        if (keyStride0 >= 0) {
             if (*opParamInfo_.quantMode == QUANT_MODE_MXFP4) {
                 OP_CHECK_IF(
-                    keyStridesVec_[0] <= 0 || keyStridesVec_[0] % MXFP4_PACK_NUM != 0,
+                    keyStride0 <= 0 || keyStride0 % MXFP4_PACK_NUM != 0,
                     OP_LOGE(opName_,
                             "when quant_mode is 5 and layout_k is PA_BBND, key stride0 must be positive and satisfy "
-                            "2-element FP4 packing alignment, but got %u",
-                            keyStridesVec_[0]),
+                            "2-element FP4 packing alignment, but got %lld",
+                            static_cast<long long>(keyStride0)),
                     return ge::GRAPH_FAILED);
             } else {
-                OP_CHECK_IF(keyStridesVec_[0] <= 0,
-                            OP_LOGE(opName_, "when layout_k is PA_BBND, key stride0 must be positive, but got %u",
-                                    keyStridesVec_[0]),
+                OP_CHECK_IF(keyStride0 <= 0,
+                            OP_LOGE(opName_, "when layout_k is PA_BBND, key stride0 must be positive, but got %lld",
+                                    static_cast<long long>(keyStride0)),
                             return ge::GRAPH_FAILED);
             }
         }
-        if (isMxQuantMode && !keyDequantScaleStridesVec_.empty()) {
+        int64_t keyScaleStride0 = *opParamInfo_.keyDequantScaleStride0 >= 0
+                                      ? *opParamInfo_.keyDequantScaleStride0
+                                      : (keyDequantScaleStridesVec_.empty()
+                                             ? int64_t{-1}
+                                             : static_cast<int64_t>(keyDequantScaleStridesVec_[0]));
+        if (isMxQuantMode && keyScaleStride0 >= 0) {
             OP_CHECK_IF(
-                keyDequantScaleStridesVec_[0] <= 0 || keyDequantScaleStridesVec_[0] % MX_E8M0_SCALE_PACK_NUM != 0,
+                keyScaleStride0 <= 0 || keyScaleStride0 % MX_E8M0_SCALE_PACK_NUM != 0,
                 OP_LOGE(opName_,
                         "when quant_mode is 3 or 5 and layout_k is PA_BBND, key_dequant_scale stride0 must be positive "
-                        "and satisfy 2-element E8M0 packing alignment, but got %u",
-                        keyDequantScaleStridesVec_[0]),
+                        "and satisfy 2-element E8M0 packing alignment, but got %lld",
+                        static_cast<long long>(keyScaleStride0)),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -1363,20 +1398,39 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
 
     QLIV2Info.keyStridesVec = keyStridesVec_;
     QLIV2Info.keyDequantScaleStridesVec = keyDequantScaleStridesVec_;
-    if (!keyStridesVec_.empty()) {
-        uint32_t keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
+    if (*opParamInfo_.keyStride0 >= 0 || !keyStridesVec_.empty()) {
+        uint32_t keyStride0 = *opParamInfo_.keyStride0 >= 0
+                                  ? static_cast<uint32_t>(*opParamInfo_.keyStride0)
+                                  : static_cast<uint32_t>(keyStridesVec_[0]);
         if (*opParamInfo_.quantMode == QUANT_MODE_MXFP4) {
             // FP4 shape stride以逻辑元素计数，kernel侧以打包后的uint8为寻址单位。
             keyStride0 /= MXFP4_PACK_NUM;
         }
         QLIV2Info.keyStride0 = keyStride0;
+    } else if (kLayout_ == DataLayout::PA_BBND) {
+        // A contiguous tensor may not carry view-stride metadata. Preserve PA physical block addressing
+        // by deriving its contiguous physical stride instead of leaving stride0 at zero.
+        uint32_t physicalHeadDim = static_cast<uint32_t>(headDim_);
+        if (*opParamInfo_.quantMode == QUANT_MODE_MXFP4) {
+            physicalHeadDim /= MXFP4_PACK_NUM;
+        }
+        QLIV2Info.keyStride0 =
+            static_cast<uint32_t>(blockSize_) * static_cast<uint32_t>(n2Size_) * physicalHeadDim;
     } else {
         QLIV2Info.keyStride0 = 0; // 非PA无需使用stride
     }
-    if (!keyDequantScaleStridesVec_.empty()) {
-        QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(keyDequantScaleStridesVec_[0]);
+    if (*opParamInfo_.keyDequantScaleStride0 >= 0 || !keyDequantScaleStridesVec_.empty()) {
+        QLIV2Info.keyDequantScaleStride0 = *opParamInfo_.keyDequantScaleStride0 >= 0
+                                               ? static_cast<uint32_t>(*opParamInfo_.keyDequantScaleStride0)
+                                               : static_cast<uint32_t>(keyDequantScaleStridesVec_[0]);
     } else if ((*opParamInfo_.quantMode == QUANT_MODE_MXFP8) || (*opParamInfo_.quantMode == QUANT_MODE_MXFP4)) {
-        QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(blockSize_) * (headDim_ / MX_SCALE_GROUP_SIZE);
+        QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(blockSize_) *
+                                                static_cast<uint32_t>(n2Size_) * (headDim_ / MX_SCALE_GROUP_SIZE);
+    } else if (kLayout_ == DataLayout::PA_BBND &&
+               *opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) {
+        // Per-token scale shape is [blockNum, blockSize, N2] for non-MX PA.
+        QLIV2Info.keyDequantScaleStride0 =
+            static_cast<uint32_t>(blockSize_) * static_cast<uint32_t>(n2Size_);
     } else {
         QLIV2Info.keyDequantScaleStride0 = 0;
     }
