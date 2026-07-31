@@ -70,12 +70,12 @@ public:
             pUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDisguiseP>(
                 MXFP4::UB_P_BUF_OFFSET + MXFP4::UB_P_INNER_BUF_OFFSET * i);
         }
-        oTransUBTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(MXFP4::UB_O_TRANS_BUF_OFFSET);
+        oTransUBTensor = resource.ubBuf.template GetBufferByByte<bfloat16_t>(MXFP4::UB_O_TRANS_BUF_OFFSET);
         for (uint32_t i = 0; i < MXFP4::UB_P_SCALE_CNT; i++) {
             pscaleUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementPScale>(
                 MXFP4::UB_P_SCALE_BUF_OFFSET + MXFP4::UB_P_SCALE_BUF_SIZE * i);
         }
-        oUBTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(MXFP4::UB_O_BUF_OFFSET);
+        oUBTensor = resource.ubBuf.template GetBufferByByte<bfloat16_t>(MXFP4::UB_O_BUF_OFFSET);
 
         // L1 <-> UB
         for (uint32_t i = 0; i < MXFP4::UB_PEER_GLOBAL_MAX_CNT; i++) {
@@ -287,9 +287,9 @@ private:
     AscendC::LocalTensor<float>        localRowSumUBTensor;                    // LocalRowSum
     AscendC::LocalTensor<float>        globalRowSumUBTensor;                  // GlobalRowSum
     AscendC::LocalTensor<ElementDisguiseP> pUBTensor[MXFP4::UB_P_BUF_CNT];      // vec1Res(P)
-    AscendC::LocalTensor<ElementOutput> oTransUBTensor;                       // attnTrans(空间复用P)
+    AscendC::LocalTensor<bfloat16_t> oTransUBTensor;                       // attnTrans(空间复用P)
     AscendC::LocalTensor<ElementPScale> pscaleUBTensor[MXFP4::UB_P_SCALE_CNT]; // pScale(复用P)
-    AscendC::LocalTensor<ElementOutput> oUBTensor;                            // attentionOut
+    AscendC::LocalTensor<bfloat16_t> oUBTensor;                            // attentionOut
     AscendC::LocalTensor<ElementMax>   peerGlobalMaxUBTensor[MXFP4::UB_PEER_GLOBAL_MAX_CNT]; // peerGlobalMax
     AscendC::LocalTensor<ElementMax>   softmaxMaxUBTensor;                    // softmaxMax
     AscendC::LocalTensor<ElementMax>   localGroupMaxUBTensor[MXFP4::UB_LOCAL_GROUP_MAX_CNT]; // LocalGroupMax
