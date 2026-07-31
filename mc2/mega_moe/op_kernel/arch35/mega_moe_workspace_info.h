@@ -103,6 +103,7 @@ constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr;
     GM_ADDR dispatchRevScalePtr;
+    GM_ADDR dispatchRevWeightsPtr{nullptr};
     GM_ADDR swigluQuantDataPtr;
     GM_ADDR swigluQuantScalePtr;
     GM_ADDR expertRevTokenNumsPtr;
@@ -142,6 +143,14 @@ struct WorkspaceInfo {
 
         workspaceSize += Ops::Base::CeilAlign(
             SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h / MXFP_SCALE_GROUP_NUM, ALIGN_512);
+
+        if (tilingData->topkWeightsPrefetch == 1 && tilingData->topoType == TOPO_TYPE_URMA) {
+            dispatchRevWeightsPtr = base + workspaceSize;
+            uint32_t weightAlignBytes = Ops::Base::CeilAlign(
+                static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->maxOutputSize) * static_cast<int64_t>(weightAlignBytes), ALIGN_512);
+        }
 
         swigluQuantDataPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
