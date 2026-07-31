@@ -9,6 +9,7 @@
  */
 
 #include "opdev/op_log.h"
+#include "opdev/op_dfx.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
 #include "aclnn_fused_infer_attention_score.h"
@@ -30,6 +31,14 @@ aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
     int64_t sparseMode, int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    L2_DFX_PHASE_1(aclnnFusedInferAttentionScore,
+                   DFX_IN(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKv,
+                          deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale,
+                          antiquantOffset, blockTable, queryPaddingSize, kvPaddingSize, numHeads, scaleValue,
+                          preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise,
+                          blockSize, antiquantMode, softmaxLseFlag),
+                   DFX_OUT(attentionOut, softmaxLse));
+
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
