@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 12
+KERNEL_CACHE_REVISION = 13
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -285,6 +285,8 @@ def tilelang_grad_kl_loss_single_kernel(
     bw_col_count = n_block // bw_col_block
     s1_tile_num = ceil_div(S1, s1_block)
     n_num = K // n_block
+    assert n_num % 2 == 0
+    owned_n_num = n_num // 2
     block_num = B * s1_tile_num * n_num
     d_num_query = DQuery // k_block
     d_num_rope = ceil_div(d_rope, k_block)
@@ -316,7 +318,9 @@ def tilelang_grad_kl_loss_single_kernel(
     # 宏收集阶段会校验条件表达式两侧的 BufferRegion。即使 full-valid
     # 最终不会生成 GetValue，也必须保留可被 [b, s] 合法索引的二维形状。
     k_real_size_shape = (B, S1)
-    valid_k_mask_shape = (B, S1, K)
+    # 每个标量占用独立的 32 字节 GM 行，避免短 MTE3 写覆盖相邻值。
+    v1_stats_shape = (B, S1, 4, 8)
+    dweight_partial_shape = (B, S1, 2, Nidx1)
     dkey_output_rows = B * S2
     assert dkey_output_rows % 32 == 0, (
         "The padded dKey output must preserve 32-row DMA alignment"
@@ -712,7 +716,6 @@ def tilelang_grad_kl_loss_single_kernel(
     @T.macro
     def vector1_psy_task(
         KRealSize,
-        ValidKMask,
         SoftmaxMax,
         SoftmaxSum,
         Weights,
@@ -745,7 +748,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_cross_flag(C1_TO_V1_SY_FLAGS[1])
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
-                valid_k_size = K if full_valid else KRealSize[bz_task, s1_id]
+                valid_k_size = K
+                if not full_valid:
+                    valid_k_size = KRealSize[bz_task, s1_id]
                 if vector_id == 0:
                     # P 和 SY 在不同 AIV 上运行。将两者的分配限定在各自分支内，
                     # 使 UB planner 可以重用相同的空间。
@@ -756,7 +761,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     v1_p_partial = T.alloc_ub(max(N1, n_block), calc_dtype)
                     v1_p_out = T.alloc_ub(n_block, calc_dtype)
                     v1_p_tmp = T.alloc_ub((N1, 8), calc_dtype)
-                    v1_p_valid = T.alloc_ub(n_block, calc_dtype)
+                    v1_p_offsets = T.alloc_ub(n_block, calc_dtype)
                     v1_p_valid_mask = T.alloc_ub(n_block // 8, "uint8")
 
                     T.copy(SoftmaxMax[bz_task, 0, s1_id, 0:N1], v1_p_max)
@@ -769,6 +774,13 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(v1_p_partial[0:N1], 1e-8)
                     T.pipe_barrier("v")
                     T.tile.max(v1_p_sum, v1_p_sum, v1_p_partial[0:N1])
+                    if not full_valid:
+                        T.tile.arith_progression(
+                            v1_p_offsets,
+                            T.cast(0, calc_dtype),
+                            T.cast(1, calc_dtype),
+                            n_block,
+                        )
                     for n_idx in T.serial(n_num):
                         n_start = n_idx * n_block
                         T.wait_flag("v", "mte2", 1)
@@ -779,15 +791,6 @@ def tilelang_grad_kl_loss_single_kernel(
                                         n_start:n_start + n_block],
                                 v1_p_bmm1,
                             )
-                            if not full_valid and n_start + n_block > valid_k_size:
-                                T.copy(
-                                    ValidKMask[
-                                        bz_task,
-                                        s1_id,
-                                        n_idx * n_block:(n_idx + 1) * n_block,
-                                    ],
-                                    v1_p_valid,
-                                )
                             T.set_flag("mte2", "v", 1)
                             T.wait_flag("mte2", "v", 1)
                             T.tile.mul(v1_p_bmm1, v1_p_bmm1, scale_value)
@@ -797,9 +800,9 @@ def tilelang_grad_kl_loss_single_kernel(
                             if not full_valid and n_start + n_block > valid_k_size:
                                 T.tile.compare(
                                     v1_p_valid_mask,
-                                    v1_p_valid,
-                                    0.0,
-                                    "GT",
+                                    v1_p_offsets,
+                                    valid_k_size - n_start,
+                                    "LT",
                                 )
                                 T.pipe_barrier("v")
                                 for p_mask_row in T.serial(N1):
@@ -860,14 +863,6 @@ def tilelang_grad_kl_loss_single_kernel(
                                         ],
                                     )
                             T.pipe_barrier("v")
-                            if not full_valid and n_start + n_block > valid_k_size:
-                                for p_mask_row in T.serial(N1):
-                                    T.tile.mul(
-                                        v1_p_bmm1[p_mask_row, 0:n_block],
-                                        v1_p_bmm1[p_mask_row, 0:n_block],
-                                        v1_p_valid,
-                                    )
-                                T.pipe_barrier("v")
                             # 这里使用的 Ascend 快速路径对 64x128 -> 128
                             # 稳定（VectorSy 也使用该路径），但单次 128x128
                             # axis-0 reduction 会破坏结果。这里对齐官方 N-loop
@@ -918,7 +913,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     v1_sy_weight = T.alloc_ub(Nidx1, calc_dtype)
                     v1_sy_weight_2d = T.alloc_ub((Nidx1, n_block), calc_dtype)
                     v1_sy_reduce = T.alloc_ub(n_block, calc_dtype)
-                    v1_sy_chunk = T.alloc_ub(n_block, calc_dtype)
+                    v1_sy_offsets = T.alloc_ub(n_block, calc_dtype)
                     v1_sy_valid_mask = T.alloc_ub(n_block // 8, "uint8")
                     v1_sy_broadcast = T.alloc_ub((1, n_block), calc_dtype)
                     v1_sy_max = T.alloc_ub((1,), calc_dtype)
@@ -959,6 +954,13 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_sy_tmp,
                         )
                     T.tile.fill(v1_sy_max, -T.infinity(calc_dtype))
+                    if not full_valid:
+                        T.tile.arith_progression(
+                            v1_sy_offsets,
+                            T.cast(0, calc_dtype),
+                            T.cast(1, calc_dtype),
+                            n_block,
+                        )
                     T.set_flag("v", "mte2", 3)
                     for n_idx in T.serial(n_num):
                         n_start = n_idx * n_block
@@ -969,15 +971,6 @@ def tilelang_grad_kl_loss_single_kernel(
                                         n_start:n_start + n_block],
                                 v1_sy_storage[0:Nidx1, 0:n_block],
                             )
-                            if not full_valid and n_start + n_block > valid_k_size:
-                                T.copy(
-                                    ValidKMask[
-                                        bz_task,
-                                        s1_id,
-                                        n_idx * n_block:(n_idx + 1) * n_block,
-                                    ],
-                                    v1_sy_chunk,
-                                )
                             T.set_flag("mte2", "v", 3)
                             T.wait_flag("mte2", "v", 3)
                             T.tile.mul(
@@ -994,9 +987,9 @@ def tilelang_grad_kl_loss_single_kernel(
                             if not full_valid and n_start + n_block > valid_k_size:
                                 T.tile.compare(
                                     v1_sy_valid_mask,
-                                    v1_sy_chunk,
-                                    0.0,
-                                    "GT",
+                                    v1_sy_offsets,
+                                    valid_k_size - n_start,
+                                    "LT",
                                 )
                                 T.pipe_barrier("v")
                                 T.tile.select(
@@ -1054,9 +1047,9 @@ def tilelang_grad_kl_loss_single_kernel(
                                 # 尾块中的无效列选择为 0。
                                 T.tile.compare(
                                     v1_sy_valid_mask,
-                                    v1_sy_chunk,
-                                    0.0,
-                                    "GT",
+                                    v1_sy_offsets,
+                                    valid_k_size - n_start,
+                                    "LT",
                                 )
                                 T.pipe_barrier("v")
                                 T.tile.select(
@@ -1127,7 +1120,6 @@ def tilelang_grad_kl_loss_single_kernel(
     @T.macro
     def vector1_backward_task(
         KRealSize,
-        ValidKMask,
         Weights,
         bmm2Res,
         PReduced,
@@ -1156,7 +1148,8 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_p = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_sy = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_diff = T.alloc_ub(bw_col_block, calc_dtype)
-            v1_bw_valid = T.alloc_ub(bw_col_block, calc_dtype)
+            v1_bw_offsets = T.alloc_ub(bw_col_block, calc_dtype)
+            v1_bw_valid_mask = T.alloc_ub(bw_col_block // 8, "uint8")
             v1_bw_diff_2d = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
@@ -1181,6 +1174,13 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_row_tmp = T.alloc_ub((rows_per_aiv, 8), calc_dtype)
 
             T.tile.fill(v1_bw_eps, 1e-8)
+            if not full_valid:
+                T.tile.arith_progression(
+                    v1_bw_offsets,
+                    T.cast(0, calc_dtype),
+                    T.cast(1, calc_dtype),
+                    bw_col_block,
+                )
             # FP16 reluGrad store 与下一轮 FP32 diff_2d 共享物理 UB。
             # 下一轮的覆写者是 Vector，不是 MTE2，故由 MTE3 直接归还给 V。
             T.set_flag("mte3", "v", 2)
@@ -1250,11 +1250,6 @@ def tilelang_grad_kl_loss_single_kernel(
                             ],
                             v1_bw_bmm2,
                         )
-                        if not full_valid:
-                            T.copy(
-                                ValidKMask[bz_task, s1_id, bw_col_start:bw_col_end],
-                                v1_bw_valid,
-                            )
                         T.set_flag("mte2", "v", 3)
                         T.wait_flag("mte2", "v", 3)
                         # v1_bw_diff_2d 与上一块正在被 MTE3 读取的
@@ -1335,11 +1330,20 @@ def tilelang_grad_kl_loss_single_kernel(
                                 v1_bw_p,
                             )
                             T.pipe_barrier("v")
-                            if not full_valid:
-                                T.tile.mul(
+                            if not full_valid and bw_col_end > valid_k_size:
+                                T.tile.compare(
+                                    v1_bw_valid_mask,
+                                    v1_bw_offsets,
+                                    valid_k_size - bw_col_start,
+                                    "LT",
+                                )
+                                T.pipe_barrier("v")
+                                T.tile.select(
                                     v1_bw_loss_2d[0, :],
+                                    v1_bw_valid_mask,
                                     v1_bw_loss_2d[0, :],
-                                    v1_bw_valid,
+                                    0.0,
+                                    "VSEL_TENSOR_SCALAR_MODE",
                                 )
                                 T.pipe_barrier("v")
                             T.reduce_sum(
@@ -1409,6 +1413,748 @@ def tilelang_grad_kl_loss_single_kernel(
 
             T.wait_flag("mte3", "v", 2)
             T.wait_flag("mte3", "v", 3)
+            if task_slot == 0:
+                T.set_cross_flag("MTE3", V1_TO_C2_FLAGS[0])
+            else:
+                T.set_cross_flag("MTE3", V1_TO_C2_FLAGS[1])
+
+    @T.macro
+    def vector1_owned_p_task(
+        KRealSize,
+        SoftmaxMax,
+        SoftmaxSum,
+        bmm1Res,
+        PReduced,
+        bz_task,
+        s1_begin_task,
+        s1_end_task,
+        task_slot,
+        vector_id,
+    ):
+        """两个 AIV 分别计算连续一半 K 的 PReduced。"""
+        with T.Scope("V"):
+            if task_slot == 0:
+                T.wait_cross_flag(C1_TO_V1_P_FLAGS[0])
+            else:
+                T.wait_cross_flag(C1_TO_V1_P_FLAGS[1])
+
+            v1_op_bmm1 = T.alloc_ub((N1, n_block), calc_dtype)
+            v1_op_max = T.alloc_ub(N1, calc_dtype)
+            v1_op_sum = T.alloc_ub(N1, calc_dtype)
+            v1_op_partial = T.alloc_ub(max(N1, n_block), calc_dtype)
+            v1_op_out = T.alloc_ub(n_block, calc_dtype)
+            v1_op_tmp = T.alloc_ub((N1, 8), calc_dtype)
+            v1_op_offsets = T.alloc_ub(n_block, calc_dtype)
+            v1_op_mask = T.alloc_ub(n_block // 8, "uint8")
+
+            if not full_valid:
+                T.tile.arith_progression(
+                    v1_op_offsets,
+                    T.cast(0, calc_dtype),
+                    T.cast(1, calc_dtype),
+                    n_block,
+                )
+            for s1_id in T.serial(s1_begin_task, s1_end_task):
+                valid_k_size = K
+                if not full_valid:
+                    valid_k_size = KRealSize[bz_task, s1_id]
+                T.copy(SoftmaxMax[bz_task, 0, s1_id, 0:N1], v1_op_max)
+                T.copy(SoftmaxSum[bz_task, 0, s1_id, 0:N1], v1_op_sum)
+                T.set_flag("mte2", "v", 0)
+                T.set_flag("mte3", "v", 0)
+                T.set_flag("v", "mte2", 1)
+                T.wait_flag("mte2", "v", 0)
+                T.tile.abs(v1_op_sum, v1_op_sum)
+                T.tile.fill(v1_op_partial[0:N1], 1e-8)
+                T.pipe_barrier("v")
+                T.tile.max(v1_op_sum, v1_op_sum, v1_op_partial[0:N1])
+
+                for local_n in T.serial(owned_n_num):
+                    n_idx = vector_id * owned_n_num + local_n
+                    n_start = n_idx * n_block
+                    T.wait_flag("v", "mte2", 1)
+                    T.wait_flag("mte3", "v", 0)
+                    if n_start < valid_k_size:
+                        T.copy(
+                            bmm1Res[bz_task, s1_id, 0:N1,
+                                    n_start:n_start + n_block],
+                            v1_op_bmm1,
+                        )
+                        T.set_flag("mte2", "v", 1)
+                        T.wait_flag("mte2", "v", 1)
+                        T.tile.mul(v1_op_bmm1, v1_op_bmm1, scale_value)
+                        T.pipe_barrier("v")
+                        if not full_valid and n_start + n_block > valid_k_size:
+                            T.tile.compare(
+                                v1_op_mask,
+                                v1_op_offsets,
+                                valid_k_size - n_start,
+                                "LT",
+                            )
+                            T.pipe_barrier("v")
+                            for p_mask_row in T.serial(N1):
+                                T.tile.select(
+                                    v1_op_bmm1[p_mask_row, 0:n_block],
+                                    v1_op_mask,
+                                    v1_op_bmm1[p_mask_row, 0:n_block],
+                                    -T.infinity(calc_dtype),
+                                    "VSEL_TENSOR_SCALAR_MODE",
+                                )
+                            T.pipe_barrier("v")
+                        for p_row_chunk in T.serial(p_row_chunk_count):
+                            p_row_start = p_row_chunk * p_rows_per_chunk
+                            for p_col_chunk in T.serial(p_col_chunk_count):
+                                p_col_start = p_col_chunk * p_cols_per_chunk
+                                T.tile.row_expand_sub_experiment(
+                                    v1_op_bmm1[
+                                        p_row_start:p_row_start + p_rows_per_chunk,
+                                        p_col_start:p_col_start + p_cols_per_chunk,
+                                    ],
+                                    v1_op_bmm1[
+                                        p_row_start:p_row_start + p_rows_per_chunk,
+                                        p_col_start:p_col_start + p_cols_per_chunk,
+                                    ],
+                                    v1_op_max[
+                                        p_row_start:p_row_start + p_rows_per_chunk
+                                    ],
+                                    v1_op_tmp[
+                                        p_row_start:p_row_start + p_rows_per_chunk, 0:8
+                                    ],
+                                )
+                        T.pipe_barrier("v")
+                        T.tile.exp(v1_op_bmm1, v1_op_bmm1)
+                        T.pipe_barrier("v")
+                        for p_row_chunk in T.serial(p_row_chunk_count):
+                            p_row_start = p_row_chunk * p_rows_per_chunk
+                            for p_col_chunk in T.serial(p_col_chunk_count):
+                                p_col_start = p_col_chunk * p_cols_per_chunk
+                                T.tile.row_expand_div_experiment(
+                                    v1_op_bmm1[
+                                        p_row_start:p_row_start + p_rows_per_chunk,
+                                        p_col_start:p_col_start + p_cols_per_chunk,
+                                    ],
+                                    v1_op_bmm1[
+                                        p_row_start:p_row_start + p_rows_per_chunk,
+                                        p_col_start:p_col_start + p_cols_per_chunk,
+                                    ],
+                                    v1_op_sum[
+                                        p_row_start:p_row_start + p_rows_per_chunk
+                                    ],
+                                    v1_op_tmp[
+                                        p_row_start:p_row_start + p_rows_per_chunk, 0:8
+                                    ],
+                                )
+                        T.pipe_barrier("v")
+                        T.tile.fill(v1_op_out, 0.0)
+                        T.pipe_barrier("v")
+                        for p_reduce_chunk in T.serial(p_row_chunk_count):
+                            p_reduce_start = p_reduce_chunk * p_rows_per_chunk
+                            T.reduce_sum(
+                                v1_op_bmm1[
+                                    p_reduce_start:p_reduce_start + p_rows_per_chunk,
+                                    0:n_block,
+                                ],
+                                v1_op_partial[0:n_block],
+                                0,
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.add(v1_op_out, v1_op_out, v1_op_partial[0:n_block])
+                            T.pipe_barrier("v")
+                        T.tile.mul(v1_op_out, v1_op_out, 1.0 / N1)
+                    else:
+                        T.tile.fill(v1_op_out, 0.0)
+                    T.set_flag("v", "mte2", 1)
+                    T.set_flag("v", "mte3", 0)
+                    T.wait_flag("v", "mte3", 0)
+                    T.copy(
+                        v1_op_out,
+                        PReduced[bz_task, s1_id, n_start:n_start + n_block],
+                    )
+                    T.set_flag("mte3", "v", 0)
+
+                T.wait_flag("v", "mte2", 1)
+                T.wait_flag("mte3", "v", 0)
+
+    @T.macro
+    def vector1_owned_sy_max_task(
+        KRealSize,
+        Weights,
+        bmm2Res,
+        V1Stats,
+        bz_task,
+        s1_begin_task,
+        s1_end_task,
+        task_slot,
+        vector_id,
+    ):
+        """计算所属 K 半区的 weighted score 最大值。"""
+        with T.Scope("V"):
+            if task_slot == 0:
+                T.wait_cross_flag(C1_TO_V1_SY_FLAGS[0])
+            else:
+                T.wait_cross_flag(C1_TO_V1_SY_FLAGS[1])
+
+            v1_om_bmm2 = T.alloc_ub((Nidx1, n_block), calc_dtype)
+            v1_om_weight_half = T.alloc_ub(Nidx1, input_dtype)
+            v1_om_weight = T.alloc_ub(Nidx1, calc_dtype)
+            v1_om_weight_2d = T.alloc_ub((Nidx1, n_block), calc_dtype)
+            v1_om_score = T.alloc_ub(n_block, calc_dtype)
+            v1_om_offsets = T.alloc_ub(n_block, calc_dtype)
+            v1_om_mask = T.alloc_ub(n_block // 8, "uint8")
+            v1_om_reduce_2d = T.alloc_ub((1, n_block), calc_dtype)
+            v1_om_local_max = T.alloc_ub((1,), calc_dtype)
+            v1_om_tile_max = T.alloc_ub((1,), calc_dtype)
+            v1_om_floor = T.alloc_ub((1,), calc_dtype)
+            v1_om_tmp = T.alloc_ub((Nidx1, 8), calc_dtype)
+
+            if not full_valid:
+                T.tile.arith_progression(
+                    v1_om_offsets,
+                    T.cast(0, calc_dtype),
+                    T.cast(1, calc_dtype),
+                    n_block,
+                )
+            for s1_id in T.serial(s1_begin_task, s1_end_task):
+                valid_k_size = K
+                if not full_valid:
+                    valid_k_size = KRealSize[bz_task, s1_id]
+                T.copy(Weights[bz_task, s1_id, 0:Nidx1], v1_om_weight_half)
+                T.set_flag("mte2", "v", 2)
+                T.set_flag("mte3", "v", 1)
+                T.wait_flag("mte2", "v", 2)
+                T.tile.cast(v1_om_weight, v1_om_weight_half, "CAST_NONE", Nidx1)
+                T.tile.fill(v1_om_weight_2d, 1.0)
+                T.pipe_barrier("v")
+                for sy_col_chunk in T.serial(p_col_chunk_count):
+                    sy_col_start = sy_col_chunk * p_cols_per_chunk
+                    T.tile.row_expand_mul_experiment(
+                        v1_om_weight_2d[
+                            0:Nidx1, sy_col_start:sy_col_start + p_cols_per_chunk
+                        ],
+                        v1_om_weight_2d[
+                            0:Nidx1, sy_col_start:sy_col_start + p_cols_per_chunk
+                        ],
+                        v1_om_weight,
+                        v1_om_tmp,
+                    )
+                T.tile.fill(v1_om_local_max, -T.infinity(calc_dtype))
+                T.set_flag("v", "mte2", 3)
+                for local_n in T.serial(owned_n_num):
+                    n_idx = vector_id * owned_n_num + local_n
+                    n_start = n_idx * n_block
+                    if n_start < valid_k_size:
+                        T.wait_flag("v", "mte2", 3)
+                        T.copy(
+                            bmm2Res[bz_task, s1_id, 0:Nidx1,
+                                    n_start:n_start + n_block],
+                            v1_om_bmm2,
+                        )
+                        T.set_flag("mte2", "v", 3)
+                        T.wait_flag("mte2", "v", 3)
+                        T.tile.mul(v1_om_bmm2, v1_om_bmm2, v1_om_weight_2d)
+                        T.pipe_barrier("v")
+                        T.reduce_sum(v1_om_bmm2, v1_om_score, 0)
+                        if not full_valid and n_start + n_block > valid_k_size:
+                            T.tile.compare(
+                                v1_om_mask,
+                                v1_om_offsets,
+                                valid_k_size - n_start,
+                                "LT",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_om_score,
+                                v1_om_mask,
+                                v1_om_score,
+                                -T.infinity(calc_dtype),
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                        T.pipe_barrier("v")
+                        T.tile.mul(v1_om_reduce_2d[0, :], v1_om_score, 1.0)
+                        T.pipe_barrier("v")
+                        T.reduce_max(v1_om_reduce_2d, v1_om_tile_max, 1)
+                        T.pipe_barrier("v")
+                        T.tile.max(v1_om_local_max, v1_om_local_max, v1_om_tile_max)
+                        T.set_flag("v", "mte2", 3)
+                T.tile.fill(v1_om_floor, -1e20)
+                T.pipe_barrier("v")
+                T.tile.max(v1_om_local_max, v1_om_local_max, v1_om_floor)
+                T.wait_flag("v", "mte2", 3)
+                T.set_flag("v", "mte3", 1)
+                T.wait_flag("v", "mte3", 1)
+                T.copy(
+                    v1_om_local_max,
+                    V1Stats[bz_task, s1_id, vector_id, 0:1],
+                )
+                T.set_flag("mte3", "v", 1)
+                T.wait_flag("mte3", "v", 1)
+
+            if task_slot == 0:
+                T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAGS[0])
+                T.wait_cross_flag(V1_PSY_RELAY_FLAGS[0])
+            else:
+                T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAGS[1])
+                T.wait_cross_flag(V1_PSY_RELAY_FLAGS[1])
+
+    @T.macro
+    def vector1_owned_sy_sum_task(
+        KRealSize,
+        Weights,
+        bmm2Res,
+        V1Stats,
+        bz_task,
+        s1_begin_task,
+        s1_end_task,
+        task_slot,
+        vector_id,
+    ):
+        """使用跨 AIV 全局 max 计算所属 K 半区的 exp sum。"""
+        with T.Scope("V"):
+            v1_os_bmm2 = T.alloc_ub((Nidx1, n_block), calc_dtype)
+            v1_os_weight_half = T.alloc_ub(Nidx1, input_dtype)
+            v1_os_weight = T.alloc_ub(Nidx1, calc_dtype)
+            v1_os_weight_2d = T.alloc_ub((Nidx1, n_block), calc_dtype)
+            v1_os_score = T.alloc_ub(n_block, calc_dtype)
+            v1_os_offsets = T.alloc_ub(n_block, calc_dtype)
+            v1_os_mask = T.alloc_ub(n_block // 8, "uint8")
+            v1_os_reduce_2d = T.alloc_ub((1, n_block), calc_dtype)
+            v1_os_stats = T.alloc_ub((2, 8), calc_dtype)
+            v1_os_global_max = T.alloc_ub((1,), calc_dtype)
+            v1_os_global_max_2d = T.alloc_ub((1, n_block), calc_dtype)
+            v1_os_local_sum = T.alloc_ub((1,), calc_dtype)
+            v1_os_tile_sum = T.alloc_ub((1,), calc_dtype)
+            v1_os_tmp = T.alloc_ub((Nidx1, 8), calc_dtype)
+
+            if not full_valid:
+                T.tile.arith_progression(
+                    v1_os_offsets,
+                    T.cast(0, calc_dtype),
+                    T.cast(1, calc_dtype),
+                    n_block,
+                )
+            for s1_id in T.serial(s1_begin_task, s1_end_task):
+                valid_k_size = K
+                if not full_valid:
+                    valid_k_size = KRealSize[bz_task, s1_id]
+                T.copy(V1Stats[bz_task, s1_id, 0:2, 0:8], v1_os_stats)
+                T.copy(Weights[bz_task, s1_id, 0:Nidx1], v1_os_weight_half)
+                T.set_flag("mte2", "v", 2)
+                T.wait_flag("mte2", "v", 2)
+                T.tile.max(
+                    v1_os_global_max,
+                    v1_os_stats[0, 0:1],
+                    v1_os_stats[1, 0:1],
+                )
+                T.tile.cast(v1_os_weight, v1_os_weight_half, "CAST_NONE", Nidx1)
+                T.tile.fill(v1_os_weight_2d, 1.0)
+                T.pipe_barrier("v")
+                for sy_col_chunk in T.serial(p_col_chunk_count):
+                    sy_col_start = sy_col_chunk * p_cols_per_chunk
+                    T.tile.row_expand_mul_experiment(
+                        v1_os_weight_2d[
+                            0:Nidx1, sy_col_start:sy_col_start + p_cols_per_chunk
+                        ],
+                        v1_os_weight_2d[
+                            0:Nidx1, sy_col_start:sy_col_start + p_cols_per_chunk
+                        ],
+                        v1_os_weight,
+                        v1_os_tmp,
+                    )
+                T.tile.broadcast(v1_os_global_max_2d, v1_os_global_max)
+                T.tile.fill(v1_os_local_sum, 0.0)
+                T.set_flag("v", "mte2", 3)
+                T.set_flag("mte3", "v", 1)
+                for local_n in T.serial(owned_n_num):
+                    n_idx = vector_id * owned_n_num + local_n
+                    n_start = n_idx * n_block
+                    if n_start < valid_k_size:
+                        T.wait_flag("v", "mte2", 3)
+                        T.copy(
+                            bmm2Res[bz_task, s1_id, 0:Nidx1,
+                                    n_start:n_start + n_block],
+                            v1_os_bmm2,
+                        )
+                        T.set_flag("mte2", "v", 3)
+                        T.wait_flag("mte2", "v", 3)
+                        T.tile.mul(v1_os_bmm2, v1_os_bmm2, v1_os_weight_2d)
+                        T.pipe_barrier("v")
+                        T.reduce_sum(v1_os_bmm2, v1_os_score, 0)
+                        if not full_valid and n_start + n_block > valid_k_size:
+                            T.tile.compare(
+                                v1_os_mask,
+                                v1_os_offsets,
+                                valid_k_size - n_start,
+                                "LT",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_os_score,
+                                v1_os_mask,
+                                v1_os_score,
+                                -T.infinity(calc_dtype),
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                        T.pipe_barrier("v")
+                        T.tile.sub(
+                            v1_os_score,
+                            v1_os_score,
+                            v1_os_global_max_2d[0, :],
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.exp(v1_os_score, v1_os_score)
+                        T.pipe_barrier("v")
+                        T.tile.mul(v1_os_reduce_2d[0, :], v1_os_score, 1.0)
+                        T.pipe_barrier("v")
+                        T.reduce_sum(v1_os_reduce_2d, v1_os_tile_sum, 1)
+                        T.pipe_barrier("v")
+                        T.tile.add(v1_os_local_sum, v1_os_local_sum, v1_os_tile_sum)
+                        T.set_flag("v", "mte2", 3)
+                T.wait_flag("v", "mte2", 3)
+                T.set_flag("v", "mte3", 1)
+                T.wait_flag("v", "mte3", 1)
+                T.copy(
+                    v1_os_local_sum,
+                    V1Stats[bz_task, s1_id, 2 + vector_id, 0:1],
+                )
+                T.set_flag("mte3", "v", 1)
+                T.wait_flag("mte3", "v", 1)
+
+            if task_slot == 0:
+                T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAGS[0])
+                T.wait_cross_flag(V1_PSY_RELAY_FLAGS[0])
+            else:
+                T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAGS[1])
+                T.wait_cross_flag(V1_PSY_RELAY_FLAGS[1])
+
+    @T.macro
+    def vector1_owned_backward_task(
+        KRealSize,
+        Weights,
+        bmm2Res,
+        PReduced,
+        V1Stats,
+        DWeightPartial,
+        reluGradRes,
+        LossPartial,
+        bz_task,
+        s1_begin_task,
+        s1_end_task,
+        task_slot,
+        vector_id,
+    ):
+        """在所属 K 半区现场重算 SY，并生成 backward partial。"""
+        with T.Scope("V"):
+            v1_ob_weight_half = T.alloc_ub(Nidx1, input_dtype)
+            v1_ob_weight = T.alloc_ub(Nidx1, calc_dtype)
+            v1_ob_weight_2d = T.alloc_ub((Nidx1, bw_col_block), calc_dtype)
+            v1_ob_stats = T.alloc_ub((4, 8), calc_dtype)
+            v1_ob_global_max = T.alloc_ub((1,), calc_dtype)
+            v1_ob_global_sum = T.alloc_ub((1,), calc_dtype)
+            v1_ob_global_max_2d = T.alloc_ub((1, bw_col_block), calc_dtype)
+            v1_ob_global_sum_2d = T.alloc_ub((1, bw_col_block), calc_dtype)
+            v1_ob_p = T.alloc_ub(bw_col_block, calc_dtype)
+            v1_ob_sy = T.alloc_ub(bw_col_block, calc_dtype)
+            v1_ob_diff = T.alloc_ub(bw_col_block, calc_dtype)
+            v1_ob_offsets = T.alloc_ub(bw_col_block, calc_dtype)
+            v1_ob_mask = T.alloc_ub(bw_col_block // 8, "uint8")
+            v1_ob_diff_2d = T.alloc_ub((Nidx1, bw_col_block), calc_dtype)
+            v1_ob_bmm2 = T.alloc_ub((Nidx1, bw_col_block), calc_dtype)
+            v1_ob_work = T.alloc_ub((Nidx1, bw_col_block), calc_dtype)
+            v1_ob_gate = T.alloc_ub((Nidx1, bw_col_block), calc_dtype)
+            v1_ob_rg_half = T.alloc_ub((Nidx1, bw_col_block), input_dtype)
+            v1_ob_dw = T.alloc_ub(Nidx1, calc_dtype)
+            v1_ob_dw_accum = T.alloc_ub(Nidx1, calc_dtype)
+            v1_ob_eps = T.alloc_ub((1,), calc_dtype)
+            v1_ob_loss_p = T.alloc_ub(bw_col_block, calc_dtype)
+            v1_ob_log_p = T.alloc_ub(bw_col_block, calc_dtype)
+            v1_ob_log_sy = T.alloc_ub(bw_col_block, calc_dtype)
+            v1_ob_loss_2d = T.alloc_ub((1, bw_col_block), calc_dtype)
+            v1_ob_loss_sum = T.alloc_ub((1,), calc_dtype)
+            v1_ob_loss_accum = T.alloc_ub((1,), calc_dtype)
+            v1_ob_row_tmp = T.alloc_ub((Nidx1, 8), calc_dtype)
+
+            if not full_valid:
+                T.tile.arith_progression(
+                    v1_ob_offsets,
+                    T.cast(0, calc_dtype),
+                    T.cast(1, calc_dtype),
+                    bw_col_block,
+                )
+            T.tile.fill(v1_ob_eps, 1e-8)
+            T.set_flag("mte3", "v", 2)
+            T.set_flag("mte3", "v", 3)
+            for s1_id in T.serial(s1_begin_task, s1_end_task):
+                valid_k_size = K
+                if not full_valid:
+                    valid_k_size = KRealSize[bz_task, s1_id]
+                T.copy(Weights[bz_task, s1_id, 0:Nidx1], v1_ob_weight_half)
+                T.copy(V1Stats[bz_task, s1_id, 0:4, 0:8], v1_ob_stats)
+                T.set_flag("mte2", "v", 2)
+                T.wait_flag("mte2", "v", 2)
+                T.tile.cast(v1_ob_weight, v1_ob_weight_half, "CAST_NONE", Nidx1)
+                T.tile.fill(v1_ob_weight_2d, 1.0)
+                T.pipe_barrier("v")
+                T.tile.row_expand_mul_experiment(
+                    v1_ob_weight_2d,
+                    v1_ob_weight_2d,
+                    v1_ob_weight,
+                    v1_ob_row_tmp,
+                )
+                T.tile.max(
+                    v1_ob_global_max,
+                    v1_ob_stats[0, 0:1],
+                    v1_ob_stats[1, 0:1],
+                )
+                T.tile.add(
+                    v1_ob_global_sum,
+                    v1_ob_stats[2, 0:1],
+                    v1_ob_stats[3, 0:1],
+                )
+                T.pipe_barrier("v")
+                T.tile.max(v1_ob_global_sum, v1_ob_global_sum, v1_ob_eps)
+                T.tile.broadcast(v1_ob_global_max_2d, v1_ob_global_max)
+                T.tile.broadcast(v1_ob_global_sum_2d, v1_ob_global_sum)
+                T.tile.fill(v1_ob_dw_accum, 0.0)
+                T.tile.fill(v1_ob_loss_accum, 0.0)
+                T.set_flag("v", "mte2", 3)
+
+                for local_n in T.serial(owned_n_num):
+                    n_idx = vector_id * owned_n_num + local_n
+                    for bw_col_id in T.serial(bw_col_count):
+                        bw_col_start = (
+                            n_idx * n_block + bw_col_id * bw_col_block
+                        )
+                        bw_col_end = bw_col_start + bw_col_block
+                        T.wait_flag("v", "mte2", 3)
+                        if bw_col_start < valid_k_size:
+                            T.copy(
+                                PReduced[bz_task, s1_id,
+                                         bw_col_start:bw_col_end],
+                                v1_ob_p,
+                            )
+                            T.copy(
+                                bmm2Res[
+                                    bz_task,
+                                    s1_id,
+                                    0:Nidx1,
+                                    bw_col_start:bw_col_end,
+                                ],
+                                v1_ob_bmm2,
+                            )
+                            T.set_flag("mte2", "v", 3)
+                            T.wait_flag("mte2", "v", 3)
+                            T.wait_flag("mte3", "v", 2)
+
+                            T.tile.mul(
+                                v1_ob_work,
+                                v1_ob_bmm2,
+                                v1_ob_weight_2d,
+                            )
+                            T.pipe_barrier("v")
+                            T.reduce_sum(v1_ob_work, v1_ob_sy, 0)
+                            if not full_valid and bw_col_end > valid_k_size:
+                                T.tile.compare(
+                                    v1_ob_mask,
+                                    v1_ob_offsets,
+                                    valid_k_size - bw_col_start,
+                                    "LT",
+                                )
+                                T.pipe_barrier("v")
+                                T.tile.select(
+                                    v1_ob_sy,
+                                    v1_ob_mask,
+                                    v1_ob_sy,
+                                    -T.infinity(calc_dtype),
+                                    "VSEL_TENSOR_SCALAR_MODE",
+                                )
+                            T.pipe_barrier("v")
+                            T.tile.sub(
+                                v1_ob_sy,
+                                v1_ob_sy,
+                                v1_ob_global_max_2d[0, :],
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.exp(v1_ob_sy, v1_ob_sy)
+                            T.pipe_barrier("v")
+                            T.tile.div(
+                                v1_ob_sy,
+                                v1_ob_sy,
+                                v1_ob_global_sum_2d[0, :],
+                            )
+                            T.tile.sub(v1_ob_diff, v1_ob_sy, v1_ob_p)
+                            T.pipe_barrier("v")
+                            T.tile.broadcast(v1_ob_diff_2d, v1_ob_diff)
+
+                            T.tile.mul(v1_ob_gate, v1_ob_bmm2, -10000.0)
+                            T.pipe_barrier("v")
+                            T.tile.exp(v1_ob_gate, v1_ob_gate)
+                            T.pipe_barrier("v")
+                            T.tile.mul(v1_ob_gate, v1_ob_gate, -1.0)
+                            T.pipe_barrier("v")
+                            T.tile.add(v1_ob_gate, v1_ob_gate, 1.0)
+
+                            T.tile.mul(
+                                v1_ob_work,
+                                v1_ob_bmm2,
+                                v1_ob_diff_2d,
+                            )
+                            T.pipe_barrier("v")
+                            T.reduce_sum(v1_ob_work, v1_ob_dw, 1)
+                            T.pipe_barrier("v")
+                            T.tile.add(
+                                v1_ob_dw_accum,
+                                v1_ob_dw_accum,
+                                v1_ob_dw,
+                            )
+
+                            T.tile.max(v1_ob_loss_p, v1_ob_p, v1_ob_eps)
+                            T.tile.max(v1_ob_sy, v1_ob_sy, v1_ob_eps)
+                            T.pipe_barrier("v")
+                            T.tile.ln(v1_ob_log_p, v1_ob_loss_p)
+                            T.tile.ln(v1_ob_log_sy, v1_ob_sy)
+                            T.pipe_barrier("v")
+                            T.tile.sub(
+                                v1_ob_loss_2d[0, :],
+                                v1_ob_log_p,
+                                v1_ob_log_sy,
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.mul(
+                                v1_ob_loss_2d[0, :],
+                                v1_ob_loss_2d[0, :],
+                                v1_ob_p,
+                            )
+                            if not full_valid and bw_col_end > valid_k_size:
+                                T.pipe_barrier("v")
+                                T.tile.select(
+                                    v1_ob_loss_2d[0, :],
+                                    v1_ob_mask,
+                                    v1_ob_loss_2d[0, :],
+                                    0.0,
+                                    "VSEL_TENSOR_SCALAR_MODE",
+                                )
+                            T.pipe_barrier("v")
+                            T.reduce_sum(v1_ob_loss_2d, v1_ob_loss_sum, 1)
+                            T.pipe_barrier("v")
+                            T.tile.add(
+                                v1_ob_loss_accum,
+                                v1_ob_loss_accum,
+                                v1_ob_loss_sum,
+                            )
+
+                            T.tile.mul(
+                                v1_ob_bmm2,
+                                v1_ob_weight_2d,
+                                v1_ob_diff_2d,
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.mul(v1_ob_bmm2, v1_ob_bmm2, v1_ob_gate)
+                            T.pipe_barrier("v")
+                            T.tile.cast(
+                                v1_ob_rg_half,
+                                v1_ob_bmm2,
+                                "CAST_RINT",
+                                Nidx1 * bw_col_block,
+                            )
+                        else:
+                            T.wait_flag("mte3", "v", 2)
+                            T.tile.fill(v1_ob_rg_half, 0.0)
+
+                        T.pipe_barrier("v")
+                        T.set_flag("v", "mte3", 2)
+                        T.wait_flag("v", "mte3", 2)
+                        T.pipe_barrier("mte3")
+                        T.copy(
+                            v1_ob_rg_half,
+                            reluGradRes[
+                                bz_task,
+                                s1_id,
+                                0:Nidx1,
+                                bw_col_start:bw_col_end,
+                            ],
+                        )
+                        T.set_flag("mte3", "v", 2)
+                        T.set_flag("v", "mte2", 3)
+
+                T.wait_flag("v", "mte2", 3)
+                T.wait_flag("mte3", "v", 3)
+                T.set_flag("v", "mte3", 3)
+                T.wait_flag("v", "mte3", 3)
+                T.copy(
+                    v1_ob_dw_accum,
+                    DWeightPartial[bz_task, s1_id, vector_id, 0:Nidx1],
+                )
+                T.copy(
+                    v1_ob_loss_accum,
+                    LossPartial[
+                        ((bz_task * S1 + s1_id) * 2 + vector_id)
+                        * loss_partial_stride:
+                        ((bz_task * S1 + s1_id) * 2 + vector_id)
+                        * loss_partial_stride + 1
+                    ],
+                )
+                T.set_flag("mte3", "v", 3)
+
+            T.wait_flag("mte3", "v", 2)
+            T.wait_flag("mte3", "v", 3)
+            if task_slot == 0:
+                T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAGS[0])
+                T.wait_cross_flag(V1_PSY_RELAY_FLAGS[0])
+            else:
+                T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAGS[1])
+                T.wait_cross_flag(V1_PSY_RELAY_FLAGS[1])
+
+    @T.macro
+    def vector1_finalize_dweight_task(
+        DWeightPartial,
+        dWeightOut,
+        bz_task,
+        s1_begin_task,
+        s1_end_task,
+        task_slot,
+        vector_id,
+    ):
+        """合并两个 K 半区的 dWeight partial，并发布 C2 readiness。"""
+        with T.Scope("V"):
+            v1_fdw_left = T.alloc_ub(rows_per_aiv, calc_dtype)
+            v1_fdw_right = T.alloc_ub(rows_per_aiv, calc_dtype)
+            v1_fdw_half = T.alloc_ub(rows_per_aiv, input_dtype)
+            for s1_id in T.serial(s1_begin_task, s1_end_task):
+                g_start = vector_id * rows_per_aiv
+                T.copy(
+                    DWeightPartial[
+                        bz_task, s1_id, 0, g_start:g_start + rows_per_aiv
+                    ],
+                    v1_fdw_left,
+                )
+                T.copy(
+                    DWeightPartial[
+                        bz_task, s1_id, 1, g_start:g_start + rows_per_aiv
+                    ],
+                    v1_fdw_right,
+                )
+                T.set_flag("mte2", "v", 2)
+                T.set_flag("mte3", "v", 3)
+                T.wait_flag("mte2", "v", 2)
+                T.tile.add(v1_fdw_left, v1_fdw_left, v1_fdw_right)
+                T.pipe_barrier("v")
+                T.tile.cast(
+                    v1_fdw_half,
+                    v1_fdw_left,
+                    "CAST_RINT",
+                    rows_per_aiv,
+                )
+                T.set_flag("v", "mte3", 3)
+                T.wait_flag("v", "mte3", 3)
+                T.copy(
+                    v1_fdw_half,
+                    dWeightOut[
+                        bz_task, s1_id, g_start:g_start + rows_per_aiv
+                    ],
+                )
+                T.set_flag("mte3", "v", 3)
+                T.wait_flag("mte3", "v", 3)
+
             if task_slot == 0:
                 T.set_cross_flag("MTE3", V1_TO_C2_FLAGS[0])
             else:
@@ -1955,10 +2701,9 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.prim_func
     def main(
-        # 输入：0-12
+        # 输入：0-11
         SparseIndices: T.Tensor((B, S1, Nidx2, sparse_k_stride), "int32"),
         KRealSize: T.Tensor(k_real_size_shape, "int32"),
-        ValidKMask: T.Tensor(valid_k_mask_shape, calc_dtype),
         V0ZeroRow: T.Tensor((DQuery,), input_dtype),
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
         QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),
@@ -1969,7 +2714,7 @@ def tilelang_grad_kl_loss_single_kernel(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
-        # 工作区：13-25
+        # 工作区：12-25
         dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
         dKeyIndexAccum: T.Tensor((dkey_output_rows, DQueryIndex), calc_dtype),
         GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),
@@ -1978,7 +2723,8 @@ def tilelang_grad_kl_loss_single_kernel(
         bmm1Res: T.Tensor((B, S1, N1, K), calc_dtype),
         bmm2Res: T.Tensor((B, S1, Nidx1, K), calc_dtype),
         PReduced: T.Tensor((B, S1, K), calc_dtype),
-        SoftmaxI: T.Tensor((B, S1, K), calc_dtype),
+        V1Stats: T.Tensor(v1_stats_shape, calc_dtype),
+        DWeightPartial: T.Tensor(dweight_partial_shape, calc_dtype),
         dk_matmul_partial: T.Tensor((B, S1, v2_k_padded, DQueryIndex), calc_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossPartial: T.Tensor((loss_partial_size,), calc_dtype),
@@ -1990,10 +2736,6 @@ def tilelang_grad_kl_loss_single_kernel(
         LossOut: T.Tensor((1,), calc_dtype),
     ):
         with T.Kernel(launch_core_num, is_npu=True) as (cid, vid):
-            # dKeyIndexAccum 与 task 流水写入的 dk_matmul_partial 相互独立。
-            # 提前清零后，流水末尾的一次全核同步即可同时保护两者。
-            clear_dkey_accumulator(dKeyIndexAccum, cid, vid)
-
             for pipe_iter in T.serial(tasks_per_core + task_pipeline_lag):
                 if pipe_iter < tasks_per_core:
                     task_current = pipe_iter * launch_core_num + cid
@@ -2038,16 +2780,23 @@ def tilelang_grad_kl_loss_single_kernel(
                                 s1_prev + 1,
                                 task_prev_slot,
                             )
-                            vector1_psy_task(
+                            vector1_owned_p_task(
                                 KRealSize,
-                                ValidKMask,
                                 SoftmaxMax,
                                 SoftmaxSum,
-                                Weights,
                                 bmm1Res,
-                                bmm2Res,
                                 PReduced,
-                                SoftmaxI,
+                                bz_prev,
+                                s1_prev,
+                                s1_prev + 1,
+                                task_prev_slot,
+                                vid,
+                            )
+                            vector1_owned_sy_max_task(
+                                KRealSize,
+                                Weights,
+                                bmm2Res,
+                                V1Stats,
                                 bz_prev,
                                 s1_prev,
                                 s1_prev + 1,
@@ -2055,16 +2804,37 @@ def tilelang_grad_kl_loss_single_kernel(
                                 vid,
                             )
                             relay_vector1_psy(task_prev_slot)
-                            vector1_backward_task(
+                            vector1_owned_sy_sum_task(
                                 KRealSize,
-                                ValidKMask,
+                                Weights,
+                                bmm2Res,
+                                V1Stats,
+                                bz_prev,
+                                s1_prev,
+                                s1_prev + 1,
+                                task_prev_slot,
+                                vid,
+                            )
+                            relay_vector1_psy(task_prev_slot)
+                            vector1_owned_backward_task(
+                                KRealSize,
                                 Weights,
                                 bmm2Res,
                                 PReduced,
-                                SoftmaxI,
-                                dWeightOut,
+                                V1Stats,
+                                DWeightPartial,
                                 reluGradRes,
                                 LossPartial,
+                                bz_prev,
+                                s1_prev,
+                                s1_prev + 1,
+                                task_prev_slot,
+                                vid,
+                            )
+                            relay_vector1_psy(task_prev_slot)
+                            vector1_finalize_dweight_task(
+                                DWeightPartial,
+                                dWeightOut,
                                 bz_prev,
                                 s1_prev,
                                 s1_prev + 1,
@@ -2087,6 +2857,8 @@ def tilelang_grad_kl_loss_single_kernel(
             # 所有任务负责人必须完成 C2 后，才能开始全核的确定性 scatter。
             # 这对应官方切换到 ProcessDeterVector2 的阶段边界，也允许空闲的
             # 任务核参与后续处理。
+            T.sync_all()
+            clear_dkey_accumulator(dKeyIndexAccum, cid, vid)
             T.sync_all()
             vector2_scatter_all_tasks(
                 SparseIndices,
@@ -2289,33 +3061,23 @@ def _is_static_full_valid(
 
 def _get_full_valid_aux_inputs(
     device: torch.device,
-    calc_dtype: torch.dtype,
     batch_size: int,
     query_length: int,
     top_k: int,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """返回 full-valid specialization 的安全占位输入，并跨调用复用。
+) -> torch.Tensor:
+    """返回 full-valid specialization 的 KRealSize 占位输入并跨调用复用。
 
     TileLang 会校验条件表达式的两个 BufferRegion；即使 full-valid 代码生成
     最终不会读取 KRealSize，也必须给该形状提供合法的二维占位张量。
     """
-    cache_key = (device, calc_dtype, batch_size, query_length, top_k)
+    cache_key = (device, batch_size, query_length, top_k)
     cached = _full_valid_aux_cache.get(cache_key)
     if cached is None:
-        cached = (
-            torch.full(
-                (batch_size, query_length),
-                top_k,
-                dtype=torch.int32,
-                device=device,
-            ),
-            # full-valid specialization 不读取该张量；这里只提供宏收集阶段
-            # 所需的合法三维 BufferRegion，因此无需初始化内容。
-            torch.empty(
-                (batch_size, query_length, top_k),
-                dtype=calc_dtype,
-                device=device,
-            ),
+        cached = torch.full(
+            (batch_size, query_length),
+            top_k,
+            dtype=torch.int32,
+            device=device,
         )
         _full_valid_aux_cache[cache_key] = cached
     return cached
@@ -2323,18 +3085,16 @@ def _get_full_valid_aux_inputs(
 
 def _get_tail_aux_inputs(
     device: torch.device,
-    calc_dtype: torch.dtype,
     host_query_lengths: list[int],
     host_key_lengths: list[int],
     batch_size: int,
     query_length: int,
     top_k: int,
     execution_k: int,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> torch.Tensor:
     """缓存 host 可见长度对应的尾块元数据，避免每次调用启动 NPU 预处理算子。"""
     cache_key = (
         device,
-        calc_dtype,
         tuple(host_query_lengths),
         tuple(host_key_lengths),
         batch_size,
@@ -2356,13 +3116,7 @@ def _get_tail_aux_inputs(
             dtype=torch.int32,
             device=device,
         )
-        valid_k_mask = (
-            torch.arange(execution_k, dtype=torch.int32, device=device).view(
-                1, 1, execution_k
-            )
-            < k_real_size.unsqueeze(-1)
-        ).to(calc_dtype).contiguous()
-        cached = (k_real_size, valid_k_mask)
+        cached = k_real_size
         _tail_aux_cache[cache_key] = cached
     return cached
 
@@ -2451,9 +3205,9 @@ def sparse_lightning_indexer_grad_kl_loss(
         )
         k_scatter_exec = K
         if full_valid:
-            # 该 specialization 不读取这两个输入，使用缓存的最小占位张量即可。
-            k_real_size, valid_k_mask = _get_full_valid_aux_inputs(
-                query.device, torch.float32, B, S1, K
+            # 该 specialization 不读取 KRealSize，仍提供合法的二维占位张量。
+            k_real_size = _get_full_valid_aux_inputs(
+                query.device, B, S1, K
             )
         else:
             k_exec, k_scatter_exec = _derive_execution_widths(
@@ -2473,9 +3227,8 @@ def sparse_lightning_indexer_grad_kl_loss(
                 actual_seq_lengths_key, S2, B
             )
             if host_query_lengths is not None and host_key_lengths is not None:
-                k_real_size, valid_k_mask = _get_tail_aux_inputs(
+                k_real_size = _get_tail_aux_inputs(
                     query.device,
-                    torch.float32,
                     host_query_lengths,
                     host_key_lengths,
                     B,
@@ -2511,12 +3264,6 @@ def sparse_lightning_indexer_grad_kl_loss(
                     + query_positions
                     + 1
                 ).clamp_(min=0, max=top_k).contiguous()
-                valid_k_mask = (
-                    torch.arange(K, dtype=torch.int32, device=query.device).view(
-                        1, 1, K
-                    )
-                    < k_real_size.unsqueeze(-1)
-                ).to(torch.float32).contiguous()
 
         S2_pad = (S2 + VECTOR_BASEN - 1) // VECTOR_BASEN * VECTOR_BASEN
 
@@ -2637,13 +3384,14 @@ def sparse_lightning_indexer_grad_kl_loss(
         ws_key = (
             B, S1, S2_pad, N1, Nidx1, K, DQueryIndex, d_rope,
             input_dtype, query.device, n_num_ws, v2_k_padded,
-            loss_partial_size,
+            loss_partial_size, "v1-owned-sy-v1",
         )
         if ws_key in _workspace_cache:
             ws = _workspace_cache[ws_key]
             d_query_index_accum, d_key_index_accum, \
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
-                bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws, \
+                bmm1_res_ws, bmm2_res_ws, p_reduced_ws, \
+                v1_stats_ws, dweight_partial_ws, \
                 dk_matmul_partial, relu_grad_out, loss_partial_ws, \
                 c2_zero_pad = ws
         else:
@@ -2653,7 +3401,12 @@ def sparse_lightning_indexer_grad_kl_loss(
             bmm1_res_ws = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=query.device)
             bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=query.device)
             p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
-            softmax_i_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
+            v1_stats_ws = torch.zeros(
+                B, S1, 4, 8, dtype=torch.float32, device=query.device
+            )
+            dweight_partial_ws = torch.zeros(
+                B, S1, 2, Nidx1, dtype=torch.float32, device=query.device
+            )
             d_query_index_accum = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
             # dKeyIndex 融合：matmul 中间结果（工作区）+ fp32 累加器输出
             dk_matmul_partial = torch.zeros(
@@ -2674,7 +3427,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             _workspace_cache[ws_key] = (
                 d_query_index_accum, d_key_index_accum,
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
-                bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws,
+                bmm1_res_ws, bmm2_res_ws, p_reduced_ws,
+                v1_stats_ws, dweight_partial_ws,
                 dk_matmul_partial, relu_grad_out, loss_partial_ws,
                 c2_zero_pad,
             )
@@ -2689,16 +3443,16 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_kernel_start.record()
         results = func(
             sparse_indices,                             # 0
-            k_real_size, valid_k_mask,                  # 1-2
-            v0_zero_row,                                # 3
-            query, query_rope, key, key_rope,           # 4-7
-            query_index, key_index,                     # 8-9
-            weights, softmax_max, softmax_sum,          # 10-12
-            d_query_index_accum,                        # 13，工作区
-            d_key_index_accum,                          # 14，工作区
-            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 15-17
-            bmm1_res_ws, bmm2_res_ws,                   # 18-19
-            p_reduced_ws, softmax_i_ws,                 # 20-21
+            k_real_size,                                # 1
+            v0_zero_row,                                # 2
+            query, query_rope, key, key_rope,           # 3-6
+            query_index, key_index,                     # 7-8
+            weights, softmax_max, softmax_sum,          # 9-11
+            d_query_index_accum,                        # 12，工作区
+            d_key_index_accum,                          # 13，工作区
+            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 14-16
+            bmm1_res_ws, bmm2_res_ws,                   # 17-18
+            p_reduced_ws, v1_stats_ws, dweight_partial_ws,  # 19-21
             dk_matmul_partial, relu_grad_out,           # 22-23
             loss_partial_ws, c2_zero_pad,               # 24-25
         )
@@ -2739,14 +3493,14 @@ def sparse_lightning_indexer_grad_kl_loss(
                 query_rope=query_rope,
                 key_rope=key_rope,
                 k_real_size=k_real_size,
-                valid_k_mask=valid_k_mask,
                 gather_key_ws=gather_key_ws,
                 gather_key_rope_ws=gather_key_rope_ws,
                 gather_key_index_ws=gather_key_index_ws,
                 bmm1_res_ws=bmm1_res_ws,
                 bmm2_res_ws=bmm2_res_ws,
                 p_reduced_ws=p_reduced_ws,
-                softmax_i_ws=softmax_i_ws,
+                v1_stats_ws=v1_stats_ws,
+                dweight_partial_ws=dweight_partial_ws,
                 relu_grad_out=relu_grad_out,
                 dk_matmul_partial=dk_matmul_partial,
                 d_query_index_accum=d_query_index_accum,

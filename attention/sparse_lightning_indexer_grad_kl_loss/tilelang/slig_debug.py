@@ -51,14 +51,14 @@ class DebugContext:
     query_rope: torch.Tensor
     key_rope: torch.Tensor
     k_real_size: torch.Tensor
-    valid_k_mask: torch.Tensor
     gather_key_ws: torch.Tensor
     gather_key_rope_ws: torch.Tensor
     gather_key_index_ws: torch.Tensor
     bmm1_res_ws: torch.Tensor
     bmm2_res_ws: torch.Tensor
     p_reduced_ws: torch.Tensor
-    softmax_i_ws: torch.Tensor
+    v1_stats_ws: torch.Tensor
+    dweight_partial_ws: torch.Tensor
     relu_grad_out: torch.Tensor
     dk_matmul_partial: torch.Tensor
     d_query_index_accum: torch.Tensor
@@ -271,7 +271,8 @@ def _run_task_diagnostics(context: DebugContext) -> None:
     bmm1_res_ws = context.bmm1_res_ws
     bmm2_res_ws = context.bmm2_res_ws
     p_reduced_ws = context.p_reduced_ws
-    softmax_i_ws = context.softmax_i_ws
+    v1_stats_ws = context.v1_stats_ws
+    dweight_partial_ws = context.dweight_partial_ws
     relu_grad_out = context.relu_grad_out
     dk_matmul_partial = context.dk_matmul_partial
     d_query_index_accum = context.d_query_index_accum
@@ -292,7 +293,10 @@ def _run_task_diagnostics(context: DebugContext) -> None:
     debug_valid_mask = (
         torch.ones(K, dtype=torch.float32, device=query.device)
         if full_valid
-        else context.valid_k_mask[debug_b, debug_q].float()
+        else (
+            torch.arange(K, dtype=torch.int32, device=query.device)
+            < context.k_real_size[debug_b, debug_q]
+        ).float()
     )
     debug_k_real = (
         K
@@ -370,9 +374,43 @@ def _run_task_diagnostics(context: DebugContext) -> None:
         torch.softmax(debug_reduce_sum_y, dim=-1) * debug_valid_mask
     )
     debug_diff = debug_expected_softmax_i - debug_expected_p
+    debug_half_k = K // 2
+    debug_expected_stats = torch.zeros(
+        4, dtype=torch.float32, device=query.device
+    )
+    debug_local_max = []
+    for debug_owner in range(2):
+        debug_owner_start = debug_owner * debug_half_k
+        debug_owner_end = debug_owner_start + debug_half_k
+        debug_owner_score = debug_reduce_sum_y[
+            debug_owner_start:debug_owner_end
+        ]
+        debug_owner_max = debug_owner_score.max().clamp_min(-1e20)
+        debug_local_max.append(debug_owner_max)
+        debug_expected_stats[debug_owner] = debug_owner_max
+    debug_global_max = torch.maximum(debug_local_max[0], debug_local_max[1])
+    for debug_owner in range(2):
+        debug_owner_start = debug_owner * debug_half_k
+        debug_owner_end = debug_owner_start + debug_half_k
+        debug_expected_stats[2 + debug_owner] = torch.exp(
+            debug_reduce_sum_y[debug_owner_start:debug_owner_end]
+            - debug_global_max
+        ).sum()
     debug_expected_dweight = (
         debug_bmm2.float() * debug_diff.unsqueeze(0)
     ).sum(dim=-1)
+    debug_expected_dweight_partial = torch.stack(
+        (
+            (
+                debug_bmm2[:, :debug_half_k].float()
+                * debug_diff[:debug_half_k].unsqueeze(0)
+            ).sum(dim=-1),
+            (
+                debug_bmm2[:, debug_half_k:].float()
+                * debug_diff[debug_half_k:].unsqueeze(0)
+            ).sum(dim=-1),
+        )
+    )
     debug_expected_relu = (
         weights[debug_b, debug_q].float().unsqueeze(-1)
         * debug_diff.unsqueeze(0)
@@ -411,7 +449,10 @@ def _run_task_diagnostics(context: DebugContext) -> None:
     _debug_task_tensor("bmm1Res", debug_bmm1)
     _debug_task_tensor("bmm2Res", debug_bmm2)
     _debug_task_tensor("PReduced", p_reduced_ws[debug_b, debug_q])
-    _debug_task_tensor("SoftmaxI", softmax_i_ws[debug_b, debug_q])
+    _debug_task_tensor("V1Stats", v1_stats_ws[debug_b, debug_q])
+    _debug_task_tensor(
+        "DWeightPartial", dweight_partial_ws[debug_b, debug_q]
+    )
     _debug_task_tensor("dWeightOut", d_weight[debug_b, debug_q])
     _debug_task_tensor("reluGradRes", relu_grad_out[debug_b, debug_q])
     _debug_task_compare(
@@ -534,9 +575,14 @@ def _run_task_diagnostics(context: DebugContext) -> None:
         debug_expected_p,
     )
     _debug_task_compare(
-        "SoftmaxI vs BMM2 formula",
-        softmax_i_ws[debug_b, debug_q],
-        debug_expected_softmax_i,
+        "V1Stats scalars vs owned-K formula",
+        v1_stats_ws[debug_b, debug_q, :, 0],
+        debug_expected_stats,
+    )
+    _debug_task_compare(
+        "DWeightPartial vs owned-K formula",
+        dweight_partial_ws[debug_b, debug_q],
+        debug_expected_dweight_partial,
     )
     _debug_task_compare(
         "dWeightOut vs BMM2/P/SY formula",
@@ -696,14 +742,14 @@ def _run_full_diagnostics(context: DebugContext) -> None:
     softmax_sum = context.softmax_sum
     key_rope = context.key_rope
     k_real_size = context.k_real_size
-    valid_k_mask = context.valid_k_mask
     gather_key_ws = context.gather_key_ws
     gather_key_rope_ws = context.gather_key_rope_ws
     gather_key_index_ws = context.gather_key_index_ws
     bmm1_res_ws = context.bmm1_res_ws
     bmm2_res_ws = context.bmm2_res_ws
     p_reduced_ws = context.p_reduced_ws
-    softmax_i_ws = context.softmax_i_ws
+    v1_stats_ws = context.v1_stats_ws
+    dweight_partial_ws = context.dweight_partial_ws
     relu_grad_out = context.relu_grad_out
     dk_matmul_partial = context.dk_matmul_partial
     d_query_index_accum = context.d_query_index_accum
@@ -751,7 +797,6 @@ def _run_full_diagnostics(context: DebugContext) -> None:
         print("[DEBUG] FullValidStaticPath: enabled")
     else:
         _debug_tensor("KRealSize", k_real_size)
-        _debug_tensor("ValidKMask", valid_k_mask)
     _debug_tensor("SoftmaxMax", softmax_max)
     _debug_tensor("SoftmaxSum", softmax_sum)
     _debug_tensor("GatherKey_ws", gather_key_ws)
@@ -760,7 +805,8 @@ def _run_full_diagnostics(context: DebugContext) -> None:
     _debug_tensor("bmm1Res", bmm1_res_ws)
     _debug_tensor("bmm2Res", bmm2_res_ws)
     _debug_tensor("PReduced", p_reduced_ws)
-    _debug_tensor("SoftmaxI", softmax_i_ws)
+    _debug_tensor("V1Stats", v1_stats_ws)
+    _debug_tensor("DWeightPartial", dweight_partial_ws)
     _debug_tensor("reluGradRes", relu_grad_out)
     _debug_tensor("dk_matmul_partial", dk_matmul_partial)
     _debug_tensor("dQueryIndexAccum", d_query_index_accum)
@@ -785,7 +831,10 @@ def _run_full_diagnostics(context: DebugContext) -> None:
     debug_valid_mask = (
         torch.ones((B, S1, K), dtype=torch.float32, device=query.device)
         if full_valid
-        else valid_k_mask.float()
+        else (
+            torch.arange(K, dtype=torch.int32, device=query.device).view(1, 1, K)
+            < k_real_size.unsqueeze(-1)
+        ).float()
     )
     debug_p_reduced = (
         torch.exp(debug_scaled_bmm1 - debug_softmax_max.unsqueeze(-1))
@@ -820,7 +869,6 @@ def _run_full_diagnostics(context: DebugContext) -> None:
         :B * S1 * 2 * context.loss_partial_stride:context.loss_partial_stride
     ]
     p_reduced_diff = (p_reduced_ws.float() - debug_p_reduced).abs()
-    softmax_i_diff = (softmax_i_ws.float() - debug_softmax_i).abs()
     relu_grad_diff = (relu_grad_out.float() - debug_relu_grad).abs()
     debug_relu_grad_bf16 = debug_relu_grad.to(relu_grad_out.dtype).float()
     relu_grad_bf16_diff = (
@@ -884,11 +932,6 @@ def _run_full_diagnostics(context: DebugContext) -> None:
         f"[DEBUG] PReduced vs host formula: "
         f"max_diff={p_reduced_diff.max().item():.6e}, "
         f"mean_diff={p_reduced_diff.mean().item():.6e}"
-    )
-    print(
-        f"[DEBUG] SoftmaxI vs host formula: "
-        f"max_diff={softmax_i_diff.max().item():.6e}, "
-        f"mean_diff={softmax_i_diff.mean().item():.6e}"
     )
     print(
         f"[DEBUG] bmm2Res ReLU check: "
