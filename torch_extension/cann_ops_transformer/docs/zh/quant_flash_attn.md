@@ -487,6 +487,7 @@ cann_ops_transformer.quant_flash_attn(
             <td>TND</td>
             <td>
             <li>TND</li>
+            <li>PA_BBND</li>
             <li>PA_BNBD</li>
             <li>PA_NZ</li>
             </td>
@@ -577,10 +578,14 @@ cann_ops_transformer.quant_flash_attn(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="6">MxFP8</td>
-                <td rowspan="3">k_descale</td>
+                <td rowspan="8">MxFP8</td>
+                <td rowspan="4">k_descale</td>
                 <td>TND</td>
                 <td>(KV_T, KV_N, D/64, 2)</td>
+            </tr>
+            <tr>
+                <td>PA_BBND</td>
+                <td>(Bn, Bs, KV_N, D/64, 2)</td>
             </tr>
             <tr>
                 <td>PA_BNBD</td>
@@ -591,9 +596,13 @@ cann_ops_transformer.quant_flash_attn(
                 <td>(Bn, KV_N, Bs/16, D/64, 16, 2)</td>
             </tr>
             <tr>
-                <td rowspan="3">v_descale</td>
+                <td rowspan="4">v_descale</td>
                 <td>TND</td>
                 <td>(KV_T/64, KV_N, D, 2)</td>
+            </tr>
+            <tr>
+                <td>PA_BBND</td>
+                <td>(Bn, Bs/64, KV_N, D, 2)</td>
             </tr>
             <tr>
                 <td>PA_BNBD</td>
@@ -629,15 +638,19 @@ cann_ops_transformer.quant_flash_attn(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="5">MxFP8</td>
+                <td rowspan="6">MxFP8</td>
                 <td>q</td>
                 <td>TND</td>
                 <td>(Q_T, Q_N, D)</td>
             </tr>
             <tr>
-                <td rowspan="3">k/v</td>
+                <td rowspan="4">k/v</td>
                 <td>TND</td>
                 <td>(KV_T, KV_N, D)</td>
+            </tr>
+            <tr>
+                <td>PA_BBND</td>
+                <td>(Bn, Bs, KV_N, D)</td>
             </tr>
             <tr>
                 <td>PA_BNBD</td>
@@ -883,7 +896,7 @@ mask_mode参数解释
                 <ul>
                     <li>PagedAttention开启情况下，必须传入seqused_kv</li>
                     <li>Paged Attention开启情况下，block_table必须不为空</li>
-                    <li>MxFP8仅支持Bs为512或1024</li>
+                    <li>MxFP8支持Bs为64/128/256/512/1024</li>
                 </ul>
             </td>
         </tr>
