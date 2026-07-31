@@ -547,14 +547,14 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
 
-    // GMM1 tile 状态位区每 expert 的 tile 上限（仅 prefetch 软同步路径使用）
-    // outputN = hiddenDim / SWIGLU_N_HALF(2)，tileM=L1_TILE_M_256(256)，tileN=L1_TILE_N(256)
-    // INT_CACHELINE=16：每 expert 的状态位按 16 对齐，与 kernel 侧 dispatchFlagSlotsPerExpert 一致
+    // GMM1 tile 状态位区每 expert 的 tile 上限（仅 prefetch 软同步路径使用）。
+    // 非交织调度只遍历 hiddenDim / 2，交织调度会遍历完整 hiddenDim；host 无法感知 kernel
+    // 编译期开关，因此按完整 hiddenDim 预留，避免交织模式覆盖下一 expert 的状态槽。
     tilingData->maxTilesPerExpert = 0;
     if (tilingData->topkWeightsPrefetch == 1) {
-        int64_t outputN = static_cast<int64_t>(tilingData->hiddenDim) / 2;
+        int64_t maxSchedulerN = static_cast<int64_t>(tilingData->hiddenDim);
         int64_t maxTilesM = ops::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(256));
-        int64_t maxTilesN = ops::CeilDiv(outputN, static_cast<int64_t>(256));
+        int64_t maxTilesN = ops::CeilDiv(maxSchedulerN, static_cast<int64_t>(256));
         tilingData->maxTilesPerExpert =
             static_cast<uint32_t>(ops::CeilAlign(maxTilesM * maxTilesN, static_cast<int64_t>(16)));
     }
