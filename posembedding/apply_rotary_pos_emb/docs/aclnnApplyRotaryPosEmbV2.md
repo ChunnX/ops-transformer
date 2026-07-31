@@ -17,7 +17,7 @@
 
 - 接口功能：推理网络为了提升性能，将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。
    本接口针对[aclnnApplyRotaryPosEmb](aclnnApplyRotaryPosEmb.md)做了如下功能变更，请根据实际情况选择合适的接口：
-   
+
    - 新增rotaryMode参数，用于控制不同的旋转编码方式
 - 计算公式：
 
@@ -26,31 +26,31 @@
   $$
   query\_q1 = query[..., : query.shape[-1] // 2]
   $$
-  
+
   $$
   query\_q2 = query[..., query.shape[-1] // 2 :]
   $$
-  
+
   $$
   query\_rotate = torch.cat((-query\_q2, query\_q1), dim=-1)
   $$
-  
+
   $$
   key\_k1 = key[..., : key.shape[-1] // 2]
   $$
-  
+
   $$
   key\_k2 = key[..., key.shape[-1] // 2 :]
   $$
-  
+
   $$
   key\_rotate = torch.cat((-key\_k2, key\_k1), dim=-1)
   $$
-  
+
   $$
   q\_embed = (query * cos) + query\_rotate * sin
   $$
-  
+
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
@@ -60,7 +60,7 @@
   $$
   query\_q1 = query[..., : query.shape[-1] // 4]
   $$
-  
+
   $$
   query\_q2 = query[..., query.shape[-1] // 4 : query.shape[-1] // 2]
   $$
@@ -72,15 +72,15 @@
   $$
   query\_q4 = query[..., query.shape[-1] // 4 * 3 :]
   $$
-  
+
   $$
   query\_rotate = torch.cat((-query\_q2, query\_q1, -query\_q4, query\_q3), dim=-1)
   $$
-  
+
   $$
   key\_q1 = key[..., : key.shape[-1] // 4]
   $$
-  
+
   $$
   key\_q2 = key[..., key.shape[-1] // 4 : key.shape[-1] // 2]
   $$
@@ -92,25 +92,25 @@
   $$
   key\_q4 = key[..., key.shape[-1] // 4 * 3 :]
   $$
-  
+
   $$
   key\_rotate = torch.cat((-key\_q2, key\_q1, -key\_q4, key\_q3), dim=-1)
   $$
-  
+
   $$
   q\_embed = (query * cos) + query\_rotate * sin
   $$
-  
+
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
 
   （3）rotaryMode为"interleave"：
-  
+
   $$
   query\_q1 = query[..., ::2].view(-1, 1)
   $$
-  
+
   $$
   query\_q2 = query[..., 1::2].view(-1, 1)
   $$
@@ -122,7 +122,7 @@
   $$
   key\_q1 = key[..., ::2].view(-1, 1)
   $$
-  
+
   $$
   key\_q2 = key[..., 1::2].view(-1, 1)
   $$
@@ -134,32 +134,32 @@
   $$
   q\_embed = (query * cos) + query\_rotate * sin
   $$
-  
+
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnApplyRotaryPosEmbV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnApplyRotaryPosEmbV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnApplyRotaryPosEmbV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnApplyRotaryPosEmbV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnApplyRotaryPosEmbV2GetWorkspaceSize(
-  aclTensor       *queryRef, 
-  aclTensor       *keyRef, 
-  const aclTensor *cos, 
-  const aclTensor *sin, 
-  int64_t         layout, 
-  char            *rotaryMode, 
-  uint64_t        *workspaceSize, 
+  aclTensor       *queryRef,
+  aclTensor       *keyRef,
+  const aclTensor *cos,
+  const aclTensor *sin,
+  int64_t         layout,
+  char            *rotaryMode,
+  uint64_t        *workspaceSize,
   aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnApplyRotaryPosEmbV2(
-  void          *workspace, 
-  uint64_t      workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t      workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream   stream)
 ```
 
@@ -348,11 +348,11 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
   <table>
-  
+
   <tr>
   <td align="center" style="width:169px;">返回值</td>
   <td align="center" style="width:125px;">错误码</td>
@@ -413,7 +413,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -440,7 +440,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"

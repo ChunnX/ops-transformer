@@ -16,9 +16,9 @@
 - 接口功能：
 
   `aclnnMixedQuantSparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。与`SparseFlashMla`的区别在于，本算子支持KV的per-token-group量化输入。该算子适用于大语言模型推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。调用时需要使用`aclnnMixedQuantSparseFlashMlaMetadata`生成的任务列表`metadata`。
-  
+
   **该算子不建议单独使用，建议与aclnnMixedQuantSparseFlashMlaMetadata算子配合使用，形成完整的工作流。**
-  
+
   典型调用流程如下：
 
   1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。
@@ -85,7 +85,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMixedQuantSparseFlashMlaGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMixedQuantSparseFlashMla`执行实际计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnMixedQuantSparseFlashMlaGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMixedQuantSparseFlashMla`执行实际计算。
 
 ```Cpp
 aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
@@ -183,7 +183,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D_KV)，ori_block_size为16的倍数且不超过1024</li>
+          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D_KV)，ori_block_size支持1到1024</li>
           <li>layoutKv为BSND时：(B, S2, N2, D_KV)</li>
           <li>layoutKv为TND时：(T2, N2, D_KV)</li>
         </ul>
@@ -200,7 +200,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D_KV)，cmp_block_size为16的倍数且不超过1024</li>
+          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D_KV)，cmp_block_size支持1到1024</li>
           <li>layoutKv为BSND时：(B, S3, N2, D_KV)</li>
           <li>layoutKv为TND时：(T3, N2, D_KV)</li>
         </ul>
@@ -227,10 +227,10 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutQ为BSND时：(B, S1, N2, K)</li>
-          <li>layoutQ为TND时：(T1, N2, K)</li>
+          <li>layoutQ为BSND时：(B, S1, N2, K2)</li>
+          <li>layoutQ为TND时：(T1, N2, K2)</li>
         </ul>
-        其中K为TopK稀疏选择数，支持512或1024。
+        其中K2为cmpKv的TopK稀疏选择数。
       </td>
       <td>√</td>
     </tr>
@@ -398,7 +398,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>SWA场景支持1，CSA场景支持4，HCA场景支持128。</td>
+      <td>支持1到128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -537,7 +537,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -629,7 +629,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -640,7 +640,6 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
 - 使用约束
 
   - 本算子仅支持推理场景。
-  - 资料支持范围内暂不支持对`oriKvOptional`进行稀疏计算，设置`oriSparseIndicesOptional`无效。
   - 除`oriTopkLengthOptional`和`cmpTopkLengthOptional`等预留输入可传入nullptr或空Tensor外，其余已传入Tensor不支持为空。
   - `metadataOptional`参数必须传入，由`aclnnMixedQuantSparseFlashMlaMetadata`算子生成，shape固定为(1024,)。
   - `cmpResidualKvOptional`为主算子和`aclnnMixedQuantSparseFlashMlaMetadata`的可选入参；传入后用于按`cmp_len * cmpRatio + residual`恢复cmp侧mask使用的压缩前长度。
@@ -655,7 +654,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   | CSA   | 必须传入 | 必须传入 | 必须传入 | 滑动窗口 + TopK稀疏压缩KV |
   | HCA | 必须传入 | 必须传入 | 不传入 | 滑动窗口 + 稠密压缩KV |
 
-- `cmpRatio`约束：SWA场景仅支持1，CSA场景仅支持4，HCA场景仅支持128。
+- `cmpRatio`约束：SWA场景仅支持1。
 
 - Layout约束
 
@@ -668,7 +667,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 /**

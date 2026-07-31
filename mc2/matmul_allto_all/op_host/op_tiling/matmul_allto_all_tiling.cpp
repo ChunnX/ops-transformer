@@ -17,8 +17,8 @@
 #include "matmul_allto_all_tiling_base.h"
 
 using namespace ge;
-using Ops::Transformer::OpTiling::TilingRegistryNew;
 using Ops::Transformer::OpTiling::TilingRegistryArch;
+using Ops::Transformer::OpTiling::TilingRegistryNew;
 
 namespace MC2Tiling {
 

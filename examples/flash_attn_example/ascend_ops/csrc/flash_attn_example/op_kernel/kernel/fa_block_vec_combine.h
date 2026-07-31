@@ -230,8 +230,7 @@ protected:
         LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? combineLseMaxUbBuf1.Get<T>() : combineLseMaxUbBuf2.Get<T>();
 
         LocalTensor<T> maxLseUb = combineLseUbBuf.Get<T>();
-        ComputeScaleValue_VF_Combine(lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
-                                actualCombineLoopSize);
+        ComputeScaleValue_VF_Combine(lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount, actualCombineLoopSize);
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attnOutUb, uint32_t startRow,
@@ -273,8 +272,7 @@ protected:
         uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
         if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
-            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT,
-                 dealRowCount * this->dSizeV_Align);
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT, dealRowCount * this->dSizeV_Align);
         } else {
             Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
                  dealRowCount * this->dSizeV_Align);
@@ -394,7 +392,8 @@ public:
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
 
             for (uint32_t i = 0; i < taskInfo.actualCombineLoopSize; ++i) {
-                LocalTensor<T> mm2Res = (reduceGlobaLoop & 1) == 0 ? combineMm2ResBuf1.Get<T>() : combineMm2ResBuf2.Get<T>();
+                LocalTensor<T> mm2Res =
+                    (reduceGlobaLoop & 1) == 0 ? combineMm2ResBuf1.Get<T>() : combineMm2ResBuf2.Get<T>();
                 if (i >= preLoadNum) {
                     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                     CopyAccumOutIn(mm2Res, i, taskOffset + startRow, actualGSplitSize);
@@ -419,7 +418,7 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
 class FaBlockVecCombineDummy {
 public:
     using ConstInfoX = ConstInfo_t<FaKernelType::NO_QUANT>;
-    __aicore__ inline FaBlockVecCombineDummy(ConstInfoX &constInfo) {};
+    __aicore__ inline FaBlockVecCombineDummy(ConstInfoX &constInfo){};
 };
 
 } // namespace BaseApi

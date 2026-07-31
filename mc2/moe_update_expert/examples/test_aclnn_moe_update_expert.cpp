@@ -24,17 +24,17 @@
 #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
 #include "aclnnop/aclnn_moe_distribute_combine_v2.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
-    } while(0)
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
 
 struct Args {
     uint32_t rankId;
@@ -61,9 +61,9 @@ inline int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shape_size;
 }
 
-template<typename T>
+template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor)
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -74,9 +74,8 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-    *tensor = aclCreateTensor(
-        shape.data(), shape.size(), dataType, strides.data(), 0,
-        aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), *deviceAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
@@ -176,7 +175,9 @@ int LaunchOneProcessUpdateExpertAndDispatchAndCombine(Args &args)
     std::vector<int64_t> expandScalesShape{A};
     std::vector<int64_t> residualXShape{BS, 1, H};
     std::vector<int64_t> sharedExpertXShape{BS, 1, H};
-    std::vector<int64_t> gammaShape{H, };
+    std::vector<int64_t> gammaShape{
+        H,
+    };
     std::vector<int64_t> yOutShape{BS, 1, H};
     std::vector<int64_t> rstdOutShape{BS, 1, 1};
     std::vector<int64_t> xOutShape{BS, 1, H};
@@ -236,32 +237,42 @@ int LaunchOneProcessUpdateExpertAndDispatchAndCombine(Args &args)
     // 构造device侧变量
     ret = CreateAclTensor(expertIdsHostData, expertIdsShape, &expertIdsDeviceAddr, aclDataType::ACL_INT32, &expertIds);
     ret = CreateAclTensor(eplbTableHostData, eplbTableShape, &eplbTableDeviceAddr, aclDataType::ACL_INT32, &eplbTable);
-    ret = CreateAclTensor(balancedExpertIdsHostData, balancedExpertIdsShape, &balancedExpertIdsDeviceAddr, aclDataType::ACL_INT32, &balancedExpertIds);
-    ret = CreateAclTensor(balancedActiveMaskHostData, balancedActiveMaskShape, &balancedActiveMaskDeviceAddr, aclDataType::ACL_BOOL, &balancedActiveMask);
+    ret = CreateAclTensor(balancedExpertIdsHostData, balancedExpertIdsShape, &balancedExpertIdsDeviceAddr,
+                          aclDataType::ACL_INT32, &balancedExpertIds);
+    ret = CreateAclTensor(balancedActiveMaskHostData, balancedActiveMaskShape, &balancedActiveMaskDeviceAddr,
+                          aclDataType::ACL_BOOL, &balancedActiveMask);
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expertScalesHostData, expertScalesShape, &expertScalesDeviceAddr, aclDataType::ACL_FLOAT, &expertScales);
+    ret = CreateAclTensor(expertScalesHostData, expertScalesShape, &expertScalesDeviceAddr, aclDataType::ACL_FLOAT,
+                          &expertScales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandXHostData, expandXShape, &expandXDeviceAddr, (quantMode > 0) ? aclDataType::ACL_INT8 : aclDataType::ACL_BF16, &expandX);
+    ret = CreateAclTensor(expandXHostData, expandXShape, &expandXDeviceAddr,
+                          (quantMode > 0) ? aclDataType::ACL_INT8 : aclDataType::ACL_BF16, &expandX);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(dynamicScalesHostData, dynamicScalesShape, &dynamicScalesDeviceAddr, aclDataType::ACL_FLOAT, &dynamicScales);
+    ret = CreateAclTensor(dynamicScalesHostData, dynamicScalesShape, &dynamicScalesDeviceAddr, aclDataType::ACL_FLOAT,
+                          &dynamicScales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(expandIdxHostData, expandIdxShape, &expandIdxDeviceAddr, aclDataType::ACL_INT32, &expandIdx);
+    ret = CreateAclTensor(expandIdxHostData, expandIdxShape, &expandIdxDeviceAddr, aclDataType::ACL_INT32, &expandIdx);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expertTokenNumsHostData, expertTokenNumsShape, &expertTokenNumsDeviceAddr, aclDataType::ACL_INT64, &expertTokenNums);
+    ret = CreateAclTensor(expertTokenNumsHostData, expertTokenNumsShape, &expertTokenNumsDeviceAddr,
+                          aclDataType::ACL_INT64, &expertTokenNums);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(epRecvCountsHostData, epRecvCountsShape, &epRecvCountsDeviceAddr, aclDataType::ACL_INT32, &epRecvCounts);
+    ret = CreateAclTensor(epRecvCountsHostData, epRecvCountsShape, &epRecvCountsDeviceAddr, aclDataType::ACL_INT32,
+                          &epRecvCounts);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(tpRecvCountsHostData, tpRecvCountsShape, &tpRecvCountsDeviceAddr, aclDataType::ACL_INT32, &tpRecvCounts);
+    ret = CreateAclTensor(tpRecvCountsHostData, tpRecvCountsShape, &tpRecvCountsDeviceAddr, aclDataType::ACL_INT32,
+                          &tpRecvCounts);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);
+    ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT,
+                          &expandScales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(residualXHostData, residualXShape, &residualXDeviceAddr, aclDataType::ACL_BF16, &residualX);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(sharedExpertXHostData, sharedExpertXShape, &sharedExpertXDeviceAddr, aclDataType::ACL_BF16, &sharedExpertX);
+    ret = CreateAclTensor(sharedExpertXHostData, sharedExpertXShape, &sharedExpertXDeviceAddr, aclDataType::ACL_BF16,
+                          &sharedExpertX);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(gammaHostData, gammaShape, &gammaDeviceAddr, aclDataType::ACL_BF16, &gamma);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -271,7 +282,7 @@ int LaunchOneProcessUpdateExpertAndDispatchAndCombine(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(xOutHostData, xOutShape, &xOutDeviceAddr, aclDataType::ACL_BF16, &xOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
     /* 声明算子执行必需变量 */
     uint64_t eplbworkspaceSize = 0;
     aclOpExecutor *eplbexecutor = nullptr;
@@ -287,10 +298,11 @@ int LaunchOneProcessUpdateExpertAndDispatchAndCombine(Args &args)
 
     /**************************************** 调用eplb ********************************************/
     ret = aclnnMoeUpdateExpertGetWorkspaceSize(expertIds, eplbTable, nullptr, nullptr, nullptr, args.epRankId,
-        EP_WORLD_SIZE, balanceMode, balancedExpertIds, balancedActiveMask, &eplbworkspaceSize, &eplbexecutor);
+                                               EP_WORLD_SIZE, balanceMode, balancedExpertIds, balancedActiveMask,
+                                               &eplbworkspaceSize, &eplbexecutor);
 
-    CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] aclnnMoeUpdateExpertGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeUpdateExpertGetWorkspaceSize failed. ret = %d \n", ret);
+              return ret);
 
     if (eplbworkspaceSize > 0) {
         ret = aclrtMalloc(&eplbWorkspaceAddr, eplbworkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -299,57 +311,56 @@ int LaunchOneProcessUpdateExpertAndDispatchAndCombine(Args &args)
     // 调用第二阶段接口
     ret = aclnnMoeUpdateExpert(eplbWorkspaceAddr, eplbworkspaceSize, eplbexecutor, args.eplbStream);
     ret = aclrtSynchronizeStreamWithTimeout(args.eplbStream, 10000);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeUpdateExpert failed. ret = %d \n", ret);  \
-        return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeUpdateExpert failed. ret = %d \n", ret); return ret);
 
     /**************************************** 调用dispatch ********************************************/
 
-    ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(x, balancedExpertIds, (quantMode > 0 ? scales : nullptr), nullptr, 
-            expertScales, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
-            args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
-            expertTokenNumsType, nullptr, expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts,
-            tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
-    
+    ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(
+        x, balancedExpertIds, (quantMode > 0 ? scales : nullptr), nullptr, expertScales, hcomEpName, EP_WORLD_SIZE,
+        args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId, expertShardType, sharedExpertNum,
+        sharedExpertRankNum, quantMode, globalBS, expertTokenNumsType, nullptr, expandX, dynamicScales, expandIdx,
+        expertTokenNums, epRecvCounts, tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
+
     CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
+              LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2GetWorkspaceSize failed. ret = %d \n", ret);
+              return ret);
 
     if (dispatchWorkspaceSize > 0) {
         ret = aclrtMalloc(&dispatchWorkspaceAddr, dispatchWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }
     // 调用第二阶段接口
-    ret = aclnnMoeDistributeDispatchV2(dispatchWorkspaceAddr, dispatchWorkspaceSize,
-                                        dispatchExecutor, args.dispatchStream);
+    ret = aclnnMoeDistributeDispatchV2(dispatchWorkspaceAddr, dispatchWorkspaceSize, dispatchExecutor,
+                                       args.dispatchStream);
     ret = aclrtSynchronizeStreamWithTimeout(args.dispatchStream, 10000);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2 failed. ret = %d \n", ret);  \
-        return ret);
-    
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2 failed. ret = %d \n", ret);
+              return ret);
+
     /**************************************** 调用combine ********************************************/
-    
-    //调用combine算子第一阶段接口
-    ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(expandX, expertIds, expandIdx, epRecvCounts, expertScales,
-        tpRecvCounts, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
-        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode,
+
+    // 调用combine算子第一阶段接口
+    ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
+        expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts, nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
+        args.tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode,
         groupList_type, nullptr, x, &combineWorkspaceSize, &combineExecutor);
-    CHECK_RET(
-        ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2GetWorkspaceSize failed. ret = %d \n", ret); return ret
-    );
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2GetWorkspaceSize failed. ret = %d \n", ret);
+              return ret);
     // 根据combine算子第一阶段接口计算出的workspaceSize申请device内存
     if (combineWorkspaceSize > 0) {
         ret = aclrtMalloc(&combineWorkspaceAddr, combineWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d \n", ret);
-                return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d \n", ret); return ret);
     }
 
     // 调用combine算子第二阶段接口
     ret = aclnnMoeDistributeCombineV2(combineWorkspaceAddr, combineWorkspaceSize, combineExecutor, args.combineStream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2 failed. ret = %d \n", ret);
-            return ret);
+              return ret);
 
     LOG_PRINT("[INFO] device_%d aclnnMoeUpdateExpert, aclnnMoeDistributeDispatchV2 and aclnnMoeDistributeCombineV2    \
-                execute successfully.\n", args.rankId);
+                execute successfully.\n",
+              args.rankId);
 
     // 释放device资源
     if (dispatchWorkspaceSize > 0) {
@@ -521,8 +532,8 @@ int main(int argc, char *argv[])
     HcclComm commsEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
     for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
         ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp[tpId], commsEp[tpId]);
-        CHECK_RET(ret == ACL_SUCCESS,
-                    LOG_PRINT("[ERROR] HcclCommInitAll ep %d failed, ret %d\n", tpId, ret); return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll ep %d failed, ret %d\n", tpId, ret);
+                  return ret);
     }
 
     int32_t devicesTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
@@ -535,8 +546,8 @@ int main(int argc, char *argv[])
     HcclComm commsTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
     for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
         ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
-        CHECK_RET(ret == ACL_SUCCESS,
-                    LOG_PRINT("[ERROR] HcclCommInitAll tp %d failed, ret %d\n", epId, ret); return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll tp %d failed, ret %d\n", epId, ret);
+                  return ret);
     }
 
     Args args[DEV_NUM];
@@ -555,7 +566,8 @@ int main(int argc, char *argv[])
         args[rankId].dispatchStream = dispatchStream[rankId];
         args[rankId].combineStream = combineStream[rankId];
         args[rankId].context = context[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneProcessUpdateExpertAndDispatchAndCombine, std::ref(args[rankId])));
+        threads[rankId].reset(
+            new (std::nothrow) std::thread(&LaunchOneProcessUpdateExpertAndDispatchAndCombine, std::ref(args[rankId])));
     }
 
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {

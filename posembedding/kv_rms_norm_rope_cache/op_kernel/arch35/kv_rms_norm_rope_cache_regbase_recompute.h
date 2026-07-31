@@ -19,7 +19,6 @@
 
 namespace KvRmsNormRopeCache {
 static constexpr int64_t RECOMPUTE_BINARY_CACHE_BTYES = 2048;
-static constexpr int64_t RECOMPUTE_X_POWER_BUFFER_BTYES = 512;
 static constexpr int64_t RECOMPUTE_REDUCE_SUM_BUFFER_BTYES = 32;
 static constexpr int64_t A_IN_IN = 1;
 static constexpr float FLOAT_ZERO = 0.0;
@@ -100,7 +99,8 @@ public:
         pipe_->InitBuffer(inQueueCosSin, BUFFER_COUNT_DOUBLE, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
         pipe_->InitBuffer(inQueueX, BUFFER_COUNT_DOUBLE, this->ubFactor * sizeof(T_KV));
         pipe_->InitBuffer(outQueue, BUFFER_COUNT_DOUBLE, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
-        pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
+        // xPowBuffer 按 float 存放二分折叠的两段中间结果（x1、x2），每段 ubFactor 个 float
+        pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(float));
         
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
@@ -322,6 +322,29 @@ public:
         LocalTensor<float> cacheLocal = cacheBuffer.Get<float>();
         __local_mem__ float* x1Fp32Ptr = (__local_mem__ float*)xPowLocal1.GetPhyAddr();
         __local_mem__ float* x2Fp32Ptr = (__local_mem__ float*)xPowLocal2.GetPhyAddr();
+
+        // dv 不超过一个 ubFactor 时无需二分折叠，basicBlockLoop 为 0，单块直接归约
+        if (basicBlockLoop == 0) {
+            uint32_t singleBlockFactor =
+                ubFactorDvTail > 0 ? static_cast<uint32_t>(ubFactorDvTail) : static_cast<uint32_t>(this->ubFactor);
+            LocalTensor<T_KV> xLocal = inQueueX.AllocTensor<T_KV>();
+            __local_mem__ T_KV* xPtr = (__local_mem__ T_KV*)xLocal.GetPhyAddr();
+
+            xDataCopyParams.blockLen = singleBlockFactor * sizeof(T_KV);
+            AscendC::DataCopyPad(xLocal, this->kvGm[xDimOffset], xDataCopyParams, padParams);
+            inQueueX.EnQue<T_KV>(xLocal);
+            xLocal = inQueueX.DeQue<T_KV>();
+
+            CastPowVF(x1Fp32Ptr, xPtr, singleBlockFactor);
+            inQueueX.FreeTensor(xLocal);
+
+            AscendC::Duplicate(tmpReduceLocal, FLOAT_ZERO, BLOCK_SIZE / sizeof(float));
+            uint32_t srcShape[2] = {A_IN_IN, singleBlockFactor};
+            AscendC::ReduceSum<float, Pattern::Reduce::AR, true>(tmpReduceLocal, xPowLocal1, srcShape, false);
+            UpdateCache(cacheLocal, tmpReduceLocal, 0, A_IN_IN * BLOCK_SIZE / sizeof(float), A_IN_IN);
+            totalSumLocal = cacheLocal[resultCacheID_ * BLOCK_SIZE / sizeof(float)];
+            return;
+        }
 
         for (uint64_t basicBlockIdx = 0; basicBlockIdx < basicBlockLoop; basicBlockIdx++) {
             LocalTensor<T_KV> x1Local = inQueueX.AllocTensor<T_KV>();
@@ -954,9 +977,10 @@ public:
         
         int64_t gmOffset; 
 
-        if (vCacheIdx >= 0) {
+        // index 的取值是 cache 的行号/槽位号，越界即写到 cache 之外，故必须同时校验上界
+        if (vCacheIdx >= 0 && vCacheIdx < tilingData_->cacheRowLimit) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
-                gmOffset = (batchIdx * tilingData_->seqLength + vCacheIdx) * tilingData_->dv + this->ubFactor * ubIdx;
+                gmOffset = (batchIdx * tilingData_->cacheLength + vCacheIdx) * tilingData_->dv + this->ubFactor * ubIdx;
                 if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                               IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                     AscendC::DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal, xDataCopyParams);
@@ -1013,7 +1037,8 @@ public:
         
         int64_t gmOffset;
 
-        if (vCacheIdx >= 0) {
+        // index 的取值是 cache 的行号/槽位号，越界即写到 cache 之外，故必须同时校验上界
+        if (vCacheIdx >= 0 && vCacheIdx < tilingData_->cacheRowLimit) {
             if (tilingData_->cacheMode == PA_BLK_BNSD_CACHE_MODE) {
                 int64_t blockOffset = vCacheIdx / tilingData_->blockSize;
                 int64_t rowOffset = seqIdx % tilingData_->blockSize;
@@ -1035,7 +1060,9 @@ public:
                     xDataCopyParams.blockLen = dv0 * sizeof(T_KV);
                 }
                 for (int i = 0; i < tmpFactor / dv0; i++) {
-                    gmOffset = idx * tilingData_->dv * tilingData_->blockSize + (rowOffset + i * tilingData_->blockSize) * dv0 + this->ubFactor * ubIdx * tilingData_->blockSize;
+                    gmOffset = blockOffset * tilingData_->dv * tilingData_->blockSize +
+                               (rowOffset + i * tilingData_->blockSize) * dv0 +
+                               this->ubFactor * ubIdx * tilingData_->blockSize;
                     int64_t ubOffset = i * dv0;
                     if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                                   IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
@@ -1816,9 +1843,11 @@ public:
         WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
         int64_t gmOffset1, gmOffset2; 
 
-        if (kCacheIdx >= 0) {
+        // index 的取值是 cache 的行号/槽位号，越界即写到 cache 之外，故必须同时校验上界
+        if (kCacheIdx >= 0 && kCacheIdx < tilingData_->cacheRowLimit) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
-                gmOffset1 = (batchIdx * tilingData_->seqLength + kCacheIdx) * tilingData_->dk + this->ubFactor * ubIdx / 2;
+                gmOffset1 = (batchIdx * tilingData_->cacheLength + kCacheIdx) * tilingData_->dk +
+                            this->ubFactor * ubIdx / 2;
                 gmOffset2 = gmOffset1 + tilingData_->dk / 2;
                 if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                               IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
@@ -1884,7 +1913,8 @@ public:
 
         int64_t gmOffset1, gmOffset2;
 
-        if (kCacheIdx >= 0) {
+        // index 的取值是 cache 的行号/槽位号，越界即写到 cache 之外，故必须同时校验上界
+        if (kCacheIdx >= 0 && kCacheIdx < tilingData_->cacheRowLimit) {
             if (tilingData_->cacheMode == PA_BLK_BNSD_CACHE_MODE) {
                 int64_t blockOffset = kCacheIdx / tilingData_->blockSize;
                 int64_t rowOffset = seqIdx % tilingData_->blockSize;
@@ -1909,7 +1939,9 @@ public:
                     xDataCopyParams.blockLen = dk0 * sizeof(T_KV);
                 }
                 for (int i = 0; i < tmpFactor / dk0; i++) {
-                    gmOffset1 = idx * tilingData_->dk * tilingData_->blockSize + (rowOffset + i * tilingData_->blockSize) * dk0 + this->ubFactor * ubIdx * tilingData_->blockSize / 2;
+                    gmOffset1 = blockOffset * tilingData_->dk * tilingData_->blockSize +
+                                (rowOffset + i * tilingData_->blockSize) * dk0 +
+                                this->ubFactor * ubIdx * tilingData_->blockSize / 2;
                     gmOffset2 = gmOffset1 + tilingData_->dk * tilingData_->blockSize / 2;
                     int64_t ubOffset = i * dk0;
                     if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||

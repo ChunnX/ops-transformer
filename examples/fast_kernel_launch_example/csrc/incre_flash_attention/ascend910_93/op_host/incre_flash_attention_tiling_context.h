@@ -22,11 +22,12 @@
 #endif
 namespace optiling {
 struct RequiredParaInfo {
-    void* data = nullptr;
+    void *data = nullptr;
     at::IntArrayRef shape;
     at::ScalarType dType = at::ScalarType::Float;
 
-    int64_t GetShapeSize() const {
+    int64_t GetShapeSize() const
+    {
         if (shape.empty()) {
             return 0;
         }
@@ -39,12 +40,13 @@ struct RequiredParaInfo {
 };
 
 struct OptionalTensorParaInfo {
-    bool hasValue = false;                         // optional 是否有值
-    void* data = nullptr;                          // 无值时为 nullptr
-    at::IntArrayRef shape;                         // 无值时通常为空
+    bool hasValue = false;                        // optional 是否有值
+    void *data = nullptr;                         // 无值时为 nullptr
+    at::IntArrayRef shape;                        // 无值时通常为空
     at::ScalarType dType = at::ScalarType::Float; // 无值时保留默认类型
 
-    int64_t GetShapeSize() const {
+    int64_t GetShapeSize() const
+    {
         if (!hasValue || shape.empty()) {
             return 0;
         }
@@ -58,7 +60,7 @@ struct OptionalTensorParaInfo {
 
 
 struct IFAContext {
-    const char* opName = nullptr;
+    const char *opName = nullptr;
     RequiredParaInfo query;
     RequiredParaInfo key;
     RequiredParaInfo value;
@@ -94,11 +96,11 @@ struct IFAContext {
     RequiredParaInfo lseOut;
 
     uint32_t numHeads;
-    int64_t preToken ;
+    int64_t preToken;
     int64_t nextToken;
     float scaleValue;
     uint32_t kvHeadNums;
-    const char* layOut;
+    const char *layOut;
     uint32_t blockSize;
     uint32_t innerPrecise;
     int64_t antiquantMode;

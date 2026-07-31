@@ -226,7 +226,16 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
                 cpu_re = abs(cpu_ae / value_bm)
             if npu_re > thres or cpu_re > thres:
                 if return_value_flag:
-                    if not judge_value_by_isclose(cur_npu_output_value, cur_cpu_output_value):
+                    # 将 value 输出统一转为 numpy array，bfloat16 需先转 float32 再转 numpy
+                    if torch.is_tensor(cur_npu_output_value):
+                        npuValueArr = cur_npu_output_value.float().cpu().numpy() if cur_npu_output_value.dtype == torch.bfloat16 else cur_npu_output_value.cpu().numpy()
+                    else:
+                        npuValueArr = np.asarray(cur_npu_output_value)
+                    if torch.is_tensor(cur_cpu_output_value):
+                        cpuValueArr = cur_cpu_output_value.float().cpu().numpy() if cur_cpu_output_value.dtype == torch.bfloat16 else cur_cpu_output_value.cpu().numpy()
+                    else:
+                        cpuValueArr = np.asarray(cur_cpu_output_value)
+                    if not judge_value_by_isclose(npuValueArr, cpuValueArr):
                         npu_pass = False
                         diff_npu.append(element_npu)
                         diff_cpu.append(element_cpu)
@@ -257,7 +266,7 @@ def trans_tnd_actseq(list):
             raise ValueError(f'TND情况下 act_seq_len 为非递减数列 act_seq_len={list}')
     return list_new
 
-def check_result(expect, result, topk_value, output_idx_offset, params):
+def check_result(expect, result, topk_value, output_idx_offset, params, cpu_topk_value, npu_topk_value):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
@@ -379,6 +388,9 @@ def check_result(expect, result, topk_value, output_idx_offset, params):
     print(f"total_line is {total_rows}")
     npu_reshape = npu_output.reshape([total_rows, sparse_count])
     cpu_reshape = cpu_output.reshape([total_rows, sparse_count])
+    if return_value:
+        cpu_topk_value = cpu_topk_value.reshape([total_rows, sparse_count])
+        npu_topk_value = npu_topk_value.reshape([total_rows, sparse_count])
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
@@ -398,18 +410,21 @@ def check_result(expect, result, topk_value, output_idx_offset, params):
         print(f"有效值集合相同，无需进行比较")
     for t_id in rows:
         bsn = np.unravel_index(t_id, sp)
+        npu_topk_output_value = None
+        cpu_topk_output_value = None
         if layout_query == "TND":
             b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
             bsn = (b_idx, s1_idx, bsn[-1])
-        cur_cpu_output_value = cpu_reshape[t_id, :]
-        cur_npu_output_value = npu_reshape[t_id, :]
+        if return_value:
+            cpu_topk_output_value = cpu_topk_value[t_id, :]
+            npu_topk_output_value = npu_topk_value[t_id, :]
         npu_pass_t = True
         max_re_t = 0
         valid_len = valid_lens[t_id]
         npu_pass_t, max_re_t = compare_topk_valid(cpu_reshape[t_id, :valid_len], npu_reshape[t_id, :valid_len],
                                                     topk_value, bsn, diff_npu, diff_cpu,
-                                                    cur_npu_output_value,
-                                                    cur_cpu_output_value, thres,
+                                                    npu_topk_output_value,
+                                                    cpu_topk_output_value, thres,
                                                     return_value, output_idx_offset, layout_query, cu_seqlens_q, q_seq)
         if not npu_pass_t:
             npu_pass = False
@@ -519,8 +534,6 @@ def check_result_return_value(expect, result, params):
     data_compe = expect.cpu().float().numpy()
     real_data = npu_output.flatten()
     data_compe = cpu_output.flatten()
-    diff_cpu = []
-    diff_npu = []
 
     if layout_query in ["BSND"]:
         sp = (batch_size, q_seq, k_head_num)
@@ -557,11 +570,6 @@ def check_result_return_value(expect, result, params):
             npu_pass = False
     end_time = time()
     print(f"耗时：{end_time - start_time:.6f} 秒")
-    topk_precision = not diff_npu and not diff_cpu
-    if topk_precision:
-        print(f'[success]TopK精度通过, idx不同的地方的value误差在阈值之内')
-    else:
-        print(f'[fail]TopK精度失败')
     print(f"npu_pass is {npu_pass}")
     if real_data.size == 0 and real_data.size == data_compe.size:
         print_log(
@@ -587,7 +595,7 @@ def check_result_return_value(expect, result, params):
                         float(split_count) * 100.0
     display_output_np_isclose(real_data, data_compe, start, end)
     pct_thd = (1 - pct_thd) * 100.0
-    result = "Pass" if (npu_pass or topk_precision) else "Failed"
+    result = "Pass" if npu_pass else "Failed"
     print_log(
         '---------------------------------------------------------------------------------------')
     print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')

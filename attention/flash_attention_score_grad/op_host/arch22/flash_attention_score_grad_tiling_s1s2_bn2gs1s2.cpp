@@ -458,6 +458,9 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::ProcessPseInfo(const 
                    OP_LOGE(context_, "In op [FlashAttentionScoreGrad], [sparse mode 7] is not supported, got [INNER Pse]"),
                    return ge::GRAPH_FAILED);
         if (fBaseParams.sparseMode == BAND_LEFT_UP_CASUAL) {
+            if (isMaxWorkspace_) {
+                return ge::GRAPH_FAILED;
+            }
             for (int64_t i = 0; i < fBaseParams.b; i++) {
                 if (i == 0) {
                     if (fBaseParams.actualSeqQlen[0] - fBaseParams.actualSeqKvlen[0] + fBaseParams.qStartIdx -
@@ -728,25 +731,24 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::GetBaseShapeInfo()
     } else if (strcmp(inputLayout, "TND") == 0) {
         OP_LOGD(context_, "inputLayout is TND");
         fBaseParams.layoutType = INPUT_FORMAT_TND;
+        auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+        auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+        if (actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr) {
+            OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [actualSeqQlenTensor or actualSeqKvlenTensor is null]");
+            return ge::GRAPH_FAILED;
+        }
+        const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
+        const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
+        // b不能等于0
+        OP_CHECK_IF(
+            (seqQShapeSize != kvSeqShapeSize || seqQShapeSize < 1),
+            OP_LOGE(context_,
+                    "In op [FlashAttentionScoreGrad], the tensor shapes of [seqQShapeSize, kvSeqShapeSize] are mismatched, "
+                    "the reason is: [seqQShapeSize and kvSeqShapeSize should be same and seqQShapeSize should not be 0, "
+                    "seqQShapeSize=%zu, kvSeqShapeSize=%zu]",
+                    seqQShapeSize, kvSeqShapeSize),
+            return ge::GRAPH_FAILED);
         if (!isMaxWorkspace_) {
-            auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
-            auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
-            if (actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr) {
-                OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [actualSeqQlenTensor or actualSeqKvlenTensor is null]");
-                return ge::GRAPH_FAILED;
-            }
-            const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
-            const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
-            // b不能等于0
-            OP_CHECK_IF(
-                (seqQShapeSize != kvSeqShapeSize || seqQShapeSize < 1),
-                OP_LOGE(context_,
-                        "In op [FlashAttentionScoreGrad], the tensor shapes of [seqQShapeSize, kvSeqShapeSize] are mismatched, "
-                        "the reason is: [seqQShapeSize and kvSeqShapeSize should be same and seqQShapeSize should not be 0, "
-                        "seqQShapeSize=%zu, kvSeqShapeSize=%zu]",
-                        seqQShapeSize, kvSeqShapeSize),
-                return ge::GRAPH_FAILED);
-
             const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();
             const int64_t *kvValue = actualSeqKvlenTensor->GetData<int64_t>();
             OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
@@ -774,6 +776,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::GetBaseShapeInfo()
             fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
         } else {
             fBaseParams.b = 1;
+            fBaseParams.sumS1S2Product = 1;
             fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_0);
             fBaseParams.s2 = keyShape->GetStorageShape().GetDim(DIM_0);
         }
@@ -1146,6 +1149,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoSplit()
 ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoSparse()
 {
     if (isMaxWorkspace_) {
+        fBaseParams.blockOuter = fBaseParams.coreNum;
         return ge::GRAPH_SUCCESS;
     }
     if (fBaseParams.isSparse) {
@@ -2445,19 +2449,19 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoPreTiling()
 
     int64_t dropBeginAddr = SYNC_GLOBAL_WORKSPACE_SIZE;
     dropBeginAddr =
-        (dropBeginAddr + (fBaseParams.qSize) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
+        (dropBeginAddr + (fBaseParams.qSizeAlign) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
     if (fBaseParams.rope_d != 0) {
-        dropBeginAddr = (dropBeginAddr + (fBaseParams.qRopeSize) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE *
+        dropBeginAddr = (dropBeginAddr + (fBaseParams.qRopeSizeAlign) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE *
                         ADDR_ALIGN_SIZE;
     }
     dropBeginAddr =
-        (dropBeginAddr + (fBaseParams.kvSize) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
+        (dropBeginAddr + (fBaseParams.kvSizeAlign) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
     if (fBaseParams.rope_d != 0) {
-        dropBeginAddr = (dropBeginAddr + (fBaseParams.kRopeSize) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE *
+        dropBeginAddr = (dropBeginAddr + (fBaseParams.kRopeSizeAlign) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE *
                         ADDR_ALIGN_SIZE;
     }
     dropBeginAddr =
-        (dropBeginAddr + (fBaseParams.vSize) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
+        (dropBeginAddr + (fBaseParams.vSizeAlign) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
     tilingData->preTilingData.set_dropBeginAddr(dropBeginAddr);
     return ge::GRAPH_SUCCESS;
 }

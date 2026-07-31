@@ -44,7 +44,8 @@ ge::graphStatus WeightQuantTilingTransferHelper::GetShapeAttrsInfo()
         static_cast<ge::Format>(ge::GetPrimaryFormat(tilingProcesser_.mmrCtxInfo_.x2->GetStorageFormat()));
     OP_TILING_CHECK((matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) &&
                         (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "antiQuantType",
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        opName_, "antiQuantType",
                         std::to_string(static_cast<int>(matmulInfoPtr_->antiQuantType)).c_str(),
                         "When the weight format is Nz, the value of antiQuantType must be per-channel"),
                     return ge::GRAPH_FAILED);
@@ -213,21 +214,18 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckAxisSize()
 {
     const uint64_t m = MatmulAllReduceTilingBase::GetMValue();
     OP_TILING_CHECK(m > static_cast<uint64_t>(INT32_MAX),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
-                        std::to_string(m).c_str(),
-                        "The value of m of x1 must not exceed INT32_MAX"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(m).c_str(),
+                                                          "The value of m of x1 must not exceed INT32_MAX"),
                     return ge::GRAPH_FAILED);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
     OP_TILING_CHECK(k > static_cast<uint64_t>(UINT16_MAX),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
-                        std::to_string(k).c_str(),
-                        "The value of k of x1 must not exceed UINT16_MAX"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(k).c_str(),
+                                                          "The value of k of x1 must not exceed UINT16_MAX"),
                     return ge::GRAPH_FAILED);
     const uint64_t n = MatmulAllReduceTilingBase::GetNValue();
     OP_TILING_CHECK(n > static_cast<uint64_t>(UINT16_MAX),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
-                        std::to_string(n).c_str(),
-                        "The value of n of x2 must not exceed UINT16_MAX"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2", std::to_string(n).c_str(),
+                                                          "The value of n of x2 must not exceed UINT16_MAX"),
                     return ge::GRAPH_FAILED);
 
     return CheckWeightQuantEmptyTensor();
@@ -238,40 +236,42 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInputDtype() const
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     OP_TILING_CHECK(!((x1Type == ge::DT_FLOAT16) || (x1Type == ge::DT_BF16)),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x1",
-                        Ops::Base::ToString(x1Type).c_str(),
-                        "The dtype of x1 must be fp16 or bf16"),
+                                                          Ops::Base::ToString(x1Type).c_str(),
+                                                          "The dtype of x1 must be fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
     OP_TILING_CHECK(!((x2Type == ge::DT_INT8) || (x2Type == ge::DT_INT4)),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x2",
-                        Ops::Base::ToString(x2Type).c_str(),
-                        "The dtype of x2 must be int8 or int4"),
+                                                          Ops::Base::ToString(x2Type).c_str(),
+                                                          "The dtype of x2 must be int8 or int4"),
                     return ge::GRAPH_FAILED);
     if (mmrCtxInfo_.bias_shape != nullptr) {
-        OP_TILING_CHECK(x1Type != mmrCtxInfo_.bias->GetDataType(),
-                        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x1 and bias",
-                            (Ops::Base::ToString(x1Type) + " and " +
-                             Ops::Base::ToString(mmrCtxInfo_.bias->GetDataType())).c_str(),
-                            "The dtypes of x1 and bias must be the same"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            x1Type != mmrCtxInfo_.bias->GetDataType(),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                context_->GetNodeName(), "x1 and bias",
+                (Ops::Base::ToString(x1Type) + " and " + Ops::Base::ToString(mmrCtxInfo_.bias->GetDataType())).c_str(),
+                "The dtypes of x1 and bias must be the same"),
+            return ge::GRAPH_FAILED);
     }
     // x1,antiquantScale数据类型相同
     auto antiquantScaleType = mmrCtxInfo_.antiquant_scale->GetDataType();
     OP_TILING_CHECK(antiquantScaleType != x1Type,
-                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "antiquantScale and x1",
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        context_->GetNodeName(), "antiquantScale and x1",
                         (Ops::Base::ToString(antiquantScaleType) + " and " + Ops::Base::ToString(x1Type)).c_str(),
                         "The dtypes of antiquantScale and x1 must be the same"),
                     return ge::GRAPH_FAILED);
     // antiquantScale和antiquantOffset数据类型相同
     if (mmrCtxInfo_.antiquant_offset_shape != nullptr) {
         auto antiquantOffsetType = mmrCtxInfo_.antiquant_offset->GetDataType();
-        OP_TILING_CHECK(antiquantOffsetType != antiquantScaleType,
-                        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(),
-                            "antiquantScale and antiquantOffset",
-                            (Ops::Base::ToString(antiquantOffsetType) + " and " +
-                             Ops::Base::ToString(antiquantScaleType)).c_str(),
-                            "The dtypes of antiquantScale and antiquantOffset must be the same"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            antiquantOffsetType != antiquantScaleType,
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                context_->GetNodeName(), "antiquantScale and antiquantOffset",
+                (Ops::Base::ToString(antiquantOffsetType) + " and " + Ops::Base::ToString(antiquantScaleType)).c_str(),
+                "The dtypes of antiquantScale and antiquantOffset must be the same"),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -286,8 +286,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
     const size_t actualX2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(x2DimNum != actualX2DimNum,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x2",
-                        (std::to_string(actualX2DimNum) + "D").c_str(),
-                        (std::to_string(x2DimNum) + "D").c_str()),
+                                                 (std::to_string(actualX2DimNum) + "D").c_str(),
+                                                 (std::to_string(x2DimNum) + "D").c_str()),
                     return ge::GRAPH_FAILED);
     MC2_CHECK_LOG_RET(opName_, CheckInputDtype());
     // antiquantgroupsize 校验
@@ -297,9 +297,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
         OP_TILING_CHECK(((groupSize != 0) && (groupSize % ANTIQUANT_GROUP_SIZE_MIN_VALUE != 0 ||
                                               groupSize < ANTIQUANT_GROUP_SIZE_MIN_VALUE ||
                                               groupSize > std::min(static_cast<int32_t>(kValue - 1), INT32_MAX))),
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
-                            "antiquantGroupSize",
-                            std::to_string(groupSize).c_str(),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            context_->GetNodeName(), "antiquantGroupSize", std::to_string(groupSize).c_str(),
                             "The value of antiquantGroupSize must be in the range [32, min(k-1, INT_MAX)]"),
                         return ge::GRAPH_FAILED);
     }

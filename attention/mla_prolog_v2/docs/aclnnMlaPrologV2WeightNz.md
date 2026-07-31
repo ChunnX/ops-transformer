@@ -79,44 +79,44 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMlaPrologV2WeightNzGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPrologV2WeightNz”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMlaPrologV2WeightNzGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPrologV2WeightNz”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
-  const aclTensor *tokenX, 
-  const aclTensor *weightDq, 
-  const aclTensor *weightUqQr, 
-  const aclTensor *weightUk, 
-  const aclTensor *weightDkvKr, 
-  const aclTensor *rmsnormGammaCq, 
-  const aclTensor *rmsnormGammaCkv, 
-  const aclTensor *ropeSin, 
-  const aclTensor *ropeCos, 
-  const aclTensor *cacheIndex, 
-  aclTensor       *kvCacheRef, 
-  aclTensor       *krCacheRef, 
-  const aclTensor *dequantScaleXOptional, 
-  const aclTensor *dequantScaleWDqOptional, 
-  const aclTensor *dequantScaleWUqQrOptional, 
-  const aclTensor *dequantScaleWDkvKrOptional, 
-  const aclTensor *quantScaleCkvOptional, 
-  const aclTensor *quantScaleCkrOptional, 
-  const aclTensor *smoothScalesCqOptional, 
-  double           rmsnormEpsilonCq, 
-  double           rmsnormEpsilonCkv, 
-  char            *cacheModeOptional, 
-  const aclTensor *queryOut, 
-  const aclTensor *queryRopeOut, 
-  const aclTensor *dequantScaleQNopeOutOptional, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *tokenX,
+  const aclTensor *weightDq,
+  const aclTensor *weightUqQr,
+  const aclTensor *weightUk,
+  const aclTensor *weightDkvKr,
+  const aclTensor *rmsnormGammaCq,
+  const aclTensor *rmsnormGammaCkv,
+  const aclTensor *ropeSin,
+  const aclTensor *ropeCos,
+  const aclTensor *cacheIndex,
+  aclTensor       *kvCacheRef,
+  aclTensor       *krCacheRef,
+  const aclTensor *dequantScaleXOptional,
+  const aclTensor *dequantScaleWDqOptional,
+  const aclTensor *dequantScaleWUqQrOptional,
+  const aclTensor *dequantScaleWDkvKrOptional,
+  const aclTensor *quantScaleCkvOptional,
+  const aclTensor *quantScaleCkrOptional,
+  const aclTensor *smoothScalesCqOptional,
+  double           rmsnormEpsilonCq,
+  double           rmsnormEpsilonCkv,
+  char            *cacheModeOptional,
+  const aclTensor *queryOut,
+  const aclTensor *queryRopeOut,
+  const aclTensor *dequantScaleQNopeOutOptional,
+  uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMlaPrologV2WeightNz(
-  void              *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor     *executor, 
+  void              *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor     *executor,
   const aclrtStream stream)
 ```
 
@@ -501,7 +501,7 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -580,10 +580,10 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
         </tr>
       </tbody>
     </table>
-      
+
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -713,7 +713,7 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
     <tr>
       <td colspan="2">非量化</td>
       <td>
-          入参：所有入参皆为非量化数据 <br> 
+          入参：所有入参皆为非量化数据 <br>
           出参：所有出参皆为非量化数据
       </td>
     </tr>
@@ -721,22 +721,22 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
       <td rowspan="2">部分量化</td>
       <td>kv_cache非量化 </td>
       <td>
-          入参：weightUqQr传入pertoken量化数据，其余入参皆为非量化数据 <br> 
-          出参：所有出参返回非量化数据 
+          入参：weightUqQr传入pertoken量化数据，其余入参皆为非量化数据 <br>
+          出参：所有出参返回非量化数据
       </td>
     </tr>
     <tr>
       <td>kv_cache量化 </td>
-      <td> 
-          入参：weightUqQr传入pertoken量化数据，kvCacheRef、krCacheRef传入perchannel量化数据，其余入参皆为非量化数据 <br> 
-          出参：kvCacheRef、krCacheRef返回perchannel量化数据，其余出参返回非量化数据 
+      <td>
+          入参：weightUqQr传入pertoken量化数据，kvCacheRef、krCacheRef传入perchannel量化数据，其余入参皆为非量化数据 <br>
+          出参：kvCacheRef、krCacheRef返回perchannel量化数据，其余出参返回非量化数据
       </td>
     </tr>
     <tr>
       <td rowspan="2">int8全量化</td>
       <td> kv_cache非量化</td>
-      <td> 
-          入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据 <br> 
+      <td>
+          入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据 <br>
           出参：所有出参皆为非量化数据
       </td>
     </tr>
@@ -744,7 +744,7 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
       <td> kv_cache量化 </td>
       <td>
           入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，kvCacheRef传入pertensor量化数据，其余入参皆为非量化数据 <br>
-          出参：queryOut返回pertoken_head量化数据，kvCacheRef出参返回pertensor量化数据，其余出参范围非量化数据 
+          出参：queryOut返回pertoken_head量化数据，kvCacheRef出参返回pertensor量化数据，其余出参范围非量化数据
       </td>
     </tr>
   </table>
@@ -1072,7 +1072,7 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
 
 ## 调用示例
 
-<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```Cpp
   #include <iostream>

@@ -37,15 +37,15 @@ struct Tile {
     uint64_t tailCnt;
 };
 
-template <typename BMMRSATAT>  // Batch_Mat_Mul_Reduce_Scatter_All_To_All_Type缩写BMMRSATAT
+template <typename BMMRSATAT> // Batch_Mat_Mul_Reduce_Scatter_All_To_All_Type缩写BMMRSATAT
 class BatchMatMulReduceScatterAlltoAll {
 public:
     __aicore__ inline BatchMatMulReduceScatterAlltoAll(){};
-    __aicore__ inline void Init(__gm__ uint8_t* xGM, __gm__ uint8_t* weightGM, __gm__ uint8_t* biasGM,
-                                __gm__ uint8_t* yGM, __gm__ uint8_t* workspaceGM,
-                                const BatchMatMulReduceScatterAlltoAllTilingData* tiling, TPipe* tPipe,
-                                __gm__ void* hcclInitTiling, __gm__ void* reduceScatterCcTiling,
-                                __gm__ void* alltoAllCcTiling);
+    __aicore__ inline void Init(__gm__ uint8_t *xGM, __gm__ uint8_t *weightGM, __gm__ uint8_t *biasGM,
+                                __gm__ uint8_t *yGM, __gm__ uint8_t *workspaceGM,
+                                const BatchMatMulReduceScatterAlltoAllTilingData *tiling, TPipe *tPipe,
+                                __gm__ void *hcclInitTiling, __gm__ void *reduceScatterCcTiling,
+                                __gm__ void *alltoAllCcTiling);
     __aicore__ inline void Process();
 
     using X_T = typename BMMRSATAT::xType;
@@ -54,7 +54,7 @@ public:
     static constexpr int64_t Y_SHARD_TYPE = BMMRSATAT::yShardType;
     static constexpr bool IS_TRANS = BMMRSATAT::transposeWeight;
     static constexpr bool IS_LITE = BMMRSATAT::isLite;
-    
+
     using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, X_T, false>;
     using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, X_T, IS_TRANS>;
     using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, X_T, false>;
@@ -96,8 +96,8 @@ private:
     static constexpr uint64_t SIXTEEN_ALIGN = 16U;
     static constexpr uint64_t UB_ADDR_ALIGN = 32U;
 
-    TPipe* pipe = nullptr;
-    const BatchMatMulReduceScatterAlltoAllTilingData* tilingData = nullptr;
+    TPipe *pipe = nullptr;
+    const BatchMatMulReduceScatterAlltoAllTilingData *tilingData = nullptr;
     Mc2BatchMatmulTilingData localTileTiling;
     Mc2BatchMatmulTilingData localTailTiling;
     Mc2BatchMatmulTilingData nonLocalTileTiling;
@@ -122,67 +122,67 @@ private:
     uint64_t localCCnt = 0U;
     uint64_t nonLocalCCnt = 0U;
     uint64_t nonLocalRSoffset = 0U;
-    
-    uint64_t aTpBlock = 0U; // C_tp * M/tp
-    uint64_t aEpBlock = 0U; // tp * C_tp * M/tp
-    uint64_t aTileEBlock = 0U; // ep * tp * C_tp * M/tp
-    uint64_t bTileEBlock = 0U; // H * M/tp
-    uint64_t aLocalECntBlock = 0U; // localE.tileLen * ep * tp * C_tp * M/tp
-    uint64_t aLocalCCntBlock = 0U; // localC.tileLen * M/tp
-    uint64_t aLocalCTileOffset = 0U; // (localC.tileCnt * localC.tileLen) * M/tp
-    uint64_t aLocalCTailBlock = 0U; // localC.tailLen * M/tp
-    uint64_t bLocalECntBlock = 0U; // localE.tileLen * H * M/tp
-    uint64_t cLocalECntBlock = 0U; // tp * localE.tileLen * C_tp * H
-    uint64_t cLocalCCntBlock = 0U; // tp * localE.tileLen * localC.tileLen * H
-    uint64_t cLocalCTileOffset = 0U; // tp * localE.tileLen * (localC.tileCnt * localC.tileLen) * H
-    uint64_t cLocalCTailBlock = 0U; // tp * localE.tileLen * localC.tailLen * H
-    uint64_t cLocalTileEBlock = 0U; // localC.tileLen * H
+
+    uint64_t aTpBlock = 0U;              // C_tp * M/tp
+    uint64_t aEpBlock = 0U;              // tp * C_tp * M/tp
+    uint64_t aTileEBlock = 0U;           // ep * tp * C_tp * M/tp
+    uint64_t bTileEBlock = 0U;           // H * M/tp
+    uint64_t aLocalECntBlock = 0U;       // localE.tileLen * ep * tp * C_tp * M/tp
+    uint64_t aLocalCCntBlock = 0U;       // localC.tileLen * M/tp
+    uint64_t aLocalCTileOffset = 0U;     // (localC.tileCnt * localC.tileLen) * M/tp
+    uint64_t aLocalCTailBlock = 0U;      // localC.tailLen * M/tp
+    uint64_t bLocalECntBlock = 0U;       // localE.tileLen * H * M/tp
+    uint64_t cLocalECntBlock = 0U;       // tp * localE.tileLen * C_tp * H
+    uint64_t cLocalCCntBlock = 0U;       // tp * localE.tileLen * localC.tileLen * H
+    uint64_t cLocalCTileOffset = 0U;     // tp * localE.tileLen * (localC.tileCnt * localC.tileLen) * H
+    uint64_t cLocalCTailBlock = 0U;      // tp * localE.tileLen * localC.tailLen * H
+    uint64_t cLocalTileEBlock = 0U;      // localC.tileLen * H
     uint64_t cLocalTileECTailBlock = 0U; // localC.tailLen * H
-    uint64_t cLocalTpBlock = 0U; // localE.tileLen * localC.tileLen * H
-    uint64_t cLocalTpCTailBlock = 0U; // localE.tileLen * localC.tailLen * H
+    uint64_t cLocalTpBlock = 0U;         // localE.tileLen * localC.tileLen * H
+    uint64_t cLocalTpCTailBlock = 0U;    // localE.tileLen * localC.tailLen * H
 
-    uint64_t aNonLocalECntBlock = 0U; // nonLocalE.tileLen * ep * tp * C_tp * M/tp
-    uint64_t aNonLocalCCntBlock = 0U; // nonLocalC.tileLen * M/tp
+    uint64_t aNonLocalECntBlock = 0U;   // nonLocalE.tileLen * ep * tp * C_tp * M/tp
+    uint64_t aNonLocalCCntBlock = 0U;   // nonLocalC.tileLen * M/tp
     uint64_t aNonLocalCTileOffset = 0U; // (nonLocalC.tileCnt * nonLocalC.tileLen) * M/tp
-    uint64_t aNonLocalCTailBlock = 0U; // nonLocalC.tailLen * M/tp
-    uint64_t bNonLocalECntBlock = 0U; // nonLocalE.tileLen * H * M/tp
-    uint64_t cNonLocalECntBlock = 0U; // tp * (ep-1) * nonLocalE.tileLen * C_tp * H
-    uint64_t cNonLocalCCntBlock = 0U; // tp * (ep-1) * nonLocalE.tileLen * nonLocalC.tileLen * H
+    uint64_t aNonLocalCTailBlock = 0U;  // nonLocalC.tailLen * M/tp
+    uint64_t bNonLocalECntBlock = 0U;   // nonLocalE.tileLen * H * M/tp
+    uint64_t cNonLocalECntBlock = 0U;   // tp * (ep-1) * nonLocalE.tileLen * C_tp * H
+    uint64_t cNonLocalCCntBlock = 0U;   // tp * (ep-1) * nonLocalE.tileLen * nonLocalC.tileLen * H
     uint64_t cNonLocalCTileOffset = 0U; // tp * (ep-1) * nonLocalE.tileLen * (nonLocalC.tileCnt * nonLocalC.tileLen) * H
-    uint64_t cNonLocalCTailBlock = 0U; // tp * (ep-1) * nonLocalE.tileLen * nonLocalC.tailLen * H
-    uint64_t cNonLocalTileEBlock = 0U; // nonLocalC.tileLen * H
+    uint64_t cNonLocalCTailBlock = 0U;  // tp * (ep-1) * nonLocalE.tileLen * nonLocalC.tailLen * H
+    uint64_t cNonLocalTileEBlock = 0U;  // nonLocalC.tileLen * H
     uint64_t cNonLocalTileECTailBlock = 0U; // nonLocalC.tailLen * H
-    uint64_t cNonLocalEpBlock = 0U; // nonLocalE.tileLen * nonLocalC.tileLen * H
-    uint64_t cNonLocalEpCTailBlock = 0U; // nonLocalE.tileLen * nonLocalC.tailLen * H
-    uint64_t cNonLocalTpBlock = 0U; // (ep-1) * nonLocalE.tileLen * nonLocalC.tileLen * H
-    uint64_t cNonLocalTpCTailBlock = 0U; // (ep-1) * nonLocalE.tileLen * nonLocalC.tailLen * H
-    
-    uint64_t LocalRSRecvCount = 0U; // localE.tileLen * localC.tileLen * H
-    uint64_t LocalRSRecvTailCount = 0U; // localE.tileLen * localC.tailLen * H
-    uint64_t localRSECntBlock = 0U; // localE.tileLen * C_tp * H
-    uint64_t localRSCCntBlock = 0U; // localE.tileLen * localC.tileLen * H
-    uint64_t localRSCTailBlock = 0U; // localE.tileLen * localC.tailLen * H
-    uint64_t localRSCTileOffset = 0U; // localE.tileLen * (localC.tileCnt * localC.tileLen) * H
-    uint64_t nonLocalRSRecvCount = 0U; // (ep-1) * nonLocalE.tileLen * nonLocalC.tileLen * H
-    uint64_t nonLocalRSRecvTailCount = 0U; // (ep-1) * nonLocalE.tileLen * nonLocalC.tailLen * H
-    uint64_t nonLocalRSECntBlock = 0U; // (ep-1) * nonLocalE.tileLen * C_tp * H
-    uint64_t nonLocalRSCCntBlock = 0U; // (ep-1) * nonLocalE.tileLen * nonLocalC.tileLen * H
-    uint64_t nonLocalRSCTailBlock = 0U; // (ep-1) * nonLocalE.tileLen * nonLocalC.tailLen * H
-    uint64_t nonLocalRSCTileOffset = 0U; // (ep-1) * nonLocalE.tileLen * (nonLocalC.tileCnt * nonLocalC.tileLen) * H
+    uint64_t cNonLocalEpBlock = 0U;         // nonLocalE.tileLen * nonLocalC.tileLen * H
+    uint64_t cNonLocalEpCTailBlock = 0U;    // nonLocalE.tileLen * nonLocalC.tailLen * H
+    uint64_t cNonLocalTpBlock = 0U;         // (ep-1) * nonLocalE.tileLen * nonLocalC.tileLen * H
+    uint64_t cNonLocalTpCTailBlock = 0U;    // (ep-1) * nonLocalE.tileLen * nonLocalC.tailLen * H
 
-    uint64_t nonLocalTransECntBlock = 0U; // ep * nonLocalE.tileLen * C_tp * H
-    uint64_t nonLocalTransCCntBlock = 0U; // ep * nonLocalE.tileLen * nonLocalC.tileLen * H
-    uint64_t nonLocalTransCTailBlock = 0U; // ep * nonLocalE.tileLen * nonLocalC.tailLen * H
+    uint64_t LocalRSRecvCount = 0U;        // localE.tileLen * localC.tileLen * H
+    uint64_t LocalRSRecvTailCount = 0U;    // localE.tileLen * localC.tailLen * H
+    uint64_t localRSECntBlock = 0U;        // localE.tileLen * C_tp * H
+    uint64_t localRSCCntBlock = 0U;        // localE.tileLen * localC.tileLen * H
+    uint64_t localRSCTailBlock = 0U;       // localE.tileLen * localC.tailLen * H
+    uint64_t localRSCTileOffset = 0U;      // localE.tileLen * (localC.tileCnt * localC.tileLen) * H
+    uint64_t nonLocalRSRecvCount = 0U;     // (ep-1) * nonLocalE.tileLen * nonLocalC.tileLen * H
+    uint64_t nonLocalRSRecvTailCount = 0U; // (ep-1) * nonLocalE.tileLen * nonLocalC.tailLen * H
+    uint64_t nonLocalRSECntBlock = 0U;     // (ep-1) * nonLocalE.tileLen * C_tp * H
+    uint64_t nonLocalRSCCntBlock = 0U;     // (ep-1) * nonLocalE.tileLen * nonLocalC.tileLen * H
+    uint64_t nonLocalRSCTailBlock = 0U;    // (ep-1) * nonLocalE.tileLen * nonLocalC.tailLen * H
+    uint64_t nonLocalRSCTileOffset = 0U;   // (ep-1) * nonLocalE.tileLen * (nonLocalC.tileCnt * nonLocalC.tileLen) * H
+
+    uint64_t nonLocalTransECntBlock = 0U;   // ep * nonLocalE.tileLen * C_tp * H
+    uint64_t nonLocalTransCCntBlock = 0U;   // ep * nonLocalE.tileLen * nonLocalC.tileLen * H
+    uint64_t nonLocalTransCTailBlock = 0U;  // ep * nonLocalE.tileLen * nonLocalC.tailLen * H
     uint64_t nonLocalTransCTileOffset = 0U; // ep * nonLocalE.tileLen * (nonLocalC.tileCnt * nonLocalC.tileLen) * H
 
-    uint64_t nonLocalBiasECntBlock = 0U; // nonLocalE.tileLen * H
-    uint64_t nonLocalYOutECntBlock = 0U; // nonLocalE.tileLen * C_tp * H
-    uint64_t nonLocalYOutCCntBlock = 0U; // nonLocalC.tileLen * H
-    uint64_t nonLocalYOutCTailBlock = 0U; // nonLocalC.tailLen * H
+    uint64_t nonLocalBiasECntBlock = 0U;   // nonLocalE.tileLen * H
+    uint64_t nonLocalYOutECntBlock = 0U;   // nonLocalE.tileLen * C_tp * H
+    uint64_t nonLocalYOutCCntBlock = 0U;   // nonLocalC.tileLen * H
+    uint64_t nonLocalYOutCTailBlock = 0U;  // nonLocalC.tailLen * H
     uint64_t nonLocalYOutCTileOffset = 0U; // (nonLocalC.tileCnt * nonLocalC.tileLen) * H
-    uint64_t localBiasECntBlock = 0U; // localE.tileLen * H
-    uint64_t localYOutEpOffset = 0U; // epRankId * E_ep * C_tp * H
-    uint64_t localYOutTileCOffset = 0U; // (localC.tileCnt * localC.tileLen) * H
+    uint64_t localBiasECntBlock = 0U;      // localE.tileLen * H
+    uint64_t localYOutEpOffset = 0U;       // epRankId * E_ep * C_tp * H
+    uint64_t localYOutTileCOffset = 0U;    // (localC.tileCnt * localC.tileLen) * H
 
     uint64_t startNonLocalTileRow = 0U; // coreIdx * RowsPerCore
     uint64_t startNonLocalTailRow = 0U;
@@ -198,14 +198,14 @@ private:
     uint64_t localTailEndOffset = 0U;
     uint64_t rowsPerLoop = 0U; // ub / H
 
-    uint64_t alltoallSendCount = 0U; // nonLocalC.tileLen * H
-    uint64_t alltoallSendTailCount = 0U; // nonLocalC.tailLen * H
-    uint64_t alltoallInTileEBlock = 0U; // nonLocalC.tileLen * H
+    uint64_t alltoallSendCount = 0U;         // nonLocalC.tileLen * H
+    uint64_t alltoallSendTailCount = 0U;     // nonLocalC.tailLen * H
+    uint64_t alltoallInTileEBlock = 0U;      // nonLocalC.tileLen * H
     uint64_t alltoallInTileECTailBlock = 0U; // nonLocalC.tailLen * H
-    uint64_t alltoallSendStride = 0U; // nonLocalE.tileLen * nonLocalC.tileLen * H
-    uint64_t alltoallSendTailStride = 0U; // nonLocalE.tileLen * nonLocalC.tailLen * H
-    uint64_t alltoallRecvStride = 0U; // nonLocalE.tileCnt * nonLocalE.tileLen * C_tp * H
-    uint64_t alltoallOutTileEBlock = 0U; // C_tp * H
+    uint64_t alltoallSendStride = 0U;        // nonLocalE.tileLen * nonLocalC.tileLen * H
+    uint64_t alltoallSendTailStride = 0U;    // nonLocalE.tileLen * nonLocalC.tailLen * H
+    uint64_t alltoallRecvStride = 0U;        // nonLocalE.tileCnt * nonLocalE.tileLen * C_tp * H
+    uint64_t alltoallOutTileEBlock = 0U;     // C_tp * H
 
     GlobalTensor<X_T> xGM;
     GlobalTensor<X_T> weightGM;
@@ -230,8 +230,8 @@ private:
     uint64_t alltoallVSendStride[MAX_TP_SIZE];
     uint64_t alltoallVRecvStride[MAX_TP_SIZE];
 
-    struct BMM_TileInfo localE; // 无tail
-    struct BMM_TileInfo localC; // 有tail
+    struct BMM_TileInfo localE;    // 无tail
+    struct BMM_TileInfo localC;    // 有tail
     struct BMM_TileInfo nonLocalE; // 无tail
     struct BMM_TileInfo nonLocalC; // 有tail
 
@@ -250,10 +250,10 @@ private:
 };
 
 template <typename BMMRSATAT>
-__aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::Init(__gm__ uint8_t* x, __gm__ uint8_t* weight,
-    __gm__ uint8_t* bias, __gm__ uint8_t* y, __gm__ uint8_t* workspace,
-    const BatchMatMulReduceScatterAlltoAllTilingData* tiling, TPipe* tPipe,
-    __gm__ void* hcclInitTiling, __gm__ void* reduceScatterCcTiling, __gm__ void* alltoAllCcTiling)
+__aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::Init(
+    __gm__ uint8_t *x, __gm__ uint8_t *weight, __gm__ uint8_t *bias, __gm__ uint8_t *y, __gm__ uint8_t *workspace,
+    const BatchMatMulReduceScatterAlltoAllTilingData *tiling, TPipe *tPipe, __gm__ void *hcclInitTiling,
+    __gm__ void *reduceScatterCcTiling, __gm__ void *alltoAllCcTiling)
 {
     tmpBlockIdx = GetBlockIdx(); // 用于vector分核
 
@@ -271,36 +271,36 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::Init(__gm__ 
     epRankId = hcclAlltoAll.GetRankId();
     InitOffset();
 
-    xGM.SetGlobalBuffer((__gm__ X_T*)x);
-    weightGM.SetGlobalBuffer((__gm__ X_T*)weight);
-    yGM.SetGlobalBuffer((__gm__ X_T*)y);
+    xGM.SetGlobalBuffer((__gm__ X_T *)x);
+    weightGM.SetGlobalBuffer((__gm__ X_T *)weight);
+    yGM.SetGlobalBuffer((__gm__ X_T *)y);
     if constexpr (NEED_BIAS) {
-        biasGM.SetGlobalBuffer((__gm__ BIAS_T*)bias);
+        biasGM.SetGlobalBuffer((__gm__ BIAS_T *)bias);
     }
 
     // localMMOutGM/nonLocalMMOutGM/reduceScatterLocalOut/reduceScatterNonLocalOut/transposeOutGM
     if constexpr (IS_LITE) {
         uint64_t localMaxCBlock = MAX(localC.tileLen, localC.tailLen) * localE.tileLen * tpRankSize;
-        uint64_t nonLocalMaxCBlock = MAX(nonLocalC.tileLen, nonLocalC.tailLen) * nonLocalE.tileLen * tpRankSize *
-                                     (epRankSize - 1U);
+        uint64_t nonLocalMaxCBlock =
+            MAX(nonLocalC.tileLen, nonLocalC.tailLen) * nonLocalE.tileLen * tpRankSize * (epRankSize - 1U);
         uint64_t localTransBefore = localMaxCBlock * M_tp;
         uint64_t nonLocalTransBefore = nonLocalMaxCBlock * M_tp;
         uint64_t localTransAfter = localMaxCBlock * H;
         uint64_t nonLocalTransAfter = nonLocalMaxCBlock * H;
 
-        transBeforeBMMGM.SetGlobalBuffer((__gm__ X_T*)workspace);
-        sharedBMMOutGM.SetGlobalBuffer((__gm__ X_T*)transBeforeBMMGM.GetPhyAddr() +
+        transBeforeBMMGM.SetGlobalBuffer((__gm__ X_T *)workspace);
+        sharedBMMOutGM.SetGlobalBuffer((__gm__ X_T *)transBeforeBMMGM.GetPhyAddr() +
                                        MAX(localTransBefore, nonLocalTransBefore));
-        localMMOutGM.SetGlobalBuffer((__gm__ X_T*)sharedBMMOutGM.GetPhyAddr() +
+        localMMOutGM.SetGlobalBuffer((__gm__ X_T *)sharedBMMOutGM.GetPhyAddr() +
                                      MAX(localTransAfter, nonLocalTransAfter));
     } else {
-        localMMOutGM.SetGlobalBuffer((__gm__ X_T*)workspace);
+        localMMOutGM.SetGlobalBuffer((__gm__ X_T *)workspace);
     }
-    nonLocalMMOutGM.SetGlobalBuffer((__gm__ X_T*)localMMOutGM.GetPhyAddr() + (tpRankSize * E_ep * C_tp * H));
-    reduceScatterLocalOut.SetGlobalBuffer((__gm__ X_T*)nonLocalMMOutGM.GetPhyAddr() +
+    nonLocalMMOutGM.SetGlobalBuffer((__gm__ X_T *)localMMOutGM.GetPhyAddr() + (tpRankSize * E_ep * C_tp * H));
+    reduceScatterLocalOut.SetGlobalBuffer((__gm__ X_T *)nonLocalMMOutGM.GetPhyAddr() +
                                           (tpRankSize * (epRankSize - 1) * E_ep * C_tp * H));
-    reduceScatterNonLocalOut.SetGlobalBuffer((__gm__ X_T*)reduceScatterLocalOut.GetPhyAddr() + (E_ep * C_tp * H));
-    transposeOutGM.SetGlobalBuffer((__gm__ X_T*)reduceScatterNonLocalOut.GetPhyAddr() +
+    reduceScatterNonLocalOut.SetGlobalBuffer((__gm__ X_T *)reduceScatterLocalOut.GetPhyAddr() + (E_ep * C_tp * H));
+    transposeOutGM.SetGlobalBuffer((__gm__ X_T *)reduceScatterNonLocalOut.GetPhyAddr() +
                                    ((epRankSize - 1) * E_ep * C_tp * H));
 
     if (pipe != nullptr) {
@@ -325,7 +325,7 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::InitTilingDa
     nonLocalTileTiling = tilingData->domesticTiling.bmmTilingData;
     nonLocalTailTiling = tilingData->domesticTailTiling.bmmTilingData;
     ubSize = tilingData->commonTiling.totalUbSize;
-    
+
     localE.tileCnt = tilingData->commonTiling.localTileE.tileCnt;
     localE.tileLen = tilingData->commonTiling.localTileE.tileLen;
     localC.tileCnt = tilingData->commonTiling.localTileC.tileCnt;
@@ -515,8 +515,8 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::NonLocalComm
                 uint64_t tailCIdx = cIdx - nonLocalC.tileCnt;
                 aAddrCOffset = aCalcOffset + tailCIdx * aNonLocalCTailBlock + aNonLocalCTileOffset;
                 cAddrCOffset = cCalcOffset + tailCIdx * cNonLocalCTailBlock + cNonLocalCTileOffset;
-                reduceScatterOutCOffset = reduceScatterOutOffset + tailCIdx * nonLocalRSCTailBlock +
-                                          nonLocalRSCTileOffset;
+                reduceScatterOutCOffset =
+                    reduceScatterOutOffset + tailCIdx * nonLocalRSCTailBlock + nonLocalRSCTileOffset;
                 transOutOffset = transOutEOffset + tailCIdx * nonLocalTransCTailBlock + nonLocalTransCTileOffset;
                 yOutOffset = yOutEOffset + tailCIdx * nonLocalYOutCTailBlock + nonLocalYOutCTileOffset;
             }
@@ -527,16 +527,16 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::NonLocalComm
                 uint64_t recvCount = (isCTail ? nonLocalRSRecvTailCount : nonLocalRSRecvCount);
                 if ((eIdx + cIdx) == 0) {
                     reduceScatterHandleList[rsEIdx + cIdx] = hcclReduceScatter.ReduceScatter<false>(
-                        (__gm__ uint8_t*)nonLocalMMOutGM[reduceScatterInOffset].GetPhyAddr(),
-                        (__gm__ uint8_t*)reduceScatterNonLocalOut[reduceScatterOutCOffset].GetPhyAddr(),
-                        recvCount, hcclDataType, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
+                        (__gm__ uint8_t *)nonLocalMMOutGM[reduceScatterInOffset].GetPhyAddr(),
+                        (__gm__ uint8_t *)reduceScatterNonLocalOut[reduceScatterOutCOffset].GetPhyAddr(), recvCount,
+                        hcclDataType, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
                 } else {
                     hcclReduceScatter.InterHcclGroupSync(HCCL_GROUP_ID_0,
-                        alltoallList[(rsDoneCnt + 1) * nonLocalE.tileLen - 1]);
+                                                         alltoallList[(rsDoneCnt + 1) * nonLocalE.tileLen - 1]);
                     reduceScatterHandleList[rsEIdx + cIdx] = hcclReduceScatter.ReduceScatter<true>(
-                        (__gm__ uint8_t*)nonLocalMMOutGM[reduceScatterInOffset].GetPhyAddr(),
-                        (__gm__ uint8_t*)reduceScatterNonLocalOut[reduceScatterOutCOffset].GetPhyAddr(),
-                        recvCount, hcclDataType, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
+                        (__gm__ uint8_t *)nonLocalMMOutGM[reduceScatterInOffset].GetPhyAddr(),
+                        (__gm__ uint8_t *)reduceScatterNonLocalOut[reduceScatterOutCOffset].GetPhyAddr(), recvCount,
+                        hcclDataType, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
                 }
             }
 
@@ -576,7 +576,7 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::NonLocalComm
                     hcclReduceScatter.Commit(reduceScatterHandleList[rsEIdx + cIdx]);
                 }
                 // ADD + AlltoAll
-                if ((eIdx + cIdx) != 0) {  // 下一轮等上一轮结果，第一轮不做
+                if ((eIdx + cIdx) != 0) { // 下一轮等上一轮结果，第一轮不做
                     hcclReduceScatter.Wait(reduceScatterHandleList[rsDoneCnt]);
                     OnNonLocalReduceScatterFinished();
                     rsDoneCnt += 1;
@@ -588,18 +588,19 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::NonLocalComm
 
 template <typename BMMRSATAT>
 __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::BmmNonLocalCal(uint64_t aCalcAddr,
-    uint64_t bCalcAddr, uint64_t cCalcAddr, bool isCTail)
+                                                                                   uint64_t bCalcAddr,
+                                                                                   uint64_t cCalcAddr, bool isCTail)
 {
     pipe->Reset();
     if constexpr (IS_LITE) {
-        bmmV3.Init((__gm__ uint8_t*)transBeforeBMMGM.GetPhyAddr(), (__gm__ uint8_t*)weightGM[bCalcAddr].GetPhyAddr(),
-            (__gm__ uint8_t*)sharedBMMOutGM.GetPhyAddr(), nullptr, nullptr, nullptr,
-            (isCTail ? &nonLocalTailTiling : &nonLocalTileTiling), pipe);
+        bmmV3.Init((__gm__ uint8_t *)transBeforeBMMGM.GetPhyAddr(), (__gm__ uint8_t *)weightGM[bCalcAddr].GetPhyAddr(),
+                   (__gm__ uint8_t *)sharedBMMOutGM.GetPhyAddr(), nullptr, nullptr, nullptr,
+                   (isCTail ? &nonLocalTailTiling : &nonLocalTileTiling), pipe);
         bmmV3.Process();
     } else {
-        bmmV3.Init((__gm__ uint8_t*)xGM.GetPhyAddr(), (__gm__ uint8_t*)weightGM.GetPhyAddr(),
-            (__gm__ uint8_t*)nonLocalMMOutGM.GetPhyAddr(), nullptr, nullptr, nullptr,
-            (isCTail ? &nonLocalTailTiling : &nonLocalTileTiling), pipe);
+        bmmV3.Init((__gm__ uint8_t *)xGM.GetPhyAddr(), (__gm__ uint8_t *)weightGM.GetPhyAddr(),
+                   (__gm__ uint8_t *)nonLocalMMOutGM.GetPhyAddr(), nullptr, nullptr, nullptr,
+                   (isCTail ? &nonLocalTailTiling : &nonLocalTileTiling), pipe);
         for (uint64_t i = 0U; i < tpRankSize; i++) {
             uint64_t aAddrTpOffset = aCalcAddr + i * aTpBlock;
             uint64_t cAddrTpOffset = cCalcAddr + i * (isCTail ? cNonLocalTpCTailBlock : cNonLocalTpBlock);
@@ -609,17 +610,17 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::BmmNonLocalC
                 }
                 uint64_t aAddrEpOffset = aAddrTpOffset + j * aEpBlock;
                 uint64_t curEpIdx = (j > epRankId) ? (j - 1) : j;
-                uint64_t cAddrEpOffset = cAddrTpOffset + curEpIdx * (isCTail ? cNonLocalEpCTailBlock :
-                                                                               cNonLocalEpBlock);
+                uint64_t cAddrEpOffset =
+                    cAddrTpOffset + curEpIdx * (isCTail ? cNonLocalEpCTailBlock : cNonLocalEpBlock);
                 for (uint64_t k = 0U; k < nonLocalE.tileLen; k++) {
                     uint64_t aAddrOffset = aAddrEpOffset + k * aTileEBlock;
                     uint64_t bAddrOffset = bCalcAddr + k * bTileEBlock;
-                    uint64_t cAddrOffset = cAddrEpOffset + k * (isCTail ? cNonLocalTileECTailBlock :
-                                                                          cNonLocalTileEBlock);
-                    bmmV3.UpdateGlobalTensor((__gm__ uint8_t*)xGM[aAddrOffset].GetPhyAddr(),
-                        (__gm__ uint8_t*)weightGM[bAddrOffset].GetPhyAddr(),
-                        (__gm__ uint8_t*)nonLocalMMOutGM[cAddrOffset].GetPhyAddr(),
-                        nullptr, nullptr, nullptr);
+                    uint64_t cAddrOffset =
+                        cAddrEpOffset + k * (isCTail ? cNonLocalTileECTailBlock : cNonLocalTileEBlock);
+                    bmmV3.UpdateGlobalTensor((__gm__ uint8_t *)xGM[aAddrOffset].GetPhyAddr(),
+                                             (__gm__ uint8_t *)weightGM[bAddrOffset].GetPhyAddr(),
+                                             (__gm__ uint8_t *)nonLocalMMOutGM[cAddrOffset].GetPhyAddr(), nullptr,
+                                             nullptr, nullptr);
                     bmmV3.Process();
                 }
             }
@@ -657,16 +658,16 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::LocalCommuni
                 uint64_t recvCount = isCTail ? LocalRSRecvTailCount : LocalRSRecvCount;
                 if ((eIdx + cIdx) == 0) {
                     hcclReduceScatter.InterHcclGroupSync(HCCL_GROUP_ID_0,
-                        alltoallList[(rsDoneCnt + 1) * nonLocalE.tileLen - 1]);
+                                                         alltoallList[(rsDoneCnt + 1) * nonLocalE.tileLen - 1]);
                     reduceScatterHandleList[rsEIdx + cIdx] = hcclReduceScatter.ReduceScatter<true>(
-                        (__gm__ uint8_t*)localMMOutGM[reduceScatterInOffset].GetPhyAddr(),
-                        (__gm__ uint8_t*)reduceScatterLocalOut[reduceScatterOutCOffset].GetPhyAddr(),
-                        recvCount, hcclDataType, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
+                        (__gm__ uint8_t *)localMMOutGM[reduceScatterInOffset].GetPhyAddr(),
+                        (__gm__ uint8_t *)reduceScatterLocalOut[reduceScatterOutCOffset].GetPhyAddr(), recvCount,
+                        hcclDataType, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
                 } else {
                     reduceScatterHandleList[rsEIdx + cIdx] = hcclReduceScatter.ReduceScatter<false>(
-                        (__gm__ uint8_t*)localMMOutGM[reduceScatterInOffset].GetPhyAddr(),
-                        (__gm__ uint8_t*)reduceScatterLocalOut[reduceScatterOutCOffset].GetPhyAddr(),
-                        recvCount, hcclDataType, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
+                        (__gm__ uint8_t *)localMMOutGM[reduceScatterInOffset].GetPhyAddr(),
+                        (__gm__ uint8_t *)reduceScatterLocalOut[reduceScatterOutCOffset].GetPhyAddr(), recvCount,
+                        hcclDataType, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
                 }
             }
 
@@ -723,19 +724,19 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::LocalCommuni
 
 template <typename BMMRSATAT>
 __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::BmmLocalCal(uint64_t aCalcAddr, uint64_t bCalcAddr,
-    uint64_t cCalcAddr, bool isCTail)
+                                                                                uint64_t cCalcAddr, bool isCTail)
 {
     // 归一化Matmul计算类，负责MC2的Matmul计算
     pipe->Reset();
     if constexpr (IS_LITE) {
-        bmmV3.Init((__gm__ uint8_t*)transBeforeBMMGM.GetPhyAddr(), (__gm__ uint8_t *)weightGM[bCalcAddr].GetPhyAddr(),
-            (__gm__ uint8_t*)sharedBMMOutGM.GetPhyAddr(), nullptr, nullptr, nullptr,
-            (isCTail ? &localTailTiling : &localTileTiling), pipe);
+        bmmV3.Init((__gm__ uint8_t *)transBeforeBMMGM.GetPhyAddr(), (__gm__ uint8_t *)weightGM[bCalcAddr].GetPhyAddr(),
+                   (__gm__ uint8_t *)sharedBMMOutGM.GetPhyAddr(), nullptr, nullptr, nullptr,
+                   (isCTail ? &localTailTiling : &localTileTiling), pipe);
         bmmV3.Process();
     } else {
-        bmmV3.Init((__gm__ uint8_t*)xGM.GetPhyAddr(), (__gm__ uint8_t*)weightGM.GetPhyAddr(),
-            (__gm__ uint8_t*)localMMOutGM.GetPhyAddr(), nullptr, nullptr, nullptr,
-            (isCTail ? &localTailTiling : &localTileTiling), pipe);
+        bmmV3.Init((__gm__ uint8_t *)xGM.GetPhyAddr(), (__gm__ uint8_t *)weightGM.GetPhyAddr(),
+                   (__gm__ uint8_t *)localMMOutGM.GetPhyAddr(), nullptr, nullptr, nullptr,
+                   (isCTail ? &localTailTiling : &localTileTiling), pipe);
         for (uint64_t i = 0U; i < tpRankSize; i++) {
             uint64_t aAddrTpOffset = aCalcAddr + i * aTpBlock;
             uint64_t cAddrTpOffset = cCalcAddr + i * (isCTail ? cLocalTpCTailBlock : cLocalTpBlock);
@@ -743,10 +744,10 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::BmmLocalCal(
                 uint64_t aAddrOffset = aAddrTpOffset + j * aTileEBlock;
                 uint64_t bAddrOffset = bCalcAddr + j * bTileEBlock;
                 uint64_t cAddrOffset = cAddrTpOffset + j * (isCTail ? cLocalTileECTailBlock : cLocalTileEBlock);
-                bmmV3.UpdateGlobalTensor((__gm__ uint8_t*)xGM[aAddrOffset].GetPhyAddr(),
-                    (__gm__ uint8_t*)weightGM[bAddrOffset].GetPhyAddr(),
-                    (__gm__ uint8_t*)localMMOutGM[cAddrOffset].GetPhyAddr(),
-                    nullptr, nullptr, nullptr);
+                bmmV3.UpdateGlobalTensor((__gm__ uint8_t *)xGM[aAddrOffset].GetPhyAddr(),
+                                         (__gm__ uint8_t *)weightGM[bAddrOffset].GetPhyAddr(),
+                                         (__gm__ uint8_t *)localMMOutGM[cAddrOffset].GetPhyAddr(), nullptr, nullptr,
+                                         nullptr);
                 bmmV3.Process();
             }
         }
@@ -771,7 +772,7 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::OnNonLocalRe
         transOutOffset = transOutEOffset + tailCIdx * nonLocalTransCTailBlock + nonLocalTransCTileOffset;
     }
     AddTransposeBeforeAlltoAll(false, isCTail, eIdx * nonLocalBiasECntBlock, transInOffset, transOutOffset);
-    SyncAll<true>(); // V核同步
+    SyncAll<true>();                                             // V核同步
     for (uint64_t eIdx = 0U; eIdx < nonLocalE.tileLen; eIdx++) { // alltoall下发
         hcclAlltoAll.Commit(alltoallList[rsDoneCnt * nonLocalE.tileLen + eIdx]);
     }
@@ -797,8 +798,9 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::OnLocalReduc
 }
 
 template <typename BMMRSATAT>
-__aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AddTransposeBeforeAlltoAll(bool isLocal,
-    bool isCTail, uint64_t biasOffset, uint64_t rsOutGM, uint64_t transOutOffset)
+__aicore__ inline void
+BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AddTransposeBeforeAlltoAll(bool isLocal, bool isCTail, uint64_t biasOffset,
+                                                                        uint64_t rsOutGM, uint64_t transOutOffset)
 {
     uint64_t cLength = 0U;
     uint64_t eLength = 0U;
@@ -843,7 +845,7 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AddTranspose
             } else { // 不跨e块
                 dataCnt = curBlockMaxRow * H - curDataOffset;
                 curBlockMaxRow += cLength;
-                curRow += ((dataCnt + H - 1)/ H);
+                curRow += ((dataCnt + H - 1) / H);
             }
         }
         AddTranspose(rsOutGM + curDataOffset, biasOffset + curTileEIdx * H + ((curDataOffset - startDataOffset) % H),
@@ -853,18 +855,19 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AddTranspose
 }
 
 template <typename BMMRSATAT>
-__aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AddTranspose(uint64_t rsOutOffset,
-    uint64_t biasOffset, uint64_t transOutOffset, uint64_t dataCnt, bool isLocal)
+__aicore__ inline void
+BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AddTranspose(uint64_t rsOutOffset, uint64_t biasOffset,
+                                                          uint64_t transOutOffset, uint64_t dataCnt, bool isLocal)
 {
-    GlobalTensor<X_T> rsOutStartGM = (isLocal ? reduceScatterLocalOut[rsOutOffset] :
-                                                reduceScatterNonLocalOut[rsOutOffset]);
+    GlobalTensor<X_T> rsOutStartGM =
+        (isLocal ? reduceScatterLocalOut[rsOutOffset] : reduceScatterNonLocalOut[rsOutOffset]);
     GlobalTensor<X_T> transOutGM = (isLocal ? yGM[transOutOffset] : transposeOutGM[transOutOffset]);
     if constexpr (NEED_BIAS) {
         // Add left Copy-In
         rsOutTmp = rsOutInQue.AllocTensor<X_T>();
         if ((dataCnt > H) && ((H * dataLen) % UB_ADDR_ALIGN != 0)) {
-            const DataCopyExtParams copyParams{static_cast<uint16_t>(dataCnt / H),
-                                                static_cast<uint32_t>(H * dataLen), 0U, 0U, 0U};
+            const DataCopyExtParams copyParams{static_cast<uint16_t>(dataCnt / H), static_cast<uint32_t>(H * dataLen),
+                                               0U, 0U, 0U};
             const DataCopyPadExtParams<X_T> copyPadParams{false, 0U, 0U, 0U};
             DataCopyPad(rsOutTmp, rsOutStartGM, copyParams, copyPadParams);
         } else {
@@ -896,7 +899,8 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AddTranspose
                 Add(rsOutCastTmp, rsOutCastTmp, biasTmp, dataCnt);
             }
             PipeBarrier<PIPE_V>();
-            Cast(transposeOutTmp, rsOutCastTmp, RoundMode::CAST_ROUND, (dataCnt + H - 1U) / H * alignedH); // cast回bfloat16
+            Cast(transposeOutTmp, rsOutCastTmp, RoundMode::CAST_ROUND,
+                 (dataCnt + H - 1U) / H * alignedH); // cast回bfloat16
         } else {
             if (dataCnt > H) { // 多行add bias
                 for (int i = 0; i < (dataCnt / H); i++) {
@@ -912,7 +916,7 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AddTranspose
         transposeOutQue.DeQue();
         if ((dataCnt > H) && ((H * dataLen) % UB_ADDR_ALIGN != 0)) {
             const DataCopyExtParams copyOutParams{static_cast<uint16_t>(dataCnt / H),
-                                                    static_cast<uint32_t>(H * dataLen), 0U, 0U, 0U};
+                                                  static_cast<uint32_t>(H * dataLen), 0U, 0U, 0U};
             DataCopyPad(transOutGM, transposeOutTmp, copyOutParams);
         } else {
             const DataCopyExtParams copyOutParams{1U, static_cast<uint32_t>(dataCnt * dataLen), 0U, 0U, 0U};
@@ -937,8 +941,9 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AddTranspose
 }
 
 template <typename BMMRSATAT>
-__aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AlltoAll(
-    uint64_t alltoallInOffset, uint64_t alltoallOutOffset, bool isCTail, uint64_t loop)
+__aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AlltoAll(uint64_t alltoallInOffset,
+                                                                             uint64_t alltoallOutOffset, bool isCTail,
+                                                                             uint64_t loop)
 {
     uint64_t alltoallInTmp = alltoallInOffset;
     uint64_t alltoallOutTmp = alltoallOutOffset;
@@ -951,10 +956,10 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::AlltoAll(
 
     // 每一轮bmmReduceScatter会对应nonLocalE.tileLen次alltoall
     for (uint64_t eIdx = 0U; eIdx < nonLocalE.tileLen; eIdx++) {
-        alltoallList[loop * nonLocalE.tileLen + eIdx] =
-            hcclAlltoAll.AlltoAllV<false>((__gm__ uint8_t*)transposeOutGM[alltoallInTmp].GetPhyAddr(),
-            alltoallVSendCount, alltoallVSendStride, hcclDataType, (__gm__ uint8_t*)yGM[alltoallOutTmp].GetPhyAddr(),
-            alltoallVSendCount, alltoallVRecvStride, hcclDataType, 1);
+        alltoallList[loop * nonLocalE.tileLen + eIdx] = hcclAlltoAll.AlltoAllV<false>(
+            (__gm__ uint8_t *)transposeOutGM[alltoallInTmp].GetPhyAddr(), alltoallVSendCount, alltoallVSendStride,
+            hcclDataType, (__gm__ uint8_t *)yGM[alltoallOutTmp].GetPhyAddr(), alltoallVSendCount, alltoallVRecvStride,
+            hcclDataType, 1);
         alltoallInTmp += (isCTail ? alltoallInTileECTailBlock : alltoallInTileEBlock);
         alltoallOutTmp += alltoallOutTileEBlock;
     }
@@ -971,7 +976,8 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::WaitAllAllto
 
 template <typename BMMRSATAT>
 __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::TransposeAroundBMM(uint64_t dataCopyInOffset,
-    bool isLocal, bool isCTail, bool isBefore)
+                                                                                       bool isLocal, bool isCTail,
+                                                                                       bool isBefore)
 {
     DataCopyExtParams dataCopyInParams = {1U, 0U, 0U, 0U, 0U};
     DataCopyExtParams dataCopyOutParams = {1U, 0U, 0U, 0U, 0U};
@@ -1031,13 +1037,13 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::TransposeAro
         }
         dataCopyInParams.blockLen = dataCnt * dataLen;
         dataCopyOutParams.blockLen = dataCnt * dataLen;
-        GlobalTensor<X_T> dataCopyInGM = (isBefore ?
-            xGM[dataCopyInOffset + k * aTileEBlock + eIn * aEpBlock + t * aTpBlock + blockInnerOffset] :
-            sharedBMMOutGM[curDataOffset]);
+        GlobalTensor<X_T> dataCopyInGM =
+            (isBefore ? xGM[dataCopyInOffset + k * aTileEBlock + eIn * aEpBlock + t * aTpBlock + blockInnerOffset] :
+                        sharedBMMOutGM[curDataOffset]);
         GlobalTensor<X_T> dataCopyOutGM = transBeforeBMMGM[curDataOffset];
         if (!isBefore) {
             uint64_t dataCopyOutOffset = dataCopyInOffset + t * (tileLenE * factorOut * tileLenC * H) +
-                eOut * (tileLenE * tileLenC * H) + k * (tileLenC * H) + blockInnerOffset;
+                                         eOut * (tileLenE * tileLenC * H) + k * (tileLenC * H) + blockInnerOffset;
             dataCopyOutGM = isLocal ? localMMOutGM[dataCopyOutOffset] : nonLocalMMOutGM[dataCopyOutOffset];
         }
         LocalTensor<X_T> transposeTmp = bmmTransQue.AllocTensor<X_T>();
@@ -1051,4 +1057,4 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAll<BMMRSATAT>::TransposeAro
     }
 }
 
-#endif  // BATCH_MAT_MUL_REDUCE_SCATTER_ALLTO_ALL_H
+#endif // BATCH_MAT_MUL_REDUCE_SCATTER_ALLTO_ALL_H

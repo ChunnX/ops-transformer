@@ -136,7 +136,7 @@ public:
             seqIndex = this->indexGm(startIdx + i);
             SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
             WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-            if (seqIndex >= 0) {
+            if (seqIndex >= 0 && seqIndex < tilingData_->cacheRowLimit) {
                 if (tilingData_->cacheMode == NORM_CACHE_MODE) {
                     batchId = (startIdx + i) / tilingData_->seqLength;
                     gmOffset = (batchId * tilingData_->cacheLength + seqIndex) * tilingData_->dk;
@@ -177,7 +177,7 @@ public:
             WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
             int64_t tokenOffsetInCurrentPage = tokenIdInCurrentBatch % tilingData_->blockSize;
             int64_t pageId = pageOffset / tilingData_->blockSize;
-            if (pageOffset >= 0) {
+            if (pageOffset >= 0 && pageOffset < tilingData_->cacheRowLimit) {
                 if (tilingData_->cacheMode == PA_BLK_NZ_CACHE_MODE) {
                     gmOffset = (pageId * dk1 * tilingData_->blockSize + tokenOffsetInCurrentPage) * dk0;
                 } else {
@@ -205,7 +205,7 @@ public:
             seqIndex = this->indexGm(startIdx + i);
             SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
             WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-            if (seqIndex >= 0) {
+            if (seqIndex >= 0 && seqIndex < tilingData_->cacheRowLimit) {
                 if (tilingData_->cacheMode == NORM_CACHE_MODE) {
                     batchId = (startIdx + i) / tilingData_->seqLength;
                     gmOffset = (batchId * tilingData_->cacheLength + seqIndex) * tilingData_->dv;
@@ -246,7 +246,7 @@ public:
             WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
             int64_t tokenOffsetInCurrentPage = tokenIdInCurrentBatch % tilingData_->blockSize;
             int64_t pageId = pageOffset / tilingData_->blockSize;
-            if (pageOffset >= 0) {
+            if (pageOffset >= 0 && pageOffset < tilingData_->cacheRowLimit) {
                 if (tilingData_->cacheMode == PA_BLK_NZ_CACHE_MODE) {
                     gmOffset = (pageId * dv1 * tilingData_->blockSize + tokenOffsetInCurrentPage) * dv0;
                 } else {
@@ -569,14 +569,16 @@ public:
         __local_mem__ T_KV* imgCos = (__local_mem__ T_KV*)imgCosLocal.GetPhyAddr();
         __local_mem__ T_KV* realSin = (__local_mem__ T_KV*)realSinLocal.GetPhyAddr();
         __local_mem__ T_KV* imgSin = (__local_mem__ T_KV*)imgSinLocal.GetPhyAddr();
-        __local_mem__ float* realKScale = (__local_mem__ float*)realKScaleLocal.GetPhyAddr();
-        __local_mem__ float* imgKScale = (__local_mem__ float*)imgKScaleLocal.GetPhyAddr();
-        __local_mem__ float* realKOffset = (__local_mem__ float*)realKOffsetLocal.GetPhyAddr();
-        __local_mem__ float* imgKOffset = (__local_mem__ float*)imgKOffsetLocal.GetPhyAddr();
         __local_mem__ float* ws = (__local_mem__ float*)wsLocal.GetPhyAddr();
 
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+            // scale/offset 仅在量化路径下由 Process 分配，非量化实例中这四个 LocalTensor 是默认构造的，
+            // 取址必须留在本分支内，否则会读到未初始化的 TBuffAddr
+            __local_mem__ float* realKScale = (__local_mem__ float*)realKScaleLocal.GetPhyAddr();
+            __local_mem__ float* imgKScale = (__local_mem__ float*)imgKScaleLocal.GetPhyAddr();
+            __local_mem__ float* realKOffset = (__local_mem__ float*)realKOffsetLocal.GetPhyAddr();
+            __local_mem__ float* imgKOffset = (__local_mem__ float*)imgKOffsetLocal.GetPhyAddr();
             if (tilingData_->isOutputKv > 0) {
                 kOutLocal = outQueue.AllocTensor<T_KV>();
                 kQuantLocal =

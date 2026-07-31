@@ -154,8 +154,6 @@ private:
     GlobalTensor<int32_t> blockTableGm;
     FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_WITH_ZERO_HEAD> curKvGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
-    GlobalTensor<int32_t> cuSeqlensOriKvGm;
-    GlobalTensor<int32_t> cuSeqlensCmpKvGm;
 
     /* =====================运行时变量==================== */
     CubeCoordInfo coordInfo[3];
@@ -257,13 +255,9 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t 
             constInfo.s1Size, constInfo.dSize);
     } else {  // SMLA_LAYOUT::TND
         cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
-        GlobalTensor<int32_t> sequsedQGm;
-        if (sequsedQ != nullptr) {
-            sequsedQGm.SetGlobalBuffer((__gm__ int32_t *)sequsedQ);
-        }
         uint32_t sequsedQSize = (sequsedQ == nullptr) ? 0 : constInfo.bSize;
         ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
-        parser.Init(cuSeqlensQGm, sequsedQGm, constInfo.bSize, sequsedQSize);
+        parser.Init(cuSeqlensQ, constInfo.bSize + 1, sequsedQ, sequsedQSize);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
             parser);
     }
@@ -276,24 +270,14 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t 
                 this->cmpBlockTableGm, constInfo.cmpMaxBlockNumPerBatch);
         }
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
-        cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
-        GlobalTensor<int32_t> seqUsedOriKvGm;
-        if (seqUsedOriKV != nullptr) {
-            seqUsedOriKvGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedOriKV);
-        }
         uint32_t seqUsedOriKvSize = (seqUsedOriKV == nullptr) ? 0 : constInfo.bSize;
         ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
-        parser.Init(cuSeqlensOriKvGm, seqUsedOriKvGm, constInfo.actualSeqLenSize, seqUsedOriKvSize);
+        parser.Init(cuSeqlensOriKv, constInfo.actualSeqLenSize + 1, seqUsedOriKV, seqUsedOriKvSize);
         this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize, parser);
         if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
-            cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
-            GlobalTensor<int32_t> seqUsedCmpKvGm;
-            if (seqUsedCmpKV != nullptr) {
-                seqUsedCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedCmpKV);
-            }
             uint32_t seqUseCmpKvSize = (seqUsedCmpKV == nullptr) ? 0 : constInfo.bSize;
             ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
-            parser.Init(cuSeqlensCmpKvGm, seqUsedCmpKvGm, constInfo.actualSeqLenSize, seqUseCmpKvSize);
+            parser.Init(cuSeqlensCmpKv, constInfo.actualSeqLenSize + 1, seqUsedCmpKV, seqUseCmpKvSize);
             this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize, parser);
         }
     } else {
@@ -431,9 +415,7 @@ __aicore__ inline uint32_t CSABlockCube<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
         shape.copyRowNum = 1;
         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         LocalTensor<Q_T> l1Tensor = inputRightTensor[startRow * 16];
-        int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
-        int64_t stride = paBlockStride / (kvCacheBlockSize * constInfo.n2Size);
-        shape.blockStride0 = stride - constInfo.dSize;
+        shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
         GmCopyInToL1PA<KV_T>(l1Tensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
         if (token1Idx >= 0) {
             startPos.s2Offset = token1Idx;
@@ -510,9 +492,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1HCA(
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
-        int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
-        int64_t stride = paBlockStride / (kvCacheBlockSize * constInfo.n2Size);
-        shape.blockStride0 = stride - constInfo.dSize;
+        shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
         GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
     } else {
         int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(
@@ -691,9 +671,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
             shape.maxblockNumPerBatch = maxBlockNumPerBatch;
             shape.copyRowNum = runInfo.s2RealSize;
             shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
-            int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
-            int64_t stride = paBlockStride / (kvCacheBlockSize * constInfo.n2Size);
-            shape.blockStride0 = stride - constInfo.dSize;
+            shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
             GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
         } else {
             int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(

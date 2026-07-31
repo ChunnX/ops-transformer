@@ -18,14 +18,13 @@
 #include "../common.h"
 #include "matmul_block_l2cache.h"
 namespace AscendC {
-enum class IsPerTensor
-{
+enum class IsPerTensor {
     PER_TENSOR = 1,
     PER_CHANNEL = 2,
 };
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool hasAntiQuantOffset, AntiQuantType antiQuantType>
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool hasAntiQuantOffset,
+          AntiQuantType antiQuantType>
 struct AllReduceMMType {
     __aicore__ inline AllReduceMMType(){};
 };
@@ -65,11 +64,9 @@ struct AllReduceMMType<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, false, AntiQuantType::
     using PARAMS = MatmulImpl<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, CFG_MDL>;
 };
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache = false, bool WeightQuant = false,
-    AntiQuantType antiQuantType = AntiQuantType::NONE, bool hasAntiQuantOffset = false>
-class MatmulCompute
-{
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache = false, bool WeightQuant = false,
+          AntiQuantType antiQuantType = AntiQuantType::NONE, bool hasAntiQuantOffset = false>
+class MatmulCompute {
     using A_T = typename A_TYPE::T;
     using B_T = typename B_TYPE::T;
     using C_T = typename C_TYPE::T;
@@ -77,19 +74,20 @@ class MatmulCompute
 
 public:
     __aicore__ inline MatmulCompute()
-    {}
-    __aicore__ inline void Init(
-        AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg, Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling,
-        const LocalTensor<uint8_t>& mmFormatUb);
-    __aicore__ inline void InitGlobalBTensor(
-        GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR antiquantScale, GM_ADDR antiquantOffset);
+    {
+    }
+    __aicore__ inline void Init(AscendC::tiling::TCubeTiling &tiling, Mc2Tiling::RCSTiling &cfg,
+                                Mc2Tiling::Mc2L2cacheTilePara &tileL2cacheTiling,
+                                const LocalTensor<uint8_t> &mmFormatUb);
+    __aicore__ inline void InitGlobalBTensor(GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR antiquantScale,
+                                             GM_ADDR antiquantOffset);
     __aicore__ inline void InitGlobalATensor(GM_ADDR aGM, uint32_t aSize, GM_ADDR cGM, uint32_t cSize);
     __aicore__ inline void InitDequantScale(GM_ADDR dequantGM);
     __aicore__ inline void InitDequantScale(uint64_t dequantGM);
     __aicore__ inline void Compute(uint32_t index = 0, uint8_t enAtomic = 0);
     __aicore__ inline void ComputeWithL2Cache(uint32_t index = 0, uint8_t enAtomic = 0);
-    __aicore__ inline void MatmulComputeWithL2Cache(
-        int32_t mTileIndex, int32_t nTileIndex, uint32_t index = 0, uint8_t enAtomic = 0);
+    __aicore__ inline void MatmulComputeWithL2Cache(int32_t mTileIndex, int32_t nTileIndex, uint32_t index = 0,
+                                                    uint8_t enAtomic = 0);
     __aicore__ inline void ComputeWithNorm(uint32_t index = 0, uint8_t enAtomic = 0);
     __aicore__ inline void End();
 
@@ -108,63 +106,57 @@ public:
     uint32_t isPerTensor = 0; // 为0不做dequant
 };
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void MatmulCompute<
-    A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
-    hasAntiQuantOffset>::InitGlobalBTensor(GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR antiquantScale, GM_ADDR antiquantOffset)
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
+                                     hasAntiQuantOffset>::InitGlobalBTensor(GM_ADDR bGM, GM_ADDR biasGM,
+                                                                            GM_ADDR antiquantScale,
+                                                                            GM_ADDR antiquantOffset)
 {
     (void)antiquantScale;
     (void)antiquantOffset;
     // MC2的计算流中默认B矩阵不变，GM地址无需偏移
-    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ B_T*>(bGM), block.tiling.Kb * block.tiling.N);
-    biasGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ BiasT*>(biasGM), block.tiling.N);
+    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ B_T *>(bGM), block.tiling.Kb * block.tiling.N);
+    biasGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ BiasT *>(biasGM), block.tiling.N);
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void MatmulCompute<
-    A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
-    hasAntiQuantOffset>::InitGlobalATensor(GM_ADDR aGM, uint32_t aSize, GM_ADDR cGM, uint32_t cSize)
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
+                                     hasAntiQuantOffset>::InitGlobalATensor(GM_ADDR aGM, uint32_t aSize, GM_ADDR cGM,
+                                                                            uint32_t cSize)
 {
     // MC2的计算流中默认B矩阵不变，GM地址无需偏移
-    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ A_T*>(aGM), aSize);
-    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ C_T*>(cGM), cSize);
+    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ A_T *>(aGM), aSize);
+    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ C_T *>(cGM), cSize);
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void MatmulCompute<
-    A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
-    hasAntiQuantOffset>::InitDequantScale(GM_ADDR dequantGM)
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
+                                     hasAntiQuantOffset>::InitDequantScale(GM_ADDR dequantGM)
 {
     // per-channel quant dequant与bias的shape类似，默认无需偏移
-    dequantGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(dequantGM));
+    dequantGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(dequantGM));
     isPerTensor = static_cast<uint32_t>(IsPerTensor::PER_CHANNEL); // per-channel 为2
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void MatmulCompute<
-    A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
-    hasAntiQuantOffset>::InitDequantScale(uint64_t dequantGM)
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
+                                     hasAntiQuantOffset>::InitDequantScale(uint64_t dequantGM)
 {
     // per-tensor quant
     dequantScalar = dequantGM;
     isPerTensor = static_cast<uint32_t>(IsPerTensor::PER_TENSOR); // per-tensor 为1
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
 __aicore__ inline void
 MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType, hasAntiQuantOffset>::Init(
-    AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg, Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling,
-    const LocalTensor<uint8_t>& mmFormatUb)
+    AscendC::tiling::TCubeTiling &tiling, Mc2Tiling::RCSTiling &cfg, Mc2Tiling::Mc2L2cacheTilePara &tileL2cacheTiling,
+    const LocalTensor<uint8_t> &mmFormatUb)
 {
     // MatmulImpl初始化
     mm.SetSubBlockIdx(0);
@@ -181,11 +173,10 @@ MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQu
 #endif
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void MatmulCompute<
-    A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType, hasAntiQuantOffset>::SetOrgShapeAlign()
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
+                                     hasAntiQuantOffset>::SetOrgShapeAlign()
 {
     if constexpr (A_TYPE::format == CubeFormat::NZ && B_TYPE::format == CubeFormat::NZ) {
         auto alignKa = AlignUp(block.tiling.Ka, SHAPE_ALIGNED_SIZE);
@@ -204,11 +195,10 @@ __aicore__ inline void MatmulCompute<
     }
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void MatmulCompute<
-    A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType, hasAntiQuantOffset>::SetSingleCoreShape()
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
+                                     hasAntiQuantOffset>::SetSingleCoreShape()
 {
     if (block.mBlockIndex == (block.mBlockCnt - 1) && block.nBlockIndex == (block.nBlockCnt - 1)) {
         // 最后一块是尾块
@@ -224,9 +214,8 @@ __aicore__ inline void MatmulCompute<
     }
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
 __aicore__ inline void
 MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType, hasAntiQuantOffset>::Compute(
     uint32_t index, uint8_t enAtomic)
@@ -238,12 +227,10 @@ MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQu
     }
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void MatmulCompute<
-    A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
-    hasAntiQuantOffset>::ComputeWithNorm(uint32_t index, uint8_t enAtomic)
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
+                                     hasAntiQuantOffset>::ComputeWithNorm(uint32_t index, uint8_t enAtomic)
 {
     // 每次block循环开始前需要计算初始blockIndex
     block.UpdateBlockCnt(index);
@@ -273,12 +260,12 @@ __aicore__ inline void MatmulCompute<
     }
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void
-MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType, hasAntiQuantOffset>::
-    MatmulComputeWithL2Cache(int32_t mTileIndex, int32_t nTileIndex, uint32_t index, uint8_t enAtomic)
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
+                                     hasAntiQuantOffset>::MatmulComputeWithL2Cache(int32_t mTileIndex,
+                                                                                   int32_t nTileIndex, uint32_t index,
+                                                                                   uint8_t enAtomic)
 {
     block.UpdateBlockCnt(0, mTileIndex, nTileIndex);
     for (uint32_t j = 0; j < block.blockCnt; j++) {
@@ -304,12 +291,10 @@ MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQu
     }
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void MatmulCompute<
-    A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
-    hasAntiQuantOffset>::ComputeWithL2Cache(uint32_t index, uint8_t enAtomic)
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
+                                     hasAntiQuantOffset>::ComputeWithL2Cache(uint32_t index, uint8_t enAtomic)
 {
     for (int32_t mTileIndex = 0; mTileIndex < block.tilingL2.mTileCntL2; mTileIndex++) {
         if (mTileIndex % 2 == 0) {
@@ -324,9 +309,8 @@ __aicore__ inline void MatmulCompute<
     }
 }
 
-template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
-    AntiQuantType antiQuantType, bool hasAntiQuantOffset>
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
+          AntiQuantType antiQuantType, bool hasAntiQuantOffset>
 __aicore__ inline void
 MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType, hasAntiQuantOffset>::End()
 {

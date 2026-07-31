@@ -496,6 +496,22 @@ attention:
       examples: False
     options:
       - flash_attn
+
+  compressor:
+    module: True
+    src:
+      - attention/compressor
+    exclude:
+      - attention/compressor/docs
+      - attention/compressor/README.md
+    ut_cov_exclude:
+      - attention/compressor/tests
+    test:
+      ut: True
+      examples: False
+    options:
+      - compressor
+
 gmm:
   grouped_matmul:
     module: True
@@ -1218,7 +1234,7 @@ mc2:
         examples: False
       options:
         - allto_allv_grouped_mat_mul
-  
+
     allto_allv_quant_grouped_mat_mul:
       module: True
       src:
@@ -1441,7 +1457,6 @@ mc2:
         - mc2/mega_moe/op_kernel
       test:
         examples: False
-        ut: False
       options:
         - mega_moe
 
@@ -1634,7 +1649,7 @@ mc2:
         examples: False
       options:
         - moe_distribute_combine_setup
-      
+
     moe_distribute_combine_teardown:
       module: True
       src:
@@ -1651,7 +1666,7 @@ mc2:
         examples: False
       options:
         - moe_distribute_combine_teardown
-    
+
     moe_distribute_dispatch_setup:
       module: True
       src:
@@ -1707,6 +1722,7 @@ mc2:
         - mc2/moe_distribute_combine_v2/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_v2
         - moe_distribute_dispatch_v3
@@ -1747,7 +1763,7 @@ mc2:
       options:
         - moe_distribute_dispatch
         - moe_distribute_combine
-    
+
     moe_distribute_dispatch_setup:
       module: True
       src:

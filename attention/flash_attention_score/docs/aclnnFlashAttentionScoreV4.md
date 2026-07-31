@@ -32,21 +32,21 @@
      attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
      $$
   其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
-  
+
   $$
   S = Q * K^{T}
   $$
-  
+
   $$
   m = max(sink, max(S))
   $$
-  
+
   $$
   Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
   $$
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionScoreV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreV4”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFlashAttentionScoreV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreV4”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
@@ -91,9 +91,9 @@ aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreV4(
-  void             *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor    *executor, 
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
 
@@ -487,7 +487,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -555,10 +555,10 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -594,12 +594,12 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
 - sinkOptional不为None时，query与key等输入tensor仅支持float16和bfloat16两种类型。
-- sparseMode约束如下: 
+- sparseMode约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
   - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效。
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
-  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
+  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode_introduction.md)。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - band场景，preTokens和nextTokens之间必须要有交集。
 - prefixOptional稀疏计算场景，场景包括sequence长度相等的场景下sparseMode=5、sparseMode=6；sequence长度不相等的场景下sparseMode=6。这两种场景下，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]；当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。当sparseModeOptional=5、prefix的N > Skv或prefixOptional不传时执行全计算，sparseModeOptional=6要求prefixOptional必传。
@@ -621,7 +621,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```C++
 #include <iostream>
@@ -759,7 +759,7 @@ int main() {
   aclTensor* softmaxMax = nullptr;
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
- 
+
   std::vector<op::fp16_t> qHostData(q_size, 1.0);
   std::vector<op::fp16_t> kHostData(kv_size, 1.0);
   std::vector<op::fp16_t> vHostData(kv_size, 1.0);
@@ -795,9 +795,9 @@ int main() {
   aclIntArray *prefix = aclCreateIntArray(prefixOp.data(), 1);
   aclIntArray *qStartIdx = aclCreateIntArray(qStartIdxOp.data(), 1);
   aclIntArray *kvStartIdx = aclCreateIntArray(kvStartIdxOp.data(), 1);
-  aclIntArray* actualSeqQLen = aclCreateIntArray(actualSeqQLenOp.data(), 1);  
+  aclIntArray* actualSeqQLen = aclCreateIntArray(actualSeqQLenOp.data(), 1);
   aclIntArray* actualSeqKVLen = aclCreateIntArray(actualSeqKVLenOp.data(), 1);
- 
+
   double scaleValue = 0.088388;
   double keepProb = 1;
   int64_t preTokens = 65536;
@@ -873,5 +873,5 @@ int main() {
   aclFinalize();
 
   return 0;
-} 
+}
 ```

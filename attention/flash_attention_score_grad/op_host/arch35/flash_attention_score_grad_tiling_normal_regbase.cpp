@@ -1381,7 +1381,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
         }
     }
     // mask bool workspace size
-    if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
+    if (fBaseParams.dropoutIsDivisibleBy8 == 0 && fBaseParams.dropMaskOuter) {
         postTilingData_->set_dropMaskGmOffset(workspaceSize);
         workspaceSize =
             (workspaceSize + static_cast<size_t>(fBaseParams.dropMaskSize) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
@@ -1794,19 +1794,35 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
     } else if (isTnd) {
         if (fBaseParams.isDeterministic) {
             FagTilingWithTemplateTFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTFTF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             TND_TILING_DATA_COMMON_ASSIGN(tilingData);
             baseDeterParam_ = &tilingData->baseDeterParam;
         } else {
             FagTilingWithTemplateFFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFTF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             TND_TILING_DATA_COMMON_ASSIGN(tilingData);
         }
     } else {
         if (fBaseParams.isDeterministic) {
             FagTilingWithTemplateTFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTFFF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
             baseDeterParam_ = &tilingData->baseDeterParam;
         } else {
             FagTilingWithTemplateFFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFFF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
         }
     }

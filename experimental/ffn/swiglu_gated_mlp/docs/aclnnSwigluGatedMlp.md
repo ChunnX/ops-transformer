@@ -62,7 +62,7 @@ y = SwigluGatedMlp(x, gate_up_weight, down_weight, cube_math_type)
 
 ## 算子执行接口
 
-每个算子分为[两段式接口](../../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSwigluGatedMlpGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSwigluGatedMlp”接口执行计算。
+每个算子分为[两段式接口](../../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSwigluGatedMlpGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSwigluGatedMlp”接口执行计算。
 
 * `aclnnStatus aclnnSwigluGatedMlpGetWorkspaceSize(const aclTensor* x, const aclTensor* gateUpWeight, const aclTensor* downWeight, int64_t cubeMathType, aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor)`
 * `aclnnStatus aclnnSwigluGatedMlp(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)`
@@ -76,11 +76,11 @@ y = SwigluGatedMlp(x, gate_up_weight, down_weight, cube_math_type)
 
 - **参数说明：**
 
-  - x（aclTensor\*，计算输入）：必选参数，Device侧的aclTensor，公式中的输入`x`。数据类型支持FLOAT16、FLOAT、BFLOAT16，[数据格式](../../../../docs/zh/context/数据格式.md)支持ND，shape为`[..., hiddenSize]`，维度个数需大于等于2。
-  - gateUpWeight（aclTensor\*，计算输入）：必选参数，Device侧的aclTensor，第一个MatMul的权重，公式中的`gate_up_weight`。数据类型需与`x`一致，支持FLOAT16、FLOAT、BFLOAT16，[数据格式](../../../../docs/zh/context/数据格式.md)支持ND，shape为`[hiddenSize, 2 * intermediateSize]`。
-  - downWeight（aclTensor\*，计算输入）：必选参数，Device侧的aclTensor，第二个MatMul的权重，公式中的`down_weight`。数据类型需与`x`一致，支持FLOAT16、FLOAT、BFLOAT16，[数据格式](../../../../docs/zh/context/数据格式.md)支持ND，shape为`[intermediateSize, outSize]`。
+  - x（aclTensor\*，计算输入）：必选参数，Device侧的aclTensor，公式中的输入`x`。数据类型支持FLOAT16、FLOAT、BFLOAT16，[数据格式](../../../../docs/zh/context/data_format.md)支持ND，shape为`[..., hiddenSize]`，维度个数需大于等于2。
+  - gateUpWeight（aclTensor\*，计算输入）：必选参数，Device侧的aclTensor，第一个MatMul的权重，公式中的`gate_up_weight`。数据类型需与`x`一致，支持FLOAT16、FLOAT、BFLOAT16，[数据格式](../../../../docs/zh/context/data_format.md)支持ND，shape为`[hiddenSize, 2 * intermediateSize]`。
+  - downWeight（aclTensor\*，计算输入）：必选参数，Device侧的aclTensor，第二个MatMul的权重，公式中的`down_weight`。数据类型需与`x`一致，支持FLOAT16、FLOAT、BFLOAT16，[数据格式](../../../../docs/zh/context/data_format.md)支持ND，shape为`[intermediateSize, outSize]`。
   - cubeMathType（int64\_t，计算输入）：Host侧属性值，表示MatMul计算模式。当前支持取值0和1，默认值为1。
-  - y（aclTensor\*，计算输出）：必选参数，Device侧的aclTensor，公式中的输出`y`。数据类型需与`x`一致，支持FLOAT16、FLOAT、BFLOAT16，[数据格式](../../../../docs/zh/context/数据格式.md)支持ND，shape为`[..., outSize]`。
+  - y（aclTensor\*，计算输出）：必选参数，Device侧的aclTensor，公式中的输出`y`。数据类型需与`x`一致，支持FLOAT16、FLOAT、BFLOAT16，[数据格式](../../../../docs/zh/context/data_format.md)支持ND，shape为`[..., outSize]`。
   - workspaceSize（uint64\_t\*，出参）：返回用户需要在Device侧申请的workspace大小。
   - executor（aclOpExecutor\*\*，出参）：返回op执行器，包含了算子计算流程。
 
@@ -89,7 +89,7 @@ y = SwigluGatedMlp(x, gate_up_weight, down_weight, cube_math_type)
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
 
@@ -107,7 +107,7 @@ y = SwigluGatedMlp(x, gate_up_weight, down_weight, cube_math_type)
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -138,7 +138,7 @@ REG_OP(SwigluGatedMlp)
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <cstdio>

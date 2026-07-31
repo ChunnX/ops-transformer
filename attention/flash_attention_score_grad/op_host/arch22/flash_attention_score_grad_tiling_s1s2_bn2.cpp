@@ -1581,6 +1581,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::GetWorkspaceSize()
     int64_t currentUseCoreNum =
         tmpData_.isL1CustomEnable ? (td_->opInfo.get_usedCoreNum() * 2) : td_->opInfo.get_usedCoreNum();
     int64_t launchBlockDims = needAdjustBlockDim ? currentUseCoreNum : aicoreParams_.numBlocks;
+    if (isMaxWorkspace_) {
+        td_->opInfo.set_usedCoreNum(aicoreParams_.aicNum);
+        currentUseCoreNum = td_->opInfo.get_usedCoreNum();
+    }
     // Tiling传递的内存大小、起始地址，统一为字节数，单位为B
     auto blockdim = CalcTschBlockDim(launchBlockDims, aicoreParams_.aicNum, aicoreParams_.numBlocks);
     OP_CHECK_IF(blockdim == 0,
@@ -1750,19 +1754,17 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
         td_->opInfo.set_S2(keyShape.GetDim(DIM_0));
         td_->opInfo.set_D(tempDimD);
     } else if (td_->opInfo.get_layout() == static_cast<uint32_t>(InputLayout::TND)) {
+        auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+        auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+        OP_CHECK_IF((actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr),
+                OP_LOGW(context_, "actualSeqQlenTensor or actualSeqKvlenTensor is nullptr."),
+                return ge::GRAPH_PARAM_INVALID);
+        const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
+        const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
+        OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
+                OP_LOGW(context_, "actualSeqQlenTensor shapeSize is not equal actualSeqKvlenTensor."),
+                return ge::GRAPH_PARAM_INVALID);
         if (!isMaxWorkspace_) {
-            auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
-            auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
-            OP_CHECK_IF((actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr),
-                    OP_LOGW(context_, "actualSeqQlenTensor or actualSeqKvlenTensor is nullptr."),
-                    return ge::GRAPH_PARAM_INVALID);
-
-            const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
-            const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
-            OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
-                    OP_LOGW(context_, "actualSeqQlenTensor shapeSize is not equal actualSeqKvlenTensor."),
-                    return ge::GRAPH_PARAM_INVALID);
-
             std::vector<int64_t> actualSeqQlen;
             std::vector<int64_t> actualSeqKvlen;
             const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();
@@ -1804,6 +1806,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
             td_->opInfo.set_S1(*std::max_element(tmpData_.actualSeqQlen.begin(), tmpData_.actualSeqQlen.end()));
             td_->opInfo.set_S2(*std::max_element(tmpData_.actualSeqKvlen.begin(), tmpData_.actualSeqKvlen.end()));
         } else {
+            tmpData_.sumS1S2Product = 1;
             td_->opInfo.set_B(1);
             td_->opInfo.set_S1(queryShape.GetDim(DIM_0));
             td_->opInfo.set_S2(keyShape.GetDim(DIM_0));
@@ -1900,6 +1903,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::ProcessDropInfo()
         int64_t dimValue = dropMaskShape->GetStorageShape().GetDim(i);
         dropMaskShapeSize *= dimValue;
     }
+    OP_CHECK_IF(dropMaskShapeSize == 0,
+        OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: "
+            "[dropMask has zero elements (shape size is 0) when keepProb=%f]", td_->opInfo.get_keepProb()),
+    return ge::GRAPH_FAILED);
 
     auto shapeSize = AlignUp(tmpData_.dropMaskSize, static_cast<int64_t>(BIT_NUM)) / BIT_NUM;
     if (dropMaskShapeSize < shapeSize) {

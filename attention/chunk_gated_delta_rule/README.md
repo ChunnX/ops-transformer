@@ -4,7 +4,7 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
@@ -26,7 +26,7 @@
   $$
 
   其中，$S_{t-1},S_t \in \mathbb{R}^{D_v \times D_k}$，$q_t, k_t \in \mathbb{R}^{D_k}$，$v_t \in \mathbb{R}^{D_v}$，$\alpha_t \in \mathbb{R}$，$\beta_t \in \mathbb{R}$，$o_t \in \mathbb{R}^{D_v}$。
-  
+
   Chunked Gated Delta Rule是GDR的chunk版实现([参考论文](https://arxiv.org/abs/2412.06464))，它通过将输入序列切块，实现了一定的并行效果，在长上下文场景其计算效率相对Recurrent Gated Delta Rule更高，适用于prefill阶段。输入一个长度为L的序列，该算子可以计算出每一步的输出 $o_t, t \in \{1, 2, .., L\}$ 以及最终的状态矩阵 $S_L$。
 
 
@@ -80,7 +80,7 @@
     <td>initial_state</td>
     <td>输入</td>
     <td>初始状态矩阵，公式中的输入S_0。</td>
-    <td>BFLOAT16</td>
+    <td>BFLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
   <tr>
@@ -108,7 +108,7 @@
     <td>final_state</td>
     <td>输出</td>
     <td>最终的状态矩阵，公式中的S_L。</td>
-    <td>BFLOAT16</td>
+    <td>BFLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
   <tr>
@@ -144,10 +144,10 @@
   - $B \gt 0，T \gt 0$
 
 - 受算法数值特性限制，需满足以下取值约束，否则易出现数值溢出、精度异常：
-  - 张量元素：$0 < \text{query} < 1$
-  - 张量元素：$0 < \text{key} < 1$
-  - 张量元素：$g < 0$
-  - 张量元素：$0 < \text{beta} < 1$
+  - 张量元素：$-1 \le query[i][j][k] \le 1$
+  - 张量元素：$-1 \le key[i][j][k] \le 1$
+  - 张量元素：$-1 \le g[i][j] \le 0$
+  - 张量元素：$0 < beta[i][j] < 1$
 
 ## 调用说明
 

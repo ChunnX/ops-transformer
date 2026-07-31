@@ -148,21 +148,30 @@ protected:
 
             this->InitRing(cacheIdx, stateTokenOffset, curSeqStart, len, dimStart, curBaseDim, dim);
 
-            // 判断是否需要在 RunSeq 内部做 varLen state 增量写出
+            // spec decode 时 conv_state 按 sliding window 更新:
+            //   new_state = [old[offset+1:offset+width-1], x[0:len]]
+            // 增量写出在 RunSeq 中逐步填充 [0..stateWriteStart-1]
+            // WriteBackState 固定写末尾 lastWriteLen=width-1 行到 [stateWriteStart..]
+            //   stateWriteStart = min(len-1, stateLen-lastWriteLen)
+            //   - len <= stateLen: 增量写 stateWriteStart 行 + 回写 width-1 行，ring 中有所需值
+            //   - len >  stateLen: 增量写满 [0..stateLen-1]，ring 中旧值已被覆盖，跳过回写
             bool doVarLenStateWrite = false;
+            int32_t stateWriteStart = 0;
+            const int32_t stateLen = this->tilingData_->stateLen;
+            const int32_t lastWriteLen = kernelWidth - 1;
             if (this->tilingData_->hasNumAcceptedTokens && len > 0) {
-                const int32_t keep = kernelWidth - 2;
-                if (keep + len <= this->tilingData_->stateLen) {
-                    doVarLenStateWrite = true;
+                doVarLenStateWrite = true;
+                if (len - 1 < stateLen) {
+                    stateWriteStart = (len - 1 < stateLen - lastWriteLen) ? (len - 1) : (stateLen - lastWriteLen);
+                } else {
+                    stateWriteStart = stateLen;
                 }
             }
 
-            this->RunSeq(curSeqStart, len, dimStart, curBaseDim, cacheIdx, doVarLenStateWrite);
+            this->RunSeq(curSeqStart, len, dimStart, curBaseDim, cacheIdx, doVarLenStateWrite, stateWriteStart);
 
-            if (doVarLenStateWrite) {
-                this->WriteBackState(cacheIdx, len, dimStart, curBaseDim, dim, len - 1);
-            } else {
-                this->WriteBackState(cacheIdx, len, dimStart, curBaseDim, dim);
+            if (stateWriteStart < stateLen) {
+                this->WriteBackState(cacheIdx, stateWriteStart + 1, dimStart, curBaseDim, dim, stateWriteStart);
             }
 
             // 保证 state 写出完成后再开始下一 batch 组的 InitRing state 读入
@@ -253,7 +262,7 @@ protected:
     // Update 模式 (seqLen=1): 循环体仅执行 t=0 一次，
     // x 预取分支 (t+1<len) 和 state 写出分支 (t+2<len) 均不执行。
     __aicore__ inline void RunSeq(int32_t start, int32_t len, int32_t dimStart, int32_t baseDim, int32_t cacheIdx,
-                                  bool doVarLenStateWrite)
+                                  bool doVarLenStateWrite, int32_t stateWriteStart)
     {
         const int32_t dim = static_cast<int32_t>(this->tilingData_->dim);
         const int32_t kernelWidth = static_cast<int32_t>(this->tilingData_->kernelWidth);
@@ -279,7 +288,7 @@ protected:
                 const uint32_t srcGapX = static_cast<uint32_t>(seqLen * dim - baseDim) * sizeof(T);
                 DataCopyPad(ring[slotNext * this->dimBufferSize_], this->xGm_[xGmBase],
                             {static_cast<uint16_t>(coBatch), blockBytes, srcGapX, 0, 0}, {false, 0, 0, 0});
-                SetFlag<HardEvent::MTE2_V>((t & 1) ? EVENT_ID1 : EVENT_ID0);
+                SetFlag<HardEvent::MTE2_V>((t & 1) ? EVENT_ID0 : EVENT_ID1);
             }
 
             // ---- 等 MTE3 释放 ring slot (t >= 2 的 state 写出) ----------
@@ -306,7 +315,8 @@ protected:
             }
 
             // ---- varLen state 增量写出: ring 中已刷新的 state 行 → GM -----
-            if (doVarLenStateWrite && t >= 1) {
+            // 只写 [0..stateWriteStart-1]，末尾 width-1 行由 WriteBackState 统一回写
+            if (doVarLenStateWrite && t >= 1 && (t - 1) < stateWriteStart) {
                 const int32_t deadSlot = t % (kernelWidth + 1);
                 const int64_t stateBase =
                     static_cast<int64_t>(cacheIdx) * stateLen * dim + static_cast<int64_t>(t - 1) * dim + dimStart;

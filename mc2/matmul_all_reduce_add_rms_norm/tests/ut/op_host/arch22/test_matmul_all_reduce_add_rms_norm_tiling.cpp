@@ -24,18 +24,12 @@ struct TestParam {
 
 using WeightQuantTestParam = TestParam;
 
-std::unique_ptr<gert::TilingContextPara::TensorDescription> CreateTensorShape(
-    gert::StorageShape shape,
-    ge::DataType dtype,
-    ge::Format format
-) {
+std::unique_ptr<gert::TilingContextPara::TensorDescription> CreateTensorShape(gert::StorageShape shape,
+                                                                              ge::DataType dtype, ge::Format format)
+{
     return std::unique_ptr<gert::TilingContextPara::TensorDescription>(
-        new gert::TilingContextPara::TensorDescription(
-            shape,  // 这里用大括号构造
-            dtype,
-            format
-        )
-    );
+        new gert::TilingContextPara::TensorDescription(shape, // 这里用大括号构造
+                                                       dtype, format));
 }
 
 class MatmulAllReduceAddRmsNormArch22TilingTest : public testing::TestWithParam<TestParam> {
@@ -51,7 +45,7 @@ protected:
     }
 };
 
-static void SplitStr2Vec(const string& input, const string& delimiter, vector<string>& output)
+static void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
 {
     auto delimiterLen = delimiter.size();
     std::string::size_type currPos = 0;
@@ -72,9 +66,9 @@ map<string, ge::DataType> dtypeMap = {{"FLOAT16", ge::DT_FLOAT16}, {"FLOAT", ge:
 
 struct MatmulAllReduceArnCompileInfo {
     int32_t totalCoreNum = 0;
-    uint64_t ubSize = 0;    
+    uint64_t ubSize = 0;
 };
-static void TestOneParamCase(const WeightQuantTestParam& param)
+static void TestOneParamCase(const WeightQuantTestParam &param)
 {
     std::cout << "run case " << param.caseName << std::endl;
     std::vector<string> testParam;
@@ -162,25 +156,26 @@ static void TestOneParamCase(const WeightQuantTestParam& param)
         }
     }
     quantScaleShape->dtype_ = quantDtype;
-    if (biasFlag){
+    if (biasFlag) {
         biasShape->shape_ = {{n}, {n}};
     }
-    if (!antiquantOffsetExistFlag){
+    if (!antiquantOffsetExistFlag) {
         antiQuantOffsetShape->shape_ = {};
     }
-    if (!antiquantScaleExistFlag){
+    if (!antiquantScaleExistFlag) {
         antiQuantScaleShape->shape_ = {};
     }
-    if (!dequantScaleExistFlag){
+    if (!dequantScaleExistFlag) {
         quantScaleShape->shape_ = {};
     }
 
-    MatmulAllReduceArnCompileInfo compileInfo {8, 262144};
+    MatmulAllReduceArnCompileInfo compileInfo{8, 262144};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 8;
     uint64_t ubSize = 262144;
     uint64_t tilingDataSize = 40960;
-    gert::TilingContextPara tilingContextPara("MatmulAllReduceAddRmsNorm",
+    gert::TilingContextPara tilingContextPara(
+        "MatmulAllReduceAddRmsNorm",
         {
             // input info
             *xShape,
@@ -193,7 +188,7 @@ static void TestOneParamCase(const WeightQuantTestParam& param)
             *quantScaleShape,
         },
         {
-            //output info
+            // output info
             *yShape,
             *normOutputShape,
         },
@@ -207,11 +202,7 @@ static void TestOneParamCase(const WeightQuantTestParam& param)
             {"antiquant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(antigroupSize)},
             {"epslion", Ops::Transformer::AnyValue::CreateFrom<float>(epslion)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     if (isValidCase) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
@@ -227,50 +218,50 @@ TEST_P(MatmulAllReduceAddRmsNormArch22TilingTest, GeneralTest)
 }
 
 static TestParam g_casesParamsQuant[] = {
-        // 量化
-        {"MODEL0_group_sum_4096_688_4096_1_0_0_0_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 8},
-        // transB
-        {"MODEL0_group_sum_4_4096_11008_1_0_0_1_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 4104},
-        {"MODEL0_group_sum_4_4096_11008_1_0_0_0_-1_0_0_1_10_0.1_INT8_INT8_INT32_BF16", 8, 8},
-        // 伪量化
-        {"MODEL0_group_sum_4096_688_4096_1_0_0_0_-1_1_1_0_0_0.1_FLOAT16_INT8_FLOAT16_FLOAT16", 8, 5439500},
-        // transB
-        {"MODEL0_group_sum_4_4096_11008_1_0_0_1_-1_1_1_0_0_0.1_FLOAT16_INT4_FLOAT16_FLOAT16", 8, 72548364},
-        // per group
-        {"MODEL0_group_sum_4_4096_11008_1_0_0_0_32_1_1_0_32_0.1_BF16_INT4_BF16_BF16", 8, 7536652},
-        // 非量化
-        {"MODEL0_group_sum_4_4096_11008_1_0_0_0_32_0_0_0_32_0.1_BF16_BF16_BF16_BF16", 8, 256UL},
-        {"MODEL0_group_sum_9471_18_379_1_0_0_0_32_0_0_0_32_0.1_BF16_BF16_BF16_BF16", 8, 256UL},
+    // 量化
+    {"MODEL0_group_sum_4096_688_4096_1_0_0_0_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 8},
+    // transB
+    {"MODEL0_group_sum_4_4096_11008_1_0_0_1_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 4104},
+    {"MODEL0_group_sum_4_4096_11008_1_0_0_0_-1_0_0_1_10_0.1_INT8_INT8_INT32_BF16", 8, 8},
+    // 伪量化
+    {"MODEL0_group_sum_4096_688_4096_1_0_0_0_-1_1_1_0_0_0.1_FLOAT16_INT8_FLOAT16_FLOAT16", 8, 5439500},
+    // transB
+    {"MODEL0_group_sum_4_4096_11008_1_0_0_1_-1_1_1_0_0_0.1_FLOAT16_INT4_FLOAT16_FLOAT16", 8, 72548364},
+    // per group
+    {"MODEL0_group_sum_4_4096_11008_1_0_0_0_32_1_1_0_32_0.1_BF16_INT4_BF16_BF16", 8, 7536652},
+    // 非量化
+    {"MODEL0_group_sum_4_4096_11008_1_0_0_0_32_0_0_0_32_0.1_BF16_BF16_BF16_BF16", 8, 256UL},
+    {"MODEL0_group_sum_9471_18_379_1_0_0_0_32_0_0_0_32_0.1_BF16_BF16_BF16_BF16", 8, 256UL},
 
 };
 static TestParam g_inValidCheckcasesParamsQuant[] = {
-        // dequant设置的同时，antiquant信息也设置
-        {"InValidMODEL0_group_sum_4_4096_11008_1_0_0_0_-1_1_1_1_10_0.1_INT8_INT8_BF16_BF16", 8, 365333139620609},
-        // transA
-        {"InValidMODEL0_group_sum_4096_688_4096_1_0_1_0_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 0},
-        // 伪量化
-        // transA
-        {"InValidMODEL0_group_sum_4096_688_4096_1_0_1_0_-1_1_1_0_0_0.1_BF16_INT8_BF16_BF16", 8, 365332065878785},
-        // per group: groupsize <32
-        {"InValidMODEL0_group_sum_4_4096_11008_1_0_0_0_32_1_1_0_30_0.1_BF16_INT4_BF16_BF16", 8, 365333139620609},
-        // per group: k - 1 < 32
-        {"InValidMODEL0_group_sum_4_2_11008_1_0_0_0_32_1_1_0_32_0.1_BF16_INT4_BF16_BF16", 8, 365333139620609},
-        // epsilon
-        {"InValidMODEL0_group_sum_4096_688_4096_1_0_0_0_-1_0_0_1_0_0_INT8_INT8_INT32_BF16", 8, 0},
-        {"InValidMODEL0_group_sum_4096_688_4096_1_0_0_0_-1_0_0_1_0_1_INT8_INT8_INT32_BF16", 8, 0},
-        // reduceOp
-        {"InValidMODEL0_group_mul_4096_688_4096_1_0_0_0_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 0},
-        // commTurn
-        {"InValidMODEL0_group_mul_4096_688_4096_1_0_0_0_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 0},
+    // dequant设置的同时，antiquant信息也设置
+    {"InValidMODEL0_group_sum_4_4096_11008_1_0_0_0_-1_1_1_1_10_0.1_INT8_INT8_BF16_BF16", 8, 365333139620609},
+    // transA
+    {"InValidMODEL0_group_sum_4096_688_4096_1_0_1_0_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 0},
+    // 伪量化
+    // transA
+    {"InValidMODEL0_group_sum_4096_688_4096_1_0_1_0_-1_1_1_0_0_0.1_BF16_INT8_BF16_BF16", 8, 365332065878785},
+    // per group: groupsize <32
+    {"InValidMODEL0_group_sum_4_4096_11008_1_0_0_0_32_1_1_0_30_0.1_BF16_INT4_BF16_BF16", 8, 365333139620609},
+    // per group: k - 1 < 32
+    {"InValidMODEL0_group_sum_4_2_11008_1_0_0_0_32_1_1_0_32_0.1_BF16_INT4_BF16_BF16", 8, 365333139620609},
+    // epsilon
+    {"InValidMODEL0_group_sum_4096_688_4096_1_0_0_0_-1_0_0_1_0_0_INT8_INT8_INT32_BF16", 8, 0},
+    {"InValidMODEL0_group_sum_4096_688_4096_1_0_0_0_-1_0_0_1_0_1_INT8_INT8_INT32_BF16", 8, 0},
+    // reduceOp
+    {"InValidMODEL0_group_mul_4096_688_4096_1_0_0_0_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 0},
+    // commTurn
+    {"InValidMODEL0_group_mul_4096_688_4096_1_0_0_0_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 0},
 };
 
 // 正常用例合集
 
 INSTANTIATE_TEST_CASE_P(MatMulAllReduceAddResNormal, MatmulAllReduceAddRmsNormArch22TilingTest,
-        testing::ValuesIn(g_casesParamsQuant));
+                        testing::ValuesIn(g_casesParamsQuant));
 
 // 异常用例合集
 
 INSTANTIATE_TEST_CASE_P(MatMulAllReduceAddResNormal2, MatmulAllReduceAddRmsNormArch22TilingTest,
-        testing::ValuesIn(g_inValidCheckcasesParamsQuant));
-}//matmul_all_reduce_add_rms_norm_ut
+                        testing::ValuesIn(g_inValidCheckcasesParamsQuant));
+} // namespace MatmulAllReduceAddRmsNormUT

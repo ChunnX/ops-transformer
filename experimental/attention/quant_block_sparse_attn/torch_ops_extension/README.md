@@ -54,7 +54,7 @@ import custom_ops   # 注册 torch.ops.custom.npu_quant_block_sparse_attn 并挂
 attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attn(
     query, key, value,                       # FP8_E4M3FN
     q_descale, k_descale, v_descale, p_scale,      # FLOAT32
-    sparse_indices, sparse_seq_len, atten_mask,
+    sparse_indices, sparse_seq_len, atten_mask,  # mask_mode=0 时可传 None
     softmax_scale, sparse_q_block_size, sparse_kv_block_size,
     layout_kv="PA_BNSD", layout_sparse_indices="B_N_Qb_Kb",
     block_table=block_table,                 # 可选：PagedAttention

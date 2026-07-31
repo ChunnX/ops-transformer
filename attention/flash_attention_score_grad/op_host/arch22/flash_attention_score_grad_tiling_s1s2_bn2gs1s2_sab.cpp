@@ -121,12 +121,12 @@ bool FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::IsCapable()
     }
 
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        if (isMaxWorkspace_) {
+            return false;
+        }
         if (isTndSABHit(context_)) {
             float keep_prob = fBaseParams.keepProb;
             float epsilon = 1e-10f;
-            if (isMaxWorkspace_) {
-                return false;
-            }
             auto dropMask = context_->GetOptionalInputDesc(DROP_MASK);
             if ((fBaseParams.d == SPECIAL_HEADDIM_128) && (fBaseParams.b >= B_1) && (fBaseParams.b <= B_16) &&
                 (fBaseParams.g >= G_4) && (fBaseParams.t1 == fBaseParams.t2) &&
@@ -259,7 +259,7 @@ uint64_t FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetTilingKey() const
             static_cast<uint8_t>(attenMaskCfg), 0, 0, 
             static_cast<uint8_t>(s1TemplateType), static_cast<uint8_t>(s2TemplateType), static_cast<uint8_t>(dTemplateType),
             static_cast<uint8_t>(isDeterministic), static_cast<uint8_t>(hasRope));
- 
+
     OP_LOGI(context_, "FAGTiling sameAB DoTiling success, tiling is %lu.", tilingKey);
     return tilingKey;
 }
@@ -791,24 +791,23 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetBaseShapeInf
     } else if (strcmp(inputLayout, "TND") == 0) {
         OP_LOGD(context_, "inputLayout is TND");
         fBaseParams.layoutType = INPUT_FORMAT_TND;
+        auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+        auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+        if (actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr) {
+            OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [actual_seq_qlen or actual_seq_kvlen is null]");
+            return ge::GRAPH_FAILED;
+        }
+        const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
+        const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
+        OP_CHECK_IF(
+            (seqQShapeSize != kvSeqShapeSize),
+            OP_LOGE(context_,
+                    "In op [FlashAttentionScoreGrad], the tensor shapes of [actual_seq_qlen, actual_seq_kvlen] are mismatched, "
+                    "the reason is: [actual_seq_qlen shape size and actual_seq_kvlen shape size should be same, "
+                    "actual_seq_qlen shape size=%zu, actual_seq_kvlen shape size=%zu]",
+                    seqQShapeSize, kvSeqShapeSize),
+            return ge::GRAPH_FAILED);
         if (!isMaxWorkspace_) {
-            auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
-            auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
-            if (actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr) {
-                OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [actual_seq_qlen or actual_seq_kvlen is null]");
-                return ge::GRAPH_FAILED;
-            }
-            const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
-            const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
-            OP_CHECK_IF(
-                (seqQShapeSize != kvSeqShapeSize),
-                OP_LOGE(context_,
-                        "In op [FlashAttentionScoreGrad], the tensor shapes of [actual_seq_qlen, actual_seq_kvlen] are mismatched, "
-                        "the reason is: [actual_seq_qlen shape size and actual_seq_kvlen shape size should be same, "
-                        "actual_seq_qlen shape size=%zu, actual_seq_kvlen shape size=%zu]",
-                        seqQShapeSize, kvSeqShapeSize),
-                return ge::GRAPH_FAILED);
-
             const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();
             const int64_t *kvValue = actualSeqKvlenTensor->GetData<int64_t>();
             OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
@@ -836,8 +835,11 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetBaseShapeInf
             fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
         } else {
             fBaseParams.b = 1;
+            fBaseParams.sumS1S2Product = 1;
             fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_0);
             fBaseParams.s2 = keyShape->GetStorageShape().GetDim(DIM_0);
+            fBaseParams.effectiveT1 = fBaseParams.s1;
+ 	        fBaseParams.effectiveT2 = fBaseParams.s2;
         }
         fBaseParams.t1 = queryShape->GetStorageShape().GetDim(DIM_0);
         fBaseParams.t2 = keyShape->GetStorageShape().GetDim(DIM_0);
@@ -926,6 +928,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessDropInfo
         OP_LOGE(context_, "In op [FlashAttentionScoreGrad], the shape of [drop_mask] is not supported, got [%ld]. Constraint:[should not be less than %ld]",
                   dropMaskShapeSize, shapeSize);
         return ge::GRAPH_FAILED;
+    }
+
+    if (isMaxWorkspace_) {
+        return ge::GRAPH_SUCCESS;
     }
 
     if (strcmp(inputLayout, "TND") == 0) {
@@ -1683,7 +1689,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessTokensIn
         fBaseParams.s2Token = fBaseParams.s2Token - fBaseParams.s1 + fBaseParams.s2;
     }
 
-    if (fBaseParams.sparseMode == ALL_MASK || fBaseParams.attenMaskOptional == EMPTY_TENSOR) {
+    if (fBaseParams.sparseMode == ALL_MASK || fBaseParams.attenMaskOptional == EMPTY_TENSOR || isMaxWorkspace_) {
         fBaseParams.s1Token = INT32_MAX;
         fBaseParams.s2Token = INT32_MAX;
     }
@@ -1693,7 +1699,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessTokensIn
     // 1  2  3  5  6  不校验
     if (fBaseParams.sparseMode == ALL_MASK || fBaseParams.sparseMode == LEFT_UP_CAUSAL ||
         fBaseParams.sparseMode == RIGHT_DOWN_CAUSAL || fBaseParams.sparseMode == PREFIX ||
-        fBaseParams.sparseMode == PREFIX_COMPRESS) {
+        fBaseParams.sparseMode == PREFIX_COMPRESS || isMaxWorkspace_) {
         return ge::GRAPH_SUCCESS;
     }
 
@@ -1705,6 +1711,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessTokensIn
                   "The op [FlashAttentionScoreGrad] received bad params, the reason is: [pre_token and next_token is invalid in the pad scene, got s1 %ld, s2 %ld, pre_token %ld, next_token %ld]",
                   fBaseParams.s1, fBaseParams.s2, fBaseParams.s1Token, fBaseParams.s2Token);
         return ge::GRAPH_FAILED;
+    }
+
+    if (isMaxWorkspace_) {
+        return ge::GRAPH_SUCCESS;
     }
 
     // 校验unpad场景token是否合法   0  4  7  8
@@ -1773,6 +1783,9 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessSinkInfo
 
 int64_t FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::FindBandIdx()
 {
+    if (isMaxWorkspace_) {
+        return 0;
+    }
     if (fBaseParams.sparseMode == RIGHT_DOWN_CASUAL_BAND) {
         for (int i = fBaseParams.b - 1; i >= 0; i--) {
             if (fBaseParams.actualSeqQlen[i] != 0) {
@@ -2120,7 +2133,7 @@ void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DoPreSfmgTiling()
 
     int64_t normalAxisSize = 0;
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
-        normalAxisSize = fBaseParams.t1 * fBaseParams.n2 * fBaseParams.g;
+        normalAxisSize = fBaseParams.effectiveT1 * fBaseParams.n2 * fBaseParams.g;
     } else {
         normalAxisSize = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1;
     }

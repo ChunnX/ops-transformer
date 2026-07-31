@@ -62,7 +62,7 @@
       <td>
           <ul>
                 <li>公式中的输入K。</li>
-                <li>支持非连续。</li>
+                <li>在layout_key为PA_BSND时，支持0轴非连续。</li>
                 <li>layout_key为PA_BSND时，shape为[block_num, block_size, K_N, D]。layout_key为BSND时，shape为[B, K_S, K_N, D]。layout_key为TND时，shape为[K_T, K_N, D]。</li>
                 <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
                 <li>K_N仅支持1。</li>
@@ -103,7 +103,7 @@
       <td>
           <ul>
                 <li>公式中Key的反量化系数Scale_K。</li>
-                <li>支持非连续。</li>
+                <li>在layout_key为PA_BSND时，支持0轴非连续。</li>
                 <li>layout_key为BSND时，shape为[B, K_S, K_N]。layout_key为TND时，shape为[K_T, K_N]。</li>
                 <li>layout_key为PA_BSND时，shape为[block_num, block_size, K_N]。</li>
                 <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
@@ -290,12 +290,13 @@
       <td>ND</td>
     </tr>
   </tbody>
-  
+
   </table>
 
 Atlas A3训练系列产品/Atlas A3推理系列产品：
   - query和key的数据类型支持`INT8`。
   - 仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
+  - key和key_dequant_scale不支持非连续。
 
 Ascend 950PR/Ascend 950DT：
   - query Q_N仅支持8、16、24、32、64。

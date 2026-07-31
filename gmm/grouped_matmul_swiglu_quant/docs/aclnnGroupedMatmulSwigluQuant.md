@@ -82,7 +82,7 @@
     <details>
     <summary>MSD场景A8W4（A指激活矩阵，W指权重矩阵，8指INT8数据类型，4指INT4数据类型）：</summary>
     <a id="MSD场景A8W4"></a>
-    
+
     - **定义**：
       * **⋅** 表示矩阵乘法。
       * **⊙** 表示逐元素乘法。
@@ -149,29 +149,29 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulSwigluQuantGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulSwigluQuant”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulSwigluQuantGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulSwigluQuant”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSize(
-  const aclTensor *x, 
-  const aclTensor *weight, 
-  const aclTensor *bias, 
-  const aclTensor *offset,  
-  const aclTensor *weightScale, 
-  const aclTensor *xScale, 
-  const aclTensor *groupList,  
-  aclTensor       *output, 
-  aclTensor       *outputScale, 
-  aclTensor       *outputOffset, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *x,
+  const aclTensor *weight,
+  const aclTensor *bias,
+  const aclTensor *offset,
+  const aclTensor *weightScale,
+  const aclTensor *xScale,
+  const aclTensor *groupList,
+  aclTensor       *output,
+  aclTensor       *outputScale,
+  aclTensor       *outputOffset,
+  uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuant(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -343,8 +343,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuant(
   </table>
 
 - **返回值：**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -352,9 +352,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuant(
   <col style="width: 167px">
   <col style="width: 123px">
   <col style="width: 860px">
-  </colgroup> 
-  <thead> 
-    <tr> 
+  </colgroup>
+  <thead>
+    <tr>
       <th>返回值</th>
       <th>错误码</th>
       <th>描述</th>
@@ -363,33 +363,33 @@ aclnnStatus aclnnGroupedMatmulSwigluQuant(
   <tbody>
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td> 
-      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale是空指针。</td> 
+      <td>161001</td>
+      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale是空指针。</td>
     </tr>
-    <tr> 
+    <tr>
       <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="8">161002</td>
-      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale的数据维度不满足约束。</td> 
-    </tr> 
-    <tr> 
-      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的shape不满足约束条件。</td> 
-    </tr> 
+      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale的数据维度不满足约束。</td>
+    </tr>
+    <tr>
+      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的shape不满足约束条件。</td>
+    </tr>
     <tr>
       <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的format不满足约束条件。</td>
-    </tr> 
-    <tr> 
+    </tr>
+    <tr>
       <td>groupList的元素个数大于weight的首轴长度。</td>
-    </tr> 
-    <tr> 
-      <td>N轴长度超过10240。</td> 
-    </tr> 
-    <tr> 
-      <td>A8W8场景，x的尾轴长度大于等于65536。</td> 
-    </tr> 
-    <tr> 
+    </tr>
+    <tr>
+      <td>N轴长度超过10240。</td>
+    </tr>
+    <tr>
+      <td>A8W8场景，x的尾轴长度大于等于65536。</td>
+    </tr>
+    <tr>
       <td>A8W4场景，x的尾轴长度大于等于20000。</td>
-    </tr> 
-    <tr> 
+    </tr>
+    <tr>
       <td>A8W8场景，weight的数据格式不为FRACTAL_NZ。</td>
     </tr>
   </tbody>
@@ -417,7 +417,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuant(
 
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -437,7 +437,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuant(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -477,7 +477,7 @@ int Init(int32_t deviceId, aclrtStream* stream) {
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, 
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape,
                     void** deviceAddr, aclDataType dataType, aclFormat formatType, aclTensor** tensor) {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
@@ -572,10 +572,10 @@ int main() {
 
     // 3. 调用CANN算子库API
     // 调用aclnnGroupedMatmulSwigluQuant第一段接口
-    ret = aclnnGroupedMatmulSwigluQuantGetWorkspaceSize(x, weight, nullptr, nullptr, weightScale, xScale, 
+    ret = aclnnGroupedMatmulSwigluQuantGetWorkspaceSize(x, weight, nullptr, nullptr, weightScale, xScale,
                                                         groupList, output, outputScale, nullptr,
                                                         &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, 
+    CHECK_RET(ret == ACL_SUCCESS,
     LOG_PRINT("aclnnGroupedMatmulSwigluQuantGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
@@ -585,7 +585,7 @@ int main() {
     }
     // 调用aclnnGroupedMatmulSwigluQuant第二段接口
     ret = aclnnGroupedMatmulSwigluQuant(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, 
+    CHECK_RET(ret == ACL_SUCCESS,
     LOG_PRINT("aclnnGroupedMatmulSwigluQuant failed. ERROR: %d\n", ret); return ret);
 
     // 4.（固定写法）同步等待任务执行结束

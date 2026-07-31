@@ -9,7 +9,7 @@
  */
 
 #include "aclnn_block_sparse_attention_grad.h"
-
+#include "aclnn_kernels/transpose.h"
 #include "block_sparse_attention_grad.h"
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/make_op_executor.h"
@@ -126,7 +126,6 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
     CHECK_COND(dqDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dqOut dtype must match query dtype.");
     CHECK_COND(dkDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dkOut dtype must match query dtype.");
     CHECK_COND(dvDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dvOut dtype must match query dtype.");
-    std::cout<<op::ToString(params.query->GetStorageFormat()).GetString()<<std::endl;
     // format检查
     if (params.query->GetStorageFormat() != ge::FORMAT_ND ||
         params.key->GetStorageFormat() != ge::FORMAT_ND ||
@@ -326,6 +325,16 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
+
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (blockSparseMaskOptional != nullptr) {
+            int64_t valuePerm[4] = {0, 1, 3, 2};
+            auto perm = executorImpl->AllocIntArray(valuePerm, 4);
+            blockSparseMaskOptional = l0op::Contiguous(blockSparseMaskOptional, executorImpl);
+            blockSparseMaskOptional = l0op::Transpose(blockSparseMaskOptional, perm, executorImpl);
+            CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        }
+    }
 
     ret = MakeContiguous(dout, query, key, value, attentionOut, softmaxLse,blockSparseMaskOptional, attenMaskOptional, executorImpl);
     if (ret != ACLNN_SUCCESS) {

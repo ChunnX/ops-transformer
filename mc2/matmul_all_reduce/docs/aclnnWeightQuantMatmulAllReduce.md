@@ -27,7 +27,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnWeightQuantMatmulAllReduceGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnWeightQuantMatmulAllReduce`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnWeightQuantMatmulAllReduceGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnWeightQuantMatmulAllReduce`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
@@ -225,7 +225,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一阶段接口完成入参校验，出现以下场景报错：
 
@@ -300,7 +300,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -347,7 +347,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
         <th>x2</th>
         <th>bias</th>
          <th>antiquantScale</th>
-        <th>antiquantOffset</th>       
+        <th>antiquantOffset</th>
         <th>x3</th>
         <th>output</th>
         <th>限制</th>
@@ -376,7 +376,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
       </tr>
     </tbody>
   </table>
-  
+
 - Ascend 950PR/Ascend 950DT
   <table style="undefined;table-layout: fixed; width: 600px">
     <col style="width: 90px">
@@ -447,7 +447,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
