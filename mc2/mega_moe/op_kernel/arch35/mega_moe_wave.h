@@ -326,7 +326,8 @@ private:
 
     using BlockEpilogue =
         BlockEpilogueSwigluMxQuant<ActivationType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                   EPILOGUE_TILE_M, MegaMoeImpl::L1_TILE_N, TopkWeightsPrefetch, GMM1_INTERLEAVED, true>;
+                                   EPILOGUE_TILE_M, MegaMoeImpl::L1_TILE_N, TopkWeightsPrefetch, GMM1_INTERLEAVED,
+                                   true>;
     using SharedBlockEpilogue =
         BlockEpilogueSwigluMxQuant<ActivationType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
                                    MegaMoeImpl::L1_TILE_M_256, MegaMoeImpl::L1_TILE_N, false, GMM1_INTERLEAVED, true>;
@@ -1023,10 +1024,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SendCntCal(int3
 
 // AIV1 专职执行 dispatch。将状态推进集中在此函数中，保证滚动调度器对每个专家只推进一次 dispatch 游标。
 template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpert(ExpertLoopState &state,
-                                                                                GMMAddrInfo &gmmAddrInfo,
-                                                                                uint32_t expertIdx,
-                                                                                const DispatchBufferConfig &bufferConfig)
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpert(
+    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx,
+    const DispatchBufferConfig &bufferConfig)
 {
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ != 1) {
@@ -1082,9 +1082,9 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchCopyTmpTensor(int32_t bufferId
 template <TemplateMegaMoeWaveTypeClass>
 template <bool IsBufferReuse>
 __aicore__ inline void
-MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::FetchTokenNLoadMetaInfo(int32_t bufferIdx, int32_t topkIndex, int32_t remoteRankIdx,
-                                                                  GlobalTensor<ActivationType> &remoteRankGlobalTensor,
-                                                                  uint32_t copyInNum)
+MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::FetchTokenNLoadMetaInfo(
+    int32_t bufferIdx, int32_t topkIndex, int32_t remoteRankIdx,
+    GlobalTensor<ActivationType> &remoteRankGlobalTensor, uint32_t copyInNum)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx); // buffer 0~5 直接对应 EVENT_ID0~EVENT_ID5
     LocalTensor<ActivationType> copyTmpTensor = DispatchCopyTmpTensor(bufferIdx);
@@ -1172,10 +1172,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchCopyMte
 //   buffer 数取自 host 侧自适应配置 bufferConfig.bufferCount(2~6)，替代原先固定的 DISPATCH_BUFFER_NUM。
 // ============================================================================
 template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffsetInCore,
-                                                                                    int32_t remoteRankIdx, int32_t copyStartIdx,
-                                                                                    int32_t copyNum,
-                                                                                    const DispatchBufferConfig &bufferConfig)
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CopyGMToGMPerToken(
+    int32_t rowDstOffsetInCore, int32_t remoteRankIdx, int32_t copyStartIdx, int32_t copyNum,
+    const DispatchBufferConfig &bufferConfig)
 {
     // revTokenElemCnt_ / revScaleElemCnt_ 仅依赖 k_，已在 DispatchBuffInit 一次性算好(见成员)，此处不再逐调用重算。
     // copyInNum 直接复用 Init 算好的 Align256(token) + Align32(scale) + optional Align32(weight)；
@@ -1371,8 +1370,8 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
 // =====================================================================================================
 template <TemplateMegaMoeWaveTypeClass>
 template <AddrUpdateMode Mode>
-__aicore__ inline bool MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx,
-                                                                                   uint64_t sendCnt)
+__aicore__ inline bool MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateGroupParams(
+    ExpertLoopState &state, uint32_t expertIdx, uint64_t sendCnt)
 {
     if (expertIdx != 0) {
         uint64_t m = Get<M_VALUE>(state.problemShape);
@@ -1777,8 +1776,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineG
 // ===============================================================
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void
-MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset,
-                                                               int32_t batchTokenCount, LocalTensor<bfloat16_t> &tempLocal)
+MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UnpermuteLoadWeights(
+    int32_t coreOffset, int32_t batchTokenOffset, int32_t batchTokenCount, LocalTensor<bfloat16_t> &tempLocal)
 {
     if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
         GlobalTensor<float> topKWeightsGlobalTensor_;

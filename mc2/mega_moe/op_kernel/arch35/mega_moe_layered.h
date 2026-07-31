@@ -250,8 +250,9 @@ private:
     LocalTensor<int32_t> validTopkIndexTensor_;
     LocalTensor<int32_t> cumsumInfoTensor_;
     LocalTensor<ActivationType> copyTmpTensors_[DISPATCH_BUFFER_NUM]; // 6-buffer 软流水：占满 EVENT_ID0..EVENT_ID5。
-    LocalTensor<uint64_t> relayFlagTensor_;                           // 完整 [bs] relay flag 快照，复用 copyTmp 起始地址。
-    LocalTensor<int32_t> relayReceivedTensor_;                        // 当前 chunk 每个 copyIdx 的接收状态。
+    // 完整 [bs] relay flag 快照，复用 copyTmp 起始地址。
+    LocalTensor<uint64_t> relayFlagTensor_;
+    LocalTensor<int32_t> relayReceivedTensor_; // 当前 chunk 每个 copyIdx 的接收状态。
     LocalTensor<int32_t> metaInfoTensor_;
     LocalTensor<bfloat16_t> xInTensor1_;
     LocalTensor<bfloat16_t> xInTensor2_;
@@ -685,8 +686,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ResetFlag
             int32_t currentBatchElementCount = statusCoreLen - resetElementOffset < resetBatchElementCount_ ?
                                                    statusCoreLen - resetElementOffset :
                                                    resetBatchElementCount_;
-            DataCopyExtParams statusCopyParams{1U,
-                                               static_cast<uint32_t>(currentBatchElementCount * sizeof(int32_t)), 0U, 0U, 0U};
+            DataCopyExtParams statusCopyParams{
+                1U, static_cast<uint32_t>(currentBatchElementCount * sizeof(int32_t)), 0U, 0U, 0U};
             DataCopyPad(statusGm[statusCoreOffset + resetElementOffset],
                         resetTensor_, statusCopyParams);
         }
@@ -736,8 +737,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
         return;
     }
     int32_t totalExperts = static_cast<int32_t>(worldSize_);
+    // 按卡处理，只使用前 worldSize 个核。
     for (uint32_t curRankId = aivCoreIdx_; curRankId < static_cast<uint32_t>(totalExperts);
-         curRankId += blockAivNum_) {                                                          // 按卡处理,只用前worldsize个核
+         curRankId += blockAivNum_) {
         for (uint32_t expertIdIndex = 0; expertIdIndex < moeExpertPerRank_; ++expertIdIndex) { // 按专家处理
             int32_t curExpertId = static_cast<int32_t>(curRankId * moeExpertPerRank_ + expertIdIndex);
             uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
@@ -2440,9 +2442,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
         if constexpr (ENABLE_A8W4) {
             MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
                                                     QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
-                                                    TopkWeightsPrefetch, IsShared>(epilogueOp_, params_,
-                                                                                   state.problemShape, gmmAddrInfo, startBlockIdx_,
-                                                                                   vecSetSyncCom, state.expertBeforeCnt, expertIdx);
+                                                    TopkWeightsPrefetch, IsShared>(
+                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                state.expertBeforeCnt, expertIdx);
         } else {
             if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                 params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
@@ -2477,9 +2479,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t,
                                              QuantScaleOutType, QuantScaleOutType, MegaMoeImpl::L1_TILE_M_256,
-                                             TopkWeightsPrefetch, IsShared, true>(params_, state.problemShape,
-                                                                                  gmmAddrInfo, startBlockIdx_, gmTileSequence, state.expertBeforeCnt,
-                                                                                  gmm2PingPongIdx_);
+                                             TopkWeightsPrefetch, IsShared, true>(
+            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, gmTileSequence, state.expertBeforeCnt,
+            gmm2PingPongIdx_);
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {

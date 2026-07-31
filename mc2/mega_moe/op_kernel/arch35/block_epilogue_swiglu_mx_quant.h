@@ -1047,8 +1047,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     }
 
     // ---- 量化（原样保留，不涉及激活寄存器）----
-    uint32_t totalDataInUb = mSize * nDstUbAligned;                                             // 128*256
-    uint32_t totalScaleInUb = totalDataInUb / AscendC::ONE_BLK_SIZE;                            // 128*256 / 32 = 128 * 8
+    uint32_t totalDataInUb = mSize * nDstUbAligned;
+    uint32_t totalScaleInUb = totalDataInUb / AscendC::ONE_BLK_SIZE;
     uint16_t loopDataNum = (totalDataInUb + vlForHalfNumber_ * 2 - 1) / (vlForHalfNumber_ * 2); // 128
     uint16_t loopScaleNum = (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_;         // 8
     ComputeMaxExp(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);                          // 获取最大值
