@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 13
+KERNEL_CACHE_REVISION = 14
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1620,7 +1620,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     valid_k_size = KRealSize[bz_task, s1_id]
                 T.copy(Weights[bz_task, s1_id, 0:Nidx1], v1_om_weight_half)
                 T.set_flag("mte2", "v", 2)
-                T.set_flag("mte3", "v", 1)
                 T.wait_flag("mte2", "v", 2)
                 T.tile.cast(v1_om_weight, v1_om_weight_half, "CAST_NONE", Nidx1)
                 T.tile.fill(v1_om_weight_2d, 1.0)
@@ -1763,7 +1762,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.tile.broadcast(v1_os_global_max_2d, v1_os_global_max)
                 T.tile.fill(v1_os_local_sum, 0.0)
                 T.set_flag("v", "mte2", 3)
-                T.set_flag("mte3", "v", 1)
                 for local_n in T.serial(owned_n_num):
                     n_idx = vector_id * owned_n_num + local_n
                     n_start = n_idx * n_block
@@ -2134,7 +2132,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     v1_fdw_right,
                 )
                 T.set_flag("mte2", "v", 2)
-                T.set_flag("mte3", "v", 3)
                 T.wait_flag("mte2", "v", 2)
                 T.tile.add(v1_fdw_left, v1_fdw_left, v1_fdw_right)
                 T.pipe_barrier("v")
