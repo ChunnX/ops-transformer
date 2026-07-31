@@ -50,6 +50,8 @@ __simd_vf__ inline void InverseAIVVF(__ubuf__ float *attnUb, __ubuf__ float *inv
                                      __ubuf__ float *eiMatrixUb, __ubuf__ float *yLocalUb,
                                      uint64_t offset, uint32_t inverseVecLen, uint32_t chunkSize)
 {
+    using namespace AscendC;
+    using namespace MicroAPI;
     MaskReg preg_32 = CreateMask<float, MaskPattern::VL32>();
 
     for (uint32_t i = 1; i < inverseVecLen; ++i) {
@@ -61,13 +63,13 @@ __simd_vf__ inline void InverseAIVVF(__ubuf__ float *attnUb, __ubuf__ float *inv
 
         for (uint32_t r = 0; r < validRows; ++r) {
             RegTensor<float> v_col;
-            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(v_col,
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(v_col,
                 attnUb + offset + (i + r) * chunkSize + curI);
 
             RegTensor<float> v_y;
             Load<float>(v_y, yLocalUb + (i + r) * inverseVecLen);
 
-            MulAddDst<float, MicroAPI::MaskMergeMode::ZEROING>(v_y, v_col, v_x, preg_32);
+            MulAddDst<float, MaskMergeMode::ZEROING>(v_y, v_col, v_x, preg_32);
             Store<float>(yLocalUb + (i + r) * inverseVecLen, v_y, inverseVecLen);
         }
 
@@ -77,7 +79,7 @@ __simd_vf__ inline void InverseAIVVF(__ubuf__ float *attnUb, __ubuf__ float *inv
         RegTensor<float> v_ei;
         Load<float>(v_ei, eiMatrixUb + i * inverseVecLen);
 
-        Sub<float, MicroAPI::MaskMergeMode::ZEROING>(v_ei, v_ei, v_yFinal, preg_32);
+        Sub<float, MaskMergeMode::ZEROING>(v_ei, v_ei, v_yFinal, preg_32);
         Store<float>(inverseRes + offset + i * chunkSize, v_ei, inverseVecLen);
     }
 }
