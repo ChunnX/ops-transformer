@@ -1402,6 +1402,49 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N6_SplitBS)
 }
 
 /*
+ * BS outFlag=0 stores compact hMix in workspace. Long M must reserve the full
+ * [M, fusionSize] region in addition to X staging and system workspace.
+ */
+TEST_F(MhcPreTiling, Ut_Check_BasicApi_N8_LongM_Workspace)
+{
+    uint32_t B = 1;
+    uint32_t S = 65537;
+    uint32_t n = 8;
+    uint32_t d = 32;
+    uint32_t phiDim0 = n * n + 2 * n;
+    uint32_t phiDim1 = n * d;
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    uint32_t outFlag = 0;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {{{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{phiDim0}, {phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{phiDim1}, {phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S, phiDim0}, {B, S, phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+         {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+         {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
+        &compileInfo);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_FALSE(tilingInfo.workspaceSizes.empty());
+    constexpr size_t systemWorkspaceSize = 20U * 1024U * 1024U;
+    size_t hMixWorkspaceSize = static_cast<size_t>(B) * S * phiDim0 * sizeof(float);
+    EXPECT_GT(tilingInfo.workspaceSizes[0], systemWorkspaceSize + hMixWorkspaceSize);
+}
+
+/*
  * M-K performance template probe: totalLength=1024, N=4, D=5120.
  * The compile-time probe selector should route this exact shape to MHC_PRE_SPLIT_M_K.
  */
