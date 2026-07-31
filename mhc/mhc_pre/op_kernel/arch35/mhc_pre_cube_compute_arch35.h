@@ -17,6 +17,7 @@
 #define MHC_PRE_CUBE_COMPUTE_ARCH35_H
 
 #include "mhc_pre_low_api_base_arch35.h"
+#include "mhc_pre_utils.h"
 
 namespace MhcPre {
 
@@ -157,6 +158,59 @@ public:
         bL1BufferID_ ^= 1;
     }
 
+    // Own iter0 (K-L1 staging and cross-core handshakes); Process owns iter1 (K-L0 and Mmad).
+    __aicore__ inline void ProcessKRange(uint64_t m, uint64_t n, uint64_t k, uint64_t baseM,
+        uint64_t baseK, uint64_t kStart, uint64_t kEnd, uint64_t kL1Size,
+        bool useSequentialPartials, uint64_t partialK, bool useGmStage,
+        uint64_t stageSlotElements, uint64_t stageCoreOffset,
+        const AscendC::GlobalTensor<float>& phiGlobal,
+        const AscendC::GlobalTensor<float>& xStageGlobal,
+        const AscendC::GlobalTensor<float>& dstGlobal, uint64_t dstGroupStride,
+        const AscendC::LocalTensor<float>& al1Local,
+        const AscendC::LocalTensor<float>& bl1Local)
+    {
+        uint8_t aL1BufferId = 0;
+        for (uint64_t kOffset = kStart; kOffset < kEnd; kOffset += kL1Size) {
+            uint64_t currentK = AscendC::Std::min(kL1Size, kEnd - kOffset);
+            uint8_t bL1BufferId = GetBL1BufferId();
+            AscendC::LocalTensor<float> currentAL1 =
+                al1Local[aL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET];
+            AscendC::LocalTensor<float> currentBL1 =
+                bl1Local[bL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET];
+            CopyInB1Nd2Nz(k, currentK, n, phiGlobal[kOffset], currentBL1);
+
+            if (useGmStage) {
+                AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
+                    MhcPreUtils::X_READY_FLAG);
+                AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
+                    MhcPreUtils::X_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+                uint64_t stageOffset = stageCoreOffset + aL1BufferId * stageSlotElements;
+                CopyInA1Nd2Nz(m, currentK, kL1Size, xStageGlobal[stageOffset], currentAL1);
+            } else {
+                AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                    MhcPreUtils::X_READY_FLAG);
+                AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                    MhcPreUtils::X_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+            }
+
+            bool isFirstKL1 = useSequentialPartials ?
+                kOffset % partialK == 0U : kOffset == kStart;
+            bool isLastKL1 = useSequentialPartials ?
+                ((kOffset + currentK) % partialK == 0U || kOffset + currentK >= kEnd) :
+                kOffset + currentK >= kEnd;
+            Process(m, n, baseM, baseK, isFirstKL1, isLastKL1, currentAL1, currentBL1);
+            if (isLastKL1) {
+                uint64_t partialIndex = useSequentialPartials ?
+                    (kOffset + currentK - 1U) / partialK : 0U;
+                CopyOut(dstGlobal[partialIndex * dstGroupStride], n);
+            }
+            AscendC::CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                MhcPreUtils::X_CONSUMED_FLAG);
+            AscendC::CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+            aL1BufferId ^= 1U;
+        }
+    }
     __aicore__ inline void CopyInA2(uint64_t kOffset, uint64_t kAL1Offset,
         const AscendC::LocalTensor<float>& al1Local)
     {

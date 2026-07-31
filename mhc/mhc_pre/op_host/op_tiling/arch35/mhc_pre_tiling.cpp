@@ -100,6 +100,8 @@ const constexpr uint32_t M_K_SPLIT_ALIGN = 256;
 const constexpr uint32_t M_K_A_L1_ELEMENT_COUNT = 128 * 256;
 const constexpr uint32_t M_K_B_L1_ELEMENT_COUNT = 128 * 256;
 const constexpr uint32_t M_K_K_L1_MAX_SIZE = 1024;
+const constexpr uint32_t M_K_SEQUENTIAL_PARTIAL_K = 1024;
+const constexpr uint32_t M_K_SEQUENTIAL_PARTIAL_THRESHOLD = 2048;
 const constexpr uint32_t M_K_K_L1_ALIGN = 128;
 const constexpr size_t M_K_WORKSPACE_ALIGN = 512;
 const constexpr uint32_t M_K_USE_L1_STAGE = 0;
@@ -682,7 +684,14 @@ void MhcPreBaseTiling::FillMkTilingData()
     uint64_t mDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
     uint64_t singleCoreM = roundUp(ceilDiv(totalLength_, mDim), AscendC::BLOCK_CUBE);
     uint64_t kDim = activeCoreNum / mDim;
-    uint64_t splitK = roundUp(ceilDiv(matK_, kDim), M_K_SPLIT_ALIGN);
+    uint64_t singleCoreK = roundUp(ceilDiv(matK_, kDim), M_K_SPLIT_ALIGN);
+    // Keep the Cube accumulation order independent of N and the optional residual
+    // segment. The kernel derives the same decision from multCoreSplitKSize.
+    bool useSequentialKPartials = singleCoreK >= M_K_SEQUENTIAL_PARTIAL_THRESHOLD;
+    uint64_t workspaceGroupK = useSequentialKPartials ?
+        ceilDiv(matK_, M_K_SEQUENTIAL_PARTIAL_K) : 0U;
+    uint64_t splitK = useSequentialKPartials ?
+        ceilDiv(workspaceGroupK, kDim) * M_K_SEQUENTIAL_PARTIAL_K : singleCoreK;
     uint64_t actualKBlockNum = ceilDiv(matK_, splitK);
     uint64_t mL1Size = std::min<uint64_t>(M_K_M_L1_MAX_SIZE, singleCoreM);
     uint64_t fusionAlign = roundUp(matN_, LOW_API_FLOAT_ALIGN);
@@ -691,6 +700,12 @@ void MhcPreBaseTiling::FillMkTilingData()
     kL1Size = std::min<uint64_t>(kL1Size, M_K_K_L1_MAX_SIZE);
     kL1Size = std::max<uint64_t>(M_K_K_L1_ALIGN,
                                  kL1Size / M_K_K_L1_ALIGN * M_K_K_L1_ALIGN);
+    // Keep every L1 tile inside one sequential partial; only the final partial may be shorter.
+    if (useSequentialKPartials) {
+        while (M_K_SEQUENTIAL_PARTIAL_K % kL1Size != 0U) {
+            kL1Size -= M_K_K_L1_ALIGN;
+        }
+    }
 
     tilingData_.set_cubeBlockDimM(static_cast<uint32_t>(mDim));
     tilingData_.set_cubeBlockDimK(static_cast<uint32_t>(actualKBlockNum));
@@ -706,8 +721,11 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_stage2UsedAivNum(static_cast<uint32_t>(stage2UsedAivNum));
     tilingData_.set_stage2RowsPerCore(static_cast<uint32_t>(stage2RowsPerCore));
 
-    size_t partialMmBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * matN_ * sizeof(float);
-    size_t partialRmsBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * sizeof(float);
+    uint64_t mmWorkspaceGroupK = useSequentialKPartials ? workspaceGroupK : actualKBlockNum;
+    size_t partialMmBytes =
+        static_cast<size_t>(mmWorkspaceGroupK) * totalLength_ * matN_ * sizeof(float);
+    size_t partialRmsBytes =
+        static_cast<size_t>(actualKBlockNum) * totalLength_ * sizeof(float);
     size_t mmOffset = 0;
     size_t rmsOffset = roundUp(partialMmBytes, M_K_WORKSPACE_ALIGN);
     size_t finalOffset = roundUp(rmsOffset + partialRmsBytes, M_K_WORKSPACE_ALIGN);
