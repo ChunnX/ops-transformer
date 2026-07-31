@@ -59,6 +59,9 @@ constexpr uint32_t DCCI_OFFSET = 64U;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 constexpr uint32_t SEND_DOUBLE_BUFFER_NUM = 2U;
+constexpr uint32_t DEBUG_ROUND_TAG_OFFSET = 256U; // dispatch slot-state记录内保存轮次的padding偏移
+constexpr uint64_t DEBUG_POLL_TIMEOUT_CYCLES = 1000000000UL; // A5上约1秒无进展后终止轮询
+constexpr uint32_t DEBUG_MAX_MISSING_STATUS_PRINTS = 16U;
 
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
@@ -88,6 +91,13 @@ private:
     __aicore__ inline void MaskAlign(LocalTensor<half> maskCalcSelectedTensor);
     __aicore__ inline void MaskCheck();
     __aicore__ inline void RecvPhaseReduce();
+    __aicore__ inline void PrintRecvTimeout(uint32_t tokenIndex, uint32_t completedTokenCount,
+                                            uint64_t elapsedCycles);
+
+    __aicore__ inline uint32_t GetDebugRoundTag()
+    {
+        return static_cast<uint32_t>(ReadGmByPassDCache((__gm__ uint32_t *)debugRoundTagAddr_));
+    }
 
     __aicore__ inline uint64_t GetCommHandle(uint32_t rankId, uint32_t channelIndex)
     {
@@ -192,6 +202,7 @@ private:
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     GM_ADDR combineSendDataWorkspaceAddr_{nullptr};
+    GM_ADDR debugRoundTagAddr_{nullptr};
     uint32_t aivId_{0};
 };
 
@@ -240,6 +251,10 @@ MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_
 
     combineStateWinOffset_ = tilingData->combineStateWinOffset;
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
+    // combine状态区紧跟dispatch slot-state区，通过其尾部反推本rank的轮次地址。
+    uint64_t slotWinStateOffset = combineStateWinOffset_ - static_cast<uint64_t>(epWorldSize_) * WIN_ADDR_ALIGN;
+    debugRoundTagAddr_ = GetUrmaStateAddrByRankId(rankId_, slotWinStateOffset) +
+                         static_cast<uint64_t>(rankId_) * WIN_ADDR_ALIGN + DEBUG_ROUND_TAG_OFFSET;
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     topkIdxGm_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
@@ -387,6 +402,10 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpertToToken()
 {
     if (actualA_ == 0 || epWorldSize_ == 0 || aivNum_ == 0) {
+        if (tilingData_->networkMode == 1U && aivId_ == 0U) {
+            AscendC::PRINTF("[MOE_EP_TRACE] combine_send_skipped rank=%u round=%u actualA=%lu world=%u aivNum=%u\n",
+                            rankId_, GetDebugRoundTag(), actualA_, epWorldSize_, aivNum_);
+        }
         return;
     }
     uint32_t activeAivNum = aivNum_;
@@ -410,6 +429,14 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     }
     uint32_t channelIndex = splitRankTokens ? coreIndexInGroup : 0;
     uint32_t targetRankTokenIndex = 0;
+    uint32_t invalidMetadataCount = 0U;
+    uint32_t ownedMetadataCount = 0U;
+    uint32_t remoteSendCount = 0U;
+    uint32_t localSendCount = 0U;
+    uint64_t destinationSlotIndexSum = 0UL;
+    uint64_t destinationSlotIndexXor = 0UL;
+    uint64_t minimumDestinationSlotIndex = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_;
+    uint64_t maximumDestinationSlotIndex = 0UL;
     Duplicate<uint32_t>(statusTensor_, (uint32_t)1, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
@@ -434,7 +461,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             int32_t src_rank = metadataLocal.GetValue(i * RECV_META_FIELDS + 0);
             int32_t src_token_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
             int32_t src_topK_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
-            if (src_rank < 0 || src_rank >= static_cast<int32_t>(epWorldSize_)) {
+            if (src_rank < 0 || src_rank >= static_cast<int32_t>(epWorldSize_) || src_token_idx < 0 ||
+                src_token_idx >= static_cast<int32_t>(numMaxTokensPerRank_) || src_topK_idx < 0 ||
+                src_topK_idx >= static_cast<int32_t>(topK_)) {
+                invalidMetadataCount++;
                 continue;
             }
             if (splitRankTokens) {
@@ -448,6 +478,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             } else if (static_cast<uint32_t>(src_rank) % activeAivNum != aivId_) {
                 continue;
             }
+            ownedMetadataCount++;
+            uint64_t destinationSlotIndex = static_cast<uint64_t>(src_token_idx) * topK_ + src_topK_idx;
+            destinationSlotIndexSum += destinationSlotIndex;
+            destinationSlotIndexXor ^= destinationSlotIndex;
+            minimumDestinationSlotIndex = destinationSlotIndex < minimumDestinationSlotIndex ?
+                                              destinationSlotIndex : minimumDestinationSlotIndex;
+            maximumDestinationSlotIndex = destinationSlotIndex > maximumDestinationSlotIndex ?
+                                              destinationSlotIndex : maximumDestinationSlotIndex;
+            if (src_rank == static_cast<int32_t>(rankId_)) {
+                localSendCount++;
+            } else {
+                remoteSendCount++;
+            }
             SendQueuedToken(tokenIndex, src_rank, src_token_idx, src_topK_idx, channelIndex);
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖
@@ -455,6 +498,16 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     }
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
+    if (tilingData_->networkMode == 1U) {
+        AscendC::PRINTF("[MOE_EP_TRACE] combine_send_done rank=%u round=%u aiv=%u targetRank=%u "
+                        "channel=%u owned=%u remote=%u local=%u invalid=%u slotMin=%lu slotMax=%lu "
+                        "slotSum=%lu slotXor=%lu\n",
+                        rankId_, GetDebugRoundTag(), aivId_, targetRank, channelIndex, ownedMetadataCount,
+                        remoteSendCount, localSendCount, invalidMetadataCount,
+                        ownedMetadataCount == 0U ? 0UL : minimumDestinationSlotIndex,
+                        ownedMetadataCount == 0U ? 0UL : maximumDestinationSlotIndex,
+                        destinationSlotIndexSum, destinationSlotIndexXor);
+    }
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -527,6 +580,46 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(
 }
 
 template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrintRecvTimeout(
+    uint32_t tokenIndex, uint32_t completedTokenCount, uint64_t elapsedCycles)
+{
+    uint64_t tokenStateOffset = static_cast<uint64_t>(tokenIndex) * topK_ * WIN_ADDR_ALIGN;
+    GM_ADDR stateAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + tokenStateOffset;
+    GlobalTensor<uint32_t> stateGMTensor;
+    stateGMTensor.SetGlobalBuffer((__gm__ uint32_t *)stateAddr);
+    LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
+    DataCopyParams stateCopyParams = {static_cast<uint16_t>(topK_), 1U, WIN_ADDR_ALIGN / UB_ALIGN - 1U, 0U};
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
+    DataCopy<uint32_t>(stateTensor, stateGMTensor, stateCopyParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+    AscendC::PRINTF("[MOE_EP_TIMEOUT] combine_recv_wait rank=%u round=%u aiv=%u token=%u "
+                    "completed=%u expected=%u stateBase=%lu cycles=%lu\n",
+                    rankId_, GetDebugRoundTag(), aivId_, tokenIndex, completedTokenCount, tPerCore_,
+                    (uint64_t)stateAddr, elapsedCycles);
+    uint32_t missingStatusCount = 0U;
+    for (uint32_t topkIndex = 0U; topkIndex < topK_; topkIndex++) {
+        uint32_t statusValue = stateTensor.GetValue(topkIndex * FLOAT_PER_UB_ALIGN);
+        if (statusValue != 1U) {
+            if (missingStatusCount < DEBUG_MAX_MISSING_STATUS_PRINTS) {
+                __gm__ int32_t *expertIdAddr =
+                    (__gm__ int32_t *)topkIdxGm_.GetPhyAddr(static_cast<uint64_t>(tokenIndex) * topK_ + topkIndex);
+                int32_t expertId = ReadGmByPassDCache(expertIdAddr);
+                int32_t expertRank = expertId >= 0 && localmoeNum_ != 0U ? expertId / localmoeNum_ : -1;
+                AscendC::PRINTF("[MOE_EP_TIMEOUT] combine_recv_status rank=%u round=%u aiv=%u token=%u "
+                                "topk=%u expert=%d expertRank=%d status=%u statusAddr=%lu\n",
+                                rankId_, GetDebugRoundTag(), aivId_, tokenIndex, topkIndex, expertId, expertRank,
+                                statusValue,
+                                (uint64_t)(stateAddr + static_cast<uint64_t>(topkIndex) * WIN_ADDR_ALIGN));
+            }
+            missingStatusCount++;
+        }
+    }
+    AscendC::PRINTF("[MOE_EP_TIMEOUT] combine_recv_missing rank=%u round=%u aiv=%u token=%u missing=%u\n",
+                    rankId_, GetDebugRoundTag(), aivId_, tokenIndex, missingStatusCount);
+}
+
+template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKToken(uint32_t tokenIndex)
 {
     Duplicate<float>(ubAccFp32_, (float)0, axisH_);
@@ -571,6 +664,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
     SyncFunc<AscendC::HardEvent::V_S>();
     uint32_t CompletedtokenNum = static_cast<uint32_t>(0);
     uint32_t copyCount = topK_;
+    uint32_t completedTokenCountAtLastProgress = 0U;
+    uint64_t lastProgressCycle = static_cast<uint64_t>(GetSystemCycle());
     while (CompletedtokenNum != tPerCore_) {
         for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; ++tokenIdx) {
             if (tokenStatusTensor(tokenIdx - tStart_) == 1) {
@@ -587,16 +682,49 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
             SyncFunc<AscendC::HardEvent::V_MTE3>();
             DataCopyPad(combinedXGm_[tokenIdx * axisH_], ubResultBf16, xCopyParams);
         }
+        if (CompletedtokenNum != completedTokenCountAtLastProgress) {
+            completedTokenCountAtLastProgress = CompletedtokenNum;
+            lastProgressCycle = static_cast<uint64_t>(GetSystemCycle());
+            continue;
+        }
+        uint64_t elapsedCycles = static_cast<uint64_t>(GetSystemCycle()) - lastProgressCycle;
+        if (elapsedCycles < DEBUG_POLL_TIMEOUT_CYCLES) {
+            continue;
+        }
+        for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; tokenIdx++) {
+            if (tokenStatusTensor(tokenIdx - tStart_) == 0) {
+                PrintRecvTimeout(tokenIdx, CompletedtokenNum, elapsedCycles);
+                break;
+            }
+        }
+        PipeBarrier<PIPE_ALL>();
+        assert(false && "MoeEpCombine receive wait timed out");
+        return;
     }
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
+    if (tilingData_->networkMode == 1U && aivId_ == 0U) {
+        GM_ADDR localStateBase = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_);
+        GM_ADDR localDataBase = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_);
+        AscendC::PRINTF("[MOE_EP_TRACE] combine_enter rank=%u round=%u aivNum=%u channelsPerRank=%u "
+                        "stateOffset=%lu dataOffset=%lu "
+                        "stateBase=%lu dataBase=%lu perSlotBytes=%u stateAlign=%u dataAlign=%u slotAlign=%u\n",
+                        rankId_, GetDebugRoundTag(), aivNum_, channelsPerRank_, combineStateWinOffset_,
+                        combineDataWinOffset_,
+                        (uint64_t)localStateBase, (uint64_t)localDataBase, perSlotBytes_,
+                        static_cast<uint32_t>((uint64_t)localStateBase % WIN_ADDR_ALIGN),
+                        static_cast<uint32_t>((uint64_t)localDataBase % WIN_ADDR_ALIGN), perSlotBytes_ % WIN_ADDR_ALIGN);
+    }
     SendPhaseExpertToToken();
     PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
     RecvPhaseReduce();
+    if (tilingData_->networkMode == 1U && aivId_ == 0U) {
+        AscendC::PRINTF("[MOE_EP_TRACE] combine_exit rank=%u round=%u\n", rankId_, GetDebugRoundTag());
+    }
 }
 
 } // namespace MoeEpCombineImpl
