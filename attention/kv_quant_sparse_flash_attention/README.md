@@ -130,6 +130,13 @@
           <td>ND</td>
       </tr>
       <tr>
+          <td>sinks</td>
+          <td>输入</td>
+          <td>表示attention结构中的可学习的sinks信息。不支持非连续，shape为[Q_N,]。</td>
+          <td>FLOAT</td>
+          <td>ND</td>
+      </tr>
+      <tr>
           <td>sparse_block_size</td>
           <td>属性</td>
           <td>代表sparse阶段的block大小。sparse_block_size为1时，为Token-wise稀疏化场景；sparse_block_size大于1且小于等于128时，为Block-wise稀疏化场景，块内token共享相同的稀疏化决策。</td>
@@ -220,3 +227,4 @@
   - <term>Ascend 950PR/Ascend 950DT</term>：只支持sparse\_block\_size为1。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持[1,16]，且要求是2的幂次方，在PageAttention场景下要求sparse\_block\_size整除block\_size
 - 非PageAttention场景layout\_query和layout\_kv取值需要保持一致。
+- sinks仅支持<term>Ascend 950PR/Ascend 950DT</term>。
