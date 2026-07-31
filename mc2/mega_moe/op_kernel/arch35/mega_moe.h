@@ -559,10 +559,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if constexpr (TopkWeightsPrefetch) {
         GlobalTensor<int32_t> statusGm;
         statusGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm1TileStatusPtr));
-        int32_t statusSlots =
-            static_cast<int32_t>(expertPerRank_) * static_cast<int32_t>(params_.tilingData->maxTilesPerExpert) + 1;
+        int32_t statusElementCount =
+            (static_cast<int32_t>(expertPerRank_) *
+                 static_cast<int32_t>(params_.tilingData->maxTilesPerExpert) +
+             1) *
+            INT_CACHELINE;
         int32_t statusCoreLen, statusCoreOffset;
-        TilingByCore(statusSlots, statusCoreLen, statusCoreOffset, 1);
+        TilingByCore(statusElementCount, statusCoreLen, statusCoreOffset, 1);
         for (int32_t resetElementOffset = 0; resetElementOffset < statusCoreLen;
              resetElementOffset += resetBatchElementCount_) {
             int32_t currentBatchElementCount = statusCoreLen - resetElementOffset < resetBatchElementCount_ ?
@@ -2111,13 +2114,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 int32_t allDoneTag = static_cast<int32_t>(expertPerRank_ + 1);
                 __gm__ int32_t *allDoneAddr =
                     reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm1TileStatusPtr) +
-                    static_cast<int64_t>(expertPerRank_) * params_.tilingData->maxTilesPerExpert;
+                    static_cast<int64_t>(expertPerRank_) * params_.tilingData->maxTilesPerExpert * INT_CACHELINE;
                 AscendC::WriteGmByPassDCache(allDoneAddr, allDoneTag);
             }
         } else { // AIC
             int32_t allDoneTag = static_cast<int32_t>(expertPerRank_ + 1);
             __gm__ int32_t *allDoneAddr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm1TileStatusPtr) +
-                                          static_cast<int64_t>(expertPerRank_) * params_.tilingData->maxTilesPerExpert;
+                                          static_cast<int64_t>(expertPerRank_) *
+                                              params_.tilingData->maxTilesPerExpert * INT_CACHELINE;
             while (AscendC::ReadGmByPassDCache(allDoneAddr) != allDoneTag) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {

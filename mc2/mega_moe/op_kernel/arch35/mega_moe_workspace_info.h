@@ -304,13 +304,13 @@ struct WorkspaceInfo {
                                  gmm2OutputBytes;
         }
 
-        // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV0 软同步）
+        // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV 软同步）。
+        // 每个 tile 状态和末尾 allDone 状态都独占一条 64B cache line。
         gmm1TileStatusPtr = nullptr;
         if (tilingData->topkWeightsPrefetch == 1) {
             gmm1TileStatusPtr = base + workspaceSize;
-            // 每个 expert 一段 maxTilesPerExpert 个 int32，末尾额外 1 个 allDone slot
             int64_t statusSlots = static_cast<int64_t>(tilingData->expertPerRank) * tilingData->maxTilesPerExpert + 1;
-            int64_t statusBytes = SIZE_INT_32 * statusSlots;
+            int64_t statusBytes = SIZE_INT_32 * statusSlots * INT_CACHELINE;
             workspaceSize += Ops::Base::CeilAlign(statusBytes, ALIGN_512);
         }
         if (tilingData->topoType == TOPO_TYPE_URMA) {

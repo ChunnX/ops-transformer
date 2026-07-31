@@ -658,10 +658,13 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ResetFlagList()
     if constexpr (TopkWeightsPrefetch) {
         GlobalTensor<int32_t> statusGm;
         statusGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm1TileStatusPtr));
-        int32_t statusSlots =
-            static_cast<int32_t>(expertPerRank_) * static_cast<int32_t>(params_.tilingData->maxTilesPerExpert) + 1;
+        int32_t statusElementCount =
+            (static_cast<int32_t>(expertPerRank_) *
+                 static_cast<int32_t>(params_.tilingData->maxTilesPerExpert) +
+             1) *
+            INT_CACHELINE;
         int32_t statusCoreLen, statusCoreOffset;
-        TilingByCore(statusSlots, statusCoreLen, statusCoreOffset, 1);
+        TilingByCore(statusElementCount, statusCoreLen, statusCoreOffset, 1);
         for (int32_t resetElementOffset = 0; resetElementOffset < statusCoreLen;
              resetElementOffset += resetBatchElementCount_) {
             int32_t currentBatchElementCount = statusCoreLen - resetElementOffset < resetBatchElementCount_ ?
