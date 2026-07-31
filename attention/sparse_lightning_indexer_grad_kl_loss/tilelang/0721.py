@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 14
+KERNEL_CACHE_REVISION = 15
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1862,7 +1862,7 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_ob_rg_half = T.alloc_ub((Nidx1, bw_col_block), input_dtype)
             v1_ob_dw = T.alloc_ub(Nidx1, calc_dtype)
             v1_ob_dw_accum = T.alloc_ub(Nidx1, calc_dtype)
-            v1_ob_eps = T.alloc_ub((1,), calc_dtype)
+            v1_ob_eps = T.alloc_ub(bw_col_block, calc_dtype)
             v1_ob_loss_p = T.alloc_ub(bw_col_block, calc_dtype)
             v1_ob_log_p = T.alloc_ub(bw_col_block, calc_dtype)
             v1_ob_log_sy = T.alloc_ub(bw_col_block, calc_dtype)
