@@ -44,18 +44,18 @@ const static std::map<NpuArch, ABL1FullLoadExtraCondFunc> ABL1FullLoadExtraCondF
     {NpuArch::DAV_3510, ABL1FullLoadExtraCond91095},
 };
 
-using CheckBL1FullLoadFunc = bool (Mc2MatMulV3AswFullLoadTiling::*)(bool&, uint64_t, uint64_t);
+using CheckBL1FullLoadFunc = bool (Mc2MatMulV3AswFullLoadTiling::*)(bool &, uint64_t, uint64_t);
 const static std::map<NpuArch, CheckBL1FullLoadFunc> CheckBL1FullLoadMap = {
     {NpuArch::DAV_3510, &Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad91095},
 };
 
 // ------------------------------ GetStepSmallK -------------------------------------------//
-uint64_t GetStepSmallKDefault(const Mc2MatMulV3Args& /* args */, const Mc2MatMulV3RunInfo& runInfo, bool isBL1FullLoad)
+uint64_t GetStepSmallKDefault(const Mc2MatMulV3Args & /* args */, const Mc2MatMulV3RunInfo &runInfo, bool isBL1FullLoad)
 {
     return isBL1FullLoad ? runInfo.stepKa : runInfo.stepKb;
 }
 
-uint64_t GetStepSmallK91095(const Mc2MatMulV3Args& args, const Mc2MatMulV3RunInfo& runInfo, bool isBL1FullLoad)
+uint64_t GetStepSmallK91095(const Mc2MatMulV3Args &args, const Mc2MatMulV3RunInfo &runInfo, bool isBL1FullLoad)
 {
     uint64_t stepBigK = runInfo.stepKa;
     uint64_t stepSmallK = runInfo.stepKb;
@@ -77,8 +77,7 @@ uint64_t GetStepSmallK91095(const Mc2MatMulV3Args& args, const Mc2MatMulV3RunInf
     isSmallTail = (isSmallTail && !isTrans) || runInfo.baseK * dtypeSize >= BASIC_BLOCK_SIZE_256;
     // A/B全载场景，要求单核K除以basek大于8，使stepKb/stepKa增大，搬运量变为64K，减少mte2耗时。
     if ((inputType == ge::DT_FLOAT && !args.isHf32) ||
-        ((runInfo.singleCoreK / runInfo.baseK) < (BASIC_BLOCK_SIZE_16 / NUM_TWO) &&
-         !isBL1FullLoad)) {
+        ((runInfo.singleCoreK / runInfo.baseK) < (BASIC_BLOCK_SIZE_16 / NUM_TWO) && !isBL1FullLoad)) {
         stepSmallK = 1UL;
     } else if (isSmallTail) {
         stepSmallK = 2UL;
@@ -86,13 +85,13 @@ uint64_t GetStepSmallK91095(const Mc2MatMulV3Args& args, const Mc2MatMulV3RunInf
     return stepSmallK;
 }
 
-using GetStepSmallKFunc = uint64_t (*)(const Mc2MatMulV3Args&, const Mc2MatMulV3RunInfo&, bool);
+using GetStepSmallKFunc = uint64_t (*)(const Mc2MatMulV3Args &, const Mc2MatMulV3RunInfo &, bool);
 
 const static std::map<NpuArch, GetStepSmallKFunc> GetStepSmallKFuncMap = {
     {NpuArch::DAV_3510, GetStepSmallK91095},
 };
 
-void ResetLoadBalance(Mc2MatMulV3RunInfo& runInfo)
+void ResetLoadBalance(Mc2MatMulV3RunInfo &runInfo)
 {
     // 全载模板需重置负载均衡计算
     runInfo.mBaseTailSplitCnt = 1UL;
@@ -162,13 +161,12 @@ uint64_t Mc2MatMulV3AswFullLoadTiling::GetStepSmallK(bool isBL1FullLoad) const
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    auto iter = (GetStepSmallKFuncMap.find(npuArch) == GetStepSmallKFuncMap.end()) ?
-                    GetStepSmallKDefault :
-                    GetStepSmallKFuncMap.at(npuArch);
+    auto iter = (GetStepSmallKFuncMap.find(npuArch) == GetStepSmallKFuncMap.end()) ? GetStepSmallKDefault :
+                                                                                     GetStepSmallKFuncMap.at(npuArch);
     return iter(args_, runInfo_, isBL1FullLoad);
 }
 
-bool Mc2MatMulV3AswFullLoadTiling::CheckAL1FullLoad(bool& isKFullLoad) const
+bool Mc2MatMulV3AswFullLoadTiling::CheckAL1FullLoad(bool &isKFullLoad) const
 {
     if (args_.nValue < CACHELINE) {
         return false;
@@ -222,8 +220,8 @@ void Mc2MatMulV3AswFullLoadTiling::DoAL1FullLoad(bool isKFullLoad, uint64_t bBat
     runInfo_.stepKb = GetStepSmallK(false);
     // take full use of cores
     if (bBatchDimAll * MathUtil::CeilDivision(args_.nValue, runInfo_.baseN) < compileInfo_.aicNum) {
-        runInfo_.baseN = ops::CeilAlign(
-            MathUtil::CeilDivision(bBatchDimAll * args_.nValue, compileInfo_.aicNum), BASIC_BLOCK_SIZE_16);
+        runInfo_.baseN = ops::CeilAlign(MathUtil::CeilDivision(bBatchDimAll * args_.nValue, compileInfo_.aicNum),
+                                        BASIC_BLOCK_SIZE_16);
     }
     runInfo_.depthB1 = DB_SIZE * runInfo_.stepKb;
     runInfo_.depthA1 = runInfo_.stepM * runInfo_.stepKa;
@@ -248,8 +246,8 @@ void Mc2MatMulV3AswFullLoadTiling::DoAL1FullLoad(bool isKFullLoad, uint64_t bBat
     return;
 }
 
-bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoadDefault(
-    bool& isKFullLoad, uint64_t kAlignedValue, uint64_t nAlignedValue) const
+bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoadDefault(bool &isKFullLoad, uint64_t kAlignedValue,
+                                                           uint64_t nAlignedValue) const
 {
     // NZ以及其他平台走高级api, 若不随路就返回
     if (l0C2Out_ != Mc2MatMulV3L0C2Out::ON_THE_FLY) {
@@ -265,8 +263,8 @@ bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoadDefault(
     return true;
 }
 
-bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad91095(
-    bool& isKFullLoad, uint64_t kAlignedValue, uint64_t nAlignedValue)
+bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad91095(bool &isKFullLoad, uint64_t kAlignedValue,
+                                                         uint64_t nAlignedValue)
 {
     if (l0C2Out_ != Mc2MatMulV3L0C2Out::ON_THE_FLY) {
         apiLevel_ = Mc2MatMulV3ApiLevel::BASIC_LEVEL;
@@ -278,7 +276,8 @@ bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad91095(
         return false;
     }
     // L2命中率高， 不走全载模板
-    uint64_t maxStepN = Mc2MatMulV3BaseTiling::GetAswWindowLen() > 1UL ? Mc2MatMulV3BaseTiling::GetAswWindowLen() - 1UL : 1;
+    uint64_t maxStepN =
+        Mc2MatMulV3BaseTiling::GetAswWindowLen() > 1UL ? Mc2MatMulV3BaseTiling::GetAswWindowLen() - 1UL : 1;
     if (args_.nValue >= maxStepN * runInfo_.baseN) {
         return false;
     }
@@ -301,7 +300,7 @@ bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad91095(
     return true;
 }
 
-bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad(bool& isKFullLoad)
+bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad(bool &isKFullLoad)
 {
     if (args_.mValue < CACHELINE) {
         return false;
@@ -315,10 +314,10 @@ bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad(bool& isKFullLoad)
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    auto iter = (CheckBL1FullLoadMap.find(npuArch) == CheckBL1FullLoadMap.end() ||
-                 args_.bFormat == ge::FORMAT_FRACTAL_NZ) ?
-                    CheckBL1FullLoadDefault(isKFullLoad, kAlignedValue, nAlignedValue) :
-                    (this->*CheckBL1FullLoadMap.at(npuArch))(isKFullLoad, kAlignedValue, nAlignedValue);
+    auto iter =
+        (CheckBL1FullLoadMap.find(npuArch) == CheckBL1FullLoadMap.end() || args_.bFormat == ge::FORMAT_FRACTAL_NZ) ?
+            CheckBL1FullLoadDefault(isKFullLoad, kAlignedValue, nAlignedValue) :
+            (this->*CheckBL1FullLoadMap.at(npuArch))(isKFullLoad, kAlignedValue, nAlignedValue);
     return iter;
 }
 
@@ -348,13 +347,13 @@ void Mc2MatMulV3AswFullLoadTiling::AdjustTiling91095Basic(uint64_t biasBatchDimA
     runInfo_.singleCoreM = runInfo_.baseM;
     // 内轴*dtype是256 * 2的整数倍表明tiling减半不影响MTE2搬运效率
     if (!args_.isATrans || (runInfo_.baseM * args_.aDtypeSize) % (BASIC_BLOCK_SIZE_256 * NUM_TWO) == 0) {
-            runInfo_.baseM = runInfo_.baseM * runInfo_.baseN * dtypeSize * DB_SIZE <= compileInfo_.l0CSize ?
-                                runInfo_.baseM : ops::CeilAlign(runInfo_.baseM >> 1, BASIC_BLOCK_SIZE_16);
+        runInfo_.baseM = runInfo_.baseM * runInfo_.baseN * dtypeSize * DB_SIZE <= compileInfo_.l0CSize ?
+                             runInfo_.baseM :
+                             ops::CeilAlign(runInfo_.baseM >> 1, BASIC_BLOCK_SIZE_16);
     }
-    uint64_t aL14Buffer = static_cast<uint64_t>(runInfo_.baseK) *  runInfo_.stepKa * runInfo_.baseM * \
-                            args_.aDtypeSize * BASIC_L1_BUFFER_NUM;
-    runInfo_.l1BufferNum = aL14Buffer + bL1Size + baseBiasSize > compileInfo_.l1Size ?
-                            DB_SIZE : BASIC_L1_BUFFER_NUM;
+    uint64_t aL14Buffer = static_cast<uint64_t>(runInfo_.baseK) * runInfo_.stepKa * runInfo_.baseM * args_.aDtypeSize *
+                          BASIC_L1_BUFFER_NUM;
+    runInfo_.l1BufferNum = aL14Buffer + bL1Size + baseBiasSize > compileInfo_.l1Size ? DB_SIZE : BASIC_L1_BUFFER_NUM;
     runInfo_.singleCoreM = runInfo_.baseM;
     runInfo_.dbL0C = runInfo_.baseM * runInfo_.baseN * dtypeSize * DB_SIZE <= compileInfo_.l0CSize ? DB_SIZE : 1UL;
     runInfo_.mixInfo.ubDB = runInfo_.baseM * runInfo_.baseN * dtypeSize <= compileInfo_.ubSize ? DB_SIZE : 1UL;
@@ -371,8 +370,8 @@ void Mc2MatMulV3AswFullLoadTiling::AdjustTilingCommon(uint64_t aBatchDimAll)
     runInfo_.stepKa = GetStepSmallK(true);
     // take full use of cores
     if (aBatchDimAll * MathUtil::CeilDivision(args_.mValue, runInfo_.baseM) < compileInfo_.aicNum) {
-        runInfo_.baseM = ops::CeilAlign(
-            MathUtil::CeilDivision(aBatchDimAll * args_.mValue, compileInfo_.aicNum), BASIC_BLOCK_SIZE_16);
+        runInfo_.baseM = ops::CeilAlign(MathUtil::CeilDivision(aBatchDimAll * args_.mValue, compileInfo_.aicNum),
+                                        BASIC_BLOCK_SIZE_16);
     }
     runInfo_.depthA1 = DB_SIZE * runInfo_.stepKa;
     runInfo_.depthB1 = runInfo_.stepN * runInfo_.stepKb;

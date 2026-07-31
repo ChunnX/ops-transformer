@@ -2,12 +2,24 @@
 
 ## 产品支持情况
 
+<!-- npu="950" id1 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id5 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="310p" id4 -->
 - <term>Atlas 推理系列产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="910" id6 -->
 - <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -41,14 +53,14 @@
 
     其中，$x_{l}$表示参数`x`，$H_{l}^{res}$表示参数`h_res`，$h_{l}^{out}$表示参数`h_out`，$H_{t}^{post}$表示参数`h_post`，$x_{l+1}$表示输出`y`。
 
-  > **说明**
+  >**说明：**
   >
   > 输入支持两种维度格式：BSND（4维）和TND（3维）。其中B（Batch）表示批量大小，S（Seq-Length）表示序列长度，T表示所有Batch序列长度的累加和（$T = B \times S$），n表示头数（head数量），D表示每个头的隐藏维度大小（headdim）。
 
 ## 函数原型
 
 ```python
-mhc_post(x, h_res, h_out, h_post) -> Tensor
+cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 ```
 
 ## 参数说明
@@ -191,7 +203,7 @@ mhc_post(x, h_res, h_out, h_post) -> Tensor
 
 默认支持确定性计算。
 
-## 调用示例
+## 调用说明
 
 - 单算子模式调用：
 
