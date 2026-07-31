@@ -846,7 +846,8 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::LoadTopkWeightsToUb(const LocalTensor<A
     if constexpr (TopkWeightsPrefetch) {
         GlobalTensor<TopkWeightsType> weightGm;
         weightGm.SetGlobalBuffer(
-            (__gm__ TopkWeightsType *)(params_.probsGmAddr + (curentOffset + index) * topK_ * sizeof(TopkWeightsType)));
+            (__gm__ TopkWeightsType *)(params_.probsGmAddr + static_cast<int64_t>(curentOffset + index) *
+                                       topK_ * sizeof(TopkWeightsType)));
         if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
             LocalTensor<TopkWeightsType> weightBf16Tmp = mxTempTensor_.ReinterpretCast<TopkWeightsType>();
             DataCopyPad(weightBf16Tmp, weightGm,
