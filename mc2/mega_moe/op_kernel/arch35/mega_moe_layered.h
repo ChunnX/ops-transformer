@@ -906,6 +906,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantToke
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID1>();
     DataCopyPad(workspaceDstGlobal, xOutBytesTensor, {1U, mxQuantTokenScaleAlignBytes_, 0U, 0U, 0U});
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[D1]: relay payload -> READY publication
     __gm__ uint64_t *readyFlag =
         reinterpret_cast<__gm__ uint64_t *>(params_.peermemInfo.dispatchFlagPtr + RelayFlagOffset(serverId_, tokenIdx));
     WriteGmByPassDCache(readyFlag, uint64_t(1));
@@ -951,7 +952,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
         __gm__ int32_t *metaPtr =
             reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr + metaOffset);
         WriteGmByPassDCache(metaPtr, static_cast<int32_t>(tokenIdx));
-        // PipeBarrier<PIPE_ALL>();
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[D2]: slot metadata -> READY publication
         WriteGmByPassDCache(metaPtr + 1, int32_t(1));
         sendDedupMaskTensor_.SetValue(targetDedupWordIdx, targetDedupWord | dedupBit);
     }
@@ -975,6 +976,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
     for (uint32_t tokenIdx = tokenStart; tokenIdx < tokenEnd; ++tokenIdx) {
         DispatchComputeToken(topkIdsGlobal, localExpertId, tokenIdx, tokenStart, dedupWordsPerServer);
     }
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[D3]: all slot publications -> round DONE
     __gm__ int32_t *donePtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchDonePtr);
     WriteGmByPassDCache(donePtr + computeIdx, roundTag);
 }
@@ -1103,6 +1105,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::LoadToken
     while (ReadGmByPassDCache(readyFlag) != uint64_t(1)) {
     }
 
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[D4]: READY observation -> relay payload read
     uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, tokenIndex);
     GM_ADDR localRecordAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_) + remoteCopyOffset;
     GlobalTensor<ActivationType> relayGlobalTensor;
@@ -1432,6 +1435,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                 int32_t roundRowEndLocal = roundRowStartLocal + roundCopyCnt;
                 int32_t waveLo = roundRowStartLocal / L1_TILE_M_I32;
                 int32_t waveHi = (roundRowEndLocal - 1) / L1_TILE_M_I32;
+                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[D5]: dispatched data/meta -> GMM1 progress
                 __gm__ int32_t *flagBase = gmmAddrInfo.dispatchToGmm1Flag;
                 for (int32_t w = waveLo; w <= waveHi; ++w) {
                     int32_t waveStartLocal = w * L1_TILE_M_I32;
@@ -1806,11 +1810,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
                                                                     META_INFO_SIZE * sizeof(int32_t)));
     SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID1>();
     AscendC::DataCopy(metaInfoTensor, tripleGm, batchCount * META_INFO_SIZE);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[C1]: triple metadata load -> Combine consumption
 
     // 执行 combine 并发送
     MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(
         currentRow, batchCount, k_, expertIdx, rankId_, gmmAddrInfo.gmm2OutGlobal, params_, metaInfoTensor,
         combineUbTensorSize_, offset, quantTokenSizeBytes);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[C4]: batch send issue -> progress/UB reuse
 
     // 更新进度
     rankInfoTensor.SetValue(2 * processRankNum + rankIndex, processedCnt + batchCount);

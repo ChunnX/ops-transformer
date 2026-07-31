@@ -96,6 +96,7 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
         uint64_t dstOffset = toRankId == rankId ? dstBaseOffset : 0;
         AscendC::DataCopyPad(gmLocalD[dstOffset], ubQuant, singleCopyParams);
         SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID4>();
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[C3]: staging write -> Hcomm source read
     }
 
     if (toRankId != rankId) {
@@ -262,6 +263,7 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
             QuantMxFp8<QuantMode, T>(ubQuantData, ubBf16, floatTemp, n);
             SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID5>();
         }
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[C2]: quantization -> staging/send
 
         using SendType = typename std::conditional<IsQuantized, Fp8Type, T>::type;
         LocalTensor<SendType> ubQuantSend = ubQuantData.template ReinterpretCast<SendType>();
