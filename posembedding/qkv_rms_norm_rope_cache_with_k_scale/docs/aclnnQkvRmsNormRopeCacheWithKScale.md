@@ -665,8 +665,6 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     $$
 
     当前`D=128`时，逐项上限为`[22,21,21]`；三项对应互不重叠的lane集合，因此总量由逐项约束自然不超过`D/2`。
-  - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
-
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。

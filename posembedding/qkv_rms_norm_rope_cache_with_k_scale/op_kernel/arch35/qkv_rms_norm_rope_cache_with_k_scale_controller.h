@@ -34,8 +34,8 @@ public:
         InitTileParamBuffer(tileParam);
         basicBlock_.Init(tensors, tilingData);
         basicBlock_.PrepareBeforeLoop(tokenRange.begin, tokenRange.end);
-        const uint64_t tileParamBufferUseId = ForEachTile(tilingData, tokenRange, tileParam);
-        basicBlock_.End(tileParam[GetPreviousTileParamBufferId(tileParamBufferUseId)]);
+        const uint64_t tileCount = ForEachTile(tilingData, tokenRange, tileParam);
+        basicBlock_.End(tileParam[GetPreviousTileParamBufferId(tileCount)], tileCount);
     }
 
 private:
@@ -104,22 +104,22 @@ private:
     __aicore__ inline uint64_t ForEachTile(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
                                            const TokenRange &range, TileParam tileParam[TILE_PARAM_BUFFER_NUM])
     {
-        uint64_t tileParamBufferUseId = 0U;
+        uint64_t tileCount = 0U;
         for (uint64_t tokenOffset = range.begin; tokenOffset < range.end;) {
             const uint64_t tokenSize = MinU64(tilingData->tokenTile, range.end - tokenOffset);
             if (tokenSize == 0U) {
                 break;
             }
 
-            const uint32_t currentBufferId = GetCurrentTileParamBufferId(tileParamBufferUseId);
-            const uint32_t previousBufferId = GetPreviousTileParamBufferId(tileParamBufferUseId);
+            const uint32_t currentBufferId = GetCurrentTileParamBufferId(tileCount);
+            const uint32_t previousBufferId = GetPreviousTileParamBufferId(tileCount);
             FillTileParam(tileParam[currentBufferId], tilingData, tokenOffset, tokenSize);
             basicBlock_.ComputeTile(tileParam[currentBufferId], tileParam[previousBufferId],
-                                    tokenOffset + tokenSize >= range.end);
+                                    tileCount, tokenOffset + tokenSize >= range.end);
             tokenOffset += tokenSize;
-            ++tileParamBufferUseId;
+            ++tileCount;
         }
-        return tileParamBufferUseId;
+        return tileCount;
     }
 
     __aicore__ inline void InitTileParamBuffer(TileParam tileParam[TILE_PARAM_BUFFER_NUM]) const
@@ -129,14 +129,14 @@ private:
         }
     }
 
-    __aicore__ inline uint32_t GetCurrentTileParamBufferId(uint64_t bufferUseId) const
+    __aicore__ inline uint32_t GetCurrentTileParamBufferId(uint64_t tileCount) const
     {
-        return static_cast<uint32_t>(bufferUseId % TILE_PARAM_BUFFER_NUM);
+        return static_cast<uint32_t>(tileCount % TILE_PARAM_BUFFER_NUM);
     }
 
-    __aicore__ inline uint32_t GetPreviousTileParamBufferId(uint64_t bufferUseId) const
+    __aicore__ inline uint32_t GetPreviousTileParamBufferId(uint64_t tileCount) const
     {
-        return static_cast<uint32_t>((bufferUseId + TILE_PARAM_BUFFER_NUM - 1U) % TILE_PARAM_BUFFER_NUM);
+        return static_cast<uint32_t>((tileCount + TILE_PARAM_BUFFER_NUM - 1U) % TILE_PARAM_BUFFER_NUM);
     }
 
     BasicBlock basicBlock_;

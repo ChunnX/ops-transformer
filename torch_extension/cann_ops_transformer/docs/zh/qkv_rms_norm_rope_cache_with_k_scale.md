@@ -277,7 +277,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
 
 - Torch extension不执行上表的完整合同校验。`query_start_loc`和`seq_lens`在对外签名中是必选位置参数，其取值会原样传递给底层C++ bridge；M-RoPE显式传入的`None`由底层optional语义承接。为安全构造和传递输出Tensor，Torch层只要求`head_nums[0]`和`qkv`前三维可读、layout能够解释输出轴、`q_out_dtype`为`torch.dtype`，并检查有值的Optional Tensor不是undefined；`mrope_position`存在或`mrope_section`非空时构造M-RoPE候选返回结构。其他Tensor shape/dtype、属性值域和场景相关性均交由ACLNN校验。
 - 算子不提供独立`scene`参数。ACLNN根据四个可选参数的有效presence识别场景：空`mrope_section=[]`与`None`等价，均属于RoPE侧的未提供状态；非空`mrope_section`才表示M-RoPE属性存在。`query_start_loc`与`seq_lens`只存在一个、`mrope_position`与非空`mrope_section`只存在一个、两组位置源同时存在或同时缺失均非法。零元素Tensor仍视为已提供，并由ACLNN按shape非法处理。
-- 仅支持`D=128`，且`Nv`必须等于`Nk`。
+- 仅支持`D=128`，`head_nums=[Nq,Nk,Nv]`必须满足`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`。
 - M-RoPE下令`HALF_D=D/2=64`，`mrope_section=[t,h,w]`三项分别满足`0 <= value <= [22,21,21]`，并且`t+h+w <= HALF_D`。容量上限的一般形式为`(T,H,W)=[ceil(HALF_D/3),floor((HALF_D+1)/3),floor(HALF_D/3)]`。第0项`t`虽需满足`[0,22]`且参与总和校验，但其数值不参与交织公式、场景判断或T轴采集范围；T/H/W三路始终全部采集。D128下总和上限为64。
 - M-RoPE中cos和sin分别应用`mrope_section`，两者使用相同的half内lane规则；不得把`mrope_section`当作整行连续分段，也不得把结果扩为`3D`。
 - `mrope_position`三路下标可以不同、非单调或重复，但每个值必须满足`0 <= value < MaxSeqLen`。
@@ -288,8 +288,6 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
 - RoPE场景中`query_start_loc[0]`应为0，`query_start_loc[-1]`应等于`T`，`seq_lens`长度应等于`query_start_loc.shape[0]-1`，且`seq_lens[b] >= query_start_loc[b+1] - query_start_loc[b]`。
 - `cos_sin`第一维需覆盖本次调用会访问的所有RoPE位置。
 - `slot_mapping`取值范围应为`[0,BlockNum*BlockSize-1]`。同一次调用内多个token写入同一slot时，最终写入顺序和结果未定义。
-- 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
-
 ## 确定性计算
 
 默认支持确定性计算。

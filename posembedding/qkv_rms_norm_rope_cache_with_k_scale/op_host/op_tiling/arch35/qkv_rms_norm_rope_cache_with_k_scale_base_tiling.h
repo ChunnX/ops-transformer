@@ -113,7 +113,6 @@ private:
     ge::graphStatus ValidateCacheShapes() const;
     ge::graphStatus ValidateShapes() const;
     ge::graphStatus ValidateStrides() const;
-    ge::graphStatus ValidateMinimumTokenTileFeasible() const;
     bool TrySelectTokenTile(uint64_t tokenTile) const;
     uint64_t SelectTokenTile() const;
     void FillTilingData(uint64_t tokenTile);

@@ -574,45 +574,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMinimumTokenTileFeasible() const
-{
-    const uint64_t numQkHeads = input_.numQHeads + input_.numKHeads;
-    const uint64_t numQkvHeads = numQkHeads + input_.numVHeads;
-    const uint64_t qkvInputRowsPerAiv =
-        ropeMode_ == RopeMode::MROPE ? MROPE_COMPACT_INPUT_ROWS_PER_AIV : QKV_INPUT_ROWS_PER_AIV;
-    const uint64_t qkPreprocessBytes =
-        CalcQkPreprocessNzBytes(input_.numQHeads) + CalcQkPreprocessNzBytes(input_.numKHeads);
-    const uint64_t qkAlignedRows = CalcQkAlignedRows(1, input_.numQHeads, input_.numKHeads);
-    OP_CHECK_IF(numQkHeads > QK_OUTPUT_ROWS_PER_AIV,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName_, "Nq+Nk", std::to_string(numQkHeads).c_str(),
-                    ("nq plus nk must be less than or equal to " + std::to_string(QK_OUTPUT_ROWS_PER_AIV)).c_str()),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        qkPreprocessBytes > QK_PREPROCESS_UB_BYTES,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            opName_, "Q/K preprocess UB bytes", std::to_string(qkPreprocessBytes).c_str(),
-            ("Q/K rope preprocess UB footprint must be less than or equal to " + std::to_string(QK_PREPROCESS_UB_BYTES))
-                .c_str()),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(numQkvHeads > qkvInputRowsPerAiv,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName_, "Nq+Nk+Nv", std::to_string(numQkvHeads).c_str(),
-                    ("nq plus nk plus nv must be less than or equal to " + std::to_string(qkvInputRowsPerAiv)).c_str()),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(input_.numVHeads > V_OUTPUT_ROWS_PER_AIV,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName_, "Nv", std::to_string(input_.numVHeads).c_str(),
-                    ("nv must be less than or equal to " + std::to_string(V_OUTPUT_ROWS_PER_AIV)).c_str()),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(qkAlignedRows > L0C_MAX_ROWS,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName_, "align(Nq,16)+align(Nk,16)", std::to_string(qkAlignedRows).c_str(),
-                    ("aligned Q and K rows must be less than or equal to " + std::to_string(L0C_MAX_ROWS)).c_str()),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
 bool QkvRmsNormRopeCacheWithKScaleBaseTiling::TrySelectTokenTile(uint64_t tokenTile) const
 {
     const uint64_t tokenTilePerAiv = Ops::Base::CeilDiv(tokenTile, AIV_PER_AIC);
@@ -669,7 +630,7 @@ uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::SelectTokenTile() const
         --searchTokenTilePerAiv;
     }
     OP_LOGD(context_,
-            "QkvRmsNormRopeCacheWithKScale token tile search fallback: use prevalidated minimum tokenTile=1.");
+            "QkvRmsNormRopeCacheWithKScale token tile search fallback: head contract guarantees tokenTile=1.");
     return 1;
 }
 
@@ -728,10 +689,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateParsedInput() c
     status = ValidateStrides();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale stride validation failed."), return ge::GRAPH_FAILED);
-    status = ValidateMinimumTokenTileFeasible();
-    OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale resource boundary validation failed."),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

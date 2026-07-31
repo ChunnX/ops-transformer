@@ -166,9 +166,8 @@ constexpr uint32_t QKV_K_SCALE_RESERVE_UB_OFFSET = QKV_K_SCALE_OUTPUT_DB_POOL_OF
 // fallback selector.
 constexpr uint32_t QKV_K_SCALE_MROPE_COMPACT_MAX_K_ROWS = 14U;
 // Keep the existing 80 KiB input pool, but use four input and raw cos/sin
-// slots for the compact M-RoPE path. The small legacy metadata staging
-// slots and output pools remain double buffered; active metadata uses the
-// persistent window below.
+// slots for the compact M-RoPE path. Slot mapping and output pools remain
+// double buffered; M-RoPE positions use the persistent window below.
 constexpr uint32_t QKV_K_SCALE_MROPE_COMPACT_INPUT_BUFFER_NUM = 4U;
 constexpr uint32_t QKV_K_SCALE_MROPE_COMPACT_INPUT_ONE_BUFFER_BYTES =
     QKV_K_SCALE_INPUT_POOL_BYTES / QKV_K_SCALE_MROPE_COMPACT_INPUT_BUFFER_NUM;
@@ -234,23 +233,18 @@ constexpr uint32_t QKV_K_SCALE_MROPE_COMPACT_RESERVE_UB_OFFSET =
 constexpr uint32_t QKV_K_SCALE_MROPE_COMPACT_BASE_UB_BYTES =
     QKV_K_SCALE_MROPE_COMPACT_RESERVE_UB_OFFSET + QKV_K_SCALE_MROPE_COMPACT_RESERVE_UB_BYTES;
 
-// Cache metadata in bounded token windows. A single window is persistent
-// while its tiles run, so scalar consumers need one MTE2_S boundary per
-// window instead of one per tile. Larger core ranges are refilled in batches.
-constexpr uint32_t QKV_K_SCALE_MROPE_METADATA_WINDOW_TOKEN_CAPACITY = 1024U;
-constexpr uint32_t QKV_K_SCALE_MROPE_METADATA_SLOT_CACHE_BYTES =
-    QKV_K_SCALE_MROPE_METADATA_WINDOW_TOKEN_CAPACITY * sizeof(int32_t);
-constexpr uint32_t QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_BYTES =
-    QKV_K_SCALE_MROPE_METADATA_WINDOW_TOKEN_CAPACITY * 3U * sizeof(int32_t);
-constexpr uint32_t QKV_K_SCALE_MROPE_METADATA_SLOT_CACHE_OFFSET = QKV_K_SCALE_MROPE_COMPACT_BASE_UB_BYTES;
-constexpr uint32_t QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_OFFSET =
-    QKV_K_SCALE_MROPE_METADATA_SLOT_CACHE_OFFSET + QKV_K_SCALE_MROPE_METADATA_SLOT_CACHE_BYTES;
-constexpr uint32_t QKV_K_SCALE_MROPE_METADATA_SLOT_CACHE_ELEMENTS =
-    QKV_K_SCALE_MROPE_METADATA_SLOT_CACHE_BYTES / sizeof(int32_t);
-constexpr uint32_t QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_ELEMENTS =
-    QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_BYTES / sizeof(int32_t);
+// Cache M-RoPE positions in bounded token windows. A single window is
+// persistent while its tiles run, so position consumers need one MTE2_S
+// boundary per window instead of one per tile. Larger core ranges are
+// refilled in batches.
+constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_WINDOW_TOKEN_CAPACITY = 1024U;
+constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_CACHE_BYTES =
+    QKV_K_SCALE_MROPE_POSITION_WINDOW_TOKEN_CAPACITY * 3U * sizeof(int32_t);
+constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_CACHE_OFFSET = QKV_K_SCALE_MROPE_COMPACT_BASE_UB_BYTES;
+constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_CACHE_ELEMENTS =
+    QKV_K_SCALE_MROPE_POSITION_CACHE_BYTES / sizeof(int32_t);
 constexpr uint32_t QKV_K_SCALE_MROPE_COMPACT_TOTAL_UB_BYTES =
-    QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_OFFSET + QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_BYTES;
+    QKV_K_SCALE_MROPE_POSITION_CACHE_OFFSET + QKV_K_SCALE_MROPE_POSITION_CACHE_BYTES;
 
 constexpr uint32_t QKV_K_SCALE_MROPE_COMPACT_GAMMA_UB_ELEMENTS =
     QKV_K_SCALE_MROPE_COMPACT_GAMMA_UB_BYTES / sizeof(float);
@@ -283,11 +277,12 @@ static_assert(QKV_K_SCALE_INPUT_POOL_BYTES % QKV_K_SCALE_MROPE_COMPACT_INPUT_BUF
               "compact M-RoPE input pool must divide evenly into four slots");
 static_assert(QKV_K_SCALE_MROPE_COMPACT_RAW_COS_SIN_DB_POOL_BYTES % QKV_K_SCALE_COS_SIN_ONE_BUFFER_BYTES == 0U,
               "compact M-RoPE raw cos/sin pool must contain whole slots");
+static_assert(QKV_K_SCALE_MROPE_COMPACT_SLOT_MAPPING_ONE_BUFFER_ELEMENTS >= QKV_K_SCALE_MAX_TOKEN_TILE_PER_AIV,
+              "compact M-RoPE slot mapping slot is smaller than the maximum AIV token slice");
 static_assert(QKV_K_SCALE_MROPE_COMPACT_RESERVE_END <= QKV_K_SCALE_MROPE_COMPACT_RESERVE_UB_BYTES,
               "compact M-RoPE reserve layout exceeds 36 KiB");
-static_assert(QKV_K_SCALE_MROPE_METADATA_SLOT_CACHE_OFFSET % QKV_K_SCALE_BLOCK_BYTES == 0U &&
-                  QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_OFFSET % QKV_K_SCALE_BLOCK_BYTES == 0U,
-              "compact M-RoPE metadata caches must be 32-byte aligned");
+static_assert(QKV_K_SCALE_MROPE_POSITION_CACHE_OFFSET % QKV_K_SCALE_BLOCK_BYTES == 0U,
+              "compact M-RoPE position cache must be 32-byte aligned");
 static_assert(QKV_K_SCALE_MROPE_COMPACT_TOTAL_UB_BYTES <= 256U * QKV_K_SCALE_KIB,
               "compact M-RoPE layout exceeds physical UB capacity");
 
