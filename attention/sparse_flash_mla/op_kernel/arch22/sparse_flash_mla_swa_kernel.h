@@ -600,7 +600,7 @@ template <typename SMLAT>
 __aicore__ inline void SparseFlashMlaSwa<SMLAT>::CalcParams(uint32_t loop, uint32_t cmpLoop, uint64_t s2Start,
                                                                uint32_t s2LoopIdx, RunInfo &info)
 {
-    info.isValid = s2LoopIdx < tempLoopInfo.s2LoopTimes;
+    info.isValid = (tempLoopInfo.actS1Size > 0) && (s2LoopIdx < tempLoopInfo.s2LoopTimes);
     info.loop = loop;
     info.cmpLoop = cmpLoop;
     info.bIdx = tempLoopInfo.bIdx;
@@ -823,12 +823,27 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::ProcessBalance()
                 tempLoopInfo.actCmpS2Size =
                     GetActualSeqLenCmpKV(tempLoopInfo.bIdx, tempLoopInfo.actOriS2Size);
             }
+            // TND packed: zero-length Q batch (e.g. cu[bIdx]==cu[bIdx+1]) must not touch q/kv GM or outputs.
+            if (tempLoopInfo.actS1Size <= 0) {
+                bool isEnd = (bN2LoopIdx + 1 == constInfo.bN2End) && (gS1LoopIdx + 1 == gS1LoopEnd);
+                if (isEnd) {
+                    tempLoopInfo.oriLoopTimes = 0;
+                    tempLoopInfo.s2LoopTimes = 0;
+                    for (uint32_t s2LoopIdx = constInfo.s2Start; s2LoopIdx < PRELOAD_NUM; s2LoopIdx++) {
+                        PreloadPipeline(gloop, cmpLoop, constInfo.s2Start, s2LoopIdx, extraInfo);
+                        ++gloop;
+                    }
+                    constInfo.s2Start = 0;
+                }
+                continue;
+            }
             // 对于各轴上的真实的idx, 采用左闭右闭的方案
             // 跳过行无效部分，从有效行开始后续计算
             tempLoopInfo.gS1Idx = inValidRowCount * constInfo.gSize + gS1LoopIdx * constInfo.mBaseSize;
             tempLoopInfo.s1StartIdx = tempLoopInfo.gS1Idx / constInfo.gSize;
             tempLoopInfo.s1EndIdx =
-                Min((tempLoopInfo.s1StartIdx + constInfo.mBaseSize / constInfo.gSize - 1), tempLoopInfo.actS1Size - 1);
+                Min((tempLoopInfo.s1StartIdx + constInfo.mBaseSize / constInfo.gSize - 1),
+                    static_cast<uint32_t>(tempLoopInfo.actS1Size - 1));
             // 此处均为闭区间
             tempLoopInfo.oriMaskRight = tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size +
                                         static_cast<int32_t>(tempLoopInfo.s1EndIdx) + constInfo.oriWinRight;
