@@ -1,0 +1,49 @@
+cases:
+  - {id: TYP-01, group: typical, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 4, s1: 2048, s2: 16384, n1: 64, n1_index: 16}
+  - {id: TYP-02, group: typical, layout: BSND, q_dtype: float16, weight_dtype: float32, rope: false, batch: 8, s1: 2048, s2: 16384, n1: 64, n1_index: 32}
+  - {id: TYP-03, group: typical, layout: BSND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: true, batch: 4, s1: 4096, s2: 32768, n1: 128, n1_index: 32}
+  - {id: TYP-04, group: typical, layout: BSND, q_dtype: bfloat16, weight_dtype: float32, rope: false, batch: 16, s1: 2048, s2: 16384, n1: 32, n1_index: 64}
+  - {id: TYP-05, group: typical, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: false, batch: 1, s1: 4096, s2: 65536, n1: 128, n1_index: 64}
+  - {id: TYP-06, group: typical, layout: BSND, q_dtype: bfloat16, weight_dtype: float32, rope: true, batch: 16, s1: 1024, s2: 4096, n1: 32, n1_index: 8}
+  - id: TYP-07
+    group: typical
+    layout: TND
+    q_dtype: float16
+    weight_dtype: float16
+    rope: true
+    batch: 4
+    s1: 4096
+    s2: 16384
+    n1: 64
+    n1_index: 16
+    q_lengths: [1024, 2048, 1024, 4096]
+    k_lengths: [4096, 8192, 16384, 8192]
+  - id: TYP-08
+    group: typical
+    layout: TND
+    q_dtype: float16
+    weight_dtype: float32
+    rope: false
+    batch: 4
+    s1: 2048
+    s2: 8192
+    n1: 64
+    n1_index: 32
+    q_lengths: [1024, 0, 2048, 1024]
+    k_lengths: [4096, 0, 8192, 4096]
+  - {id: TYP-09, group: typical, layout: TND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: true, batch: 8, s1: 2048, s2: 16384, n1: 128, n1_index: 64, zero_position: middle}
+  - {id: TYP-10, group: typical, layout: TND, q_dtype: bfloat16, weight_dtype: float32, rope: false, batch: 16, s1: 1024, s2: 4096, n1: 32, n1_index: 8, zero_position: first}
+  - {id: TYP-11, group: typical, layout: TND, q_dtype: float16, weight_dtype: float32, rope: true, batch: 8, s1: 4096, s2: 32768, n1: 128, n1_index: 16, zero_position: last}
+  - id: TYP-12
+    group: typical
+    layout: TND
+    q_dtype: bfloat16
+    weight_dtype: bfloat16
+    rope: false
+    batch: 2
+    s1: 4096
+    s2: 65536
+    n1: 64
+    n1_index: 32
+    q_lengths: [4096, 1024]
+    k_lengths: [65536, 4096]
