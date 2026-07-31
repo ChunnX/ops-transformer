@@ -39,6 +39,9 @@ public:
     int32_t sparseMode;
     int32_t rsvd;
     float scaleValue;
+    int64_t t1Size;
+    int64_t t2Size;
+    int32_t totalAivNum;
 
     uint8_t layoutType;  // 0: BSND, 1: TND
 
@@ -77,6 +80,15 @@ public:
 
     float get_scaleValue() const {return scaleValue;}
     void set_scaleValue(float scaleValueParam) {this->scaleValue = scaleValueParam;}
+
+    int64_t get_t1Size() const {return t1Size;}
+    void set_t1Size(int64_t t1SizeParam) {this->t1Size = t1SizeParam;}
+
+    int64_t get_t2Size() const {return t2Size;}
+    void set_t2Size(int64_t t2SizeParam) {this->t2Size = t2SizeParam;}
+
+    int32_t get_totalAivNum() const {return totalAivNum;}
+    void set_totalAivNum(int32_t totalAivNumParam) {this->totalAivNum = totalAivNumParam;}
 
     uint8_t get_layoutType() const {return layoutType;}
     void set_layoutType(uint8_t layoutTypeParam) {this->layoutType = layoutTypeParam;}

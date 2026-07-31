@@ -119,6 +119,58 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         actualSeqLengthsKeyGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengthsKey, 0);
     }
 
+    if constexpr (LAYOUT_Q == SLILayout::TND) {
+        const auto &baseInfo = tilingData->baseParams;
+        int64_t t1Size = baseInfo.get_t1Size();
+        int64_t t2Size = baseInfo.get_t2Size();
+        int64_t actualLen = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
+        int64_t actualKLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        int64_t totalAivNum = baseInfo.get_totalAivNum();
+
+        if (t1Size > actualLen) {
+            int64_t t1PadLen = t1Size - actualLen;
+            int64_t splitT1PadLen = t1PadLen / totalAivNum;
+            int64_t remainT1PadLen = t1PadLen % totalAivNum;
+            int64_t currentCoreT1PadLen = splitT1PadLen +
+                (static_cast<int64_t>(constInfo.aivIdx) < remainT1PadLen ? 1 : 0);
+            int64_t t1PadLenSum = static_cast<int64_t>(constInfo.aivIdx) * splitT1PadLen +
+                Min(static_cast<int64_t>(constInfo.aivIdx), remainT1PadLen);
+
+            if ASCEND_IS_AIV {
+                int64_t dQOutputOffset = (t1PadLenSum + actualLen) *
+                    static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                    static_cast<int64_t>(constInfo.dSizeQueryIndex);
+                AscendC::InitOutput<INPUT_T>(
+                    reinterpret_cast<__gm__ INPUT_T *>(dQueryIndex) + dQOutputOffset,
+                    currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                        static_cast<int64_t>(constInfo.dSizeQueryIndex), 0);
+
+                int64_t dWOutputOffset = (t1PadLenSum + actualLen) *
+                    static_cast<int64_t>(constInfo.gSizeQueryIndex);
+                AscendC::InitOutput<WEIGHT_T>(
+                    reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOutputOffset,
+                    currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex), 0);
+            }
+        }
+        if (t2Size > actualKLen) {
+            int64_t t2PadLen = t2Size - actualKLen;
+            int64_t splitT2PadLen = t2PadLen / totalAivNum;
+            int64_t remainT2PadLen = t2PadLen % totalAivNum;
+            int64_t currentCoreT2PadLen = splitT2PadLen +
+                (static_cast<int64_t>(constInfo.aivIdx) < remainT2PadLen ? 1 : 0);
+            int64_t t2PadLenSum = static_cast<int64_t>(constInfo.aivIdx) * splitT2PadLen +
+                Min(static_cast<int64_t>(constInfo.aivIdx), remainT2PadLen);
+
+            if ASCEND_IS_AIV {
+                int64_t dKOutputOffset = (t2PadLenSum + actualKLen) *
+                    static_cast<int64_t>(constInfo.dSizeQueryIndex);
+                AscendC::InitOutput<INPUT_T>(
+                    reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOutputOffset,
+                    currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex), 0);
+            }
+        }
+    }
+
     InitMMResBuf();
     InitWorkspace(workspace);
 
