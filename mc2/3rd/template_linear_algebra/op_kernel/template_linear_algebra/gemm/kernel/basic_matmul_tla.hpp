@@ -22,11 +22,7 @@
 namespace Catlass::Gemm::Kernel {
 
 // Template for Matmul kernel. Compute C = A * B
-template <
-    class BlockMmad_,
-    class BlockEpilogue_,
-    class BlockScheduler_
->
+template <class BlockMmad_, class BlockEpilogue_, class BlockScheduler_>
 class BasicMatmulTla {
 public:
     using BlockMmad = BlockMmad_;
@@ -59,27 +55,32 @@ public:
 
         // Methods
         CATLASS_DEVICE
-        Params() {}
+        Params()
+        {
+        }
 
         CATLASS_DEVICE
-        Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_,
-               LayoutB layoutB_, GM_ADDR ptrC_, LayoutC layoutC_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrC(ptrC_), layoutC(layoutC_) {}
+        Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
+               GM_ADDR ptrC_, LayoutC layoutC_)
+            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_),
+              layoutC(layoutC_)
+        {
+        }
     };
 
     // Methods
     CATLASS_DEVICE
-    BasicMatmulTla() {}
+    BasicMatmulTla()
+    {
+    }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     /// Executes one Matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params) {
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
+    {
         BlockScheduler matmulBlockScheduler(params.problemShape, MakeCoord(L1_TILE_M, L1_TILE_N));
         uint32_t coreLoops = matmulBlockScheduler.GetCoreLoops();
 
@@ -105,14 +106,11 @@ public:
             GemmCoord actualBlockShape = matmulBlockScheduler.GetActualBlockShape(blockCoord);
 
             // Make tiled views
-            auto tensorBlockA = GetTile(tensorA,
-                                        tla::MakeCoord(blockCoord.m() * L1_TILE_M, blockCoord.k() * L1_TILE_K),
+            auto tensorBlockA = GetTile(tensorA, tla::MakeCoord(blockCoord.m() * L1_TILE_M, blockCoord.k() * L1_TILE_K),
                                         tla::MakeShape(actualBlockShape.m(), actualBlockShape.k()));
-            auto tensorBlockB = GetTile(tensorB,
-                                        tla::MakeCoord(blockCoord.k() * L1_TILE_K, blockCoord.n() * L1_TILE_N),
+            auto tensorBlockB = GetTile(tensorB, tla::MakeCoord(blockCoord.k() * L1_TILE_K, blockCoord.n() * L1_TILE_N),
                                         tla::MakeShape(actualBlockShape.k(), actualBlockShape.n()));
-            auto tensorBlockC = GetTile(tensorC,
-                                        tla::MakeCoord(blockCoord.m() * L1_TILE_M, blockCoord.n() * L1_TILE_N),
+            auto tensorBlockC = GetTile(tensorC, tla::MakeCoord(blockCoord.m() * L1_TILE_M, blockCoord.n() * L1_TILE_N),
                                         tla::MakeShape(actualBlockShape.m(), actualBlockShape.n()));
 
             // Compute block-scoped matrix multiply-add
@@ -121,8 +119,9 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params) {}
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    {
+    }
 };
 
 } // namespace Catlass::Gemm::Kernel

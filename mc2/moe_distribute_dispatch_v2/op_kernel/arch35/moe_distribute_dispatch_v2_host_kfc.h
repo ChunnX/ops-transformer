@@ -31,10 +31,10 @@
 
 #include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
+#if __has_include("../../common/moe_distribute_base.h")
+#include "../../common/moe_distribute_base.h"
 #else
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/moe_distribute_base.h"
 #endif
 
 namespace MoeDistributeDispatchV2HostKfcImpl {
@@ -43,7 +43,7 @@ constexpr uint64_t TIMEOUT_OFFSET = 1024UL * 1024UL;
 constexpr uint8_t BUFFER_NUM = 2; // 多buf
 constexpr uint8_t BUFFER_SINGLE = 1;
 constexpr uint32_t STATE_OFFSET = 32U; // 状态空间偏移地址
-constexpr uint8_t COMM_NUM = 2;        // 通信域大小
+constexpr uint8_t COMM_NUM = 1;        // 通信域大小
 constexpr uint8_t COMM_EP_IDX = 0;
 constexpr uint64_t WIN_STATE_OFFSET = 384UL * 1024UL;
 constexpr uint64_t DISPATCH_STATE_WIN_OFFSET = 768UL * 1024UL;
@@ -84,9 +84,8 @@ using namespace AscendC;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
 
-#define TemplateDispatchKFCTypeClass                                                                                   \
-    typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
-#define TemplateDispatchKFCTypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+#define TemplateDispatchKFCTypeClass typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist
+#define TemplateDispatchKFCTypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist
 
 template <TemplateDispatchKFCTypeClass>
 class MoeDistributeDispatchV2HostKfc {
@@ -101,13 +100,12 @@ public:
     using XInType = XType;
     using XOutType = ExpandXOutType;
 #endif
-#define TemplateDispatchKFCQuantArgs XInType, ExpandXOutType, XOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+#define TemplateDispatchKFCQuantArgs XInType, ExpandXOutType, XOutType, QuantMode, IsSmoothScaleExist
     __aicore__ inline MoeDistributeDispatchV2HostKfc(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
                                 GM_ADDR elasticInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
-                                GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut,
-                                GM_ADDR expandScalesOut, GM_ADDR workspaceGM, TPipe *pipe,
-                                const MoeDistributeDispatchV2TilingData *tilingData);
+                                GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR expandScalesOut,
+                                GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -191,39 +189,33 @@ private:
 
     __aicore__ inline GM_ADDR GetSendAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        return GetBaseWindAddrByRankId(winContext_[ctxIdx], serverId, curRankId);
+        return GetBaseWindAddrByRankId(winContext_[COMM_EP_IDX], serverId, epRankIdOriginal_);
     }
 
     __aicore__ inline GM_ADDR GetReceiveAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        return GetBaseWindAddrByRankId(winContext_[ctxIdx], serverId, curRankId);
+        return GetBaseWindAddrByRankId(winContext_[COMM_EP_IDX], serverId, epRankIdOriginal_);
     }
 
     __aicore__ inline GM_ADDR GetSendStatusAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        return GetBaseWindStateAddrByRankId(winContext_[ctxIdx], serverId, curRankId);
+        return GetBaseWindStateAddrByRankId(winContext_[COMM_EP_IDX], serverId, epRankIdOriginal_);
     }
 
     __aicore__ inline GM_ADDR GetReceiveStatusAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        return GetBaseWindStateAddrByRankId(winContext_[ctxIdx], serverId, curRankId);
+        return GetBaseWindStateAddrByRankId(winContext_[COMM_EP_IDX], serverId, epRankIdOriginal_);
     }
 
     __aicore__ inline GM_ADDR GetWindAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        uint64_t winDataSizeOffset = (ctxIdx == COMM_EP_IDX) ? winDataSizeOffsetEp_ : winDataSizeOffsetTp_;
-        return GetBaseWindAddrByRankId(winContext_[ctxIdx], rankId, curRankId) + winDataSizeOffset;
+        return GetBaseWindAddrByRankId(winContext_[COMM_EP_IDX], rankId, epRankIdOriginal_) + winDataSizeOffsetEp_;
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        return GetBaseWindStateAddrByRankId(winContext_[ctxIdx], rankId, curRankId) + dataState_ * WIN_STATE_OFFSET;
+        return GetBaseWindStateAddrByRankId(winContext_[COMM_EP_IDX], rankId, epRankIdOriginal_) +
+               dataState_ * WIN_STATE_OFFSET;
     }
 
     TPipe *tpipe_{nullptr};
@@ -237,8 +229,6 @@ private:
     GlobalTensor<float> windowInstatusFp32Tensor_;
     GlobalTensor<bool> xActiveMaskGMTensor_;
     GlobalTensor<int32_t> sendCountGMTensor_;
-    GlobalTensor<float> fpWinTpGatherOutGMTensor_;
-    GlobalTensor<int32_t> winTpEpCntGMTensor_;
     GlobalTensor<int32_t> expandIdxGMTensor_;
     GlobalTensor<int32_t> elasticInfoGMTensor_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor_;
@@ -304,13 +294,8 @@ private:
 
     GM_ADDR expandXOutGM_;
     GM_ADDR sendCountsOutGM_;
-    GM_ADDR sendTpCountOutGM_;
     GM_ADDR statusSpaceGm_;
     GM_ADDR windowGM_;
-    GM_ADDR tpWindowGM_;
-    GM_ADDR tpStatusWindowGM_;
-    GM_ADDR tpLocalWindowGM_;
-    GM_ADDR tpLocalStatusWindowGM_;
     GM_ADDR recvCntWorkspaceGM_;
     GM_ADDR statusDataSpaceGm_;
     GM_ADDR bufferChoseAddr_;
@@ -330,13 +315,11 @@ private:
     uint32_t bufferId_{0};
     uint32_t epWorldSize_{0};
     uint32_t epWorldSizeOriginal_{0};
-    uint32_t tpWorldSize_{0};
     int32_t epRankId_{0};
     int32_t serverId_{0};          // 当前卡所在server编号
     int32_t rankSizePerServer_{0}; // 一个server内的rank数 epWorldSize_ -> rankSizePerServer_
     int32_t epRankIdOriginal_{0};
-    uint32_t tpRankId_{0}; // 本卡 ID
-    uint32_t aivId_{0};    // aiv id
+    uint32_t aivId_{0}; // aiv id
     uint32_t sharedExpertNum_{0};
     uint32_t sharedExpertRankNum_{0};    // 共享专家卡数
     uint32_t rankNumPerSharedExpert_{0}; // 部署单个共享专家所用的卡数
@@ -347,7 +330,7 @@ private:
     uint32_t startMoeExpertId_{0};     // 当前server的起始moe专家id 全局编号
     uint32_t startRankId_{0};          // 当前server的起始卡号 全局编号
     uint32_t shareRankNumInServer_{0}; // 当前server中共享专家卡数
-    uint32_t expertNumInServer_{0};    // 当前server中共享专家副本数 + moe专家数 totalExpertNum_ -> expertNumInServer_
+    uint32_t expertNumInServer_{0}; // 当前server中共享专家副本数 + moe专家数 totalExpertNum_ -> expertNumInServer_
     uint32_t hOutSize_{0};
     uint32_t hAlignWinSize_{0};
     uint32_t hOutAlignUbSize_{0};
@@ -364,14 +347,12 @@ private:
     uint32_t totalUsedUB_{0};
     uint64_t activeMaskBsCnt_{0};
     uint64_t winDataSizeOffsetEp_{0};
-    uint64_t winDataSizeOffsetTp_{0};
     uint64_t expertPerSizeOnWin_{0};
     uint64_t recvWinBlockNum_{0}; // 接收Win区块数
     bool isTokenMaskFlag_ = false;
     bool isExpertMaskFlag_ = false;
     bool hasElasticInfoFlag_ = false;
     bool isShareExpertRankFlag_ = false;
-    uint64_t totalWinSizeTp_{0};
     uint64_t totalWinSizeEp_{0};
     uint32_t expertTokenNumsType_{1};
     uint32_t stateOffset_{0};
@@ -406,7 +387,7 @@ private:
     uint32_t moeCntRowAlign_{0};
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
-    __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
+    __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr};
 
     DataCopyParams xCopyParams_;
     DataCopyExtParams hCommuCopyOutParams_;
@@ -448,7 +429,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     // 检查hcclwinsize是否越界
     totalWinSizeEp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
-    totalWinSizeTp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeTp);
+
 
     serverNum_ = 1;
     rankSizePerServer_ = 2;
@@ -470,10 +451,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     sharedExpertNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertNum;
     expertTokenNumsType_ = tilingData->moeDistributeDispatchV2Info.expertTokenNumsType;
     zeroComputeExpertNum_ = tilingData->moeDistributeDispatchV2Info.zeroComputeExpertNum;
-    tpRankId_ = tilingData->moeDistributeDispatchV2Info.tpRankId;
+
     axisK_ = tilingData->moeDistributeDispatchV2Info.k;
     aivNum_ = tilingData->moeDistributeDispatchV2Info.aivNum;
-    tpWorldSize_ = tilingData->moeDistributeDispatchV2Info.tpWorldSize;
+
     aivUsedCumSum_ = 2;
     aivUsedRemotComm_ = serverNum_; // 每个核负责一个核发送
     aivUsedScatter_ = (aivNum_ - aivUsedCumSum_ - aivUsedRemotComm_) / 2;
@@ -550,14 +531,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
 #endif
 
-    // 当前tpWin区划分为前后两半区，连续两次dispatch，切换半区, combine 数据区使用前面，
+    // epWin区划分为前后两半区，连续两次dispatch，切换半区, combine 数据区使用前面，
     // 即axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine, dispatch使用后面
     uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     winDataSizeOffsetEp_ =
         dataState_ * (totalWinSizeEp_ / 2) +
         axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine; // 就是分成两块，去掉combine前面的
-    winDataSizeOffsetTp_ =
-        dataState_ * (totalWinSizeTp_ / 2) + tilingData->moeDistributeDispatchV2Info.a * hSizeAlignCombine;
     windowGM_ = GetWindAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     GlobalTensor<ExpandXOutType> winDouble;
@@ -693,7 +672,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::Init(
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, GM_ADDR elasticInfo,
     GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut,
-    GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, TPipe *pipe,
+    GM_ADDR sendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, TPipe *pipe,
     const MoeDistributeDispatchV2TilingData *tilingData)
 {
     elasticInfoGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(elasticInfo));
@@ -708,7 +687,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     workspaceGM_ = workspaceGM;
     expandXOutGM_ = expandXOut;
     sendCountsOutGM_ = sendCountsOut; // 无GlobalTensor
-    sendTpCountOutGM_ = tpSendCountsOut;
     sendCountGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceGM_));
     if constexpr (IsSmoothScaleExist) {
         scalesGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(scales));
@@ -1667,7 +1645,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0U};
     DataCopyPad(xoutTfloat32[moeExpertScalesAlign_], expertScalesGMTensor_[tokenIndex * axisK_], copyParams,
                 expertScalePadParams); // 专家scale填充
-    if (isExpertMaskFlag_) {           // 如果有二维mask,需要把不用发送的专家的ID设置为一个无效值
+    if (isExpertMaskFlag_) { // 如果有二维mask,需要把不用发送的专家的ID设置为一个无效值
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         for (uint32_t index = 0; index < axisK_; index++) {
             uint32_t expertPos = moeListAlign_ + index;
@@ -1720,7 +1698,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if (startTokenId >= endTokenId || sendTokenNum == 0) {
         return;
     }
-    CalExpertOffset(startTokenId, endTokenId);           // 计算专家偏移量，即当前token是发送给当前专家的第几个token
+    CalExpertOffset(startTokenId, endTokenId); // 计算专家偏移量，即当前token是发送给当前专家的第几个token
     ScatterToken(startTokenId, endTokenId, serverIndex); // 将数据写入对应的发送区，等待接收server搬运
 }
 
