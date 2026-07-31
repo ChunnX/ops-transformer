@@ -65,6 +65,8 @@ constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 4;
 constexpr uint32_t ATTR_MASK_MODE_INDEX = 5;
 constexpr uint32_t ATTR_CMP_RATIO_INDEX = 6;
 constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 7;
+constexpr uint32_t ATTR_KEY_STRIDE0_INDEX = 8;
+constexpr uint32_t ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX = 9;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
@@ -146,6 +148,8 @@ struct QLIV2ParaInfo {
     const int32_t *sparseCount = nullptr;
     const int32_t *cmpRatio = nullptr;
     const int32_t *returnValue = nullptr;
+    const int64_t *keyStride0 = nullptr;
+    const int64_t *keyDequantScaleStride0 = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
