@@ -391,7 +391,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     expertRevNumsGlobalTensor_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.expertRevTokenNumsPtr);
     epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr, params_.workspaceInfo.swigluQuantScalePtr,
                       params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr,
-                      params_.workspaceInfo.metaInfoPtr, tilingData->clampLimit});
+                      params_.workspaceInfo.metaInfoPtr, tilingData->clampLimit, tilingData->actMode,
+                      tilingData->actSubMode, tilingData->activationAlpha, tilingData->activationBeta});
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     quantWinOffset_ =
@@ -2388,7 +2389,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
 {
     sharedEpilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
                             params_.workspaceInfo.sharedExpertSwigluScalePtr, nullptr, nullptr, nullptr, nullptr,
-                            nullptr, params_.tilingData->clampLimit});
+                            nullptr, params_.tilingData->clampLimit, params_.tilingData->actMode,
+                            params_.tilingData->actSubMode, params_.tilingData->activationAlpha,
+                            params_.tilingData->activationBeta});
 
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
