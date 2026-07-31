@@ -29,6 +29,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "../../../common/op_kernel/init_output.h"
 #else
 #include "../../common/arch35/flash_attention_score_common_regbase.h"
 #include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
@@ -38,8 +39,8 @@
 #include "../../common/arch35/vf/vf_flash_decode.h"
 #include "../../common/vector_common.h"
 #include "../../common/memory_copy_arch35.h"
+#include "../../common/init_output.h"
 #endif
-#include "init_output.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -538,9 +539,10 @@ public:
                 // 只跨1个G
                 ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
             } else {
-                // 跨多个G
-                ret = (s1StartTdx < s1FirstValidToken);
-                ret = ret || (s1EndTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+                // 跨多个G: 后续G的s1均从0开始, 存在左无效行(s1FirstValidToken>0)必命中;
+                // 中间G的s1均到actS1Size-1结束, 存在右无效行(s1LastValidToken<actS1Size-1)必命中
+                ret = (s1FirstValidToken > 0) ||
+                      (s1LastValidToken < static_cast<int64_t>(runInfo.actS1Size) - 1);
             }
         }
         return ret;
