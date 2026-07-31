@@ -13,10 +13,8 @@
 
 ## 功能说明
 
-- 算子功能：输入Q/K/V融合张量`qkv`，按`head_nums=[Nq, Nk, Nv]`拆分出Q、K、V。RoPE场景对Q/K执行RMSNorm、RoPE和共享`rotation`矩阵乘，再按token/head动态量化为FP8 E4M3FN；M-RoPE场景使用`mrope_position[T,3]`提供T/H/W位置，Q保持BF16、K量化为INT8。两种场景都按`slot_mapping`更新K/V Cache和K scale cache，V分支按`v_scale`缩放后量化为FP8 E4M3FN。
-- 使用场景：推理场景下PagedAttention KV Cache更新，当前仅支持<term>Ascend 950PR/Ascend 950DT</term>上
-  `D=128`、`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`的实现。RoPE支持三种布局实例；M-RoPE仅支持
-  `TND->TND`。
+- 算子功能：输入Q/K/V融合张量`qkv`，按`head_nums=[Nq, Nk, Nv]`拆分出Q、K、V。对Q/K执行RMSNorm、位置编码和共享`rotation`矩阵乘，并按配置输出或量化；V分支按`v_scale`缩放并量化。算子根据`slot_mapping`更新K/V Cache和K scale cache。
+- 使用场景：适用于推理场景下的PagedAttention KV Cache更新，当前仅支持<term>Ascend 950PR/Ascend 950DT</term>。
 - 计算公式：
 
   按`head_nums=[Nq, Nk, Nv]`从融合输入中拆分Q、K、V：
@@ -25,31 +23,31 @@
   q, k, v = split(qkv, [Nq, Nk, Nv])
   $$
 
-  两种场景的Q/K分支分别使用`q_gamma`和`k_gamma`做RMSNorm：
+  Q/K分支分别使用`q_gamma`和`k_gamma`做RMSNorm：
 
   $$
   y = \frac{x}{\sqrt{mean(x^2) + epsilon}} * gamma
   $$
 
-  RoPE场景的Q/K分支执行普通RoPE，`cos_sin[..., :D/2]`为cos，`cos_sin[..., D/2:]`为sin；V分支不执行RoPE：
+  Q/K分支执行位置编码，`cos_sin[..., :D/2]`为cos，`cos_sin[..., D/2:]`为sin；V分支不执行位置编码：
 
   $$
-  y_{rope} = concat(y_{low} * cos - y_{high} * sin,\ y_{high} * cos + y_{low} * sin)
+  y_{pos} = concat(y_{low} * cos - y_{high} * sin,\ y_{high} * cos + y_{low} * sin)
   $$
 
-  M-RoPE场景从`mrope_position[u,0/1/2]`分别读取T/H/W三路`cos_sin`行，按`mrope_section=[t,h,w]`选择交织half lane；`mrope_section[0]`只参与值域和总和校验，不参与lane选源。
-
-  两种场景的Q/K共享`rotation`矩阵：
+  Q/K共享`rotation`矩阵：
 
   $$
-  q_{rot} = q_{rope} @ rotation,\quad k_{rot} = k_{rope} @ rotation
+  q_{rot} = q_{pos} @ rotation,\quad k_{rot} = k_{pos} @ rotation
   $$
 
-  RoPE场景的Q/K按每个token和head做动态量化，FP8 E4M3FN最大有限值使用`FP8_E4M3FN_MAX`，该值为448：
+  启用动态量化时，按每个token和head计算量化scale：
 
   $$
-  scale = max(abs(x)) / FP8\_E4M3FN\_MAX,\quad x_{fp8} = cast(x / scale)
+  scale = max(abs(x)) / quant\_max,\quad x_{quant} = cast(x / scale)
   $$
+
+  其中`quant_max`为目标数据类型对应的量化上限。
 
   V分支按`v_scale`缩放后量化：
 
@@ -74,8 +72,6 @@
   $$
   k\_scale\_cache[blockId, nk, blockOffset, 0] = k\_scale[t, nk]
   $$
-
-  其中`k_quant`在RoPE场景为FP8 E4M3FN，在M-RoPE场景为INT8；M-RoPE的Q直接输出BF16且不生成`q_scale`。
 
 ## 参数说明
 
@@ -113,8 +109,7 @@
   - M-RoPE场景必须同时传`mrope_position[T,3]`和非空`mrope_section=[t,h,w]`，不传`query_start_loc/seq_lens`；
     `q_quant_mode=NoQuant`、`q_out_dtype=BF16`、公开`q_scale=None`，K Cache为INT8，且仅支持
     `layout_qkv="TND"`、`layout_q_out="TND"`。两组位置输入不能同时存在或同时缺失。
-  - M-RoPE的`mrope_section`长度必须为3。D128时三项分别受`[22,21,21]`上限约束；这些互不重叠的lane容量使三项总量自然不超过`64`，第0项
-    只参与值域校验，不参与lane选源。`mrope_position`必须为INT32、rank 2、shape `[T,3]`。
+  - M-RoPE的`mrope_section`长度必须为3，D128时三项取值范围依次为`[0,22]`、`[0,21]`、`[0,21]`；`mrope_position`必须为INT32、rank 2、shape `[T,3]`。
   - `layout_qkv`控制`qkv`的N/T轴布局，默认值为`"TND"`；`layout_q_out`控制`q_out`和`q_scale`的N/T轴布局，默认值为`"NTD"`：
     - `layout_qkv="TND"`，`layout_q_out="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[T, Nq, D]`，`q_scale=[T, Nq]`。
     - `layout_qkv="TND"`，`layout_q_out="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[Nq, T, D]`，`q_scale=[Nq, T]`。
