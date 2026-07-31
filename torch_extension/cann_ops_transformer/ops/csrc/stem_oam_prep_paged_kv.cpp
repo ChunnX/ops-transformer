@@ -59,12 +59,13 @@ std::tuple<at::Tensor, at::Tensor> StemOamPrepPagedKv(const at::Tensor &kCache, 
     StorageShapeTensor kCacheWrapped{kCache};
     StorageShapeTensor vCacheWrapped{vCache};
     StorageShapeTensor kvIndicesWrapped{kvIndices};
+    StorageShapeTensor kScaleCacheWrapped{kScaleCache};
     StorageShapeTensor kFlatWrapped{kFlat};
     StorageShapeTensor vBiasWrapped{vBias};
+    const char *kvLayoutPtr = kvLayout.c_str();
     ACLNN_CMD(aclnnStemOamPrepPagedKv, kCacheWrapped, vCacheWrapped, kvIndicesWrapped, kvSeqLens,
-              kScaleCache.defined() ? kScaleCache : nullptr,
-              vScale.defined() ? vScale : nullptr,
-              lambdaMag, kvLayout.c_str(), stemBlockSize, stemStride, kFlatWrapped, vBiasWrapped);
+              kScaleCacheWrapped, vScale, lambdaMag, kvLayoutPtr, stemBlockSize, stemStride,
+              kFlatWrapped, vBiasWrapped);
 
     return std::tuple<at::Tensor, at::Tensor>(kFlat, vBias);
 }
