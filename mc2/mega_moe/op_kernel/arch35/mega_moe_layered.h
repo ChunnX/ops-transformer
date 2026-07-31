@@ -1658,6 +1658,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ResetGmm2
         GlobalTensor<int32_t> gmm2CombineSyncCounterGm;
         gmm2CombineSyncCounterGm.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
         if (coreLen > 0) {
+            // 诊断性全流水同步：验证前序 MTE3 读 resetTensor_ 与本次 Vector 覆写之间的依赖。
+            PipeBarrier<PIPE_ALL>();
             Duplicate(resetTensor_, 0, coreLen);
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
             DataCopy(gmm2CombineSyncCounterGm[coreOffset], resetTensor_, coreLen);

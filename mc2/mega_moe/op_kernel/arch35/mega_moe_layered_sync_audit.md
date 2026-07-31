@@ -1,16 +1,18 @@
 # MegaMoeLayered 流水同步审计报告
 
-复审日期：2026-07-30
+复审日期：2026-07-31
 
 目标文件：`mega_moe_layered.h`
 
 分析模式：`full`（含分文件分析、覆盖率检查和独立二次确认）
 
-源码基线：`da04265b0022cac77d076fea8ca4d0a802de0338`
+源码基线：`546465ffabb8e9d825c0d34617c441c030053ba4`
 
-本次为修复后的重新审计。提交 `da04265b0` 新增或移动的 5 处同步均确认正确，且未引入
-HardEvent 冲突。结合 A5 芯片 PIPE_V 内部依赖由编译器保证的约束，删除 5 组纯 V→V
-同步误报；旧报告中的 14 组问题经代码修复和芯片口径修正后，当前保留 4 组。
+本次基于最新 HEAD 重新审计。提交 `da04265b0` 修复的 5 处同步和 `0da2bc075` 新增的
+combine metadata `S_MTE2` 均确认正确，且未引入 HardEvent 冲突。结合 A5 芯片 PIPE_V
+内部依赖由编译器保证的约束，删除纯 V→V 误报，并纠正 combine `V_S` 传递同步误判；
+当前确认 1 组缺失同步，仅影响 A8W4。A8W8 可达的 `resetTensor_` 依赖已在工作树中使用
+`PipeBarrier<PIPE_ALL>()` 进行诊断性覆盖，待功能验证后应收窄为 `MTE3_V`。
 
 ## 1. 算子基本信息
 
@@ -42,16 +44,16 @@ HardEvent 冲突。结合 A5 芯片 PIPE_V 内部依赖由编译器保证的约�
 flowchart TD
     K["mega_moe<br/>mega_moe_apt.cpp:36"]
     I["MegaMoeLayered::Init<br/>layered.h:287"]
-    P["MegaMoeLayered::Process<br/>layered.h:2372"]
+    P["MegaMoeLayered::Process<br/>layered.h:2373"]
     SMC["SendMaskCal<br/>691"]
     D["Dispatch 主链<br/>916-1448"]
     G1["GMM1 + SwiGLU/Quant<br/>impl.h + epilogue.h"]
     G2["GMM2 + Combine<br/>layered.h:1768-1912"]
     C["CombineTokenGroup<br/>combine_send.h:228"]
     Q["Quant MicroAPI<br/>quantize_functions.h"]
-    U["Unpermute<br/>layered.h:2025"]
-    SH["SharedExpertCopyInput<br/>layered.h:2163"]
-    SY["CrossRank/SyncAll<br/>layered.h:2132,2372"]
+    U["Unpermute<br/>layered.h:2026"]
+    SH["SharedExpertCopyInput<br/>layered.h:2164"]
+    SY["CrossRank/SyncAll<br/>layered.h:2133,2373"]
 
     K --> I
     K --> P
@@ -77,11 +79,12 @@ flowchart TD
 | `DataCopyPad`，`layered.h:648` | MTE3 | `resetTensor_` → flag GM | 读/写 | Reset copy-out |
 | `DataCopyPad`，`layered.h:1129-1131` | MTE2 | cumsum GM → `cumsumInfoTensor_` | 读/写 | Restore |
 | `DataCopyPad`，`layered.h:1153-1154` | MTE3 | `cumsumInfoTensor_` → GM | 读/写 | Persist |
+| `PipeBarrier`，`layered.h:1662` | ALL | 等待 `resetTensor_` 的前序 MTE3 读取完成 | 同步 | A8W8 diagnostic fence |
 | `DataCopy`，`layered.h:1331` | MTE3 | `metaInfoTensor_` → GM | 读/写 | Dispatch metadata |
 | `GatherMask`，`layered.h:1402-1403` | V | mask/index → `roundTokenCnt` | 读/写 | Dispatch gather |
 | `ComputeMaxExp/Scale/FpX`，`layered.h:896-903` | V | `mxTempTensor_`、`xOutTensor1_` | 读/写 | Relay quant |
-| `ComputeMaxExp/Scale/FpX`，`layered.h:2228-2235` | V | `mxTempBuf`、`xOutBuf` | 读/写 | Shared quant |
-| `DataCopy`，`layered.h:1805` | MTE2 | triple GM → `metaInfoTensor` | 读/写 | Combine copy-in |
+| `ComputeMaxExp/Scale/FpX`，`layered.h:2229-2236` | V | `mxTempBuf`、`xOutBuf` | 读/写 | Shared quant |
+| `DataCopy`，`layered.h:1806` | MTE2 | triple GM → `metaInfoTensor` | 读/写 | Combine copy-in |
 | `ComputeMaxExp/Scale/Fp8`，`combine_send.h:124-128` | V | `floatTemp`、`ubQuantData` | 读/写 | Combine quant |
 | `DataCopyPad`，`combine_send.h:97` | MTE3 | `ubQuant` → staging/local GM | 读/写 | Combine copy-out |
 | `WriteNbi`，`combine_send.h:104` | S/通信 | staging GM → remote GM | 读/写 | URMA publish |
@@ -93,10 +96,11 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    C["MTE3 读 resetTensor"] -. "缺 MTE3→V" .-> D["V 覆写 resetTensor"]
+    C["MTE3 读 resetTensor"] -->|"PIPE_ALL 诊断覆盖"| D["V 覆写 resetTensor"]
     E["MTE2 写 cumsum"] -. "缺 MTE2→MTE3" .-> F["MTE3 读 cumsum"]
-    QV["Combine quant V output"] -. "缺 V→MTE3" .-> M3["MTE3 copy-out"]
-    S["上一批 Scalar 读 metaInfo"] -. "缺 S→MTE2" .-> M2B["下一批 MTE2 覆写"]
+    QV["Combine quant V output"] -->|"V_S 阻塞后发射 MTE3"| M3["MTE3 copy-out"]
+    S["上一批 Scalar 读 metaInfo"] -->|"S_MTE2 已修复"| M2B["下一批 MTE2 覆写"]
+    IDX["Scalar 读 valid index"] -->|"S_MTE3→MTE3_S 间接覆盖"| IDXV["下一轮 V 覆写"]
     GM["GatherMask V"] -->|"V→S 已修复"| SC["Scalar count"]
     META["MTE3 读 metaInfo"] -->|"MTE3→S 已修复"| OV["下一 chunk S 覆写"]
     FIX["FIX 写 GMM 输出"] -->|"FIX→S 已覆盖"| CNT["Atomic counter"]
@@ -104,11 +108,11 @@ flowchart LR
 
     classDef missing fill:#ffe5e5,stroke:#d33,stroke-width:2px;
     classDef synced fill:#e8f7e8,stroke:#2b8a3e,stroke-width:2px;
-    class C,D,E,F,QV,M3,S,M2B missing;
-    class GM,SC,META,OV,FIX,CNT,M2,V synced;
+    class E,F missing;
+    class C,D,QV,M3,S,M2B,IDX,IDXV,GM,SC,META,OV,FIX,CNT,M2,V synced;
 ```
 
-红色虚线表示确认缺失同步；绿色实线表示已有同步覆盖。
+红色虚线表示确认缺失同步；绿色实线表示已有同步或诊断性屏障覆盖。
 
 ## 5. 同步排查结果
 
@@ -118,12 +122,9 @@ flowchart LR
 
 | # | 位置 | 依赖关系 | 类型 | 建议修复 | 风险 |
 |---:|---|---|---|---|---|
-| 1 | `layered.h:648 → 1661` | MTE3 读 `resetTensor_` → V 以 `Duplicate` 覆写同一 UB；`:646`、`:1662` 都是反方向的 V→MTE3 | WAR，MTE3→V | 在 `Duplicate` 前增加 `MTE3_V` | 中，条件触发 |
-| 2 | `layered.h:1129 → 1153` | A8W4 下 MTE2 恢复 cumsum 前缀 → MTE3 搬出包含该前缀的区域；`:1148 S_MTE3` 不等待 MTE2 | RAW，MTE2→MTE3 | `:1153` 前增加 `MTE2_MTE3`；或在 `:1129` 后建立可传递的 MTE2→S→MTE3 链 | 高，条件触发 |
-| 3 | `combine_send.h:67-69 → 下一次 layered.h:1805` | `CombineTokenGroup` 内 Scalar 读取 triple → 下一批 MTE2 覆写相同 `batchBaseOffset` | 跨函数循环 WAR，S→MTE2 | 下一次 `:1805` 前增加 `S_MTE2`，或在 `CombineTokenGroup` 返回前同步 | 中，条件触发 |
-| 4 | `combine_send.h:262-263 → 97` | 量化 V 写 `ubQuant` 的 data/scale → layered MTE3 搬出；现有 `V_S` 方向错误 | RAW，V→MTE3 | 将 `:263` 改为 `SyncFuncStatic<HardEvent::V_MTE3, SYNC_EVENT_ID5>()` | 高 |
+| 1 | `layered.h:1129 → 1153` | A8W4 下 MTE2 恢复 cumsum 前缀 → MTE3 搬出包含该前缀的区域；`:1148 S_MTE3` 不等待 MTE2 | RAW，MTE2→MTE3 | `:1153` 前增加 `MTE2_MTE3`；或在 `:1129` 后建立可传递的 MTE2→S→MTE3 链 | 高，仅 A8W4 |
 
-优先修复 #2 和 #4；#3 必须按跨函数循环回边处理，不能只看单次调用。
+A8W8 的 Weight1Type 为 FP8，`ENABLE_A8W4 == false`，不会进入该 cumsum GM 恢复分支。
 
 ### 5.2 本次确认已修复
 
@@ -132,11 +133,13 @@ flowchart LR
 | `GatherMask` 的 `roundSendCnt` 在 Scalar 消费前未同步 | `layered.h:747 V_S` | 已位于 `:748 totalSendCnt +=` 前，正确 |
 | `roundTokenCnt` 在分支和 `continue` 前未同步 | `layered.h:1405 V_S` | 已覆盖所有 Scalar 消费和提前 `continue`，正确 |
 | `metaInfoTensor_` chunk 回边 MTE3→S | `layered.h:1332 MTE3_S` | 每个 copy 后立即同步，正确 |
-| float top-k weight chunk 回边 S→MTE2 | `layered.h:2047 S_MTE2` | 正确 |
-| bf16 top-k 临时缓冲回边 V→MTE2 | `layered.h:2061 V_MTE2` | 正确 |
+| float top-k weight chunk 回边 S→MTE2 | `layered.h:2048 S_MTE2` | 正确 |
+| bf16 top-k 临时缓冲回边 V→MTE2 | `layered.h:2062 V_MTE2` | 正确 |
+| combine metadata 跨 batch 回边 S→MTE2 | `layered.h:1805 S_MTE2` | 已位于下一批 `:1806 DataCopy` 前，正确 |
+| `resetTensor_` MTE3→V 复用 | `layered.h:1662 PIPE_ALL` | A8W8 可达的诊断性覆盖；功能验证通过后建议改为定向 `MTE3_V` |
 
-这 5 处 `SyncFuncStatic` 都由 Set/Wait 自成完整事件对；相同 event ID 的复用发生在前一对已经
-消费后，未发现冲突或未配对。
+前 6 处 `SyncFuncStatic` 都由 Set/Wait 自成完整事件对；相同 event ID 的复用发生在前一对已经
+消费后，未发现冲突或未配对。新增 reset `PIPE_ALL` 不占用 event ID。
 
 ### 5.3 确认问题：过度同步
 
@@ -144,9 +147,13 @@ flowchart LR
 |---|---|---|---|---|
 | `layered.h:528` | `PipeBarrier<PIPE_ALL>` | 仅等待初始化 `Duplicate` 的 PIPE_V | 改为 `PipeBarrier<PIPE_V>()`，不可直接删除 | 避免初始化阶段全流水排空 |
 | `layered.h:772` | 每个 mask round `PIPE_ALL` | 槽位复用需 MTE3→V；最终发布 count 需 MTE3→S | 每轮改精确 `MTE3_V`，round 循环后、count 写前补一次 `MTE3_S`；更优为双 event 管理 ping-pong | 当前每轮破坏 V/MTE3 并行 |
-| `layered.h:1050` | `PipeBarrier<PIPE_ALL>` | 前方只有 Scalar 地址/GM 读，初始化状态已由 2385/2387 和 2141/2153 发布 | 删除 | 消除 dispatch sender 启动时的无效全流水停顿 |
-| `layered.h:2011-2012` | `S_V` Set/Wait | Cast 的输入已由 2009-2010 的 `MTE2_V` 覆盖，无 Scalar producer | 删除该 `S_V`；保留 2014/2016 的 V barrier | 减少每个共享专家一次事件往返 |
-| `layered.h:2250` | 双 event drain 后再 `PIPE_ALL` | 2248/2249 已等待两路 MTE3；调用者 2385 还会再次 `PIPE_ALL` | 删除 2250 | 避免 shared input 结束处重复全流水排空 |
+| `layered.h:1050` | `PipeBarrier<PIPE_ALL>` | 前方只有 Scalar 地址/GM 读，初始化状态已由 2386/2388 和 2142/2154 发布 | 删除 | 消除 dispatch sender 启动时的无效全流水停顿 |
+| `layered.h:1111` | `MTE2_V` | 搬入后无 V consumer；调用者 `:1195/:1218 MTE2_MTE3` 已保护 MTE3 搬出 | 删除 | 每个 local relay token 少一次无效事件往返 |
+| `layered.h:2012-2013` | `S_V` Set/Wait | Cast 的输入已由 2010-2011 的 `MTE2_V` 覆盖，无 Scalar producer | 删除该 `S_V` | 减少每个共享专家一次事件往返 |
+| `layered.h:2251` | 双 event drain 后再 `PIPE_ALL` | 2249/2250 已等待两路 MTE3；调用者 2386 还会再次 `PIPE_ALL` | 删除 2251 | 避免 shared input 结束处重复全流水排空 |
+| `combine_send.h:65` | 每 token 执行 `MTE2_S` | metadata 每 batch 仅由 `layered.h:1806` 搬入一次 | 将一次 `MTE2_S` 放到 token 循环前，删除逐 token 重复等待 | 降低 combine token 循环事件开销 |
+| `combine_send.h:257、281` | 每 token 前及函数尾执行 `MTE3_MTE2` | 实际 MTE3 在 `:97` 后已由 `:98 MTE3_S` 等待；nonquant remote 分支无 MTE3 | 删除重复等待 | 减少每 token/每 group 的事件开销 |
+| `combine_send.h:263` | 量化后 `V_S` | 正确性已覆盖，但实际数据消费者是后续 `:97 MTE3` | 改为更精确的 `V_MTE3`，避免阻塞无关 Scalar | 提高 quant 与 metadata Scalar 处理的并行度 |
 | `block_epilogue...h:805-806` | 无条件 `MTE3_S` | 普通 MoE 的非空 group flag 需要；shared epilogue 传 `nullptr` 时无 Scalar consumer | 将 `MTE3_S` 移入 `if (groupFlagListGmAddr_ != nullptr)`，置于 AtomicAdd 前 | 消除 shared GMM1 每 tile 的无效事件 |
 
 ### 5.4 已正确覆盖
@@ -157,10 +164,14 @@ flowchart LR
 | A5 的纯 PIPE_V 依赖：relay/shared/combine/epilogue quant 链及 `Muls → Cast` | 由 A5 编译器保证 PIPE_V 内部依赖，不要求手工 V barrier |
 | `GatherMask` 结果 → Scalar count/index 消费 | `layered.h:747 V_S`、`:1405 V_S` |
 | metadata MTE3 copy → 下一 chunk Scalar 覆写 | `layered.h:1332 MTE3_S` |
+| `validTopkIndexTensor_` 当前轮 Scalar 读 → 后续轮 V 覆写 | 有 Scalar 读的路径必经 `layered.h:1330 S_MTE3 → :1332 MTE3_S`，Scalar 恢复后才发射下一轮 V |
+| `resetTensor_` 前序 MTE3 读 → 后续 V 覆写 | `layered.h:1662 PIPE_ALL` 诊断性覆盖；验证后应收窄为 `MTE3_V` |
+| combine metadata Scalar 读 → 下一批 MTE2 覆写 | `layered.h:1805 S_MTE2` |
+| combine quant V 写 → layered MTE3 搬出 | `combine_send.h:263 V_S` 阻塞 Scalar；Wait 返回后才发射 `:97 MTE3`，形成传递覆盖 |
 | Relay 量化输出 V → MTE3 → ready flag S | `layered.h:906 V_MTE3`、`:908 MTE3_S`、`:912 PIPE_ALL` |
 | 5-buffer local relay 的 MTE2/MTE3 槽位复用 | `layered.h:1186-1223` 的 event 1～5 配对 |
 | Remote relay flag snapshot：MTE2 写 → S 读 → 下一轮 MTE2 覆写 | `layered.h:1261 MTE2_S`、`:1286 S_MTE2` |
-| float/bf16 top-k weight chunk 回边 | `layered.h:2047 S_MTE2`、`:2061 V_MTE2` |
+| float/bf16 top-k weight chunk 回边 | `layered.h:2048 S_MTE2`、`:2062 V_MTE2` |
 | GMM2 FIX 写数据 → Scalar 发布 combine counter | `mega_moe_impl.h:139-149`、`:157-161` 的 `FIX_S` |
 | A8W4 GMM 输出 → status/sequence 发布 | `mega_moe_impl.h:898-908` 的 `FIX_S` |
 | GMM1 AIC/AIV tile 协作 | `mega_moe_base.h:135-153` 的 mode 4、flag 4～7 CrossCore 配对 |
@@ -186,10 +197,10 @@ CrossCore 检查：
 
 | 路径 | `SyncAll<false>` | `SyncAll<true>` |
 |---|---:|---:|
-| AIC，`sharedExpertNum_==0` | 1（2387） | AIC 不属于 true 域 |
-| AIV，`sharedExpertNum_==0` | 1（2387） | 4（2153×2、2458、2474） |
-| AIC，`sharedExpertNum_>0` | 3（2368、2387、2397） | AIC 不属于 true 域 |
-| AIV，`sharedExpertNum_>0` | 3（2368、2387、2397） | 4（2153×2、2458、2474） |
+| AIC，`sharedExpertNum_==0` | 1（2388） | AIC 不属于 true 域 |
+| AIV，`sharedExpertNum_==0` | 1（2388） | 4（2154×2、2459、2475） |
+| AIC，`sharedExpertNum_>0` | 3（2369、2388、2398） | AIC 不属于 true 域 |
+| AIV，`sharedExpertNum_>0` | 3（2369、2388、2398） | 4（2154×2、2459、2475） |
 
 所有参与核在各自同步域内次数一致，未发现 `SyncAll` 路径不一致导致的挂死风险。
 
@@ -201,8 +212,13 @@ CrossCore 检查：
 - 从规则库 4.5 的跨核“payload → READY”发布协议看，应在二者之间恢复 `PipeBarrier<PIPE_ALL>()`。
 
 由于这里不是规则示例中的“MTE3 数据写 → Scalar 状态写”，而是两次 bypass Scalar store，当前缺少
-该 API 的跨核可见性/内存排序契约，故不计入 4 组确认缺失同步。建议由平台文档或反汇编确认
+该 API 的跨核可见性/内存排序契约，故不计入 1 组确认缺失同步。建议由平台文档或反汇编确认
 `WriteGmByPassDCache` 对不同核观察者的发布顺序；无法确认时，按协议安全侧恢复 `:954` 屏障。
+
+`layered.h:2142` 先以 `WriteGmByPassDCache` 更新本地 `syncCount`，`:2148` 随即把该 GM 地址
+作为 Hcomm `WriteNbi` 的 DMA 源。当前项目代码无法证明 bypass Scalar store 与 Hcomm DMA read
+之间存在 DDR release/fence；若 Hcomm 不隐含该保证，远端可能收到旧 count。建议核对 Hcomm
+契约，不能确认时在首次 `WriteNbi` 前增加适用 A5 的 DDR/全流水发布屏障。
 
 同理，`:1331 MTE3 → :1441 AtomicAdd`、`:907 MTE3 → :911 ready` 和 epilogue MTE3 copy-out
 → group flag 已有精确的 `MTE3_S`。直接流水依赖已覆盖；若项目通信规范强制“数据→状态只能用
@@ -228,22 +244,22 @@ CrossCore 检查：
 
 ## 7. 风险等级总评
 
-- 本次确认已修复：5 组。
+- 本次累计确认已修复：7 组，其中 A8W8 可达的 1 组使用 `PIPE_ALL` 作诊断性覆盖。
 - 因 A5 PIPE_V 内部依赖由编译器保证，删除纯 V→V 同步误报：5 组。
-- 当前确认缺失同步：4 组，其中最高风险为高。
-- 确认过度同步：6 处。
-- 协议级待确认：1 类（bypass Scalar payload/READY 发布顺序）。
+- 当前确认缺失同步：1 组，风险为高，但仅影响 A8W4；A8W8 路径当前无确认缺失项。
+- 确认过度同步：10 处。
+- 新增诊断性 `PIPE_ALL`：1 处，验证完成后应收窄，不计入既有 10 处优化清单。
+- 协议级待确认：2 类（bypass Scalar payload/READY，以及 Scalar GM store→Hcomm DMA read）。
 - CrossCore 配对问题：0。
 - `SyncAll` 路径计数问题：0。
-- 总体评估：**严重问题**。
+- 总体评估：**有风险**；A8W8 的 reset 依赖正在诊断验证。
 
-主要正确性风险集中在：
+当前确认的正确性风险为：
 
-1. cumsum、reset scratch 和 combine metadata 的跨流水/循环回边复用；
-2. combine 量化结果缺少 V→MTE3，可能搬出或发送未完成的 data/scale。
+1. A8W4 cumsum prefix 在 MTE2 搬入完成前被 MTE3 搬出。
 
-建议先修复 4 组确认缺失同步，再按过度同步表逐项收窄同步粒度；除明确的通信发布协议外，
-不要在修复阶段用新增 `PIPE_ALL` 统一兜底。
+建议先用目标 A8W8 用例验证 reset 问题是否消失；若验证通过，将 `layered.h:1662` 的
+诊断性 `PIPE_ALL` 收窄为 `MTE3_V`。A8W4 cumsum 依赖应单独修复，不影响本次 A8W8 定位。
 
 ## 8. TopK weight 前移精度问题修复方案
 
