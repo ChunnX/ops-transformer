@@ -82,7 +82,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
 - `D`：Q/K head dim，当前实现固定为 128。
 - `D_v`：V head dim，当前实现固定为 128。
 - `max_Qb`：Query block 最大数量，对应 `sparse_indices` 第 2 维和 `sparse_seq_len` 第 2 维。
-- `sparse_count`：每个 Query block 最多保存的稀疏 KV block 索引数量，对应 `sparse_indices` 第 3 维。
+- `max_Kb`：每个 Query block 最多保存的稀疏 KV block 索引数量，对应 `sparse_indices` 第 3 维。
 - `MaxBlockNumPerBatch`：每个 batch 在 `block_table` 中可索引的最大逻辑 KV block 数，对应 `block_table` 第 1 维。
 - `block_num`：PageAttention KV Cache 物理 block 总数。
 
@@ -179,13 +179,13 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>layout_sparse_indices 仅支持 B_N_Qb_Kb。有效元素表示逻辑 KV block id，取值范围为 [0, MaxBlockNumPerBatch - 1]。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B,N1,max_Qb,sparse_count)</td>
+      <td>(B,N1,max_Qb,max_Kb)</td>
     </tr>
     <tr>
       <td>sparse_seq_len</td>
       <td>输入</td>
       <td>每个 Query block 对应的有效 KV block 数。</td>
-      <td>每个值应在 [0, sparse_count] 范围内；值为 0 时对应稀疏任务输出置零，LSE 置为 -FLT_MAX。</td>
+      <td>每个值应在 [0, max_Kb] 范围内；值为 0 时对应稀疏任务输出置零，LSE 置为 -FLT_MAX。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,N1,max_Qb)</td>
@@ -212,7 +212,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>cu_seqlens_kv</td>
       <td>输入</td>
       <td>预留参数。</td>
-      <td>当前主算子不使用；如传入则需满足 dtype/format/shape 约束。</td>
+      <td>当前算子不使用；如传入则需满足 dtype/format/shape 约束。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B+1)</td>
@@ -221,7 +221,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>seqused_q</td>
       <td>输入</td>
       <td>预留参数。</td>
-      <td>当前主算子不使用；如传入则需满足 dtype/format/shape 约束。</td>
+      <td>当前算子不使用；如传入则需满足 dtype/format/shape 约束。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B)</td>
@@ -566,7 +566,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 | ValueHeadDim | Value head dim，当前固定为 128。 |
 | QueryBlockNumMax | Query block 最大数量，对应 `sparse_indices` 第 2 维和 `sparse_seq_len` 第 2 维。 |
 | KeyValueBlockNumMax | KV block 最大数量，对应 `block_table` 第 1 维。 |
-| sparse_count | 每个 Query block 最多保存的稀疏 KV block 索引数量，对应 `sparse_indices` 第 3 维。 |
+| max_Kb | 每个 Query block 最多保存的稀疏 KV block 索引数量，对应 `sparse_indices` 第 3 维。 |
 | PageBlockNum | PA KV Cache 物理 block 总数，对应 4D `key` 第 0 维。 |
 | MaxBlockNumPerBatch | 每个 batch 在 `block_table` 中可索引的最大逻辑 block 数，对应 `block_table` 第 1 维，与 `KeyValueBlockNumMax` 一致。 |
 | PaBlockStride | 相邻物理 PA block 的外步长；当前 4D PA 输入下由 PyTorch 接入层使用 `key.stride(0)` 传给底层，表示每个物理 PA block 内 Key、Value、`k_descale` 连续分段存储的总跨度。 |
@@ -588,20 +588,20 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
   - `attention_out` 数据类型为 `BFLOAT16`，数据格式为 ND。`layout_q="TND"` 时输出 shape 为 `(QueryTokenNum, QueryNumHead, ValueHeadDim)`；`layout_q="NTD"` 时 PyTorch 接入层输出仍为 TND 语义的 `(QueryTokenNum, QueryNumHead, ValueHeadDim)`。
   - `sparse_q_block_size` 和 `sparse_kv_block_size` 当前均仅支持 128。
   - `layout_q` 当前仅支持 `TND`、`NTD`。
-  - `layout_out` 为预留参数，当前不使能。
+  - `layout_out` 为预留参数，当前不使能；传入非 `TND` 类型会被拦截。
   - `quant_mode` 当前主算子仅支持 1，表示 `Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD`。
   - `softmax_scale` 为 float 属性，常用值为 `1 / sqrt(QueryHeadDim)`。
 
 - 存在性约束
 
   - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`p_scale`、`sparse_indices`、`sparse_seq_len` 为必选输入；`atten_mask` 在 `mask_mode=3` 时为必选输入，在 `mask_mode=0` 时可不传或传空指针。
-  - 当前算子仅支持 FP8 全量化、4D PA_BNSD KV Cache 输入和 BF16 attention_out 输出；不支持非量化、伪量化、后量化输出、PSE、ROPE、公共前缀、左 padding、dropout、tensorlist KV 输入、1D 组合 KV 存储等扩展场景。
+  - 当前算子支持 4D PA_BNSD KV Cache 输入和 BF16 attention_out 输出；不支持非量化、伪量化、后量化输出、PSE、ROPE、公共前缀、左 padding、dropout、tensorlist KV 输入、1D 组合 KV 存储等扩展场景。
 
 - 一致性约束
 
   - `BatchSize`、`QueryNumHead`、`KeyValueNumHead`、`GroupNum` 均必须大于 0。
   - `QueryNumHead` 必须能被 `KeyValueNumHead` 整除。
-  - `sparse_indices` 必须按 `(BatchSize, QueryNumHead, QueryBlockNumMax, sparse_count)` 传入，`sparse_seq_len` 必须按 `(BatchSize, QueryNumHead, QueryBlockNumMax)` 传入；当前主算子默认这两个 Tensor 的 shape 正确，不在 host 中做一致性校验。
+  - `sparse_indices` 必须按 `(BatchSize, QueryNumHead, QueryBlockNumMax, max_Kb)` 传入，`sparse_seq_len` 必须按 `(BatchSize, QueryNumHead, QueryBlockNumMax)` 传入；当前主算子默认这两个 Tensor 的 shape 正确，不在 host 中做一致性校验。
   - `block_table` 必须按 `(BatchSize, KeyValueBlockNumMax)` 传入。主算子使用 `sparse_indices.shape[2]` 作为 `QueryBlockNumMax`，使用 `block_table.shape[1]` 作为 `KeyValueBlockNumMax`，二者均必须大于 0。
   - 主算子内部使用块级上界 `S1 = QueryBlockNumMax * sparse_q_block_size`、`S2 = KeyValueBlockNumMax * sparse_kv_block_size` 进行 tiling；实际序列长度仍由 `seqused_*`、`cu_seqlens_*` 和稀疏元数据的数值语义约束。
   - 总计算块数 `BatchSize * QueryNumHead * QueryBlockNumMax` 必须在 `[1, UINT32_MAX]` 范围内。
@@ -643,7 +643,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
   - `sparse_indices`、`sparse_seq_len` 数据类型仅支持 `INT32`，数据格式仅支持 ND。
   - `layout_sparse_indices` 当前仅支持 `B_N_Qb_Kb`。
-  - `sparse_indices` 必须为 4D Tensor，shape 为 `(BatchSize, QueryNumHead, QueryBlockNumMax, sparse_count)`，其中 `sparse_count` 必须大于 0。
+  - `sparse_indices` 必须为 4D Tensor，shape 为 `(BatchSize, QueryNumHead, QueryBlockNumMax, max_Kb)`，其中 `max_Kb` 必须大于 0。
   - `sparse_seq_len` 必须为 3D Tensor，shape 为 `(BatchSize, QueryNumHead, QueryBlockNumMax)`。
 
 - 存在性约束
@@ -653,7 +653,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 - 一致性约束
 
   - `sparse_indices` 和 `sparse_seq_len` 的 shape 必须与 `BatchSize`、`QueryNumHead`、`QueryBlockNumMax` 语义保持一致；当前主算子 host 默认这两个 Tensor 的 shape 正确，不做一致性校验。
-  - `sparse_seq_len[b,n,qb]` 表示对应 Query block 的有效 KV block 数，有效范围为 `[0, sparse_count]`；值为 0 时对应稀疏任务输出置零，LSE 置为 `-FLT_MAX`。
+  - `sparse_seq_len[b,n,qb]` 表示对应 Query block 的有效 KV block 数，有效范围为 `[0, max_Kb]`；值为 0 时对应稀疏任务输出置零，LSE 置为 `-FLT_MAX`。
   - `sparse_indices` 的有效元素表示逻辑 KV block id，应在 `[0, KeyValueBlockNumMax - 1]` 范围内。
 
 - 特性交叉约束
