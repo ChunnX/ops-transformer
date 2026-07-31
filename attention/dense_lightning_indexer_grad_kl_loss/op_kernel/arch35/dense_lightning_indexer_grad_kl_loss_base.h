@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file dense_lightning_indexer_grad_kl_loss_base.h
@@ -91,9 +91,9 @@ private:
     DLIGradKLLossRunInfo runInfos[3];
 
     // cube and vector class
-    DLITMatmulService<DLIT> matmulService;
-    DLIKLLossVectorService<DLIT> vectorService;
-    DLIKLLossVector2Service<DLIT> vector2Service;
+    DenseLightningIndexerGradKLLossServiceCube<DLIT> matmulService;
+    DenseLightningIndexerGradKLLossVector<DLIT> vectorService;
+    DenseLightningIndexerGradKLLossVector2<DLIT> vector2Service;
 
     // input GM
     GlobalTensor<Q_T> queryGm, queryIndexGm;
@@ -231,14 +231,18 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitWorkspace(
         dWeightFloatSzie = 0;
     }
     int64_t reluGradSize = constInfo.n1IndexSize * S1_BASE_STEP * S2_BASE_STEP * sizeof(float); // * 2;
-    int64_t dKeyIndexFloatSzie = constInfo.bSize * constInfo.s2Size * constInfo.n2IndexSize * constInfo.dSizeQueryIndex * sizeof(float);
+    int64_t dKeyIndexFloatSzie =
+        constInfo.bSize * constInfo.s2Size * constInfo.n2IndexSize *
+        constInfo.dSizeQueryIndex * sizeof(float);
     if constexpr (LAYOUT_T == DLILayout::TND) {
         int64_t t2Size = this->actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
         dKeyIndexFloatSzie = t2Size * constInfo.n2IndexSize * constInfo.dSizeQueryIndex * sizeof(float);
     }
     int64_t dQueryIndexFloatSzie = S1_BASE_STEP * constInfo.n1IndexSize * constInfo.dSizeQueryIndex * sizeof(float);
-    int64_t coreTotalOffset = constInfo.aicIdx *
-            (bmm1Offset * 2 + bmm2Offset * 2 + psySyncSize * 2 * DOUBLE_BUFFER + reluGradSize *2 + dWeightFloatSzie + dQueryIndexFloatSzie);
+    int64_t coreTotalOffset =
+        constInfo.aicIdx *
+        (bmm1Offset * 2 + bmm2Offset * 2 + psySyncSize * 2 * DOUBLE_BUFFER +
+        reluGradSize * 2 + dWeightFloatSzie + dQueryIndexFloatSzie);
 
     uint64_t offset = 0;
 
@@ -534,13 +538,16 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Init(
                                     bmm1Res, bmm2Res, weightGm, pSyncGm, sySyncGm, lossGm, dWeightGmFloat, reluGm,
                                     reluGradRes, dWeightGm, dQueryIndexGmFloat, dQueryIndexGm);
         if constexpr (deterministic) {
-            vectorService.InitVector1DeterGM(deterCoreInfoGm, dKeyIndexDeterGmFloat, dKeyIndexGmFloat, lossGmDeterFloat);
+            vectorService.InitVector1DeterGM(
+                deterCoreInfoGm, dKeyIndexDeterGmFloat, dKeyIndexGmFloat, lossGmDeterFloat);
         }
     } else if ASCEND_IS_AIC {
         // initCubeOP
         matmulService.InitParams(constInfo);
         matmulService.InitBuffers(pipe);
-        matmulService.InitMm1GlobalTensor(queryGm, keyGm, queryRopeGm, keyRopeGm, actualSeqLengthsQueryGm, actualSeqLengthsKeyGm, bmm1Res, dKeyIndex);
+        matmulService.InitMm1GlobalTensor(
+            queryGm, keyGm, queryRopeGm, keyRopeGm, actualSeqLengthsQueryGm,
+            actualSeqLengthsKeyGm, bmm1Res, dKeyIndex);
         matmulService.InitMm2GlobalTensor(queryIndexGm, keyIndexGm, bmm2Res);
         matmulService.InitMm5GlobalTensor(reluGradRes, dKeyIndexGmFloat);
         matmulService.InitMm6GlobalTensor(dQueryIndexGmFloat);
@@ -570,7 +577,10 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
         int64_t s1EndIdxThisBatch = 0;
         if constexpr (LAYOUT_T == DLILayout::TND) {
             s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;
-            s1EndIdxThisBatch = (!lastB) ? GetEndS1Etx(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T) : s1EndIdx;
+            s1EndIdxThisBatch =
+                (!lastB) ?
+                GetEndS1Etx(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T) :
+                s1EndIdx;
         } else if constexpr (LAYOUT_T == DLILayout::BSND) {
             s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;;
             s1EndIdxThisBatch = (!lastB) ? constInfo.s1Size : s1EndIdx;
@@ -627,7 +637,6 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
                         matmulService.ComputeMm2(runInfo0);   // C1
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_SY_FLAG[runInfo0.taskIdMod2]);
                     }
-
                 }
 
                 if ASCEND_IS_AIV {
@@ -687,7 +696,6 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
                 taskId++;
             }
         }
-
     }
 
     if constexpr(deterministic) {

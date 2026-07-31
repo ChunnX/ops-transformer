@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file dense_lightning_indexer_grad_kl_loss_vector2.h
@@ -29,7 +29,7 @@ using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
 template <typename DLIT>
-class DLIKLLossVector2Service {
+class DenseLightningIndexerGradKLLossVector2 {
 public:
     // 中间计算数据类型为float，高精度模式
     using T = float;
@@ -40,7 +40,7 @@ public:
     DLIGradKLLossConstInfo constInfo;
     const optiling::DenseLightningIndexerGradKLLossTilingData *__restrict tilingData;
 
-    __aicore__ inline DLIKLLossVector2Service(){};
+    __aicore__ inline DenseLightningIndexerGradKLLossVector2() {};
 
     __aicore__ inline void InitParams(const struct DLIGradKLLossConstInfo &vecConstInfo,
         const optiling::DenseLightningIndexerGradKLLossTilingData *__restrict tilingData);
@@ -74,7 +74,8 @@ private:
 };
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitParams(const struct DLIGradKLLossConstInfo &vecConstInfo,
+__aicore__ inline void DenseLightningIndexerGradKLLossVector2<DLIT>::InitParams(
+    const struct DLIGradKLLossConstInfo &vecConstInfo,
     const optiling::DenseLightningIndexerGradKLLossTilingData *__restrict tilingData)
 {
     this->constInfo = vecConstInfo;
@@ -82,7 +83,8 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitParams(const struct DL
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2GM(const GlobalTensor<MM3_OUT_T>& dKeyIndexGmIn,
+__aicore__ inline void DenseLightningIndexerGradKLLossVector2<DLIT>::InitVector2GM(
+    const GlobalTensor<MM3_OUT_T>& dKeyIndexGmIn,
                                                                     const GlobalTensor<OUT_T>& dKeyIndexGmOut)
 {
     this->dKeyIndexGmIn = dKeyIndexGmIn;
@@ -90,7 +92,7 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2GM(const Global
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2DeterGM(
+__aicore__ inline void DenseLightningIndexerGradKLLossVector2<DLIT>::InitVector2DeterGM(
     const GlobalTensor<T>& lossGm, const GlobalTensor<T>& lossDeterGmFloat)
 {
     this->lossGm = lossGm;
@@ -98,7 +100,7 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2DeterGM(
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void DenseLightningIndexerGradKLLossVector2<DLIT>::InitBuffers(TPipe *pipe)
 {
     pipe->Reset();
     pipe->InitBuffer(this->uBuf_, DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_192K);
@@ -121,7 +123,7 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVector2Service<DLIT>::ProcessVectorDk()
+__aicore__ inline void DenseLightningIndexerGradKLLossVector2<DLIT>::ProcessVectorDk()
 {
     if (constInfo.dKeySingleCoreSize <= 0) {
         return;
@@ -170,7 +172,7 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::ProcessVectorDk()
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVector2Service<DLIT>::DeterSumLoss()
+__aicore__ inline void DenseLightningIndexerGradKLLossVector2<DLIT>::DeterSumLoss()
 {
     if (constInfo.aivIdx == 0) {
         DataCopyParams dataCopyParams;

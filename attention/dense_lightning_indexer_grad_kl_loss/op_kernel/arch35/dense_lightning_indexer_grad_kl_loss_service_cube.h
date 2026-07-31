@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file dense_lightning_indexer_grad_kl_loss_service_cube.h
@@ -23,7 +23,8 @@
 #include "dense_lightning_indexer_grad_kl_loss_common.h"
 
 
-template <typename DLIT> class DLITMatmulService {
+template <typename DLIT>
+class DenseLightningIndexerGradKLLossServiceCube {
 public:
     // 中间计算数据类型为float, 高精度模式
     using T = float;
@@ -32,7 +33,7 @@ public:
     using OUT_T = typename DLIT::outputT;
     using MM12_OUT_T = T;
 
-    __aicore__ inline DLITMatmulService(){};
+    __aicore__ inline DenseLightningIndexerGradKLLossServiceCube() {};
     __aicore__ inline void InitParams(const DLIGradKLLossConstInfo &constInfo);
     __aicore__ inline void InitMm1GlobalTensor(GlobalTensor<Q_T> &queryGm,
                                                GlobalTensor<KV_T> &keyGm,
@@ -64,7 +65,8 @@ private:
     __aicore__ inline void CopyInMm1AToL1(const DLIGradKLLossRunInfo &runInfo, uint32_t qHeadIdx);
     __aicore__ inline void CopyInMm1BToL1(const DLIGradKLLossRunInfo &runInfo, uint32_t kvHeadIdx, uint32_t s2InnerIdx,
                                           uint32_t actualS2Len, uint8_t pingpongFlag);
-    __aicore__ inline void CopyInMm2AToL1(const DLIGradKLLossRunInfo &runInfo, uint32_t n1IndexId, uint32_t pingpongFlag);
+    __aicore__ inline void CopyInMm2AToL1(
+        const DLIGradKLLossRunInfo &runInfo, uint32_t n1IndexId, uint32_t pingpongFlag);
     __aicore__ inline void CopyInMm2BToL1(const DLIGradKLLossRunInfo &runInfo, uint32_t n2IndexId, uint32_t s2InnerIdx,
                                           uint32_t actualS2Len, uint8_t pingpongFlag);
     __aicore__ inline void CopyInReluGradToL1A(const DLIGradKLLossRunInfo &runInfo, uint32_t n1IndexId);
@@ -73,10 +75,14 @@ private:
     __aicore__ inline void MmadInner(struct MMParam &mmParams, LocalTensor<Q_T> &l1QTensor,
                                      LocalTensor<KV_T> &l1KTensor, LocalTensor<MM12_OUT_T> l0cTensor,
                                      uint8_t l1PingPongFlag, uint8_t l0abPingPongFlag, uint8_t l0cPingPongFlag);
-    __aicore__ inline void LoadDataMmA(LocalTensor<Q_T> &aL0Tensor, LocalTensor<Q_T> &aL1Tensor, struct MMParam &mmParam);
-    __aicore__ inline void LoadDataMmAWithTranspose(LocalTensor<Q_T> &aL0Tensor, LocalTensor<Q_T> &aL1Tensor, struct MMParam &mmParam);
-    __aicore__ inline void LoadDataMmB(LocalTensor<KV_T> &bL0Tensor, LocalTensor<KV_T> &bL1Tensor, struct MMParam &mmParam);
-    __aicore__ inline void LoadDataMmBWithTranspose(LocalTensor<KV_T> &bL0Tensor, LocalTensor<KV_T> &bL1Tensor, struct MMParam &mmParam);
+    __aicore__ inline void LoadDataMmA(
+        LocalTensor<Q_T> &aL0Tensor, LocalTensor<Q_T> &aL1Tensor, struct MMParam &mmParam);
+    __aicore__ inline void LoadDataMmAWithTranspose(
+        LocalTensor<Q_T> &aL0Tensor, LocalTensor<Q_T> &aL1Tensor, struct MMParam &mmParam);
+    __aicore__ inline void LoadDataMmB(
+        LocalTensor<KV_T> &bL0Tensor, LocalTensor<KV_T> &bL1Tensor, struct MMParam &mmParam);
+    __aicore__ inline void LoadDataMmBWithTranspose(
+        LocalTensor<KV_T> &bL0Tensor, LocalTensor<KV_T> &bL1Tensor, struct MMParam &mmParam);
     __aicore__ inline void FixCopyOut(struct MMParam &mmParams, GlobalTensor<MM12_OUT_T> &resGm,
                                       LocalTensor<MM12_OUT_T> l0cTensor, uint8_t l0cPingPongFlag);
     __aicore__ inline void FixOutAtomicAdd(struct MMParam &mmParams, GlobalTensor<MM12_OUT_T> &resGm,
@@ -144,21 +150,23 @@ private:
     LocalTensor<KV_T> bL0TensorPingPong[2];
     LocalTensor<MM12_OUT_T> cL0TensorPingPong[2];
     LocalTensor<Q_T> l1ReLuGradTensor;
-
 };
 
-template <typename DLIT> __aicore__ inline void DLITMatmulService<DLIT>::InitParams(const DLIGradKLLossConstInfo &constInfo)
+template <typename DLIT>
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::InitParams(
+    const DLIGradKLLossConstInfo &constInfo)
 {
     this->constInfo = constInfo;
 }
 
 template <typename DLIT>
 __aicore__ inline void
-DLITMatmulService<DLIT>::InitMm1GlobalTensor(GlobalTensor<Q_T> &queryGm, GlobalTensor<KV_T> &keyGm,
-                                             GlobalTensor<Q_T> &qRopeGm, GlobalTensor<KV_T> &keyRopeGm,
-                                             GlobalTensor<int64_t> &actualSeqLengthsQueryGm,
-                                             GlobalTensor<int64_t> &actualSeqLengthsKeyGm,
-                                             GlobalTensor<MM12_OUT_T> &bmm1Res, GM_ADDR mm1Res)
+DenseLightningIndexerGradKLLossServiceCube<DLIT>::InitMm1GlobalTensor(
+    GlobalTensor<Q_T> &queryGm, GlobalTensor<KV_T> &keyGm,
+    GlobalTensor<Q_T> &qRopeGm, GlobalTensor<KV_T> &keyRopeGm,
+    GlobalTensor<int64_t> &actualSeqLengthsQueryGm,
+    GlobalTensor<int64_t> &actualSeqLengthsKeyGm,
+    GlobalTensor<MM12_OUT_T> &bmm1Res, GM_ADDR mm1Res)
 {
     this->queryGm = queryGm;
     this->qRopeGm = qRopeGm;
@@ -172,7 +180,8 @@ DLITMatmulService<DLIT>::InitMm1GlobalTensor(GlobalTensor<Q_T> &queryGm, GlobalT
 
 template <typename DLIT>
 __aicore__ inline void
-DLITMatmulService<DLIT>::InitMm2GlobalTensor(GlobalTensor<Q_T> &queryIndex, GlobalTensor<KV_T> &keyIndex, GlobalTensor<T> &mm2Res)
+DenseLightningIndexerGradKLLossServiceCube<DLIT>::InitMm2GlobalTensor(
+    GlobalTensor<Q_T> &queryIndex, GlobalTensor<KV_T> &keyIndex, GlobalTensor<T> &mm2Res)
 {
     queryIndexGm = queryIndex;
     keyIndexGm = keyIndex;
@@ -182,7 +191,8 @@ DLITMatmulService<DLIT>::InitMm2GlobalTensor(GlobalTensor<Q_T> &queryIndex, Glob
 
 template <typename DLIT>
 __aicore__ inline void
-DLITMatmulService<DLIT>::InitMm5GlobalTensor(GlobalTensor<Q_T> &reluGradRes, GlobalTensor<MM12_OUT_T> &bmm5Res)
+DenseLightningIndexerGradKLLossServiceCube<DLIT>::InitMm5GlobalTensor(
+    GlobalTensor<Q_T> &reluGradRes, GlobalTensor<MM12_OUT_T> &bmm5Res)
 {
     this->reluGradRes[0] = reluGradRes;
     this->reluGradRes[1] = reluGradRes[constInfo.n1IndexSize * S1_BASE_STEP * S2_BASE_STEP];
@@ -191,19 +201,21 @@ DLITMatmulService<DLIT>::InitMm5GlobalTensor(GlobalTensor<Q_T> &reluGradRes, Glo
 
 template <typename DLIT>
 __aicore__ inline void
-DLITMatmulService<DLIT>::InitMm5DeterGlobalTensor(GlobalTensor<T> &dKeyIndexDeterGmFloat)
+DenseLightningIndexerGradKLLossServiceCube<DLIT>::InitMm5DeterGlobalTensor(
+    GlobalTensor<T> &dKeyIndexDeterGmFloat)
 {
     this->dKeyIndexDeterGmFloat = dKeyIndexDeterGmFloat;
 }
 
 template <typename DLIT>
 __aicore__ inline void
-DLITMatmulService<DLIT>::InitMm6GlobalTensor(GlobalTensor<T> &bmm6Res)
+DenseLightningIndexerGradKLLossServiceCube<DLIT>::InitMm6GlobalTensor(GlobalTensor<T> &bmm6Res)
 {
     this->mm6ResGm = bmm6Res;
 }
 
-template <typename DLIT> __aicore__ inline void DLITMatmulService<DLIT>::InitBuffers(TPipe *pipe)
+template <typename DLIT>
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::InitBuffers(TPipe *pipe)
 {
     // L1
     pipe->InitBuffer(queryBuf, 128 * 192 * sizeof(Q_T));            // 48k
@@ -241,7 +253,8 @@ template <typename DLIT> __aicore__ inline void DLITMatmulService<DLIT>::InitBuf
     cL0TensorPingPong[1] = tmpBufL0C[1].Get<MM12_OUT_T>();
 }
 
-template <typename DLIT> __aicore__ inline void DLITMatmulService<DLIT>::AllocEventID()
+template <typename DLIT>
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::AllocEventID()
 {
     SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q);
     SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_RELU_GRAD);
@@ -257,10 +270,10 @@ template <typename DLIT> __aicore__ inline void DLITMatmulService<DLIT>::AllocEv
     SetFlag<AscendC::HardEvent::M_MTE1>(SYNC_MTE1MM_FLAG[1]);
     SetFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[0]);
     SetFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[1]);
-
 }
 
-template <typename DLIT> __aicore__ inline void DLITMatmulService<DLIT>::FreeEventID()
+template <typename DLIT>
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::FreeEventID()
 {
     WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q);
     WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_RELU_GRAD);
@@ -275,15 +288,12 @@ template <typename DLIT> __aicore__ inline void DLITMatmulService<DLIT>::FreeEve
     WaitFlag<AscendC::HardEvent::M_MTE1>(SYNC_MTE1MM_FLAG[1]);
     WaitFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[0]);
     WaitFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[1]);
-
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::CopyGmToL1(LocalTensor<KV_T> &l1Tensor,
-                                                           GlobalTensor<KV_T> &gmSrcTensor,
-                                                           uint32_t srcN,
-                                                           uint32_t srcD,
-                                                           uint32_t srcDstride)
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::CopyGmToL1(
+    LocalTensor<KV_T> &l1Tensor, GlobalTensor<KV_T> &gmSrcTensor,
+    uint32_t srcN, uint32_t srcD, uint32_t srcDstride)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -298,7 +308,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::CopyGmToL1(LocalTensor<KV_T> &l1
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::CopyInMm1AToL1(const DLIGradKLLossRunInfo &runInfo,
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::CopyInMm1AToL1(
+    const DLIGradKLLossRunInfo &runInfo,
                                                                uint32_t n1Idx)
 {
     uint32_t headOffset = n1Idx * constInfo.dSizeQuery;
@@ -315,7 +326,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::CopyInMm1AToL1(const DLIGradKLLo
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::CopyInMm1BToL1(const DLIGradKLLossRunInfo &runInfo,
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::CopyInMm1BToL1(
+    const DLIGradKLLossRunInfo &runInfo,
                                                                uint32_t n2Idx,
                                                                uint32_t s2InnerIdx,
                                                                uint32_t actualS2Len,
@@ -339,7 +351,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::CopyInMm1BToL1(const DLIGradKLLo
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::CopyInMm2AToL1(const DLIGradKLLossRunInfo &runInfo,
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::CopyInMm2AToL1(
+    const DLIGradKLLossRunInfo &runInfo,
                                                                uint32_t n1IndexId,
                                                                uint32_t pingpongFlag)
 {
@@ -350,7 +363,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::CopyInMm2AToL1(const DLIGradKLLo
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::CopyInMm2BToL1(const DLIGradKLLossRunInfo &runInfo,
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::CopyInMm2BToL1(
+    const DLIGradKLLossRunInfo &runInfo,
                                                                uint32_t n2IndexId,
                                                                uint32_t s2InnerIdx,
                                                                uint32_t actualS2Len,
@@ -365,7 +379,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::CopyInMm2BToL1(const DLIGradKLLo
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::CopyInReluGradToL1A(const DLIGradKLLossRunInfo &runInfo,
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::CopyInReluGradToL1A(
+    const DLIGradKLLossRunInfo &runInfo,
                                                                     uint32_t n1IndexId)
 {
     uint32_t reluGradGmOffset = n1IndexId * runInfo.curS1Size * runInfo.curS2StepSize;
@@ -376,9 +391,9 @@ __aicore__ inline void DLITMatmulService<DLIT>::CopyInReluGradToL1A(const DLIGra
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::LoadDataMmA(LocalTensor<Q_T> &aL0Tensor,
-                                                            LocalTensor<Q_T> &aL1Tensor,
-                                                            struct MMParam &mmParam)
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::LoadDataMmA(
+    LocalTensor<Q_T> &aL0Tensor, LocalTensor<Q_T> &aL1Tensor,
+    struct MMParam &mmParam)
 {
     uint32_t alignM = AlignTo(mmParam.singleM, static_cast<uint32_t>(C0_SIZE));
     uint32_t alignK = AlignTo(mmParam.singleK, static_cast<uint32_t>(C0_SIZE));
@@ -395,7 +410,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::LoadDataMmA(LocalTensor<Q_T> &aL
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::LoadDataMmAWithTranspose(LocalTensor<Q_T> &aL0Tensor,
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::LoadDataMmAWithTranspose(
+    LocalTensor<Q_T> &aL0Tensor,
                                                                          LocalTensor<Q_T> &aL1Tensor,
                                                                          struct MMParam &mmParam)
 {
@@ -414,9 +430,9 @@ __aicore__ inline void DLITMatmulService<DLIT>::LoadDataMmAWithTranspose(LocalTe
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::LoadDataMmB(LocalTensor<KV_T> &l0Tensor,
-                                                             LocalTensor<KV_T> &l1Tensor,
-                                                             struct MMParam &mmParam)
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::LoadDataMmB(
+    LocalTensor<KV_T> &l0Tensor, LocalTensor<KV_T> &l1Tensor,
+    struct MMParam &mmParam)
 {
     uint32_t alignK = AlignTo(mmParam.singleK, static_cast<uint32_t>(C0_SIZE));
     uint32_t alignN = AlignTo(mmParam.singleN, static_cast<uint32_t>(C0_SIZE));
@@ -429,13 +445,12 @@ __aicore__ inline void DLITMatmulService<DLIT>::LoadDataMmB(LocalTensor<KV_T> &l
     loadData2DParams.ifTranspose = false;
 
     LoadData(l0Tensor, l1Tensor, loadData2DParams);
-
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::LoadDataMmBWithTranspose(LocalTensor<KV_T> &l0Tensor,
-                                                                          LocalTensor<KV_T> &l1Tensor,
-                                                                          struct MMParam &mmParam)
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::LoadDataMmBWithTranspose(
+    LocalTensor<KV_T> &l0Tensor, LocalTensor<KV_T> &l1Tensor,
+    struct MMParam &mmParam)
 {
     uint32_t alignK = AlignTo(mmParam.singleK, static_cast<uint32_t>(C0_SIZE));
     uint32_t alignN = AlignTo(mmParam.singleN, static_cast<uint32_t>(C0_SIZE));
@@ -450,18 +465,14 @@ __aicore__ inline void DLITMatmulService<DLIT>::LoadDataMmBWithTranspose(LocalTe
     for (int32_t i = 0; i < alignK / C0_SIZE; i++) {
         LoadData(l0Tensor[i * alignN * C0_SIZE], l1Tensor[i * CUBE_MATRIX_SIZE], loadData2DParams);
     }
-
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::MmadInner(struct MMParam &mmParams,
-                                                          LocalTensor<Q_T> &l1QTensor,
-                                                          LocalTensor<KV_T> &l1KTensor,
-                                                          LocalTensor<MM12_OUT_T> l0cTensor,
-                                                          uint8_t l1PingPongFlag,
-                                                          uint8_t l0abPingPongFlag,
-                                                          uint8_t l0cPingPongFlag) {
-
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::MmadInner(
+    struct MMParam &mmParams, LocalTensor<Q_T> &l1QTensor,
+    LocalTensor<KV_T> &l1KTensor, LocalTensor<MM12_OUT_T> l0cTensor,
+    uint8_t l1PingPongFlag, uint8_t l0abPingPongFlag, uint8_t l0cPingPongFlag)
+{
     MmadParams mmadParams;
     mmadParams.m = mmParams.singleM == 1 ? 16 : mmParams.singleM;
     mmadParams.n = mmParams.singleN;
@@ -475,7 +486,7 @@ __aicore__ inline void DLITMatmulService<DLIT>::MmadInner(struct MMParam &mmPara
         l0bTensor = bL0TensorPingPong[l1PingPongFlag & 1];
     }
 
-    WaitFlag<AscendC::HardEvent::M_MTE1>(SYNC_MTE1MM_FLAG[l0abPingPongFlag & 1]);///mte1等matmul完成后开始下一次搬运
+    WaitFlag<AscendC::HardEvent::M_MTE1>(SYNC_MTE1MM_FLAG[l0abPingPongFlag & 1]); // Wait before the next copy
     if (mmParams.isLeftTranspose) {
         LoadDataMmAWithTranspose(l0aTensor, l1QTensor, mmParams);
     } else {
@@ -488,9 +499,9 @@ __aicore__ inline void DLITMatmulService<DLIT>::MmadInner(struct MMParam &mmPara
             LoadDataMmB(l0bTensor, l1KTensor, mmParams);
         }
     }
-    SetFlag<AscendC::HardEvent::MTE1_M>(SYNC_MTE1MM_FLAG[l0abPingPongFlag & 1]);//L0A L0B搬完发给matmul可以运算
-    WaitFlag<AscendC::HardEvent::MTE1_M>(SYNC_MTE1MM_FLAG[l0abPingPongFlag & 1]);///matmul等mte1完成
-    WaitFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[l0cPingPongFlag & 1]);//mte1等mte2搬完
+    SetFlag<AscendC::HardEvent::MTE1_M>(SYNC_MTE1MM_FLAG[l0abPingPongFlag & 1]); // L0A/L0B copy complete
+    WaitFlag<AscendC::HardEvent::MTE1_M>(SYNC_MTE1MM_FLAG[l0abPingPongFlag & 1]); // Wait for MTE1
+    WaitFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[l0cPingPongFlag & 1]); // Wait for FixPipe
 
     Mmad(l0cTensor, l0aTensor, l0bTensor, mmadParams);
     if (mmParams.needAccumL0C) {
@@ -500,10 +511,9 @@ __aicore__ inline void DLITMatmulService<DLIT>::MmadInner(struct MMParam &mmPara
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::FixCopyOut(struct MMParam &mmParams,
-                                                           GlobalTensor<MM12_OUT_T> &resGm,
-                                                           LocalTensor<MM12_OUT_T> l0cTensor,
-                                                           uint8_t l0cPingPongFlag)
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::FixCopyOut(
+    struct MMParam &mmParams, GlobalTensor<MM12_OUT_T> &resGm,
+    LocalTensor<MM12_OUT_T> l0cTensor, uint8_t l0cPingPongFlag)
 {
     if (mmParams.isFixOut) {
         SetFlag<AscendC::HardEvent::M_FIX>(SYNC_MMFIX_FLAG[l0cPingPongFlag & 1]);
@@ -524,7 +534,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::FixCopyOut(struct MMParam &mmPar
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::FixOutAtomicAdd(struct MMParam &mmParams,
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::FixOutAtomicAdd(
+    struct MMParam &mmParams,
                                                                 GlobalTensor<MM12_OUT_T> &resGm,
                                                                 LocalTensor<MM12_OUT_T> l0cTensor,
                                                                 uint8_t l0cPingPongFlag)
@@ -553,7 +564,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::FixOutAtomicAdd(struct MMParam &
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::ComputeMm1(const DLIGradKLLossRunInfo &info)
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::ComputeMm1(
+    const DLIGradKLLossRunInfo &info)
 {
     uint8_t l1PingPongFlag = 0;
     uint8_t l0abPingPongFlag = 0;
@@ -598,7 +610,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm1(const DLIGradKLLossRu
                 l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
             }
 
-            SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[l1PingPongFlag & 1]);   //L0B搬完发给MTE2可以搬到L1 下一轮发射
+            // L0B copy complete; allow MTE2 to refill L1 for the next iteration.
+            SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[l1PingPongFlag & 1]);
             l0cPingPongFlag = (l0cPingPongFlag + 1) & 1;
             l1PingPongFlag = (l1PingPongFlag + 1) & 1;
         }
@@ -607,7 +620,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm1(const DLIGradKLLossRu
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::ComputeMm2(const DLIGradKLLossRunInfo &info)
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::ComputeMm2(
+    const DLIGradKLLossRunInfo &info)
 {
     uint8_t l1PingPongFlag = 0;
     uint8_t l0PingPongFlag = 0;
@@ -668,7 +682,8 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm2(const DLIGradKLLossRu
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34(const DLIGradKLLossRunInfo &info)
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::ComputeMm34(
+    const DLIGradKLLossRunInfo &info)
 {
     uint8_t l1PingPongFlag = 0;
     uint8_t l0abPingPongFlag = 0;
@@ -715,9 +730,11 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34(const DLIGradKLLossR
             auto l1bTensor = l1QIndexTensor[l1PingPongFlag & 1];
             LocalTensor<MM12_OUT_T> l0cTensor = cL0TensorPingPong[l0abPingPongFlag & 1];
 
-            uint32_t dKeyGmOffset = info.keyIndexTensorOffset
-                                    + s2InnerIdx * constInfo.s2BaseBlk * constInfo.n2IndexSize * constInfo.dSizeQueryIndex
-                                    + n2IndexId * constInfo.dSizeQueryIndex;
+            uint32_t dKeyGmOffset =
+                info.keyIndexTensorOffset +
+                s2InnerIdx * constInfo.s2BaseBlk * constInfo.n2IndexSize *
+                    constInfo.dSizeQueryIndex +
+                n2IndexId * constInfo.dSizeQueryIndex;
             auto dstGm = mm5ResGm[dKeyGmOffset];
             MmadInner(mm3Params, l1aTensor, l1bTensor, l0cTensor, l1PingPongFlag, l0abPingPongFlag, l0abPingPongFlag);
             FixOutAtomicAdd(mm3Params, dstGm, l0cTensor, l0abPingPongFlag);
@@ -765,11 +782,13 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34(const DLIGradKLLossR
 }
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::ComputeMm4(const DLIGradKLLossRunInfo &info)
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::ComputeMm4(
+    const DLIGradKLLossRunInfo &info)
 {}
 
 template <typename DLIT>
-__aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKLLossRunInfo &info)
+__aicore__ inline void DenseLightningIndexerGradKLLossServiceCube<DLIT>::ComputeMm34Deter(
+    const DLIGradKLLossRunInfo &info)
 {
     uint8_t l1PingPongFlag = 0;
     uint8_t l0abPingPongFlag = 0;
@@ -815,9 +834,11 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKL
             auto l1bTensor = l1QIndexTensor[l1PingPongFlag & 1];
             LocalTensor<MM12_OUT_T> l0cTensor = cL0TensorPingPong[l0abPingPongFlag & 1];
 
-            uint32_t dKeyGmOffset = constInfo.dKeyDeterGmOffset +
-                                    s2InnerIdx * constInfo.s2BaseBlk * constInfo.n2IndexSize * constInfo.dSizeQueryIndex +
-                                    n2IndexId * constInfo.dSizeQueryIndex;
+            uint32_t dKeyGmOffset =
+                constInfo.dKeyDeterGmOffset +
+                s2InnerIdx * constInfo.s2BaseBlk * constInfo.n2IndexSize *
+                    constInfo.dSizeQueryIndex +
+                n2IndexId * constInfo.dSizeQueryIndex;
             auto dstGm = dKeyIndexDeterGmFloat[dKeyGmOffset];
             MmadInner(mm3Params, l1aTensor, l1bTensor, l0cTensor, l1PingPongFlag, l0abPingPongFlag, l0abPingPongFlag);
             FixOutAtomicAdd(mm3Params, dstGm, l0cTensor, l0abPingPongFlag);

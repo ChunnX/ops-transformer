@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file dense_lightning_indexer_grad_kl_loss_common.h
@@ -52,14 +52,12 @@ static constexpr uint32_t TEMP_VEC_SIZE_V3V4  = 24 * 1024;
 // deter
 static constexpr int64_t DETER_INVALID_RUNINFO_VALUE  = -1;
 
-enum class DLILayout
-{
+enum class DLILayout {
     BSND = 0,
     TND = 1
 };
 
-enum class DLISparseMode
-{
+enum class DLISparseMode {
     RightDown = 3
 };
 
@@ -85,7 +83,7 @@ struct MMParam {
  *  @{
  */
 template <typename InputQT, typename InputKT, typename InputWT, typename OutT,
-	      DLILayout LayoutQT = DLILayout::TND,
+          DLILayout LayoutQT = DLILayout::TND,
           DLILayout LayoutKT = DLILayout::TND,
           DLISparseMode SparseMode = DLISparseMode::RightDown,
           const bool HasRope = false, const bool Deterministic = false,
@@ -129,9 +127,9 @@ struct DLIGradKLLossConstInfo {
     uint32_t aicNum;
 
     /** \brief TilingData中的信息 */
-	uint32_t bSize;
+    uint32_t bSize;
     uint32_t n1Size; // 128/64/32
-	uint32_t n2Size; // 目前与n1Size相同
+    uint32_t n2Size; // 目前与n1Size相同
     uint32_t n1IndexSize; // 64/32
     uint32_t n2IndexSize; // 目前是1
     uint32_t gSizeQuery; // 1
@@ -179,7 +177,7 @@ struct DLIGradKLLossConstInfo {
 struct DLIGradKLLossRunInfo {
     uint32_t taskId;
     uint32_t taskIdMod2;
-	uint32_t bIdx;
+    uint32_t bIdx;
     uint32_t s1Idx;
     uint32_t kIdx;
     int64_t accumS1Idx; // 当前循环累加的T1
