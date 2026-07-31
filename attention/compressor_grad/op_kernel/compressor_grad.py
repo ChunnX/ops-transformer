@@ -259,7 +259,7 @@ def _get_start_pos(bIdx, start_pos, ctx):
 
 def _get_seq_length(bIdx, cu_seqlens, ctx):
     result = ctx.seqSize
-    if ctx.layout == 0:  # TH
+    if ctx.layout == 1:  # TH
         result = pl.getval(pl.make_tensor(cu_seqlens, [ctx.batchSize + 1], [1], dtype=pl.DT_INT32), bIdx + 1) - \
                  pl.getval(pl.make_tensor(cu_seqlens, [ctx.batchSize + 1], [1], dtype=pl.DT_INT32), bIdx)
     return result
@@ -278,7 +278,7 @@ def _get_seq_used(bIdx, seqused, cu_seqlens, ctx):
 # ================================================================
 def _get_token_idx(bIdx, sIdx, cu_seqlens, ctx):
     result = bIdx * ctx.seqSize + sIdx
-    if ctx.layout == 0:
+    if ctx.layout == 1:
         result = pl.getval(pl.make_tensor(cu_seqlens, [ctx.batchSize + 1], [1], dtype=pl.DT_INT32), bIdx) + sIdx
     return result
 
@@ -313,7 +313,7 @@ def _get_cmp_block_count(bIdx, sIdx, start_pos, seqused, cu_seqlens, ctx):
 def _get_pos_from_token_idx(tIdx, cu_seqlens, ctx):
     resultB = tIdx // ctx.seqSize
     resultS = tIdx % ctx.seqSize
-    if ctx.layout == 0:
+    if ctx.layout == 1:
         resultB = 0
         while resultB < ctx.batchSize:
             if tIdx < pl.getval(pl.make_tensor(cu_seqlens, [ctx.batchSize + 1], [1], dtype=pl.DT_INT32), resultB + 1):
@@ -406,7 +406,7 @@ def compressor_grad(
         if cmpLimit > sp:
             totalBlocks = totalBlocks + (cmpLimit - sp) // cmpRatio
 
-    if Layout == 0:
+    if Layout == 1:
         outputRows = min(tokenSize, (tokenSize // cmpRatio) + batchSize)
     else:
         outputRows = batchSize * ((seqSize + cmpRatio - 1) // cmpRatio)
@@ -464,7 +464,7 @@ def compressor_grad(
     x_ptr = pl.addptr(dwgate_ptr, dw_ws_elems)   
 
     # ── d_x output + workspace views (Phase 3) ──
-    if Layout == 0:
+    if Layout == 1:
         d_x_rows = tokenSize
     else:
         d_x_rows = batchSize * seqSize
@@ -691,7 +691,7 @@ def compressor_grad(
                     remaining = blkInBatch - scIdx
                     if remaining > 0:
                         taken = min(dealTcSize - processed, remaining)
-                        if Layout == 0:
+                        if Layout == 1:
                             globalBlkIdx = roundIdx * mPerRoundAll + preDealTcSize + processed
                         else:
                             globalBlkIdx = bIdx * outStride + scIdx
