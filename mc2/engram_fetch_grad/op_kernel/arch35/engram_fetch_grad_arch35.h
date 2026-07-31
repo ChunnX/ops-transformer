@@ -31,30 +31,8 @@ __aicore__ inline void EngramFetchGradSyncFunc()
     AscendC::WaitFlag<event>(eventID);
 }
 
-#define ENGRAM_GRAD_WRITE_NBI(hcomm, handle, dst, src, len, tag) \
-    do { \
-        int32_t ret = (hcomm).WriteNbi((handle), (dst), (src), (len)); \
-        ascendc_assert(ret == 0, "WriteNbi failed, ret=%d, tag=%s, rankId=%u, aivId=%u", ret, tag, rankId_, aivId_); \
-    } while (0)
-
-#define ENGRAM_GRAD_DRAIN(hcomm, handle, tag) \
-    do { \
-        int32_t ret = (hcomm).Drain((handle)); \
-        if (ret != 0) { \
-            printf("Drain failed, ret=%d, tag=%s, rankId=%u, aivId=%u\n", ret, tag, rankId_, aivId_); \
-        } \
-    } while (0)
-
 constexpr uint32_t ENGRAM_GRAD_TIMEOUT_US = 5U * 1000U * 1000U;
 constexpr uint32_t ENGRAM_GRAD_CYCLES_PER_US = 1000U;
-
-#define ENGRAM_GRAD_TIMEOUT_CHECK(startTime, tag) \
-    do { \
-        uint64_t __nowUs = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US; \
-        ascendc_assert((__nowUs - (startTime)) < ENGRAM_GRAD_TIMEOUT_US, \
-                       "timeout, tag=%s, rankId=%u, aivId=%u, elapsed=%llu us", tag, rankId_, aivId_, \
-                       __nowUs - (startTime)); \
-    } while (0)
 
 class EngramFetchGradArch35 {
 public:
@@ -68,6 +46,9 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void WriteNbiChecked(uint64_t handle, GM_ADDR dst, GM_ADDR src, uint64_t len);
+    __aicore__ inline void DrainChecked(uint64_t handle);
+    __aicore__ inline void TimeoutCheck(uint64_t startTime);
     __aicore__ inline void UnsortGrad();
     __aicore__ inline void ExchangeGrad();
     __aicore__ inline void SendGradToPeers();
@@ -164,6 +145,24 @@ private:
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
 };
 
+__aicore__ inline void EngramFetchGradArch35::WriteNbiChecked(uint64_t handle, GM_ADDR dst, GM_ADDR src, uint64_t len)
+{
+    int32_t ret = hcomm_.WriteNbi(handle, dst, src, len);
+    ascendc_assert(ret == 0, "WriteNbi failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
+}
+
+__aicore__ inline void EngramFetchGradArch35::DrainChecked(uint64_t handle)
+{
+    int32_t ret = hcomm_.Drain(handle);
+}
+
+__aicore__ inline void EngramFetchGradArch35::TimeoutCheck(uint64_t startTime)
+{
+    uint64_t nowUs = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;
+    ascendc_assert((nowUs - startTime) < ENGRAM_GRAD_TIMEOUT_US,
+                   "timeout, rankId=%u, aivId=%u, elapsed=%llu us", rankId_, aivId_, nowUs - startTime);
+}
+
 __aicore__ inline GM_ADDR EngramFetchGradArch35::GetRemoteWinAddr(uint32_t dstRank, uint64_t offset)
 {
     return (GM_ADDR)ctxPtr_->commBuffer[dstRank] + offset;
@@ -204,8 +203,8 @@ __aicore__ inline void EngramFetchGradArch35::WriteRemoteCounter(uint32_t dstRan
 
     uint64_t handle = GetCommHandle(dstRank);
     GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, counterOffset) + rankId_ * STATE_OFFSET;
-    ENGRAM_GRAD_WRITE_NBI(hcomm_, handle, remoteCounterAddr, srcAddr, sizeof(int32_t), "WriteRemoteCounter");
-    ENGRAM_GRAD_DRAIN(hcomm_, handle, "WriteRemoteCounter");
+    WriteNbiChecked(handle, remoteCounterAddr, srcAddr, sizeof(int32_t));
+    DrainChecked(handle);
 }
 
 __aicore__ inline void EngramFetchGradArch35::WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount)
@@ -222,7 +221,7 @@ __aicore__ inline void EngramFetchGradArch35::WaitAllStatusFlags(GM_ADDR statusW
             int32_t flagVal = slotGM.GetValue(0);
             sumOfFlag += flagVal;
         }
-        ENGRAM_GRAD_TIMEOUT_CHECK(startTime, "WaitAllStatusFlags");
+        TimeoutCheck(startTime);
     }
 }
 
@@ -314,10 +313,11 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
 
     winSize_ = tilingData->commBufferSize;
 
+    uint64_t totalRanksOffset = numRanks_ * STATE_OFFSET;
     barrierFlagOffset_ = 0;
-    tokenFlagOffset_ = numRanks_ * STATE_OFFSET;
-    tokenWriteOffset_ = 2U * numRanks_ * STATE_OFFSET;
-    tokenReadOffset_ = 3U * numRanks_ * STATE_OFFSET;
+    tokenFlagOffset_ = totalRanksOffset;
+    tokenWriteOffset_ = tokenFlagOffset_ + totalRanksOffset;
+    tokenReadOffset_ = tokenWriteOffset_ + totalRanksOffset;
     tokenDataOffset_ = 4U * numRanks_ * STATE_OFFSET;
 
     uint64_t tokenAreaRaw = (winSize_ > tokenDataOffset_) ? (winSize_ - tokenDataOffset_) : 0U;
@@ -487,7 +487,7 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, i
             while (localWriteCnt >= static_cast<uint32_t>(remoteReadCnt) &&
                    localWriteCnt - static_cast<uint32_t>(remoteReadCnt) >= NUM_SLOTS) {
                 remoteReadCnt = ReadLocalCounter(localWinBase, tokenReadOffset_, dstRank);
-                ENGRAM_GRAD_TIMEOUT_CHECK(startTime, "ExGrad_backpressure");
+                TimeoutCheck(startTime);
             }
         }
 
@@ -506,15 +506,15 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, i
                                                 static_cast<uint64_t>(localWriteCnt + 1));
         ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u", ret,
                        rankId_, dstRank);
-        ENGRAM_GRAD_DRAIN(hcomm_, handle, "ExGrad_data");
+        DrainChecked(handle);
 
         localWriteCnt++;
         totalSent += chunkLen;
     }
 
     GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, tokenFlagOffset_) + rankId_ * STATE_OFFSET;
-    ENGRAM_GRAD_WRITE_NBI(hcomm_, handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET, "ExGrad_flag");
-    ENGRAM_GRAD_DRAIN(hcomm_, handle, "ExGrad_flag");
+    WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
+    DrainChecked(handle);
 }
 
 __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
@@ -550,7 +550,7 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
             int32_t remoteWriteCnt = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank);
             while (remoteWriteCnt <= 0 || static_cast<uint32_t>(remoteWriteCnt) <= localReadCnt) {
                 remoteWriteCnt = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank);
-                ENGRAM_GRAD_TIMEOUT_CHECK(startTime, "ExGrad_recv");
+                TimeoutCheck(startTime);
             }
 
             uint32_t remaining = static_cast<uint32_t>(recvCount) - totalReceived;
@@ -639,7 +639,7 @@ __aicore__ inline void EngramFetchGradArch35::MarkBitmap(uint32_t numRecv, uint3
 
         for (uint32_t i = 0; i < batchLen; i++) {
             int32_t globalIdx = entryUb.GetValue(i);
-            int32_t localIdx = globalIdx - static_cast<int32_t>(rankId_) * numEntriesPerRank_;
+            int64_t localIdx = static_cast<int64_t>(globalIdx) - static_cast<int64_t>(rankId_) * static_cast<int64_t>(numEntriesPerRank_);
             if (localIdx < 0) {
                 continue;
             }
@@ -804,7 +804,7 @@ EngramFetchGradArch35::AccumulateGradForEntry(int32_t entryVal, uint32_t numRecv
 
         for (uint32_t i = 0; i < batchLen; i++) {
             int32_t globalIdx = entryUb.GetValue(i);
-            int32_t localIdx = globalIdx - static_cast<int32_t>(rankId_) * numEntriesPerRank_;
+            int64_t localIdx = static_cast<int64_t>(globalIdx) - static_cast<int64_t>(rankId_) * static_cast<int64_t>(numEntriesPerRank_);
             if (localIdx != entryVal) {
                 continue;
             }
@@ -937,8 +937,8 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
                 continue;
             uint64_t handle = GetCommHandle(dstRank);
             GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, barrierFlagOffset_) + rankId_ * STATE_OFFSET;
-            ENGRAM_GRAD_WRITE_NBI(hcomm_, handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET, "Barrier");
-            ENGRAM_GRAD_DRAIN(hcomm_, handle, "Barrier");
+            WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
+            DrainChecked(handle);
         }
     }
     if (aivId_ == 0) {
