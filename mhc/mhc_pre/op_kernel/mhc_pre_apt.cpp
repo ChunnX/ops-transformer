@@ -13,10 +13,10 @@
  * \brief
  */
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-#include "arch35/mhc_pre_kernel_base.h"
-#include "arch35/mhc_pre_kernel_split_bs.h"
-#include "arch35/mhc_pre_m_k_split_core_arch35.h"
-#include "arch35/mhc_pre_kernel_split_nd.h"
+#include "arch35/mhc_pre_base.h"
+#include "arch35/mhc_pre_split_bs.h"
+#include "arch35/mhc_pre_m_k_split.h"
+#include "arch35/mhc_pre_split_nd.h"
 #include "arch35/mhc_pre_tiling_key.h"
 
 using namespace AscendC;
@@ -33,55 +33,29 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     if constexpr (TILING_MODE == MHC_PRE_SPLIT_BS) {
-        InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
-                              h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
-        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            MhcPreKernelSplitBS<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> op;
-            op.Init(initParams);
-            op.Process();
-        } else {
-            MhcPreKernelSplitBS<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op;
-            op.Init(initParams);
-            op.Process();
-        }
+        InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
+                              h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
+        MhcPreSplitBS<DTYPE_X, float32_t, HAS_RESI> op;
+        op.Init(initParams);
+        op.Process();
     } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_M_K) {
-        InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
-                              h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
-        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            MhcPreKernelMKPart1<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> part1;
-            part1.Init(initParams);
-            part1.Process();
-            pipe.Destroy();
-            TPipe stage2Pipe;
-            initParams.tPipeIn = &stage2Pipe;
-            MhcPreKernelMKPart2<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> part2;
-            part2.Init(initParams);
-            part2.Process();
-        } else {
-            MhcPreKernelMKPart1<DTYPE_X, float32_t, MHC_PRE_NO_RESI> part1;
-            part1.Init(initParams);
-            part1.Process();
-            pipe.Destroy();
-            TPipe stage2Pipe;
-            initParams.tPipeIn = &stage2Pipe;
-            MhcPreKernelMKPart2<DTYPE_X, float32_t, MHC_PRE_NO_RESI> part2;
-            part2.Init(initParams);
-            part2.Process();
-        }
+        InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
+                              h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
+        MhcPreMKPart1<DTYPE_X, float32_t, HAS_RESI> part1;
+        part1.Init(initParams);
+        part1.Process();
+        pipe.Destroy();
+        TPipe stage2Pipe;
+        initParams.tPipeIn = &stage2Pipe;
+        MhcPreMKPart2<DTYPE_X, float32_t, HAS_RESI> part2;
+        part2.Init(initParams);
+        part2.Process();
     } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_ND) {
-        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
-                                  h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
-            MhcPreKernelSplitND<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> op;
-            op.Init(initParams);
-            op.Process();
-        } else {
-            InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
-                                  h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
-            MhcPreKernelSplitND<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op;
-            op.Init(initParams);
-            op.Process();
-        }
+        InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
+                              h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
+        MhcPreSplitND<DTYPE_X, float32_t, HAS_RESI> op;
+        op.Init(initParams);
+        op.Process();
     }
 }
 #endif

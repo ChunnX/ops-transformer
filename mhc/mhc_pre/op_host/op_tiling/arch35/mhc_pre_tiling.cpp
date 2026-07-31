@@ -26,6 +26,8 @@
 namespace optiling {
 
 using namespace Ops::Transformer::OpTiling;
+
+// Supported input ranks and input tensor indices.
 const constexpr int64_t BSND_DIM_NUM = 4;
 const constexpr int64_t TND_DIM_NUM = 3;
 const constexpr uint32_t X_INDEX = 0;
@@ -34,13 +36,15 @@ const constexpr uint32_t ALPHA_INDEX = 2;
 const constexpr uint32_t BIAS_INDEX = 3;
 const constexpr uint32_t GAMMA_INDEX = 4;
 
-const constexpr uint32_t H_IN_INDEX = 0;
-const constexpr uint32_t H_POST_INDEX = 1;
-const constexpr uint32_t H_RES_INDEX = 2;
-const constexpr uint32_t INV_RMS_INDEX = 3;
-const constexpr uint32_t H_MIX_INDEX = 4;
-const constexpr uint32_t H_PRE_INDEX = 5;
+// Output tensor indices. These are shared by validation and optional-output handling.
+constexpr size_t OUT_H_IN_INDEX = 0;
+constexpr size_t OUT_H_POST_INDEX = 1;
+constexpr size_t OUT_H_RES_INDEX = 2;
+constexpr size_t OUT_INV_RMS_INDEX = 3;
+constexpr size_t OUT_H_MIX_INDEX = 4;
+constexpr size_t OUT_H_PRE_INDEX = 5;
 
+// Input layout dimension indices.
 const constexpr int64_t INDEX_B_BSND = 0;
 const constexpr int64_t INDEX_S_BSND = 1;
 const constexpr int64_t INDEX_N_BSND = 2;
@@ -50,6 +54,7 @@ const constexpr int64_t INDEX_T_TND = 0;
 const constexpr int64_t INDEX_N_TND = 1;
 const constexpr int64_t INDEX_D_TND = 2;
 
+// Shape constraints and default vector tile sizes.
 const constexpr uint32_t N_VALID_VALUES[] = {4, 6, 8};
 const constexpr uint32_t D_ALIGNMENT = 16;
 const constexpr uint32_t CHUNK_T_MAX = 128;
@@ -59,15 +64,17 @@ const constexpr uint64_t D_MIN = 16;
 const constexpr uint64_t D_MAX = 16384;
 const constexpr uint32_t KERNEL_WIDTH = 8;
 
-
+// Legacy BS/ND workspace sizing.
 const constexpr size_t WORKSPACE_MULT_A = 2;
 const constexpr size_t WORKSPACE_MULT_B = 192;
 const constexpr size_t WORKSPACE_DIM_M = 256;
 const constexpr size_t WORKSPACE_ELEMENTS = 8;
 const constexpr size_t SYSTEM_WORKSPACE = 20 * 1024 * 1024;
 
+// Runtime scheduling configuration.
 const constexpr uint32_t SCHEDULE_MODE = 1;
 
+// Attributes and their accepted values.
 const constexpr float DEFAULT_NORM_EPS = 1e-6f;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
 const constexpr uint32_t IMPL_MODE_ATTR_INDEX = 3;
@@ -75,18 +82,21 @@ const constexpr uint32_t OUT_FLAG_ATTR_INDEX = 0;
 const constexpr int64_t IMPL_MODE_FP32 = 0;
 const constexpr int64_t IMPL_MODE_HF32 = 1;
 
+// Decode and Basic API BS/ND tiling parameters.
 const constexpr uint64_t DECODE_BS_THRESHOLD = 256;
 const constexpr uint32_t DECODE_CHUNK_T_SIZE = 2;
 const constexpr size_t DECODE_WORKSPACE_ALIGN = 32;
 const constexpr size_t SPLIT_BS_GAMMA_BUFFER_LENGTH = 256;
 const constexpr size_t SPLIT_ND_GAMMA_BUFFER_LENGTH = 2048;
-const constexpr uint32_t LOW_API_ALIGN_BYTES = 32;
-const constexpr uint32_t LOW_API_FLOAT_ALIGN = LOW_API_ALIGN_BYTES / sizeof(float);
-const constexpr uint32_t LOW_API_M_L1_SIZE = 32;
-const constexpr uint32_t LOW_API_K_UB_SIZE = 256;
-const constexpr uint32_t LOW_API_K_L1_SIZE = 256;
-const constexpr uint32_t LOW_API_BUFFER_POOL0_SIZE = 64 * 1024;
-const constexpr uint32_t LOW_API_BUFFER_POOL1_SIZE = 96 * 1024;
+const constexpr uint32_t BASIC_API_ALIGN_BYTES = 32;
+const constexpr uint32_t BASIC_API_FLOAT_ALIGN = BASIC_API_ALIGN_BYTES / sizeof(float);
+const constexpr uint32_t BASIC_API_M_L1_SIZE = 32;
+const constexpr uint32_t BASIC_API_K_UB_SIZE = 256;
+const constexpr uint32_t BASIC_API_K_L1_SIZE = 256;
+const constexpr uint32_t BASIC_API_BUFFER_POOL0_SIZE = 64 * 1024;
+const constexpr uint32_t BASIC_API_BUFFER_POOL1_SIZE = 96 * 1024;
+
+// M-K routing, tiling and workspace parameters.
 // Keep automatic M-K routing inside the range covered by the generalized
 // precision and performance sweeps. ND and BS remain available as fallbacks
 // and for future shape-specific routing outside this validated domain.
@@ -107,13 +117,7 @@ const constexpr size_t M_K_WORKSPACE_ALIGN = 512;
 const constexpr uint32_t M_K_USE_L1_STAGE = 0;
 const constexpr uint32_t M_K_USE_GM_STAGE = 1;
 
-static constexpr size_t OUT_H_IN_INDEX = 0;
-static constexpr size_t OUT_H_POST_INDEX = 1;
-static constexpr size_t OUT_H_RES_INDEX = 2;
-static constexpr size_t OUT_INV_RMS_INDEX = 3;
-static constexpr size_t OUT_MM_RES_INDEX = 4;
-static constexpr size_t OUT_H_PRE_INDEX = 5;
-
+// Generic rank and dimension indices used by output-shape validation.
 static constexpr size_t DIM_0 = 0;
 static constexpr size_t DIM_1 = 1;
 static constexpr size_t DIM_2 = 2;
@@ -123,6 +127,7 @@ static constexpr size_t DIM_NUM_3 = 3;
 static constexpr size_t DIM_NUM_4 = 4;
 static constexpr uint32_t HAS_GAMMA_TRUE = 1;
 
+// Diagnostic tensor names.
 static constexpr const char *INPUT_NAMES[] = {"x", "phi", "alpha", "bias", "gamma"};
 static constexpr const char *OUTPUT_NAMES[] = {"hIn", "hPost", "hRes", "invRms", "hMix", "hPre"};
 
@@ -157,7 +162,7 @@ ge::graphStatus MhcPreBaseTiling::GetInputShape()
     auto alphaShape = alphaTensor->GetStorageShape();
     OP_CHECK_IF(alphaShape.GetDimNum() != 1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "alpha",
-                                              std::to_string(alphaShape.GetDimNum()).c_str(), "1"),
+                                             std::to_string(alphaShape.GetDimNum()).c_str(), "1"),
                 return ge::GRAPH_FAILED);
     int64_t alphaSize = alphaShape.GetDim(0);
     OP_CHECK_IF(alphaSize != 2 && alphaSize != 3,
@@ -358,7 +363,7 @@ ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, u
                                           ShapeToString({b, s}).c_str()),
                 return ge::GRAPH_FAILED);
 
-    auto outMmresShapePtr = context_->GetOutputShape(OUT_MM_RES_INDEX);
+    auto outMmresShapePtr = context_->GetOutputShape(OUT_H_MIX_INDEX);
     auto outMmresShape = &outMmresShapePtr->GetStorageShape();
     OP_CHECK_IF(outMmresShape->GetDimNum() != DIM_NUM_3 || outMmresShape->GetDim(DIM_0) != b ||
                     outMmresShape->GetDim(DIM_1) != s || outMmresShape->GetDim(DIM_2) != matN_,
@@ -413,7 +418,7 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
                                           Ops::Base::ToString(*outInvRmsShape).c_str(), ShapeToString({t}).c_str()),
                 return ge::GRAPH_FAILED);
 
-    auto outMmresShapePtr = context_->GetOutputShape(OUT_MM_RES_INDEX);
+    auto outMmresShapePtr = context_->GetOutputShape(OUT_H_MIX_INDEX);
     auto outMmresShape = &outMmresShapePtr->GetStorageShape();
     OP_CHECK_IF(outMmresShape->GetDimNum() != DIM_NUM_2 || outMmresShape->GetDim(DIM_0) != t ||
                     outMmresShape->GetDim(DIM_1) != matN_,
@@ -595,9 +600,9 @@ ge::graphStatus MhcPreBaseTiling::ParseOutputFlags()
     outFlag_ = outFlag == 1;
 
     if (outFlag_) {
-        auto invRmsDesc = context_->GetOutputDesc(INV_RMS_INDEX);
-        auto hMixDesc = context_->GetOutputDesc(H_MIX_INDEX);
-        auto hPreDesc = context_->GetOutputDesc(H_PRE_INDEX);
+        auto invRmsDesc = context_->GetOutputDesc(OUT_INV_RMS_INDEX);
+        auto hMixDesc = context_->GetOutputDesc(OUT_H_MIX_INDEX);
+        auto hPreDesc = context_->GetOutputDesc(OUT_H_PRE_INDEX);
         OP_CHECK_IF(invRmsDesc == nullptr || hMixDesc == nullptr || hPreDesc == nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "optional outputs", "nullptr",
                                                           "invRms, hMix and hPre are required when out_flag is 1"),
@@ -605,7 +610,7 @@ ge::graphStatus MhcPreBaseTiling::ParseOutputFlags()
     }
 
     if (hasResi_) {
-        auto hResDesc = context_->GetOutputDesc(H_RES_INDEX);
+        auto hResDesc = context_->GetOutputDesc(OUT_H_RES_INDEX);
         OP_CHECK_IF(hResDesc == nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "hRes", "nullptr",
                                                           "output is required when alpha shape is [3]"),
@@ -664,10 +669,10 @@ void MhcPreBaseTiling::FillBsTilingData()
     auto roundUp = [](uint64_t value, uint64_t align) -> uint32_t {
         return static_cast<uint32_t>(((value + align - 1U) / align) * align);
     };
-    uint32_t fusionAlign = roundUp(matN_, LOW_API_FLOAT_ALIGN);
-    tilingData_.set_mL1Size(LOW_API_M_L1_SIZE);
-    tilingData_.set_kUbSize(LOW_API_K_UB_SIZE);
-    tilingData_.set_kL1Size(LOW_API_K_L1_SIZE);
+    uint32_t fusionAlign = roundUp(matN_, BASIC_API_FLOAT_ALIGN);
+    tilingData_.set_mL1Size(BASIC_API_M_L1_SIZE);
+    tilingData_.set_kUbSize(BASIC_API_K_UB_SIZE);
+    tilingData_.set_kL1Size(BASIC_API_K_L1_SIZE);
     tilingData_.set_fusionAlign(fusionAlign);
 }
 
@@ -689,14 +694,16 @@ void MhcPreBaseTiling::FillMkTilingData()
     // segment. The kernel derives the same decision from multCoreSplitKSize.
     bool useSequentialKPartials = singleCoreK >= M_K_SEQUENTIAL_PARTIAL_THRESHOLD;
     uint64_t workspaceGroupK = useSequentialKPartials ?
-        ceilDiv(matK_, M_K_SEQUENTIAL_PARTIAL_K) : 0U;
+                                   ceilDiv(matK_, M_K_SEQUENTIAL_PARTIAL_K) :
+                                   0U;
     uint64_t splitK = useSequentialKPartials ?
-        ceilDiv(workspaceGroupK, kDim) * M_K_SEQUENTIAL_PARTIAL_K : singleCoreK;
+                          ceilDiv(workspaceGroupK, kDim) * M_K_SEQUENTIAL_PARTIAL_K :
+                          singleCoreK;
     uint64_t actualKBlockNum = ceilDiv(matK_, splitK);
     uint64_t mL1Size = std::min<uint64_t>(M_K_M_L1_MAX_SIZE, singleCoreM);
-    uint64_t fusionAlign = roundUp(matN_, LOW_API_FLOAT_ALIGN);
+    uint64_t fusionAlign = roundUp(matN_, BASIC_API_FLOAT_ALIGN);
     uint64_t kL1Size = std::min<uint64_t>(M_K_A_L1_ELEMENT_COUNT / mL1Size,
-        M_K_B_L1_ELEMENT_COUNT / fusionAlign);
+                                          M_K_B_L1_ELEMENT_COUNT / fusionAlign);
     kL1Size = std::min<uint64_t>(kL1Size, M_K_K_L1_MAX_SIZE);
     kL1Size = std::max<uint64_t>(M_K_K_L1_ALIGN,
                                  kL1Size / M_K_K_L1_ALIGN * M_K_K_L1_ALIGN);
@@ -715,7 +722,7 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_kUbSize(static_cast<uint32_t>(kL1Size));
     tilingData_.set_fusionAlign(static_cast<uint32_t>(fusionAlign));
     uint64_t stage2RowsPerCore = roundUp(
-        ceilDiv(totalLength_, aivBlockDim_), LOW_API_FLOAT_ALIGN);
+        ceilDiv(totalLength_, aivBlockDim_), BASIC_API_FLOAT_ALIGN);
     uint64_t stage2UsedAivNum = std::min<uint64_t>(
         aivBlockDim_, ceilDiv(totalLength_, stage2RowsPerCore));
     tilingData_.set_stage2UsedAivNum(static_cast<uint32_t>(stage2UsedAivNum));
@@ -738,7 +745,8 @@ void MhcPreBaseTiling::FillMkTilingData()
 void MhcPreBaseTiling::FillTilingData()
 {
     uint32_t coreNum = tilingMode_ == TilingMode::SPLIT_M_K ?
-        std::min(blockDim_, aivBlockDim_ / 2U) : blockDim_;
+                           std::min(blockDim_, aivBlockDim_ / 2U) :
+                           blockDim_;
     tilingData_.set_coreNum(coreNum);
     tilingData_.set_totalLength(totalLength_);
     tilingData_.set_nD(matK_);
@@ -794,9 +802,9 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
 
     if (tilingMode_ == TilingMode::SPLIT_M_K) {
         size_t mkXStageBytes = tilingData_.get_mkUseGmStage() == 0U ? 0U :
-            static_cast<size_t>(tilingData_.get_cubeBlockDimM()) *
-            tilingData_.get_cubeBlockDimK() * 2U *
-            tilingData_.get_mL1Size() * tilingData_.get_kL1Size() * sizeof(float);
+                                                                      static_cast<size_t>(tilingData_.get_cubeBlockDimM()) *
+                                                                          tilingData_.get_cubeBlockDimK() * 2U *
+                                                                          tilingData_.get_mL1Size() * tilingData_.get_kL1Size() * sizeof(float);
         userWorkspaceSize = static_cast<size_t>(tilingData_.get_mkWorkspaceFinalOffset()) +
                             mkXStageBytes;
     } else if (tilingMode_ == TilingMode::SPLIT_ND) {
@@ -834,7 +842,7 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     const size_t doubleBufferCount = 2;
 
     if (tilingMode_ == TilingMode::SPLIT_BS || tilingMode_ == TilingMode::SPLIT_M_K) {
-        fixedBufferSize = LOW_API_BUFFER_POOL0_SIZE + LOW_API_BUFFER_POOL1_SIZE;
+        fixedBufferSize = BASIC_API_BUFFER_POOL0_SIZE + BASIC_API_BUFFER_POOL1_SIZE;
     } else {
         fixedBufferSize = 80 * 1024 * doubleBufferCount + 16 * 1024 * doubleBufferCount + 20 * 1024;
     }
@@ -848,8 +856,7 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     }
 
     if (hasGamma_) {
-        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_ND) ? SPLIT_ND_GAMMA_BUFFER_LENGTH
-                                                                         : SPLIT_BS_GAMMA_BUFFER_LENGTH;
+        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_ND) ? SPLIT_ND_GAMMA_BUFFER_LENGTH : SPLIT_BS_GAMMA_BUFFER_LENGTH;
         dynamicBufferSize += gammaBufferLength * floatSize;
     }
 
@@ -858,13 +865,13 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "required UB size",
                                               std::to_string(totalUbRequired).c_str(),
                                               ("must not exceed available UB size " +
-                                               std::to_string(ubSize_) + " bytes").c_str());
+                                               std::to_string(ubSize_) + " bytes")
+                                                  .c_str());
         return ge::GRAPH_FAILED;
     }
 
     return ge::GRAPH_SUCCESS;
 }
-
 
 ge::graphStatus MhcPreBaseTiling::DoOpTiling()
 {
@@ -941,7 +948,6 @@ static ge::graphStatus TilingFunc4mHCPre(gert::TilingContext *context)
 
     return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
 }
-
 
 static ge::graphStatus TilingPrepare4mHCPre(gert::TilingParseContext *context)
 {

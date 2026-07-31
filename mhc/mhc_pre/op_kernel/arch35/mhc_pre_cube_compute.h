@@ -9,25 +9,25 @@
  */
 
 /*!
- * \file mhc_pre_cube_compute_arch35.h
- * \brief
+ * \file mhc_pre_cube_compute.h
+ * \brief Basic API Cube service for MHC Pre matmul
  */
 
-#ifndef MHC_PRE_CUBE_COMPUTE_ARCH35_H
-#define MHC_PRE_CUBE_COMPUTE_ARCH35_H
+#ifndef MHC_PRE_CUBE_COMPUTE_H
+#define MHC_PRE_CUBE_COMPUTE_H
 
-#include "mhc_pre_low_api_base_arch35.h"
+#include "mhc_pre_basic_api.h"
 #include "mhc_pre_utils.h"
 
 namespace MhcPre {
 
-constexpr static uint32_t FINAL_ACCUMULATION = 3;
-constexpr static uint32_t NON_FINAL_ACCUMULATION = 2;
-constexpr static bool MHC_PRE_LOW_API_SPLIT_M = true;
-constexpr static uint64_t MHC_PRE_LOW_API_SPLIT_M_ALIGN = 2;
-constexpr static uint64_t MHC_PRE_LOW_API_L1_ALLOC_SIZE = 512 * 1024;
-constexpr static uint64_t MHC_PRE_LOW_API_L1_BUF_NUM = 2;
-constexpr static uint64_t MHC_PRE_LOW_API_L1_BUF_OFFSET = 128 * 256;
+// Mmad and Fixpipe unit-flag values.
+constexpr uint32_t FINAL_ACCUMULATION = 3U;
+constexpr uint32_t NON_FINAL_ACCUMULATION = 2U;
+
+// Fixpipe row-split policy.
+constexpr bool MHC_PRE_BASIC_API_SPLIT_M = true;
+constexpr uint64_t MHC_PRE_BASIC_API_SPLIT_M_ALIGN = 2U;
 
 class MhcPreCubeCompute {
 public:
@@ -58,13 +58,13 @@ public:
     }
 
     __aicore__ inline void CopyInA1Nd2Nz(uint64_t m, uint64_t currentK,
-        const AscendC::GlobalTensor<float>& aGlobal, const AscendC::LocalTensor<float>& al1Local)
+                                         const AscendC::GlobalTensor<float> &aGlobal, const AscendC::LocalTensor<float> &al1Local)
     {
         CopyInA1Nd2Nz(m, currentK, currentK, aGlobal, al1Local);
     }
 
     __aicore__ inline void CopyInA1Nd2Nz(uint64_t m, uint64_t currentK, uint64_t srcDValue,
-        const AscendC::GlobalTensor<float>& aGlobal, const AscendC::LocalTensor<float>& al1Local)
+                                         const AscendC::GlobalTensor<float> &aGlobal, const AscendC::LocalTensor<float> &al1Local)
     {
         AscendC::Nd2NzParams nd2nzParam;
         nd2nzParam.ndNum = 1;
@@ -72,7 +72,7 @@ public:
         nd2nzParam.dValue = currentK;
         nd2nzParam.srcNdMatrixStride = 1;
         nd2nzParam.srcDValue = srcDValue;
-        nd2nzParam.dstNzC0Stride = LowApiAlign(m, AscendC::BLOCK_CUBE);
+        nd2nzParam.dstNzC0Stride = BasicApiAlign(m, AscendC::BLOCK_CUBE);
         nd2nzParam.dstNzNStride = 1;
         nd2nzParam.dstNzMatrixStride = 1;
         AscendC::DataCopy(al1Local, aGlobal, nd2nzParam);
@@ -110,7 +110,7 @@ public:
     }
 
     __aicore__ inline void CopyInB1Nd2Nz(uint64_t k, uint64_t currentK, uint64_t baseN,
-        const AscendC::GlobalTensor<float>& bGlobal, const AscendC::LocalTensor<float>& bl1Local)
+                                         const AscendC::GlobalTensor<float> &bGlobal, const AscendC::LocalTensor<float> &bl1Local)
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(bL1BufferID_);
         k_ = k;
@@ -122,7 +122,7 @@ public:
         nd2nzParam.dValue = kL1_;
         nd2nzParam.srcNdMatrixStride = 1;
         nd2nzParam.srcDValue = k_;
-        nd2nzParam.dstNzC0Stride = LowApiAlign(baseN_, AscendC::BLOCK_CUBE);
+        nd2nzParam.dstNzC0Stride = BasicApiAlign(baseN_, AscendC::BLOCK_CUBE);
         nd2nzParam.dstNzNStride = 1;
         nd2nzParam.dstNzMatrixStride = 1;
         AscendC::DataCopy(bl1Local, bGlobal, nd2nzParam);
@@ -131,8 +131,8 @@ public:
     }
 
     __aicore__ inline void Process(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseK,
-        bool isFirstKL1, bool isLastKL1, const AscendC::LocalTensor<float>& al1Local,
-        const AscendC::LocalTensor<float>& bl1Local)
+                                   bool isFirstKL1, bool isLastKL1, const AscendC::LocalTensor<float> &al1Local,
+                                   const AscendC::LocalTensor<float> &bl1Local)
     {
         m_ = m;
         n_ = n;
@@ -160,23 +160,23 @@ public:
 
     // Own iter0 (K-L1 staging and cross-core handshakes); Process owns iter1 (K-L0 and Mmad).
     __aicore__ inline void ProcessKRange(uint64_t m, uint64_t n, uint64_t k, uint64_t baseM,
-        uint64_t baseK, uint64_t kStart, uint64_t kEnd, uint64_t kL1Size,
-        bool useSequentialPartials, uint64_t partialK, bool useGmStage,
-        uint64_t stageSlotElements, uint64_t stageCoreOffset,
-        const AscendC::GlobalTensor<float>& phiGlobal,
-        const AscendC::GlobalTensor<float>& xStageGlobal,
-        const AscendC::GlobalTensor<float>& dstGlobal, uint64_t dstGroupStride,
-        const AscendC::LocalTensor<float>& al1Local,
-        const AscendC::LocalTensor<float>& bl1Local)
+                                         uint64_t baseK, uint64_t kStart, uint64_t kEnd, uint64_t kL1Size,
+                                         bool useSequentialPartials, uint64_t partialK, bool useGmStage,
+                                         uint64_t stageSlotElements, uint64_t stageCoreOffset,
+                                         const AscendC::GlobalTensor<float> &phiGlobal,
+                                         const AscendC::GlobalTensor<float> &xStageGlobal,
+                                         const AscendC::GlobalTensor<float> &dstGlobal, uint64_t dstGroupStride,
+                                         const AscendC::LocalTensor<float> &al1Local,
+                                         const AscendC::LocalTensor<float> &bl1Local)
     {
         uint8_t aL1BufferId = 0;
         for (uint64_t kOffset = kStart; kOffset < kEnd; kOffset += kL1Size) {
             uint64_t currentK = AscendC::Std::min(kL1Size, kEnd - kOffset);
             uint8_t bL1BufferId = GetBL1BufferId();
             AscendC::LocalTensor<float> currentAL1 =
-                al1Local[aL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET];
+                al1Local[aL1BufferId * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
             AscendC::LocalTensor<float> currentBL1 =
-                bl1Local[bL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET];
+                bl1Local[bL1BufferId * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
             CopyInB1Nd2Nz(k, currentK, n, phiGlobal[kOffset], currentBL1);
 
             if (useGmStage) {
@@ -194,14 +194,16 @@ public:
             }
 
             bool isFirstKL1 = useSequentialPartials ?
-                kOffset % partialK == 0U : kOffset == kStart;
+                                  kOffset % partialK == 0U :
+                                  kOffset == kStart;
             bool isLastKL1 = useSequentialPartials ?
-                ((kOffset + currentK) % partialK == 0U || kOffset + currentK >= kEnd) :
-                kOffset + currentK >= kEnd;
+                                 ((kOffset + currentK) % partialK == 0U || kOffset + currentK >= kEnd) :
+                                 kOffset + currentK >= kEnd;
             Process(m, n, baseM, baseK, isFirstKL1, isLastKL1, currentAL1, currentBL1);
             if (isLastKL1) {
                 uint64_t partialIndex = useSequentialPartials ?
-                    (kOffset + currentK - 1U) / partialK : 0U;
+                                            (kOffset + currentK - 1U) / partialK :
+                                            0U;
                 CopyOut(dstGlobal[partialIndex * dstGroupStride], n);
             }
             AscendC::CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
@@ -212,36 +214,36 @@ public:
         }
     }
     __aicore__ inline void CopyInA2(uint64_t kOffset, uint64_t kAL1Offset,
-        const AscendC::LocalTensor<float>& al1Local)
+                                    const AscendC::LocalTensor<float> &al1Local)
     {
-        uint64_t mAL1 = LowApiAlign(baseM_, AscendC::BLOCK_CUBE);
-        uint64_t offsetAL1 = LowApiAlign(kAL1Offset, MHC_PRE_LOW_API_C0_SIZE) * mAL1;
+        uint64_t mAL1 = BasicApiAlign(baseM_, AscendC::BLOCK_CUBE);
+        uint64_t offsetAL1 = BasicApiAlign(kAL1Offset, MHC_PRE_BASIC_API_C0_SIZE) * mAL1;
         AscendC::LoadData2DParamsV2 loadData2dParams;
         uint64_t currM = baseM_;
         uint64_t currK = AscendC::Std::min(baseK_, kL1_ - kOffset);
         loadData2dParams.mStartPosition = 0;
         loadData2dParams.kStartPosition = 0;
-        loadData2dParams.mStep = LowApiCeilDiv(currM, AscendC::BLOCK_CUBE);
-        loadData2dParams.kStep = LowApiCeilDiv(currK, MHC_PRE_LOW_API_C0_SIZE);
-        loadData2dParams.srcStride = LowApiCeilDiv(currM, AscendC::BLOCK_CUBE);
+        loadData2dParams.mStep = BasicApiCeilDiv(currM, AscendC::BLOCK_CUBE);
+        loadData2dParams.kStep = BasicApiCeilDiv(currK, MHC_PRE_BASIC_API_C0_SIZE);
+        loadData2dParams.srcStride = BasicApiCeilDiv(currM, AscendC::BLOCK_CUBE);
         loadData2dParams.dstStride = loadData2dParams.mStep;
         loadData2dParams.ifTranspose = false;
         AscendC::LoadData(l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_, al1Local[offsetAL1], loadData2dParams);
     }
 
     __aicore__ inline void CopyInB2(uint64_t kOffset, uint64_t kBL1Offset,
-        const AscendC::LocalTensor<float>& bl1Local)
+                                    const AscendC::LocalTensor<float> &bl1Local)
     {
-        uint64_t nBL1 = LowApiAlign(baseN_, AscendC::BLOCK_CUBE);
-        uint64_t offsetBL1 = LowApiAlign(kBL1Offset, MHC_PRE_LOW_API_C0_SIZE) * nBL1;
+        uint64_t nBL1 = BasicApiAlign(baseN_, AscendC::BLOCK_CUBE);
+        uint64_t offsetBL1 = BasicApiAlign(kBL1Offset, MHC_PRE_BASIC_API_C0_SIZE) * nBL1;
         AscendC::LoadData2DParamsV2 loadData2dParams;
         uint64_t currN = baseN_;
         uint64_t currK = AscendC::Std::min(baseK_, kL1_ - kOffset);
         loadData2dParams.mStartPosition = 0;
         loadData2dParams.kStartPosition = 0;
-        loadData2dParams.mStep = LowApiCeilDiv(currN, AscendC::BLOCK_CUBE);
-        loadData2dParams.kStep = LowApiCeilDiv(currK, MHC_PRE_LOW_API_C0_SIZE);
-        loadData2dParams.srcStride = LowApiCeilDiv(currN, AscendC::BLOCK_CUBE);
+        loadData2dParams.mStep = BasicApiCeilDiv(currN, AscendC::BLOCK_CUBE);
+        loadData2dParams.kStep = BasicApiCeilDiv(currK, MHC_PRE_BASIC_API_C0_SIZE);
+        loadData2dParams.srcStride = BasicApiCeilDiv(currN, AscendC::BLOCK_CUBE);
         loadData2dParams.dstStride = loadData2dParams.mStep;
         loadData2dParams.ifTranspose = false;
         AscendC::LoadData(l0PingPongID_ == 0 ? bL0Ping_ : bL0Pong_, bl1Local[offsetBL1], loadData2dParams);
@@ -251,8 +253,8 @@ public:
     {
         uint32_t mmK = AscendC::Std::min(baseK_, kL1_ - kOffset);
         uint32_t mmKStep = implMode_ == MHC_PRE_IMPL_MODE_FP32 ? 32U : mmK;
-        uint64_t mAlign = LowApiAlign(baseM_, AscendC::BLOCK_CUBE);
-        uint64_t nAlign = LowApiAlign(baseN_, AscendC::BLOCK_CUBE);
+        uint64_t mAlign = BasicApiAlign(baseM_, AscendC::BLOCK_CUBE);
+        uint64_t nAlign = BasicApiAlign(baseN_, AscendC::BLOCK_CUBE);
         for (uint32_t innerK = 0; innerK < mmK; innerK += mmKStep) {
             uint32_t currentK = AscendC::Std::min(mmKStep, mmK - innerK);
             bool isLastInnerK = innerK + currentK >= mmK;
@@ -264,38 +266,40 @@ public:
             params.cmatrixInitVal = (isFirstKL1 && kOffset == 0 && innerK == 0);
             params.cmatrixSource = false;
             params.unitFlag = (isLastKL1 && isLastKL0 && isLastInnerK) ?
-                FINAL_ACCUMULATION : NON_FINAL_ACCUMULATION;
+                                  FINAL_ACCUMULATION :
+                                  NON_FINAL_ACCUMULATION;
             AscendC::Mmad(cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_,
-                (l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_)[innerK * mAlign],
-                (l0PingPongID_ == 0 ? bL0Ping_ : bL0Pong_)[innerK * nAlign], params);
+                          (l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_)[innerK * mAlign],
+                          (l0PingPongID_ == 0 ? bL0Ping_ : bL0Pong_)[innerK * nAlign], params);
             AscendC::PipeBarrier<PIPE_M>();
         }
     }
 
-    __aicore__ inline void CopyOut(const AscendC::LocalTensor<float>& dstLocal)
+    __aicore__ inline void CopyOut(const AscendC::LocalTensor<float> &dstLocal)
     {
         AscendC::SetFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
         AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> fixpipeParams;
         uint64_t c0 = AscendC::AuxGetC0Size<float>();
-        fixpipeParams.nSize = LowApiAlign(baseN_, c0);
-        fixpipeParams.mSize = MHC_PRE_LOW_API_SPLIT_M ? LowApiAlign(baseM_, MHC_PRE_LOW_API_SPLIT_M_ALIGN) : baseM_;
+        fixpipeParams.nSize = BasicApiAlign(baseN_, c0);
+        fixpipeParams.mSize = MHC_PRE_BASIC_API_SPLIT_M ? BasicApiAlign(baseM_, MHC_PRE_BASIC_API_SPLIT_M_ALIGN) : baseM_;
         fixpipeParams.dstStride = fixpipeParams.nSize;
-        fixpipeParams.srcStride = LowApiAlign(baseM_, AscendC::BLOCK_CUBE);
+        fixpipeParams.srcStride = BasicApiAlign(baseM_, AscendC::BLOCK_CUBE);
         fixpipeParams.quantPre = QuantMode_t::NoQuant;
-        fixpipeParams.dualDstCtl = MHC_PRE_LOW_API_SPLIT_M ?
-            static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) : 0;
+        fixpipeParams.dualDstCtl = MHC_PRE_BASIC_API_SPLIT_M ?
+                                       static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) :
+                                       0;
         fixpipeParams.unitFlag = FINAL_ACCUMULATION;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 1;
         fixpipeParams.params.dstNdStride = 1;
         AscendC::Fixpipe<float, float, AscendC::Impl::CFG_ROW_MAJOR_UB>(dstLocal,
-            cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, fixpipeParams);
+                                                                        cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, fixpipeParams);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(cl0PingPongID_);
         cl0PingPongID_ ^= 1;
     }
 
-    __aicore__ inline void CopyOut(const AscendC::GlobalTensor<float>& dstGlobal, uint32_t dstStride)
+    __aicore__ inline void CopyOut(const AscendC::GlobalTensor<float> &dstGlobal, uint32_t dstStride)
     {
         AscendC::SetFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
         AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
@@ -303,7 +307,7 @@ public:
         copyParams.nSize = baseN_;
         copyParams.mSize = baseM_;
         copyParams.dstStride = dstStride;
-        copyParams.srcStride = LowApiAlign(baseM_, AscendC::BLOCK_CUBE);
+        copyParams.srcStride = BasicApiAlign(baseM_, AscendC::BLOCK_CUBE);
         copyParams.quantPre = QuantMode_t::NoQuant;
         copyParams.nz2ndEn = true;
         copyParams.unitFlag = FINAL_ACCUMULATION;
@@ -312,7 +316,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(cl0PingPongID_);
         cl0PingPongID_ ^= 1;
     }
-    
+
     __aicore__ inline void End(uint32_t implMode)
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
@@ -331,4 +335,4 @@ public:
 
 } // namespace MhcPre
 
-#endif // MHC_PRE_CUBE_COMPUTE_ARCH35_H
+#endif // MHC_PRE_CUBE_COMPUTE_H

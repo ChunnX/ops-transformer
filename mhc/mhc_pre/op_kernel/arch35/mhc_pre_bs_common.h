@@ -9,17 +9,17 @@
  */
 
 /*!
- * \file mhc_pre_kernel_bs_common.h
- * \brief Common vector and buffer helpers for MHC Pre BS-based kernels
+ * \file mhc_pre_bs_common.h
+ * \brief Common vector and buffer helpers for MHC Pre BS-derived templates
  */
 
-#ifndef MHC_PRE_KERNEL_BS_COMMON_H_
-#define MHC_PRE_KERNEL_BS_COMMON_H_
+#ifndef MHC_PRE_BS_COMMON_H_
+#define MHC_PRE_BS_COMMON_H_
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_utils.h"
-#include "mhc_pre_kernel_base.h"
+#include "mhc_pre_base.h"
 #include "mhc_pre_tiling_key.h"
 
 namespace MhcPre {
@@ -27,9 +27,9 @@ namespace MhcPre {
 using namespace AscendC;
 
 template <class T, class P, int8_t HAS_RESI>
-class MhcPreKernelBsCommon : public MhcPreKernelBase<T, P> {
+class MhcPreBsCommon : public MhcPreBase<T, P> {
 public:
-    using Base = MhcPreKernelBase<T, P>;
+    using Base = MhcPreBase<T, P>;
     using Base::mnConfig_;
     using Base::coreNum_;
     using Base::totalLength_;
@@ -92,19 +92,25 @@ public:
     using Base::V0_BASE_T;
     using Base::V1_BASE_T;
 
+    // Compile-time residual mode.
     static constexpr int8_t kHasResi = HAS_RESI;
 
-    __aicore__ inline MhcPreKernelBsCommon() = default;
+    // UB queue sizes shared by BS-derived templates.
+    static constexpr uint32_t kXInQueueBufferBytes = 80U * 1024U;
+    static constexpr uint32_t kOutQueueBufferBytes = 20U * 1024U;
+    static constexpr uint32_t kTmpBufferBytes = 40U * 1024U;
+
+    __aicore__ inline MhcPreBsCommon() = default;
     __aicore__ inline void InitHMixBuffer(InitParams initParams);
     __aicore__ inline void InitUbBuffers(bool splitAcrossSubBlocks = true,
-        uint32_t v1BufferRows = V1_BASE_T);
+                                         uint32_t v1BufferRows = V1_BASE_T);
     __aicore__ inline void InitBlockParams(uint64_t curblock, uint32_t tBlockNum);
     __aicore__ inline void V0PostProcess(uint32_t curblock, uint32_t tBlockNum);
     __aicore__ inline void V0Prologue(uint32_t curNdLen, uint32_t offsetNd);
 };
 
 template <class T, class P, int8_t HAS_RESI>
-__aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitHMixBuffer(InitParams initParams)
+__aicore__ inline void MhcPreBsCommon<T, P, HAS_RESI>::InitHMixBuffer(InitParams initParams)
 {
     if (outFlag_) {
         hMixGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_mix));
@@ -116,23 +122,21 @@ __aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitHMixBuffer(Init
 }
 
 template <class T, class P, int8_t HAS_RESI>
-__aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitUbBuffers(
+__aicore__ inline void MhcPreBsCommon<T, P, HAS_RESI>::InitUbBuffers(
     bool splitAcrossSubBlocks, uint32_t v1BufferRows)
 {
     if ASCEND_IS_NOT_AIV {
         return;
     }
 
-    static constexpr uint32_t kXInQueueBufferBytes = 80 * 1024;
-    static constexpr uint32_t kOutQueueBufferBytes = 20 * 1024;
-    static constexpr uint32_t kTmpBufferBytes = 40 * 1024;
-
     pipe_->InitBuffer(xInQueue_, kDoubleBufferCount, kXInQueueBufferBytes);
     pipe_->InitBuffer(outQueue_, kDoubleBufferCount, kOutQueueBufferBytes);
     uint32_t invRmsRows = splitAcrossSubBlocks ?
-        (curSingleT_ + kHalfSplitDivisor - 1U) / kHalfSplitDivisor : curSingleT_;
+                              (curSingleT_ + kHalfSplitDivisor - 1U) / kHalfSplitDivisor :
+                              curSingleT_;
     uint32_t invRmsBytes = MhcPreUtils::Align(
-        invRmsRows, Base::kAlignmentBytes / sizeof(P)) * sizeof(P);
+                               invRmsRows, Base::kAlignmentBytes / sizeof(P)) *
+                           sizeof(P);
     pipe_->InitBuffer(invRmsOutQueue_, kSingleBufferCount, invRmsBytes);
 
     if (hasGamma_) {
@@ -155,7 +159,7 @@ __aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitUbBuffers(
 }
 
 template <class T, class P, int8_t HAS_RESI>
-__aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitBlockParams(
+__aicore__ inline void MhcPreBsCommon<T, P, HAS_RESI>::InitBlockParams(
     uint64_t curblock, uint32_t tBlockNum)
 {
     globalOffsetM_ = curblock * chunkTSize_;
@@ -170,7 +174,7 @@ __aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitBlockParams(
 }
 
 template <class T, class P, int8_t HAS_RESI>
-__aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::V0Prologue(uint32_t curNdLen, uint32_t offsetNd)
+__aicore__ inline void MhcPreBsCommon<T, P, HAS_RESI>::V0Prologue(uint32_t curNdLen, uint32_t offsetNd)
 {
     if (hasGamma_) {
         gammaUb_ = gammaInQueue_.template AllocTensor<P>();
@@ -227,7 +231,7 @@ __aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::V0Prologue(uint32_t
 }
 
 template <class T, class P, int8_t HAS_RESI>
-__aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::V0PostProcess(
+__aicore__ inline void MhcPreBsCommon<T, P, HAS_RESI>::V0PostProcess(
     uint32_t curblock, uint32_t tBlockNum)
 {
     if (vectorOffset_.singleCoreM == 0) {
@@ -241,4 +245,4 @@ __aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::V0PostProcess(
 
 } // namespace MhcPre
 
-#endif // MHC_PRE_KERNEL_BS_COMMON_H_
+#endif // MHC_PRE_BS_COMMON_H_
