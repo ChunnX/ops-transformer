@@ -127,8 +127,11 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
 
-        CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2,
-            subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop);
+        
+        DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+firstLoopStart*(32*5*8)], pscale1, {static_cast<uint16_t>(firstLoop), 40, 0, 40});
+        if (secondLoop != 0) {
+            DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+secondLoopStart*(32*5*8)], pscale1[firstLoop*(32*5*8)], {static_cast<uint16_t>(secondLoop), 40, 0, 40});
+        }
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
@@ -204,7 +207,7 @@ private:
     }
 
 private:
-    static constexpr uint32_t GROUP_MAX_SPACE_LEN = 10;
+    static constexpr uint32_t GROUP_MAX_SPACE_LEN = 20;
     static constexpr uint32_t WHOLE_PROCESS_LOOP = 16;
 
     AscendC::LocalTensor<ElementPScale>   pscaleUBTensor[MXFP4::UB_P_SCALE_CNT]; // pScale(复用P)
