@@ -51,24 +51,24 @@ public:
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource) {
         for (uint32_t i = 0; i < MXFP4::UB_P_SCALE_CNT; i++) {
             pscaleUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementPScale>(
-                MXFP4::UB_P_SCALE_OFFSET + MXFP4::UB_P_SCALE_SIZE * i);
+                MXFP4::UB_P_SCALE_BUF_OFFSET + MXFP4::UB_P_SCALE_BUF_SIZE * i);
         }
         for (uint32_t i = 0; i < MXFP4::UB_PEER_GLOBAL_MAX_CNT; i++) {
             peerGlobalMaxUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementGroupMax>(
-                MXFP4::UB_PEER_GLOBAL_MAX_OFFSET + MXFP4::UB_PEER_GLOBAL_MAX_SIZE * i);
+                MXFP4::UB_PEER_GLOBAL_MAX_BUF_OFFSET + MXFP4::UB_PEER_GLOBAL_MAX_BUF_SIZE * i);
         }
-        softmaxMaxUBTensor = resource.ubBuf.template GetBufferByByte<ElementGroupMax>(MXFP4::UB_SOFTMAX_MAX_OFFSET);
+        softmaxMaxUBTensor = resource.ubBuf.template GetBufferByByte<ElementGroupMax>(MXFP4::UB_SOFTMAX_MAX_BUF_OFFSET);
         for (uint32_t i = 0; i < MXFP4::UB_LOCAL_GROUP_MAX_CNT; i++) {
             localGroupMaxUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementGroupMax>(
-                MXFP4::UB_LOCAL_GROUP_MAX_OFFSET + MXFP4::UB_LOCAL_GROUP_MAX_SIZE * i);
+                MXFP4::UB_LOCAL_GROUP_MAX_BUF_OFFSET + MXFP4::UB_LOCAL_GROUP_MAX_BUF_SIZE * i);
         }
         for (uint32_t i = 0; i < MXFP4::UB_LOCAL_GLOBAL_MAX_CNT; i++) {
             localGlobalMaxUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementGroupMax>(
-                MXFP4::UB_LOCAL_GLOBAL_MAX_OFFSET + MXFP4::UB_LOCAL_GLOBAL_MAX_SIZE * i);
+                MXFP4::UB_LOCAL_GLOBAL_MAX_BUF_OFFSET + MXFP4::UB_LOCAL_GLOBAL_MAX_BUF_SIZE * i);
         }
         for (uint32_t i = 0; i < MXFP4::UB_UPDATE_SCALE_CNT; i++) {
             dmUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDm>(
-                MXFP4::UB_UPDATE_SCALE_OFFSET + MXFP4::UB_UPDATE_SCALE_SIZE * i);
+                MXFP4::UB_UPDATE_SCALE_BUF_OFFSET + MXFP4::UB_UPDATE_SCALE_BUF_SIZE * i);
         }
     }
     __aicore__ inline ~BlockEpilogue() {}
