@@ -62,13 +62,6 @@ const constexpr uint32_t V1_CHUNK_D_SIZE = 5120;
 const constexpr uint32_t CHUNK_T_CALC_FACTOR = 32;
 const constexpr uint64_t D_MIN = 16;
 const constexpr uint64_t D_MAX = 16384;
-const constexpr uint32_t KERNEL_WIDTH = 8;
-
-// Legacy BS/ND workspace sizing.
-const constexpr size_t WORKSPACE_MULT_A = 2;
-const constexpr size_t WORKSPACE_MULT_B = 192;
-const constexpr size_t WORKSPACE_DIM_M = 256;
-const constexpr size_t WORKSPACE_ELEMENTS = 8;
 const constexpr size_t SYSTEM_WORKSPACE = 20 * 1024 * 1024;
 
 // Runtime scheduling configuration.
@@ -93,6 +86,7 @@ const constexpr uint32_t BASIC_API_FLOAT_ALIGN = BASIC_API_ALIGN_BYTES / sizeof(
 const constexpr uint32_t BASIC_API_M_L1_SIZE = 32;
 const constexpr uint32_t BASIC_API_K_UB_SIZE = 256;
 const constexpr uint32_t BASIC_API_K_L1_SIZE = 256;
+const constexpr uint32_t BASIC_API_X_STAGE_BUFFER_COUNT = 2;
 const constexpr uint32_t BASIC_API_BUFFER_POOL0_SIZE = 64 * 1024;
 const constexpr uint32_t BASIC_API_BUFFER_POOL1_SIZE = 96 * 1024;
 
@@ -820,10 +814,16 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
 
         userWorkspaceSize = xFloatWorkspaceSize + mmResWorkspaceSize;
     } else {
-        userWorkspaceSize =
-            (WORKSPACE_MULT_A * WORKSPACE_MULT_B * WORKSPACE_DIM_M +
-             WORKSPACE_MULT_A * WORKSPACE_MULT_B * (KERNEL_WIDTH * KERNEL_WIDTH + WORKSPACE_MULT_A * KERNEL_WIDTH)) *
-            sizeof(float) * blockDim_;
+        // BS stages two X tiles per AIC. When hMix is not an optional output,
+        // the kernel stores the complete compact [M, fusionSize] result after
+        // the staging area and reads it back during vector postprocessing.
+        // Size both regions from the actual tiling instead of the legacy fixed
+        // allocation, which was too small for long M and corrupted system workspace.
+        size_t xStageWorkspaceSize = static_cast<size_t>(chunkTSize_) * BASIC_API_K_UB_SIZE *
+                                     BASIC_API_X_STAGE_BUFFER_COUNT * sizeof(float) * blockDim_;
+        size_t hMixWorkspaceSize = outFlag_ ? 0U :
+            static_cast<size_t>(matM_) * static_cast<size_t>(matN_) * sizeof(float);
+        userWorkspaceSize = xStageWorkspaceSize + hMixWorkspaceSize;
     }
     workspaceSize_ = userWorkspaceSize + systemWorkspaceSize;
 
