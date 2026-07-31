@@ -21,6 +21,8 @@
 
 namespace MhcPre {
 
+constexpr uint32_t MHC_PRE_BS_SEQUENTIAL_PARTIAL_K = 1024U;
+
 template <class T, class P, int8_t RESI_MODE>
 class MhcPreSplitBS {
 public:
@@ -33,11 +35,6 @@ public:
         vector_.InitMNConfig();
         vector_.InitHMixBuffer(initParams);
         vector_.InitPipeAndCoreIdx(initParams.tPipeIn);
-
-        // Keep this as the first UB allocation so AIC and both AIVs share the same dual-dst address.
-        uint32_t mmRowsPerAiv = (vector_.chunkTSize_ + vector_.kHalfSplitDivisor - 1U) / vector_.kHalfSplitDivisor;
-        vector_.pipe_->InitBuffer(mmXBuf_, mmRowsPerAiv * vector_.tiling_->fusionAlign * sizeof(float));
-        mmXLocal_ = mmXBuf_.Get<float>();
 
         InitUbBuffersBasicApi();
         SyncAll<false>();
@@ -66,11 +63,13 @@ public:
                 vector_.mnConfig_.curSingleCoreK = vector_.mnConfig_.singleCoreK;
             }
 
+            uint32_t partialIndex = 0U;
             for (uint32_t offsetNd = 0; offsetNd < vector_.matrixInfo_.nD; offsetNd += vector_.ND_LENGTH) {
+                uint32_t curNdLen = MhcPreMin(vector_.ND_LENGTH, vector_.matrixInfo_.nD - offsetNd);
+                bool isPartialEnd = IsSequentialPartialEnd(offsetNd, curNdLen);
                 // Two X staging slots are free initially. From the third slice on,
                 // AIV waits until AIC returns the slot through X_CONSUMED_FLAG.
                 if ASCEND_IS_AIV {
-                    uint32_t curNdLen = MhcPreMin(vector_.ND_LENGTH, vector_.matrixInfo_.nD - offsetNd);
                     if (vector_.vectorCount_ >= 2) {
                         AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
                             MHC_PRE_X_CONSUMED_FLAG);
@@ -84,10 +83,13 @@ public:
                     AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_X_READY_FLAG);
                     AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
                         MHC_PRE_X_READY_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
-                    AICProcessBasicApi(offsetNd);
+                    AICProcessBasicApi(offsetNd, partialIndex);
                     CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_X_CONSUMED_FLAG);
                     CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
                         MHC_PRE_X_CONSUMED_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+                }
+                if (isPartialEnd) {
+                    partialIndex++;
                 }
             }
             vector_.mmCount_++;
@@ -99,6 +101,7 @@ public:
 
             if ASCEND_IS_AIV {
                 vector_.V0PostProcess(curblock, tBlockNum);
+                CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_MM_READY_FLAG);
                 AIV1ProcessDirect();
                 vector_.vec1Count_++;
             }
@@ -168,7 +171,13 @@ private:
         }
     }
 
-    __aicore__ inline void AICProcessBasicApi(uint32_t offsetNd)
+    __aicore__ inline bool IsSequentialPartialEnd(uint32_t offsetNd, uint32_t currentK) const
+    {
+        uint32_t endK = offsetNd + currentK;
+        return endK >= vector_.matrixInfo_.nD || endK % MHC_PRE_BS_SEQUENTIAL_PARTIAL_K == 0U;
+    }
+
+    __aicore__ inline void AICProcessBasicApi(uint32_t offsetNd, uint32_t partialIndex)
     {
         if (offsetNd + vector_.mnConfig_.singleCoreK > vector_.mnConfig_.k) {
             vector_.mnConfig_.curSingleCoreK = vector_.mnConfig_.k - offsetNd;
@@ -187,8 +196,8 @@ private:
         mmService_.CopyInB1Nd2Nz(vector_.mnConfig_.k, currentK, vector_.mnConfig_.n,
                                  vector_.phiGm_[offsetNd], currentBL1);
 
-        bool isFirstKL1 = (offsetNd == 0);
-        bool isLastKL1 = (offsetNd + currentK >= vector_.matrixInfo_.nD);
+        bool isFirstKL1 = offsetNd % MHC_PRE_BS_SEQUENTIAL_PARTIAL_K == 0U;
+        bool isLastKL1 = IsSequentialPartialEnd(offsetNd, currentK);
         uint64_t mAlign = BasicApiAlign(vector_.mnConfig_.curSingleCoreM, AscendC::BLOCK_CUBE);
         uint64_t nAlign = BasicApiAlign(vector_.mnConfig_.n, AscendC::BLOCK_CUBE);
         uint64_t baseK = (256 / AscendC::Std::max(mAlign, nAlign)) * 32;
@@ -196,14 +205,20 @@ private:
                            vector_.mnConfig_.curSingleCoreM, baseK, isFirstKL1, isLastKL1, currentAL1, currentBL1);
 
         if (isLastKL1) {
-            mmService_.CopyOut(mmXLocal_);
+            if (partialIndex != 0U) {
+                AscendC::SetAtomicAdd<float>();
+            }
+            uint64_t outputOffset = vector_.globalOffsetM_ * vector_.mnConfig_.n;
+            mmService_.CopyOut(vector_.hMixGm_[outputOffset], vector_.mnConfig_.n);
+            if (offsetNd + currentK >= vector_.matrixInfo_.nD) {
+                AscendC::DisableDmaAtomic();
+            }
         }
         vector_.cubeCount_++;
     }
 
     __aicore__ inline void AIV1ProcessDirect()
     {
-        AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_V>(MHC_PRE_MM_READY_FLAG);
         if (vector_.vectorOffset_.singleCoreM == 0) {
             return;
         }
@@ -213,45 +228,20 @@ private:
              offsetT < vector_.vectorOffset_.offsetMEnd; offsetT += vector_.V1_BASE_T) {
             uint64_t lenT = AscendC::Std::min(static_cast<uint64_t>(vector_.V1_BASE_T),
                                               vector_.vectorOffset_.offsetMEnd - offsetT);
-            AIV1PrologueDirect(offsetT, lenT, localOffset);
+            uint64_t hMixOffset = (vector_.globalOffsetM_ + offsetT) * vector_.mnConfig_.n;
+            vector_.HMixCopyIn(hMixOffset, lenT);
+            LocalTensor<P> hMixLocal = vector_.xInQueue_.template DeQue<P>();
+            AIV1PrologueDirect(offsetT, lenT, localOffset, hMixLocal);
             vector_.AIV1ProcessHPost(offsetT, lenT);
             vector_.AIV1ProcessHPre(offsetT, lenT);
             vector_.AIV1ProcessHInBatched(offsetT, lenT);
+            vector_.xInQueue_.FreeTensor(hMixLocal);
             localOffset += lenT;
         }
     }
 
-    __aicore__ inline void CopyRawHMixToGm(uint64_t offsetT, uint64_t lenT)
-    {
-        LocalTensor<P> copySource = vector_.matmulRes_;
-        LocalTensor<P> compactLocal;
-        // Fixpipe uses fusionAlign as the UB row stride. Compact rows before
-        // writing raw hMix when the logical fusion size is not 32-byte aligned.
-        if (vector_.tiling_->fusionAlign != vector_.mnConfig_.n) {
-            compactLocal = vector_.xInQueue_.template AllocTensor<P>();
-            MhcPreVFCompactRows(compactLocal, vector_.matmulRes_, static_cast<uint16_t>(lenT),
-                                vector_.tiling_->fusionAlign, vector_.mnConfig_.n);
-            copySource = compactLocal;
-        }
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
-
-        DataCopyExtParams copyParams;
-        copyParams.blockCount = 1;
-        copyParams.blockLen = static_cast<uint32_t>(lenT * vector_.mnConfig_.n * sizeof(P));
-        copyParams.srcStride = 0;
-        copyParams.dstStride = 0;
-        DataCopyPad(vector_.hMixGm_[(vector_.globalOffsetM_ + offsetT) * vector_.mnConfig_.n],
-                    copySource, copyParams);
-
-        SetFlag<HardEvent::MTE3_V>(EVENT_ID2);
-        WaitFlag<HardEvent::MTE3_V>(EVENT_ID2);
-        if (vector_.tiling_->fusionAlign != vector_.mnConfig_.n) {
-            vector_.xInQueue_.FreeTensor(compactLocal);
-        }
-    }
-
-    __aicore__ inline void AIV1PrologueDirect(uint64_t offsetT, uint64_t lenT, uint64_t localOffset)
+    __aicore__ inline void AIV1PrologueDirect(uint64_t offsetT, uint64_t lenT, uint64_t localOffset,
+                                               const LocalTensor<P> &hMixLocal)
     {
         uint64_t outputOffset = vector_.globalOffsetM_ + offsetT;
         LocalTensor<P> hResOutLocal;
@@ -259,10 +249,7 @@ private:
             hResOutLocal = vector_.outQueue_.template AllocTensor<P>();
         }
 
-        vector_.matmulRes_ = mmXLocal_[localOffset * vector_.tiling_->fusionAlign];
-        if (vector_.outFlag_) {
-            CopyRawHMixToGm(offsetT, lenT);
-        }
+        vector_.matmulRes_ = hMixLocal;
 
         if (vector_.N_ == vector_.kSupportedN4) {
             MhcPreVFPostSegments<P, 4U, RESI_MODE == MHC_PRE_HAS_RESI>(
@@ -298,10 +285,8 @@ private:
     MhcPreVectorCompute<T, P, RESI_MODE> vector_;
     MhcPreCubeCompute mmService_;
     TBuf<TPosition::A1> l1Buffer_;
-    TBuf<TPosition::VECCALC> mmXBuf_;
     LocalTensor<float> aL1_;
     LocalTensor<float> bL1_;
-    LocalTensor<float> mmXLocal_;
 };
 
 } // namespace MhcPre
