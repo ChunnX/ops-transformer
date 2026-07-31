@@ -10,7 +10,7 @@
 - return_value 开启与关闭；
 - seed 0、1、2 三组随机数据。
 
-代码分支：qliv2-pr8964-dump。
+代码分支：qliv2-topk（纯功能分支，不包含内核 dump 和调试辅助代码）。
 
 测试环境：
 
@@ -28,7 +28,7 @@
 - 修复 PA 地址后，索引比较通过，但返回值满足率仍约为 87%；
 - 返回值错误呈稳定的行间交替分布：同一个 AIV 连续处理两行时，第一行容易失败，最后一行通常正确；
 - 错误值可达到 1e8～1e9 数量级，与正确 BF16 score 不在同一数量级；
-- 开启目标行 DumpTensor 后，被选中的目标行会恢复正确，而未被选中的同类行仍失败。
+- 在临时诊断分支开启目标行 DumpTensor 后，被选中的目标行会恢复正确，而未被选中的同类行仍失败。
 
 这些现象表明问题不只来自数值精度，还包含 PA 地址计算和异步流水同步两个独立缺陷。
 
@@ -86,22 +86,31 @@ attention/quant_lightning_indexer_v2/op_kernel/arch35/quant_lightning_indexer_v2
 - 非 LD 路径处理同一个 AIV 的后续行前，设置并等待 MTE3_MTE2_EVENT；
 - 确保上一行返回值完成 GM 搬出后，下一行 MTE2 才能复用 mrgValueBuf_。
 
-### 4.3 默认关闭内核 dump
+### 4.3 加固多轮 TopK 索引映射与缓冲区复用
 
 文件：
 
-attention/quant_lightning_indexer_v2/op_kernel/quant_lightning_indexer_v2.cpp
+- attention/quant_lightning_indexer_v2/op_kernel/arch35/quant_lightning_indexer_v2_service_vector.h；
+- attention/quant_lightning_indexer_v2/op_kernel/arch35/vf/quant_lightning_indexer_v2_topk.h；
+- attention/quant_lightning_indexer_v2/op_kernel/arch35/vf/vf_topk_16_gather.h。
 
 修改：
 
-- 移除源码中强制定义的 ASCENDC_DUMP=1；
-- 移除源码中强制定义的 QLIV2_DEBUG_DUMP；
-- 普通构建默认不产生 DumpTensor 输出；
-- 如需再次诊断，可在专用 debug 构建中显式定义这两个宏。
+- 将对齐后的 TopK 输入长度和真实有效长度分别传入映射逻辑，避免尾部 padding 被解释成有效索引；
+- 区分历史 TopK 区、当前 trunk 有效区和无效区，无效位置统一保留 0xFFFFFFFF；
+- 对索引和 score 缓冲区的 MTE2/V 复用增加事件同步，避免异步搬运覆盖仍在使用的数据；
+- 对输出偏移只处理有效索引，防止无效哨兵值被错误偏移。
 
-调试目标宏仍保留在 common 头文件中，当前目标为 B=0、N2=0、S1=0、QK S2 begin=0，仅在显式启用 QLIV2_DEBUG_DUMP 时生效。
+### 4.4 纯功能分支去除调试代码
 
-### 4.4 扩充 redline 回归
+qliv2-topk 从无调试代码的 qliv2-pr8964 基线创建，并只合入功能修复。源码检查确认：
+
+- 不包含 QLIV2_DEBUG_DUMP 和 DebugDump 命名空间；
+- 不包含 DumpTensor、DumpTopK、DumpLd 等内核 dump 调用或辅助函数；
+- 不包含调试指南、dump 解码脚本或解析脚本；
+- 构建和回归日志中的 DumpTensor 输出为 0 行。
+
+### 4.5 扩充 redline 回归
 
 文件：
 
@@ -133,7 +142,7 @@ source /home/s00892993/custom_path/vendors/custom_transformer/bin/set_env.bash
 
 最终无 dump 算子包 SHA256：
 
-9c0bc2008f0ac4f5c52da7a9ed3e3d2d73991d197f99f36f29902caf84d682fa
+3086da34fa0bcf52e21fffbab2664574d9b75b46aef7274f1937e56f908dc05a
 
 ## 6. 回归结果
 
@@ -148,13 +157,13 @@ bash test_run.sh single | tee redline_debug.log
 
 - 15 passed；
 - 0 failed；
-- 26 warnings；
+- 33 warnings；
 - pytest 退出码 0；
-- 总耗时 617.30 秒；
+- 总耗时 588.53 秒；
 - DumpTensor 输出 0 行；
-- 日志大小约 100 KB。
+- 日志大小 100609 字节（约 98.3 KiB）。
 
-26 条 warning 来自包含 -inf 数据时的 NumPy subtract RuntimeWarning，以及 pandas DataFrame 拼接 FutureWarning，不影响精度判定与测试结果。
+33 条 warning 来自包含 -inf 数据时的 NumPy subtract RuntimeWarning，以及 pandas DataFrame 拼接 FutureWarning，不影响精度判定与测试结果。
 
 ## 7. 结论
 
@@ -163,4 +172,6 @@ bash test_run.sh single | tee redline_debug.log
 1. PA_BBND 在缺少动态 stride 时错误使用 0 stride，导致物理块寻址错误；
 2. 非 LD 返回值缓冲区与 TopK 输入缓冲区复用时缺少 MTE3→MTE2 同步，导致上一行返回值被下一行覆盖。
 
-补齐 PA fallback stride 和行间流水同步后，索引与返回值比较均通过；关闭内核 dump 后，5 组 redline 参数在 3 个固定随机种子下共 15 个实例全部通过。
+同时加固多轮 TopK 的有效区间映射、无效索引处理和 MTE2/V 缓冲区同步。完成上述修复后，索引与返回值比较均通过；5 组 redline 参数在 3 个固定随机种子下共 15 个实例全部通过。
+
+qliv2-topk 只保留功能实现、测试配置和本报告，不携带诊断阶段的 dump 宏、dump 调用、指南或解析工具。
