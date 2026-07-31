@@ -22,9 +22,12 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
         return seqused_q.size(0)
     elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:
         return cu_seqlens_q.size(0) - 1
-    elif batch_size is not None and batch_size > 0:
-        return batch_size
-    return 0
+
+    if batch_size is None:
+        raise ValueError(f"When seqused_q and cu_seqlens_q is not provdied, batch_size must be provided")
+    elif batch_size < 0:
+        raise ValueError(f"batch_size must be greater than 0, but got {batch_size}")
+    return batch_size
 
 
 def _calculate_metadata_size(batch_size, num_heads_kv):
@@ -65,7 +68,7 @@ class FlashAttenOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
 
-        @torch.library.register_fake("cann_ops_transformer::" + FA_METADATA_OP_NAME)
+        @torch.library.register_fake("cann_ops_transformer::flash_attn_metadata")
         def flash_attn_metadata_meta(
             num_heads_q: int,
             num_heads_kv: int,
@@ -86,9 +89,9 @@ class FlashAttenOpBuilder(OpBuilder):
         ):
             b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
             metadata_size = _calculate_metadata_size(b_size, num_heads_kv)
-            return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
+            return torch.empty((metadata_size,), dtype=torch.int32, device="meta")
 
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @torch.library.register_fake("cann_ops_transformer::flash_attn")
         def flash_attn_meta(
             q: torch.Tensor,
             k: torch.Tensor,
