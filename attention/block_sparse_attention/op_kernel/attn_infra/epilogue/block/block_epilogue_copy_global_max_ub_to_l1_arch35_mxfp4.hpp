@@ -42,7 +42,7 @@ public:
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource) {
         for (uint32_t i = 0; i < MXFP4::UB_LOCAL_GLOBAL_MAX_CNT; i++) {
             localGlobalMaxUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementLocalGlobalMax>(
-                MXFP4::UB_LOCAL_GLOBAL_MAX_OFFSET + MXFP4::UB_LOCAL_GLOBAL_MAX_SIZE * i);
+                MXFP4::UB_LOCAL_GLOBAL_MAX_BUF_OFFSET + MXFP4::UB_LOCAL_GLOBAL_MAX_BUF_SIZE * i);
         }
     }
     __aicore__ inline ~BlockEpilogue() {}
