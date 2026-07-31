@@ -2,23 +2,14 @@
 
 ## 产品支持情况
 
-<!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
-<!-- end id1 -->
-<!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
-<!-- end id2 -->
-<!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
-<!-- end id3 -->
-<!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
-<!-- end id4 -->
-- <term>Atlas 推理系列加速卡产品</term>：不支持
-
-<!-- npu="910" id5 -->
-- <term>Atlas 训练系列产品</term>：不支持
-<!-- end id5 -->
+| 产品                                                         | 是否支持 |
+| ------------------------------------------------------------ | :------: |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列加速卡产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -126,17 +117,16 @@ aclnnStatus aclnnCompressor(
     | cuSeqlens | 可选输入 | 表示不同Batch中的有效token数。  |支持B=0,S=0,T=0的空Tensor；当x的shape为[B,S,H]时，参数必须为空。| INT32          | ND         |当x的shape为[T,H]时，输入shape为[B+1,]|×|
     | seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数。 |如果指定为None时，表示和每个Batch上的Sequence Length长度相同；支持B=0的空Tensor；如果指定为None时，表示和每个Batch上的Sequence Length长度相同。该入参中每个Batch的有效token数要求小于等于对应Sequence Length长度。当x的shape为[B,S,H]时，要求seqused[n] <= S，且不小于0；当x的shape为[T,H]时，要求seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。| INT32          | ND         |[B,]|×|
     | startPos | 可选输入 | 表示计算起始位置。 |支持B=0,T=0的空Tensor；当输入为None时，表示从0开始进行计算。| INT32          | ND         |[B,]|×|
-    | cmpRatio | 输入 | 用于稀疏计算，表示数据压缩率。 |取值范围为[2, 4, 8, 16, 32, 64, 128]。| INT32          | -         |-|-|
+    | cmpRatio | 输入 | 用于稀疏计算，表示数据压缩率。 |取值范围为[2, 128]内的整数。| INT32          | -         |-|-|
     | coff | 可选输入 | 表示是否进行overlap数据重排。 |取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。| INT32          | -         |-|-|
     | cacheMode | 可选输入 | 表示state_cache的存储模式。 |取值范围为[1, 2]；1表示连续buffer，2表示循环buffer。| INT32          | -         |-|-|
     | stateCacheStrideDim0 | 可选输入 | 表示state_cache的0轴stride。 |-| INT32     | -         |-|-|
     | cmpKv | 输出 | 表示压缩后的数据。 |支持B=0,S=0,T=0的空Tensor。| FLOAT16、BFLOAT16         | ND          |BS合轴：[min(T,T//cmp_ratio+B),D]、BS非合轴：[B,ceil(S/cmp_ratio),D]|×|
 
-<!-- npu="A3" id6 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
  cacheMode不支持输入2，且不支持0轴非连续。
+ cmp_ratio仅支持2/4/8/16/32/64/128
 
-<!-- end id6 -->
 - **返回值**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
@@ -286,7 +276,7 @@ aclnnStatus aclnnCompressor(
   - 支持D为128/512。
   - 支持H为1K~10K，512对齐。
   - 支持blockSize为1~1024。
-  - 支持cmpRatio为2/4/8/16/32/64/128。支持如下三种典型组合场景：
+  - 支持如下三种典型组合场景：
       - C4A: D=512, coff=2, cmp_ratio=4；
       - C4Li: D=128, coff=2, cmp_ratio=4；
       - C128A: D=512, coff=1, cmp_ratio=128。

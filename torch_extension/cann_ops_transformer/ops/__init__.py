@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
+from .moe_finalize_routing import moe_finalize_routing
 from .moe_token_permute import moe_token_permute
 from .mega_moe import get_symm_buffer_for_mega_moe, mega_moe
 from .deep_ep import MoeDistributeBuffer
@@ -23,6 +24,10 @@ from .quant_sparse_flash_mla import (
 )
 from .scatter_pa_kv_cache_with_k_scale import scatter_pa_kv_cache_with_k_scale
 from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
+from .sparse_flash_mla_softmax_l1_norm import (
+    sparse_flash_mla_softmax_l1_norm,
+    sparse_flash_mla_softmax_l1_norm_metadata,
+)
 from .sparse_lightning_indexer_kl_loss_grad import (
     sparse_lightning_indexer_kl_loss_grad,
     sparse_lightning_indexer_kl_loss_grad_metadata,
@@ -48,6 +53,7 @@ from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_back
 from .stem_oam_prep_varlen_q import stem_oam_prep_varlen_q
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
+from .stem_oam_prep_paged_kv import stem_oam_prep_paged_kv
 from . import graph_convert as _graph_convert
 from .qkv_rms_norm_rope_cache_with_k_scale import (
     qkv_rms_norm_rope_cache_with_k_scale,
@@ -55,3 +61,7 @@ from .qkv_rms_norm_rope_cache_with_k_scale import (
 )
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
+from .dense_lightning_indexer_softmax_lse import (
+    dense_lightning_indexer_softmax_lse,
+    dense_lightning_indexer_softmax_lse_metadata,
+)
