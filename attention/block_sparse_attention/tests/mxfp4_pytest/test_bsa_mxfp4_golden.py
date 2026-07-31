@@ -135,9 +135,9 @@ _CLI_OVERRIDES = {}
 # golden dump=True 时, 把每个 chunk(kernel tile)的中间结果以 raw bytes 追加到 dump_data/*.bin,
 # 便于与 NPU kernel 的 GM tile dump 逐 tile 对照。dump=False(默认)时全部 no-op, 零开销。
 # =====================================================================
-_DUMP_DIR = "/srv/workspace/mnt1/work_code/lwg/0707/ops-transformer_0703/attention/block_sparse_attention/tests/mxfp4_pytest/dump_data"
+_DUMP_DIR = "/home/w00947241/lwg/bsa_code_0730/ops-transformer_0703/attention/block_sparse_attention/tests/mxfp4_pytest/dump_data"
 _DUMP_ENABLED = False  # 全局开关, 默认关; golden 的 dump=True 时由 _enable_dump(True) 开启(并建 dump_data/ 目录)
-PRINTF_CHECK_RES = True
+PRINTF_CHECK_RES = False #打开看Out比较结果
 
 
 def _enable_dump(on):

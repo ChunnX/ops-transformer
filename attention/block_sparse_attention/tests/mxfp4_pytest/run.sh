@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 export BSA_CPU_ONLY=0 #npu模式
 export TORCH_DEVICE_BACKEND_AUTOLOAD=0
 python -m pytest test_bsa_mxfp4_golden.py::TestBSAMxfp4Golden::test_bsa_mxfp4_bnsd_dense \
-    -v \
+    -v -s \              #加上-s才能看到日志
     --b 1 --n1 1 --n2 8 --s1 128 --s2 512 --qk_d 128 --dump True
 
 
