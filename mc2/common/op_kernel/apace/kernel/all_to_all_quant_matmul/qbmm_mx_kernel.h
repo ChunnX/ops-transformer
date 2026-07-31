@@ -11,14 +11,13 @@
 #include "include/tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
-#include "lib/hccl/hccl.h"
 
 namespace Blaze {
 namespace Gemm {
 namespace Kernel {
 #define QBMM_MX_KERNEL_CLASS_TEM_PARAMS \
-    template <class ProblemShape, class BlockMmad, class BlockScheduler, bool HcommPureCMode>
-#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, HcommPureCMode
+    template <class ProblemShape, class BlockMmad, class BlockScheduler, class Derived, bool HcommPureCMode>
+#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, Derived, HcommPureCMode
 
 using namespace AscendC;
 using AscendC::Te::Get;
@@ -28,7 +27,8 @@ using AscendC::Te::Get;
  * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式
  */
 
-template <class ProblemShape, class BlockMmad, class BlockScheduler, bool HcommPureCMode = false>
+template <class ProblemShape, class BlockMmad, class BlockScheduler,
+          class Derived = void, bool HcommPureCMode = false>
 class QuantMatmulMxKernelSwat {
 public:
     __aicore__ inline QuantMatmulMxKernelSwat()
@@ -103,10 +103,6 @@ public:
         uint32_t splitKNum;
         MatmulMode matmulMode; // 1: LOCAL, 2: REMOTE, 3: DEFERRED_SYNC
         uint32_t headTileSize;
-        void* hcclPtr{nullptr};
-        AscendC::HcclHandle dataHeadHandle{0};
-        AscendC::HcclHandle dataTailHandle{0};
-        uint32_t headTileCnt{0};
     };
 
     /**
@@ -296,13 +292,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
     const Params &params, uint32_t tileIdx)
 {
     if constexpr (HcommPureCMode) {
-        auto* hccl = static_cast<AscendC::Hccl<AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU>*>(
-            params.localParams.hcclPtr);
-        if (tileIdx < params.localParams.headTileCnt) {
-            hccl->Wait(params.localParams.dataHeadHandle);
-        } else {
-            hccl->Wait(params.localParams.dataTailHandle);
-        }
+        static_cast<Derived*>(this)->WaitCommTile(params, tileIdx);
     } else {
         AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
     }
