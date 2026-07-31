@@ -132,6 +132,11 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_fromFused(0);      // 融合算子标记，稀疏算子固定设为 0
     inputParams.set_isGqa(info.isGqa ? 1 : 0);
     inputParams.set_isSoftMaxLseEnable(info.returnSoftmaxLseVal ? 1 : 0);
+    uint32_t fp8PScaleShapeSize = 0U;
+    if (info.opParamInfo.pScale.shape != nullptr) {
+        fp8PScaleShapeSize = static_cast<uint32_t>(info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize());
+    }
+    inputParams.set_pScaleShapeSize(fp8PScaleShapeSize);
 }
 
 void QuantBlockSparseAttnTiling::FillMultiCoreParams()
@@ -253,7 +258,11 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     scaleParams.keyScaleDSize = keyScaleDSize;
     scaleParams.valueScaleBlockSize = valueScaleBlockSize;
     scaleParams.valueScaleDSize = valueScaleDSize;
-    scaleParams.pScaleShapeSize = BSA_MXFP8_P_SCALE_SHAPE_SIZE;
+    uint32_t pScaleShapeSize = 0U;
+    if (info.opParamInfo.pScale.shape != nullptr) {
+        pScaleShapeSize = static_cast<uint32_t>(info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize());
+    }
+    scaleParams.pScaleShapeSize = pScaleShapeSize;
     scaleParams.queryQuantMode = BSA_MXFP8_PER_TOKEN_GROUP_MODE;
     scaleParams.keyAntiquantMode = BSA_MXFP8_PER_TOKEN_GROUP_MODE;
     scaleParams.valueAntiquantMode = BSA_MXFP8_PER_CHANNEL_GROUP_MODE;
