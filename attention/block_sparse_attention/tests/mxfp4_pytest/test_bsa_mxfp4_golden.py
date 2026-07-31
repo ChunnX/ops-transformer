@@ -807,6 +807,24 @@ class TestBSAMxfp4Golden(TestCase):
         """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
         self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=2048, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense')
+    
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs4096_d128(self, device="npu"):
+        """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs8192_d128(self, device="npu"):
+        """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=8192, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs256_kvs256_d128(self, device="npu"):
+        """① BNSD dense: s1=256 多块(block_shape=[128,128], S=256 -> 2x1)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=256, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
 
 
 if __name__ == "__main__":
