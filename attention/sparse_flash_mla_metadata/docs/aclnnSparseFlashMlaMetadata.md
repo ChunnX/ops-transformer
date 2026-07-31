@@ -138,30 +138,30 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中q的有效token数（前缀和形式）。</td>
-      <td><ul><li>支持空Tensor。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B+1,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cuSeqlensOriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中oriKv的有效token数（前缀和形式）。</td>
-      <td><ul><li>支持空Tensor。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B+1,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmpKv的有效token数（前缀和形式）。</td>
-      <td><ul><li>支持空Tensor。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B+1,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
@@ -181,7 +181,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
@@ -191,7 +191,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
@@ -201,7 +201,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>在CSA、HCA、cmpRatio不等于1且cmpMaskMode为3场景必传，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
@@ -211,7 +211,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td><ul><li>支持空Tensor。</li><li>shape为(B, S1, N2)或(T1, N2)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>-</td>
+      <td>2维、3维</td>
       <td>√</td>
     </tr>
     <tr>
@@ -221,14 +221,14 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td><ul><li>支持空Tensor。</li><li>shape为(B, S1, N2)或(T1, N2)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>-</td>
+      <td>2维、3维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>Query的多头数。</td>
-      <td>支持[1, 128]，numHeadsQ / numHeadsKv仅支持[1,128]范围内的2的幂。</td>
+      <td>支持[1, 128]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -258,7 +258,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>batchSize（int64_t）</td>
       <td>输入</td>
       <td>输入样本批量大小。</td>
-      <td>传入0时表示从cuSeqLensQ推断；layoutQ为TND时无需手动指定，建议值为0。</td>
+      <td>layoutQ为TND时无需手动指定，建议值为0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -408,10 +408,10 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>metaData（aclTensor*）</td>
       <td>输出</td>
       <td>分核元数据输出，供SparseFlashMla算子使用。</td>
-      <td>-</td>
+      <td>shape固定为(1024, )。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(1024,)</td>
+      <td>1维</td>
       <td>×</td>
     </tr>
     <tr>
@@ -437,7 +437,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   </tbody>
   </table>
 
-  <ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：不支持sequsedQOptional、oriTopkLengthOptional、cmpTopkLengthOptional，numHeadsQ/numHeadsKv支持1、2、4、8、16、32、64、128，oriTopk仅支持0，cmpTopk仅支持0、512、1024，oriMaskMode仅支持4，cmpMaskMode仅支持3，oriWinLeft仅支持127，oriWinRight仅支持0，cmpRatio仅支持1、4、128。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持sequsedQOptional、oriTopkLengthOptional、cmpTopkLengthOptional，numHeadsQ/numHeadsKv支持1、2、4、8、16、32、64、128，oriTopk仅支持0，cmpTopk仅支持0、512、1024，oriMaskMode仅支持4，cmpMaskMode仅支持3，oriWinLeft仅支持127，oriWinRight仅支持0，cmpRatio仅支持1、4、128。</li></ul>
+  <ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：不支持sequsedQOptional、oriTopkLengthOptional、cmpTopkLengthOptional，numHeadsQ/numHeadsKv仅支持1、2、4、8、16、32、64、128，oriTopk仅支持0，cmpTopk仅支持0、512、1024，oriMaskMode仅支持4，cmpMaskMode仅支持3，oriWinLeft仅支持127，oriWinRight仅支持0，cmpRatio仅支持1、4、128。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持sequsedQOptional、oriTopkLengthOptional、cmpTopkLengthOptional，numHeadsQ/numHeadsKv仅支持1、2、4、8、16、32、64、128，oriTopk仅支持0，cmpTopk仅支持0、512、1024，oriMaskMode仅支持4，cmpMaskMode仅支持3，oriWinLeft仅支持127，oriWinRight仅支持0，cmpRatio仅支持1、4、128。</li></ul>
 
 - **返回值**
 

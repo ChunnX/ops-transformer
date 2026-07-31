@@ -98,7 +98,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -108,7 +108,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>cuSeqlensOriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中ori_kv的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -118,7 +118,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -368,10 +368,10 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>metadata（aclTensor*）</td>
       <td>输出</td>
       <td>表示负载均衡结果输出。</td>
-      <td>-</td>
+      <td>shape固定为(1024, )</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(1024)</td>
+      <td>1维</td>
       <td>×</td>
     </tr>
     <tr>

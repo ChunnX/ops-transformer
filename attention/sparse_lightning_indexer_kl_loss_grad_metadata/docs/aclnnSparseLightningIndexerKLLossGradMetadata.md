@@ -87,7 +87,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>cuSeqLensQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同batch中query的累积sequence length。</td>
-      <td><ul><li>支持空Tensor</li><li>TND场景下必传，并可通过该入参shape推导batch。</li><li>第一个值固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
+      <td><ul><li>支持空Tensor</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -97,7 +97,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>cuSeqLensKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同batch中key的累积sequence length。</td>
-      <td><ul><li>支持空Tensor</li><li>TND场景下必传。</li><li>第一个值固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
+      <td><ul><li>支持空Tensor</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -247,10 +247,10 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>metadata（aclTensor*）</td>
       <td>输出</td>
       <td>表示负载均衡结果输出。</td>
-      <td>输出结果作为aclnnSparseLightningIndexerKLLossGrad的metadataOptional输入。</td>
+      <td>输出结果作为aclnnSparseLightningIndexerKLLossGrad的metadataOptional输入，shape固定为(64, )。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(64,)</td>
+      <td>1维</td>
       <td>x</td>
     </tr>
     <tr>
